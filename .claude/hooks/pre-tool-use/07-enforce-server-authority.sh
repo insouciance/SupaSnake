@@ -1,6 +1,7 @@
 #!/bin/bash
 # PreToolUse Hook: Enforce Server Authority
 # Prevents localStorage usage for game state (AAA 2026 standard)
+# Based on: Anthropic "Writing Tools for Agents" - actionable error messages
 # Exit 0: Allow, Exit 2: BLOCK
 
 # Read JSON input from stdin
@@ -66,36 +67,135 @@ GAME_STATE_PATTERNS=(
 # Check if localStorage is used with game state keys
 for pattern in "${GAME_STATE_PATTERNS[@]}"; do
   # Case-insensitive check for localStorage with game state key
-  if echo "$TEXT" | grep -Eiq "localStorage\.(get|set|remove)Item\s*\(\s*['\"].*${pattern}|localStorage\[['\"
+  if echo "$TEXT" | grep -Eiq "localStorage\.(get|set|remove)Item\s*\(\s*['\"].*${pattern}|localStorage\[['\"].*${pattern}"; then
+    cat >&2 <<'EOF'
+❌ BLOCKED: Server Authority Violation (AAA 2026 Standard)
 
-].*${pattern}"; then
-    echo "❌ BLOCKED: Server Authority Violation" >&2
-    echo "" >&2
-    echo "AAA Architecture Requirement: Game state must be server-authoritative" >&2
-    echo "" >&2
-    echo "Violation: localStorage used for game state (pattern: $pattern)" >&2
-    echo "File: ${FILE_PATH:-unknown}" >&2
-    echo "" >&2
-    echo "Why this matters:" >&2
-    echo "  • Players can manipulate localStorage (cheating)" >&2
-    echo "  • No server validation of state changes" >&2
-    echo "  • Data loss if localStorage cleared" >&2
-    echo "  • Impossible to sync across devices" >&2
-    echo "  • Breaks multiplayer/leaderboards" >&2
-    echo "" >&2
-    echo "Fix: Use server-side storage instead" >&2
-    echo "  1. Store in database via API route" >&2
-    echo "  2. Use Supabase realtime for sync" >&2
-    echo "  3. Client only displays server state" >&2
-    echo "" >&2
-    echo "Allowed localStorage usage:" >&2
-    echo "  ✅ UI preferences (theme, volume, language)" >&2
-    echo "  ✅ Input settings (controls, sensitivity)" >&2
-    echo "  ✅ Tutorial completion flags" >&2
-    echo "  ✅ Analytics consent" >&2
-    echo "  ❌ Any game state, progress, or economy" >&2
-    echo "" >&2
-    echo "See: @knowledge_base/platform/how_to/maintain_server_authority.md" >&2
+🎮 Architecture principle: Server is single source of truth for ALL game state
+
+📍 Problem detected:
+EOF
+    echo "  File: $FILE_PATH" >&2
+    echo "  Pattern: localStorage with game state key \"$pattern\"" >&2
+    cat >&2 <<'EOF'
+
+⚠️  Why this is CRITICAL:
+
+1. Cheating (Revenue Impact):
+   Player opens DevTools → localStorage.setItem('dna', '999999')
+   Result: Infinite DNA without paying
+   Impact: $0 revenue, broken economy, unfair gameplay
+
+2. Data Loss (Player Churn):
+   Player clears browser data → Lost ALL progress forever
+   Result: Angry 1-star review "Lost 50 hours of progress!"
+   Impact: High churn rate, reputation damage, support burden
+
+3. Multiplayer Impossible (Feature Limitation):
+   Each client has different "truth" → Can't sync state
+   Result: No leaderboards, PvP, guilds, trading
+   Impact: Limited monetization, lower engagement
+
+4. No Validation (Quality & Security):
+   Client can set ANY value → Game breaks or exploits
+   Result: Invalid state crashes game, exploits spread
+   Impact: Poor player experience, support costs
+
+📋 How to fix:
+
+Step 1: Remove localStorage for game state
+
+❌ BAD (client storage - NEVER do this):
+```typescript
+// This allows cheating!
+const dna = parseInt(localStorage.getItem('dna') || '0');
+localStorage.setItem('dna', (dna + reward).toString());
+```
+
+Step 2: Create API route for mutations
+
+✅ GOOD (server authority - AAA standard):
+```typescript
+// File: src/app/api/game/reward-dna/route.ts
+import { createClient } from '@/utils/supabase/server';
+
+export async function POST(request: Request) {
+  const supabase = createClient();
+
+  // 1. Authenticate
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  // 2. Validate input
+  const { rewardAmount, reason } = await request.json();
+  if (!isValidReward(rewardAmount, reason)) {
+    return new Response('Invalid reward', { status: 400 });
+  }
+
+  // 3. Server processes & validates
+  const { data, error } = await supabase
+    .from('user_resources')
+    .update({ dna: supabase.sql`dna + ${rewardAmount}` })
+    .eq('user_id', user.id)
+    .select()
+    .single();
+
+  if (error) return new Response(error.message, { status: 500 });
+
+  // 4. Return server's value (single source of truth)
+  return Response.json({ dna: data.dna });
+}
+```
+
+Step 3: Call API from client
+
+✅ GOOD (client displays, server decides):
+```typescript
+// File: src/components/GameUI.tsx
+const rewardDNA = async (amount: number) => {
+  const response = await fetch('/api/game/reward-dna', {
+    method: 'POST',
+    body: JSON.stringify({ rewardAmount: amount, reason: 'level_complete' })
+  });
+
+  const { dna } = await response.json();
+  setDNA(dna);  // Display only, no game logic
+};
+```
+
+📊 The 4 Principles of Server Authority:
+
+1. **Client Displays, Server Decides**
+   Client: Shows UI, collects input
+   Server: Processes ALL game logic
+   Client: Receives results, updates display
+
+2. **API Routes for All Mutations**
+   Every state change goes through API
+   Client never directly accesses database
+
+3. **Secrets Stay Server-Side**
+   No SERVICE_ROLE_KEY in client code
+
+4. **Config-Driven Balance**
+   Game constants in src/shared/config/game.ts
+
+✅ localStorage ALLOWED for (UI state only):
+  • Theme, volume, language
+  • Tutorial completion flags
+  • Analytics consent
+
+❌ localStorage FORBIDDEN for (game state):
+  • DNA, score, level, XP
+  • Inventory, collection, unlocks
+  • Any data that affects gameplay
+
+💡 Rule of thumb:
+  If losing it means losing PROGRESS → Server
+  If losing it means re-selecting PREFERENCES → localStorage
+
+Platform standard: AAA 2026 server authority (5 hooks enforce deterministically)
+EOF
     exit 2
   fi
 done

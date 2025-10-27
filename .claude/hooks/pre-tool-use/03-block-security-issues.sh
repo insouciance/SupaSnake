@@ -2,7 +2,7 @@
 # PreToolUse Hook: Block Security Issues
 # Prevents common security vulnerabilities with actionable guidance
 # Based on: Anthropic "Writing Tools for Agents" - actionable error messages
-# Exit 0: Allow, Exit 1: BLOCK
+# Exit 0: Allow, Exit 2: BLOCK
 
 INPUT=$(cat)
 
@@ -90,7 +90,7 @@ Required:
 
 Platform requirement: Zero secrets in code (deterministic enforcement)
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for hard-coded API key
@@ -135,7 +135,7 @@ if (!apiKey) {
 
 Platform requirement: Zero secrets in code
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for hard-coded secret
@@ -153,7 +153,7 @@ EOF
 
 Platform requirement: Zero secrets in code
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for hard-coded token
@@ -173,7 +173,7 @@ EOF
 
 Platform requirement: Zero secrets in code
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for SQL string concatenation (injection risk)
@@ -239,7 +239,7 @@ const { data } = await supabase
 
 Platform requirement: Zero SQL concatenation (parameterized queries only)
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for eval() usage
@@ -282,7 +282,7 @@ const result = allowedFunctions[functionName](...args);
 
 Platform requirement: Zero eval() usage (use safer alternatives)
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for exec() usage
@@ -302,7 +302,7 @@ EOF
 
 Platform requirement: Zero exec() usage
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for innerHTML (XSS risk)
@@ -342,7 +342,7 @@ element.innerHTML = DOMPurify.sanitize(userInput);
 
 Platform requirement: Use textContent or sanitize HTML
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check for dangerouslySetInnerHTML (XSS risk)
@@ -378,7 +378,7 @@ Or better: Use React's automatic escaping:
 
 Platform requirement: Sanitize HTML or avoid dangerouslySetInnerHTML
 EOF
-  exit 1
+  exit 2
 fi
 
 # Allow write

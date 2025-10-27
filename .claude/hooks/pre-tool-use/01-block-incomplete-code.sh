@@ -2,7 +2,7 @@
 # PreToolUse Hook: Block Incomplete Code
 # Prevents writing code with TODO/FIXME/placeholders
 # Based on: Anthropic "Writing Tools for Agents" - actionable error messages
-# Exit 0: Allow, Exit 1: BLOCK
+# Exit 0: Allow, Exit 2: BLOCK
 
 # Read JSON input from stdin
 INPUT=$(cat)
@@ -136,7 +136,7 @@ Option 2: If NOT ready to implement:
 
 Platform requirement: 100% complete implementations (0 TODO/FIXME in production)
 EOF
-    exit 1
+    exit 2
   fi
 done
 

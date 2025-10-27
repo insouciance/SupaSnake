@@ -2,7 +2,7 @@
 # PreToolUse Hook: Require Tests
 # Blocks new functions without corresponding tests
 # Based on: Anthropic "Writing Tools for Agents" - actionable error messages
-# Exit 0: Allow, Exit 1: BLOCK
+# Exit 0: Allow, Exit 2: BLOCK
 
 INPUT=$(cat)
 
@@ -193,7 +193,7 @@ EOF
 
 Platform requirement: ≥95% test coverage (hook enforced)
 EOF
-  exit 1
+  exit 2
 fi
 
 # Check if functions are tested (basic check)
@@ -219,7 +219,7 @@ if [[ ${#MISSING_TESTS[@]} -gt 0 ]]; then
   echo "📋 Fix: Add tests for missing functions" >&2
   echo "" >&2
   echo "Platform requirement: All functions must be tested (≥95% coverage)" >&2
-  exit 1
+  exit 2
 fi
 
 # Allow write
