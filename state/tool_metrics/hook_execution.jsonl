@@ -1,0 +1,3 @@
+{"timestamp":"2025-10-27T15:30:05Z","hook_name":"01-block-incomplete-code","hook_type":"PreToolUse","success":true,"duration_ms":45,"blocked":false,"exit_code":0,"output_length":0,"error_message":null}
+{"timestamp":"2025-10-27T15:30:05Z","hook_name":"02-require-tests","hook_type":"PreToolUse","success":true,"duration_ms":120,"blocked":true,"exit_code":1,"output_length":156,"error_message":"Missing test file"}
+{"timestamp":"2025-10-27T15:30:05Z","hook_name":"08-monitor-context-quality","hook_type":"Stop","success":true,"duration_ms":850,"blocked":false,"exit_code":0,"output_length":412,"error_message":null}

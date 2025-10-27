@@ -1,0 +1,53 @@
+{
+  "plan_name": "Game Design",
+  "created_at": "TIMESTAMP_PLACEHOLDER",
+  "task_description": "Game design principles, player psychology, mechanics, balance",
+  "required_context": [
+    {
+      "file": "knowledge_base/game_design/quick_ref/concept_theme.md",
+      "reason": "Game theme and unifying principles",
+      "type": "quick_ref",
+      "priority": 1
+    },
+    {
+      "file": "knowledge_base/game_design/quick_ref/concept_elemental_tetrad.md",
+      "reason": "Four elements of game design",
+      "type": "quick_ref",
+      "priority": 1
+    },
+    {
+      "file": "knowledge_base/game_design/quick_ref/concept_player_mental_models.md",
+      "reason": "How players think about games",
+      "type": "quick_ref",
+      "priority": 1
+    }
+  ],
+  "optional_context": [
+    {
+      "file": "knowledge_base/game_design/how_to/apply_theme_to_supasnake.md",
+      "reason": "Theme application to SupaSnake",
+      "type": "how_to",
+      "priority": 2
+    },
+    {
+      "file": "knowledge_base/game_design/how_to/design_for_mobile_f2p_players.md",
+      "reason": "Mobile F2P design patterns",
+      "type": "how_to",
+      "priority": 2
+    },
+    {
+      "file": "knowledge_base/game_design/how_to/balance_supasnake_mechanics.md",
+      "reason": "Mechanics balancing guide",
+      "type": "how_to",
+      "priority": 2
+    },
+    {
+      "file": "knowledge_base/game_design/reference/batch1_chapters/chapter_01_designer_summary.md",
+      "reason": "Designer foundations",
+      "type": "reference",
+      "priority": 3
+    }
+  ],
+  "context_budget": "10000 tokens estimated",
+  "load_order": "quick_ref → how_to → reference (if budget allows)"
+}

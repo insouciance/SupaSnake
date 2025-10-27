@@ -1,0 +1,14 @@
+# Python Requirements for Card Recoloring Scripts
+# ================================================
+#
+# Install with: pip install -r requirements.txt
+#
+# Purpose: Automated dynasty variant generation from greyscale templates
+
+# Image Processing
+Pillow>=10.0.0          # PIL fork for image manipulation (PNG loading/saving, format conversion)
+numpy>=1.24.0           # Numerical arrays for efficient pixel manipulation
+
+# Optional: Enhanced Performance
+# numba>=0.57.0         # JIT compilation for faster color interpolation loops
+# opencv-python>=4.8.0  # Alternative image processing (if needed for advanced operations)

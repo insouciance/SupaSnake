@@ -1,0 +1,3 @@
+{"timestamp": "2025-10-27T15:30:05.190015Z", "prompt": "implement authentication", "format": "concise", "patterns_returned": 5, "tokens_estimated": 49, "relevance_scores": [], "duration_ms": 1.0418891906738281, "truncated": false}
+{"timestamp": "2025-10-27T15:30:05.220843Z", "prompt": "security best practices", "format": "detailed", "patterns_returned": 29, "tokens_estimated": 138, "relevance_scores": [], "duration_ms": 0.5698204040527344, "truncated": false}
+{"timestamp": "2025-10-27T15:30:05.249489Z", "prompt": "optimize performance", "format": "concise", "patterns_returned": 0, "tokens_estimated": 0, "relevance_scores": [], "duration_ms": 0.16880035400390625, "truncated": false}

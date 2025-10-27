@@ -1,0 +1,223 @@
+{
+  "dynasties": {
+    "CYBER": {
+      "name": "CYBER",
+      "theme": "Technology, circuits, digital",
+      "color_map": {
+        "shadow": "#0D3D47",
+        "dark": "#1A7A8A",
+        "primary": "#2BA5B3",
+        "highlight": "#4DD4E0",
+        "bright": "#A8F4FF"
+      },
+      "accent_colors": {
+        "eyes": "#FFCC33",
+        "outline": "#000000",
+        "glow": "#00F3FF"
+      },
+      "gradient_background": {
+        "start": "#0A2A3F",
+        "end": "#1A4D5C"
+      }
+    },
+    "PRIMAL": {
+      "name": "PRIMAL",
+      "theme": "Nature, earth, organic",
+      "color_map": {
+        "shadow": "#3D2415",
+        "dark": "#6B3E1A",
+        "primary": "#8B4513",
+        "highlight": "#A0522D",
+        "bright": "#D2B48C"
+      },
+      "accent_colors": {
+        "eyes": "#FF9900",
+        "outline": "#000000",
+        "glow": "#7FFF00"
+      },
+      "gradient_background": {
+        "start": "#2A1A0F",
+        "end": "#4D3520"
+      }
+    },
+    "COSMIC": {
+      "name": "COSMIC",
+      "theme": "Space, stars, nebula",
+      "color_map": {
+        "shadow": "#2A0D4D",
+        "dark": "#4A1A7A",
+        "primary": "#6A0DAD",
+        "highlight": "#9933FF",
+        "bright": "#E0B0FF"
+      },
+      "accent_colors": {
+        "eyes": "#FF33FF",
+        "outline": "#000000",
+        "glow": "#B026FF"
+      },
+      "gradient_background": {
+        "start": "#1A0A2E",
+        "end": "#3D1A5C"
+      }
+    },
+    "VOID": {
+      "name": "VOID",
+      "theme": "Darkness, absence, emptiness",
+      "color_map": {
+        "shadow": "#000000",
+        "dark": "#1A1A1A",
+        "primary": "#333333",
+        "highlight": "#4D4D4D",
+        "bright": "#808080"
+      },
+      "accent_colors": {
+        "eyes": "#8A2BE2",
+        "outline": "#000000",
+        "glow": "#4B0082"
+      },
+      "gradient_background": {
+        "start": "#000000",
+        "end": "#1A1A1A"
+      }
+    },
+    "INFERNO": {
+      "name": "INFERNO",
+      "theme": "Fire, heat, energy",
+      "color_map": {
+        "shadow": "#4D0A0A",
+        "dark": "#8B1A1A",
+        "primary": "#CC3333",
+        "highlight": "#FF4D4D",
+        "bright": "#FFCCCC"
+      },
+      "accent_colors": {
+        "eyes": "#FFD700",
+        "outline": "#000000",
+        "glow": "#FF6600"
+      },
+      "gradient_background": {
+        "start": "#330A0A",
+        "end": "#661A1A"
+      }
+    },
+    "ABYSS": {
+      "name": "ABYSS",
+      "theme": "Deep ocean, underwater, mysterious",
+      "color_map": {
+        "shadow": "#001F3D",
+        "dark": "#003D5C",
+        "primary": "#005C8A",
+        "highlight": "#007AB8",
+        "bright": "#66B2E6"
+      },
+      "accent_colors": {
+        "eyes": "#00FFFF",
+        "outline": "#000000",
+        "glow": "#1E90FF"
+      },
+      "gradient_background": {
+        "start": "#00152E",
+        "end": "#002A47"
+      }
+    },
+    "RADIANT": {
+      "name": "RADIANT",
+      "theme": "Light, holy, divine",
+      "color_map": {
+        "shadow": "#FFE4B3",
+        "dark": "#FFCC66",
+        "primary": "#FFB300",
+        "highlight": "#FFCC33",
+        "bright": "#FFFFFF"
+      },
+      "accent_colors": {
+        "eyes": "#FFD700",
+        "outline": "#000000",
+        "glow": "#FFFF99"
+      },
+      "gradient_background": {
+        "start": "#FFFACD",
+        "end": "#FFE4B3"
+      }
+    },
+    "UMBRA": {
+      "name": "UMBRA",
+      "theme": "Shadow, stealth, night",
+      "color_map": {
+        "shadow": "#0A0A14",
+        "dark": "#1A1A2E",
+        "primary": "#2E2E4D",
+        "highlight": "#4D4D6B",
+        "bright": "#8080A3"
+      },
+      "accent_colors": {
+        "eyes": "#9370DB",
+        "outline": "#000000",
+        "glow": "#483D8B"
+      },
+      "gradient_background": {
+        "start": "#05050A",
+        "end": "#0F0F1F"
+      }
+    },
+    "NEXUS": {
+      "name": "NEXUS",
+      "theme": "Connection, network, convergence",
+      "color_map": {
+        "shadow": "#1A3D4D",
+        "dark": "#2E5C70",
+        "primary": "#4D8A9E",
+        "highlight": "#70B8CC",
+        "bright": "#A3E0F0"
+      },
+      "accent_colors": {
+        "eyes": "#00CED1",
+        "outline": "#000000",
+        "glow": "#40E0D0"
+      },
+      "gradient_background": {
+        "start": "#0F2A38",
+        "end": "#1F4D5C"
+      }
+    },
+    "PRIME": {
+      "name": "PRIME",
+      "theme": "Excellence, pinnacle, perfection",
+      "color_map": {
+        "shadow": "#4D3D1A",
+        "dark": "#8B6B2E",
+        "primary": "#D4AF37",
+        "highlight": "#FFD700",
+        "bright": "#FFF4CC"
+      },
+      "accent_colors": {
+        "eyes": "#FFAA00",
+        "outline": "#000000",
+        "glow": "#FFD700"
+      },
+      "gradient_background": {
+        "start": "#332A0F",
+        "end": "#66521F"
+      }
+    }
+  },
+  "color_mapping_strategy": {
+    "description": "Maps greyscale values (0-255) to dynasty color palette",
+    "method": "Linear interpolation between key greyscale values",
+    "key_values": {
+      "0": "shadow",
+      "64": "dark",
+      "128": "primary",
+      "192": "highlight",
+      "255": "bright"
+    },
+    "interpolation": "Linear RGB interpolation between keypoints"
+  },
+  "metadata": {
+    "version": "1.0",
+    "created": "2025-10-24",
+    "total_dynasties": 10,
+    "mvp_dynasties": ["CYBER", "PRIMAL", "COSMIC"],
+    "expansion_dynasties": ["VOID", "INFERNO", "ABYSS", "RADIANT", "UMBRA", "NEXUS", "PRIME"]
+  }
+}

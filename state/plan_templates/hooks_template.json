@@ -1,0 +1,47 @@
+{
+  "plan_name": "Hook Development",
+  "created_at": "TIMESTAMP_PLACEHOLDER",
+  "task_description": "Creating, testing, or debugging custom PreToolUse/PostToolUse/Stop hooks",
+  "required_context": [
+    {
+      "file": "knowledge_base/platform/quick_ref/hook_types.md",
+      "reason": "Hook types overview and when to use each",
+      "type": "quick_ref",
+      "priority": 1
+    },
+    {
+      "file": "knowledge_base/platform/quick_ref/hook_testing.md",
+      "reason": "How to test hooks quickly",
+      "type": "quick_ref",
+      "priority": 1
+    }
+  ],
+  "optional_context": [
+    {
+      "file": "knowledge_base/platform/how_to/create_custom_hook.md",
+      "reason": "Step-by-step hook creation guide",
+      "type": "how_to",
+      "priority": 2
+    },
+    {
+      "file": "knowledge_base/platform/reference/hooks_guide_full.md",
+      "reason": "Complete hook patterns and advanced topics",
+      "type": "reference",
+      "priority": 3
+    },
+    {
+      "file": ".claude/hooks/pre-tool-use/01-block-incomplete-code.sh",
+      "reason": "Example PreToolUse hook implementation",
+      "type": "implementation",
+      "priority": 2
+    },
+    {
+      "file": ".claude/hooks/post-tool-use/01-format-and-lint.sh",
+      "reason": "Example PostToolUse hook implementation",
+      "type": "implementation",
+      "priority": 2
+    }
+  ],
+  "context_budget": "8000 tokens estimated",
+  "load_order": "quick_ref → implementation_examples → how_to → reference"
+}
