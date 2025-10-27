@@ -3,9 +3,14 @@
 ## 📌 Invariants (Always True)
 
 **Platform Architecture:**
-- ZTE Platform = Hooks (quality gates) + Sub-agents (specialized analysis) + Orchestration (multi-instance)
+- ZTE Platform = Hooks (quality gates) + Sub-agents (specialized analysis) + Memory (persistent learning) + Orchestration (multi-instance)
 - PreToolUse hooks enforce deterministically (exit 2 blocks operations)
 - Sub-agents get 200k fresh context each
+- Memory tool enables cross-session learning ✅ OPERATIONAL (2025-10-27)
+  - Automatic learning: Patterns captured after every code change
+  - Intelligent recall: Memories injected before every task
+  - Context quality monitoring: Automatic alerts at degradation thresholds
+- Context thresholds: Research-backed (Anthropic 2025) - degradation starts at 5k, severe at 80k+
 
 **Non-Negotiables:**
 - 95%+ test coverage (hooks enforce)
@@ -24,6 +29,8 @@
 - 6 hook types operational: `.claude/hooks/*/`
 - 8 sub-agents configured: `.claude/agents/`
 - Orchestration: `automation/orchestrator.py`, `automation/analyze_request.py`
+- Memory tool: `./memories/` (persistent knowledge base)
+- Context editing: Automatic management at 120k tokens
 
 ---
 
@@ -33,17 +40,17 @@
 **Status:** [Design / Implementation / Review / Complete]
 **Blocker:** None
 
-**Last Auto-Update:** 2025-10-19 22:06
+**Last Auto-Update:** 2025-10-25 08:59
 **Branch:** main
-**Last Commit:** 9a3aa1e Add Architectural Quality Gates - Enforce Server Authority
+**Last Commit:** 667e08d Add Legal & Analytics Infrastructure (Phase 1 Complete)
 
 **Recent Changes:**
 ```
- M .env.example
+ M .claude/hooks/pre-tool-use/02-require-tests.sh
+ M .claude/hooks/pre-tool-use/05-validate-context-reads.sh
+ M CLAUDE.md
+ M docs/analytics/event-taxonomy.md
  M state/context_plan_20251019_architectural_gates.json
-?? docs/legal/
-?? src/app/
-?? src/components/
 ```
 
 **Recent Files:**
@@ -69,23 +76,27 @@ See templates/CURRENT_WORK_TEMPLATE.md for guidance.
 ## 🧭 Context Management (Active Curation)
 
 ### Decision Matrix (Before Every Task)
+**Research-backed thresholds (Anthropic 2025):**
 
 **Estimate:** Task tokens (conversation + files + context)
 **Current:** Check token usage
 **Total:** Current + Estimate
 
 ```
-Total < 100k → Continue normally
-100k < Total < 150k → /clear + active load
-Total > 150k OR Task >30k → Delegate to sub-agent
+Total < 60k → Continue normally (optimal zone)
+60k < Total < 80k → /clear + active load (recommended)
+Total > 80k OR Task >25k → Delegate to sub-agent (required)
 ```
+
+**Research:** Performance degrades at 5k+ tokens, significant by 50k, severe at 80k+
 
 ### When to /clear (Proactive Triggers)
 
 - Starting new feature (different context domain)
-- Context >120k tokens before significant task
+- Context >60k tokens before significant task (was 120k - now research-backed)
 - Switching work context (frontend ↔ backend)
 - Before complex analysis that needs clean slate
+- Context quality score <50 (automatic monitoring via hooks)
 
 ### Active Loading (After /clear)
 
@@ -264,6 +275,107 @@ Attempting to violate server authority → Hook blocks → Claude must fix → P
 
 ---
 
+## 🧠 Memory Tool (Persistent Learning - NEW)
+
+**Status:** Beta (2025-10-27)
+**Purpose:** Cross-session learning and knowledge accumulation
+
+### What It Does
+
+Enables Claude to **store and retrieve information across conversations** through persistent files in `/memories`. Claude can:
+- Learn patterns and remember them for future sessions
+- Store architectural decisions with rationale
+- Accumulate security/performance/quality patterns
+- Build project knowledge base over time
+
+### Memory Structure
+
+```
+memories/
+├── architectural_decisions/    # Design decisions with rationale
+│   └── server_authority.md
+├── code_patterns/              # Learned patterns
+│   ├── security/
+│   │   └── common_vulnerabilities.md
+│   ├── performance/
+│   └── quality/
+├── project_knowledge/          # SupaSnake-specific info
+│   └── tech_stack.md
+├── agent_learnings/            # Sub-agent accumulated wisdom
+│   ├── security_reviewer/
+│   ├── performance_reviewer/
+│   └── balance_reviewer/
+└── session_state/              # Temporary (90-day retention)
+```
+
+### Key Operations
+
+**Query memory before work:**
+```
+"Check /memories/code_patterns/security/ for similar patterns"
+```
+
+**Store learnings:**
+```
+"Store this architectural decision in /memories/architectural_decisions/"
+```
+
+**Cross-session learning example:**
+```
+Session 1 (Today): Finds race condition in Snake collision
+→ Stores pattern in /memories/code_patterns/
+
+Session 2 (Tomorrow): Reviews breeding code
+→ Checks memory, finds similar pattern
+→ "I remember this from yesterday's Snake review..."
+```
+
+### Benefits
+
+✅ **Learns across sessions** - Pattern recognition improves over time
+✅ **Accumulated wisdom** - Security/performance patterns build up
+✅ **Better reviews** - Sub-agents remember past findings
+✅ **Persistent knowledge** - Architectural decisions preserved
+✅ **Survives context clearing** - Memory persists even when context is cleared
+
+### Security
+
+- All paths validated (prevent directory traversal)
+- No sensitive data (no passwords, API keys, PII)
+- Content sanitized
+- Size limits enforced (10MB per file)
+- Regular cleanup of session_state/ (90-day retention)
+
+### Integration with Context Editing
+
+Works with automatic context editing:
+- Context editing clears old tool results at 120k tokens
+- Memory files are NEVER cleared (excluded from context editing)
+- Important knowledge moves from conversation to memory
+- Enables longer-running workflows without context limits
+
+### Usage Patterns
+
+**Before implementation:**
+```
+1. Check memory for similar patterns
+2. Load relevant architectural decisions
+3. Review past security findings
+4. Implement with accumulated knowledge
+```
+
+**After implementation:**
+```
+1. Store new patterns learned
+2. Update architectural decisions
+3. Add security findings to catalog
+4. Enrich project knowledge
+```
+
+**See:** `@docs/platform/beta_tools_evaluation.md` for complete guide
+
+---
+
 ## ⚡ Quick Commands
 
 ```bash
@@ -287,10 +399,17 @@ git add . && git commit -m "Checkpoint: [milestone]"
 
 ---
 
-## 📚 Documentation
+## 📚 Documentation (Memory-Optimized)
 
-**Query Entry Point:**
-- @knowledge_base/MAP.md - Query index for all docs
+**Query Strategy:**
+1. **Check memory first:** Query `@memories/knowledge_base/routing_index.md` for routing
+2. **Load specific doc:** Memory tells you which file (quick_ref / how_to / reference)
+3. **Token savings:** Load only what you need (~200-1k tokens vs 14k with MAP.md)
+
+**Common Queries:**
+- "Should I /clear?" → Check memory routing → Load `decision_matrix.md` (~411 tokens)
+- "What hook types?" → Check memory routing → Load `hook_types.md` (~565 tokens)
+- "How use sub-agents?" → Check memory routing → Load `use_subagents.md` (~2.4k tokens)
 
 **Quick Reference (50-200 words):**
 - @knowledge_base/platform/quick_ref/decision_matrix.md
@@ -312,6 +431,8 @@ git add . && git commit -m "Checkpoint: [milestone]"
 **Platform:**
 - @PLATFORM_STATUS.md - Platform status
 
+**Fallback:** If memory routing unclear, manually check @knowledge_base/MAP.md
+
 ---
 
-**Target:** 600-800 tokens | **Philosophy:** Active curation + database-like query optimization
+**Target:** 600-800 tokens | **Philosophy:** Memory-first routing + load-on-demand optimization
