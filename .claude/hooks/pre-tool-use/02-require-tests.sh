@@ -1,7 +1,8 @@
 #!/bin/bash
 # PreToolUse Hook: Require Tests
 # Blocks new functions without corresponding tests
-# Exit 0: Allow, Exit 2: BLOCK
+# Based on: Anthropic "Writing Tools for Agents" - actionable error messages
+# Exit 0: Allow, Exit 1: BLOCK
 
 INPUT=$(cat)
 
@@ -38,7 +39,16 @@ FUNCTIONS=()
 
 # TypeScript/JavaScript functions
 if [[ "$FILE_PATH" =~ \.(ts|js)$ ]]; then
-  FUNCTIONS+=($(echo "$TEXT" | grep -E "(function |const .* = |export function |async function )" | sed 's/.*function \([a-zA-Z_][a-zA-Z0-9_]*\).*/\1/' | sed 's/.*const \([a-zA-Z_][a-zA-Z0-9_]*\) =.*/\1/'))
+  # Match function declarations: function foo()
+  FUNCTIONS+=($(echo "$TEXT" | grep -E "^\s*(export\s+)?(async\s+)?function\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(" | sed 's/.*function \([a-zA-Z_][a-zA-Z0-9_]*\).*/\1/'))
+
+  # Match arrow functions: const foo = () => or const foo = async () =>
+  # Exclude destructuring: const { ... } =
+  # Exclude object literals: const obj = { ... }
+  FUNCTIONS+=($(echo "$TEXT" | grep -E "^\s*(export\s+)?const\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*(async\s+)?\(" | sed 's/.*const \([a-zA-Z_][a-zA-Z0-9_]*\) =.*/\1/'))
+
+  # Match named functions: const foo = function()
+  FUNCTIONS+=($(echo "$TEXT" | grep -E "^\s*(export\s+)?const\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*(async\s+)?function\s*\(" | sed 's/.*const \([a-zA-Z_][a-zA-Z0-9_]*\) =.*/\1/'))
 fi
 
 # Python functions
@@ -70,16 +80,120 @@ fi
 
 # Check if test file exists
 if [[ ! -f "$TEST_FILE" ]]; then
-  echo "❌ BLOCKED: No test file found for $FILE_PATH" >&2
-  echo "" >&2
-  echo "Platform Requirement: All code must have tests (≥95% coverage)" >&2
-  echo "Expected test file: $TEST_FILE" >&2
-  echo "" >&2
-  echo "Fix: Create test file with tests for:" >&2
-  for func in "${FUNCTIONS[@]}"; do
-    echo "  - $func()" >&2
-  done
-  exit 2
+  cat >&2 <<'EOF'
+❌ BLOCKED: Missing Test Coverage
+
+📍 Problem:
+EOF
+  echo "  File: $FILE_PATH" >&2
+  echo "  Functions found: ${FUNCTIONS[*]}" >&2
+  echo "  Test file: $TEST_FILE (NOT FOUND)" >&2
+
+  # Determine file extension and show appropriate template
+  if [[ "$FILE_PATH" =~ \.py$ ]]; then
+    cat >&2 <<'EOF'
+
+📋 How to fix:
+
+Step 1: Create test file
+EOF
+    echo "  Path: $TEST_FILE" >&2
+    cat >&2 <<'EOF'
+
+Step 2: Add tests with this template:
+
+```python
+import pytest
+EOF
+    echo "from $(basename ${FILE_PATH%.py}) import ${FUNCTIONS[*]}" >&2
+    cat >&2 <<'EOF'
+
+class TestFunctions:
+EOF
+    for func in "${FUNCTIONS[@]}"; do
+      cat >&2 <<EOF
+
+    def test_${func}_basic(self):
+        """Test ${func} with typical input"""
+        result = ${func}()
+        assert result is not None
+
+    def test_${func}_edge_cases(self):
+        """Test ${func} with edge cases"""
+        # TODO: Add edge case tests
+        pass
+EOF
+    done
+
+    cat >&2 <<'EOF'
+```
+
+Step 3: Run tests to verify coverage:
+```bash
+pytest $TEST_FILE --cov=${FILE_PATH%.py} --cov-report=term-missing
+```
+
+Target: ≥95% line coverage
+EOF
+
+  elif [[ "$FILE_PATH" =~ \.(ts|js)$ ]]; then
+    cat >&2 <<'EOF'
+
+📋 How to fix:
+
+Step 1: Create test file
+EOF
+    echo "  Path: $TEST_FILE" >&2
+    cat >&2 <<'EOF'
+
+Step 2: Add tests with this template:
+
+```typescript
+import { describe, it, expect } from 'vitest';
+EOF
+    echo "import { ${FUNCTIONS[*]} } from './${FILE_PATH##*/}'; " | sed 's/\.[jt]s$//' >&2
+    cat >&2 <<'EOF'
+
+describe('Function Tests', () => {
+EOF
+    for func in "${FUNCTIONS[@]}"; do
+      cat >&2 <<EOF
+
+  describe('${func}', () => {
+    it('should handle typical input', () => {
+      const result = ${func}();
+      expect(result).toBeDefined();
+    });
+
+    it('should handle edge cases', () => {
+      // Add edge case tests
+    });
+  });
+EOF
+    done
+    cat >&2 <<'EOF'
+});
+```
+
+Step 3: Run tests:
+```bash
+npm test
+```
+EOF
+  fi
+
+  cat >&2 <<'EOF'
+
+💡 Test-first development (TDD):
+  1. Write tests first (defines expected behavior)
+  2. Run tests (they should fail)
+  3. Implement functionality
+  4. Run tests (they should pass)
+  5. Refactor with confidence
+
+Platform requirement: ≥95% test coverage (hook enforced)
+EOF
+  exit 1
 fi
 
 # Check if functions are tested (basic check)
@@ -93,16 +207,19 @@ for func in "${FUNCTIONS[@]}"; do
 done
 
 if [[ ${#MISSING_TESTS[@]} -gt 0 ]]; then
-  echo "❌ BLOCKED: Missing tests for new functions" >&2
+  echo "❌ BLOCKED: Incomplete Test Coverage" >&2
   echo "" >&2
-  echo "Platform Requirement: All functions must be tested" >&2
-  echo "Functions without tests:" >&2
+  echo "📍 Problem:" >&2
+  echo "  File: $TEST_FILE exists" >&2
+  echo "  Missing tests for:" >&2
   for func in "${MISSING_TESTS[@]}"; do
-    echo "  - $func()" >&2
+    echo "    • $func()" >&2
   done
   echo "" >&2
-  echo "Fix: Add tests to $TEST_FILE" >&2
-  exit 2
+  echo "📋 Fix: Add tests for missing functions" >&2
+  echo "" >&2
+  echo "Platform requirement: All functions must be tested (≥95% coverage)" >&2
+  exit 1
 fi
 
 # Allow write
