@@ -102,7 +102,7 @@ Total > 80k OR Task >25k → Delegate to sub-agent (required)
 
 **Load in order:**
 1. CLAUDE.md (auto-loads - invariants + current work)
-2. Current feature spec: `@docs/current_feature.md`
+2. Current feature spec: Load docs/current_feature.md (if exists)
 3. Current files only (not historical)
 4. Recent architecture decisions (last 5 commits)
 
@@ -271,7 +271,7 @@ pending → loading → loaded → complete
 
 Attempting to violate server authority → Hook blocks → Claude must fix → Production code is guaranteed clean.
 
-**See:** @knowledge_base/platform/how_to/maintain_server_authority.md for complete guide
+**See:** knowledge_base/platform/how_to/maintain_server_authority.md for complete guide
 
 ---
 
@@ -372,7 +372,7 @@ Works with automatic context editing:
 4. Enrich project knowledge
 ```
 
-**See:** `@docs/platform/beta_tools_evaluation.md` for complete guide
+**See:** docs/platform/beta_tools_evaluation.md for complete guide
 
 ---
 
@@ -402,37 +402,39 @@ git add . && git commit -m "Checkpoint: [milestone]"
 ## 📚 Documentation (Memory-Optimized)
 
 **Query Strategy:**
-1. **Check memory first:** Query `@memories/knowledge_base/routing_index.md` for routing
-2. **Load specific doc:** Memory tells you which file (quick_ref / how_to / reference)
+1. **Check memory first:** Query memories/knowledge_base/routing_index.md for routing
+2. **Load specific doc:** Use @ prefix to load (e.g., `@knowledge_base/platform/quick_ref/decision_matrix.md`)
 3. **Token savings:** Load only what you need (~200-1k tokens vs 14k with MAP.md)
 
 **Common Queries:**
-- "Should I /clear?" → Check memory routing → Load `decision_matrix.md` (~411 tokens)
-- "What hook types?" → Check memory routing → Load `hook_types.md` (~565 tokens)
-- "How use sub-agents?" → Check memory routing → Load `use_subagents.md` (~2.4k tokens)
+- "Should I /clear?" → Check memory routing → Load decision_matrix.md (~411 tokens)
+- "What hook types?" → Check memory routing → Load hook_types.md (~565 tokens)
+- "How use sub-agents?" → Check memory routing → Load use_subagents.md (~2.4k tokens)
 
-**Quick Reference (50-200 words):**
-- @knowledge_base/platform/quick_ref/decision_matrix.md
-- @knowledge_base/platform/quick_ref/when_to_clear.md
-- @knowledge_base/platform/quick_ref/hook_types.md
-- @knowledge_base/platform/quick_ref/subagent_types.md
-- @knowledge_base/platform/quick_ref/token_estimates.md
+**Quick Reference (50-200 words, load on-demand):**
+- knowledge_base/platform/quick_ref/decision_matrix.md
+- knowledge_base/platform/quick_ref/when_to_clear.md
+- knowledge_base/platform/quick_ref/hook_types.md
+- knowledge_base/platform/quick_ref/subagent_types.md
+- knowledge_base/platform/quick_ref/token_estimates.md
 
-**How-To Guides (500-1,000 words):**
-- @knowledge_base/platform/how_to/apply_decision_matrix.md
-- @knowledge_base/platform/how_to/use_subagents.md
-- @knowledge_base/platform/how_to/create_custom_hook.md
+**How-To Guides (500-1,000 words, load on-demand):**
+- knowledge_base/platform/how_to/apply_decision_matrix.md
+- knowledge_base/platform/how_to/use_subagents.md
+- knowledge_base/platform/how_to/create_custom_hook.md
 
-**Complete Reference (2,000-7,000 words):**
-- @knowledge_base/platform/reference/context_management_full.md
-- @knowledge_base/platform/reference/hooks_guide_full.md
-- @knowledge_base/platform/reference/subagent_guide_full.md
+**Complete Reference (2,000-7,000 words, load on-demand):**
+- knowledge_base/platform/reference/context_management_full.md
+- knowledge_base/platform/reference/hooks_guide_full.md
+- knowledge_base/platform/reference/subagent_guide_full.md
 
-**Platform:**
-- @PLATFORM_STATUS.md - Platform status
+**Platform Status (load on-demand):**
+- PLATFORM_STATUS.md - Platform status and capabilities
 
-**Fallback:** If memory routing unclear, manually check @knowledge_base/MAP.md
+**Fallback:** If memory routing unclear, manually load knowledge_base/MAP.md
+
+**Note:** Files listed WITHOUT @ prefix (not auto-loaded). Use @ prefix to load: `@knowledge_base/path/to/file.md`
 
 ---
 
-**Target:** 600-800 tokens | **Philosophy:** Memory-first routing + load-on-demand optimization
+**Target:** 600-800 tokens | **Philosophy:** Memory-first routing + explicit load-on-demand
