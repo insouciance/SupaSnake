@@ -56,6 +56,15 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/josefbell/SupaSnake/.claude/hooks/post-tool-use/02-track-read-activity.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
@@ -80,6 +89,21 @@
           {
             "type": "command",
             "command": "/Users/josefbell/SupaSnake/.claude/hooks/stop/04-architecture-audit.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/josefbell/SupaSnake/.claude/hooks/stop/07-capture-learnings.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/josefbell/SupaSnake/.claude/hooks/user-prompt-submit/02-inject-memory-context.sh"
           }
         ]
       }

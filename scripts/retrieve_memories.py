@@ -66,8 +66,24 @@ class MemoryRetriever:
 
         prompt_lower = prompt.lower()
 
+        # Engagement keywords (daily rewards, streaks, achievements, battle pass)
+        if any(word in prompt_lower for word in ['engagement', 'daily', 'reward', 'streak', 'achievement', 'battle pass', 'battlepass', 'xp', 'milestone']):
+            return 'engagement'
+
+        # Game keywords
+        if any(word in prompt_lower for word in ['game', 'snake', 'score', 'level', 'spawn', 'collision', 'gameplay']):
+            return 'game'
+
+        # Architecture keywords
+        if any(word in prompt_lower for word in ['architecture', 'server authority', 'client', 'database', 'migration', 'schema']):
+            return 'architecture'
+
+        # Platform/hooks keywords
+        if any(word in prompt_lower for word in ['hook', 'platform', 'claude', 'agent', 'memory', 'context']):
+            return 'platform'
+
         # Security keywords
-        if any(word in prompt_lower for word in ['security', 'auth', 'password', 'token', 'encrypt', 'validate', 'sanitize']):
+        if any(word in prompt_lower for word in ['security', 'auth', 'password', 'token', 'encrypt', 'validate', 'sanitize', 'login']):
             return 'security'
 
         # Performance keywords
@@ -79,7 +95,7 @@ class MemoryRetriever:
             return 'api'
 
         # React keywords
-        if any(word in prompt_lower for word in ['react', 'component', 'hook', 'useeffect', 'usestate']):
+        if any(word in prompt_lower for word in ['react', 'component', 'useeffect', 'usestate']):
             return 'react'
 
         # Best practices (default)
@@ -90,13 +106,17 @@ class MemoryRetriever:
 
         memories = []
 
-        # Map domain to memory paths
+        # Map domain to memory paths (expanded to include all directories)
         paths = {
-            'security': ['code_patterns/security/'],
+            'security': ['code_patterns/security/', 'architectural_decisions/'],
             'performance': ['code_patterns/performance/'],
-            'api': ['code_patterns/api/'],
+            'api': ['code_patterns/api/', 'architectural_decisions/'],
             'react': ['code_patterns/react/'],
-            'best_practices': ['code_patterns/best_practices/']
+            'best_practices': ['code_patterns/best_practices/'],
+            'engagement': ['architectural_decisions/', 'project_knowledge/'],
+            'game': ['architectural_decisions/', 'project_knowledge/'],
+            'architecture': ['architectural_decisions/', 'project_knowledge/'],
+            'platform': ['architectural_decisions/', 'project_knowledge/', 'knowledge_base/']
         }
 
         domain_paths = paths.get(domain, ['code_patterns/best_practices/'])
@@ -170,15 +190,32 @@ class MemoryRetriever:
         estimated_tokens = 0
 
         for i, mem in enumerate(memories, 1):
-            # Extract key information
+            # Extract key information - try multiple markdown formats
+            # Format 1: # Pattern: Title
             title_match = re.search(r'# Pattern: (.+)', mem['content'])
-            title = title_match.group(1) if title_match else 'Unknown Pattern'
+            # Format 2: # Architectural Decision: Title
+            if not title_match:
+                title_match = re.search(r'# Architectural Decision: (.+)', mem['content'])
+            # Format 3: Just # Title
+            if not title_match:
+                title_match = re.search(r'^# (.+)', mem['content'], re.MULTILINE)
 
+            title = title_match.group(1) if title_match else mem['path'].split('/')[-1].replace('.md', '')
+
+            # Try multiple description formats
             desc_match = re.search(r'## Description\n\n(.+?)\n\n', mem['content'], re.DOTALL)
-            full_description = desc_match.group(1) if desc_match else 'No description'
+            if not desc_match:
+                desc_match = re.search(r'## Decision\n\n(.+?)\n\n', mem['content'], re.DOTALL)
+            if not desc_match:
+                desc_match = re.search(r'## Context\n\n(.+?)\n\n', mem['content'], re.DOTALL)
+            if not desc_match:
+                # Just get first paragraph after title
+                desc_match = re.search(r'^# .+\n\n(.+?)\n\n', mem['content'], re.MULTILINE | re.DOTALL)
+
+            full_description = desc_match.group(1) if desc_match else mem['content'][:200]
 
             # Get first sentence for concise mode
-            first_sentence = full_description.split('.')[0] + '.' if '.' in full_description else full_description
+            first_sentence = full_description.split('.')[0] + '.' if '.' in full_description else full_description[:100]
 
             if response_format == "concise":
                 # CONCISE: Title + Domain + One-liner (~1/3 tokens of detailed)

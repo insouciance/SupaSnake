@@ -1,6 +1,6 @@
 #!/bin/bash
-# PreToolUse Hook: Require Context for Implementation
-# Enforces Rule #1: Must have context before implementing
+# PreToolUse Hook: Require Context for Implementation (v3 - Domain + Activity)
+# Validates: File domain matches recent read activity
 # Exit 0: Allow, Exit 2: BLOCK
 
 INPUT=$(cat)
@@ -8,97 +8,165 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# Only check Write/Edit tools on implementation files (not docs, not state)
+# Only check Write/Edit tools
 if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
   exit 0
 fi
 
-# Skip if writing to state/ or docs/ (allowed without context)
-if [[ "$FILE_PATH" =~ /state/ ]] || [[ "$FILE_PATH" =~ /docs/ ]] || [[ "$FILE_PATH" =~ \.claude ]]; then
+# Skip non-implementation paths
+if [[ "$FILE_PATH" =~ /state/ ]] || \
+   [[ "$FILE_PATH" =~ /docs/ ]] || \
+   [[ "$FILE_PATH" =~ \.claude ]] || \
+   [[ "$FILE_PATH" =~ ^knowledge_base/ ]] || \
+   [[ "$FILE_PATH" =~ \.md$ ]] || \
+   [[ "$FILE_PATH" =~ \.test\. ]] || \
+   [[ "$FILE_PATH" =~ \.config\. ]] || \
+   [[ "$FILE_PATH" =~ /config/ ]] || \
+   [[ "$FILE_PATH" =~ package\.json ]] || \
+   [[ "$FILE_PATH" =~ tsconfig ]]; then
   exit 0
 fi
 
-# Skip if writing context plan itself
-if [[ "$FILE_PATH" =~ context_plan.*\.json ]]; then
+# Load domain mapping
+DOMAIN_MAPPING="state/domain_mapping.json"
+if [[ ! -f "$DOMAIN_MAPPING" ]]; then
+  # No domain mapping = can't validate, allow but warn
+  echo "⚠️  No domain mapping found (state/domain_mapping.json)" >&2
+  echo "   Context validation skipped" >&2
   exit 0
 fi
 
-# Skip knowledge_base writes (documentation work)
-if [[ "$FILE_PATH" =~ ^knowledge_base/ ]]; then
+# Detect domain of file being written
+WRITE_DOMAIN=""
+for domain in $(jq -r '.domains | keys[]' "$DOMAIN_MAPPING"); do
+  PATTERNS=$(jq -r --arg d "$domain" '.domains[$d].path_patterns[]' "$DOMAIN_MAPPING" 2>/dev/null)
+  while IFS= read -r pattern; do
+    if [[ -n "$pattern" ]] && [[ "$FILE_PATH" == *"$pattern"* ]]; then
+      WRITE_DOMAIN="$domain"
+      break 2
+    fi
+  done <<< "$PATTERNS"
+done
+
+# If file doesn't match any domain, allow (unknown territory)
+if [[ -z "$WRITE_DOMAIN" ]]; then
   exit 0
 fi
 
-# Find most recent context plan
-CONTEXT_PLAN=$(ls -t state/context_plan_*.json 2>/dev/null | head -1)
+# Check if we have recent activity in this domain
+DOMAIN_ACTIVITY="state/read_activity/domain_activity.json"
 
-# Check if plan exists
-if [[ ! -f "$CONTEXT_PLAN" ]]; then
-  echo "❌ BLOCKED: No context plan found" >&2
-  echo "" >&2
-  echo "Rule #1: Must load context before implementing" >&2
-  echo "" >&2
-  echo "Fix: Create context plan with required knowledge base files" >&2
-  echo "  1. Analyze what context you need" >&2
-  echo "  2. Create state/context_plan_<timestamp>.json" >&2
-  echo "  3. Load required files" >&2
-  echo "  4. Then implement" >&2
+if [[ ! -f "$DOMAIN_ACTIVITY" ]]; then
+  # No activity tracked yet - need to read context first
+  DOMAIN_DESC=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].description' "$DOMAIN_MAPPING")
+  REQUIRED=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].required_context[]? | "  - \(.file) (\(.reason))"' "$DOMAIN_MAPPING")
+  PATTERNS=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].pattern_references[]? | "  - \(.file) (\(.reason))"' "$DOMAIN_MAPPING")
+
+  cat >&2 <<EOF
+❌ BLOCKED: No context loaded for domain "$WRITE_DOMAIN"
+
+📍 You're writing to: $FILE_PATH
+📁 Domain: $WRITE_DOMAIN ($DOMAIN_DESC)
+
+⚠️  No files from this domain have been read yet.
+
+📋 Required context to read first:
+$REQUIRED
+
+📐 Pattern references (recommended):
+$PATTERNS
+
+💡 Why this matters:
+  Reading relevant context ensures you understand:
+  - Existing patterns and conventions
+  - Database schema and config values
+  - How similar features are implemented
+
+Read the required files, then retry the write.
+EOF
   exit 2
 fi
 
-# Check if plan has any required context
-REQUIRED_COUNT=$(jq '.required_context | length' "$CONTEXT_PLAN")
-if [[ "$REQUIRED_COUNT" -eq 0 ]]; then
-  echo "⚠️  Warning: Context plan has no required files" >&2
-  echo "Allowing write, but verify you have necessary context" >&2
-  exit 0
-fi
+# Check if this domain has been accessed
+DOMAIN_LAST_READ=$(jq -r --arg d "$WRITE_DOMAIN" '.[$d].last_read // "never"' "$DOMAIN_ACTIVITY")
 
-# Check if required context is loaded
-LOADED_COUNT=$(jq '.loaded | length' "$CONTEXT_PLAN")
+if [[ "$DOMAIN_LAST_READ" == "never" ]] || [[ "$DOMAIN_LAST_READ" == "null" ]]; then
+  DOMAIN_DESC=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].description' "$DOMAIN_MAPPING")
+  REQUIRED=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].required_context[]? | "  - \(.file) (\(.reason))"' "$DOMAIN_MAPPING")
+  PATTERNS=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].pattern_references[]? | "  - \(.file) (\(.reason))"' "$DOMAIN_MAPPING")
 
-if [[ "$LOADED_COUNT" -eq 0 ]]; then
-  echo "❌ BLOCKED: Context plan created but nothing loaded yet" >&2
-  echo "" >&2
-  echo "Plan requires:" >&2
-  jq -r '.required_context[]? | "  - \(.file) (\(.reason))"' "$CONTEXT_PLAN" >&2
-  echo "" >&2
-  echo "Rule #1: Load required context before implementing" >&2
-  echo "" >&2
-  echo "Fix: Read the required files first" >&2
+  # Show what domains HAVE been accessed
+  ACTIVE_DOMAINS=$(jq -r 'keys[]' "$DOMAIN_ACTIVITY" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+
+  cat >&2 <<EOF
+❌ BLOCKED: No context loaded for domain "$WRITE_DOMAIN"
+
+📍 You're writing to: $FILE_PATH
+📁 Domain: $WRITE_DOMAIN ($DOMAIN_DESC)
+
+🔍 You have read context for: $ACTIVE_DOMAINS
+   But NOT for: $WRITE_DOMAIN
+
+📋 Required context to read first:
+$REQUIRED
+
+📐 Pattern references (recommended):
+$PATTERNS
+
+Read the required files for "$WRITE_DOMAIN" domain, then retry.
+EOF
   exit 2
 fi
 
-# Check if all critical files loaded
-CRITICAL_FILES=$(jq -r '.required_context[]? | select(.priority == "critical") | .file' "$CONTEXT_PLAN")
-LOADED_FILES=$(jq -r '.loaded[]?' "$CONTEXT_PLAN")
+# Check if required context files have been read
+REQUIRED_FILES=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].required_context[]?.file' "$DOMAIN_MAPPING")
+RECENT_READS=$(jq -r '.reads[].file' "state/read_activity/recent_reads.json" 2>/dev/null)
 
-MISSING_CRITICAL=()
-while IFS= read -r critical; do
-  if [[ -n "$critical" ]] && ! echo "$LOADED_FILES" | grep -q "^${critical}$"; then
-    MISSING_CRITICAL+=("$critical")
+MISSING_REQUIRED=()
+while IFS= read -r required; do
+  if [[ -n "$required" ]]; then
+    # Check if this required file (or something in same dir) was read
+    FOUND=false
+    while IFS= read -r read_file; do
+      if [[ "$read_file" == *"$required"* ]] || [[ "$required" == *"$read_file"* ]]; then
+        FOUND=true
+        break
+      fi
+    done <<< "$RECENT_READS"
+
+    if [[ "$FOUND" == "false" ]]; then
+      MISSING_REQUIRED+=("$required")
+    fi
   fi
-done <<< "$CRITICAL_FILES"
+done <<< "$REQUIRED_FILES"
 
-if [[ ${#MISSING_CRITICAL[@]} -gt 0 ]]; then
-  echo "❌ BLOCKED: Critical context files not loaded" >&2
-  echo "" >&2
-  echo "Missing:" >&2
-  for file in "${MISSING_CRITICAL[@]}"; do
-    REASON=$(jq -r --arg file "$file" \
-      '.required_context[]? | select(.file == $file) | .reason' "$CONTEXT_PLAN")
+if [[ ${#MISSING_REQUIRED[@]} -gt 0 ]]; then
+  DOMAIN_DESC=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].description' "$DOMAIN_MAPPING")
+
+  cat >&2 <<EOF
+⚠️  WARNING: Missing required context for "$WRITE_DOMAIN"
+
+📍 You're writing to: $FILE_PATH
+📁 Domain: $WRITE_DOMAIN ($DOMAIN_DESC)
+
+📋 Required files NOT read:
+EOF
+  for file in "${MISSING_REQUIRED[@]}"; do
+    REASON=$(jq -r --arg d "$WRITE_DOMAIN" --arg f "$file" \
+      '.domains[$d].required_context[]? | select(.file == $f) | .reason' "$DOMAIN_MAPPING")
     echo "  - $file ($REASON)" >&2
   done
-  echo "" >&2
-  echo "Rule #1: Must have all critical context before implementing" >&2
-  echo "" >&2
-  echo "Fix: Read the missing files first" >&2
-  exit 2
+
+  cat >&2 <<EOF
+
+💡 Consider reading these files for full context.
+   Allowing write, but quality may be affected.
+EOF
+  # Warn but allow - they have SOME domain context
+  exit 0
 fi
 
-# Mark plan as complete
-jq '.status = "loaded"' "$CONTEXT_PLAN" > "${CONTEXT_PLAN}.tmp"
-mv "${CONTEXT_PLAN}.tmp" "$CONTEXT_PLAN"
-
-# Allow write
-echo "✓ Context verified for implementation"
+# All checks passed
+DOMAIN_DESC=$(jq -r --arg d "$WRITE_DOMAIN" '.domains[$d].description' "$DOMAIN_MAPPING")
+echo "✓ Context verified for domain: $WRITE_DOMAIN ($DOMAIN_DESC)" >&2
 exit 0

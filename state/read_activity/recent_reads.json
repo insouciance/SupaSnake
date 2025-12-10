@@ -1,0 +1,25 @@
+{
+  "reads": [
+    {
+      "file": "/Users/josefbell/SupaSnake/CLAUDE.md",
+      "timestamp": "2025-12-10T07:33:14Z"
+    },
+    {
+      "file": "/Users/josefbell/SupaSnake/CLAUDE.md",
+      "timestamp": "2025-12-10T07:32:48Z"
+    },
+    {
+      "file": "/Users/josefbell/SupaSnake/supabase/migrations/003_engagement_features.sql",
+      "timestamp": "2025-12-09T08:50:41Z"
+    },
+    {
+      "file": "/Users/josefbell/SupaSnake/src/app/api/streaks/route.ts",
+      "timestamp": "2025-12-09T08:50:22Z"
+    },
+    {
+      "file": "/Users/josefbell/SupaSnake/src/shared/config/engagement.ts",
+      "timestamp": "2025-12-09T08:50:22Z"
+    }
+  ],
+  "last_cleared": "2025-12-09T08:50:22Z"
+}
