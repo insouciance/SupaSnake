@@ -1,114 +1,57 @@
 #!/bin/bash
-# PreCompact Hook: Save Session State (Dynamic)
-# Captures current work context, not static platform info
+# PreCompact Hook: Trigger Intelligent Handoff
+# Prompts Claude to analyze session and write focused handoff to memory
 # Exit 0: Always (non-blocking)
 
-# Create state directory
-mkdir -p .claude/session_state
-
-# Generate timestamp
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-STATE_FILE=".claude/session_state/precompact_${TIMESTAMP}.md"
-
-# Extract current work from CLAUDE.md
-CURRENT_WORK=$(awk '/## 🎯 Current Work/,/^---/' CLAUDE.md 2>/dev/null || echo "No current work section found")
-
-# Get git context
+# Gather context clues for Claude
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
-LAST_COMMITS=$(git log --oneline -5 2>/dev/null || echo "No commits")
-RECENT_FILES=$(git diff --name-only HEAD~5..HEAD 2>/dev/null | head -10 || echo "No recent files")
-GIT_STATUS=$(git status --short 2>/dev/null | head -10 || echo "No changes")
+LAST_COMMITS=$(git log --oneline -3 2>/dev/null || echo "No commits")
+UNCOMMITTED=$(git status --short 2>/dev/null | head -5 || echo "No changes")
+ACTIVE_DOMAIN=$(cat state/read_activity/domain_activity.json 2>/dev/null | jq -r 'keys[0] // "unknown"' 2>/dev/null || echo "unknown")
+RECENT_READS=$(cat state/read_activity/recent_reads.json 2>/dev/null | jq -r '.reads[:5][].file' 2>/dev/null | xargs -I{} basename {} 2>/dev/null | tr '\n' ', ' || echo "none")
 
-# Get recent architecture decisions
-RECENT_DECISIONS=$(git log --oneline --grep="Decision" -5 2>/dev/null || echo "No recent architecture decisions")
+# Output instructions to Claude
+cat >&2 <<EOF
 
-# Create dynamic snapshot
-cat > "$STATE_FILE" <<EOF
-# Session State Snapshot (Dynamic)
+╔══════════════════════════════════════════════════════════════════╗
+║  ⚠️  CONTEXT RESET IMMINENT - HANDOFF REQUIRED                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  Before context clears, write a focused handoff to memory.       ║
+║                                                                  ║
+║  CONTEXT CLUES:                                                  ║
+║  • Branch: $CURRENT_BRANCH
+║  • Active Domain: $ACTIVE_DOMAIN
+║  • Recent Reads: $RECENT_READS
+║  • Last Commits:
+$(echo "$LAST_COMMITS" | sed 's/^/║    /')
+║  • Uncommitted:
+$(echo "$UNCOMMITTED" | sed 's/^/║    /')
+║                                                                  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  ACTION REQUIRED:                                                ║
+║                                                                  ║
+║  1. Analyze what you were ACTUALLY working on (not CLAUDE.md)    ║
+║  2. Identify what's essential vs what's stale                    ║
+║  3. Write handoff to: state/handoff/current.json                 ║
+║                                                                  ║
+║  HANDOFF FORMAT:                                                 ║
+║  {                                                               ║
+║    "task": "What user asked for",                                ║
+║    "status": "in_progress|blocked|complete",                     ║
+║    "domain": "engagement|auth|game|platform|...",                ║
+║    "next_action": "Specific next step",                          ║
+║    "files_to_load": ["only essential files"],                    ║
+║    "decisions_made": ["key decisions this session"],             ║
+║    "context_to_drop": ["what became stale/irrelevant"]           ║
+║  }                                                               ║
+║                                                                  ║
+║  The new context will load this handoff automatically.           ║
+╚══════════════════════════════════════════════════════════════════╝
 
-**Captured:** $(date)
-**Reason:** PreCompact auto-save
-**Branch:** $CURRENT_BRANCH
-
----
-
-## Current Work Context
-
-$CURRENT_WORK
-
----
-
-## Recent Activity
-
-### Last 5 Commits
-\`\`\`
-$LAST_COMMITS
-\`\`\`
-
-### Files Modified (Last 5 Commits)
-\`\`\`
-$RECENT_FILES
-\`\`\`
-
-### Working Directory Status
-\`\`\`
-$GIT_STATUS
-\`\`\`
-
----
-
-## Recent Architecture Decisions
-
-\`\`\`
-$RECENT_DECISIONS
-\`\`\`
-
----
-
-## Recovery Protocol
-
-After auto-compact:
-
-1. **Read CLAUDE.md (auto-loaded)**
-   - Invariants section has core platform info
-   - Current Work section has feature status
-
-2. **Check this snapshot for details**
-   \`cat .claude/session_state/precompact_${TIMESTAMP}.md\`
-
-3. **Load relevant context**
-   - Feature spec (see Current Work → Recovery)
-   - Current files (see Files Modified above)
-   - Recent decisions (see above)
-
-4. **Resume work**
-   - Follow "Next Action" from Current Work section
-   - Load context as specified in Recovery section
-
----
-
-## Platform Quick Reference
-
-**Hooks:** \`/hooks list\` or \`.claude/hooks/\`
-**Sub-Agents:** \`/agents list\` or \`.claude/agents/\`
-**Documentation:** \`@docs/CONTEXT_MANAGEMENT.md\`
-
-**Status:** Production ready (v2.0)
-**Philosophy:** Proactive context curation
-
----
-
-*This snapshot focused on YOUR current work, not static platform info*
-*Platform details always in CLAUDE.md Invariants section*
 EOF
 
-echo "✓ Dynamic session state saved to $STATE_FILE" >&2
-echo "" >&2
-echo "Captured:" >&2
-echo "  - Current work from CLAUDE.md" >&2
-echo "  - Recent commits and files" >&2
-echo "  - Architecture decisions" >&2
-echo "" >&2
-echo "Resume with: cat $STATE_FILE" >&2
+# Create handoff directory
+mkdir -p state/handoff
 
 exit 0
