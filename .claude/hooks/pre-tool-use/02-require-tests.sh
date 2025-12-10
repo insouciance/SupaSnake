@@ -26,6 +26,11 @@ if [[ "$FILE_PATH" =~ test_ || "$FILE_PATH" =~ _test\. || "$FILE_PATH" =~ \.test
   exit 0
 fi
 
+# Skip internal tooling scripts (platform infrastructure)
+if [[ "$FILE_PATH" =~ /scripts/ ]]; then
+  exit 0
+fi
+
 # Skip non-code files
 if [[ ! "$FILE_PATH" =~ \.(ts|js|py|cpp|java|go|rs)$ ]]; then
   exit 0

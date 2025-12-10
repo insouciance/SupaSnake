@@ -1,14 +1,13 @@
 """
 Memory Tool Handler for Claude
-Client-side implementation of Claude's memory_20250818 tool
+Hybrid implementation: Supabase (server) with local fallback
 
-Security:
-- Prevents directory traversal attacks
-- Validates all paths against base directory
-- Implements size limits to prevent unbounded growth
+Priority:
+1. Try Supabase (server-side, best for querying)
+2. Fall back to local files if no credentials
 
 Usage:
-    memory = MemoryToolHandler(base_path="./memories")
+    memory = MemoryToolHandler()
     memory.create("project_knowledge/tech_stack.md", "# Tech Stack\n...")
     content = memory.view("project_knowledge/tech_stack.md")
 """
@@ -17,27 +16,45 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def get_supabase_client():
+    """Get Supabase client if credentials available"""
+    try:
+        from supabase import create_client
+        url = os.environ.get('NEXT_PUBLIC_SUPABASE_URL')
+        key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+        if url and key:
+            return create_client(url, key)
+    except ImportError:
+        pass
+    return None
 
 
 class MemoryToolHandler:
-    """Client-side handler for Claude memory tool operations"""
+    """Hybrid handler: Supabase (server) with local fallback"""
 
     def __init__(self, base_path: str = "./memories", max_file_size_mb: int = 10):
         """
         Initialize memory tool handler
 
         Args:
-            base_path: Root directory for memory storage (default: ./memories)
+            base_path: Root directory for local fallback storage
             max_file_size_mb: Maximum file size in MB (default: 10)
         """
+        # Try Supabase first
+        self.supabase = get_supabase_client()
+        self.use_supabase = self.supabase is not None
+
+        # Local fallback
         self.base_path = Path(base_path).resolve()
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
 
-        # Create base directory if it doesn't exist
+        # Create base directory if it doesn't exist (for local fallback)
         self.base_path.mkdir(exist_ok=True, parents=True)
 
-        # Initialize subdirectories
+        # Initialize subdirectories (for local fallback)
         self._initialize_structure()
 
     def _initialize_structure(self):
@@ -130,7 +147,7 @@ This directory contains persistent knowledge for Claude across sessions.
         end_line: Optional[int] = None
     ) -> Dict[str, Union[str, List[str]]]:
         """
-        Display directory or file contents
+        Display directory or file contents (queries Supabase if available)
 
         Args:
             path: Path to file or directory
@@ -139,19 +156,51 @@ This directory contains persistent knowledge for Claude across sessions.
 
         Returns:
             Dictionary with 'type' and 'content' or 'contents'
-
-        Example:
-            # View directory
-            result = memory.view("code_patterns")
-            # {'type': 'directory', 'contents': ['security', 'performance', 'quality']}
-
-            # View file
-            result = memory.view("project_knowledge/tech_stack.md")
-            # {'type': 'file', 'content': '# Tech Stack\n...'}
-
-            # View file with line range
-            result = memory.view("project_knowledge/tech_stack.md", start_line=1, end_line=10)
         """
+        # Try Supabase first for domain queries
+        if self.use_supabase and '/' in path:
+            result = self._view_supabase(path)
+            if result:
+                return result
+
+        # Fall back to local
+        return self._view_local(path, start_line, end_line)
+
+    def _view_supabase(self, path: str) -> Optional[Dict]:
+        """Query memories from Supabase"""
+        parts = path.strip('/').split('/')
+        domain = self._map_domain(parts[0]) if parts else None
+
+        if not domain:
+            return None
+
+        try:
+            result = self.supabase.table('claude_memories') \
+                .select('*') \
+                .eq('domain', domain) \
+                .order('relevance_score', desc=True) \
+                .limit(10) \
+                .execute()
+
+            if result.data:
+                return {
+                    "type": "directory",
+                    "contents": [m['title'] for m in result.data],
+                    "memories": result.data,
+                    "path": path,
+                    "storage": "supabase"
+                }
+        except Exception:
+            pass
+        return None
+
+    def _view_local(
+        self,
+        path: str,
+        start_line: Optional[int] = None,
+        end_line: Optional[int] = None
+    ) -> Dict[str, Union[str, List[str]]]:
+        """View from local filesystem"""
         full_path = self._validate_path(path)
 
         if not full_path.exists():
@@ -163,7 +212,8 @@ This directory contains persistent knowledge for Claude across sessions.
             return {
                 "type": "directory",
                 "contents": contents,
-                "path": path
+                "path": path,
+                "storage": "local"
             }
 
         # File contents
@@ -184,12 +234,13 @@ This directory contains persistent knowledge for Claude across sessions.
             "type": "file",
             "content": ''.join(lines),
             "path": path,
-            "total_lines": len(lines)
+            "total_lines": len(lines),
+            "storage": "local"
         }
 
     def create(self, path: str, content: str) -> Dict[str, str]:
         """
-        Create or overwrite a file
+        Create or overwrite a file (saves to Supabase if available)
 
         Args:
             path: Path to file (will be created if doesn't exist)
@@ -204,16 +255,59 @@ This directory contains persistent knowledge for Claude across sessions.
                 "# Tech Stack\n\n- React Native\n- Supabase\n"
             )
         """
-        full_path = self._validate_path(path)
-
-        # Create parent directories if needed
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
         # Check content size
         content_size = len(content.encode('utf-8'))
         if content_size > self.max_file_size_bytes:
             size_mb = content_size / (1024 * 1024)
             raise ValueError(f"Content size ({size_mb:.1f}MB) exceeds limit")
+
+        # Save to Supabase if available
+        if self.use_supabase:
+            return self._create_supabase(path, content)
+
+        # Local fallback
+        return self._create_local(path, content)
+
+    def _create_supabase(self, path: str, content: str) -> Dict[str, str]:
+        """Save to Supabase database"""
+        # Parse path to extract domain/category
+        parts = path.strip('/').split('/')
+        domain = self._map_domain(parts[0] if parts else 'best_practices')
+        category = parts[1] if len(parts) > 1 else 'general'
+        title = parts[-1].replace('.md', '') if parts else 'untitled'
+
+        # Extract summary (first paragraph)
+        lines = content.split('\n\n')
+        summary = lines[1] if len(lines) > 1 else content[:200]
+
+        data = {
+            'domain': domain,
+            'category': category,
+            'title': title,
+            'content': content,
+            'summary': summary[:500],
+            'source_file': path
+        }
+
+        try:
+            result = self.supabase.table('claude_memories').insert(data).execute()
+            return {
+                "status": "created",
+                "path": path,
+                "storage": "supabase",
+                "id": result.data[0]['id'] if result.data else None
+            }
+        except Exception as e:
+            # Fall back to local on error
+            print(f"Supabase error, falling back to local: {e}")
+            return self._create_local(path, content)
+
+    def _create_local(self, path: str, content: str) -> Dict[str, str]:
+        """Save to local filesystem"""
+        full_path = self._validate_path(path)
+
+        # Create parent directories if needed
+        full_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write file
         with open(full_path, 'w', encoding='utf-8') as f:
@@ -222,8 +316,23 @@ This directory contains persistent knowledge for Claude across sessions.
         return {
             "status": "created",
             "path": path,
-            "size_bytes": content_size
+            "storage": "local",
+            "size_bytes": len(content.encode('utf-8'))
         }
+
+    def _map_domain(self, dir_name: str) -> str:
+        """Map directory names to domain names"""
+        mapping = {
+            'architectural_decisions': 'architecture',
+            'code_patterns': 'best_practices',
+            'project_knowledge': 'platform',
+            'agent_learnings': 'platform',
+            'security': 'security',
+            'performance': 'performance',
+            'react': 'react',
+            'api': 'api'
+        }
+        return mapping.get(dir_name, dir_name)
 
     def str_replace(self, path: str, old_str: str, new_str: str) -> Dict[str, str]:
         """
