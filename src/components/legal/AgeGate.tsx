@@ -190,7 +190,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
           {/* Privacy notice */}
           <p className="age-gate-privacy">
-            We don't store your birth year. We only verify you're {MIN_AGE}+.
+            We don&apos;t store your birth year. We only verify you&apos;re {MIN_AGE}+.
             <br />
             <a href="/legal/privacy" target="_blank">Privacy Policy</a>
           </p>
@@ -379,14 +379,14 @@ export function UnderageScreen() {
 
           <div className="underage-info">
             <p>
-              <strong>Parents:</strong> If you'd like to learn more about SupaSnake,
+              <strong>Parents:</strong> If you&apos;d like to learn more about SupaSnake,
               please contact us at{' '}
               <a href="mailto:parents@supasnake.com">parents@supasnake.com</a>
             </p>
           </div>
 
           <p className="underage-legal">
-            This age restriction is required by COPPA (Children's Online Privacy
+            This age restriction is required by COPPA (Children&apos;s Online Privacy
             Protection Act) and similar laws worldwide.
           </p>
 
