@@ -16,10 +16,10 @@ GIT_STATUS=$(git status --short 2>/dev/null | head -5 || echo "No changes")
 RECENT_FILES=$(git diff --name-only HEAD~3..HEAD 2>/dev/null | head -5 || echo "No recent files")
 TIMESTAMP=$(date +"%Y-%m-%d %H:%M")
 
-# Extract existing Current Work content (preserve if possible)
-FEATURE_LINE=$(grep "^\*\*Feature:\*\*" "$CLAUDE_MD" 2>/dev/null || echo "**Feature:** (Update needed)")
-STATUS_LINE=$(grep "^\*\*Status:\*\*" "$CLAUDE_MD" 2>/dev/null || echo "**Status:** (Update needed)")
-BLOCKER_LINE=$(grep "^\*\*Blocker:\*\*" "$CLAUDE_MD" 2>/dev/null || echo "**Blocker:** None")
+# Extract existing Current Work content (preserve if possible, take first match only)
+FEATURE_LINE=$(grep -m1 "^\*\*Feature:\*\*" "$CLAUDE_MD" 2>/dev/null || echo "**Feature:** (Update needed)")
+STATUS_LINE=$(grep -m1 "^\*\*Status:\*\*" "$CLAUDE_MD" 2>/dev/null || echo "**Status:** (Update needed)")
+BLOCKER_LINE=$(grep -m1 "^\*\*Blocker:\*\*" "$CLAUDE_MD" 2>/dev/null || echo "**Blocker:** None")
 
 # Find section boundaries
 CURRENT_WORK_START=$(grep -n "## 🎯 Current Work" "$CLAUDE_MD" | cut -d: -f1)
@@ -58,11 +58,11 @@ $RECENT_FILES
 **Note:** Update manually after milestones with specific feature info.
 See templates/CURRENT_WORK_TEMPLATE.md for guidance.
 
-**Recovery (After /clear or Auto-Compact):**
-1. Check CLAUDE.md Current Work section (this section)
-2. Read: \`cat .claude/session_state/precompact_*.md\` for detailed snapshot
-3. Load relevant context as specified in Current Work
-4. Resume from last commit or Next Action
+**Recovery (After Auto-Compact):**
+1. Read handoff: \`cat state/handoff/current.json\`
+2. Load files listed in \`files_to_load\` array
+3. Resume from \`next_action\` in handoff
+4. Archive after loading: \`mv state/handoff/current.json state/handoff/archive_\$(date +%Y%m%d_%H%M%S).json\`
 
 EOF
 

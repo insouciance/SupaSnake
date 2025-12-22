@@ -69,12 +69,14 @@
         "src/app/api/breeding",
         "src/app/lab",
         "src/components/breeding",
-        "src/shared/data/snakes"
+        "src/shared/data/dynasties"
       ],
       "required_context": [
-        {"file": "src/shared/data/snakes.ts", "reason": "snake variants"}
+        {"file": "src/shared/data/dynasties.ts", "reason": "snake variants and dynasties"}
       ],
-      "pattern_references": []
+      "pattern_references": [
+        {"file": "src/app/api/breeding/route.ts", "reason": "breeding API pattern"}
+      ]
     },
     "shop": {
       "description": "Shop, purchases, Stripe integration",

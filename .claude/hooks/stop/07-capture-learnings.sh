@@ -46,7 +46,7 @@ fi
 echo "$CURRENT_HEAD" > "$LAST_CAPTURE_FILE"
 
 # Extract patterns (run in background to not slow down workflow)
-python3 scripts/extract_code_patterns.py --diff "$DIFF" --files "$CODE_FILES" 2>&1 | sed 's/^/   /' >&2 &
+.venv/bin/python3.14 scripts/extract_code_patterns.py --diff "$DIFF" --files "$CODE_FILES" 2>&1 | sed 's/^/   /' >&2 &
 
 echo "✓ Pattern extraction started (runs in background)" >&2
 echo "" >&2

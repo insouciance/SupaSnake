@@ -1,0 +1,532 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:m="http://www.w3.org/1998/Math/MathML" xmlns:svg="http://www.w3.org/2000/svg" xmlns:epub="http://www.idpf.org/2007/ops" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" epub:prefix="index: http://www.index.com/">
+<head>
+<title>Chapter Fifteen. Players Play Games through an Interface</title>
+<link href="../styles/9781351803632.css" rel="stylesheet" type="text/css"/>
+</head>
+<body epub:type="bodymatter">
+<section epub:type="chapter" role="doc-chapter">
+<header>
+<h1 class="h2" id="chapter15"><span id="p267" aria-label=" page 267. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange3">CHAPTER</span> <span class="pd_orange1">FIFTEEN</span> <span class="h2subtitle"><span class="pd_orange1">Players Play Games through an <i>Interface</i></span></span></h1>
+<p class="doi">DOI: <a aria-label="D.O.I. link to this document." href="https://doi.org/doi/10.1201/b22101-15">10.1201/b22101-15</a></p>
+</header>
+<figure class="figure" id="fig15_1">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.1</b></span></p>
+<img alt="" src="../images/fig15_1.jpg"/>
+</figcaption>
+</figure>
+<section class="level3">
+<h2 class="h3" id="sec15_1"><span id="p268" aria-label=" page 268. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Between Yin and Yang</span></h2>
+<figure class="figure" id="fig15_2">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.2</b></span></p>
+<img alt="" src="../images/fig15_2.jpg"/>
+</figcaption>
+</figure>
+<p class="noindent">Remember in <a class="nounder" href="C13_chapter10.xhtml#chapter10">Chapter 10</a> when we talked about the strange relationship between player and game? Specifically, that the player puts their mind inside the game world, but that game world really only exists in the mind of the player? This magical situation, which is at the heart of all we care about, is made possible by the game interface, which is where player and game come together. Interface is the infinitely thin membrane that separates white/yang/player and black/yin/game. When the interface fails, the delicate flame of experience that rises from the player/game interaction is suddenly snuffed out. For this reason, it is crucial for us to understand how our game interface works and to make it as robust, as powerful, and as invisible as we can.</p>
+<p class="indent">Before we proceed, though, we should consider the goal of a good interface. It isn&#8217;t &#8220;to look nice&#8221; or &#8220;to be fluid,&#8221; although those are nice qualities. The goal of an interface is to make players feel in control of their experience. This idea is important enough that we should keep a lens around for frequent examination of whether a player feels in control.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box59">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox59"><span class="pd_whitez">#59 The Lens of Control</span></a></h2>
+<p class="noindent">This lens has uses beyond just examining your interface, since meaningful control is essential for immersive interactivity. To use this lens, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">When players use the interface, does it do what is expected? If not, why not?</p></li>
+<li><p class="list"><span id="p269" aria-label=" page 269. " epub:type="pagebreak" role="doc-pagebreak"/>Intuitive interfaces give a feeling of control. Is your interface easy to master or hard to master?</p></li>
+<li><p class="list">Do your players feel they have a strong influence over the outcome of the game? If not, how can you change that?</p></li>
+<li><p class="list">Feeling powerful&#8201;=&#8201;feeling in control. Do your players feel powerful? Can you make them feel more powerful somehow?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_1.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Nathan Mazur</i></p>
+</figcaption>
+</figure>
+</aside>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec15_2"><span class="pd_orange">Breaking It Down</span></h2>
+<p class="noindent">Like many things we encounter in game design, interface is not simple or easily described. &#8220;Interface&#8221; can mean many things&#8212;a game controller, a display device, a system of manipulating a virtual character, the way the game communicates information to the player, and many other things. To avoid confusion and to understand it properly, we need to separate it out into component parts.</p>
+<p class="indent">Let&#8217;s work from the outside in. Initially, we know that we have a player and a game world.</p>
+<figure class="figure" id="fig15_3">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.3</b></span></p>
+<img alt="" src="../images/fig15_3.jpg"/>
+</figcaption>
+</figure>
+<p class="indent"><span id="p270" aria-label=" page 270. " epub:type="pagebreak" role="doc-pagebreak"/>On the simplest level, the interface is everything that is in between them. So, what is in there? There is some way that the player touches something to make changes in the world. This could be by manipulating pieces on a game board or by using a game controller or keyboard and mouse. Let&#8217;s call this <b>physical input</b>. And similarly, there is some way the player can see what is going on in the game world. It could be by looking at a game board, or it could be some kind of display screen with audio or other sensory output. Let&#8217;s call this <b>physical output</b>. So we have the following:</p>
+<figure class="figure" id="fig15_4">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.4</b></span></p>
+<img alt="" src="../images/fig15_4.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">This looks pretty simple and is the way most people naively think about game interface. But some important things are missing from this picture. While there are times when the physical input and output are directly connected to elements in the game world, there are other times that there is some amount of intermediate interface. When you play <i>Pac-Man</i> and there is a score display at the top of the screen, this is not really part of the game world&#8212;it is really part of the interface. The same goes for menus and buttons on mouse-based interfaces or when you hit an enemy for ten points of damage and a stylized &#8220;10&#8221; floats out of their body. When you play most 3D games, you do not see the entire world, but instead you see a view into the world from a virtual camera with a position in the virtual space of the game world. All these things are part of a conceptual layer that exists between the physical input/output and the game world. This layer is usually called <b>virtual interface</b> and has both input elements (such as a virtual menu where the player makes a selection) and output elements (such as a score display) (see <a class="figure" href="C18_chapter15.xhtml#fig15_5">Figure 15.5</a>).</p>
+<p class="indent">Sometimes, the virtual layer is so thin that it is almost nonexistent, but other times, it is very dense, full of virtual buttons, sliders, displays, and menus that help the player play the game, but aren&#8217;t part of the game world. This virtual layer must <span id="p271" aria-label=" page 271. " epub:type="pagebreak" role="doc-pagebreak"/>be handled delicately, for, as designer Daniel Burwen notes, the less abstraction there is in an interface, the more emotional connection we feel to our content.</p>
+<p class="indent">And that makes a pretty complete picture of the major interface elements involved in a game. But we&#8217;ve left out something crucial to the design of any game interface: <b>mapping</b>. On every arrow on the right side of the diagram, some special things are happening&#8212;it is not as if data are simply passed through&#8212;rather, these data go through a special transformation based on how the software is designed. Every one of the arrows on the game side represents a separate piece of computer code. How all this behaves together in composite defines the interface for your game.</p>
+<figure class="figure" id="fig15_5">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.5</b></span></p>
+<img alt="" src="../images/fig15_5.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">Some quick examples of the kinds of logic that can be contained in each of those six arrows are as follows:</p>
+<ol class="list-order">
+<li><p class="list"><b>Physical Input &#8594; World</b>: If pushing a thumbstick makes my avatar run, the mapping tells how fast it will run and how quickly it will slow down if I let go. If I push the thumbstick harder, does my character run faster? Will my character accelerate over time? Will &#8220;double tapping&#8221; the thumbstick make my character dash?</p></li>
+<li><p class="list"><b>World &#8594; Physical Output</b>: If you cannot see the entire world at once, what parts of it can you see? How will it be shown?</p></li>
+<li><p class="list"><b>Physical Input &#8594; Virtual Interface</b>: In a mouse-based menu interface, what does clicking do? What does double-clicking do? Can I drag parts of the interface around?</p></li>
+<li><p class="list"><b>Virtual Interface &#8594; World</b>: When the player manipulates the virtual interface, what effect does this have on the world? If they select an item in the world and <span id="p272" aria-label=" page 272. " epub:type="pagebreak" role="doc-pagebreak"/>use a pop-up menu to take an action on it, does that action take effect immediately or after some delay?</p></li>
+<li><p class="list"><b>World &#8594; Virtual Interface</b>: How are changes in the world manifested in the virtual interface? When do scores and energy bars change? Do events in the world lead to special pop-up windows or menus or mode changes in the interface? When players enter a battle, will special battle menus appear?</p></li>
+<li><p class="list"><b>Virtual Interface &#8594; Physical Output</b>: What data are shown to the player, and where does it go on the screen? What colors will it be? What fonts? Will hit points pulse or make a sound when they are very low?</p></li>
+</ol>
+<p class="noindent">For close examination of these six types of connections, we introduce two new lenses.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box60">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox60"><span class="pd_whitez">#60 The Lens of Physical Interface</span></a></h2>
+<p class="noindent">Somehow, the player has a physical interaction with your game. Copying existing physical interfaces is an easy trap to fall into. Use this lens to be sure that your physical interface is well suited to your game by asking these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What does the player pick up and touch? Can this be made more pleasing?</p></li>
+<li><p class="list">How does this map to the actions in the game world? Can the mapping be more direct?</p></li>
+<li><p class="list">If you can&#8217;t create a custom physical interface, what metaphor are you using when you map the inputs to the game world?</p></li>
+<li><p class="list">How does the physical interface look under the Lens of the Toy?</p></li>
+<li><p class="list">How does the player see, hear, and touch the world of the game? Is there a way to include a physical output device that will make the world become more real in the player&#8217;s imagination?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_2.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Zachary D. Coe</i></p>
+</figcaption>
+</figure>
+<p class="noindent"><span id="p273" aria-label=" page 273. " epub:type="pagebreak" role="doc-pagebreak"/>The world of videogames occasionally goes through dry spells where designers feel it is not feasible to create custom physical interfaces. But the marketplace thrives on experimentation and novelty, and specially crafted physical interfaces can bring new life to old gameplay.</p>
+</aside>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box61">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox61"><span class="pd_whitez">#61 The Lens of Virtual Interface</span></a></h2>
+<p class="noindent">Designing virtual interfaces can be very tricky. Done poorly, they become a wall between the player and the game world. Done well, they amplify the power and control a player has in the game world. Ask these questions to make sure that your virtual interface is enhancing player experience as much as possible:</p>
+<ul class="list-bullet">
+<li><p class="list">What information does a player need to receive that isn&#8217;t obvious just by looking at the game world?</p></li>
+<li><p class="list">When does the player need this information? All the time? Only occasionally? Only at the end of a level?</p></li>
+<li><p class="list">How can this information be delivered to the player in a way that won&#8217;t interfere with the player&#8217;s interactions with the game world?</p></li>
+<li><p class="list">Are there elements of the game world that are easier to interact with using a virtual interface (like a pop-up menu, for instance) than they are to interact with directly?</p></li>
+<li><p class="list">What kind of virtual interface is best suited to my physical interface? Pop-up menus, for example, are a poor match for a gamepad controller.</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_3.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Chris Daniel</i></p>
+</figcaption>
+</figure>
+</aside>
+<p class="indent">Of course, these six kinds of mapping cannot be designed independently&#8212;they must all work in unison to create a great interface. But before we move on, we must consider two other important kinds of mapping, represented by the arrows that come and go from the player or, more specifically, from the player&#8217;s imagination. <span id="p274" aria-label=" page 274. " epub:type="pagebreak" role="doc-pagebreak"/>This is when a player becomes so immersed in a game, he or she is no longer pushing buttons and watching a television (TV) screen, instead, he or she is running, jumping, and swinging a sword. And you can hear this in a player&#8217;s language. A player generally won&#8217;t say, &#8220;I controlled my avatar, so she ran to the castle, and then I pressed the red button to make her throw a grappling hook, then I started tapping the blue button to make my avatar climb up.&#8221; No, a player describes the gameplay this way: &#8220;I ran up the hill, threw my grappling hook, and started climbing the castle wall.&#8221; Players project themselves into games and on some level disregard that the interface is there at all, unless it suddenly becomes confusing. A person&#8217;s ability to project consciousness into whatever they are controlling is almost alarming. But it is only possible if the interface becomes second nature to the player, and this gives us our next lens.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box62">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox62"><span class="pd_whitez">#62 The Lens of Transparency</span></a></h2>
+<blockquote>
+<p class="quote"><i>No matter how beautiful your interface is, it would be better if there were less of it.</i></p>
+<p class="right">&#8212;Edward Tufte</p>
+</blockquote>
+<p class="noindent">The ideal interface becomes invisible to the player letting the player&#8217;s imagination be completely immersed in the game world. To ensure invisibility, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What are the player&#8217;s desires? Does the interface let the players do what they want?</p></li>
+<li><p class="list">Is the interface simple enough that with practice, players will be able to use it without thinking?</p></li>
+<li><p class="list">Do new players find the interface intuitive? If not, can it be made more intuitive, somehow? Would allowing players to customize the controls help or hurt?</p>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_4.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Jesse Schell</i></p>
+</figcaption>
+</figure></li>
+<li><p class="list">Does the interface work well in all situations, or are there cases (near a <span id="p275" aria-label=" page 275. " epub:type="pagebreak" role="doc-pagebreak"/>corner, going very fast, etc.) when it behaves in ways that will confuse the player?</p></li>
+<li><p class="list">Can players continue to use the interface well in stressful situations, or do they start fumbling with the controls or missing crucial information? If so, how can this be improved?</p></li>
+<li><p class="list">Does anything confuse players about the interface? On which of the six interface arrows is it happening?</p></li>
+<li><p class="list">Do players feel a sense of immersion when using the interface?</p></li>
+</ul>
+</aside>
+<p class="indent">This interface, a parody from the web comic Penny Arcade, is probably not transparent.</p>
+<figure class="figure" id="fig15_6">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.6</b></span></p>
+<img alt="" src="../images/fig15_6.jpg"/>
+<p class="caption">(From <a href="http://www.penny-arcade.com">www.penny-arcade.com</a>. Used with permission.)</p>
+</figcaption>
+</figure>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec15_3"><span class="pd_orange">The Loop of Interaction</span></h2>
+<p class="noindent">Information flows in a loop from player to game to player to game, round and round. It is almost like this flow pushes a waterwheel that generates experience when it spins. But it can&#8217;t be just any information that flows around this loop. The information that is returned to the player by the game dramatically affects what the player <span id="p276" aria-label=" page 276. " epub:type="pagebreak" role="doc-pagebreak"/>will do next. This information is generally called <b>feedback</b>, and the quality of this feedback can exert a powerful influence on how much the player understands and enjoys what is happening in your game.</p>
+<figure class="figure" id="fig15_7">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.7</b></span></p>
+<img alt="" src="../images/fig15_7.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">The importance of good feedback is easily overlooked. One example is the net on a basketball hoop. The net does not affect the gameplay at all&#8212;but it slows the ball as it descends from the hoop, so that all players can clearly see, and even hear, that it went in.</p>
+<p class="indent">A less obvious example is the Swiffer (<a class="figure" href="C18_chapter15.xhtml#fig15_7">Figure 15.7</a>), a simple device designed to be a better solution for cleaning floors than the traditional broom/dustpan combination. Some people who have attempted to redesign the broom and dustpan have merely modified the existing solution, making a pan that clips to the broom handle, making sturdier broom bristles, adding a lid to the dustpan, etc. It would appear that the designers of the Swiffer used <a href="C10_chapter7.xhtml#box14">Lens #14</a>: <i><a href="C10_chapter7.xhtml#box14">Problem Statement</a></i>, to invent a brand-new solution. If we look at some of the problems with the broom/dustpan solution,</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Problem #1</b>: It&#8217;s impossible to sweep all the dust into the dustpan.</p></li>
+<li><p class="list"><b>Problem #2</b>: When standing, the dustpan is hard to use. When crouching, the broom is hard to use.</p></li>
+<li><p class="list"><b>Problem #3</b>: The broom doesn&#8217;t really get all the dust.</p></li>
+<li><p class="list"><b>Problem #4</b>: Your hands get kind of dirty when you try to sweep dust into the dustpan.</p></li>
+<li><p class="list"><b>Problem #5</b>: Transferring the dirt from the dustpan to the trash is perilous&#8212;it often spills or blows around.</p></li>
+</ul>
+<p class="noindent">We see that the Swiffer, with its disposable cloth, solves these problems fairly well:</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Solution #1</b>: No dustpan is needed.</p></li>
+<li><p class="list"><span id="p277" aria-label=" page 277. " epub:type="pagebreak" role="doc-pagebreak"/><b>Solution #2</b>: There is no need to crouch when using the Swiffer.</p></li>
+<li><p class="list"><b>Solution #3</b>: The Swiffer cloth captures far more dust than a broom can.</p></li>
+<li><p class="list"><b>Solution #4</b>: Your hands stay clean.</p></li>
+<li><p class="list"><b>Solution #5</b>: The cloth is easily disposed of.</p></li>
+</ul>
+<p class="noindent">So, the Swiffer solves a lot of problems, which makes it very appealing. But it has an appeal beyond these practical things. It has a strong psychological appeal&#8212;frankly, it is fun to use. Why? Because the design addresses problems that most people wouldn&#8217;t state as problems. Here is an example:</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Problem #6</b>: The user gets little feedback about how well they have cleaned the floor.</p></li>
+</ul>
+<p class="noindent">Unless a floor is really dirty, it is hard to see whether your sweeping is making any difference just by looking at the floor. You might say, &#8220;Who cares? All that matters is how well it cleans, right?&#8221; But this lack of feedback can make the entire task feel somewhat futile, which means that the user enjoys it less and will clean their floor less often. In other words, less feedback&#8201;=&#8201;dirtier floor. But the Swiffer solves this problem very well:</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Solution #6</b>: The dirt you have removed from the floor is clearly visible on the cleaning cloth when you are done.</p></li>
+</ul>
+<p class="noindent">This feedback shows the user quite clearly that what they have done makes a real difference in how clean the floor is. This triggers all kinds of pleasures&#8212;satisfaction of having done something useful, the pleasure of purification, and even the pleasure of having secret knowledge that others cannot see. And though this feedback doesn&#8217;t come until the end of the task, the user comes to anticipate it and looks forward to seeing this concrete evidence of a job well done.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box63">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox63"><span class="pd_whitez">#63 The Lens of Feedback</span></a></h2>
+<p class="noindent">The feedback a player gets from the game is many things: judgment, reward, instruction, encouragement, and challenge. Use this lens to be sure your feedback loop is creating the experience you want by asking these questions at every moment in your game:</p>
+<ul class="list-bullet">
+<li><p class="list">What do players need to know at this moment?</p></li>
+<li><p class="list">What do players want to know at this moment?</p></li>
+<li><p class="list">What do you want players to feel at this moment? How can you give feedback that creates that feeling?</p></li>
+<li><p class="list"><span id="p278" aria-label=" page 278. " epub:type="pagebreak" role="doc-pagebreak"/>What do the players want to feel at this moment? Is there an opportunity for them to create a situation where they will feel that?</p></li>
+<li><p class="list">What is the player&#8217;s goal at this moment? What feedback will help them toward that goal?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_5.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Nick Daniel</i></p>
+</figcaption>
+</figure>
+</aside>
+<p class="indent">Using this lens takes some effort, since feedback in a game is continuous but needs to be different in different situations. It takes a lot of mental effort to use this lens in every moment of your game, but it is time well spent, because it will help guarantee that the game is clear, challenging, and rewarding.</p>
+<figure class="figure" id="fig15_8">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.8</b></span></p>
+<img alt="" src="../images/fig15_8.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">Experiences without feedback are frustrating and confusing. At many crosswalks in the United States, pedestrians can push a button that will make the DON&#8217;T WALK sign change to a WALK sign so they can cross the street safely. But it can&#8217;t change right away, since that would cause traffic accidents. So the poor pedestrian often has <span id="p279" aria-label=" page 279. " epub:type="pagebreak" role="doc-pagebreak"/>to wait up to a minute to see whether pressing the button had any effect. As a result, you see all kinds of strange button-pressing behavior: some people push the button and hold it for several seconds; others push it several times in a row, just to be safe. And the whole experience is accompanied by a sense of uncertainty&#8212;pedestrians can often be seen nervously studying the lights and DON&#8217;T WALK sign to see if it is going to change, because they might not have pushed the button correctly.</p>
+<p class="indent">What a delight it was to visit the United Kingdom and find that in some areas the crosswalk buttons give immediate feedback in the form of an illuminated WAIT sign that comes on when the button has been pushed and turns off when the WALK period has ended (<a class="figure" href="C18_chapter15.xhtml#fig15_9">Figure 15.9</a>)! The addition of some simple feedback turned an experience where a pedestrian feels frustrated into one where they can feel confident and in control.</p>
+<p class="indent">Generally, it is a good rule of thumb that if your interface does not respond to player input within a tenth of a second, the player is going to feel like something is wrong with the interface. A typically problematic example of this often appears when you make a game with a &#8220;jump&#8221; button. If the animator working on the jump animation is new to videogames, they are very likely to put a &#8220;wind up&#8221; or &#8220;anticipation&#8221; on the jump animation, where the character crouches down, getting ready to jump, for probably one-quarter to one-half a second. This is sound animation practice, but because this breaks the tenth of a second rule (I push the jump button, but my character doesn&#8217;t actually end up in the air until a half second later), it drives players crazy with frustration.</p>
+<figure class="figure" id="fig15_9">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.9</b></span></p>
+<img alt="" src="../images/fig15_9.jpg"/>
+<p class="caption">Helpful feedback.</p>
+</figcaption>
+</figure>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec15_4"><span id="p280" aria-label=" page 280. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Juiciness</span></h2>
+<p class="noindent">But let&#8217;s return to our sweeping example: a dirty cloth is not the only feedback that the Swiffer gives the user. Let&#8217;s consider another problem with the broom and dustpan that most people would be unlikely to state.</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Problem #7</b>: Sweeping is boring.</p></li>
+</ul>
+<p class="noindent">Well, of course it is! It&#8217;s sweeping! But what do we mean by boring? We need to break this down further. Specifically:</p>
+<ul class="list-bullet">
+<li><p class="list">Sweeping is repetitive (same motion over and over).</p></li>
+<li><p class="list">It requires you to focus your attention on something with no surprises (if you don&#8217;t monitor that little pile of dust, it goes everywhere).</p></li>
+</ul>
+<p class="noindent">How does the Swiffer meet this challenge?</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Solution #7</b>: Using the Swiffer is fun!</p></li>
+</ul>
+<p class="noindent">This may well be the single biggest selling point of the Swiffer. In TV advertisements for the Swiffer, they show people joyously dancing through houses cleaning floors, and some ads featured people picking up the Swiffer out of sheer curiosity and then cleaning the floors while playing with the Swiffer like a child plays with a toy. And the Swiffer does very well under <a href="C11_chapter8.xhtml#box17">Lens #17</a>: <i><a href="C11_chapter8.xhtml#box17">The Toy</a></i>&#8212;it is fun to play with&#8230; but why? It&#8217;s just a cloth on a stick, right? Yes, in one sense, but the base of the Swiffer, where the cloth goes, is attached to the stick with a special sort of hinge, so that when you rotate your wrist, even slightly, the base that holds the cloth rotates dramatically. A little motion from my wrist makes the cleaning mechanism move easily, fluidly, and powerfully&#8212;getting into exactly the position you want it to be in with a minimum of effort. Using it feels kind of like running a magic race car around the floor of your house. The motion that the cleaning base shows is <b>second-order motion</b>, that is, motion that is derived from the action of the player. When a system shows a lot of second-order motion that a player can easily control and that gives the player a lot of power and rewards, we say that it is a <b>juicy</b> system&#8212;like a ripe peach, just a little bit of interaction with it gives you a continuous flow of delicious reward. Juiciness is often overlooked as an important quality in a game. To avoid overlooking it, use this lens.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box64">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox64"><span class="pd_whitez">#64 The Lens of Juiciness</span></a></h2>
+<p class="noindent">To call an interface &#8220;juicy&#8221; might seem kind of silly&#8212;although it is very common to hear an interface with very little feedback described as &#8220;dry.&#8221; Juicy interfaces are fun the moment you pick them up. To maximize juiciness, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list"><span id="p281" aria-label=" page 281. " epub:type="pagebreak" role="doc-pagebreak"/>Is my interface giving the player continuous feedback for their actions? If not, why not?</p></li>
+<li><p class="list">Is second-order motion created by the actions of the player? Is this motion powerful and interesting?</p></li>
+<li><p class="list">Juicy systems reward the player many ways at once. When I give the player a reward, how many ways am I simultaneously rewarding them? Can I find more ways?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_6.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Patrick Mittereder</i></p>
+</figcaption>
+</figure>
+</aside>
+<p class="indent">We discussed in <a class="nounder" href="C07_chapter4.xhtml#chapter4">Chapter 4</a> how the difference between work and play is one of attitude. I chose this nongame example of the Swiffer as an illustration because the feedback it gives is so powerful that it changes work into play. And it is important for your interface to be fun, if possible&#8212;since your game is meant to be fun and you run the risk of creating inner contradictions and a self-defeating experience if you put a dry, painful interface as the player&#8217;s gateway to your supposedly fun experience. Remember, fun is pleasure with surprises, so if your interface is going to be fun, it should give both.</p>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec15_5"><span class="pd_orange">Primality</span></h2>
+<p class="noindent">One kind of interface that tends to be associated with juicy fun is the touch interface found on phones and tablets. Touch interfaces have done a lot to change the world of gaming in a very short time. Young children, in particular, seem to take to touch interfaces with surprising ease. But why? The obvious answer is &#8220;because they are intuitive.&#8221; But that&#8217;s really a pretty vaporous answer, since the definition of &#8220;intuitive&#8221; is &#8220;easy to understand.&#8221; So the question becomes &#8220;why is it that touch interfaces are so easy to understand?&#8221; And the answer is this: they are primal.</p>
+<p class="indent">Until the advent of touch computing, every computer interface took the form of tool use. I would interact with some physical object (keyboard, mouse, button panel, punch card, etc.), and some remote (not near my finger) response would take place. Gradually, like with all tools, we learn how they work and become accustomed to them. But tool use is not primal, by which I mean, prehuman. Humans started using tools about three million years ago, which is a pretty good run. <span id="p282" aria-label=" page 282. " epub:type="pagebreak" role="doc-pagebreak"/>But still animals have been touching things, intuitively, for much longer: probably something like 300 or 400 million years. And our brains, of course, are evolved from those brains. When you think about the three-layer structure of the human brain, it becomes clearer&#8212;the lowest-level &#8220;reptilian&#8221; section of the brain is able to process touch, but tool use probably requires help from the neocortex, the highest level of the brain.</p>
+<p class="indent">When you think of it that way, it becomes obvious why touch is more intuitive than using a mouse or game controller. But then, of course, it raises a broader question&#8212;what parts of my game are primal, and what parts require higher brain function? It seems certain that the more you can engage and involve the primal parts of the brain, the more intuitive and powerful your gameplay will feel, which helps to explain why so many games contain elements such as the following:</p>
+<ul class="list-bullet">
+<li><p class="list">Gather fruit-like items.</p></li>
+<li><p class="list">Fight a threatening enemy.</p></li>
+<li><p class="list">Find your way through an unfamiliar environment.</p></li>
+<li><p class="list">Overcome obstacles to get to a mate (how scientists say &#8220;rescue the princess&#8221;).</p></li>
+</ul>
+<p class="noindent">To really know what parts of the brain are involved in a given activity, you need to be a brain scientist doing MRI research. But to make an educated guess about whether your interface and game activity has low-level primality, just think about whether it is something that animals can do. If they can, there&#8217;s a good chance you are tapping into the power of primality.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box65">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox65"><span class="pd_whitez">#65 The Lens of Primality</span></a></h2>
+<p class="noindent">Some actions and interfaces are so intuitive that animals were doing them hundreds of millions of years ago. To capture the power of primality, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What parts of my game are so primal an animal could play? Why?</p></li>
+<li><p class="list">What parts of my game could be more primal?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_7.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Astro Leon-Jhong</i></p>
+</figcaption>
+</figure>
+</aside>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec15_6"><span id="p283" aria-label=" page 283. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Channels of Information</span></h2>
+<p class="noindent">One important goal of any interface is to communicate information. Determining the best way for your game to communicate necessary information to the player requires some thoughtful design, since games can often contain a great deal of information and often much of it is needed at the same time. To figure out the best way to present the information in your game, try following these steps. Referring back to our interface data flow diagram from the beginning of this chapter, we are mostly talking about arrows 5 (World &#8594; Virtual Interface) and 6 (Virtual Interface &#8594; Physical Output).</p>
+<section class="level4">
+<h3 class="h4" id="sec15_6_1"><span class="pd_orange">Step 1: List and Prioritize Information</span></h3>
+<p class="noindent">A game has to present a lot of information, but it is not all equally important. Let&#8217;s say we were designing the interface for a game similar to the classic NES game, Legend of Zelda. We might begin by listing all of the information the player needs to see. A simple unprioritized list might look like</p>
+<ol class="list-order">
+<li><p class="list">Number of rubies</p></li>
+<li><p class="list">Number of keys</p></li>
+<li><p class="list">Health</p></li>
+<li><p class="list">Immediate surroundings</p></li>
+<li><p class="list">Distant surroundings</p></li>
+<li><p class="list">Other inventory</p></li>
+<li><p class="list">Current weapon</p></li>
+<li><p class="list">Current treasure</p></li>
+<li><p class="list">Number of bombs</p></li>
+</ol>
+<p class="noindent">Now, we might sort these by importance:</p>
+<p class="noindentt"><b>Need to know every moment</b>:</p>
+<ul class="list-simple1">
+<li><p class="list-item">4. Immediate surroundings</p></li>
+</ul>
+<p class="noindent"><b>Need to glance at from time to time while playing</b>:</p>
+<ol class="list-simple1">
+<li><p class="list">1. Number of rubies</p></li>
+<li><p class="list">2. Number of keys</p></li>
+<li><p class="list">3. Health</p></li>
+<li><p class="list">5. Distant surroundings</p></li>
+<li><p class="list">7. Current weapon</p></li>
+<li><p class="list"><span id="p284" aria-label=" page 284. " epub:type="pagebreak" role="doc-pagebreak"/>8. Current treasure</p></li>
+<li><p class="list">9. Number of bombs</p></li>
+</ol>
+<p class="noindentt"><b>Need to know only occasionally</b>:</p>
+<ul class="list-simple1">
+<li><p class="list-item">6. Other inventory</p></li>
+</ul>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec15_6_2"><span class="pd_orange">Step 2: List Channels</span></h3>
+<p class="noindent">A channel of information is just a way of communicating a stream of data. Exactly what the channels are varies from game to game&#8212;and there is a lot of flexibility in how you choose them. Some possible channels of information might be</p>
+<ul class="list-bullet">
+<li><p class="list">The top center of the screen</p></li>
+<li><p class="list">The bottom right of the screen</p></li>
+<li><p class="list">My avatar</p></li>
+<li><p class="list">Game sound effects</p></li>
+<li><p class="list">Game music</p></li>
+<li><p class="list">The border of the game screen</p></li>
+<li><p class="list">The chest of the approaching enemy</p></li>
+<li><p class="list">The word balloon over a character&#8217;s head</p></li>
+</ul>
+<p class="noindent">It can be a good idea to list out the possible channels that you think you might use. In Legend of Zelda, the main channels of information the designers settled on were</p>
+<ul class="list-bullet">
+<li><p class="list">Main display area</p></li>
+<li><p class="list">Dashboard of information at the top of the screen</p></li>
+</ul>
+<p class="noindent">Also, they decided there would be a &#8220;mode change&#8221; the player could activate by hitting the &#8220;select&#8221; button (we&#8217;ll discuss mode changes later in this chapter), which has different channels of information:</p>
+<ul class="list-bullet">
+<li><p class="list">Auxiliary display area</p></li>
+<li><p class="list">Dashboard of information at the bottom of the screen</p></li>
+</ul>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec15_6_3"><span class="pd_orange">Step 3: Map Information to Channels</span></h3>
+<p class="noindent">Now, the difficult task comes of mapping the types of information to the different channels. This is usually done partly by instinct, partly by experience, and mostly by trial and error&#8212;drawing lots of little sketches, thinking about them, and then <span id="p285" aria-label=" page 285. " epub:type="pagebreak" role="doc-pagebreak"/>redrawing them, until you think you have something worth trying out. In Zelda, the mapping is as follows:</p>
+<p class="noindentt"><b>Main display area</b>:</p>
+<ul class="list-simple1">
+<li><p class="list-item">4. Immediate surroundings</p></li>
+</ul>
+<p class="noindent"><b>Dashboard of information at the top of the screen</b>:</p>
+<ol class="list-simple1">
+<li><p class="list">1. Number of rubies</p></li>
+<li><p class="list">2. Number of keys</p></li>
+<li><p class="list">3. Health</p></li>
+<li><p class="list">5. Distant surroundings</p></li>
+<li><p class="list">7. Current weapon</p></li>
+<li><p class="list">8. Current treasure</p></li>
+<li><p class="list">9. Number of bombs</p></li>
+</ol>
+<p class="noindent"><b>Auxiliary display area:</b></p>
+<ul class="list-simple1">
+<li><p class="list-item">6. Other inventory</p></li>
+</ul>
+<p class="noindent">Taking a look at the main screen (<a class="figure" href="C18_chapter15.xhtml#fig15_11">Figure 15.11</a>) and subscreen (<a class="figure" href="C18_chapter15.xhtml#fig15_10">Figure 15.10</a>), you can see other interesting choices that were made:</p>
+<p class="indent">Note that the dashboard information is so important to gameplay that it needs to be shown all the time on both the main screen and subscreen. And the contents of that dashboard really involve seven different channels of information. Notice how they split them up&#8212;&#8220;life&#8221; was deemed so important that it got nearly one-third of the interface. Rubies, keys, and bombs, though their functions are different, each have to communicate a two-digit number, so they are all grouped together. The weapon and treasure you are holding are so important that they have little boxes around them. The &#8220;A&#8221; and &#8220;B&#8221; are reminders to the player about which buttons to hit in order to use these items.</p>
+<figure class="figure" id="fig15_10">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.10</b></span></p>
+<img alt="" src="../images/fig15_10.jpg"/>
+<p class="caption">NES Zelda subscreen.</p>
+</figcaption>
+</figure>
+<p class="indent">
+<span id="p286" aria-label=" page 286. " epub:type="pagebreak" role="doc-pagebreak"/></p>
+<figure class="figure" id="fig15_11">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.11</b></span></p>
+<img alt="" src="../images/fig15_11.jpg"/>
+<p class="caption">NES Zelda main screen.</p>
+</figcaption>
+</figure>
+<p class="indent">Also note on the inventory screen how extra space was used to give the player some instruction on how to use it.</p>
+<p class="indent">You can see that even though this is a relatively simple interface compared to more modern games, there were many decisions the designer made about how to lay it out, and these decisions made a significant impact on the game experience.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec15_6_4"><span class="pd_orange">Step 4: Review Use of Dimensions</span></h3>
+<p class="noindent">A channel of information in a game can have several dimensions. For example, if you have decided to map &#8220;damage to an enemy&#8221; to &#8220;numbers that fly out of that enemy,&#8221; you have several dimensions you can work with on that channel. Some of these might be</p>
+<ul class="list-bullet">
+<li><p class="list">The number you display</p></li>
+<li><p class="list">The color of the number</p></li>
+<li><p class="list">The size of the numerals</p></li>
+<li><p class="list">The font of the numerals</p></li>
+</ul>
+<p class="noindent">Now you have to decide which of these dimensions, if any, you want to use. Surely you will use the first one, the number. But will the color mean anything? Perhaps you will use the other dimensions as <b>reinforcers</b> of the information&#8212;numbers under 50 will be white and small, numbers from 50 to 99 will be yellow and medium <span id="p287" aria-label=" page 287. " epub:type="pagebreak" role="doc-pagebreak"/>sized, but numbers 100 and over will be red and very large and in a special font to emphasize the amount of damage.</p>
+<p class="indent">And while using multiple dimensions on a channel to reinforce a piece of information is a way to make the information very clear (and also kind of juicy), you could also take a different approach and decide to put different pieces of information on the different dimensions. For example, you might decide to color the numbers to indicate friend (white) or foe (red). Then you might make the size of the numbers indicate how close the character is to defeat&#8212;small numerals might mean the character has a lot of hit points left, while large numerals might mean they are about to die. This kind of technique can be very efficient and elegant. By using a single number, you have communicated three different pieces of information. The risk is that you have to educate the player on what these different dimensions on one channel of information represent, which might be difficult for some players to understand or remember. Good use of channels and dimensions is what makes for an elegant, well laid out interface, so we keep a special lens around for this kind of examination.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box66">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox66"><span class="pd_whitez">#66 The Lens of Channels and Dimensions</span></a></h2>
+<p class="noindent">Choosing how to map game information to channels and dimensions is the heart of designing your game interface. Use this lens to make sure you do it thoughtfully and well. Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What data need to travel to and from the player?</p></li>
+<li><p class="list">Which data are most important?</p></li>
+<li><p class="list">What channels do I have available to transmit these data?</p></li>
+<li><p class="list">Which channels are most appropriate for which data? Why?</p></li>
+<li><p class="list">Which dimensions are available on the different channels?</p></li>
+<li><p class="list">How should I use those dimensions?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_8.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Elizabeth Barndollar</i></p>
+</figcaption>
+</figure>
+</aside>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec15_6_5"><span id="p288" aria-label=" page 288. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Modes</span></h3>
+<p class="noindent">What is an interface mode? Simply put, it is a change in one of the mapping arrows (1&#8211;6) in our interface diagram. For example, if pressing the B button changes the functionality of the gamepad so that instead of making your avatar run around, it makes your avatar aim a water hose, which is a mode change, the mapping on arrow #1 (Physical Interface &#8594; World) has just changed. Mode changes can happen as a result of mapping changes on any of the six arrows.</p>
+<p class="indent">Modes are a great way to add variety to your game, but you must be very careful, since you run a risk of confusing the player if they don&#8217;t realize that a mode change has occurred. Here are a few tips to avoid getting in trouble with interface modes.</p>
+<section class="level5">
+<h4 class="h5" id="sec15_6_5_1"><span class="pd_orange">Mode Tip #1: Use as Few Modes as Possible</span></h4>
+<p class="noindent">The fewer the modes, the less chance a player is going to get confused. Having multiple interface modes isn&#8217;t a bad thing, but you should add modes cautiously, for each one is something the new the player is going to have to learn and understand.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_5_2"><span class="pd_orange">Mode Tip #2: Avoid Overlapping Modes</span></h4>
+<p class="noindent">Just as we have channels of information from the game to the player, there are similar channels of information from the player to the game. Each button or thumbstick is a channel of information; for example, let&#8217;s say you have a game that lets you change between walking mode (the thumbstick navigates) and throwing mode (the thumbstick aims). Later, you decide to add a driving mode as well (the thumbstick steers a car). What happens if the player changes into throwing mode while they are driving? You could try to allow this, potentially putting you into two modes at once (driving and throwing). And while this might work, it also might be a disaster if the thumbstick is simultaneously steering a car and controlling an aiming interface. It might be wiser to move the aiming, in all cases, to a second thumbstick, if your physical interface has one. By making your modes distinct and nonoverlapping, you keep yourself out of trouble. If you find you need to have overlapping modes, make sure they use different channels of information on the interface. For example, the thumbstick could have two navigating modes (flying or walking), and the button has two shooting modes (shoot fireball or lightning bolt). These modes are on completely different dimensions, so they can overlap safely&#8212;I can switch between shooting fireballs and shooting lightning bolts while either walking or flying with no confusing effects.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_5_3"><span class="pd_orange">Mode Tip #3: Make Different Modes Look as Different as Possible</span></h4>
+<p class="noindent">In other words, look at your modes with <a href="C18_chapter15.xhtml#box63">Lens #63</a>: <i><a href="C18_chapter15.xhtml#box63">Feedback</a></i>, and <a href="C18_chapter15.xhtml#box62">Lens #62</a>: <i><a href="C18_chapter15.xhtml#box62">Transparency</a></i>. If a player doesn&#8217;t know what mode they are in, they are going <span id="p289" aria-label=" page 289. " epub:type="pagebreak" role="doc-pagebreak"/>to be confused and frustrated. The old Unix text editing system, vi (pronounced as &#8220;V. I.&#8221;), was a symphony of confusing modes. Most people would expect that a text editor, when it started up, would be in a mode that would allow you to enter text. But not so for vi. It was actually in a mode where each letter of the keyboard either would issue a command, like &#8220;delete line,&#8221; or would put the editor into a new mode. But hitting these keys would give no feedback about what mode you were in. If you actually wanted to enter text, you had to type a letter &#8220;i,&#8221; and then you would be in text insert mode, which looked exactly like command entry mode. It was impossible to figure out on your own, and even seasoned vi users would occasionally get confused about what mode they were in.</p>
+<p class="indent">Here are some great ways to make your modes distinct:</p>
+<ul class="list-bullet">
+<li><p class="list"><b>Change something large and visible on the screen</b>: In Halo and most first-person shooters, when you change weapons, it is very visible. As a side note, the amount of ammo you have left is given through an interesting channel&#8212;it is right on the back of your gun.</p></li>
+<li><p class="list"><b>Change the action your avatar is taking</b>: In the classic arcade game Jungle King, you go from a vine swinging mode to a swimming mode. Because your avatar is doing something so obviously different, it is clear that the mode has changed (also his hair changes color&#8212;that might be overkill).</p></li>
+<li><p class="list"><b>Change the on screen data</b>: In Final Fantasy games and most RPGs, when you enter combat mode, many combat statistics and menus suddenly come up, and it is obvious there has been a mode change.</p></li>
+<li><p class="list"><b>Change the camera perspective</b>: This is often overlooked as an indicator of a mode change, but it can be very effective.</p></li>
+</ul>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box67">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox67"><span class="pd_whitez">#67 The Lens of Modes</span></a></h2>
+<p class="noindent">An interface of any complexity is going to require modes. To make sure your modes make the player feel powerful and in control and do not confuse or overwhelm, ask yourself these questions:</p>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_9.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Patrick Collins</i></p>
+</figcaption>
+</figure>
+<ul class="list-bullet">
+<li><p class="list">What modes do I need in my game? Why?</p></li>
+<li><p class="list"><span id="p290" aria-label=" page 290. " epub:type="pagebreak" role="doc-pagebreak"/>Can any modes be collapsed or combined?</p></li>
+<li><p class="list">Are any of the modes overlapping? If so, can I put them on different input channels?</p></li>
+<li><p class="list">When the game changes modes, how does the player know that? Can the game communicate the mode change in more than one way?</p></li>
+</ul>
+</aside>
+</section>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec15_6_6"><span class="pd_orange">Other Interface Tips</span></h3>
+<p class="noindent">Okay&#8212;we&#8217;ve covered interface data flow, feedback, channels, dimensions, and modes. That&#8217;s a good start. But whole books have been written about the topic of interface design, and we have so many other interesting things to discuss; we must move on! But before we do, here are some general tips for making good game interfaces.</p>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_1"><span class="pd_orange">Interface Tip #1: Steal</span></h4>
+<p class="noindent">More politely, we would call this the &#8220;top-down approach&#8221; to interface design. If you are designing an interface for a known game genre, say an action/platform game, you can begin with the interface of a known success in this area and then change it around to suit the things that are unique about your game. This can save you a lot of design time and has the benefit of being a familiar interface to your users. Of course, if your game has nothing new to offer, this will make it feel like a clone&#8212;but it is often surprising how one little change leads to another, which leads to another, and before you know it, your clone interface has morphed into something quite different.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_2"><span class="pd_orange">Interface Tip #2: Customize</span></h4>
+<p class="noindent">Also called the bottom-up approach, it is the opposite of stealing. With this approach, you design your interface from scratch, by listing out information, channels, and dimensions like we explained earlier. This is a great way to get an interface that looks unique and is custom to your particular game. If your gameplay is novel, you may find this is the only path available to you. But even if your gameplay is nothing new, you may be surprised when you try to build it from the bottom up&#8212;you may find yourself inventing a whole new way to play your game, because everyone else has just been copying what is successful and you took the time to actually examine the problem and tried to do a better job.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_3"><span id="p291" aria-label=" page 291. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Interface Tip #3: Design around Your Physical Interface</span></h4>
+<p class="noindent">The world of videogame development features platforms with radically different interfaces: touch interfaces, motion interfaces, mouse and keyboard, gamepads, and even mixed reality headsets. It is tempting to make games that can work equally well on all these platforms, so that you can sell them to as many people as possible. But the truth is that trying to design a game independent of any particular interface is usually a path to a dull game. Think about Angry Birds&#8212;its megasuccess was partly due to the fact that it used the touch interface so well. Remember the Lens of the Toy? If the core interaction of your game is a unique type of play that takes advantage of what is unique to that physical interface, it can get enough attention to make giving up those other platforms more than worthwhile.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_4"><span class="pd_orange">Interface Tip #4: Theme Your Interface</span></h4>
+<p class="noindent">Often it is a different artist who designs the interface artwork than the one who designs the game world. In <a class="nounder" href="C09_chapter6.xhtml#chapter6">Chapter 6</a>: <a class="nounder" href="C09_chapter6.xhtml#chapter6"><i>Theme</i></a>, we talked about the importance of theming everything, and interface is no exception. Go over every inch of your interface with <a href="C09_chapter6.xhtml#box11">Lens #11</a>: <i><a href="C09_chapter6.xhtml#box11">Unification</a></i>, and see if you can find a way to tie it all together with the rest of the experience.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_5"><span class="pd_orange">Interface Tip #5: Sound Maps to Touch</span></h4>
+<p class="noindent">Usually, when we think of using sound in a game, we think of creating a soundscape to give a sense of place (tweeting birds in a meadow), or to make actions seem more realistic (hearing glass break when you see it break), or to give the player feedback about their progress in the game (a musical glissando when you pick up a treasure). But there is an often overlooked aspect to sound that has a direct bearing on interface: the human mind easily maps sound to touch. This is important, since when we manipulate things in the real world, touch is a central component of feedback we get about manipulation. In a virtual interface, we get little, if any, information through our touch sense. But you can simulate touch by playing appropriate sounds, in a way that touch screen keyboards that click when you type do. First, you have to think about what you would like your interface to feel like if it were real, and then you have to decide what sounds best create that feeling. If you do this successfully, people will marvel at what a pleasure your interface is to use, but they will have difficulty expressing exactly why. I have high hopes that future interfaces will find ways to more successfully involve tactile feedback, but until they do, sound is your best bet.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_6"><span id="p292" aria-label=" page 292. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Interface Tip #6: Balance Options and Simplicity with Layers</span></h4>
+<p class="noindent">When designing an interface, you will be confronted by two conflicting desires: the desire to give the player as many options as possible and the desire to make your interface as simple as possible. As with so many things in game design, the key to success is striking a balance. And one good way to achieve this balance is by creating layers of interface through modes and submodes. If you have done a good job of prioritizing your interface, you will have a good head start toward figuring out how to do this. A typical videogame example of this is hiding inventory and configuration menus under an infrequently used button, such as &#8220;start.&#8221;</p>
+<figure class="figure" id="fig15_12">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>15.12</b></span></p>
+<img alt="" src="../images/fig15_12.jpg"/>
+<p class="caption">The <i>ToyTopia</i> control panel. A &#8220;down&#8221; message has just been sent to Winnie the Pooh. (Courtesy of Disney Enterprises, Inc. Used with permission.)</p>
+</figcaption>
+</figure>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_7"><span class="pd_orange">Interface Tip #7: Use Metaphors</span></h4>
+<p class="noindent">A great shortcut to giving a player understanding of how your interface works is by making it resemble something the player has seen before. For example, in designing the game ToyTopia, my team had a very unusual constraint. In this game, the player issues keyboard commands (go up, go right, etc.) to a small team of windup toys. Since it was a synchronous multiplayer game, the plan was to keep things in sync by introducing a delay between when a player issued a command and when a toy would receive it. This way, we could keep games in sync on different players&#8217; machines because the local artificial delay would be the same length as the unavoidable network delay of a signal traveling from one computer to another. Unfortunately (and not surprisingly), players found this to be confusing&#8212;they are used to a button push taking action immediately&#8212;not taking a half second before something happens. The team was frustrated to the point of considering abandoning the whole scheme, but then someone had the idea that if we showed a visible radio signal traveling from the virtual button to the toy and accompanied it by a <span id="p293" aria-label=" page 293. " epub:type="pagebreak" role="doc-pagebreak"/>&#8220;radio transmission&#8221; sound effect, it might help players understand the mechanism better. And it worked! With the new system, the radio transmission metaphor clearly explained the delay in action and also gave the players some immediate feedback about what was happening. And under <a href="C09_chapter6.xhtml#box11">Lens #11</a>: <i><a href="C09_chapter6.xhtml#box11">Unification</a></i>, this change helped reinforce the theme, which was about radio-controlled toys.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box67a">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox67a"><span class="pd_whitez">#67&#189; The Lens of Metaphor</span></a></h2>
+<p class="noindent">Game interfaces often mimic interfaces to things that are already familiar to players. To make sure your metaphors are aiding players&#8217; understanding, and not confusing them, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">Is my interface already a metaphor for something else?</p></li>
+<li><p class="list">If it is a metaphor, am I making the most of that metaphor? Or is the metaphor getting in the way?</p></li>
+<li><p class="list">If it isn&#8217;t a metaphor, would it be more intuitive if it were?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un15_10.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Derek Hetrick</i></p>
+</figcaption>
+</figure>
+</aside>
+</section>
+</section>
+<section class="level5">
+<h3 class="h5" id="sec15_6_6_8"><span class="pd_orange">Interface Tip #8: If It Looks Different, It Should Act Different</span></h3>
+<p class="noindent">Game developers frequently fall into the trap of going against this tip in the name of visual variety. For example, they might be making a game where you fight flying saucers. To add some visual spice, someone gets the idea to have the saucers be different colors: some are red, some purple, and some green. Players who see these are surely going to think that they are functionally different&#8212;that they perhaps go different speeds or have different point values. If they are not and they just have different paint jobs, players are sure to be disappointed and confused.</p>
+<p class="indent">Similarly, designers often make the opposite mistake, creating two things that look the same but behave differently. For example, you might create an &#8220;X&#8221; button that when pressed, closes part of the interface. Later, in need of a button that allows players to delete items from the game, &#8220;X&#8221; might seem like a logical choice to represent delete. But if the same &#8220;X&#8221; sometimes means &#8220;delete&#8221; and sometimes means &#8220;close window,&#8221; it has a good chance of confusing and frustrating players.</p>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_9"><span id="p294" aria-label=" page 294. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Interface Tip #9: Test, Test, Test!</span></h4>
+<p class="noindent">No one gets an interface right the first time. New games require new interfaces, and you cannot take it for granted that your new interface is going to be clear, power giving, and fun unless you have people try it out. Test it as early as possible and as often as possible. Build prototypes of your interface well before you have a complete playable game. Make paper and cardboard prototypes of any button or menu systems that you have, and get people to act out playing the game and using the interface so that you can see where they are having trouble. Most important, by working with players this way, like an anthropologist, you will start to get better ideas about their intentions from moment to moment, which will inform all of your interface decisions.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec15_6_6_10"><span class="pd_orange">Interface Tip #10: Break the Rules to Help Your Player</span></h4>
+<p class="noindent">Since many games are variations on existing themes, there is a lot of copying of interface designs from game to game. So much so that certain rules of thumb tend to show up for each genre of game. These can be useful, but it is easy to follow them slavishly without thinking about whether they are really a good idea for the players of your game. One example involves PC games using a mouse. The left mouse button is considered the main button, and some games choose to use the right mouse button for other functionality. So, a rule of thumb is that the right mouse button should generally not do anything, unless you are in a special mode where it has a purpose. However, this rule is often taken too far&#8212;and in simple games, such as children&#8217;s games, where the right mouse button isn&#8217;t used at all, most designers tend to leave it completely disabled, so that all gameplay happens through the left mouse button. But when children use a mouse, they frequently click the wrong mouse button because their hands are small. Smart designers break this rule of thumb and make the left and right mouse buttons both map to the same action, so that either button can be pressed successfully. Really, why wouldn&#8217;t you do this for every game that only needs one mouse button?</p>
+<p class="indent">The game interface is indeed the gateway to the experience. Let us pass now through that gateway and look more closely at the experience itself.</p>
+</section>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec15_7"><span class="pd_orange">Other Reading to Consider</span></h2>
+<ul class="list-simple1">
+<li><p class="list-item1"><b><i>The Design of Everyday Things</i> by Donald Norman</b>. This straightforward, down-to-earth book is full of thoughtful examples of good and bad design of real-world objects and systems. Its wisdom translates surprisingly well to the realm of game design.</p></li>
+<li><p class="list-item"><span id="p295" aria-label=" page 295. " epub:type="pagebreak" role="doc-pagebreak"/><b><i>Game Feel</i> by Steve Swink</b>. This unique book focuses on game interface design at the millisecond level, carefully dissecting what it is that makes games feel great. This is required reading.</p></li>
+<li><p class="list-item1"><b><i>The Visual Display of Quantitative Information</i> by Edward Tufte</b>. Considered the bible (or at least the Old Testament) of graphical interface design, this and Tufte&#8217;s other three books can provide deep insights even when you just leaf through them.</p></li>
+</ul>
+</section>
+</section>
+</body>
+</html>

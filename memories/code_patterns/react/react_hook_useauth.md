@@ -68,3 +68,18 @@ export function useAuth() {
   useEffect(() => {
     const checkAuth = async () => {
 ```
+
+
+## Example Added: 2025-12-14 10:54
+
+```typescript
+import { useGameStore } from '@/lib/store/gameStore';
+import type { DynastyId } from '@/shared/types/game';
+import { GAME_CONFIG } from '@/shared/config/game';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import Link from 'next/link';
+import { EnergyTimer } from '@/components/ui/EnergyTimer';
+import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
+import { VirtualDPad } from '@/components/game/VirtualDPad';
+import { PauseMenu } from '@/components/game/PauseMenu';
+```

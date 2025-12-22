@@ -10,6 +10,10 @@ from pathlib import Path
 import re
 import json
 
+# Load environment variables for Supabase
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -21,14 +25,14 @@ except ImportError:
 
 
 class MemoryRetriever:
-    """Retrieve relevant memories for current task"""
+    """Retrieve relevant memories for current task - Supabase-first with local fallback"""
 
     def __init__(self):
         self.memory = MemoryToolHandler()
 
     def retrieve(self, prompt, limit=3, response_format="concise", min_relevance=0.0, token_budget=None):
         """
-        Get most relevant memories for prompt
+        Get most relevant memories for prompt (Supabase-first, local fallback)
 
         Args:
             prompt: User prompt to analyze
@@ -40,26 +44,97 @@ class MemoryRetriever:
         Returns:
             Formatted memory string
         """
-
         # Analyze prompt for domain
         domain = self._analyze_domain(prompt)
 
-        # Get memories for that domain
-        memories = self._get_domain_memories(domain)
+        # Try Supabase search first (uses full-text search)
+        if self.memory.use_supabase:
+            memories = self._get_supabase_memories(prompt, domain, limit)
+            if memories:
+                return self._format_memories(
+                    memories,
+                    response_format=response_format,
+                    token_budget=token_budget
+                )
 
-        # Rank by relevance
+        # Fall back to local file search
+        memories = self._get_domain_memories(domain)
         ranked = self._rank_by_relevance(memories, prompt)
 
         # Filter by minimum relevance
         if min_relevance > 0:
             ranked = [m for m in ranked if m['score'] >= min_relevance]
 
-        # Format top N with specified format
         return self._format_memories(
             ranked[:limit],
             response_format=response_format,
             token_budget=token_budget
         )
+
+    def _extract_keywords(self, prompt):
+        """Extract meaningful keywords from prompt for search"""
+        # Common words to ignore
+        stopwords = {
+            'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to',
+            'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are',
+            'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+            'will', 'would', 'could', 'should', 'may', 'might', 'must',
+            'shall', 'can', 'need', 'dare', 'ought', 'used', 'this', 'that',
+            'these', 'those', 'what', 'which', 'who', 'whom', 'whose',
+            'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both',
+            'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
+            'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+            'just', 'about', 'into', 'through', 'during', 'before', 'after',
+            'above', 'below', 'between', 'under', 'again', 'further', 'then',
+            'once', 'here', 'there', 'any', 'help', 'implement', 'create',
+            'make', 'add', 'use', 'get', 'set', 'want', 'like', 'work',
+        }
+
+        # Extract words and filter
+        words = re.findall(r'\b\w+\b', prompt.lower())
+        keywords = [w for w in words if w not in stopwords and len(w) > 2]
+
+        # Return space-separated keywords for full-text search
+        return ' '.join(keywords[:5])  # Limit to 5 keywords
+
+    def _get_supabase_memories(self, prompt, domain, limit):
+        """Get memories from Supabase using full-text search"""
+        try:
+            # Extract keywords for better full-text search
+            search_terms = self._extract_keywords(prompt)
+            if not search_terms:
+                search_terms = prompt  # Fallback to full prompt
+
+            results = self.memory.search(search_terms, domain=domain, limit=limit)
+
+            # If no results with full query, try individual keywords
+            if not results and ' ' in search_terms:
+                keywords = search_terms.split()
+                for keyword in keywords:
+                    results = self.memory.search(keyword, domain=domain, limit=limit)
+                    if results:
+                        break  # Found something with this keyword
+
+            if not results:
+                return []
+
+            # Convert to standard memory format
+            memories = []
+            for r in results:
+                memories.append({
+                    'id': r.get('id'),
+                    'path': f"supabase/{r.get('domain')}/{r.get('title')}",
+                    'content': r.get('summary') or r.get('content', '')[:500],
+                    'domain': r.get('domain', domain),
+                    'title': r.get('title', 'Untitled'),
+                    'score': float(r.get('relevance_score', 0) or r.get('rank', 0)),
+                    'storage': 'supabase'
+                })
+            return memories
+        except Exception as e:
+            print(f"Supabase retrieval error: {e}", file=sys.stderr)
+            return []
 
     def _analyze_domain(self, prompt):
         """Determine what domain this task relates to"""
@@ -95,7 +170,7 @@ class MemoryRetriever:
             return 'api'
 
         # React keywords
-        if any(word in prompt_lower for word in ['react', 'component', 'useeffect', 'usestate']):
+        if any(word in prompt_lower for word in ['react', 'component', 'useeffect', 'usestate', 'zustand', 'state management', 'hook', 'provider', 'context']):
             return 'react'
 
         # Best practices (default)
@@ -275,7 +350,7 @@ def main():
 
     try:
         import time
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         start_time = time.time()
 
@@ -309,7 +384,7 @@ def main():
         log_file = metrics_dir / 'memory_retrieval.jsonl'
 
         metric = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'prompt': args.prompt[:100],  # Truncate long prompts
             'format': args.format,
             'patterns_returned': patterns_returned,

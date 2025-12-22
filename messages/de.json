@@ -1,0 +1,158 @@
+{
+  "common": {
+    "loading": "Wird geladen...",
+    "error": "Ein Fehler ist aufgetreten",
+    "retry": "Erneut versuchen",
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "save": "Speichern",
+    "close": "Schließen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "submit": "Absenden",
+    "search": "Suchen",
+    "share": "Teilen"
+  },
+  "nav": {
+    "home": "Startseite",
+    "play": "Spielen",
+    "shop": "Shop",
+    "lab": "Labor",
+    "leaderboard": "Bestenliste",
+    "clan": "Clan",
+    "settings": "Einstellungen"
+  },
+  "auth": {
+    "login": "Anmelden",
+    "logout": "Abmelden",
+    "signup": "Konto erstellen",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "forgotPassword": "Passwort vergessen?",
+    "continueWithGoogle": "Mit Google fortfahren",
+    "continueWithDiscord": "Mit Discord fortfahren",
+    "noAccount": "Noch kein Konto?",
+    "hasAccount": "Bereits ein Konto?"
+  },
+  "ageGate": {
+    "title": "Altersverifizierung",
+    "subtitle": "Bitte bestätigen Sie Ihr Geburtsdatum",
+    "dateOfBirth": "Geburtsdatum",
+    "verify": "Alter bestätigen",
+    "blocked": "Sie müssen mindestens 13 Jahre alt sein, um OG Snake zu spielen",
+    "coppaNotice": "Wir halten COPPA-Vorschriften zum Schutz der Privatsphäre von Kindern ein"
+  },
+  "game": {
+    "start": "Spiel starten",
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "gameOver": "Spiel vorbei",
+    "score": "Punktzahl",
+    "highScore": "Bestpunktzahl",
+    "newHighScore": "Neue Bestpunktzahl!",
+    "playAgain": "Nochmal spielen",
+    "foodCollected": "Gesammelte Nahrung",
+    "time": "Zeit",
+    "selectVariant": "Schlange auswählen"
+  },
+  "energy": {
+    "title": "Energie",
+    "remaining": "{count} / {max}",
+    "recharging": "Aufladung in {time}",
+    "noEnergy": "Keine Energie mehr",
+    "refill": "Energie aufladen",
+    "watchAd": "Werbung ansehen für Energie"
+  },
+  "shop": {
+    "title": "Shop",
+    "energyPacks": "Energiepakete",
+    "dnaPacks": "DNA-Pakete",
+    "premium": "Premium",
+    "buy": "Kaufen",
+    "purchased": "Gekauft",
+    "bestValue": "Bestes Angebot",
+    "mostPopular": "Am beliebtesten"
+  },
+  "collection": {
+    "title": "Sammlung",
+    "variants": "Schlangenvarianten",
+    "locked": "Gesperrt",
+    "unlocked": "Freigeschaltet",
+    "rarity": {
+      "common": "Gewöhnlich",
+      "uncommon": "Ungewöhnlich",
+      "rare": "Selten",
+      "epic": "Episch",
+      "legendary": "Legendär",
+      "mythic": "Mythisch"
+    }
+  },
+  "breeding": {
+    "title": "Zuchtlabor",
+    "selectParents": "Eltern auswählen",
+    "parent1": "Elternteil 1",
+    "parent2": "Elternteil 2",
+    "startBreeding": "Zucht starten",
+    "breeding": "Züchte...",
+    "complete": "Zucht abgeschlossen!",
+    "newVariant": "Du hast eine neue Variante entdeckt!"
+  },
+  "leaderboard": {
+    "title": "Bestenliste",
+    "daily": "Täglich",
+    "weekly": "Wöchentlich",
+    "monthly": "Monatlich",
+    "allTime": "Alle Zeiten",
+    "rank": "Rang",
+    "player": "Spieler",
+    "yourRank": "Dein Rang: #{rank}"
+  },
+  "clan": {
+    "title": "Clan",
+    "create": "Clan erstellen",
+    "join": "Clan beitreten",
+    "leave": "Clan verlassen",
+    "members": "{count} Mitglieder",
+    "invite": "Einladen",
+    "settings": "Clan-Einstellungen",
+    "noClan": "Du bist noch in keinem Clan"
+  },
+  "streaks": {
+    "title": "Tägliche Serie",
+    "day": "Tag {day}",
+    "claim": "Belohnung abholen",
+    "claimed": "Abgeholt!",
+    "streak": "{count} Tage Serie",
+    "dontBreak": "Komm morgen wieder, um deine Serie zu halten!"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "account": "Konto",
+    "privacy": "Datenschutz",
+    "notifications": "Benachrichtigungen",
+    "audio": "Audio",
+    "language": "Sprache",
+    "deleteAccount": "Konto löschen"
+  },
+  "privacy": {
+    "title": "Datenschutzeinstellungen",
+    "exportData": "Meine Daten exportieren",
+    "deleteAccount": "Konto löschen",
+    "consent": "Einwilligungseinstellungen",
+    "analytics": "Analyse",
+    "marketing": "Marketing"
+  },
+  "legal": {
+    "terms": "Nutzungsbedingungen",
+    "privacy": "Datenschutzerklärung",
+    "cookies": "Cookie-Richtlinie",
+    "ageVerification": "Altersverifizierung"
+  },
+  "errors": {
+    "networkError": "Netzwerkfehler. Bitte überprüfen Sie Ihre Verbindung.",
+    "serverError": "Serverfehler. Bitte versuchen Sie es später erneut.",
+    "unauthorized": "Bitte melden Sie sich an, um fortzufahren.",
+    "notFound": "Seite nicht gefunden.",
+    "validation": "Bitte überprüfen Sie Ihre Eingabe und versuchen Sie es erneut."
+  }
+}

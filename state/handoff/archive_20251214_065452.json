@@ -1,0 +1,16 @@
+{
+  "task": "Working on uncommitted changes in auth domain",
+  "status": "in_progress",
+  "domain": "auth",
+  "next_action": "Review uncommitted changes and continue work",
+  "files_to_load": [
+  "/Users/josefbell/SupaSnake/src/lib/server/rateLimit.ts",
+  "/Users/josefbell/SupaSnake/src/shared/config/engagement.ts",
+  "/Users/josefbell/SupaSnake/src/shared/config/game.ts",
+  "/Users/josefbell/SupaSnake/src/shared/data/dynasties.ts",
+  "/Users/josefbell/SupaSnake/supabase/migrations/002_server_authority.sql"
+],
+  "branch": "main",
+  "timestamp": "2025-12-14T05:43:34Z",
+  "auto_generated": true
+}

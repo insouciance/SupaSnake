@@ -42,7 +42,7 @@ $DECISIONS
 fi
 
 # Get relevant memories based on prompt content
-MEMORIES=$(python3 scripts/retrieve_memories.py \
+MEMORIES=$(.venv/bin/python3.14 scripts/retrieve_memories.py \
     --prompt "$USER_PROMPT" \
     --limit 3 \
     --format concise \

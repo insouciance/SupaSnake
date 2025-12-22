@@ -334,6 +334,163 @@ This directory contains persistent knowledge for Claude across sessions.
         }
         return mapping.get(dir_name, dir_name)
 
+    def search(
+        self,
+        query: str,
+        domain: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict]:
+        """
+        Search memories using full-text search (Supabase) or keyword matching (local)
+
+        Args:
+            query: Search query string
+            domain: Optional domain filter (engagement, game, architecture, etc.)
+            limit: Maximum results to return
+
+        Returns:
+            List of memory dictionaries with id, domain, title, summary, relevance_score
+        """
+        if self.use_supabase:
+            return self._search_supabase(query, domain, limit)
+        return self._search_local(query, domain, limit)
+
+    def _search_supabase(
+        self,
+        query: str,
+        domain: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict]:
+        """Search using Supabase full-text search function"""
+        try:
+            result = self.supabase.rpc(
+                'search_memories',
+                {
+                    'search_query': query,
+                    'domain_filter': domain,
+                    'result_limit': limit
+                }
+            ).execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Supabase search error: {e}", file=__import__('sys').stderr)
+            return self._search_local(query, domain, limit)
+
+    def _search_local(
+        self,
+        query: str,
+        domain: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict]:
+        """Search local memory files by keyword matching"""
+        results = []
+        query_words = set(query.lower().split())
+
+        # Map domain to directory paths
+        domain_paths = {
+            'engagement': ['architectural_decisions', 'project_knowledge'],
+            'game': ['architectural_decisions', 'project_knowledge'],
+            'architecture': ['architectural_decisions', 'project_knowledge'],
+            'platform': ['architectural_decisions', 'project_knowledge'],
+            'security': ['code_patterns/security', 'architectural_decisions'],
+            'performance': ['code_patterns/performance'],
+            'api': ['code_patterns/api', 'architectural_decisions'],
+            'react': ['code_patterns/react'],
+            'best_practices': ['code_patterns/best_practices']
+        }
+
+        paths_to_search = domain_paths.get(domain, list(domain_paths.values())[0]) if domain else [
+            'architectural_decisions', 'code_patterns', 'project_knowledge'
+        ]
+
+        for search_path in paths_to_search:
+            full_path = self.base_path / search_path
+            if not full_path.exists():
+                continue
+
+            for file_path in full_path.rglob('*.md'):
+                try:
+                    content = file_path.read_text(encoding='utf-8')
+                    content_lower = content.lower()
+
+                    # Calculate relevance score based on word matches
+                    matches = sum(1 for word in query_words if word in content_lower)
+                    if matches == 0:
+                        continue
+
+                    # Extract title from first line
+                    lines = content.split('\n')
+                    title = lines[0].replace('#', '').strip() if lines else file_path.stem
+
+                    # Extract summary (first paragraph after title)
+                    summary = ''
+                    for i, line in enumerate(lines[1:], 1):
+                        if line.strip() and not line.startswith('#'):
+                            summary = line.strip()[:200]
+                            break
+
+                    results.append({
+                        'id': str(file_path.relative_to(self.base_path)),
+                        'domain': domain or self._map_domain(file_path.parent.name),
+                        'title': title,
+                        'summary': summary,
+                        'relevance_score': float(matches),
+                        'content': content,
+                        'storage': 'local'
+                    })
+                except Exception:
+                    continue
+
+        # Sort by relevance and limit
+        results.sort(key=lambda x: x['relevance_score'], reverse=True)
+        return results[:limit]
+
+    def increment_applied(self, memory_id: str) -> bool:
+        """
+        Increment the times_applied counter for a memory (Supabase only)
+
+        Args:
+            memory_id: UUID of the memory
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.use_supabase:
+            return False
+
+        try:
+            self.supabase.rpc('apply_memory', {'memory_uuid': memory_id}).execute()
+            return True
+        except Exception as e:
+            print(f"Error incrementing memory: {e}", file=__import__('sys').stderr)
+            return False
+
+    def get_by_domain(self, domain: str, limit: int = 10) -> List[Dict]:
+        """
+        Get memories by domain, ordered by relevance
+
+        Args:
+            domain: Domain name (engagement, game, architecture, etc.)
+            limit: Maximum results
+
+        Returns:
+            List of memory dictionaries
+        """
+        if self.use_supabase:
+            try:
+                result = self.supabase.table('claude_memories') \
+                    .select('id, domain, title, summary, content, relevance_score, times_applied') \
+                    .eq('domain', domain) \
+                    .order('relevance_score', desc=True) \
+                    .limit(limit) \
+                    .execute()
+                return result.data or []
+            except Exception:
+                pass
+
+        # Fall back to local search
+        return self._search_local('', domain, limit)
+
     def str_replace(self, path: str, old_str: str, new_str: str) -> Dict[str, str]:
         """
         Replace specific text within a file (first occurrence only)

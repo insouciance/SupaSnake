@@ -1,0 +1,158 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Try Again",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "search": "Search",
+    "share": "Share"
+  },
+  "nav": {
+    "home": "Home",
+    "play": "Play",
+    "shop": "Shop",
+    "lab": "Lab",
+    "leaderboard": "Leaderboard",
+    "clan": "Clan",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "signup": "Create Account",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot Password?",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithDiscord": "Continue with Discord",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "ageGate": {
+    "title": "Age Verification",
+    "subtitle": "Please confirm your date of birth",
+    "dateOfBirth": "Date of Birth",
+    "verify": "Verify Age",
+    "blocked": "You must be 13 or older to play OG Snake",
+    "coppaNotice": "We comply with COPPA regulations to protect children's privacy"
+  },
+  "game": {
+    "start": "Start Game",
+    "pause": "Pause",
+    "resume": "Resume",
+    "gameOver": "Game Over",
+    "score": "Score",
+    "highScore": "High Score",
+    "newHighScore": "New High Score!",
+    "playAgain": "Play Again",
+    "foodCollected": "Food Collected",
+    "time": "Time",
+    "selectVariant": "Select Snake"
+  },
+  "energy": {
+    "title": "Energy",
+    "remaining": "{count} / {max}",
+    "recharging": "Recharging in {time}",
+    "noEnergy": "Out of Energy",
+    "refill": "Refill Energy",
+    "watchAd": "Watch Ad for Energy"
+  },
+  "shop": {
+    "title": "Shop",
+    "energyPacks": "Energy Packs",
+    "dnaPacks": "DNA Packs",
+    "premium": "Premium",
+    "buy": "Buy",
+    "purchased": "Purchased",
+    "bestValue": "Best Value",
+    "mostPopular": "Most Popular"
+  },
+  "collection": {
+    "title": "Collection",
+    "variants": "Snake Variants",
+    "locked": "Locked",
+    "unlocked": "Unlocked",
+    "rarity": {
+      "common": "Common",
+      "uncommon": "Uncommon",
+      "rare": "Rare",
+      "epic": "Epic",
+      "legendary": "Legendary",
+      "mythic": "Mythic"
+    }
+  },
+  "breeding": {
+    "title": "Breeding Lab",
+    "selectParents": "Select Parents",
+    "parent1": "Parent 1",
+    "parent2": "Parent 2",
+    "startBreeding": "Start Breeding",
+    "breeding": "Breeding...",
+    "complete": "Breeding Complete!",
+    "newVariant": "You discovered a new variant!"
+  },
+  "leaderboard": {
+    "title": "Leaderboard",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "allTime": "All Time",
+    "rank": "Rank",
+    "player": "Player",
+    "yourRank": "Your Rank: #{rank}"
+  },
+  "clan": {
+    "title": "Clan",
+    "create": "Create Clan",
+    "join": "Join Clan",
+    "leave": "Leave Clan",
+    "members": "{count} Members",
+    "invite": "Invite",
+    "settings": "Clan Settings",
+    "noClan": "You're not in a clan yet"
+  },
+  "streaks": {
+    "title": "Daily Streak",
+    "day": "Day {day}",
+    "claim": "Claim Reward",
+    "claimed": "Claimed!",
+    "streak": "{count} Day Streak",
+    "dontBreak": "Come back tomorrow to keep your streak!"
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "privacy": "Privacy",
+    "notifications": "Notifications",
+    "audio": "Audio",
+    "language": "Language",
+    "deleteAccount": "Delete Account"
+  },
+  "privacy": {
+    "title": "Privacy Settings",
+    "exportData": "Export My Data",
+    "deleteAccount": "Delete Account",
+    "consent": "Consent Settings",
+    "analytics": "Analytics",
+    "marketing": "Marketing"
+  },
+  "legal": {
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "cookies": "Cookie Policy",
+    "ageVerification": "Age Verification"
+  },
+  "errors": {
+    "networkError": "Network error. Please check your connection.",
+    "serverError": "Server error. Please try again later.",
+    "unauthorized": "Please sign in to continue.",
+    "notFound": "Page not found.",
+    "validation": "Please check your input and try again."
+  }
+}

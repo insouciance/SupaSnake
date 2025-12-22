@@ -62,22 +62,22 @@ INSERT INTO memory_domains (name, description, keywords, required_context) VALUE
    ARRAY['src/shared/config/game.ts']),
   ('architecture', 'Server authority, database, migrations',
    ARRAY['architecture', 'server authority', 'client', 'database', 'migration', 'schema'],
-   ARRAY[]),
+   ARRAY[]::text[]),
   ('platform', 'Hooks, agents, tooling, CLAUDE.md',
    ARRAY['hook', 'platform', 'claude', 'agent', 'memory', 'context'],
    ARRAY['CLAUDE.md']),
   ('security', 'Authentication, encryption, validation',
    ARRAY['security', 'auth', 'password', 'token', 'encrypt', 'validate', 'sanitize', 'login'],
-   ARRAY[]),
+   ARRAY[]::text[]),
   ('api', 'API routes, endpoints, requests',
    ARRAY['api', 'endpoint', 'route', 'request', 'response'],
-   ARRAY[]),
+   ARRAY[]::text[]),
   ('react', 'React components, hooks, state',
    ARRAY['react', 'component', 'useeffect', 'usestate'],
-   ARRAY[]),
+   ARRAY[]::text[]),
   ('best_practices', 'General coding best practices',
    ARRAY['best practice', 'pattern', 'clean code'],
-   ARRAY[])
+   ARRAY[]::text[])
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================

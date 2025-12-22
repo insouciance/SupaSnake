@@ -10,6 +10,10 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
+# Load environment variables for Supabase
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 

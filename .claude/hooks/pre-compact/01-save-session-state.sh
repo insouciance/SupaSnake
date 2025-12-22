@@ -1,57 +1,71 @@
 #!/bin/bash
-# PreCompact Hook: Trigger Intelligent Handoff
-# Prompts Claude to analyze session and write focused handoff to memory
+# PreCompact Hook: Auto-generate Handoff from Context Clues
+# Writes handoff automatically since Claude doesn't get a turn before compact
 # Exit 0: Always (non-blocking)
-
-# Gather context clues for Claude
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
-LAST_COMMITS=$(git log --oneline -3 2>/dev/null || echo "No commits")
-UNCOMMITTED=$(git status --short 2>/dev/null | head -5 || echo "No changes")
-ACTIVE_DOMAIN=$(cat state/read_activity/domain_activity.json 2>/dev/null | jq -r 'keys[0] // "unknown"' 2>/dev/null || echo "unknown")
-RECENT_READS=$(cat state/read_activity/recent_reads.json 2>/dev/null | jq -r '.reads[:5][].file' 2>/dev/null | xargs -I{} basename {} 2>/dev/null | tr '\n' ', ' || echo "none")
-
-# Output instructions to Claude
-cat >&2 <<EOF
-
-╔══════════════════════════════════════════════════════════════════╗
-║  ⚠️  CONTEXT RESET IMMINENT - HANDOFF REQUIRED                   ║
-╠══════════════════════════════════════════════════════════════════╣
-║                                                                  ║
-║  Before context clears, write a focused handoff to memory.       ║
-║                                                                  ║
-║  CONTEXT CLUES:                                                  ║
-║  • Branch: $CURRENT_BRANCH
-║  • Active Domain: $ACTIVE_DOMAIN
-║  • Recent Reads: $RECENT_READS
-║  • Last Commits:
-$(echo "$LAST_COMMITS" | sed 's/^/║    /')
-║  • Uncommitted:
-$(echo "$UNCOMMITTED" | sed 's/^/║    /')
-║                                                                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  ACTION REQUIRED:                                                ║
-║                                                                  ║
-║  1. Analyze what you were ACTUALLY working on (not CLAUDE.md)    ║
-║  2. Identify what's essential vs what's stale                    ║
-║  3. Write handoff to: state/handoff/current.json                 ║
-║                                                                  ║
-║  HANDOFF FORMAT:                                                 ║
-║  {                                                               ║
-║    "task": "What user asked for",                                ║
-║    "status": "in_progress|blocked|complete",                     ║
-║    "domain": "engagement|auth|game|platform|...",                ║
-║    "next_action": "Specific next step",                          ║
-║    "files_to_load": ["only essential files"],                    ║
-║    "decisions_made": ["key decisions this session"],             ║
-║    "context_to_drop": ["what became stale/irrelevant"]           ║
-║  }                                                               ║
-║                                                                  ║
-║  The new context will load this handoff automatically.           ║
-╚══════════════════════════════════════════════════════════════════╝
-
-EOF
 
 # Create handoff directory
 mkdir -p state/handoff
+
+# Gather context clues
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+LAST_COMMIT_MSG=$(git log --oneline -1 2>/dev/null | cut -d' ' -f2- || echo "unknown")
+UNCOMMITTED=$(git status --short 2>/dev/null | head -10 || echo "")
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Get active domain from read activity
+DOMAIN_FILE="state/read_activity/domain_activity.json"
+if [[ -f "$DOMAIN_FILE" ]]; then
+    ACTIVE_DOMAIN=$(jq -r 'to_entries | sort_by(.value.last_read) | reverse | .[0].key // "unknown"' "$DOMAIN_FILE" 2>/dev/null || echo "unknown")
+    RECENT_FILES=$(jq -r '[to_entries[].value.recent_files[]] | unique | .[-5:][]' "$DOMAIN_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+else
+    ACTIVE_DOMAIN="unknown"
+    RECENT_FILES=""
+fi
+
+# Build files_to_load array from recent reads
+FILES_JSON="[]"
+if [[ -n "$RECENT_FILES" ]]; then
+    FILES_JSON=$(echo "$RECENT_FILES" | tr ',' '\n' | jq -R -s 'split("\n") | map(select(length > 0))')
+fi
+
+# Infer task from last commit or uncommitted changes
+if [[ -n "$UNCOMMITTED" ]]; then
+    TASK="Working on uncommitted changes in $ACTIVE_DOMAIN domain"
+    STATUS="in_progress"
+    NEXT_ACTION="Review uncommitted changes and continue work"
+else
+    TASK="Completed: $LAST_COMMIT_MSG"
+    STATUS="complete"
+    NEXT_ACTION="Check for next task or user direction"
+fi
+
+# Write handoff JSON
+cat > state/handoff/current.json <<HANDOFF
+{
+  "task": "$TASK",
+  "status": "$STATUS",
+  "domain": "$ACTIVE_DOMAIN",
+  "next_action": "$NEXT_ACTION",
+  "files_to_load": $FILES_JSON,
+  "branch": "$CURRENT_BRANCH",
+  "timestamp": "$TIMESTAMP",
+  "auto_generated": true
+}
+HANDOFF
+
+# Output reminder to stderr (will be in summary)
+cat >&2 <<EOF
+
+╔══════════════════════════════════════════════════════════════════╗
+║  📋 AUTO-COMPACT HANDOFF SAVED                                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║  File: state/handoff/current.json                                ║
+║  Domain: $ACTIVE_DOMAIN
+║  Status: $STATUS
+║                                                                  ║
+║  AFTER COMPACT: Read state/handoff/current.json to resume        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+EOF
 
 exit 0

@@ -83,3 +83,18 @@ export async function authenticateUser(email: string, password: string) {
 
     // Validate input
 ```
+
+
+## Example Added: 2025-12-14 10:54
+
+```typescript
+screenShake.heavy();
+    });
+
+    gameRef.current.on('gameOver', async (data: any) => {
+      // Send results to server first
+      if (session?.access_token && currentSessionId) {
+        const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
+        try {
+          const response = await fetch('/api/game/session', {
+```

@@ -79,3 +79,18 @@ export async function authenticateUser(email: string, password: string) {
     if (!email || !password) {
       throw new Error('Email and password required');
 ```
+
+
+## Example Added: 2025-12-11 10:35
+
+```any
+"""Get Supabase client if credentials available"""
+    try:
+        from supabase import create_client
+        url = os.environ.get('NEXT_PUBLIC_SUPABASE_URL')
+        key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+        if url and key:
+            return create_client(url, key)
+    except ImportError:
+        pass
+```

@@ -1,0 +1,838 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:m="http://www.w3.org/1998/Math/MathML" xmlns:svg="http://www.w3.org/2000/svg" xmlns:epub="http://www.idpf.org/2007/ops" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" epub:prefix="index: http://www.index.com/">
+<head>
+<title>Chapter Twelve. Some Elements Are Game Mechanics</title>
+<link href="../styles/9781351803632.css" rel="stylesheet" type="text/css"/>
+</head>
+<body epub:type="bodymatter">
+<section epub:type="chapter" role="doc-chapter">
+<header>
+<h1 class="h2" id="chapter12"><span id="p165" aria-label=" page 165. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange3">CHAPTER</span> <span class="pd_orange1">TWELVE</span> <span class="h2subtitle"><span class="pd_orange1">Some Elements Are Game <i>Mechanics</i></span></span></h1>
+<p class="doi">DOI: <a aria-label="D.O.I. link to this document." href="https://doi.org/doi/10.1201/b22101-12">10.1201/b22101-12</a></p>
+</header>
+<figure class="figure" id="fig12_1">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.1</b></span></p>
+<img alt="" src="../images/fig12_1.jpg"/>
+</figcaption>
+</figure>
+<p class="noindent"><span id="p166" aria-label=" page 166. " epub:type="pagebreak" role="doc-pagebreak"/>We have talked a lot about designers, players, and the experience of gameplaying. It is time to talk nuts and bolts about what games are really made of. Game designers must learn to use their x-ray vision to be able to see past the skin of a game and quickly discern the skeleton, which is defined by the game mechanics.</p>
+<p class="indent">But what are these mysterious mechanics?</p>
+<p class="indent">Game mechanics are the core of what a game truly is. They are the interactions and relationships that remain when all of the aesthetics, technology, and story are stripped away.</p>
+<p class="indent">As with many things in game design, we do not have a universally agreed-upon taxonomy of game mechanics. One reason for this is that the mechanics of gameplay, even for simple games, tend to be quite complex and very difficult to disentangle. Attempts at simplifying these complex mechanics to the point of perfect mathematical understanding result in systems of description that are obviously incomplete. Economic &#8220;game theory&#8221; is an example of this. You would think with a name like &#8220;game theory,&#8221; it would be of great use to game designers, but in truth, it can only handle such simple systems that it is seldom useful for designing real games.</p>
+<p class="indent">But there is another reason that taxonomies of game mechanics are incomplete. On one level, game mechanics are very objective, clearly stated sets of rules. On another level, though, they involve something more mysterious. Earlier, we discussed how the mind breaks down all games into mental models that it can easily manipulate. Part of game mechanics necessarily involves describing the structure of these mental models. Since these exist largely in the darkness of the subconscious mind, it is hard for us come up with a well-defined analytical taxonomy of how they work.</p>
+<p class="indent">But that doesn&#8217;t mean we shouldn&#8217;t try. Some authors have approached this problem from a very academic perspective, more concerned with an analysis that is philosophically watertight than with one that might be useful to designers. We can&#8217;t afford this kind of pedantry. Knowledge for the sake of knowledge is a fine thing, but our interest is in knowledge for the sake of great games, even if it means a taxonomy that has some gray areas. With that said, I present the taxonomy that I use to classify game mechanics. These mechanics fall largely into seven main categories, and each one can provide useful insights on your game design.</p>
+<section class="level3">
+<h2 class="h3" id="sec12_1"><span class="pd_orange">Mechanic 1: Space</span></h2>
+<p class="noindent">Every game takes place in some kind of <b>space</b>. This space is the &#8220;magic circle&#8221; of gameplay. It defines the various places that can exist in a game and how those places are related to one another. As a game mechanic, space is a mathematical construct. We need to strip away all visuals, all aesthetics, and simply look at the abstract construction of a game&#8217;s space.</p>
+<p class="indent"><span id="p167" aria-label=" page 167. " epub:type="pagebreak" role="doc-pagebreak"/>There are no hard and fast rules for describing these abstract, stripped-down game spaces. Generally, though, game spaces</p>
+<ol class="list-order">
+<li><p class="list">Are either discrete or continuous</p></li>
+<li><p class="list">Have some number of dimensions</p></li>
+<li><p class="list">Have bounded areas that may or may not be connected</p></li>
+</ol>
+<p class="noindent">The game of tic-tac-toe, for example, features a board that is discrete and 2D. What do we mean by &#8220;discrete&#8221;? Well, even though we commonly draw a tic-tac-toe board like this:</p>
+<figure class="figure" id="fig12_2">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.2</b></span></p>
+<img alt="" src="../images/fig12_2.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">It is not really a continuous space, because we only care about boundaries, not the space within each cell. Whether you put your X&#8230;</p>
+<figure class="figure" id="fig12_3">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.3</b></span></p>
+<img alt="" src="../images/fig12_3.jpg"/>
+</figcaption>
+</figure>
+<figure class="figure" id="fig12_4">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.4</b></span></p>
+<img alt="" src="../images/fig12_4.jpg"/>
+</figcaption>
+</figure>
+<figure class="figure" id="fig12_5">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.5</b></span></p>
+<img alt="" src="../images/fig12_5.jpg"/>
+</figcaption>
+</figure>
+<p class="indent"><span id="p168" aria-label=" page 168. " epub:type="pagebreak" role="doc-pagebreak"/>It doesn&#8217;t really matter&#8212;all those are equivalent in terms of the game. But if you put your X here:</p>
+<figure class="figure" id="fig12_6">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.6</b></span></p>
+<img alt="" src="../images/fig12_6.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">That is another matter entirely. So, even though the players can make their marks in an infinite number of places in a continuous 2D space, there are really only nine discrete places that have any actual meaning in the game. In a sense, we really have nine zero-dimensional cells, connected to each other in a 2D grid, like this:</p>
+<figure class="figure" id="fig12_7">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.7</b></span></p>
+<img alt="" src="../images/fig12_7.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">Each circle represents a zero-dimensional place, and each line shows which places are connected to each other. In tic-tac-toe, there is no movement from place to place, but adjacency is very important. Without adjacency, it would just be nine disconnected points. With the adjacency, it becomes a discrete 2D space, with clear boundaries&#8212;the space is three cells wide and three cells high. The space for a chessboard is similar, except that it is an 8 &#215; 8 space.</p>
+<p class="indent">A game with fancy aesthetics can fool you into thinking that its functional space is more complex than it really is. Consider a Monopoly board.</p>
+<p class="indent">At first glance, you might say it is a discrete 2D space, like a chessboard, with most of the middle cells missing. But it can be more simply represented as a 1D space&#8212;a single line of forty discrete points, which connects to itself in a loop. Sure, on the game board, the corner spaces look special because they are bigger, but functionally that doesn&#8217;t matter, since each game square is a zero-dimensional space. Multiple game pieces can be in a single game square, but their relative positions within that square are meaningless.</p>
+<p class="indent"><span id="p169" aria-label=" page 169. " epub:type="pagebreak" role="doc-pagebreak"/>But not all game spaces are discrete. A pool table is an example of a continuous 2D space. It has a fixed length and width, and the balls can freely move about on the table, ricocheting off of the walls or falling into the holes, which are in fixed positions. Everyone would agree that the space is continuous, but is it 2D? Since clever players can sometimes cause the balls to leave the table and hop over each other, you could certainly argue that this is really a 3D game space, and for some purposes, it is useful to think of it that way. There are no hard and fast rules for these abstract functional spaces. When designing a new game, there are times it will be useful for you to think of your space as 2D and there are times when thinking of it as 3D is more useful. The same goes for continuous vs. discrete. The purpose of stripping down a game into a functional space is so that you can more easily think about it, without the distractions of aesthetics or the real world. If you are thinking about modifying the game of soccer to a playing field with new boundaries, you will probably think about it in terms of a 2D continuous space.</p>
+<figure class="figure" id="fig12_8">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.8</b></span></p>
+<img alt="" src="../images/fig12_8.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">But if you are thinking about modifying the height of the goal, or changing the rules about how high the players can kick the ball, or adding hills and valleys to the field, it is useful to think of it as a continuous 3D space instead.</p>
+<figure class="figure" id="fig12_9">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.9</b></span></p>
+<img alt="" src="../images/fig12_9.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">There might even be times you think about a soccer field as a discrete space&#8212;breaking it up into, say, nine major areas of play, with two extra areas on the left <span id="p170" aria-label=" page 170. " epub:type="pagebreak" role="doc-pagebreak"/>and right representing the goals. This mode of thinking might prove useful if you are analyzing the different kinds of play that take place in different parts of the field, for example. The important thing is that you come up with abstract models of your game space that help you better understand the interrelationships of your game.</p>
+<section class="level4">
+<h3 class="h4" id="sec12_1_1"><span class="pd_orange">Nested Spaces</span></h3>
+<figure class="figure" id="fig12_10">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.10</b></span></p>
+<img alt="" src="../images/fig12_10.jpg"/>
+</figcaption>
+</figure>
+<p class="noindent">Many game spaces are more complex than the examples we have looked at here. Often, they feature &#8220;spaces within spaces.&#8221; Computer-based fantasy role-playing games are a good example of this. Most of them feature an &#8220;outdoor space&#8221; that is continuous and 2D. A player traveling this space sometimes encounters little icons representing towns, or caves, or castles. Players can enter these as completely separate spaces, not really connected in any way to the &#8220;outdoor space&#8221; but through the gateway icon. This is not geographically realistic, of course&#8212;but it matches our mental models of how we think about spaces&#8212;when we are indoors we think about the space inside the building we are in, with little thought to how it exactly relates to the space outside. For this reason, these &#8220;spaces within spaces&#8221; are often a great way to create a simple representation of a complex world.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_1_2"><span class="pd_orange">Zero Dimensions</span></h3>
+<p class="noindent">Does every game take place in a space? Consider a game like &#8220;Twenty Questions,&#8221; where one player thinks of an object, and the other player asks &#8220;yes or no&#8221; questions trying to guess what it is. There is no game board and nothing moves&#8212;the game is just two people talking. You might argue that this game has no space. On the other hand, you might find it useful to think of the game happening in a space that looks like <a class="figure" href="C15_chapter12.xhtml#fig12_11">Figure 12.11</a>.</p>
+<p class="indent">
+<span id="p171" aria-label=" page 171. " epub:type="pagebreak" role="doc-pagebreak"/></p>
+<figure class="figure" id="fig12_11">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.11</b></span></p>
+<img alt="" src="../images/fig12_11.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">The mind of the answerer contains the secret object. The mind of the questioner is where all the weighing of the previous answers is going on, and the conversation space between them is how they exchange information. Every game has some kind of information or &#8220;state&#8221; (as we&#8217;ll see later in Mechanic 2), and this has to exist somewhere. So, even if a game takes place in a single point of zero dimensions, it can be useful to think of it as a space. You may find that figuring out an abstract model for a game whose space seems to be trivial may lead you to insights about it that surprise you.</p>
+<p class="indent">Being able to think about the space of your game in functional abstract terms is an essential perspective for a designer, and it is <a href="C15_chapter12.xhtml#box26">Lens #26</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box26">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox26"><span class="pd_whitez">#26 The Lens of Functional Space</span></a></h2>
+<p class="noindent">To use this lens, think about the space in which your game really takes place when all surface elements are stripped away.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">Is the space of this game discrete or continuous?</p></li>
+<li><p class="list">How many dimensions does it have?</p></li>
+<li><p class="list">What are the boundaries of the space?</p></li>
+<li><p class="list">Are there subspaces? How are they connected?</p></li>
+<li><p class="list">Is there more than one useful way to abstractly model the space of this game?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_1.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Cheryl Ceol</i></p>
+</figcaption>
+</figure>
+</aside>
+<p class="indent">When thinking about game spaces, it is easy to be swayed by aesthetics. There are many ways to represent your game space, and they are all good, as long as they work for you. When you can think of your space in these pure abstract terms, it <span id="p172" aria-label=" page 172. " epub:type="pagebreak" role="doc-pagebreak"/>helps you let go of assumptions about the real world, and it lets you focus on the kinds of gameplay interactions you would like to see. Of course, once you have manipulated the abstract space so that you are happy with its layout, you will want to apply aesthetics to it. The Lens of Functional Space works quite well with <a href="C08_chapter5.xhtml#box10">Lens #10</a>: <i><a href="C08_chapter5.xhtml#box10">Holographic Design</a></i>. If you can simultaneously see your abstract functional space and the aesthetic space the player will experience, as well as how they interrelate, you can make confident decisions about the shape of your game&#8217;s world.</p>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_2"><span class="pd_orange">Mechanic 2: Time</span></h2>
+<p class="noindent">In the real world, <b>time</b> is the most mysterious of dimensions. Against our will, we travel through it, ever forward, with no way to stop, turn around, slow down, or speed up. In the world of games, we often try to remedy this lack of control by creating toy worlds that let us play with time like gods.</p>
+<section class="level4">
+<h3 class="h4" id="sec12_2_1"><span class="pd_orange">Discrete and Continuous Time</span></h3>
+<p class="noindent">Just as space in games can be discrete or continuous, so can time. We have a word for the unit of discrete time in a game: the &#8220;turn.&#8221; Generally, in turn-based games, time matters little. Each turn counts as a discrete unit of time, and the time between turns, as far as the game is concerned, doesn&#8217;t exist. Scrabble games, for example, are generally recorded as a series of moves, with no record of the amount of time that each move took, because real clock time is irrelevant to the game mechanics.</p>
+<p class="indent">Of course, there are many games that are not turn based, but instead operate in continuous time. Most action videogames are this way, as are most sports. And some games use a mix of time systems. Tournament chess is turn-based but has a continuous clock to place time limits on each player.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_2_2"><span class="pd_orange">Clocks and Races</span></h3>
+<p class="noindent">Clocks of varying types are used in many games, to set absolute time limits for all kinds of things. The &#8220;sand timer&#8221; used in Boggle, the game clock in American football, and even the duration of Mario&#8217;s jump in <i>Donkey Kong</i> are different kinds of &#8220;clock&#8221; mechanisms, designed to limit gameplay through absolute measure of time. Just as there can be nested spaces, sometimes time is nested, as well. Basketball, for instance, is often played with a game clock to limit the length of total play but also with a much shorter &#8220;shot clock&#8221; to help ensure players take more risks, keeping the gameplay interesting.</p>
+<p class="indent">Other measures of time are more relative&#8212;we usually refer to these as &#8220;races.&#8221; In the case of a race, there is not a fixed time limit, but rather pressure to be faster than another player. Sometimes this is very obvious, like in an auto race, but other <span id="p173" aria-label=" page 173. " epub:type="pagebreak" role="doc-pagebreak"/>races are more subtle, such as my race in <i>Space Invaders</i> to destroy all the invading aliens before they manage to touch the ground.</p>
+<p class="indent">There are many games, of course, where time is not a limiting factor, but it is still a meaningful factor. In baseball, for example, innings are not timed, but if the game goes on too long, it can exhaust the pitcher, making time an important part of the game. In <a class="nounder" href="C16_chapter13.xhtml#chapter13">Chapter 13</a>: <a class="nounder" href="C16_chapter13.xhtml#chapter13"><i>Balance</i></a>, we will talk about different game factors that can control how long a game takes to play.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_2_3"><span class="pd_orange">Controlling Time</span></h3>
+<p class="noindent">Games give us the chance to do something we can never do in the real world: control time. This happens in a number of fascinating ways. Sometimes we stop time completely, as when a &#8220;time-out&#8221; is called in sporting match or when the &#8220;pause&#8221; button is pushed on a videogame. Occasionally, we speed up time, as happens in games like <i>Civilization</i>, so that we can see years pass in just seconds. But most often, we rewind time, which is what happens every time you die in a videogame and return to a previous checkpoint. Some games, such as Braid, go so far as to make manipulation of game time a central mechanic.</p>
+<p class="indent">Since time is invisible and unstoppable, it is easy to forget. Take this lens to help you remember.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box27">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox27"><span class="pd_whitez">#27 The Lens of Time</span></a></h2>
+<p class="noindent">It is said that &#8220;timing is everything.&#8221; Our goal as designers is to create experiences, and experiences are easily spoiled when they are too short or too long, too fast or too slow. Ask these questions to make yours just the right length:</p>
+<ul class="list-bullet">
+<li><p class="list">What is it that determines the length of my gameplay activities?</p></li>
+<li><p class="list">Are my players frustrated because the game ends too early? How can I change that?</p></li>
+<li><p class="list">Are my players bored because the game goes on too long? How can I change that?</p>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_2.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Sam Yip</i></p>
+</figcaption>
+</figure></li>
+<li><p class="list"><span id="p174" aria-label=" page 174. " epub:type="pagebreak" role="doc-pagebreak"/>Would clocks or races make my gameplay more exciting?</p></li>
+<li><p class="list">Time limits can irritate players. Would I better off without time limits?</p></li>
+<li><p class="list">Would a hierarchy of time structures help my game? That is, several short rounds that together comprise a larger round?</p></li>
+</ul>
+<p class="noindent">Timing can be very difficult to get right, but it can make or break a game. Often, it makes sense to follow the old vaudevillian adage &#8220;Leave &#8216;em wanting more.&#8221;</p>
+</aside>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_3"><span class="pd_orange">Mechanic 3: Objects</span></h2>
+<p class="noindent">A space without anything in it is, well, just a space. Your game space will surely have <b>objects</b> in it. Characters, props, tokens, scoreboards, or anything that can be seen or manipulated in your game falls into this category. Objects are the &#8220;nouns&#8221; of game mechanics. Technically, there are times you might consider the space itself an object, but usually the space of your game is different enough from other objects that it stands apart. Objects generally have one or more <b>attributes</b>, one of which is often the current position in the game space.</p>
+<p class="indent">Attributes are categories of information about an object. For example, in a racing game, a car might have maximum speed and current speed as attributes. Each attribute has a current <b>state</b>. The state of the &#8220;maximum speed&#8221; attribute might be 150 mph, while the state of the &#8220;current speed&#8221; attribute might be 75 mph if that is how fast the car is going. Maximum speed is not a state that will change much, unless perhaps you upgrade the engine in your car. Current speed, on the other hand, changes constantly as you play.</p>
+<p class="indent">If objects are the nouns of game mechanics, attributes and their states are the adjectives.</p>
+<p class="indent">Attributes can be static (such as the color of a checker), never changing throughout the game, or dynamic (the checker has a &#8220;movement mode&#8221; attribute with three possible states: &#8220;normal,&#8221; &#8220;king,&#8221; and &#8220;captured&#8221;). Primarily, we are interested in dynamic attributes.</p>
+<p class="indent">Here are two more examples:</p>
+<ol class="list-order">
+<li><p class="list">In chess, the king has a &#8220;movement mode&#8221; attribute with three important states (&#8220;free to move,&#8221; &#8220;in check,&#8221; and &#8220;checkmated.&#8221;)</p></li>
+<li><p class="list">In Monopoly, each property on the board can be considered an object with a dynamic &#8220;number of houses&#8221; attribute with six states (0, 1, 2, 3, 4, hotel) and a &#8220;mortgaged&#8221; attribute with two states (yes, no).</p></li>
+</ol>
+<p class="noindent">Is it important to communicate every state change to the player? Not necessarily. Some state changes are better hidden. But for others, it is crucial to be sure they are <span id="p175" aria-label=" page 175. " epub:type="pagebreak" role="doc-pagebreak"/>communicated to the player. A good rule of thumb is that if two objects behave the same way, they should look the same. If they behave differently, they should look different.</p>
+<p class="indent">Videogame objects, especially ones that simulate intelligent characters, have so many attributes and states that it is easy for a designer to get confused. It is often useful to construct a state diagram for each attribute to make sure you understand which states are connected to which and what triggers state changes. In terms of game programming, implementing the state of an attribute as a &#8220;state machine&#8221; can be a very useful way to keep all this complexity tidy and easy to debug. <a class="figure" href="C15_chapter12.xhtml#fig12_12">Figure 12.12</a> is a sample state diagram for the &#8220;movement&#8221; attribute of the ghosts in <i>Pac-Man</i>.</p>
+<figure class="figure" id="fig12_12">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.12</b></span></p>
+<img alt="" src="../images/fig12_12.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">The circle that reads &#8220;In Cage&#8221; is the initial state for the ghosts (double circle is often used to indicate the start state). Each of the arrows indicates a possible state transition, with an event that triggers that transition. Diagrams like these are very useful when trying to design complex behaviors in a game. They force you to really think through everything that can happen to an object and what makes it happen. By implementing these state transitions in computer code, you automatically forbid illegal transitions (such as &#8220;In Cage&#8221; &#8594; &#8220;Blue&#8221;), which helps cut down on puzzling bugs. These diagrams can get quite complicated and are sometimes nested. For example, it is quite likely that the real Pac-Man algorithm actually has several substates in &#8220;Chasing Pac-Man,&#8221; such as &#8220;Scanning for Pac-Man,&#8221; &#8220;On Pac-Man&#8217;s Tail,&#8221; and &#8220;Moving through a Tunnel.&#8221;</p>
+<p class="indent">Deciding which objects have what attributes and what states is up to you. There are often multiple ways to represent the same thing. In a game of poker, for example, you could define a player&#8217;s hand as an area of the game space that has five card objects in it, or you could decide you don&#8217;t want to think of cards as objects and just call the player&#8217;s hand an object that has five different card attributes. As with everything in game design, the &#8220;right&#8221; way to think about something is whichever way is most useful at the moment.</p>
+<p class="indent"><span id="p176" aria-label=" page 176. " epub:type="pagebreak" role="doc-pagebreak"/>Games that force the players to be aware of too many states (too many game pieces, too many statistics about each character) to play can confuse and overwhelm. In <a class="nounder" href="C16_chapter13.xhtml#chapter13">Chapter 13</a>: <a class="nounder" href="C16_chapter13.xhtml#chapter13"><i>Balance</i></a>, we&#8217;ll discuss techniques for optimizing the amount of state the players have to deal with. Thinking of your game strictly as a set of objects and attributes with changing states can give a very useful perspective, and it serves as <a href="C15_chapter12.xhtml#box28">Lens #28</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box28">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox28"><span class="pd_whitez">#28 The Lens of the State Machine</span></a></h2>
+<p class="noindent">To use this lens, think about what information changes during your game.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What are the objects in my game?</p></li>
+<li><p class="list">What are the attributes of the objects?</p></li>
+<li><p class="list">What are the possible states for each attribute?</p></li>
+<li><p class="list">What triggers the state changes for each attribute?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_3.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Chuck Hoover</i></p>
+</figcaption>
+</figure>
+<p class="noindent">Gameplaying is decision making. Decisions are made based on information. Deciding the different attributes, their states, and what changes them is core to the mechanics of your game.</p>
+</aside>
+<section class="level4">
+<h3 class="h4" id="sec12_3_1"><span class="pd_orange">Secrets</span></h3>
+<p class="noindent">A very important decision about game attributes and their states is who is aware of which ones. In many board games, all information is public; that is, everyone knows it. In a game of chess, both players can see every piece on the board and every piece that has been captured&#8212;there are no secrets, except what the other player is thinking. In card games, hidden or private state is a big part of the game. You know what cards you hold, but which ones your opponents hold is a mystery for you to puzzle out. The game of poker, for example, is largely about trying to guess what cards your opponents have while attempting to conceal information about what cards you might have. Games become dramatically different when you change what information is public or private. In standard &#8220;draw poker,&#8221; all states are private&#8212;players can only guess your hand based on how much you bet. In &#8220;stud poker,&#8221; some of your cards are private and some are public. This gives opponents <span id="p177" aria-label=" page 177. " epub:type="pagebreak" role="doc-pagebreak"/>much more information about each other&#8217;s situations, and the game feels very different. Board games such as <i>Battleship</i> and <i>Stratego</i> are all about guessing the states of your opponent&#8217;s private attributes.</p>
+<p class="indent">In videogames, we face something new: a state that only the game itself knows about. This raises a question about whether virtual opponents, from a game mechanics standpoint, should be thought of as players or just part of the game. This is well illustrated by a story: In 1980, my grandfather bought an Intellivision game console, which came with a &#8220;Las Vegas Poker and Blackjack&#8221; game cartridge. He had great fun with it, but my grandmother refused to play. &#8220;It cheats,&#8221; she insisted. I told her that was silly&#8212;it was just a computer&#8212;how could it cheat? She explained her reasoning: &#8220;It knows what all my cards are, and all the cards in the deck! How can it not cheat?&#8221; And I had to admit that my explanation that the computer &#8220;doesn&#8217;t look at those&#8221; when it is making decisions about playing the game sounded kind of weak. But it brings out the point that there were really three entities in that game who knew the states of different attributes: my grandfather, who was aware of the state of his hand; the virtual opponent algorithm, which was &#8220;aware&#8221; of the state of its hand; and lastly the main algorithm for the game, which was aware of both players&#8217; hands, every card in the deck, and everything else about the game.</p>
+<p class="indent">So, it seems that from a public/private attribute point of view, it makes sense to consider virtual opponents as individual entities on par with players. The game itself, though, is yet another entity, with a special status, since it isn&#8217;t really playing the game, although it may be making decisions that enable the game to happen. Celia Pearce points out another kind of information, which is private from all of the entities we have mentioned so far: randomly generated information, such as a die roll. Depending on your views about predestination, you might argue that this information doesn&#8217;t even exist until it is generated and revealed, so that referring to it as private is a little silly. But it does fit well into a Venn diagram I call the &#8220;hierarchy of knowers,&#8221; which helps to visualize the relationship between the public and private states:</p>
+<figure class="figure" id="fig12_13">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.13</b></span></p>
+<img alt="" src="../images/fig12_13.jpg"/>
+</figcaption>
+</figure>
+<p class="indent"><span id="p178" aria-label=" page 178. " epub:type="pagebreak" role="doc-pagebreak"/>Each circle in <a class="figure" href="C15_chapter12.xhtml#fig12_13">Figure 12.13</a> represents a &#8220;knower.&#8221; The &#8220;knowers&#8221; are god, the game, and players 1, 2, and 3. Each point represents some information in the game&#8212;the state of an attribute:</p>
+<ul class="list-bullet">
+<li><p class="list"><b>A</b> is information that is completely public, such as the position playing piece on a game board, or a face-up card. All the players are aware of it.</p></li>
+<li><p class="list"><b>B</b> is the state that is shared between players 2 and 3 but kept secret from player 1. Perhaps 2 and 3 each had the opportunity to look at a face-down card, but player 1 didn&#8217;t. Or maybe players 2 and 3 are virtual opponents of player 1, and their algorithm has them sharing information so they can team up against player 1.</p></li>
+<li><p class="list"><b>C</b> is information private to a single player, in this case player 2. It could be cards he was dealt, for example.</p></li>
+<li><p class="list"><b>D</b> is information that the game knows about, but not the players themselves. There are some mechanical board games where this kind of state exists in the physical structure of the board game, but is unknown to the players. <i>Stay Alive</i> was a classic example, with plastic sliders that when moved revealed holes in the board. <i>Touch&#233;</i> is another interesting example, where magnets of unknown polarity are placed under each square of the board. The states are &#8220;known&#8221; by the game, but not by the players. Another example is tabletop role-playing games, which feature a &#8220;dungeon master,&#8221; or &#8220;game master,&#8221; who is not one of the players and who privately knows a great deal of the game state, since she is the operational mechanism of the game, so to speak. Most computer games have a great deal of internal state that is not known to the players.</p></li>
+<li><p class="list"><b>E</b> is randomly generated information, known only by the fates, god, etc.</p></li>
+</ul>
+<p class="noindent">Secrets are power. <a href="C15_chapter12.xhtml#box29">Lens #29</a> will help you channel that power to make your game as interesting as it can be. Take it, but don&#8217;t tell anyone.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box29">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox29"><span class="pd_whitez">#29 The Lens of Secrets</span></a></h2>
+<p class="noindent">Change who has what information, and you change your game completely. To use this lens, think about who knows what and why.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What is known by the game only?</p></li>
+<li><p class="list">What is known by all players?</p></li>
+<li><p class="list">What is known by some or only one player?</p></li>
+<li><p class="list">Would changing who knows what information improve my game in some way?</p></li>
+</ul>
+<span id="p179" aria-label=" page 179. " epub:type="pagebreak" role="doc-pagebreak"/>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_4.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Lilian Qian</i></p>
+</figcaption>
+</figure>
+<p class="noindent">Gameplaying is decision making. Decisions are made based on information. Deciding the different attributes, their states, and who knows about them is core to the mechanics of your game. Small changes to who knows what information can radically change a game, sometimes for the better, sometimes for the worse. Who knows about what attributes can even change over the course of a game&#8212;a great way to create drama in your game is to make an important piece of private information suddenly become public.</p>
+</aside>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_4"><span class="pd_orange">Mechanic 4: Actions</span></h2>
+<p class="noindent">The next important game mechanic is the <b>action</b>. Actions are the &#8220;verbs&#8221; of game mechanics. There are two perspectives on actions or, put another way, two ways to answer the question &#8220;What can the players do?&#8221;</p>
+<p class="indent">The first kind of action is the <b>basic action</b>. These are simply the base actions a player can take. For example, in checkers, a player can perform only three basic operations:</p>
+<ul class="list-bullet">
+<li><p class="list">Move a checker forward.</p></li>
+<li><p class="list">Jump an opponent&#8217;s checker.</p></li>
+<li><p class="list">Move a checker backwards (kings only).</p></li>
+</ul>
+<p class="noindent">The second kind of action is <b>strategic action</b>. These are actions that are only meaningful in the larger picture of the game&#8212;they have to do with how the player is using basic actions to achieve a goal. The list of strategic actions is generally longer than the list of basic actions. Consider some possible strategic actions in checkers:</p>
+<ul class="list-bullet">
+<li><p class="list">Protect a checker from being captured by moving another checker behind it.</p></li>
+<li><p class="list">Force an opponent into making an unwanted jump.</p></li>
+<li><p class="list">Sacrifice a checker to trick your opponent.</p></li>
+<li><p class="list">Build a &#8220;bridge&#8221; to protect your back row.</p></li>
+<li><p class="list">Move a checker into the &#8220;king row&#8221; to make it a king.</p></li>
+</ul>
+<section class="level4">
+<h3 class="h4" id="sec12_4_1"><span id="p180" aria-label=" page 180. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Emergent Gameplay</span></h3>
+<p class="noindent">The strategic actions often involve subtle interactions within the game and are often very strategic moves. These actions are mostly not part of the rules, per se, but rather actions and strategies that emerge naturally as the game is played. Most game designers agree that interesting emergent actions are the hallmark of a good game. Consequently, the ratio of meaningful strategic actions to basic actions is a good measure of how much emergent behavior your game features. It is an elegant game indeed that allows a player a small number of basic actions but a large number of strategic actions. It should be noted that this is a somewhat subjective measure, since the number of &#8220;meaningful&#8221; strategic actions is a matter of opinion.</p>
+<p class="indent">Trying to create &#8220;emergent gameplay,&#8221; that is, interesting strategic actions, has been likened to tending a garden, since what emerges has a life of its own, but at the same time, it is fragile and easily destroyed. When you notice some interesting strategic actions showing up in your game, you must be able to recognize them and then do what you can to nurture them and give them a chance to flourish. But what makes these things spring up in the first place? It is not just luck&#8212;there are things you can do to increase the chances of interesting strategic actions appearing. Here are five tips for preparing the soil of your game and planting seeds of emergence.</p>
+<ol class="list-order">
+<li><p class="list"><b>Add more verbs</b>: That is, add more basic actions. The strategic actions appear when basic actions interact with each other, with objects, and with the game space. When you add more basic actions, there are more opportunities for interaction and thus emergence. A game where you can run, jump, shoot, buy, sell, drive, and build is going to have a lot more potential for emergence than a game where you can just run and jump. Be careful, though&#8212;adding too many basic actions, especially ones that don&#8217;t interact with each other well, can lead to a game that is bloated, confusing, and inelegant. Keep in mind that the ratio of strategic actions to basic actions is more important than the sheer number of basic actions. It is usually better to add one good basic action than a slew of mediocre ones.</p></li>
+<li><p class="list"><b>Verbs that can act on many objects</b>: This is possibly the single most powerful thing you can do to make an elegant, interesting game. If you give a player a gun that can only shoot bad guys, you have a very simple game. But if that same gun can also be used to shoot a lock off a door, break a window, hunt for food, pop a car tire, or write messages on the wall, you now start to enter a world of many possibilities. You still only have one basic action: &#8220;shoot,&#8221; but by increasing the number of things you can usefully shoot at, the number of meaningful strategic actions increases as well.</p></li>
+<li><p class="list"><b>Goals that can be achieved more than one way</b>: It&#8217;s great to let players do all kinds of different things in your game, giving them lots of verbs, and verbs <span id="p181" aria-label=" page 181. " epub:type="pagebreak" role="doc-pagebreak"/>with lots of objects. But if the goals can only be achieved one way, players have no reason to look for unusual interactions and interesting strategies. To follow up with the &#8220;shoot&#8221; example, if you let players shoot all kinds of things, but the goal of your game is just &#8220;shoot the boss monster,&#8221; the players will only do that. On the other hand, if you can shoot the monster, or shoot out a support chain so a chandelier could crash down on her, or maybe even not shoot her at all, but stop her through some nonviolent means, you will have rich, dynamic gameplay, where lots of things are possible. The challenge with this approach is that the game becomes hard to balance, for if one of the options is always significantly easier than the others (a dominant strategy), players will always pursue that option. We will discuss that further in <a class="nounder" href="C16_chapter13.xhtml#chapter13">Chapter 13</a>: <a class="nounder" href="C16_chapter13.xhtml#chapter13"><i>Balance</i></a>.</p></li>
+<li><p class="list"><b>Many subjects</b>: If checkers involved just one red checker and one black one but had the same rules, the game would not be interesting at all. It is because the players have many different pieces they can move, pieces that can interact with one another, coordinating and sacrificing, that the game becomes interesting. This method obviously doesn&#8217;t work for all games, but it can work in some surprising places. The number of strategic actions seems to have roughly a magnitude of subjects times verbs times objects, so adding more subjects is very likely to increase the number of strategic actions.</p></li>
+<li><p class="list"><b>Side effects that change constraints</b>: If every time you take an action, it has side effects that change the constraints on you or your opponent, very interesting gameplay is likely to result. Let us again look to checkers. Every time you move a piece, you not only change the squares that you threaten with capture, but you simultaneously change which squares your opponent (and you) can move into. In a sense, every move changes the very nature of the game space, whether or not you intended it to. Think how different checkers would be if multiple pieces could peacefully cohabitate on a single square. By forcing multiple aspects of the game to change with every basic action, you are very likely to cause interesting strategic actions to suddenly appear.</p></li>
+</ol>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box30">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox30"><span class="pd_whitez">#30 The Lens of Emergence</span></a></h2>
+<p class="noindent">To make sure your game has interesting qualities of emergence, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">How many verbs do my players have?</p></li>
+<li><p class="list">How many objects can each verb act on?</p></li>
+<li><p class="list"><span id="p182" aria-label=" page 182. " epub:type="pagebreak" role="doc-pagebreak"/>How many ways can players achieve their goals?</p></li>
+<li><p class="list">How many subjects do the players control?</p></li>
+<li><p class="list">How do side effects change constraints?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_5.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Reagan Heller</i></p>
+</figcaption>
+</figure>
+</aside>
+<p class="noindent">When comparing games with books and films, one of the most striking differences is the number of verbs. Games usually limit players to a very narrow range of potential actions, while in stories the number of possible actions that characters can engage in seems nearly limitless. This is a natural side effect of the fact that in games, the actions and all their effects must be simulated on the fly, while in stories it is all worked out ahead of time. In <a class="nounder" href="C21_chapter18.xhtml#chapter18">Chapter 18</a>: <a class="nounder" href="C21_chapter18.xhtml#chapter18"><i>Indirect Control</i></a>, we will discuss how this &#8220;action gap&#8221; can be bridged in the mind of the player, so that you can give the feeling of limitless possibilities while keeping the number of basic actions at a manageable limit.</p>
+<p class="indent">The reason so many games seem similar to one another is because they use the same set of actions. Look at the games that are considered &#8220;derivative,&#8221; and you will see that they have the same set of actions as older games. Look at games that people call &#8220;innovative,&#8221; and you will find that they give the players new kinds of actions, either basic or strategic. When <i>Donkey Kong</i> first appeared, it seemed very different because it was about running and jumping, which was new at the time. <i>Harvest Moon</i> was a game about farming. <i>Katamari Damacy</i> was about rolling a sticky ball. The actions a player can take are so crucial to defining a game&#8217;s mechanics that changing a single action can give you a completely different game.</p>
+<p class="indent">Some designers dream of games where any verb the player can think of is a possible action, and this is a beautiful dream. Some massively multiplayer games are starting to move in that direction, offering a wide range of verbs for combat, crafting, and social interaction. In a way, this is a return to the past&#8212;in the 1970s and 1980s, text adventures were very popular typically featuring dozens or hundreds of possible verbs. Only with the rise of more visual games did the number of verbs suddenly decrease, because it was not feasible to support all those actions in a visual-based game. The demise (or hibernation?) of the text adventure genre is usually attributed to the public&#8217;s hunger for fancy visuals&#8212;but perhaps, from an action perspective, there is another explanation. Modern 3D videogames give <span id="p183" aria-label=" page 183. " epub:type="pagebreak" role="doc-pagebreak"/>you a very limited range of basic actions. The player generally knows every action they can possibly attempt. In text adventures, the complete set of basic actions was unclear, and discovering them was part of the game. Very often, the solution to a tricky puzzle was thinking to type an unusual verb, like &#8220;spin the fish&#8221; or &#8220;tickle the monkey.&#8221; While this was all very creative, it was also often frustrating&#8212;for every one of the hundreds of verbs a game supported, there were thousands it did not. As a result, players did not really have the &#8220;complete freedom&#8221; that text adventure interfaces pretended to give them. It is possible that this frustration, more than anything else, caused text adventures to fall from favor.</p>
+<p class="indent">Your choice of actions significantly defines your game structure, so let&#8217;s make that <a href="C15_chapter12.xhtml#box31">Lens #31</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box31">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox31"><span class="pd_whitez">#31 The Lens of Action</span></a></h2>
+<p class="noindent">To use this lens, think about what your players can do and what they can&#8217;t and why.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What are the basic actions in my game?</p></li>
+<li><p class="list">What are the strategic actions?</p></li>
+<li><p class="list">What strategic actions would I like to see? How can I change my game in order to make those possible?</p></li>
+<li><p class="list">Am I happy with the ratio of strategic to basic actions?</p></li>
+<li><p class="list">What actions do players wish they could do in my game that they cannot? Can I somehow enable these, either as basic or strategic actions?</p></li>
+</ul>
+<p class="noindent">A game without actions is like a sentence without verbs&#8212;nothing happens. Deciding the actions in your game will be the most fundamental decision you can make as a game designer. Tiny changes to these actions will have tremendous ripple effects with the possibility of either creating marvelous emergent gameplay or making a game that is predictable and tedious. Choose your actions carefully, and learn to listen to your game and your players to learn what is made possible by your choices.</p>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_6.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Nick Daniel</i></p>
+</figcaption>
+</figure>
+</aside>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_5"><span id="p184" aria-label=" page 184. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Mechanic 5: Rules</span></h2>
+<p class="noindent">The <b>rules</b> are really the most fundamental mechanic. They define the space, the timing, the objects, the actions, the consequences of the actions, the constraints on the actions, and the goals. In other words, they make possible all the mechanics we have seen so far and add the crucial thing that makes a game a game&#8212;goals.</p>
+<section class="level4">
+<h3 class="h4" id="sec12_5_1"><span class="pd_orange">Parlett&#8217;s Rule Analysis</span></h3>
+<p class="noindent">David Parlett, game historian, did a very good job of analyzing the different kinds of rules that are involved with gameplay, as shown in this diagram.</p>
+<figure class="figure" id="fig12_14">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.14</b></span></p>
+<img alt="" src="../images/fig12_14.jpg"/>
+</figcaption>
+</figure>
+<p class="indent">This shows the relationships between all the kinds of rules we are likely to encounter, so let&#8217;s consider each.</p>
+<ol class="list-order">
+<li><p class="list"><b>Operational rules</b>: These are the easiest to understand. These are basically &#8220;What the players do to play the game.&#8221; When players understand the operational rules, they can play a game.</p></li>
+<li><p class="list"><b>Foundational rules</b>: The foundational rules are the underlying formal structure of the game. The operational rules might say &#8220;The player should roll a six-sided die, and collect that many power chips.&#8221; The foundational rules would be more abstract: &#8220;The player&#8217;s power value is increased by a random number from 1 to 6.&#8221; <span id="p185" aria-label=" page 185. " epub:type="pagebreak" role="doc-pagebreak"/>Foundational rules are a mathematical representation of game state and how and when it changes. Boards, dice, chips, health meters, etc., are all just operational ways of keeping track of the foundational game state. As Parlett&#8217;s diagram shows, foundational rules inform operational rules. There is not yet any standard notation for representing these rules, and there is some question about whether a complete notation is even possible. In real life, game designers learn to see the foundational rules on an as-needed basis, but seldom do they have any need to formally document the entire set of foundational rules in a completely abstract way.</p></li>
+<li><p class="list"><b>Behavioral rules</b>: These are rules that are implicit to gameplay, which most people naturally understand as part of &#8220;good sportsmanship.&#8221; For example, during a game of chess, one should not tickle the other player while they are trying to think or take five hours to make a move. These are seldom stated explicitly&#8212;mostly, everyone knows them. The fact that they exist underlines the point that a game is a kind of social contract between players. These, too, inform the operational rules. Steven Sniderman has written an excellent essay about behavioral rules called &#8220;Unwritten Rules.&#8221;</p></li>
+<li><p class="list"><b>Written rules</b>: These are the &#8220;rules that come with the game,&#8221; the document that players have to read to gain an understanding of the operational rules. Of course, in reality, only a small number of people read this document&#8212;most people learn a game by having someone else explain how to play. Why? It is very hard to encode the nonlinear intricacies of how to play a game into a document and similarly hard to decode such a document. Modern videogames have gradually been doing away with written rules in favor of having the game itself teach players how to play through interactive tutorials. This hands-on approach is far more effective, though it can be challenging and time consuming to design and implement as it involves many iterations that cannot be completed until the game is in its final state. Every game designer must have a ready answer to the question: &#8220;How will players learn to play my game?&#8221; Because if someone can&#8217;t figure out your game, they will not play it.</p></li>
+<li><p class="list"><b>Laws</b>: These are only formed when games are played in serious, competitive settings, where the stakes are high enough that a need is felt to explicitly record the rules of good sportsmanship or where there is need to clarify or modify the official written rules. These are often called &#8220;tournament rules,&#8221; since during a serious tournament is when there is the most need for this kind of official clarification. Consider these tournament rules for playing Tekken 5 (a fighting game) at the 2005 Penny Arcade Expo:</p>
+<ol class="list-alpha-lower">
+<li><p class="list-item">Single elimination.</p></li>
+<li><p class="list-item">You may bring your own controller.</p></li>
+<li><p class="list-item">Standard VS mode.</p></li>
+<li><p class="list-item">100% health.</p></li>
+<li><p class="list-item">Random stage select.</p></li>
+<li><p class="list-item"><span id="p186" aria-label=" page 186. " epub:type="pagebreak" role="doc-pagebreak"/>60 second timer.</p></li>
+<li><p class="list-item">Best 3 of 5 rounds.</p></li>
+<li><p class="list-item">Best 2 of 3 games.</p></li>
+<li><p class="list-item">Mokujin is banned.</p></li>
+</ol>
+<p class="indent">Most of these are just clarifying exactly which game settings will be used in the tournament. &#8220;You may bring your own controller&#8221; is a formalized decision about what is &#8220;fair play.&#8221; The most interesting rule here is &#8220;Mokujin is banned.&#8221; Mokujin is one of the characters you can choose to play in <i>Tekken 5</i>. The general feeling among players is that Mokujin&#8217;s &#8220;stun&#8221; move is so powerful that any player who chooses to play Mokujin is likely to win the game, making a tournament pointless. So this &#8220;law&#8221; is an attempt to improve the game, ensuring the tournament is balanced, fair, and fun.</p></li>
+<li><p class="list"><b>Official rules</b>: These are created when a game is played seriously enough that a group of players feels a need to merge the written rules with the laws. Over time, these official rules later become the written rules. In chess, when a player makes a move that puts the opponent&#8217;s king in danger of checkmate, that player is obligated to warn the opponent by saying &#8220;check.&#8221; At one time, this was a &#8220;law,&#8221; not a written rule, but now it is part of the &#8220;official rules.&#8221;</p></li>
+<li><p class="list"><b>Advisory rules</b>: Often called &#8220;rules of strategy,&#8221; these are just tips to help you play better, and not really &#8220;rules&#8221; at all from a game mechanics standpoint.</p></li>
+<li><p class="list"><b>House rules</b>: These rules are not explicitly described by Parlett, but he does point out that as players play a game, they may find they want to tune the operational rules to make the game more fun. This is the &#8220;feedback&#8221; on his diagram, since house rules are usually created by players in response to a deficiency perceived after a few rounds of play.</p></li>
+</ol>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_5_2"><span class="pd_orange">Modes</span></h3>
+<p class="noindent">Many games have very different rules during different parts of play. The rules often change completely from mode to mode, almost like completely separate games. One memorable instance was the racing game <i>Pitstop</i>. Most of the time, it was a typical racing game but with a twist&#8212;if you didn&#8217;t pull over to change your tires periodically, they would burst. When you did pull over, the game changed completely&#8212;now you were not racing your car, but rather racing to change your tires, with a completely different game interface. When your game changes modes in a dramatic way like this, it is very important that you let your players know which mode you are in. Too many modes and the players can get confused. Very often, there is one main mode, with several submodes, which is a good hierarchical way to organize the different modes. Game designer Sid Meier proposes an excellent rule of thumb: players should never spend so much time in a subgame that they forget what they were doing in the main game. We will talk more about modes in <a class="nounder" href="C18_chapter15.xhtml#chapter15">Chapter 15</a>: <a class="nounder" href="C18_chapter15.xhtml#chapter15"><i>Interface</i></a>.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_5_3"><span id="p187" aria-label=" page 187. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Enforcer</span></h3>
+<p class="noindent">One of the most significant differences between videogames and more traditional games is who enforces the rules. In traditional games, rules are primarily enforced by the players themselves or by an impartial referee in high-stakes games, such as sporting events. With computer games, it becomes possible (and sometimes necessary) for the computer to enforce the rules. This is more than a convenience&#8212;it allows for the creation of games much more complex than was traditionally possible, because now the players don&#8217;t have to memorize all the rules about what is and is not possible&#8212;they just try things in the game, and see what works and what doesn&#8217;t work&#8212;they don&#8217;t have to memorize it all, or look it up. In a sense, what used to be a &#8220;rule&#8221; now becomes a physical constraint of the game world. If a piece isn&#8217;t allowed to move a certain way, it simply doesn&#8217;t move that way. Many of the game rules are enforced by the design of the space, the objects, and the actions. A game like Warcraft could conceivably be a board game, but there would be so many rules to remember and state to keep track of that it would quickly become a dreary experience. By offloading the dull work of rules enforcement onto the computer, games can reach depths of complexity, subtlety, and richness that are not possible any other way. But proceed with caution&#8212;if the rules of your videogame are so complex that a player can&#8217;t even form a rough idea of how the game works, they will be overwhelmed and confused. You must make the rules of a complex videogame something that players can discover and understand naturally&#8212;not something they have to memorize.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_5_4"><span class="pd_orange">Cheatability</span></h3>
+<p class="noindent">The reason games need an enforcer is to prevent cheating. Violating the rules is bad gamesmanship, certainly, but as we&#8217;ve seen throughout history, some players will stop at nothing to be perceived as the winner. Obviously, when you play a game, you want to make sure others don&#8217;t cheat. But cheating has a more insidious effect than that&#8212;if players start believing your game is cheatable, even if it isn&#8217;t, all the precious endogenous value you have worked to develop just slips away. Players imagine themselves working hard to win and imagine another player cheating, and it makes them feel like chumps. That is the danger of cheatability&#8212;if players feel like your game can be cheated, some will try to cheat, but most will just no longer want to play.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_5_5"><span class="pd_orange">The Most Important Rule</span></h3>
+<p class="noindent">Games have a lot of rules&#8212;how to move and what you can and cannot do&#8212;but there is one rule at the foundation of all the others: the object of the game. Games are about achieving goals&#8212;you must be able to state your game&#8217;s goal and state it clearly. Often, there is not just one goal in a game, but a sequence of them&#8212;you will need to state each and how they relate to one another. A clumsy statement of your <span id="p188" aria-label=" page 188. " epub:type="pagebreak" role="doc-pagebreak"/>game&#8217;s goal can be off-putting to players right from the beginning&#8212;if they don&#8217;t completely understand the purpose of their actions, they cannot proceed with any certainty. Newcomers to chess are often stymied when someone awkwardly tries to explain the object of the game: &#8220;Your goal is to put the other king in checkmate&#8230; that means you move your pieces so he can&#8217;t move without being in check&#8230; which, uh, means that one of your pieces could potentially capture him, except that, um, it&#8217;s against the rules to capture the king.&#8221; As a boy, I often wondered why a game considered to be so elegant could have such an inelegant goal. I played the game for years before I realized that the goal of chess is actually quite simple: &#8220;Capture your opponent&#8217;s king.&#8221; All the folderol about check and checkmate is simply there to politely warn your opponent that they are in imminent danger. It is remarkable how more interested a potential chess player becomes when you tell them that simple four-word goal. The same is true for any game you create&#8212;the more easily players understand the goal, the more easily they can visualize achieving it, and the more likely they are going to want to play your game.</p>
+<p class="indent">When a goal is set in a player&#8217;s mind, it gives them tremendous motivation to see it through. Having a clear set of well-constructed goals or quests is crucial to keeping your players engaged and motivated. Good game goals are as follows:</p>
+<ol class="list-order">
+<li><p class="list"><b>Concrete</b>: Players understand and can clearly state what they are supposed to achieve.</p></li>
+<li><p class="list"><b>Achievable</b>: Players need to think that they have a chance of achieving the goal. If it seems impossible to them, they will quickly give up.</p></li>
+<li><p class="list"><b>Rewarding</b>: A lot goes into making an achieved goal rewarding. If the goal has the right level of challenge, just achieving it at all is a reward in itself. But why not go further? You can make your goal even more rewarding by giving the player something valuable upon reaching the goal&#8212;use <a href="C12_chapter9.xhtml#box20">Lens #20</a>: <i><a href="C12_chapter9.xhtml#box20">Pleasure</a></i>, to find different ways to reward the player and really make them proud of their achievement. And while it is important to reward players that achieve a goal, it is equally (or more) important that players appreciate that the goal is rewarding before they have achieved it, so that they are inspired to attempt to achieve it. Don&#8217;t overinflate their expectations, though, for if they are disappointed with the reward for achieving a goal, they will not play again! We will talk much more about rewards in the next chapter.</p></li>
+</ol>
+<p class="noindent">And while it is important that each of the goals in your game has these qualities, it is also important that you have a good balance of goals in your game, with some short-term and some much longer term. This balance of goals will make your players feel they know what to do immediately and that ultimately they will achieve something important and magnificent.</p>
+<p class="indent">It is easy to focus so much on the action of a game that you forget about the goals. To help us remember the importance of goals, let&#8217;s add this lens to our toolbox.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box32">
+<h2 class="box-title"><span id="p189" aria-label=" page 189. " epub:type="pagebreak" role="doc-pagebreak"/><a href="C02b_tol.xhtml#rbox32"><span class="pd_whitez">#32 The Lens of Goals</span></a></h2>
+<p class="noindent">To ensure the goals of your game are appropriate and well balanced, ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What is the ultimate goal of my game?</p></li>
+<li><p class="list">Is that goal clear to players?</p></li>
+<li><p class="list">If there is a series of goals, do the players understand that?</p></li>
+<li><p class="list">Are the different goals related to each other in a meaningful way?</p></li>
+<li><p class="list">Are my goals concrete, achievable, and rewarding?</p></li>
+<li><p class="list">Do I have a good balance of short- and long-term goals?</p></li>
+<li><p class="list">Do players have a chance to decide on their own goals?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_7.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Zachary D. Coe</i></p>
+</figcaption>
+</figure>
+</aside>
+<p class="indent">It can be fascinating to pick up the Lens of the Toy, the Lens of Curiosity, and the Lens of Goals at the same time to see how these aspects of your game influence each other.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_5_6"><span class="pd_orange">Wrapping Up Rules</span></h3>
+<p class="noindent">Rules are the most fundamental of all game mechanics. A game is not just defined by its rules; a game is its rules. It is important to view your game from a rules perspective, and that is <a href="C15_chapter12.xhtml#box33">Lens #33</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box33">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox33"><span class="pd_whitez">#33 The Lens of Rules</span></a></h2>
+<p class="noindent">To use this lens, look deep into your game, until you can make out its most basic structure. Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What are the foundational rules of my game? How do these differ from the operational rules?</p></li>
+<li><p class="list">Are there &#8220;laws&#8221; or &#8220;house rules&#8221; that are forming as the game develops? Should these be incorporated into my game directly?</p></li>
+<li><p class="list"><span id="p190" aria-label=" page 190. " epub:type="pagebreak" role="doc-pagebreak"/>Are there different modes in my game? Do these modes make things simpler, or more complex? Would the game be better with fewer modes? More modes?</p></li>
+<li><p class="list">Who enforces the rules?</p></li>
+<li><p class="list">Are the rules easy to understand, or is there confusion about them? If there is confusion, should I fix it by changing the rules or by explaining them more clearly?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_8.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Joshua Seaver</i></p>
+</figcaption>
+</figure>
+<p class="noindent">There is a common misconception that designers make games by sitting down and writing a set of rules. This usually isn&#8217;t how it happens at all. A game&#8217;s rules are arrived at gradually and experimentally. The designer&#8217;s mind generally works in the domain of &#8220;operational rules,&#8221; occasionally switching to the perspective of &#8220;foundational rules&#8221; when thinking about how to change or improve the game. The &#8220;written rules&#8221; usually come toward the end, once the game is playable. Part of the designer&#8217;s job is to make sure there are rules that cover every circumstance. Be sure to take careful notes as you playtest, because it is during these tests that holes in your rules will appear&#8212;if you just patch them quickly and don&#8217;t make a note, the same hole will just show up again later. A game is its rules&#8212;give them the time and consideration that they deserve.</p>
+</aside>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_6"><span class="pd_orange">Mechanic 6: Skill</span></h2>
+<blockquote>
+<p class="quote"><i>In virtute sunt multi ascensus.</i></p>
+<p class="quote"><i>(There are many degrees in excellence.)</i></p>
+<p class="right">&#8212;Cicero</p>
+</blockquote>
+<p class="noindent">The mechanic of <b>skill</b> shifts the focus away from the game and onto the player. Every game requires players to exercise certain skills. If the player&#8217;s skill level is a good match to the game&#8217;s difficulty, the player will feel challenged and stay in the flow channel (as discussed in <a class="nounder" href="C13_chapter10.xhtml#chapter10">Chapter 10</a>: <a class="nounder" href="C13_chapter10.xhtml#chapter10"><i>Player&#8217;s Mind</i></a>).</p>
+<p class="indent"><span id="p191" aria-label=" page 191. " epub:type="pagebreak" role="doc-pagebreak"/>Most games do not just require one skill from a player&#8212;they require a blend of different skills. When you design a game, it is a worthwhile exercise to make a list of the skills that your game requires from the player. Even though there are thousands of possible skills that can go into a game, skills can generally be divided into three main categories:</p>
+<ol class="list-order">
+<li><p class="list"><b>Physical skills</b>: These include skills involving strength, dexterity, coordination, and physical endurance. Physical skills are an important part of most sports. Effectively manipulating a game controller is a kind of physical skill, but many videogames (such as camera-based dance games) require a broader range of physical skills from players.</p></li>
+<li><p class="list"><b>Mental skills</b>: These include the skills of memory, observation, and puzzle solving. Although some people shy away from games that require too much in the way of mental skills, it is the rare game that doesn&#8217;t involve some mental skills, because games are interesting when there are interesting decisions to make, and decision making is a mental skill.</p></li>
+<li><p class="list"><b>Social skills</b>: These include, among other things, reading an opponent (guessing what they are thinking), fooling an opponent, and coordinating with teammates. Typically, we think of social skills in terms of your ability to make friends and influence people, but the range of social and communication skills in games is much wider. Poker is largely a social game, because so much of it rests on concealing your thoughts and guessing the thoughts of others. Sports are very social, as well, with their focus on teamwork and on &#8220;psyching out&#8221; your opponents.</p></li>
+</ol>
+<section class="level4">
+<h3 class="h4" id="sec12_6_1"><span class="pd_orange">Real vs. Virtual Skills</span></h3>
+<p class="noindent">It is important to draw a distinction here: When we talk about skill as a game mechanic, we are talking about a <b>real skill</b> the player must have. In videogames, it is common to talk about your character&#8217;s skill level. You might hear a player announce &#8220;My warrior just gained two points on his sword fighting skill!&#8221; But &#8220;sword fighting&#8221; is not a real skill required of the player&#8212;the player is really just pushing the right buttons on the control pad at the right time. Sword fighting, in this context, is a <b>virtual skill</b>&#8212;one that the player is pretending to have. The interesting thing about virtual skills is that they can improve even though the player&#8217;s actual skill does not. The player might be just as sloppy at mashing the controller buttons as they ever were, but by mashing them enough times, they might be rewarded with a higher level of virtual skill, which allows their character to become a faster, more powerful swordfighter. Many &#8220;free-to-play&#8221; games have a whole monetization strategy based on the purchase of virtual skills.</p>
+<p class="indent">Virtual skills are a great way to give a player a feeling of power. Taken too far, it can feel hollow&#8212;some critics of massively multiplayer games complain that there is <span id="p192" aria-label=" page 192. " epub:type="pagebreak" role="doc-pagebreak"/>too much emphasis on virtual skills, and not enough on real skills. Often, the key to a fun game is finding the right mix of real and virtual skills. Many novice designers confuse the two&#8212;it is important that you draw a clear distinction between them in your mind.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_6_2"><span class="pd_orange">Enumerating Skills</span></h3>
+<p class="noindent">Making a list of all the skills required in your game can be a very useful exercise. You might make a general list: &#8220;my game requires memory, problem solving, and pattern matching skills.&#8221; Or you might make it very specific: &#8220;my game requires players to quickly identify and mentally rotate specific two-dimensional shapes in their heads, while solving a grid-based packing problem.&#8221; Listing skills can be very tricky&#8212;one interesting example comes from the game <i>RC Pro Am</i>, a racing game for the Nintendo Entertainment System (NES). In it, players steer the car with the joypad (left thumb), accelerate with the A button (right thumb), and fire weapons at opponents with the B button (also right thumb). To master this game, two surprising skills were required&#8212;the first was problem solving. Generally on NES games, you only push one button at a time&#8212;you take your thumb off the A button when you want to push the B button. But in <i>RC Pro Am</i>, this is disastrous&#8212;it means that if you want to fire a rocket (the B button), you have to release the car&#8217;s accelerator (the A button), and your opponent quickly speeds away! How to solve this problem? Some players try using a thumb for one button and finger for the other, but this is awkward and makes the game too hard to play. The best solution seems to involve a new grip on the controller: you hold your thumb sideways on the A button, so that when you want to occasionally push the B button, you can roll it down onto the B button smoothly, without releasing the accelerator. Once the player has solved this problem, they then need to practice this very specific physical skill. And of course, there are many other skills involved in the game&#8212;managing resources (missiles and mines, so you don&#8217;t run out), memorizing race courses, reacting to sharp turns and unexpected road hazards, and many more. The point is that even a game that seems somewhat simple might require many different skills from a player. As a designer, you need to know what these are.</p>
+<p class="indent">It is easy to fool yourself into thinking your game is about one skill, when other skills are actually more important. Many action-based videogames seem, on the surface, to be mainly about quickly reacting to opponents, when in truth there is a lot of puzzle solving required to figure out the right way to react to them and a lot of memorization required to avoid being surprised next time you play a given level. Designers are often disappointed to realize that a game they thought was about quick decisions and thinking on your feet is really about memorizing which enemies pop out at what time&#8212;a very different (and much more tedious) experience for the player. The skills that a player exercises go a long way toward determining the nature of that player&#8217;s experience, so you must know what these are. Viewing your game from this perspective is <a href="C15_chapter12.xhtml#box34">Lens #34</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box34">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox34"><span class="pd_whitez">#34 The Lens of Skill</span></a></h2>
+<p class="noindent">To use this lens, stop looking at your game, and start looking at the skills you are asking of your players.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What skills does my game require from the player?</p></li>
+<li><p class="list">Are there categories of skill that this game is missing?</p></li>
+<li><p class="list">Which skills are dominant?</p></li>
+<li><p class="list">Are these skills creating the experience I want?</p></li>
+<li><p class="list">Are some players much better at these skills than others? Does this make the game feel unfair?</p></li>
+<li><p class="list">Can players improve their skills with practice, leading to a feeling of mastery?</p></li>
+<li><p class="list">Does this game demand the right level of skill?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_9.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Emma Backer</i></p>
+</figcaption>
+</figure>
+<p class="noindent">Exercising skills can be a joyful thing&#8212;it is one of the reasons that people love games. Of course, it is only joyful if the skills are interesting and rewarding and if the challenge level strikes that ideal balance between &#8220;too easy&#8221; and &#8220;too hard.&#8221; Even dull skills (such as pushing buttons) can be made more interesting by dressing them up as virtual skills and providing the right level of challenge. Use this lens as a window into the experience the player is having. Because skills do so much to define experience, the Lens of Skill works quite well in conjunction with <a href="C05_chapter2.xhtml#box2">Lens #2</a>: <i><a href="C05_chapter2.xhtml#box2">Essential Experience</a></i>.</p>
+</aside>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_7"><span id="p193" aria-label=" page 193. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Mechanic 7: Chance</span></h2>
+<p class="noindent">Our seventh and final game mechanic is <b>chance</b>. We deal with it last because it concerns interactions between all of the other six mechanics: space, time, objects, actions, rules, and skills.</p>
+<p class="indent">Chance is an essential part of a fun game because chance means uncertainty, and uncertainty means surprises. And as we have discussed earlier (<a href="C07_chapter4.xhtml#box4">Lens #4</a>), surprises are an important source of human pleasure and the secret ingredient of fun.</p>
+<p class="indent">We must now proceed with caution. You can never take chance for granted, for it is very tricky&#8212;the math can be difficult, and our intuitions about it are often <span id="p194" aria-label=" page 194. " epub:type="pagebreak" role="doc-pagebreak"/>wrong. But a good game designer must become the master of chance and probability, sculpting it to her will, to create an experience that is always full of challenging decisions and interesting surprises. The challenges of understanding chance are well illustrated by a story about the invention of the mathematics of probability&#8212;invented, not surprisingly, for the express purpose of game design.</p>
+<section class="level4">
+<h3 class="h4" id="sec12_7_1"><span class="pd_orange">Invention of Probability</span></h3>
+<blockquote>
+<p class="quote"><i>Il est tres bon &#233;sprit, mais quel dommage, il n&#8217;est pas geometre.</i></p>
+<p class="quote"><i>(He&#8217;s a nice guy, but unfortunately, no mathematician.)</i></p>
+<p class="right">&#8212;Pascal to Fermat regarding the Chevalier de M&#233;r&#233;</p>
+</blockquote>
+<p class="noindent">It was the year 1654, and French nobleman Antoine Gombaud, the Chevalier de M&#233;r&#233; (pronounced &#8220;Shevulyay duh Mayray&#8221;), had a problem. He was an avid gambler and had been playing a game where he would bet that if he rolled a single die four times, at least one time it would come up as a six. He had made some good money from this game, but his friends got tired of losing and refused to play it with him any further. Trying to find a new way to fleece his friends, he invented a new game that he believed had the same odds as the last one. In his new game, he would bet that if he rolled a pair of dice twenty-four times, a twelve would come up at least once. His friends were wary at first but soon grew to like his new game, because the Chevalier started losing money fast! He was confused, because by his math, both games had the same odds. Chevalier&#8217;s reasoning was as follows:</p>
+<p class="indent">First Game: In four rolls of a single die, the Chevalier wins if at least one six comes up.</p>
+<p class="indent">The Chevalier reasoned that the chance of a single die coming up 6 was 1/6, and therefore rolling a die four times should mean the chance of winning was</p>
+<p class="eq">4 &#x00D7; (1/6) = 4/6 = 66%, which explained why he tended to win.</p>
+<p class="noindent">Second Game: In twenty-four rolls of a pair of dice, the Chevalier wins if at least one 12 comes up.</p>
+<p class="indent">The Chevalier determined that the chance of getting a 12 (double sixes) on a pair of dice was 1/36. He reasoned, then, that rolling the dice twenty-four times meant the odds should be</p>
+<p class="eq">24 &#x00D7; (1/36) = 24/36 = 2/3 = 66%. The same odds as the last game!</p>
+<p class="noindent">Confused and losing money, he wrote a letter to mathematician Blaise Pascal, asking for advice. Pascal found the problem intriguing&#8212;there was no established mathematics to answer these questions. Pascal then wrote to his father&#8217;s friend, Pierre de Fermat, for help. Pascal and Fermat began a lengthy correspondence about <span id="p195" aria-label=" page 195. " epub:type="pagebreak" role="doc-pagebreak"/>this and similar problems and, in discovering methods of solving them, established probability theory as a new branch of mathematics.</p>
+<p class="indent">What are the real odds of Chevalier&#8217;s games? To understand that, we have to get into some math&#8212;don&#8217;t fret, it&#8217;s easy math that anyone can do. Fully covering the mathematics of probability is not necessary for game design (and beyond the scope of this book), but knowing some of the basics can be quite handy. If you are a math genius, you can skip this section, or at least read it smugly. For the rest of us, I present the following:</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_7_2"><span class="pd_orange">Ten Rules of Probability Every Game Designer Should Know</span></h3>
+<section class="level5">
+<h4 class="h5a" id="sec12_7_2_1"><span class="pd_orange">Rule #1: Fractions Are Decimals Are Percents</span></h4>
+<p class="noindent">If you are one of those people who has always had a hard time with fractions and percents, it&#8217;s time to face up and deal with them, because they are the language of probability. Don&#8217;t stress&#8212;you can always use a calculator&#8212;no one is looking. The thing you have to come to grips with is that fractions, decimals, and percents are all the same thing and can be used interchangeably. In other words, &#189; = 0.5 = 50%. Those aren&#8217;t three different numbers; they are just three ways of writing exactly the same number.</p>
+<p class="indent">Converting from fractions to decimals is easy. Need to know the decimal equivalent of 33/50? Just type 33&#8201;&#247;&#8201;50 into your calculator, and you&#8217;ll get 0.66. What about percents? They&#8217;re easy too. If you look up the word &#8220;percent&#8221; in the dictionary, you&#8217;ll see that it really means &#8220;per 100.&#8221; So, 66% really means 66 per 100, or 66/100, or 0.66. If you look at Chevalier&#8217;s previous math, you&#8217;ll see why we need to convert back and forth so often&#8212;as humans, we like to talk in percents, but we also like to talk about &#8220;one chance in six&#8221;&#8212;so we need a way to convert between these forms. If you are the kind of person who suffers from math anxiety, just relax and practice a few of these on the calculator&#8212;you&#8217;ll have the hang of it in no time.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_2"><span class="pd_orange">Rule #2: Zero to One&#8212;and That&#8217;s It!</span></h4>
+<p class="noindent">This one&#8217;s easy. Probabilities can only range from 0% to 100%, that is, from 0 to 1 (see Rule #1), no less and no more. While you can say there is a 10% chance of something happening, there is no such thing as a &#8722;10% chance and certainly no such thing as a 110% chance. A 0% chance of something happening means it won&#8217;t happen, and a 100% chance means it definitely will. This all might sound obvious, but it points out a major problem with Chevalier&#8217;s math. Consider his first game with the four dice. He believed that with four dice, he had a 4 &#215; (1/6), or 4/6, or 0.66, or 66% chance of having a six come up. But what if he had seven dice? Then he would have had 7 &#215; (1/6) or 7/6 or 1.17 or 117% chance of winning! And that is certainly wrong&#8212;if you roll a die seven times, it might be likely that a six will come up one of those times, but it is not guaranteed (in fact, it is about a 72% chance). <span id="p196" aria-label=" page 196. " epub:type="pagebreak" role="doc-pagebreak"/>Anytime you calculate a probability that comes up greater than 100% (or less than 0%), you know for certain that you&#8217;ve done something wrong.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_3"><span class="pd_orange">Rule #3: &#8220;Looked For&#8221; Divided By &#8220;Possible Outcomes&#8221; Equals Probability</span></h4>
+<p class="noindent">The first two rules lay some basic groundwork, but now we are going to talk about what probability really is&#8212;and it is quite simple. You just take the number of times your &#8220;looked for&#8221; outcome can come up and divide by the number of possible outcomes (assuming your outcomes are equally likely), and you&#8217;ve got it. What is the chance of a six coming up when you roll a die? Well, there are six possible outcomes, and only one of them is the one we are looking for, so the chance of a six coming up is 1&#8201;&#247;&#8201;6, or 1/6, or about 17%. What is the chance of an even number coming up when you roll a die? There are 3 even numbers, so the answer is 3/6, or 50%. What is the chance of drawing a face card from a deck of cards? There are twelve face cards in a deck, and fifty-two cards total, so your chances of getting a face card are 12/52, or about 23%. If you understand this, you&#8217;ve got the fundamental idea of probability.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_4"><span class="pd_orange">Rule #4: Enumerate!</span></h4>
+<p class="noindent">If Rule #3 is as simple as it sounds (and it is), you might wonder why probability is so tricky. The reason is that the two numbers we need (the number of &#8220;looked for&#8221; outcomes and the number of possible outcomes) are not always so obvious. For example, if I asked you what the odds of flipping a coin three times and getting &#8220;heads&#8221; at least twice, what is the number of &#8220;looked for&#8221; outcomes? I&#8217;d be surprised if you could answer that without writing anything down. An easy way to find out the answer is to enumerate all the possible outcomes:</p>
+<ol class="list-order">
+<li><p class="list">HHH</p></li>
+<li><p class="list">HHT</p></li>
+<li><p class="list">HTH</p></li>
+<li><p class="list">HTT</p></li>
+<li><p class="list">THH</p></li>
+<li><p class="list">THT</p></li>
+<li><p class="list">TTH</p></li>
+<li><p class="list">TTT</p></li>
+</ol>
+<p class="noindent">There are exactly eight possible outcomes. Which ones have heads at least twice? #1, #2, #3, and #5. That&#8217;s 4 outcomes out of 8 possibilities, so the answer is 4/8, or a 50% chance. Now, why didn&#8217;t the Chevalier do this with his games? With his first game, there were four die rolls, which means 6 &#215; 6 &#215; 6 &#215; 6, or 1296 possibilities. <span id="p197" aria-label=" page 197. " epub:type="pagebreak" role="doc-pagebreak"/>It would have been dull work, but he could have enumerated all the possibilities in an hour or so (the list would have looked like 1111, 1112, 1113, 1114, 1115, 1116, 1121, 1122, 1123, etc.), then counted up the number of combinations that had a six in them (671), and divided that by 1296 for his answer. Enumeration will let you solve almost any probability problem, if you have the time. Consider the Chevalier&#8217;s second game, though: 24 rolls of 2 dice! There are 36 possible outcomes for 2 dice, and so enumerating all 24 rolls would have meant writing down 36<sup>24</sup> (a number 37 digits long) combinations. Even if he could somehow write down one combination a second, it would have taken longer than the age of the universe to list them all. Enumeration is handy, but when it takes too long, you need to take shortcuts&#8212;and that&#8217;s what the other rules are for.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_5"><span class="pd_orange">Rule #5: In Certain Cases, OR Means Add</span></h4>
+<p class="noindent">Very often, we want to determine the chances of &#8220;this OR that&#8221; happening, such as what are the chances of drawing a face card OR an ace from a deck of cards? When the two things we are talking about are mutually exclusive, that is, when it is impossible for both of them to happen simultaneously, you can add their individual probabilities to get an overall probability. For example, the chances of drawing a face card are 12/52, and the chances of drawing an ace are 4/52. Since these are mutually exclusive events (it is impossible for them both to happen at once), we can add them up: 12/52 + 4/52 = 16/52, or about a 31% chance.</p>
+<p class="indent">But what if we asked a different question: What are the chances of drawing an ace from a deck of cards or a diamond? If we add these probabilities, we get 4/52 + 13/52 (13 diamonds in a deck) = 17/52. But, if we enumerate, we see this is wrong&#8212;the right answer is 16/52. Why? Because the two cases are not mutually exclusive&#8212;I could draw the ace of diamonds! Since this case is not mutually exclusive, &#8220;or&#8221; does not mean add.</p>
+<p class="indent">Let&#8217;s look at Chevalier&#8217;s first game. He seems to be trying to use this rule for his die rolls&#8212;adding up four probabilities: 1/6&#8201;+&#8201;1/6&#8201;+&#8201;1/6&#8201;+&#8201;1/6. But he gets the wrong answer, because the four events are not mutually exclusive. The addition rule is handy, but you must be certain the events you are adding up are mutually exclusive from one another.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_6"><span class="pd_orange">Rule #6: In Certain Cases, AND Means Multiply</span></h4>
+<p class="noindent">This rule is almost the opposite of the previous one! If we want to find the probability of two things happening simultaneously, we can multiply their probabilities to get the answer&#8212;but ONLY if the two events are NOT mutually exclusive! Consider two die rolls. If we want to find the probability of rolling a six on both rolls, we can multiply together the probabilities of the two events: The chance of getting a six on one die roll is 1/6, and also 1/6 for a second die roll. So the chance of getting two sixes is 1/6 &#215; 1/6 = 1/36. You could also have determined that by enumeration, of course, but this is a much speedier way to do it.</p>
+<p class="indent"><span id="p198" aria-label=" page 198. " epub:type="pagebreak" role="doc-pagebreak"/>In Rule #5, we asked for the probability of drawing an ace OR a diamond from a deck of cards&#8212;the rule failed, because the two events were not mutually exclusive. So what if we asked about the probability of drawing an ace AND a diamond? In other words, what is the probability of drawing the ace of diamonds? It should be fairly intuitive that the answer is 1/52, but we can check that with Rule #6, since we know the two events are not mutually exclusive. The chance of getting an ace is 4/52, and the chance of a diamond is 13/52. Multiplying them, 4/52 &#215; 13/52 = 52/2704 = 1/52. So, the rule works and matches our intuition.</p>
+<p class="indent">Do we have enough rules yet to solve Chevalier&#8217;s problems? Let&#8217;s consider his first game:</p>
+<p class="indent">First Game: In four rolls of a single die, the Chevalier wins if at least one six comes up.</p>
+<p class="indent">We&#8217;ve already established that we could enumerate this and get the answer 671/1296, but that would take an hour. Is there a quicker way, using the rules we have?</p>
+<p class="indent">(I&#8217;ll warn you now&#8212;this gets a little hairy. If you don&#8217;t really care that much, save yourself the headache, and just skip to Rule #7. If you do care, then press on&#8212;you will find it worth the effort.)</p>
+<p class="indent">If the question was about the chances of rolling a die four times and getting four sixes, that would be an AND question for four events that are not mutually exclusive, and we could just use Rule #6: 1/6 &#215; 1/6 &#215; 1/6 &#215; 1/6 = 1/1296. But that isn&#8217;t what is asked. This is an OR question for four events that are not mutually exclusive (it is possible for the Chevalier to get multiple sixes on the four rolls). So what can we do? Well, one way is to break it down into events that are mutually exclusive and then add them up. Another way to phrase this game is</p>
+<p class="indent">What are the chances of rolling four dice, and getting either</p>
+<ol class="list-alpha-lower1">
+<li><p class="list">Four sixes, OR</p></li>
+<li><p class="list">Three sixes and one non-six, OR</p></li>
+<li><p class="list">Two sixes and two non-sixes, OR</p></li>
+<li><p class="list">One six and three non-sixes</p></li>
+</ol>
+<p class="noindent">That might sound a little complicated, but it is four different mutually exclusive events, and if we can figure the probability of each, we can just add them up and get our answer. We&#8217;ve already figured out the probability of (a), using Rule #6: 1/1296. So, how about (b)? Really, (b) is four different mutually exclusive possibilities:</p>
+<ol class="list-order">
+<li><p class="list">6, 6, 6, non-six</p></li>
+<li><p class="list">6, 6, non-six, 6</p></li>
+<li><p class="list">6, non-six, 6, 6,</p></li>
+<li><p class="list">Non-six, 6, 6, 6</p></li>
+</ol>
+<p class="noindent"><span id="p199" aria-label=" page 199. " epub:type="pagebreak" role="doc-pagebreak"/>The probability of rolling a six is 1/6, the probability of rolling a non-six is 5/6. So, the probability of each of those is 1/6 &#215; 1/6 &#215; 1/6 &#215; 5/6 = 5/1296. Now, if we add up all four, that comes to 20/1296. So, the probability of (b) is 20/1296.</p>
+<p class="indent">How about (c)? This one is the same as the last, but there are more combinations. It is tricky to figure out how many ways there are for exactly two sixes and two non-sixes to come up, but there are six ways:</p>
+<ol class="list-order">
+<li><p class="list">6, 6, non-six, non-six</p></li>
+<li><p class="list">6, non-six, 6, non-six</p></li>
+<li><p class="list">6, non-six, non-six, 6</p></li>
+<li><p class="list">non-six, 6, 6, non-six</p></li>
+<li><p class="list">non-six, 6, non-six, 6</p></li>
+<li><p class="list">non-six, non-six, 6, 6</p></li>
+</ol>
+<p class="noindent">And the probability of each of these is 1/6 &#215; 1/6 &#215; 5/6 &#215; 5/6 = 25/1296. Adding up all six of them comes to 150/1296.</p>
+<p class="indent">This leaves only (d), which is the inverse of (b):</p>
+<ol class="list-alpha-lower1">
+<li><p class="list">Non-six, non-six, non-six, 6</p></li>
+<li><p class="list">Non-six, non-six, 6, non-six</p></li>
+<li><p class="list">Non-six, 6, non-six, non-six</p></li>
+<li><p class="list">6, non-six, non-six, non-six</p></li>
+</ol>
+<p class="noindent">The probability of each is 5/6 &#215; 5/6 &#215; 5/6 &#215; 1/6 = 125/1296. Adding up all four gives 500/1296.</p>
+<p class="indent">So, we have now calculated the probability of the four mutually exclusive events:</p>
+<ol class="list-alpha-lower1">
+<li><p class="list">Four sixes&#8212;(1/1296)</p></li>
+<li><p class="list">Three sixes and one non-six&#8212;(20/1296)</p></li>
+<li><p class="list">Two sixes and two non-sixes&#8212;(150/1296)</p></li>
+<li><p class="list">One six and three non-sixes&#8212;(500/1296)</p></li>
+</ol>
+<p class="noindent">Adding up those four probabilities (as Rule #5 allows) gives us a total of 671/1296, or about 51.77%. So, we can see that this was a good game for the Chevalier&#8212;by winning more than 50% of the time, he eventually was likely to make a profit, but the game was close enough to even that his friends believed they had a chance&#8212;at least for a while. It certainly is a very different result than the 66% chance of winning the Chevalier believed he had!</p>
+<p class="indent">This is the same answer we could have gotten from enumeration, but much faster. Really, though, we did a kind of enumeration&#8212;it is just that the rules of <span id="p200" aria-label=" page 200. " epub:type="pagebreak" role="doc-pagebreak"/>addition and multiplication let us count everything up much faster. Could we do the same thing to get the answer to Chevalier&#8217;s second game? We could, but with 24 rolls of two dice, it would probably take an hour or more! This is faster than enumeration, but we can do even better by being tricky&#8212;that&#8217;s where Rule #7 comes in.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_7"><span class="pd_orange">Rule #7: One Minus &#8220;Does&#8221; = &#8220;Doesn&#8217;t&#8221;</span></h4>
+<p class="noindent">This is a more intuitive rule. If the chance of something happening is 10%, the chance of it not happening is 90%. Why is this useful? Because often it is quite hard to figure out the chance of something happening but easy to figure out the chance of it NOT happening.</p>
+<p class="indent">Consider Chevalier&#8217;s second game. To figure out the chance of double sixes coming up at least once on twenty-four die rolls would be nightmarish to figure out, because you have so many different possible events to add together (1 double sixes, 23 non&#8211;double sixes; 2 double sixes, 22 non&#8211;double sixes; etc.). On the other hand, what if we ask a different question: What are the chances of rolling two dice twenty-four times and NOT getting double sixes? That is now an AND question, for events that are not mutually exclusive, so we can use Rule #6 to get the answer! But first we&#8217;ll use Rule #7 twice&#8212;watch.</p>
+<p class="indent">The chance of double sixes coming up on a single roll of the dice is 1/36. So, by Rule #7, the chance of not getting double sixes is 1&#8201;&#8722;&#8201;1/36, or 35/36.</p>
+<p class="indent">So, using Rule #6 (multiplication), the chances of not getting double sixes twenty-four times in a row is 35/36 &#215; 35/36 twenty-four times, or as we say (35/36)<sup>24</sup>. You would not want to do this calculation by hand, but using a calculator, you find the answer is around 0.5086, or 50.86%. But that is the chance of the Chevalier losing. To find the chance of the Chevalier winning, we apply Rule #7 again: 1&#8201;&#8722;&#8201;0.5086 = 0.4914, or about 49.14%. Now it is clear why he lost this game! His chances of winning were close enough to even that it was hard for him to tell if this was a winning or losing game, but after playing many times, he was very likely to lose.</p>
+<p class="indent">Even though all probability problems can be solved through enumeration, Rule #7 can be a really handy shortcut. In fact, we could have used the same rule to solve the Chevalier&#8217;s first game!</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_8"><span class="pd_orange">Rule #8: The Sum of Multiple Linear Random Selections Is NOT a Linear Random Selection!</span></h4>
+<p class="noindent">Don&#8217;t panic. This one sounds hard, but it is really easy. A &#8220;linear random selection&#8221; is simply a random event where all the outcomes have an equal chance of happening. A die roll is a great example of a linear random selection. If you add up multiple die rolls, though, the possible outcomes do NOT have an equal chance of happening. If you roll two dice, for example, your chance of getting a seven is very <span id="p201" aria-label=" page 201. " epub:type="pagebreak" role="doc-pagebreak"/>good, while your chance of getting a twelve is small. Enumerating all the possibilities shows you why:</p>
+<figure class="informaltable">
+<img alt="" src="../images/c012_untbl_1.jpg"/>
+</figure>
+<p class="indent">Look at how many 7&#8217;s there are and only one little twelve! We can show this in a graph (see <a class="figure" href="C15_chapter12.xhtml#fig12_15">Figure 12.15</a>), called a probability distribution curve, to visually see the chances of each total coming up.</p>
+<p class="indent">Rule #8 might seem like a very obvious rule, but I frequently find novice game designers make the mistake of adding together two randomly selected numbers without realizing its effect. Sometimes, it is exactly the effect you want&#8212;in the game Dungeons and Dragons, players generate (virtual) skill attributes with values ranging from 3 to 18 by rolling three six-sided dice. As a result, you see a lot of attribute values around 10 or 11, but very few at 3 or 18, and this is exactly what the designers wanted. How would the game be different if players simply rolled a single twenty-sided die to get their attributes?</p>
+<p class="indent">Game designers who want to use mechanic of chance as a tool in their games must know what kind of probability distribution curve they want and know how to get it. With practice, probability distribution curves will be a very valuable tool in your toolbox.</p>
+<figure class="figure" id="fig12_15">
+<figcaption>
+<p class="title"><span class="pd_orange"><small>FIGURE</small><br/><b>12.15</b></span></p>
+<img alt="" src="../images/fig12_15.jpg"/>
+</figcaption>
+</figure>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_9"><span id="p202" aria-label=" page 202. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Rule #9: Roll the Dice</span></h4>
+<p class="noindent">All the probability we&#8217;ve been talking about so far is <b>theoretical probability</b>, that is, mathematically, what ought to happen. There is also <b>practical probability</b>, which is a measure of what has happened. For example, the theoretical probability of getting a 6 when I roll a die is a perfect 1/6, or about 16.67%. I could find the practical probability by rolling a six-sided die hundred times and recording how many times I get a six. I might record 20 sixes out of 100. In that case, my practical probability is 20%, which is not too far from the theoretical probability. Of course, the more trials I do, the closer I would expect the practical probability to get to the theoretical probability. This is sometimes known as the &#8220;Monte Carlo&#8221; method, after the famous casino.</p>
+<p class="indent">The great thing about the Monte Carlo method of determining probability is that it doesn&#8217;t involve any complex math&#8212;you just repeat the test over and over again and record how it comes out. It can sometimes give more useful results than theoretical probability too, because it is a measure of the real thing. If there is some factor that your mathematics didn&#8217;t capture (e.g., perhaps your die is slightly weighted toward sixes), or if the math is just so complicated that you can&#8217;t come up with a theoretical representation of your case, the Monte Carlo method can be just the thing. The Chevalier could easily have found good answers to his questions by just rolling the dice again and again, counting up wins, and dividing by the number of trials.</p>
+<p class="indent">And here in the computer age, if you know how to do a little bit of programming (or know someone who can&#8212;see Rule #10), you can easily simulate millions of trials in just a few minutes. It isn&#8217;t too hard to program simulations of games and get some very useful probability answers. For example, in Monopoly, which squares are landed on most frequently? It would be nearly impossible to figure this out theoretically&#8212;but a simple Monte Carlo simulation allows you to answer the question quickly by using a computer to roll the dice and move the pieces around the board a few million times. Alternatively, you could make use of the Machinations system created by Joris Dormans, which is specifically designed to model gameplay systems and show patterns of results through repeated simulations.</p>
+</section>
+<section class="level5">
+<h4 class="h5" id="sec12_7_2_10"><span class="pd_orange">Rule #10: Geeks Love Showing Off (Gombaud&#8217;s Law)</span></h4>
+<p class="noindent">This is the most important of all the probability rules. If you forget all the others but remember this one, you&#8217;ll get by just fine. There are many more difficult aspects of probability that we won&#8217;t get into here&#8212;when you run into them, the easiest thing to do is to find someone who considers themselves a &#8220;math whiz.&#8221; Generally, these people are thrilled to have someone actually needing their expertise, and they will bend over backwards to help you. I have used Rule #10 to solve hard game design probability questions again and again. If there aren&#8217;t any experts around you, post your question on a forum or mailing list. If you really want a fast response, preface it with &#8220;This problem is probably too difficult for anyone to solve, but I thought I would ask anyway,&#8221; for there are many math experts who love the ego boost of solving a <span id="p203" aria-label=" page 203. " epub:type="pagebreak" role="doc-pagebreak"/>problem that others think is impossible. In a sense, your hard problem is a game for them&#8212;why not use game design techniques to make it as attractive as possible?</p>
+<p class="indent">You might even be doing your geek a favor! I like to call Rule #10 &#8220;Gombaud&#8217;s Law,&#8221; in honor of Antoine Gombaud, the Chevalier de M&#233;r&#233;, who, through his awareness of this principle, not only solved his gambling problem (his mathematical one, anyway), but inadvertently initiated all of probability theory.</p>
+<p class="indent">You might be afraid of exercising Rule #10, because you are afraid of asking stupid questions. If you feel that way, don&#8217;t forget that Pascal and Fermat owed the Chevalier a great debt&#8212;without his stupid questions, they never would have made some of their greatest discoveries. Your stupid question might lead to a great truth of its own&#8212;but you&#8217;ll never know unless you ask.</p>
+</section>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_7_3"><span class="pd_orange">Expected Value</span></h3>
+<p class="noindent">You will use probability in many ways in your designs, but one of the most useful will be to calculate <b>expected value</b>. Very often, when you take an action in a game, the action will have a value, either positive or negative. This might be points, tokens, or money gained or lost. The expected value of a transaction in a game is the average of all the possible values that could result.</p>
+<p class="indent">For example, there might be a rule in a board game that when a player lands on a green space, he can roll a six-sided die and get that many power points. The expected value of this event is the average of all the possible outcomes. To get the average in this case, since all the probabilities are equal, we can add up all the possible die rolls, 1&#8201;+&#8201;2&#8201;+&#8201;3&#8201;+&#8201;4&#8201;+&#8201;5&#8201;+&#8201;6 = 21, and divide by 6, which gives us 3.5. As a game designer, it is very useful for you to know that each time someone lands on a green space, they will, on average, get 3.5 power points.</p>
+<p class="indent">But not all examples are so simple&#8212;some involve negative outcomes, and outcomes that aren&#8217;t evenly weighted. Consider a game where a player rolls two dice. If they get a 7, or an 11, they win $5, but if they get anything else, they lose $1. How do we figure out the expected value of this game?</p>
+<p class="indent">The chance of rolling a 7 is 6/36.</p>
+<p class="indent">The chance of rolling an 11 is 2/36.</p>
+<p class="indent">Using Rule #8, the chance of rolling anything else is 1&#8201;&#8722;&#8201;8/36, or 28/36.</p>
+<p class="indent">So, to calculate the expected value, we multiply the probabilities by the values for each and add them all up, like this:</p>
+<table class="all">
+<thead>
+<tr>
+<th scope="col" class="border"><p class="tab-para"><b>Outcome</b></p></th>
+<th scope="col" class="border"><p class="tab-parac"><b>Chance &#215; Outcome</b></p></th>
+<th scope="col" class="border"><p class="tab-parac"><b>Value</b></p></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="border"><p class="tab-para">7</p></td>
+<td class="border"><p class="tab-parac">6/36 &#215; $5</p></td>
+<td class="border"><p class="tab-parac">$0.83</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">11</p></td>
+<td class="border"><p class="tab-parac">2/36 &#215; $5</p></td>
+<td class="border"><p class="tab-parac">$0.28</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Everything else</p></td>
+<td class="border"><p class="tab-parac">28/36 &#215; &#8722;$1</p></td>
+<td class="border"><p class="tab-parac">&#8722;$0.78</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Expected value</p></td>
+<td class="border"><p>&#160;</p></td>
+<td class="border"><p class="tab-parac">$0.33</p></td>
+</tr>
+</tbody>
+</table>
+<p class="indent"><span id="p204" aria-label=" page 204. " epub:type="pagebreak" role="doc-pagebreak"/>So, we see that this is a good game to play, because in the long run, you will, on average, win thirty-three cents each time you play. But, what if we changed the game, so that only 7&#8217;s are winning numbers and 11&#8217;s make you lose a dollar, just like all the other numbers? This changes the expected value, like this:</p>
+<table class="all">
+<thead>
+<tr>
+<th scope="col" class="border"><p class="tab-para"><b>Outcome</b></p></th>
+<th scope="col" class="border"><p class="tab-parac"><b>Chance &#215; Outcome</b></p></th>
+<th scope="col" class="border"><p class="tab-parac"><b>Value</b></p></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="border"><p class="tab-para">7</p></td>
+<td class="border"><p class="tab-parac">6/36 &#215; $5</p></td>
+<td class="border"><p class="tab-parac">$0.83</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Everything else</p></td>
+<td class="border"><p class="tab-parac">30/36 &#215; &#8722;$1</p></td>
+<td class="border"><p class="tab-parac">&#8722;$0.83</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Expected value</p></td>
+<td class="border"><p>&#160;</p></td>
+<td class="border"><p class="tab-parac">$0.00</p></td>
+</tr>
+</tbody>
+</table>
+<p class="indent">An expected value of zero means that this game is just as good as flipping a coin in the long run. Wins and losses are completely balanced. What if we change it again, so that this time only eleven wins?</p>
+<table class="all">
+<tbody>
+<tr>
+<td class="border"><p class="tab-para"><b>Outcome</b></p></td>
+<td class="border"><p class="tab-parac"><b>Chance &#215; Outcome</b></p></td>
+<td class="border"><p class="tab-parac"><b>Value</b></p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">11</p></td>
+<td class="border"><p class="tab-parac">2/36 &#215; $5</p></td>
+<td class="border"><p class="tab-parac">$0.28</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Everything else</p></td>
+<td class="border"><p class="tab-parac">34/36 &#215; &#8722;$1</p></td>
+<td class="border"><p class="tab-parac">&#8722;$0.94</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Expected value</p></td>
+<td class="border"><p>&#160;</p></td>
+<td class="border"><p class="tab-parac">&#8722;$0.86</p></td>
+</tr>
+</tbody>
+</table>
+<p class="indent">Ouch! As you might expect, this is a losing game. You&#8217;ll lose, on average, about eighty-six cents each time you play it. Of course, you could make it into a fair game, or even a winning game, by increasing the payoff for getting an eleven.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_7_4"><span class="pd_orange">Consider Values Carefully</span></h3>
+<p class="noindent">Expected value is an excellent tool for game balancing, which we will discuss more in the next chapter&#8212;but if you aren&#8217;t careful about what the true value of an outcome is, it can be very misleading.</p>
+<p class="indent">Consider these three attacks that might be part of a fantasy role-playing game:</p>
+<table class="all">
+<tbody>
+<tr>
+<td class="border"><p class="tab-para"><b>Attack Name</b></p></td>
+<td class="border"><p class="tab-parac"><b>Chance of Hitting (%)</b></p></td>
+<td class="border"><p class="tab-parac"><b>Damage</b></p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Wind</p></td>
+<td class="border"><p class="tab-parac">100</p></td>
+<td class="border"><p class="tab-parac">4</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Fireball</p></td>
+<td class="border"><p class="tab-parac">80</p></td>
+<td class="border"><p class="tab-parac">5</p></td>
+</tr>
+<tr>
+<td class="border"><p class="tab-para">Lightning bolt</p></td>
+<td class="border"><p class="tab-parac">20</p></td>
+<td class="border"><p class="tab-parac">40</p></td>
+</tr>
+</tbody>
+</table>
+<p class="indent">What is the expected value of each of these? Wind is easy&#8212;it always does exactly 4 damage, so the expected value of that attack is 4. Fireball hits 80% of the time and misses 20% of the time, so it&#8217;s expected value is (5 &#215; 0.8) + (0 &#215; 0.2) = 4 points, the same as the wind attack. The lightning bolt attack doesn&#8217;t hit very often, but when it does, it packs a wallop. Its expected value is (40 &#215; 0.2) + (0 &#215; 0.8) = 8 points.</p>
+<p class="indent"><span id="p205" aria-label=" page 205. " epub:type="pagebreak" role="doc-pagebreak"/>Now, based on those values, one might conclude that players would always use the lightning bolt attack, since on average it does double the damage of the other two attacks. And if you are fighting an enemy that has 500 hit points, that might be correct. But what about an enemy with 15 hit points? Most players would not use lightning bolt in that case&#8212;they would opt for something weaker but surer. Why is this? Because even though the lightning bolt can do 40 damage points, only 15 of them are of any use in that situation&#8212;the real expected value of the lightning bolt against an enemy with 15 HP is (0.2 &#215; 15)&#8201;+&#8201;(0.8 &#215; 0) = 3 points, which is lower than both the wind and the fireball attack.</p>
+<p class="indent">You must always take care to measure the real values of actions in your game. If something gives a benefit that a player can&#8217;t use, or contains a hidden penalty, you must capture that in your calculations.</p>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_7_5"><span class="pd_orange">The Human Element</span></h3>
+<p class="noindent">You must also keep in mind that expected value calculations do not perfectly predict human behavior. You would expect players to always choose the option with the highest expected value, but that is not always the case. In some cases, this is due to ignorance&#8212;because players did not realize the actual expected value. For example, if you didn&#8217;t tell players the respective chances of wind, fireball, and lightning bolt, but left it to them to discover them through trial and error, you might find that players who tried lightning bolt several times and never got a hit reached the conclusion that &#8220;lightning bolt never hits&#8221; and therefore has an expected value of zero. The estimates that players make about how often an event happens are often incorrect. You must be aware of the &#8220;perceived probabilities&#8221; that players have arrived at, because it will determine how they play.</p>
+<p class="indent">But sometimes, even with perfect information, players still will not choose an option with the highest expected value. Two psychologists, Kahneman and Tversky, tried an interesting experiment, where they asked a number of subjects which of the two games they would like to play:</p>
+<ul class="list-simple1">
+<li><p class="list-item">Game A:</p>
+<ul class="list-simple">
+<li><p class="list-item">66% chance of winning $2400</p></li>
+<li><p class="list-item">33% chance of winning $2500</p></li>
+<li><p class="list-item">1% chance of winning $0</p></li>
+</ul></li>
+<li><p class="list-item">Game B:</p>
+<ul class="list-simple">
+<li><p class="list-item">100% chance of winning $2400</p></li>
+</ul></li>
+</ul>
+<p class="noindent">These are both pretty great games to play! But is one better than the other? If you do the expected value calculations</p>
+<p class="eq"><span id="p206" aria-label=" page 206. " epub:type="pagebreak" role="doc-pagebreak"/>Expected Value of Game A: 0.66 &#x00D7; $2400 + 0.33 &#x00D7; $2500 + 0.01 &#x00D7; $0 = $2409</p>
+<p class="eq">Expected Value of Game B: 1.00 &#x00D7; 2400 = $2400</p>
+<p class="noindent">You can see that Game A has a higher expected value. But only 18% of the subjects they surveyed picked A, while 82% preferred playing Game B.</p>
+<p class="indent">Why? The reason is that the expected value calculation does not capture an important human element: regret. People not only seek out options that create the most pleasure, they also avoid the ones that cause the most pain. If you played Game A (and we&#8217;re assuming you only get to play it once), and were unlucky enough to get that 1% and $0, it would feel pretty bad. People are often willing to pay a price to eliminate the potential of regret&#8212;&#8220;buying peace of mind,&#8221; as the insurance salesmen say. Not only are they willing to pay a price to avoid regret, they are willing to take risks. This is why a gambler who has lost a little money is often willing to take more risks to try to get the money back. Tversky puts it this way: &#8220;When it comes to taking risks for gains, people are conservative. They will make a sure gain over a problem gain. But we are also finding that when people are faced with a choice between a small, certain loss and a large, probable loss, they will gamble.&#8221; This appears to be a large part of the success of the &#8220;free-to-play&#8221; game Puzzle &#38; Dragons. Players perform a series of puzzles and rack up treasures while making their way through a dungeon. Sometimes, though, they perish in the dungeon, and the game effectively says, &#8220;Oh, that&#8217;s too bad, you&#8217;re dying. Look at all the treasure you are going to lose. Are you sure you don&#8217;t want to pay just a little bit of real money, so you have a shot at keeping what you have earned?&#8221; And many people respond by paying cash money to avoid that small, certain loss.</p>
+<p class="indent">In some cases, the human mind inflates some risks completely out of proportion. In one study, Tversky asked people to estimate the likelihood of various causes of death and obtained the following results:</p>
+<figure class="informaltable">
+<img alt="" src="../images/c012_untbl_2.jpg"/>
+</figure>
+<p class="indent">What is particularly interesting here is that the subjects making estimates underestimated the top three categories (natural causes of death) and significantly overestimated the bottom three (unnatural causes of death). This distortion of reality seems to be a reflection of the fears of the respondents. What bearing does this have on game design? As a designer, you must have not only a grasp of the actual <span id="p207" aria-label=" page 207. " epub:type="pagebreak" role="doc-pagebreak"/>probabilities of events in your game but also the perceived probabilities, which may be quite different for a number of reasons.</p>
+<p class="indent">You will need to consider both actual and perceived probabilities when calculating expected values, which provide such useful information that they make <a href="C15_chapter12.xhtml#box35">Lens #35</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box35">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox35"><span class="pd_whitez">#35 The Lens of Expected Value</span></a></h2>
+<p class="noindent">To use this lens, think about the chance of different events occurring in your game and what those mean to your player.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What is the actual chance of a certain event occurring?</p></li>
+<li><p class="list">What is the perceived chance?</p></li>
+<li><p class="list">What value does the outcome of that event have? Can the value be quantified? Are there intangible aspects of value that I am not considering?</p></li>
+<li><p class="list">Each action a player can take has a different expected value when I add up all the possible outcomes. Am I happy with these values? Do they give the player interesting choices? Are they too rewarding, or too punishing?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_10.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Nick Daniel</i></p>
+</figcaption>
+</figure>
+<p class="noindent">Expected value is one of your most valuable tools for analyzing game balance. The challenge of using it is finding a way to numerically represent everything that can happen to a player. Gaining and losing money is easy to represent. But what is the numerical value of &#8220;boots of speed&#8221; that let you run faster or a &#8220;warp gate&#8221; that lets you skip two levels? These are difficult to quantify perfectly&#8212;but that doesn&#8217;t mean you can&#8217;t take a guess. As we&#8217;ll see in the next chapter, as you go through multiple iterations of game testing and tweaking parameters and values in your game, you will also be tweaking your own estimations of the values of different outcomes. Quantifying these less tangible elements can be quite enlightening, because it makes you think concretely about what is valuable to the player and why&#8212;and this concrete knowledge will put you in control of the balance of your game.</p>
+</aside>
+</section>
+<section class="level4">
+<h3 class="h4" id="sec12_7_6"><span id="p208" aria-label=" page 208. " epub:type="pagebreak" role="doc-pagebreak"/><span class="pd_orange">Skill and Chance Get Tangled</span></h3>
+<p class="noindent">As tricky as probability and the difference between actual and perceived values might be, the game mechanic of chance has more tricks up its sleeve. As much as we like to think that chance and skill are completely separate mechanics, there are important interactions between them that we cannot ignore. Here are five of the most important skill/chance interactions for a game designer to consider.</p>
+<ol class="list-order">
+<li><p class="list"><b>Estimating chance is a skill</b>: In many games, what separates the skilled players from the unskilled is their ability to predict what is going to happen next, often through calculating probabilities. The game of blackjack, for example, is almost entirely about knowing the odds. Some players even practice &#8220;card counting,&#8221; which is the practice of keeping track of what cards have already been played, since each card played changes the odds of what subsequent cards can appear. The perceived probabilities in your game can vary a great deal between players who are skilled estimators and those who are not.</p></li>
+<li><p class="list"><b>Skills have a probability of success</b>: Naively, one might think that completely skill-based games, such as chess or baseball, have no aspects of randomness or risk in them. But from a player&#8217;s point of view, this simply isn&#8217;t true. Every action has some level of risk, and players are constantly making expected value decisions, deciding when to play it safe and when to take a big risk. These risks can be difficult to quantify (what are the odds that I can successfully steal a base or that I can trap my opponent&#8217;s queen without them noticing?), but they are still risks. When designing a game, you need to make sure they are balanced just as you would balance &#8220;pure chance&#8221; game elements, like drawn cards or die rolls.</p></li>
+<li><p class="list"><b>Estimating an opponent&#8217;s skill is a skill</b>: A big part of a player&#8217;s ability to determine the chances of success for a particular action rests on their ability to estimate their opponent&#8217;s skill. A fascinating part of many games is trying to fool your opponent into thinking your skills are greater than they are, to prevent her from trying anything too bold and to make her uncertain of herself. Likewise, sometimes the opposite is true&#8212;in some games, it is a good strategy to make a player think your skills are less than they really are, so that your opponent will not notice your subtle strategies and will perhaps try actions that would be risky against a skilled player.</p></li>
+<li><p class="list"><b>Predicting pure chance is an imagined skill</b>: Humans look for patterns, consciously and subconsciously, to help predict what is going to happen next. Our mania for patterns often leads us to look for and find patterns where none exist. Two of the most common false patterns are the &#8220;lucky streak fallacy&#8221; (I&#8217;ve had several wins in a row, and therefore another is likely) and, its opposite, the &#8220;gambler&#8217;s fallacy&#8221; (I&#8217;ve had several losses, so I must be due for a win). It is easy to scoff at these as ignorant, but in the all-important mind of the player, detecting these bogus patterns feels like the exercise of a real skill, and as a designer, you should find ways to use that to your advantage.</p></li>
+<li><p class="list"><span id="p209" aria-label=" page 209. " epub:type="pagebreak" role="doc-pagebreak"/><b>Controlling pure chance is an imagined skill</b>: Not only do our brains actively seek patterns, but they also actively and desperately seek cause-and-effect relationships. With pure chance, there is no way to control the outcome&#8212;but that doesn&#8217;t stop people from rolling the dice a certain way, carrying lucky charms, or engaging in other superstitious rituals. This feeling that it might be possible to control fate is part of what makes gambling games so exciting. Intellectually, we know it isn&#8217;t possible, but when you are up there rolling the dice, saying &#8220;come on, come on&#8230;,&#8221; it certainly feels like it might be possible, especially when you get lucky! If you try playing games of pure chance, but completely disengage yourself from the idea that anything you think or do can influence the outcome, much of the fun suddenly drains away. Our natural tendency to try to control fate can make games of chance feel like games of skill.</p></li>
+</ol>
+<p class="noindent">Chance is tricky stuff, because it intertwines hard math, human psychology, and all of the basic game mechanics. But this trickiness is what gives games their richness, complexity, and depth. The last of our seven basic game mechanics gives us <a href="C15_chapter12.xhtml#box36">Lens #36</a>.</p>
+<aside class="boxed-text" epub:type="tip" role="doc-tip" id="box36">
+<h2 class="box-title"><a href="C02b_tol.xhtml#rbox36"><span class="pd_whitez">#36 The Lens of Chance</span></a></h2>
+<p class="noindent">To use this lens, focus on the parts of your game that involve randomness and risk, keeping in mind that those two things are not the same.</p>
+<p class="indent">Ask yourself these questions:</p>
+<ul class="list-bullet">
+<li><p class="list">What in my game is truly random? What parts just feel random?</p></li>
+<li><p class="list">Does the randomness give the players positive feelings of excitement and challenge, or does it give them negative feelings of hopelessness and lack of control?</p></li>
+<li><p class="list">Would changing my probability distribution curves improve my game?</p></li>
+<li><p class="list">Do players have the opportunity to take interesting risks in the game?</p></li>
+<li><p class="list">What is the relationship between chance and skill in my game? Are there ways I can make random elements feel more like the exercise of a skill? Are there ways I can make exercising skills feel more like risk taking?</p></li>
+</ul>
+<figure class="informalfigure">
+<img alt="" class="border1" src="../images/un12_11.jpg"/>
+<figcaption>
+<p class="credit"><i>Illustration by Joshua Seaver</i></p>
+</figcaption>
+</figure>
+<p class="noindent">Risk and randomness are like spices. A game without any hint of them can be completely bland, but put in too much and they overwhelm everything else. Get them just right, and they enhance every flavor in your game. Unfortunately, using them in your game is not as simple as sprinkling them on top. You must look into your game to see where elements of risk and randomness naturally arise, and then decide how you can best tame them to do your bidding. Don&#8217;t fall into the trap of thinking that elements of chance only occur around die rolls or randomly generated numbers. On the contrary, you can find them wherever a player encounters the unknown.</p>
+</aside>
+<p class="indent"><span id="p210" aria-label=" page 210. " epub:type="pagebreak" role="doc-pagebreak"/>At long last, we have made it through all seven of the basic game mechanics. Soon, we will move onto more advanced mechanics that are built from these, such as puzzles and interactive story structures. But first, we need to explore methods of bringing these basic elements into balance.</p>
+</section>
+</section>
+<section class="level3">
+<h2 class="h3" id="sec12_8"><span class="pd_orange">Other Reading to Consider</span></h2>
+<ul class="list-simple1">
+<li><p class="list-item1"><b><i>Game Mechanics: Advanced Game Design</i> by Ernest Adams and Joris Dormans</b>. This book gets into a lot of wonderfully nitty-gritty details about the interactions of various game mechanics and gives an introduction to the fascinating Machinations system for simulating your game design.</p></li>
+<li><p class="list-item1"><b><i>The Oxford Book of Board Games</i> by David Parlett</b>. Contains more details on Parlett&#8217;s Rule Analysis, as well as descriptions of some amazing but little-known board games from previous centuries.</p></li>
+<li><p class="list-item1"><b><i>Uncertainty in Games</i> by Greg Costikyan</b>. An incredibly insightful book about the nature of chance and uncertainty in games. I get something new from it every time I read it.</p></li>
+<li><p class="list-item1"><b><i>The Unfinished Game: Pascal, Fermat, and the Unfinished Letter that Made the World Modern</i> by Keith Devlin</b>. If you want even more details of the story of how probability came to be, this is the definitive book.</p></li>
+</ul>
+</section>
+</section>
+</body>
+</html>
