@@ -20,6 +20,70 @@ When you discover better keywords during planning/analysis than the initial prom
 - No SQL concatenation - parameterized queries only
 - Server authority - game state on server, not localStorage
 - macOS: Use `grep -E` not `grep -P` (BSD compatibility)
+- **Code-mode execution** - MCP/WebFetch/WebSearch blocked; use code executor
+
+## Code-Mode Execution (Context Bloat Prevention)
+
+Direct MCP tool calls are **BLOCKED** by hooks. Use code-mode execution instead:
+
+**Why:** Direct calls bloat context (10k-150k tokens). Code-mode reduces to ~500 tokens (98.7% reduction).
+
+**How to use:**
+
+1. Write Python code to temp file:
+```python
+# /tmp/claude_code_xxx.py
+from mcp_tools import memory, fs, web, tools
+
+results = memory.search("authentication", domain="security")
+for r in results:
+    print(f"- {r['title']}: {r['summary'][:80]}")
+```
+
+2. Execute via code_executor:
+```bash
+.venv/bin/python3.14 scripts/code_executor.py --file /tmp/claude_code_xxx.py --budget 500
+```
+
+**Available modules:**
+- `memory.search()`, `memory.capture()`, `memory.get_by_domain()`
+- `fs.read()`, `fs.glob()`, `fs.grep()`, `fs.list_dir()`
+- `web.fetch()`, `web.search()`
+- `tools.search()`, `tools.examples()`, `tools.info()`, `tools.get()`
+
+**Blocked tools:** `mcp__*`, `WebFetch`, `WebSearch`
+
+## Advanced Tool Use Patterns (Nov 2025)
+
+Three patterns from Anthropic's advanced tool use:
+
+**1. Tool Search** - Discover tools on-demand (85% token reduction):
+```python
+matches = tools.search("read file contents")
+# Returns: [{'name': 'fs.read', 'score': 3.7, 'description': '...'}]
+
+matches = tools.search("search patterns", domain="knowledge")
+```
+
+**2. Programmatic Tool Calling** - Invoke tools in code:
+```python
+# Loop through files, conditionals, data transforms
+for f in fs.glob("**/*.ts", path="src/"):
+    content = fs.read(f)
+    if "auth" in content:
+        print(f"Auth found in {f}")
+```
+
+**3. Tool Use Examples** - Get effective usage patterns:
+```python
+exs = tools.examples('memory.search')
+for ex in exs:
+    print(f"When: {ex.get('when')}")
+    print(ex['code'])
+```
+
+**Registry:** 14 tools across knowledge, filesystem, web domains
+**Reference:** https://www.anthropic.com/engineering/advanced-tool-use
 
 ## Hook Exit Codes
 - PreToolUse: `exit 0` = allow, `exit 2` = block
@@ -27,14 +91,18 @@ When you discover better keywords during planning/analysis than the initial prom
 
 ## Current Work
 
-**Feature:** Platform Infrastructure - Memory + Hooks
-**Status:** Supabase memory system operational
+**Feature:** Sprint 1 - Snake Data Model + Collection UI
+**Status:** Starting implementation
 **Branch:** main
 
-**Recent:**
-- Enabled Supabase memory storage (`claude_memories` table)
-- Updated hooks to use `.venv/bin/python3.14`
-- Fixed migration SQL (empty array type casting)
+**Sprint 0 Complete:**
+- Created v0.1 roadmap system (ROADMAP_MASTER.md)
+- Created 5 feature specs with grading logic
+- Snake Data Model spec LOCKED by user review
+
+**Sprint 1 Tasks:**
+- Implement Snake Data Model (database, API, types)
+- Implement Collection UI
 
 ## Recovery (After Auto-Compact)
 1. Check `state/handoff/current.json` for task context
@@ -45,9 +113,13 @@ When you discover better keywords during planning/analysis than the initial prom
 ## Key Files
 ```
 .claude/hooks/pre-tool-use/     # Blocking quality gates
+.claude/hooks/pre-tool-use/11-enforce-code-mode.sh  # Code-mode enforcement
 .claude/hooks/stop/             # Post-response analysis
 .claude/hooks/user-prompt-submit/02-inject-memory-context.sh  # Memory injection
 .claude/hooks/pre-compact/      # Handoff before context reset
+scripts/code_executor.py        # Code-mode execution engine
+scripts/mcp_tools/              # Code-callable tool wrappers
+scripts/mcp_tools/registry.py   # Tool Search + Examples (Advanced Tool Use)
 scripts/memory_tool_handler.py  # Supabase/local memory API
 scripts/retrieve_memories.py    # Domain-based memory retrieval
 ```
