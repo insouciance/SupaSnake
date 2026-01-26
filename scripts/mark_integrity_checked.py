@@ -8,7 +8,10 @@ The enforcement hook checks for this marker before allowing code modifications.
 Usage:
     .venv/bin/python3.14 scripts/mark_integrity_checked.py
 
-The marker expires after 2 hours (enforced by the hook).
+Permission model:
+- Marker valid for current task (until next user prompt)
+- Cleared automatically by user-prompt-submit hook on new prompt
+- Cleared on context compact/clear
 """
 
 from pathlib import Path
@@ -28,7 +31,7 @@ def main():
 
     print("✓ Design Integrity analysis marked complete")
     print(f"  Timestamp: {timestamp}")
-    print("  Valid for: 2 hours")
+    print("  Valid for: current task (until new user prompt)")
     print("  Code modifications now allowed")
 
     return 0

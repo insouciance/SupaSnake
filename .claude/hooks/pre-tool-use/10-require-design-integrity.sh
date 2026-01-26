@@ -19,25 +19,13 @@ if [[ ! "$FILE_PATH" =~ \.(ts|tsx|js|jsx|py|sql)$ ]]; then
     exit 0  # Allow non-code files (markdown, json, etc.)
 fi
 
-# Check if Design Integrity analysis was done recently
+# Check if Design Integrity analysis was done for this task
+# Marker is cleared by user-prompt-submit hook on each new prompt
+# So existence = analysis done for current task
 INTEGRITY_FILE="state/.design_integrity_checked"
 
 if [[ -f "$INTEGRITY_FILE" ]]; then
-    # Check if file is recent (within last 2 hours = 7200 seconds)
-    if [[ "$(uname)" == "Darwin" ]]; then
-        # macOS
-        FILE_MOD=$(stat -f %m "$INTEGRITY_FILE" 2>/dev/null || echo 0)
-    else
-        # Linux
-        FILE_MOD=$(stat -c %Y "$INTEGRITY_FILE" 2>/dev/null || echo 0)
-    fi
-
-    CURRENT_TIME=$(date +%s)
-    FILE_AGE=$((CURRENT_TIME - FILE_MOD))
-
-    if [[ $FILE_AGE -lt 7200 ]]; then
-        exit 0  # Analysis done recently, allow the code change
-    fi
+    exit 0  # Analysis done for this task, allow code changes
 fi
 
 # Block and provide guidance

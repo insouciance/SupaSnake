@@ -35,7 +35,7 @@ Task tool: subagent_type="Design Integrity"
 prompt="Analyze: [describe the change you want to make]"
 ```
 
-The subagent marks `state/.design_integrity_checked` after analysis, allowing code changes for 2 hours.
+**Permission model:** Analysis valid for current task only. Each new user prompt clears the marker (via `01-clear-integrity-marker.sh`), requiring fresh analysis for new tasks.
 
 ## Code Rules (Enforced by Hooks)
 - No TODO/FIXME/HACK - complete implementations only
