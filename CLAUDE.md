@@ -21,6 +21,22 @@ When capturing learnings (`/capture` or hooks), keep the main agent's context cl
 - **Never:** Perform inline analysis in main agent context
 - **Output:** Title + domain + 1-line summary only
 
+## Design Integrity Check (Pre-Code Enforcement)
+Before modifying code files, a Design Integrity check is **REQUIRED** by hook:
+
+1. **Hook enforces:** `10-require-design-integrity.sh` blocks Write/Edit on `.ts/.tsx/.js/.jsx/.py/.sql` files
+2. **Run analysis:** Spawn Design Integrity subagent to analyze proposed change
+3. **Review impact:** Subagent returns ~300 char summary (systems affected, constraints, risks)
+4. **Proceed or abort:** If HARD constraint violations found, do not proceed
+
+**To run analysis:**
+```
+Task tool: subagent_type="Design Integrity"
+prompt="Analyze: [describe the change you want to make]"
+```
+
+The subagent marks `state/.design_integrity_checked` after analysis, allowing code changes for 2 hours.
+
 ## Code Rules (Enforced by Hooks)
 - No TODO/FIXME/HACK - complete implementations only
 - No hardcoded secrets - use environment variables
@@ -103,6 +119,7 @@ for ex in exs:
 **Branch:** main
 
 **Recent:**
+- Added Design Integrity subagent + enforcement hook for pre-code consequence analysis
 - Fixed memory system to capture documentation patterns (not just code)
 - Extended hook to detect spec/decision/constraint files
 - Created `extract_doc_patterns.py` for markdown extraction
@@ -118,6 +135,7 @@ for ex in exs:
 ## Key Files
 ```
 .claude/hooks/pre-tool-use/     # Blocking quality gates
+.claude/hooks/pre-tool-use/10-require-design-integrity.sh  # Pre-code consequence analysis
 .claude/hooks/pre-tool-use/11-enforce-code-mode.sh  # Code-mode enforcement
 .claude/hooks/stop/             # Post-response analysis
 .claude/hooks/user-prompt-submit/02-inject-memory-context.sh  # Memory injection
