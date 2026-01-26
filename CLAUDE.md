@@ -14,6 +14,13 @@ When you discover better keywords during planning/analysis than the initial prom
 - **Example:** Initial prompt "fix the bug" → discovered it's about auth → invoke Memory with "auth session recovery zustand"
 - **Note:** Initial hook injection still runs; this is for re-querying with better keywords
 
+## Context-Efficient Capture
+When capturing learnings (`/capture` or hooks), keep the main agent's context clean:
+- **`/capture` command:** Spawns Memory subagent to analyze and store (main agent receives ~150 char confirmation)
+- **Stop hooks:** Run Python scripts in background (`extract_code_patterns.py`, `extract_doc_patterns.py`)
+- **Never:** Perform inline analysis in main agent context
+- **Output:** Title + domain + 1-line summary only
+
 ## Code Rules (Enforced by Hooks)
 - No TODO/FIXME/HACK - complete implementations only
 - No hardcoded secrets - use environment variables
@@ -91,18 +98,16 @@ for ex in exs:
 
 ## Current Work
 
-**Feature:** Sprint 1 - Snake Data Model + Collection UI
-**Status:** Starting implementation
+**Feature:** Platform Infrastructure - Memory + Hooks
+**Status:** Supabase memory system operational
 **Branch:** main
 
-**Sprint 0 Complete:**
-- Created v0.1 roadmap system (ROADMAP_MASTER.md)
-- Created 5 feature specs with grading logic
-- Snake Data Model spec LOCKED by user review
-
-**Sprint 1 Tasks:**
-- Implement Snake Data Model (database, API, types)
-- Implement Collection UI
+**Recent:**
+- Fixed memory system to capture documentation patterns (not just code)
+- Extended hook to detect spec/decision/constraint files
+- Created `extract_doc_patterns.py` for markdown extraction
+- Seeded 31 new memories from existing spec files
+- Refactored `/capture` to use Memory subagent (context-efficient)
 
 ## Recovery (After Auto-Compact)
 1. Check `state/handoff/current.json` for task context

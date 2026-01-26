@@ -465,6 +465,162 @@ This directory contains persistent knowledge for Claude across sessions.
             print(f"Error incrementing memory: {e}", file=__import__('sys').stderr)
             return False
 
+    def capture(
+        self,
+        domain: str,
+        category: str,
+        title: str,
+        summary: str,
+        content: str,
+        tags: Optional[List[str]] = None,
+        source_file: Optional[str] = None,
+        source_commit: Optional[str] = None
+    ) -> Dict[str, str]:
+        """
+        Capture a new memory with full metadata (manual capture)
+
+        Args:
+            domain: Memory domain (architecture, platform, security, etc.)
+            category: Memory category (code_pattern, decision, learning, etc.)
+            title: Clear, searchable title (max 100 chars)
+            summary: One-paragraph description (max 500 chars)
+            content: Full markdown content
+            tags: Optional list of tags for search
+            source_file: Optional source file path
+            source_commit: Optional git commit hash
+
+        Returns:
+            Dictionary with capture result including ID and storage location
+
+        Example:
+            memory.capture(
+                domain="architecture",
+                category="decision",
+                title="Server Authority Pattern",
+                summary="All game state validation happens server-side...",
+                content="# Full markdown content...",
+                tags=["security", "game", "validation"],
+                source_file="src/lib/server/gameValidator.ts"
+            )
+        """
+        # Validate domain
+        valid_domains = ['architecture', 'platform', 'security', 'performance',
+                        'api', 'react', 'game', 'engagement', 'best_practices']
+        if domain not in valid_domains:
+            raise ValueError(f"Invalid domain '{domain}'. Must be one of: {valid_domains}")
+
+        # Validate category
+        valid_categories = ['code_pattern', 'decision', 'learning', 'debugging', 'context']
+        if category not in valid_categories:
+            raise ValueError(f"Invalid category '{category}'. Must be one of: {valid_categories}")
+
+        # Validate lengths
+        if len(title) > 100:
+            raise ValueError(f"Title too long ({len(title)} chars). Max 100 chars.")
+        if len(summary) > 500:
+            raise ValueError(f"Summary too long ({len(summary)} chars). Max 500 chars.")
+
+        # Build memory data
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        data = {
+            'domain': domain,
+            'category': category,
+            'title': title,
+            'summary': summary,
+            'content': content,
+            'tags': tags or [],
+            'source_file': source_file,
+            'source_commit': source_commit,
+            'relevance_score': 50.0,  # Start at neutral relevance
+            'times_applied': 0
+        }
+
+        # Try Supabase first
+        if self.use_supabase:
+            try:
+                result = self.supabase.table('claude_memories').insert(data).execute()
+                memory_id = result.data[0]['id'] if result.data else None
+
+                # Also save locally as backup
+                local_result = self._save_capture_local(domain, category, title, content, tags, timestamp)
+
+                return {
+                    "status": "captured",
+                    "storage": "supabase",
+                    "id": memory_id,
+                    "local_path": local_result.get('path'),
+                    "domain": domain,
+                    "category": category,
+                    "title": title
+                }
+            except Exception as e:
+                print(f"Supabase capture failed, falling back to local: {e}")
+                # Fall through to local
+
+        # Local fallback
+        local_result = self._save_capture_local(domain, category, title, content, tags, timestamp)
+        return {
+            "status": "captured",
+            "storage": "local",
+            "path": local_result['path'],
+            "domain": domain,
+            "category": category,
+            "title": title
+        }
+
+    def _save_capture_local(
+        self,
+        domain: str,
+        category: str,
+        title: str,
+        content: str,
+        tags: Optional[List[str]],
+        timestamp: str
+    ) -> Dict[str, str]:
+        """Save captured memory to local filesystem"""
+        # Map domain to directory
+        domain_dirs = {
+            'architecture': 'architectural_decisions',
+            'platform': 'project_knowledge',
+            'security': 'code_patterns/security',
+            'performance': 'code_patterns/performance',
+            'api': 'code_patterns/api',
+            'react': 'code_patterns/react',
+            'game': 'project_knowledge',
+            'engagement': 'project_knowledge',
+            'best_practices': 'code_patterns/best_practices'
+        }
+
+        dir_path = domain_dirs.get(domain, 'project_knowledge')
+
+        # Create filename from title
+        filename = title.lower().replace(' ', '_').replace('/', '_')
+        filename = ''.join(c for c in filename if c.isalnum() or c == '_')[:50]
+        filename = f"{filename}.md"
+
+        path = f"{dir_path}/{filename}"
+
+        # Format content with metadata header
+        formatted_content = f"""# {title}
+
+**Domain:** {domain}
+**Category:** {category}
+**Captured:** {timestamp}
+**Tags:** {', '.join(tags) if tags else 'none'}
+
+## Summary
+
+{content.split('## ')[0] if '## ' in content else content[:500]}
+
+{content if '## ' not in content else '## ' + '## '.join(content.split('## ')[1:])}
+
+---
+*Manually captured via /capture command*
+"""
+
+        return self._create_local(path, formatted_content)
+
     def get_by_domain(self, domain: str, limit: int = 10) -> List[Dict]:
         """
         Get memories by domain, ordered by relevance
