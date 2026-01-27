@@ -245,7 +245,8 @@ export async function POST(request: NextRequest) {
         );
 
         // Update progress and mark newly completed
-        for (const [achievementId, progressValue] of result.progressUpdates) {
+        const progressEntries = Array.from(result.progressUpdates.entries());
+        for (const [achievementId, progressValue] of progressEntries) {
           const isNewlyCompleted = result.newlyCompleted.some(a => a.id === achievementId);
 
           await supabase

@@ -161,39 +161,20 @@ export function addBreadcrumb(options: BreadcrumbOptions): void {
 }
 
 /**
- * Start a performance transaction
- * Use for monitoring custom operations
- */
-export function startTransaction(
-  name: string,
-  op: string
-): Sentry.Transaction {
-  return Sentry.startTransaction({
-    name,
-    op,
-  });
-}
-
-/**
  * Create a scoped span for measuring operation duration
+ * Uses new Sentry performance API
  */
 export async function withSpan<T>(
   name: string,
   op: string,
   callback: () => Promise<T>
 ): Promise<T> {
-  const transaction = startTransaction(name, op);
-
-  try {
-    const result = await callback();
-    transaction.setStatus('ok');
-    return result;
-  } catch (error) {
-    transaction.setStatus('internal_error');
-    throw error;
-  } finally {
-    transaction.finish();
-  }
+  return Sentry.startSpan(
+    { name, op },
+    async () => {
+      return await callback();
+    }
+  );
 }
 
 /**

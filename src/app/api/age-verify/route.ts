@@ -66,15 +66,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Log verification attempt (anonymized)
-    await supabase.from('age_verifications').insert({
-      user_id: userId,
-      verification_hash: verificationHash,
-      is_verified: isVerified,
-      verified_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-    }).catch(() => {
+    // Wrapped in try/catch - table may not exist yet
+    try {
+      await supabase.from('age_verifications').insert({
+        user_id: userId,
+        verification_hash: verificationHash,
+        is_verified: isVerified,
+        verified_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      });
+    } catch {
       // Table may not exist yet, continue silently
-    });
+    }
 
     if (!isVerified) {
       return NextResponse.json(

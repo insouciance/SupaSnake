@@ -57,7 +57,7 @@ export function trackEvent(eventName: string, properties?: EventProperties): voi
  * Call on login, pass null on logout
  */
 export function identifyUser(userId: string | null): void {
-  amplitude.setUserId(userId);
+  amplitude.setUserId(userId ?? undefined);
 }
 
 /**
@@ -120,6 +120,6 @@ export function trackEconomyEvent(
 /**
  * Get current session ID for correlation
  */
-export function getSessionId(): number {
+export function getSessionId(): number | undefined {
   return amplitude.getSessionId();
 }

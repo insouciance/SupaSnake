@@ -111,7 +111,7 @@ export const PurchaseSchema = z.object({
   productId: z.string().min(1, 'Product ID is required'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1').default(1),
   currency: z.enum(['USD', 'EUR', 'GBP', 'CAD', 'AUD'], {
-    errorMap: () => ({ message: 'Invalid currency code' }),
+    message: 'Invalid currency code',
   }),
   promoCode: z.string().optional(),
 });
@@ -185,7 +185,7 @@ export type DataExportInput = z.infer<typeof DataExportSchema>;
  */
 export const AccountDeleteSchema = z.object({
   confirmation: z.literal('DELETE MY ACCOUNT', {
-    errorMap: () => ({ message: 'Must type "DELETE MY ACCOUNT" to confirm' }),
+    message: 'Must type "DELETE MY ACCOUNT" to confirm',
   }),
   reason: z.string().max(500).optional(),
 });

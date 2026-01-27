@@ -677,6 +677,83 @@ Constraints can change, but require:
 
 ---
 
+## Appendix A: Constraint Severity Classification
+
+**Purpose:** For Feature Impact Assessments, constraints are classified by severity to guide Go/No-Go decisions.
+
+### Severity Definitions
+
+| Severity | Meaning | Action if Violated |
+|----------|---------|-------------------|
+| **HARD** | Cannot ship if violated | Block feature, no exceptions |
+| **SOFT** | Needs justification | Document mitigation, get approval |
+| **WATCH** | Monitor in testing | Track metrics, iterate post-launch |
+
+### Classification by Constraint
+
+#### HARD Constraints (Violation = Cannot Ship)
+
+**Business Model:**
+- BM-001: Pay for Convenience, Not Power
+- BM-002: No Forced Ad Viewing
+- BM-003: No Paywalling Basic Features
+
+**Technical:**
+- TE-001: 60fps on Mid-Range Devices
+- TE-002: Offline Capability
+- TE-003: Cross-Platform Progression
+- TE-004: 10k Concurrent Users
+
+#### SOFT Constraints (Violation = Needs Justification)
+
+**Core Engagement:**
+- CE-001: 70/30 Lab/Snake Time Split
+- CE-002: 3+ Sessions Daily
+- CE-003: 15+ Min Session Length
+- CE-004: Retention Targets (D1/D7/D30)
+- CE-005: Energy as Engagement Gate
+
+**Progression:**
+- PR-001: Infinite Progression
+- PR-002: Prestige with Permanent Bonuses
+- PR-003: 20+ Variants by D30 (adjusted for v0.1: 5 variants)
+- PR-004: Gen 5+ by D30
+- PR-005: 100+ Lab Interactions by D30
+
+**Balance:**
+- BA-001: Skill-Based Competitive Fairness
+- BA-002: Resource Economy Balance
+- BA-003: Exponential Cost, Linear Power
+- BA-004: No Inventory Management Tedium
+
+**Business Model:**
+- BM-004: Starter Bundle Timing
+
+#### WATCH Constraints (v0.1 Flexible - Track for v0.2)
+
+**Social:**
+- SO-001: 40% Clan Participation by D30
+- SO-002: No Daily Clan Requirements
+- SO-003: Corp-Based Trading Only
+- SO-004: Social Discovery Day 2-3
+
+**Content:**
+- CO-001: 500+ Variants (v0.1: 5 variants)
+- CO-002: 5 Languages at Launch (v0.1: English only)
+- CO-003: WCAG 2.1 AA Accessibility (v0.1: Best effort)
+- CO-004: Monthly Content Drops (Post-launch)
+
+### Using Severity in Feature Assessments
+
+1. Complete Feature Impact Template (state/plan_templates/feature_impact_template.md)
+2. Mark affected constraints with severity level
+3. Decision rules:
+   - **Any HARD violation** → NO-GO (fix before proceeding)
+   - **SOFT violations** → GO WITH CONDITIONS (document mitigation)
+   - **WATCH items** → GO (monitor in testing)
+
+---
+
 ## Conclusion
 
 The Constraint Lattice defines what SupaSnake IS and ISN'T. These 28 constraints create the boundaries within which infinite creativity thrives.

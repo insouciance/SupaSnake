@@ -25,6 +25,7 @@ interface AuthContextType {
   sendPasswordResetEmail: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   refreshSession: () => Promise<{ error: Error | null }>;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -141,6 +142,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? new Error(error.message) : null };
   };
 
+  const getToken = async (): Promise<string | null> => {
+    return session?.access_token ?? null;
+  };
+
   const isAnonymous = user?.is_anonymous ?? false;
 
   const value = {
@@ -159,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sendPasswordResetEmail,
     updatePassword,
     refreshSession,
+    getToken,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -50,15 +50,18 @@ export async function POST(request: NextRequest) {
     scheduledDate.setDate(scheduledDate.getDate() + 30);
 
     // Store deletion request
-    await supabase.from('gdpr_requests').insert({
-      user_id: user.id,
-      request_type: 'delete',
-      status: 'pending',
-      scheduled_at: scheduledDate.toISOString(),
-      requested_at: new Date().toISOString(),
-    }).catch(() => {
+    // Wrapped in try/catch - table may not exist yet
+    try {
+      await supabase.from('gdpr_requests').insert({
+        user_id: user.id,
+        request_type: 'delete',
+        status: 'pending',
+        scheduled_at: scheduledDate.toISOString(),
+        requested_at: new Date().toISOString(),
+      });
+    } catch {
       // Table may not exist, continue
-    });
+    }
 
     // Update player record to mark for deletion
     await supabase
@@ -152,15 +155,18 @@ export async function DELETE(request: NextRequest) {
       .eq('user_id', user.id);
 
     // Log GDPR request completion
-    await supabase.from('gdpr_requests').insert({
-      user_id: user.id,
-      request_type: 'delete',
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      requested_at: new Date().toISOString(),
-    }).catch(() => {
+    // Wrapped in try/catch - table may not exist yet
+    try {
+      await supabase.from('gdpr_requests').insert({
+        user_id: user.id,
+        request_type: 'delete',
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        requested_at: new Date().toISOString(),
+      });
+    } catch {
       // Table may not exist
-    });
+    }
 
     // Delete auth user (this must be last)
     const { error: deleteError } = await supabase.auth.admin.deleteUser(user.id);
