@@ -13,14 +13,32 @@ import type { Dynasty, SnakeVariant, OwnedSnake } from '@/shared/types/snake-dat
 // TYPES
 // =============================================================================
 
-interface CollectionState {
+interface CollectionUIState {
+  // Navigation
+  activeDynastyId: string | null;
+
+  // Modal state
+  selectedVariant: SnakeVariant | null;
+  selectedOwned: OwnedSnake | null;
+  isDetailModalOpen: boolean;
+  isUnlockModalOpen: boolean;
+
+  // Loading states
+  isUnlocking: boolean;
+  isEquipping: boolean;
+
+  // Error state
+  unlockError: string | null;
+}
+
+interface CollectionState extends CollectionUIState {
   // Data
   dynasties: Dynasty[];
   variants: SnakeVariant[];
   ownedSnakes: OwnedSnake[];
   equippedSnakeId: string | null;
 
-  // UI State
+  // UI State (general)
   isLoading: boolean;
   error: string | null;
 
@@ -31,6 +49,16 @@ interface CollectionState {
   setEquippedSnakeId: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+
+  // UI Actions
+  setActiveDynasty: (dynastyId: string) => void;
+  openDetailModal: (variant: SnakeVariant, owned: OwnedSnake) => void;
+  closeDetailModal: () => void;
+  openUnlockModal: (variant: SnakeVariant) => void;
+  closeUnlockModal: () => void;
+  setUnlocking: (loading: boolean) => void;
+  setEquipping: (loading: boolean) => void;
+  setUnlockError: (error: string | null) => void;
 
   // Mutations
   addOwnedSnake: (snake: OwnedSnake) => void;
@@ -49,12 +77,25 @@ interface CollectionState {
 // =============================================================================
 
 export const initialState = {
+  // Data
   dynasties: [] as Dynasty[],
   variants: [] as SnakeVariant[],
   ownedSnakes: [] as OwnedSnake[],
   equippedSnakeId: null as string | null,
+
+  // General UI state
   isLoading: false,
   error: null as string | null,
+
+  // Collection UI state
+  activeDynastyId: null as string | null,
+  selectedVariant: null as SnakeVariant | null,
+  selectedOwned: null as OwnedSnake | null,
+  isDetailModalOpen: false,
+  isUnlockModalOpen: false,
+  isUnlocking: false,
+  isEquipping: false,
+  unlockError: null as string | null,
 };
 
 // =============================================================================
@@ -72,6 +113,41 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   setEquippedSnakeId: (equippedSnakeId) => set({ equippedSnakeId }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
+
+  // UI Actions
+  setActiveDynasty: (dynastyId) => set({ activeDynastyId: dynastyId }),
+
+  openDetailModal: (variant, owned) =>
+    set({
+      selectedVariant: variant,
+      selectedOwned: owned,
+      isDetailModalOpen: true,
+    }),
+
+  closeDetailModal: () =>
+    set({
+      isDetailModalOpen: false,
+      selectedVariant: null,
+      selectedOwned: null,
+    }),
+
+  openUnlockModal: (variant) =>
+    set({
+      selectedVariant: variant,
+      isUnlockModalOpen: true,
+      unlockError: null,
+    }),
+
+  closeUnlockModal: () =>
+    set({
+      isUnlockModalOpen: false,
+      selectedVariant: null,
+      unlockError: null,
+    }),
+
+  setUnlocking: (isUnlocking) => set({ isUnlocking }),
+  setEquipping: (isEquipping) => set({ isEquipping }),
+  setUnlockError: (unlockError) => set({ unlockError }),
 
   // Mutations
   addOwnedSnake: (snake) =>

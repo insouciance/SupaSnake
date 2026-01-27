@@ -1,0 +1,5 @@
+{"timestamp": "2026-01-10T12:49:00.932313", "code_file": "/tmp/claude_code_test.py", "success": true, "duration_ms": 653, "output_tokens": 149, "token_budget": 500, "truncated": false, "error": null}
+{"timestamp": "2026-01-22T08:01:47.749665", "code_file": "/tmp/claude_fetch_article.py", "success": true, "duration_ms": 509, "output_tokens": 1500, "token_budget": 1500, "truncated": true, "error": null}
+{"timestamp": "2026-01-22T08:06:34.385930", "code_file": "/tmp/test_advanced_tools.py", "success": true, "duration_ms": 116, "output_tokens": 469, "token_budget": 1500, "truncated": false, "error": null}
+{"timestamp": "2026-01-22T08:29:07.867468", "code_file": "/tmp/claude_analyze_collection.py", "success": true, "duration_ms": 97, "output_tokens": 968, "token_budget": 1000, "truncated": false, "error": null}
+{"timestamp": "2026-01-22T08:34:49.347594", "code_file": "/tmp/claude_fetch_evals.py", "success": true, "duration_ms": 727, "output_tokens": 2000, "token_budget": 2000, "truncated": true, "error": null}
