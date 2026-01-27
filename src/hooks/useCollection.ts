@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
+import { useAuth } from '@/lib/auth/AuthProvider';
 import type {
   Dynasty,
   SnakeVariant,
@@ -61,8 +62,10 @@ export interface UseCollectionReturn {
 // FETCH HELPERS
 // =============================================================================
 
-async function fetchDynasties(): Promise<Dynasty[]> {
-  const response = await fetch('/api/dynasties');
+async function fetchDynasties(token: string): Promise<Dynasty[]> {
+  const response = await fetch('/api/dynasties', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch dynasties');
   }
@@ -70,8 +73,10 @@ async function fetchDynasties(): Promise<Dynasty[]> {
   return data.dynasties;
 }
 
-async function fetchVariants(): Promise<SnakeVariant[]> {
-  const response = await fetch('/api/variants');
+async function fetchVariants(token: string): Promise<SnakeVariant[]> {
+  const response = await fetch('/api/variants', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch variants');
   }
@@ -79,11 +84,13 @@ async function fetchVariants(): Promise<SnakeVariant[]> {
   return data.variants;
 }
 
-async function fetchCollection(): Promise<{
+async function fetchCollection(token: string): Promise<{
   snakes: OwnedSnake[];
   dnaBalance: number;
 }> {
-  const response = await fetch('/api/collection');
+  const response = await fetch('/api/collection', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch collection');
   }
@@ -99,6 +106,9 @@ async function fetchCollection(): Promise<{
 // =============================================================================
 
 export function useCollection(): UseCollectionReturn {
+  // Auth session for API calls
+  const { session } = useAuth();
+
   // Store state and actions
   const {
     dynasties,
@@ -143,14 +153,21 @@ export function useCollection(): UseCollectionReturn {
   // ===========================================================================
 
   const refresh = useCallback(async () => {
+    // Wait for auth session
+    if (!session?.access_token) {
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
+    const token = session.access_token;
+
     try {
       const [dynastiesData, variantsData, collectionData] = await Promise.all([
-        fetchDynasties(),
-        fetchVariants(),
-        fetchCollection(),
+        fetchDynasties(token),
+        fetchVariants(token),
+        fetchCollection(token),
       ]);
 
       setDynasties(dynastiesData);
@@ -174,6 +191,7 @@ export function useCollection(): UseCollectionReturn {
       setLoading(false);
     }
   }, [
+    session?.access_token,
     setDynasties,
     setVariants,
     setOwnedSnakes,
@@ -290,7 +308,10 @@ export function useCollection(): UseCollectionReturn {
       try {
         const response = await fetch('/api/collection', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
           body: JSON.stringify({ variantId }),
         });
 
@@ -329,6 +350,7 @@ export function useCollection(): UseCollectionReturn {
       }
     },
     [
+      session?.access_token,
       variants,
       ownedSnakes,
       dnaBalance,
@@ -361,7 +383,10 @@ export function useCollection(): UseCollectionReturn {
       try {
         const response = await fetch('/api/collection/equip', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
           body: JSON.stringify({ snakeId }),
         });
 
@@ -385,6 +410,7 @@ export function useCollection(): UseCollectionReturn {
       }
     },
     [
+      session?.access_token,
       ownedSnakes,
       equippedSnakeId,
       setEquippedSnakeId,
