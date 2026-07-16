@@ -6,6 +6,7 @@
  */
 
 import React, { useCallback, useEffect } from 'react';
+import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, Dynasty } from '@/shared/types/snake-data-model';
 
@@ -232,11 +233,12 @@ export function UnlockConfirmModal({
             }}
           >
             {variant.artUrl ? (
-              <img
+              <Image
                 src={variant.artUrl}
                 alt={`${variant.name} preview`}
-                className="absolute inset-0 w-full h-full object-cover"
-                loading="lazy"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 640px"
               />
             ) : (
               <div

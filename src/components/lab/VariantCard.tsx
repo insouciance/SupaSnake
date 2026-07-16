@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import Image from 'next/image';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 import { SnakeArt } from '@/components/lab/SnakeArt';
@@ -157,11 +158,12 @@ export function VariantCard({
         }}
       >
         {variant.artUrl ? (
-          <img
+          <Image
             src={variant.artUrl}
             alt={`${variant.name} artwork`}
-            className="absolute inset-0 w-full h-full object-cover"
-            loading="lazy"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 50vw, 25vw"
           />
         ) : (
           <SnakeArt

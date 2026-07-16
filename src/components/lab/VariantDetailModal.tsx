@@ -7,6 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake, Dynasty } from '@/shared/types/snake-data-model';
 import { computeEffectiveStats } from '@/shared/types/snake-data-model';
@@ -364,10 +365,12 @@ export function VariantDetailModal({
             }}
           >
             {variant.artUrl ? (
-              <img
+              <Image
                 src={variant.artUrl}
                 alt={`${variant.name} artwork`}
-                className="w-full h-full object-contain"
+                fill
+                className="object-contain"
+                sizes="100vw"
                 style={{
                   backgroundColor: '#16213e',
                 }}

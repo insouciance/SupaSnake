@@ -53,7 +53,8 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
 
   // Fetch player data and calculate progress on mount
   useEffect(() => {
-    if (!session?.access_token) {
+    const accessToken = session?.access_token;
+    if (!accessToken) {
       setIsLoading(false);
       return;
     }
@@ -63,7 +64,7 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
       try {
         const response = await fetch('/api/player', {
           headers: {
-            Authorization: `Bearer ${session!.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         });
 
