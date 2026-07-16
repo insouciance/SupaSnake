@@ -139,14 +139,9 @@ export function useCollection(): UseCollectionReturn {
     addOwnedSnake,
   } = useCollectionStore();
 
-  // DNA balance from store (extended interface)
-  const dnaBalance = useCollectionStore(
-    (state) => (state as { dnaBalance?: number }).dnaBalance ?? 0
-  );
-  const setDnaBalance = useCollectionStore(
-    (state) =>
-      (state as { setDnaBalance?: (balance: number) => void }).setDnaBalance
-  );
+  // DNA balance from store (proper typed access)
+  const dnaBalance = useCollectionStore((state) => state.dnaBalance);
+  const setDnaBalance = useCollectionStore((state) => state.setDnaBalance);
 
   // ===========================================================================
   // DATA FETCHING
@@ -174,10 +169,8 @@ export function useCollection(): UseCollectionReturn {
       setVariants(variantsData);
       setOwnedSnakes(collectionData.snakes);
 
-      // Set DNA balance if the store supports it
-      if (setDnaBalance) {
-        setDnaBalance(collectionData.dnaBalance);
-      }
+      // Set DNA balance from server (server authority)
+      setDnaBalance(collectionData.dnaBalance);
 
       // Find equipped snake from collection
       const equipped = collectionData.snakes.find((s) => s.isEquipped);
@@ -301,9 +294,7 @@ export function useCollection(): UseCollectionReturn {
 
       // Apply optimistic update
       addOwnedSnake(optimisticSnake);
-      if (setDnaBalance) {
-        setDnaBalance(Math.max(0, dnaBalance - variant.unlockCostDna));
-      }
+      setDnaBalance(Math.max(0, dnaBalance - variant.unlockCostDna));
 
       try {
         const response = await fetch('/api/collection', {
@@ -330,7 +321,7 @@ export function useCollection(): UseCollectionReturn {
         }
 
         // Update DNA balance with server value
-        if (setDnaBalance && data.newDnaBalance !== undefined) {
+        if (data.newDnaBalance !== undefined) {
           setDnaBalance(data.newDnaBalance);
         }
 
@@ -339,9 +330,7 @@ export function useCollection(): UseCollectionReturn {
       } catch (err) {
         // Rollback optimistic update
         setOwnedSnakes(previousOwnedSnakes);
-        if (setDnaBalance) {
-          setDnaBalance(previousDnaBalance);
-        }
+        setDnaBalance(previousDnaBalance);
 
         const message = err instanceof Error ? err.message : 'Failed to unlock variant';
         setUnlockError(message);

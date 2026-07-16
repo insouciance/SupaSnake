@@ -34,9 +34,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get player ID
-    const playerId = await getPlayerId(user.id);
-    if (!playerId) {
+    // Get player with DNA balance
+    const { data: player, error: playerError } = await supabase
+      .from('players')
+      .select('id, dna')
+      .eq('user_id', user.id)
+      .single();
+
+    if (playerError || !player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
@@ -44,7 +49,7 @@ export async function GET(request: NextRequest) {
     const { data: rows, error } = await supabase
       .from('collected_snakes')
       .select('*')
-      .eq('player_id', playerId)
+      .eq('player_id', player.id)
       .order('acquired_at', { ascending: false });
 
     if (error) {
@@ -57,7 +62,11 @@ export async function GET(request: NextRequest) {
 
     const snakes: OwnedSnake[] = (rows || []).map(mapOwnedSnakeRow);
 
-    return NextResponse.json({ snakes });
+    // Return snakes AND DNA balance (server authority)
+    return NextResponse.json({
+      snakes,
+      dnaBalance: player.dna ?? 0,
+    });
   } catch (err) {
     console.error('Collection API error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -144,6 +153,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     return NextResponse.json({
+      success: true,
       snake: mapOwnedSnakeRow(newSnake),
       newDnaBalance: updatedPlayer?.dna ?? player.dna,
     });

@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { useGameStore } from '@/lib/store/gameStore';
+import { useWalletSync } from '@/hooks/useWalletSync';
 import {
   ENERGY_PRODUCTS,
   BUNDLE_PRODUCTS,
@@ -20,7 +20,7 @@ import Link from 'next/link';
 
 export default function ShopPage() {
   const { user, session, isAuthenticated, isAnonymous } = useAuth();
-  const { energy, maxEnergy, energyRegenAt } = useGameStore();
+  const { dnaBalance, energy, maxEnergy, energyRegenAt } = useWalletSync();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showBundles, setShowBundles] = useState(false);
@@ -86,6 +86,11 @@ export default function ShopPage() {
           <p className="text-beige font-body">Power up your snake empire</p>
         </div>
         <div className="flex items-center gap-6">
+          {/* DNA Balance */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-scale-blue rounded-arcade border-[2px] border-scale-blue-light">
+            <span className="text-lg">🧬</span>
+            <span className="text-bone-white font-display">{dnaBalance.toLocaleString()}</span>
+          </div>
           <EnergyTimer
             energy={energy}
             maxEnergy={maxEnergy}

@@ -140,7 +140,13 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { dna, energy, selected_dynasty } = body;
+    // SECURITY: Only allow safe player preferences, NOT economy resources
+    // DNA and energy must ONLY change through validated game actions:
+    // - Game completion (via /api/game/session)
+    // - Daily rewards (via /api/player/daily)
+    // - Unlock purchases (via /api/collection with RPC cost deduction)
+    // - Server-calculated regeneration
+    const { selected_dynasty } = body;
 
     const { data: player } = await supabase
       .from('players')
@@ -152,17 +158,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    const updates: Record<string, unknown> = {};
-    if (dna !== undefined) updates.dna = dna;
-    if (energy !== undefined) updates.energy = energy;
-
-    if (Object.keys(updates).length > 0) {
-      await supabase
-        .from('players')
-        .update(updates)
-        .eq('id', player.id);
-    }
-
+    // Only update safe settings (no dna, no energy)
     if (selected_dynasty) {
       await supabase
         .from('player_settings')

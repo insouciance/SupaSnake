@@ -15,6 +15,7 @@ import { useCollectionStore } from '@/lib/stores/collectionStore';
 import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 
+import { Navigation } from '@/components/ui/Navigation';
 import { LabHeader } from '@/components/lab/LabHeader';
 import { DynastyTabs } from '@/components/lab/DynastyTabs';
 import { CollectionProgress } from '@/components/lab/CollectionProgress';
@@ -129,7 +130,8 @@ export default function LabPage() {
   if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
-        <div className="flex items-center justify-center min-h-screen">
+        <Navigation />
+        <div className="flex items-center justify-center min-h-screen pt-14">
           <div className="text-center">
             <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-[#8892b0] font-body">Loading your collection...</p>
@@ -146,7 +148,8 @@ export default function LabPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
-        <div className="flex items-center justify-center min-h-screen px-4">
+        <Navigation />
+        <div className="flex items-center justify-center min-h-screen pt-14 px-4">
           <div className="bg-[#16213e] border-2 border-[#00FFFF]/30 rounded-lg p-8 text-center max-w-md space-y-6">
             <h1 className="text-3xl font-display uppercase tracking-arcade text-[#00FFFF]">
               Snake Lab
@@ -173,7 +176,8 @@ export default function LabPage() {
   if (error && dynasties.length === 0) {
     return (
       <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
-        <div className="flex items-center justify-center min-h-screen px-4">
+        <Navigation />
+        <div className="flex items-center justify-center min-h-screen pt-14 px-4">
           <div className="bg-[#16213e] border-2 border-[#f87171]/30 rounded-lg p-8 text-center max-w-md space-y-6">
             <h1 className="text-3xl font-display uppercase tracking-arcade text-[#f87171]">
               Error
@@ -197,8 +201,13 @@ export default function LabPage() {
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] flex flex-col">
-      {/* Header with energy and DNA */}
-      <LabHeader energy={energy} maxEnergy={maxEnergy} dna={dnaBalance} />
+      {/* Global navigation */}
+      <Navigation />
+
+      {/* Header with energy and DNA - add top padding for fixed nav */}
+      <div className="pt-14">
+        <LabHeader energy={energy} maxEnergy={maxEnergy} dna={dnaBalance} />
+      </div>
 
       {/* Dynasty tabs */}
       {activeDynastyId && dynasties.length > 0 && (

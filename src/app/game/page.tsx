@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import { SnakeGameLogic, Direction, Position } from '@/lib/game/SnakeGameLogic';
 import { useGameStore } from '@/lib/store/gameStore';
+import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -45,6 +46,19 @@ export default function GamePage() {
   const [startError, setStartError] = useState<string | null>(null);
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const gameStartTime = useRef<number>(0);
+
+  // Refs to hold current values for use in event handlers (avoids stale closure)
+  const sessionRef = useRef(session);
+  const currentSessionIdRef = useRef(currentSessionId);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
 
   const {
     isPlaying,
@@ -159,19 +173,21 @@ export default function GamePage() {
     });
 
     gameRef.current.on('gameOver', async (data: any) => {
-      // Send results to server first
-      if (session?.access_token && currentSessionId) {
+      // Send results to server first (use refs to avoid stale closure)
+      const currentSession = sessionRef.current;
+      const sessionId = currentSessionIdRef.current;
+      if (currentSession?.access_token && sessionId) {
         const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
         try {
           const response = await fetch('/api/game/session', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
+              'Authorization': `Bearer ${currentSession.access_token}`,
             },
             body: JSON.stringify({
               action: 'end',
-              sessionId: currentSessionId,
+              sessionId: sessionId,
               score: data.score,
               dna_earned: data.dnaCollected,
               duration_seconds: gameDuration,
@@ -181,6 +197,11 @@ export default function GamePage() {
           });
 
           const result = await response.json();
+
+          // Sync DNA balance to collection store (server authority)
+          if (result.player?.dna !== undefined) {
+            useCollectionStore.getState().setDnaBalance(result.player.dna);
+          }
 
           // Show toast for each newly unlocked achievement
           if (result.newAchievements && result.newAchievements.length > 0) {
@@ -390,14 +411,14 @@ export default function GamePage() {
     resetGame();
   }, [resetGame]);
 
-  // Send game results to server
+  // Send game results to server and sync DNA balance
   const sendGameResults = useCallback(async (finalScore: number, dnaEarned: number) => {
     if (!session?.access_token || !currentSessionId) return;
 
     const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
 
     try {
-      await fetch('/api/game/session', {
+      const response = await fetch('/api/game/session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -413,6 +434,14 @@ export default function GamePage() {
           victory: false,
         }),
       });
+
+      // Sync updated DNA balance to collection store (server authority)
+      if (response.ok) {
+        const data = await response.json();
+        if (data.player?.dna !== undefined) {
+          useCollectionStore.getState().setDnaBalance(data.player.dna);
+        }
+      }
     } catch (err) {
       console.error('Failed to send game results:', err);
     }

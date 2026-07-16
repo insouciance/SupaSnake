@@ -37,6 +37,7 @@ interface CollectionState extends CollectionUIState {
   variants: SnakeVariant[];
   ownedSnakes: OwnedSnake[];
   equippedSnakeId: string | null;
+  dnaBalance: number;
 
   // UI State (general)
   isLoading: boolean;
@@ -47,6 +48,7 @@ interface CollectionState extends CollectionUIState {
   setVariants: (variants: SnakeVariant[]) => void;
   setOwnedSnakes: (snakes: OwnedSnake[]) => void;
   setEquippedSnakeId: (id: string | null) => void;
+  setDnaBalance: (balance: number) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 
@@ -82,6 +84,7 @@ export const initialState = {
   variants: [] as SnakeVariant[],
   ownedSnakes: [] as OwnedSnake[],
   equippedSnakeId: null as string | null,
+  dnaBalance: 0,
 
   // General UI state
   isLoading: false,
@@ -111,6 +114,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   setVariants: (variants) => set({ variants }),
   setOwnedSnakes: (ownedSnakes) => set({ ownedSnakes }),
   setEquippedSnakeId: (equippedSnakeId) => set({ equippedSnakeId }),
+  setDnaBalance: (dnaBalance) => set({ dnaBalance }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
 

@@ -24,10 +24,10 @@ export default function Home() {
     }
   };
 
-  // Placeholder stats - in production these come from player data
+  // Placeholder stats - in production these come from /api/player
+  // DNA balance is shown in Lab, not here (server authority)
   const pilotStats = {
     rank: 142,
-    dna: 2450,
     streak: 5,
   };
 
@@ -105,8 +105,6 @@ export default function Home() {
             <CommandPanel title="Pilot Stats" glowOnHover>
               <div className="space-y-3">
                 <StatDisplay label="Rank" value={pilotStats.rank} prefix="#" />
-                <div className="border-t border-scale-blue-light/30" />
-                <StatDisplay label="Total DNA" value={pilotStats.dna} highlight />
                 <div className="border-t border-scale-blue-light/30" />
                 <div className="flex items-center justify-between">
                   <StatDisplay label="Streak" value={pilotStats.streak} size="sm" />
