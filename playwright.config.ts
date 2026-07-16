@@ -20,8 +20,13 @@ export default defineConfig({
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
 
-  // Opt out of parallel tests on CI
-  workers: process.env.CI ? 1 : undefined,
+  // CI: single worker against next start. Local: keep parallelism low -
+  // next dev compiles routes on demand and too many parallel first-hits
+  // cause navigation timeouts.
+  workers: process.env.CI ? 1 : 4,
+
+  // Warm every tested route once before the run (dev-server compile cache)
+  globalSetup: './e2e/global-setup.ts',
 
   // Reporter configuration
   reporter: [
@@ -50,8 +55,8 @@ export default defineConfig({
     // Viewport size
     viewport: { width: 1280, height: 720 },
 
-    // Navigation timeout
-    navigationTimeout: 30000,
+    // Navigation timeout (dev server first-hits compile on demand)
+    navigationTimeout: 60000,
 
     // Action timeout
     actionTimeout: 15000,

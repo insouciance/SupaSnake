@@ -18,6 +18,9 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('Engagement hook loop (fresh anonymous player)', () => {
   let page: Page;
+  // Later steps depend on the guest session from step 1; when that step
+  // skips (anonymous sign-ins disabled) the rest must skip, not fail.
+  let guestReady = false;
 
   test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext();
@@ -31,6 +34,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
 
   test('anonymous signup and PRIMAL starter selection land on the game', async () => {
     await signInAsGuest(page);
+    guestReady = true;
 
     // Fresh account: game blocks play until a snake is owned
     await expect(
@@ -50,6 +54,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
   });
 
   test('game page shows the equipped snake name and energy', async () => {
+    test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     // Equipped starter is displayed by name next to the "Snake:" label
     await expect(page.getByText(/^snake:$/i)).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/primal/i).first()).toBeVisible();
@@ -64,6 +69,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
   });
 
   test('lab unlock attempt on a paid variant shows insufficient DNA', async () => {
+    test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     await page.goto('/lab');
 
     // Collection grid renders
@@ -90,6 +96,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
   });
 
   test('breeding lab renders both parent slots', async () => {
+    test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     await page.goto('/lab/breed');
 
     await expect(page.getByTestId('parent-slot-1')).toBeVisible({
@@ -99,6 +106,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
   });
 
   test('daily reward day 1 is claimable and increases DNA', async () => {
+    test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     await page.goto('/');
 
     // Fresh account: day 1 reward auto-opens as claimable

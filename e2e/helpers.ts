@@ -7,7 +7,7 @@
  * exercise the banner itself.
  */
 
-import type { Page } from '@playwright/test';
+import { test, type Page } from '@playwright/test';
 
 export interface ConsentSeed {
   essential: boolean;
@@ -53,11 +53,34 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
  * Create a fresh anonymous (guest) session via the login page.
  * Deterministic: LoginForm awaits signInAnonymously before onSuccess
  * routes to /game.
+ *
+ * If anonymous sign-ins are disabled in the Supabase project
+ * (error_code anonymous_provider_disabled), the app still navigates to
+ * /game but stays unauthenticated. In that case the calling test is
+ * SKIPPED with an actionable message instead of failing on a selector.
  */
 export async function signInAsGuest(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByRole('button', { name: /play as guest/i }).click();
   await page.waitForURL(/\/game/, { timeout: 20000 });
+
+  // Authenticated /game always renders the HUD ("Score:"); a failed
+  // anonymous sign-in lands on the sign-in prompt instead.
+  const authedMarker = page.getByText(/score:/i);
+  const signInPrompt = page.getByText(/sign in to play and save/i);
+  await authedMarker
+    .or(signInPrompt)
+    .first()
+    .waitFor({ state: 'visible', timeout: 20000 });
+
+  if (await signInPrompt.isVisible().catch(() => false)) {
+    test.skip(
+      true,
+      'Anonymous sign-ins are disabled in the Supabase project ' +
+        '(Dashboard > Authentication > Sign In / Up > Anonymous). ' +
+        'Guest-flow tests cannot run until it is enabled.'
+    );
+  }
 }
 
 /**
