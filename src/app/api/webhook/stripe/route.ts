@@ -8,10 +8,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-11-17.clover',
-});
+// Stripe client is created lazily so the production build does not require
+// STRIPE_SECRET_KEY at page-data collection time (see checkout route).
+let stripeClient: Stripe | null = null;
+function getStripe(): Stripe | null {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  if (!stripeClient) {
+    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2025-11-17.clover',
+    });
+  }
+  return stripeClient;
+}
 
 // Server-side Supabase client with service role
 const supabase = createClient(
@@ -19,10 +27,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
-
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripe();
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    if (!stripe || !webhookSecret) {
+      return NextResponse.json(
+        { error: 'Payments are not configured' },
+        { status: 503 }
+      );
+    }
+
     // Get raw body for signature verification
     const body = await request.text();
     const signature = request.headers.get('stripe-signature');

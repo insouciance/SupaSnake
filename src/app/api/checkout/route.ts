@@ -8,10 +8,20 @@ import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { getProductById } from '@/lib/stripe/products';
 
-// Initialize Stripe (only on server)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-11-17.clover',
-});
+// Stripe client is created lazily: instantiating at module scope makes the
+// production build itself require STRIPE_SECRET_KEY (Next.js page-data
+// collection imports the module), which breaks deploys before the Stripe
+// account is configured.
+let stripeClient: Stripe | null = null;
+function getStripe(): Stripe | null {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  if (!stripeClient) {
+    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2025-11-17.clover',
+    });
+  }
+  return stripeClient;
+}
 
 // Server-side Supabase client
 const supabase = createClient(
@@ -21,6 +31,14 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripe();
+    if (!stripe) {
+      return NextResponse.json(
+        { error: 'Payments are not configured' },
+        { status: 503 }
+      );
+    }
+
     // Get auth token from header
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
