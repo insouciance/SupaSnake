@@ -1,6 +1,6 @@
 'use client';
 
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useEffect, useRef, useCallback, useState, useMemo, Suspense } from 'react';
@@ -516,7 +516,7 @@ export default function GamePage() {
   // Show loading while checking auth
   if (authLoading) {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-scale-blue-dark">
+      <div className="w-screen h-dvh flex items-center justify-center bg-scale-blue-dark">
         <div className="text-center space-y-4">
           <div className="animate-spin w-12 h-12 border-4 border-t-transparent border-venom-orange rounded-full mx-auto" />
           <p className="text-beige font-body">Loading...</p>
@@ -528,7 +528,7 @@ export default function GamePage() {
   // Prompt sign-in if not authenticated (anonymous auth should auto-sign in)
   if (!isAuthenticated) {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-scale-blue-dark">
+      <div className="w-screen h-dvh flex items-center justify-center bg-scale-blue-dark">
         <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-8 text-center space-y-6">
           <h1 className="text-3xl font-display uppercase tracking-arcade text-venom-orange">OG Snake</h1>
           <p className="text-beige font-body">Sign in to play and save your progress</p>
@@ -548,7 +548,7 @@ export default function GamePage() {
 
   return (
     <div
-      className="w-screen h-screen relative"
+      className="w-screen h-dvh relative"
       style={{ backgroundColor: theme.ambient }}
     >
       {/* Space background overlay */}
@@ -643,9 +643,13 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Virtual D-Pad (mobile) */}
+      {/* Virtual D-Pad (mobile). bottom offset includes the safe-area inset
+          so the DOWN button clears home indicators / browser chrome. */}
       {isMobile && isPlaying && !isGameOver && !isPaused && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+        <div
+          className="absolute left-1/2 -translate-x-1/2 z-10"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        >
           <VirtualDPad
             onDirectionChange={handleDPadDirection}
             disabled={!isPlaying || isGameOver || isPaused}
@@ -838,11 +842,13 @@ export default function GamePage() {
           />
         </Suspense>
 
+        <FitCameraToBoard boardCenter={boardCenter} gridSize={GAME_CONFIG.board.gridSize} />
+
         <OrbitControls
           target={[boardCenter, 0, boardCenter]}
           enablePan={false}
           minDistance={12}
-          maxDistance={35}
+          maxDistance={45}
           minPolarAngle={Math.PI / 6}
           maxPolarAngle={Math.PI / 2.5}
           enableDamping={true}
@@ -864,6 +870,39 @@ export default function GamePage() {
       </Canvas>
     </div>
   );
+}
+
+/**
+ * Fits the camera so the whole board is visible at any aspect ratio.
+ * The default camera assumes a landscape viewport; on portrait phones the
+ * horizontal field of view crops the board. On mount and on resize this
+ * recomputes the camera distance along the original diagonal so the board
+ * fits both axes (desktop distance stays ~unchanged by calibration).
+ */
+function FitCameraToBoard({ boardCenter, gridSize }: { boardCenter: number; gridSize: number }) {
+  const { camera, size } = useThree();
+
+  useEffect(() => {
+    const persp = camera as THREE.PerspectiveCamera;
+    const aspect = size.width / size.height;
+    // Half-extent the view must contain (board half-span + small margin).
+    // Calibrated so a ~1.7 aspect desktop lands on the original distance.
+    const half = gridSize / 2 + 1;
+    const vFov = THREE.MathUtils.degToRad(persp.fov);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    const distV = half / Math.tan(vFov / 2);
+    const distH = half / Math.tan(hFov / 2);
+    const dist = Math.max(distV, distH);
+
+    const target = new THREE.Vector3(boardCenter, 0, boardCenter);
+    // Original camera offset direction (+12, 16, +12) preserved.
+    const dir = new THREE.Vector3(12, 16, 12).normalize();
+    persp.position.copy(target.clone().addScaledVector(dir, dist));
+    persp.lookAt(target);
+    persp.updateProjectionMatrix();
+  }, [camera, size.width, size.height, boardCenter, gridSize]);
+
+  return null;
 }
 
 interface GameBoardProps {
