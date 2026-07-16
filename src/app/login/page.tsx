@@ -5,7 +5,7 @@
  * Supports email/password, OAuth, and guest play
  */
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -15,8 +15,19 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, isAnonymous, isLoading } = useAuth();
+  // Latch the first completed auth check: the global isLoading also flips
+  // during a sign-in attempt, and swapping to the spinner then would unmount
+  // LoginForm mid-request and lose its error state ("Invalid login
+  // credentials" never rendered).
+  const [initialAuthChecked, setInitialAuthChecked] = useState(false);
 
   const returnTo = searchParams.get('returnTo') || '/game';
+
+  useEffect(() => {
+    if (!isLoading && !initialAuthChecked) {
+      setInitialAuthChecked(true);
+    }
+  }, [isLoading, initialAuthChecked]);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated && !isAnonymous) {
@@ -28,7 +39,7 @@ function LoginContent() {
     router.push(returnTo);
   };
 
-  if (isLoading) {
+  if (isLoading && !initialAuthChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-scale-blue-dark">
         <div className="text-center space-y-4">

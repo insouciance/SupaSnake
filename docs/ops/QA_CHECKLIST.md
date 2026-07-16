@@ -56,6 +56,17 @@ _Last updated: 2026-07-16 (afternoon)_
       exactly once (idempotent webhook), purchase_history row exists; refund
       in Stripe dashboard → recorded + Sentry alert (no auto-clawback)
 
+## 📌 Incidents / notes from autonomous work
+
+- **Guest play was broken in production** (fresh Supabase project has anonymous
+  sign-ins disabled by default) — found by e2e, fixed via Management API
+  2026-07-16. Worth a manual confirm: incognito → supasnake.com → Play as
+  Guest works.
+- Known bug (has expected-fail e2e coverage): /login doesn't render "Invalid
+  login credentials" — form unmounts mid-request. Fix queued.
+- One e2e flake: engagement spec "breeding lab renders parent slots"
+  occasionally times out in full-suite runs, passes standalone.
+
 ## ✅ Environment (done today, for reference)
 
 - Supabase: fresh `supasnake` project (eu-central-1), migrations 001–009,

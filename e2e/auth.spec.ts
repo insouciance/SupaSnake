@@ -47,14 +47,9 @@ test.describe('Login page', () => {
   });
 
   test('shows error for invalid credentials', async ({ page }) => {
-    // KNOWN BUG (expected failure): LoginContent returns a full-page
-    // spinner while AuthProvider.isLoading is true, and signInWithEmail
-    // toggles that flag - LoginForm unmounts/remounts around the request
-    // and loses its error state, so "Invalid login credentials" is never
-    // rendered. When the login page is fixed this test will start
-    // passing and Playwright will flag the unexpected pass.
-    test.fail();
-
+    // Regression guard: the login page must keep LoginForm mounted during a
+    // sign-in attempt (the full-page spinner is latched to the initial auth
+    // check only), otherwise the error state is lost mid-request.
     await page.goto('/login');
 
     await page.getByLabel(/email/i).fill('invalid-e2e@test.com');
