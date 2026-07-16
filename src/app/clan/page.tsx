@@ -6,9 +6,11 @@
  * Per SO-002: No daily requirements
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { type Clan, CLAN_LIMITS, CLAN_BONUS_CONFIG } from '@/lib/clan/types';
+import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 
@@ -18,6 +20,10 @@ interface MyClan extends Clan {
 }
 
 export default function ClanPage() {
+  if (!GAME_CONFIG.features.clans) {
+    redirect('/');
+  }
+
   const { user, session, isAuthenticated } = useAuth();
   const [myClan, setMyClan] = useState<MyClan | null>(null);
   const [clans, setClans] = useState<Clan[]>([]);
@@ -31,13 +37,7 @@ export default function ClanPage() {
   const [tag, setTag] = useState('');
   const [description, setDescription] = useState('');
 
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      fetchData();
-    }
-  }, [isAuthenticated, user]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch my clan
@@ -62,7 +62,13 @@ export default function ClanPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      fetchData();
+    }
+  }, [isAuthenticated, user, fetchData]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

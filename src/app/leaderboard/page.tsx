@@ -7,7 +7,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { GAME_CONFIG } from '@/shared/config/game';
 import {
   type LeaderboardEntry,
   type LeaderboardType,
@@ -59,6 +61,10 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 export default function LeaderboardPage() {
+  if (!GAME_CONFIG.features.leaderboards) {
+    redirect('/');
+  }
+
   const { user } = useAuth();
   const { showToast } = useToast();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -68,32 +74,7 @@ export default function LeaderboardPage() {
   const [dynasty, setDynasty] = useState<DynastyId | 'all'>('all');
   const [total, setTotal] = useState(0);
 
-  // Handle real-time high score events
-  const handleNewHighScore = useCallback((event: HighScoreEvent) => {
-    // Don't show notification for own scores
-    if (event.playerId === user?.id) return;
-
-    showToast(
-      `New high score: ${event.score} points (${event.dynasty})!`,
-      'success',
-      5000
-    );
-
-    // Refresh leaderboard to show new entry
-    fetchLeaderboard();
-  }, [user?.id, showToast]);
-
-  // Subscribe to real-time updates
-  const { isConnected } = useLeaderboardRealtime({
-    onNewHighScore: handleNewHighScore,
-    minScoreThreshold: 50,
-  });
-
-  useEffect(() => {
-    fetchLeaderboard();
-  }, [type, bracket, dynasty]);
-
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ type, limit: '50' });
@@ -117,7 +98,32 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [type, bracket, dynasty]);
+
+  // Handle real-time high score events
+  const handleNewHighScore = useCallback((event: HighScoreEvent) => {
+    // Don't show notification for own scores
+    if (event.playerId === user?.id) return;
+
+    showToast(
+      `New high score: ${event.score} points (${event.dynasty})!`,
+      'success',
+      5000
+    );
+
+    // Refresh leaderboard to show new entry
+    fetchLeaderboard();
+  }, [user?.id, showToast, fetchLeaderboard]);
+
+  // Subscribe to real-time updates
+  const { isConnected } = useLeaderboardRealtime({
+    onNewHighScore: handleNewHighScore,
+    minScoreThreshold: 50,
+  });
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [fetchLeaderboard]);
 
   const myRank = entries.find(e => e.playerId === user?.id)?.rank;
 

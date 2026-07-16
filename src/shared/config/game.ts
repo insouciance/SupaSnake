@@ -92,8 +92,8 @@ export const GAME_CONFIG = deepFreeze({
     breeding: true,
     evolution: false,                // v0.5+
     multiplayer: false,              // v1.0+
-    leaderboards: false,             // v1.0+
-    clans: false,                    // Future
+    leaderboards: true,              // Social launch
+    clans: true,                     // Social launch
   },
 } as const);
 

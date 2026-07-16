@@ -17,6 +17,10 @@ export function Navigation() {
     { href: '/', label: 'Home' },
     { href: '/game', label: 'Play' },
     { href: '/lab', label: 'Lab' },
+    ...(GAME_CONFIG.features.leaderboards
+      ? [{ href: '/leaderboard', label: 'Leaderboard' }]
+      : []),
+    ...(GAME_CONFIG.features.clans ? [{ href: '/clan', label: 'Clan' }] : []),
   ];
 
   return (

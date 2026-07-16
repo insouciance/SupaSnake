@@ -159,11 +159,14 @@ describe('Game Configuration', () => {
       expect(GAME_CONFIG.features.breeding).toBe(true);
     });
 
+    it('should have social features enabled', () => {
+      expect(GAME_CONFIG.features.leaderboards).toBe(true);
+      expect(GAME_CONFIG.features.clans).toBe(true);
+    });
+
     it('should have future features disabled', () => {
       expect(GAME_CONFIG.features.evolution).toBe(false);
       expect(GAME_CONFIG.features.multiplayer).toBe(false);
-      expect(GAME_CONFIG.features.leaderboards).toBe(false);
-      expect(GAME_CONFIG.features.clans).toBe(false);
     });
   });
 
