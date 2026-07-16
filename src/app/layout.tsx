@@ -1,5 +1,20 @@
 import type { Metadata, Viewport } from 'next';
+import { Russo_One, Rajdhani } from 'next/font/google';
 import './globals.css';
+
+const fontDisplay = Russo_One({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-display',
+  display: 'swap',
+});
+
+const fontBody = Rajdhani({
+  weight: ['500', '600', '700'],
+  subsets: ['latin'],
+  variable: '--font-body',
+  display: 'swap',
+});
 import { AuthProvider } from '@/lib/auth/AuthProvider';
 import { OfflineProgressProvider } from '@/components/engagement/OfflineProgressProvider';
 import { ToastProvider } from '@/components/ui/Toast';
@@ -26,7 +41,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${fontDisplay.variable} ${fontBody.variable}`}>
       <body>
         <AuthProvider>
           <ToastProvider>

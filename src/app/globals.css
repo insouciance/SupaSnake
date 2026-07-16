@@ -2,13 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Google Fonts - Russo One (display) + Rajdhani (body) */
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Russo+One&display=swap');
+/* Fonts load via next/font in the root layout (variables --font-display /
+   --font-body) - no render-blocking @import, no FOUT. */
 
 :root {
   /* Base colors */
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #0a0e12;
+  --foreground: #f4f4f4;
 
   /* Arcade palette */
   --scale-blue: #232C33;
@@ -22,29 +22,17 @@
   --beige: #D1BFA8;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Rajdhani', 'Roboto Condensed', Arial, sans-serif;
+  font-family: var(--font-body), 'Rajdhani', 'Roboto Condensed', Arial, sans-serif;
   font-weight: 500;
   margin: 0;
   padding: 0;
-  overflow: hidden;
-}
-
-/* Arcade typography utilities */
-.font-arcade-display {
-  font-family: 'Russo One', Impact, sans-serif;
-  text-transform: uppercase;
-  letter-spacing: -0.02em;
-}
-
-.font-arcade-body {
-  font-family: 'Rajdhani', 'Roboto Condensed', sans-serif;
-}
-
-* {
-  box-sizing: border-box;
 }
 
 canvas {
@@ -52,21 +40,131 @@ canvas {
   touch-action: none;
 }
 
-/* Arcade button base styles */
-.btn-arcade {
-  font-family: 'Russo One', Impact, sans-serif;
-  text-transform: uppercase;
-  letter-spacing: -0.02em;
-  border-radius: 4px;
-  border-width: 3px;
-  border-style: solid;
-  transition: all 0.1s ease-out;
+@layer components {
+  /* ==========================================================================
+     Surfaces - the game scene's language (void + emissive glow) as UI chrome
+     ========================================================================== */
+
+  /* Full-page backdrop: void gradient + vignette. Apply to page roots. */
+  .app-bg {
+    background:
+      radial-gradient(ellipse 120% 80% at 50% -20%, rgba(58, 71, 80, 0.35) 0%, transparent 60%),
+      radial-gradient(ellipse 100% 60% at 50% 110%, rgba(217, 131, 36, 0.06) 0%, transparent 55%),
+      linear-gradient(180deg, #10161c 0%, #0a0e12 45%, #050508 100%);
+    min-height: 100dvh;
+  }
+
+  /* Standard panel: gradient surface, hard 4px edge, elevation over the void */
+  .panel {
+    @apply bg-panel-gradient border border-scale-blue-light/60 rounded-arcade shadow-panel;
+  }
+
+  /* Elevated/hero panel with a soft top edge light */
+  .panel-elevated {
+    @apply panel;
+    box-shadow:
+      inset 0 1px 0 rgba(244, 244, 244, 0.08),
+      0 4px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Dynasty-glow panel: set --glow via utility (e.g. [--glow:#00FFFF]) */
+  .panel-glow {
+    @apply panel;
+    border-color: color-mix(in srgb, var(--glow, #D98324) 45%, transparent);
+    box-shadow:
+      0 0 18px -6px var(--glow, #D98324),
+      inset 0 1px 0 rgba(244, 244, 244, 0.06),
+      0 4px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  /* ==========================================================================
+     Buttons - styleguide hierarchy (GO / STOP / NEUTRAL), now with glow
+     ========================================================================== */
+
+  .btn-arcade {
+    font-family: var(--font-display), 'Russo One', Impact, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+    border-radius: 4px;
+    border-width: 2px;
+    border-style: solid;
+    transition: transform 0.1s ease-out, box-shadow 0.15s ease-out, filter 0.15s ease-out;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .btn-arcade:hover { transform: scale(1.02); }
+  .btn-arcade:active { transform: scale(0.97); }
+
+  /* GO: primary action */
+  .btn-go {
+    @apply btn-arcade bg-cta-gradient text-void-deep border-venom-orange-light;
+    text-shadow: 0 1px 0 rgba(244, 244, 244, 0.25);
+    box-shadow: 0 0 14px -4px #D98324;
+  }
+  .btn-go:hover { box-shadow: 0 0 22px -2px #D98324; }
+  .btn-go:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
+  /* STOP: destructive/exit */
+  .btn-stop {
+    @apply btn-arcade bg-danger-gradient text-bone-white border-strike-red;
+    box-shadow: 0 0 12px -5px #A42424;
+  }
+
+  /* NEUTRAL: secondary */
+  .btn-neutral {
+    @apply btn-arcade bg-scale-blue/80 text-bone-white border-scale-blue-light;
+  }
+  .btn-neutral:hover {
+    @apply border-beige/60;
+    box-shadow: 0 0 10px -4px rgba(209, 191, 168, 0.7);
+  }
+
+  /* ==========================================================================
+     Typography & effects
+     ========================================================================== */
+
+  .heading-display {
+    font-family: var(--font-display), 'Russo One', Impact, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+  }
+
+  .text-glow-orange { text-shadow: 0 0 18px rgba(217, 131, 36, 0.55); }
+  .text-glow { text-shadow: 0 0 16px var(--glow, rgba(244, 244, 244, 0.4)); }
+
+  /* Section label: small, wide-tracked, dimmed */
+  .label-arcade {
+    @apply font-display uppercase text-xs text-beige/70;
+    letter-spacing: 0.12em;
+  }
+
+  /* Divider that fades out at the edges */
+  .divider-glow {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(217, 131, 36, 0.5), transparent);
+  }
+
+  /* Shimmer sweep for celebratory highlights (pair with animate-shimmer) */
+  .shimmer-overlay {
+    background-size: 200% 100%;
+    @apply bg-shimmer;
+  }
 }
 
-.btn-arcade:hover {
-  transform: scale(1.02);
-}
-
-.btn-arcade:active {
-  transform: scale(0.98);
+@layer utilities {
+  /* Reduce motion: kill decorative animation for users who ask for it */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-breathe,
+    .animate-glow-pulse,
+    .animate-float,
+    .animate-shimmer,
+    .animate-pulse-slow,
+    .animate-bounce-slow {
+      animation: none;
+    }
+  }
 }

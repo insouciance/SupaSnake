@@ -548,7 +548,7 @@ export default function GamePage() {
 
   return (
     <div
-      className="w-screen h-dvh relative"
+      className="w-screen h-dvh relative overflow-hidden"
       style={{ backgroundColor: theme.ambient }}
     >
       {/* Space background overlay */}
