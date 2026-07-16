@@ -87,7 +87,7 @@ describe('useLeaderboardRealtime', () => {
             new: {
               player_id: 'player-123',
               score: 150,
-              dynasty: 'EMBER',
+              dynasty: 'CYBER',
             },
           });
         });
@@ -97,7 +97,7 @@ describe('useLeaderboardRealtime', () => {
         expect.objectContaining({
           playerId: 'player-123',
           score: 150,
-          dynasty: 'EMBER',
+          dynasty: 'CYBER',
         })
       );
     });

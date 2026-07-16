@@ -3,15 +3,22 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { ALL_DYNASTIES } from '@/shared/data/dynasties';
+import { MVP_DYNASTIES, DYNASTY_THEMES } from '@/shared/types/snake-data-model';
 import { NavBar } from '@/components/ui/NavBar';
 import { CommandPanel } from '@/components/ui/CommandPanel';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { StatDisplay } from '@/components/ui/StatDisplay';
 
+// Static dynasty preview data (full catalog lives in the DB: 10 variants each)
+const DYNASTY_PREVIEW = MVP_DYNASTIES.map((name) => ({
+  name,
+  colorPrimary: DYNASTY_THEMES[name].primary,
+  variantCount: 10,
+}));
+
 export default function Home() {
   const { isAuthenticated, isLoading, signInAnonymously } = useAuth();
-  const [selectedDynasty, setSelectedDynasty] = useState<string>('ember');
+  const [selectedDynasty, setSelectedDynasty] = useState<string>('CYBER');
   const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
@@ -116,12 +123,12 @@ export default function Home() {
             {/* Dynasty Selector Panel */}
             <CommandPanel title="Dynasty Select" glowOnHover>
               <div className="space-y-2">
-                {ALL_DYNASTIES.map((dynasty) => {
-                  const isSelected = selectedDynasty === dynasty.id;
+                {DYNASTY_PREVIEW.map((dynasty) => {
+                  const isSelected = selectedDynasty === dynasty.name;
                   return (
                     <button
-                      key={dynasty.id}
-                      onClick={() => setSelectedDynasty(dynasty.id)}
+                      key={dynasty.name}
+                      onClick={() => setSelectedDynasty(dynasty.name)}
                       className={`
                         w-full flex items-center gap-3 p-3 rounded-arcade border-[2px] transition-all
                         ${isSelected
@@ -193,9 +200,9 @@ export default function Home() {
 
           {/* Dynasty Preview - Compact */}
           <div className="flex justify-center gap-2 pt-2">
-            {ALL_DYNASTIES.map(dynasty => (
+            {DYNASTY_PREVIEW.map(dynasty => (
               <div
-                key={dynasty.id}
+                key={dynasty.name}
                 className="flex gap-1 items-center px-3 py-2 bg-scale-blue/50 rounded-arcade border border-scale-blue-light/30"
               >
                 <div
@@ -204,7 +211,7 @@ export default function Home() {
                 />
                 <span className="text-xs font-body text-beige/70">{dynasty.name}</span>
                 <span className="text-xs text-beige/40 font-mono">
-                  {dynasty.variants.length}
+                  {dynasty.variantCount}
                 </span>
               </div>
             ))}

@@ -14,7 +14,7 @@ describe('Game Store', () => {
       dnaCollected: 0,
       energy: 5,
       maxEnergy: 5,
-      selectedDynasty: 'EMBER',
+      selectedDynasty: 'CYBER',
       snake: [],
       food: null,
       direction: 'RIGHT',
@@ -28,7 +28,7 @@ describe('Game Store', () => {
       expect(state.isGameOver).toBe(false);
       expect(state.score).toBe(0);
       expect(state.energy).toBe(5);
-      expect(state.selectedDynasty).toBe('EMBER');
+      expect(state.selectedDynasty).toBe('CYBER');
     });
   });
 
@@ -85,16 +85,16 @@ describe('Game Store', () => {
 
   describe('Dynasty Selection', () => {
     it('should change selected dynasty', () => {
-      useGameStore.getState().setSelectedDynasty('CRYSTAL');
-      expect(useGameStore.getState().selectedDynasty).toBe('CRYSTAL');
+      useGameStore.getState().setSelectedDynasty('PRIMAL');
+      expect(useGameStore.getState().selectedDynasty).toBe('PRIMAL');
     });
 
     it('should accept all valid dynasties', () => {
-      useGameStore.getState().setSelectedDynasty('VOID');
-      expect(useGameStore.getState().selectedDynasty).toBe('VOID');
+      useGameStore.getState().setSelectedDynasty('COSMIC');
+      expect(useGameStore.getState().selectedDynasty).toBe('COSMIC');
 
-      useGameStore.getState().setSelectedDynasty('EMBER');
-      expect(useGameStore.getState().selectedDynasty).toBe('EMBER');
+      useGameStore.getState().setSelectedDynasty('CYBER');
+      expect(useGameStore.getState().selectedDynasty).toBe('CYBER');
     });
   });
 
@@ -168,9 +168,9 @@ describe('Game Store', () => {
     });
 
     it('should preserve dynasty selection on reset', () => {
-      useGameStore.setState({ selectedDynasty: 'CRYSTAL' });
+      useGameStore.setState({ selectedDynasty: 'PRIMAL' });
       useGameStore.getState().resetGame();
-      expect(useGameStore.getState().selectedDynasty).toBe('CRYSTAL');
+      expect(useGameStore.getState().selectedDynasty).toBe('PRIMAL');
     });
   });
 });

@@ -24,6 +24,16 @@ describe('Leaderboard API', () => {
         expect(pagination.limit).toBe(10);
         expect(pagination.offset).toBe(0);
       });
+
+      it('should accept only DB dynasty names for the dynasty filter', () => {
+        const validDynasties = ['CYBER', 'PRIMAL', 'COSMIC'];
+
+        expect(validDynasties).toContain('CYBER');
+        expect(validDynasties).toContain('PRIMAL');
+        expect(validDynasties).toContain('COSMIC');
+        expect(validDynasties).toHaveLength(3);
+        expect(validDynasties.includes('SHADOW')).toBe(false);
+      });
     });
 
     describe('Response Format', () => {

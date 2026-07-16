@@ -11,13 +11,20 @@ const supabase = createClient(
 );
 
 /**
- * Convert database row to OwnedSnake type (snake_case to camelCase)
+ * Convert database row to OwnedSnake type (snake_case to camelCase).
+ * The legacy variant_id TEXT column is gone; variant/dynasty names come
+ * from the snake_variants(dynasties) join when the query includes it.
  */
 export function mapOwnedSnakeRow(row: Record<string, unknown>): OwnedSnake {
+  const variantJoin = row.snake_variants as
+    | { name?: string; dynasties?: { name?: string } | null }
+    | null
+    | undefined;
+
   return {
     id: row.id as string,
     playerId: row.player_id as string,
-    variantId: row.variant_id as string,
+    variantId: (variantJoin?.name ?? '') as string,
     snakeVariantId: row.snake_variant_id as string,
     generation: row.generation as number,
     parent1Id: row.parent1_id as string | null,
@@ -26,6 +33,8 @@ export function mapOwnedSnakeRow(row: Record<string, unknown>): OwnedSnake {
     acquiredMethod: row.acquired_method as OwnedSnake['acquiredMethod'],
     isEquipped: row.is_equipped as boolean,
     isFavorited: row.is_favorited as boolean,
+    variantName: variantJoin?.name ?? null,
+    dynastyName: variantJoin?.dynasties?.name ?? null,
   };
 }
 

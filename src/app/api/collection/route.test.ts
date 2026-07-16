@@ -35,8 +35,8 @@ describe('mapOwnedSnakeRow', () => {
     const row = {
       id: 'uuid-123',
       player_id: 'player-uuid',
-      variant_id: 'CYBER SPARK',
       snake_variant_id: 'variant-uuid',
+      snake_variants: { name: 'CYBER SPARK', dynasties: { name: 'CYBER' } },
       generation: 1,
       parent1_id: null,
       parent2_id: null,
@@ -65,8 +65,8 @@ describe('mapOwnedSnakeRow', () => {
     const row = {
       id: 'uuid-123',
       player_id: 'player-uuid',
-      variant_id: 'CYBER PULSE',
       snake_variant_id: 'variant-uuid',
+      snake_variants: { name: 'CYBER PULSE', dynasties: { name: 'CYBER' } },
       generation: 2,
       parent1_id: 'parent1-uuid',
       parent2_id: 'parent2-uuid',
@@ -166,7 +166,8 @@ describe('GET /api/collection', () => {
     const mockSnakes = [
       {
         id: '1',
-        variant_id: 'CYBER SPARK',
+        snake_variant_id: 'variant-uuid',
+        snake_variants: { name: 'CYBER SPARK', dynasties: { name: 'CYBER' } },
         generation: 1,
         is_equipped: true,
       },
@@ -267,7 +268,11 @@ describe('POST /api/collection (unlock)', () => {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       single: jest.fn().mockResolvedValueOnce({
-        data: { id: 'new-snake-uuid', variant_id: 'CYBER PULSE' },
+        data: {
+          id: 'new-snake-uuid',
+          snake_variant_id: 'variant-uuid',
+          snake_variants: { name: 'CYBER PULSE', dynasties: { name: 'CYBER' } },
+        },
         error: null,
       }),
     });

@@ -45,10 +45,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Fetch player's collection
+    // Fetch player's collection (join variant + dynasty names for display)
     const { data: rows, error } = await supabase
       .from('collected_snakes')
-      .select('*')
+      .select('*, snake_variants(name, dynasties(name))')
       .eq('player_id', player.id)
       .order('acquired_at', { ascending: false });
 
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     // Fetch the newly created snake
     const { data: newSnake, error: fetchError } = await supabase
       .from('collected_snakes')
-      .select('*')
+      .select('*, snake_variants(name, dynasties(name))')
       .eq('id', newSnakeId)
       .single();
 

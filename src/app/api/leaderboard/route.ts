@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Parse query parameters
     const type = (searchParams.get('type') || 'global') as LeaderboardType;
     const bracket = searchParams.get('bracket') as SkillBracket | null;
-    const dynasty = searchParams.get('dynasty'); // EMBER, CRYSTAL, VOID
+    const dynasty = searchParams.get('dynasty'); // CYBER, PRIMAL, COSMIC
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate dynasty if provided
-    if (dynasty && !['EMBER', 'CRYSTAL', 'VOID'].includes(dynasty)) {
+    if (dynasty && !['CYBER', 'PRIMAL', 'COSMIC'].includes(dynasty)) {
       return NextResponse.json({ error: 'Invalid dynasty' }, { status: 400 });
     }
 

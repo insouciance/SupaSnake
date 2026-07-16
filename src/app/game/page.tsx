@@ -43,6 +43,20 @@ export default function GamePage() {
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
+  const [equippedSnake, setEquippedSnake] = useState<{
+    id: string;
+    name: string;
+    generation: number;
+    dynasty: string;
+  } | null>(null);
+  const [collectionLoaded, setCollectionLoaded] = useState(false);
+  const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
+  const [streakInfo, setStreakInfo] = useState<{
+    current: number;
+    longest: number;
+    multiplier: number;
+    graceConsumed: boolean;
+  } | null>(null);
   const gameStartTime = useRef<number>(0);
 
   // Refs to hold current values for use in event handlers (avoids stale closure)
@@ -131,11 +145,55 @@ export default function GamePage() {
         if (data.player) {
           syncEnergyFromServer(data.player.energy, data.player.energy_regen_at);
         }
+        setNeedsStarterSelection(Boolean(data.needsStarterSelection));
       })
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, syncEnergyFromServer]);
 
+  // Fetch collection to find the equipped snake (game always uses it)
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    fetch('/api/collection', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        const snakes: Array<{
+          id: string;
+          isEquipped: boolean;
+          generation: number;
+          variantName?: string | null;
+          variantId?: string;
+          dynastyName?: string | null;
+        }> = data.snakes ?? [];
+
+        const equipped = snakes.find((s) => s.isEquipped) ?? null;
+        if (equipped) {
+          const dynastyName = (equipped.dynastyName ?? 'CYBER').toUpperCase();
+          setEquippedSnake({
+            id: equipped.id,
+            name: equipped.variantName ?? equipped.variantId ?? 'Snake',
+            generation: equipped.generation,
+            dynasty: dynastyName,
+          });
+          // Theme follows the equipped snake's dynasty
+          if (dynastyName === 'CYBER' || dynastyName === 'PRIMAL' || dynastyName === 'COSMIC') {
+            setSelectedDynasty(dynastyName as DynastyId);
+          }
+        }
+        setCollectionLoaded(true);
+      })
+      .catch(err => {
+        console.error('Failed to fetch collection:', err);
+        setCollectionLoaded(true);
+      });
+  }, [session?.access_token, setSelectedDynasty]);
+
   const theme = themeManager.getTheme(selectedDynasty);
+
+  // No playable snake: new player (never picked a starter) or nothing equipped
+  const noSnakeAvailable = needsStarterSelection || (collectionLoaded && !equippedSnake);
 
   // Calculate board center for camera
   const boardCenter = GAME_CONFIG.board.gridSize / 2;
@@ -199,6 +257,11 @@ export default function GamePage() {
           // Sync DNA balance to collection store (server authority)
           if (result.player?.dna !== undefined) {
             useCollectionStore.getState().setDnaBalance(result.player.dna);
+          }
+
+          // Show daily streak info on the game-over screen
+          if (result.streak) {
+            setStreakInfo(result.streak);
           }
 
           // Show toast for each newly unlocked achievement
@@ -276,6 +339,10 @@ export default function GamePage() {
       setStartError('Please sign in to play');
       return;
     }
+    if (!equippedSnake) {
+      setStartError('No snake equipped. Choose one in the Lab.');
+      return;
+    }
     if (energy < GAME_CONFIG.economy.energy.costPerGame) return;
     if (isStarting) return;
 
@@ -291,7 +358,7 @@ export default function GamePage() {
         },
         body: JSON.stringify({
           action: 'start',
-          variant_id: `${selectedDynasty}_1`, // Use selected dynasty's first variant
+          snake_id: equippedSnake.id, // Server validates ownership + equipped
         }),
       });
 
@@ -322,7 +389,7 @@ export default function GamePage() {
     } finally {
       setIsStarting(false);
     }
-  }, [session?.access_token, energy, isStarting, selectedDynasty, syncEnergyFromServer, storeStartGame, setReady, syncState]);
+  }, [session?.access_token, energy, isStarting, equippedSnake, syncEnergyFromServer, storeStartGame, setReady, syncState]);
 
   // Keyboard controls
   useEffect(() => {
@@ -414,6 +481,7 @@ export default function GamePage() {
     resetGame();
     setCurrentSessionId(null);
     setUnlockedAchievements([]);
+    setStreakInfo(null);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -490,27 +558,14 @@ export default function GamePage() {
           />
         </div>
 
-        {/* Dynasty Selector */}
-        <div className="flex gap-2 mt-4">
-          {(['EMBER', 'CRYSTAL', 'VOID'] as DynastyId[]).map((d) => (
-            <button
-              key={d}
-              onClick={() => setSelectedDynasty(d)}
-              disabled={isPlaying}
-              className={`px-3 py-1 rounded-arcade border-2 font-display uppercase text-sm transition-all ${
-                selectedDynasty === d
-                  ? d === 'EMBER'
-                    ? 'bg-orange-600 border-orange-400 text-bone-white'
-                    : d === 'CRYSTAL'
-                    ? 'bg-cyan-600 border-cyan-400 text-bone-white'
-                    : 'bg-purple-600 border-purple-400 text-bone-white'
-                  : 'bg-scale-blue border-scale-blue-light text-beige hover:bg-scale-blue-light'
-              } ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {d}
-            </button>
-          ))}
-        </div>
+        {/* Equipped Snake (the game always uses the equipped snake) */}
+        {equippedSnake && !isPlaying && (
+          <div className="flex items-center gap-2 mt-4 font-body text-sm">
+            <span className="text-beige">Snake:</span>
+            <span className="font-bold text-bone-white">{equippedSnake.name}</span>
+            <span className="text-beige/70">Gen {equippedSnake.generation}</span>
+          </div>
+        )}
       </div>
 
       {/* Navigation (when not playing) */}
@@ -601,6 +656,14 @@ export default function GamePage() {
                   <p className="text-2xl text-bone-white">
                     DNA: <span className="font-bold text-venom-orange">+{dnaCollected}</span>
                   </p>
+                  {streakInfo && (
+                    <p className="text-lg text-beige">
+                      Day <span className="font-bold text-venom-orange">{streakInfo.current}</span> streak
+                      {streakInfo.multiplier > 1 && (
+                        <span className="text-beige/70"> ({streakInfo.multiplier}x DNA)</span>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 {/* Unlocked Achievements */}
@@ -625,9 +688,24 @@ export default function GamePage() {
                 <h2 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">
                   Ready to Play
                 </h2>
-                <p className="text-beige font-body">
-                  Dynasty: <span className="font-bold text-bone-white">{selectedDynasty}</span>
-                </p>
+                {equippedSnake ? (
+                  <p className="text-beige font-body">
+                    <span className="font-bold text-bone-white">{equippedSnake.name}</span>
+                    <span className="text-beige/70"> · Gen {equippedSnake.generation}</span>
+                    <Link
+                      href="/lab"
+                      className="ml-3 text-venom-orange underline hover:text-venom-orange-light transition-colors"
+                    >
+                      Change in Lab
+                    </Link>
+                  </p>
+                ) : noSnakeAvailable ? (
+                  <p className="text-beige font-body">
+                    You need a snake before you can play.
+                  </p>
+                ) : (
+                  <p className="text-beige/70 font-body">Loading your snake...</p>
+                )}
               </>
             )}
 
@@ -639,12 +717,19 @@ export default function GamePage() {
             )}
 
             <div className="flex gap-4 justify-center">
-              {energy > 0 ? (
+              {noSnakeAvailable ? (
+                <Link
+                  href="/lab"
+                  className="px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  Choose Your Snake in the Lab
+                </Link>
+              ) : energy > 0 ? (
                 <button
                   onClick={handleStart}
-                  disabled={isStarting}
+                  disabled={isStarting || !equippedSnake}
                   className={`px-8 py-3 rounded-arcade border-[3px] font-display uppercase tracking-arcade text-lg transition-all ${
-                    isStarting
+                    isStarting || !equippedSnake
                       ? 'bg-scale-blue-light border-scale-blue cursor-wait text-beige'
                       : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
                   }`}

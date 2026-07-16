@@ -5,7 +5,6 @@
 
 import { Color, MeshStandardMaterial } from 'three';
 import type { DynastyId } from '@/shared/types/game';
-import { DYNASTIES_BY_ID } from '@/shared/data/dynasties';
 
 export interface DynastyTheme {
   id: DynastyId;
@@ -26,30 +25,32 @@ export class ThemeManager {
 
   constructor() {
     this.materialCache = new Map();
+    // Colors track src/hooks/useDynastyTheme.ts (Collection UI), brightened
+    // where needed for 3D lighting contrast.
     this.themes = {
-      EMBER: {
-        id: 'EMBER',
-        name: 'EMBER',
-        primary: '#FF4500',    // Orange-red
+      CYBER: {
+        id: 'CYBER',
+        name: 'CYBER',
+        primary: '#00FFFF',    // Cyan
+        secondary: '#FF00FF',  // Magenta
+        accent: '#00AAFF',     // Electric blue
+        ambient: '#001a1a',    // Dark teal
+      },
+      PRIMAL: {
+        id: 'PRIMAL',
+        name: 'PRIMAL',
+        primary: '#4A7C2A',    // Forest green (brightened from #2d5016 for 3D)
+        secondary: '#7CB342',  // Leaf green
+        accent: '#9CCC65',     // Light lime
+        ambient: '#0a1400',    // Dark moss
+      },
+      COSMIC: {
+        id: 'COSMIC',
+        name: 'COSMIC',
+        primary: '#6A0DAD',    // Purple (brightened from #4a0e4e for 3D)
         secondary: '#FFD700',  // Gold
-        accent: '#FF6347',     // Tomato
-        ambient: '#1a0a00',    // Dark warm
-      },
-      CRYSTAL: {
-        id: 'CRYSTAL',
-        name: 'CRYSTAL',
-        primary: '#00CED1',    // Dark turquoise
-        secondary: '#E0FFFF',  // Light cyan
-        accent: '#1E90FF',     // Dodger blue
-        ambient: '#000a1a',    // Dark cool
-      },
-      VOID: {
-        id: 'VOID',
-        name: 'VOID',
-        primary: '#4B0082',    // Indigo
-        secondary: '#9370DB',  // Medium purple
-        accent: '#8B00FF',     // Electric violet
-        ambient: '#0a000a',    // Dark purple
+        accent: '#9B30FF',     // Bright violet
+        ambient: '#0d0a1a',    // Dark space
       },
     };
   }

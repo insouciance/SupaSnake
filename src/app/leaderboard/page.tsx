@@ -20,12 +20,12 @@ import { useToast } from '@/components/ui/Toast';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 
-type DynastyId = 'EMBER' | 'CRYSTAL' | 'VOID';
+type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
 
 const DYNASTY_COLORS: Record<DynastyId, string> = {
-  EMBER: '#F97316',
-  CRYSTAL: '#06B6D4',
-  VOID: '#8B5CF6',
+  CYBER: '#06B6D4',
+  PRIMAL: '#4A7C2A',
+  COSMIC: '#8B5CF6',
 };
 
 // Rank badge component
@@ -214,7 +214,7 @@ export default function LeaderboardPage() {
               >
                 All Dynasties
               </button>
-              {(['EMBER', 'CRYSTAL', 'VOID'] as DynastyId[]).map((d) => (
+              {(['CYBER', 'PRIMAL', 'COSMIC'] as DynastyId[]).map((d) => (
                 <button
                   key={d}
                   onClick={() => setDynasty(d)}

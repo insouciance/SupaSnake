@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       .from('collected_snakes')
       .update({ is_equipped: true })
       .eq('id', snakeId)
-      .select('*')
+      .select('*, snake_variants(name, dynasties(name))')
       .single();
 
     if (equipError || !equippedRow) {

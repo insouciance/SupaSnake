@@ -124,7 +124,7 @@ describe('AudioManagerClass', () => {
     });
 
     it('should not play music if not initialized', () => {
-      manager.playMusic('ember');
+      manager.playMusic('cyber');
       expect(manager.currentTrack).toBeNull();
     });
 

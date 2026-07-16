@@ -27,8 +27,8 @@ describe('mapOwnedSnakeRow', () => {
     const row = {
       id: 'uuid-123',
       player_id: 'player-uuid',
-      variant_id: 'CYBER SPARK',
       snake_variant_id: 'variant-uuid',
+      snake_variants: { name: 'CYBER SPARK', dynasties: { name: 'CYBER' } },
       generation: 1,
       parent1_id: null,
       parent2_id: null,
@@ -43,6 +43,8 @@ describe('mapOwnedSnakeRow', () => {
     expect(result.id).toBe('uuid-123');
     expect(result.playerId).toBe('player-uuid');
     expect(result.variantId).toBe('CYBER SPARK');
+    expect(result.variantName).toBe('CYBER SPARK');
+    expect(result.dynastyName).toBe('CYBER');
     expect(result.snakeVariantId).toBe('variant-uuid');
     expect(result.generation).toBe(1);
     expect(result.parent1Id).toBeNull();
@@ -57,8 +59,8 @@ describe('mapOwnedSnakeRow', () => {
     const row = {
       id: 'uuid-123',
       player_id: 'player-uuid',
-      variant_id: 'CYBER PULSE',
       snake_variant_id: 'variant-uuid',
+      snake_variants: { name: 'CYBER PULSE', dynasties: { name: 'CYBER' } },
       generation: 2,
       parent1_id: 'parent1-uuid',
       parent2_id: 'parent2-uuid',

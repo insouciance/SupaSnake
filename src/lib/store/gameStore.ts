@@ -69,7 +69,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   energy: GAME_CONFIG.economy.energy.maxEnergy,
   maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
   energyRegenAt: null, // Synced from server
-  selectedDynasty: 'EMBER',
+  selectedDynasty: 'CYBER',
   snake: [],
   food: null,
   direction: 'RIGHT',

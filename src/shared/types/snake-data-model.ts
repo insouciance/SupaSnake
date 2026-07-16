@@ -71,8 +71,8 @@ export interface SnakeStats {
 export interface OwnedSnake {
   id: string; // UUID
   playerId: string; // FK to players
-  variantId: string; // TEXT (legacy) - variant name
-  snakeVariantId: string | null; // UUID FK to snake_variants (new)
+  variantId: string; // Variant name (derived from snake_variants join)
+  snakeVariantId: string | null; // UUID FK to snake_variants
   generation: number; // Gen 1, 2, 3...
   parent1Id: string | null; // Breeding parent
   parent2Id: string | null;
@@ -80,6 +80,10 @@ export interface OwnedSnake {
   acquiredMethod: AcquiredMethod;
   isEquipped: boolean;
   isFavorited: boolean;
+
+  // Joined display data (populated when the query joins snake_variants)
+  variantName?: string | null; // e.g. "CYBER SPARK"
+  dynastyName?: string | null; // e.g. "CYBER"
 
   // Joined data (populated by queries)
   variant?: SnakeVariant;

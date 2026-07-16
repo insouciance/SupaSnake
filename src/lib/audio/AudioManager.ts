@@ -13,7 +13,7 @@ type SoundEffect =
   | 'breedingSuccess'
   | 'energyRegen';
 
-type MusicTrack = 'ember' | 'crystal' | 'void' | 'menu';
+type MusicTrack = 'cyber' | 'primal' | 'cosmic' | 'menu';
 
 interface AudioConfig {
   masterVolume: number;
@@ -50,9 +50,9 @@ class AudioManagerClass {
 
   // Music paths
   private readonly musicPaths: Record<MusicTrack, string> = {
-    ember: '/assets/audio/music/ember_theme.mp3',
-    crystal: '/assets/audio/music/crystal_theme.mp3',
-    void: '/assets/audio/music/void_theme.mp3',
+    cyber: '/assets/audio/music/cyber_theme.mp3',
+    primal: '/assets/audio/music/primal_theme.mp3',
+    cosmic: '/assets/audio/music/cosmic_theme.mp3',
     menu: '/assets/audio/music/menu_theme.mp3',
   };
 
