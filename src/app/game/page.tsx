@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import Link from 'next/link';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
+import { SnakeModel, SnakeSegmentFallback } from '@/components/game/SnakeModel';
 import { VirtualDPad } from '@/components/game/VirtualDPad';
 import { PauseMenu } from '@/components/game/PauseMenu';
 import { DynamicLights } from '@/components/game/DynamicLights';
@@ -915,15 +916,13 @@ function GameBoard({
         />
       )}
 
-      {/* Snake Segments with Interpolation + GLB Models */}
+      {/* Snake Segments with Interpolation + GLB Voxel Models */}
       {snake.map((seg, i) => (
         <InterpolatedSegment
           key={i}
           segment={seg}
-          index={i}
           isHead={i === 0}
           dynasty={dynasty}
-          totalSegments={snake.length}
         />
       ))}
 
@@ -954,40 +953,43 @@ function GameBoard({
 
 /**
  * Interpolated Snake Segment Component - Smooth movement between grid positions
+ *
+ * Renders the voxel GLB mesh (SnakeModel); while the GLB streams in, a box
+ * with the same shared per-dynasty material renders so the game never blocks
+ * on asset load. Both share the meshRef, so interpolation stays smooth across
+ * the swap.
  */
 interface InterpolatedSegmentProps {
   segment: Position;
-  index: number;
   isHead: boolean;
   dynasty: DynastyId;
-  totalSegments: number;
 }
 
 function InterpolatedSegment({
   segment,
-  index,
   isHead,
   dynasty,
-  totalSegments,
 }: InterpolatedSegmentProps) {
   const meshRef = useInterpolatedMesh(segment);
-  const theme = themeManager.getTheme(dynasty);
   const initialPos = useGridPosition(segment);
 
-  // Use simple box geometry for now - GLB can be added later
-  const emissiveIntensity = isHead ? 0.6 : 0.4;
-  const size = isHead ? 0.9 : 0.85;
-
   return (
-    <mesh ref={meshRef} position={initialPos} castShadow>
-      <boxGeometry args={[size, size, size]} />
-      <meshStandardMaterial
-        color={theme.primary}
-        emissive={theme.secondary}
-        emissiveIntensity={emissiveIntensity}
-        metalness={0.5}
-        roughness={0.3}
+    <Suspense
+      fallback={
+        <SnakeSegmentFallback
+          meshRef={meshRef}
+          position={initialPos}
+          isHead={isHead}
+          dynasty={dynasty}
+        />
+      }
+    >
+      <SnakeModel
+        meshRef={meshRef}
+        position={initialPos}
+        isHead={isHead}
+        dynasty={dynasty}
       />
-    </mesh>
+    </Suspense>
   );
 }
