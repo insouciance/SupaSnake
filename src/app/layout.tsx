@@ -3,6 +3,8 @@ import './globals.css';
 import { AuthProvider } from '@/lib/auth/AuthProvider';
 import { OfflineProgressProvider } from '@/components/engagement/OfflineProgressProvider';
 import { ToastProvider } from '@/components/ui/Toast';
+import { AnalyticsProvider } from '@/components/analytics/AnalyticsProvider';
+import { ConsentBanner } from '@/components/legal/ConsentBanner';
 
 export const metadata: Metadata = {
   title: 'SupaSnake - Collection RPG',
@@ -20,7 +22,10 @@ export default function RootLayout({
         <AuthProvider>
           <ToastProvider>
             <OfflineProgressProvider>
-              {children}
+              <AnalyticsProvider>
+                {children}
+                <ConsentBanner />
+              </AnalyticsProvider>
             </OfflineProgressProvider>
           </ToastProvider>
         </AuthProvider>

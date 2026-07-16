@@ -58,7 +58,7 @@ describe('Security Middleware', () => {
       const csp = response.headers.get('Content-Security-Policy');
       expect(csp).toContain('script-src');
       expect(csp).toContain('https://js.stripe.com');
-      expect(csp).toContain('https://cdn.amplitude.com');
+      expect(csp).toContain('https://eu-assets.i.posthog.com');
     });
 
     it('should include connect-src with API domains', async () => {
