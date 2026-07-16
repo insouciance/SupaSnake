@@ -1,138 +1,174 @@
 /**
  * Authentication E2E Tests
- * Tests user authentication flows including login, signup, and logout
+ *
+ * Real flows as of Sprint 1:
+ * - Home page has no login link; play starts an anonymous session.
+ * - /login: email/password + Google/Apple OAuth + "Play as Guest".
+ * - /signup: age gate (13+) shown before the account form.
+ * - /game and /lab prompt for sign-in when there is no session.
  */
 
 import { test, expect } from '@playwright/test';
+import { seedConsent, signInAsGuest } from './helpers';
 
-test.describe('Authentication', () => {
-  test.beforeEach(async ({ page }) => {
-    // Navigate to home page before each test
+test.describe('Consent banner', () => {
+  test('appears on first visit and can be rejected', async ({ page }) => {
     await page.goto('/');
-  });
 
-  test('should display login button on home page', async ({ page }) => {
-    const loginButton = page.getByRole('link', { name: /login|sign in/i });
-    await expect(loginButton).toBeVisible();
-  });
+    const banner = page.getByText(/we use cookies/i);
+    await expect(banner).toBeVisible({ timeout: 10000 });
 
-  test('should navigate to login page when clicking login', async ({ page }) => {
-    const loginButton = page.getByRole('link', { name: /login|sign in/i });
-    await loginButton.click();
+    await page.getByRole('button', { name: /reject all/i }).click();
+    await expect(banner).not.toBeVisible();
 
-    await expect(page).toHaveURL(/\/login/);
-  });
-
-  test('should display email and password fields on login page', async ({ page }) => {
-    await page.goto('/login');
-
-    const emailInput = page.getByRole('textbox', { name: /email/i });
-    const passwordInput = page.getByLabel(/password/i);
-
-    await expect(emailInput).toBeVisible();
-    await expect(passwordInput).toBeVisible();
-  });
-
-  test('should show error for invalid credentials', async ({ page }) => {
-    await page.goto('/login');
-
-    await page.getByRole('textbox', { name: /email/i }).fill('invalid@test.com');
-    await page.getByLabel(/password/i).fill('wrongpassword');
-    await page.getByRole('button', { name: /sign in|login/i }).click();
-
-    // Wait for error message
-    const errorMessage = page.getByText(/invalid|error|incorrect/i);
-    await expect(errorMessage).toBeVisible({ timeout: 10000 });
-  });
-
-  test('should show validation error for empty email', async ({ page }) => {
-    await page.goto('/login');
-
-    await page.getByLabel(/password/i).fill('somepassword');
-    await page.getByRole('button', { name: /sign in|login/i }).click();
-
-    // Check for validation error
-    const validationMessage = page.getByText(/email.*required|enter.*email/i);
-    await expect(validationMessage).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should navigate to signup page from login', async ({ page }) => {
-    await page.goto('/login');
-
-    const signupLink = page.getByRole('link', { name: /sign up|create account|register/i });
-    await signupLink.click();
-
-    await expect(page).toHaveURL(/\/auth|\/signup|\/register/);
-  });
-
-  test('should display age verification on signup', async ({ page }) => {
-    await page.goto('/auth/callback');
-
-    // Look for age gate or date of birth input
-    const ageGate = page.locator('[data-testid="age-gate"]').or(
-      page.getByText(/date of birth|age verification|confirm.*age/i)
-    );
-
-    // Age gate should appear for new users
-    await expect(ageGate).toBeVisible({ timeout: 10000 });
-  });
-
-  test('should block users under 13', async ({ page }) => {
-    await page.goto('/auth/callback');
-
-    // Calculate date 10 years ago (under 13)
-    const today = new Date();
-    const underageDate = new Date(today.getFullYear() - 10, today.getMonth(), today.getDate());
-    const dateString = underageDate.toISOString().split('T')[0];
-
-    // Try to enter underage date
-    const dateInput = page.getByLabel(/date of birth/i);
-    if (await dateInput.isVisible({ timeout: 5000 })) {
-      await dateInput.fill(dateString);
-      await page.getByRole('button', { name: /continue|verify|submit/i }).click();
-
-      // Should show blocked message
-      const blockedMessage = page.getByText(/13|age.*requirement|too young/i);
-      await expect(blockedMessage).toBeVisible({ timeout: 5000 });
-    }
+    // Decision persists across reloads
+    await page.reload();
+    await expect(banner).not.toBeVisible({ timeout: 5000 });
   });
 });
 
-test.describe('Protected Routes', () => {
-  test('should redirect to login when accessing game page without auth', async ({ page }) => {
+test.describe('Login page', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
+  });
+
+  test('displays email and password fields', async ({ page }) => {
+    await page.goto('/login');
+
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/password/i)).toBeVisible();
+  });
+
+  test('displays Google and Apple OAuth buttons', async ({ page }) => {
+    await page.goto('/login');
+
+    await expect(page.getByRole('button', { name: /google/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /apple/i })).toBeVisible();
+  });
+
+  test('shows error for invalid credentials', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByLabel(/email/i).fill('invalid-e2e@test.com');
+    await page.getByLabel(/password/i).fill('wrongpassword123');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+
+    await expect(page.getByText(/invalid|error|incorrect/i)).toBeVisible({
+      timeout: 15000,
+    });
+  });
+
+  test('submit is disabled until email and password are valid', async ({ page }) => {
+    await page.goto('/login');
+
+    const submit = page.getByRole('button', { name: /^sign in$/i });
+
+    // Empty form: disabled
+    await expect(submit).toBeDisabled();
+
+    // Password only: still disabled (email required)
+    await page.getByLabel(/password/i).fill('somepassword');
+    await expect(submit).toBeDisabled();
+
+    // Valid email + 8-char password: enabled
+    await page.getByLabel(/email/i).fill('someone@example.com');
+    await expect(submit).toBeEnabled();
+  });
+
+  test('navigates to signup page from login', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByRole('link', { name: /sign up/i }).click();
+    await expect(page).toHaveURL(/\/signup/);
+  });
+
+  test('offers guest play that lands on the game', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByRole('button', { name: /play as guest/i }).click();
+    await expect(page).toHaveURL(/\/game/, { timeout: 20000 });
+  });
+});
+
+test.describe('Signup age gate', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
+  });
+
+  test('displays age verification before the signup form', async ({ page }) => {
+    await page.goto('/signup');
+
+    await expect(page.getByTestId('age-gate')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByLabel(/what year were you born/i)).toBeVisible();
+  });
+
+  test('blocks users under 13', async ({ page }) => {
+    await page.goto('/signup');
+
+    const underageYear = new Date().getFullYear() - 10;
+    await page.getByLabel(/what year were you born/i).fill(String(underageYear));
+    await page.getByRole('button', { name: /continue/i }).click();
+
+    await expect(page.getByText(/age requirement not met/i)).toBeVisible({
+      timeout: 10000,
+    });
+  });
+
+  test('lets 13+ users through to the account form', async ({ page }) => {
+    await page.goto('/signup');
+
+    const adultYear = new Date().getFullYear() - 30;
+    await page.getByLabel(/what year were you born/i).fill(String(adultYear));
+    await page.getByRole('button', { name: /continue/i }).click();
+
+    await expect(
+      page.getByRole('heading', { name: /create account/i })
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+  });
+});
+
+test.describe('Protected routes', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
+  });
+
+  test('game page prompts sign-in without a session', async ({ page }) => {
     await page.goto('/game');
 
-    // Should redirect to login or show auth required
-    const loginRedirect = page.url().includes('/login') || page.url().includes('/auth');
-    const authMessage = page.getByText(/sign in|login|authenticate/i);
-
-    const isRedirected = loginRedirect || await authMessage.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(isRedirected).toBe(true);
+    await expect(page.getByText(/sign in to play/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('link', { name: /sign in/i })).toBeVisible();
   });
 
-  test('should redirect to login when accessing settings without auth', async ({ page }) => {
+  test('lab prompts sign-in without a session', async ({ page }) => {
+    await page.goto('/lab');
+
+    await expect(
+      page.getByRole('link', { name: /sign in to play/i })
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test('privacy settings gate account actions behind sign-in', async ({ page }) => {
     await page.goto('/settings/privacy');
 
-    const loginRedirect = page.url().includes('/login') || page.url().includes('/auth');
-    const authMessage = page.getByText(/sign in|login|authenticate/i);
-
-    const isRedirected = loginRedirect || await authMessage.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(isRedirected).toBe(true);
+    await expect(page.getByText(/sign in to export your data/i)).toBeVisible({
+      timeout: 15000,
+    });
   });
 });
 
-test.describe('OAuth Providers', () => {
-  test('should display Google OAuth button', async ({ page }) => {
-    await page.goto('/login');
+test.describe('Anonymous sessions', () => {
+  test('guest session persists across navigation', async ({ page }) => {
+    await seedConsent(page);
+    await signInAsGuest(page);
 
-    const googleButton = page.getByRole('button', { name: /google/i });
-    await expect(googleButton).toBeVisible({ timeout: 5000 });
-  });
+    // Guest is authenticated: game page shows the game UI, not the prompt
+    await expect(page.getByText(/sign in to play and save/i)).not.toBeVisible();
 
-  test('should display Discord OAuth button', async ({ page }) => {
-    await page.goto('/login');
-
-    const discordButton = page.getByRole('button', { name: /discord/i });
-    await expect(discordButton).toBeVisible({ timeout: 5000 });
+    // Navigating home keeps the session (stats panel renders for authed users)
+    await page.goto('/');
+    await expect(page.getByText(/launch a game to start/i)).not.toBeVisible({
+      timeout: 15000,
+    });
   });
 });

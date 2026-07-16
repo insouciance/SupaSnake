@@ -1,189 +1,138 @@
 /**
  * Purchase Flow E2E Tests
- * Tests shop, checkout, and payment flows
+ *
+ * CI-safe: no Stripe network dependency. Anonymous (guest) accounts cannot
+ * purchase - the server returns 403 account_required and the UI replaces
+ * every buy button with a create-account CTA. Tests that would hit real
+ * Stripe checkout are tagged @stripe and skipped by default.
  */
 
 import { test, expect } from '@playwright/test';
+import { seedConsent, signInAsGuest } from './helpers';
 
-test.describe('Shop Page', () => {
-  test('should display shop page', async ({ page }) => {
-    await page.goto('/shop');
-
-    const shopHeading = page.getByRole('heading', { name: /shop|store/i });
-    await expect(shopHeading).toBeVisible();
+test.describe('Shop page', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
   });
 
-  test('should display available products', async ({ page }) => {
+  test('displays shop heading and energy products', async ({ page }) => {
     await page.goto('/shop');
 
-    // Look for product cards or listings
-    const products = page.locator('[data-testid="product-card"]').or(
-      page.locator('.product').or(
-        page.getByText(/energy|dna|pack|bundle/i)
-      )
-    );
+    await expect(page.getByRole('heading', { name: /^shop$/i })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /energy packs/i })
+    ).toBeVisible();
 
-    await expect(products.first()).toBeVisible({ timeout: 10000 });
+    // All three energy products render
+    await expect(page.getByText('Energy Pack', { exact: true })).toBeVisible();
+    await expect(page.getByText('Energy Bundle', { exact: true })).toBeVisible();
+    await expect(page.getByText('Energy Vault', { exact: true })).toBeVisible();
   });
 
-  test('should display product prices', async ({ page }) => {
+  test('displays product prices in USD', async ({ page }) => {
     await page.goto('/shop');
 
-    // Look for price indicators
-    const prices = page.getByText(/\$|€|£|\d+\.\d{2}/);
-    await expect(prices.first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('$0.99')).toBeVisible();
+    await expect(page.getByText('$2.49')).toBeVisible();
+    await expect(page.getByText('$4.99')).toBeVisible();
   });
 
-  test('should have buy/purchase buttons', async ({ page }) => {
+  test('displays fair play notice', async ({ page }) => {
     await page.goto('/shop');
 
-    const buyButton = page.getByRole('button', { name: /buy|purchase|get/i });
-    await expect(buyButton.first()).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByText(/purchases provide convenience, not power/i)
+    ).toBeVisible();
   });
 });
 
-test.describe('Product Categories', () => {
-  test('should display energy packs', async ({ page }) => {
+test.describe('Anonymous purchase gating', () => {
+  test('guest sees create-account CTA instead of buy buttons', async ({ page }) => {
+    await seedConsent(page);
+    await signInAsGuest(page);
     await page.goto('/shop');
 
-    const energyPack = page.getByText(/energy/i);
-    await expect(energyPack.first()).toBeVisible({ timeout: 10000 });
+    // Save-progress notice for anonymous players
+    await expect(page.getByText(/save your progress/i).first()).toBeVisible({
+      timeout: 15000,
+    });
+
+    // Every energy product shows the account CTA, no buy button
+    await expect(page.getByTestId('create-account-cta-energy_small')).toBeVisible();
+    await expect(page.getByTestId('create-account-cta-energy_medium')).toBeVisible();
+    await expect(page.getByTestId('create-account-cta-energy_large')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^buy$/i })).toHaveCount(0);
   });
 
-  test('should display DNA packs', async ({ page }) => {
+  test('clicking the CTA opens the account upgrade modal', async ({ page }) => {
+    await seedConsent(page);
+    await signInAsGuest(page);
     await page.goto('/shop');
 
-    const dnaPack = page.getByText(/dna/i);
-    await expect(dnaPack.first()).toBeVisible({ timeout: 10000 });
+    const cta = page.getByTestId('create-account-cta-energy_small');
+    await cta.waitFor({ state: 'visible', timeout: 15000 });
+    await cta.click();
+
+    await expect(page.getByTestId('account-upgrade-modal')).toBeVisible({
+      timeout: 10000,
+    });
   });
 
-  test.skip('should display premium items', async ({ page }) => {
-    await page.goto('/shop');
+  test('server rejects guest checkout with 403 account_required', async ({ page }) => {
+    await seedConsent(page);
+    await signInAsGuest(page);
 
-    const premium = page.getByText(/premium|exclusive|special/i);
-    await expect(premium.first()).toBeVisible({ timeout: 10000 });
-  });
-});
-
-test.describe('Checkout Flow', () => {
-  test.skip('should require authentication for checkout', async ({ page }) => {
-    await page.goto('/shop');
-
-    // Click first buy button
-    const buyButton = page.getByRole('button', { name: /buy|purchase/i }).first();
-    await buyButton.click();
-
-    // Should redirect to login or show auth required
-    const authRequired = page.url().includes('/login') ||
-      await page.getByText(/sign in|login|authenticate/i).isVisible({ timeout: 5000 });
-
-    expect(authRequired).toBe(true);
-  });
-
-  test.skip('should navigate to Stripe checkout', async ({ page }) => {
-    // This test requires authenticated user
-    await page.goto('/shop');
-
-    const buyButton = page.getByRole('button', { name: /buy|purchase/i }).first();
-    await buyButton.click();
-
-    // Should redirect to Stripe or show checkout
-    await page.waitForURL(/stripe\.com|checkout/, { timeout: 10000 });
-  });
-
-  test('should display checkout page with product details', async ({ page }) => {
-    await page.goto('/shop');
-
-    const buyButton = page.getByRole('button', { name: /buy|purchase/i }).first();
-    if (await buyButton.isVisible({ timeout: 5000 })) {
-      await buyButton.click();
-
-      // Look for product confirmation
-      const productDetails = page.getByText(/confirm|review|order/i);
-      const isCheckoutPage = await productDetails.isVisible({ timeout: 5000 }).catch(() => false);
-
-      // Either shows checkout or redirects to auth
-      expect(isCheckoutPage || page.url().includes('/login')).toBe(true);
-    }
-  });
-});
-
-test.describe('Purchase History', () => {
-  test.skip('should display purchase history page', async ({ page }) => {
-    // Requires authentication
-    await page.goto('/settings/purchases');
-
-    const historyHeading = page.getByRole('heading', { name: /purchase|transaction|history/i });
-    await expect(historyHeading).toBeVisible({ timeout: 10000 });
-  });
-
-  test.skip('should show empty state for no purchases', async ({ page }) => {
-    await page.goto('/settings/purchases');
-
-    const emptyState = page.getByText(/no purchase|empty|haven.*bought/i);
-    await expect(emptyState).toBeVisible({ timeout: 10000 });
-  });
-});
-
-test.describe('Error Handling', () => {
-  test.skip('should handle payment failure gracefully', async ({ page }) => {
-    await page.goto('/shop');
-
-    // Attempt purchase with test failure card
-    // This would require mocking Stripe
-
-    const errorMessage = page.getByText(/payment failed|try again|error/i);
-    // Error should be displayed gracefully
-  });
-
-  test('should display loading state during checkout', async ({ page }) => {
-    await page.goto('/shop');
-
-    const buyButton = page.getByRole('button', { name: /buy|purchase/i }).first();
-    if (await buyButton.isVisible({ timeout: 5000 })) {
-      // Click and check for loading state
-      await buyButton.click();
-
-      const loading = page.getByText(/loading|processing/i).or(
-        page.locator('[data-loading="true"]')
+    // Call the checkout API directly with the guest session token
+    const result = await page.evaluate(async () => {
+      const keys = Object.keys(window.localStorage).filter((k) =>
+        k.startsWith('sb-') && k.endsWith('-auth-token')
       );
+      if (keys.length === 0) return { status: 0, error: 'no session' };
+      const raw = window.localStorage.getItem(keys[0]);
+      const session = raw ? JSON.parse(raw) : null;
+      const token = session?.access_token;
+      if (!token) return { status: 0, error: 'no token' };
 
-      // Loading state should appear briefly or redirect immediately
-      const hasLoading = await loading.isVisible({ timeout: 2000 }).catch(() => false);
-      // This is acceptable whether or not loading appears
-      expect(true).toBe(true);
-    }
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId: 'energy_small' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, error: data.error };
+    });
+
+    expect(result.status).toBe(403);
+    expect(result.error).toBe('account_required');
   });
 });
 
-test.describe('Legal Compliance', () => {
-  test('should link to terms of service from shop', async ({ page }) => {
+test.describe('Stripe checkout @stripe', () => {
+  // Requires a registered (non-anonymous) account and live Stripe sandbox.
+  // Run explicitly with: npx playwright test --grep @stripe
+  test.skip(
+    !process.env.E2E_STRIPE,
+    'Stripe checkout tests need E2E_STRIPE=1 and a registered test account'
+  );
+
+  test('registered user reaches Stripe checkout', async ({ page }) => {
+    await seedConsent(page);
+
+    const email = process.env.E2E_STRIPE_EMAIL;
+    const password = process.env.E2E_STRIPE_PASSWORD;
+    test.skip(!email || !password, 'E2E_STRIPE_EMAIL/PASSWORD not set');
+
+    await page.goto('/login');
+    await page.getByLabel(/email/i).fill(email!);
+    await page.getByLabel(/password/i).fill(password!);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+    await page.waitForURL(/\/game/, { timeout: 20000 });
+
     await page.goto('/shop');
-
-    const termsLink = page.getByRole('link', { name: /terms|tos/i });
-
-    if (await termsLink.isVisible({ timeout: 5000 })) {
-      await termsLink.click();
-      await expect(page).toHaveURL(/\/legal\/terms/);
-    }
-  });
-
-  test('should display price including tax note', async ({ page }) => {
-    await page.goto('/shop');
-
-    const taxNote = page.getByText(/tax|vat|price.*include/i);
-    // Tax information should be visible on shop page
-    // This may or may not be present depending on implementation
-  });
-
-  test('should display refund policy link', async ({ page }) => {
-    await page.goto('/shop');
-
-    const refundLink = page.getByRole('link', { name: /refund|return/i });
-
-    if (await refundLink.isVisible({ timeout: 5000 })) {
-      await refundLink.click();
-      await expect(page.url()).toMatch(/refund|terms/);
-    }
+    await page.getByRole('button', { name: /^buy$/i }).first().click();
+    await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
   });
 });

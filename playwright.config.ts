@@ -57,38 +57,22 @@ export default defineConfig({
     actionTimeout: 15000,
   },
 
-  // Configure projects for major browsers
+  // Chromium only for now: it is the only browser installed locally and in CI
+  // (npx playwright install chromium). Mobile layouts are covered via
+  // page.setViewportSize() inside the specs. Add firefox/webkit projects here
+  // once those browsers are part of the install step.
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    // Mobile viewports
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
   ],
 
-  // Run local dev server before starting the tests
+  // Local: reuse an already-running `npm run dev` (or start one).
+  // CI: the workflow builds first (`next build`), then we serve the
+  // production build with `next start` - faster and closer to prod.
   webServer: {
-    command: 'npm run dev',
+    command: process.env.CI ? 'npm run start' : 'npm run dev',
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
