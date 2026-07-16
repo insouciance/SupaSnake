@@ -1,32 +1,128 @@
 import { AudioManagerClass, audioManager } from './AudioManager';
 
-// Mock HTMLAudioElement
-class MockAudio {
-  src = '';
-  preload = '';
-  loop = false;
-  volume = 1;
-  paused = true;
-  ended = false;
-  currentTime = 0;
+// ---------------------------------------------------------------------------
+// Web Audio API mocks
+// ---------------------------------------------------------------------------
 
-  play = jest.fn(() => Promise.resolve());
-  pause = jest.fn();
+class MockAudioParam {
+  value = 0;
+  setValueAtTime = jest.fn();
+  linearRampToValueAtTime = jest.fn();
+  exponentialRampToValueAtTime = jest.fn();
 }
+
+class MockGainNode {
+  gain = new MockAudioParam();
+  connect = jest.fn();
+}
+
+class MockOscillatorNode {
+  type: OscillatorType = 'sine';
+  frequency = new MockAudioParam();
+  connect = jest.fn();
+  start = jest.fn();
+  stop = jest.fn();
+}
+
+class MockBufferSourceNode {
+  buffer: unknown = null;
+  connect = jest.fn();
+  start = jest.fn();
+  stop = jest.fn();
+}
+
+class MockBiquadFilterNode {
+  type = 'lowpass';
+  frequency = new MockAudioParam();
+  connect = jest.fn();
+}
+
+class MockAudioBuffer {
+  private data: Float32Array;
+
+  constructor(length: number) {
+    this.data = new Float32Array(length);
+  }
+
+  getChannelData(): Float32Array {
+    return this.data;
+  }
+}
+
+class MockAudioContext {
+  currentTime = 0;
+  state: AudioContextState = 'running';
+  sampleRate = 44100;
+  destination = {} as AudioDestinationNode;
+
+  gains: MockGainNode[] = [];
+  oscillators: MockOscillatorNode[] = [];
+  bufferSources: MockBufferSourceNode[] = [];
+  filters: MockBiquadFilterNode[] = [];
+
+  resume = jest.fn(() => {
+    this.state = 'running';
+    return Promise.resolve();
+  });
+
+  createGain = jest.fn(() => {
+    const node = new MockGainNode();
+    this.gains.push(node);
+    return node;
+  });
+
+  createOscillator = jest.fn(() => {
+    const node = new MockOscillatorNode();
+    this.oscillators.push(node);
+    return node;
+  });
+
+  createBufferSource = jest.fn(() => {
+    const node = new MockBufferSourceNode();
+    this.bufferSources.push(node);
+    return node;
+  });
+
+  createBiquadFilter = jest.fn(() => {
+    const node = new MockBiquadFilterNode();
+    this.filters.push(node);
+    return node;
+  });
+
+  createBuffer = jest.fn(
+    (_channels: number, length: number) => new MockAudioBuffer(length)
+  );
+}
+
+const ALL_SOUNDS = [
+  'collect',
+  'death',
+  'gameStart',
+  'directionChange',
+  'pause',
+  'uiClick',
+  'breedingSuccess',
+  'energyRegen',
+] as const;
 
 describe('AudioManagerClass', () => {
   let manager: AudioManagerClass;
-  let originalAudio: typeof Audio;
+  let mockContext: MockAudioContext;
+  let contextConstructor: jest.Mock;
 
   beforeEach(() => {
     manager = new AudioManagerClass();
-    originalAudio = global.Audio;
-    // @ts-expect-error - Mocking Audio constructor
-    global.Audio = jest.fn(() => new MockAudio());
+    contextConstructor = jest.fn(() => {
+      mockContext = new MockAudioContext();
+      return mockContext;
+    });
+    // @ts-expect-error - Mocking AudioContext constructor
+    window.AudioContext = contextConstructor;
   });
 
   afterEach(() => {
-    global.Audio = originalAudio;
+    // @ts-expect-error - cleanup mocked constructor
+    delete window.AudioContext;
   });
 
   describe('initialization', () => {
@@ -34,15 +130,40 @@ describe('AudioManagerClass', () => {
       expect(manager.initialized).toBe(false);
     });
 
-    it('should initialize when init() is called', async () => {
+    it('should not create an AudioContext before init() (lazy creation)', () => {
+      expect(contextConstructor).not.toHaveBeenCalled();
+    });
+
+    it('should create the AudioContext when init() is called', async () => {
       await manager.init();
       expect(manager.initialized).toBe(true);
+      expect(contextConstructor).toHaveBeenCalledTimes(1);
+    });
+
+    it('should connect a master SFX gain to the destination', async () => {
+      await manager.init();
+      const masterGain = mockContext.gains[0];
+      expect(mockContext.createGain).toHaveBeenCalled();
+      expect(masterGain.connect).toHaveBeenCalledWith(mockContext.destination);
+      // default: masterVolume 1.0 * sfxVolume 0.7
+      expect(masterGain.gain.value).toBeCloseTo(0.7);
+    });
+
+    it('should resume a suspended context', async () => {
+      contextConstructor.mockImplementationOnce(() => {
+        mockContext = new MockAudioContext();
+        mockContext.state = 'suspended';
+        return mockContext;
+      });
+
+      await manager.init();
+      expect(mockContext.resume).toHaveBeenCalled();
     });
 
     it('should not re-initialize if already initialized', async () => {
       await manager.init();
       await manager.init();
-      expect(manager.initialized).toBe(true);
+      expect(contextConstructor).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -81,6 +202,23 @@ describe('AudioManagerClass', () => {
       manager.setMusicVolume(0.3);
       expect(manager.getConfig().musicVolume).toBe(0.3);
     });
+
+    it('should apply volume changes to the SFX bus gain', async () => {
+      await manager.init();
+      const masterGain = mockContext.gains[0];
+
+      manager.setMasterVolume(0.5);
+      expect(masterGain.gain.setValueAtTime).toHaveBeenLastCalledWith(
+        0.5 * 0.7,
+        mockContext.currentTime
+      );
+
+      manager.setSfxVolume(0.2);
+      expect(masterGain.gain.setValueAtTime).toHaveBeenLastCalledWith(
+        0.5 * 0.2,
+        mockContext.currentTime
+      );
+    });
   });
 
   describe('mute control', () => {
@@ -102,30 +240,159 @@ describe('AudioManagerClass', () => {
       manager.toggleMute();
       expect(manager.isMuted).toBe(false);
     });
+
+    it('mute should zero the SFX bus gain, unmute should restore it', async () => {
+      await manager.init();
+      const masterGain = mockContext.gains[0];
+
+      manager.setMuted(true);
+      expect(masterGain.gain.setValueAtTime).toHaveBeenLastCalledWith(
+        0,
+        mockContext.currentTime
+      );
+
+      manager.setMuted(false);
+      expect(masterGain.gain.setValueAtTime).toHaveBeenLastCalledWith(
+        0.7,
+        mockContext.currentTime
+      );
+    });
   });
 
-  describe('play sound', () => {
+  describe('play sound (synthesis)', () => {
     it('should not play if not initialized', () => {
-      // Should not throw
       manager.play('collect');
+      expect(contextConstructor).not.toHaveBeenCalled();
     });
 
-    it('should not play if muted', async () => {
+    it('should not schedule anything if muted', async () => {
       await manager.init();
       manager.setMuted(true);
       manager.play('collect');
-      // No error should occur
+      expect(mockContext.createOscillator).not.toHaveBeenCalled();
+    });
+
+    it.each(ALL_SOUNDS)('should synthesize "%s" without throwing', async (sound) => {
+      await manager.init();
+      manager.play(sound);
+      const scheduled =
+        mockContext.oscillators.length + mockContext.bufferSources.length;
+      expect(scheduled).toBeGreaterThan(0);
+    });
+
+    it('collect should schedule a two-note ascending sine arpeggio', async () => {
+      await manager.init();
+      manager.play('collect');
+
+      expect(mockContext.oscillators).toHaveLength(2);
+      const [first, second] = mockContext.oscillators;
+
+      expect(first.type).toBe('sine');
+      expect(second.type).toBe('sine');
+      expect(first.frequency.setValueAtTime).toHaveBeenCalledWith(660, 0);
+      expect(second.frequency.setValueAtTime).toHaveBeenCalledWith(880, 0.06);
+      expect(first.start).toHaveBeenCalledWith(0);
+      expect(second.start).toHaveBeenCalledWith(0.06);
+      expect(first.stop).toHaveBeenCalled();
+      expect(second.stop).toHaveBeenCalled();
+    });
+
+    it('should schedule an attack/decay envelope per note', async () => {
+      await manager.init();
+      manager.play('collect');
+
+      // gains[0] is the master bus; each note gets its own envelope gain
+      const envelope = mockContext.gains[1];
+      expect(envelope.gain.setValueAtTime).toHaveBeenCalledWith(0, 0);
+      expect(envelope.gain.linearRampToValueAtTime).toHaveBeenCalledWith(
+        0.15,
+        expect.any(Number)
+      );
+      expect(envelope.gain.exponentialRampToValueAtTime).toHaveBeenCalledWith(
+        0.0001,
+        expect.any(Number)
+      );
+    });
+
+    it('death should include a descending sawtooth and a noise burst', async () => {
+      await manager.init();
+      manager.play('death');
+
+      expect(mockContext.oscillators).toHaveLength(1);
+      const saw = mockContext.oscillators[0];
+      expect(saw.type).toBe('sawtooth');
+      expect(saw.frequency.setValueAtTime).toHaveBeenCalledWith(220, 0);
+      expect(saw.frequency.exponentialRampToValueAtTime).toHaveBeenCalledWith(
+        55,
+        expect.any(Number)
+      );
+
+      expect(mockContext.bufferSources).toHaveLength(1);
+      expect(mockContext.bufferSources[0].start).toHaveBeenCalled();
+      expect(mockContext.createBiquadFilter).toHaveBeenCalled();
+    });
+
+    it('uiClick should be a filtered noise click', async () => {
+      await manager.init();
+      manager.play('uiClick');
+
+      expect(mockContext.oscillators).toHaveLength(0);
+      expect(mockContext.bufferSources).toHaveLength(1);
+      expect(mockContext.filters).toHaveLength(1);
+      expect(mockContext.filters[0].type).toBe('bandpass');
+      expect(mockContext.filters[0].frequency.setValueAtTime).toHaveBeenCalledWith(
+        2000,
+        0
+      );
+    });
+
+    it('breedingSuccess should arpeggiate a major triad', async () => {
+      await manager.init();
+      manager.play('breedingSuccess');
+
+      expect(mockContext.oscillators).toHaveLength(3);
+      const [c, e, g] = mockContext.oscillators;
+      expect(c.frequency.setValueAtTime).toHaveBeenCalledWith(523.25, 0);
+      expect(e.frequency.setValueAtTime).toHaveBeenCalledWith(659.25, 0.11);
+      expect(g.frequency.setValueAtTime).toHaveBeenCalledWith(783.99, 0.22);
+    });
+
+    it.each(ALL_SOUNDS)(
+      'should keep "%s" envelope peaks at or below 0.2',
+      async (sound) => {
+        await manager.init();
+        manager.play(sound);
+
+        // Every envelope node (all gains after the master bus)
+        for (const gain of mockContext.gains.slice(1)) {
+          for (const call of gain.gain.linearRampToValueAtTime.mock.calls) {
+            expect(call[0]).toBeLessThanOrEqual(0.2);
+          }
+          for (const call of gain.gain.setValueAtTime.mock.calls) {
+            expect(call[0]).toBeLessThanOrEqual(0.2);
+          }
+        }
+      }
+    );
+
+    it('should reuse the cached noise buffer across noise sounds', async () => {
+      await manager.init();
+      manager.play('uiClick');
+      manager.play('uiClick');
+      expect(mockContext.createBuffer).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('music control', () => {
+  describe('music control (no music at launch)', () => {
     it('currentTrack should be null initially', () => {
       expect(manager.currentTrack).toBeNull();
     });
 
-    it('should not play music if not initialized', () => {
+    it('playMusic should be a no-op and keep currentTrack null', async () => {
+      await manager.init();
       manager.playMusic('cyber');
       expect(manager.currentTrack).toBeNull();
+      expect(mockContext.createOscillator).not.toHaveBeenCalled();
     });
 
     it('stopMusic should not throw if no music playing', () => {
@@ -133,20 +400,17 @@ describe('AudioManagerClass', () => {
       expect(manager.currentTrack).toBeNull();
     });
 
-    it('pauseMusic should not throw if no music playing', () => {
-      manager.pauseMusic();
-      expect(true).toBe(true);
-    });
-
-    it('resumeMusic should not throw if no music playing', () => {
-      manager.resumeMusic();
-      expect(true).toBe(true);
+    it('pauseMusic and resumeMusic should not throw', () => {
+      expect(() => {
+        manager.pauseMusic();
+        manager.resumeMusic();
+      }).not.toThrow();
     });
   });
 });
 
 describe('audioManager singleton', () => {
-  it('should be an AudioManagerClass instance', () => {
+  it('should preserve the public API surface', () => {
     expect(audioManager).toBeDefined();
     expect(typeof audioManager.init).toBe('function');
     expect(typeof audioManager.play).toBe('function');
