@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         player.energy_regen_at
       );
 
-      await supabase
+      const { error: energyUpdateError } = await supabase
         .from('players')
         .update({
           energy: newEnergy,
@@ -140,7 +140,16 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', player.id);
 
-      await supabase.from('economy_transactions').insert({
+      if (energyUpdateError) {
+        console.error('Failed to deduct energy on game start:', {
+          playerId: player.id,
+          sessionId: session.id,
+          error: energyUpdateError,
+        });
+        return NextResponse.json({ error: 'Failed to start game' }, { status: 500 });
+      }
+
+      const { error: startTxError } = await supabase.from('economy_transactions').insert({
         player_id: player.id,
         resource_type: 'energy',
         amount: -GAME_CONFIG.economy.energy.costPerGame,
@@ -148,6 +157,15 @@ export async function POST(request: NextRequest) {
         source_type: 'game_start',
         source_id: session.id,
       });
+
+      if (startTxError) {
+        // Audit log only - the energy deduction itself succeeded
+        console.error('Failed to log game_start energy transaction:', {
+          playerId: player.id,
+          sessionId: session.id,
+          error: startTxError,
+        });
+      }
 
       return NextResponse.json({
         sessionId: session.id,
@@ -163,13 +181,33 @@ export async function POST(request: NextRequest) {
 
       const { data: session } = await supabase
         .from('game_sessions')
-        .select('server_started_at, snake_variant_id')
+        .select('server_started_at, snake_variant_id, ended_at')
         .eq('id', sessionId)
         .eq('player_id', player.id)
         .single();
 
       if (!session) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      }
+
+      // Idempotency guard: a session can only be ended once. Duplicate
+      // 'end' calls (offline outbox replay, double-fire at death) must not
+      // grant DNA again - return 409 with the current authoritative state.
+      if (session.ended_at) {
+        const { data: currentPlayer } = await supabase
+          .from('players')
+          .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+          .eq('id', player.id)
+          .single();
+
+        return NextResponse.json(
+          {
+            error: 'Session already ended',
+            alreadyEnded: true,
+            player: currentPlayer ?? null,
+          },
+          { status: 409 }
+        );
       }
 
       const validation = validateGameResult(
@@ -218,7 +256,10 @@ export async function POST(request: NextRequest) {
 
       const finalDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
 
-      await supabase
+      // Mark the session ended BEFORE granting rewards - this is the
+      // idempotency anchor. Guard on ended_at IS NULL so two concurrent
+      // 'end' calls can't both pass the check above and double-grant.
+      const { data: endedRows, error: endSessionError } = await supabase
         .from('game_sessions')
         .update({
           score: score || 0,
@@ -232,7 +273,26 @@ export async function POST(request: NextRequest) {
           foods_collected: score || 0,
         })
         .eq('id', sessionId)
-        .eq('player_id', player.id);
+        .eq('player_id', player.id)
+        .is('ended_at', null)
+        .select('id');
+
+      if (endSessionError) {
+        console.error('Failed to mark game session ended:', {
+          playerId: player.id,
+          sessionId,
+          error: endSessionError,
+        });
+        return NextResponse.json({ error: 'Failed to end session' }, { status: 500 });
+      }
+
+      if (!endedRows || endedRows.length === 0) {
+        // Lost the race: another request ended this session first
+        return NextResponse.json(
+          { error: 'Session already ended', alreadyEnded: true },
+          { status: 409 }
+        );
+      }
 
       const newDna = player.dna + finalDna;
       const { data: currentPlayer } = await supabase
@@ -245,7 +305,7 @@ export async function POST(request: NextRequest) {
       const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
       const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + finalDna;
 
-      await supabase
+      const { error: rewardUpdateError } = await supabase
         .from('players')
         .update({
           dna: newDna,
@@ -255,8 +315,32 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', player.id);
 
+      if (rewardUpdateError) {
+        // Primary state write failed - the player would silently lose the
+        // run's DNA. Re-open the session (best effort) so a client replay
+        // can retry, then fail the request.
+        console.error('Failed to grant game rewards:', {
+          playerId: player.id,
+          sessionId,
+          dna: finalDna,
+          error: rewardUpdateError,
+        });
+        const { error: reopenError } = await supabase
+          .from('game_sessions')
+          .update({ ended_at: null })
+          .eq('id', sessionId)
+          .eq('player_id', player.id);
+        if (reopenError) {
+          console.error('Failed to re-open session after reward failure:', {
+            sessionId,
+            error: reopenError,
+          });
+        }
+        return NextResponse.json({ error: 'Failed to grant rewards' }, { status: 500 });
+      }
+
       if (finalDna > 0) {
-        await supabase.from('economy_transactions').insert({
+        const { error: rewardTxError } = await supabase.from('economy_transactions').insert({
           player_id: player.id,
           resource_type: 'dna',
           amount: finalDna,
@@ -271,6 +355,16 @@ export async function POST(request: NextRequest) {
             ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
           },
         });
+
+        if (rewardTxError) {
+          // Audit log only - rewards were already granted above
+          console.error('Failed to log game_reward DNA transaction:', {
+            playerId: player.id,
+            sessionId,
+            dna: finalDna,
+            error: rewardTxError,
+          });
+        }
       }
 
       const { data: updatedPlayer } = await supabase
@@ -366,7 +460,7 @@ export async function POST(request: NextRequest) {
         for (const [achievementId, progressValue] of progressEntries) {
           const isNewlyCompleted = result.newlyCompleted.some(a => a.id === achievementId);
 
-          await supabase
+          const { error: achievementUpsertError } = await supabase
             .from('player_achievements')
             .upsert({
               player_id: player.id,
@@ -375,6 +469,14 @@ export async function POST(request: NextRequest) {
               completed: isNewlyCompleted || existingProgress.get(achievementId)?.completed || false,
               completed_at: isNewlyCompleted ? new Date().toISOString() : undefined,
             }, { onConflict: 'player_id,achievement_id' });
+
+          if (achievementUpsertError) {
+            console.error('Failed to upsert achievement progress:', {
+              playerId: player.id,
+              achievementId,
+              error: achievementUpsertError,
+            });
+          }
         }
 
         newAchievements = result.newlyCompleted.map(a => a.name);

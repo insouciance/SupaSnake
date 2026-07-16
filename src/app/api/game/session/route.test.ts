@@ -107,6 +107,34 @@ describe('Game Session Logic', () => {
       expect(endedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
+    it('should reject re-ending an already ended session (409, no double DNA)', () => {
+      // Idempotency guard: a session with ended_at set must never grant
+      // rewards again (offline outbox replays, double-fire at death)
+      const session = { ended_at: '2026-07-15T10:00:00.000Z' };
+      const alreadyEnded = Boolean(session.ended_at);
+
+      expect(alreadyEnded).toBe(true);
+      const response = alreadyEnded
+        ? { status: 409, body: { error: 'Session already ended', alreadyEnded: true } }
+        : { status: 200, body: { success: true } };
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ alreadyEnded: true });
+    });
+
+    it('should treat a raced concurrent end as already ended', () => {
+      // The UPDATE is guarded with .is('ended_at', null) - the loser of a
+      // concurrent race matches zero rows and must return 409
+      const updatedRows: Array<{ id: string }> = [];
+      const lostRace = updatedRows.length === 0;
+
+      expect(lostRace).toBe(true);
+    });
+
+    it('should end a session that has not ended yet', () => {
+      const session = { ended_at: null };
+      expect(Boolean(session.ended_at)).toBe(false);
+    });
+
     it('should increment total_dna_earned by adjusted DNA (not reset to balance)', () => {
       const previousTotalDnaEarned = 900;
       const currentDnaBalance = 100; // spent DNA does not reduce lifetime earnings

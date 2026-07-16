@@ -27,6 +27,7 @@ import { haptics } from '@/lib/effects/Haptics';
 import { screenShake } from '@/lib/effects/ScreenShake';
 import { useInterpolatedMesh, useGridPosition } from '@/hooks/useInterpolatedPosition';
 import { useToast } from '@/components/ui/Toast';
+import { enqueueReward } from '@/lib/outbox/rewardOutbox';
 
 export default function GamePage() {
   const { session, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -234,6 +235,17 @@ export default function GamePage() {
       const sessionId = currentSessionIdRef.current;
       if (currentSession?.access_token && sessionId) {
         const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
+        // If the reward POST can't be delivered, queue it for replay on the
+        // next app load so a tab close at death never loses the run's DNA.
+        const queueForReplay = () => {
+          enqueueReward({
+            sessionId,
+            score: data.score,
+            dna_earned: data.dnaCollected,
+            duration_seconds: gameDuration,
+            timestamp: Date.now(),
+          });
+        };
         try {
           const response = await fetch('/api/game/session', {
             method: 'POST',
@@ -241,6 +253,9 @@ export default function GamePage() {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${currentSession.access_token}`,
             },
+            // keepalive lets the browser finish this request even if the
+            // tab is closed immediately after death
+            keepalive: true,
             body: JSON.stringify({
               action: 'end',
               sessionId: sessionId,
@@ -252,27 +267,36 @@ export default function GamePage() {
             }),
           });
 
-          const result = await response.json();
+          if (!response.ok) {
+            // 409 = session already ended (duplicate) - nothing to retry
+            if (response.status !== 409) {
+              console.error(`Game end rejected (status ${response.status}), queueing for replay`);
+              queueForReplay();
+            }
+          } else {
+            const result = await response.json();
 
-          // Sync DNA balance to collection store (server authority)
-          if (result.player?.dna !== undefined) {
-            useCollectionStore.getState().setDnaBalance(result.player.dna);
-          }
+            // Sync DNA balance to collection store (server authority)
+            if (result.player?.dna !== undefined) {
+              useCollectionStore.getState().setDnaBalance(result.player.dna);
+            }
 
-          // Show daily streak info on the game-over screen
-          if (result.streak) {
-            setStreakInfo(result.streak);
-          }
+            // Show daily streak info on the game-over screen
+            if (result.streak) {
+              setStreakInfo(result.streak);
+            }
 
-          // Show toast for each newly unlocked achievement
-          if (result.newAchievements && result.newAchievements.length > 0) {
-            setUnlockedAchievements(result.newAchievements);
-            result.newAchievements.forEach((name: string) => {
-              showToast(`Achievement Unlocked: ${name}`, 'achievement', 5000);
-            });
+            // Show toast for each newly unlocked achievement
+            if (result.newAchievements && result.newAchievements.length > 0) {
+              setUnlockedAchievements(result.newAchievements);
+              result.newAchievements.forEach((name: string) => {
+                showToast(`Achievement Unlocked: ${name}`, 'achievement', 5000);
+              });
+            }
           }
         } catch (err) {
-          console.error('Failed to send game results:', err);
+          console.error('Failed to send game results, queueing for replay:', err);
+          queueForReplay();
         }
       }
 
