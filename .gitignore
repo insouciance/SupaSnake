@@ -1,14 +1,42 @@
-# ZTE Platform Template - .gitignore
-
-# Session state (temporary)
-.claude/session_state/
-
-# Project-specific (add your project files here)
+# Dependencies / build
 node_modules/
+.next/
 dist/
 build/
+*.tsbuildinfo
+
+# Env / secrets
 .env
+.env*.local
+
+# Logs
 *.log
+npm-debug.log*
+
+# Testing
+coverage/
+test-results/
+playwright-report/
+
+# Supabase CLI artifacts
+supabase/.temp/
+
+# Python leftovers
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local reference material (kept on disk, not in repo)
+literatur/
+literatur_archive/
+
+# Legacy AI-tooling state (deleted from repo; ignore any strays)
+.claude/
+state/
+memories/
+progress/
+memory-v3-platform/
+dec-runtime-api/
 
 # Backups
 *.backup
