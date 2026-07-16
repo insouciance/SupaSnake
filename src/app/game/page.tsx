@@ -22,8 +22,6 @@ import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { AimingCrosshair } from '@/components/game/AimingCrosshair';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
-// import { GameFloor } from '@/components/game/GameFloor'; // Replaced with ArenaFloor
-// import { SnakeSegment } from '@/components/game/SnakeSegment'; // Disabled for now - using box geometry
 import { audioManager } from '@/lib/audio/AudioManager';
 import { haptics } from '@/lib/effects/Haptics';
 import { screenShake } from '@/lib/effects/ScreenShake';
@@ -410,42 +408,6 @@ export default function GamePage() {
     }
     resetGame();
   }, [resetGame]);
-
-  // Send game results to server and sync DNA balance
-  const sendGameResults = useCallback(async (finalScore: number, dnaEarned: number) => {
-    if (!session?.access_token || !currentSessionId) return;
-
-    const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
-
-    try {
-      const response = await fetch('/api/game/session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          action: 'end',
-          sessionId: currentSessionId,
-          score: finalScore,
-          dna_earned: dnaEarned,
-          duration_seconds: gameDuration,
-          died: true,
-          victory: false,
-        }),
-      });
-
-      // Sync updated DNA balance to collection store (server authority)
-      if (response.ok) {
-        const data = await response.json();
-        if (data.player?.dna !== undefined) {
-          useCollectionStore.getState().setDnaBalance(data.player.dna);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to send game results:', err);
-    }
-  }, [session?.access_token, currentSessionId]);
 
   // Restart
   const handleRestart = useCallback(() => {
@@ -877,67 +839,6 @@ function GameBoard({
         active={showDeathExplosion}
       />
     </group>
-  );
-}
-
-/**
- * Animated Food Component - Pulse, glow, rotate
- */
-interface AnimatedFoodProps {
-  position: Position;
-  dynasty: DynastyId;
-  material: THREE.Material;
-}
-
-function AnimatedFood({ position, dynasty }: AnimatedFoodProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const theme = themeManager.getTheme(dynasty);
-  const spawnTime = useRef(Date.now());
-
-  useFrame((state) => {
-    if (!meshRef.current) return;
-
-    const time = state.clock.elapsedTime;
-    const age = (Date.now() - spawnTime.current) / 1000;
-
-    let spawnScale = 1;
-    if (age < 0.3) {
-      const t = age / 0.3;
-      spawnScale = 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 2) * 0.3;
-    }
-
-    const pulse = 0.9 + Math.sin(time * 4) * 0.1;
-    meshRef.current.scale.setScalar(pulse * spawnScale);
-
-    meshRef.current.rotation.y = time * 2;
-
-    meshRef.current.position.y = 0.5 + Math.sin(time * 3) * 0.1 + Math.sin(time * 7) * 0.03;
-
-    const material = meshRef.current.material as THREE.MeshStandardMaterial;
-    if (material.emissiveIntensity !== undefined) {
-      material.emissiveIntensity = 0.6 + Math.sin(time * 5) * 0.3;
-    }
-  });
-
-  useEffect(() => {
-    spawnTime.current = Date.now();
-  }, [position.x, position.z]);
-
-  return (
-    <mesh
-      ref={meshRef}
-      position={[position.x + 0.5, 0.5, position.z + 0.5]}
-      castShadow
-    >
-      <sphereGeometry args={[0.4, 16, 16]} />
-      <meshStandardMaterial
-        color={theme.accent}
-        emissive={theme.accent}
-        emissiveIntensity={0.8}
-        metalness={0.8}
-        roughness={0.2}
-      />
-    </mesh>
   );
 }
 

@@ -5,6 +5,7 @@ const createJestConfig = nextJest({
 })
 
 const customJestConfig = {
+  setupFiles: ['<rootDir>/jest.setup.globals.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
@@ -12,11 +13,8 @@ const customJestConfig = {
   },
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/memory-v3-platform/',
-    '/dec-runtime-api/',
     '/build/',
-    '/scripts/',
-    '/automation/',
+    '/e2e/',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

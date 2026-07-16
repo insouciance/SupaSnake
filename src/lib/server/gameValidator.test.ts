@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
 import { validateGameResult, GameResultInput } from './gameValidator';
 
-vi.mock('@/shared/config/game', () => ({
+jest.mock('@/shared/config/game', () => ({
   GAME_CONFIG: {
     economy: {
       dna: {
@@ -45,7 +44,7 @@ describe('Game Validator', () => {
       const result = validateGameResult(input, serverStartedAt);
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain(expect.stringContaining('INVALID_DURATION'));
+      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DURATION'));
     });
 
     it('should reject duration exceeding max game duration', () => {
@@ -55,7 +54,7 @@ describe('Game Validator', () => {
       const result = validateGameResult(input, serverStartedAt);
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain(expect.stringContaining('INVALID_DURATION'));
+      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DURATION'));
     });
 
     it('should allow 10 second buffer for network latency', () => {
@@ -74,7 +73,7 @@ describe('Game Validator', () => {
       const result = validateGameResult(input, serverStartedAt);
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain(expect.stringContaining('INVALID_SCORE'));
+      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_SCORE'));
     });
 
     it('should accept reasonable score for duration', () => {
@@ -126,7 +125,7 @@ describe('Game Validator', () => {
       const result = validateGameResult(input, serverStartedAt);
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain(expect.stringContaining('INVALID_DNA'));
+      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DNA'));
     });
 
     it('should adjust DNA to expected maximum', () => {

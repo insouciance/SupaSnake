@@ -1,28 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST, DELETE } from './route';
 import { NextRequest } from 'next/server';
 
 // Mock Supabase
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
     auth: {
-      getUser: vi.fn().mockResolvedValue({
+      getUser: jest.fn().mockResolvedValue({
         data: { user: { id: 'test-user-id', email: 'test@example.com' } },
         error: null,
       }),
       admin: {
-        deleteUser: vi.fn().mockResolvedValue({ error: null }),
+        deleteUser: jest.fn().mockResolvedValue({ error: null }),
       },
     },
-    from: vi.fn(() => ({
-      select: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({
+    from: jest.fn(() => ({
+      select: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+      update: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({
         data: { id: 'player-id' },
         error: null,
       }),
-      insert: vi.fn().mockResolvedValue({ error: null }),
+      insert: jest.fn().mockResolvedValue({ error: null }),
     })),
   })),
 }));
@@ -49,7 +49,7 @@ function createMockRequest(
 
 describe('Delete Account API', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('POST (Request Deletion)', () => {

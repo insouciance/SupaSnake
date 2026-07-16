@@ -135,7 +135,9 @@ describe('Amplitude Analytics', () => {
     it('should handle null user ID for logout', () => {
       identifyUser(null);
 
-      expect(amplitude.setUserId).toHaveBeenCalledWith(null);
+      // Amplitude v2 setUserId accepts `string | undefined`; passing
+      // undefined is how the user is unset on logout (null is converted).
+      expect(amplitude.setUserId).toHaveBeenCalledWith(undefined);
     });
   });
 

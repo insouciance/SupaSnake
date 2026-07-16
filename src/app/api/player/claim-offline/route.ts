@@ -45,13 +45,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Get collection size
-    const { data: collectionData } = await supabase
+    // Get collection size. head:true count queries return data: null -
+    // the size arrives in the count field, never in data.
+    const { count: collectionCount } = await supabase
       .from('collected_snakes')
       .select('id', { count: 'exact', head: true })
       .eq('player_id', player.id);
 
-    const collectionSize = collectionData?.length || 0;
+    const collectionSize = collectionCount || 0;
 
     // Calculate rewards server-side (authoritative)
     const progress = calculateOfflineProgress({

@@ -4,21 +4,30 @@
 
 import { renderHook, act } from '@testing-library/react';
 import { useLeaderboardRealtime } from './useLeaderboardRealtime';
+import { supabase } from '@/lib/supabase/client';
 
-// Mock Supabase client
-const mockChannel = {
-  on: jest.fn().mockReturnThis(),
-  subscribe: jest.fn().mockReturnThis(),
-  unsubscribe: jest.fn(),
+// Mock the Supabase client singleton (the hook imports `supabase` directly).
+// The channel object is defined inside the factory to avoid TDZ issues with
+// jest.mock hoisting; it is re-exposed below for assertions.
+jest.mock('@/lib/supabase/client', () => {
+  const channel = {
+    on: jest.fn().mockReturnThis(),
+    subscribe: jest.fn().mockReturnThis(),
+    unsubscribe: jest.fn(),
+  };
+  return {
+    supabase: {
+      channel: jest.fn(() => channel),
+    },
+  };
+});
+
+const mockSupabase = supabase as unknown as { channel: jest.Mock };
+const mockChannel = mockSupabase.channel() as {
+  on: jest.Mock;
+  subscribe: jest.Mock;
+  unsubscribe: jest.Mock;
 };
-
-const mockSupabase = {
-  channel: jest.fn(() => mockChannel),
-};
-
-jest.mock('@/lib/supabase/client', () => ({
-  createBrowserClient: () => mockSupabase,
-}));
 
 describe('useLeaderboardRealtime', () => {
   beforeEach(() => {

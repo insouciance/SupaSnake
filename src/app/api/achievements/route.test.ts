@@ -4,25 +4,34 @@
 
 import { GET, POST } from './route';
 import { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-// Mock Supabase
-const mockSupabase = {
-  auth: {
-    getUser: jest.fn(),
-  },
-  from: jest.fn(() => ({
-    select: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis(),
-    upsert: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    single: jest.fn(),
-  })),
-};
+// Mock Supabase. The mock client is built inside the factory because jest.mock
+// is hoisted above imports and the route module calls createClient() while it
+// is being imported - capturing a const declared later would hit the TDZ
+// ("Cannot access 'mockSupabase' before initialization").
+jest.mock('@supabase/supabase-js', () => {
+  const supabaseMock = {
+    auth: {
+      getUser: jest.fn(),
+    },
+    from: jest.fn(() => ({
+      select: jest.fn().mockReturnThis(),
+      insert: jest.fn().mockReturnThis(),
+      update: jest.fn().mockReturnThis(),
+      upsert: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn(),
+    })),
+  };
+  return { createClient: () => supabaseMock };
+});
 
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: () => mockSupabase,
-}));
+// Retrieve the singleton mock client the route is using
+const mockSupabase = (createClient as unknown as () => {
+  auth: { getUser: jest.Mock };
+  from: jest.Mock;
+})();
 
 describe('GET /api/achievements', () => {
   beforeEach(() => {

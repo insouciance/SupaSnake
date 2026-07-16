@@ -1,10 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const mockExchangeCodeForSession = vi.fn();
+const mockExchangeCodeForSession = jest.fn();
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
     auth: {
       exchangeCodeForSession: mockExchangeCodeForSession,
     },
@@ -13,7 +12,7 @@ vi.mock('@supabase/supabase-js', () => ({
 
 describe('OAuth Callback Route', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('GET', () => {
@@ -27,7 +26,9 @@ describe('OAuth Callback Route', () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get('location')).toContain('/login');
-      expect(response.headers.get('location')).toContain('error=User%20cancelled');
+      // URLSearchParams serializes spaces as '+', so assert on the decoded param
+      const location = new URL(response.headers.get('location') ?? '');
+      expect(location.searchParams.get('error')).toBe('User cancelled');
     });
 
     it('should exchange code for session and redirect to game on success', async () => {
@@ -72,7 +73,9 @@ describe('OAuth Callback Route', () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get('location')).toContain('/login');
-      expect(response.headers.get('location')).toContain('error=Invalid%20code');
+      // URLSearchParams serializes spaces as '+', so assert on the decoded param
+      const location = new URL(response.headers.get('location') ?? '');
+      expect(location.searchParams.get('error')).toBe('Invalid code');
     });
 
     it('should redirect to login when no code or error present', async () => {

@@ -29,7 +29,7 @@ describe('ScreenShakeManager', () => {
       manager.shake({ duration: 100 });
       expect(manager.isShaking).toBe(true);
 
-      vi.advanceTimersByTime(150);
+      jest.advanceTimersByTime(150);
       // Note: RAF-based animation, so we just verify initial state
     });
   });
@@ -144,9 +144,13 @@ describe('useScreenShake hook', () => {
     const controls = useScreenShake();
 
     controls.shake();
-    expect(controls.isShaking).toBe(true);
+    // useScreenShake() captures isShaking as a snapshot at call time and
+    // delegates all controls to the screenShake singleton, so the live
+    // state must be read from the singleton.
+    expect(screenShake.isShaking).toBe(true);
 
     controls.stop();
+    expect(screenShake.isShaking).toBe(false);
   });
 });
 

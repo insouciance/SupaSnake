@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSessionRecovery, dispatchApiError } from './useSessionRecovery';
 
-const mockRefreshSession = vi.fn();
-const mockSignOut = vi.fn();
+const mockRefreshSession = jest.fn();
+const mockSignOut = jest.fn();
 
-vi.mock('@/lib/auth/AuthProvider', () => ({
+jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({
     refreshSession: mockRefreshSession,
     isAuthenticated: true,
@@ -15,11 +14,11 @@ vi.mock('@/lib/auth/AuthProvider', () => ({
 
 describe('useSessionRecovery', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   it('should initialize with default state', () => {
@@ -133,7 +132,7 @@ describe('useSessionRecovery', () => {
 
 describe('dispatchApiError', () => {
   it('should dispatch custom event with status', () => {
-    const eventListener = vi.fn();
+    const eventListener = jest.fn();
     window.addEventListener('api-error', eventListener);
 
     dispatchApiError(401);

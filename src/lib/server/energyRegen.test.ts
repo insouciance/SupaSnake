@@ -27,10 +27,12 @@ describe('Energy Regeneration', () => {
       expect(result.energyRegenerated).toBe(0);
     });
 
-    it('should clamp energy above max to max', () => {
+    it('should preserve bonus energy above max and not regenerate', () => {
+      // Documented behavior: bonus energy (from purchases) may exceed
+      // maxEnergy; regen simply does not run while at/above max.
       const result = calculateServerEnergy(10, 5, null, REGEN_RATE_MS);
 
-      expect(result.currentEnergy).toBe(5);
+      expect(result.currentEnergy).toBe(10);
       expect(result.newRegenAt).toBeNull();
       expect(result.energyRegenerated).toBe(0);
     });

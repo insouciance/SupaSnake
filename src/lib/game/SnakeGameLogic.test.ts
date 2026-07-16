@@ -86,11 +86,16 @@ describe('SnakeGameLogic', () => {
     });
 
     it('should move LEFT correctly', () => {
+      // Snake starts moving RIGHT; a direct 180-degree reversal to LEFT is
+      // blocked by the no-reverse rule, so turn DOWN first, then LEFT.
+      game.setDirection('DOWN');
+      game.tick();
       game.setDirection('LEFT');
       const initialHead = { ...game.getState().snake[0] };
       game.tick();
       const newHead = game.getState().snake[0];
       expect(newHead.x).toBe(initialHead.x - 1);
+      expect(newHead.z).toBe(initialHead.z);
     });
 
     it('should move body segments to follow head', () => {

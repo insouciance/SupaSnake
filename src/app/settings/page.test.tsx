@@ -5,7 +5,9 @@
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
-// Mock the auth hook
+// Mock the auth hook. useAuth delegates to a mutable implementation so
+// individual tests can swap the auth state without jest.resetModules()
+// (resetting modules would re-import a second React copy and break hooks).
 const mockSignOut = jest.fn();
 const mockUser = {
   id: 'user-123',
@@ -13,12 +15,15 @@ const mockUser = {
   created_at: '2024-01-01T00:00:00Z',
 };
 
+const authenticatedAuthState = () => ({
+  user: mockUser,
+  signOut: mockSignOut,
+  getToken: jest.fn().mockResolvedValue('mock-token'),
+});
+let mockUseAuthImpl: () => object = authenticatedAuthState;
+
 jest.mock('@/lib/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    user: mockUser,
-    signOut: mockSignOut,
-    getToken: jest.fn().mockResolvedValue('mock-token'),
-  }),
+  useAuth: () => mockUseAuthImpl(),
 }));
 
 // Mock the profile components
@@ -37,6 +42,12 @@ jest.mock('next/link', () => {
   };
 });
 
+// Mock next/navigation (NavBar uses usePathname)
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/settings',
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 import SettingsPage from './page';
 
 describe('SettingsPage', () => {
@@ -47,7 +58,8 @@ describe('SettingsPage', () => {
   describe('rendering', () => {
     it('renders the profile header', () => {
       render(<SettingsPage />);
-      expect(screen.getByText('Profile')).toBeInTheDocument();
+      // "Profile" also appears in the NavBar link, so scope to the heading
+      expect(screen.getByRole('heading', { name: 'Profile' })).toBeInTheDocument();
     });
 
     it('displays user email', () => {
@@ -67,9 +79,10 @@ describe('SettingsPage', () => {
 
     it('displays quick links', () => {
       render(<SettingsPage />);
-      expect(screen.getByText('Leaderboard')).toBeInTheDocument();
+      // "Leaderboard" and "Shop" also appear in the NavBar, so expect multiple
+      expect(screen.getAllByText('Leaderboard').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Breeding Lab')).toBeInTheDocument();
-      expect(screen.getByText('Shop')).toBeInTheDocument();
+      expect(screen.getAllByText('Shop').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Privacy')).toBeInTheDocument();
     });
 
@@ -78,9 +91,11 @@ describe('SettingsPage', () => {
       expect(screen.getByText('Sign Out')).toBeInTheDocument();
     });
 
-    it('shows back link', () => {
+    it('shows link back to the game', () => {
       render(<SettingsPage />);
-      expect(screen.getByText('Back')).toBeInTheDocument();
+      // The page's return-to-game affordance is the "Play" link
+      const playLink = screen.getByRole('link', { name: 'Play' });
+      expect(playLink).toHaveAttribute('href', '/game');
     });
   });
 
@@ -95,24 +110,20 @@ describe('SettingsPage', () => {
 });
 
 describe('SettingsPage unauthenticated', () => {
-  beforeEach(() => {
-    jest.resetModules();
+  afterEach(() => {
+    mockUseAuthImpl = authenticatedAuthState;
   });
 
-  it('shows sign in prompt when not authenticated', async () => {
-    jest.doMock('@/lib/auth/AuthProvider', () => ({
-      useAuth: () => ({
-        user: null,
-        signOut: jest.fn(),
-        getToken: jest.fn(),
-      }),
-    }));
+  it('shows sign in prompt when not authenticated', () => {
+    mockUseAuthImpl = () => ({
+      user: null,
+      signOut: jest.fn(),
+      getToken: jest.fn(),
+    });
 
-    // Re-import after mock update
-    const { default: UnauthPage } = await import('./page');
-    render(<UnauthPage />);
+    render(<SettingsPage />);
 
-    expect(screen.getByText('Please sign in')).toBeInTheDocument();
-    expect(screen.getByText('Sign In')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /please sign in/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign In' })).toBeInTheDocument();
   });
 });

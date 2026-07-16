@@ -12,6 +12,19 @@ jest.mock('@/lib/stores/collectionStore', () => ({
   useCollectionStore: jest.fn(),
 }));
 
+// Mock the auth provider - useCollection reads `session` for API auth headers
+const TEST_TOKEN = 'test-token';
+jest.mock('@/lib/auth/AuthProvider', () => ({
+  useAuth: () => ({
+    session: { access_token: 'test-token' },
+    user: { id: 'test-user' },
+    isLoading: false,
+    isAuthenticated: true,
+  }),
+}));
+
+const AUTH_HEADERS = { headers: { Authorization: `Bearer ${TEST_TOKEN}` } };
+
 // Mock fetch globally
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
@@ -355,9 +368,9 @@ describe('useCollection', () => {
       renderHook(() => useCollection());
 
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith('/api/dynasties');
-        expect(mockFetch).toHaveBeenCalledWith('/api/variants');
-        expect(mockFetch).toHaveBeenCalledWith('/api/collection');
+        expect(mockFetch).toHaveBeenCalledWith('/api/dynasties', AUTH_HEADERS);
+        expect(mockFetch).toHaveBeenCalledWith('/api/variants', AUTH_HEADERS);
+        expect(mockFetch).toHaveBeenCalledWith('/api/collection', AUTH_HEADERS);
       });
     });
 
@@ -637,7 +650,10 @@ describe('useCollection', () => {
 
       expect(mockFetch).toHaveBeenCalledWith('/api/collection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TEST_TOKEN}`,
+        },
         body: JSON.stringify({ variantId: 'variant-2' }),
       });
     });
@@ -847,7 +863,10 @@ describe('useCollection', () => {
 
       expect(mockFetch).toHaveBeenCalledWith('/api/collection/equip', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TEST_TOKEN}`,
+        },
         body: JSON.stringify({ snakeId: 'owned-2' }),
       });
     });

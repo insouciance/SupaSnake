@@ -1,4 +1,3 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 
 describe('Streaks API Logic', () => {

@@ -3,7 +3,20 @@
  * AAA 2026 Standard: Centralized balance values
  */
 
-export const GAME_CONFIG = {
+/**
+ * Recursively freeze an object so runtime mutation throws (strict mode).
+ * Config values must never be mutated at runtime.
+ */
+function deepFreeze<T extends object>(obj: T): T {
+  for (const value of Object.values(obj)) {
+    if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+      deepFreeze(value);
+    }
+  }
+  return Object.freeze(obj);
+}
+
+export const GAME_CONFIG = deepFreeze({
   /**
    * Grid & Board
    */
@@ -82,7 +95,7 @@ export const GAME_CONFIG = {
     leaderboards: false,             // v1.0+
     clans: false,                    // Future
   },
-} as const;
+} as const);
 
 /**
  * Type exports

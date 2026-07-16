@@ -1,15 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { POST } from './route';
 import { NextRequest } from 'next/server';
 
 // Mock Supabase
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
     auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user: null } }),
+      getUser: jest.fn().mockResolvedValue({ data: { user: null } }),
     },
-    from: vi.fn(() => ({
-      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    from: jest.fn(() => ({
+      insert: jest.fn().mockResolvedValue({ data: null, error: null }),
     })),
   })),
 }));
@@ -26,7 +25,7 @@ function createMockRequest(body: object): NextRequest {
 
 describe('Age Verify API', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('POST', () => {

@@ -1,14 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkRateLimit, RATE_LIMITS } from './rateLimit';
 
-const mockSelect = vi.fn();
-const mockUpsert = vi.fn();
+const mockSelect = jest.fn();
+const mockUpsert = jest.fn();
 
 const mockSupabase = {
-  from: vi.fn(() => ({
-    select: vi.fn(() => ({
-      eq: vi.fn(() => ({
-        eq: vi.fn(() => ({
+  from: jest.fn(() => ({
+    select: jest.fn(() => ({
+      eq: jest.fn(() => ({
+        eq: jest.fn(() => ({
           single: mockSelect,
         })),
       })),
@@ -19,7 +18,7 @@ const mockSupabase = {
 
 describe('Rate Limiter', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     mockUpsert.mockResolvedValue({ error: null });
   });
 

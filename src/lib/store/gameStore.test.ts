@@ -104,9 +104,10 @@ describe('Game Store', () => {
       expect(useGameStore.getState().energy).toBe(3);
     });
 
-    it('should not exceed max energy', () => {
+    it('should allow bonus energy above max (purchases)', () => {
+      // setEnergy documents: "Allow bonus energy above maxEnergy (from purchases)"
       useGameStore.getState().setEnergy(10);
-      expect(useGameStore.getState().energy).toBeLessThanOrEqual(5);
+      expect(useGameStore.getState().energy).toBe(10);
     });
 
     it('should not go below 0', () => {
