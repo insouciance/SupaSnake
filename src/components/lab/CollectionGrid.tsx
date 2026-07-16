@@ -33,7 +33,7 @@ export interface CollectionGridProps {
  * Loading skeleton card component
  * Pulsing placeholder matching variant card aspect ratio
  */
-function SkeletonCard(): React.ReactElement {
+function SkeletonCard(): React.ReactElement<any> {
   return (
     <div
       className="animate-pulse rounded-lg bg-[#16213e]"
@@ -58,7 +58,7 @@ function SkeletonCard(): React.ReactElement {
 /**
  * Empty state component for when no variants exist
  */
-function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.ReactElement {
+function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.ReactElement<any> {
   return (
     <div
       className="flex flex-col items-center justify-center py-12 px-4"
@@ -115,7 +115,7 @@ export function CollectionGrid({
   isLoading,
   equippedSnakeId,
   emptySlotCount = 0,
-}: CollectionGridProps): React.ReactElement {
+}: CollectionGridProps): React.ReactElement<any> {
   /**
    * Sort variants by sortOrder (if available) or name
    */

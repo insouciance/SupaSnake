@@ -40,7 +40,7 @@ export function CollectionProgress({
   owned,
   total,
   dynastyTheme,
-}: CollectionProgressProps): React.ReactElement {
+}: CollectionProgressProps): React.ReactElement<any> {
   // Calculate percentage, handling edge case of total === 0
   const percentage = total === 0 ? 0 : Math.round((owned / total) * 100);
 

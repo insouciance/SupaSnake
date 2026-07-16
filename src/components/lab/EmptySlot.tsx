@@ -29,7 +29,7 @@ function hexToRgba(hex: string, opacity: number): string {
  * Maintains same 3:4 aspect ratio as VariantCard for visual consistency.
  * Non-interactive but maintains 44px minimum touch target for layout consistency.
  */
-export function EmptySlot({ dynastyTheme }: EmptySlotProps): React.ReactElement {
+export function EmptySlot({ dynastyTheme }: EmptySlotProps): React.ReactElement<any> {
   const primaryColor = dynastyTheme.primary;
   const backgroundGradient = `linear-gradient(135deg, ${hexToRgba(dynastyTheme.primary, 0.1)} 0%, ${hexToRgba(dynastyTheme.secondary, 0.1)} 100%)`;
 

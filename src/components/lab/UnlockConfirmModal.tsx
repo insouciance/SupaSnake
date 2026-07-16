@@ -57,7 +57,7 @@ function capitalizeRarity(rarity: string): string {
 /**
  * Checkmark Icon for unlock button
  */
-function CheckIcon(): React.ReactElement {
+function CheckIcon(): React.ReactElement<any> {
   return (
     <svg
       width="16"
@@ -78,7 +78,7 @@ function CheckIcon(): React.ReactElement {
 /**
  * X Icon for cancel button
  */
-function XIcon(): React.ReactElement {
+function XIcon(): React.ReactElement<any> {
   return (
     <svg
       width="16"
@@ -99,7 +99,7 @@ function XIcon(): React.ReactElement {
 /**
  * Loading spinner for unlock in progress
  */
-function LoadingSpinner(): React.ReactElement {
+function LoadingSpinner(): React.ReactElement<any> {
   return (
     <svg
       width="16"
@@ -140,7 +140,7 @@ export function UnlockConfirmModal({
   onConfirm,
   isUnlocking,
   error,
-}: UnlockConfirmModalProps): React.ReactElement | null {
+}: UnlockConfirmModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
 
   const canAfford = currentDna >= variant.unlockCostDna;

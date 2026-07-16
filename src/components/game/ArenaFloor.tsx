@@ -69,9 +69,7 @@ export function ArenaFloor({
         <bufferGeometry>
           <bufferAttribute
             attach="attributes-position"
-            count={gridLines.length}
-            array={new Float32Array(gridLines.flatMap(v => [v.x, v.y, v.z]))}
-            itemSize={3}
+            args={[new Float32Array(gridLines.flatMap(v => [v.x, v.y, v.z])), 3]}
           />
         </bufferGeometry>
         <lineBasicMaterial color={gridColor} opacity={0.4} transparent />
@@ -82,8 +80,7 @@ export function ArenaFloor({
         <bufferGeometry>
           <bufferAttribute
             attach="attributes-position"
-            count={20}
-            array={new Float32Array([
+            args={[new Float32Array([
               // Vertical accent lines
               0, 0.025, 0, 0, 0.025, gridSize,
               5, 0.025, 0, 5, 0.025, gridSize,
@@ -96,8 +93,7 @@ export function ArenaFloor({
               0, 0.025, 10, gridSize, 0.025, 10,
               0, 0.025, 15, gridSize, 0.025, 15,
               0, 0.025, 20, gridSize, 0.025, 20,
-            ])}
-            itemSize={3}
+            ]), 3]}
           />
         </bufferGeometry>
         <lineBasicMaterial color={accentColor} opacity={0.25} transparent />

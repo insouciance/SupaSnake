@@ -37,7 +37,7 @@ function hexToRgba(hex: string, opacity: number): string {
 /**
  * Back Arrow Icon SVG Component
  */
-function BackArrowIcon({ color }: { color: string }): React.ReactElement {
+function BackArrowIcon({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="24"
@@ -58,7 +58,7 @@ function BackArrowIcon({ color }: { color: string }): React.ReactElement {
 /**
  * Lightning Bolt Icon for Equip button
  */
-function LightningIcon({ color }: { color: string }): React.ReactElement {
+function LightningIcon({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="20"
@@ -76,7 +76,7 @@ function LightningIcon({ color }: { color: string }): React.ReactElement {
 /**
  * Flask Icon for Breed button
  */
-function FlaskIcon({ color }: { color: string }): React.ReactElement {
+function FlaskIcon({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="20"
@@ -103,7 +103,7 @@ function HeartIcon({
 }: {
   color: string;
   filled: boolean;
-}): React.ReactElement {
+}): React.ReactElement<any> {
   return (
     <svg
       width="20"
@@ -131,7 +131,7 @@ function HeartIcon({
 /**
  * Checkmark Icon for Equipped state
  */
-function CheckmarkIcon({ color }: { color: string }): React.ReactElement {
+function CheckmarkIcon({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="20"
@@ -152,7 +152,7 @@ function CheckmarkIcon({ color }: { color: string }): React.ReactElement {
 /**
  * Loading Spinner for equip button
  */
-function Spinner({ color }: { color: string }): React.ReactElement {
+function Spinner({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="20"
@@ -221,7 +221,7 @@ export function VariantDetailModal({
   onBreed,
   isEquipping,
   isEquipped,
-}: VariantDetailModalProps): React.ReactElement | null {
+}: VariantDetailModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
   const modalRef = useRef<HTMLDivElement>(null);
   const [isFavorited, setIsFavorited] = React.useState(owned.isFavorited);

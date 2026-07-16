@@ -32,7 +32,7 @@ function hexToRgba(hex: string, opacity: number): string {
 /**
  * Lock Icon SVG Component
  */
-function LockIcon({ color }: { color: string }): React.ReactElement {
+function LockIcon({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="32"
@@ -53,7 +53,7 @@ function LockIcon({ color }: { color: string }): React.ReactElement {
 /**
  * Checkmark Icon SVG Component (for equipped indicator)
  */
-function CheckmarkIcon({ color }: { color: string }): React.ReactElement {
+function CheckmarkIcon({ color }: { color: string }): React.ReactElement<any> {
   return (
     <svg
       width="20"
@@ -84,7 +84,7 @@ export function VariantCard({
   dynastyTheme,
   onTap,
   isEquipped = false,
-}: VariantCardProps): React.ReactElement {
+}: VariantCardProps): React.ReactElement<any> {
   const [isPressed, setIsPressed] = useState(false);
 
   const isOwned = owned !== null;
