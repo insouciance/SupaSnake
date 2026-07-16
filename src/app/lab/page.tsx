@@ -8,6 +8,7 @@
 
 import { useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useCollection } from '@/hooks/useCollection';
@@ -30,6 +31,7 @@ import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 // =============================================================================
 
 export default function LabPage() {
+  const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Collection state from hook
@@ -116,12 +118,11 @@ export default function LabPage() {
   }, [selectedOwned, equipSnake]);
 
   /**
-   * Handle breed action (placeholder - breeding not yet implemented)
+   * Handle breed action - navigate to the Breeding Lab
    */
   const handleBreed = useCallback(() => {
-    // Breeding functionality to be implemented in future sprint
-    console.log('Breed action triggered - coming soon');
-  }, []);
+    router.push('/lab/breed');
+  }, [router]);
 
   // ---------------------------------------------------------------------------
   // LOADING STATE
@@ -219,15 +220,27 @@ export default function LabPage() {
         />
       )}
 
-      {/* Collection progress indicator */}
+      {/* Collection progress indicator + Breeding Lab entry */}
       {activeDynasty && (
         <div className="px-4 py-3 border-b border-white/10">
-          <div className="max-w-6xl mx-auto">
-            <CollectionProgress
-              owned={currentCompletion.owned}
-              total={currentCompletion.total}
-              dynastyTheme={dynastyTheme}
-            />
+          <div className="max-w-6xl mx-auto flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <CollectionProgress
+                owned={currentCompletion.owned}
+                total={currentCompletion.total}
+                dynastyTheme={dynastyTheme}
+              />
+            </div>
+            <Link
+              href="/lab/breed"
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm bg-[#00FFFF]/10 text-[#00FFFF] border border-[#00FFFF]/40 hover:bg-[#00FFFF]/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              style={{ minHeight: '44px' }}
+              aria-label="Open Breeding Lab"
+              data-testid="breed-entry-link"
+            >
+              <span role="img" aria-hidden="true">🧪</span>
+              <span>Breed</span>
+            </Link>
           </div>
         </div>
       )}

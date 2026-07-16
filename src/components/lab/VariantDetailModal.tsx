@@ -277,11 +277,8 @@ export function VariantDetailModal({
     setIsFavorited(!isFavorited);
   }, [isFavorited]);
 
-  // Handle breed click with tooltip
-  const [showBreedTooltip, setShowBreedTooltip] = React.useState(false);
+  // Handle breed click - parent navigates to the Breeding Lab
   const handleBreedClick = useCallback(() => {
-    setShowBreedTooltip(true);
-    setTimeout(() => setShowBreedTooltip(false), 2000);
     onBreed();
   }, [onBreed]);
 
@@ -550,25 +547,11 @@ export function VariantDetailModal({
                 backgroundColor: hexToRgba(theme.secondary, 0.2),
                 color: theme.secondary,
               }}
-              aria-label="Breed this snake (coming soon)"
+              aria-label="Breed this snake"
             >
               <FlaskIcon color={theme.secondary} />
               <span>Breed</span>
             </button>
-            {/* Coming soon tooltip */}
-            {showBreedTooltip && (
-              <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap"
-                style={{
-                  backgroundColor: '#16213e',
-                  color: '#8892b0',
-                  border: `1px solid ${hexToRgba(theme.secondary, 0.3)}`,
-                }}
-                role="tooltip"
-              >
-                Coming soon
-              </div>
-            )}
           </div>
 
           {/* Favorite button */}
