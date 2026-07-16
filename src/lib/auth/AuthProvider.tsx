@@ -8,6 +8,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session, Provider } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
+import { recordLastUser } from '@/lib/auth/lastUser';
 
 interface AuthContextType {
   user: User | null;
@@ -41,6 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
+      // Remember who was signed in on this device so a lost session is
+      // never silently replaced by a fresh anonymous identity.
+      if (session?.user) {
+        recordLastUser(session.user);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -48,6 +54,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setIsLoading(false);
+
+        if (session?.user) {
+          recordLastUser(session.user);
+        }
 
         if (event === 'PASSWORD_RECOVERY') {
           setIsPasswordRecovery(true);

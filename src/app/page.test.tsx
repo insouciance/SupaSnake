@@ -2,12 +2,19 @@
  * Home Page Tests - real pilot stats, daily reward auto-open, FTUE mount
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
+import { recordLastUser, readLastUser, PROGRESS_LOSS_NOTICE_KEY } from '@/lib/auth/lastUser';
+import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
 
 // Child components with their own routing/effects are stubbed
 jest.mock('@/components/ui/NavBar', () => ({
   NavBar: () => <div data-testid="navbar" />,
+}));
+
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
 }));
 
 jest.mock('@/components/ftue/StarterSelection', () => ({
@@ -70,22 +77,26 @@ function setupFetch(fixtures: FetchFixtures = {}) {
   }) as jest.Mock;
 }
 
-function setAuthed() {
+function setAuthed(opts: { isAnonymous?: boolean } = {}) {
   mockUseAuth.mockReturnValue({
     isAuthenticated: true,
     isLoading: false,
+    isAnonymous: opts.isAnonymous ?? false,
     signInAnonymously: jest.fn(),
     session: { access_token: 'test-token' },
   });
 }
 
 function setUnauthed() {
+  const signInAnonymously = jest.fn();
   mockUseAuth.mockReturnValue({
     isAuthenticated: false,
     isLoading: false,
-    signInAnonymously: jest.fn(),
+    isAnonymous: false,
+    signInAnonymously,
     session: null,
   });
+  return { signInAnonymously };
 }
 
 describe('Home page', () => {
@@ -234,6 +245,160 @@ describe('Home page', () => {
         expect(screen.getByText('777')).toBeInTheDocument();
       });
       expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('identity continuity (no silent new identity)', () => {
+    it('shows Welcome Back when a registered account used this device', () => {
+      setUnauthed();
+      recordLastUser({ id: 'user-1', is_anonymous: false, email: 'player@example.com' });
+      render(<Home />);
+
+      expect(screen.getByTestId('welcome-back-modal')).toBeInTheDocument();
+      expect(screen.getByText('Sign In')).toBeInTheDocument();
+      expect(screen.getByText('pl****@example.com')).toBeInTheDocument();
+    });
+
+    it('start fresh clears the marker and dismisses Welcome Back', () => {
+      setUnauthed();
+      recordLastUser({ id: 'user-1', is_anonymous: false, email: 'player@example.com' });
+      render(<Home />);
+
+      fireEvent.click(
+        screen.getByText('Start fresh instead (new account, empty collection)')
+      );
+
+      expect(screen.queryByTestId('welcome-back-modal')).not.toBeInTheDocument();
+      expect(readLastUser()).toBeNull();
+    });
+
+    it('does not show Welcome Back without a marker', () => {
+      setUnauthed();
+      render(<Home />);
+      expect(screen.queryByTestId('welcome-back-modal')).not.toBeInTheDocument();
+    });
+
+    it('does not show Welcome Back when the previous user was anonymous', () => {
+      setUnauthed();
+      recordLastUser({ id: 'anon-1', is_anonymous: true });
+      render(<Home />);
+      expect(screen.queryByTestId('welcome-back-modal')).not.toBeInTheDocument();
+    });
+
+    it('warns once before replacing a lost anonymous session on Launch', () => {
+      const { signInAnonymously } = setUnauthed();
+      recordLastUser({ id: 'anon-1', is_anonymous: true });
+      render(<Home />);
+
+      fireEvent.click(screen.getByText('Launch'));
+
+      expect(screen.getByTestId('progress-loss-notice')).toBeInTheDocument();
+      expect(signInAnonymously).not.toHaveBeenCalled();
+    });
+
+    it('continue-as-guest signs in anonymously and marks the notice as seen', async () => {
+      const { signInAnonymously } = setUnauthed();
+      signInAnonymously.mockResolvedValue(undefined);
+      recordLastUser({ id: 'anon-1', is_anonymous: true });
+      render(<Home />);
+
+      fireEvent.click(screen.getByText('Launch'));
+      fireEvent.click(screen.getByText('Continue as Guest'));
+
+      await waitFor(() => {
+        expect(signInAnonymously).toHaveBeenCalled();
+      });
+      expect(mockPush).toHaveBeenCalledWith('/game');
+      expect(window.localStorage.getItem(PROGRESS_LOSS_NOTICE_KEY)).toBe('1');
+    });
+
+    it('signs in anonymously without prompts on a truly fresh device', async () => {
+      const { signInAnonymously } = setUnauthed();
+      signInAnonymously.mockResolvedValue(undefined);
+      render(<Home />);
+
+      fireEvent.click(screen.getByText('Launch'));
+
+      await waitFor(() => {
+        expect(signInAnonymously).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('progress-loss-notice')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('welcome-back-modal')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('save-progress prompt for anonymous players', () => {
+    it('shows the banner for anonymous users', async () => {
+      setAuthed({ isAnonymous: true });
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('save-progress-banner')).toBeInTheDocument();
+      });
+    });
+
+    it('collapses to a corner chip after dismissal', async () => {
+      setAuthed({ isAnonymous: true });
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('save-progress-banner')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByLabelText('Dismiss save progress banner'));
+
+      expect(screen.queryByTestId('save-progress-banner')).not.toBeInTheDocument();
+      expect(screen.getByTestId('save-progress-chip')).toBeInTheDocument();
+    });
+
+    it('never renders for registered users', async () => {
+      setAuthed({ isAnonymous: false });
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByText('777')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('save-progress-banner')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('save-progress-chip')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('reward outbox replay', () => {
+    it('replays queued game rewards on load with the auth token', async () => {
+      setAuthed();
+      enqueueReward({
+        sessionId: 'lost-session',
+        score: 9,
+        dna_earned: 90,
+        duration_seconds: 60,
+        timestamp: Date.now(),
+      });
+      render(<Home />);
+
+      await waitFor(() => {
+        const call = (global.fetch as jest.Mock).mock.calls.find(
+          (c) => String(c[0]) === '/api/game/session'
+        );
+        expect(call).toBeDefined();
+        expect(call?.[1]?.headers?.Authorization).toBe('Bearer test-token');
+        expect(JSON.parse(call?.[1]?.body).sessionId).toBe('lost-session');
+      });
+
+      await waitFor(() => {
+        expect(readOutbox()).toEqual([]);
+      });
+    });
+
+    it('does not touch the session endpoint when the queue is empty', async () => {
+      setAuthed();
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByText('777')).toBeInTheDocument();
+      });
+      const sessionCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (c) => String(c[0]) === '/api/game/session'
+      );
+      expect(sessionCalls).toHaveLength(0);
     });
   });
 

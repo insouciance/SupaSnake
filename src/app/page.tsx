@@ -2,7 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import {
+  readLastUser,
+  clearLastUser,
+  evaluateAnonymousSignInGate,
+  markProgressLossNoticed,
+  type LastUserMarker,
+} from '@/lib/auth/lastUser';
+import { replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
+import { SaveProgressBanner } from '@/components/auth/UpgradePrompt';
 import { MVP_DYNASTIES, DYNASTY_THEMES } from '@/shared/types/snake-data-model';
 import { NavBar } from '@/components/ui/NavBar';
 import { CommandPanel } from '@/components/ui/CommandPanel';
@@ -46,6 +56,7 @@ function dailyDismissKey(today: string): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [selectedDynasty, setSelectedDynasty] = useState<string>('CYBER');
   const [hasMounted, setHasMounted] = useState(false);
@@ -53,12 +64,38 @@ export default function Home() {
   const [streak, setStreak] = useState<number | null>(null);
   const [daily, setDaily] = useState<DailyRewardsState | null>(null);
   const [showDailyModal, setShowDailyModal] = useState(false);
+  const [welcomeBack, setWelcomeBack] = useState<LastUserMarker | null>(null);
+  const [showLossNotice, setShowLossNotice] = useState(false);
 
   const token = session?.access_token;
 
   useEffect(() => {
     setHasMounted(true);
   }, []);
+
+  // No silent new identity: if a registered account previously used this
+  // device and the session is gone, surface "Welcome back" instead of
+  // letting the player fall into a fresh anonymous account.
+  useEffect(() => {
+    if (isLoading) return;
+    if (isAuthenticated) {
+      setWelcomeBack(null);
+      return;
+    }
+    const marker = readLastUser();
+    if (marker && !marker.isAnonymous) {
+      setWelcomeBack(marker);
+    }
+  }, [isLoading, isAuthenticated]);
+
+  // Replay any queued game rewards that failed to send (tab closed at
+  // death, network drop). Server dedupes by sessionId.
+  useEffect(() => {
+    if (!token) return;
+    replayRewardOutbox(token).catch((err) => {
+      console.error('Reward outbox replay failed:', err);
+    });
+  }, [token]);
 
   // Real home stats from server authority: /api/player + /api/streaks
   useEffect(() => {
@@ -207,11 +244,39 @@ export default function Home() {
     setShowDailyModal(false);
   }, []);
 
-  const handlePlay = async () => {
-    if (!isAuthenticated) {
-      await signInAnonymously();
+  const handlePlay = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isAuthenticated) return;
+
+    const gate = evaluateAnonymousSignInGate(readLastUser());
+
+    if (gate === 'welcome-back') {
+      // A registered account used this device - never silently replace it
+      e.preventDefault();
+      setWelcomeBack(readLastUser());
+      return;
     }
+
+    if (gate === 'warn-progress-loss') {
+      // Previous anonymous session is gone - warn once before a new identity
+      e.preventDefault();
+      setShowLossNotice(true);
+      return;
+    }
+
+    await signInAnonymously();
   };
+
+  const handleContinueAfterLossNotice = useCallback(async () => {
+    markProgressLossNoticed();
+    setShowLossNotice(false);
+    await signInAnonymously();
+    router.push('/game');
+  }, [signInAnonymously, router]);
+
+  const handleStartFresh = useCallback(() => {
+    clearLastUser();
+    setWelcomeBack(null);
+  }, []);
 
   const needsStarter = isAuthenticated && stats?.needsStarterSelection === true;
 
@@ -231,6 +296,85 @@ export default function Home() {
 
       {/* Navigation Bar */}
       <NavBar />
+
+      {/* Anonymous users: dismissible save-progress banner / corner chip */}
+      <SaveProgressBanner />
+
+      {/* Welcome back: a registered account used this device but the
+          session is gone - never silently create a new anonymous identity */}
+      {welcomeBack && !isAuthenticated && !isLoading && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-scale-blue-dark/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          data-testid="welcome-back-modal"
+        >
+          <div className="bg-scale-blue border-[3px] border-venom-orange rounded-arcade p-8 text-center space-y-6 max-w-md w-full">
+            <h2 className="text-2xl font-display uppercase tracking-arcade text-venom-orange">
+              Welcome Back
+            </h2>
+            <p className="text-beige font-body">
+              Sign in to restore your progress
+              {welcomeBack.emailHint && (
+                <>
+                  {' '}
+                  (<span className="text-bone-white">{welcomeBack.emailHint}</span>)
+                </>
+              )}
+              . Your snakes and DNA are waiting on your account.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Link
+                href="/login"
+                className="px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+              >
+                Sign In
+              </Link>
+              <button
+                onClick={handleStartFresh}
+                className="px-4 py-2 text-beige/60 hover:text-beige text-sm font-body transition-colors"
+              >
+                Start fresh instead (new account, empty collection)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* One-time notice: previous anonymous session is unrecoverable */}
+      {showLossNotice && !isAuthenticated && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-scale-blue-dark/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          data-testid="progress-loss-notice"
+        >
+          <div className="bg-scale-blue border-[3px] border-strike-red rounded-arcade p-8 text-center space-y-6 max-w-md w-full">
+            <h2 className="text-2xl font-display uppercase tracking-arcade text-strike-red">
+              Previous Progress Lost
+            </h2>
+            <p className="text-beige font-body">
+              A previous guest session on this device could not be restored - that
+              progress may be unrecoverable. A new guest profile will be created.
+              Create an account next time to keep your progress safe.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleContinueAfterLossNotice}
+                className="px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+              >
+                Continue as Guest
+              </button>
+              <button
+                onClick={() => setShowLossNotice(false)}
+                className="px-4 py-2 text-beige/60 hover:text-beige text-sm font-body transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* FTUE: full-screen starter chooser for players with no snakes */}
       {needsStarter && <StarterSelection />}
