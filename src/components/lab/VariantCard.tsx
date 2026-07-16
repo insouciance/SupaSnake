@@ -9,6 +9,7 @@
 import React, { useState, useCallback } from 'react';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
+import { SnakeArt } from '@/components/lab/SnakeArt';
 
 export interface VariantCardProps {
   variant: SnakeVariant;
@@ -91,9 +92,6 @@ export function VariantCard({
   const primaryColor = dynastyTheme.primary;
   const secondaryColor = dynastyTheme.secondary;
 
-  // Gradient placeholder for when art URL is null
-  const gradientPlaceholder = `linear-gradient(135deg, ${hexToRgba(primaryColor, 0.6)} 0%, ${hexToRgba(secondaryColor, 0.6)} 100%)`;
-
   // Card background - slightly darker for contrast
   const cardBackground = `linear-gradient(135deg, ${hexToRgba(primaryColor, 0.15)} 0%, ${hexToRgba(secondaryColor, 0.15)} 100%)`;
 
@@ -166,12 +164,14 @@ export function VariantCard({
             loading="lazy"
           />
         ) : (
-          <div
+          <SnakeArt
+            seed={variant.id}
+            name={variant.name}
+            dynasty={variant.name.split(' ')[0]}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            rarity={variant.rarity}
             className="absolute inset-0 w-full h-full"
-            style={{
-              background: gradientPlaceholder,
-            }}
-            aria-label="Artwork placeholder"
           />
         )}
 

@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake, Dynasty } from '@/shared/types/snake-data-model';
 import { computeEffectiveStats } from '@/shared/types/snake-data-model';
+import { SnakeArt } from '@/components/lab/SnakeArt';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -287,9 +288,6 @@ export function VariantDetailModal({
     return null;
   }
 
-  // Gradient placeholder for art
-  const gradientPlaceholder = `linear-gradient(180deg, ${hexToRgba(theme.primary, 0.6)} 0%, ${hexToRgba(theme.secondary, 0.6)} 100%)`;
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
@@ -375,20 +373,15 @@ export function VariantDetailModal({
                 }}
               />
             ) : (
-              <div
-                className="w-full h-full flex items-center justify-center"
-                style={{
-                  background: gradientPlaceholder,
-                }}
-                aria-label="Artwork placeholder"
-              >
-                <span
-                  className="text-6xl font-bold opacity-30"
-                  style={{ color: theme.textOnPrimary }}
-                >
-                  ?
-                </span>
-              </div>
+              <SnakeArt
+                seed={variant.id}
+                name={variant.name}
+                dynasty={dynasty.name}
+                primaryColor={theme.primary}
+                secondaryColor={theme.secondary}
+                rarity={variant.rarity}
+                className="w-full h-full"
+              />
             )}
           </div>
 
