@@ -40,9 +40,21 @@ _Last updated: 2026-07-16 (afternoon)_
 - [ ] Consent banner: reject → no PostHog requests in devtools Network tab;
       accept → events flow (check PostHog Live Events)
 - [ ] Account upgrade prompt: anonymous → attach email → sign out → sign in →
-      progress intact
-- [ ] Sentry: check a test error arrives (I'll plant a /api/debug-sentry
-      route or trigger one and note it here)
+      progress intact. Also: anonymous users see "Save your progress" banner;
+      shop Buy buttons become "Create an account to purchase" while anonymous
+- [ ] Reward outbox: kill the tab exactly at death → reopen → run's DNA
+      credited on next load (replay); re-submitting an ended session gets 409,
+      no double DNA
+- [ ] Welcome-back gate: sign in with email → clear site data → revisit →
+      "Welcome back — sign in to restore progress" appears instead of a
+      silent fresh anonymous account
+- [ ] Sentry: wired (instrumentation + global error boundary + sourcemaps).
+      Check https://modusopus.sentry.io → project supasnake receives events
+      after the next prod deploy (trigger: any console error page / I'll
+      verify server-side too)
+- [ ] Purchase path: sandbox checkout with 4242... card → energy/DNA granted
+      exactly once (idempotent webhook), purchase_history row exists; refund
+      in Stripe dashboard → recorded + Sentry alert (no auto-clawback)
 
 ## ✅ Environment (done today, for reference)
 
