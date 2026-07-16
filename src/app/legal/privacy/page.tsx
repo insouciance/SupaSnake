@@ -6,10 +6,10 @@ export const metadata = {
 };
 
 export default function PrivacyPolicyPage() {
-  const lastUpdated = '2024-12-13';
+  const lastUpdated = '2026-07-16';
   const companyName = 'OG Snake';
-  const contactEmail = 'privacy@ogsnake.com';
-  const dpoEmail = 'dpo@ogsnake.com';
+  const contactEmail = 'bllj@proton.me';
+  const dpoEmail = 'bllj@proton.me';
 
   return (
     <main className="min-h-screen bg-scale-blue-dark text-bone-white">
@@ -117,8 +117,8 @@ export default function PrivacyPolicyPage() {
             </h2>
             <p className="mb-4">We may share your data with:</p>
             <ul className="list-disc list-inside space-y-2 text-beige">
-              <li><strong className="text-bone-white">Service Providers:</strong> Supabase (database), Stripe (payments), Vercel (hosting)</li>
-              <li><strong className="text-bone-white">Analytics Partners:</strong> Amplitude, Sentry (with appropriate DPAs)</li>
+              <li><strong className="text-bone-white">Service Providers:</strong> Supabase (database and authentication, hosted in the EU), Stripe (payments), Vercel (hosting), Resend (transactional email - planned)</li>
+              <li><strong className="text-bone-white">Analytics Partners:</strong> PostHog (product analytics, EU hosting), Sentry (error tracking, hosted in Germany) - with appropriate DPAs</li>
               <li><strong className="text-bone-white">Legal Authorities:</strong> When required by law or to protect our rights</li>
             </ul>
             <p className="mt-4">We do not sell your personal data to third parties.</p>

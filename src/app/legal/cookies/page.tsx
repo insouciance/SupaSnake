@@ -6,8 +6,8 @@ export const metadata = {
 };
 
 export default function CookiePolicyPage() {
-  const lastUpdated = '2024-12-13';
-  const contactEmail = 'privacy@ogsnake.com';
+  const lastUpdated = '2026-07-16';
+  const contactEmail = 'bllj@proton.me';
 
   return (
     <main className="min-h-screen bg-scale-blue-dark text-bone-white">
@@ -127,8 +127,8 @@ export default function CookiePolicyPage() {
                 </thead>
                 <tbody className="text-bone-white/80">
                   <tr className="border-b border-scale-blue-light/50">
-                    <td className="py-2 text-venom-orange">amp_*</td>
-                    <td className="py-2">Amplitude analytics</td>
+                    <td className="py-2 text-venom-orange">ph_*</td>
+                    <td className="py-2">PostHog analytics (only set after you grant analytics consent)</td>
                     <td className="py-2">1 year</td>
                   </tr>
                   <tr>
@@ -144,22 +144,10 @@ export default function CookiePolicyPage() {
             <div className="p-4 bg-scale-blue-dark rounded-arcade border border-scale-blue-light">
               <h3 className="text-lg text-bone-white font-bold mb-2">Marketing Cookies</h3>
               <p className="text-beige text-sm mb-2">Track advertising effectiveness. Can be disabled.</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-beige border-b border-scale-blue-light">
-                    <th className="pb-2">Cookie</th>
-                    <th className="pb-2">Purpose</th>
-                    <th className="pb-2">Duration</th>
-                  </tr>
-                </thead>
-                <tbody className="text-bone-white/80">
-                  <tr>
-                    <td className="py-2 text-venom-orange">adjust_*</td>
-                    <td className="py-2">Attribution tracking</td>
-                    <td className="py-2">30 days</td>
-                  </tr>
-                </tbody>
-              </table>
+              <p className="text-bone-white/80 text-sm">
+                We do not currently set any marketing or advertising cookies. If this
+                changes, this policy will be updated and your consent requested first.
+              </p>
             </div>
           </section>
 
@@ -231,8 +219,8 @@ export default function CookiePolicyPage() {
                 </a>
               </li>
               <li>
-                <strong className="text-bone-white">Amplitude:</strong> Analytics{' '}
-                <a href="https://amplitude.com/privacy" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
+                <strong className="text-bone-white">PostHog:</strong> Analytics (EU hosting){' '}
+                <a href="https://posthog.com/privacy" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
                   (Privacy Policy)
                 </a>
               </li>

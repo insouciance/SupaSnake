@@ -2,18 +2,26 @@
 
 /**
  * Signup Page - For new users
- * Email/password registration with verification
+ * Email/password registration with verification.
+ *
+ * COPPA/GDPR: account creation is gated by a 13+ age check (AgeGate).
+ * The gate lives only in the signup flow - anonymous play stays
+ * friction-free. A prior verification (localStorage backup) skips the gate.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { LoginForm } from '@/components/auth/LoginForm';
+import AgeGate, { UnderageScreen } from '@/components/legal/AgeGate';
+
+type AgeStatus = 'checking' | 'unverified' | 'verified' | 'underage';
 
 export default function SignupPage() {
   const router = useRouter();
   const { isAuthenticated, isAnonymous, isLoading } = useAuth();
+  const [ageStatus, setAgeStatus] = useState<AgeStatus>('checking');
 
   useEffect(() => {
     // Redirect authenticated non-anonymous users to game
@@ -22,7 +30,17 @@ export default function SignupPage() {
     }
   }, [isAuthenticated, isAnonymous, isLoading, router]);
 
-  if (isLoading) {
+  // Skip the gate if this browser already passed verification
+  useEffect(() => {
+    try {
+      const verified = window.localStorage.getItem('age_verified') === 'true';
+      setAgeStatus(verified ? 'verified' : 'unverified');
+    } catch {
+      setAgeStatus('unverified');
+    }
+  }, []);
+
+  if (isLoading || ageStatus === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-scale-blue-dark">
         <div className="text-center space-y-4">
@@ -30,6 +48,19 @@ export default function SignupPage() {
           <p className="text-beige font-body">Loading...</p>
         </div>
       </div>
+    );
+  }
+
+  if (ageStatus === 'underage') {
+    return <UnderageScreen />;
+  }
+
+  if (ageStatus === 'unverified') {
+    return (
+      <AgeGate
+        onVerified={() => setAgeStatus('verified')}
+        onUnderage={() => setAgeStatus('underage')}
+      />
     );
   }
 

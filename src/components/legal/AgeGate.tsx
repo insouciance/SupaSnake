@@ -80,14 +80,16 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
   const handleUnderage = async (year: number) => {
     try {
-      // Log underage attempt (GDPR: legitimate interest for fraud prevention)
-      await fetch('/api/age-gate/underage', {
+      // Log underage attempt server-side (GDPR: legitimate interest for
+      // fraud prevention). The API stores only an anonymized hash and
+      // responds 403 for underage years - that response is expected here.
+      await fetch('/api/age-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          attemptedYear: year,
-          timestamp: new Date().toISOString(),
-          // Don't store IP or device ID (privacy-first)
+          birthYear: year,
+          // Whole-year check: month 1 is the most permissive interpretation
+          birthMonth: 1,
         }),
       });
 
@@ -101,16 +103,14 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
   };
 
   const saveAgeVerification = async (year: number) => {
-    // Hash the birth year (don't store raw)
-    const hashedYear = await hashBirthYear(year);
-
-    const response = await fetch('/api/age-gate/verify', {
+    // Server verifies and stores only an anonymized hash (no raw birthdate)
+    const response = await fetch('/api/age-verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ageVerified: true,
-        verificationHash: hashedYear,
-        verifiedAt: new Date().toISOString(),
+        birthYear: year,
+        // Whole-year check: month 1 is the most permissive interpretation
+        birthMonth: 1,
       }),
     });
 
@@ -123,24 +123,8 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
     localStorage.setItem('age_verified_at', new Date().toISOString());
   };
 
-  const hashBirthYear = async (year: number): Promise<string> => {
-    // Simple hash (not cryptographic - just to avoid storing raw year)
-    // In production, could use crypto.subtle.digest
-    const salt = 'supasnake-age-gate'; // Could be env var
-    const data = `${year}-${salt}`;
-
-    // Browser-compatible hash (SHA-256)
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    return hashHex;
-  };
-
   return (
-    <div className="age-gate-overlay">
+    <div className="age-gate-overlay" data-testid="age-gate">
       <div className="age-gate-container">
         <div className="age-gate-content">
           {/* Logo */}
@@ -381,7 +365,7 @@ export function UnderageScreen() {
             <p>
               <strong>Parents:</strong> If you&apos;d like to learn more about SupaSnake,
               please contact us at{' '}
-              <a href="mailto:parents@supasnake.com">parents@supasnake.com</a>
+              <a href="mailto:bllj@proton.me">bllj@proton.me</a>
             </p>
           </div>
 

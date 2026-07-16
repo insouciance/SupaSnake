@@ -6,9 +6,9 @@ export const metadata = {
 };
 
 export default function TermsOfServicePage() {
-  const lastUpdated = '2024-12-13';
+  const lastUpdated = '2026-07-16';
   const companyName = 'OG Snake';
-  const contactEmail = 'legal@ogsnake.com';
+  const contactEmail = 'bllj@proton.me';
 
   return (
     <main className="min-h-screen bg-scale-blue-dark text-bone-white">
