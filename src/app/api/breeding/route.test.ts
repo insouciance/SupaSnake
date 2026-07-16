@@ -1,11 +1,34 @@
 /**
- * Tests for Breeding API - Unit tests for business logic
+ * @jest-environment node
+ */
+
+/**
+ * Tests for Breeding API - Unit tests for business logic + GET history route
  * Breeding is executed by the breed_snakes RPC:
  *   cost = 200 + floor((gen1 + gen2) / 2) * 100
  *   parents must share a dynasty; offspring variant is 50/50 from parents
  */
 
+// Mock Supabase - must be before imports due to jest.mock hoisting
+
+var mockAuth: jest.Mock;
+
+var mockFrom: jest.Mock;
+
+var mockRpc: jest.Mock;
+
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: { getUser: (...args: unknown[]) => mockAuth(...args) },
+    from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
+  }),
+}));
+
 import { describe, it, expect } from '@jest/globals';
+import { NextRequest } from 'next/server';
+import { GET } from './route';
+import { mapBreedingHistoryRow } from './utils';
 
 /** Mirrors the breed_snakes RPC cost formula (integer division) */
 function breedingCost(parent1Gen: number, parent2Gen: number): number {
@@ -142,5 +165,233 @@ describe('Breeding Logic', () => {
       expect(response.child.generation).toBe(3);
       expect(response.cost).toBe(400);
     });
+  });
+});
+
+// =============================================================================
+// mapBreedingHistoryRow TESTS
+// =============================================================================
+
+describe('mapBreedingHistoryRow', () => {
+  it('maps a joined history row to camelCase', () => {
+    const row = {
+      id: 'history-1',
+      dna_cost: 300,
+      bred_at: '2026-07-01T10:00:00Z',
+      parent1: {
+        id: 'snake-1',
+        generation: 1,
+        snake_variants: { name: 'CYBER SPARK', rarity: 'common' },
+      },
+      parent2: {
+        id: 'snake-2',
+        generation: 2,
+        snake_variants: { name: 'CYBER PULSE', rarity: 'uncommon' },
+      },
+      child: {
+        id: 'snake-3',
+        generation: 3,
+        snake_variants: { name: 'CYBER SPARK', rarity: 'common' },
+      },
+    };
+
+    const result = mapBreedingHistoryRow(row);
+
+    expect(result).toEqual({
+      id: 'history-1',
+      dnaCost: 300,
+      bredAt: '2026-07-01T10:00:00Z',
+      parent1: { id: 'snake-1', generation: 1, variantName: 'CYBER SPARK', rarity: 'common' },
+      parent2: { id: 'snake-2', generation: 2, variantName: 'CYBER PULSE', rarity: 'uncommon' },
+      child: { id: 'snake-3', generation: 3, variantName: 'CYBER SPARK', rarity: 'common' },
+    });
+  });
+
+  it('handles array-shaped joins and a deleted child', () => {
+    const row = {
+      id: 'history-2',
+      dna_cost: 400,
+      bred_at: '2026-07-02T10:00:00Z',
+      parent1: [
+        {
+          id: 'snake-1',
+          generation: 2,
+          snake_variants: [{ name: 'PRIMAL SEED', rarity: 'common' }],
+        },
+      ],
+      parent2: [
+        { id: 'snake-2', generation: 2, snake_variants: null },
+      ],
+      child: null, // ON DELETE SET NULL
+    };
+
+    const result = mapBreedingHistoryRow(row);
+
+    expect(result.parent1).toEqual({
+      id: 'snake-1',
+      generation: 2,
+      variantName: 'PRIMAL SEED',
+      rarity: 'common',
+    });
+    expect(result.parent2).toEqual({
+      id: 'snake-2',
+      generation: 2,
+      variantName: null,
+      rarity: null,
+    });
+    expect(result.child).toBeNull();
+  });
+});
+
+// =============================================================================
+// GET /api/breeding (history) TESTS
+// =============================================================================
+
+describe('GET /api/breeding', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth = jest.fn();
+    mockFrom = jest.fn();
+    mockRpc = jest.fn();
+  });
+
+  it('should return 401 without authorization header', async () => {
+    const request = new NextRequest('http://localhost:3000/api/breeding');
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('should return 401 for invalid token', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: null },
+      error: { message: 'Invalid token' },
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/breeding', {
+      headers: { authorization: 'Bearer bad-token' },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('should return 404 when player is missing', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({ data: null, error: null }),
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/breeding', {
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('should return mapped history, newest first, limited to 10', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+
+    // Player lookup
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: { id: 'player-123' },
+        error: null,
+      }),
+    });
+
+    // History query chain: select().eq().order().limit()
+    const mockOrder = jest.fn().mockReturnThis();
+    const mockLimit = jest.fn().mockResolvedValueOnce({
+      data: [
+        {
+          id: 'history-1',
+          dna_cost: 300,
+          bred_at: '2026-07-01T10:00:00Z',
+          parent1: {
+            id: 'snake-1',
+            generation: 1,
+            snake_variants: { name: 'CYBER SPARK', rarity: 'common' },
+          },
+          parent2: {
+            id: 'snake-2',
+            generation: 1,
+            snake_variants: { name: 'CYBER PULSE', rarity: 'uncommon' },
+          },
+          child: {
+            id: 'snake-3',
+            generation: 2,
+            snake_variants: { name: 'CYBER PULSE', rarity: 'uncommon' },
+          },
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: mockOrder,
+      limit: mockLimit,
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/breeding', {
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.history).toHaveLength(1);
+    expect(data.history[0].id).toBe('history-1');
+    expect(data.history[0].dnaCost).toBe(300);
+    expect(data.history[0].child.variantName).toBe('CYBER PULSE');
+    expect(data.history[0].parent1.generation).toBe(1);
+    expect(mockOrder).toHaveBeenCalledWith('bred_at', { ascending: false });
+    expect(mockLimit).toHaveBeenCalledWith(10);
+  });
+
+  it('should return 500 when the history query fails', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: { id: 'player-123' },
+        error: null,
+      }),
+    });
+
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValueOnce({
+        data: null,
+        error: { message: 'boom' },
+      }),
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/breeding', {
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(500);
   });
 });

@@ -6,11 +6,70 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { mapBreedingHistoryRow } from './utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+/**
+ * GET /api/breeding - Recent breeding history for the authed player.
+ * Joins parent/child collected_snakes -> snake_variants for display names,
+ * limited to the 10 most recent events, newest first.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    const { data: player } = await supabase
+      .from('players')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!player) {
+      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    }
+
+    const { data: rows, error: historyError } = await supabase
+      .from('breeding_history')
+      .select(
+        `id, dna_cost, bred_at,
+         parent1:collected_snakes!breeding_history_parent1_id_fkey(id, generation, snake_variants(name, rarity)),
+         parent2:collected_snakes!breeding_history_parent2_id_fkey(id, generation, snake_variants(name, rarity)),
+         child:collected_snakes!breeding_history_child_id_fkey(id, generation, snake_variants(name, rarity))`
+      )
+      .eq('player_id', player.id)
+      .order('bred_at', { ascending: false })
+      .limit(10);
+
+    if (historyError) {
+      console.error('Breeding history query error:', historyError);
+      return NextResponse.json(
+        { error: 'Failed to fetch breeding history' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      history: (rows ?? []).map(mapBreedingHistoryRow),
+    });
+  } catch (err) {
+    console.error('Breeding history API error:', err);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
