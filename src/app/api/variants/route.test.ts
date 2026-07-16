@@ -7,9 +7,9 @@
  */
 
 // Mock Supabase - must be before imports due to jest.mock hoisting
-// eslint-disable-next-line no-var
+ 
 var mockAuth: jest.Mock;
-// eslint-disable-next-line no-var
+ 
 var mockFrom: jest.Mock;
 
 jest.mock('@supabase/supabase-js', () => ({

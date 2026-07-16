@@ -237,7 +237,7 @@ export default function GamePage() {
       }
     };
   // Note: session, currentSessionId, and showToast are accessed via closure
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [endGame, setDnaCollected, setScore, setDeathSequence, setPaused, showToast]);
 
   // Sync game state to store
