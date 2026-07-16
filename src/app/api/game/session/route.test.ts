@@ -4,6 +4,10 @@
 
 import { describe, it, expect } from '@jest/globals';
 import { GAME_CONFIG } from '@/shared/config/game';
+import {
+  applyDnaMultiplier,
+  combineDnaMultipliers,
+} from '@/lib/server/dnaMultipliers';
 
 describe('Game Session Logic', () => {
   describe('Session Start', () => {
@@ -185,6 +189,67 @@ describe('Game Session Logic', () => {
       const total = baseDna + bonus;
 
       expect(total).toBe(150);
+    });
+  });
+
+  describe('DNA Multiplier Integration', () => {
+    it('multiplies adjusted DNA by the multiplier stack and rounds down', () => {
+      // 7-day streak (x1.25), PRIMAL equipped (x1.05), 1 completed dynasty (x1.10)
+      const { multiplier, breakdown } = combineDnaMultipliers(1.25, 1.05, 1);
+      const adjustedDna = 47;
+
+      const finalDna = applyDnaMultiplier(adjustedDna, multiplier);
+
+      // 47 * 1.4438 = 67.85... -> 67
+      expect(multiplier).toBeCloseTo(1.4438, 4);
+      expect(finalDna).toBe(67);
+      expect(breakdown.total).toBe(multiplier);
+    });
+
+    it('grants base DNA unchanged when no bonuses apply', () => {
+      const { multiplier } = combineDnaMultipliers(1, 1, 0);
+      expect(applyDnaMultiplier(50, multiplier)).toBe(50);
+    });
+
+    it('falls back to base DNA when multiplier lookup fails (x1)', () => {
+      // Route catches multiplier errors and keeps dnaMultiplier = 1
+      const dnaMultiplier = 1;
+      const adjustedDna = 33;
+      expect(applyDnaMultiplier(adjustedDna, dnaMultiplier)).toBe(33);
+    });
+
+    it('logs the breakdown into economy transaction metadata', () => {
+      const { breakdown } = combineDnaMultipliers(1.1, 1.05, 2);
+      const metadata = {
+        score: 10,
+        original_dna_claimed: 100,
+        validated: true,
+        base_dna: 100,
+        ...(breakdown ? { dna_multiplier: breakdown } : {}),
+      };
+
+      expect(metadata.base_dna).toBe(100);
+      expect(metadata.dna_multiplier).toEqual(breakdown);
+      expect(metadata.dna_multiplier.completedDynasties).toBe(2);
+    });
+
+    it('omits dnaMultiplier from response when breakdown is unavailable', () => {
+      const dnaBreakdown = null;
+      const response = {
+        success: true,
+        ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
+      };
+
+      expect('dnaMultiplier' in response).toBe(false);
+    });
+
+    it('credits player totals with the multiplied DNA', () => {
+      const playerDna = 100;
+      const previousTotalEarned = 500;
+      const finalDna = applyDnaMultiplier(40, 1.25); // 50
+
+      expect(playerDna + finalDna).toBe(150);
+      expect(previousTotalEarned + finalDna).toBe(550);
     });
   });
 

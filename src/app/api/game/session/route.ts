@@ -10,6 +10,12 @@ import { checkRateLimit } from '@/lib/server/rateLimit';
 import { validateGameResult } from '@/lib/server/gameValidator';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
+import {
+  getDnaMultiplier,
+  applyDnaMultiplier,
+  type DnaMultiplierBreakdown,
+  type EquippedVariantInfo,
+} from '@/lib/server/dnaMultipliers';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -157,7 +163,7 @@ export async function POST(request: NextRequest) {
 
       const { data: session } = await supabase
         .from('game_sessions')
-        .select('server_started_at')
+        .select('server_started_at, snake_variant_id')
         .eq('id', sessionId)
         .eq('player_id', player.id)
         .single();
@@ -177,11 +183,46 @@ export async function POST(request: NextRequest) {
         new Date(session.server_started_at || Date.now())
       );
 
+      // DNA multiplier stack: streak tier x dynasty bonus x set bonus.
+      // Non-fatal: any failure falls back to x1 (base DNA only).
+      let dnaMultiplier = 1;
+      let dnaBreakdown: DnaMultiplierBreakdown | null = null;
+      try {
+        // The session row stores the variant played; resolve its dynasty bonus
+        let equippedInfo: EquippedVariantInfo | null = null;
+        if (session.snake_variant_id) {
+          const { data: variantRow } = await supabase
+            .from('snake_variants')
+            .select('dynasties(stat_bonus_type, stat_bonus_value)')
+            .eq('id', session.snake_variant_id)
+            .single();
+
+          const dynastyJoin = variantRow?.dynasties as unknown as
+            | { stat_bonus_type: string | null; stat_bonus_value: number | null }
+            | null;
+
+          if (dynastyJoin) {
+            equippedInfo = {
+              statBonusType: dynastyJoin.stat_bonus_type,
+              statBonusValue: dynastyJoin.stat_bonus_value,
+            };
+          }
+        }
+
+        const multiplierResult = await getDnaMultiplier(supabase, player.id, equippedInfo);
+        dnaMultiplier = multiplierResult.multiplier;
+        dnaBreakdown = multiplierResult.breakdown;
+      } catch (multiplierError) {
+        console.error('DNA multiplier error:', multiplierError);
+      }
+
+      const finalDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+
       await supabase
         .from('game_sessions')
         .update({
           score: score || 0,
-          dna_earned: validation.adjustedDna,
+          dna_earned: finalDna,
           duration_seconds: duration_seconds || 0,
           died: died ?? true,
           victory: victory ?? false,
@@ -193,7 +234,7 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionId)
         .eq('player_id', player.id);
 
-      const newDna = player.dna + validation.adjustedDna;
+      const newDna = player.dna + finalDna;
       const { data: currentPlayer } = await supabase
         .from('players')
         .select('total_games_played, high_score, total_dna_earned')
@@ -202,7 +243,7 @@ export async function POST(request: NextRequest) {
 
       const newHighScore = Math.max(currentPlayer?.high_score || 0, score || 0);
       const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
-      const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + validation.adjustedDna;
+      const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + finalDna;
 
       await supabase
         .from('players')
@@ -214,11 +255,11 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', player.id);
 
-      if (validation.adjustedDna > 0) {
+      if (finalDna > 0) {
         await supabase.from('economy_transactions').insert({
           player_id: player.id,
           resource_type: 'dna',
-          amount: validation.adjustedDna,
+          amount: finalDna,
           balance_after: newDna,
           source_type: 'game_reward',
           source_id: sessionId,
@@ -226,6 +267,8 @@ export async function POST(request: NextRequest) {
             score: score || 0,
             original_dna_claimed: dna_earned || 0,
             validated: validation.valid,
+            base_dna: validation.adjustedDna,
+            ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
           },
         });
       }
@@ -345,9 +388,11 @@ export async function POST(request: NextRequest) {
         player: updatedPlayer,
         validation: {
           valid: validation.valid,
-          adjustedDna: validation.adjustedDna,
+          adjustedDna: finalDna,
+          baseDna: validation.adjustedDna,
         },
         newAchievements,
+        ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
       });
     }
