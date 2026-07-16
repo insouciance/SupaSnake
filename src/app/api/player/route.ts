@@ -5,9 +5,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { STARTER_VARIANTS } from '@/shared/data/dynasties';
 import { calculateServerEnergy } from '@/lib/server/energyRegen';
 import { GAME_CONFIG } from '@/shared/config/game';
+
+const VALID_DYNASTIES = ['CYBER', 'PRIMAL', 'COSMIC'];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,16 +53,11 @@ export async function GET(request: NextRequest) {
 
       await supabase.from('player_settings').insert({
         player_id: newPlayer.id,
-        selected_dynasty: 'EMBER',
+        selected_dynasty: 'CYBER',
       });
 
-      const starterSnake = STARTER_VARIANTS[0];
-      await supabase.from('collected_snakes').insert({
-        player_id: newPlayer.id,
-        variant_id: starterSnake.id,
-        generation: 1,
-      });
-
+      // No auto-seeded starter snake: the player picks one in the Lab
+      // (client is told via needsStarterSelection below).
       const { data: fullPlayer } = await supabase
         .from('players')
         .select('*, collected_snakes(*), player_settings(*)')
@@ -96,14 +92,17 @@ export async function GET(request: NextRequest) {
 
       // Log regeneration in economy_transactions if energy was regenerated
       if (energyResult.energyRegenerated > 0) {
-        await supabase.from('economy_transactions').insert({
+        const { error: txError } = await supabase.from('economy_transactions').insert({
           player_id: player.id,
           source_type: 'energy_regen',
-          currency_type: 'energy',
+          resource_type: 'energy',
           amount: energyResult.energyRegenerated,
           balance_after: energyResult.currentEnergy,
           metadata: { regenerated_at: new Date().toISOString() },
         });
+        if (txError) {
+          console.error('Failed to log energy regen transaction:', txError);
+        }
       }
 
       // Update the player object with new values
@@ -119,6 +118,8 @@ export async function GET(request: NextRequest) {
       // Additional fields for Welcome Back modal
       lastLoginAt: player.last_login_at || null,
       collectionSize,
+      // New players own zero snakes until they pick a starter in the Lab
+      needsStarterSelection: collectionSize === 0,
     });
   } catch (err) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -159,6 +160,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Only update safe settings (no dna, no energy)
+    if (selected_dynasty && !VALID_DYNASTIES.includes(selected_dynasty)) {
+      return NextResponse.json({ error: 'Invalid dynasty' }, { status: 400 });
+    }
     if (selected_dynasty) {
       await supabase
         .from('player_settings')

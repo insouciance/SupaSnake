@@ -14,7 +14,7 @@ export interface StoreProduct {
   rewards: {
     energy?: number;
     dna?: number;
-    variants?: string[];
+    variants?: string[]; // snake_variants.name values (resolved to UUIDs server-side)
     days?: number; // For battlepass
   };
 }
@@ -68,7 +68,7 @@ export const BUNDLE_PRODUCTS: StoreProduct[] = [
     rewards: {
       energy: 20,
       dna: 1000,
-      variants: ['EMBER_8'], // Rare variant
+      variants: ['CYBER VORTEX'], // Rare variant
     },
   },
   {
@@ -81,7 +81,7 @@ export const BUNDLE_PRODUCTS: StoreProduct[] = [
     rewards: {
       energy: 50,
       dna: 3000,
-      variants: ['CRYSTAL_9'], // Epic variant
+      variants: ['COSMIC SUPERNOVA'], // Epic variant
     },
   },
 ];

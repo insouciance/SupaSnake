@@ -29,15 +29,49 @@ describe('Game Session Logic', () => {
       expect(remainingEnergy).toBe(4);
     });
 
-    it('should create session with variant ID', () => {
+    it('should create session from the equipped snake', () => {
+      // Session start receives a collected_snakes UUID and derives
+      // variant + dynasty from the DB join (no text variant ids)
+      const equippedSnake = {
+        id: '4d3f2f6a-9d1e-4c1b-8f3a-2b5e6d7c8a90',
+        snake_variant_id: 'a1b2c3d4-e5f6-4a5b-8c7d-9e0f1a2b3c4d',
+        is_equipped: true,
+        snake_variants: { name: 'CYBER SPARK', dynasties: { name: 'CYBER' } },
+      };
+
       const sessionData = {
-        variant_id: 'EMBER_1',
         player_id: 'uuid-123',
+        snake_used_id: equippedSnake.id,
+        snake_variant_id: equippedSnake.snake_variant_id,
+        dynasty: equippedSnake.snake_variants.dynasties.name,
         started_at: new Date().toISOString(),
       };
 
-      expect(sessionData.variant_id).toBe('EMBER_1');
+      expect(sessionData.snake_used_id).toBe(equippedSnake.id);
+      expect(sessionData.snake_variant_id).toBe(equippedSnake.snake_variant_id);
+      expect(sessionData.dynasty).toBe('CYBER');
       expect(sessionData.player_id).toBeDefined();
+    });
+
+    it('should reject start without snake_id', () => {
+      const body: { snake_id?: string } = {};
+      const isInvalid = !body.snake_id;
+
+      expect(isInvalid).toBe(true);
+    });
+
+    it('should reject start when snake is not equipped', () => {
+      const snake = { is_equipped: false };
+      const rejected = !snake.is_equipped;
+
+      expect(rejected).toBe(true);
+    });
+
+    it('should reject start when player owns no snakes', () => {
+      const ownedCount = 0;
+      const rejected = !ownedCount;
+
+      expect(rejected).toBe(true);
     });
   });
 
@@ -67,6 +101,55 @@ describe('Game Session Logic', () => {
     it('should set ended_at timestamp', () => {
       const endedAt = new Date().toISOString();
       expect(endedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+
+    it('should increment total_dna_earned by adjusted DNA (not reset to balance)', () => {
+      const previousTotalDnaEarned = 900;
+      const currentDnaBalance = 100; // spent DNA does not reduce lifetime earnings
+      const adjustedDna = 50;
+
+      const newTotalDnaEarned = previousTotalDnaEarned + adjustedDna;
+
+      expect(newTotalDnaEarned).toBe(950);
+      expect(newTotalDnaEarned).not.toBe(currentDnaBalance + adjustedDna);
+    });
+
+    it('should map record_daily_play RPC row to streak response', () => {
+      // RPC returns a table row (array from supabase.rpc)
+      const rpcRows = [
+        {
+          current_streak: 3,
+          longest_streak: 7,
+          streak_multiplier: '1.10',
+          grace_consumed: false,
+        },
+      ];
+
+      const row = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+      const streak = {
+        current: row.current_streak,
+        longest: row.longest_streak,
+        multiplier: Number(row.streak_multiplier),
+        graceConsumed: row.grace_consumed,
+      };
+
+      expect(streak).toEqual({
+        current: 3,
+        longest: 7,
+        multiplier: 1.1,
+        graceConsumed: false,
+      });
+    });
+
+    it('should omit streak from response when RPC fails (non-fatal)', () => {
+      const streak = null;
+      const response = {
+        success: true,
+        ...(streak ? { streak } : {}),
+      };
+
+      expect(response.success).toBe(true);
+      expect('streak' in response).toBe(false);
     });
   });
 

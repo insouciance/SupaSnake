@@ -4,7 +4,6 @@
 
 import { describe, it, expect } from '@jest/globals';
 import { GAME_CONFIG } from '@/shared/config/game';
-import { STARTER_VARIANTS } from '@/shared/data/dynasties';
 
 describe('Player API Logic', () => {
   describe('New Player Creation', () => {
@@ -20,14 +19,28 @@ describe('Player API Logic', () => {
       expect(newPlayerDefaults.max_energy).toBe(GAME_CONFIG.economy.energy.maxEnergy);
     });
 
-    it('should receive starter snake', () => {
-      expect(STARTER_VARIANTS.length).toBeGreaterThan(0);
-      expect(STARTER_VARIANTS[0].id).toBe('EMBER_1');
+    it('should not auto-seed a starter snake (player picks in Lab)', () => {
+      // New players own zero snakes until they select a starter
+      const collectionSize = 0;
+      const needsStarterSelection = collectionSize === 0;
+      expect(needsStarterSelection).toBe(true);
     });
 
-    it('should start with EMBER dynasty selected', () => {
-      const defaultDynasty = 'EMBER';
-      expect(defaultDynasty).toBe('EMBER');
+    it('should start with CYBER dynasty selected', () => {
+      const defaultDynasty = 'CYBER';
+      expect(defaultDynasty).toBe('CYBER');
+    });
+  });
+
+  describe('Starter Selection Flag', () => {
+    it('should flag needsStarterSelection when collection is empty', () => {
+      const collectionSize = 0;
+      expect(collectionSize === 0).toBe(true);
+    });
+
+    it('should not flag needsStarterSelection when player owns snakes', () => {
+      const collectionSize = 3;
+      expect(collectionSize === 0).toBe(false);
     });
   });
 
@@ -66,11 +79,18 @@ describe('Player API Logic', () => {
 
   describe('Dynasty Selection', () => {
     it('should accept valid dynasties', () => {
-      const validDynasties = ['EMBER', 'CRYSTAL', 'VOID'];
+      const validDynasties = ['CYBER', 'PRIMAL', 'COSMIC'];
 
-      expect(validDynasties).toContain('EMBER');
-      expect(validDynasties).toContain('CRYSTAL');
-      expect(validDynasties).toContain('VOID');
+      expect(validDynasties).toContain('CYBER');
+      expect(validDynasties).toContain('PRIMAL');
+      expect(validDynasties).toContain('COSMIC');
+    });
+
+    it('should reject unknown dynasty names', () => {
+      const validDynasties = ['CYBER', 'PRIMAL', 'COSMIC'];
+
+      expect(validDynasties.includes('SHADOW')).toBe(false);
+      expect(validDynasties.includes('cyber')).toBe(false);
     });
   });
 

@@ -68,17 +68,26 @@ describe('Stripe Webhook', () => {
 
     describe('Variant Rewards', () => {
       it('should add variants to collection', () => {
-        const collection: string[] = ['EMBER_1'];
-        const newVariants = ['EMBER_8'];
+        // Collection tracks snake_variants UUIDs; product rewards are
+        // variant names resolved to UUIDs before insert
+        const collection: string[] = ['variant-uuid-spark'];
+        const newVariants = ['variant-uuid-vortex'];
         const updated = [...collection, ...newVariants];
-        expect(updated).toContain('EMBER_8');
+        expect(updated).toContain('variant-uuid-vortex');
       });
 
       it('should not duplicate existing variants', () => {
-        const collection = ['EMBER_1', 'EMBER_8'];
-        const newVariant = 'EMBER_8';
+        const collection = ['variant-uuid-spark', 'variant-uuid-vortex'];
+        const newVariant = 'variant-uuid-vortex';
         const alreadyOwned = collection.includes(newVariant);
         expect(alreadyOwned).toBe(true);
+      });
+
+      it('should skip unknown variant names in product config', () => {
+        const knownVariantNames = ['CYBER VORTEX', 'COSMIC SUPERNOVA'];
+        const rewardName = 'UNKNOWN SNAKE';
+        const resolved = knownVariantNames.includes(rewardName);
+        expect(resolved).toBe(false);
       });
     });
   });

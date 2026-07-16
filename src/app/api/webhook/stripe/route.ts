@@ -100,23 +100,34 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Update failed' }, { status: 500 });
       }
 
-      // Grant variant rewards if any
+      // Grant variant rewards if any (product config stores variant names)
       if (rewards.variants && rewards.variants.length > 0) {
-        for (const variantId of rewards.variants) {
+        for (const variantName of rewards.variants) {
+          const { data: variant } = await supabase
+            .from('snake_variants')
+            .select('id')
+            .eq('name', variantName)
+            .single();
+
+          if (!variant) {
+            console.error(`Unknown variant reward in product config: ${variantName}`);
+            continue;
+          }
+
           // Check if already owned
           const { data: existing } = await supabase
             .from('collected_snakes')
             .select('id')
             .eq('player_id', userId)
-            .eq('variant_id', variantId)
+            .eq('snake_variant_id', variant.id)
             .maybeSingle();
 
           if (!existing) {
             await supabase.from('collected_snakes').insert({
               player_id: userId,
-              variant_id: variantId,
+              snake_variant_id: variant.id,
               generation: 1,
-              acquired_via: 'purchase',
+              acquired_method: 'unlock',
             });
           }
         }

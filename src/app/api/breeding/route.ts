@@ -1,13 +1,11 @@
 /**
  * Breeding API - Combine snakes to create new variants
- * Server authority: DNA deducted, RNG on server
+ * Server authority: the breed_snakes RPC atomically validates ownership,
+ * deducts DNA, rolls the offspring variant, and logs breeding_history.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { GAME_CONFIG } from '@/shared/config/game';
-import { getRandomVariantForBreeding, VARIANTS_BY_ID } from '@/shared/data/dynasties';
-import type { DynastyId } from '@/shared/types/game';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,93 +47,63 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    const { data: parents } = await supabase
+    // Atomic server-side breeding (validates ownership, same dynasty,
+    // DNA cost, generation cap; creates offspring + history entry)
+    const { data: childId, error: breedError } = await supabase.rpc('breed_snakes', {
+      p_player_id: player.id,
+      p_parent1_id: parent1_id,
+      p_parent2_id: parent2_id,
+    });
+
+    if (breedError || !childId) {
+      console.error('breed_snakes RPC error:', breedError);
+      return NextResponse.json(
+        { error: breedError?.message || 'Breeding failed' },
+        { status: 400 }
+      );
+    }
+
+    // Load the offspring with its variant + dynasty for the response
+    const { data: childSnake, error: childError } = await supabase
       .from('collected_snakes')
-      .select('*')
-      .eq('player_id', player.id)
-      .in('id', [parent1_id, parent2_id]);
-
-    if (!parents || parents.length !== 2) {
-      return NextResponse.json({ error: 'Invalid parent snakes' }, { status: 400 });
-    }
-
-    const parent1 = parents.find(p => p.id === parent1_id)!;
-    const parent2 = parents.find(p => p.id === parent2_id)!;
-
-    const variant1 = VARIANTS_BY_ID[parent1.variant_id];
-    const variant2 = VARIANTS_BY_ID[parent2.variant_id];
-
-    if (!variant1 || !variant2) {
-      return NextResponse.json({ error: 'Invalid variant data' }, { status: 400 });
-    }
-
-    const sameDynasty = variant1.dynastyId === variant2.dynastyId;
-    const cost = sameDynasty
-      ? GAME_CONFIG.breeding.baseCost
-      : GAME_CONFIG.breeding.crossDynastyCost;
-
-    if (player.dna < cost) {
-      return NextResponse.json({
-        error: 'Not enough DNA',
-        required: cost,
-        current: player.dna,
-      }, { status: 400 });
-    }
-
-    const childVariant = getRandomVariantForBreeding(
-      variant1.dynastyId as DynastyId,
-      variant2.dynastyId as DynastyId
-    );
-
-    const childGeneration = Math.max(parent1.generation, parent2.generation) + 1;
-
-    const { data: childSnake, error: insertError } = await supabase
-      .from('collected_snakes')
-      .insert({
-        player_id: player.id,
-        variant_id: childVariant.id,
-        generation: childGeneration,
-        parent1_id: parent1_id,
-        parent2_id: parent2_id,
-      })
-      .select()
+      .select('*, snake_variants(id, name, rarity, dynasty_id, dynasties(name))')
+      .eq('id', childId)
       .single();
 
-    if (insertError) {
-      return NextResponse.json({ error: 'Failed to create child' }, { status: 500 });
+    if (childError || !childSnake) {
+      console.error('Failed to fetch bred snake:', childError);
+      return NextResponse.json(
+        { error: 'Breeding succeeded but failed to fetch offspring' },
+        { status: 500 }
+      );
     }
 
-    await supabase
+    // Actual DNA cost is computed server-side; read it from the history entry
+    const { data: historyEntry } = await supabase
       .from('breeding_history')
-      .insert({
-        player_id: player.id,
-        parent1_id,
-        parent2_id,
-        child_id: childSnake.id,
-        dna_cost: cost,
-      });
+      .select('dna_cost')
+      .eq('child_id', childId)
+      .single();
 
-    const newDna = player.dna - cost;
-    await supabase
+    const { data: updatedPlayer } = await supabase
       .from('players')
-      .update({
-        dna: newDna,
-        breeds_completed: player.id,
-      })
-      .eq('id', player.id);
+      .select('dna')
+      .eq('id', player.id)
+      .single();
 
     return NextResponse.json({
       success: true,
       child: {
         id: childSnake.id,
-        variant_id: childVariant.id,
-        variant: childVariant,
-        generation: childGeneration,
+        snake_variant_id: childSnake.snake_variant_id,
+        variant: childSnake.snake_variants,
+        generation: childSnake.generation,
       },
-      cost,
-      remainingDna: newDna,
+      cost: historyEntry?.dna_cost ?? null,
+      remainingDna: updatedPlayer?.dna ?? player.dna,
     });
   } catch (err) {
+    console.error('Breeding API error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

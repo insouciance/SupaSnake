@@ -50,7 +50,7 @@ describe('Stripe Products', () => {
       const product = {
         id: 'starter_bundle',
         priceUsd: 2.99,
-        rewards: { energy: 20, dna: 1000, variants: ['EMBER_8'] },
+        rewards: { energy: 20, dna: 1000, variants: ['CYBER VORTEX'] },
       };
       expect(product.priceUsd).toBe(2.99);
       expect(product.rewards.energy).toBe(20);
@@ -61,7 +61,7 @@ describe('Stripe Products', () => {
       const product = {
         id: 'dynasty_bundle',
         priceUsd: 9.99,
-        rewards: { energy: 50, dna: 3000, variants: ['CRYSTAL_9'] },
+        rewards: { energy: 50, dna: 3000, variants: ['COSMIC SUPERNOVA'] },
       };
       expect(product.priceUsd).toBe(9.99);
       expect(product.rewards.energy).toBe(50);

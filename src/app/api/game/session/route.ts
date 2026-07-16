@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, sessionId, variant_id, score, dna_earned, duration_seconds, died, victory } = body;
+    const { action, sessionId, snake_id, score, dna_earned, duration_seconds, died, victory } = body;
 
     const { data: player } = await supabase
       .from('players')
@@ -56,17 +56,56 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Not enough energy' }, { status: 400 });
       }
 
+      if (!snake_id) {
+        return NextResponse.json({ error: 'snake_id is required' }, { status: 400 });
+      }
+
+      // Load the snake with its variant + dynasty; validate ownership
+      const { data: snake } = await supabase
+        .from('collected_snakes')
+        .select('id, player_id, is_equipped, snake_variant_id, snake_variants(id, name, dynasties(name))')
+        .eq('id', snake_id)
+        .eq('player_id', player.id)
+        .single();
+
+      if (!snake) {
+        const { count } = await supabase
+          .from('collected_snakes')
+          .select('*', { count: 'exact', head: true })
+          .eq('player_id', player.id);
+
+        if (!count) {
+          return NextResponse.json(
+            { error: 'No snakes in collection. Choose a starter in the Lab.' },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json({ error: 'Snake not found or not owned' }, { status: 400 });
+      }
+
+      if (!snake.is_equipped) {
+        return NextResponse.json({ error: 'Snake is not equipped' }, { status: 400 });
+      }
+
+      // Joined variant/dynasty rows (supabase returns object for FK joins)
+      const variantJoin = snake.snake_variants as unknown as
+        | { id: string; name: string; dynasties: { name: string } | null }
+        | null;
+      const dynastyName = variantJoin?.dynasties?.name;
+
+      if (!dynastyName) {
+        return NextResponse.json({ error: 'Snake variant data is invalid' }, { status: 500 });
+      }
+
       const serverStartedAt = new Date().toISOString();
-      const usedVariantId = variant_id || 'EMBER_1';
-      // Extract dynasty from variant_id (e.g., "EMBER_1" -> "EMBER")
-      const dynasty = usedVariantId.split('_')[0];
 
       const { data: session, error: sessionError } = await supabase
         .from('game_sessions')
         .insert({
           player_id: player.id,
-          variant_id: usedVariantId,
-          dynasty,
+          snake_used_id: snake.id,
+          snake_variant_id: snake.snake_variant_id,
+          dynasty: dynastyName,
           server_started_at: serverStartedAt,
         })
         .select()
@@ -157,19 +196,20 @@ export async function POST(request: NextRequest) {
       const newDna = player.dna + validation.adjustedDna;
       const { data: currentPlayer } = await supabase
         .from('players')
-        .select('total_games_played, high_score')
+        .select('total_games_played, high_score, total_dna_earned')
         .eq('id', player.id)
         .single();
 
       const newHighScore = Math.max(currentPlayer?.high_score || 0, score || 0);
       const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
+      const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + validation.adjustedDna;
 
       await supabase
         .from('players')
         .update({
           dna: newDna,
           total_games_played: gamesPlayedCount,
-          total_dna_earned: player.dna + validation.adjustedDna,
+          total_dna_earned: newTotalDnaEarned,
           high_score: newHighScore,
         })
         .eq('id', player.id);
@@ -196,6 +236,36 @@ export async function POST(request: NextRequest) {
         .eq('id', player.id)
         .single();
 
+      // Record daily play streak (non-fatal if it errors)
+      let streak: {
+        current: number;
+        longest: number;
+        multiplier: number;
+        graceConsumed: boolean;
+      } | null = null;
+      try {
+        const { data: streakRows, error: streakRpcError } = await supabase.rpc(
+          'record_daily_play',
+          { p_player_id: player.id }
+        );
+
+        if (streakRpcError) {
+          console.error('record_daily_play error:', streakRpcError);
+        } else {
+          const row = Array.isArray(streakRows) ? streakRows[0] : streakRows;
+          if (row) {
+            streak = {
+              current: row.current_streak,
+              longest: row.longest_streak,
+              multiplier: Number(row.streak_multiplier),
+              graceConsumed: row.grace_consumed,
+            };
+          }
+        }
+      } catch (streakError) {
+        console.error('record_daily_play error:', streakError);
+      }
+
       // Check for newly completed achievements
       let newAchievements: string[] = [];
       try {
@@ -205,12 +275,16 @@ export async function POST(request: NextRequest) {
           .select('*', { count: 'exact', head: true })
           .eq('player_id', player.id);
 
-        // Get streak info
-        const { data: streakData } = await supabase
-          .from('player_streaks')
-          .select('current_streak')
-          .eq('player_id', player.id)
-          .single();
+        // Get streak info (prefer the freshly recorded streak)
+        let currentStreak = streak?.current ?? 0;
+        if (!streak) {
+          const { data: streakData } = await supabase
+            .from('player_streaks')
+            .select('current_streak')
+            .eq('player_id', player.id)
+            .single();
+          currentStreak = streakData?.current_streak || 0;
+        }
 
         // Build player stats for achievement checking
         const playerStats: PlayerStats = {
@@ -219,7 +293,7 @@ export async function POST(request: NextRequest) {
           high_score: updatedPlayer?.high_score || 0,
           breeds_completed: updatedPlayer?.breeds_completed || 0,
           collection_count: collectionCount || 0,
-          current_streak: streakData?.current_streak || 0,
+          current_streak: currentStreak,
         };
 
         // Get achievement definitions
@@ -274,6 +348,7 @@ export async function POST(request: NextRequest) {
           adjustedDna: validation.adjustedDna,
         },
         newAchievements,
+        ...(streak ? { streak } : {}),
       });
     }
 
