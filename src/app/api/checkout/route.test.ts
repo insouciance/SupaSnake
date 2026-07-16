@@ -1,143 +1,261 @@
 /**
- * Tests for Checkout API - Unit tests for business logic
+ * Tests for Checkout API - exercises the real POST handler with mocked
+ * Stripe and Supabase clients.
+ *
+ * The route module is imported dynamically after the Stripe price env vars
+ * are set, because products.ts reads them at module evaluation time.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { NextRequest } from 'next/server';
 
-describe('Checkout Logic', () => {
-  describe('Product Validation', () => {
-    it('should require valid product ID', () => {
-      const validProductIds = ['energy_small', 'energy_medium', 'energy_large', 'starter_bundle'];
-      expect(validProductIds.includes('energy_small')).toBe(true);
-      expect(validProductIds.includes('invalid_product')).toBe(false);
-    });
+const mockGetUser = jest.fn();
+const mockPlayerSingle = jest.fn();
+const mockSessionsCreate = jest.fn();
 
-    it('should require authentication', () => {
-      const userId = null;
-      expect(userId === null).toBe(true);
-    });
+jest.mock('stripe', () =>
+  jest.fn().mockImplementation(() => ({
+    checkout: { sessions: { create: (...args: unknown[]) => mockSessionsCreate(...args) } },
+  }))
+);
 
-    it('should accept authenticated users', () => {
-      const userId = 'uuid-123';
-      expect(userId).toBeDefined();
-    });
-  });
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
+    auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },
+    from: jest.fn(() => ({
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          single: () => mockPlayerSingle(),
+        })),
+      })),
+    })),
+  })),
+}));
 
-  describe('Session Creation', () => {
-    it('should create session with correct data', () => {
-      const sessionData = {
-        mode: 'payment',
-        line_items: [{ price: 'price_xxx', quantity: 1 }],
-        metadata: { userId: 'uuid-123', productId: 'energy_small' },
-      };
+let POST: (request: NextRequest) => Promise<Response>;
 
-      expect(sessionData.mode).toBe('payment');
-      expect(sessionData.metadata.productId).toBe('energy_small');
-    });
-
-    it('should include success and cancel URLs', () => {
-      const baseUrl = 'http://localhost:3000';
-      const successUrl = `${baseUrl}/shop?success=true`;
-      const cancelUrl = `${baseUrl}/shop?canceled=true`;
-
-      expect(successUrl).toContain('success=true');
-      expect(cancelUrl).toContain('canceled=true');
-    });
-  });
-
-  describe('Webhook Processing', () => {
-    it('should process checkout.session.completed event', () => {
-      const eventType = 'checkout.session.completed';
-      expect(eventType).toBe('checkout.session.completed');
-    });
-
-    it('should extract metadata from session', () => {
-      const session = {
-        metadata: {
-          userId: 'uuid-123',
-          productId: 'energy_small',
-        },
-      };
-
-      expect(session.metadata.userId).toBe('uuid-123');
-      expect(session.metadata.productId).toBe('energy_small');
-    });
-
-    it('should grant rewards based on product', () => {
-      const productRewards = { energy: 3 };
-      const currentEnergy = 2;
-      const newEnergy = currentEnergy + (productRewards.energy || 0);
-
-      expect(newEnergy).toBe(5);
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle invalid product gracefully', () => {
-      const products = [{ id: 'energy_small' }];
-      const found = products.find(p => p.id === 'invalid');
-      expect(found).toBeUndefined();
-    });
-
-    it('should handle missing Stripe price ID', () => {
-      const priceId = '';
-      expect(priceId === '').toBe(true);
-    });
-  });
+beforeAll(async () => {
+  process.env.NEXT_PUBLIC_STRIPE_ENERGY_SMALL = 'price_energy_small';
+  process.env.NEXT_PUBLIC_STRIPE_ENERGY_MEDIUM = 'price_energy_medium';
+  process.env.NEXT_PUBLIC_STRIPE_ENERGY_LARGE = 'price_energy_large';
+  process.env.NEXT_PUBLIC_STRIPE_STARTER_BUNDLE = 'price_starter_bundle';
+  process.env.NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE = 'price_dynasty_bundle';
+  ({ POST } = await import('./route'));
 });
 
-describe('POST Handler', () => {
-  describe('Input Validation', () => {
-    it('should require authorization header', () => {
-      const authHeader = null;
-      expect(authHeader === null).toBe(true);
-    });
+function createCheckoutRequest(
+  body: object,
+  options: { auth?: string | null; origin?: string } = {}
+): NextRequest {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (options.auth !== null) {
+    headers['authorization'] = options.auth ?? 'Bearer valid-token';
+  }
+  if (options.origin) headers['origin'] = options.origin;
+  return new NextRequest('http://localhost:3000/api/checkout', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers,
+  });
+}
 
-    it('should require product ID in body', () => {
-      const body = {};
-      expect(body).not.toHaveProperty('productId');
-    });
+function registeredUser(overrides: object = {}) {
+  return {
+    data: {
+      user: {
+        id: 'user-uuid-1',
+        is_anonymous: false,
+        app_metadata: { provider: 'email' },
+        ...overrides,
+      },
+    },
+    error: null,
+  };
+}
 
-    it('should validate product exists', () => {
-      const validProducts = ['energy_small', 'energy_medium', 'energy_large'];
-      expect(validProducts.includes('energy_small')).toBe(true);
-      expect(validProducts.includes('invalid')).toBe(false);
+function playerCreatedDaysAgo(days: number) {
+  const createdAt = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return {
+    data: { id: 'player-uuid-1', created_at: createdAt.toISOString() },
+    error: null,
+  };
+}
+
+describe('Checkout POST', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    mockGetUser.mockResolvedValue(registeredUser());
+    mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(0));
+    mockSessionsCreate.mockResolvedValue({
+      id: 'cs_test_1',
+      url: 'https://checkout.stripe.com/pay/cs_test_1',
     });
   });
 
-  describe('Response Format', () => {
-    it('should return sessionId on success', () => {
-      const response = { sessionId: 'cs_test_xxx', url: 'https://checkout.stripe.com/xxx' };
-      expect(response.sessionId).toBeDefined();
-      expect(response.url).toBeDefined();
+  describe('Configuration and authentication', () => {
+    it('returns 503 when Stripe is not configured', async () => {
+      delete process.env.STRIPE_SECRET_KEY;
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      expect(response.status).toBe(503);
     });
 
-    it('should return error on failure', () => {
-      const errorResponse = { error: 'Unauthorized' };
-      expect(errorResponse.error).toBe('Unauthorized');
-    });
-  });
-});
-
-describe('Security Considerations', () => {
-  describe('User Validation', () => {
-    it('should verify user ID from token', () => {
-      const tokenUserId = 'uuid-123';
-      const requestUserId = 'uuid-123';
-      expect(tokenUserId).toBe(requestUserId);
+    it('returns 401 without an authorization header', async () => {
+      const response = await POST(
+        createCheckoutRequest({ productId: 'energy_small' }, { auth: null })
+      );
+      expect(response.status).toBe(401);
     });
 
-    it('should reject mismatched user IDs', () => {
-      const tokenUserId = 'uuid-123';
-      const requestUserId = 'uuid-456';
-      expect(tokenUserId !== requestUserId).toBe(true);
+    it('returns 401 for an invalid token', async () => {
+      mockGetUser.mockResolvedValue({
+        data: { user: null },
+        error: { message: 'invalid token' },
+      });
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      expect(response.status).toBe(401);
     });
   });
 
-  describe('Webhook Verification', () => {
-    it('should require valid webhook signature', () => {
-      const signature = 'whsec_xxx';
-      expect(signature).toBeDefined();
+  describe('Anonymous user rejection', () => {
+    it('rejects users with is_anonymous = true', async () => {
+      mockGetUser.mockResolvedValue(registeredUser({ is_anonymous: true }));
+
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('account_required');
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+
+    it('rejects users whose provider is anonymous', async () => {
+      mockGetUser.mockResolvedValue(
+        registeredUser({ app_metadata: { provider: 'anonymous' } })
+      );
+
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('account_required');
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Product validation', () => {
+    it('returns 400 when productId is missing', async () => {
+      const response = await POST(createCheckoutRequest({}));
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 400 for an unknown product', async () => {
+      const response = await POST(createCheckoutRequest({ productId: 'not_a_product' }));
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 404 when the player row does not exist', async () => {
+      mockPlayerSingle.mockResolvedValue({ data: null, error: { message: 'not found' } });
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      expect(response.status).toBe(404);
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Bundle Day-2+ gating (BM-004, server-side)', () => {
+    it('rejects a bundle purchase on Day 1', async () => {
+      mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(0.5));
+
+      const response = await POST(createCheckoutRequest({ productId: 'starter_bundle' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('bundle_not_available');
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+
+    it('allows a bundle purchase from Day 2 on', async () => {
+      mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(2.1));
+
+      const response = await POST(createCheckoutRequest({ productId: 'starter_bundle' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.sessionId).toBe('cs_test_1');
+      expect(mockSessionsCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows energy purchases on Day 1', async () => {
+      mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(0.1));
+
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.sessionId).toBe('cs_test_1');
+      expect(data.url).toContain('checkout.stripe.com');
+    });
+  });
+
+  describe('Session construction', () => {
+    it('builds redirect URLs from NEXT_PUBLIC_APP_URL when set', async () => {
+      process.env.NEXT_PUBLIC_APP_URL = 'https://supasnake.com';
+
+      await POST(
+        createCheckoutRequest(
+          { productId: 'energy_small' },
+          { origin: 'https://evil.example.com' }
+        )
+      );
+
+      expect(mockSessionsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success_url:
+            'https://supasnake.com/shop?success=true&session_id={CHECKOUT_SESSION_ID}',
+          cancel_url: 'https://supasnake.com/shop?canceled=true',
+        })
+      );
+    });
+
+    it('falls back to the request origin only when NEXT_PUBLIC_APP_URL is unset', async () => {
+      await POST(
+        createCheckoutRequest(
+          { productId: 'energy_small' },
+          { origin: 'http://localhost:3000' }
+        )
+      );
+
+      expect(mockSessionsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success_url:
+            'http://localhost:3000/shop?success=true&session_id={CHECKOUT_SESSION_ID}',
+        })
+      );
+    });
+
+    it('embeds userId, playerId, productId and rewards in metadata', async () => {
+      await POST(createCheckoutRequest({ productId: 'energy_small' }));
+
+      expect(mockSessionsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'payment',
+          line_items: [{ price: 'price_energy_small', quantity: 1 }],
+          metadata: {
+            userId: 'user-uuid-1',
+            playerId: 'player-uuid-1',
+            productId: 'energy_small',
+            rewards: JSON.stringify({ energy: 3 }),
+          },
+        })
+      );
+    });
+
+    it('returns 500 when Stripe session creation fails', async () => {
+      mockSessionsCreate.mockRejectedValue(new Error('stripe down'));
+      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
+      expect(response.status).toBe(500);
     });
   });
 });

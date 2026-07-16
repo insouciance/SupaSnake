@@ -1,147 +1,349 @@
 /**
- * Tests for Stripe Webhook API - Unit tests for business logic
+ * Tests for Stripe Webhook API - exercises the real POST handler with
+ * mocked Stripe signature verification and Supabase client.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { NextRequest } from 'next/server';
 
-describe('Stripe Webhook', () => {
-  describe('POST Handler', () => {
-    describe('Signature Verification', () => {
-      it('should require stripe-signature header', () => {
-        const signature = null;
-        expect(signature === null).toBe(true);
-      });
+const mockConstructEvent = jest.fn();
+const mockRpc = jest.fn();
+const mockUpsert = jest.fn();
+const mockPlayerSingle = jest.fn();
+const mockCaptureException = jest.fn();
+const mockCaptureMessage = jest.fn();
 
-      it('should reject invalid signatures', () => {
-        const isValid = false;
-        expect(isValid).toBe(false);
-      });
+jest.mock('stripe', () =>
+  jest.fn().mockImplementation(() => ({
+    webhooks: { constructEvent: mockConstructEvent },
+  }))
+);
 
-      it('should accept valid signatures', () => {
-        const isValid = true;
-        expect(isValid).toBe(true);
-      });
-    });
+jest.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
+}));
 
-    describe('Event Types', () => {
-      it('should handle checkout.session.completed', () => {
-        const eventType = 'checkout.session.completed';
-        expect(eventType).toBe('checkout.session.completed');
-      });
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
+    rpc: (...args: unknown[]) => mockRpc(...args),
+    from: jest.fn(() => ({
+      upsert: (...args: unknown[]) => mockUpsert(...args),
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          single: () => mockPlayerSingle(),
+        })),
+      })),
+    })),
+  })),
+}));
 
-      it('should ignore other event types', () => {
-        const ignoredEvents = ['payment_intent.created', 'charge.succeeded'];
-        const handledEvent = 'checkout.session.completed';
-        expect(ignoredEvents).not.toContain(handledEvent);
-      });
+import { POST } from './route';
+
+function createWebhookRequest(
+  body: string = '{}',
+  signature: string | null = 't=1,v1=valid'
+): NextRequest {
+  const headers: Record<string, string> = {};
+  if (signature !== null) headers['stripe-signature'] = signature;
+  return new NextRequest('http://localhost:3000/api/webhook/stripe', {
+    method: 'POST',
+    body,
+    headers,
+  });
+}
+
+function checkoutCompletedEvent(overrides: {
+  eventId?: string;
+  metadata?: Record<string, string> | null;
+  amountTotal?: number;
+} = {}) {
+  return {
+    id: overrides.eventId ?? 'evt_test_1',
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: 'cs_test_1',
+        amount_total: overrides.amountTotal ?? 99,
+        currency: 'usd',
+        metadata:
+          overrides.metadata === undefined
+            ? {
+                userId: 'user-uuid-1',
+                playerId: 'player-uuid-1',
+                productId: 'energy_small',
+                rewards: JSON.stringify({ energy: 3 }),
+              }
+            : overrides.metadata,
+      },
+    },
+  };
+}
+
+describe('Stripe Webhook POST', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_dummy';
+    mockRpc.mockResolvedValue({ data: 'processed', error: null });
+    mockUpsert.mockResolvedValue({ error: null });
+    mockPlayerSingle.mockResolvedValue({
+      data: { id: 'player-uuid-1' },
+      error: null,
     });
   });
 
-  describe('Reward Processing', () => {
-    describe('Energy Rewards', () => {
-      it('should add energy to player', () => {
-        const currentEnergy = 2;
-        const energyReward = 3;
-        const newEnergy = currentEnergy + energyReward;
-        expect(newEnergy).toBe(5);
-      });
-
-      it('should respect max energy cap', () => {
-        const currentEnergy = 4;
-        const maxEnergy = 5;
-        const energyReward = 3;
-        const newEnergy = Math.min(currentEnergy + energyReward, maxEnergy);
-        // Energy bundles should NOT be capped (they exceed max)
-        const actualNew = currentEnergy + energyReward;
-        expect(actualNew).toBe(7);
-      });
+  describe('Configuration and signature verification', () => {
+    it('returns 503 when Stripe is not configured', async () => {
+      delete process.env.STRIPE_SECRET_KEY;
+      const response = await POST(createWebhookRequest());
+      expect(response.status).toBe(503);
     });
 
-    describe('DNA Rewards', () => {
-      it('should add DNA to player', () => {
-        const currentDna = 100;
-        const dnaReward = 1000;
-        const newDna = currentDna + dnaReward;
-        expect(newDna).toBe(1100);
-      });
+    it('returns 400 when stripe-signature header is missing', async () => {
+      const response = await POST(createWebhookRequest('{}', null));
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe('Missing signature');
     });
 
-    describe('Variant Rewards', () => {
-      it('should add variants to collection', () => {
-        // Collection tracks snake_variants UUIDs; product rewards are
-        // variant names resolved to UUIDs before insert
-        const collection: string[] = ['variant-uuid-spark'];
-        const newVariants = ['variant-uuid-vortex'];
-        const updated = [...collection, ...newVariants];
-        expect(updated).toContain('variant-uuid-vortex');
+    it('returns 400 when signature verification fails', async () => {
+      mockConstructEvent.mockImplementation(() => {
+        throw new Error('bad signature');
       });
-
-      it('should not duplicate existing variants', () => {
-        const collection = ['variant-uuid-spark', 'variant-uuid-vortex'];
-        const newVariant = 'variant-uuid-vortex';
-        const alreadyOwned = collection.includes(newVariant);
-        expect(alreadyOwned).toBe(true);
-      });
-
-      it('should skip unknown variant names in product config', () => {
-        const knownVariantNames = ['CYBER VORTEX', 'COSMIC SUPERNOVA'];
-        const rewardName = 'UNKNOWN SNAKE';
-        const resolved = knownVariantNames.includes(rewardName);
-        expect(resolved).toBe(false);
-      });
+      const response = await POST(createWebhookRequest());
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe('Invalid signature');
+      expect(mockRpc).not.toHaveBeenCalled();
     });
   });
 
-  describe('Database Updates', () => {
-    it('should update player resources', () => {
-      const update = {
-        energy: 7,
-        dna: 1100,
-      };
-      expect(update.energy).toBeDefined();
-      expect(update.dna).toBeDefined();
+  describe('checkout.session.completed', () => {
+    it('grants rewards through the atomic RPC', async () => {
+      mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
+
+      const response = await POST(createWebhookRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe('processed');
+      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(mockRpc).toHaveBeenCalledWith('grant_purchase_rewards', {
+        p_event_id: 'evt_test_1',
+        p_player_id: 'player-uuid-1',
+        p_product_id: 'energy_small',
+        p_energy: 3,
+        p_dna: 0,
+        p_variant_names: [],
+        p_session_id: 'cs_test_1',
+        p_product_name: 'Energy Pack',
+        p_price_cents: 99,
+        p_currency: 'usd',
+      });
     });
 
-    it('should record purchase history', () => {
-      const purchase = {
-        userId: 'uuid-123',
-        productId: 'energy_small',
-        stripeSessionId: 'cs_test_xxx',
-        purchasedAt: new Date().toISOString(),
-      };
-      expect(purchase.userId).toBeDefined();
-      expect(purchase.stripeSessionId).toBeDefined();
+    it('is idempotent: the same event id twice grants only once', async () => {
+      mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
+      mockRpc
+        .mockResolvedValueOnce({ data: 'processed', error: null })
+        .mockResolvedValueOnce({ data: 'already_processed', error: null });
+
+      const first = await POST(createWebhookRequest());
+      const second = await POST(createWebhookRequest());
+
+      expect(first.status).toBe(200);
+      expect((await first.json()).status).toBe('processed');
+      // Retry is acknowledged with 200 so Stripe stops retrying...
+      expect(second.status).toBe(200);
+      expect((await second.json()).status).toBe('already_processed');
+      // ...and the grant is keyed by event id, so both calls hit the same
+      // idempotency guard (single effective grant)
+      expect(mockRpc).toHaveBeenNthCalledWith(
+        1,
+        'grant_purchase_rewards',
+        expect.objectContaining({ p_event_id: 'evt_test_1' })
+      );
+      expect(mockRpc).toHaveBeenNthCalledWith(
+        2,
+        'grant_purchase_rewards',
+        expect.objectContaining({ p_event_id: 'evt_test_1' })
+      );
+    });
+
+    it('passes bundle rewards (dna + variants) to the RPC', async () => {
+      mockConstructEvent.mockReturnValue(
+        checkoutCompletedEvent({
+          metadata: {
+            userId: 'user-uuid-1',
+            playerId: 'player-uuid-1',
+            productId: 'starter_bundle',
+            rewards: JSON.stringify({
+              energy: 20,
+              dna: 1000,
+              variants: ['CYBER VORTEX'],
+            }),
+          },
+        })
+      );
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockRpc).toHaveBeenCalledWith(
+        'grant_purchase_rewards',
+        expect.objectContaining({
+          p_energy: 20,
+          p_dna: 1000,
+          p_variant_names: ['CYBER VORTEX'],
+        })
+      );
+    });
+
+    it('falls back to player lookup when metadata has no playerId', async () => {
+      mockConstructEvent.mockReturnValue(
+        checkoutCompletedEvent({
+          metadata: {
+            userId: 'user-uuid-1',
+            productId: 'energy_small',
+            rewards: JSON.stringify({ energy: 3 }),
+          },
+        })
+      );
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockPlayerSingle).toHaveBeenCalled();
+      expect(mockRpc).toHaveBeenCalledWith(
+        'grant_purchase_rewards',
+        expect.objectContaining({ p_player_id: 'player-uuid-1' })
+      );
+    });
+
+    it('returns 500 (retryable) when the player cannot be resolved', async () => {
+      mockConstructEvent.mockReturnValue(
+        checkoutCompletedEvent({
+          metadata: {
+            userId: 'user-uuid-unknown',
+            productId: 'energy_small',
+            rewards: JSON.stringify({ energy: 3 }),
+          },
+        })
+      );
+      mockPlayerSingle.mockResolvedValue({ data: null, error: { message: 'not found' } });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(500);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when session metadata is missing', async () => {
+      mockConstructEvent.mockReturnValue(checkoutCompletedEvent({ metadata: {} }));
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(400);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 (retryable) and reports to Sentry when the RPC fails', async () => {
+      mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
+      mockRpc.mockResolvedValue({ data: null, error: { message: 'db down' } });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(500);
+      expect(mockCaptureException).toHaveBeenCalled();
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle missing metadata', () => {
-      const metadata = {};
-      expect(metadata).not.toHaveProperty('userId');
+  describe('Refunds and disputes', () => {
+    it('records charge.refunded and alerts Sentry for manual review', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_refund_1',
+        type: 'charge.refunded',
+        data: {
+          object: {
+            id: 'ch_test_1',
+            payment_intent: 'pi_test_1',
+            amount: 99,
+            currency: 'usd',
+          },
+        },
+      });
+
+      const response = await POST(createWebhookRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe('recorded');
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'evt_refund_1',
+          type: 'charge.refunded',
+        }),
+        expect.objectContaining({ onConflict: 'id', ignoreDuplicates: true })
+      );
+      expect(mockCaptureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('charge.refunded'),
+        expect.objectContaining({ level: 'error' })
+      );
+      expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it('should handle database errors gracefully', () => {
-      const error = new Error('Database error');
-      expect(error.message).toBe('Database error');
+    it('records charge.dispute.created and alerts Sentry', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_dispute_1',
+        type: 'charge.dispute.created',
+        data: {
+          object: {
+            id: 'dp_test_1',
+            payment_intent: 'pi_test_1',
+            amount: 999,
+            currency: 'usd',
+          },
+        },
+      });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'charge.dispute.created' }),
+        expect.anything()
+      );
+      expect(mockCaptureMessage).toHaveBeenCalled();
+    });
+
+    it('returns 500 (retryable) when recording the event fails', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_refund_2',
+        type: 'charge.refunded',
+        data: { object: { id: 'ch_test_2', payment_intent: null } },
+      });
+      mockUpsert.mockResolvedValue({ error: { message: 'insert failed' } });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(500);
+      expect(mockCaptureException).toHaveBeenCalled();
     });
   });
-});
 
-describe('Webhook Security', () => {
-  describe('Raw Body Requirement', () => {
-    it('should use raw body for signature verification', () => {
-      // Stripe requires raw body, not parsed JSON
-      const useRawBody = true;
-      expect(useRawBody).toBe(true);
-    });
-  });
+  describe('Other events', () => {
+    it('acknowledges unknown event types with 200', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_other_1',
+        type: 'payment_intent.created',
+        data: { object: { id: 'pi_test_1' } },
+      });
 
-  describe('Idempotency', () => {
-    it('should handle duplicate events', () => {
-      const processedEvents = new Set(['evt_123']);
-      const newEvent = 'evt_123';
-      const isDuplicate = processedEvents.has(newEvent);
-      expect(isDuplicate).toBe(true);
+      const response = await POST(createWebhookRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.received).toBe(true);
+      expect(mockRpc).not.toHaveBeenCalled();
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
 });

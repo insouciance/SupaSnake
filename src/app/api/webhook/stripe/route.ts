@@ -1,12 +1,18 @@
 /**
  * Stripe Webhook Handler
- * Processes successful payments and grants rewards
- * Uses raw body for signature verification
+ * Verifies signatures, then processes payment events:
+ * - checkout.session.completed -> atomic idempotent grant via
+ *   grant_purchase_rewards RPC (migration 010)
+ * - charge.refunded / charge.dispute.created -> recorded in stripe_events
+ *   and escalated to Sentry for manual review (no auto-clawback at launch)
+ * - anything else -> acknowledged with 200
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import Stripe from 'stripe';
+import { getProductById } from '@/lib/stripe/products';
 
 // Stripe client is created lazily so the production build does not require
 // STRIPE_SECRET_KEY at page-data collection time (see checkout route).
@@ -26,6 +32,136 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
+/**
+ * checkout.session.completed: grant purchase rewards atomically.
+ * All state changes happen inside the grant_purchase_rewards RPC keyed by
+ * the Stripe event id, so Stripe retries can never double-grant.
+ */
+async function handleCheckoutCompleted(
+  event: Stripe.Event,
+  session: Stripe.Checkout.Session
+): Promise<NextResponse> {
+  const userId = session.metadata?.userId;
+  const productId = session.metadata?.productId;
+  const rewardsJson = session.metadata?.rewards;
+
+  if (!userId || !productId || !rewardsJson) {
+    console.error('Missing metadata in session:', session.id);
+    Sentry.captureMessage('Stripe session missing metadata', {
+      level: 'error',
+      extra: { sessionId: session.id, eventId: event.id },
+    });
+    return NextResponse.json({ error: 'Invalid metadata' }, { status: 400 });
+  }
+
+  const rewards: { energy?: number; dna?: number; variants?: string[] } =
+    JSON.parse(rewardsJson);
+
+  // Resolve the player row. Checkout embeds playerId (players.id); fall back
+  // to a lookup by auth user id for sessions created before that change.
+  let playerId = session.metadata?.playerId;
+  if (!playerId) {
+    const { data: player, error: playerError } = await supabase
+      .from('players')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (playerError || !player) {
+      console.error('Player not found for user:', userId);
+      Sentry.captureMessage('Stripe webhook: player not found', {
+        level: 'error',
+        extra: { userId, sessionId: session.id, eventId: event.id },
+      });
+      // Non-2xx so Stripe retries (player row creation may lag signup)
+      return NextResponse.json({ error: 'Player not found' }, { status: 500 });
+    }
+    playerId = player.id;
+  }
+
+  const product = getProductById(productId);
+
+  const { data: result, error: rpcError } = await supabase.rpc(
+    'grant_purchase_rewards',
+    {
+      p_event_id: event.id,
+      p_player_id: playerId,
+      p_product_id: productId,
+      p_energy: rewards.energy ?? 0,
+      p_dna: rewards.dna ?? 0,
+      p_variant_names: rewards.variants ?? [],
+      p_session_id: session.id,
+      p_product_name: product?.name ?? productId,
+      p_price_cents: session.amount_total ?? 0,
+      p_currency: session.currency ?? 'usd',
+    }
+  );
+
+  if (rpcError) {
+    console.error('grant_purchase_rewards failed:', rpcError);
+    Sentry.captureException(
+      new Error(`grant_purchase_rewards failed: ${rpcError.message}`),
+      {
+        extra: { eventId: event.id, sessionId: session.id, productId, playerId },
+      }
+    );
+    // Non-2xx so Stripe retries; the RPC is idempotent by event id
+    return NextResponse.json({ error: 'Grant failed' }, { status: 500 });
+  }
+
+  if (result === 'already_processed') {
+    // Idempotent success: Stripe retried an event we already handled
+    return NextResponse.json({ received: true, status: 'already_processed' });
+  }
+
+  console.log(`Purchase completed: ${productId} for player ${playerId}`);
+  return NextResponse.json({ received: true, status: 'processed' });
+}
+
+/**
+ * charge.refunded / charge.dispute.created: record the event and alert.
+ * No automatic clawback at launch - these need manual attention.
+ */
+async function handleRefundOrDispute(event: Stripe.Event): Promise<NextResponse> {
+  const object = event.data.object as Stripe.Charge | Stripe.Dispute;
+
+  const { error: insertError } = await supabase.from('stripe_events').upsert(
+    {
+      id: event.id,
+      type: event.type,
+      processed_at: new Date().toISOString(),
+      payload_summary: {
+        object_id: object.id,
+        payment_intent:
+          typeof object.payment_intent === 'string'
+            ? object.payment_intent
+            : object.payment_intent?.id ?? null,
+        amount: 'amount' in object ? object.amount : null,
+        currency: 'currency' in object ? object.currency : null,
+      },
+    },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+
+  if (insertError) {
+    console.error('Failed to record stripe event:', insertError);
+    Sentry.captureException(
+      new Error(`Failed to record stripe event: ${insertError.message}`),
+      { extra: { eventId: event.id, eventType: event.type } }
+    );
+    // Non-2xx so Stripe retries and the event is not lost
+    return NextResponse.json({ error: 'Record failed' }, { status: 500 });
+  }
+
+  // Escalate for manual review - refunds/disputes have no auto-clawback
+  Sentry.captureMessage(`Stripe ${event.type} requires manual review`, {
+    level: 'error',
+    extra: { eventId: event.id, objectId: object.id },
+  });
+
+  return NextResponse.json({ received: true, status: 'recorded' });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,90 +191,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
     }
 
-    // Handle checkout.session.completed
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
+    switch (event.type) {
+      case 'checkout.session.completed':
+        return await handleCheckoutCompleted(
+          event,
+          event.data.object as Stripe.Checkout.Session
+        );
 
-      const userId = session.metadata?.userId;
-      const productId = session.metadata?.productId;
-      const rewardsJson = session.metadata?.rewards;
+      case 'charge.refunded':
+      case 'charge.dispute.created':
+        return await handleRefundOrDispute(event);
 
-      if (!userId || !productId || !rewardsJson) {
-        console.error('Missing metadata in session:', session.id);
-        return NextResponse.json({ error: 'Invalid metadata' }, { status: 400 });
-      }
-
-      const rewards = JSON.parse(rewardsJson);
-
-      // Get current player data
-      const { data: player, error: playerError } = await supabase
-        .from('players')
-        .select('energy, dna')
-        .eq('id', userId)
-        .single();
-
-      if (playerError || !player) {
-        console.error('Player not found:', userId);
-        return NextResponse.json({ error: 'Player not found' }, { status: 404 });
-      }
-
-      // Calculate new values
-      const newEnergy = player.energy + (rewards.energy || 0);
-      const newDna = player.dna + (rewards.dna || 0);
-
-      // Update player resources
-      const { error: updateError } = await supabase
-        .from('players')
-        .update({
-          energy: newEnergy,
-          dna: newDna,
-        })
-        .eq('id', userId);
-
-      if (updateError) {
-        console.error('Failed to update player:', updateError);
-        return NextResponse.json({ error: 'Update failed' }, { status: 500 });
-      }
-
-      // Grant variant rewards if any (product config stores variant names)
-      if (rewards.variants && rewards.variants.length > 0) {
-        for (const variantName of rewards.variants) {
-          const { data: variant } = await supabase
-            .from('snake_variants')
-            .select('id')
-            .eq('name', variantName)
-            .single();
-
-          if (!variant) {
-            console.error(`Unknown variant reward in product config: ${variantName}`);
-            continue;
-          }
-
-          // Check if already owned
-          const { data: existing } = await supabase
-            .from('collected_snakes')
-            .select('id')
-            .eq('player_id', userId)
-            .eq('snake_variant_id', variant.id)
-            .maybeSingle();
-
-          if (!existing) {
-            await supabase.from('collected_snakes').insert({
-              player_id: userId,
-              snake_variant_id: variant.id,
-              generation: 1,
-              acquired_method: 'unlock',
-            });
-          }
-        }
-      }
-
-      console.log(`Purchase completed: ${productId} for user ${userId}`);
+      default:
+        // Unknown event types are acknowledged so Stripe stops retrying
+        return NextResponse.json({ received: true });
     }
-
-    return NextResponse.json({ received: true });
   } catch (error) {
     console.error('Webhook error:', error);
+    Sentry.captureException(error);
     return NextResponse.json({ error: 'Webhook failed' }, { status: 500 });
   }
 }
