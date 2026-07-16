@@ -1,3 +1,5 @@
+const { withSentryConfig } = require('@sentry/nextjs');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -26,8 +28,9 @@ const nextConfig = {
   // Enable gzip compression
   compress: true,
 
-  // Generate source maps for production (for Sentry)
-  productionBrowserSourceMaps: true,
+  // Public browser source maps stay off: Sentry uploads source maps at build
+  // time (withSentryConfig below), so shipping them publicly is unnecessary.
+  productionBrowserSourceMaps: false,
 
   // Experimental features for performance
   experimental: {
@@ -86,4 +89,27 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+module.exports = withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Keep build logs clean.
+  silent: true,
+
+  sourcemaps: {
+    // Local/CI builds without SENTRY_AUTH_TOKEN must not fail or warn:
+    // skip all source map upload work when the token is absent.
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+    // Uploaded to Sentry, then removed so they are never served publicly.
+    deleteSourcemapsAfterUpload: true,
+  },
+
+  // Upload a larger set of client files for readable stack traces.
+  widenClientFileUpload: true,
+
+  // Strip Sentry logger statements from production bundles.
+  disableLogger: true,
+
+  telemetry: false,
+})
