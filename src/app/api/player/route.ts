@@ -51,10 +51,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to create player' }, { status: 500 });
       }
 
-      await supabase.from('player_settings').insert({
+      const { error: settingsInsertError } = await supabase.from('player_settings').insert({
         player_id: newPlayer.id,
         selected_dynasty: 'CYBER',
       });
+      if (settingsInsertError) {
+        // Non-fatal: player exists, defaults apply until settings are saved
+        console.error('Failed to create default player_settings:', {
+          playerId: newPlayer.id,
+          error: settingsInsertError,
+        });
+      }
 
       // No auto-seeded starter snake: the player picks one in the Lab
       // (client is told via needsStarterSelection below).
@@ -85,10 +92,18 @@ export async function GET(request: NextRequest) {
         energy_regen_at: energyResult.newRegenAt,
       };
 
-      await supabase
+      const { error: regenUpdateError } = await supabase
         .from('players')
         .update(updates)
         .eq('id', player.id);
+      if (regenUpdateError) {
+        // Regen is recomputed from energy_regen_at on every read, so a
+        // failed persist self-heals on the next request - log and continue
+        console.error('Failed to persist regenerated energy:', {
+          playerId: player.id,
+          error: regenUpdateError,
+        });
+      }
 
       // Log regeneration in economy_transactions if energy was regenerated
       if (energyResult.energyRegenerated > 0) {
@@ -122,6 +137,7 @@ export async function GET(request: NextRequest) {
       needsStarterSelection: collectionSize === 0,
     });
   } catch (err) {
+    console.error('Player GET error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
@@ -164,14 +180,25 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid dynasty' }, { status: 400 });
     }
     if (selected_dynasty) {
-      await supabase
+      const { error: settingsUpdateError } = await supabase
         .from('player_settings')
         .update({ selected_dynasty })
         .eq('player_id', player.id);
+
+      if (settingsUpdateError) {
+        // Primary write of this request - fail loudly, never silently
+        console.error('Failed to update player_settings:', {
+          playerId: player.id,
+          selected_dynasty,
+          error: settingsUpdateError,
+        });
+        return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error('Player PATCH error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

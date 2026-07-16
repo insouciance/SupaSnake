@@ -64,10 +64,17 @@ export async function POST(request: NextRequest) {
 
     // If no rewards to claim, just update last_login_at
     if (!progress.hasRewards) {
-      await supabase
+      const { error: loginTouchError } = await supabase
         .from('players')
         .update({ last_login_at: new Date().toISOString() })
         .eq('id', player.id);
+      if (loginTouchError) {
+        // Non-fatal: nothing was claimed, next visit retries the touch
+        console.error('Failed to update last_login_at:', {
+          playerId: player.id,
+          error: loginTouchError,
+        });
+      }
 
       return NextResponse.json({
         success: true,
@@ -103,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     // Log transaction for audit trail
     if (progress.passiveDnaEarned > 0) {
-      await supabase.from('economy_transactions').insert({
+      const { error: claimTxError } = await supabase.from('economy_transactions').insert({
         player_id: player.id,
         resource_type: 'dna',
         amount: progress.passiveDnaEarned,
@@ -115,6 +122,13 @@ export async function POST(request: NextRequest) {
           claimed_at: new Date().toISOString(),
         },
       });
+      if (claimTxError) {
+        // Audit log only - the claim itself succeeded
+        console.error('Failed to log offline_claim transaction:', {
+          playerId: player.id,
+          error: claimTxError,
+        });
+      }
     }
 
     return NextResponse.json({
