@@ -6,11 +6,13 @@
  * Uses useCollection hook for state management + gameStore for energy.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
+import { shouldShowUpgradePrompt, markUpgradePrompted } from '@/lib/auth/upgradePrompts';
 import { useCollection } from '@/hooks/useCollection';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import { useGameStore } from '@/lib/store/gameStore';
@@ -32,7 +34,8 @@ import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 
 export default function LabPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   // Collection state from hook
   const {
@@ -105,8 +108,16 @@ export default function LabPage() {
   const handleUnlockConfirm = useCallback(async () => {
     if (selectedVariant) {
       await unlockVariant(selectedVariant.id);
+
+      // High-investment moment: after the first successful unlock, prompt
+      // anonymous players once to secure their progress with an account
+      const succeeded = useCollectionStore.getState().unlockError === null;
+      if (succeeded && isAnonymous && shouldShowUpgradePrompt('first-unlock')) {
+        markUpgradePrompted('first-unlock');
+        setShowUpgradePrompt(true);
+      }
     }
-  }, [selectedVariant, unlockVariant]);
+  }, [selectedVariant, unlockVariant, isAnonymous]);
 
   /**
    * Handle equip action from detail modal
@@ -304,6 +315,12 @@ export default function LabPage() {
           error={unlockError}
         />
       )}
+
+      {/* One-time account upgrade prompt after the first unlock */}
+      <AccountUpgradeModal
+        isOpen={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+      />
     </div>
   );
 }

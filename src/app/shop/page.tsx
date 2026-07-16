@@ -16,6 +16,7 @@ import {
   StoreProduct,
 } from '@/lib/stripe/products';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
+import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import Link from 'next/link';
 
 export default function ShopPage() {
@@ -25,6 +26,7 @@ export default function ShopPage() {
   const [error, setError] = useState<string | null>(null);
   const [showBundles, setShowBundles] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   // Check URL params for success/cancel
   useEffect(() => {
@@ -77,6 +79,35 @@ export default function ShopPage() {
     }
   };
 
+  // Anonymous accounts are ephemeral - purchases must land on a real
+  // account, so the buy button is replaced by an account-creation CTA.
+  const renderPurchaseButton = (product: StoreProduct, buyLabel: string) => {
+    if (isAnonymous) {
+      return (
+        <button
+          onClick={() => setShowUpgrade(true)}
+          data-testid={`create-account-cta-${product.id}`}
+          className="px-4 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade text-xs bg-scale-blue border-venom-orange text-venom-orange hover:bg-venom-orange hover:text-scale-blue-dark hover:scale-[1.02] active:scale-[0.98] transition-all"
+        >
+          Create an account to purchase
+        </button>
+      );
+    }
+    return (
+      <button
+        onClick={() => handlePurchase(product)}
+        disabled={loading !== null}
+        className={`px-6 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
+          loading === product.id
+            ? 'bg-scale-blue-light border-scale-blue text-beige cursor-wait'
+            : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
+        }`}
+      >
+        {loading === product.id ? '...' : buyLabel}
+      </button>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-scale-blue-dark text-bone-white p-6">
       {/* Header */}
@@ -122,11 +153,19 @@ export default function ShopPage() {
 
       {/* Anonymous User Notice */}
       {isAnonymous && (
-        <div className="bg-venom-orange/10 border-[3px] border-venom-orange-dark rounded-arcade p-4 mb-6">
-          <p className="text-venom-orange font-display uppercase">Save your progress!</p>
-          <p className="text-beige text-sm font-body">
-            Create an account to keep your purchases across devices.
-          </p>
+        <div className="bg-venom-orange/10 border-[3px] border-venom-orange-dark rounded-arcade p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-venom-orange font-display uppercase">Save your progress!</p>
+            <p className="text-beige text-sm font-body">
+              Purchases need an account so they can never be lost with this device.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowUpgrade(true)}
+            className="shrink-0 px-4 py-2 bg-venom-orange border-[2px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-xs text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+          >
+            Create Account
+          </button>
         </div>
       )}
 
@@ -153,17 +192,7 @@ export default function ShopPage() {
                 <span className="text-2xl font-display text-venom-orange">
                   ${product.priceUsd.toFixed(2)}
                 </span>
-                <button
-                  onClick={() => handlePurchase(product)}
-                  disabled={loading !== null}
-                  className={`px-6 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
-                    loading === product.id
-                      ? 'bg-scale-blue-light border-scale-blue text-beige cursor-wait'
-                      : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
-                  }`}
-                >
-                  {loading === product.id ? '...' : 'Buy'}
-                </button>
+                {renderPurchaseButton(product, 'Buy')}
               </div>
             </div>
           ))}
@@ -217,17 +246,7 @@ export default function ShopPage() {
                   <span className="text-2xl font-display text-venom-orange">
                     ${product.priceUsd.toFixed(2)}
                   </span>
-                  <button
-                    onClick={() => handlePurchase(product)}
-                    disabled={loading !== null}
-                    className={`px-6 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
-                      loading === product.id
-                        ? 'bg-scale-blue-light border-scale-blue text-beige cursor-wait'
-                        : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
-                    }`}
-                  >
-                    {loading === product.id ? '...' : 'Buy Bundle'}
-                  </button>
+                  {renderPurchaseButton(product, 'Buy Bundle')}
                 </div>
               </div>
             ))}
@@ -240,6 +259,9 @@ export default function ShopPage() {
         <p>All variants can be unlocked through gameplay.</p>
         <p>Purchases provide convenience, not power advantages.</p>
       </section>
+
+      {/* Account upgrade modal (anonymous users only) */}
+      <AccountUpgradeModal isOpen={showUpgrade} onClose={() => setShowUpgrade(false)} />
     </div>
   );
 }
