@@ -109,7 +109,11 @@ module.exports = withSentryConfig(nextConfig, {
   widenClientFileUpload: true,
 
   // Strip Sentry logger statements from production bundles.
-  disableLogger: true,
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 
   telemetry: false,
 })
