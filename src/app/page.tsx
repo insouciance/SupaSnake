@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { MVP_DYNASTIES, DYNASTY_THEMES } from '@/shared/types/snake-data-model';
@@ -8,6 +8,15 @@ import { NavBar } from '@/components/ui/NavBar';
 import { CommandPanel } from '@/components/ui/CommandPanel';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { StatDisplay } from '@/components/ui/StatDisplay';
+import {
+  DailyRewardModal,
+  type DailyRewardTier,
+  type DailyClaimResult,
+} from '@/components/engagement/DailyRewardModal';
+import { StarterSelection } from '@/components/ftue/StarterSelection';
+import { OverlayHint } from '@/components/ftue/OverlayHint';
+import { trackEvent } from '@/lib/analytics/posthog';
+import { AnalyticsEvents } from '@/lib/analytics/events';
 
 // Static dynasty preview data (full catalog lives in the DB: 10 variants each)
 const DYNASTY_PREVIEW = MVP_DYNASTIES.map((name) => ({
@@ -16,13 +25,186 @@ const DYNASTY_PREVIEW = MVP_DYNASTIES.map((name) => ({
   variantCount: 10,
 }));
 
+interface HomeStats {
+  dna: number;
+  energy: number;
+  maxEnergy: number;
+  highScore: number;
+  collectionSize: number;
+  needsStarterSelection: boolean;
+}
+
+interface DailyRewardsState {
+  currentDay: number;
+  canClaimToday: boolean;
+  tiers: DailyRewardTier[];
+  streak: { current: number; multiplier: number };
+}
+
+function dailyDismissKey(today: string): string {
+  return `daily-reward-dismissed-${today}`;
+}
+
 export default function Home() {
-  const { isAuthenticated, isLoading, signInAnonymously } = useAuth();
+  const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [selectedDynasty, setSelectedDynasty] = useState<string>('CYBER');
   const [hasMounted, setHasMounted] = useState(false);
+  const [stats, setStats] = useState<HomeStats | null>(null);
+  const [streak, setStreak] = useState<number | null>(null);
+  const [daily, setDaily] = useState<DailyRewardsState | null>(null);
+  const [showDailyModal, setShowDailyModal] = useState(false);
+
+  const token = session?.access_token;
 
   useEffect(() => {
     setHasMounted(true);
+  }, []);
+
+  // Real home stats from server authority: /api/player + /api/streaks
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    let cancelled = false;
+    const headers = { Authorization: `Bearer ${token}` };
+
+    const load = async () => {
+      try {
+        const [playerRes, streaksRes] = await Promise.all([
+          fetch('/api/player', { headers }),
+          fetch('/api/streaks', { headers }),
+        ]);
+
+        if (playerRes.ok) {
+          const data = await playerRes.json();
+          if (!cancelled && data.player) {
+            setStats({
+              dna: data.player.dna ?? 0,
+              energy: data.player.energy ?? 0,
+              maxEnergy: data.player.max_energy ?? 5,
+              highScore: data.player.high_score ?? 0,
+              collectionSize: data.collectionSize ?? 0,
+              needsStarterSelection: data.needsStarterSelection ?? false,
+            });
+          }
+        }
+
+        if (streaksRes.ok) {
+          const data = await streaksRes.json();
+          if (!cancelled) {
+            setStreak(data.currentStreak ?? 0);
+            trackEvent(AnalyticsEvents.DAILY_LOGIN, {
+              current_streak: data.currentStreak ?? 0,
+              streak_multiplier: data.multiplier ?? 1,
+              category: 'engagement',
+            });
+          }
+        }
+      } catch {
+        // Stats stay in loading placeholders; non-fatal
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, token]);
+
+  // Daily rewards: fetch on mount, auto-open when claimable (once per day)
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch('/api/daily-rewards', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+
+        const data: DailyRewardsState = await res.json();
+        if (cancelled) return;
+        setDaily(data);
+
+        const today = new Date().toISOString().split('T')[0];
+        let dismissedToday = false;
+        try {
+          dismissedToday = window.localStorage.getItem(dailyDismissKey(today)) === '1';
+        } catch {
+          // localStorage unavailable - treat as not dismissed
+        }
+
+        if (data.canClaimToday && !dismissedToday) {
+          setShowDailyModal(true);
+        }
+      } catch {
+        // Daily rewards UI simply stays closed on failure
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, token]);
+
+  const handleDailyClaim = useCallback(async (): Promise<DailyClaimResult | null> => {
+    if (!token) return null;
+    try {
+      const res = await fetch('/api/daily-rewards', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: 'claim' }),
+      });
+
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      const result: DailyClaimResult = {
+        dayClaimed: data.dayClaimed,
+        dnaGranted: data.dnaGranted,
+        energyGranted: data.energyGranted,
+        nextDay: data.nextDay,
+        cycleCompleted: data.cycleCompleted,
+      };
+
+      trackEvent(AnalyticsEvents.DAILY_REWARD_CLAIMED, {
+        day: result.dayClaimed,
+        dna_granted: result.dnaGranted,
+        energy_granted: result.energyGranted,
+        cycle_completed: result.cycleCompleted,
+        category: 'engagement',
+      });
+
+      setDaily((prev) =>
+        prev ? { ...prev, canClaimToday: false, currentDay: result.nextDay } : prev
+      );
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              dna: prev.dna + result.dnaGranted,
+              energy: prev.energy + result.energyGranted,
+            }
+          : prev
+      );
+
+      return result;
+    } catch {
+      return null;
+    }
+  }, [token]);
+
+  const handleDailyDismiss = useCallback(() => {
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      window.localStorage.setItem(dailyDismissKey(today), '1');
+    } catch {
+      // Ignore storage failures
+    }
+    setShowDailyModal(false);
   }, []);
 
   const handlePlay = async () => {
@@ -31,12 +213,7 @@ export default function Home() {
     }
   };
 
-  // Placeholder stats - in production these come from /api/player
-  // DNA balance is shown in Lab, not here (server authority)
-  const pilotStats = {
-    rank: 142,
-    streak: 5,
-  };
+  const needsStarter = isAuthenticated && stats?.needsStarterSelection === true;
 
   return (
     <main className="min-h-screen bg-scale-blue-dark text-bone-white relative overflow-x-hidden">
@@ -54,6 +231,27 @@ export default function Home() {
 
       {/* Navigation Bar */}
       <NavBar />
+
+      {/* FTUE: full-screen starter chooser for players with no snakes */}
+      {needsStarter && <StarterSelection />}
+
+      {/* Daily reward calendar (auto-opens when claimable) */}
+      {daily && !needsStarter && (
+        <DailyRewardModal
+          isVisible={showDailyModal}
+          currentDay={daily.currentDay}
+          canClaimToday={daily.canClaimToday}
+          tiers={daily.tiers}
+          streak={daily.streak}
+          onClaim={handleDailyClaim}
+          onDismiss={handleDailyDismiss}
+        />
+      )}
+
+      {/* One-time FTUE hint */}
+      {isAuthenticated && !needsStarter && (
+        <OverlayHint id="home-play-dna" message="Play to earn DNA - spend it in the Lab" />
+      )}
 
       {/* Main Content */}
       <div className="relative z-10 flex flex-col items-center p-4 sm:p-8 pt-24 pb-12">
@@ -108,16 +306,49 @@ export default function Home() {
           {/* Instrument Panel Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-            {/* Pilot Stats Panel */}
+            {/* Pilot Stats Panel - real server data */}
             <CommandPanel title="Pilot Stats" glowOnHover>
-              <div className="space-y-3">
-                <StatDisplay label="Rank" value={pilotStats.rank} prefix="#" />
-                <div className="border-t border-scale-blue-light/30" />
-                <div className="flex items-center justify-between">
-                  <StatDisplay label="Streak" value={pilotStats.streak} size="sm" />
-                  <span className="text-2xl">🔥</span>
+              {isAuthenticated ? (
+                <div className="space-y-3">
+                  <StatDisplay
+                    label="High Score"
+                    value={stats ? stats.highScore : '—'}
+                    highlight
+                  />
+                  <div className="border-t border-scale-blue-light/30" />
+                  <div className="flex items-center justify-between">
+                    <StatDisplay
+                      label="Streak"
+                      value={streak !== null ? streak : '—'}
+                      size="sm"
+                    />
+                    <span className="text-2xl">🔥</span>
+                  </div>
+                  <div className="border-t border-scale-blue-light/30" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <StatDisplay
+                      label="DNA"
+                      value={stats ? stats.dna : '—'}
+                      size="sm"
+                    />
+                    <StatDisplay
+                      label="Energy"
+                      value={stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
+                      size="sm"
+                    />
+                  </div>
+                  <StatDisplay
+                    label="Collection"
+                    value={stats ? stats.collectionSize : '—'}
+                    suffix="snakes"
+                    size="sm"
+                  />
                 </div>
-              </div>
+              ) : (
+                <p className="text-beige/60 text-sm font-body py-4">
+                  {isLoading ? 'Connecting...' : 'Launch a game to start your pilot record.'}
+                </p>
+              )}
             </CommandPanel>
 
             {/* Dynasty Selector Panel */}
