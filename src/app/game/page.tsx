@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-// import { EffectComposer, Bloom } from '@react-three/postprocessing'; // Disabled - version compatibility issue
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useEffect, useRef, useCallback, useState, useMemo, Suspense } from 'react';
 import * as THREE from 'three';
 import { themeManager } from '@/lib/theme/ThemeManager';
@@ -740,16 +740,17 @@ export default function GamePage() {
           rotateSpeed={0.5}
         />
 
-{/* EffectComposer disabled - causes runtime error with current postprocessing version
-        <EffectComposer>
-          <Bloom
-            luminanceThreshold={0.3}
-            luminanceSmoothing={0.9}
-            intensity={0.6}
-            mipmapBlur
-          />
-        </EffectComposer>
-        */}
+        {/* Bloom postprocessing - desktop only, to protect mobile framerate */}
+        {!isMobile && (
+          <EffectComposer>
+            <Bloom
+              luminanceThreshold={0.3}
+              luminanceSmoothing={0.9}
+              intensity={0.6}
+              mipmapBlur
+            />
+          </EffectComposer>
+        )}
       </Canvas>
     </div>
   );
