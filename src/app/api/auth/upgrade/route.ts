@@ -64,10 +64,19 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       // The admin API reports duplicate emails honestly (unlike the
-      // anti-enumerating client flow) - surface it so the UI can offer
-      // sign-in instead.
+      // anti-enumerating client flow) - as a raw Postgres unique violation
+      // (code 23505, "duplicate key value ... users_email_partial_key").
+      // Surface it so the UI can offer sign-in instead.
       const msg = updateError.message?.toLowerCase() ?? '';
-      if (msg.includes('already') || updateError.code === 'email_exists') {
+      const code = String(
+        (updateError as { code?: string | number }).code ?? ''
+      );
+      if (
+        code === '23505' ||
+        code === 'email_exists' ||
+        msg.includes('already') ||
+        msg.includes('duplicate key')
+      ) {
         return NextResponse.json({ error: 'email_exists' }, { status: 409 });
       }
       console.error('Account upgrade failed:', {

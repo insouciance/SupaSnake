@@ -91,7 +91,7 @@ describe('POST /api/auth/upgrade', () => {
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: ANON_USER }, error: null });
     mockSupabase.auth.admin.updateUserById.mockResolvedValue({
       data: null,
-      error: { message: 'A user with this email address has already been registered' },
+      error: { code: '23505', message: 'duplicate key value violates unique constraint "users_email_partial_key"' },
     });
 
     const res = await POST(makeRequest({ email: 'taken@player.co', password: 'Password123' }));
