@@ -64,14 +64,20 @@ _Last updated: 2026-07-16 (afternoon)_
       safe-area inset — was hidden behind browser chrome)
 - [ ] No page scroll-bounce during play
 
-## 🎨 UI design rework (in progress — deploys when done)
+## 🎨 UI design rework (DEPLOYED — review on prod)
 
 Direction: "the UI is the game's world" — the game scene's void/glow/motion
 language + the original styleguide's arcade identity, unified across every
-screen (the Lab's forked look is being reunified). Mascot returns as brand
-anchor; emoji icons replaced with a custom SVG set; SUPASNAKE wordmark
-replaces leftover "OG Snake" text; proper font loading. Review the new look
-on prod when I deploy it and tell me what to push further.
+screen. What shipped: design token system (dynasty/rarity colors, glow
+scale, motion keyframes), next/font loading, SVG icon set (all emoji gone),
+mascot hero on home/auth, SUPASNAKE branding, reunified Lab with
+rarity-escalating card glow + unlock shimmer, restaged breeding reveal,
+glowing game overlays/HUD, podium leaderboard, native-feeling consent/age
+surfaces, staggered entrance motion everywhere, reduced-motion support.
+
+- [ ] Walk every screen on desktop + phone; note anything to push further
+      (more/less glow, spacing, copy tone, celebration intensity)
+- [ ] Home first impression: does it pass the "this feels different" test?
 
 ## 📌 Incidents / notes from autonomous work
 
