@@ -1,10 +1,8 @@
 'use client';
 
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { useEffect, useRef, useCallback, useState, useMemo, Suspense } from 'react';
-import * as THREE from 'three';
+import { useEffect, useRef, useCallback, useState, Suspense } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import { SnakeGameLogic, Direction, Position } from '@/lib/game/SnakeGameLogic';
 import { useGameStore } from '@/lib/store/gameStore';
@@ -24,6 +22,7 @@ import { DynamicLights } from '@/components/game/DynamicLights';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { AimingCrosshair } from '@/components/game/AimingCrosshair';
+import { CameraRig } from '@/components/game/CameraRig';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { audioManager } from '@/lib/audio/AudioManager';
 import { haptics } from '@/lib/effects/Haptics';
@@ -37,6 +36,7 @@ import {
   IconFlame,
   IconFlask,
   IconHome,
+  IconReset,
   IconSnake,
   IconTrophy,
   IconUser,
@@ -52,6 +52,7 @@ export default function GamePage() {
   const [deathPos, setDeathPos] = useState<[number, number, number] | null>(null);
   const [showDeathExplosion, setShowDeathExplosion] = useState(false);
   const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
+  const [viewResetToken, setViewResetToken] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -696,9 +697,20 @@ export default function GamePage() {
         <div className="absolute bottom-4 left-4 z-10 text-beige/60 text-sm font-body space-y-0.5">
           <p>Controls: Arrow Keys or WASD</p>
           <p>Pause: ESC or P</p>
-          <p>Orbit: Mouse drag | Zoom: Scroll</p>
+          <p>Orbit: Mouse drag (snaps to sides) | Zoom: Scroll</p>
         </div>
       )}
+
+      {/* Reset view - restores the default side-aligned camera */}
+      <button
+        onClick={() => setViewResetToken((t) => t + 1)}
+        className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+        title="Reset view"
+        aria-label="Reset view"
+      >
+        <IconReset size={20} />
+      </button>
 
       {/* Virtual D-Pad (mobile). bottom offset includes the safe-area inset
           so the DOWN button clears home indicators / browser chrome. */}
@@ -909,10 +921,11 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* 3D Canvas */}
+      {/* 3D Canvas - initial position approximates CameraRig's default
+          south-side 70-degree view to avoid a first-frame jump */}
       <Canvas
         camera={{
-          position: [boardCenter + 12, 16, boardCenter + 12],
+          position: [boardCenter, boardCenter * 2.4, boardCenter * 1.9],
           fov: 50
         }}
         shadows
@@ -957,19 +970,7 @@ export default function GamePage() {
           />
         </Suspense>
 
-        <FitCameraToBoard boardCenter={boardCenter} gridSize={GAME_CONFIG.board.gridSize} />
-
-        <OrbitControls
-          target={[boardCenter, 0, boardCenter]}
-          enablePan={false}
-          minDistance={12}
-          maxDistance={45}
-          minPolarAngle={Math.PI / 6}
-          maxPolarAngle={Math.PI / 2.5}
-          enableDamping={true}
-          dampingFactor={0.05}
-          rotateSpeed={0.5}
-        />
+        <CameraRig gridSize={GAME_CONFIG.board.gridSize} resetToken={viewResetToken} />
 
         {/* Bloom postprocessing - desktop only, to protect mobile framerate */}
         {!isMobile && (
@@ -985,39 +986,6 @@ export default function GamePage() {
       </Canvas>
     </div>
   );
-}
-
-/**
- * Fits the camera so the whole board is visible at any aspect ratio.
- * The default camera assumes a landscape viewport; on portrait phones the
- * horizontal field of view crops the board. On mount and on resize this
- * recomputes the camera distance along the original diagonal so the board
- * fits both axes (desktop distance stays ~unchanged by calibration).
- */
-function FitCameraToBoard({ boardCenter, gridSize }: { boardCenter: number; gridSize: number }) {
-  const { camera, size } = useThree();
-
-  useEffect(() => {
-    const persp = camera as THREE.PerspectiveCamera;
-    const aspect = size.width / size.height;
-    // Half-extent the view must contain (board half-span + small margin).
-    // Calibrated so a ~1.7 aspect desktop lands on the original distance.
-    const half = gridSize / 2 + 1;
-    const vFov = THREE.MathUtils.degToRad(persp.fov);
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    const distV = half / Math.tan(vFov / 2);
-    const distH = half / Math.tan(hFov / 2);
-    const dist = Math.max(distV, distH);
-
-    const target = new THREE.Vector3(boardCenter, 0, boardCenter);
-    // Original camera offset direction (+12, 16, +12) preserved.
-    const dir = new THREE.Vector3(12, 16, 12).normalize();
-    persp.position.copy(target.clone().addScaledVector(dir, dist));
-    persp.lookAt(target);
-    persp.updateProjectionMatrix();
-  }, [camera, size.width, size.height, boardCenter, gridSize]);
-
-  return null;
 }
 
 interface GameBoardProps {

@@ -192,6 +192,16 @@ export function IconGear(props: IconProps) {
   );
 }
 
+/** Reset view - counter-clockwise circular arrow */
+export function IconReset(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 12a9 9 0 1 0 2.6-6.36L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}
+
 /** Arrow right */
 export function IconArrowRight(props: IconProps) {
   return (
