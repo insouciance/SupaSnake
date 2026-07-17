@@ -7,10 +7,17 @@
  * milestone highlights (days 7/14/21/28), and a claim flow that ends in
  * a success animation with the granted amounts.
  *
- * Styled to match WelcomeBackModal (engagement modal family).
+ * Styled to match WelcomeBackModal (engagement modal family):
+ * elevated void panel, pop-in entrance, emissive milestone glow.
  */
 
 import { useState } from 'react';
+import {
+  IconGift,
+  IconDna,
+  IconBolt,
+  IconCheck,
+} from '@/components/ui/icons';
 
 export interface DailyRewardTier {
   day: number;
@@ -73,43 +80,46 @@ function DayCell({
 
   const stateClasses =
     state === 'claimed'
-      ? 'bg-gray-700/60 border-gray-600 opacity-60'
+      ? 'bg-void-deep/60 border-scale-blue-light/40 opacity-60'
       : state === 'today'
-        ? 'bg-emerald-900/60 border-emerald-400 ring-2 ring-emerald-400/60'
-        : 'bg-gray-700/30 border-gray-600';
+        ? 'bg-venom-orange/15 border-venom-orange shadow-glow-sm shadow-venom-orange/50'
+        : 'bg-scale-blue/30 border-scale-blue-light/30';
 
-  const milestoneClasses = isMilestone && state !== 'today' ? 'border-amber-400/70' : '';
+  const milestoneClasses =
+    isMilestone && state !== 'today' ? 'border-rarity-legendary/70' : '';
 
   return (
     <div
       data-testid={`day-${tier.day}`}
       data-state={state}
       data-milestone={isMilestone ? 'true' : 'false'}
-      className={`relative flex flex-col items-center justify-center rounded-lg border p-1 aspect-square text-center ${stateClasses} ${milestoneClasses}`}
+      className={`relative flex flex-col items-center justify-center rounded-arcade border p-1 aspect-square text-center ${stateClasses} ${milestoneClasses}`}
     >
-      <span className="text-[10px] text-gray-400 leading-none">{tier.day}</span>
+      <span className="text-[10px] font-mono text-beige/50 leading-none">{tier.day}</span>
       <span
-        className={`text-xs font-bold leading-tight ${
-          isMilestone ? 'text-amber-300' : 'text-green-400'
+        className={`text-xs font-mono font-bold leading-tight ${
+          isMilestone ? 'text-rarity-legendary' : 'text-rarity-uncommon'
         }`}
       >
         {tier.dna}
       </span>
       {tier.energy > 0 && (
-        <span className="text-[10px] text-sky-300 leading-none">
+        <span
+          className="flex items-center text-[10px] font-mono text-cyber leading-none"
+          role="img"
+          aria-label="energy"
+        >
           +{tier.energy}
-          <span role="img" aria-label="energy">
-            &#x26A1;
-          </span>
+          <IconBolt size={9} />
         </span>
       )}
       {state === 'claimed' && (
         <span
-          className="absolute top-0.5 right-0.5 text-[10px] text-emerald-400"
+          className="absolute top-0.5 right-0.5 text-rarity-uncommon"
           role="img"
           aria-label="claimed"
         >
-          &#x2713;
+          <IconCheck size={10} />
         </span>
       )}
     </div>
@@ -146,50 +156,50 @@ export function DailyRewardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-gray-800 rounded-xl p-6 shadow-2xl max-w-md w-full mx-4 border border-gray-700 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
+      <div
+        className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
+        style={{ '--glow': '#D98324' } as React.CSSProperties}
+      >
         {claimResult ? (
           /* Success state - granted amounts */
           <div className="text-center">
-            <div className="text-6xl mb-4 animate-bounce">
-              <span role="img" aria-label="gift">
-                &#x1F381;
-              </span>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">
+            <IconGift
+              size={56}
+              className="mx-auto mb-4 text-venom-orange animate-breathe drop-shadow-[0_0_18px_rgba(217,131,36,0.6)]"
+              role="img"
+              aria-label="gift"
+              aria-hidden={undefined}
+            />
+            <h2 className="heading-display text-2xl text-bone-white mb-2">
               Day {claimResult.dayClaimed} Claimed!
             </h2>
             {claimResult.cycleCompleted && (
-              <p className="text-amber-300 font-medium mb-2">Cycle complete! Back to Day 1.</p>
+              <p className="text-rarity-legendary font-body font-semibold mb-2">
+                Cycle complete! Back to Day 1.
+              </p>
             )}
             <div className="space-y-3 my-6">
-              <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-void-deep/50 border border-scale-blue-light/30 rounded-arcade">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl" role="img" aria-label="dna">
-                    &#x1F9EC;
-                  </span>
-                  <span className="text-gray-300">DNA</span>
+                  <IconDna size={22} className="text-rarity-uncommon" />
+                  <span className="text-beige font-body">DNA</span>
                 </div>
-                <span className="text-xl font-bold text-green-400">
+                <span className="text-xl font-mono font-bold text-rarity-uncommon">
                   +{claimResult.dnaGranted}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-void-deep/50 border border-scale-blue-light/30 rounded-arcade">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl" role="img" aria-label="energy">
-                    &#x26A1;
-                  </span>
-                  <span className="text-gray-300">Energy</span>
+                  <IconBolt size={22} className="text-cyber" />
+                  <span className="text-beige font-body">Energy</span>
                 </div>
-                <span className="text-xl font-bold text-sky-300">
+                <span className="text-xl font-mono font-bold text-cyber">
                   +{claimResult.energyGranted}
                 </span>
               </div>
             </div>
-            <button
-              onClick={onDismiss}
-              className="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-lg font-bold text-white transition-all"
-            >
+            <button onClick={onDismiss} className="btn-go w-full py-3">
               Awesome!
             </button>
           </div>
@@ -197,19 +207,15 @@ export function DailyRewardModal({
           /* Calendar state */
           <>
             <div className="text-center mb-4">
-              <div className="text-5xl mb-3">
-                <span role="img" aria-label="calendar">
-                  &#x1F4C5;
-                </span>
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-1">Daily Rewards</h2>
-              <p className="text-gray-400 text-sm">
-                Day <span className="text-white font-medium">{currentDay}</span> of 28
+              <IconGift size={44} className="mx-auto mb-3 text-venom-orange" />
+              <h2 className="heading-display text-2xl text-bone-white mb-1">Daily Rewards</h2>
+              <p className="text-beige/70 text-sm font-body">
+                Day <span className="text-bone-white font-semibold">{currentDay}</span> of 28
                 {streak && streak.current > 0 && (
                   <>
                     {' '}
                     &middot;{' '}
-                    <span className="text-orange-400">
+                    <span className="text-venom-orange">
                       {streak.current}-day streak (x{streak.multiplier})
                     </span>
                   </>
@@ -232,7 +238,7 @@ export function DailyRewardModal({
               <button
                 onClick={handleClaim}
                 disabled={isClaiming || !canClaimToday}
-                className="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-lg font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-go w-full py-3"
               >
                 {isClaiming
                   ? 'Claiming...'
@@ -242,7 +248,7 @@ export function DailyRewardModal({
               </button>
               <button
                 onClick={onDismiss}
-                className="w-full py-2 text-gray-400 hover:text-gray-300 text-sm transition-colors"
+                className="w-full py-2 text-beige/60 hover:text-beige text-sm font-body transition-colors"
               >
                 Maybe Later
               </button>

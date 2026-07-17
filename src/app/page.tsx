@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import {
@@ -15,9 +16,18 @@ import { replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
 import { SaveProgressBanner } from '@/components/auth/UpgradePrompt';
 import { MVP_DYNASTIES, DYNASTY_THEMES } from '@/shared/types/snake-data-model';
 import { NavBar } from '@/components/ui/NavBar';
-import { CommandPanel } from '@/components/ui/CommandPanel';
-import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { StatDisplay } from '@/components/ui/StatDisplay';
+import {
+  IconDna,
+  IconBolt,
+  IconTrophy,
+  IconFlame,
+  IconEgg,
+  IconFlask,
+  IconPlay,
+  IconSnake,
+  IconArrowRight,
+} from '@/components/ui/icons';
 import {
   DailyRewardModal,
   type DailyRewardTier,
@@ -34,6 +44,15 @@ const DYNASTY_PREVIEW = MVP_DYNASTIES.map((name) => ({
   colorPrimary: DYNASTY_THEMES[name].primary,
   variantCount: 10,
 }));
+
+// Emissive glow color per dynasty (DB primaries are too dark for the void)
+const DYNASTY_GLOW: Record<string, string> = {
+  CYBER: '#00FFFF',
+  PRIMAL: '#86efac',
+  COSMIC: '#a855f7',
+};
+
+const TOTAL_VARIANTS = DYNASTY_PREVIEW.reduce((sum, d) => sum + d.variantCount, 0);
 
 interface HomeStats {
   dna: number;
@@ -59,7 +78,6 @@ export default function Home() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [selectedDynasty, setSelectedDynasty] = useState<string>('CYBER');
-  const [hasMounted, setHasMounted] = useState(false);
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [streak, setStreak] = useState<number | null>(null);
   const [daily, setDaily] = useState<DailyRewardsState | null>(null);
@@ -68,10 +86,6 @@ export default function Home() {
   const [showLossNotice, setShowLossNotice] = useState(false);
 
   const token = session?.access_token;
-
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
 
   // No silent new identity: if a registered account previously used this
   // device and the session is gone, surface "Welcome back" instead of
@@ -279,21 +293,12 @@ export default function Home() {
   }, []);
 
   const needsStarter = isAuthenticated && stats?.needsStarterSelection === true;
+  const collectionPct = stats
+    ? Math.min(100, Math.round((stats.collectionSize / TOTAL_VARIANTS) * 100))
+    : 0;
 
   return (
-    <main className="min-h-screen bg-scale-blue-dark text-bone-white relative overflow-x-hidden">
-      {/* Grid background pattern */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, #3a4750 1px, transparent 1px),
-            linear-gradient(to bottom, #3a4750 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px',
-        }}
-      />
-
+    <main className="app-bg text-bone-white relative overflow-x-hidden">
       {/* Navigation Bar */}
       <NavBar />
 
@@ -304,13 +309,16 @@ export default function Home() {
           session is gone - never silently create a new anonymous identity */}
       {welcomeBack && !isAuthenticated && !isLoading && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-scale-blue-dark/90 p-4"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-void-deep/90 p-4"
           role="dialog"
           aria-modal="true"
           data-testid="welcome-back-modal"
         >
-          <div className="bg-scale-blue border-[3px] border-venom-orange rounded-arcade p-8 text-center space-y-6 max-w-md w-full">
-            <h2 className="text-2xl font-display uppercase tracking-arcade text-venom-orange">
+          <div
+            className="panel-glow animate-pop-in p-8 text-center space-y-6 max-w-md w-full"
+            style={{ '--glow': '#D98324' } as React.CSSProperties}
+          >
+            <h2 className="heading-display text-2xl text-venom-orange text-glow-orange">
               Welcome Back
             </h2>
             <p className="text-beige font-body">
@@ -324,10 +332,7 @@ export default function Home() {
               . Your snakes and DNA are waiting on your account.
             </p>
             <div className="flex flex-col gap-3">
-              <Link
-                href="/login"
-                className="px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light transition-all"
-              >
+              <Link href="/login" className="btn-go px-8 py-3 text-lg">
                 Sign In
               </Link>
               <button
@@ -344,13 +349,16 @@ export default function Home() {
       {/* One-time notice: previous anonymous session is unrecoverable */}
       {showLossNotice && !isAuthenticated && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-scale-blue-dark/90 p-4"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-void-deep/90 p-4"
           role="dialog"
           aria-modal="true"
           data-testid="progress-loss-notice"
         >
-          <div className="bg-scale-blue border-[3px] border-strike-red rounded-arcade p-8 text-center space-y-6 max-w-md w-full">
-            <h2 className="text-2xl font-display uppercase tracking-arcade text-strike-red">
+          <div
+            className="panel-glow animate-pop-in p-8 text-center space-y-6 max-w-md w-full"
+            style={{ '--glow': '#A42424' } as React.CSSProperties}
+          >
+            <h2 className="heading-display text-2xl text-strike-red">
               Previous Progress Lost
             </h2>
             <p className="text-beige font-body">
@@ -361,7 +369,7 @@ export default function Home() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={handleContinueAfterLossNotice}
-                className="px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+                className="btn-go px-8 py-3 text-lg"
               >
                 Continue as Guest
               </button>
@@ -398,89 +406,84 @@ export default function Home() {
       )}
 
       {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center p-4 sm:p-8 pt-24 pb-12">
+      <div className="relative z-10 flex flex-col items-center px-4 sm:px-8 pt-16 pb-12">
         <div className="w-full max-w-5xl space-y-6">
 
-          {/* Central Command Display */}
-          <CommandPanel accented className="text-center py-8 sm:py-12">
-            <div className="space-y-6">
-              {/* Title with glow */}
-              <h1
-                className="text-5xl sm:text-7xl font-display uppercase tracking-arcade text-venom-orange"
-                style={{ textShadow: '0 0 30px rgba(217, 131, 36, 0.4)' }}
-              >
-                OG Snake
-              </h1>
-
-              {/* Command Center subtitle */}
-              <div className="flex items-center justify-center gap-2 text-beige/70 font-mono text-sm">
-                <span className="text-venom-orange">{'>'}</span>
-                <span>COMMAND CENTER</span>
-                <span className="text-scale-blue-light">{'//'}</span>
-                <span className={hasMounted ? 'text-green-500' : 'text-beige/70'}>ONLINE</span>
-                <span className="animate-pulse text-venom-orange">_</span>
-              </div>
-
-              {/* Tagline */}
-              <p className="text-lg text-beige font-body max-w-md mx-auto">
-                Where Skill Creates Legacy
-              </p>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-                <Link
-                  href="/game"
-                  onClick={handlePlay}
-                  className="group px-10 py-4 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-xl text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(217,131,36,0.5)] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-                >
-                  <span className="text-2xl">▶</span>
-                  <span>Launch</span>
-                </Link>
-                <Link
-                  href="/lab"
-                  className="px-10 py-4 bg-scale-blue border-[3px] border-bone-white/30 rounded-arcade font-display uppercase tracking-arcade text-xl text-bone-white hover:border-venom-orange hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-                >
-                  <span className="text-2xl">🧬</span>
-                  <span>Lab</span>
-                </Link>
-              </div>
+          {/* Hero: mascot + wordmark + primary CTA */}
+          <section className="text-center pt-6 sm:pt-10 animate-fade-up">
+            <div className="animate-float inline-block">
+              <Image
+                src="/brand/mascot.png"
+                alt="SupaSnake mascot"
+                width={288}
+                height={288}
+                priority
+                className="mx-auto w-44 sm:w-64 h-auto drop-shadow-[0_0_48px_rgba(217,131,36,0.35)]"
+              />
             </div>
-          </CommandPanel>
+            <h1 className="heading-display text-glow-orange text-venom-orange text-5xl sm:text-7xl animate-breathe">
+              SUPASNAKE
+            </h1>
+            <p className="label-arcade mt-3 text-sm">Where Skill Creates Legacy</p>
 
-          {/* Instrument Panel Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
+              <Link
+                href="/game"
+                onClick={handlePlay}
+                className="btn-go px-10 py-4 text-xl min-h-[56px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70"
+              >
+                <IconPlay size={22} />
+                <span>Launch</span>
+              </Link>
+              <Link
+                href="/lab"
+                className="btn-neutral px-10 py-4 text-xl min-h-[56px] inline-flex items-center justify-center gap-3"
+              >
+                <IconFlask size={22} />
+                <span>Lab</span>
+              </Link>
+            </div>
+          </section>
 
-            {/* Pilot Stats Panel - real server data */}
-            <CommandPanel title="Pilot Stats" glowOnHover>
-              {isAuthenticated ? (
-                <div className="space-y-3">
+          {/* Stat strip: DNA / energy / streak / high score */}
+          <section
+            className="panel-elevated p-4 sm:p-6 animate-fade-up"
+            style={{ animationDelay: '80ms' }}
+          >
+            <h2 className="label-arcade mb-4">Pilot Stats</h2>
+            {isAuthenticated ? (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <div className="flex items-start gap-2.5">
+                  <IconTrophy size={20} className="text-venom-orange mt-0.5 shrink-0" />
                   <StatDisplay
                     label="High Score"
                     value={stats ? stats.highScore : '—'}
                     highlight
+                    size="sm"
                   />
-                  <div className="border-t border-scale-blue-light/30" />
-                  <div className="flex items-center justify-between">
-                    <StatDisplay
-                      label="Streak"
-                      value={streak !== null ? streak : '—'}
-                      size="sm"
-                    />
-                    <span className="text-2xl">🔥</span>
-                  </div>
-                  <div className="border-t border-scale-blue-light/30" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <StatDisplay
-                      label="DNA"
-                      value={stats ? stats.dna : '—'}
-                      size="sm"
-                    />
-                    <StatDisplay
-                      label="Energy"
-                      value={stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
-                      size="sm"
-                    />
-                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <IconFlame size={20} className="text-strike-red mt-0.5 shrink-0" />
+                  <StatDisplay
+                    label="Streak"
+                    value={streak !== null ? streak : '—'}
+                    size="sm"
+                  />
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <IconDna size={20} className="text-rarity-uncommon mt-0.5 shrink-0" />
+                  <StatDisplay label="DNA" value={stats ? stats.dna : '—'} size="sm" />
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <IconBolt size={20} className="text-rarity-legendary mt-0.5 shrink-0" />
+                  <StatDisplay
+                    label="Energy"
+                    value={stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
+                    size="sm"
+                  />
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <IconEgg size={20} className="text-beige mt-0.5 shrink-0" />
                   <StatDisplay
                     label="Collection"
                     value={stats ? stats.collectionSize : '—'}
@@ -488,82 +491,114 @@ export default function Home() {
                     size="sm"
                   />
                 </div>
-              ) : (
-                <p className="text-beige/60 text-sm font-body py-4">
-                  {isLoading ? 'Connecting...' : 'Launch a game to start your pilot record.'}
-                </p>
-              )}
-            </CommandPanel>
+              </div>
+            ) : (
+              <p className="text-beige/60 text-sm font-body py-2">
+                {isLoading ? 'Connecting...' : 'Launch a game to start your pilot record.'}
+              </p>
+            )}
+          </section>
 
-            {/* Dynasty Selector Panel */}
-            <CommandPanel title="Dynasty Select" glowOnHover>
-              <div className="space-y-2">
-                {DYNASTY_PREVIEW.map((dynasty) => {
-                  const isSelected = selectedDynasty === dynasty.name;
-                  return (
-                    <button
-                      key={dynasty.name}
-                      onClick={() => setSelectedDynasty(dynasty.name)}
-                      className={`
-                        w-full flex items-center gap-3 p-3 rounded-arcade border-[2px] transition-all
-                        ${isSelected
-                          ? 'border-venom-orange bg-scale-blue-dark/50'
-                          : 'border-scale-blue-light hover:border-venom-orange/50 bg-transparent'
-                        }
-                      `}
+          {/* Dynasty showcase: three glow cards, selectable */}
+          <section className="animate-fade-up" style={{ animationDelay: '160ms' }}>
+            <h2 className="label-arcade mb-3">Dynasties</h2>
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              {DYNASTY_PREVIEW.map((dynasty) => {
+                const glow = DYNASTY_GLOW[dynasty.name] ?? dynasty.colorPrimary;
+                const isSelected = selectedDynasty === dynasty.name;
+                return (
+                  <button
+                    key={dynasty.name}
+                    onClick={() => setSelectedDynasty(dynasty.name)}
+                    className={`panel-glow p-3 sm:p-5 text-center transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                      isSelected ? '' : 'opacity-70 hover:opacity-100'
+                    }`}
+                    style={{ '--glow': glow } as React.CSSProperties}
+                  >
+                    <IconSnake size={28} className="mx-auto" style={{ color: glow }} />
+                    <div
+                      className="heading-display text-sm sm:text-base mt-2"
+                      style={{ color: glow, textShadow: `0 0 14px ${glow}66` }}
                     >
-                      <div
-                        className="w-4 h-4 rounded-sm border border-scale-blue-light"
-                        style={{ backgroundColor: dynasty.colorPrimary }}
-                      />
-                      <span className="font-display uppercase tracking-arcade text-sm text-bone-white">
-                        {dynasty.name}
-                      </span>
+                      {dynasty.name}
+                    </div>
+                    <div className="text-xs font-mono text-beige/50 mt-1">
+                      {dynasty.variantCount} variants
+                    </div>
+                    <div className="h-4 mt-1">
                       {isSelected && (
-                        <span className="ml-auto text-venom-orange text-xs font-body">ACTIVE</span>
+                        <span className="label-arcade text-[10px]" style={{ color: glow }}>
+                          ACTIVE
+                        </span>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-            </CommandPanel>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
-            {/* Systems Status Panel */}
-            <CommandPanel title="Systems Status" glowOnHover>
-              <div className="space-y-3">
-                <StatusIndicator label="Connection" status={hasMounted ? 'online' : 'syncing'} pulse />
-                <StatusIndicator label="Game Server" status="online" pulse />
-                <StatusIndicator label="Leaderboards" status="online" />
-                <div className="border-t border-scale-blue-light/30 my-3" />
-                <StatusIndicator label="Ready to Launch" status={hasMounted ? 'online' : 'syncing'} pulse />
+          {/* Next goal: collection progress toward the next variant */}
+          {isAuthenticated && stats && (
+            <section
+              className="panel p-4 sm:p-6 animate-fade-up"
+              style={{ animationDelay: '240ms' }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="label-arcade">Next Goal</h2>
+                <span className="font-mono text-xs text-beige/50">
+                  {stats.collectionSize}/{TOTAL_VARIANTS} unlocked
+                </span>
               </div>
-            </CommandPanel>
-          </div>
+              <p className="font-body text-beige text-sm mb-3">
+                {stats.collectionSize >= TOTAL_VARIANTS
+                  ? 'Every variant unlocked. Your dynasty is complete.'
+                  : 'Unlock your next variant - earn DNA and spend it in the Lab.'}
+              </p>
+              <div className="h-2 bg-void-deep border border-scale-blue-light/40 rounded-[2px] overflow-hidden">
+                <div
+                  className="h-full bg-cta-gradient shadow-glow-sm shadow-venom-orange/60 transition-all duration-500"
+                  style={{ width: `${collectionPct}%` }}
+                />
+              </div>
+              <Link
+                href="/lab"
+                className="inline-flex items-center gap-1.5 mt-3 py-2 text-sm font-body font-semibold text-venom-orange hover:text-venom-orange-light transition-colors"
+              >
+                Go to Lab
+                <IconArrowRight size={16} />
+              </Link>
+            </section>
+          )}
 
-          {/* Mission Briefing */}
-          <CommandPanel title="Mission Briefing">
+          {/* Mission briefing */}
+          <section
+            className="panel-elevated p-4 sm:p-6 animate-fade-up"
+            style={{ animationDelay: '320ms' }}
+          >
+            <h2 className="label-arcade mb-4">Mission Briefing</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-scale-blue-dark/30 rounded-arcade border border-scale-blue-light/20">
-                <div className="text-3xl mb-2">🎮</div>
-                <h4 className="font-display uppercase tracking-arcade text-bone-white text-sm mb-1">
+              <div className="text-center p-4 bg-void-deep/40 rounded-arcade border border-scale-blue-light/20">
+                <IconDna size={28} className="mx-auto mb-2 text-rarity-uncommon" />
+                <h4 className="heading-display text-bone-white text-sm mb-1">
                   Collect DNA
                 </h4>
                 <p className="text-beige/60 text-xs font-body">
                   Play snake to harvest genetic material
                 </p>
               </div>
-              <div className="text-center p-4 bg-scale-blue-dark/30 rounded-arcade border border-scale-blue-light/20">
-                <div className="text-3xl mb-2">🧬</div>
-                <h4 className="font-display uppercase tracking-arcade text-bone-white text-sm mb-1">
+              <div className="text-center p-4 bg-void-deep/40 rounded-arcade border border-scale-blue-light/20">
+                <IconEgg size={28} className="mx-auto mb-2 text-cyber" />
+                <h4 className="heading-display text-bone-white text-sm mb-1">
                   Breed Variants
                 </h4>
                 <p className="text-beige/60 text-xs font-body">
                   Combine snakes to unlock new species
                 </p>
               </div>
-              <div className="text-center p-4 bg-scale-blue-dark/30 rounded-arcade border border-scale-blue-light/20">
-                <div className="text-3xl mb-2">🏆</div>
-                <h4 className="font-display uppercase tracking-arcade text-bone-white text-sm mb-1">
+              <div className="text-center p-4 bg-void-deep/40 rounded-arcade border border-scale-blue-light/20">
+                <IconTrophy size={28} className="mx-auto mb-2 text-rarity-legendary" />
+                <h4 className="heading-display text-bone-white text-sm mb-1">
                   Dominate Ranks
                 </h4>
                 <p className="text-beige/60 text-xs font-body">
@@ -571,26 +606,7 @@ export default function Home() {
                 </p>
               </div>
             </div>
-          </CommandPanel>
-
-          {/* Dynasty Preview - Compact */}
-          <div className="flex justify-center gap-2 pt-2">
-            {DYNASTY_PREVIEW.map(dynasty => (
-              <div
-                key={dynasty.name}
-                className="flex gap-1 items-center px-3 py-2 bg-scale-blue/50 rounded-arcade border border-scale-blue-light/30"
-              >
-                <div
-                  className="w-3 h-3 rounded-sm"
-                  style={{ backgroundColor: dynasty.colorPrimary }}
-                />
-                <span className="text-xs font-body text-beige/70">{dynasty.name}</span>
-                <span className="text-xs text-beige/40 font-mono">
-                  {dynasty.variantCount}
-                </span>
-              </div>
-            ))}
-          </div>
+          </section>
 
           {/* Footer */}
           <div className="text-center pt-4 text-beige/30 text-xs font-mono">

@@ -19,7 +19,7 @@ test.describe('Home page', () => {
     await page.goto('/');
 
     await expect(
-      page.getByRole('heading', { name: /og snake/i })
+      page.getByRole('heading', { name: /supasnake/i })
     ).toBeVisible();
   });
 

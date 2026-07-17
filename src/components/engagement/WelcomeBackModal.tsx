@@ -5,9 +5,12 @@
  *
  * Displays rewards earned while the player was offline.
  * Creates immediate dopamine hit on app open.
+ * Styled as an elevated void panel with the mascot greeting the player.
  */
 
+import Image from 'next/image';
 import { formatOfflineDuration, type OfflineProgress } from '@/lib/progression/offlineProgress';
+import { IconBolt, IconDna } from '@/components/ui/icons';
 
 interface WelcomeBackModalProps {
   /** Whether to show the modal */
@@ -23,19 +26,19 @@ interface WelcomeBackModalProps {
 }
 
 interface RewardRowProps {
-  icon: string;
+  icon: React.ReactNode;
   label: string;
   value: string;
 }
 
 function RewardRow({ icon, label, value }: RewardRowProps) {
   return (
-    <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+    <div className="flex items-center justify-between p-3 bg-void-deep/50 border border-scale-blue-light/30 rounded-arcade">
       <div className="flex items-center gap-3">
-        <span className="text-2xl">{icon}</span>
-        <span className="text-gray-300">{label}</span>
+        {icon}
+        <span className="text-beige font-body">{label}</span>
       </div>
-      <span className="text-xl font-bold text-green-400">{value}</span>
+      <span className="text-xl font-mono font-bold text-rarity-uncommon">{value}</span>
     </div>
   );
 }
@@ -55,28 +58,40 @@ export function WelcomeBackModal({
   const durationText = formatOfflineDuration(progress.elapsedMs);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-gray-800 rounded-xl p-6 shadow-2xl max-w-md w-full mx-4 border border-gray-700">
-        {/* Header with celebration */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
+      <div
+        className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4"
+        style={{ '--glow': '#D98324' } as React.CSSProperties}
+      >
+        {/* Header with mascot celebration */}
         <div className="text-center mb-6">
-          <div className="text-6xl mb-4 animate-bounce">
-            <span role="img" aria-label="celebration">&#x1F389;</span>
+          <div className="animate-float inline-block">
+            <Image
+              src="/brand/mascot-sm.png"
+              alt="SupaSnake mascot"
+              width={96}
+              height={96}
+              className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_24px_rgba(217,131,36,0.45)]"
+            />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Welcome Back!</h2>
-          <p className="text-gray-400">
-            While you were away for <span className="text-white font-medium">{durationText}</span>...
+          <h2 className="heading-display text-2xl text-venom-orange text-glow-orange mb-2">
+            Welcome Back!
+          </h2>
+          <p className="text-beige/70 font-body">
+            While you were away for{' '}
+            <span className="text-bone-white font-semibold">{durationText}</span>...
           </p>
         </div>
 
         {/* Rewards list */}
         <div className="space-y-3 mb-6">
           <RewardRow
-            icon="&#x26A1;"
+            icon={<IconBolt size={22} className="text-cyber" />}
             label="Energy Restored"
             value={`+${progress.energyRestored}`}
           />
           <RewardRow
-            icon="&#x1F9EC;"
+            icon={<IconDna size={22} className="text-rarity-uncommon" />}
             label="DNA Gathered"
             value={`+${progress.passiveDnaEarned}`}
           />
@@ -87,13 +102,13 @@ export function WelcomeBackModal({
           <button
             onClick={onClaim}
             disabled={isLoading}
-            className="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-lg font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-go w-full py-3"
           >
             {isLoading ? 'Claiming...' : 'Claim Rewards'}
           </button>
           <button
             onClick={onDismiss}
-            className="w-full py-2 text-gray-400 hover:text-gray-300 text-sm transition-colors"
+            className="w-full py-2 text-beige/60 hover:text-beige text-sm font-body transition-colors"
           >
             Maybe Later
           </button>

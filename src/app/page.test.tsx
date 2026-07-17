@@ -111,7 +111,7 @@ describe('Home page', () => {
       setUnauthed();
       render(<Home />);
 
-      expect(screen.getByText('OG Snake')).toBeInTheDocument();
+      expect(screen.getByText('SUPASNAKE')).toBeInTheDocument();
       expect(
         screen.getByText('Launch a game to start your pilot record.')
       ).toBeInTheDocument();
