@@ -22,6 +22,7 @@ import { DynamicLights } from '@/components/game/DynamicLights';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { AimingCrosshair } from '@/components/game/AimingCrosshair';
+import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import { CameraRig } from '@/components/game/CameraRig';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { audioManager } from '@/lib/audio/AudioManager';
@@ -30,6 +31,7 @@ import { screenShake } from '@/lib/effects/ScreenShake';
 import { useInterpolatedMesh, useGridPosition } from '@/hooks/useInterpolatedPosition';
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward } from '@/lib/outbox/rewardOutbox';
+import { isAimSystemId, type AimStats, type AimSystemId } from '@/lib/game/aimSystems';
 import {
   IconBolt,
   IconDna,
@@ -69,6 +71,7 @@ export default function GamePage() {
   } | null>(null);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
+  const [aimStats, setAimStats] = useState<AimStats | null>(null);
   const [streakInfo, setStreakInfo] = useState<{
     current: number;
     longest: number;
@@ -115,6 +118,8 @@ export default function GamePage() {
     setScore,
     setDnaCollected,
     setSelectedDynasty,
+    aimSystem,
+    setAimSystem,
     resetGame,
     setPaused,
     setDeathSequence,
@@ -168,9 +173,16 @@ export default function GamePage() {
           syncEnergyFromServer(data.player.energy, data.player.energy_regen_at);
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
+        // Aim system meta-progression: server-stored selection + unlock stats
+        if (isAimSystemId(data.aimSystem)) {
+          setAimSystem(data.aimSystem);
+        }
+        if (data.aimStats) {
+          setAimStats(data.aimStats);
+        }
       })
       .catch(err => console.error('Failed to fetch player data:', err));
-  }, [session?.access_token, syncEnergyFromServer]);
+  }, [session?.access_token, syncEnergyFromServer, setAimSystem]);
 
   // Fetch collection to find the equipped snake (game always uses it)
   useEffect(() => {
@@ -518,6 +530,31 @@ export default function GamePage() {
     syncAim();
   }, [isPlaying, isGameOver, isPaused, syncAim]);
 
+  // Select an aim system - optimistic with rollback; the server re-checks
+  // the unlock predicate (403 on a locked pick)
+  const handleSelectAimSystem = useCallback(async (id: AimSystemId) => {
+    const previous = useGameStore.getState().aimSystem;
+    if (id === previous) return;
+    setAimSystem(id); // optimistic
+    try {
+      const response = await fetch('/api/player', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionRef.current?.access_token}`,
+        },
+        body: JSON.stringify({ aim_system: id }),
+      });
+      if (!response.ok) {
+        throw new Error(`Aim system PATCH rejected (${response.status})`);
+      }
+    } catch (err) {
+      console.error('Failed to save aim system, rolling back:', err);
+      setAimSystem(previous);
+      showToast('Could not save aim system', 'error');
+    }
+  }, [setAimSystem, showToast]);
+
   // Handle pause/resume
   const handlePause = useCallback(() => {
     gameRef.current?.pause();
@@ -817,6 +854,18 @@ export default function GamePage() {
               </>
             )}
 
+            {/* Aim system picker - locked chips show their unlock path */}
+            {!noSnakeAvailable && (
+              <div className="space-y-2">
+                <p className="label-arcade">Aim System</p>
+                <AimSystemSelector
+                  selected={aimSystem}
+                  stats={aimStats}
+                  onSelect={handleSelectAimSystem}
+                />
+              </div>
+            )}
+
             {/* Error Message */}
             {startError && (
               <div className="bg-strike-red/15 border border-strike-red/70 rounded-arcade px-4 py-2 animate-fade-up">
@@ -962,6 +1011,7 @@ export default function GamePage() {
             food={food}
             direction={direction}
             queuedDirections={queuedDirections}
+            aimSystem={aimSystem}
             particlePos={particlePos}
             particleTrigger={particleTrigger}
             deathPos={deathPos}
@@ -994,6 +1044,7 @@ interface GameBoardProps {
   food: Position | null;
   direction: Direction;
   queuedDirections: Direction[];
+  aimSystem: AimSystemId;
   particlePos: [number, number, number] | null;
   particleTrigger: number;
   deathPos: [number, number, number] | null;
@@ -1007,6 +1058,7 @@ function GameBoard({
   food,
   direction,
   queuedDirections,
+  aimSystem,
   particlePos,
   particleTrigger,
   deathPos,
@@ -1034,17 +1086,17 @@ function GameBoard({
         emissiveIntensity={0.5}
       />
 
-      {/* Aim telegraph: heading chevron + projected path lane + queued-turn
-          chevrons, plus dimmed food crosshair */}
+      {/* Aim telegraph - layers rendered per the selected aim system
+          (pulse/vector/sequence/radar/apex meta-progression) */}
       <AimingCrosshair
-        foodPosition={food}
         headPosition={snake[0] ?? null}
         direction={direction}
         queuedDirections={queuedDirections}
+        snake={snake}
         gridSize={GAME_CONFIG.board.gridSize}
+        aimSystem={aimSystem}
         color={theme.accent}
         laneColor={theme.primary}
-        opacity={0.15}
       />
 
       {/* Snake Segments with Interpolation + GLB Voxel Models */}

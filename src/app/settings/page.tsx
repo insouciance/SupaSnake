@@ -8,6 +8,7 @@
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { CareerStats } from '@/components/profile/CareerStats';
 import { AchievementBadges } from '@/components/profile/AchievementBadges';
+import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 import { IconCart, IconFlask, IconLock, IconTrophy, IconUser } from '@/components/ui/icons';
@@ -77,6 +78,11 @@ export default function SettingsPage() {
         {/* Career Stats */}
         <div className="mb-6">
           <CareerStats />
+        </div>
+
+        {/* Aim System */}
+        <div className="mb-6">
+          <AimSystemPanel />
         </div>
 
         {/* Achievements */}

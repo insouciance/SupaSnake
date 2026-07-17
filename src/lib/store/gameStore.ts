@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import type { DynastyId } from '@/shared/types/game';
 import type { Position, Direction } from '@/lib/game/SnakeGameLogic';
+import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
 import { GAME_CONFIG } from '@/shared/config/game';
 
 export interface GameStore {
@@ -25,6 +26,9 @@ export interface GameStore {
 
   // Dynasty
   selectedDynasty: DynastyId;
+
+  // Aim telegraph system (synced from server player_settings)
+  aimSystem: AimSystemId;
 
   // Snake state (for rendering)
   snake: Position[];
@@ -49,6 +53,7 @@ export interface GameStore {
   incrementScore: () => void;
   setDnaCollected: (dna: number) => void;
   setSelectedDynasty: (dynasty: DynastyId) => void;
+  setAimSystem: (aimSystem: AimSystemId) => void;
   setEnergy: (energy: number) => void;
   syncEnergyFromServer: (energy: number, energyRegenAt: string | null) => void;
   setSnake: (snake: Position[]) => void;
@@ -73,6 +78,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
   energyRegenAt: null, // Synced from server
   selectedDynasty: 'CYBER',
+  aimSystem: DEFAULT_AIM_SYSTEM,
   snake: [],
   food: null,
   direction: 'RIGHT',
@@ -162,6 +168,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setSelectedDynasty: (dynasty: DynastyId) => {
     set({ selectedDynasty: dynasty });
+  },
+
+  setAimSystem: (aimSystem: AimSystemId) => {
+    set({ aimSystem });
   },
 
   setEnergy: (energy: number) => {

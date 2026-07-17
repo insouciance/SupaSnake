@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { projectAimPath } from './aimUtils';
+import { projectAimPath, projectDangerPath } from './aimUtils';
 
 const head = { x: 10, y: 0, z: 10 };
 const GRID = 20;
@@ -53,5 +53,57 @@ describe('projectAimPath', () => {
 
   it('respects a custom projection length', () => {
     expect(projectAimPath(head, 'DOWN', [], GRID, 3)).toHaveLength(3);
+  });
+});
+
+describe('projectDangerPath (radar danger sense)', () => {
+  it('reports no impact on an open straight path', () => {
+    const result = projectDangerPath(head, 'RIGHT', [head], GRID, 5);
+    expect(result.impact).toBe(false);
+    expect(result.cells).toHaveLength(5);
+    expect(result.cells.map(c => c.x)).toEqual([11, 12, 13, 14, 15]);
+  });
+
+  it('detects a wall impact within range (cells lead up to the wall)', () => {
+    const nearWall = { x: 17, y: 0, z: 10 };
+    const result = projectDangerPath(nearWall, 'RIGHT', [nearWall], GRID, 5);
+    expect(result.impact).toBe(true);
+    expect(result.cells.map(c => c.x)).toEqual([18, 19]);
+  });
+
+  it('detects an immediate wall impact with no lead-up cells', () => {
+    const atWall = { x: 19, y: 0, z: 10 };
+    const result = projectDangerPath(atWall, 'RIGHT', [atWall], GRID, 5);
+    expect(result.impact).toBe(true);
+    expect(result.cells).toEqual([]);
+  });
+
+  it('detects a body impact and includes the impact cell', () => {
+    const snake = [
+      head,
+      { x: 13, y: 0, z: 10 }, // body segment 3 cells ahead
+      { x: 13, y: 0, z: 11 },
+    ];
+    const result = projectDangerPath(head, 'RIGHT', snake, GRID, 5);
+    expect(result.impact).toBe(true);
+    expect(result.cells).toEqual([
+      { x: 11, z: 10 },
+      { x: 12, z: 10 },
+      { x: 13, z: 10 },
+    ]);
+  });
+
+  it('ignores the queue: projects the committed heading only', () => {
+    // Same as straight projection - the danger read answers "what if I do
+    // nothing", so buffered turns are not considered
+    const result = projectDangerPath(head, 'UP', [head], GRID, 5);
+    expect(result.cells.every(c => c.x === head.x)).toBe(true);
+  });
+
+  it('reports no impact when the obstacle is beyond the scan range', () => {
+    const snake = [head, { x: 16, y: 0, z: 10 }]; // 6 cells ahead
+    const result = projectDangerPath(head, 'RIGHT', snake, GRID, 5);
+    expect(result.impact).toBe(false);
+    expect(result.cells).toHaveLength(5);
   });
 });
