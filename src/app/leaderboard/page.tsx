@@ -6,7 +6,7 @@
  * Per SO-004: Social discovery by Day 2-3
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -21,34 +21,43 @@ import { useLeaderboardRealtime, type HighScoreEvent } from '@/hooks/useLeaderbo
 import { useToast } from '@/components/ui/Toast';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
+import { IconTrophy } from '@/components/ui/icons';
 
 type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
 
-const DYNASTY_COLORS: Record<DynastyId, string> = {
-  CYBER: '#06B6D4',
-  PRIMAL: '#4A7C2A',
-  COSMIC: '#8B5CF6',
+// Dynasty tokens (match tailwind cyber/primal/cosmic colors)
+const DYNASTY_CHIP_SELECTED: Record<DynastyId, string> = {
+  CYBER: 'bg-cyber border-cyber text-void-deep shadow-glow-sm shadow-cyber/60',
+  PRIMAL: 'bg-primal border-primal text-bone-white shadow-glow-sm shadow-primal/60',
+  COSMIC: 'bg-cosmic border-cosmic text-bone-white shadow-glow-sm shadow-cosmic/60',
+};
+
+// Podium metals (gold / silver / bronze)
+const PODIUM: Record<number, { glow: string; text: string; label: string }> = {
+  1: { glow: '#fbbf24', text: 'text-rarity-legendary', label: '1st' },
+  2: { glow: '#d1d5db', text: 'text-gray-300', label: '2nd' },
+  3: { glow: '#d97706', text: 'text-amber-500', label: '3rd' },
 };
 
 // Rank badge component
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) {
     return (
-      <span className="inline-flex items-center justify-center w-8 h-8 rounded-arcade bg-yellow-500 text-scale-blue-dark font-display text-sm shadow-[0_0_12px_rgba(234,179,8,0.5)]">
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-arcade bg-rarity-legendary text-void-deep font-display text-sm shadow-glow-sm shadow-rarity-legendary/60">
         1
       </span>
     );
   }
   if (rank === 2) {
     return (
-      <span className="inline-flex items-center justify-center w-8 h-8 rounded-arcade bg-gray-300 text-scale-blue-dark font-display text-sm shadow-[0_0_8px_rgba(156,163,175,0.4)]">
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-arcade bg-gray-300 text-void-deep font-display text-sm shadow-glow-sm shadow-gray-300/40">
         2
       </span>
     );
   }
   if (rank === 3) {
     return (
-      <span className="inline-flex items-center justify-center w-8 h-8 rounded-arcade bg-amber-600 text-bone-white font-display text-sm shadow-[0_0_8px_rgba(217,119,6,0.4)]">
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-arcade bg-amber-600 text-bone-white font-display text-sm shadow-glow-sm shadow-amber-600/50">
         3
       </span>
     );
@@ -126,24 +135,26 @@ export default function LeaderboardPage() {
   }, [fetchLeaderboard]);
 
   const myRank = entries.find(e => e.playerId === user?.id)?.rank;
+  const podiumEntries = entries.filter(e => e.rank >= 1 && e.rank <= 3);
 
   return (
-    <div className="min-h-screen bg-scale-blue-dark text-bone-white">
+    <div className="app-bg text-bone-white">
       <NavBar />
 
       {/* Content with top padding for fixed nav */}
       <div className="max-w-5xl mx-auto px-4 pt-20 pb-12">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
           <div>
-            <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">
+            <h1 className="heading-display text-4xl text-venom-orange text-glow-orange flex items-center gap-3">
+              <IconTrophy size={34} />
               Leaderboard
             </h1>
             <div className="flex items-center gap-3 mt-1">
               <p className="text-beige font-body">Compete with other players</p>
               {isConnected && (
-                <span className="flex items-center gap-1.5 text-xs text-green-400 font-body">
-                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                <span className="flex items-center gap-1.5 text-xs text-rarity-uncommon font-body">
+                  <span className="w-2 h-2 bg-rarity-uncommon rounded-full animate-pulse" />
                   Live
                 </span>
               )}
@@ -151,24 +162,24 @@ export default function LeaderboardPage() {
           </div>
           <Link
             href="/game"
-            className="px-6 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+            className="btn-go self-start px-6 py-3 min-h-[44px] inline-flex items-center"
           >
             Play
           </Link>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-4 mb-8">
+        <div className="flex flex-wrap gap-4 mb-8 animate-fade-up">
           {/* Time Filter */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(['global', 'weekly', 'daily'] as LeaderboardType[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setType(t)}
-                className={`px-4 py-2 rounded-arcade border-[3px] font-display uppercase text-sm transition-all ${
+                className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-display uppercase text-sm transition-all ${
                   type === t
-                    ? 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark'
-                    : 'bg-scale-blue border-scale-blue-light text-beige hover:border-venom-orange hover:text-bone-white'
+                    ? 'bg-cta-gradient border-venom-orange-light text-void-deep shadow-glow-sm shadow-venom-orange/50'
+                    : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange hover:text-bone-white'
                 }`}
               >
                 {t}
@@ -177,13 +188,13 @@ export default function LeaderboardPage() {
           </div>
 
           {/* Bracket Filter */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setBracket('all')}
-              className={`px-4 py-2 rounded-arcade border-[3px] font-body text-sm transition-all ${
+              className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-body text-sm transition-all ${
                 bracket === 'all'
                   ? 'bg-scale-blue-light border-scale-blue-light text-bone-white'
-                  : 'bg-scale-blue border-scale-blue-light text-beige hover:border-venom-orange'
+                  : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange'
               }`}
             >
               All Brackets
@@ -192,14 +203,15 @@ export default function LeaderboardPage() {
               <button
                 key={b}
                 onClick={() => setBracket(b)}
-                className={`px-4 py-2 rounded-arcade border-[3px] font-body text-sm transition-all ${
+                className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-body text-sm transition-all ${
                   bracket === b
                     ? 'text-bone-white border-transparent'
-                    : 'bg-scale-blue border-scale-blue-light text-beige hover:border-venom-orange'
+                    : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange'
                 }`}
                 style={{
                   backgroundColor: bracket === b ? BRACKET_COLORS[b] : undefined,
                   borderColor: bracket === b ? BRACKET_COLORS[b] : undefined,
+                  boxShadow: bracket === b ? `0 0 10px -3px ${BRACKET_COLORS[b]}` : undefined,
                 }}
               >
                 {b.charAt(0).toUpperCase() + b.slice(1)}
@@ -209,13 +221,13 @@ export default function LeaderboardPage() {
 
           {/* Dynasty Filter (only for weekly/daily) */}
           {type !== 'global' && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setDynasty('all')}
-                className={`px-4 py-2 rounded-arcade border-[3px] font-body text-sm transition-all ${
+                className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-body text-sm transition-all ${
                   dynasty === 'all'
                     ? 'bg-scale-blue-light border-scale-blue-light text-bone-white'
-                    : 'bg-scale-blue border-scale-blue-light text-beige hover:border-venom-orange'
+                    : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange'
                 }`}
               >
                 All Dynasties
@@ -224,15 +236,11 @@ export default function LeaderboardPage() {
                 <button
                   key={d}
                   onClick={() => setDynasty(d)}
-                  className={`px-4 py-2 rounded-arcade border-[3px] font-display uppercase text-sm transition-all ${
+                  className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-display uppercase text-sm transition-all ${
                     dynasty === d
-                      ? 'text-bone-white border-transparent'
-                      : 'bg-scale-blue border-scale-blue-light text-beige hover:border-venom-orange'
+                      ? DYNASTY_CHIP_SELECTED[d]
+                      : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange'
                   }`}
-                  style={{
-                    backgroundColor: dynasty === d ? DYNASTY_COLORS[d] : undefined,
-                    borderColor: dynasty === d ? DYNASTY_COLORS[d] : undefined,
-                  }}
                 >
                   {d}
                 </button>
@@ -243,17 +251,51 @@ export default function LeaderboardPage() {
 
         {/* My Position */}
         {myRank && (
-          <div className="bg-venom-orange/10 border-[3px] border-venom-orange rounded-arcade p-4 mb-6">
+          <div className="panel-glow [--glow:#D98324] p-4 mb-6 animate-fade-up">
             <p className="text-venom-orange font-body">
-              Your Rank: <span className="font-display text-2xl">#{myRank}</span>
+              Your Rank: <span className="font-display text-2xl text-glow-orange">#{myRank}</span>
             </p>
           </div>
         )}
 
+        {/* Podium - top three */}
+        {!loading && podiumEntries.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 items-end animate-fade-up">
+            {[2, 1, 3].map((rank) => {
+              const entry = podiumEntries.find(e => e.rank === rank);
+              if (!entry) return <div key={rank} />;
+              const metal = PODIUM[rank];
+              return (
+                <div
+                  key={rank}
+                  className={`panel-glow text-center px-2 sm:px-4 ${
+                    rank === 1 ? 'py-6 animate-breathe' : 'py-4'
+                  }`}
+                  style={{ '--glow': metal.glow } as CSSProperties}
+                >
+                  <IconTrophy
+                    size={rank === 1 ? 28 : 20}
+                    className={`mx-auto mb-1 ${metal.text}`}
+                  />
+                  <p className={`font-display ${metal.text} ${rank === 1 ? 'text-lg' : 'text-sm'}`}>
+                    {metal.label}
+                  </p>
+                  <p className="font-body text-bone-white truncate text-sm sm:text-base">
+                    {entry.playerName}
+                  </p>
+                  <p className={`font-display ${metal.text} ${rank === 1 ? 'text-2xl' : 'text-lg'}`}>
+                    {entry.score.toLocaleString()}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Leaderboard Table */}
-        <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade overflow-hidden">
+        <div className="panel-elevated overflow-hidden animate-fade-up">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-4 p-4 bg-scale-blue-dark border-b border-scale-blue-light font-display uppercase text-sm text-beige">
+          <div className="grid grid-cols-12 gap-4 p-4 bg-void/60 border-b border-scale-blue-light/60 label-arcade">
             <div className="col-span-1">Rank</div>
             <div className="col-span-4">Player</div>
             <div className="col-span-2 text-right">Score</div>
@@ -276,10 +318,12 @@ export default function LeaderboardPage() {
             entries.map((entry, idx) => (
               <div
                 key={entry.playerId}
-                className={`grid grid-cols-12 gap-4 p-4 border-t border-scale-blue-light items-center transition-all hover:bg-scale-blue-light/30 ${
+                className={`grid grid-cols-12 gap-4 p-4 border-t border-scale-blue-light/40 items-center transition-all hover:bg-scale-blue-light/20 ${
                   entry.playerId === user?.id ? 'bg-venom-orange/10' : ''
                 } ${
-                  entry.rank <= 3 ? 'bg-scale-blue-dark/50' : ''
+                  entry.rank === 1 ? 'bg-gradient-to-r from-rarity-legendary/10 to-transparent' :
+                  entry.rank === 2 ? 'bg-gradient-to-r from-gray-300/10 to-transparent' :
+                  entry.rank === 3 ? 'bg-gradient-to-r from-amber-600/10 to-transparent' : ''
                 }`}
               >
                 {/* Rank */}
@@ -299,7 +343,7 @@ export default function LeaderboardPage() {
 
                 {/* Score */}
                 <div className={`col-span-2 text-right font-display ${
-                  entry.rank === 1 ? 'text-yellow-400 text-lg' :
+                  entry.rank === 1 ? 'text-rarity-legendary text-lg [--glow:#fbbf24] text-glow' :
                   entry.rank === 2 ? 'text-gray-300' :
                   entry.rank === 3 ? 'text-amber-500' :
                   'text-bone-white'
