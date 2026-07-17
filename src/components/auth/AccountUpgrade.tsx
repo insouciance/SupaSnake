@@ -23,7 +23,7 @@ export function describeUpgradeError(message: string): {
   text: string;
   offerSignIn: boolean;
 } {
-  if (/already (been )?registered|already exists/i.test(message)) {
+  if (/email_exists|already (been )?registered|already exists/i.test(message)) {
     return {
       text: 'That email already has a SupaSnake account.',
       offerSignIn: true,
@@ -32,6 +32,24 @@ export function describeUpgradeError(message: string): {
   if (/rate limit|too many/i.test(message)) {
     return {
       text: 'Too many attempts. Take a breather and try again in a minute.',
+      offerSignIn: false,
+    };
+  }
+  if (/weak_password/i.test(message)) {
+    return {
+      text: 'Password needs at least 8 characters.',
+      offerSignIn: false,
+    };
+  }
+  if (/invalid_email/i.test(message)) {
+    return { text: 'That email address does not look valid.', offerSignIn: false };
+  }
+  if (/network error/i.test(message)) {
+    return { text: message, offerSignIn: false };
+  }
+  if (/upgrade_failed|server error/i.test(message)) {
+    return {
+      text: 'Something went wrong creating the account. Please try again.',
       offerSignIn: false,
     };
   }

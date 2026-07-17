@@ -55,16 +55,22 @@ export function SaveProgressBanner() {
     setHydrated(true);
   }, []);
 
-  if (isLoading || !isAnonymous || !hydrated) return null;
-
   const handleDismiss = () => {
     dismissUpgradeBanner();
     setDismissed(true);
   };
 
+  // The modal renders OUTSIDE the banner/chip gate: gating it on
+  // isAnonymous/isLoading unmounted it mid-upgrade (auth state flips during
+  // the request), destroying the form and its success screen - the reported
+  // "fields just got emptied with no feedback" bug. Only the banner/chip
+  // hide for registered players; the open modal survives the transition to
+  // show "Progress Saved!".
+  const showPromptSurfaces = !isLoading && isAnonymous && hydrated;
+
   return (
     <>
-      {dismissed ? (
+      {!showPromptSurfaces ? null : dismissed ? (
         <button
           onClick={() => setShowModal(true)}
           className="fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2.5 min-h-[44px] bg-void-deep/90 border-2 border-venom-orange/60 rounded-arcade text-xs font-body font-semibold text-venom-orange hover:border-venom-orange transition-all shadow-glow-sm shadow-venom-orange/40"

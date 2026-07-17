@@ -77,12 +77,23 @@ beforeEach(() => {
 });
 
 describe('upgradeAnonymousToEmail', () => {
+  // The upgrade now goes through POST /api/auth/upgrade (admin API:
+  // instant confirm + honest duplicate-email errors) instead of the
+  // anti-enumerating client updateUser flow.
+  const mockFetch = jest.fn();
+  beforeEach(() => {
+    global.fetch = mockFetch as unknown as typeof fetch;
+  });
+
   it('refreshes the session after a successful upgrade so is_anonymous clears', async () => {
     const ctx = setup(ANON_USER);
     await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
     expect(ctx.current?.isAnonymous).toBe(true);
 
-    mockUpdateUser.mockResolvedValue({ data: { user: UPGRADED_USER }, error: null });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, emailConfirmed: true }),
+    });
     mockRefreshSession.mockResolvedValue({
       data: { session: makeSession(UPGRADED_USER), user: UPGRADED_USER },
       error: null,
@@ -93,51 +104,30 @@ describe('upgradeAnonymousToEmail', () => {
       result = await ctx.current!.upgradeAnonymousToEmail('p1@example.com', 'Password123');
     });
 
-    expect(mockUpdateUser).toHaveBeenCalledWith({
-      email: 'p1@example.com',
-      password: 'Password123',
-    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/auth/upgrade',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'p1@example.com', password: 'Password123' }),
+      })
+    );
     expect(mockRefreshSession).toHaveBeenCalledTimes(1);
     expect(result?.error).toBeNull();
-    // Auto-confirm project: email confirmed immediately, nothing pending
+    // Admin upgrade confirms instantly - nothing pending
     expect(result?.pendingEmailConfirmation).toBe(false);
     // Context now reflects the registered account (same user id)
     expect(ctx.current?.isAnonymous).toBe(false);
     expect(ctx.current?.user?.id).toBe(ANON_USER.id);
   });
 
-  it('reports pendingEmailConfirmation when the email is not yet confirmed', async () => {
+  it('surfaces email_exists without refreshing the session', async () => {
     const ctx = setup(ANON_USER);
     await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
 
-    const pendingUser: AnyUser = {
-      id: 'user-1',
-      is_anonymous: true,
-      email: 'p1@example.com',
-      email_confirmed_at: null,
-    };
-    mockUpdateUser.mockResolvedValue({ data: { user: pendingUser }, error: null });
-    mockRefreshSession.mockResolvedValue({
-      data: { session: makeSession(pendingUser), user: pendingUser },
-      error: null,
-    });
-
-    let result: { error: Error | null; pendingEmailConfirmation: boolean } | undefined;
-    await act(async () => {
-      result = await ctx.current!.upgradeAnonymousToEmail('p1@example.com', 'Password123');
-    });
-
-    expect(result?.error).toBeNull();
-    expect(result?.pendingEmailConfirmation).toBe(true);
-  });
-
-  it('does not refresh the session when the upgrade fails', async () => {
-    const ctx = setup(ANON_USER);
-    await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
-
-    mockUpdateUser.mockResolvedValue({
-      data: { user: null },
-      error: { message: 'User already registered' },
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'email_exists' }),
     });
 
     let result: { error: Error | null; pendingEmailConfirmation: boolean } | undefined;
@@ -145,9 +135,45 @@ describe('upgradeAnonymousToEmail', () => {
       result = await ctx.current!.upgradeAnonymousToEmail('taken@example.com', 'Password123');
     });
 
-    expect(result?.error?.message).toBe('User already registered');
+    expect(result?.error?.message).toBe('email_exists');
     expect(mockRefreshSession).not.toHaveBeenCalled();
     expect(ctx.current?.isAnonymous).toBe(true);
+  });
+
+  it('reports a friendly error on network failure', async () => {
+    const ctx = setup(ANON_USER);
+    await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
+
+    mockFetch.mockRejectedValue(new TypeError('fetch failed'));
+
+    let result: { error: Error | null; pendingEmailConfirmation: boolean } | undefined;
+    await act(async () => {
+      result = await ctx.current!.upgradeAnonymousToEmail('p1@example.com', 'Password123');
+    });
+
+    expect(result?.error?.message).toMatch(/network error/i);
+    expect(mockRefreshSession).not.toHaveBeenCalled();
+  });
+
+  it('does not toggle the global isLoading during the upgrade (form must stay mounted)', async () => {
+    const ctx = setup(ANON_USER);
+    await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
+
+    let loadingDuringRequest: boolean | undefined;
+    mockFetch.mockImplementation(async () => {
+      loadingDuringRequest = ctx.current?.isLoading;
+      return { ok: true, json: async () => ({ success: true }) };
+    });
+    mockRefreshSession.mockResolvedValue({
+      data: { session: makeSession(UPGRADED_USER), user: UPGRADED_USER },
+      error: null,
+    });
+
+    await act(async () => {
+      await ctx.current!.upgradeAnonymousToEmail('p1@example.com', 'Password123');
+    });
+
+    expect(loadingDuringRequest).toBe(false);
   });
 
   it('rejects upgrade for non-anonymous users', async () => {

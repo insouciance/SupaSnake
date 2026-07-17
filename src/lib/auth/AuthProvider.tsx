@@ -120,17 +120,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    setIsLoading(true);
-    // Update user with email and password - this links the anonymous account
-    // (same user id, so server-side progress is preserved)
-    const { error } = await supabase.auth.updateUser({
-      email,
-      password,
-    });
+    // Deliberately does NOT toggle the global isLoading: surfaces hosting
+    // the upgrade form gate on it and would unmount the form mid-request,
+    // losing its success/error state (the "fields just got emptied" bug).
+    // The form manages its own submit state.
 
-    if (error) {
-      setIsLoading(false);
-      return { error: new Error(error.message), pendingEmailConfirmation: false };
+    // Server-side upgrade (admin API): attaches email+password to the SAME
+    // user id with instant confirmation, and reports duplicate emails
+    // honestly - the client updateUser flow anti-enumerates and pretends
+    // success without attaching anything.
+    if (!session?.access_token) {
+      return {
+        error: new Error('No active session'),
+        pendingEmailConfirmation: false,
+      };
+    }
+
+    let response: Response;
+    try {
+      response = await fetch('/api/auth/upgrade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      return {
+        error: new Error('Network error - please try again'),
+        pendingEmailConfirmation: false,
+      };
+    }
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      return {
+        error: new Error(body.error || 'upgrade_failed'),
+        pendingEmailConfirmation: false,
+      };
     }
 
     // The current access token still carries is_anonymous=true until it is
@@ -143,15 +171,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(refreshed.session);
       setUser(refreshed.session.user ?? refreshed.user ?? null);
     }
-    setIsLoading(false);
 
-    // Auto-confirm projects return a confirmed email right away; projects
-    // with verification enabled leave it pending until the link is clicked.
-    const upgradedUser = refreshed?.session?.user ?? refreshed?.user ?? null;
-    const emailConfirmed = Boolean(
-      upgradedUser?.email && upgradedUser?.email_confirmed_at
-    );
-    return { error: null, pendingEmailConfirmation: !emailConfirmed };
+    // The admin upgrade confirms the email instantly - no pending link.
+    return { error: null, pendingEmailConfirmation: false };
   };
 
   const signInWithOAuth = async (provider: Provider) => {
