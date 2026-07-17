@@ -2,8 +2,8 @@
 
 /**
  * CollectionProgress - Shows dynasty collection completion progress
- * Displays "Collection: X/Y (Z%)" with a visual progress bar
- * Dynasty-themed styling with primary color for filled portion
+ * Displays "Collection: X/Y (Z%)" with a glowing progress bar and a
+ * set-bonus hint. Dynasty-themed: the fill glows in the dynasty color.
  */
 
 import React from 'react';
@@ -32,8 +32,8 @@ function hexToRgba(hex: string, opacity: number): string {
 /**
  * CollectionProgress Component
  *
- * Displays collection completion status with text and visual progress bar.
- * Format: "Collection: X/Y (Z%)" followed by a progress bar.
+ * Displays collection completion status with text and a glowing bar.
+ * Format: "Collection: X/Y (Z%)" above the bar, set-bonus hint below.
  * Handles edge case where total is 0 by showing 0%.
  */
 export function CollectionProgress({
@@ -47,11 +47,12 @@ export function CollectionProgress({
   // Calculate progress bar fill width
   const fillWidth = total === 0 ? 0 : (owned / total) * 100;
 
-  const primaryColor = dynastyTheme.primary;
+  const glowColor = dynastyTheme.glow;
+  const isComplete = total > 0 && owned >= total;
 
   return (
     <div
-      className="flex items-center gap-3"
+      className="flex flex-col gap-1.5 min-w-0"
       role="progressbar"
       aria-valuenow={owned}
       aria-valuemin={0}
@@ -59,32 +60,34 @@ export function CollectionProgress({
       aria-label={`Collection progress: ${owned} of ${total} variants owned, ${percentage}% complete`}
     >
       {/* Text label */}
-      <span
-        className="text-sm font-medium whitespace-nowrap"
-        style={{ color: primaryColor }}
-      >
-        Collection: {owned}/{total} ({percentage}%)
-      </span>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="label-arcade whitespace-nowrap">
+          Collection: {owned}/{total} ({percentage}%)
+        </span>
+      </div>
 
-      {/* Progress bar container */}
-      <div
-        className="relative rounded-full overflow-hidden"
-        style={{
-          width: '100px',
-          height: '8px',
-          backgroundColor: hexToRgba('#6b7280', 0.4), // Gray background for unfilled
-        }}
-      >
-        {/* Filled portion */}
+      {/* Progress bar track */}
+      <div className="relative h-2 w-full rounded-arcade overflow-hidden border border-scale-blue-light/50 bg-void-deep/80">
+        {/* Filled portion - emissive dynasty glow */}
         <div
-          className="absolute top-0 left-0 h-full rounded-full transition-all duration-300 ease-out"
+          className="absolute top-0 left-0 h-full rounded-arcade transition-all duration-300 ease-out"
           style={{
             width: `${fillWidth}%`,
-            backgroundColor: primaryColor,
-            boxShadow: fillWidth > 0 ? `0 0 8px ${hexToRgba(primaryColor, 0.5)}` : 'none',
+            background: `linear-gradient(90deg, ${hexToRgba(glowColor, 0.65)} 0%, ${glowColor} 100%)`,
+            boxShadow: fillWidth > 0 ? `0 0 10px ${hexToRgba(glowColor, 0.7)}` : 'none',
           }}
         />
       </div>
+
+      {/* Set-bonus hint */}
+      <span
+        className="text-[11px] font-body leading-tight"
+        style={{ color: isComplete ? glowColor : 'rgba(209, 191, 168, 0.55)' }}
+      >
+        {isComplete
+          ? 'Set complete - dynasty bonus active'
+          : 'Complete the set to earn the dynasty set bonus'}
+      </span>
     </div>
   );
 }

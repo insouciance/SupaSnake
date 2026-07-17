@@ -29,7 +29,8 @@ interface TabProps {
 }
 
 /**
- * Individual dynasty tab with colored underline when active
+ * Individual dynasty tab - segment of the glowing segmented control.
+ * The active segment lights up in its dynasty's emissive color.
  */
 function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
   const theme = useDynastyTheme(dynasty.name);
@@ -44,24 +45,27 @@ function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
       role="tab"
       className={`
         flex-1 flex flex-col items-center justify-center
-        min-h-[44px] px-2 py-3
+        min-h-[44px] px-2 py-2 rounded-arcade border
         transition-all duration-200 ease-out
         focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
-        focus-visible:ring-offset-[#1a1a2e]
-        ${isActive ? 'bg-white/5' : 'bg-transparent hover:bg-white/5'}
+        focus-visible:ring-offset-void
+        ${isActive ? 'bg-scale-blue/70' : 'border-transparent bg-transparent hover:bg-bone-white/5'}
       `}
-      style={{
-        borderBottom: isActive ? `3px solid ${theme.primary}` : '3px solid transparent',
-      }}
+      style={
+        isActive
+          ? {
+              borderColor: theme.glow,
+              boxShadow: `0 0 16px -4px ${theme.glow}, inset 0 0 10px -6px ${theme.glow}`,
+            }
+          : undefined
+      }
     >
       {/* Dynasty name */}
       <span
-        className={`
-          font-display uppercase tracking-wide text-sm font-semibold
-          transition-colors duration-200 ease-out
-        `}
+        className="font-display uppercase tracking-wide-arcade text-sm transition-colors duration-200 ease-out"
         style={{
-          color: isActive ? theme.primary : '#8892b0',
+          color: isActive ? theme.glow : 'rgba(209, 191, 168, 0.6)',
+          textShadow: isActive ? `0 0 12px ${theme.glow}` : undefined,
         }}
       >
         {dynasty.name}
@@ -69,12 +73,9 @@ function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
 
       {/* Completion count */}
       <span
-        className={`
-          font-mono text-xs mt-0.5
-          transition-colors duration-200 ease-out
-        `}
+        className="font-mono text-xs mt-0.5 transition-colors duration-200 ease-out"
         style={{
-          color: isActive ? theme.primary : '#8892b0',
+          color: isActive ? theme.glow : 'rgba(209, 191, 168, 0.6)',
           opacity: isActive ? 0.9 : 0.7,
         }}
       >
@@ -175,12 +176,12 @@ export function DynastyTabs({
     <nav
       role="tablist"
       aria-label="Dynasty selection"
-      className="w-full bg-[#1a1a2e] border-b border-white/10"
+      className="w-full px-4 pt-3"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      <div className="flex max-w-6xl mx-auto">
+      <div className="panel flex gap-1 p-1 max-w-6xl mx-auto">
         {dynasties.map((dynasty) => (
           <Tab
             key={dynasty.id}

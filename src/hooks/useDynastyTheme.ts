@@ -13,6 +13,12 @@ export interface DynastyTheme {
   gradient: string;      // CSS gradient string
   shadow: string;        // CSS box-shadow string
   textOnPrimary: string; // Readable text on primary
+  /**
+   * Bright emissive color for glows/labels on the dark void surfaces.
+   * Tracks the tailwind dynasty tokens (cyber/primal/cosmic) - the raw
+   * primary of PRIMAL/COSMIC is too dark to read as a glow.
+   */
+  glow: string;
 }
 
 export const dynastyThemes: Record<string, DynastyTheme> = {
@@ -22,6 +28,7 @@ export const dynastyThemes: Record<string, DynastyTheme> = {
     gradient: 'linear-gradient(135deg, #00FFFF 0%, #FF00FF 100%)',
     shadow: '0 4px 20px rgba(0, 255, 255, 0.3)',
     textOnPrimary: '#000000', // Black on cyan (light background)
+    glow: '#00FFFF',
   },
   PRIMAL: {
     primary: '#2d5016',
@@ -29,6 +36,7 @@ export const dynastyThemes: Record<string, DynastyTheme> = {
     gradient: 'linear-gradient(135deg, #2d5016 0%, #8b4513 100%)',
     shadow: '0 4px 20px rgba(45, 80, 22, 0.3)',
     textOnPrimary: '#FFFFFF', // White on dark green
+    glow: '#4a7c2a',
   },
   COSMIC: {
     primary: '#4a0e4e',
@@ -36,6 +44,7 @@ export const dynastyThemes: Record<string, DynastyTheme> = {
     gradient: 'linear-gradient(135deg, #4a0e4e 0%, #ffd700 100%)',
     shadow: '0 4px 20px rgba(74, 14, 78, 0.3)',
     textOnPrimary: '#FFFFFF', // White on dark purple
+    glow: '#a855f7',
   },
 };
 

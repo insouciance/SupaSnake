@@ -1,7 +1,8 @@
 /**
  * EmptySlot - Placeholder for future snake variants
- * Displays a dashed border card with "?" icon and "Coming soon" text
- * Used in CollectionGrid when dynasty has fewer variants than grid slots
+ * A dashed void slot: near-black surface, dashed dynasty-tinted border,
+ * dim "?" glyph and "Coming soon" label.
+ * Used in CollectionGrid when dynasty has fewer variants than grid slots.
  */
 
 import React from 'react';
@@ -30,53 +31,33 @@ function hexToRgba(hex: string, opacity: number): string {
  * Non-interactive but maintains 44px minimum touch target for layout consistency.
  */
 export function EmptySlot({ dynastyTheme }: EmptySlotProps): React.ReactElement<any> {
-  const primaryColor = dynastyTheme.primary;
-  const backgroundGradient = `linear-gradient(135deg, ${hexToRgba(dynastyTheme.primary, 0.1)} 0%, ${hexToRgba(dynastyTheme.secondary, 0.1)} 100%)`;
+  const glow = dynastyTheme.glow;
 
   return (
     <div
-      className="relative flex flex-col items-center justify-center rounded-lg"
+      className="relative flex flex-col items-center justify-center rounded-arcade border-2 border-dashed bg-void-deep/50"
       style={{
         aspectRatio: '3 / 4',
         minHeight: '44px',
         minWidth: '44px',
-        border: `2px dashed ${primaryColor}`,
-        background: backgroundGradient,
+        borderColor: hexToRgba(glow, 0.3),
       }}
       aria-label="Empty slot - Coming soon"
       role="img"
     >
-      {/* Question mark icon */}
-      <div
-        className="flex items-center justify-center rounded-full mb-2"
-        style={{
-          width: '48px',
-          height: '48px',
-          border: `2px dashed ${hexToRgba(primaryColor, 0.5)}`,
-          color: hexToRgba(primaryColor, 0.6),
-        }}
+      {/* Question mark glyph */}
+      <span
+        className="font-display text-3xl mb-2 select-none"
+        style={{ color: hexToRgba(glow, 0.35) }}
+        aria-hidden="true"
       >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <path
-            d="M12 4C9.79 4 8 5.79 8 8H10C10 6.9 10.9 6 12 6C13.1 6 14 6.9 14 8C14 9.5 12 9.75 12 12H14C14 10.75 16 10.5 16 8C16 5.79 14.21 4 12 4ZM11 14V16H13V14H11Z"
-            fill="currentColor"
-          />
-        </svg>
-      </div>
+        ?
+      </span>
 
       {/* Coming soon text */}
       <span
-        className="text-xs font-medium tracking-wide uppercase"
-        style={{
-          color: hexToRgba(primaryColor, 0.6),
-        }}
+        className="label-arcade text-[10px]"
+        style={{ color: hexToRgba(glow, 0.45) }}
       >
         Coming soon
       </span>

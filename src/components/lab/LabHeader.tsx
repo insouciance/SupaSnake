@@ -3,8 +3,10 @@
 /**
  * LabHeader - Top header for Lab screen
  * Displays title, energy status, and DNA balance
- * Mobile-first with sticky positioning
+ * Mobile-first with sticky positioning (sits below the fixed global nav)
  */
+
+import { IconBolt, IconDna } from '@/components/ui/icons';
 
 interface LabHeaderProps {
   /** Current energy amount */
@@ -30,34 +32,28 @@ export function LabHeader({ energy, maxEnergy, dna }: LabHeaderProps) {
 
   return (
     <header
-      className="sticky top-0 z-40 w-full h-[60px] bg-[#1a1a2e] border-b border-scale-blue-light/30 backdrop-blur-sm"
+      className="sticky top-14 z-40 w-full border-b border-scale-blue-light/40 bg-void/85 backdrop-blur-sm"
       role="banner"
       aria-label="Lab header with resources"
     >
-      <div className="h-full px-4 flex items-center justify-between max-w-6xl mx-auto">
+      <div className="h-[60px] px-4 flex items-center justify-between max-w-6xl mx-auto">
         {/* Title - Left side */}
-        <h1 className="font-display uppercase tracking-arcade text-bone-white text-lg sm:text-xl">
-          SupaSnake Lab
+        <h1 className="heading-display text-glow-orange text-bone-white text-lg sm:text-xl">
+          Supasnake <span className="text-venom-orange">Lab</span>
         </h1>
 
         {/* Resources - Right side */}
-        <div className="flex items-center gap-4 sm:gap-6">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Energy Display */}
           <div
-            className="flex items-center gap-1.5"
+            className="panel flex items-center gap-1.5 px-2.5 py-1.5"
             aria-label={`Energy: ${energy} of ${maxEnergy}`}
             title={`Energy: ${energy}/${maxEnergy} (${energyPercent}%)`}
           >
-            <span
-              className="text-base sm:text-lg"
-              role="img"
-              aria-hidden="true"
-            >
-              {/* Battery icon with color based on energy level */}
-              <span className={energyPercent > 20 ? 'opacity-100' : 'opacity-50'}>
-                {energyPercent > 75 ? '🔋' : energyPercent > 25 ? '🔋' : '🪫'}
-              </span>
-            </span>
+            <IconBolt
+              size={16}
+              className={energyPercent > 20 ? 'text-venom-orange' : 'text-venom-orange/50'}
+            />
             <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
               {energy}
             </span>
@@ -65,18 +61,11 @@ export function LabHeader({ energy, maxEnergy, dna }: LabHeaderProps) {
 
           {/* DNA Display */}
           <div
-            className="flex items-center gap-1.5"
+            className="panel flex items-center gap-1.5 px-2.5 py-1.5"
             aria-label={`DNA balance: ${formatWithCommas(dna)}`}
             title={`DNA: ${formatWithCommas(dna)}`}
           >
-            <span
-              className="text-base sm:text-lg"
-              role="img"
-              aria-hidden="true"
-            >
-              {/* Diamond/gem icon for DNA */}
-              💎
-            </span>
+            <IconDna size={16} className="text-cyber" />
             <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
               {formatWithCommas(dna)}
             </span>

@@ -6,7 +6,7 @@
  * Uses useCollection hook for state management + gameStore for energy.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -19,6 +19,7 @@ import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 
 import { Navigation } from '@/components/ui/Navigation';
+import { IconEgg } from '@/components/ui/icons';
 import { LabHeader } from '@/components/lab/LabHeader';
 import { DynastyTabs } from '@/components/lab/DynastyTabs';
 import { CollectionProgress } from '@/components/lab/CollectionProgress';
@@ -36,6 +37,15 @@ export default function LabPage() {
   const router = useRouter();
   const { isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+  // Celebrate a fresh unlock with a brief shimmer on the new card
+  const [justUnlockedVariantId, setJustUnlockedVariantId] = useState<string | null>(null);
+  const shimmerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (shimmerTimeoutRef.current) clearTimeout(shimmerTimeoutRef.current);
+    };
+  }, []);
 
   // Collection state from hook
   const {
@@ -107,11 +117,22 @@ export default function LabPage() {
    */
   const handleUnlockConfirm = useCallback(async () => {
     if (selectedVariant) {
-      await unlockVariant(selectedVariant.id);
+      const unlockedId = selectedVariant.id;
+      await unlockVariant(unlockedId);
+
+      const succeeded = useCollectionStore.getState().unlockError === null;
+
+      // Celebration shimmer on the freshly unlocked card
+      if (succeeded) {
+        setJustUnlockedVariantId(unlockedId);
+        if (shimmerTimeoutRef.current) clearTimeout(shimmerTimeoutRef.current);
+        shimmerTimeoutRef.current = setTimeout(() => {
+          setJustUnlockedVariantId(null);
+        }, 2400);
+      }
 
       // High-investment moment: after the first successful unlock, prompt
       // anonymous players once to secure their progress with an account
-      const succeeded = useCollectionStore.getState().unlockError === null;
       if (succeeded && isAnonymous && shouldShowUpgradePrompt('first-unlock')) {
         markUpgradePrompted('first-unlock');
         setShowUpgradePrompt(true);
@@ -141,12 +162,12 @@ export default function LabPage() {
 
   if (isLoading || authLoading) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
+      <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
         <div className="flex items-center justify-center min-h-screen pt-14">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-[#8892b0] font-body">Loading your collection...</p>
+          <div className="text-center animate-fade-up">
+            <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4 shadow-glow-sm shadow-venom-orange/50" />
+            <p className="text-beige/70 font-body">Loading your collection...</p>
           </div>
         </div>
       </div>
@@ -159,20 +180,17 @@ export default function LabPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
+      <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
         <div className="flex items-center justify-center min-h-screen pt-14 px-4">
-          <div className="bg-[#16213e] border-2 border-[#00FFFF]/30 rounded-lg p-8 text-center max-w-md space-y-6">
-            <h1 className="text-3xl font-display uppercase tracking-arcade text-[#00FFFF]">
+          <div className="panel-glow [--glow:#00FFFF] animate-pop-in p-8 text-center max-w-md space-y-6">
+            <h1 className="heading-display text-3xl text-cyber text-glow">
               Snake Lab
             </h1>
-            <p className="text-[#8892b0] font-body">
+            <p className="text-beige/70 font-body">
               Sign in to view your snake collection and unlock new variants.
             </p>
-            <Link
-              href="/login"
-              className="inline-block px-8 py-3 bg-[#00FFFF] rounded-lg font-display uppercase tracking-arcade text-[#1a1a2e] hover:bg-[#00FFFF]/90 hover:scale-[1.02] active:scale-[0.98] transition-all"
-            >
+            <Link href="/login" className="btn-go inline-block px-8 py-3">
               Sign In to Play
             </Link>
           </div>
@@ -187,18 +205,15 @@ export default function LabPage() {
 
   if (error && dynasties.length === 0) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
+      <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
         <div className="flex items-center justify-center min-h-screen pt-14 px-4">
-          <div className="bg-[#16213e] border-2 border-[#f87171]/30 rounded-lg p-8 text-center max-w-md space-y-6">
-            <h1 className="text-3xl font-display uppercase tracking-arcade text-[#f87171]">
+          <div className="panel-glow [--glow:#A42424] animate-pop-in p-8 text-center max-w-md space-y-6">
+            <h1 className="heading-display text-3xl text-strike-red">
               Error
             </h1>
-            <p className="text-[#8892b0] font-body">{error}</p>
-            <button
-              onClick={refresh}
-              className="inline-block px-8 py-3 bg-[#00FFFF] rounded-lg font-display uppercase tracking-arcade text-[#1a1a2e] hover:bg-[#00FFFF]/90 hover:scale-[1.02] active:scale-[0.98] transition-all"
-            >
+            <p className="text-beige/70 font-body">{error}</p>
+            <button onClick={refresh} className="btn-go inline-block px-8 py-3">
               Try Again
             </button>
           </div>
@@ -212,29 +227,31 @@ export default function LabPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] flex flex-col">
+    <div className="app-bg min-h-screen flex flex-col text-bone-white">
       {/* Global navigation */}
       <Navigation />
 
       {/* Header with energy and DNA - add top padding for fixed nav */}
-      <div className="pt-14">
+      <div className="pt-14 animate-fade-up">
         <LabHeader energy={energy} maxEnergy={maxEnergy} dna={dnaBalance} />
       </div>
 
-      {/* Dynasty tabs */}
+      {/* Dynasty tabs - glowing segmented control */}
       {activeDynastyId && dynasties.length > 0 && (
-        <DynastyTabs
-          dynasties={dynasties}
-          activeDynastyId={activeDynastyId}
-          onSelect={setActiveDynasty}
-          completionByDynasty={completionByDynasty}
-        />
+        <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+          <DynastyTabs
+            dynasties={dynasties}
+            activeDynastyId={activeDynastyId}
+            onSelect={setActiveDynasty}
+            completionByDynasty={completionByDynasty}
+          />
+        </div>
       )}
 
       {/* Collection progress indicator + Breeding Lab entry */}
       {activeDynasty && (
-        <div className="px-4 py-3 border-b border-white/10">
-          <div className="max-w-6xl mx-auto flex items-center gap-4">
+        <div className="px-4 py-3 animate-fade-up" style={{ animationDelay: '120ms' }}>
+          <div className="panel max-w-6xl mx-auto flex items-center gap-4 px-4 py-3">
             <div className="flex-1 min-w-0">
               <CollectionProgress
                 owned={currentCompletion.owned}
@@ -244,12 +261,11 @@ export default function LabPage() {
             </div>
             <Link
               href="/lab/breed"
-              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm bg-[#00FFFF]/10 text-[#00FFFF] border border-[#00FFFF]/40 hover:bg-[#00FFFF]/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-              style={{ minHeight: '44px' }}
+              className="btn-go shrink-0 flex items-center gap-2 px-4 py-2 text-sm min-h-[44px]"
               aria-label="Open Breeding Lab"
               data-testid="breed-entry-link"
             >
-              <span role="img" aria-hidden="true">🧪</span>
+              <IconEgg size={18} />
               <span>Breed</span>
             </Link>
           </div>
@@ -258,13 +274,13 @@ export default function LabPage() {
 
       {/* Error banner (non-fatal) */}
       {error && dynasties.length > 0 && (
-        <div className="px-4 py-3">
+        <div className="px-4 pb-3">
           <div className="max-w-6xl mx-auto">
-            <div className="p-4 bg-[#f87171]/20 border border-[#f87171]/30 rounded-lg flex items-center justify-between">
-              <p className="text-[#f87171] font-body text-sm">{error}</p>
+            <div className="panel-glow [--glow:#A42424] p-4 flex items-center justify-between">
+              <p className="text-strike-red font-body text-sm">{error}</p>
               <button
                 onClick={refresh}
-                className="text-[#f87171] hover:text-white text-sm font-medium transition-colors"
+                className="text-strike-red hover:text-bone-white text-sm font-body font-medium transition-colors"
               >
                 Retry
               </button>
@@ -274,7 +290,7 @@ export default function LabPage() {
       )}
 
       {/* Collection grid */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden animate-fade-up" style={{ animationDelay: '180ms' }}>
         <div className="h-full max-w-6xl mx-auto">
           <CollectionGrid
             variants={currentDynastyVariants}
@@ -283,6 +299,7 @@ export default function LabPage() {
             onSelectVariant={handleSelectVariant}
             isLoading={isLoading}
             equippedSnakeId={equippedSnake?.id}
+            justUnlockedVariantId={justUnlockedVariantId}
           />
         </div>
       </div>

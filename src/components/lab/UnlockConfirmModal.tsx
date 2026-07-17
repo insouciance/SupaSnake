@@ -2,13 +2,16 @@
 
 /**
  * UnlockConfirmModal - Confirmation dialog for unlocking snake variants
- * Shows variant preview, cost breakdown, and unlock/cancel actions
+ * Panel-elevated card that pops in over the void: variant preview with
+ * rarity glow, cost breakdown with DNA icons, unlock (GO) / cancel actions.
  */
 
 import React, { useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, Dynasty } from '@/shared/types/snake-data-model';
+import { RARITY_STYLE } from '@/components/lab/VariantCard';
+import { IconCheck, IconDna, IconX } from '@/components/ui/icons';
 
 export interface UnlockConfirmModalProps {
   variant: SnakeVariant;
@@ -56,48 +59,6 @@ function capitalizeRarity(rarity: string): string {
 }
 
 /**
- * Checkmark Icon for unlock button
- */
-function CheckIcon(): React.ReactElement<any> {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-/**
- * X Icon for cancel button
- */
-function XIcon(): React.ReactElement<any> {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-/**
  * Loading spinner for unlock in progress
  */
 function LoadingSpinner(): React.ReactElement<any> {
@@ -126,6 +87,18 @@ function LoadingSpinner(): React.ReactElement<any> {
 }
 
 /**
+ * DNA amount with the helix icon (replaces the old gem emoji)
+ */
+function DnaAmount({ value, className }: { value: number; className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 ${className ?? ''}`}>
+      {formatNumber(value)}
+      <IconDna size={14} aria-label="DNA" aria-hidden={false} role="img" />
+    </span>
+  );
+}
+
+/**
  * UnlockConfirmModal Component
  *
  * Modal for confirming variant unlock purchase.
@@ -143,6 +116,7 @@ export function UnlockConfirmModal({
   error,
 }: UnlockConfirmModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
+  const rarity = RARITY_STYLE[variant.rarity] ?? RARITY_STYLE.common;
 
   const canAfford = currentDna >= variant.unlockCostDna;
   const dnaNeeded = variant.unlockCostDna - currentDna;
@@ -190,10 +164,7 @@ export function UnlockConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fadeIn"
-      style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-void-deep/85"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -201,64 +172,62 @@ export function UnlockConfirmModal({
       data-testid="unlock-confirm-modal"
     >
       <div
-        className="relative w-full max-w-md rounded-lg overflow-hidden animate-scaleIn"
+        className="panel-elevated animate-pop-in relative w-full max-w-md overflow-hidden rounded-arcade"
         style={{
-          backgroundColor: '#16213e',
-          border: `2px solid ${theme.primary}`,
-          boxShadow: theme.shadow,
+          borderColor: hexToRgba(theme.glow, 0.55),
+          boxShadow: `0 0 24px -6px ${hexToRgba(theme.glow, 0.6)}, 0 4px 24px rgba(0,0,0,0.5)`,
         }}
       >
         {/* Title */}
         <div
-          className="px-6 py-4 text-center"
-          style={{
-            borderBottom: `1px solid ${hexToRgba(theme.primary, 0.3)}`,
-          }}
+          className="px-6 py-4 text-center border-b"
+          style={{ borderColor: hexToRgba(theme.glow, 0.3) }}
         >
           <h2
             id="unlock-modal-title"
-            className="text-xl font-bold text-white"
+            className="heading-display text-xl text-bone-white"
           >
             Unlock {variant.name}?
           </h2>
         </div>
 
-        {/* Preview Art Section */}
+        {/* Preview Art Section - rarity glow frame */}
         <div className="px-6 pt-4">
           <div
-            className="relative w-full rounded-lg overflow-hidden"
+            className="relative w-full rounded-arcade overflow-hidden border-2"
             style={{
               aspectRatio: '16 / 9',
-              opacity: 0.6,
+              borderColor: hexToRgba(rarity.color, 0.7),
+              boxShadow:
+                rarity.glowSpread > 0
+                  ? `0 0 ${rarity.glowSpread + 6}px -2px ${hexToRgba(rarity.color, 0.65)}`
+                  : undefined,
             }}
           >
-            {variant.artUrl ? (
-              <Image
-                src={variant.artUrl}
-                alt={`${variant.name} preview`}
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 640px"
-              />
-            ) : (
-              <div
-                className="absolute inset-0 w-full h-full"
-                style={{
-                  background: gradientPlaceholder,
-                }}
-                aria-label="Artwork placeholder"
-              />
-            )}
+            <div className="absolute inset-0 opacity-60">
+              {variant.artUrl ? (
+                <Image
+                  src={variant.artUrl}
+                  alt={`${variant.name} preview`}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 640px"
+                />
+              ) : (
+                <div
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    background: gradientPlaceholder,
+                  }}
+                  aria-label="Artwork placeholder"
+                />
+              )}
+            </div>
             {/* Variant name overlay */}
-            <div
-              className="absolute bottom-0 left-0 right-0 py-2 text-center"
-              style={{
-                backgroundColor: hexToRgba('#000000', 0.7),
-              }}
-            >
+            <div className="absolute bottom-0 left-0 right-0 py-2 text-center bg-void-deep/80">
               <span
-                className="text-lg font-semibold"
-                style={{ color: theme.primary }}
+                className="heading-display text-lg"
+                style={{ color: theme.glow, textShadow: `0 0 12px ${hexToRgba(theme.glow, 0.6)}` }}
               >
                 {variant.name}
               </span>
@@ -269,10 +238,7 @@ export function UnlockConfirmModal({
         {/* Lore Text */}
         {variant.loreText && (
           <div className="px-6 pt-4">
-            <p
-              className="text-sm italic text-center"
-              style={{ color: '#8892b0' }}
-            >
+            <p className="text-sm italic text-center font-body text-beige/80">
               &ldquo;{variant.loreText}&rdquo;
             </p>
           </div>
@@ -281,74 +247,66 @@ export function UnlockConfirmModal({
         {/* Info Section */}
         <div className="px-6 pt-4">
           <div
-            className="rounded-lg p-4"
-            style={{
-              backgroundColor: hexToRgba('#000000', 0.3),
-              border: `1px solid ${hexToRgba(theme.primary, 0.2)}`,
-            }}
+            className="rounded-arcade p-4 border bg-void-deep/60"
+            style={{ borderColor: hexToRgba(theme.glow, 0.25) }}
           >
             {/* Rarity */}
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm" style={{ color: '#8892b0' }}>
-                Rarity:
-              </span>
-              <span className="text-sm font-medium text-white">
+              <span className="text-sm font-body text-beige/70">Rarity:</span>
+              <span
+                className="text-sm font-body font-medium"
+                style={{
+                  color: rarity.color,
+                  textShadow:
+                    rarity.glowSpread > 0
+                      ? `0 0 10px ${hexToRgba(rarity.color, 0.55)}`
+                      : undefined,
+                }}
+              >
                 {capitalizeRarity(variant.rarity)}
               </span>
             </div>
 
             {/* Dynasty */}
             <div className="flex justify-between items-center mb-3">
-              <span className="text-sm" style={{ color: '#8892b0' }}>
-                Dynasty:
-              </span>
-              <span className="text-sm font-medium" style={{ color: theme.primary }}>
+              <span className="text-sm font-body text-beige/70">Dynasty:</span>
+              <span className="text-sm font-body font-medium" style={{ color: theme.glow }}>
                 {dynasty.name} ({getDynastyBonusText(dynasty)})
               </span>
             </div>
 
             {/* Divider */}
-            <div
-              className="my-3"
-              style={{
-                borderTop: `1px solid ${hexToRgba(theme.primary, 0.2)}`,
-              }}
-            />
+            <div className="divider-glow my-3" />
 
             {/* Cost */}
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm" style={{ color: '#8892b0' }}>
-                Cost:
-              </span>
-              <span className="text-sm font-semibold text-white">
-                {formatNumber(variant.unlockCostDna)} <span role="img" aria-label="DNA">💎</span>
-              </span>
+              <span className="text-sm font-body text-beige/70">Cost:</span>
+              <DnaAmount
+                value={variant.unlockCostDna}
+                className="text-sm font-semibold text-bone-white"
+              />
             </div>
 
             {/* Your DNA */}
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm" style={{ color: '#8892b0' }}>
-                Your DNA:
-              </span>
-              <span
-                className="text-sm font-semibold"
-                style={{ color: canAfford ? '#4ade80' : '#f87171' }}
-              >
-                {formatNumber(currentDna)} <span role="img" aria-label="DNA">💎</span>
-              </span>
+              <span className="text-sm font-body text-beige/70">Your DNA:</span>
+              <DnaAmount
+                value={currentDna}
+                className={`text-sm font-semibold ${
+                  canAfford ? 'text-rarity-uncommon' : 'text-strike-red'
+                }`}
+              />
             </div>
 
             {/* After Balance */}
             <div className="flex justify-between items-center">
-              <span className="text-sm" style={{ color: '#8892b0' }}>
-                After:
-              </span>
-              <span
-                className="text-sm font-semibold"
-                style={{ color: canAfford ? '#4ade80' : '#f87171' }}
-              >
-                {canAfford ? formatNumber(afterBalance) : formatNumber(currentDna)} <span role="img" aria-label="DNA">💎</span>
-              </span>
+              <span className="text-sm font-body text-beige/70">After:</span>
+              <DnaAmount
+                value={canAfford ? afterBalance : currentDna}
+                className={`text-sm font-semibold ${
+                  canAfford ? 'text-rarity-uncommon' : 'text-strike-red'
+                }`}
+              />
             </div>
           </div>
         </div>
@@ -356,10 +314,7 @@ export function UnlockConfirmModal({
         {/* Insufficient DNA Warning */}
         {!canAfford && (
           <div className="px-6 pt-3">
-            <p
-              className="text-sm text-center font-medium"
-              style={{ color: '#f87171' }}
-            >
+            <p className="text-sm text-center font-body font-medium text-strike-red">
               Need {formatNumber(dnaNeeded)} more DNA
             </p>
           </div>
@@ -369,8 +324,7 @@ export function UnlockConfirmModal({
         {error && (
           <div className="px-6 pt-3">
             <p
-              className="text-sm text-center font-medium"
-              style={{ color: '#f87171' }}
+              className="text-sm text-center font-body font-medium text-strike-red"
               role="alert"
             >
               {error}
@@ -385,13 +339,7 @@ export function UnlockConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={!canAfford || isUnlocking}
-            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all duration-150"
-            style={{
-              backgroundColor: canAfford && !isUnlocking ? theme.primary : hexToRgba(theme.primary, 0.3),
-              color: canAfford && !isUnlocking ? theme.textOnPrimary : hexToRgba('#ffffff', 0.5),
-              cursor: canAfford && !isUnlocking ? 'pointer' : 'not-allowed',
-              minHeight: '44px',
-            }}
+            className="btn-go flex-1 flex items-center justify-center gap-2 py-3 px-4 text-sm min-h-[44px]"
             aria-label={`Unlock ${variant.name} for ${variant.unlockCostDna} DNA`}
             data-testid="unlock-confirm-button"
           >
@@ -402,7 +350,7 @@ export function UnlockConfirmModal({
               </>
             ) : (
               <>
-                <CheckIcon />
+                <IconCheck size={16} />
                 <span>Unlock ({formatNumber(variant.unlockCostDna)})</span>
               </>
             )}
@@ -413,66 +361,15 @@ export function UnlockConfirmModal({
             type="button"
             onClick={onClose}
             disabled={isUnlocking}
-            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all duration-150"
-            style={{
-              backgroundColor: hexToRgba('#ffffff', 0.1),
-              color: isUnlocking ? hexToRgba('#ffffff', 0.5) : '#ffffff',
-              cursor: isUnlocking ? 'not-allowed' : 'pointer',
-              minHeight: '44px',
-              border: `1px solid ${hexToRgba('#ffffff', 0.2)}`,
-            }}
+            className="btn-neutral flex-1 flex items-center justify-center gap-2 py-3 px-4 text-sm min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Cancel unlock"
             data-testid="unlock-cancel-button"
           >
-            <XIcon />
+            <IconX size={16} />
             <span>Cancel</span>
           </button>
         </div>
       </div>
-
-      {/* CSS Animations */}
-      <style jsx>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes scaleIn {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-
-        .animate-fadeIn {
-          animation: fadeIn 200ms ease-out;
-        }
-
-        .animate-scaleIn {
-          animation: scaleIn 200ms ease-out;
-        }
-
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
     </div>
   );
 }

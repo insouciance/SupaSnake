@@ -27,6 +27,8 @@ export interface CollectionGridProps {
   equippedSnakeId?: string;
   /** Number of empty slots to render */
   emptySlotCount?: number;
+  /** Variant that was just unlocked - its card gets a brief shimmer */
+  justUnlockedVariantId?: string | null;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface CollectionGridProps {
 function SkeletonCard(): React.ReactElement<any> {
   return (
     <div
-      className="animate-pulse rounded-lg bg-[#16213e]"
+      className="animate-pulse rounded-arcade border border-scale-blue-light/30 bg-scale-blue-dark/80"
       style={{
         aspectRatio: '3 / 4',
         minHeight: '44px',
@@ -45,11 +47,11 @@ function SkeletonCard(): React.ReactElement<any> {
       aria-hidden="true"
     >
       {/* Art placeholder */}
-      <div className="w-full h-2/3 bg-[#1a1a2e] rounded-t-lg" />
+      <div className="w-full h-2/3 bg-void/80 rounded-t-arcade" />
       {/* Text placeholders */}
       <div className="p-2 space-y-2">
-        <div className="h-3 bg-[#1a1a2e] rounded w-3/4" />
-        <div className="h-2 bg-[#1a1a2e] rounded w-1/2" />
+        <div className="h-3 bg-void/80 rounded-arcade w-3/4" />
+        <div className="h-2 bg-void/80 rounded-arcade w-1/2" />
       </div>
     </div>
   );
@@ -61,39 +63,29 @@ function SkeletonCard(): React.ReactElement<any> {
 function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.ReactElement<any> {
   return (
     <div
-      className="flex flex-col items-center justify-center py-12 px-4"
+      className="flex flex-col items-center justify-center py-12 px-4 animate-fade-up"
       role="status"
       aria-label="No variants available"
     >
       <div
-        className="flex items-center justify-center w-16 h-16 rounded-full mb-4"
-        style={{
-          border: `2px dashed ${dynastyTheme.primary}`,
-          opacity: 0.5,
-        }}
+        className="flex items-center justify-center w-16 h-16 rounded-arcade border-2 border-dashed mb-4"
+        style={{ borderColor: dynastyTheme.glow, opacity: 0.5 }}
       >
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
+        <span
+          className="font-display text-2xl select-none"
+          style={{ color: dynastyTheme.glow }}
           aria-hidden="true"
         >
-          <path
-            d="M20 6H12L10 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6ZM20 18H4V8H20V18Z"
-            fill={dynastyTheme.primary}
-            opacity="0.5"
-          />
-        </svg>
+          ?
+        </span>
       </div>
       <p
-        className="text-sm font-medium text-center"
-        style={{ color: dynastyTheme.primary, opacity: 0.7 }}
+        className="label-arcade text-center"
+        style={{ color: dynastyTheme.glow, opacity: 0.8 }}
       >
         No variants yet
       </p>
-      <p className="text-xs text-[#8892b0] mt-1 text-center">
+      <p className="text-xs font-body text-beige/60 mt-1 text-center">
         Check back soon for new additions
       </p>
     </div>
@@ -115,6 +107,7 @@ export function CollectionGrid({
   isLoading,
   equippedSnakeId,
   emptySlotCount = 0,
+  justUnlockedVariantId = null,
 }: CollectionGridProps): React.ReactElement<any> {
   /**
    * Sort variants by sortOrder (if available) or name
@@ -185,21 +178,27 @@ export function CollectionGrid({
       role="grid"
       aria-label="Snake variant collection"
     >
-      <div className="grid grid-cols-3 gap-4 p-4">
-        {/* Render variant cards */}
-        {sortedVariants.map((variant) => {
+      <div className="grid grid-cols-3 gap-3 p-4">
+        {/* Render variant cards - staggered fade-up entrance */}
+        {sortedVariants.map((variant, index) => {
           const owned = ownedByVariantId.get(variant.id) ?? null;
           const isEquipped = owned !== null && owned.id === equippedSnakeId;
 
           return (
-            <VariantCard
+            <div
               key={variant.id}
-              variant={variant}
-              owned={owned}
-              dynastyTheme={dynastyTheme}
-              onTap={() => handleVariantSelect(variant)}
-              isEquipped={isEquipped}
-            />
+              className="animate-fade-up"
+              style={{ animationDelay: `${Math.min(index, 11) * 40}ms` }}
+            >
+              <VariantCard
+                variant={variant}
+                owned={owned}
+                dynastyTheme={dynastyTheme}
+                onTap={() => handleVariantSelect(variant)}
+                isEquipped={isEquipped}
+                justUnlocked={justUnlockedVariantId === variant.id}
+              />
+            </div>
           );
         })}
 
