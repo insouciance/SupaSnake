@@ -56,7 +56,9 @@ test.describe('Login page', () => {
     await page.getByLabel(/password/i).fill('wrongpassword123');
     await page.getByRole('button', { name: /^sign in$/i }).click();
 
-    await expect(page.getByText(/invalid|error|incorrect/i)).toBeVisible({
+    await expect(
+      page.getByText(/wrong email or password|invalid|error|incorrect/i)
+    ).toBeVisible({
       timeout: 15000,
     });
   });
