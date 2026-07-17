@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
             generation
           )
         `)
+        .gt('high_score', 0)
         .order('high_score', { ascending: false })
         .range(offset, offset + limit - 1);
 
