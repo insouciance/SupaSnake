@@ -115,13 +115,17 @@ describe('SnakeGameLogic', () => {
       game.start();
     });
 
-    it('should change direction when valid', () => {
+    it('should change direction on the next tick when valid', () => {
       game.setDirection('UP');
+      // Queued, not yet applied - the snake keeps its heading until the tick
+      expect(game.getState().direction).toBe('RIGHT');
+      game.tick();
       expect(game.getState().direction).toBe('UP');
     });
 
     it('should not allow reverse direction (RIGHT to LEFT)', () => {
       game.setDirection('LEFT');
+      game.tick();
       expect(game.getState().direction).toBe('RIGHT');
     });
 
@@ -129,15 +133,89 @@ describe('SnakeGameLogic', () => {
       game.setDirection('UP');
       game.tick();
       game.setDirection('DOWN');
+      game.tick();
       expect(game.getState().direction).toBe('UP');
     });
 
     it('should allow perpendicular direction changes', () => {
       game.setDirection('UP');
-      expect(game.getState().direction).toBe('UP');
       game.tick();
+      expect(game.getState().direction).toBe('UP');
       game.setDirection('LEFT');
+      game.tick();
       expect(game.getState().direction).toBe('LEFT');
+    });
+
+    describe('input buffering (fast successive moves)', () => {
+      it('buffers two rapid inputs and executes both on consecutive ticks (S-turn)', () => {
+        // Moving RIGHT: press UP then LEFT within the same tick window
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+        game.tick();
+        expect(game.getState().direction).toBe('LEFT');
+      });
+
+      it('rejects a reversal relative to the last queued direction', () => {
+        // Moving RIGHT: queue UP, then DOWN would reverse the queued UP
+        game.setDirection('UP');
+        game.setDirection('DOWN');
+
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+        game.tick();
+        // DOWN was rejected - heading stays UP
+        expect(game.getState().direction).toBe('UP');
+      });
+
+      it('allows a fast 180 via two perpendicular turns', () => {
+        // Moving RIGHT: UP then LEFT queued back-to-back ends up heading LEFT
+        // (a legal two-step reversal - the skill move the buffer enables)
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        game.tick();
+        game.tick();
+        expect(game.getState().direction).toBe('LEFT');
+      });
+
+      it('skips duplicate inputs so the buffer is not wasted', () => {
+        game.setDirection('UP');
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+        game.tick();
+        expect(game.getState().direction).toBe('LEFT');
+      });
+
+      it('caps the buffer at three queued directions', () => {
+        // Moving RIGHT: queue UP, LEFT, DOWN (3 legal turns), then RIGHT is dropped
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        game.setDirection('DOWN');
+        game.setDirection('RIGHT');
+
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+        game.tick();
+        expect(game.getState().direction).toBe('LEFT');
+        game.tick();
+        expect(game.getState().direction).toBe('DOWN');
+        game.tick();
+        // Fourth input was dropped at the cap - heading stays DOWN
+        expect(game.getState().direction).toBe('DOWN');
+      });
+
+      it('clears the buffer on restart', () => {
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        game.start();
+        game.tick();
+        expect(game.getState().direction).toBe('RIGHT');
+      });
     });
   });
 

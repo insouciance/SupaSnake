@@ -48,7 +48,15 @@ export class SnakeGameLogic {
   private minSpeed: number;
   private speedIncrease: number;
   private events: Map<GameEvent, EventCallback[]>;
-  private pendingDirection: Direction | null;
+  /**
+   * Buffered direction inputs, consumed one per tick. Buffering (instead of
+   * overwriting a single pending direction) is what makes fast multi-turn
+   * sequences reliable: pressing UP then LEFT within one tick executes both
+   * turns on consecutive ticks instead of losing the first. This is the
+   * core skill mechanic - inputs must never silently drop.
+   */
+  private directionQueue: Direction[];
+  private static readonly MAX_QUEUED_DIRECTIONS = 3;
 
   constructor(options: GameOptions = {}) {
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
@@ -57,7 +65,7 @@ export class SnakeGameLogic {
     this.minSpeed = GAME_CONFIG.snake.minSpeed;
     this.speedIncrease = GAME_CONFIG.snake.speedIncrease;
     this.events = new Map();
-    this.pendingDirection = null;
+    this.directionQueue = [];
 
     this.state = this.createInitialState();
   }
@@ -105,7 +113,7 @@ export class SnakeGameLogic {
     };
 
     this.speed = GAME_CONFIG.snake.initialSpeed;
-    this.pendingDirection = null;
+    this.directionQueue = [];
     this.spawnFood();
     this.emit('gameStart');
   }
@@ -129,7 +137,14 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Set movement direction
+   * Queue a direction change. Inputs buffer (up to MAX_QUEUED_DIRECTIONS)
+   * and apply one per tick, so rapid sequences like UP+LEFT within a single
+   * tick execute as an S-turn instead of dropping the first press.
+   *
+   * Validation is against the direction the snake will be moving when this
+   * input takes effect (the last queued direction, falling back to the
+   * current heading): 180-degree reversals are rejected there, and exact
+   * duplicates are skipped so the buffer never wastes a slot.
    */
   setDirection(dir: Direction): void {
     if (!this.state.isPlaying || this.state.isGameOver || this.state.isPaused) return;
@@ -141,9 +156,15 @@ export class SnakeGameLogic {
       RIGHT: 'LEFT',
     };
 
-    if (dir !== opposites[this.state.direction]) {
-      this.state.direction = dir;
-    }
+    const reference =
+      this.directionQueue.length > 0
+        ? this.directionQueue[this.directionQueue.length - 1]
+        : this.state.direction;
+
+    if (dir === reference || dir === opposites[reference]) return;
+    if (this.directionQueue.length >= SnakeGameLogic.MAX_QUEUED_DIRECTIONS) return;
+
+    this.directionQueue.push(dir);
   }
 
   /**
@@ -187,6 +208,12 @@ export class SnakeGameLogic {
    */
   tick(): void {
     if (!this.state.isPlaying || this.state.isGameOver || this.state.isPaused || this.state.isDeathSequence) return;
+
+    // Consume exactly one buffered input per tick
+    const queued = this.directionQueue.shift();
+    if (queued) {
+      this.state.direction = queued;
+    }
 
     const head = this.state.snake[0];
     const newHead = this.getNextPosition(head, this.state.direction);
