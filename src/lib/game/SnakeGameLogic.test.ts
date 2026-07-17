@@ -218,6 +218,56 @@ describe('SnakeGameLogic', () => {
       });
     });
 
+    describe('setDirection result reporting (touch feedback + debug)', () => {
+      it('returns accepted when the input enters the buffer', () => {
+        expect(game.setDirection('UP')).toBe('accepted');
+        expect(game.getQueuedDirections()).toEqual(['UP']);
+      });
+
+      it('returns duplicate for the current heading with an empty queue', () => {
+        // Snake starts moving RIGHT
+        expect(game.setDirection('RIGHT')).toBe('duplicate');
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+
+      it('returns duplicate relative to the last queued direction', () => {
+        game.setDirection('UP');
+        expect(game.setDirection('UP')).toBe('duplicate');
+        expect(game.getQueuedDirections()).toEqual(['UP']);
+      });
+
+      it('returns reversal for a 180 against the heading', () => {
+        expect(game.setDirection('LEFT')).toBe('reversal');
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+
+      it('returns reversal against the last queued direction', () => {
+        game.setDirection('UP');
+        expect(game.setDirection('DOWN')).toBe('reversal');
+        expect(game.getQueuedDirections()).toEqual(['UP']);
+      });
+
+      it('returns queue_full when the buffer is at capacity', () => {
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        game.setDirection('DOWN');
+        expect(game.setDirection('RIGHT')).toBe('queue_full');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT', 'DOWN']);
+      });
+
+      it('returns inactive while paused', () => {
+        game.pause();
+        expect(game.setDirection('UP')).toBe('inactive');
+        game.resume();
+        expect(game.setDirection('UP')).toBe('accepted');
+      });
+
+      it('returns inactive before start', () => {
+        const fresh = new SnakeGameLogic({ gridSize: 20 });
+        expect(fresh.setDirection('UP')).toBe('inactive');
+      });
+    });
+
     describe('getQueuedDirections (aim telegraph read-only view)', () => {
       it('returns an empty array when nothing is buffered', () => {
         expect(game.getQueuedDirections()).toEqual([]);

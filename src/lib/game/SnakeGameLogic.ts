@@ -7,6 +7,19 @@ import { GAME_CONFIG } from '@/shared/config/game';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
+/**
+ * Outcome of a setDirection call. Purely informational (additive): the
+ * engine's queue semantics are unchanged, but callers that care (touch
+ * feedback, debug instrumentation) can react to why an input did or did
+ * not enter the buffer.
+ */
+export type SetDirectionResult =
+  | 'accepted'
+  | 'duplicate'
+  | 'reversal'
+  | 'queue_full'
+  | 'inactive';
+
 export interface Position {
   x: number;
   y: number;
@@ -145,9 +158,15 @@ export class SnakeGameLogic {
    * input takes effect (the last queued direction, falling back to the
    * current heading): 180-degree reversals are rejected there, and exact
    * duplicates are skipped so the buffer never wastes a slot.
+   *
+   * Returns why the input was accepted or dropped (see SetDirectionResult).
+   * The return value is informational only - behavior is identical for
+   * callers that ignore it.
    */
-  setDirection(dir: Direction): void {
-    if (!this.state.isPlaying || this.state.isGameOver || this.state.isPaused) return;
+  setDirection(dir: Direction): SetDirectionResult {
+    if (!this.state.isPlaying || this.state.isGameOver || this.state.isPaused) {
+      return 'inactive';
+    }
 
     const opposites: Record<Direction, Direction> = {
       UP: 'DOWN',
@@ -161,10 +180,14 @@ export class SnakeGameLogic {
         ? this.directionQueue[this.directionQueue.length - 1]
         : this.state.direction;
 
-    if (dir === reference || dir === opposites[reference]) return;
-    if (this.directionQueue.length >= SnakeGameLogic.MAX_QUEUED_DIRECTIONS) return;
+    if (dir === reference) return 'duplicate';
+    if (dir === opposites[reference]) return 'reversal';
+    if (this.directionQueue.length >= SnakeGameLogic.MAX_QUEUED_DIRECTIONS) {
+      return 'queue_full';
+    }
 
     this.directionQueue.push(dir);
+    return 'accepted';
   }
 
   /**

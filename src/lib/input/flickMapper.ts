@@ -56,3 +56,41 @@ export function mapFlickWithAzimuth(
 ): Direction {
   return mapFlickToWorld(flick, azimuthToQuadrant(azimuthRad));
 }
+
+/**
+ * Inverse maps: world direction -> screen direction per camera quadrant.
+ * Derived from QUADRANT_MAPS at module load so the two can never drift.
+ * Used by the queued-turns HUD indicator to draw already-queued absolute
+ * directions the way the player currently sees them.
+ */
+const INVERSE_QUADRANT_MAPS: Record<
+  0 | 1 | 2 | 3,
+  Record<Direction, ScreenFlickDirection>
+> = (() => {
+  const out = {} as Record<0 | 1 | 2 | 3, Record<Direction, ScreenFlickDirection>>;
+  for (const q of [0, 1, 2, 3] as const) {
+    const forward = QUADRANT_MAPS[q];
+    const inverse = {} as Record<Direction, ScreenFlickDirection>;
+    for (const screen of ['UP', 'DOWN', 'LEFT', 'RIGHT'] as const) {
+      inverse[forward[screen]] = screen;
+    }
+    out[q] = inverse;
+  }
+  return out;
+})();
+
+/** Map an absolute world direction back to screen space for a quadrant. */
+export function mapWorldToScreen(
+  world: Direction,
+  quadrant: 0 | 1 | 2 | 3
+): ScreenFlickDirection {
+  return INVERSE_QUADRANT_MAPS[quadrant][world];
+}
+
+/** Convenience: world direction -> screen direction for a raw azimuth. */
+export function mapWorldWithAzimuth(
+  world: Direction,
+  azimuthRad: number
+): ScreenFlickDirection {
+  return mapWorldToScreen(world, azimuthToQuadrant(azimuthRad));
+}

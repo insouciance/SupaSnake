@@ -12,6 +12,8 @@ import {
   azimuthToQuadrant,
   mapFlickToWorld,
   mapFlickWithAzimuth,
+  mapWorldToScreen,
+  mapWorldWithAzimuth,
 } from './flickMapper';
 import { SnakeGameLogic, Direction } from '@/lib/game/SnakeGameLogic';
 
@@ -128,6 +130,36 @@ describe('flickMapper (camera-relative, frozen at input)', () => {
 
   it('full-azimuth convenience matches quantize+map', () => {
     expect(mapFlickWithAzimuth('UP', Math.PI)).toBe('DOWN');
+  });
+});
+
+describe('flickMapper inverse (world -> screen, queued-turns indicator)', () => {
+  const SCREEN_DIRS: ScreenFlickDirection[] = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+  const QUADRANTS = [0, 1, 2, 3] as const;
+
+  it('is the exact inverse of the forward map in every quadrant', () => {
+    for (const q of QUADRANTS) {
+      for (const screen of SCREEN_DIRS) {
+        const world = mapFlickToWorld(screen, q);
+        expect(mapWorldToScreen(world, q)).toBe(screen);
+      }
+    }
+  });
+
+  it('maps known cases: default view is identity, far side mirrors', () => {
+    expect(mapWorldToScreen('UP', 0)).toBe('UP');
+    expect(mapWorldToScreen('LEFT', 0)).toBe('LEFT');
+    // Quadrant 1: screen UP -> world LEFT, so world LEFT reads back as UP
+    expect(mapWorldToScreen('LEFT', 1)).toBe('UP');
+    expect(mapWorldToScreen('UP', 1)).toBe('RIGHT');
+    // Opposite side mirrors both axes
+    expect(mapWorldToScreen('UP', 2)).toBe('DOWN');
+    expect(mapWorldToScreen('RIGHT', 2)).toBe('LEFT');
+  });
+
+  it('azimuth convenience matches quantize+inverse-map', () => {
+    expect(mapWorldWithAzimuth('DOWN', Math.PI)).toBe('UP');
+    expect(mapWorldWithAzimuth('UP', 0)).toBe('UP');
   });
 });
 
