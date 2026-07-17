@@ -20,7 +20,7 @@
  * reuses one shared Vector3 and three.js's internal temp quaternion.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -102,9 +102,16 @@ interface CameraRigProps {
   gridSize: number;
   /** Increment to restore the default view (pitch, side, fit distance) */
   resetToken: number;
+  /**
+   * Optional sink: the rig writes its current azimuth (radians) here every
+   * frame so DOM-side consumers (flick input) can read the live camera
+   * orientation without reaching into the three.js scene. Write-only from
+   * the rig's perspective; a plain number write allocates nothing.
+   */
+  azimuthRef?: MutableRefObject<number>;
 }
 
-export function CameraRig({ gridSize, resetToken }: CameraRigProps) {
+export function CameraRig({ gridSize, resetToken, azimuthRef }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -182,6 +189,9 @@ export function CameraRig({ gridSize, resetToken }: CameraRigProps) {
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
+    if (controls && azimuthRef) {
+      azimuthRef.current = controls.getAzimuthalAngle();
+    }
     const goal = snapTarget.current;
     if (!controls || goal === null) return;
 

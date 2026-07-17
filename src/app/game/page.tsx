@@ -23,8 +23,15 @@ import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { AimingCrosshair } from '@/components/game/AimingCrosshair';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
-import { CameraRig } from '@/components/game/CameraRig';
+import { CameraRig, DEFAULT_AZIMUTH } from '@/components/game/CameraRig';
+import { FlickSurface } from '@/components/game/FlickSurface';
+import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
+import {
+  createInputDebugState,
+  recordDebugEvent,
+  type InputDebugState,
+} from '@/lib/input/flickControl';
 import { audioManager } from '@/lib/audio/AudioManager';
 import { haptics } from '@/lib/effects/Haptics';
 import { screenShake } from '@/lib/effects/ScreenShake';
@@ -56,6 +63,17 @@ export default function GamePage() {
   const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
   const [viewResetToken, setViewResetToken] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  // Mobile control scheme: flick-anywhere is the default, D-pad the
+  // fallback. Client preference, persisted in localStorage.
+  const [controlMode, setControlMode] = useState<'flick' | 'dpad'>('flick');
+  // Live camera azimuth written per frame by CameraRig; read at flick
+  // pointerdown to freeze the gesture's orientation for the whole touch.
+  const cameraAzimuthRef = useRef<number>(DEFAULT_AZIMUTH);
+  // ?debug=input instrumentation - null unless the flag is present, so the
+  // input path records nothing in normal play.
+  const inputDebugRef = useRef<InputDebugState | null>(null);
+  const [inputDebugEnabled, setInputDebugEnabled] = useState(false);
+  const prevQueueLengthRef = useRef(0);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -136,6 +154,36 @@ export default function GamePage() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Restore the persisted control-mode preference (default: flick)
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem('control-mode') === 'dpad') {
+        setControlMode('dpad');
+      }
+    } catch {
+      // Storage unavailable (private mode) - keep the flick default
+    }
+  }, []);
+
+  const handleControlModeChange = useCallback((mode: 'flick' | 'dpad') => {
+    setControlMode(mode);
+    try {
+      window.localStorage.setItem('control-mode', mode);
+    } catch {
+      // Preference simply won't persist
+    }
+  }, []);
+
+  // Enable input debug instrumentation only when the URL asks for it
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('debug') === 'input') {
+      inputDebugRef.current = createInputDebugState();
+      setInputDebugEnabled(true);
+    }
+  }, []);
+
+  const getCameraAzimuth = useCallback(() => cameraAzimuthRef.current, []);
 
   // Initialize audio on first interaction
   useEffect(() => {
@@ -364,10 +412,23 @@ export default function GamePage() {
   const syncState = useCallback(() => {
     if (gameRef.current) {
       const state = gameRef.current.getState();
+      const queued = gameRef.current.getQueuedDirections();
+      // Debug: a queue-length drop in the per-tick sync means this tick
+      // consumed a buffered command - record when it executed.
+      const debug = inputDebugRef.current;
+      if (debug && queued.length < prevQueueLengthRef.current) {
+        recordDebugEvent(debug, {
+          kind: 'exec',
+          dir: state.direction,
+          detail: 'tick consumed',
+          time: Date.now(),
+        });
+      }
+      prevQueueLengthRef.current = queued.length;
       setSnake(state.snake);
       setFood(state.food);
       setDirection(state.direction);
-      setQueuedDirections(gameRef.current.getQueuedDirections());
+      setQueuedDirections(queued);
     }
   }, [setSnake, setFood, setDirection, setQueuedDirections]);
 
@@ -375,8 +436,12 @@ export default function GamePage() {
   // the aim telegraph reacts on the keypress, not on the next tick
   const syncAim = useCallback(() => {
     if (gameRef.current) {
+      const queued = gameRef.current.getQueuedDirections();
+      // Keep the debug exec-watch baseline current: inputs only grow the
+      // queue, so tracking here prevents false "consumed" reads on ticks.
+      prevQueueLengthRef.current = queued.length;
       setDirection(gameRef.current.getState().direction);
-      setQueuedDirections(gameRef.current.getQueuedDirections());
+      setQueuedDirections(queued);
     }
   }, [setDirection, setQueuedDirections]);
 
@@ -529,6 +594,12 @@ export default function GamePage() {
     gameRef.current.setDirection(dir);
     syncAim();
   }, [isPlaying, isGameOver, isPaused, syncAim]);
+
+  // First flick while ready starts the run (FlickSurface calls this once)
+  const handleFlickReadyStart = useCallback(() => {
+    setReady(false);
+    startGameLoop();
+  }, [setReady, startGameLoop]);
 
   // Select an aim system - optimistic with rollback; the server re-checks
   // the unlock predicate (403 on a locked pick)
@@ -749,9 +820,25 @@ export default function GamePage() {
         <IconReset size={20} />
       </button>
 
-      {/* Virtual D-Pad (mobile). bottom offset includes the safe-area inset
-          so the DOWN button clears home indicators / browser chrome. */}
-      {isMobile && isPlaying && !isGameOver && !isPaused && (
+      {/* Flick-anywhere touch layer (mobile default). Sits in the z-band
+          between the canvas and the HUD (z-10+), so HUD buttons stay live.
+          Camera touch-orbit is intentionally ceded to flick input while
+          playing - the reset-view button remains available. */}
+      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && !isPaused && (
+        <FlickSurface
+          gameRef={gameRef}
+          getAzimuth={getCameraAzimuth}
+          isReady={isReady}
+          onReadyStart={handleFlickReadyStart}
+          onAim={syncAim}
+          debugRef={inputDebugRef}
+        />
+      )}
+
+      {/* Virtual D-Pad (mobile fallback via control-mode toggle). bottom
+          offset includes the safe-area inset so the DOWN button clears home
+          indicators / browser chrome. */}
+      {isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && !isPaused && (
         <div
           className="absolute left-1/2 -translate-x-1/2 z-10"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
@@ -765,6 +852,9 @@ export default function GamePage() {
           />
         </div>
       )}
+
+      {/* Input instrumentation (?debug=input only) */}
+      {inputDebugEnabled && <InputDebugOverlay debugRef={inputDebugRef} />}
 
       {/* Pause Menu */}
       {isPaused && isPlaying && !isGameOver && (
@@ -866,6 +956,36 @@ export default function GamePage() {
               </div>
             )}
 
+            {/* Control scheme (touch devices): flick-anywhere default,
+                D-pad fallback. Persisted client preference. */}
+            {isMobile && !noSnakeAvailable && (
+              <div className="space-y-2">
+                <p className="label-arcade">Controls</p>
+                <div className="flex gap-2 justify-center">
+                  {(['flick', 'dpad'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => handleControlModeChange(mode)}
+                      data-testid={`control-mode-${mode}`}
+                      aria-pressed={controlMode === mode}
+                      className={`px-4 py-2 min-h-[44px] rounded-arcade border font-body text-sm transition-all ${
+                        controlMode === mode
+                          ? 'border-venom-orange/70 bg-venom-orange/15 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
+                          : 'border-scale-blue-light/50 bg-void/50 text-beige hover:text-bone-white'
+                      }`}
+                    >
+                      {mode === 'flick' ? 'FLICK' : 'D-PAD'}
+                    </button>
+                  ))}
+                </div>
+                {controlMode === 'flick' && (
+                  <p className="text-beige/60 text-xs font-body">
+                    Flick anywhere on screen to steer
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Error Message */}
             {startError && (
               <div className="bg-strike-red/15 border border-strike-red/70 rounded-arcade px-4 py-2 animate-fade-up">
@@ -964,8 +1084,22 @@ export default function GamePage() {
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
           <div className="text-center space-y-4 animate-fade-up">
             <h2 className="heading-display text-5xl text-venom-orange text-glow-orange animate-breathe">Ready!</h2>
-            <p className="text-bone-white text-lg font-body">Press SPACE or Arrow Key to Start</p>
-            <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
+            {isMobile && controlMode === 'flick' ? (
+              <>
+                <p className="text-bone-white text-lg font-body">Flick anywhere to start</p>
+                <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
+              </>
+            ) : isMobile ? (
+              <>
+                <p className="text-bone-white text-lg font-body">Tap a direction to start</p>
+                <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
+              </>
+            ) : (
+              <>
+                <p className="text-bone-white text-lg font-body">Press SPACE or Arrow Key to Start</p>
+                <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1020,7 +1154,11 @@ export default function GamePage() {
           />
         </Suspense>
 
-        <CameraRig gridSize={GAME_CONFIG.board.gridSize} resetToken={viewResetToken} />
+        <CameraRig
+          gridSize={GAME_CONFIG.board.gridSize}
+          resetToken={viewResetToken}
+          azimuthRef={cameraAzimuthRef}
+        />
 
         {/* Bloom postprocessing - desktop only, to protect mobile framerate */}
         {!isMobile && (
