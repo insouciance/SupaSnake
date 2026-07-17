@@ -18,6 +18,7 @@ import {
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import Link from 'next/link';
+import { IconBolt, IconCart, IconDna, IconSnake } from '@/components/ui/icons';
 
 export default function ShopPage() {
   const { user, session, isAuthenticated, isAnonymous } = useAuth();
@@ -26,6 +27,7 @@ export default function ShopPage() {
   const [error, setError] = useState<string | null>(null);
   const [showBundles, setShowBundles] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [canceled, setCanceled] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
   // Check URL params for success/cancel
@@ -33,6 +35,9 @@ export default function ShopPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
       setSuccess(true);
+    }
+    if (params.get('canceled') === 'true') {
+      setCanceled(true);
     }
   }, []);
 
@@ -87,7 +92,7 @@ export default function ShopPage() {
         <button
           onClick={() => setShowUpgrade(true)}
           data-testid={`create-account-cta-${product.id}`}
-          className="px-4 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade text-xs bg-scale-blue border-venom-orange text-venom-orange hover:bg-venom-orange hover:text-scale-blue-dark hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className="btn-arcade min-h-[44px] px-4 py-2 text-xs bg-void/40 border-venom-orange text-venom-orange hover:bg-venom-orange hover:text-void-deep transition-all"
         >
           Create an account to purchase
         </button>
@@ -97,10 +102,8 @@ export default function ShopPage() {
       <button
         onClick={() => handlePurchase(product)}
         disabled={loading !== null}
-        className={`px-6 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
-          loading === product.id
-            ? 'bg-scale-blue-light border-scale-blue text-beige cursor-wait'
-            : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
+        className={`btn-go min-h-[44px] px-6 py-2 ${
+          loading === product.id ? 'cursor-wait' : ''
         }`}
       >
         {loading === product.id ? '...' : buyLabel}
@@ -109,27 +112,32 @@ export default function ShopPage() {
   };
 
   return (
-    <div className="min-h-screen bg-scale-blue-dark text-bone-white p-6">
+    <div className="app-bg text-bone-white p-4 sm:p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
         <div>
-          <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">Shop</h1>
+          <h1 className="heading-display text-4xl text-venom-orange text-glow-orange flex items-center gap-3">
+            <IconCart size={32} />
+            Shop
+          </h1>
           <p className="text-beige font-body">Power up your snake empire</p>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
           {/* DNA Balance */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-scale-blue rounded-arcade border-[2px] border-scale-blue-light">
-            <span className="text-lg">🧬</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-arcade border border-scale-blue-light/60 bg-void/70">
+            <IconDna size={18} className="text-venom-orange" />
             <span className="text-bone-white font-display">{dnaBalance.toLocaleString()}</span>
           </div>
-          <EnergyTimer
-            energy={energy}
-            maxEnergy={maxEnergy}
-            energyRegenAt={energyRegenAt}
-          />
+          <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/60 bg-void/70">
+            <EnergyTimer
+              energy={energy}
+              maxEnergy={maxEnergy}
+              energyRegenAt={energyRegenAt}
+            />
+          </div>
           <Link
             href="/"
-            className="px-4 py-2 bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-bone-white hover:bg-scale-blue-light transition-all"
+            className="btn-neutral px-4 py-2 min-h-[44px] inline-flex items-center"
           >
             Back
           </Link>
@@ -138,22 +146,30 @@ export default function ShopPage() {
 
       {/* Success Message */}
       {success && (
-        <div className="bg-venom-orange/20 border-[3px] border-venom-orange rounded-arcade p-4 mb-6">
+        <div className="panel-glow [--glow:#D98324] p-4 mb-6 animate-pop-in">
           <p className="text-venom-orange font-display uppercase">Purchase successful!</p>
           <p className="text-beige text-sm font-body">Your rewards have been added to your account.</p>
         </div>
       )}
 
+      {/* Canceled Message */}
+      {canceled && (
+        <div className="panel p-4 mb-6 animate-fade-up">
+          <p className="text-beige font-display uppercase">Checkout canceled</p>
+          <p className="text-beige/70 text-sm font-body">No charge was made. Come back anytime.</p>
+        </div>
+      )}
+
       {/* Error Message */}
       {error && (
-        <div className="bg-strike-red/20 border-[3px] border-strike-red rounded-arcade p-4 mb-6">
+        <div className="bg-strike-red/15 border border-strike-red/70 rounded-arcade p-4 mb-6 animate-fade-up">
           <p className="text-strike-red font-body">{error}</p>
         </div>
       )}
 
       {/* Anonymous User Notice */}
       {isAnonymous && (
-        <div className="bg-venom-orange/10 border-[3px] border-venom-orange-dark rounded-arcade p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="panel-glow [--glow:#D98324] p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-up">
           <div>
             <p className="text-venom-orange font-display uppercase">Save your progress!</p>
             <p className="text-beige text-sm font-body">
@@ -162,7 +178,7 @@ export default function ShopPage() {
           </div>
           <button
             onClick={() => setShowUpgrade(true)}
-            className="shrink-0 px-4 py-2 bg-venom-orange border-[2px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-xs text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+            className="btn-go shrink-0 px-4 py-2 text-xs min-h-[44px]"
           >
             Create Account
           </button>
@@ -170,25 +186,25 @@ export default function ShopPage() {
       )}
 
       {/* Energy Section */}
-      <section className="mb-10">
-        <h2 className="text-2xl font-display uppercase tracking-arcade text-bone-white mb-2">Energy Packs</h2>
+      <section className="mb-10 animate-fade-up">
+        <h2 className="heading-display text-2xl text-bone-white mb-2">Energy Packs</h2>
         <p className="text-beige font-body mb-6">Get more energy to keep playing</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {ENERGY_PRODUCTS.map((product) => (
             <div
               key={product.id}
-              className="bg-scale-blue rounded-arcade p-6 border-[3px] border-scale-blue-light hover:border-venom-orange transition-colors"
+              className="panel-elevated p-6 hover:border-venom-orange/70 transition-colors"
             >
               <div className="flex items-center gap-3 mb-4">
-                <div className="text-3xl">⚡</div>
+                <IconBolt size={32} className="text-venom-orange shrink-0" />
                 <div>
-                  <h3 className="font-display uppercase tracking-arcade text-bone-white">{product.name}</h3>
+                  <h3 className="heading-display text-bone-white">{product.name}</h3>
                   <p className="text-beige text-sm font-body">{product.description}</p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-2xl font-display text-venom-orange">
                   ${product.priceUsd.toFixed(2)}
                 </span>
@@ -201,23 +217,23 @@ export default function ShopPage() {
 
       {/* Bundles Section - Only show after Day 2 per BM-004 */}
       {showBundles && (
-        <section className="mb-10">
-          <h2 className="text-2xl font-display uppercase tracking-arcade text-bone-white mb-2">Bundles</h2>
+        <section className="mb-10 animate-fade-up">
+          <h2 className="heading-display text-2xl text-bone-white mb-2">Bundles</h2>
           <p className="text-beige font-body mb-6">Best value packages</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {BUNDLE_PRODUCTS.map((product) => (
               <div
                 key={product.id}
-                className="bg-scale-blue rounded-arcade p-6 border-[3px] border-venom-orange"
+                className="panel-glow [--glow:#D98324] p-6"
               >
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between gap-2 mb-4">
                   <div>
-                    <h3 className="font-display uppercase tracking-arcade text-xl text-bone-white">{product.name}</h3>
+                    <h3 className="heading-display text-xl text-bone-white">{product.name}</h3>
                     <p className="text-beige text-sm font-body">{product.description}</p>
                   </div>
                   {product.id === 'starter_bundle' && (
-                    <span className="px-2 py-1 bg-strike-red border-[2px] border-red-900 rounded-arcade text-xs font-display uppercase text-bone-white">
+                    <span className="shrink-0 px-2 py-1 bg-danger-gradient border border-strike-red rounded-arcade text-xs font-display uppercase text-bone-white shadow-glow-sm shadow-strike-red/50">
                       80% OFF
                     </span>
                   )}
@@ -226,24 +242,27 @@ export default function ShopPage() {
                 {/* Rewards Preview */}
                 <div className="flex flex-wrap gap-3 mb-4">
                   {product.rewards.energy && (
-                    <span className="px-3 py-1 bg-venom-orange/20 rounded-arcade border-[2px] border-venom-orange-dark text-venom-orange text-sm font-body">
-                      ⚡ {product.rewards.energy} Energy
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-venom-orange/15 rounded-arcade border border-venom-orange/60 text-venom-orange text-sm font-body">
+                      <IconBolt size={14} />
+                      {product.rewards.energy} Energy
                     </span>
                   )}
                   {product.rewards.dna && (
-                    <span className="px-3 py-1 bg-scale-blue-light/50 rounded-arcade border-[2px] border-scale-blue-light text-bone-white text-sm font-body">
-                      🧬 {product.rewards.dna} DNA
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-void/50 rounded-arcade border border-scale-blue-light/60 text-bone-white text-sm font-body">
+                      <IconDna size={14} className="text-venom-orange" />
+                      {product.rewards.dna} DNA
                     </span>
                   )}
                   {product.rewards.variants && (
-                    <span className="px-3 py-1 bg-scale-blue-light/50 rounded-arcade border-[2px] border-scale-blue-light text-bone-white text-sm font-body">
-                      🐍 {product.rewards.variants.length} Exclusive Variant
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-void/50 rounded-arcade border border-scale-blue-light/60 text-bone-white text-sm font-body">
+                      <IconSnake size={14} className="text-venom-orange" />
+                      {product.rewards.variants.length} Exclusive Variant
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-display text-venom-orange">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-2xl font-display text-venom-orange text-glow-orange">
                     ${product.priceUsd.toFixed(2)}
                   </span>
                   {renderPurchaseButton(product, 'Buy Bundle')}
@@ -256,6 +275,7 @@ export default function ShopPage() {
 
       {/* Fair Play Notice */}
       <section className="text-center text-beige/60 text-sm font-body">
+        <div className="divider-glow max-w-md mx-auto mb-4" />
         <p>All variants can be unlocked through gameplay.</p>
         <p>Purchases provide convenience, not power advantages.</p>
       </section>
