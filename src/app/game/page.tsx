@@ -102,10 +102,14 @@ export default function GamePage() {
     selectedDynasty,
     snake,
     food,
+    direction,
+    queuedDirections,
     startGame: storeStartGame,
     endGame,
     setSnake,
     setFood,
+    setDirection,
+    setQueuedDirections,
     setScore,
     setDnaCollected,
     setSelectedDynasty,
@@ -348,8 +352,19 @@ export default function GamePage() {
       const state = gameRef.current.getState();
       setSnake(state.snake);
       setFood(state.food);
+      setDirection(state.direction);
+      setQueuedDirections(gameRef.current.getQueuedDirections());
     }
-  }, [setSnake, setFood]);
+  }, [setSnake, setFood, setDirection, setQueuedDirections]);
+
+  // Sync only heading + input buffer - called on every direction input so
+  // the aim telegraph reacts on the keypress, not on the next tick
+  const syncAim = useCallback(() => {
+    if (gameRef.current) {
+      setDirection(gameRef.current.getState().direction);
+      setQueuedDirections(gameRef.current.getQueuedDirections());
+    }
+  }, [setDirection, setQueuedDirections]);
 
   // Game loop function (reusable)
   const startGameLoop = useCallback(() => {
@@ -451,6 +466,7 @@ export default function GamePage() {
           const dir = keyMap[e.key];
           if (dir && gameRef.current) {
             gameRef.current.setDirection(dir);
+            syncAim();
           }
           return;
         }
@@ -485,18 +501,20 @@ export default function GamePage() {
       if (dir && gameRef.current) {
         e.preventDefault();
         gameRef.current.setDirection(dir);
+        syncAim();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, startGameLoop, setReady]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, startGameLoop, setReady, syncAim]);
 
   // Handle direction from D-Pad
   const handleDPadDirection = useCallback((dir: Direction) => {
     if (!isPlaying || isGameOver || isPaused || !gameRef.current) return;
     gameRef.current.setDirection(dir);
-  }, [isPlaying, isGameOver, isPaused]);
+    syncAim();
+  }, [isPlaying, isGameOver, isPaused, syncAim]);
 
   // Handle pause/resume
   const handlePause = useCallback(() => {

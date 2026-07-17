@@ -168,6 +168,15 @@ export class SnakeGameLogic {
   }
 
   /**
+   * Get the currently buffered direction inputs (immutable copy), in the
+   * order they will be consumed (one per tick). Read-only view for the
+   * renderer's aim telegraph - queued turns are drawn before they execute.
+   */
+  getQueuedDirections(): Direction[] {
+    return [...this.directionQueue];
+  }
+
+  /**
    * Pause the game
    */
   pause(): void {

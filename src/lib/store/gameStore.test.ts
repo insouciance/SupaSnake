@@ -143,6 +143,17 @@ describe('Game Store', () => {
       useGameStore.getState().setDirection('UP');
       expect(useGameStore.getState().direction).toBe('UP');
     });
+
+    it('should update queued directions (aim telegraph mirror)', () => {
+      useGameStore.getState().setQueuedDirections(['UP', 'LEFT']);
+      expect(useGameStore.getState().queuedDirections).toEqual(['UP', 'LEFT']);
+    });
+
+    it('should clear queued directions on reset', () => {
+      useGameStore.getState().setQueuedDirections(['UP']);
+      useGameStore.getState().resetGame();
+      expect(useGameStore.getState().queuedDirections).toEqual([]);
+    });
   });
 
   describe('Reset', () => {

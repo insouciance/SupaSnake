@@ -217,6 +217,41 @@ describe('SnakeGameLogic', () => {
         expect(game.getState().direction).toBe('RIGHT');
       });
     });
+
+    describe('getQueuedDirections (aim telegraph read-only view)', () => {
+      it('returns an empty array when nothing is buffered', () => {
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+
+      it('returns buffered inputs in consumption order', () => {
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+      });
+
+      it('reflects consumption - one entry leaves per tick', () => {
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        game.tick();
+        expect(game.getQueuedDirections()).toEqual(['LEFT']);
+        game.tick();
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+
+      it('returns a copy - mutating it does not affect the engine', () => {
+        game.setDirection('UP');
+        const queued = game.getQueuedDirections();
+        queued.push('LEFT');
+        expect(game.getQueuedDirections()).toEqual(['UP']);
+      });
+
+      it('does not include rejected inputs (reversals, duplicates)', () => {
+        // Moving RIGHT: LEFT is a reversal, RIGHT a duplicate - both dropped
+        game.setDirection('LEFT');
+        game.setDirection('RIGHT');
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+    });
   });
 
   describe('Food Collection', () => {

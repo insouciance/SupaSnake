@@ -30,6 +30,8 @@ export interface GameStore {
   snake: Position[];
   food: Position | null;
   direction: Direction;
+  /** Buffered inputs mirrored from the engine (for the aim telegraph) */
+  queuedDirections: Direction[];
   deathPosition: Position | null;
 
   // Audio state
@@ -52,6 +54,7 @@ export interface GameStore {
   setSnake: (snake: Position[]) => void;
   setFood: (food: Position | null) => void;
   setDirection: (direction: Direction) => void;
+  setQueuedDirections: (queuedDirections: Direction[]) => void;
   setDeathPosition: (position: Position | null) => void;
   setMuted: (muted: boolean) => void;
   toggleMute: () => void;
@@ -73,6 +76,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   snake: [],
   food: null,
   direction: 'RIGHT',
+  queuedDirections: [],
   deathPosition: null,
   isMuted: false,
 
@@ -88,6 +92,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       score: 0,
       dnaCollected: 0,
       direction: 'RIGHT',
+      queuedDirections: [],
       deathPosition: null,
     });
   },
@@ -115,6 +120,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       snake: [],
       food: null,
       direction: 'RIGHT',
+      queuedDirections: [],
       deathPosition: null,
     });
   },
@@ -181,6 +187,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setDirection: (direction: Direction) => {
     set({ direction });
+  },
+
+  setQueuedDirections: (queuedDirections: Direction[]) => {
+    set({ queuedDirections });
   },
 
   setDeathPosition: (position: Position | null) => {
