@@ -80,7 +80,30 @@ surfaces, staggered entrance motion everywhere, reduced-motion support.
       (more/less glow, spacing, copy tone, celebration intensity)
 - [ ] Home first impression: does it pass the "this feels different" test?
 
-## 🆕 Latest wave to verify (deployed 2026-07-17)
+## 🌌 THE BIG ONE — game-menu experience (deploying now)
+
+Judge on desktop AND phone at supasnake.com:
+
+- [ ] **The Specimen Chamber**: landing is now a live 3D scene — YOUR equipped
+      snake as the hero character (undulating, dynasty-lit, camera drift).
+      Framing/lighting knobs are named constants in SpecimenChamber.tsx —
+      tell me what to tune
+- [ ] **Game-menu IA**: one LAUNCH plate, rotating mission line (daily beacon
+      → tap claims), ambient DNA/energy counters, no dashboard panels
+- [ ] **Icon rail navigation** (right edge desktop / bottom floating mobile,
+      labels on hover, You node = account) — replaced the web navbar app-wide
+- [ ] **Flick controls on your phone**: flick anywhere; cyan edge pulse =
+      queued, rose = rejected; queued-arrows chip; chained flicks; stall
+      then flick again for same-direction U-turns; FLICK/D-PAD toggle on
+      the pre-game screen; add ?debug=input to see the instrumentation.
+      Feel tunables: threshold 26px / stall 90ms
+- [ ] **Camera**: 70° side-aligned default, magnetic snap, auto-fit, reset
+- [ ] **Aim systems** on pre-game screen (locked ones show unlock hints)
+- [ ] Block food + restyled voxel snake + Radar's rose danger tint
+- [ ] Known minor: the "Play to earn DNA" hint chip may sit near the mobile
+      bottom rail until dismissed (will reposition on your word)
+
+## 🆕 Previous wave (deployed 2026-07-17)
 
 - [ ] **Your login works now**: bllj@proton.me was stuck unconfirmed (the
       localhost-link bug) — admin-confirmed. Try signing in.
