@@ -101,11 +101,12 @@ export function DynamicLights({
         />
       )}
 
-      {/* Corner accent lights */}
-      <pointLight position={[0, 2, 0]} intensity={0.15} color={theme.primary} distance={8} />
-      <pointLight position={[gridSize, 2, 0]} intensity={0.15} color={theme.primary} distance={8} />
-      <pointLight position={[0, 2, gridSize]} intensity={0.15} color={theme.primary} distance={8} />
-      <pointLight position={[gridSize, 2, gridSize]} intensity={0.15} color={theme.primary} distance={8} />
+      {/* Corner accent lights - slightly raised to support the dynasty
+          edge wash on the darker void-family floor */}
+      <pointLight position={[0, 2, 0]} intensity={0.2} color={theme.primary} distance={8} />
+      <pointLight position={[gridSize, 2, 0]} intensity={0.2} color={theme.primary} distance={8} />
+      <pointLight position={[0, 2, gridSize]} intensity={0.2} color={theme.primary} distance={8} />
+      <pointLight position={[gridSize, 2, gridSize]} intensity={0.2} color={theme.primary} distance={8} />
     </>
   );
 }

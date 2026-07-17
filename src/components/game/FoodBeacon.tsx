@@ -115,14 +115,15 @@ export function FoodBeacon({
         <meshBasicMaterial color={color} opacity={0.1} transparent />
       </mesh>
 
-      {/* Ground pulse ring */}
-      <mesh ref={pulseRingRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* Ground pulse ring - lifted above the grid lines (major lines sit
+          at y=0.02) to avoid z-fighting */}
+      <mesh ref={pulseRingRef} position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.5, 0.6, 32]} />
         <meshBasicMaterial color={color} opacity={0.3} transparent side={THREE.DoubleSide} />
       </mesh>
 
       {/* Static ground indicator */}
-      <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.3, 0.35, 32]} />
         <meshBasicMaterial color={color} opacity={0.5} transparent side={THREE.DoubleSide} />
       </mesh>
