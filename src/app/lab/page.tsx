@@ -227,7 +227,7 @@ export default function LabPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="app-bg min-h-screen flex flex-col text-bone-white">
+    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-24 sm:pb-0">
       {/* Global navigation */}
       <Navigation />
 

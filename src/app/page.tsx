@@ -406,7 +406,7 @@ export default function Home() {
       )}
 
       {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center px-4 sm:px-8 pt-16 pb-12">
+      <div className="relative z-10 flex flex-col items-center px-4 sm:px-8 pt-16 pb-28 sm:pb-12">
         <div className="w-full max-w-5xl space-y-6">
 
           {/* Hero: mascot + wordmark + primary CTA */}

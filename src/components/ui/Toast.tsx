@@ -115,7 +115,8 @@ export function ToastProvider({ children }: ToastProviderProps) {
     <ToastContext.Provider value={{ toasts, showToast, dismissToast }}>
       {children}
       {/* Toast container */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {/* bottom-20 on mobile clears the fixed bottom tab bar */}
+      <div className="fixed bottom-20 sm:bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
         {toasts.map(toast => (
           <Toast
             key={toast.id}

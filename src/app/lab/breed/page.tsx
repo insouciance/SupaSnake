@@ -320,7 +320,7 @@ export default function BreedPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="app-bg min-h-screen flex flex-col text-bone-white">
+    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-24 sm:pb-0">
       <Navigation />
 
       <div className="pt-14 flex-1">

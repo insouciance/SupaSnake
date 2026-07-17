@@ -12,6 +12,11 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+// Shop now mounts the shared NavBar (uses usePathname)
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/shop',
+}));
+
 jest.mock('@/hooks/useWalletSync', () => ({
   useWalletSync: () => ({
     dnaBalance: 100,

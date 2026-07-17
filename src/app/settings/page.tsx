@@ -40,7 +40,7 @@ export default function SettingsPage() {
       <NavBar />
 
       {/* Content with top padding for fixed nav */}
-      <div className="max-w-4xl mx-auto px-4 pt-20 pb-12">
+      <div className="max-w-4xl mx-auto px-4 pt-20 pb-28 sm:pb-12">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
           <div>

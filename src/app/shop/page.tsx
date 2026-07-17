@@ -16,6 +16,7 @@ import {
   StoreProduct,
 } from '@/lib/stripe/products';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
+import { NavBar } from '@/components/ui/NavBar';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import Link from 'next/link';
 import { IconBolt, IconCart, IconDna, IconSnake } from '@/components/ui/icons';
@@ -112,7 +113,10 @@ export default function ShopPage() {
   };
 
   return (
-    <div className="app-bg text-bone-white p-4 sm:p-6">
+    <div className="app-bg text-bone-white px-4 sm:px-6 pt-20 pb-28 sm:pb-6">
+      {/* Global navigation */}
+      <NavBar />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
         <div>

@@ -15,6 +15,17 @@ jest.mock('@/lib/store/gameStore', () => ({
   useGameStore: () => ({ energy: 3 }),
 }));
 
+// The command bar hosts the AccountChip (identity indicator)
+jest.mock('@/lib/auth/AuthProvider', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1', is_anonymous: true },
+    isAuthenticated: true,
+    isAnonymous: true,
+    isLoading: false,
+    signOut: jest.fn(),
+  }),
+}));
+
 describe('Navigation', () => {
   it('renders core links', () => {
     render(<Navigation />);
@@ -49,5 +60,11 @@ describe('Navigation', () => {
     expect(
       screen.getByText(`3/${GAME_CONFIG.economy.energy.maxEnergy}`)
     ).toBeInTheDocument();
+  });
+
+  it('mounts the account identity chip', () => {
+    render(<Navigation />);
+
+    expect(screen.getByTestId('account-chip')).toBeInTheDocument();
   });
 });
