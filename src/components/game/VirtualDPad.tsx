@@ -62,12 +62,13 @@ export function VirtualDPad({
   const buttonClass = (dir: Direction) => `
     flex items-center justify-center
     w-16 h-16 sm:w-20 sm:h-20
-    rounded-xl
+    rounded-arcade
+    border backdrop-blur-sm
     transition-all duration-75
     select-none touch-none
     ${pressed[dir]
-      ? 'bg-white/30 scale-95 shadow-inner'
-      : 'bg-white/10 hover:bg-white/20 active:bg-white/30'
+      ? 'bg-venom-orange/25 border-venom-orange/70 shadow-glow-sm shadow-venom-orange/60 scale-95'
+      : 'bg-void/50 border-scale-blue-light/40 hover:bg-void/70 active:bg-venom-orange/20'
     }
     ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
   `;
@@ -83,7 +84,7 @@ export function VirtualDPad({
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ transform: `rotate(${rotation}deg)` }}
-      className="text-white/80"
+      className="text-bone-white/80"
     >
       <path d="M12 5v14M5 12l7-7 7 7" />
     </svg>
@@ -121,7 +122,7 @@ export function VirtualDPad({
         </button>
 
         {/* Center spacer */}
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white/5" />
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-arcade bg-void/30" />
 
         <button
           className={buttonClass('RIGHT')}

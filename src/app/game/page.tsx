@@ -29,6 +29,16 @@ import { screenShake } from '@/lib/effects/ScreenShake';
 import { useInterpolatedMesh, useGridPosition } from '@/hooks/useInterpolatedPosition';
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward } from '@/lib/outbox/rewardOutbox';
+import {
+  IconBolt,
+  IconDna,
+  IconFlame,
+  IconFlask,
+  IconHome,
+  IconSnake,
+  IconTrophy,
+  IconUser,
+} from '@/components/ui/icons';
 
 export default function GamePage() {
   const { session, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -516,8 +526,8 @@ export default function GamePage() {
   // Show loading while checking auth
   if (authLoading) {
     return (
-      <div className="w-screen h-dvh flex items-center justify-center bg-scale-blue-dark">
-        <div className="text-center space-y-4">
+      <div className="w-screen h-dvh app-bg flex items-center justify-center">
+        <div className="text-center space-y-4 animate-fade-up">
           <div className="animate-spin w-12 h-12 border-4 border-t-transparent border-venom-orange rounded-full mx-auto" />
           <p className="text-beige font-body">Loading...</p>
         </div>
@@ -528,13 +538,13 @@ export default function GamePage() {
   // Prompt sign-in if not authenticated (anonymous auth should auto-sign in)
   if (!isAuthenticated) {
     return (
-      <div className="w-screen h-dvh flex items-center justify-center bg-scale-blue-dark">
-        <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-8 text-center space-y-6">
-          <h1 className="text-3xl font-display uppercase tracking-arcade text-venom-orange">OG Snake</h1>
+      <div className="w-screen h-dvh app-bg flex items-center justify-center p-4">
+        <div className="panel-elevated p-8 text-center space-y-6 w-full max-w-sm animate-pop-in">
+          <h1 className="heading-display text-3xl text-venom-orange text-glow-orange">SupaSnake</h1>
           <p className="text-beige font-body">Sign in to play and save your progress</p>
           <Link
             href="/login"
-            className="inline-block px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+            className="btn-go inline-block px-8 py-3 text-lg min-h-[44px]"
           >
             Sign In
           </Link>
@@ -562,30 +572,37 @@ export default function GamePage() {
           }}
         />
       )}
-      {/* HUD */}
-      <div className="absolute top-4 left-4 z-10 text-bone-white space-y-2">
-        <h1 className="text-2xl font-display uppercase tracking-arcade text-venom-orange">OG Snake</h1>
+      {/* HUD - small void chips, safe-area aware */}
+      <div
+        className="absolute left-4 z-10 text-bone-white space-y-2"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+      >
+        <h1 className="heading-display text-2xl text-venom-orange text-glow-orange">SupaSnake</h1>
 
         {/* Stats */}
-        <div className="flex gap-6 text-lg items-start font-body">
-          <div>
-            <span className="text-beige">Score:</span>{' '}
+        <div className="flex flex-wrap gap-2 items-start font-body">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
+            <span className="text-beige text-sm">Score:</span>
             <span className="font-bold text-bone-white">{score}</span>
           </div>
-          <div>
-            <span className="text-beige">DNA:</span>{' '}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
+            <IconDna size={15} className="text-venom-orange" />
+            <span className="text-beige text-sm">DNA:</span>
             <span className="font-bold text-venom-orange">{dnaCollected}</span>
           </div>
-          <EnergyTimer
-            energy={energy}
-            maxEnergy={maxEnergy}
-            energyRegenAt={energyRegenAt}
-          />
+          <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
+            <EnergyTimer
+              energy={energy}
+              maxEnergy={maxEnergy}
+              energyRegenAt={energyRegenAt}
+            />
+          </div>
         </div>
 
         {/* Equipped Snake (the game always uses the equipped snake) */}
         {equippedSnake && !isPlaying && (
-          <div className="flex items-center gap-2 mt-4 font-body text-sm">
+          <div className="inline-flex items-center gap-2 mt-4 px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm font-body text-sm">
+            <IconSnake size={15} className="text-beige" />
             <span className="text-beige">Snake:</span>
             <span className="font-bold text-bone-white">{equippedSnake.name}</span>
             <span className="text-beige/70">Gen {equippedSnake.generation}</span>
@@ -595,27 +612,33 @@ export default function GamePage() {
 
       {/* Navigation (when not playing) */}
       {!isPlaying && (
-        <div className="absolute top-4 right-4 z-10 flex gap-2">
+        <div
+          className="absolute right-4 z-10 flex gap-2"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        >
           <Link
             href="/"
-            className="p-2 bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade hover:bg-scale-blue-light transition-all text-beige hover:text-bone-white"
+            className="flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
             title="Home"
+            aria-label="Home"
           >
-            🏠
+            <IconHome size={20} />
           </Link>
           <Link
             href="/leaderboard"
-            className="p-2 bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade hover:bg-scale-blue-light transition-all text-beige hover:text-bone-white"
+            className="flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
             title="Leaderboard"
+            aria-label="Leaderboard"
           >
-            🏆
+            <IconTrophy size={20} />
           </Link>
           <Link
             href="/settings"
-            className="p-2 bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade hover:bg-scale-blue-light transition-all text-beige hover:text-bone-white"
+            className="flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
             title="Profile"
+            aria-label="Profile"
           >
-            👤
+            <IconUser size={20} />
           </Link>
         </div>
       )}
@@ -624,10 +647,11 @@ export default function GamePage() {
       {isPlaying && !isGameOver && !isPaused && (
         <button
           onClick={handlePause}
-          className="absolute top-4 right-4 z-10 p-3 bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade hover:bg-scale-blue-light transition-all"
+          className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-bone-white"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
           aria-label="Pause game"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="#F4F4F4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="4" width="4" height="16" />
             <rect x="14" y="4" width="4" height="16" />
           </svg>
@@ -673,20 +697,26 @@ export default function GamePage() {
 
       {/* Game Over / Start Screen */}
       {!isPlaying && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-scale-blue-dark/90">
-          <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-8 text-center space-y-6 min-w-[320px]">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4">
+          <div
+            className={`panel-elevated p-8 text-center space-y-6 min-w-[320px] max-w-full animate-pop-in ${
+              isGameOver ? '[--glow:#A42424]' : '[--glow:#D98324]'
+            }`}
+          >
             {isGameOver ? (
               <>
-                <h2 className="text-4xl font-display uppercase tracking-arcade text-strike-red">Game Over</h2>
+                <h2 className="heading-display text-4xl text-strike-red text-glow">Game Over</h2>
                 <div className="space-y-2 font-body">
                   <p className="text-2xl text-bone-white">
                     Score: <span className="font-bold text-venom-orange">{score}</span>
                   </p>
-                  <p className="text-2xl text-bone-white">
-                    DNA: <span className="font-bold text-venom-orange">+{dnaCollected}</span>
+                  <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
+                    <IconDna size={22} className="text-venom-orange" />
+                    DNA: <span className="font-bold text-venom-orange text-glow-orange">+{dnaCollected}</span>
                   </p>
                   {streakInfo && (
-                    <p className="text-lg text-beige">
+                    <p className="text-lg text-beige flex items-center justify-center gap-1.5">
+                      <IconFlame size={18} className="text-venom-orange" />
                       Day <span className="font-bold text-venom-orange">{streakInfo.current}</span> streak
                       {streakInfo.multiplier > 1 && (
                         <span className="text-beige/70"> ({streakInfo.multiplier}x DNA)</span>
@@ -697,15 +727,16 @@ export default function GamePage() {
 
                 {/* Unlocked Achievements */}
                 {unlockedAchievements.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-scale-blue-light">
-                    <p className="text-sm text-beige font-body">Achievements Unlocked!</p>
+                  <div className="space-y-2 pt-2 border-t border-scale-blue-light/60">
+                    <p className="label-arcade">Achievements Unlocked!</p>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {unlockedAchievements.map((name, i) => (
                         <span
                           key={i}
-                          className="px-3 py-1 bg-yellow-600/30 border border-yellow-500 rounded-arcade text-yellow-400 text-sm font-body"
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-rarity-legendary/15 border border-rarity-legendary/60 rounded-arcade text-rarity-legendary text-sm font-body shadow-glow-sm shadow-rarity-legendary/30"
                         >
-                          🏆 {name}
+                          <IconTrophy size={14} />
+                          {name}
                         </span>
                       ))}
                     </div>
@@ -714,20 +745,23 @@ export default function GamePage() {
               </>
             ) : (
               <>
-                <h2 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">
+                <h2 className="heading-display text-4xl text-venom-orange text-glow-orange animate-breathe">
                   Ready to Play
                 </h2>
                 {equippedSnake ? (
-                  <p className="text-beige font-body">
-                    <span className="font-bold text-bone-white">{equippedSnake.name}</span>
-                    <span className="text-beige/70"> · Gen {equippedSnake.generation}</span>
-                    <Link
-                      href="/lab"
-                      className="ml-3 text-venom-orange underline hover:text-venom-orange-light transition-colors"
-                    >
-                      Change in Lab
-                    </Link>
-                  </p>
+                  <div className="panel inline-flex items-center gap-3 px-4 py-3 font-body">
+                    <IconSnake size={20} className="text-venom-orange" />
+                    <p>
+                      <span className="heading-display text-lg text-bone-white">{equippedSnake.name}</span>
+                      <span className="text-beige/70"> · Gen {equippedSnake.generation}</span>
+                      <Link
+                        href="/lab"
+                        className="ml-3 text-venom-orange underline hover:text-venom-orange-light transition-colors"
+                      >
+                        Change in Lab
+                      </Link>
+                    </p>
+                  </div>
                 ) : noSnakeAvailable ? (
                   <p className="text-beige font-body">
                     You need a snake before you can play.
@@ -740,47 +774,66 @@ export default function GamePage() {
 
             {/* Error Message */}
             {startError && (
-              <div className="bg-strike-red/20 border-[2px] border-strike-red rounded-arcade px-4 py-2">
+              <div className="bg-strike-red/15 border border-strike-red/70 rounded-arcade px-4 py-2 animate-fade-up">
                 <p className="text-strike-red font-body">{startError}</p>
               </div>
             )}
 
-            <div className="flex gap-4 justify-center">
+            <div className="flex flex-wrap gap-4 justify-center items-center">
               {noSnakeAvailable ? (
                 <Link
                   href="/lab"
-                  className="px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-lg text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="btn-go inline-flex items-center gap-2 px-8 py-3 text-lg min-h-[44px]"
                 >
+                  <IconFlask size={20} />
                   Choose Your Snake in the Lab
                 </Link>
               ) : energy > 0 ? (
                 <button
                   onClick={handleStart}
                   disabled={isStarting || !equippedSnake}
-                  className={`px-8 py-3 rounded-arcade border-[3px] font-display uppercase tracking-arcade text-lg transition-all ${
+                  className={`btn-go inline-flex items-center gap-2 px-8 py-4 text-xl min-h-[44px] ${
                     isStarting || !equippedSnake
-                      ? 'bg-scale-blue-light border-scale-blue cursor-wait text-beige'
-                      : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
+                      ? 'cursor-wait'
+                      : 'animate-glow-pulse shadow-venom-orange/50'
                   }`}
                 >
                   {isStarting ? 'Starting...' : (
-                    <>{isGameOver ? 'Play Again' : 'Play'} ({GAME_CONFIG.economy.energy.costPerGame}⚡)</>
+                    <>
+                      {isGameOver ? 'Play Again' : 'Play'}
+                      <span className="inline-flex items-center gap-0.5 text-base">
+                        ({GAME_CONFIG.economy.energy.costPerGame}
+                        <IconBolt size={16} />)
+                      </span>
+                    </>
                   )}
                 </button>
               ) : (
                 <div className="text-venom-orange font-body">
-                  <p className="text-xl font-display uppercase">No Energy!</p>
+                  <p className="heading-display text-xl flex items-center justify-center gap-1.5">
+                    <IconBolt size={20} />
+                    No Energy!
+                  </p>
                   <p className="text-sm text-beige">Regenerates in {GAME_CONFIG.economy.energy.regenRateMinutes} minutes</p>
                 </div>
               )}
 
               {isGameOver && (
-                <button
-                  onClick={handleRestart}
-                  className="px-6 py-3 bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-bone-white hover:bg-scale-blue-light hover:scale-[1.02] active:scale-[0.98] transition-all"
-                >
-                  Menu
-                </button>
+                <>
+                  <Link
+                    href="/lab"
+                    className="btn-neutral inline-flex items-center gap-2 px-6 py-3 min-h-[44px]"
+                  >
+                    <IconFlask size={18} />
+                    Lab
+                  </Link>
+                  <button
+                    onClick={handleRestart}
+                    className="btn-neutral px-6 py-3 min-h-[44px]"
+                  >
+                    Menu
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -790,8 +843,8 @@ export default function GamePage() {
       {/* Ready State Overlay */}
       {isReady && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="text-center space-y-4">
-            <h2 className="text-5xl font-display uppercase tracking-arcade text-venom-orange animate-pulse-slow">Ready!</h2>
+          <div className="text-center space-y-4 animate-fade-up">
+            <h2 className="heading-display text-5xl text-venom-orange text-glow-orange animate-breathe">Ready!</h2>
             <p className="text-bone-white text-lg font-body">Press SPACE or Arrow Key to Start</p>
             <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
           </div>

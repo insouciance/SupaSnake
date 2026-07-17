@@ -2,11 +2,13 @@
 
 /**
  * Pause Menu - Overlay when game is paused
- * AAA 2026 Standard: Proper pause functionality
+ * Void surface + dynasty glow, on the shared panel system.
  */
 
+import type { CSSProperties } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import { themeManager } from '@/lib/theme/ThemeManager';
+import { IconDna } from '@/components/ui/icons';
 
 interface PauseMenuProps {
   dynasty: DynastyId;
@@ -20,34 +22,31 @@ export function PauseMenu({ dynasty, score, dnaCollected, onResume, onQuit }: Pa
   const theme = themeManager.getTheme(dynasty);
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4">
       <div
-        className="relative p-8 rounded-2xl shadow-2xl min-w-[300px]"
-        style={{
-          backgroundColor: 'rgba(20, 20, 20, 0.95)',
-          border: `2px solid ${theme.primary}40`,
-        }}
+        className="panel-glow p-8 min-w-[300px] max-w-full animate-pop-in"
+        style={{ '--glow': theme.primary } as CSSProperties}
       >
-        {/* Glowing accent */}
-        <div
-          className="absolute inset-0 rounded-2xl opacity-20 blur-xl -z-10"
-          style={{ backgroundColor: theme.primary }}
-        />
-
         {/* Header */}
-        <h2 className="text-3xl font-bold text-center mb-6" style={{ color: theme.primary }}>
+        <h2
+          className="heading-display text-3xl text-center mb-6 text-glow"
+          style={{ color: theme.primary }}
+        >
           Paused
         </h2>
 
         {/* Current Stats */}
-        <div className="space-y-3 mb-8 p-4 rounded-lg bg-black/30">
+        <div className="space-y-3 mb-8 p-4 rounded-arcade border border-scale-blue-light/40 bg-void/60">
           <div className="flex justify-between items-center">
-            <span className="text-gray-400">Score</span>
-            <span className="text-2xl font-bold text-white">{score}</span>
+            <span className="label-arcade">Score</span>
+            <span className="font-display text-2xl text-bone-white">{score}</span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-gray-400">DNA Collected</span>
-            <span className="text-xl font-bold text-green-400">+{dnaCollected}</span>
+            <span className="label-arcade inline-flex items-center gap-1.5">
+              <IconDna size={14} />
+              DNA Collected
+            </span>
+            <span className="font-display text-xl text-venom-orange text-glow-orange">+{dnaCollected}</span>
           </div>
         </div>
 
@@ -55,27 +54,23 @@ export function PauseMenu({ dynasty, score, dnaCollected, onResume, onQuit }: Pa
         <div className="space-y-3">
           <button
             onClick={onResume}
-            className="w-full py-4 px-6 rounded-xl font-bold text-lg transition-all transform hover:scale-105 active:scale-95"
-            style={{
-              background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
-              color: '#fff',
-            }}
+            className="btn-go w-full py-4 px-6 text-lg min-h-[44px]"
           >
             Resume
           </button>
 
           <button
             onClick={onQuit}
-            className="w-full py-3 px-6 rounded-xl font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 transition-all transform hover:scale-105 active:scale-95"
+            className="btn-stop w-full py-3 px-6 min-h-[44px]"
           >
             Quit to Menu
           </button>
         </div>
 
         {/* Controls hint */}
-        <p className="text-center text-gray-500 text-sm mt-6">
-          Press <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">ESC</kbd> or{' '}
-          <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">P</kbd> to resume
+        <p className="text-center text-beige/60 font-body text-sm mt-6">
+          Press <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">ESC</kbd> or{' '}
+          <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">P</kbd> to resume
         </p>
       </div>
     </div>
