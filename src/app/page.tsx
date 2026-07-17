@@ -1,8 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+/**
+ * Home - "The Specimen Chamber"
+ *
+ * A premium game menu, not a web dashboard: the player's equipped snake
+ * lives as a 3D character in a full-viewport chamber behind the UI. Over
+ * it, a minimal hierarchy - small wordmark up top, ambient DNA/energy
+ * counters top-right, one rotating mission line, and a single obvious
+ * primary action: LAUNCH.
+ */
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import dynamicImport from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import {
@@ -14,20 +24,11 @@ import {
 } from '@/lib/auth/lastUser';
 import { replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
 import { SaveProgressBanner } from '@/components/auth/UpgradePrompt';
-import { MVP_DYNASTIES, DYNASTY_THEMES } from '@/shared/types/snake-data-model';
-import { NavBar } from '@/components/ui/NavBar';
-import { StatDisplay } from '@/components/ui/StatDisplay';
-import {
-  IconDna,
-  IconBolt,
-  IconTrophy,
-  IconFlame,
-  IconEgg,
-  IconFlask,
-  IconPlay,
-  IconSnake,
-  IconArrowRight,
-} from '@/components/ui/icons';
+import { MVP_DYNASTIES } from '@/shared/types/snake-data-model';
+import type { DynastyId } from '@/shared/types/game';
+import { Navigation } from '@/components/ui/Navigation';
+import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
+import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
 import {
   DailyRewardModal,
   type DailyRewardTier,
@@ -38,21 +39,15 @@ import { OverlayHint } from '@/components/ftue/OverlayHint';
 import { trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 
-// Static dynasty preview data (full catalog lives in the DB: 10 variants each)
-const DYNASTY_PREVIEW = MVP_DYNASTIES.map((name) => ({
-  name,
-  colorPrimary: DYNASTY_THEMES[name].primary,
-  variantCount: 10,
-}));
+// The chamber is WebGL-heavy: lazy-mount client-side only, with the styled
+// gradient placeholder holding the space (zero layout shift).
+const SpecimenChamber = dynamicImport(
+  () => import('@/components/home/SpecimenChamber'),
+  { ssr: false, loading: () => null }
+);
 
-// Emissive glow color per dynasty (DB primaries are too dark for the void)
-const DYNASTY_GLOW: Record<string, string> = {
-  CYBER: '#00FFFF',
-  PRIMAL: '#86efac',
-  COSMIC: '#a855f7',
-};
-
-const TOTAL_VARIANTS = DYNASTY_PREVIEW.reduce((sum, d) => sum + d.variantCount, 0);
+/** Full catalog: 10 variants per MVP dynasty (full data lives in the DB) */
+const TOTAL_VARIANTS = MVP_DYNASTIES.length * 10;
 
 interface HomeStats {
   dna: number;
@@ -70,6 +65,15 @@ interface DailyRewardsState {
   streak: { current: number; multiplier: number };
 }
 
+interface MissionItem {
+  id: string;
+  text: string;
+  /** Glowing beacon dot (daily reward ready) */
+  beacon?: boolean;
+  /** Tapping the line performs this action (e.g. open the daily rewards) */
+  onSelect?: () => void;
+}
+
 function dailyDismissKey(today: string): string {
   return `daily-reward-dismissed-${today}`;
 }
@@ -77,13 +81,15 @@ function dailyDismissKey(today: string): string {
 export default function Home() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
-  const [selectedDynasty, setSelectedDynasty] = useState<string>('CYBER');
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [streak, setStreak] = useState<number | null>(null);
   const [daily, setDaily] = useState<DailyRewardsState | null>(null);
   const [showDailyModal, setShowDailyModal] = useState(false);
   const [welcomeBack, setWelcomeBack] = useState<LastUserMarker | null>(null);
   const [showLossNotice, setShowLossNotice] = useState(false);
+  const [dynasty, setDynasty] = useState<DynastyId>('CYBER');
+  const [chamberReady, setChamberReady] = useState(false);
+  const [missionIndex, setMissionIndex] = useState(0);
 
   const token = session?.access_token;
 
@@ -151,6 +157,39 @@ export default function Home() {
         }
       } catch {
         // Stats stay in loading placeholders; non-fatal
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, token]);
+
+  // The chamber presents the EQUIPPED snake: resolve its dynasty from the
+  // collection. Fresh visitors (or failures) get the CYBER specimen.
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch('/api/collection', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        const snakes: { isEquipped?: boolean; dynastyName?: string | null }[] =
+          data.snakes ?? [];
+        const specimen = snakes.find((s) => s.isEquipped) ?? snakes[0];
+        const name = specimen?.dynastyName?.toUpperCase();
+        if (name && (MVP_DYNASTIES as readonly string[]).includes(name)) {
+          setDynasty(name as DynastyId);
+        }
+      } catch {
+        // CYBER specimen fallback
       }
     };
 
@@ -293,14 +332,75 @@ export default function Home() {
   }, []);
 
   const needsStarter = isAuthenticated && stats?.needsStarterSelection === true;
-  const collectionPct = stats
-    ? Math.min(100, Math.round((stats.collectionSize / TOTAL_VARIANTS) * 100))
-    : 0;
+
+  // ---------------------------------------------------------------------------
+  // Mission line - one contextual line above Launch, rotating every 6s
+  // ---------------------------------------------------------------------------
+
+  const missionItems = useMemo<MissionItem[]>(() => {
+    if (!isAuthenticated) {
+      return [{ id: 'tagline', text: 'Where Skill Creates Legacy' }];
+    }
+    const items: MissionItem[] = [];
+    if (daily?.canClaimToday) {
+      items.push({
+        id: 'daily',
+        text: 'Daily reward ready',
+        beacon: true,
+        onSelect: () => setShowDailyModal(true),
+      });
+    }
+    if (stats) {
+      items.push({
+        id: 'goal',
+        text:
+          stats.collectionSize >= TOTAL_VARIANTS
+            ? 'Every variant unlocked'
+            : `Next goal · ${stats.collectionSize}/${TOTAL_VARIANTS} variants`,
+      });
+    }
+    if (streak !== null && streak > 0) {
+      items.push({ id: 'streak', text: `${streak}-day streak active` });
+    }
+    if (items.length === 0) {
+      items.push({ id: 'tagline', text: 'Where Skill Creates Legacy' });
+    }
+    return items;
+  }, [isAuthenticated, daily?.canClaimToday, stats, streak]);
+
+  useEffect(() => {
+    setMissionIndex(0);
+  }, [missionItems.length]);
+
+  useEffect(() => {
+    if (missionItems.length < 2) return;
+    const id = window.setInterval(
+      () => setMissionIndex((i) => (i + 1) % missionItems.length),
+      6000
+    );
+    return () => window.clearInterval(id);
+  }, [missionItems.length]);
+
+  const mission = missionItems[missionIndex % missionItems.length];
 
   return (
-    <main className="app-bg text-bone-white relative overflow-x-hidden">
-      {/* Navigation Bar */}
-      <NavBar />
+    <main className="app-bg text-bone-white relative h-[100dvh] overflow-hidden">
+      {/* The Specimen Chamber - full-viewport scene behind the UI. The
+          placeholder holds the atmosphere until WebGL is live, then the
+          chamber fades in from black (600ms). */}
+      <div className="absolute inset-0 z-0" aria-hidden="true">
+        <ChamberPlaceholder />
+        <div
+          className={`absolute inset-0 transition-opacity duration-[600ms] ease-out ${
+            chamberReady ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <SpecimenChamber dynasty={dynasty} onReady={() => setChamberReady(true)} />
+        </div>
+      </div>
+
+      {/* Navigation rail */}
+      <Navigation />
 
       {/* Anonymous users: dismissible save-progress banner / corner chip */}
       <SaveProgressBanner />
@@ -405,213 +505,77 @@ export default function Home() {
         <OverlayHint id="home-play-dna" message="Play to earn DNA - spend it in the Lab" />
       )}
 
-      {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center px-4 sm:px-8 pt-16 pb-28 sm:pb-12">
-        <div className="w-full max-w-5xl space-y-6">
+      {/* Wordmark - small and confident; the character below is the hero */}
+      <header
+        className="absolute top-0 inset-x-0 z-10 pt-5 flex justify-center pointer-events-none animate-fade-up"
+        style={{ animationDelay: '120ms' }}
+      >
+        <h1 className="heading-display text-venom-orange text-glow-accent text-xl sm:text-2xl">
+          SUPASNAKE
+        </h1>
+      </header>
 
-          {/* Hero: mascot + wordmark + primary CTA */}
-          <section className="text-center pt-6 sm:pt-10 animate-fade-up">
-            <div className="animate-float inline-block">
-              <Image
-                src="/brand/mascot.png"
-                alt="SupaSnake mascot"
-                width={288}
-                height={288}
-                priority
-                className="mx-auto w-44 sm:w-64 h-auto drop-shadow-[0_0_48px_rgba(34,211,238,0.35)]"
-              />
-            </div>
-            <h1 className="heading-display text-glow-orange text-venom-orange text-5xl sm:text-7xl animate-breathe">
-              SUPASNAKE
-            </h1>
-            <p className="label-arcade mt-3 text-sm">Where Skill Creates Legacy</p>
+      {/* Ambient counters - icon + number only, top-right */}
+      {isAuthenticated && (
+        <div
+          className="absolute top-5 right-4 sm:right-5 z-10 flex items-center gap-4 animate-fade-up"
+          style={{ animationDelay: '240ms' }}
+        >
+          <span className="flex items-center gap-1.5" title="DNA">
+            <IconDna size={16} className="text-rarity-uncommon" />
+            <span className="font-mono font-bold text-sm">
+              {stats ? stats.dna.toLocaleString('en-US') : '—'}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5" title="Energy">
+            <IconBolt size={16} className="text-venom-orange" />
+            <span className="font-mono font-bold text-sm">
+              {stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
+            </span>
+          </span>
+        </div>
+      )}
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-              <Link
-                href="/game"
-                onClick={handlePlay}
-                className="btn-go px-10 py-4 text-xl min-h-[56px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70"
+      {/* Mission line + LAUNCH - the one obvious primary action */}
+      <div className="absolute inset-x-0 z-10 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] sm:bottom-12 flex flex-col items-center gap-4 px-4">
+        <div
+          className="h-6 flex items-center justify-center animate-fade-up"
+          style={{ animationDelay: '360ms' }}
+        >
+          {mission &&
+            (mission.onSelect ? (
+              <button
+                key={mission.id}
+                onClick={mission.onSelect}
+                className="animate-fade-up flex items-center gap-2 label-arcade text-bone-white/90 hover:text-venom-orange-light transition-colors"
               >
-                <IconPlay size={22} />
-                <span>Launch</span>
-              </Link>
-              <Link
-                href="/lab"
-                className="btn-neutral px-10 py-4 text-xl min-h-[56px] inline-flex items-center justify-center gap-3"
-              >
-                <IconFlask size={22} />
-                <span>Lab</span>
-              </Link>
-            </div>
-          </section>
-
-          {/* Stat strip: DNA / energy / streak / high score */}
-          <section
-            className="panel-elevated p-4 sm:p-6 animate-fade-up"
-            style={{ animationDelay: '80ms' }}
-          >
-            <h2 className="label-arcade mb-4">Pilot Stats</h2>
-            {isAuthenticated ? (
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                <div className="flex items-start gap-2.5">
-                  <IconTrophy size={20} className="text-venom-orange mt-0.5 shrink-0" />
-                  <StatDisplay
-                    label="High Score"
-                    value={stats ? stats.highScore : '—'}
-                    highlight
-                    size="sm"
+                {mission.beacon && (
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-venom-orange shadow-glow-sm shadow-venom-orange/80 animate-glow-pulse"
+                    aria-hidden="true"
                   />
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <IconFlame size={20} className="text-strike-red mt-0.5 shrink-0" />
-                  <StatDisplay
-                    label="Streak"
-                    value={streak !== null ? streak : '—'}
-                    size="sm"
-                  />
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <IconDna size={20} className="text-rarity-uncommon mt-0.5 shrink-0" />
-                  <StatDisplay label="DNA" value={stats ? stats.dna : '—'} size="sm" />
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <IconBolt size={20} className="text-rarity-legendary mt-0.5 shrink-0" />
-                  <StatDisplay
-                    label="Energy"
-                    value={stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
-                    size="sm"
-                  />
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <IconEgg size={20} className="text-beige mt-0.5 shrink-0" />
-                  <StatDisplay
-                    label="Collection"
-                    value={stats ? stats.collectionSize : '—'}
-                    suffix="snakes"
-                    size="sm"
-                  />
-                </div>
-              </div>
+                )}
+                <span>{mission.text}</span>
+              </button>
             ) : (
-              <p className="text-beige/60 text-sm font-body py-2">
-                {isLoading ? 'Connecting...' : 'Launch a game to start your pilot record.'}
-              </p>
-            )}
-          </section>
-
-          {/* Dynasty showcase: three glow cards, selectable */}
-          <section className="animate-fade-up" style={{ animationDelay: '160ms' }}>
-            <h2 className="label-arcade mb-3">Dynasties</h2>
-            <div className="grid grid-cols-3 gap-3 sm:gap-4">
-              {DYNASTY_PREVIEW.map((dynasty) => {
-                const glow = DYNASTY_GLOW[dynasty.name] ?? dynasty.colorPrimary;
-                const isSelected = selectedDynasty === dynasty.name;
-                return (
-                  <button
-                    key={dynasty.name}
-                    onClick={() => setSelectedDynasty(dynasty.name)}
-                    className={`panel-glow p-3 sm:p-5 text-center transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                      isSelected ? '' : 'opacity-70 hover:opacity-100'
-                    }`}
-                    style={{ '--glow': glow } as React.CSSProperties}
-                  >
-                    <IconSnake size={28} className="mx-auto" style={{ color: glow }} />
-                    <div
-                      className="heading-display text-sm sm:text-base mt-2"
-                      style={{ color: glow, textShadow: `0 0 14px ${glow}66` }}
-                    >
-                      {dynasty.name}
-                    </div>
-                    <div className="text-xs font-mono text-beige/50 mt-1">
-                      {dynasty.variantCount} variants
-                    </div>
-                    <div className="h-4 mt-1">
-                      {isSelected && (
-                        <span className="label-arcade text-[10px]" style={{ color: glow }}>
-                          ACTIVE
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Next goal: collection progress toward the next variant */}
-          {isAuthenticated && stats && (
-            <section
-              className="panel p-4 sm:p-6 animate-fade-up"
-              style={{ animationDelay: '240ms' }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="label-arcade">Next Goal</h2>
-                <span className="font-mono text-xs text-beige/50">
-                  {stats.collectionSize}/{TOTAL_VARIANTS} unlocked
-                </span>
-              </div>
-              <p className="font-body text-beige text-sm mb-3">
-                {stats.collectionSize >= TOTAL_VARIANTS
-                  ? 'Every variant unlocked. Your dynasty is complete.'
-                  : 'Unlock your next variant - earn DNA and spend it in the Lab.'}
-              </p>
-              <div className="h-2 bg-void-deep border border-scale-blue-light/40 rounded-[2px] overflow-hidden">
-                <div
-                  className="h-full bg-cta-gradient shadow-glow-sm shadow-venom-orange/60 transition-all duration-500"
-                  style={{ width: `${collectionPct}%` }}
-                />
-              </div>
-              <Link
-                href="/lab"
-                className="inline-flex items-center gap-1.5 mt-3 py-2 text-sm font-body font-semibold text-venom-orange hover:text-venom-orange-light transition-colors"
+              <p
+                key={mission.id}
+                className="animate-fade-up label-arcade text-beige/80"
               >
-                Go to Lab
-                <IconArrowRight size={16} />
-              </Link>
-            </section>
-          )}
+                {mission.text}
+              </p>
+            ))}
+        </div>
 
-          {/* Mission briefing */}
-          <section
-            className="panel-elevated p-4 sm:p-6 animate-fade-up"
-            style={{ animationDelay: '320ms' }}
+        <div className="animate-fade-up" style={{ animationDelay: '480ms' }}>
+          <Link
+            href="/game"
+            onClick={handlePlay}
+            className="btn-go px-16 sm:px-20 py-5 text-2xl min-h-[64px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70"
           >
-            <h2 className="label-arcade mb-4">Mission Briefing</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-void-deep/40 rounded-arcade border border-scale-blue-light/20">
-                <IconDna size={28} className="mx-auto mb-2 text-rarity-uncommon" />
-                <h4 className="heading-display text-bone-white text-sm mb-1">
-                  Collect DNA
-                </h4>
-                <p className="text-beige/60 text-xs font-body">
-                  Play snake to harvest genetic material
-                </p>
-              </div>
-              <div className="text-center p-4 bg-void-deep/40 rounded-arcade border border-scale-blue-light/20">
-                <IconEgg size={28} className="mx-auto mb-2 text-cyber" />
-                <h4 className="heading-display text-bone-white text-sm mb-1">
-                  Breed Variants
-                </h4>
-                <p className="text-beige/60 text-xs font-body">
-                  Combine snakes to unlock new species
-                </p>
-              </div>
-              <div className="text-center p-4 bg-void-deep/40 rounded-arcade border border-scale-blue-light/20">
-                <IconTrophy size={28} className="mx-auto mb-2 text-rarity-legendary" />
-                <h4 className="heading-display text-bone-white text-sm mb-1">
-                  Dominate Ranks
-                </h4>
-                <p className="text-beige/60 text-xs font-body">
-                  Climb the global leaderboard
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Footer */}
-          <div className="text-center pt-4 text-beige/30 text-xs font-mono">
-            <p>v1.0.0 // NEXT.JS + THREE.JS + SUPABASE</p>
-          </div>
+            <IconPlay size={26} />
+            <span>Launch</span>
+          </Link>
         </div>
       </div>
     </main>

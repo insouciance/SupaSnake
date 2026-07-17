@@ -1,5 +1,6 @@
 /**
- * Home Page Tests - real pilot stats, daily reward auto-open, FTUE mount
+ * Home Page Tests - Specimen Chamber menu: ambient counters, mission line,
+ * daily reward auto-open, FTUE mount, identity continuity, Launch gating
  */
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
@@ -7,9 +8,18 @@ import Home from './page';
 import { recordLastUser, readLastUser, PROGRESS_LOSS_NOTICE_KEY } from '@/lib/auth/lastUser';
 import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
 
+// The 3D chamber is dynamically imported (WebGL); stub the dynamic loader
+jest.mock('next/dynamic', () => ({
+  __esModule: true,
+  default: () => {
+    const DynamicStub = () => <div data-testid="specimen-chamber" />;
+    return DynamicStub;
+  },
+}));
+
 // Child components with their own routing/effects are stubbed
-jest.mock('@/components/ui/NavBar', () => ({
-  NavBar: () => <div data-testid="navbar" />,
+jest.mock('@/components/ui/Navigation', () => ({
+  Navigation: () => <div data-testid="navigation" />,
 }));
 
 const mockPush = jest.fn();
@@ -35,6 +45,7 @@ interface FetchFixtures {
   player?: Record<string, unknown>;
   streaks?: Record<string, unknown>;
   daily?: Record<string, unknown>;
+  collection?: Record<string, unknown>;
 }
 
 function jsonResponse(body: unknown): Response {
@@ -67,12 +78,17 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     tiers: buildTiers(),
     streak: { current: 5, multiplier: 1.1 },
   };
+  const collectionBody = fixtures.collection ?? {
+    snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'CYBER' }],
+    dnaBalance: 320,
+  };
 
   global.fetch = jest.fn(async (url: RequestInfo | URL) => {
     const u = String(url);
     if (u.includes('/api/player')) return jsonResponse(playerBody);
     if (u.includes('/api/streaks')) return jsonResponse(streaksBody);
     if (u.includes('/api/daily-rewards')) return jsonResponse(dailyBody);
+    if (u.includes('/api/collection')) return jsonResponse(collectionBody);
     return jsonResponse({});
   }) as jest.Mock;
 }
@@ -99,6 +115,13 @@ function setUnauthed() {
   return { signInAnonymously };
 }
 
+/** Waits for authed stats to land (energy counter shows current/max) */
+async function waitForStats() {
+  await waitFor(() => {
+    expect(screen.getByText('4/5')).toBeInTheDocument();
+  });
+}
+
 describe('Home page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -107,35 +130,35 @@ describe('Home page', () => {
   });
 
   describe('unauthenticated', () => {
-    it('renders the command center without fetching stats', () => {
+    it('renders wordmark and Launch without fetching stats', () => {
       setUnauthed();
       render(<Home />);
 
       expect(screen.getByText('SUPASNAKE')).toBeInTheDocument();
-      expect(
-        screen.getByText('Launch a game to start your pilot record.')
-      ).toBeInTheDocument();
+      expect(screen.getByText('Launch')).toBeInTheDocument();
+      expect(screen.getByText('Where Skill Creates Legacy')).toBeInTheDocument();
       expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 
-  describe('real pilot stats', () => {
-    it('fetches and shows high score, streak, DNA, energy and collection', async () => {
+  describe('ambient counters (server authority)', () => {
+    it('fetches and shows DNA and energy', async () => {
       setAuthed();
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
 
-      expect(screen.getByText('High Score')).toBeInTheDocument();
       expect(screen.getByText('320')).toBeInTheDocument(); // DNA
       expect(screen.getByText('4/5')).toBeInTheDocument(); // Energy
-      expect(screen.getByText('Collection')).toBeInTheDocument();
 
       const calls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
       expect(calls).toEqual(
-        expect.arrayContaining(['/api/player', '/api/streaks', '/api/daily-rewards'])
+        expect.arrayContaining([
+          '/api/player',
+          '/api/streaks',
+          '/api/daily-rewards',
+          '/api/collection',
+        ])
       );
     });
 
@@ -153,15 +176,15 @@ describe('Home page', () => {
       expect(playerCall?.[1]?.headers).toEqual({ Authorization: 'Bearer test-token' });
     });
 
-    it('does not render the hardcoded placeholder rank', async () => {
+    it('does not render dashboard remnants (stat strip, briefing, rank)', async () => {
       setAuthed();
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       expect(screen.queryByText('#142')).not.toBeInTheDocument();
       expect(screen.queryByText('Rank')).not.toBeInTheDocument();
+      expect(screen.queryByText('Pilot Stats')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mission Briefing')).not.toBeInTheDocument();
     });
 
     it('fires the daily_login analytics event with streak data', async () => {
@@ -174,6 +197,41 @@ describe('Home page', () => {
           expect.objectContaining({ current_streak: 5 })
         );
       });
+    });
+  });
+
+  describe('mission line', () => {
+    it('surfaces the daily reward with a tappable line when claimable', async () => {
+      setAuthed();
+      // Pre-dismiss so the calendar does not auto-open
+      const today = new Date().toISOString().split('T')[0];
+      window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Daily reward ready')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Daily reward ready'));
+
+      expect(screen.getByText('Daily Rewards')).toBeInTheDocument();
+    });
+
+    it('shows the next-goal progress line when nothing is claimable', async () => {
+      setAuthed();
+      setupFetch({
+        daily: {
+          currentDay: 4,
+          canClaimToday: false,
+          tiers: buildTiers(),
+          streak: { current: 5, multiplier: 1.1 },
+        },
+      });
+      render(<Home />);
+
+      await waitForStats();
+      expect(screen.getByText('Next goal · 3/30 variants')).toBeInTheDocument();
     });
   });
 
@@ -200,9 +258,7 @@ describe('Home page', () => {
       setAuthed();
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       expect(screen.queryByTestId('starter-selection')).not.toBeInTheDocument();
     });
   });
@@ -229,9 +285,7 @@ describe('Home page', () => {
       });
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
     });
 
@@ -241,9 +295,7 @@ describe('Home page', () => {
       window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
     });
   });
@@ -354,9 +406,7 @@ describe('Home page', () => {
       setAuthed({ isAnonymous: false });
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       expect(screen.queryByTestId('save-progress-banner')).not.toBeInTheDocument();
       expect(screen.queryByTestId('save-progress-chip')).not.toBeInTheDocument();
     });
@@ -392,9 +442,7 @@ describe('Home page', () => {
       setAuthed();
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       const sessionCalls = (global.fetch as jest.Mock).mock.calls.filter(
         (c) => String(c[0]) === '/api/game/session'
       );
@@ -419,9 +467,7 @@ describe('Home page', () => {
       window.localStorage.setItem('hint-dismissed-home-play-dna', '1');
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByText('777')).toBeInTheDocument();
-      });
+      await waitForStats();
       expect(
         screen.queryByText('Play to earn DNA - spend it in the Lab')
       ).not.toBeInTheDocument();
