@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { validateBreedingPair, type BreedingBlockReason } from '@/lib/breeding/preview';
 
 import { Navigation } from '@/components/ui/Navigation';
+import { IconArrowRight, IconDna } from '@/components/ui/icons';
 import { ParentSlot } from '@/components/breeding/ParentSlot';
 import { SnakePicker, type SnakePickerEntry } from '@/components/breeding/SnakePicker';
 import { BreedingReveal } from '@/components/breeding/BreedingReveal';
@@ -281,12 +282,12 @@ export default function BreedPage() {
 
   if (isLoading || authLoading) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
+      <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
         <div className="flex items-center justify-center min-h-screen pt-14">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-[#8892b0] font-body">Loading breeding lab...</p>
+          <div className="text-center animate-fade-up">
+            <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4 shadow-glow-sm shadow-venom-orange/50" />
+            <p className="text-beige/70 font-body">Loading breeding lab...</p>
           </div>
         </div>
       </div>
@@ -295,20 +296,17 @@ export default function BreedPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#1a1a2e] text-bone-white">
+      <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
         <div className="flex items-center justify-center min-h-screen pt-14 px-4">
-          <div className="bg-[#16213e] border-2 border-[#00FFFF]/30 rounded-lg p-8 text-center max-w-md space-y-6">
-            <h1 className="text-3xl font-display uppercase tracking-arcade text-[#00FFFF]">
+          <div className="panel-glow [--glow:#00FFFF] animate-pop-in p-8 text-center max-w-md space-y-6">
+            <h1 className="heading-display text-3xl text-cyber text-glow">
               Breeding Lab
             </h1>
-            <p className="text-[#8892b0] font-body">
+            <p className="text-beige/70 font-body">
               Sign in to breed your snakes and create new generations.
             </p>
-            <Link
-              href="/login"
-              className="inline-block px-8 py-3 bg-[#00FFFF] rounded-lg font-display uppercase tracking-arcade text-[#1a1a2e] hover:bg-[#00FFFF]/90 hover:scale-[1.02] active:scale-[0.98] transition-all"
-            >
+            <Link href="/login" className="btn-go inline-block px-8 py-3">
               Sign In to Play
             </Link>
           </div>
@@ -322,34 +320,36 @@ export default function BreedPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] flex flex-col">
+    <div className="app-bg min-h-screen flex flex-col text-bone-white">
       <Navigation />
 
       <div className="pt-14 flex-1">
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between animate-fade-up">
             <div className="flex items-center gap-3">
               <Link
                 href="/lab"
-                className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+                className="btn-neutral flex items-center justify-center w-10 h-10"
                 aria-label="Back to Lab"
               >
-                &#x2190;
+                <IconArrowRight size={18} className="rotate-180" />
               </Link>
-              <h1 className="text-2xl font-bold text-white">Breeding Lab</h1>
+              <h1 className="heading-display text-glow-orange text-2xl text-bone-white">
+                Breeding <span className="text-venom-orange">Lab</span>
+              </h1>
             </div>
             <div
-              className="px-3 py-1.5 rounded-lg text-sm font-semibold"
-              style={{ backgroundColor: 'rgba(0, 255, 255, 0.1)', color: '#00FFFF' }}
+              className="panel flex items-center gap-1.5 px-3 py-1.5 text-sm font-mono font-semibold text-bone-white"
               data-testid="breed-dna-balance"
             >
-              {dnaBalance.toLocaleString('en-US')} <span role="img" aria-label="DNA">💎</span>
+              <IconDna size={16} className="text-cyber" aria-label="DNA" aria-hidden={false} role="img" />
+              {dnaBalance.toLocaleString('en-US')}
             </div>
           </div>
 
           {/* Parent slots */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 animate-fade-up" style={{ animationDelay: '60ms' }}>
             <div className="flex-1">
               <ParentSlot
                 label="Parent 1"
@@ -364,8 +364,7 @@ export default function BreedPage() {
             </div>
 
             <div
-              className="text-2xl font-bold shrink-0"
-              style={{ color: '#8892b0' }}
+              className="font-display text-2xl text-beige/50 shrink-0 select-none"
               aria-hidden="true"
             >
               +
@@ -387,71 +386,71 @@ export default function BreedPage() {
 
           {/* Offspring preview */}
           <div
-            className="rounded-lg p-4 space-y-2"
-            style={{
-              backgroundColor: '#16213e',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-            }}
+            className="panel p-4 space-y-2 animate-fade-up"
+            style={{ animationDelay: '120ms' }}
             data-testid="offspring-preview"
           >
-            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: '#8892b0' }}>
+            <h2 className="label-arcade">
               Offspring Preview
             </h2>
 
             <div className="flex justify-between items-center">
-              <span className="text-sm" style={{ color: '#8892b0' }}>Cost:</span>
-              <span className="text-sm font-semibold text-white" data-testid="breeding-cost">
-                {validation.cost !== null
-                  ? <>{validation.cost.toLocaleString('en-US')} <span role="img" aria-label="DNA">💎</span></>
-                  : '—'}
+              <span className="text-sm font-body text-beige/70">Cost:</span>
+              <span
+                className="text-sm font-mono font-semibold text-bone-white inline-flex items-center gap-1"
+                data-testid="breeding-cost"
+              >
+                {validation.cost !== null ? (
+                  <>
+                    {validation.cost.toLocaleString('en-US')}
+                    <IconDna size={14} className="text-cyber" aria-label="DNA" aria-hidden={false} role="img" />
+                  </>
+                ) : (
+                  '—'
+                )}
               </span>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-sm" style={{ color: '#8892b0' }}>Generation:</span>
-              <span className="text-sm font-semibold text-white" data-testid="offspring-generation">
+              <span className="text-sm font-body text-beige/70">Generation:</span>
+              <span className="text-sm font-mono font-semibold text-bone-white" data-testid="offspring-generation">
                 {validation.offspringGeneration !== null ? `Gen ${validation.offspringGeneration}` : '—'}
               </span>
             </div>
 
-            <p className="text-xs pt-1" style={{ color: '#8892b0' }}>
+            <p className="text-xs pt-1 font-body text-beige/60">
               The offspring has a 50/50 chance of taking either parent&apos;s variant.
             </p>
           </div>
 
           {/* Breed button */}
-          <div className="space-y-2">
+          <div className="space-y-2 animate-fade-up" style={{ animationDelay: '180ms' }}>
             <button
               type="button"
               onClick={handleBreed}
               disabled={!validation.valid || isBreeding}
-              className="w-full py-4 rounded-lg font-bold text-lg transition-all enabled:hover:scale-[1.01] enabled:active:scale-[0.99]"
-              style={{
-                backgroundColor: validation.valid && !isBreeding ? '#00FFFF' : 'rgba(0, 255, 255, 0.2)',
-                color: validation.valid && !isBreeding ? '#1a1a2e' : 'rgba(255, 255, 255, 0.4)',
-                cursor: validation.valid && !isBreeding ? 'pointer' : 'not-allowed',
-                minHeight: '44px',
-              }}
+              className="btn-go w-full py-4 text-lg min-h-[44px]"
               data-testid="breed-button"
             >
               {isBreeding ? 'Breeding...' : 'Breed'}
             </button>
 
             {!validation.valid && validation.reason && (
-              <p className="text-xs text-center" style={{ color: '#8892b0' }} data-testid="breed-block-reason">
+              <p className="text-xs text-center font-body text-beige/60" data-testid="breed-block-reason">
                 {BLOCK_REASON_TEXT[validation.reason]}
               </p>
             )}
           </div>
 
           {/* Recent breedings */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: '#8892b0' }}>
+          <div className="space-y-3 animate-fade-up" style={{ animationDelay: '240ms' }}>
+            <h2 className="label-arcade">
               Recent Breedings
             </h2>
+            <div className="divider-glow" />
 
             {history.length === 0 ? (
-              <p className="text-sm py-3 text-center" style={{ color: '#8892b0' }} data-testid="history-empty">
+              <p className="text-sm py-3 text-center font-body text-beige/60" data-testid="history-empty">
                 No breedings yet. Combine two snakes to start a bloodline.
               </p>
             ) : (
@@ -463,24 +462,21 @@ export default function BreedPage() {
                   return (
                     <li
                       key={entry.id}
-                      className="rounded-lg px-4 py-3 flex items-center justify-between gap-3"
-                      style={{
-                        backgroundColor: '#16213e',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}
+                      className="panel px-4 py-3 flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: theme.primary }}>
+                        <p className="text-sm font-body font-semibold truncate" style={{ color: theme.glow }}>
                           {entry.child
                             ? `${entry.child.variantName ?? 'Unknown'} (Gen ${entry.child.generation})`
                             : 'Offspring released'}
                         </p>
-                        <p className="text-xs truncate" style={{ color: '#8892b0' }}>
+                        <p className="text-xs font-body truncate text-beige/60">
                           {entry.parent1?.variantName ?? '?'} × {entry.parent2?.variantName ?? '?'}
                         </p>
                       </div>
-                      <span className="text-xs font-medium shrink-0" style={{ color: '#8892b0' }}>
-                        -{entry.dnaCost} <span role="img" aria-label="DNA">💎</span>
+                      <span className="text-xs font-mono font-medium shrink-0 text-beige/60 inline-flex items-center gap-1">
+                        -{entry.dnaCost}
+                        <IconDna size={12} aria-label="DNA" aria-hidden={false} role="img" />
                       </span>
                     </li>
                   );

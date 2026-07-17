@@ -2,13 +2,14 @@
 
 /**
  * ParentSlot - One of the two parent selectors on the breeding screen.
- * Empty: dashed placeholder inviting selection (EmptySlot-style).
- * Filled: compact card with SnakeArt, variant name and generation badge,
- * plus a clear button to free the slot.
+ * Empty: dashed void slot with an egg icon inviting selection.
+ * Filled: glowing panel in the parent's dynasty color with SnakeArt,
+ * variant name and generation badge, plus a clear button to free the slot.
  */
 
 import React from 'react';
 import { SnakeArt } from '@/components/lab/SnakeArt';
+import { IconEgg, IconX } from '@/components/ui/icons';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { OwnedSnake, SnakeVariant } from '@/shared/types/snake-data-model';
 
@@ -47,38 +48,30 @@ export function ParentSlot({
   onClear,
   testId,
 }: ParentSlotProps): React.ReactElement<any> {
-  // Empty slot: dashed placeholder
+  // Empty slot: dashed void placeholder with egg icon
   if (!snake || !variant) {
     return (
       <button
         type="button"
         onClick={onSelect}
-        className="relative flex flex-col items-center justify-center rounded-lg w-full transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2"
+        className="relative flex flex-col items-center justify-center rounded-arcade w-full border-2 border-dashed bg-void-deep/50 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2"
         style={{
           aspectRatio: '3 / 4',
           minHeight: '44px',
           minWidth: '44px',
-          border: `2px dashed ${hexToRgba(theme.primary, 0.6)}`,
-          background: `linear-gradient(135deg, ${hexToRgba(theme.primary, 0.08)} 0%, ${hexToRgba(theme.secondary, 0.08)} 100%)`,
+          borderColor: hexToRgba(theme.glow, 0.45),
         }}
         aria-label={`Select ${label}`}
         data-testid={testId ?? 'parent-slot-empty'}
       >
-        <div
-          className="flex items-center justify-center rounded-full mb-2 text-3xl font-light"
-          style={{
-            width: '48px',
-            height: '48px',
-            border: `2px dashed ${hexToRgba(theme.primary, 0.5)}`,
-            color: hexToRgba(theme.primary, 0.7),
-          }}
-          aria-hidden="true"
-        >
-          +
-        </div>
+        <IconEgg
+          size={36}
+          className="mb-2"
+          style={{ color: hexToRgba(theme.glow, 0.6) }}
+        />
         <span
-          className="text-xs font-medium tracking-wide uppercase"
-          style={{ color: hexToRgba(theme.primary, 0.7) }}
+          className="label-arcade"
+          style={{ color: hexToRgba(theme.glow, 0.7) }}
         >
           {label}
         </span>
@@ -86,16 +79,16 @@ export function ParentSlot({
     );
   }
 
-  // Filled slot: snake card
+  // Filled slot: panel glowing in the parent's dynasty color
   return (
     <div
-      className="relative rounded-lg overflow-hidden w-full"
-      style={{
-        aspectRatio: '3 / 4',
-        border: `2px solid ${hexToRgba(theme.primary, 0.6)}`,
-        backgroundColor: '#16213e',
-        boxShadow: theme.shadow,
-      }}
+      className="panel-glow relative overflow-hidden w-full"
+      style={
+        {
+          aspectRatio: '3 / 4',
+          '--glow': theme.glow,
+        } as React.CSSProperties
+      }
       data-testid={testId ?? 'parent-slot-filled'}
     >
       {/* Change parent (whole card is clickable) */}
@@ -120,29 +113,22 @@ export function ParentSlot({
       <button
         type="button"
         onClick={onClear}
-        className="absolute top-1.5 right-1.5 flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold transition-colors z-10"
-        style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.65)',
-          color: '#ffffff',
-        }}
+        className="absolute top-1.5 right-1.5 flex items-center justify-center w-7 h-7 rounded-full bg-void-deep/80 border border-scale-blue-light/50 text-bone-white/80 hover:text-bone-white transition-colors z-10"
         aria-label={`Remove ${label}`}
         data-testid={testId ? `${testId}-clear` : 'parent-slot-clear'}
       >
-        &#x2715;
+        <IconX size={14} />
       </button>
 
       {/* Name + generation footer */}
-      <div
-        className="absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center pointer-events-none"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)' }}
-      >
+      <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center pointer-events-none bg-void-deep/80 border-t border-scale-blue-light/30">
         <p
-          className="text-xs font-semibold truncate"
-          style={{ color: theme.primary }}
+          className="text-xs font-body font-semibold truncate"
+          style={{ color: theme.glow }}
         >
           {variant.name}
         </p>
-        <p className="text-[10px]" style={{ color: '#8892b0' }}>
+        <p className="text-[10px] font-mono text-beige/60">
           Gen {snake.generation}
         </p>
       </div>
