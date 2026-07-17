@@ -66,8 +66,11 @@ test.describe('Equipped-snake game flow', () => {
       page.getByRole('heading', { name: /ready to play/i })
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/gen \d+/i).first()).toBeVisible();
+    // /^play\b/ matches the Play button ("Play (1 ⚡)" / "Play Again") but
+    // not the AccountChip's "Playing as guest - save progress" label, which
+    // made a bare /play/i a strict-mode violation
     await expect(
-      page.getByRole('button', { name: /play/i })
+      page.getByRole('button', { name: /^play\b/i })
     ).toBeVisible();
 
     // HUD shows score and DNA counters before the run starts
