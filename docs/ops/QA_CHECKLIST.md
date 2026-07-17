@@ -8,11 +8,12 @@ _Last updated: 2026-07-16 (afternoon)_
 
 ## ⚠️ Needs you (blockers for 100% completion)
 
-- [ ] **Resend**: paste a Resend API key (full access) into the chat or `.env`
-      as `RESEND_API_KEY`. With supasnake.com DNS on Vercel, I can then create
-      the sending domain, add the DNS records, and configure Supabase SMTP
-      myself — except the final "save" in the Supabase dashboard SMTP form
-      (dashboard-only; I'll give you the exact values).
+- [x] **Resend: DONE** (2026-07-17) — supasnake.com verified in Resend (EU),
+      Supabase SMTP configured via Management API (smtp.resend.com, sender
+      noreply@supasnake.com), test password-reset email DELIVERED to
+      bllj@pm.me. Decision still open: instant account creation stays ON
+      (recommended) vs re-enabling confirmation emails now that delivery
+      works — say the word to flip it.
 - [ ] **supasnake.io (IONOS)**: either point its nameservers at Vercel
       (ns1.vercel-dns.com / ns2.vercel-dns.com) so I can manage it, or set an
       IONOS redirect supasnake.io → supasnake.com. Not launch-blocking.
