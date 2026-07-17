@@ -4,6 +4,12 @@
 
 import { describe, it, expect } from '@jest/globals';
 import { GAME_CONFIG } from '@/shared/config/game';
+import {
+  DEFAULT_AIM_SYSTEM,
+  isAimSystemId,
+  isAimSystemUnlocked,
+  type AimStats,
+} from '@/lib/game/aimSystems';
 
 describe('Player API Logic', () => {
   describe('New Player Creation', () => {
@@ -91,6 +97,58 @@ describe('Player API Logic', () => {
 
       expect(validDynasties.includes('SHADOW')).toBe(false);
       expect(validDynasties.includes('cyber')).toBe(false);
+    });
+  });
+
+  describe('Aim System Selection', () => {
+    const freshStats: AimStats = {
+      highScore: 0,
+      totalGames: 0,
+      breeds: 0,
+      maxGeneration: 0,
+    };
+
+    it('defaults to pulse for new players', () => {
+      expect(DEFAULT_AIM_SYSTEM).toBe('pulse');
+      expect(isAimSystemUnlocked(DEFAULT_AIM_SYSTEM, freshStats)).toBe(true);
+    });
+
+    it('rejects unknown aim system ids (400 path)', () => {
+      expect(isAimSystemId('laser')).toBe(false);
+      expect(isAimSystemId('')).toBe(false);
+      expect(isAimSystemId(undefined)).toBe(false);
+    });
+
+    it('rejects selecting a locked system server-side (403 path)', () => {
+      // Fresh player tries to equip vector (needs high score 15)
+      expect(isAimSystemUnlocked('vector', freshStats)).toBe(false);
+      // ... and apex (needs score 50 or gen 5)
+      expect(isAimSystemUnlocked('apex', freshStats)).toBe(false);
+    });
+
+    it('allows selecting an unlocked system', () => {
+      const veteran: AimStats = {
+        highScore: 32,
+        totalGames: 40,
+        breeds: 2,
+        maxGeneration: 3,
+      };
+      expect(isAimSystemUnlocked('vector', veteran)).toBe(true);
+      expect(isAimSystemUnlocked('sequence', veteran)).toBe(true);
+      expect(isAimSystemUnlocked('radar', veteran)).toBe(true);
+      expect(isAimSystemUnlocked('apex', veteran)).toBe(false);
+    });
+
+    it('derives maxGeneration as MAX over collected snakes', () => {
+      const collected = [{ generation: 1 }, { generation: 5 }, { generation: 2 }];
+      const maxGeneration = collected.reduce(
+        (max, s) => Math.max(max, s.generation ?? 0),
+        0
+      );
+      expect(maxGeneration).toBe(5);
+      expect(
+        isAimSystemUnlocked('apex', { ...freshStats, maxGeneration })
+      ).toBe(true);
     });
   });
 

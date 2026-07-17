@@ -7,8 +7,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { calculateServerEnergy } from '@/lib/server/energyRegen';
 import { GAME_CONFIG } from '@/shared/config/game';
+import {
+  DEFAULT_AIM_SYSTEM,
+  isAimSystemId,
+  isAimSystemUnlocked,
+  type AimStats,
+} from '@/lib/game/aimSystems';
 
 const VALID_DYNASTIES = ['CYBER', 'PRIMAL', 'COSMIC'];
+
+/** player_settings joins as an object (1:1 PK relation) or a one-row array
+ *  depending on PostgREST relationship detection - normalize both. */
+function settingsRow(playerSettings: unknown): Record<string, unknown> | null {
+  if (Array.isArray(playerSettings)) {
+    return (playerSettings[0] as Record<string, unknown>) ?? null;
+  }
+  return (playerSettings as Record<string, unknown>) ?? null;
+}
+
+/** Aim-system unlock stats from existing columns (no new tracking).
+ *  maxGeneration is MAX(generation) over collected_snakes - a cheap
+ *  aggregate over rows the query already fetched. */
+function buildAimStats(player: {
+  high_score?: number | null;
+  total_games_played?: number | null;
+  breeds_completed?: number | null;
+  collected_snakes?: Array<{ generation?: number | null }> | null;
+}): AimStats {
+  const maxGeneration = (player.collected_snakes ?? []).reduce(
+    (max, snake) => Math.max(max, snake.generation ?? 0),
+    0
+  );
+  return {
+    highScore: player.high_score ?? 0,
+    totalGames: player.total_games_played ?? 0,
+    breeds: player.breeds_completed ?? 0,
+    maxGeneration,
+  };
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -128,6 +164,12 @@ export async function GET(request: NextRequest) {
     // Calculate collection size for passive progress
     const collectionSize = player.collected_snakes?.length || 0;
 
+    // Aim system: stored selection + the stats that drive unlock chips
+    const settings = settingsRow(player.player_settings);
+    const storedAim = settings?.aim_system;
+    const aimSystem = isAimSystemId(storedAim) ? storedAim : DEFAULT_AIM_SYSTEM;
+    const aimStats = buildAimStats(player);
+
     return NextResponse.json({
       player,
       // Additional fields for Welcome Back modal
@@ -135,6 +177,9 @@ export async function GET(request: NextRequest) {
       collectionSize,
       // New players own zero snakes until they pick a starter in the Lab
       needsStarterSelection: collectionSize === 0,
+      // Aim telegraph meta-progression
+      aimSystem,
+      aimStats,
     });
   } catch (err) {
     console.error('Player GET error:', err);
@@ -163,11 +208,11 @@ export async function PATCH(request: NextRequest) {
     // - Daily rewards (via /api/player/daily)
     // - Unlock purchases (via /api/collection with RPC cost deduction)
     // - Server-calculated regeneration
-    const { selected_dynasty } = body;
+    const { selected_dynasty, aim_system } = body;
 
     const { data: player } = await supabase
       .from('players')
-      .select('id')
+      .select('id, high_score, total_games_played, breeds_completed, collected_snakes(generation)')
       .eq('user_id', user.id)
       .single();
 
@@ -178,6 +223,30 @@ export async function PATCH(request: NextRequest) {
     // Only update safe settings (no dna, no energy)
     if (selected_dynasty && !VALID_DYNASTIES.includes(selected_dynasty)) {
       return NextResponse.json({ error: 'Invalid dynasty' }, { status: 400 });
+    }
+
+    // Aim system: validate the id AND the unlock server-side - selecting a
+    // locked system is rejected, so client tampering cannot equip it
+    if (aim_system !== undefined) {
+      if (!isAimSystemId(aim_system)) {
+        return NextResponse.json({ error: 'Invalid aim system' }, { status: 400 });
+      }
+      if (!isAimSystemUnlocked(aim_system, buildAimStats(player))) {
+        return NextResponse.json({ error: 'Aim system locked' }, { status: 403 });
+      }
+      const { error: aimUpdateError } = await supabase
+        .from('player_settings')
+        .update({ aim_system })
+        .eq('player_id', player.id);
+
+      if (aimUpdateError) {
+        console.error('Failed to update aim_system:', {
+          playerId: player.id,
+          aim_system,
+          error: aimUpdateError,
+        });
+        return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+      }
     }
     if (selected_dynasty) {
       const { error: settingsUpdateError } = await supabase
