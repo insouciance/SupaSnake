@@ -561,11 +561,18 @@ export default function GamePage() {
   }
 
   return (
-    <div
-      className="w-screen h-dvh relative overflow-hidden"
-      style={{ backgroundColor: theme.ambient }}
-    >
-      {/* Space background overlay */}
+    <div className="w-screen h-dvh relative overflow-hidden app-bg">
+      {/* Dynasty ambient tint - lets the void backdrop participate in the
+          equipped dynasty's identity without leaving the app palette */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(ellipse 90% 70% at 50% 45%, ${theme.ambient} 0%, transparent 70%)`,
+          opacity: 0.55,
+        }}
+      />
+      {/* Faint star-field hint for depth while playing - opacity kept very
+          low so the arena reads as part of the void, not a photo backdrop */}
       {isPlaying && (
         <div
           className="absolute inset-0 pointer-events-none"
@@ -573,6 +580,7 @@ export default function GamePage() {
             backgroundImage: 'url(/textures/minimalistic_background_texture_of_space_1.png)',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
+            opacity: 0.12,
           }}
         />
       )}
@@ -881,7 +889,9 @@ export default function GamePage() {
         }}
         shadows
       >
-        <fog attach="fog" args={['#050505', 35, 70]} />
+        {/* Fog in the void family so the arena's far edge melts into the
+            page backdrop instead of cutting out against it */}
+        <fog attach="fog" args={['#050508', 34, 65]} />
         <ambientLight intensity={0.35} />
         <directionalLight
           position={[10, 20, 10]}
@@ -1007,16 +1017,18 @@ function GameBoard({
 
   return (
     <group position={cameraShake}>
-      {/* AAA Arena Components */}
+      {/* Arena - void-family floor with dynasty edge wash, secondary rails */}
       <ArenaFloor
         gridSize={GAME_CONFIG.board.gridSize}
-        floorColor="#1a2128"
+        floorColor="#0b1016"
         gridColor="#3a4750"
+        majorGridColor="#6b7d8a"
         accentColor={theme.primary}
       />
       <ArenaBorder
         gridSize={GAME_CONFIG.board.gridSize}
-        color={theme.primary}
+        color={theme.secondary}
+        accentColor="#D98324"
         emissiveIntensity={0.5}
       />
 

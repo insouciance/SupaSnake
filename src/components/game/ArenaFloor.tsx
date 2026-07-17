@@ -1,105 +1,147 @@
 'use client';
 
 /**
- * ArenaFloor - Floating command platform
- * Elevated metallic surface with grid lines and void beneath
+ * ArenaFloor - Void-born arena platform
+ *
+ * The floor grows out of the app's void backdrop instead of floating over it:
+ * a deep void-family surface (#0b1016) with a dynasty-tinted emissive wash at
+ * the edges, plus an e-sports major/minor grid (thin cell lines, emphasis
+ * every 5 cells) for fast line reading.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 
 interface ArenaFloorProps {
   /** Grid size (default 20) */
   gridSize?: number;
-  /** Primary color for floor */
+  /** Primary color for floor (void family) */
   floorColor?: string;
-  /** Grid line color */
+  /** Minor grid line color */
   gridColor?: string;
-  /** Accent color for highlights */
+  /** Major grid line color (every 5 cells) */
+  majorGridColor?: string;
+  /** Dynasty color for the emissive edge wash */
   accentColor?: string;
 }
 
+/** Cells between major (emphasized) grid lines */
+const MAJOR_EVERY = 5;
+
 export function ArenaFloor({
   gridSize = 20,
-  floorColor = '#1a2128',
+  floorColor = '#0b1016',
   gridColor = '#3a4750',
+  majorGridColor = '#6b7d8a',
   accentColor = '#D98324',
 }: ArenaFloorProps) {
   const center = gridSize / 2;
 
-  // Create grid lines geometry
-  const gridLines = useMemo(() => {
-    const points: THREE.Vector3[] = [];
+  // Minor + major grid line geometry, split so each set gets its own
+  // weight/opacity (e-sports read: thin quiet cells, emphasis every 5).
+  const { minorPositions, majorPositions } = useMemo(() => {
+    const minor: number[] = [];
+    const major: number[] = [];
+    const yMinor = 0.015;
+    const yMajor = 0.02;
 
-    // Vertical lines (along Z axis)
     for (let i = 0; i <= gridSize; i++) {
-      points.push(new THREE.Vector3(i, 0.02, 0));
-      points.push(new THREE.Vector3(i, 0.02, gridSize));
+      const isMajor = i % MAJOR_EVERY === 0;
+      const target = isMajor ? major : minor;
+      const y = isMajor ? yMajor : yMinor;
+      // Line along Z at x = i
+      target.push(i, y, 0, i, y, gridSize);
+      // Line along X at z = i
+      target.push(0, y, i, gridSize, y, i);
     }
 
-    // Horizontal lines (along X axis)
-    for (let i = 0; i <= gridSize; i++) {
-      points.push(new THREE.Vector3(0, 0.02, i));
-      points.push(new THREE.Vector3(gridSize, 0.02, i));
-    }
-
-    return points;
+    return {
+      minorPositions: new Float32Array(minor),
+      majorPositions: new Float32Array(major),
+    };
   }, [gridSize]);
+
+  // Dynasty-tinted emissive wash: transparent at center, faint glow toward
+  // the edges, so the board participates in the dynasty theme and its edge
+  // reads as lit rather than cut out. Generated once per accent color.
+  const edgeWashTexture = useMemo(() => {
+    if (typeof document === 'undefined') return null;
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const c = new THREE.Color(accentColor);
+    const r = Math.round(c.r * 255);
+    const g = Math.round(c.g * 255);
+    const b = Math.round(c.b * 255);
+
+    const grad = ctx.createRadialGradient(
+      size / 2, size / 2, size * 0.2,
+      size / 2, size / 2, size * 0.71
+    );
+    grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+    grad.addColorStop(0.7, `rgba(${r},${g},${b},0.05)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0.2)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, [accentColor]);
+
+  useEffect(() => {
+    return () => {
+      edgeWashTexture?.dispose();
+    };
+  }, [edgeWashTexture]);
 
   return (
     <group>
-      {/* Dark void beneath platform */}
-      <mesh position={[center, -0.8, center]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[gridSize + 4, gridSize + 4]} />
-        <meshBasicMaterial color="#000000" opacity={0.9} transparent />
-      </mesh>
-
-      {/* Main platform surface */}
+      {/* Main platform surface - void-family, low metalness so it takes
+          light softly instead of reading as a metal slab over the backdrop */}
       <mesh position={[center, -0.05, center]} receiveShadow>
         <boxGeometry args={[gridSize, 0.1, gridSize]} />
         <meshStandardMaterial
           color={floorColor}
-          metalness={0.7}
-          roughness={0.3}
+          metalness={0.35}
+          roughness={0.65}
         />
       </mesh>
 
-      {/* Grid lines */}
+      {/* Dynasty edge wash - additive so it glows over the void surface */}
+      {edgeWashTexture && (
+        <mesh position={[center, 0.006, center]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[gridSize, gridSize]} />
+          <meshBasicMaterial
+            map={edgeWashTexture}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      )}
+
+      {/* Minor grid lines - thin, quiet cell boundaries */}
       <lineSegments>
         <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array(gridLines.flatMap(v => [v.x, v.y, v.z])), 3]}
-          />
+          <bufferAttribute attach="attributes-position" args={[minorPositions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={gridColor} opacity={0.4} transparent />
+        <lineBasicMaterial color={gridColor} opacity={0.28} transparent />
       </lineSegments>
 
-      {/* Accent grid lines (every 5 cells) */}
+      {/* Major grid lines - every 5 cells, brighter for fast distance reads */}
       <lineSegments>
         <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array([
-              // Vertical accent lines
-              0, 0.025, 0, 0, 0.025, gridSize,
-              5, 0.025, 0, 5, 0.025, gridSize,
-              10, 0.025, 0, 10, 0.025, gridSize,
-              15, 0.025, 0, 15, 0.025, gridSize,
-              20, 0.025, 0, 20, 0.025, gridSize,
-              // Horizontal accent lines
-              0, 0.025, 0, gridSize, 0.025, 0,
-              0, 0.025, 5, gridSize, 0.025, 5,
-              0, 0.025, 10, gridSize, 0.025, 10,
-              0, 0.025, 15, gridSize, 0.025, 15,
-              0, 0.025, 20, gridSize, 0.025, 20,
-            ]), 3]}
-          />
+          <bufferAttribute attach="attributes-position" args={[majorPositions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={accentColor} opacity={0.25} transparent />
+        <lineBasicMaterial color={majorGridColor} opacity={0.55} transparent />
       </lineSegments>
 
-      {/* Corner accent markers */}
+      {/* Corner accent markers - dynasty-tinted */}
       {[[0, 0], [gridSize, 0], [0, gridSize], [gridSize, gridSize]].map(([x, z], i) => (
         <mesh key={i} position={[x, 0.03, z]}>
           <boxGeometry args={[0.3, 0.02, 0.3]} />
