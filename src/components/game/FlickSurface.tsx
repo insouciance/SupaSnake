@@ -179,7 +179,11 @@ export function FlickSurface({
       activePointerRef.current = e.pointerId;
       // Freeze the camera orientation for this whole touch (see header).
       quadrantRef.current = azimuthToQuadrant(stateRef.current.getAzimuth());
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Pointer already gone (raced cancel) - move/up guards handle it
+      }
       recognizerRef.current!.pointerDown(e.clientX, e.clientY, e.timeStamp);
     },
     []
