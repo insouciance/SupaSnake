@@ -10,6 +10,31 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import Link from 'next/link';
 import { IconCheck } from '@/components/ui/icons';
 
+interface FormError {
+  text: string;
+  /** Offer a "sign in instead" shortcut (signup with an existing email). */
+  offerSignIn?: boolean;
+}
+
+/** Map raw Supabase auth errors to friendly, actionable copy. */
+export function describeAuthError(message: string, mode: 'login' | 'signup'): FormError {
+  if (/already (been )?registered|already exists/i.test(message)) {
+    return {
+      text: 'That email already has a SupaSnake account.',
+      offerSignIn: mode === 'signup',
+    };
+  }
+  if (/invalid login credentials/i.test(message)) {
+    return {
+      text: 'Wrong email or password. Double-check for typos, or reset your password below.',
+    };
+  }
+  if (/rate limit|too many/i.test(message)) {
+    return { text: 'Too many attempts. Take a breather and try again in a minute.' };
+  }
+  return { text: message };
+}
+
 interface LoginFormProps {
   mode?: 'login' | 'signup';
   onSuccess?: () => void;
@@ -42,7 +67,7 @@ export function LoginForm({
   const { signInWithEmail, signUpWithEmail, signInWithOAuth, signInAnonymously, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FormError | null>(null);
   const [signupSuccess, setSignupSuccess] = useState(false);
 
   const isSignup = mode === 'signup';
@@ -59,14 +84,19 @@ export function LoginForm({
     if (isSignup) {
       const result = await signUpWithEmail(email, password);
       if (result.error) {
-        setError(result.error.message);
+        setError(describeAuthError(result.error.message, 'signup'));
+      } else if (result.session) {
+        // Email auto-confirm is on: the account is live and signed in right
+        // now - go straight into the game, no "check your email" dead end.
+        onSuccess?.();
       } else {
+        // Email verification required: show the check-your-email screen.
         setSignupSuccess(true);
       }
     } else {
       const result = await signInWithEmail(email, password);
       if (result.error) {
-        setError(result.error.message);
+        setError(describeAuthError(result.error.message, 'login'));
       } else {
         onSuccess?.();
       }
@@ -77,7 +107,7 @@ export function LoginForm({
     setError(null);
     const result = await signInWithOAuth(provider);
     if (result.error) {
-      setError(result.error.message);
+      setError(describeAuthError(result.error.message, mode));
     }
   };
 
@@ -114,7 +144,17 @@ export function LoginForm({
     <div className={`space-y-6 ${className}`}>
       {error && (
         <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3">
-          <p className="text-strike-red text-sm font-body font-semibold">{error}</p>
+          <p className="text-strike-red text-sm font-body font-semibold">{error.text}</p>
+          {error.offerSignIn && (
+            <p className="text-beige text-xs font-body mt-2">
+              <Link
+                href="/login"
+                className="text-venom-orange underline hover:text-venom-orange-light"
+              >
+                Sign in with that email instead
+              </Link>
+            </p>
+          )}
         </div>
       )}
 

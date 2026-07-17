@@ -22,9 +22,10 @@ interface AccountUpgradeModalProps {
 }
 
 export function AccountUpgradeModal({ isOpen, onClose }: AccountUpgradeModalProps) {
-  const { isAnonymous } = useAuth();
-
-  if (!isOpen || !isAnonymous) return null;
+  // Deliberately NOT gated on isAnonymous here: a successful upgrade flips
+  // the flag mid-flow, and unmounting then would hide the success screen.
+  // AccountUpgrade itself renders null for non-anonymous users pre-success.
+  if (!isOpen) return null;
 
   return (
     <div

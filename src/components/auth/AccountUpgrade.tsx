@@ -7,26 +7,55 @@
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { IconCheck } from '@/components/ui/icons';
 
 interface AccountUpgradeProps {
   onClose?: () => void;
+  /** Called once the upgrade succeeds (before the success screen renders). */
+  onSuccess?: () => void;
   className?: string;
+}
+
+/** Map raw Supabase auth errors to friendly, actionable copy. */
+export function describeUpgradeError(message: string): {
+  text: string;
+  offerSignIn: boolean;
+} {
+  if (/already (been )?registered|already exists/i.test(message)) {
+    return {
+      text: 'That email already has a SupaSnake account.',
+      offerSignIn: true,
+    };
+  }
+  if (/rate limit|too many/i.test(message)) {
+    return {
+      text: 'Too many attempts. Take a breather and try again in a minute.',
+      offerSignIn: false,
+    };
+  }
+  if (/password/i.test(message)) {
+    return { text: message, offerSignIn: false };
+  }
+  return { text: message, offerSignIn: false };
 }
 
 const INPUT_CLASSES =
   'w-full px-4 py-2.5 min-h-[44px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade font-body text-bone-white placeholder:text-beige/40 focus:outline-none focus:border-venom-orange transition-colors';
 
-export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps) {
+export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUpgradeProps) {
   const { isAnonymous, upgradeAnonymousToEmail, signInWithOAuth, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; offerSignIn: boolean } | null>(null);
   const [success, setSuccess] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState(false);
 
-  if (!isAnonymous) {
+  // NOTE: after a successful upgrade the session refresh flips isAnonymous
+  // to false, so the success screen must render BEFORE this guard.
+  if (!isAnonymous && !success) {
     return null;
   }
 
@@ -53,9 +82,11 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
 
     const result = await upgradeAnonymousToEmail(email, password);
     if (result.error) {
-      setError(result.error.message);
+      setError(describeUpgradeError(result.error.message));
     } else {
+      setPendingConfirmation(result.pendingEmailConfirmation);
       setSuccess(true);
+      onSuccess?.();
     }
   };
 
@@ -63,7 +94,7 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
     setError(null);
     const result = await signInWithOAuth(provider);
     if (result.error) {
-      setError(result.error.message);
+      setError(describeUpgradeError(result.error.message));
     }
   };
 
@@ -72,20 +103,28 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
       <div
         className={`panel-glow p-6 animate-pop-in ${className}`}
         style={{ '--glow': '#4ade80' } as React.CSSProperties}
+        data-testid="upgrade-success"
       >
         <div className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 bg-rarity-uncommon/15 rounded-arcade border-2 border-rarity-uncommon shadow-glow-sm shadow-rarity-uncommon/50 flex items-center justify-center">
             <IconCheck size={32} className="text-rarity-uncommon" />
           </div>
-          <h3 className="heading-display text-xl text-rarity-uncommon mb-2">Account Upgraded!</h3>
+          <h3 className="heading-display text-xl text-rarity-uncommon mb-2">Progress Saved!</h3>
           <p className="text-beige font-body">
-            Check your email to confirm your account.
+            {pendingConfirmation
+              ? 'One last step: check your email and click the confirmation link to lock in your account.'
+              : 'Your snakes, DNA and stats now live on your account - safe on any device.'}
           </p>
-          {onClose && (
-            <button onClick={onClose} className="btn-neutral mt-4 px-6 py-2 min-h-[44px]">
-              Close
-            </button>
-          )}
+          <div className="flex flex-col gap-2 mt-4">
+            <Link href="/game" className="btn-go px-6 py-2.5 min-h-[44px]" onClick={onClose}>
+              Keep Playing
+            </Link>
+            {onClose && (
+              <button onClick={onClose} className="btn-neutral px-6 py-2 min-h-[44px]">
+                Close
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -103,7 +142,16 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
 
       {error && (
         <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3 mb-4">
-          <p className="text-strike-red text-sm font-body font-semibold">{error}</p>
+          <p className="text-strike-red text-sm font-body font-semibold">{error.text}</p>
+          {error.offerSignIn && (
+            <p className="text-beige text-xs font-body mt-2">
+              <Link href="/login" className="text-venom-orange underline hover:text-venom-orange-light">
+                Sign in to that account instead
+              </Link>{' '}
+              - heads up: signing in switches this device to that account&apos;s
+              progress, and this guest run stays behind.
+            </p>
+          )}
         </div>
       )}
 

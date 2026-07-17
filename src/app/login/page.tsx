@@ -74,6 +74,30 @@ function LoginContent() {
           <p className="text-beige mt-2 font-body">Welcome back!</p>
         </div>
 
+        {/* Guest with an active session: switching accounts changes profiles */}
+        {isAnonymous && (
+          <div
+            className="panel p-4 mb-4 animate-fade-up border-venom-orange/50"
+            data-testid="guest-signin-warning"
+          >
+            <p className="text-beige text-sm font-body">
+              <span className="label-arcade text-venom-orange mr-2">Heads up</span>
+              You&apos;re playing as a guest. Signing in switches this device to
+              that account&apos;s progress.
+            </p>
+            <p className="text-beige/80 text-sm font-body mt-2">
+              Want to keep your guest snakes and DNA?{' '}
+              <Link
+                href="/signup"
+                className="text-venom-orange underline hover:text-venom-orange-light"
+              >
+                Create an account
+              </Link>{' '}
+              - your progress comes with you.
+            </p>
+          </div>
+        )}
+
         {/* Login Card */}
         <div
           className="panel-glow p-6 animate-fade-up"

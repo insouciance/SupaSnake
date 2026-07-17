@@ -19,8 +19,26 @@ interface AuthContextType {
   isPasswordRecovery: boolean;
   signInAnonymously: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUpWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
-  upgradeAnonymousToEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
+  /**
+   * `session` is non-null when the project auto-confirms emails (no
+   * verification step): the player is signed in immediately and must NOT be
+   * shown a "check your email" screen.
+   */
+  signUpWithEmail: (
+    email: string,
+    password: string
+  ) => Promise<{ error: Error | null; session: Session | null }>;
+  /**
+   * Attaches email+password to the CURRENT anonymous user (same user id, so
+   * all progress is preserved). On success the session is refreshed so the
+   * stale `is_anonymous` JWT claim clears immediately.
+   * `pendingEmailConfirmation` is true when the project requires email
+   * verification before the account becomes permanent.
+   */
+  upgradeAnonymousToEmail: (
+    email: string,
+    password: string
+  ) => Promise<{ error: Error | null; pendingEmailConfirmation: boolean }>;
   signInWithOAuth: (provider: Provider) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   sendPasswordResetEmail: (email: string) => Promise<{ error: Error | null }>;
@@ -86,24 +104,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string) => {
     setIsLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password });
     setIsLoading(false);
-    return { error: error ? new Error(error.message) : null };
+    return {
+      error: error ? new Error(error.message) : null,
+      session: data?.session ?? null,
+    };
   };
 
   const upgradeAnonymousToEmail = async (email: string, password: string) => {
     if (!user?.is_anonymous) {
-      return { error: new Error('User is not anonymous') };
+      return {
+        error: new Error('User is not anonymous'),
+        pendingEmailConfirmation: false,
+      };
     }
 
     setIsLoading(true);
     // Update user with email and password - this links the anonymous account
+    // (same user id, so server-side progress is preserved)
     const { error } = await supabase.auth.updateUser({
       email,
       password,
     });
+
+    if (error) {
+      setIsLoading(false);
+      return { error: new Error(error.message), pendingEmailConfirmation: false };
+    }
+
+    // The current access token still carries is_anonymous=true until it is
+    // reissued, so everything gated on it (shop buy buttons, upgrade
+    // banners, server-side checkout checks) would keep treating the player
+    // as a guest. Refresh the session so the claim clears immediately.
+    const { data: refreshed, error: refreshError } =
+      await supabase.auth.refreshSession();
+    if (!refreshError && refreshed?.session) {
+      setSession(refreshed.session);
+      setUser(refreshed.session.user ?? refreshed.user ?? null);
+    }
     setIsLoading(false);
-    return { error: error ? new Error(error.message) : null };
+
+    // Auto-confirm projects return a confirmed email right away; projects
+    // with verification enabled leave it pending until the link is clicked.
+    const upgradedUser = refreshed?.session?.user ?? refreshed?.user ?? null;
+    const emailConfirmed = Boolean(
+      upgradedUser?.email && upgradedUser?.email_confirmed_at
+    );
+    return { error: null, pendingEmailConfirmation: !emailConfirmed };
   };
 
   const signInWithOAuth = async (provider: Provider) => {

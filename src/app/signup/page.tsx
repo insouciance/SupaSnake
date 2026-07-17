@@ -4,6 +4,11 @@
  * Signup Page - For new users
  * Email/password registration with verification.
  *
+ * Anonymous players with an active session are routed through the UPGRADE
+ * path (supabase.auth.updateUser attaches the email to the SAME user id) so
+ * their progress is preserved. A plain signUp here would create a brand-new
+ * empty account and orphan everything they earned as a guest.
+ *
  * COPPA/GDPR: account creation is gated by a 13+ age check (AgeGate).
  * The gate lives only in the signup flow - anonymous play stays
  * friction-free. A prior verification (localStorage backup) skips the gate.
@@ -15,6 +20,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { AccountUpgrade } from '@/components/auth/AccountUpgrade';
 import AgeGate, { UnderageScreen } from '@/components/legal/AgeGate';
 
 type AgeStatus = 'checking' | 'unverified' | 'verified' | 'underage';
@@ -23,13 +29,21 @@ export default function SignupPage() {
   const router = useRouter();
   const { isAuthenticated, isAnonymous, isLoading } = useAuth();
   const [ageStatus, setAgeStatus] = useState<AgeStatus>('checking');
+  // Latched when the guest upgrade succeeds on this page, so the
+  // "registered user -> /game" redirect below doesn't yank away the
+  // success screen the moment isAnonymous flips to false.
+  const [upgradedHere, setUpgradedHere] = useState(false);
+  // Latched when a fresh auto-confirmed signup completes on this page:
+  // that flow routes to "/" (home hosts the starter-selection FTUE), and
+  // the /game redirect below must not race it.
+  const [signedUpHere, setSignedUpHere] = useState(false);
 
   useEffect(() => {
-    // Redirect authenticated non-anonymous users to game
-    if (!isLoading && isAuthenticated && !isAnonymous) {
+    // Redirect already-registered users to game
+    if (!isLoading && isAuthenticated && !isAnonymous && !upgradedHere && !signedUpHere) {
       router.push('/game');
     }
-  }, [isAuthenticated, isAnonymous, isLoading, router]);
+  }, [isAuthenticated, isAnonymous, isLoading, router, upgradedHere, signedUpHere]);
 
   // Skip the gate if this browser already passed verification
   useEffect(() => {
@@ -89,13 +103,36 @@ export default function SignupPage() {
         </div>
 
         {/* Signup Card */}
-        <div
-          className="panel-glow p-6 animate-fade-up"
-          style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
-        >
-          <h2 className="heading-display text-xl text-bone-white mb-6">Create Account</h2>
-          <LoginForm mode="signup" />
-        </div>
+        {isAuthenticated && (isAnonymous || upgradedHere) ? (
+          // Active guest session: upgrade the SAME account so every snake,
+          // DNA point and streak earned as a guest carries over.
+          <div className="animate-fade-up" style={{ animationDelay: '100ms' }}>
+            <p
+              className="text-beige/80 text-sm font-body text-center mb-4"
+              data-testid="signup-upgrade-note"
+            >
+              You&apos;re playing as a guest - your current progress will be
+              attached to this account.
+            </p>
+            <AccountUpgrade onSuccess={() => setUpgradedHere(true)} />
+          </div>
+        ) : (
+          <div
+            className="panel-glow p-6 animate-fade-up"
+            style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
+          >
+            <h2 className="heading-display text-xl text-bone-white mb-6">Create Account</h2>
+            <LoginForm
+              mode="signup"
+              onSuccess={() => {
+                // New account is live (auto-confirm): land on home, where the
+                // starter-selection FTUE opens for brand-new players.
+                setSignedUpHere(true);
+                router.push('/');
+              }}
+            />
+          </div>
+        )}
 
         {/* Back to Home */}
         <div className="text-center mt-6">
