@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         .from('players')
         .select(`
           id,
-          display_name,
+          username,
           high_score,
           total_dna_earned,
           collected_snakes:collected_snakes(
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         return {
           rank: offset + index + 1,
           playerId: player.id,
-          playerName: player.display_name || `Player ${player.id.slice(0, 6)}`,
+          playerName: player.username || `Player ${player.id.slice(0, 6)}`,
           score: player.high_score || 0,
           highestGeneration: highestGen,
           collectionCount: player.collected_snakes?.length || 0,
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
         score,
         dynasty,
         players:player_id(
-          display_name,
+          username,
           collected_snakes(generation)
         )
       `)
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
       return {
         rank: offset + index + 1,
         playerId: session.player_id,
-        playerName: player?.display_name || `Player ${session.player_id?.slice(0, 6) || 'Unknown'}`,
+        playerName: player?.username || `Player ${session.player_id?.slice(0, 6) || 'Unknown'}`,
         score: session.score || 0,
         highestGeneration: highestGen,
         collectionCount: player?.collected_snakes?.length || 0,
