@@ -56,6 +56,23 @@ _Last updated: 2026-07-16 (afternoon)_
       exactly once (idempotent webhook), purchase_history row exists; refund
       in Stripe dashboard → recorded + Sentry alert (no auto-clawback)
 
+## 📱 Mobile fixes to verify on your phone (deployed)
+
+- [ ] Full gameboard visible and centered in portrait (camera now fits the
+      board to the aspect ratio)
+- [ ] D-pad DOWN button reachable and clickable (dynamic viewport height +
+      safe-area inset — was hidden behind browser chrome)
+- [ ] No page scroll-bounce during play
+
+## 🎨 UI design rework (in progress — deploys when done)
+
+Direction: "the UI is the game's world" — the game scene's void/glow/motion
+language + the original styleguide's arcade identity, unified across every
+screen (the Lab's forked look is being reunified). Mascot returns as brand
+anchor; emoji icons replaced with a custom SVG set; SUPASNAKE wordmark
+replaces leftover "OG Snake" text; proper font loading. Review the new look
+on prod when I deploy it and tell me what to push further.
+
 ## 📌 Incidents / notes from autonomous work
 
 - **Guest play was broken in production** (fresh Supabase project has anonymous
