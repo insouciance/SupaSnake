@@ -1,21 +1,19 @@
 /**
- * Navigation Component Tests
- * Verifies feature-flagged social links (Leaderboard, Clan)
+ * Navigation Rail Tests
+ * Verifies rail nodes, feature-flagged social links (Leaderboard, Clan),
+ * the contextual Home node and the You node (AccountChip).
  */
 
 import { render, screen } from '@testing-library/react';
 import { Navigation } from './Navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
 
+let mockPathname = '/';
 jest.mock('next/navigation', () => ({
-  usePathname: () => '/',
+  usePathname: () => mockPathname,
 }));
 
-jest.mock('@/lib/store/gameStore', () => ({
-  useGameStore: () => ({ energy: 3 }),
-}));
-
-// The command bar hosts the AccountChip (identity indicator)
+// The You node hosts the AccountChip (identity indicator)
 jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({
     user: { id: 'user-1', is_anonymous: true },
@@ -27,12 +25,32 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 }));
 
 describe('Navigation', () => {
-  it('renders core links', () => {
+  beforeEach(() => {
+    mockPathname = '/';
+  });
+
+  it('renders the core rail nodes with game aria labels', () => {
+    render(<Navigation />);
+
+    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute('href', '/lab');
+    expect(screen.getByRole('link', { name: 'Shop' })).toHaveAttribute('href', '/shop');
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+  });
+
+  it('omits the Home node on the home screen (the wordmark is home)', () => {
+    render(<Navigation />);
+
+    expect(screen.queryByRole('link', { name: 'Home' })).not.toBeInTheDocument();
+  });
+
+  it('shows a Home node on non-home screens', () => {
+    mockPathname = '/lab';
     render(<Navigation />);
 
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/game');
-    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute('href', '/lab');
   });
 
   it('renders Leaderboard link when leaderboards flag is enabled', () => {
@@ -54,15 +72,20 @@ describe('Navigation', () => {
     expect(screen.getByRole('link', { name: 'Clan' })).toHaveAttribute('href', '/clan');
   });
 
-  it('displays current energy against the cap', () => {
+  it('marks the active node with aria-current', () => {
+    mockPathname = '/lab';
     render(<Navigation />);
 
-    expect(
-      screen.getByText(`3/${GAME_CONFIG.economy.energy.maxEnergy}`)
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(screen.getByRole('link', { name: 'Shop' })).not.toHaveAttribute(
+      'aria-current'
+    );
   });
 
-  it('mounts the account identity chip', () => {
+  it('mounts the account identity chip (You node)', () => {
     render(<Navigation />);
 
     expect(screen.getByTestId('account-chip')).toBeInTheDocument();

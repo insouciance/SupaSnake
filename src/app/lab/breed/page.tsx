@@ -284,7 +284,7 @@ export default function BreedPage() {
     return (
       <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
-        <div className="flex items-center justify-center min-h-screen pt-14">
+        <div className="flex items-center justify-center min-h-screen">
           <div className="text-center animate-fade-up">
             <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4 shadow-glow-sm shadow-venom-orange/50" />
             <p className="text-beige/70 font-body">Loading breeding lab...</p>
@@ -298,7 +298,7 @@ export default function BreedPage() {
     return (
       <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
-        <div className="flex items-center justify-center min-h-screen pt-14 px-4">
+        <div className="flex items-center justify-center min-h-screen px-4">
           <div className="panel-glow [--glow:#00FFFF] animate-pop-in p-8 text-center max-w-md space-y-6">
             <h1 className="heading-display text-3xl text-cyber text-glow">
               Breeding Lab
@@ -320,10 +320,10 @@ export default function BreedPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-24 sm:pb-0">
+    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-28 sm:pb-0 sm:pr-16">
       <Navigation />
 
-      <div className="pt-14 flex-1">
+      <div className="pt-4 flex-1">
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between animate-fade-up">

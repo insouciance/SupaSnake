@@ -20,7 +20,7 @@ export default function SettingsPage() {
     return (
       <div className="app-bg text-bone-white">
         <NavBar />
-        <div className="flex items-center justify-center min-h-screen pt-16 px-4">
+        <div className="flex items-center justify-center min-h-screen px-4">
           <div className="panel-elevated p-8 text-center space-y-6 w-full max-w-sm animate-pop-in">
             <h1 className="heading-display text-2xl text-venom-orange text-glow-orange">Please Sign In</h1>
             <p className="text-beige font-body">Sign in to view your profile</p>
@@ -40,8 +40,8 @@ export default function SettingsPage() {
     <div className="app-bg text-bone-white">
       <NavBar />
 
-      {/* Content with top padding for fixed nav */}
-      <div className="max-w-4xl mx-auto px-4 pt-20 pb-28 sm:pb-12">
+      {/* Content clears the floating nav rail (bottom mobile / right desktop) */}
+      <div className="max-w-4xl mx-auto px-4 pt-8 pb-28 sm:pb-12 sm:pr-16">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
           <div>

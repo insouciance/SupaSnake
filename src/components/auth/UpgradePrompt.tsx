@@ -82,7 +82,7 @@ export function SaveProgressBanner() {
         </button>
       ) : (
         <div
-          className="fixed top-14 inset-x-0 z-40 bg-void-deep/95 backdrop-blur-sm border-b-2 border-venom-orange-dark px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+          className="fixed top-0 inset-x-0 z-40 bg-void-deep/95 backdrop-blur-sm border-b-2 border-venom-orange-dark px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
           data-testid="save-progress-banner"
         >
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">

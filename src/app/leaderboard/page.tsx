@@ -141,8 +141,8 @@ export default function LeaderboardPage() {
     <div className="app-bg text-bone-white">
       <NavBar />
 
-      {/* Content with top padding for fixed nav */}
-      <div className="max-w-5xl mx-auto px-4 pt-20 pb-28 sm:pb-12">
+      {/* Content clears the floating nav rail (bottom mobile / right desktop) */}
+      <div className="max-w-5xl mx-auto px-4 pt-8 pb-28 sm:pb-12 sm:pr-16">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
           <div>

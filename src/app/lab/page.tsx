@@ -164,7 +164,7 @@ export default function LabPage() {
     return (
       <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
-        <div className="flex items-center justify-center min-h-screen pt-14">
+        <div className="flex items-center justify-center min-h-screen">
           <div className="text-center animate-fade-up">
             <div className="w-16 h-16 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4 shadow-glow-sm shadow-venom-orange/50" />
             <p className="text-beige/70 font-body">Loading your collection...</p>
@@ -182,7 +182,7 @@ export default function LabPage() {
     return (
       <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
-        <div className="flex items-center justify-center min-h-screen pt-14 px-4">
+        <div className="flex items-center justify-center min-h-screen px-4">
           <div className="panel-glow [--glow:#00FFFF] animate-pop-in p-8 text-center max-w-md space-y-6">
             <h1 className="heading-display text-3xl text-cyber text-glow">
               Snake Lab
@@ -207,7 +207,7 @@ export default function LabPage() {
     return (
       <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
-        <div className="flex items-center justify-center min-h-screen pt-14 px-4">
+        <div className="flex items-center justify-center min-h-screen px-4">
           <div className="panel-glow [--glow:#f43f5e] animate-pop-in p-8 text-center max-w-md space-y-6">
             <h1 className="heading-display text-3xl text-strike-red">
               Error
@@ -227,12 +227,12 @@ export default function LabPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-24 sm:pb-0">
-      {/* Global navigation */}
+    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-28 sm:pb-0 sm:pr-16">
+      {/* Global navigation rail (right edge desktop / bottom mobile) */}
       <Navigation />
 
-      {/* Header with energy and DNA - add top padding for fixed nav */}
-      <div className="pt-14 animate-fade-up">
+      {/* Header with energy and DNA */}
+      <div className="pt-4 animate-fade-up">
         <LabHeader energy={energy} maxEnergy={maxEnergy} dna={dnaBalance} />
       </div>
 

@@ -113,8 +113,8 @@ export default function ShopPage() {
   };
 
   return (
-    <div className="app-bg text-bone-white px-4 sm:px-6 pt-20 pb-28 sm:pb-6">
-      {/* Global navigation */}
+    <div className="app-bg text-bone-white px-4 sm:px-6 pt-8 pb-28 sm:pb-6 sm:pr-16">
+      {/* Global navigation rail */}
       <NavBar />
 
       {/* Header */}

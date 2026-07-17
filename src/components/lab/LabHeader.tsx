@@ -32,7 +32,7 @@ export function LabHeader({ energy, maxEnergy, dna }: LabHeaderProps) {
 
   return (
     <header
-      className="sticky top-14 z-40 w-full border-b border-scale-blue-light/40 bg-void/85 backdrop-blur-sm"
+      className="sticky top-0 z-40 w-full border-b border-scale-blue-light/40 bg-void/85 backdrop-blur-sm"
       role="banner"
       aria-label="Lab header with resources"
     >
