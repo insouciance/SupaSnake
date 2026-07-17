@@ -937,6 +937,8 @@ export default function GamePage() {
             dynasty={selectedDynasty}
             snake={snake}
             food={food}
+            direction={direction}
+            queuedDirections={queuedDirections}
             particlePos={particlePos}
             particleTrigger={particleTrigger}
             deathPos={deathPos}
@@ -1012,6 +1014,8 @@ interface GameBoardProps {
   dynasty: DynastyId;
   snake: Position[];
   food: Position | null;
+  direction: Direction;
+  queuedDirections: Direction[];
   particlePos: [number, number, number] | null;
   particleTrigger: number;
   deathPos: [number, number, number] | null;
@@ -1023,6 +1027,8 @@ function GameBoard({
   dynasty,
   snake,
   food,
+  direction,
+  queuedDirections,
   particlePos,
   particleTrigger,
   deathPos,
@@ -1050,15 +1056,18 @@ function GameBoard({
         emissiveIntensity={0.5}
       />
 
-      {/* Aiming Crosshair - targeting lines */}
-      {food && (
-        <AimingCrosshair
-          foodPosition={food}
-          gridSize={GAME_CONFIG.board.gridSize}
-          color={theme.accent}
-          opacity={0.3}
-        />
-      )}
+      {/* Aim telegraph: heading chevron + projected path lane + queued-turn
+          chevrons, plus dimmed food crosshair */}
+      <AimingCrosshair
+        foodPosition={food}
+        headPosition={snake[0] ?? null}
+        direction={direction}
+        queuedDirections={queuedDirections}
+        gridSize={GAME_CONFIG.board.gridSize}
+        color={theme.accent}
+        laneColor={theme.primary}
+        opacity={0.15}
+      />
 
       {/* Snake Segments with Interpolation + GLB Voxel Models */}
       {snake.map((seg, i) => (
