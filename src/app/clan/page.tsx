@@ -13,6 +13,7 @@ import { type Clan, CLAN_LIMITS, CLAN_BONUS_CONFIG } from '@/lib/clan/types';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
+import { IconBolt, IconShield, IconUser } from '@/components/ui/icons';
 
 interface MyClan extends Clan {
   role: string;
@@ -166,15 +167,15 @@ export default function ClanPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-scale-blue-dark text-bone-white">
+      <div className="app-bg text-bone-white">
         <NavBar />
-        <div className="flex items-center justify-center min-h-screen pt-16">
-          <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-8 text-center space-y-6">
-            <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">Clans</h1>
+        <div className="flex items-center justify-center min-h-screen pt-16 px-4">
+          <div className="panel-elevated p-8 text-center space-y-6 w-full max-w-sm animate-pop-in">
+            <h1 className="heading-display text-4xl text-venom-orange text-glow-orange">Clans</h1>
             <p className="text-beige font-body">Sign in to join a clan</p>
             <Link
               href="/login"
-              className="inline-block px-8 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="btn-go inline-block px-8 py-3 min-h-[44px]"
             >
               Sign In
             </Link>
@@ -185,20 +186,23 @@ export default function ClanPage() {
   }
 
   return (
-    <div className="min-h-screen bg-scale-blue-dark text-bone-white">
+    <div className="app-bg text-bone-white">
       <NavBar />
 
       {/* Content with top padding for fixed nav */}
       <div className="max-w-4xl mx-auto px-4 pt-20 pb-12">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 animate-fade-up">
           <div>
-            <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">Clans</h1>
+            <h1 className="heading-display text-4xl text-venom-orange text-glow-orange flex items-center gap-3">
+              <IconShield size={34} />
+              Clans
+            </h1>
             <p className="text-beige font-body mt-1">Join forces with other players</p>
           </div>
           <Link
             href="/game"
-            className="px-6 py-3 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+            className="btn-go self-start px-6 py-3 min-h-[44px] inline-flex items-center"
           >
             Play
           </Link>
@@ -206,62 +210,69 @@ export default function ClanPage() {
 
         {/* Messages */}
         {error && (
-          <div className="bg-strike-red/20 border-[3px] border-strike-red rounded-arcade p-4 mb-6">
+          <div className="bg-strike-red/15 border border-strike-red/70 rounded-arcade p-4 mb-6 animate-fade-up">
             <p className="text-strike-red font-body">{error}</p>
           </div>
         )}
         {success && (
-          <div className="bg-green-500/20 border-[3px] border-green-500 rounded-arcade p-4 mb-6">
-            <p className="text-green-400 font-body">{success}</p>
+          <div className="bg-rarity-uncommon/10 border border-rarity-uncommon/70 rounded-arcade p-4 mb-6 animate-fade-up">
+            <p className="text-rarity-uncommon font-body">{success}</p>
           </div>
         )}
 
         {/* My Clan Section */}
         {myClan ? (
-          <section className="mb-10">
-            <h2 className="text-2xl font-display uppercase tracking-arcade text-bone-white mb-4">My Clan</h2>
-            <div className="bg-scale-blue border-[3px] border-purple-500 rounded-arcade p-6">
-              <div className="flex items-center justify-between mb-4">
+          <section className="mb-10 animate-fade-up">
+            <h2 className="heading-display text-2xl text-bone-white mb-4">My Clan</h2>
+            <div className="panel-glow [--glow:#a855f7] p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl font-display uppercase tracking-arcade text-bone-white">{myClan.name}</span>
-                    <span className="px-3 py-1 bg-purple-500/30 border-[2px] border-purple-500 rounded-arcade text-sm font-display">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <IconShield size={26} className="text-cosmic" />
+                    <span className="heading-display text-3xl text-bone-white">{myClan.name}</span>
+                    <span className="px-3 py-1 bg-cosmic/20 border border-cosmic/70 rounded-arcade text-sm font-display text-cosmic-glow">
                       [{myClan.tag}]
                     </span>
                   </div>
                   <p className="text-beige text-sm font-body mt-1">{myClan.description}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-beige font-body">Role</p>
+                <div className="text-left sm:text-right">
+                  <p className="label-arcade">Role</p>
                   <p className="font-display uppercase text-bone-white">{myClan.role}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade p-3 text-center">
-                  <p className="text-xs text-beige font-body">Members</p>
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+                <div className="bg-void/60 border border-scale-blue-light/50 rounded-arcade p-3 text-center">
+                  <p className="label-arcade flex items-center justify-center gap-1">
+                    <IconUser size={12} />
+                    Members
+                  </p>
                   <p className="text-xl font-display text-bone-white">{myClan.memberCount}/{myClan.maxMembers}</p>
                 </div>
-                <div className="bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade p-3 text-center">
-                  <p className="text-xs text-beige font-body">Weekly Score</p>
+                <div className="bg-void/60 border border-scale-blue-light/50 rounded-arcade p-3 text-center">
+                  <p className="label-arcade">Weekly Score</p>
                   <p className="text-xl font-display text-bone-white">{myClan.weeklyScore?.toLocaleString() || 0}</p>
                 </div>
-                <div className="bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade p-3 text-center">
-                  <p className="text-xs text-beige font-body">Total Score</p>
+                <div className="bg-void/60 border border-scale-blue-light/50 rounded-arcade p-3 text-center">
+                  <p className="label-arcade">Total Score</p>
                   <p className="text-xl font-display text-bone-white">{myClan.totalScore?.toLocaleString() || 0}</p>
                 </div>
               </div>
 
               {/* Clan Bonus */}
-              <div className="bg-venom-orange/20 border-[3px] border-venom-orange rounded-arcade p-4 mb-4">
-                <div className="flex items-center justify-between">
+              <div className="panel-glow [--glow:#D98324] p-4 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <p className="text-venom-orange font-display uppercase">Clan Energy Bonus</p>
+                    <p className="text-venom-orange font-display uppercase flex items-center gap-1.5">
+                      <IconBolt size={16} />
+                      Clan Energy Bonus
+                    </p>
                     <p className="text-sm text-beige font-body">
                       +{CLAN_BONUS_CONFIG.energyBonusAmount} energy every {CLAN_BONUS_CONFIG.energyBonusIntervalHours} hours
                     </p>
                   </div>
-                  <button className="px-6 py-2 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all">
+                  <button className="btn-go px-6 py-2 min-h-[44px]">
                     Claim
                   </button>
                 </div>
@@ -270,7 +281,7 @@ export default function ClanPage() {
               {myClan.role !== 'owner' && (
                 <button
                   onClick={handleLeave}
-                  className="text-strike-red hover:text-bone-white text-sm font-body transition-colors"
+                  className="text-strike-red hover:text-bone-white text-sm font-body transition-colors min-h-[44px]"
                 >
                   Leave Clan
                 </button>
@@ -280,10 +291,10 @@ export default function ClanPage() {
         ) : (
           <>
             {/* Create Clan Section */}
-            <section className="mb-10">
+            <section className="mb-10 animate-fade-up">
               {showCreate ? (
-                <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-                  <h2 className="text-2xl font-display uppercase tracking-arcade text-bone-white mb-4">Create Clan</h2>
+                <div className="panel-elevated p-6 animate-pop-in">
+                  <h2 className="heading-display text-2xl text-bone-white mb-4">Create Clan</h2>
                   <form onSubmit={handleCreate} className="space-y-4">
                     <div>
                       <label className="block text-sm text-beige font-body mb-1">Clan Name</label>
@@ -292,7 +303,7 @@ export default function ClanPage() {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Elite Snakes"
-                        className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                        className="w-full px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
                         minLength={CLAN_LIMITS.minNameLength}
                         maxLength={CLAN_LIMITS.maxNameLength}
                         required
@@ -305,7 +316,7 @@ export default function ClanPage() {
                         value={tag}
                         onChange={(e) => setTag(e.target.value.toUpperCase())}
                         placeholder="ELIT"
-                        className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade text-bone-white font-display uppercase placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                        className="w-full px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-display uppercase placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
                         minLength={CLAN_LIMITS.minTagLength}
                         maxLength={CLAN_LIMITS.maxTagLength}
                         pattern="[A-Z0-9]+"
@@ -318,21 +329,21 @@ export default function ClanPage() {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Tell others about your clan..."
-                        className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                        className="w-full px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
                         rows={3}
                       />
                     </div>
                     <div className="flex gap-4">
                       <button
                         type="submit"
-                        className="px-6 py-2 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        className="btn-go px-6 py-2 min-h-[44px]"
                       >
                         Create Clan
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowCreate(false)}
-                        className="px-6 py-2 bg-scale-blue-light border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-beige hover:text-bone-white hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        className="btn-neutral px-6 py-2 min-h-[44px]"
                       >
                         Cancel
                       </button>
@@ -342,23 +353,24 @@ export default function ClanPage() {
               ) : (
                 <button
                   onClick={() => setShowCreate(true)}
-                  className="px-8 py-3 bg-purple-600 border-[3px] border-purple-400 rounded-arcade font-display uppercase tracking-arcade text-bone-white hover:bg-purple-500 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="btn-go inline-flex items-center gap-2 px-8 py-3 min-h-[44px]"
                 >
+                  <IconShield size={18} />
                   Create New Clan
                 </button>
               )}
             </section>
 
             {/* Browse Clans */}
-            <section>
-              <h2 className="text-2xl font-display uppercase tracking-arcade text-bone-white mb-4">Browse Clans</h2>
+            <section className="animate-fade-up">
+              <h2 className="heading-display text-2xl text-bone-white mb-4">Browse Clans</h2>
               {loading ? (
                 <div className="text-center py-8">
                   <div className="w-12 h-12 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                   <p className="text-beige font-body">Loading clans...</p>
                 </div>
               ) : clans.length === 0 ? (
-                <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-8 text-center">
+                <div className="panel p-8 text-center">
                   <p className="text-beige font-body">No clans yet. Be the first to create one!</p>
                 </div>
               ) : (
@@ -366,12 +378,13 @@ export default function ClanPage() {
                   {clans.map((clan) => (
                     <div
                       key={clan.id}
-                      className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-4 flex items-center justify-between hover:border-venom-orange transition-all"
+                      className="panel p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-venom-orange/70 transition-all"
                     >
                       <div>
                         <div className="flex items-center gap-2">
+                          <IconShield size={16} className="text-beige/70" />
                           <span className="font-display uppercase text-lg text-bone-white">{clan.name}</span>
-                          <span className="px-2 py-0.5 bg-scale-blue-dark border border-scale-blue-light rounded-arcade text-xs font-display">
+                          <span className="px-2 py-0.5 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-xs font-display">
                             [{clan.tag}]
                           </span>
                         </div>
@@ -383,10 +396,10 @@ export default function ClanPage() {
                       <button
                         onClick={() => handleJoin(clan.id)}
                         disabled={clan.memberCount >= clan.maxMembers}
-                        className={`px-6 py-2 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
+                        className={`px-6 py-2 min-h-[44px] self-start sm:self-center ${
                           clan.memberCount >= clan.maxMembers
-                            ? 'bg-scale-blue-light border-scale-blue-light text-beige cursor-not-allowed'
-                            : 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
+                            ? 'btn-neutral opacity-50 cursor-not-allowed'
+                            : 'btn-go'
                         }`}
                       >
                         {clan.memberCount >= clan.maxMembers ? 'Full' : 'Join'}
