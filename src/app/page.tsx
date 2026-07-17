@@ -402,8 +402,13 @@ export default function Home() {
       {/* Navigation rail */}
       <Navigation />
 
-      {/* Anonymous users: dismissible save-progress banner / corner chip */}
-      <SaveProgressBanner />
+      {/* Anonymous users: corner chip only on the cinematic home (the nav
+          rail's GUEST node signals auth state); hidden while any modal is
+          up so overlays never stack */}
+      <SaveProgressBanner
+        variant="chip"
+        suppressed={needsStarter || showDailyModal || Boolean(welcomeBack && !isAuthenticated)}
+      />
 
       {/* Welcome back: a registered account used this device but the
           session is gone - never silently create a new anonymous identity */}
@@ -500,8 +505,9 @@ export default function Home() {
         />
       )}
 
-      {/* One-time FTUE hint */}
-      {isAuthenticated && !needsStarter && (
+      {/* One-time FTUE hint - never while a modal is up (single-overlay
+          policy: on mobile the stacked chip+modal+rail read as clutter) */}
+      {isAuthenticated && !needsStarter && !showDailyModal && (
         <OverlayHint id="home-play-dna" message="Play to earn DNA - spend it in the Lab" />
       )}
 

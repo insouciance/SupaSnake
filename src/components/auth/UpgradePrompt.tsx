@@ -44,7 +44,19 @@ export function AccountUpgradeModal({ isOpen, onClose }: AccountUpgradeModalProp
  * Home-page save-progress prompt for anonymous players.
  * Banner until dismissed; afterwards a subtle persistent corner chip.
  */
-export function SaveProgressBanner() {
+interface SaveProgressBannerProps {
+  /** 'chip' renders only the corner chip (cinematic surfaces like home,
+   *  where the nav rail's GUEST node already signals auth state). */
+  variant?: 'banner' | 'chip';
+  /** Hide all prompt surfaces (e.g. while another modal is open) - the
+   *  upgrade modal itself stays mounted so an in-flight upgrade survives. */
+  suppressed?: boolean;
+}
+
+export function SaveProgressBanner({
+  variant = 'banner',
+  suppressed = false,
+}: SaveProgressBannerProps = {}) {
   const { isAnonymous, isLoading } = useAuth();
   const [dismissed, setDismissed] = useState(true);
   const [hydrated, setHydrated] = useState(false);
@@ -66,14 +78,16 @@ export function SaveProgressBanner() {
   // "fields just got emptied with no feedback" bug. Only the banner/chip
   // hide for registered players; the open modal survives the transition to
   // show "Progress Saved!".
-  const showPromptSurfaces = !isLoading && isAnonymous && hydrated;
+  const showPromptSurfaces =
+    !isLoading && isAnonymous && hydrated && !suppressed;
+  const chipOnly = variant === 'chip';
 
   return (
     <>
-      {!showPromptSurfaces ? null : dismissed ? (
+      {!showPromptSurfaces ? null : dismissed || chipOnly ? (
         <button
           onClick={() => setShowModal(true)}
-          className="fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2.5 min-h-[44px] bg-void-deep/90 border-2 border-venom-orange/60 rounded-arcade text-xs font-body font-semibold text-venom-orange hover:border-venom-orange transition-all shadow-glow-sm shadow-venom-orange/40"
+          className="fixed bottom-24 sm:bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2.5 min-h-[44px] bg-void-deep/90 border-2 border-venom-orange/60 rounded-arcade text-xs font-body font-semibold text-venom-orange hover:border-venom-orange transition-all shadow-glow-sm shadow-venom-orange/40"
           data-testid="save-progress-chip"
           aria-label="Save your progress - create an account"
         >

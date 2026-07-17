@@ -31,8 +31,6 @@ import {
   SNAKE_MODEL_URL,
   getSnakeGeometries,
   getSnakeSegmentMaterial,
-  HEAD_SIZE,
-  BODY_SIZE,
 } from '@/components/game/SnakeModel';
 
 // -----------------------------------------------------------------------------
@@ -50,23 +48,30 @@ const DYNASTY_GLOW: Record<DynastyId, string> = {
 const VOID_COLOR = '#06090d';
 
 /** Specimen body plan */
-const SEGMENT_COUNT = 9;
-const SEGMENT_SPACING = 0.9;
-const BODY_Y = 0.42;
-const HEAD_LIFT = 0.34;
-const NECK_LIFT = 0.14;
-const HEAD_YAW = 0.55; // three-quarter turn toward the viewer
+const SEGMENT_COUNT = 10;
+/** Segment scale is deliberately small with spacing > scale: distinct voxel
+ *  cubes with visible gaps are what makes it read as a SNAKE, not a wall. */
+const SPECIMEN_BODY_SCALE = 0.5;
+const SPECIMEN_HEAD_SCALE = 0.66;
+const SEGMENT_SPACING = 0.68;
+const BODY_Y = 0.26;
+const HEAD_LIFT = 0.3;
+const NECK_LIFT = 0.12;
+const HEAD_YAW = 0.5; // three-quarter turn toward the viewer
 
-/** Camera framing: character center-low, target above the specimen */
-const CAMERA_BASE = new THREE.Vector3(0, 2.1, 6.3);
-const CAMERA_TARGET = new THREE.Vector3(0, 1.35, 0);
 /** Lissajous drift: +/-2% of camera distance, ~20s period */
-const DRIFT_AMPLITUDE = CAMERA_BASE.length() * 0.02;
 const DRIFT_W1 = (2 * Math.PI) / 20;
 const DRIFT_W2 = (2 * Math.PI) / 26;
+/** Camera elevation + three-quarter azimuth (radians) */
+const CAMERA_ELEVATION = 0.46; // ~26 degrees above the specimen plane
+const CAMERA_AZIMUTH = 0.32; // slight three-quarter offset
+/** Fit margin: bounding radius is padded so the whole coil breathes */
+const FIT_MARGIN = 1.45;
 
 // -----------------------------------------------------------------------------
-// Base pose - serpentine S-curve receding from the camera, computed once
+// Base pose - a coiled serpentine S the eye instantly parses as a snake:
+// two pronounced bends, compact footprint, head lifted toward the camera.
+// Computed once at module scope.
 // -----------------------------------------------------------------------------
 
 function buildBasePose(): [number, number, number][] {
@@ -76,15 +81,17 @@ function buildBasePose(): [number, number, number][] {
   let heading = -Math.PI / 2; // recede straight back (-z) from the head
   for (let i = 0; i < SEGMENT_COUNT; i++) {
     points.push([x, BODY_Y, z]);
-    heading += 0.45 * Math.sin(i * 0.75 + 0.6); // alternating curvature
+    // Strong alternating curvature = clearly visible S-coil
+    heading += 0.78 * Math.sin(i * 0.92 + 0.4);
     x += Math.cos(heading) * SEGMENT_SPACING;
     z += Math.sin(heading) * SEGMENT_SPACING;
   }
-  // Center laterally; bias forward so the head sits nearest the camera
+  // Center on the coil's centroid (both axes) so framing math is exact
   const cx = points.reduce((s, p) => s + p[0], 0) / SEGMENT_COUNT;
+  const cz = points.reduce((s, p) => s + p[2], 0) / SEGMENT_COUNT;
   for (const p of points) {
     p[0] -= cx;
-    p[2] += 1.7;
+    p[2] -= cz;
   }
   // Head raised and alert, neck following
   points[0][1] += HEAD_LIFT;
@@ -93,6 +100,18 @@ function buildBasePose(): [number, number, number][] {
 }
 
 const BASE_POSE = buildBasePose();
+
+/** Bounding sphere of the pose (segment extents included) for camera fit. */
+const POSE_BOUNDS = (() => {
+  const center = new THREE.Vector3();
+  for (const [x, y, z] of BASE_POSE) center.add(new THREE.Vector3(x, y, z));
+  center.divideScalar(SEGMENT_COUNT);
+  let radius = 0;
+  for (const [x, y, z] of BASE_POSE) {
+    radius = Math.max(radius, center.distanceTo(new THREE.Vector3(x, y, z)));
+  }
+  return { center, radius: radius + SPECIMEN_HEAD_SCALE };
+})();
 
 // -----------------------------------------------------------------------------
 // Materials / geometry - shared caches, no per-render allocation
@@ -110,8 +129,10 @@ function getHeroMaterial(
   let material = heroMaterialCache.get(key);
   if (!material) {
     material = getSnakeSegmentMaterial(dynasty, isHead).clone();
-    // Antialias is off; emissive presence carries the character
-    material.emissiveIntensity = isHead ? 0.95 : 0.6;
+    // Emissive stays LOW so the key/rim lights shade the cube faces -
+    // full-blast emissive renders every face identically and the form
+    // collapses into a flat silhouette.
+    material.emissiveIntensity = isHead ? 0.45 : 0.28;
     heroMaterialCache.set(key, material);
   }
   return material;
@@ -119,6 +140,35 @@ function getHeroMaterial(
 
 /** Procedural stand-in while (or in case) the GLB streams in. */
 const fallbackBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+/** Eye geometry/materials - shared across renders. */
+const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
+const eyeDarkMaterial = new THREE.MeshBasicMaterial({ color: '#06090d' });
+const eyeGlintMaterial = new THREE.MeshBasicMaterial({ color: '#e6edf3' });
+
+/**
+ * Eyes on the head's camera-facing side - the single strongest "this is a
+ * creature, not a box" signal. Positions are in head-local space (the head
+ * is yawed toward the viewer); parenting to the head mesh means the idle
+ * sway carries them naturally.
+ */
+function SpecimenEyes() {
+  return (
+    <group>
+      {[-1, 1].map((side) => (
+        <group key={side} position={[side * 0.22, 0.16, 0.51]}>
+          <mesh geometry={eyeGeometry} material={eyeDarkMaterial} scale={0.16} />
+          <mesh
+            geometry={eyeGeometry}
+            material={eyeGlintMaterial}
+            scale={0.055}
+            position={[0.035, 0.04, 0.045]}
+          />
+        </group>
+      ))}
+    </group>
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Scene pieces
@@ -162,8 +212,7 @@ function SpecimenBody({
   });
 
   return (
-    // Slight group yaw completes the three-quarter presentation
-    <group rotation={[0, -0.3, 0]}>
+    <group>
       {BASE_POSE.map(([x, y, z], i) => {
         const isHead = i === 0;
         return (
@@ -174,10 +223,12 @@ function SpecimenBody({
             }}
             position={[x, y, z]}
             rotation={isHead ? [0, HEAD_YAW, 0] : undefined}
-            scale={isHead ? HEAD_SIZE : BODY_SIZE}
+            scale={isHead ? SPECIMEN_HEAD_SCALE : SPECIMEN_BODY_SCALE}
             geometry={(isHead ? headGeometry : bodyGeometry) ?? fallbackBoxGeometry}
             material={getHeroMaterial(dynasty, isHead)}
-          />
+          >
+            {isHead && <SpecimenEyes />}
+          </mesh>
         );
       })}
     </group>
@@ -197,22 +248,43 @@ function VoxelSpecimen(props: Omit<SpecimenBodyProps, 'headGeometry' | 'bodyGeom
   );
 }
 
-/** Slow lissajous camera drift; static under reduced motion. */
+/** Aspect-aware framing + slow lissajous drift.
+ *  The camera distance is computed from the pose's bounding sphere against
+ *  BOTH the vertical and horizontal fov, so the whole specimen is always
+ *  fully in frame - portrait phones included. Recomputes on resize only. */
 function CameraRig({ animate }: { animate: boolean }) {
   const camera = useThree((state) => state.camera);
+  const size = useThree((state) => state.size);
+  const baseRef = useRef(new THREE.Vector3());
 
   useEffect(() => {
-    camera.position.copy(CAMERA_BASE);
-    camera.lookAt(CAMERA_TARGET);
-  }, [camera]);
+    const persp = camera as THREE.PerspectiveCamera;
+    const aspect = size.width / Math.max(1, size.height);
+    const vFov = THREE.MathUtils.degToRad(persp.fov);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    const limiting = Math.min(vFov, hFov);
+    const distance =
+      (POSE_BOUNDS.radius * FIT_MARGIN) / Math.tan(limiting / 2);
+
+    const dir = new THREE.Vector3(
+      Math.sin(CAMERA_AZIMUTH) * Math.cos(CAMERA_ELEVATION),
+      Math.sin(CAMERA_ELEVATION),
+      Math.cos(CAMERA_AZIMUTH) * Math.cos(CAMERA_ELEVATION)
+    );
+    baseRef.current.copy(POSE_BOUNDS.center).addScaledVector(dir, distance);
+    camera.position.copy(baseRef.current);
+    camera.lookAt(POSE_BOUNDS.center);
+  }, [camera, size.width, size.height]);
 
   useFrame(({ clock }) => {
     if (!animate) return;
     const t = clock.elapsedTime;
-    camera.position.x = CAMERA_BASE.x + Math.sin(t * DRIFT_W1) * DRIFT_AMPLITUDE;
-    camera.position.y =
-      CAMERA_BASE.y + Math.sin(t * DRIFT_W2 + 1.3) * DRIFT_AMPLITUDE * 0.6;
-    camera.lookAt(CAMERA_TARGET);
+    const base = baseRef.current;
+    const amplitude = base.length() * 0.02;
+    camera.position.x = base.x + Math.sin(t * DRIFT_W1) * amplitude;
+    camera.position.y = base.y + Math.sin(t * DRIFT_W2 + 1.3) * amplitude * 0.6;
+    camera.position.z = base.z;
+    camera.lookAt(POSE_BOUNDS.center);
   });
 
   return null;
@@ -223,13 +295,14 @@ function ChamberLights({ dynasty }: { dynasty: DynastyId }) {
   const glow = DYNASTY_GLOW[dynasty];
   return (
     <>
-      <ambientLight intensity={0.22} color="#2b3b4d" />
-      {/* Key: dynasty-colored, front-high */}
-      <directionalLight position={[4, 6, 5]} intensity={1.15} color={glow} />
-      {/* Rim: stronger, from behind for the silhouette edge */}
-      <directionalLight position={[-6, 3.5, -4]} intensity={1.9} color={glow} />
-      {/* Fill: soft neutral so the dark side keeps form */}
-      <pointLight position={[-3, 2, 4.5]} intensity={9} color="#94a3b8" decay={1.6} />
+      <ambientLight intensity={0.16} color="#2b3b4d" />
+      {/* Key: dynasty-colored, front-high-right - shapes the top faces */}
+      <directionalLight position={[3.5, 5, 4]} intensity={1.5} color={glow} />
+      {/* Rim: from behind-left for the silhouette edge */}
+      <directionalLight position={[-5, 2.5, -4]} intensity={2.1} color={glow} />
+      {/* Cool neutral fill from the off side keeps the dark faces readable
+          without flattening the key/rim contrast */}
+      <directionalLight position={[-4, 1.5, 5]} intensity={0.35} color="#94a3b8" />
     </>
   );
 }

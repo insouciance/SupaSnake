@@ -380,26 +380,40 @@ describe('Home page', () => {
   });
 
   describe('save-progress prompt for anonymous players', () => {
-    it('shows the banner for anonymous users', async () => {
+    // The cinematic home renders the chip variant only - the full-width
+    // banner would break immersion and stack with other overlays; the nav
+    // rail's GUEST node carries the auth-state signal.
+    const quietDaily = {
+      daily: {
+        currentDay: 4,
+        canClaimToday: false,
+        tiers: buildTiers(),
+        streak: { current: 1, multiplier: 1 },
+      },
+    };
+
+    it('shows the corner chip (never the banner) for anonymous users', async () => {
       setAuthed({ isAnonymous: true });
+      setupFetch(quietDaily);
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('save-progress-banner')).toBeInTheDocument();
+        expect(screen.getByTestId('save-progress-chip')).toBeInTheDocument();
       });
+      expect(screen.queryByTestId('save-progress-banner')).not.toBeInTheDocument();
     });
 
-    it('collapses to a corner chip after dismissal', async () => {
+    it('opens the upgrade modal from the chip', async () => {
       setAuthed({ isAnonymous: true });
+      setupFetch(quietDaily);
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('save-progress-banner')).toBeInTheDocument();
+        expect(screen.getByTestId('save-progress-chip')).toBeInTheDocument();
       });
-      fireEvent.click(screen.getByLabelText('Dismiss save progress banner'));
+      fireEvent.click(screen.getByTestId('save-progress-chip'));
 
-      expect(screen.queryByTestId('save-progress-banner')).not.toBeInTheDocument();
-      expect(screen.getByTestId('save-progress-chip')).toBeInTheDocument();
+      expect(screen.getByTestId('account-upgrade-modal')).toBeInTheDocument();
     });
 
     it('never renders for registered users', async () => {
