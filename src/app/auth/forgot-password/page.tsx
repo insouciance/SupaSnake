@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { IconCheck } from '@/components/ui/icons';
 
 export default function ForgotPasswordPage() {
   const { sendPasswordResetEmail, isLoading } = useAuth();
@@ -33,18 +34,15 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-scale-blue-dark px-4">
+      <div className="app-bg min-h-screen flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-md">
-          <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6 text-center">
-            <div className="text-4xl mb-4">&#x2709;</div>
-            <h2 className="text-xl font-display uppercase tracking-arcade text-green-400 mb-2">Check Your Email</h2>
+          <div className="panel-elevated animate-pop-in p-6 text-center">
+            <IconCheck size={40} className="mx-auto mb-4 text-rarity-uncommon drop-shadow-[0_0_12px_rgba(74,222,128,0.6)]" />
+            <h2 className="heading-display text-xl text-rarity-uncommon mb-2">Check Your Email</h2>
             <p className="text-beige font-body mb-6">
               If an account exists for {email}, you&apos;ll receive a password reset link shortly.
             </p>
-            <Link
-              href="/login"
-              className="inline-block px-6 py-2 bg-scale-blue-light border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-beige hover:text-bone-white hover:border-venom-orange transition-all"
-            >
+            <Link href="/login" className="btn-neutral inline-block px-6 py-2.5 min-h-[44px]">
               Back to Login
             </Link>
           </div>
@@ -54,34 +52,37 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-scale-blue-dark px-4">
+    <div className="app-bg min-h-screen flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo/Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 animate-fade-up">
           <Link href="/" className="inline-block">
-            <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">
-              OG Snake
+            <h1 className="heading-display text-glow-orange text-venom-orange text-4xl">
+              SUPASNAKE
             </h1>
           </Link>
           <p className="text-beige font-body mt-2">Reset your password</p>
         </div>
 
         {/* Form Card */}
-        <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-          <h2 className="text-xl font-display uppercase tracking-arcade text-bone-white mb-2">Forgot Password</h2>
+        <div
+          className="panel-glow p-6 animate-fade-up"
+          style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
+        >
+          <h2 className="heading-display text-xl text-bone-white mb-2">Forgot Password</h2>
           <p className="text-beige text-sm font-body mb-6">
             Enter your email and we&apos;ll send you a reset link.
           </p>
 
           {error && (
-            <div className="bg-strike-red/20 border-[3px] border-strike-red rounded-arcade p-3 mb-4">
-              <p className="text-strike-red text-sm font-body">{error}</p>
+            <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3 mb-4">
+              <p className="text-strike-red text-sm font-body font-semibold">{error}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-body text-beige mb-1">
+              <label htmlFor="email" className="block label-arcade mb-1.5">
                 Email
               </label>
               <input
@@ -89,7 +90,7 @@ export default function ForgotPasswordPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 min-h-[44px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/40 focus:border-venom-orange focus:outline-none transition-colors"
                 placeholder="your@email.com"
                 autoComplete="email"
               />
@@ -101,11 +102,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={!canSubmit}
-              className={`w-full py-3 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
-                canSubmit
-                  ? 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
-                  : 'bg-scale-blue-light border-scale-blue-light text-beige cursor-not-allowed'
-              }`}
+              className="btn-go w-full py-3 min-h-[48px]"
             >
               {isLoading ? 'Sending...' : 'Send Reset Link'}
             </button>

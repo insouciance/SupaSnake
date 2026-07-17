@@ -8,11 +8,15 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { IconCheck } from '@/components/ui/icons';
 
 interface AccountUpgradeProps {
   onClose?: () => void;
   className?: string;
 }
+
+const INPUT_CLASSES =
+  'w-full px-4 py-2.5 min-h-[44px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade font-body text-bone-white placeholder:text-beige/40 focus:outline-none focus:border-venom-orange transition-colors';
 
 export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps) {
   const { isAnonymous, upgradeAnonymousToEmail, signInWithOAuth, isLoading } = useAuth();
@@ -65,18 +69,20 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
 
   if (success) {
     return (
-      <div className={`bg-gray-800 rounded-lg p-6 ${className}`}>
+      <div
+        className={`panel-glow p-6 animate-pop-in ${className}`}
+        style={{ '--glow': '#4ade80' } as React.CSSProperties}
+      >
         <div className="text-center">
-          <div className="text-4xl mb-4">✓</div>
-          <h3 className="text-xl font-bold text-green-400 mb-2">Account Upgraded!</h3>
-          <p className="text-gray-400">
+          <div className="w-16 h-16 mx-auto mb-4 bg-rarity-uncommon/15 rounded-arcade border-2 border-rarity-uncommon shadow-glow-sm shadow-rarity-uncommon/50 flex items-center justify-center">
+            <IconCheck size={32} className="text-rarity-uncommon" />
+          </div>
+          <h3 className="heading-display text-xl text-rarity-uncommon mb-2">Account Upgraded!</h3>
+          <p className="text-beige font-body">
             Check your email to confirm your account.
           </p>
           {onClose && (
-            <button
-              onClick={onClose}
-              className="mt-4 px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors"
-            >
+            <button onClick={onClose} className="btn-neutral mt-4 px-6 py-2 min-h-[44px]">
               Close
             </button>
           )}
@@ -86,15 +92,18 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
   }
 
   return (
-    <div className={`bg-gray-800 rounded-lg p-6 ${className}`}>
-      <h3 className="text-xl font-bold mb-2">Save Your Progress</h3>
-      <p className="text-gray-400 text-sm mb-6">
+    <div
+      className={`panel-glow p-6 ${className}`}
+      style={{ '--glow': '#D98324' } as React.CSSProperties}
+    >
+      <h3 className="heading-display text-xl text-venom-orange mb-2">Save Your Progress</h3>
+      <p className="text-beige/70 text-sm font-body mb-6">
         Create an account to keep your collection across devices
       </p>
 
       {error && (
-        <div className="bg-red-500/20 border border-red-500 rounded-lg p-3 mb-4">
-          <p className="text-red-400 text-sm">{error}</p>
+        <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3 mb-4">
+          <p className="text-strike-red text-sm font-body font-semibold">{error}</p>
         </div>
       )}
 
@@ -103,7 +112,7 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
         <button
           onClick={() => handleOAuthUpgrade('google')}
           disabled={isLoading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 min-h-[44px] bg-bone-white text-void-deep rounded-arcade border-2 border-beige font-body font-bold hover:bg-beige transition-all disabled:opacity-50"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
@@ -129,7 +138,7 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
         <button
           onClick={() => handleOAuthUpgrade('apple')}
           disabled={isLoading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-black border border-gray-700 rounded-lg font-medium hover:bg-gray-900 transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 min-h-[44px] bg-void-deep border-2 border-scale-blue-light rounded-arcade font-body font-bold text-bone-white hover:border-beige/60 hover:bg-scale-blue/40 transition-all disabled:opacity-50"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
             <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
@@ -138,19 +147,16 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
         </button>
       </div>
 
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-gray-700" />
-        </div>
-        <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-gray-800 text-gray-500">or with email</span>
-        </div>
+      <div className="flex items-center gap-3 my-6">
+        <div className="flex-1 divider-glow" />
+        <span className="text-sm text-beige/70 font-body">or with email</span>
+        <div className="flex-1 divider-glow" />
       </div>
 
       {/* Email Form */}
       <form onSubmit={handleEmailUpgrade} className="space-y-4">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="email" className="block label-arcade mb-1.5">
             Email
           </label>
           <input
@@ -158,16 +164,16 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+            className={INPUT_CLASSES}
             placeholder="your@email.com"
           />
           {email && !isEmailValid && (
-            <p className="text-red-400 text-xs mt-1">Enter a valid email</p>
+            <p className="text-strike-red text-xs mt-1 font-body">Enter a valid email</p>
           )}
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="password" className="block label-arcade mb-1.5">
             Password
           </label>
           <input
@@ -175,18 +181,18 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+            className={INPUT_CLASSES}
             placeholder="Create a password"
           />
           {password && passwordErrors.length > 0 && (
-            <div className="text-xs mt-1 text-gray-500">
+            <div className="text-xs mt-1 text-beige/60 font-body">
               Missing: {passwordErrors.join(', ')}
             </div>
           )}
         </div>
 
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1">
+          <label htmlFor="confirmPassword" className="block label-arcade mb-1.5">
             Confirm Password
           </label>
           <input
@@ -194,22 +200,18 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+            className={INPUT_CLASSES}
             placeholder="Confirm password"
           />
           {confirmPassword && !passwordsMatch && (
-            <p className="text-red-400 text-xs mt-1">Passwords don&apos;t match</p>
+            <p className="text-strike-red text-xs mt-1 font-body">Passwords don&apos;t match</p>
           )}
         </div>
 
         <button
           type="submit"
           disabled={!canSubmit}
-          className={`w-full py-3 rounded-lg font-bold transition-all ${
-            canSubmit
-              ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
-              : 'bg-gray-700 cursor-not-allowed opacity-50'
-          }`}
+          className="btn-go w-full py-3 min-h-[48px]"
         >
           {isLoading ? 'Creating Account...' : 'Create Account'}
         </button>
@@ -218,7 +220,7 @@ export function AccountUpgrade({ onClose, className = '' }: AccountUpgradeProps)
       {onClose && (
         <button
           onClick={onClose}
-          className="w-full mt-4 py-2 text-gray-500 hover:text-gray-400 text-sm transition-colors"
+          className="w-full mt-4 py-2 text-beige/60 hover:text-beige text-sm font-body transition-colors"
         >
           Maybe Later
         </button>

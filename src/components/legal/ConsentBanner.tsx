@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { IconX } from '@/components/ui/icons';
 
 const CONSENT_KEY = 'cookie-consent';
 
@@ -87,7 +88,7 @@ export function ConsentBanner() {
   if (!showBanner) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-scale-blue-dark/95 backdrop-blur-sm border-t-[3px] border-scale-blue-light">
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-void-deep/95 backdrop-blur-sm border-t-2 border-venom-orange/50 shadow-[0_-8px_32px_rgba(217,131,36,0.12)] animate-fade-up">
       <div className="max-w-6xl mx-auto">
         {!showDetails ? (
           // Simple banner
@@ -95,7 +96,7 @@ export function ConsentBanner() {
             <div className="flex-1">
               <p className="text-bone-white font-body">
                 We use cookies to enhance your gaming experience.{' '}
-                <Link href="/legal/cookies" className="text-venom-orange hover:underline">
+                <Link href="/legal/cookies" className="text-venom-orange hover:text-venom-orange-light hover:underline">
                   Learn more
                 </Link>
               </p>
@@ -103,19 +104,19 @@ export function ConsentBanner() {
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => setShowDetails(true)}
-                className="px-4 py-2 bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade font-body text-beige hover:bg-scale-blue-light hover:text-bone-white transition-all"
+                className="btn-neutral px-4 py-2 min-h-[44px] text-sm"
               >
                 Customize
               </button>
               <button
                 onClick={rejectAll}
-                className="px-4 py-2 bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade font-body text-beige hover:bg-scale-blue-light hover:text-bone-white transition-all"
+                className="btn-neutral px-4 py-2 min-h-[44px] text-sm"
               >
                 Reject All
               </button>
               <button
                 onClick={acceptAll}
-                className="px-6 py-2 bg-venom-orange border-[2px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+                className="btn-go px-6 py-2 min-h-[44px] text-sm"
               >
                 Accept All
               </button>
@@ -125,20 +126,21 @@ export function ConsentBanner() {
           // Detailed preferences
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-display uppercase tracking-arcade text-venom-orange">
+              <h3 className="heading-display text-xl text-venom-orange text-glow-orange">
                 Cookie Preferences
               </h3>
               <button
                 onClick={() => setShowDetails(false)}
-                className="text-beige hover:text-bone-white transition-colors"
+                aria-label="Close cookie preferences"
+                className="p-2.5 -m-1 text-beige hover:text-bone-white transition-colors"
               >
-                &times;
+                <IconX size={18} />
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Essential */}
-              <div className="bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade p-4">
+              <div className="panel p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-body text-bone-white font-bold">Essential</span>
                   <span className="text-beige text-sm font-body">Always On</span>
@@ -149,17 +151,17 @@ export function ConsentBanner() {
               </div>
 
               {/* Functional */}
-              <div className="bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade p-4">
+              <div className="panel p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-body text-bone-white font-bold">Functional</span>
                   <button
                     onClick={() => setPreferences(p => ({ ...p, functional: !p.functional }))}
-                    className={`w-12 h-6 rounded-full transition-colors ${
-                      preferences.functional ? 'bg-venom-orange' : 'bg-scale-blue-light'
+                    className={`w-12 h-6 rounded-arcade border border-scale-blue-light/60 transition-colors ${
+                      preferences.functional ? 'bg-venom-orange shadow-glow-sm shadow-venom-orange/50' : 'bg-scale-blue-light'
                     }`}
                   >
                     <div
-                      className={`w-5 h-5 bg-bone-white rounded-full transition-transform ${
+                      className={`w-5 h-5 bg-bone-white rounded-[2px] transition-transform ${
                         preferences.functional ? 'translate-x-6' : 'translate-x-0.5'
                       }`}
                     />
@@ -171,17 +173,17 @@ export function ConsentBanner() {
               </div>
 
               {/* Analytics */}
-              <div className="bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade p-4">
+              <div className="panel p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-body text-bone-white font-bold">Analytics</span>
                   <button
                     onClick={() => setPreferences(p => ({ ...p, analytics: !p.analytics }))}
-                    className={`w-12 h-6 rounded-full transition-colors ${
-                      preferences.analytics ? 'bg-venom-orange' : 'bg-scale-blue-light'
+                    className={`w-12 h-6 rounded-arcade border border-scale-blue-light/60 transition-colors ${
+                      preferences.analytics ? 'bg-venom-orange shadow-glow-sm shadow-venom-orange/50' : 'bg-scale-blue-light'
                     }`}
                   >
                     <div
-                      className={`w-5 h-5 bg-bone-white rounded-full transition-transform ${
+                      className={`w-5 h-5 bg-bone-white rounded-[2px] transition-transform ${
                         preferences.analytics ? 'translate-x-6' : 'translate-x-0.5'
                       }`}
                     />
@@ -193,17 +195,17 @@ export function ConsentBanner() {
               </div>
 
               {/* Marketing */}
-              <div className="bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade p-4">
+              <div className="panel p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-body text-bone-white font-bold">Marketing</span>
                   <button
                     onClick={() => setPreferences(p => ({ ...p, marketing: !p.marketing }))}
-                    className={`w-12 h-6 rounded-full transition-colors ${
-                      preferences.marketing ? 'bg-venom-orange' : 'bg-scale-blue-light'
+                    className={`w-12 h-6 rounded-arcade border border-scale-blue-light/60 transition-colors ${
+                      preferences.marketing ? 'bg-venom-orange shadow-glow-sm shadow-venom-orange/50' : 'bg-scale-blue-light'
                     }`}
                   >
                     <div
-                      className={`w-5 h-5 bg-bone-white rounded-full transition-transform ${
+                      className={`w-5 h-5 bg-bone-white rounded-[2px] transition-transform ${
                         preferences.marketing ? 'translate-x-6' : 'translate-x-0.5'
                       }`}
                     />
@@ -218,13 +220,13 @@ export function ConsentBanner() {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={rejectAll}
-                className="px-4 py-2 bg-scale-blue border-[2px] border-scale-blue-light rounded-arcade font-body text-beige hover:bg-scale-blue-light hover:text-bone-white transition-all"
+                className="btn-neutral px-4 py-2 min-h-[44px] text-sm"
               >
                 Reject All
               </button>
               <button
                 onClick={saveCustom}
-                className="px-6 py-2 bg-venom-orange border-[2px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+                className="btn-go px-6 py-2 min-h-[44px] text-sm"
               >
                 Save Preferences
               </button>

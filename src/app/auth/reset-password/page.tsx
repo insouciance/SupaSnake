@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { IconCheck } from '@/components/ui/icons';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -56,11 +57,11 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-scale-blue-dark px-4">
+      <div className="app-bg min-h-screen flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-md">
-          <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6 text-center">
-            <div className="text-4xl mb-4 text-green-400">&#x2713;</div>
-            <h2 className="text-xl font-display uppercase tracking-arcade text-green-400 mb-2">Password Updated!</h2>
+          <div className="panel-elevated animate-pop-in p-6 text-center">
+            <IconCheck size={40} className="mx-auto mb-4 text-rarity-uncommon drop-shadow-[0_0_12px_rgba(74,222,128,0.6)]" />
+            <h2 className="heading-display text-xl text-rarity-uncommon mb-2">Password Updated!</h2>
             <p className="text-beige font-body">
               Redirecting you to the game...
             </p>
@@ -71,25 +72,28 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-scale-blue-dark px-4">
+    <div className="app-bg min-h-screen flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo/Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 animate-fade-up">
           <Link href="/" className="inline-block">
-            <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">
-              OG Snake
+            <h1 className="heading-display text-glow-orange text-venom-orange text-4xl">
+              SUPASNAKE
             </h1>
           </Link>
           <p className="text-beige font-body mt-2">Set your new password</p>
         </div>
 
         {/* Form Card */}
-        <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-          <h2 className="text-xl font-display uppercase tracking-arcade text-bone-white mb-6">New Password</h2>
+        <div
+          className="panel-glow p-6 animate-fade-up"
+          style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
+        >
+          <h2 className="heading-display text-xl text-bone-white mb-6">New Password</h2>
 
           {error && (
-            <div className="bg-strike-red/20 border-[3px] border-strike-red rounded-arcade p-3 mb-4">
-              <p className="text-strike-red text-sm font-body">{error}</p>
+            <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3 mb-4">
+              <p className="text-strike-red text-sm font-body font-semibold">{error}</p>
               {error.includes('expired') && (
                 <Link
                   href="/auth/forgot-password"
@@ -103,7 +107,7 @@ export default function ResetPasswordPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="password" className="block text-sm font-body text-beige mb-1">
+              <label htmlFor="password" className="block label-arcade mb-1.5">
                 New Password
               </label>
               <input
@@ -111,7 +115,7 @@ export default function ResetPasswordPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 min-h-[44px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/40 focus:border-venom-orange focus:outline-none transition-colors"
                 placeholder="Create a new password"
                 autoComplete="new-password"
               />
@@ -123,7 +127,7 @@ export default function ResetPasswordPage() {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-body text-beige mb-1">
+              <label htmlFor="confirmPassword" className="block label-arcade mb-1.5">
                 Confirm Password
               </label>
               <input
@@ -131,7 +135,7 @@ export default function ResetPasswordPage() {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 min-h-[44px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade text-bone-white font-body placeholder:text-beige/40 focus:border-venom-orange focus:outline-none transition-colors"
                 placeholder="Confirm your password"
                 autoComplete="new-password"
               />
@@ -143,11 +147,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={!canSubmit}
-              className={`w-full py-3 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
-                canSubmit
-                  ? 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
-                  : 'bg-scale-blue-light border-scale-blue-light text-beige cursor-not-allowed'
-              }`}
+              className="btn-go w-full py-3 min-h-[48px]"
             >
               {isLoading ? 'Updating...' : 'Update Password'}
             </button>

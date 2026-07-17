@@ -8,6 +8,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { LoginForm } from '@/components/auth/LoginForm';
 
@@ -41,7 +42,7 @@ function LoginContent() {
 
   if (isLoading && !initialAuthChecked) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-scale-blue-dark">
+      <div className="app-bg min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="animate-spin w-12 h-12 border-4 border-t-transparent border-venom-orange rounded-full mx-auto" />
           <p className="text-beige font-body">Loading...</p>
@@ -51,21 +52,34 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-scale-blue-dark px-4">
+    <div className="app-bg min-h-screen flex flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
         {/* Logo/Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 animate-fade-up">
           <Link href="/" className="inline-block">
-            <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange">
-              OG Snake
+            <span className="animate-float inline-block">
+              <Image
+                src="/brand/mascot-sm.png"
+                alt="SupaSnake mascot"
+                width={104}
+                height={104}
+                priority
+                className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_28px_rgba(217,131,36,0.4)]"
+              />
+            </span>
+            <h1 className="heading-display text-glow-orange text-venom-orange text-4xl">
+              SUPASNAKE
             </h1>
           </Link>
           <p className="text-beige mt-2 font-body">Welcome back!</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-          <h2 className="text-xl font-display uppercase tracking-arcade text-bone-white mb-6">Sign In</h2>
+        <div
+          className="panel-glow p-6 animate-fade-up"
+          style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
+        >
+          <h2 className="heading-display text-xl text-bone-white mb-6">Sign In</h2>
           <LoginForm onSuccess={handleLoginSuccess} />
         </div>
 
@@ -87,7 +101,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-scale-blue-dark">
+        <div className="app-bg min-h-screen flex items-center justify-center">
           <div className="text-center space-y-4">
             <div className="animate-spin w-12 h-12 border-4 border-t-transparent border-venom-orange rounded-full mx-auto" />
             <p className="text-beige font-body">Loading...</p>

@@ -8,6 +8,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { IconCheck, IconX } from '@/components/ui/icons';
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -34,21 +35,21 @@ function VerifyEmailContent() {
   }, [isLoading, isAuthenticated, errorParam, router]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-scale-blue-dark px-4">
+    <div className="app-bg min-h-screen flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6 text-center">
+        <div className="panel-elevated animate-pop-in p-6 text-center">
           {status === 'verifying' && (
             <>
               <div className="w-12 h-12 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <h2 className="text-xl font-display uppercase tracking-arcade text-bone-white mb-2">Verifying Email</h2>
+              <h2 className="heading-display text-xl text-bone-white mb-2">Verifying Email</h2>
               <p className="text-beige font-body">Please wait...</p>
             </>
           )}
 
           {status === 'success' && (
             <>
-              <div className="text-4xl mb-4 text-green-400">&#x2713;</div>
-              <h2 className="text-xl font-display uppercase tracking-arcade text-green-400 mb-2">Email Verified!</h2>
+              <IconCheck size={40} className="mx-auto mb-4 text-rarity-uncommon drop-shadow-[0_0_12px_rgba(74,222,128,0.6)]" />
+              <h2 className="heading-display text-xl text-rarity-uncommon mb-2">Email Verified!</h2>
               <p className="text-beige font-body mb-4">
                 Your account is now fully activated.
               </p>
@@ -60,16 +61,13 @@ function VerifyEmailContent() {
 
           {status === 'error' && (
             <>
-              <div className="text-4xl mb-4 text-strike-red">&#x2717;</div>
-              <h2 className="text-xl font-display uppercase tracking-arcade text-strike-red mb-2">Verification Failed</h2>
+              <IconX size={40} className="mx-auto mb-4 text-strike-red drop-shadow-[0_0_12px_rgba(164,36,36,0.6)]" />
+              <h2 className="heading-display text-xl text-strike-red mb-2">Verification Failed</h2>
               <p className="text-beige font-body mb-4">
                 {errorDescription || 'The verification link may have expired.'}
               </p>
               <div className="space-y-3">
-                <Link
-                  href="/login"
-                  className="block px-6 py-2 bg-scale-blue-light border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-beige hover:text-bone-white hover:border-venom-orange transition-all"
-                >
+                <Link href="/login" className="btn-neutral block px-6 py-2.5 min-h-[44px]">
                   Go to Login
                 </Link>
               </div>
@@ -95,7 +93,7 @@ export default function VerifyEmailPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-scale-blue-dark">
+        <div className="app-bg min-h-screen flex items-center justify-center">
           <div className="w-12 h-12 border-4 border-venom-orange border-t-transparent rounded-full animate-spin" />
         </div>
       }

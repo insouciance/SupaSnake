@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { IconSnake } from '@/components/ui/icons';
 
 /**
  * Age Gate Component
@@ -21,6 +22,16 @@ interface AgeGateProps {
   onUnderage: () => void;
 }
 
+/** Shared brand header for the gate screens */
+function GateBrand() {
+  return (
+    <div className="flex items-center justify-center gap-2 mb-6 text-venom-orange">
+      <IconSnake size={30} />
+      <span className="heading-display text-2xl text-glow-orange">SUPASNAKE</span>
+    </div>
+  );
+}
+
 export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
   const [birthYear, setBirthYear] = useState('');
   const [error, setError] = useState('');
@@ -28,7 +39,6 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
   const MIN_AGE = 13;
   const currentYear = new Date().getFullYear();
-  const maxYear = currentYear - MIN_AGE; // Latest year for 13+
   const minYear = currentYear - 100; // Reasonable age limit
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,215 +134,74 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
   };
 
   return (
-    <div className="age-gate-overlay" data-testid="age-gate">
-      <div className="age-gate-container">
-        <div className="age-gate-content">
-          {/* Logo */}
-          <div className="age-gate-logo">
-            <h1>🐍 SupaSnake</h1>
+    <div
+      className="fixed inset-0 z-[9999] app-bg flex items-center justify-center p-4"
+      data-testid="age-gate"
+    >
+      <div
+        className="panel-glow animate-pop-in max-w-md w-full p-8 sm:p-10 text-center"
+        style={{ '--glow': '#D98324' } as React.CSSProperties}
+      >
+        <GateBrand />
+
+        {/* Title */}
+        <h2 className="heading-display text-xl text-bone-white mb-2">Age Verification</h2>
+        <p className="text-beige/70 font-body mb-8">
+          To play SupaSnake, you must be at least {MIN_AGE} years old.
+        </p>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="mb-5 space-y-5">
+          <div>
+            <label
+              htmlFor="birthYear"
+              className="block label-arcade text-left mb-2"
+            >
+              What year were you born?
+            </label>
+            <input
+              id="birthYear"
+              type="number"
+              min={minYear}
+              max={currentYear}
+              value={birthYear}
+              onChange={(e) => setBirthYear(e.target.value)}
+              placeholder="YYYY"
+              required
+              disabled={loading}
+              className="w-full px-4 py-3 min-h-[48px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade font-mono text-lg text-center text-bone-white placeholder:text-beige/40 focus:outline-none focus:border-venom-orange transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              autoFocus
+            />
           </div>
 
-          {/* Title */}
-          <h2>Age Verification</h2>
-          <p className="age-gate-description">
-            To play SupaSnake, you must be at least {MIN_AGE} years old.
-          </p>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="age-gate-form">
-            <div className="form-group">
-              <label htmlFor="birthYear">What year were you born?</label>
-              <input
-                id="birthYear"
-                type="number"
-                min={minYear}
-                max={currentYear}
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                placeholder="YYYY"
-                required
-                disabled={loading}
-                className="age-gate-input"
-                autoFocus
-              />
+          {error && (
+            <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3 text-strike-red text-sm font-body font-semibold">
+              {error}
             </div>
+          )}
 
-            {error && (
-              <div className="age-gate-error">
-                ⚠️ {error}
-              </div>
-            )}
+          <button
+            type="submit"
+            disabled={loading || !birthYear}
+            className="btn-go w-full py-3 min-h-[48px]"
+          >
+            {loading ? 'Verifying...' : 'Continue'}
+          </button>
+        </form>
 
-            <button
-              type="submit"
-              disabled={loading || !birthYear}
-              className="age-gate-submit"
-            >
-              {loading ? 'Verifying...' : 'Continue'}
-            </button>
-          </form>
-
-          {/* Privacy notice */}
-          <p className="age-gate-privacy">
-            We don&apos;t store your birth year. We only verify you&apos;re {MIN_AGE}+.
-            <br />
-            <a href="/legal/privacy" target="_blank">Privacy Policy</a>
-          </p>
-        </div>
+        {/* Privacy notice */}
+        <p className="text-beige/50 text-xs font-body">
+          We don&apos;t store your birth year. We only verify you&apos;re {MIN_AGE}+.
+          <br />
+          <a
+            href="/legal/privacy"
+            target="_blank"
+            className="text-venom-orange hover:text-venom-orange-light hover:underline"
+          >
+            Privacy Policy
+          </a>
+        </p>
       </div>
-
-      <style jsx>{`
-        .age-gate-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.95);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-        }
-
-        .age-gate-container {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 20px;
-          padding: 3px;
-          max-width: 500px;
-          width: 90%;
-        }
-
-        .age-gate-content {
-          background: #1a1a1a;
-          border-radius: 18px;
-          padding: 40px 30px;
-          text-align: center;
-        }
-
-        .age-gate-logo h1 {
-          font-size: 48px;
-          margin: 0 0 20px 0;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        h2 {
-          color: #fff;
-          font-size: 28px;
-          margin: 0 0 10px 0;
-        }
-
-        .age-gate-description {
-          color: #aaa;
-          font-size: 16px;
-          margin: 0 0 30px 0;
-        }
-
-        .age-gate-form {
-          margin: 0 0 20px 0;
-        }
-
-        .form-group {
-          margin: 0 0 20px 0;
-        }
-
-        label {
-          display: block;
-          color: #ccc;
-          font-size: 14px;
-          margin: 0 0 10px 0;
-          text-align: left;
-        }
-
-        .age-gate-input {
-          width: 100%;
-          padding: 15px;
-          font-size: 18px;
-          border: 2px solid #333;
-          border-radius: 10px;
-          background: #0a0a0a;
-          color: #fff;
-          text-align: center;
-          transition: border-color 0.3s;
-        }
-
-        .age-gate-input:focus {
-          outline: none;
-          border-color: #667eea;
-        }
-
-        .age-gate-input:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .age-gate-error {
-          color: #ff4444;
-          background: rgba(255, 68, 68, 0.1);
-          padding: 12px;
-          border-radius: 8px;
-          margin: 0 0 20px 0;
-          font-size: 14px;
-        }
-
-        .age-gate-submit {
-          width: 100%;
-          padding: 15px;
-          font-size: 18px;
-          font-weight: bold;
-          color: #fff;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border: none;
-          border-radius: 10px;
-          cursor: pointer;
-          transition: transform 0.2s, opacity 0.3s;
-        }
-
-        .age-gate-submit:hover:not(:disabled) {
-          transform: translateY(-2px);
-        }
-
-        .age-gate-submit:active:not(:disabled) {
-          transform: translateY(0);
-        }
-
-        .age-gate-submit:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .age-gate-privacy {
-          color: #777;
-          font-size: 12px;
-          margin: 0;
-        }
-
-        .age-gate-privacy a {
-          color: #667eea;
-          text-decoration: none;
-        }
-
-        .age-gate-privacy a:hover {
-          text-decoration: underline;
-        }
-
-        @media (max-width: 600px) {
-          .age-gate-content {
-            padding: 30px 20px;
-          }
-
-          .age-gate-logo h1 {
-            font-size: 36px;
-          }
-
-          h2 {
-            font-size: 24px;
-          }
-        }
-      `}</style>
     </div>
   );
 }
@@ -348,81 +217,46 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
 export function UnderageScreen() {
   return (
-    <div className="age-gate-overlay">
-      <div className="age-gate-container">
-        <div className="age-gate-content">
-          <div className="age-gate-logo">
-            <h1>🐍 SupaSnake</h1>
-          </div>
+    <div className="fixed inset-0 z-[9999] app-bg flex items-center justify-center p-4">
+      <div
+        className="panel-glow animate-pop-in max-w-md w-full p-8 sm:p-10 text-center"
+        style={{ '--glow': '#A42424' } as React.CSSProperties}
+      >
+        <GateBrand />
 
-          <h2>Age Requirement Not Met</h2>
+        <h2 className="heading-display text-xl text-bone-white mb-6">
+          Age Requirement Not Met
+        </h2>
 
-          <p className="underage-message">
-            SupaSnake is for players aged 13 and older.
+        <p className="text-bone-white font-body text-lg mb-8">
+          SupaSnake is for players aged 13 and older.
+        </p>
+
+        <div className="panel p-5 mb-5 text-left">
+          <p className="text-beige text-sm font-body">
+            <strong className="text-venom-orange">Parents:</strong> If you&apos;d like to
+            learn more about SupaSnake, please contact us at{' '}
+            <a
+              href="mailto:bllj@proton.me"
+              className="text-venom-orange hover:text-venom-orange-light hover:underline"
+            >
+              bllj@proton.me
+            </a>
           </p>
-
-          <div className="underage-info">
-            <p>
-              <strong>Parents:</strong> If you&apos;d like to learn more about SupaSnake,
-              please contact us at{' '}
-              <a href="mailto:bllj@proton.me">bllj@proton.me</a>
-            </p>
-          </div>
-
-          <p className="underage-legal">
-            This age restriction is required by COPPA (Children&apos;s Online Privacy
-            Protection Act) and similar laws worldwide.
-          </p>
-
-          <button
-            onClick={() => window.location.href = 'https://www.google.com'}
-            className="age-gate-submit"
-          >
-            Exit
-          </button>
         </div>
+
+        <p className="text-beige/50 text-xs font-body mb-8">
+          This age restriction is required by COPPA (Children&apos;s Online Privacy
+          Protection Act) and similar laws worldwide.
+        </p>
+
+        <button
+          onClick={() => window.location.href = 'https://www.google.com'}
+          className="btn-stop w-full py-3 min-h-[48px]"
+        >
+          Exit
+        </button>
       </div>
-
-      <style jsx>{`
-        .underage-message {
-          color: #fff;
-          font-size: 18px;
-          margin: 0 0 30px 0;
-        }
-
-        .underage-info {
-          background: rgba(102, 126, 234, 0.1);
-          border: 1px solid rgba(102, 126, 234, 0.3);
-          border-radius: 10px;
-          padding: 20px;
-          margin: 0 0 20px 0;
-        }
-
-        .underage-info p {
-          color: #ccc;
-          margin: 0;
-          font-size: 14px;
-        }
-
-        .underage-info strong {
-          color: #667eea;
-        }
-
-        .underage-info a {
-          color: #667eea;
-          text-decoration: none;
-        }
-
-        .underage-info a:hover {
-          text-decoration: underline;
-        }
-
-        .underage-legal {
-          color: #777;
-          font-size: 12px;
-          margin: 0 0 30px 0;
-        }
-      `}</style>
     </div>
   );
 }

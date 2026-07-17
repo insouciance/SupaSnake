@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import Link from 'next/link';
+import { IconCheck } from '@/components/ui/icons';
 
 interface LoginFormProps {
   mode?: 'login' | 'signup';
@@ -15,6 +16,20 @@ interface LoginFormProps {
   showForgotPassword?: boolean;
   showSignUpLink?: boolean;
   className?: string;
+}
+
+const INPUT_CLASSES =
+  'w-full px-4 py-2.5 min-h-[44px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade font-body text-bone-white placeholder:text-beige/40 focus:outline-none focus:border-venom-orange transition-colors';
+
+/** Divider with edge-fading glow line and centered label */
+function Divider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 divider-glow" />
+      <span className="text-sm text-beige/70 font-body">{label}</span>
+      <div className="flex-1 divider-glow" />
+    </div>
+  );
 }
 
 export function LoginForm({
@@ -76,13 +91,11 @@ export function LoginForm({
   if (signupSuccess) {
     return (
       <div className={`space-y-6 ${className}`}>
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 mx-auto bg-venom-orange/20 rounded-arcade border-[3px] border-venom-orange flex items-center justify-center">
-            <svg className="w-8 h-8 text-venom-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+        <div className="text-center space-y-4 animate-pop-in">
+          <div className="w-16 h-16 mx-auto bg-venom-orange/15 rounded-arcade border-2 border-venom-orange shadow-glow-sm shadow-venom-orange/50 flex items-center justify-center">
+            <IconCheck size={32} className="text-venom-orange" />
           </div>
-          <h3 className="text-xl font-display uppercase tracking-arcade text-bone-white">Check your email!</h3>
+          <h3 className="heading-display text-xl text-bone-white">Check your email!</h3>
           <p className="text-beige font-body">
             We sent a verification link to <span className="text-bone-white font-bold">{email}</span>
           </p>
@@ -90,10 +103,7 @@ export function LoginForm({
             Click the link in the email to verify your account and start playing.
           </p>
         </div>
-        <Link
-          href="/login"
-          className="block w-full py-3 text-center bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-bone-white hover:bg-scale-blue-light transition-all"
-        >
+        <Link href="/login" className="btn-neutral block w-full py-3 text-center">
           Back to Login
         </Link>
       </div>
@@ -103,8 +113,8 @@ export function LoginForm({
   return (
     <div className={`space-y-6 ${className}`}>
       {error && (
-        <div className="bg-strike-red/20 border-[2px] border-strike-red rounded-arcade p-3">
-          <p className="text-strike-red text-sm font-body">{error}</p>
+        <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3">
+          <p className="text-strike-red text-sm font-body font-semibold">{error}</p>
         </div>
       )}
 
@@ -113,7 +123,7 @@ export function LoginForm({
         <button
           onClick={() => handleOAuthLogin('google')}
           disabled={isLoading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-bone-white text-scale-blue-dark rounded-arcade border-[3px] border-beige font-body font-bold hover:bg-beige transition-all disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 min-h-[44px] bg-bone-white text-void-deep rounded-arcade border-2 border-beige font-body font-bold hover:bg-beige transition-all disabled:opacity-50"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
@@ -139,7 +149,7 @@ export function LoginForm({
         <button
           onClick={() => handleOAuthLogin('apple')}
           disabled={isLoading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-scale-blue-dark border-[3px] border-scale-blue-light rounded-arcade font-body font-bold text-bone-white hover:bg-scale-blue transition-all disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 min-h-[44px] bg-void-deep border-2 border-scale-blue-light rounded-arcade font-body font-bold text-bone-white hover:border-beige/60 hover:bg-scale-blue/40 transition-all disabled:opacity-50"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
             <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
@@ -148,19 +158,12 @@ export function LoginForm({
         </button>
       </div>
 
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t-[2px] border-scale-blue-light" />
-        </div>
-        <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-scale-blue text-beige font-body">or with email</span>
-        </div>
-      </div>
+      <Divider label="or with email" />
 
       {/* Email Form */}
       <form onSubmit={handleEmailSubmit} className="space-y-4">
         <div>
-          <label htmlFor="login-email" className="block text-sm font-body font-bold text-beige mb-1">
+          <label htmlFor="login-email" className="block label-arcade mb-1.5">
             Email
           </label>
           <input
@@ -168,14 +171,14 @@ export function LoginForm({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade font-body text-bone-white focus:outline-none focus:border-venom-orange transition-colors"
+            className={INPUT_CLASSES}
             placeholder="your@email.com"
             autoComplete="email"
           />
         </div>
 
         <div>
-          <label htmlFor="login-password" className="block text-sm font-body font-bold text-beige mb-1">
+          <label htmlFor="login-password" className="block label-arcade mb-1.5">
             Password
           </label>
           <input
@@ -183,7 +186,7 @@ export function LoginForm({
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 bg-scale-blue-dark border-[2px] border-scale-blue-light rounded-arcade font-body text-bone-white focus:outline-none focus:border-venom-orange transition-colors"
+            className={INPUT_CLASSES}
             placeholder="Your password"
             autoComplete="current-password"
           />
@@ -203,11 +206,7 @@ export function LoginForm({
         <button
           type="submit"
           disabled={!canSubmit}
-          className={`w-full py-3 rounded-arcade border-[3px] font-display uppercase tracking-arcade transition-all ${
-            canSubmit
-              ? 'bg-venom-orange border-venom-orange-dark text-scale-blue-dark hover:bg-venom-orange-light hover:scale-[1.02] active:scale-[0.98]'
-              : 'bg-scale-blue-light border-scale-blue text-beige cursor-not-allowed opacity-50'
-          }`}
+          className="btn-go w-full py-3 min-h-[48px]"
         >
           {isLoading
             ? (isSignup ? 'Creating...' : 'Signing In...')
@@ -235,19 +234,12 @@ export function LoginForm({
         </p>
       )}
 
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t-[2px] border-scale-blue-light" />
-        </div>
-        <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-scale-blue text-beige font-body">or</span>
-        </div>
-      </div>
+      <Divider label="or" />
 
       <button
         onClick={handleGuestPlay}
         disabled={isLoading}
-        className="w-full py-3 bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade font-display uppercase tracking-arcade text-bone-white hover:bg-scale-blue-light hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+        className="btn-neutral w-full py-3 min-h-[48px]"
       >
         Play as Guest
       </button>

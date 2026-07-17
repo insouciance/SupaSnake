@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgrade } from '@/components/auth/AccountUpgrade';
+import { IconShield } from '@/components/ui/icons';
 import {
   isUpgradeBannerDismissed,
   dismissUpgradeBanner,
@@ -27,13 +28,13 @@ export function AccountUpgradeModal({ isOpen, onClose }: AccountUpgradeModalProp
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scale-blue-dark/80 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-label="Create an account"
       data-testid="account-upgrade-modal"
     >
-      <AccountUpgrade onClose={onClose} className="w-full max-w-md my-8" />
+      <AccountUpgrade onClose={onClose} className="w-full max-w-md my-8 animate-pop-in" />
     </div>
   );
 }
@@ -65,21 +66,21 @@ export function SaveProgressBanner() {
       {dismissed ? (
         <button
           onClick={() => setShowModal(true)}
-          className="fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2 bg-scale-blue border-[2px] border-venom-orange/60 rounded-arcade text-xs font-body text-venom-orange hover:bg-scale-blue-light hover:border-venom-orange transition-all shadow-lg"
+          className="fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2.5 min-h-[44px] bg-void-deep/90 border-2 border-venom-orange/60 rounded-arcade text-xs font-body font-semibold text-venom-orange hover:border-venom-orange transition-all shadow-glow-sm shadow-venom-orange/40"
           data-testid="save-progress-chip"
           aria-label="Save your progress - create an account"
         >
-          <span aria-hidden="true">💾</span>
+          <IconShield size={14} />
           <span>Save progress</span>
         </button>
       ) : (
         <div
-          className="fixed top-14 inset-x-0 z-40 bg-scale-blue border-b-[2px] border-venom-orange-dark px-4 py-3 shadow-lg"
+          className="fixed top-14 inset-x-0 z-40 bg-void-deep/95 backdrop-blur-sm border-b-2 border-venom-orange-dark px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
           data-testid="save-progress-banner"
         >
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-beige text-sm font-body">
-              <span className="text-venom-orange font-display uppercase tracking-arcade mr-2">
+              <span className="label-arcade text-venom-orange mr-2">
                 Save your progress
               </span>
               You are playing as a guest - create an account to keep your snakes if this
@@ -88,13 +89,13 @@ export function SaveProgressBanner() {
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setShowModal(true)}
-                className="px-4 py-2 bg-venom-orange border-[2px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-xs text-scale-blue-dark hover:bg-venom-orange-light transition-all"
+                className="btn-go px-4 py-2.5 min-h-[44px] text-xs"
               >
                 Create Account
               </button>
               <button
                 onClick={handleDismiss}
-                className="px-3 py-2 text-beige/60 hover:text-beige text-xs font-body transition-colors"
+                className="px-3 py-2.5 min-h-[44px] text-beige/60 hover:text-beige text-xs font-body transition-colors"
                 aria-label="Dismiss save progress banner"
               >
                 Later
