@@ -26,8 +26,8 @@ interface ArenaBorderProps {
 
 export function ArenaBorder({
   gridSize = 20,
-  color = '#D98324',
-  accentColor = '#D98324',
+  color = '#22d3ee',
+  accentColor = '#22d3ee',
   emissiveIntensity = 0.5,
 }: ArenaBorderProps) {
   // One shared material per role - the pulse mutates two materials per

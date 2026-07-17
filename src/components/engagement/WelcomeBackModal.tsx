@@ -61,7 +61,7 @@ export function WelcomeBackModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
       <div
         className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4"
-        style={{ '--glow': '#D98324' } as React.CSSProperties}
+        style={{ '--glow': '#22d3ee' } as React.CSSProperties}
       >
         {/* Header with mascot celebration */}
         <div className="text-center mb-6">
@@ -71,7 +71,7 @@ export function WelcomeBackModal({
               alt="SupaSnake mascot"
               width={96}
               height={96}
-              className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_24px_rgba(217,131,36,0.45)]"
+              className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_24px_rgba(34,211,238,0.45)]"
             />
           </div>
           <h2 className="heading-display text-2xl text-venom-orange text-glow-orange mb-2">

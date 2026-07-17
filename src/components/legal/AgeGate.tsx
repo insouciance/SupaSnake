@@ -140,7 +140,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
     >
       <div
         className="panel-glow animate-pop-in max-w-md w-full p-8 sm:p-10 text-center"
-        style={{ '--glow': '#D98324' } as React.CSSProperties}
+        style={{ '--glow': '#22d3ee' } as React.CSSProperties}
       >
         <GateBrand />
 
@@ -220,7 +220,7 @@ export function UnderageScreen() {
     <div className="fixed inset-0 z-[9999] app-bg flex items-center justify-center p-4">
       <div
         className="panel-glow animate-pop-in max-w-md w-full p-8 sm:p-10 text-center"
-        style={{ '--glow': '#A42424' } as React.CSSProperties}
+        style={{ '--glow': '#f43f5e' } as React.CSSProperties}
       >
         <GateBrand />
 

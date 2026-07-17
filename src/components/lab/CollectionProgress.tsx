@@ -82,7 +82,7 @@ export function CollectionProgress({
       {/* Set-bonus hint */}
       <span
         className="text-[11px] font-body leading-tight"
-        style={{ color: isComplete ? glowColor : 'rgba(209, 191, 168, 0.55)' }}
+        style={{ color: isComplete ? glowColor : 'rgba(148, 163, 184, 0.55)' }}
       >
         {isComplete
           ? 'Set complete - dynasty bonus active'

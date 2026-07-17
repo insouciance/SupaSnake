@@ -53,7 +53,7 @@ export function StatDisplay({
       <div
         className={`font-mono font-bold ${sizeClasses.value} ${
           highlight
-            ? 'text-venom-orange [text-shadow:0_0_14px_rgba(217,131,36,0.45)]'
+            ? 'text-venom-orange [text-shadow:0_0_14px_rgba(34,211,238,0.45)]'
             : 'text-bone-white'
         }`}
       >

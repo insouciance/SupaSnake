@@ -11,20 +11,25 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        // Arcade palette from styleguide (OG SNAKE style guide v1.0)
-        'scale-blue': '#232C33',
-        'venom-orange': '#D98324',
-        'strike-red': '#A42424',
-        'bone-white': '#F4F4F4',
-        'beige': '#D1BFA8',
+        // Arcade palette v2 - cyberpunk accents over blue-grey depths.
+        // Token NAMES are kept for compatibility; values remapped:
+        // venom-orange* now carries the electric-cyan primary accent,
+        // strike-red the neon-rose danger accent.
+        'scale-blue': '#16202b',
+        'venom-orange': '#22d3ee',
+        'strike-red': '#f43f5e',
+        'bone-white': '#e6edf3',
+        'beige': '#94a3b8',
         // Lighter/darker variants for borders
-        'scale-blue-light': '#3a4750',
-        'scale-blue-dark': '#1a2128',
-        'venom-orange-light': '#e69a3a',
-        'venom-orange-dark': '#b86d1a',
+        'scale-blue-light': '#2b3b4d',
+        'scale-blue-dark': '#0e141c',
+        'venom-orange-light': '#67e8f9',
+        'venom-orange-dark': '#0ea5be',
+        // Secondary accent for select highlights (violet pulse)
+        'pulse': '#8b5cf6',
         // Void: the game scene's near-black backdrop, now the app backdrop
-        'void': '#0a0e12',
-        'void-deep': '#050508',
+        'void': '#0a1017',
+        'void-deep': '#06090d',
         // Dynasty identities (match ThemeManager / DB dynasty colors)
         'cyber': { DEFAULT: '#00FFFF', dim: '#0e7490', glow: '#67e8f9' },
         'primal': { DEFAULT: '#4a7c2a', dim: '#2d5016', glow: '#86efac' },
@@ -57,10 +62,10 @@ const config: Config = {
         'panel': '0 4px 24px rgba(0,0,0,0.5)',
       },
       backgroundImage: {
-        'panel-gradient': 'linear-gradient(160deg, rgba(58,71,80,0.35) 0%, rgba(26,33,40,0.9) 55%, rgba(10,14,18,0.95) 100%)',
-        'cta-gradient': 'linear-gradient(180deg, #e69a3a 0%, #D98324 55%, #b86d1a 100%)',
-        'danger-gradient': 'linear-gradient(180deg, #c53030 0%, #A42424 60%, #7f1d1d 100%)',
-        'shimmer': 'linear-gradient(110deg, transparent 30%, rgba(244,244,244,0.12) 50%, transparent 70%)',
+        'panel-gradient': 'linear-gradient(160deg, rgba(43,59,77,0.35) 0%, rgba(14,20,28,0.9) 55%, rgba(10,16,23,0.95) 100%)',
+        'cta-gradient': 'linear-gradient(180deg, #67e8f9 0%, #22d3ee 55%, #0ea5be 100%)',
+        'danger-gradient': 'linear-gradient(180deg, #fb7185 0%, #f43f5e 60%, #9f1239 100%)',
+        'shimmer': 'linear-gradient(110deg, transparent 30%, rgba(230,237,243,0.12) 50%, transparent 70%)',
       },
       keyframes: {
         breathe: {

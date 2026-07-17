@@ -69,7 +69,7 @@ function VerifyEmailContent() {
 
           {status === 'error' && (
             <>
-              <IconX size={40} className="mx-auto mb-4 text-strike-red drop-shadow-[0_0_12px_rgba(164,36,36,0.6)]" />
+              <IconX size={40} className="mx-auto mb-4 text-strike-red drop-shadow-[0_0_12px_rgba(244,63,94,0.6)]" />
               <h2 className="heading-display text-xl text-strike-red mb-2">Verification Failed</h2>
               <p className="text-beige font-body mb-4">
                 {errorDescription || 'The verification link may have expired.'}

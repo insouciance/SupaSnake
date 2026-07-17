@@ -70,7 +70,7 @@ export function BreedingReveal({
       <div
         className="breeding-flash"
         style={{
-          background: `radial-gradient(circle at center, rgba(244, 244, 244, 0.95) 0%, ${hexToRgba(theme.glow, 0.55)} 30%, transparent 62%)`,
+          background: `radial-gradient(circle at center, rgba(230, 237, 243, 0.95) 0%, ${hexToRgba(theme.glow, 0.55)} 30%, transparent 62%)`,
         }}
         aria-hidden="true"
       />

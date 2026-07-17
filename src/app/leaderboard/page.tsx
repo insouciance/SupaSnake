@@ -251,7 +251,7 @@ export default function LeaderboardPage() {
 
         {/* My Position */}
         {myRank && (
-          <div className="panel-glow [--glow:#D98324] p-4 mb-6 animate-fade-up">
+          <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 animate-fade-up">
             <p className="text-venom-orange font-body">
               Your Rank: <span className="font-display text-2xl text-glow-orange">#{myRank}</span>
             </p>

@@ -56,8 +56,8 @@ export function AimingCrosshair({
   direction = 'RIGHT',
   queuedDirections = EMPTY_QUEUE,
   gridSize = 20,
-  color = '#D98324',
-  laneColor = '#D98324',
+  color = '#22d3ee',
+  laneColor = '#22d3ee',
   opacity = 0.15,
 }: AimingCrosshairProps) {
   const y = 0.05; // Slightly above floor and grid lines
@@ -112,7 +112,7 @@ export function AimingCrosshair({
   const turnMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: '#F4F4F4',
+        color: '#e6edf3',
         transparent: true,
         opacity: 0.9,
         depthWrite: false,

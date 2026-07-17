@@ -409,7 +409,7 @@ export function VariantDetailModal({
             }`}
             style={
               isFavorited
-                ? { boxShadow: '0 0 12px -4px #A42424' }
+                ? { boxShadow: '0 0 12px -4px #f43f5e' }
                 : undefined
             }
             aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}

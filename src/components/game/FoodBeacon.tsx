@@ -20,7 +20,7 @@ interface FoodBeaconProps {
 
 export function FoodBeacon({
   position,
-  color = '#D98324',
+  color = '#22d3ee',
   spawnTime = 0,
 }: FoodBeaconProps) {
   const groupRef = useRef<THREE.Group>(null);

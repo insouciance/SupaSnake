@@ -151,7 +151,7 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
   return (
     <div
       className={`panel-glow p-6 ${className}`}
-      style={{ '--glow': '#D98324' } as React.CSSProperties}
+      style={{ '--glow': '#22d3ee' } as React.CSSProperties}
     >
       <h3 className="heading-display text-xl text-venom-orange mb-2">Save Your Progress</h3>
       <p className="text-beige/70 text-sm font-body mb-6">

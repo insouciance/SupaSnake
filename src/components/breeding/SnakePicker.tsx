@@ -121,7 +121,7 @@ export function SnakePicker({
                     className="relative rounded-arcade overflow-hidden text-left border-2 bg-void-deep/60 transition-all focus:outline-none focus-visible:ring-2 enabled:hover:scale-[1.03] enabled:active:scale-[0.97] disabled:cursor-not-allowed"
                     style={{
                       aspectRatio: '3 / 4',
-                      borderColor: disabled ? 'rgba(244,244,244,0.1)' : theme.glow,
+                      borderColor: disabled ? 'rgba(230,237,243,0.1)' : theme.glow,
                       boxShadow: disabled ? undefined : `0 0 14px -6px ${theme.glow}`,
                       opacity: disabled ? 0.4 : 1,
                     }}

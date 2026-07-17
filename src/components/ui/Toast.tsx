@@ -41,7 +41,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 const TYPE_STYLES: Record<ToastType, string> = {
   info: '[--glow:#00FFFF]',
   success: '[--glow:#4ade80]',
-  error: '[--glow:#A42424]',
+  error: '[--glow:#f43f5e]',
   achievement: '[--glow:#fbbf24]',
 };
 

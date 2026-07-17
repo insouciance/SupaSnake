@@ -57,7 +57,7 @@ describe('Toast', () => {
         />
       );
       const toast = screen.getByText('Error!').parentElement;
-      expect(toast).toHaveClass('[--glow:#A42424]');
+      expect(toast).toHaveClass('[--glow:#f43f5e]');
     });
   });
 

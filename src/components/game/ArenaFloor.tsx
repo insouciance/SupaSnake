@@ -31,9 +31,9 @@ const MAJOR_EVERY = 5;
 export function ArenaFloor({
   gridSize = 20,
   floorColor = '#0b1016',
-  gridColor = '#3a4750',
+  gridColor = '#2b3b4d',
   majorGridColor = '#6b7d8a',
-  accentColor = '#D98324',
+  accentColor = '#22d3ee',
 }: ArenaFloorProps) {
   const center = gridSize / 2;
 

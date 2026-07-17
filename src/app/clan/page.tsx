@@ -266,7 +266,7 @@ export default function ClanPage() {
               </div>
 
               {/* Clan Bonus */}
-              <div className="panel-glow [--glow:#D98324] p-4 mb-4">
+              <div className="panel-glow [--glow:#22d3ee] p-4 mb-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <p className="text-venom-orange font-display uppercase flex items-center gap-1.5">

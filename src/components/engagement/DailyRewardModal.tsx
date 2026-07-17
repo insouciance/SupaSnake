@@ -159,14 +159,14 @@ export function DailyRewardModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
       <div
         className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
-        style={{ '--glow': '#D98324' } as React.CSSProperties}
+        style={{ '--glow': '#22d3ee' } as React.CSSProperties}
       >
         {claimResult ? (
           /* Success state - granted amounts */
           <div className="text-center">
             <IconGift
               size={56}
-              className="mx-auto mb-4 text-venom-orange animate-breathe drop-shadow-[0_0_18px_rgba(217,131,36,0.6)]"
+              className="mx-auto mb-4 text-venom-orange animate-breathe drop-shadow-[0_0_18px_rgba(34,211,238,0.6)]"
               role="img"
               aria-label="gift"
               aria-hidden={undefined}

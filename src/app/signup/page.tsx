@@ -92,7 +92,7 @@ export default function SignupPage() {
                 width={104}
                 height={104}
                 priority
-                className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_28px_rgba(217,131,36,0.4)]"
+                className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_28px_rgba(34,211,238,0.4)]"
               />
             </span>
             <h1 className="heading-display text-glow-orange text-venom-orange text-4xl">
@@ -119,7 +119,7 @@ export default function SignupPage() {
         ) : (
           <div
             className="panel-glow p-6 animate-fade-up"
-            style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
+            style={{ '--glow': '#22d3ee', animationDelay: '100ms' } as React.CSSProperties}
           >
             <h2 className="heading-display text-xl text-bone-white mb-6">Create Account</h2>
             <LoginForm

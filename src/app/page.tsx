@@ -316,7 +316,7 @@ export default function Home() {
         >
           <div
             className="panel-glow animate-pop-in p-8 text-center space-y-6 max-w-md w-full"
-            style={{ '--glow': '#D98324' } as React.CSSProperties}
+            style={{ '--glow': '#22d3ee' } as React.CSSProperties}
           >
             <h2 className="heading-display text-2xl text-venom-orange text-glow-orange">
               Welcome Back
@@ -356,7 +356,7 @@ export default function Home() {
         >
           <div
             className="panel-glow animate-pop-in p-8 text-center space-y-6 max-w-md w-full"
-            style={{ '--glow': '#A42424' } as React.CSSProperties}
+            style={{ '--glow': '#f43f5e' } as React.CSSProperties}
           >
             <h2 className="heading-display text-2xl text-strike-red">
               Previous Progress Lost
@@ -418,7 +418,7 @@ export default function Home() {
                 width={288}
                 height={288}
                 priority
-                className="mx-auto w-44 sm:w-64 h-auto drop-shadow-[0_0_48px_rgba(217,131,36,0.35)]"
+                className="mx-auto w-44 sm:w-64 h-auto drop-shadow-[0_0_48px_rgba(34,211,238,0.35)]"
               />
             </div>
             <h1 className="heading-display text-glow-orange text-venom-orange text-5xl sm:text-7xl animate-breathe">

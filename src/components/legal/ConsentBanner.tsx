@@ -88,7 +88,7 @@ export function ConsentBanner() {
   if (!showBanner) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-void-deep/95 backdrop-blur-sm border-t-2 border-venom-orange/50 shadow-[0_-8px_32px_rgba(217,131,36,0.12)] animate-fade-up">
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-void-deep/95 backdrop-blur-sm border-t-2 border-venom-orange/50 shadow-[0_-8px_32px_rgba(34,211,238,0.12)] animate-fade-up">
       <div className="max-w-6xl mx-auto">
         {!showDetails ? (
           // Simple banner

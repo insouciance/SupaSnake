@@ -107,7 +107,7 @@ export function EnergyTimer({
                 i < energy
                   ? hasBonus
                     ? 'bg-cyber shadow-[0_0_8px_rgba(0,255,255,0.6)]'
-                    : 'bg-venom-orange shadow-[0_0_8px_rgba(217,131,36,0.6)]'
+                    : 'bg-venom-orange shadow-[0_0_8px_rgba(34,211,238,0.6)]'
                   : 'bg-scale-blue-light/40'
               }`}
             />

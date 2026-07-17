@@ -23,9 +23,9 @@ const STATUS_COLORS = {
 
 const STATUS_GLOW = {
   online: 'shadow-[0_0_8px_rgba(74,222,128,0.7)]',
-  offline: 'shadow-[0_0_8px_rgba(164,36,36,0.7)]',
+  offline: 'shadow-[0_0_8px_rgba(244,63,94,0.7)]',
   warning: 'shadow-[0_0_8px_rgba(251,191,36,0.7)]',
-  syncing: 'shadow-[0_0_8px_rgba(217,131,36,0.7)]',
+  syncing: 'shadow-[0_0_8px_rgba(34,211,238,0.7)]',
 } as const;
 
 export function StatusIndicator({

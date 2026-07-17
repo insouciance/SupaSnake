@@ -64,7 +64,7 @@ function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
       <span
         className="font-display uppercase tracking-wide-arcade text-sm transition-colors duration-200 ease-out"
         style={{
-          color: isActive ? theme.glow : 'rgba(209, 191, 168, 0.6)',
+          color: isActive ? theme.glow : 'rgba(148, 163, 184, 0.6)',
           textShadow: isActive ? `0 0 12px ${theme.glow}` : undefined,
         }}
       >
@@ -75,7 +75,7 @@ function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
       <span
         className="font-mono text-xs mt-0.5 transition-colors duration-200 ease-out"
         style={{
-          color: isActive ? theme.glow : 'rgba(209, 191, 168, 0.6)',
+          color: isActive ? theme.glow : 'rgba(148, 163, 184, 0.6)',
           opacity: isActive ? 0.9 : 0.7,
         }}
       >

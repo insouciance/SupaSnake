@@ -56,7 +56,7 @@ export function Navigation() {
                   aria-label={label}
                   className={`flex items-center gap-1.5 px-2 sm:px-3 py-2.5 min-h-[44px] rounded-arcade text-sm font-body font-semibold transition-all ${
                     isActive
-                      ? 'text-venom-orange [text-shadow:0_0_12px_rgba(217,131,36,0.6)]'
+                      ? 'text-venom-orange [text-shadow:0_0_12px_rgba(34,211,238,0.6)]'
                       : 'text-beige/60 hover:text-bone-white'
                   }`}
                 >

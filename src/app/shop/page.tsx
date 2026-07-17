@@ -146,7 +146,7 @@ export default function ShopPage() {
 
       {/* Success Message */}
       {success && (
-        <div className="panel-glow [--glow:#D98324] p-4 mb-6 animate-pop-in">
+        <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 animate-pop-in">
           <p className="text-venom-orange font-display uppercase">Purchase successful!</p>
           <p className="text-beige text-sm font-body">Your rewards have been added to your account.</p>
         </div>
@@ -169,7 +169,7 @@ export default function ShopPage() {
 
       {/* Anonymous User Notice */}
       {isAnonymous && (
-        <div className="panel-glow [--glow:#D98324] p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-up">
+        <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-up">
           <div>
             <p className="text-venom-orange font-display uppercase">Save your progress!</p>
             <p className="text-beige text-sm font-body">
@@ -225,7 +225,7 @@ export default function ShopPage() {
             {BUNDLE_PRODUCTS.map((product) => (
               <div
                 key={product.id}
-                className="panel-glow [--glow:#D98324] p-6"
+                className="panel-glow [--glow:#22d3ee] p-6"
               >
                 <div className="flex items-center justify-between gap-2 mb-4">
                   <div>

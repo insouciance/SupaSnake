@@ -730,7 +730,7 @@ export default function GamePage() {
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4">
           <div
             className={`panel-elevated p-8 text-center space-y-6 min-w-[320px] max-w-full animate-pop-in ${
-              isGameOver ? '[--glow:#A42424]' : '[--glow:#D98324]'
+              isGameOver ? '[--glow:#f43f5e]' : '[--glow:#22d3ee]'
             }`}
           >
             {isGameOver ? (
@@ -909,7 +909,7 @@ export default function GamePage() {
       >
         {/* Fog in the void family so the arena's far edge melts into the
             page backdrop instead of cutting out against it */}
-        <fog attach="fog" args={['#050508', 34, 65]} />
+        <fog attach="fog" args={['#06090d', 34, 65]} />
         <ambientLight intensity={0.35} />
         <directionalLight
           position={[10, 20, 10]}
@@ -1045,14 +1045,14 @@ function GameBoard({
       <ArenaFloor
         gridSize={GAME_CONFIG.board.gridSize}
         floorColor="#0b1016"
-        gridColor="#3a4750"
+        gridColor="#2b3b4d"
         majorGridColor="#6b7d8a"
         accentColor={theme.primary}
       />
       <ArenaBorder
         gridSize={GAME_CONFIG.board.gridSize}
         color={theme.secondary}
-        accentColor="#D98324"
+        accentColor="#22d3ee"
         emissiveIntensity={0.5}
       />
 

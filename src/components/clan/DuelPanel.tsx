@@ -164,7 +164,7 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
         </div>
       )}
 
-      <div className="panel-glow [--glow:#D98324] p-4 sm:p-6">
+      <div className="panel-glow [--glow:#22d3ee] p-4 sm:p-6">
         {/* Rating + record chip */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <span className="label-arcade">Clan Duels</span>
@@ -225,7 +225,7 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                 <div className="h-3 bg-void/60 border border-scale-blue-light/40 rounded-arcade overflow-hidden">
                   <div
                     data-testid="my-score-bar"
-                    className="h-full bg-venom-orange shadow-[0_0_8px_#D98324] transition-all"
+                    className="h-full bg-venom-orange shadow-[0_0_8px_#22d3ee] transition-all"
                     style={{ width: `${scoreBarWidth(duel.myScore, duel.theirScore)}%` }}
                   />
                 </div>

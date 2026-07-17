@@ -56,7 +56,7 @@ export function SessionRecoveryModal({ onDismiss, onRecovered }: SessionRecovery
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
       <div
         className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4 text-bone-white"
-        style={{ '--glow': '#D98324' } as React.CSSProperties}
+        style={{ '--glow': '#22d3ee' } as React.CSSProperties}
       >
         {showLoginForm ? (
           <>

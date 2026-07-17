@@ -208,7 +208,7 @@ export default function LabPage() {
       <div className="app-bg min-h-screen text-bone-white">
         <Navigation />
         <div className="flex items-center justify-center min-h-screen pt-14 px-4">
-          <div className="panel-glow [--glow:#A42424] animate-pop-in p-8 text-center max-w-md space-y-6">
+          <div className="panel-glow [--glow:#f43f5e] animate-pop-in p-8 text-center max-w-md space-y-6">
             <h1 className="heading-display text-3xl text-strike-red">
               Error
             </h1>
@@ -276,7 +276,7 @@ export default function LabPage() {
       {error && dynasties.length > 0 && (
         <div className="px-4 pb-3">
           <div className="max-w-6xl mx-auto">
-            <div className="panel-glow [--glow:#A42424] p-4 flex items-center justify-between">
+            <div className="panel-glow [--glow:#f43f5e] p-4 flex items-center justify-between">
               <p className="text-strike-red font-body text-sm">{error}</p>
               <button
                 onClick={refresh}

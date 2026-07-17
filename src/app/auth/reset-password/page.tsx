@@ -87,7 +87,7 @@ export default function ResetPasswordPage() {
         {/* Form Card */}
         <div
           className="panel-glow p-6 animate-fade-up"
-          style={{ '--glow': '#D98324', animationDelay: '100ms' } as React.CSSProperties}
+          style={{ '--glow': '#22d3ee', animationDelay: '100ms' } as React.CSSProperties}
         >
           <h2 className="heading-display text-xl text-bone-white mb-6">New Password</h2>
 
