@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { type Clan, CLAN_LIMITS, CLAN_BONUS_CONFIG } from '@/lib/clan/types';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
+import { DuelPanel } from '@/components/clan/DuelPanel';
 import Link from 'next/link';
 import { IconBolt, IconShield, IconUser } from '@/components/ui/icons';
 
@@ -222,6 +223,10 @@ export default function ClanPage() {
 
         {/* My Clan Section */}
         {myClan ? (
+          <>
+          {/* This Week's Duel - weekly head-to-head clan competition */}
+          <DuelPanel accessToken={session?.access_token} />
+
           <section className="mb-10 animate-fade-up">
             <h2 className="heading-display text-2xl text-bone-white mb-4">My Clan</h2>
             <div className="panel-glow [--glow:#a855f7] p-6">
@@ -288,6 +293,7 @@ export default function ClanPage() {
               )}
             </div>
           </section>
+          </>
         ) : (
           <>
             {/* Create Clan Section */}
