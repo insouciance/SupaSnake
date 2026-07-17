@@ -219,8 +219,9 @@ export function SnakeArt({
         )}
       </defs>
 
-      {/* Background wash */}
-      <rect width={W} height={H} fill={`url(#${gradId})`} opacity={0.22} />
+      {/* Background wash - slightly stronger for contrast on the darker
+          panel-gradient card surfaces */}
+      <rect width={W} height={H} fill={`url(#${gradId})`} opacity={0.28} />
 
       {/* Dynasty motif layer */}
       <DynastyMotif dynasty={dynasty} rng={art.motifRng} w={W} h={H} color={secondaryColor} />
@@ -266,7 +267,7 @@ export function SnakeArt({
         y={frame.strokeWidth / 2}
         width={W - frame.strokeWidth}
         height={H - frame.strokeWidth}
-        rx={12}
+        rx={6}
         fill="none"
         stroke={frame.stroke}
         strokeWidth={frame.strokeWidth}
