@@ -2,7 +2,8 @@
 
 /**
  * Arcade Button Component
- * Follows OG Snake styleguide: hard edges, 3px borders, button hierarchy
+ * Maps onto the design-system button hierarchy (.btn-go / .btn-stop /
+ * .btn-neutral): hard edges, emissive glow, GO / STOP / NEUTRAL.
  */
 
 import { ButtonHTMLAttributes, forwardRef } from 'react';
@@ -17,20 +18,20 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-  // Orange fill - for Play/Upgrade/Confirm actions
-  go: 'bg-venom-orange text-scale-blue-dark border-venom-orange-dark hover:bg-venom-orange-light',
+  // Orange emissive fill - for Play/Upgrade/Confirm actions
+  go: 'btn-go',
   // Red fill - for Quit/Delete/Cancel actions
-  stop: 'bg-strike-red text-bone-white border-red-900 hover:bg-red-600',
+  stop: 'btn-stop',
   // Blue fill with light border - for Settings/Neutral actions
-  neutral: 'bg-scale-blue text-bone-white border-scale-blue-light hover:bg-scale-blue-light',
+  neutral: 'btn-neutral',
   // Transparent with border - for secondary actions
-  ghost: 'bg-transparent text-bone-white border-scale-blue-light hover:bg-scale-blue/50',
+  ghost: 'btn-arcade bg-transparent text-bone-white border-scale-blue-light/70 hover:border-beige/60 hover:bg-scale-blue/40',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  sm: 'px-4 py-2 text-sm',
-  md: 'px-6 py-3 text-base',
-  lg: 'px-8 py-4 text-lg',
+  sm: 'px-4 py-2 text-sm min-h-[44px]',
+  md: 'px-6 py-3 text-base min-h-[44px]',
+  lg: 'px-8 py-4 text-lg min-h-[48px]',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -51,13 +52,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled}
         className={`
-          font-display uppercase tracking-arcade
-          rounded-arcade border-[3px]
-          transition-all duration-100 ease-out
           ${variantStyles[variant]}
           ${sizeStyles[size]}
           ${fullWidth ? 'w-full' : ''}
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]'}
+          ${disabled ? 'opacity-40 cursor-not-allowed pointer-events-none shadow-none' : ''}
           ${className}
         `}
         {...props}

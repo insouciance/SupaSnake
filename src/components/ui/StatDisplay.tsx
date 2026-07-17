@@ -2,7 +2,7 @@
 
 /**
  * StatDisplay - Numeric stat with label
- * Monospace numbers for technical/cockpit aesthetic
+ * Monospace numbers for technical/cockpit aesthetic; arcade section labels.
  */
 
 interface StatDisplayProps {
@@ -47,10 +47,16 @@ export function StatDisplay({
 
   return (
     <div className="flex flex-col">
-      <span className={`font-body text-beige/70 uppercase tracking-wide ${sizeClasses.label}`}>
+      <span className={`label-arcade ${sizeClasses.label}`}>
         {label}
       </span>
-      <div className={`font-mono font-bold ${sizeClasses.value} ${highlight ? 'text-venom-orange' : 'text-bone-white'}`}>
+      <div
+        className={`font-mono font-bold ${sizeClasses.value} ${
+          highlight
+            ? 'text-venom-orange [text-shadow:0_0_14px_rgba(217,131,36,0.45)]'
+            : 'text-bone-white'
+        }`}
+      >
         {prefix}
         {typeof value === 'number' ? value.toLocaleString() : value}
         {suffix && <span className="text-beige/60 ml-1">{suffix}</span>}

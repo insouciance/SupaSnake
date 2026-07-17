@@ -2,7 +2,7 @@
 
 /**
  * StatusIndicator - System status dot with label
- * Used for cockpit-style "systems check" displays
+ * Emissive status dots over the void (dots stay circular by design).
  */
 
 interface StatusIndicatorProps {
@@ -15,17 +15,17 @@ interface StatusIndicatorProps {
 }
 
 const STATUS_COLORS = {
-  online: 'bg-green-500',
+  online: 'bg-rarity-uncommon',
   offline: 'bg-strike-red',
-  warning: 'bg-yellow-500',
+  warning: 'bg-rarity-legendary',
   syncing: 'bg-venom-orange',
 } as const;
 
 const STATUS_GLOW = {
-  online: 'shadow-[0_0_6px_rgba(34,197,94,0.6)]',
-  offline: 'shadow-[0_0_6px_rgba(164,36,36,0.6)]',
-  warning: 'shadow-[0_0_6px_rgba(234,179,8,0.6)]',
-  syncing: 'shadow-[0_0_6px_rgba(217,131,36,0.6)]',
+  online: 'shadow-[0_0_8px_rgba(74,222,128,0.7)]',
+  offline: 'shadow-[0_0_8px_rgba(164,36,36,0.7)]',
+  warning: 'shadow-[0_0_8px_rgba(251,191,36,0.7)]',
+  syncing: 'shadow-[0_0_8px_rgba(217,131,36,0.7)]',
 } as const;
 
 export function StatusIndicator({
@@ -43,7 +43,7 @@ export function StatusIndicator({
           ${pulse && status !== 'offline' ? 'animate-pulse' : ''}
         `}
       />
-      <span className="text-sm font-body text-beige">{label}</span>
+      <span className="text-sm font-body font-semibold text-beige">{label}</span>
     </div>
   );
 }

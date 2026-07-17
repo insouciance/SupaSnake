@@ -44,7 +44,7 @@ describe('Toast', () => {
         />
       );
       const toast = screen.getByText('Success!').parentElement;
-      expect(toast).toHaveClass('bg-green-600');
+      expect(toast).toHaveClass('[--glow:#4ade80]');
     });
 
     it('renders error type with correct styling', () => {
@@ -57,7 +57,7 @@ describe('Toast', () => {
         />
       );
       const toast = screen.getByText('Error!').parentElement;
-      expect(toast).toHaveClass('bg-red-600');
+      expect(toast).toHaveClass('[--glow:#A42424]');
     });
   });
 

@@ -7,9 +7,18 @@
  * - New high scores on leaderboard
  * - Achievement unlocks
  * - Reward claims
+ *
+ * Styled as dynasty-glow panels sliding in over the void.
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import {
+  IconBolt,
+  IconCheck,
+  IconX,
+  IconTrophy,
+  type IconProps,
+} from '@/components/ui/icons';
 
 export type ToastType = 'info' | 'success' | 'error' | 'achievement';
 
@@ -28,18 +37,26 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
+/** Per-type glow color (drives the panel-glow border + emissive shadow) */
 const TYPE_STYLES: Record<ToastType, string> = {
-  info: 'bg-blue-600',
-  success: 'bg-green-600',
-  error: 'bg-red-600',
-  achievement: 'bg-yellow-600',
+  info: '[--glow:#00FFFF]',
+  success: '[--glow:#4ade80]',
+  error: '[--glow:#A42424]',
+  achievement: '[--glow:#fbbf24]',
 };
 
-const TYPE_ICONS: Record<ToastType, string> = {
-  info: '\u2139\uFE0F',      // Info icon
-  success: '\u2705',         // Check mark
-  error: '\u274C',           // X mark
-  achievement: '\u{1F3C6}',  // Trophy
+const TYPE_ICON_COLOR: Record<ToastType, string> = {
+  info: 'text-cyber',
+  success: 'text-rarity-uncommon',
+  error: 'text-strike-red',
+  achievement: 'text-rarity-legendary',
+};
+
+const TYPE_ICONS: Record<ToastType, (p: IconProps) => React.JSX.Element> = {
+  info: IconBolt,
+  success: IconCheck,
+  error: IconX,
+  achievement: IconTrophy,
 };
 
 interface ToastProps {
@@ -50,19 +67,20 @@ interface ToastProps {
 }
 
 export function Toast({ id, message, type, onDismiss }: ToastProps) {
+  const Icon = TYPE_ICONS[type];
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg ${TYPE_STYLES[type]} text-white animate-slide-in`}
+      className={`flex items-center gap-3 px-4 py-3 panel-glow ${TYPE_STYLES[type]} text-bone-white animate-slide-in-right`}
       role="alert"
     >
-      <span className="text-xl">{TYPE_ICONS[type]}</span>
-      <span className="flex-1 font-medium">{message}</span>
+      <Icon size={20} className={`shrink-0 ${TYPE_ICON_COLOR[type]}`} />
+      <span className="flex-1 font-body font-semibold">{message}</span>
       <button
         onClick={() => onDismiss(id)}
-        className="text-white/70 hover:text-white transition-colors"
+        className="p-1 -m-1 text-beige/60 hover:text-bone-white transition-colors"
         aria-label="Dismiss"
       >
-        &#x2715;
+        <IconX size={16} />
       </button>
     </div>
   );

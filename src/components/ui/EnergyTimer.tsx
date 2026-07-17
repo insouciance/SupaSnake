@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { IconBolt } from '@/components/ui/icons';
 
 interface EnergyTimerProps {
   energy: number;
@@ -92,29 +93,22 @@ export function EnergyTimer({
       {/* Energy Bar */}
       <div className="flex items-center gap-2">
         {/* Lightning Icon */}
-        <svg
-          className={`w-5 h-5 ${hasBonus ? 'text-orange-400' : 'text-yellow-400'}`}
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
-            clipRule="evenodd"
-          />
-        </svg>
+        <IconBolt
+          size={20}
+          className={hasBonus ? 'text-cyber' : 'text-venom-orange'}
+        />
 
         {/* Energy Pills */}
         <div className="flex gap-1">
           {Array.from({ length: maxEnergy }).map((_, i) => (
             <div
               key={i}
-              className={`w-4 h-6 rounded-sm transition-all duration-300 ${
+              className={`w-4 h-6 rounded-[2px] transition-all duration-300 ${
                 i < energy
                   ? hasBonus
-                    ? 'bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.6)]'
-                    : 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]'
-                  : 'bg-gray-700'
+                    ? 'bg-cyber shadow-[0_0_8px_rgba(0,255,255,0.6)]'
+                    : 'bg-venom-orange shadow-[0_0_8px_rgba(217,131,36,0.6)]'
+                  : 'bg-scale-blue-light/40'
               }`}
             />
           ))}
@@ -122,20 +116,20 @@ export function EnergyTimer({
 
         {/* Bonus indicator */}
         {hasBonus && (
-          <span className="text-sm font-bold text-orange-400 animate-pulse">
+          <span className="text-sm font-mono font-bold text-cyber animate-pulse">
             +{bonusAmount}
           </span>
         )}
 
         {/* Count */}
-        <span className={`text-sm font-bold ml-1 ${hasBonus ? 'text-orange-400' : 'text-yellow-400'}`}>
+        <span className={`text-sm font-mono font-bold ml-1 ${hasBonus ? 'text-cyber' : 'text-venom-orange'}`}>
           {energy}/{maxEnergy}
         </span>
       </div>
 
       {/* Timer - only when below max */}
       {mounted && !isFull && (
-        <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+        <div className="flex items-center gap-1 mt-1 text-xs font-body text-beige/60">
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
@@ -144,20 +138,20 @@ export function EnergyTimer({
               d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          <span>Next: {formatTimeRemaining(timeRemaining)}</span>
+          <span className="font-mono">Next: {formatTimeRemaining(timeRemaining)}</span>
         </div>
       )}
 
       {/* Bonus energy indicator */}
       {mounted && hasBonus && (
-        <div className="text-xs text-orange-400 mt-1">
+        <div className="text-xs font-body text-cyber mt-1">
           Bonus Energy
         </div>
       )}
 
       {/* Full indicator (only when exactly at max, not bonus) */}
       {mounted && isFull && !hasBonus && (
-        <div className="text-xs text-green-400 mt-1">
+        <div className="text-xs font-body text-rarity-uncommon mt-1">
           Full
         </div>
       )}
@@ -200,17 +194,17 @@ export function EnergyDisplay({
 
   return (
     <div className={`inline-flex items-center gap-2 ${className}`}>
-      <span className="text-gray-500">Energy:</span>
-      <span className={`font-bold ${hasBonus ? 'text-orange-400' : 'text-yellow-400'}`}>
+      <span className="font-body text-beige/60">Energy:</span>
+      <span className={`font-mono font-bold ${hasBonus ? 'text-cyber' : 'text-venom-orange'}`}>
         {energy}/{maxEnergy}
       </span>
       {hasBonus && (
-        <span className="text-xs font-bold text-orange-400 animate-pulse">
+        <span className="text-xs font-mono font-bold text-cyber animate-pulse">
           +{energy - maxEnergy}
         </span>
       )}
       {mounted && showTimer && !isFull && (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs font-mono text-beige/60">
           ({formatTimeRemaining(timeRemaining)})
         </span>
       )}
