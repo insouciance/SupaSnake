@@ -79,6 +79,26 @@ surfaces, staggered entrance motion everywhere, reduced-motion support.
       (more/less glow, spacing, copy tone, celebration intensity)
 - [ ] Home first impression: does it pass the "this feels different" test?
 
+## 🆕 Latest wave to verify (deployed 2026-07-17)
+
+- [ ] **Your login works now**: bllj@proton.me was stuck unconfirmed (the
+      localhost-link bug) — admin-confirmed. Try signing in.
+- [ ] **Auth journey**: as a guest with progress, /signup now UPGRADES your
+      account (progress attached) instead of creating an empty new one;
+      after upgrading, the "save your progress" prompts disappear
+      immediately (stale-token bug fixed); game-over screen has a save-
+      progress CTA for guests
+- [ ] **Input feel (your report)**: fast successive arrow moves — S-turns
+      (UP→LEFT quickly) now execute both turns; try rapid zigzags
+- [ ] **Clan Duels**: create/join a clan → clan page shows THIS WEEK'S DUEL
+      (opponent, live scores, countdown, top contributors). Second test
+      clan needed for a real pairing; winner gets +5% DNA next week
+- [ ] Progress persistence audit: PASSED — nothing progress-like stored
+      locally (full storage table in the audit report); all mutations
+      server-side through API/RPCs
+- 🔄 Board/aim redesign (void assimilation + pro aim telegraph) in flight —
+      will need your visual judgment on prod when it lands
+
 ## 📌 Incidents / notes from autonomous work
 
 - **Guest play was broken in production** (fresh Supabase project has anonymous
