@@ -5,9 +5,11 @@
  *
  * Shows a hint message until dismissed; the dismissal is remembered in
  * localStorage per hint id, so each hint appears at most once.
+ * Styled as a small glowing chip floating over the void.
  */
 
 import { useEffect, useState } from 'react';
+import { IconBolt, IconX } from '@/components/ui/icons';
 
 export function hintStorageKey(id: string): string {
   return `hint-dismissed-${id}`;
@@ -47,18 +49,17 @@ export function OverlayHint({ id, message }: OverlayHintProps) {
   return (
     <div
       role="status"
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-3 bg-scale-blue border-[2px] border-venom-orange/60 rounded-arcade shadow-lg max-w-md w-[calc(100%-2rem)]"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 panel-glow animate-fade-up max-w-md w-[calc(100%-2rem)]"
+      style={{ '--glow': '#D98324' } as React.CSSProperties}
     >
-      <span className="text-xl" role="img" aria-label="hint">
-        &#x1F4A1;
-      </span>
+      <IconBolt size={18} className="shrink-0 text-venom-orange" />
       <p className="text-bone-white font-body text-sm flex-1">{message}</p>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss hint"
-        className="text-beige/60 hover:text-bone-white transition-colors text-lg leading-none px-1"
+        className="p-2 -m-1 text-beige/60 hover:text-bone-white transition-colors"
       >
-        &#x2715;
+        <IconX size={16} />
       </button>
     </div>
   );

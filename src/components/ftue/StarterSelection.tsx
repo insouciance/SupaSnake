@@ -26,6 +26,13 @@ interface StarterSelectionProps {
   onComplete?: () => void;
 }
 
+/** Emissive glow color per dynasty (DB primaries are too dark for the void) */
+const DYNASTY_GLOW: Record<string, string> = {
+  CYBER: '#00FFFF',
+  PRIMAL: '#86efac',
+  COSMIC: '#a855f7',
+};
+
 export function StarterSelection({ onComplete }: StarterSelectionProps) {
   const router = useRouter();
   const { session } = useAuth();
@@ -135,94 +142,106 @@ export function StarterSelection({ onComplete }: StarterSelectionProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scale-blue-dark/95 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-4xl p-4 sm:p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-5xl font-display uppercase tracking-arcade text-venom-orange mb-3">
-            Choose Your Snake
-          </h1>
-          <p className="text-beige/80 font-body">
-            Pick a dynasty to begin your legacy. Your starter is free.
-          </p>
-        </div>
+    <div className="fixed inset-0 z-50 app-bg overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center">
+        <div className="w-full max-w-4xl p-4 sm:p-8">
+          <div className="text-center mb-8 animate-fade-up">
+            <p className="label-arcade mb-3">Your Legacy Begins</p>
+            <h1 className="heading-display text-glow-orange text-venom-orange text-3xl sm:text-5xl mb-3">
+              Choose Your Snake
+            </h1>
+            <p className="text-beige/80 font-body">
+              Pick a dynasty to begin your legacy. Your starter is free.
+            </p>
+          </div>
 
-        {isLoading ? (
-          <p className="text-center text-beige/60 font-mono animate-pulse">
-            Loading starters...
-          </p>
-        ) : cards.length === 0 ? (
-          <p className="text-center text-beige/60 font-mono">
-            {error || 'No starters available.'}
-          </p>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              {cards.map((card) => {
-                const isSelected = selectedVariantId === card.variant.id;
-                return (
-                  <button
-                    key={card.variant.id}
-                    data-testid={`starter-${card.dynastyName}`}
-                    onClick={() => setSelectedVariantId(card.variant.id)}
-                    className={`
-                      relative rounded-arcade border-[3px] overflow-hidden text-left transition-all
-                      ${isSelected
-                        ? 'border-venom-orange scale-[1.02] shadow-[0_0_20px_rgba(217,131,36,0.5)]'
-                        : 'border-scale-blue-light hover:border-venom-orange/60'
+          {isLoading ? (
+            <p className="text-center text-beige/60 font-mono animate-pulse">
+              Loading starters...
+            </p>
+          ) : cards.length === 0 ? (
+            <p className="text-center text-beige/60 font-mono">
+              {error || 'No starters available.'}
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                {cards.map((card, index) => {
+                  const isSelected = selectedVariantId === card.variant.id;
+                  const glow = DYNASTY_GLOW[card.dynastyName] ?? card.primaryColor;
+                  return (
+                    <div
+                      key={card.variant.id}
+                      className="animate-fade-up"
+                      style={{ animationDelay: `${index * 120}ms` }}
+                    >
+                    <button
+                      data-testid={`starter-${card.dynastyName}`}
+                      onClick={() => setSelectedVariantId(card.variant.id)}
+                      className={`
+                        relative w-full panel-glow overflow-hidden text-left
+                        transition-transform hover:scale-[1.02] active:scale-[0.98]
+                        ${isSelected ? 'scale-[1.02] animate-glow-pulse' : 'opacity-90 hover:opacity-100'}
+                      `}
+                      style={
+                        {
+                          '--glow': glow,
+                          '--tw-shadow-color': glow,
+                        } as React.CSSProperties
                       }
-                    `}
-                    style={{ backgroundColor: '#12181f' }}
-                  >
-                    <div className="aspect-[3/4] w-full">
-                      <SnakeArt
-                        seed={card.variant.id}
-                        name={card.variant.name}
-                        dynasty={card.dynastyName}
-                        primaryColor={card.primaryColor}
-                        secondaryColor={card.secondaryColor}
-                        rarity={card.variant.rarity}
-                        className="w-full h-full"
-                      />
+                    >
+                      <div className="aspect-[3/4] w-full bg-void-deep">
+                        <SnakeArt
+                          seed={card.variant.id}
+                          name={card.variant.name}
+                          dynasty={card.dynastyName}
+                          primaryColor={card.primaryColor}
+                          secondaryColor={card.secondaryColor}
+                          rarity={card.variant.rarity}
+                          className="w-full h-full"
+                        />
+                      </div>
+                      <div className="p-3 space-y-1">
+                        <div
+                          className="heading-display text-sm"
+                          style={{ color: glow, textShadow: `0 0 12px ${glow}55` }}
+                        >
+                          {card.dynastyName}
+                        </div>
+                        <div className="text-bone-white font-body text-sm">
+                          {card.variant.name}
+                        </div>
+                        <div className="text-venom-orange font-mono text-xs">
+                          {card.bonusText}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <span className="absolute top-2 right-2 px-2 py-0.5 bg-venom-orange text-void-deep text-xs font-display uppercase rounded-arcade">
+                          Selected
+                        </span>
+                      )}
+                    </button>
                     </div>
-                    <div className="p-3 space-y-1">
-                      <div
-                        className="font-display uppercase tracking-arcade text-sm"
-                        style={{ color: card.primaryColor }}
-                      >
-                        {card.dynastyName}
-                      </div>
-                      <div className="text-bone-white font-body text-sm">
-                        {card.variant.name}
-                      </div>
-                      <div className="text-venom-orange font-mono text-xs">
-                        {card.bonusText}
-                      </div>
-                    </div>
-                    {isSelected && (
-                      <span className="absolute top-2 right-2 px-2 py-0.5 bg-venom-orange text-scale-blue-dark text-xs font-display uppercase rounded">
-                        Selected
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
 
-            {error && (
-              <p className="text-center text-red-400 font-body text-sm mb-4">{error}</p>
-            )}
+              {error && (
+                <p className="text-center text-strike-red font-body text-sm mb-4">{error}</p>
+              )}
 
-            <div className="flex justify-center">
-              <button
-                onClick={handleConfirm}
-                disabled={!selectedVariantId || isConfirming}
-                className="px-10 py-4 bg-venom-orange border-[3px] border-venom-orange-dark rounded-arcade font-display uppercase tracking-arcade text-xl text-scale-blue-dark hover:bg-venom-orange-light active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isConfirming ? 'Hatching...' : 'Confirm & Play'}
-              </button>
-            </div>
-          </>
-        )}
+              <div className="flex justify-center animate-fade-up" style={{ animationDelay: '360ms' }}>
+                <button
+                  onClick={handleConfirm}
+                  disabled={!selectedVariantId || isConfirming}
+                  className="btn-go px-10 py-4 text-xl min-h-[56px]"
+                >
+                  {isConfirming ? 'Hatching...' : 'Confirm & Play'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
