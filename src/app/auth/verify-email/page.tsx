@@ -32,6 +32,14 @@ function VerifyEmailContent() {
       }, 3000);
       return () => clearTimeout(timer);
     }
+
+    // Auth check finished with no session and no explicit error param:
+    // the link was expired/invalid or already used in another tab. Never
+    // hang on "Verifying..." forever.
+    if (!isLoading && !isAuthenticated) {
+      const timer = setTimeout(() => setStatus('error'), 4000);
+      return () => clearTimeout(timer);
+    }
   }, [isLoading, isAuthenticated, errorParam, router]);
 
   return (

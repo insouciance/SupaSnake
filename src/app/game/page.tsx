@@ -12,6 +12,7 @@ import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import Link from 'next/link';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
@@ -41,7 +42,7 @@ import {
 } from '@/components/ui/icons';
 
 export default function GamePage() {
-  const { session, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -54,6 +55,9 @@ export default function GamePage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  // Post-run save-progress prompt for guests (never shown on the way INTO
+  // a game - account nudges belong after a run, not before it)
+  const [showSaveProgress, setShowSaveProgress] = useState(false);
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const [equippedSnake, setEquippedSnake] = useState<{
     id: string;
@@ -836,9 +840,27 @@ export default function GamePage() {
                 </>
               )}
             </div>
+
+            {/* Guests: secondary post-run CTA to secure the DNA they just
+                earned - never shown before or during a run */}
+            {isGameOver && isAnonymous && (
+              <button
+                onClick={() => setShowSaveProgress(true)}
+                data-testid="gameover-save-progress"
+                className="block mx-auto text-sm font-body text-venom-orange underline hover:text-venom-orange-light transition-colors min-h-[44px]"
+              >
+                Playing as guest - save this progress with a free account
+              </button>
+            )}
           </div>
         </div>
       )}
+
+      {/* Save-progress modal (opened from the game-over screen) */}
+      <AccountUpgradeModal
+        isOpen={showSaveProgress}
+        onClose={() => setShowSaveProgress(false)}
+      />
 
       {/* Ready State Overlay */}
       {isReady && (

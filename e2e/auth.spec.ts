@@ -159,6 +159,73 @@ test.describe('Protected routes', () => {
   });
 });
 
+test.describe('Guest upgrade flow', () => {
+  // Live-dependent: exercises real Supabase signUp/updateUser. Self-skips
+  // when anonymous sign-ins are disabled or the signup rate limit is hit,
+  // following the signInAsGuest() pattern.
+  test('guest upgrades to an email account and the shop unlocks real purchases', async ({
+    page,
+  }) => {
+    await seedConsent(page);
+    await signInAsGuest(page);
+
+    // Anonymous gating: the shop shows create-account CTAs instead of Buy
+    await page.goto('/shop');
+    await expect(page.getByTestId(/create-account-cta/).first()).toBeVisible({
+      timeout: 15000,
+    });
+
+    // Open the upgrade modal from the save-progress notice
+    await page.getByRole('button', { name: /^create account$/i }).click();
+    const modal = page.getByTestId('account-upgrade-modal');
+    await expect(modal).toBeVisible();
+
+    const email = `e2e-upgrade-${Date.now()}@example.com`;
+    await modal.getByLabel(/^email$/i).fill(email);
+    await modal.getByLabel(/^password$/i).fill('E2eUpgradePass123');
+    await modal.getByLabel(/confirm password/i).fill('E2eUpgradePass123');
+    await modal.getByRole('button', { name: /create account/i }).click();
+
+    const success = page.getByTestId('upgrade-success');
+    const rateLimited = modal.getByText(/too many attempts|rate limit/i);
+    await success
+      .or(rateLimited)
+      .first()
+      .waitFor({ state: 'visible', timeout: 20000 });
+
+    if (await rateLimited.isVisible().catch(() => false)) {
+      test.skip(
+        true,
+        'Supabase signup rate limit hit - upgrade flow cannot complete right now.'
+      );
+    }
+
+    await expect(success).toBeVisible();
+
+    // If email confirmations are enabled the account stays pending (and
+    // anonymous) until the link is clicked - the buy buttons cannot unlock
+    // in this run, so stop after verifying the pending messaging.
+    if (
+      await success
+        .getByText(/check your email/i)
+        .isVisible()
+        .catch(() => false)
+    ) {
+      test.skip(
+        true,
+        'Email confirmations are enabled - upgraded account stays pending until the link is clicked.'
+      );
+    }
+
+    await success.getByRole('button', { name: /^close$/i }).click();
+
+    // is_anonymous cleared after the session refresh: anonymous surfaces
+    // are gone and real Buy buttons render
+    await expect(page.getByTestId(/create-account-cta/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^buy/i }).first()).toBeVisible();
+  });
+});
+
 test.describe('Anonymous sessions', () => {
   test('guest session persists across navigation', async ({ page }) => {
     await seedConsent(page);
