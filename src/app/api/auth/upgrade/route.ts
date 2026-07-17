@@ -53,24 +53,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'weak_password' }, { status: 400 });
     }
 
-    const { error: updateError } = await supabase.auth.admin.updateUserById(
-      user.id,
+    // Call the GoTrue admin endpoint directly: supabase-js wraps the 5xx
+    // duplicate-email response as an opaque AuthRetryableFetchError with an
+    // empty message, hiding the Postgres 23505 body we need to distinguish
+    // "email already registered" from real failures.
+    const adminResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${user.id}`,
       {
-        email,
-        password,
-        email_confirm: true,
+        method: 'PUT',
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || ''}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, email_confirm: true }),
       }
     );
 
-    if (updateError) {
-      // The admin API reports duplicate emails honestly (unlike the
-      // anti-enumerating client flow) - as a raw Postgres unique violation
-      // (code 23505, "duplicate key value ... users_email_partial_key").
-      // Surface it so the UI can offer sign-in instead.
-      const msg = updateError.message?.toLowerCase() ?? '';
-      const code = String(
-        (updateError as { code?: string | number }).code ?? ''
-      );
+    if (!adminResponse.ok) {
+      const adminBody = await adminResponse.json().catch(() => ({}));
+      const msg = String(adminBody.message ?? adminBody.msg ?? '').toLowerCase();
+      const code = String(adminBody.code ?? adminBody.error_code ?? '');
       if (
         code === '23505' ||
         code === 'email_exists' ||
@@ -81,7 +84,8 @@ export async function POST(request: NextRequest) {
       }
       console.error('Account upgrade failed:', {
         userId: user.id,
-        error: updateError,
+        status: adminResponse.status,
+        body: adminBody,
       });
       return NextResponse.json({ error: 'upgrade_failed' }, { status: 500 });
     }
