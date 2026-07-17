@@ -1,7 +1,7 @@
 /**
  * DNA Multipliers - Server-side reward multiplier stack
  *
- * Final DNA = base DNA x streak tier x dynasty bonus x set bonus
+ * Final DNA = base DNA x streak tier x dynasty bonus x set bonus x clan duel bonus
  *
  * - Streak tier: player_streaks.streak_multiplier (maintained by the
  *   record_daily_play RPC; tiers 3:1.10, 7:1.25, 14:1.50, 30:2.00)
@@ -9,6 +9,8 @@
  *   stat_bonus_type is 'dna_generation' (PRIMAL = +5%)
  * - Set bonus: +10% per completed dynasty (player owns every active
  *   variant of that dynasty)
+ * - Clan duel bonus: +5% clan-wide for the week AFTER the player's clan
+ *   won its weekly duel (clan_duel_bonus RPC; non-fatal fallback x1)
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -29,6 +31,8 @@ export interface DnaMultiplierBreakdown {
   setBonus: number;
   /** Number of dynasties where the player owns all active variants */
   completedDynasties: number;
+  /** Clan duel win bonus multiplier: 1.05 the week after a duel win, else 1 */
+  clanDuel: number;
   /** Product of all multipliers */
   total: number;
 }
@@ -40,6 +44,9 @@ export interface DnaMultiplierResult {
 
 /** Set bonus granted per fully collected dynasty (+10%) */
 export const SET_BONUS_PER_DYNASTY = 0.1;
+
+/** Clan-wide DNA multiplier for the week after winning a clan duel (+5%) */
+export const CLAN_DUEL_WIN_MULTIPLIER = 1.05;
 
 /** Round to 4 decimals to avoid float noise in stored breakdowns */
 function round4(n: number): number {
@@ -123,14 +130,28 @@ export function countCompletedDynasties(
   return completed;
 }
 
-/** Combine the three multiplier sources into a result with breakdown. */
+/**
+ * Normalize the clan_duel_bonus RPC result (NUMERIC comes back as string).
+ * Invalid, missing, or sub-1 values fall back to 1.0 (never punish).
+ */
+export function normalizeClanDuelBonus(raw: unknown): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 1) {
+    return 1;
+  }
+  return value;
+}
+
+/** Combine the multiplier sources into a result with breakdown. */
 export function combineDnaMultipliers(
   streak: number,
   dynasty: number,
-  completedDynasties: number
+  completedDynasties: number,
+  clanDuel: number = 1
 ): DnaMultiplierResult {
   const setBonus = getSetBonusMultiplier(completedDynasties);
-  const total = round4(streak * dynasty * setBonus);
+  const safeClanDuel = normalizeClanDuelBonus(clanDuel);
+  const total = round4(streak * dynasty * setBonus * safeClanDuel);
   return {
     multiplier: total,
     breakdown: {
@@ -138,6 +159,7 @@ export function combineDnaMultipliers(
       dynasty: round4(dynasty),
       setBonus: round4(setBonus),
       completedDynasties,
+      clanDuel: round4(safeClanDuel),
       total,
     },
   };
@@ -196,5 +218,20 @@ export async function getDnaMultiplier(
 
   const completedDynasties = countCompletedDynasties(activeVariants, ownedVariantIds);
 
-  return combineDnaMultipliers(streak, dynasty, completedDynasties);
+  // Clan duel win bonus (+5% the week after the player's clan won its duel).
+  // Non-fatal: any RPC failure falls back to x1.
+  let clanDuel = 1;
+  try {
+    const { data: bonusValue, error: bonusError } = await supabase.rpc(
+      'clan_duel_bonus',
+      { p_player_id: playerId }
+    );
+    if (!bonusError) {
+      clanDuel = normalizeClanDuelBonus(bonusValue);
+    }
+  } catch {
+    clanDuel = 1;
+  }
+
+  return combineDnaMultipliers(streak, dynasty, completedDynasties, clanDuel);
 }

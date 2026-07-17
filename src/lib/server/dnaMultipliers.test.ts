@@ -4,6 +4,7 @@
 
 import {
   normalizeStreakMultiplier,
+  normalizeClanDuelBonus,
   getDynastyDnaMultiplier,
   getSetBonusMultiplier,
   countCompletedDynasties,
@@ -11,6 +12,7 @@ import {
   applyDnaMultiplier,
   getDnaMultiplier,
   SET_BONUS_PER_DYNASTY,
+  CLAN_DUEL_WIN_MULTIPLIER,
   type EquippedVariantInfo,
 } from './dnaMultipliers';
 
@@ -132,6 +134,27 @@ describe('countCompletedDynasties', () => {
   });
 });
 
+describe('normalizeClanDuelBonus', () => {
+  it('passes through the duel-win multiplier', () => {
+    expect(normalizeClanDuelBonus(1.05)).toBe(1.05);
+    expect(CLAN_DUEL_WIN_MULTIPLIER).toBe(1.05);
+  });
+
+  it('parses NUMERIC string values from postgres', () => {
+    expect(normalizeClanDuelBonus('1.05')).toBe(1.05);
+    expect(normalizeClanDuelBonus('1.00')).toBe(1);
+  });
+
+  it('defaults to 1 for null/undefined/garbage/sub-1 values', () => {
+    expect(normalizeClanDuelBonus(null)).toBe(1);
+    expect(normalizeClanDuelBonus(undefined)).toBe(1);
+    expect(normalizeClanDuelBonus('abc')).toBe(1);
+    expect(normalizeClanDuelBonus(0)).toBe(1);
+    expect(normalizeClanDuelBonus(0.95)).toBe(1);
+    expect(normalizeClanDuelBonus(NaN)).toBe(1);
+  });
+});
+
 describe('combineDnaMultipliers', () => {
   it('multiplies streak x dynasty x set bonus', () => {
     const { multiplier, breakdown } = combineDnaMultipliers(1.25, 1.05, 2);
@@ -142,6 +165,7 @@ describe('combineDnaMultipliers', () => {
       dynasty: 1.05,
       setBonus: 1.2,
       completedDynasties: 2,
+      clanDuel: 1,
       total: 1.575,
     });
   });
@@ -150,12 +174,26 @@ describe('combineDnaMultipliers', () => {
     const { multiplier, breakdown } = combineDnaMultipliers(1, 1, 0);
     expect(multiplier).toBe(1);
     expect(breakdown.total).toBe(1);
+    expect(breakdown.clanDuel).toBe(1);
   });
 
   it('rounds float noise to 4 decimals', () => {
     const { multiplier } = combineDnaMultipliers(1.1, 1.05, 1);
     // 1.1 * 1.05 * 1.1 = 1.2705000000000002 -> 1.2705
     expect(multiplier).toBe(1.2705);
+  });
+
+  it('stacks the clan duel win bonus on top of the other factors', () => {
+    const { multiplier, breakdown } = combineDnaMultipliers(1.25, 1.05, 2, 1.05);
+    // 1.25 * 1.05 * 1.2 * 1.05 = 1.65375 -> 1.6538 (round4)
+    expect(multiplier).toBe(1.6538);
+    expect(breakdown.clanDuel).toBe(1.05);
+  });
+
+  it('ignores invalid clan duel bonuses (never punish)', () => {
+    const { multiplier, breakdown } = combineDnaMultipliers(1, 1, 0, 0.5);
+    expect(multiplier).toBe(1);
+    expect(breakdown.clanDuel).toBe(1);
   });
 });
 
@@ -182,10 +220,21 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
     streakMultiplier: string | number | null;
     activeVariants: Array<{ id: string; dynasty_id: string }>;
     ownedVariantIds: Array<string | null>;
+    /** clan_duel_bonus RPC result; 'throw' simulates an RPC failure */
+    clanDuelBonus?: string | number | null | 'throw';
   }
 
   function createMockSupabase(data: MockData) {
     return {
+      rpc: async (fn: string) => {
+        if (fn === 'clan_duel_bonus') {
+          if (data.clanDuelBonus === 'throw') {
+            throw new Error('rpc unavailable');
+          }
+          return { data: data.clanDuelBonus ?? null, error: null };
+        }
+        return { data: null, error: { message: `unknown rpc ${fn}` } };
+      },
       from(table: string) {
         return {
           select() {
@@ -258,7 +307,70 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       dynasty: 1,
       setBonus: 1,
       completedDynasties: 0,
+      clanDuel: 1,
       total: 1,
     });
+  });
+
+  it('applies the +5% clan duel win bonus from the RPC (NUMERIC string)', async () => {
+    const supabase = createMockSupabase({
+      streakMultiplier: null,
+      activeVariants: [{ id: 'c1', dynasty_id: 'cyber' }],
+      ownedVariantIds: [],
+      clanDuelBonus: '1.05',
+    });
+
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+
+    expect(multiplier).toBe(1.05);
+    expect(breakdown.clanDuel).toBe(1.05);
+  });
+
+  it('stacks the duel bonus with streak, dynasty, and set bonus', async () => {
+    const supabase = createMockSupabase({
+      streakMultiplier: '1.10',
+      activeVariants: [
+        { id: 'p1', dynasty_id: 'primal' },
+        { id: 'p2', dynasty_id: 'primal' },
+      ],
+      ownedVariantIds: ['p1', 'p2'],
+      clanDuelBonus: 1.05,
+    });
+
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', {
+      statBonusType: 'dna_generation',
+      statBonusValue: 0.05,
+    });
+
+    // 1.10 * 1.05 * 1.10 * 1.05 = 1.3340...25 -> 1.334 (round4)
+    expect(multiplier).toBe(1.334);
+    expect(breakdown.clanDuel).toBe(1.05);
+  });
+
+  it('falls back to x1 when the clan_duel_bonus RPC throws (non-fatal)', async () => {
+    const supabase = createMockSupabase({
+      streakMultiplier: '1.25',
+      activeVariants: [{ id: 'c1', dynasty_id: 'cyber' }],
+      ownedVariantIds: [],
+      clanDuelBonus: 'throw',
+    });
+
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+
+    expect(multiplier).toBe(1.25);
+    expect(breakdown.clanDuel).toBe(1);
+  });
+
+  it('falls back to x1 when the RPC returns null (player not in a clan)', async () => {
+    const supabase = createMockSupabase({
+      streakMultiplier: null,
+      activeVariants: [{ id: 'c1', dynasty_id: 'cyber' }],
+      ownedVariantIds: [],
+      clanDuelBonus: null,
+    });
+
+    const { breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+
+    expect(breakdown.clanDuel).toBe(1);
   });
 });
