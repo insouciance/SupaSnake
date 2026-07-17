@@ -1065,8 +1065,6 @@ function GameBoard({
   showDeathExplosion,
   cameraShake,
 }: GameBoardProps) {
-  const foodMaterial = themeManager.createFoodMaterial(dynasty);
-
   const theme = themeManager.getTheme(dynasty);
 
   return (
@@ -1109,7 +1107,7 @@ function GameBoard({
         />
       ))}
 
-      {/* Food Beacon - Enhanced food with ring + beam */}
+      {/* Food - clean voxel block in the dynasty accent */}
       {food && (
         <FoodBeacon
           position={[food.x + 0.5, 0, food.z + 0.5]}

@@ -39,7 +39,10 @@ export class ThemeManager {
       PRIMAL: {
         id: 'PRIMAL',
         name: 'PRIMAL',
-        primary: '#4A7C2A',    // Forest green (brightened from #2d5016 for 3D)
+        // Brightened again (#4A7C2A -> #5A9636): with the snake base color
+        // now mixed toward the void and the arena floor darkened to
+        // #0b1016, the old forest green read muddy against the board.
+        primary: '#5A9636',
         secondary: '#7CB342',  // Leaf green
         accent: '#9CCC65',     // Light lime
         ambient: '#0a1400',    // Dark moss

@@ -21,6 +21,7 @@ import {
   BODY_SIZE,
   HEAD_EMISSIVE_INTENSITY,
   BODY_EMISSIVE_INTENSITY,
+  BASE_COLOR_SCALE,
 } from './SnakeModel';
 import { themeManager } from '@/lib/theme/ThemeManager';
 
@@ -147,13 +148,16 @@ describe('getSnakeSegmentMaterial', () => {
     expect(primal).not.toBe(a);
   });
 
-  it('uses theme primary as base color and secondary as emissive', () => {
+  it('uses void-shifted theme primary as base and secondary as emissive', () => {
     for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
       const theme = themeManager.getTheme(dynasty);
       const material = getSnakeSegmentMaterial(dynasty, false);
-      expect(`#${material.color.getHexString()}`).toBe(
-        theme.primary.toLowerCase()
+      // Base is primary mixed toward the void (deliberate glow-over-void
+      // read: the emissive carries the identity, not the albedo)
+      const expectedBase = new THREE.Color(theme.primary).multiplyScalar(
+        BASE_COLOR_SCALE
       );
+      expect(material.color.getHexString()).toBe(expectedBase.getHexString());
       expect(`#${material.emissive.getHexString()}`).toBe(
         theme.secondary.toLowerCase()
       );

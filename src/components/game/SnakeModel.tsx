@@ -28,13 +28,19 @@ import { themeManager } from '@/lib/theme/ThemeManager';
 
 export const SNAKE_MODEL_URL = '/assets/3D/snake_voxel.glb';
 
-/** Head is slightly larger than body segments (grid cell = 1 unit). */
+/** Head is slightly larger than body segments (grid cell = 1 unit); the
+ *  wider head/body gap makes the voxel rhythm read as deliberate design. */
 export const HEAD_SIZE = 0.9;
-export const BODY_SIZE = 0.85;
+export const BODY_SIZE = 0.82;
 
-/** Head glows brighter than the body for at-a-glance orientation. */
-export const HEAD_EMISSIVE_INTENSITY = 0.6;
-export const BODY_EMISSIVE_INTENSITY = 0.4;
+/** Head glows brighter than the body for at-a-glance orientation. Crisper
+ *  emissive presence against the darker arena floor (#0b1016). */
+export const HEAD_EMISSIVE_INTENSITY = 0.7;
+export const BODY_EMISSIVE_INTENSITY = 0.45;
+
+/** Base color sits slightly toward the void so the emissive reads as the
+ *  identity (glow over void, not painted plastic). */
+export const BASE_COLOR_SCALE = 0.85;
 
 export interface SnakeSegmentMeshProps {
   position: [number, number, number];
@@ -117,7 +123,7 @@ export function getSnakeSegmentMaterial(
   if (!material) {
     const theme = themeManager.getTheme(dynasty);
     material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(theme.primary),
+      color: new THREE.Color(theme.primary).multiplyScalar(BASE_COLOR_SCALE),
       emissive: new THREE.Color(theme.secondary),
       emissiveIntensity: isHead
         ? HEAD_EMISSIVE_INTENSITY
