@@ -13,6 +13,7 @@ import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
+import { AccountChip } from '@/components/ui/AccountChip';
 import Link from 'next/link';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
@@ -640,10 +641,11 @@ export default function GamePage() {
         )}
       </div>
 
-      {/* Navigation (when not playing) */}
+      {/* Navigation (when not playing) - z-30 so it stays clickable above
+          the start/game-over overlay (z-20): no dead end on those screens */}
       {!isPlaying && (
         <div
-          className="absolute right-4 z-10 flex gap-2"
+          className="absolute right-4 z-30 flex items-center gap-2"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
         >
           <Link
@@ -670,6 +672,7 @@ export default function GamePage() {
           >
             <IconUser size={20} />
           </Link>
+          <AccountChip />
         </div>
       )}
 
@@ -856,6 +859,13 @@ export default function GamePage() {
                   >
                     <IconFlask size={18} />
                     Lab
+                  </Link>
+                  <Link
+                    href="/"
+                    className="btn-neutral inline-flex items-center gap-2 px-6 py-3 min-h-[44px]"
+                  >
+                    <IconHome size={18} />
+                    Home
                   </Link>
                   <button
                     onClick={handleRestart}
