@@ -21,6 +21,14 @@ export interface RewardOutboxEntry {
   score: number;
   dna_earned: number;
   duration_seconds: number;
+  /**
+   * Raw foods eaten (Design v2). Optional so entries queued by older
+   * builds still replay - the server falls back to legacy validation
+   * when it is absent.
+   */
+  food_count?: number;
+  /** True when the run ended through the exit portal (Design v2). */
+  extracted?: boolean;
   /** Epoch ms when the run ended (used for expiry). */
   timestamp: number;
 }
@@ -51,7 +59,9 @@ function isValidEntry(e: unknown): e is RewardOutboxEntry {
     typeof entry.score === 'number' &&
     typeof entry.dna_earned === 'number' &&
     typeof entry.duration_seconds === 'number' &&
-    typeof entry.timestamp === 'number'
+    typeof entry.timestamp === 'number' &&
+    (entry.food_count === undefined || typeof entry.food_count === 'number') &&
+    (entry.extracted === undefined || typeof entry.extracted === 'boolean')
   );
 }
 
@@ -151,8 +161,14 @@ export async function replayRewardOutbox(
           score: entry.score,
           dna_earned: entry.dna_earned,
           duration_seconds: entry.duration_seconds,
-          died: true,
+          died: !(entry.extracted === true),
           victory: false,
+          // Design v2 fields; omitted for entries queued by older builds
+          // (the server then uses its legacy validation path)
+          ...(typeof entry.food_count === 'number'
+            ? { food_count: entry.food_count }
+            : {}),
+          ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
         }),
       });
 

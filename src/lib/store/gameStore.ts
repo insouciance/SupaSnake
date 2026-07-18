@@ -5,7 +5,7 @@
 
 import { create } from 'zustand';
 import type { DynastyId } from '@/shared/types/game';
-import type { Position, Direction } from '@/lib/game/SnakeGameLogic';
+import type { Position, Direction, EndReason } from '@/lib/game/SnakeGameLogic';
 import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
 import { GAME_CONFIG } from '@/shared/config/game';
 
@@ -18,6 +18,10 @@ export interface GameStore {
   isReady: boolean;
   score: number;
   dnaCollected: number;
+  /** Raw foods eaten this run (mirrored from the engine). */
+  foodEaten: number;
+  /** How the last run ended: 'extracted' (banked) or 'died' (salvage). */
+  endReason: EndReason | null;
 
   // Energy system (synced from server)
   energy: number;
@@ -37,13 +41,17 @@ export interface GameStore {
   /** Buffered inputs mirrored from the engine (for the aim telegraph) */
   queuedDirections: Direction[];
   deathPosition: Position | null;
+  /** Live exit portal cell (extraction banking), null when none. */
+  exitTile: Position | null;
+  /** Ticks until the live exit portal despawns. */
+  exitTicksRemaining: number;
 
   // Audio state
   isMuted: boolean;
 
   // Actions
   startGame: () => void;
-  endGame: (score: number, dna: number) => void;
+  endGame: (score: number, dna: number, endReason?: EndReason) => void;
   resetGame: () => void;
   setPaused: (paused: boolean) => void;
   togglePause: () => void;
@@ -52,6 +60,8 @@ export interface GameStore {
   setScore: (score: number) => void;
   incrementScore: () => void;
   setDnaCollected: (dna: number) => void;
+  setFoodEaten: (foodEaten: number) => void;
+  setExitTile: (exitTile: Position | null, ticksRemaining?: number) => void;
   setSelectedDynasty: (dynasty: DynastyId) => void;
   setAimSystem: (aimSystem: AimSystemId) => void;
   setEnergy: (energy: number) => void;
@@ -74,6 +84,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isReady: false,
   score: 0,
   dnaCollected: 0,
+  foodEaten: 0,
+  endReason: null,
   energy: GAME_CONFIG.economy.energy.maxEnergy,
   maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
   energyRegenAt: null, // Synced from server
@@ -84,6 +96,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   direction: 'RIGHT',
   queuedDirections: [],
   deathPosition: null,
+  exitTile: null,
+  exitTicksRemaining: 0,
   isMuted: false,
 
   // Actions
@@ -97,13 +111,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isDeathSequence: false,
       score: 0,
       dnaCollected: 0,
+      foodEaten: 0,
+      endReason: null,
       direction: 'RIGHT',
       queuedDirections: [],
       deathPosition: null,
+      exitTile: null,
+      exitTicksRemaining: 0,
     });
   },
 
-  endGame: (score: number, dna: number) => {
+  endGame: (score: number, dna: number, endReason: EndReason = 'died') => {
     set({
       isPlaying: false,
       isGameOver: true,
@@ -111,6 +129,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isDeathSequence: false,
       score,
       dnaCollected: dna,
+      endReason,
+      exitTile: null,
+      exitTicksRemaining: 0,
     });
   },
 
@@ -123,11 +144,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isReady: false,
       score: 0,
       dnaCollected: 0,
+      foodEaten: 0,
+      endReason: null,
       snake: [],
       food: null,
       direction: 'RIGHT',
       queuedDirections: [],
       deathPosition: null,
+      exitTile: null,
+      exitTicksRemaining: 0,
     });
   },
 
@@ -164,6 +189,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setDnaCollected: (dna: number) => {
     set({ dnaCollected: dna });
+  },
+
+  setFoodEaten: (foodEaten: number) => {
+    set({ foodEaten });
+  },
+
+  setExitTile: (exitTile: Position | null, ticksRemaining: number = 0) => {
+    set({
+      exitTile,
+      exitTicksRemaining: exitTile ? ticksRemaining : 0,
+    });
   },
 
   setSelectedDynasty: (dynasty: DynastyId) => {

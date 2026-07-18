@@ -8,6 +8,7 @@
 import type { CSSProperties } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import { themeManager } from '@/lib/theme/ThemeManager';
+import { applyOutcome } from '@/shared/game/rulesets';
 import { IconDna } from '@/components/ui/icons';
 
 interface PauseMenuProps {
@@ -48,6 +49,16 @@ export function PauseMenu({ dynasty, score, dnaCollected, onResume, onQuit }: Pa
             </span>
             <span className="font-display text-xl text-venom-orange text-glow-orange">+{dnaCollected}</span>
           </div>
+          {dnaCollected > 0 && (
+            <div className="flex justify-between items-center text-sm font-body">
+              <span className="text-beige/60">Bank / crash value</span>
+              <span className="text-beige/80">
+                <span className="text-[#7df9ff]">{applyOutcome(dnaCollected, true)}</span>
+                {' / '}
+                {applyOutcome(dnaCollected, false)}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Buttons */}

@@ -4,7 +4,13 @@ import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useEffect, useRef, useCallback, useState, Suspense } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
-import { SnakeGameLogic, Direction, Position } from '@/lib/game/SnakeGameLogic';
+import { SnakeGameLogic, Direction, Position, GameOverData } from '@/lib/game/SnakeGameLogic';
+import {
+  applyOutcome,
+  getRuleset,
+  normalizeDynastyName,
+  rulesetExplainer,
+} from '@/shared/game/rulesets';
 import { useGameStore } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
@@ -27,6 +33,7 @@ import { CameraRig, DEFAULT_AZIMUTH } from '@/components/game/CameraRig';
 import { FlickSurface } from '@/components/game/FlickSurface';
 import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { ExitPortal } from '@/components/game/ExitPortal';
 import {
   createInputDebugState,
   recordDebugEvent,
@@ -119,6 +126,10 @@ export default function GamePage() {
     isReady,
     score,
     dnaCollected,
+    foodEaten,
+    endReason,
+    exitTile,
+    exitTicksRemaining,
     energy,
     maxEnergy,
     energyRegenAt,
@@ -135,6 +146,8 @@ export default function GamePage() {
     setQueuedDirections,
     setScore,
     setDnaCollected,
+    setFoodEaten,
+    setExitTile,
     setSelectedDynasty,
     aimSystem,
     setAimSystem,
@@ -274,6 +287,15 @@ export default function GamePage() {
 
   const theme = themeManager.getTheme(selectedDynasty);
 
+  // Dynasty ruleset follows the equipped snake. The engine is constructed
+  // on mount (before the collection fetch resolves), so inject the ruleset
+  // as soon as the equipped snake is known.
+  useEffect(() => {
+    if (equippedSnake) {
+      gameRef.current?.setRuleset(getRuleset(normalizeDynastyName(equippedSnake.dynasty)));
+    }
+  }, [equippedSnake]);
+
   // No playable snake: new player (never picked a starter) or nothing equipped
   const noSnakeAvailable = needsStarterSelection || (collectionLoaded && !equippedSnake);
 
@@ -310,7 +332,14 @@ export default function GamePage() {
       screenShake.heavy();
     });
 
-    gameRef.current.on('gameOver', async (data: any) => {
+    gameRef.current.on('extracted', () => {
+      // Banked ending: celebratory feedback instead of the death drama
+      audioManager.play('collect');
+      haptics.medium();
+    });
+
+    gameRef.current.on('gameOver', async (rawData: unknown) => {
+      const data = rawData as GameOverData;
       // Send results to server first (use refs to avoid stale closure)
       const currentSession = sessionRef.current;
       const sessionId = currentSessionIdRef.current;
@@ -324,6 +353,8 @@ export default function GamePage() {
             score: data.score,
             dna_earned: data.dnaCollected,
             duration_seconds: gameDuration,
+            food_count: data.foodEaten,
+            extracted: data.extracted,
             timestamp: Date.now(),
           });
         };
@@ -343,7 +374,9 @@ export default function GamePage() {
               score: data.score,
               dna_earned: data.dnaCollected,
               duration_seconds: gameDuration,
-              died: true,
+              food_count: data.foodEaten,
+              extracted: data.extracted,
+              died: !data.extracted,
               victory: false,
             }),
           });
@@ -381,7 +414,7 @@ export default function GamePage() {
         }
       }
 
-      endGame(data.score, data.dnaCollected);
+      endGame(data.score, data.dnaCollected, data.endReason);
       setDeathSequence(false);
       setShowDeathExplosion(false);
       if (intervalRef.current) {
@@ -429,8 +462,10 @@ export default function GamePage() {
       setFood(state.food);
       setDirection(state.direction);
       setQueuedDirections(queued);
+      setFoodEaten(state.foodEaten);
+      setExitTile(state.exitTile, state.exitTicksRemaining);
     }
-  }, [setSnake, setFood, setDirection, setQueuedDirections]);
+  }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -730,6 +765,26 @@ export default function GamePage() {
             <span className="text-beige text-sm">DNA:</span>
             <span className="font-bold text-venom-orange">{dnaCollected}</span>
           </div>
+          {/* Extraction bank preview: what this run pays banked vs crashed.
+              Subtle by default; pulses while the exit portal is live. */}
+          {isPlaying && dnaCollected > 0 && (
+            <div
+              data-testid="bank-chip"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border bg-void/70 backdrop-blur-sm text-sm font-body transition-colors ${
+                exitTile
+                  ? 'border-[#7df9ff]/80 animate-pulse'
+                  : 'border-scale-blue-light/50'
+              }`}
+            >
+              <span className="text-[#7df9ff] font-bold">
+                BANK {applyOutcome(dnaCollected, true)}
+              </span>
+              <span className="text-beige/40">·</span>
+              <span className="text-beige/60">
+                crash {applyOutcome(dnaCollected, false)}
+              </span>
+            </div>
+          )}
           <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
             <EnergyTimer
               energy={energy}
@@ -872,19 +927,56 @@ export default function GamePage() {
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4">
           <div
             className={`panel-elevated p-8 text-center space-y-6 min-w-[320px] max-w-full animate-pop-in ${
-              isGameOver ? '[--glow:#f43f5e]' : '[--glow:#22d3ee]'
+              isGameOver
+                ? endReason === 'extracted'
+                  ? '[--glow:#4ade80]'
+                  : '[--glow:#f43f5e]'
+                : '[--glow:#22d3ee]'
             }`}
           >
             {isGameOver ? (
               <>
-                <h2 className="heading-display text-4xl text-strike-red text-glow">Game Over</h2>
+                {endReason === 'extracted' ? (
+                  <div className="space-y-1">
+                    <h2
+                      className="heading-display text-4xl text-rarity-uncommon text-glow"
+                      data-testid="gameover-extracted"
+                    >
+                      Extracted
+                    </h2>
+                    <p className="text-rarity-uncommon/90 font-body text-sm tracking-wide uppercase">
+                      Banked +25%
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <h2
+                      className="heading-display text-4xl text-strike-red text-glow"
+                      data-testid="gameover-crashed"
+                    >
+                      Game Over
+                    </h2>
+                    <p className="text-beige/60 font-body text-sm tracking-wide uppercase">
+                      Crashed — salvaged 60%
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2 font-body">
                   <p className="text-2xl text-bone-white">
                     Score: <span className="font-bold text-venom-orange">{score}</span>
                   </p>
                   <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
                     <IconDna size={22} className="text-venom-orange" />
-                    DNA: <span className="font-bold text-venom-orange text-glow-orange">+{dnaCollected}</span>
+                    DNA:{' '}
+                    {endReason === 'extracted' ? (
+                      <span className="font-bold text-rarity-uncommon">
+                        {dnaCollected} → +{applyOutcome(dnaCollected, true)}
+                      </span>
+                    ) : (
+                      <span className="font-bold text-venom-orange text-glow-orange">
+                        {dnaCollected} → +{applyOutcome(dnaCollected, false)}
+                      </span>
+                    )}
                   </p>
                   {streakInfo && (
                     <p className="text-lg text-beige flex items-center justify-center gap-1.5">
@@ -921,17 +1013,28 @@ export default function GamePage() {
                   Ready to Play
                 </h2>
                 {equippedSnake ? (
-                  <div className="panel inline-flex items-center gap-3 px-4 py-3 font-body">
-                    <IconSnake size={20} className="text-venom-orange" />
-                    <p>
-                      <span className="heading-display text-lg text-bone-white">{equippedSnake.name}</span>
-                      <span className="text-beige/70"> · Gen {equippedSnake.generation}</span>
-                      <Link
-                        href="/lab"
-                        className="ml-3 text-venom-orange underline hover:text-venom-orange-light transition-colors"
-                      >
-                        Change in Lab
-                      </Link>
+                  <div className="space-y-2">
+                    <div className="panel inline-flex items-center gap-3 px-4 py-3 font-body">
+                      <IconSnake size={20} className="text-venom-orange" />
+                      <p>
+                        <span className="heading-display text-lg text-bone-white">{equippedSnake.name}</span>
+                        <span className="text-beige/70"> · Gen {equippedSnake.generation}</span>
+                        <Link
+                          href="/lab"
+                          className="ml-3 text-venom-orange underline hover:text-venom-orange-light transition-colors"
+                        >
+                          Change in Lab
+                        </Link>
+                      </p>
+                    </div>
+                    <p
+                      className="text-beige/80 font-body text-sm"
+                      data-testid="ruleset-explainer"
+                    >
+                      {rulesetExplainer[normalizeDynastyName(equippedSnake.dynasty)]}
+                    </p>
+                    <p className="text-beige/50 font-body text-xs">
+                      Exit portal banks +25% — crashing salvages 60%
                     </p>
                   </div>
                 ) : noSnakeAvailable ? (
@@ -1143,6 +1246,8 @@ export default function GamePage() {
             dynasty={selectedDynasty}
             snake={snake}
             food={food}
+            exitTile={exitTile}
+            exitTicksRemaining={exitTicksRemaining}
             direction={direction}
             queuedDirections={queuedDirections}
             aimSystem={aimSystem}
@@ -1180,6 +1285,8 @@ interface GameBoardProps {
   dynasty: DynastyId;
   snake: Position[];
   food: Position | null;
+  exitTile: Position | null;
+  exitTicksRemaining: number;
   direction: Direction;
   queuedDirections: Direction[];
   aimSystem: AimSystemId;
@@ -1194,6 +1301,8 @@ function GameBoard({
   dynasty,
   snake,
   food,
+  exitTile,
+  exitTicksRemaining,
   direction,
   queuedDirections,
   aimSystem,
@@ -1250,6 +1359,15 @@ function GameBoard({
         <FoodBeacon
           position={[food.x + 0.5, 0, food.z + 0.5]}
           color={theme.accent}
+        />
+      )}
+
+      {/* Exit portal - extraction banking doorway (cyan-white, urgency
+          pulse as the despawn window closes) */}
+      {exitTile && (
+        <ExitPortal
+          position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
+          ticksRemaining={exitTicksRemaining}
         />
       )}
 

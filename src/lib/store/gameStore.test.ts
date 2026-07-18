@@ -54,7 +54,7 @@ describe('Game Store', () => {
       expect(useGameStore.getState().isPlaying).toBe(true); // UI starts, server may reject
     });
 
-    it('should end game', () => {
+    it('should end game (defaults to a death ending)', () => {
       useGameStore.getState().startGame();
       useGameStore.getState().endGame(100, 50);
       const state = useGameStore.getState();
@@ -62,6 +62,60 @@ describe('Game Store', () => {
       expect(state.isGameOver).toBe(true);
       expect(state.score).toBe(100);
       expect(state.dnaCollected).toBe(50);
+      expect(state.endReason).toBe('died');
+    });
+
+    it('records an extracted ending and clears the exit portal', () => {
+      useGameStore.getState().startGame();
+      useGameStore.getState().setExitTile({ x: 3, y: 0, z: 4 }, 42);
+      useGameStore.getState().endGame(200, 150, 'extracted');
+      const state = useGameStore.getState();
+      expect(state.endReason).toBe('extracted');
+      expect(state.exitTile).toBeNull();
+      expect(state.exitTicksRemaining).toBe(0);
+    });
+
+    it('startGame resets extraction fields from the previous run', () => {
+      useGameStore.setState({ foodEaten: 12, endReason: 'extracted' });
+      useGameStore.getState().startGame();
+      const state = useGameStore.getState();
+      expect(state.foodEaten).toBe(0);
+      expect(state.endReason).toBeNull();
+    });
+  });
+
+  describe('Extraction state mirror', () => {
+    it('tracks foodEaten', () => {
+      useGameStore.getState().setFoodEaten(9);
+      expect(useGameStore.getState().foodEaten).toBe(9);
+    });
+
+    it('tracks the exit portal with its countdown', () => {
+      useGameStore.getState().setExitTile({ x: 5, y: 0, z: 6 }, 90);
+      expect(useGameStore.getState().exitTile).toEqual({ x: 5, y: 0, z: 6 });
+      expect(useGameStore.getState().exitTicksRemaining).toBe(90);
+    });
+
+    it('clears the countdown when the portal despawns', () => {
+      useGameStore.getState().setExitTile({ x: 5, y: 0, z: 6 }, 90);
+      useGameStore.getState().setExitTile(null);
+      expect(useGameStore.getState().exitTile).toBeNull();
+      expect(useGameStore.getState().exitTicksRemaining).toBe(0);
+    });
+
+    it('resetGame clears extraction state', () => {
+      useGameStore.setState({
+        foodEaten: 7,
+        endReason: 'extracted',
+        exitTile: { x: 1, y: 0, z: 1 },
+        exitTicksRemaining: 10,
+      });
+      useGameStore.getState().resetGame();
+      const state = useGameStore.getState();
+      expect(state.foodEaten).toBe(0);
+      expect(state.endReason).toBeNull();
+      expect(state.exitTile).toBeNull();
+      expect(state.exitTicksRemaining).toBe(0);
     });
   });
 

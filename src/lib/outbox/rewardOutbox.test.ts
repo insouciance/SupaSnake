@@ -154,6 +154,43 @@ describe('rewardOutbox', () => {
       expect(readOutbox()).toEqual([]);
     });
 
+    it('includes Design v2 fields (food_count, extracted) when present', async () => {
+      const entry = makeEntry({
+        sessionId: 'v2-run',
+        food_count: 18,
+        extracted: true,
+      });
+      enqueueReward(entry);
+      const fetchFn = jest.fn().mockResolvedValue(mockResponse(200));
+
+      await replayRewardOutbox('token', undefined, fetchFn);
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+      expect(body).toEqual({
+        action: 'end',
+        sessionId: 'v2-run',
+        score: entry.score,
+        dna_earned: entry.dna_earned,
+        duration_seconds: entry.duration_seconds,
+        food_count: 18,
+        extracted: true,
+        died: false, // extracted runs are not deaths
+        victory: false,
+      });
+    });
+
+    it('marks non-extracted v2 entries as died', async () => {
+      enqueueReward(makeEntry({ sessionId: 'v2-death', food_count: 7, extracted: false }));
+      const fetchFn = jest.fn().mockResolvedValue(mockResponse(200));
+
+      await replayRewardOutbox('token', undefined, fetchFn);
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+      expect(body.died).toBe(true);
+      expect(body.extracted).toBe(false);
+      expect(body.food_count).toBe(7);
+    });
+
     it('removes entries the server reports as already ended (409)', async () => {
       enqueueReward(makeEntry());
       const fetchFn = jest.fn().mockResolvedValue(mockResponse(409));
