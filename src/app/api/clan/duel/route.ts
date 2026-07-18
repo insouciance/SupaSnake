@@ -9,6 +9,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import {
+  drainDiscordOutbox,
+  refreshLinkedRolesForPlayer,
+} from '@/lib/server/discordSync';
 import { mapDuelPayload, type RpcDuelPayload } from './utils';
 
 const supabase = createClient(
@@ -55,6 +59,24 @@ export async function GET(request: NextRequest) {
     const payload = data as RpcDuelPayload;
     if (payload.error) {
       return NextResponse.json({ error: payload.error }, { status: 404 });
+    }
+
+    // Identity v1 section 8.4: settlement just ran lazily inside the
+    // RPC - opportunistically drain a few feed events (non-fatal,
+    // no-op pre-024) and refresh the caller's Linked Roles metadata
+    // (championship settle may have just crowned them).
+    try {
+      await drainDiscordOutbox(supabase, 3);
+      const { data: playerRow } = await supabase
+        .from('players')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+      if (playerRow) {
+        await refreshLinkedRolesForPlayer(supabase, playerRow.id);
+      }
+    } catch (discordError) {
+      console.error('Post-settlement Discord sync error:', discordError);
     }
 
     return NextResponse.json(mapDuelPayload(payload));

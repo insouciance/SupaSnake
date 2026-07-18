@@ -35,6 +35,10 @@ import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
 import { refreshPlayerRecords } from '@/lib/server/records';
+import {
+  enqueueMasteryLevelup,
+  refreshLinkedRolesForPlayer,
+} from '@/lib/server/discordSync';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
   getDnaMultiplier,
@@ -883,6 +887,22 @@ export async function POST(request: NextRequest) {
       // strictly non-fatal (pre-023 or any failure just skips it; the
       // helper never throws).
       await refreshPlayerRecords(supabase, player.id);
+
+      // Discord feed + Linked Roles (Identity v1 section 8.4) - both
+      // strictly non-fatal, both no-ops pre-024 / without a link:
+      // - mastery_levelup enqueue at M5+ (M1-4 are too chatty), linked
+      //   clans only
+      // - metadata refresh AFTER the records recompute so mastery_level,
+      //   legacy_score and extraction_count push their fresh values
+      if (mastery?.leveledUp && mastery.level >= 5) {
+        await enqueueMasteryLevelup(
+          supabase,
+          player.id,
+          mastery.dynasty,
+          mastery.level
+        );
+      }
+      await refreshLinkedRolesForPlayer(supabase, player.id);
 
       return NextResponse.json({
         success: true,

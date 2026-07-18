@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { refreshPlayerRecords } from '@/lib/server/records';
+import { refreshLinkedRolesForPlayer } from '@/lib/server/discordSync';
 import { buildChronicle, type ChroniclePlayerRow } from '@/lib/server/chronicle';
 
 const supabase = createClient(
@@ -72,6 +73,11 @@ export async function GET(request: NextRequest) {
       const rate = await checkRateLimit(supabase, player.id, 'records_refresh');
       if (rate.allowed) {
         refreshed = (await refreshPlayerRecords(supabase, player.id)) !== null;
+        if (refreshed) {
+          // Identity v1 section 8.4: Linked Roles metadata follows the
+          // records recompute (non-fatal, no-op without a live link)
+          await refreshLinkedRolesForPlayer(supabase, player.id);
+        }
       }
     } catch (rateError) {
       console.error('Chronicle lazy refresh error:', rateError);
@@ -112,6 +118,9 @@ export async function POST(request: NextRequest) {
       // Pre-023 (or a transient failure): report not-live, never 500.
       return NextResponse.json({ success: false, live: false });
     }
+
+    // Identity v1 section 8.4: metadata follows the recompute (non-fatal)
+    await refreshLinkedRolesForPlayer(supabase, player.id);
 
     return NextResponse.json({
       success: true,
