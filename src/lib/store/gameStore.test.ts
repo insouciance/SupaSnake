@@ -238,4 +238,117 @@ describe('Game Store', () => {
       expect(useGameStore.getState().selectedDynasty).toBe('PRIMAL');
     });
   });
+
+  describe('Design v2 Phase 2: mutations + COSMIC Flux', () => {
+    it('has clean Phase 2 defaults', () => {
+      const state = useGameStore.getState();
+      expect(state.extraFoods).toEqual([]);
+      expect(state.constellationGlyph).toBeNull();
+      expect(state.chainLength).toBe(0);
+      expect(state.comboMultiplier).toBe(1);
+      expect(state.mutationTile).toBeNull();
+      expect(state.heldMutations).toEqual([]);
+      expect(state.choiceOptions).toBeNull();
+      expect(state.phoenixTriggered).toBe(false);
+      expect(state.fluxPhase).toBeNull();
+      expect(state.fluxTelegraph).toBe(false);
+    });
+
+    it('mirrors engine state through the Phase 2 setters', () => {
+      const store = useGameStore.getState();
+      store.setExtraFoods([{ x: 1, y: 0, z: 2 }]);
+      store.setConstellation(2, 5, 1.8);
+      store.setMutationTile({ x: 4, y: 0, z: 4 }, 33);
+      store.setHeldMutations([{ id: 'overgrowth', atFood: 17 }]);
+      store.setChoiceOptions(['gold_trail', 'phoenix']);
+      store.setPhoenixTriggered(true);
+      store.setFlux('open', true);
+
+      const state = useGameStore.getState();
+      expect(state.extraFoods).toEqual([{ x: 1, y: 0, z: 2 }]);
+      expect(state.constellationGlyph).toBe(2);
+      expect(state.chainLength).toBe(5);
+      expect(state.comboMultiplier).toBe(1.8);
+      expect(state.mutationTile).toEqual({ x: 4, y: 0, z: 4 });
+      expect(state.mutationTicksRemaining).toBe(33);
+      expect(state.heldMutations).toEqual([{ id: 'overgrowth', atFood: 17 }]);
+      expect(state.choiceOptions).toEqual(['gold_trail', 'phoenix']);
+      expect(state.phoenixTriggered).toBe(true);
+      expect(state.fluxPhase).toBe('open');
+      expect(state.fluxTelegraph).toBe(true);
+    });
+
+    it('clearing the mutation tile zeroes its countdown', () => {
+      const store = useGameStore.getState();
+      store.setMutationTile({ x: 4, y: 0, z: 4 }, 33);
+      store.setMutationTile(null);
+      const state = useGameStore.getState();
+      expect(state.mutationTile).toBeNull();
+      expect(state.mutationTicksRemaining).toBe(0);
+    });
+
+    it('leaving flux (null phase) clears the telegraph flag', () => {
+      const store = useGameStore.getState();
+      store.setFlux('closed', true);
+      store.setFlux(null, true);
+      const state = useGameStore.getState();
+      expect(state.fluxPhase).toBeNull();
+      expect(state.fluxTelegraph).toBe(false);
+    });
+
+    it('startGame clears the previous run build', () => {
+      useGameStore.setState({
+        heldMutations: [{ id: 'phoenix', atFood: 20 }],
+        phoenixTriggered: true,
+        choiceOptions: ['gold_trail', 'shed'],
+        chainLength: 6,
+        comboMultiplier: 2.0,
+        fluxPhase: 'closed',
+        fluxTelegraph: true,
+      });
+      useGameStore.getState().startGame();
+      const state = useGameStore.getState();
+      expect(state.heldMutations).toEqual([]);
+      expect(state.phoenixTriggered).toBe(false);
+      expect(state.choiceOptions).toBeNull();
+      expect(state.chainLength).toBe(0);
+      expect(state.comboMultiplier).toBe(1);
+      expect(state.fluxPhase).toBeNull();
+    });
+
+    it('endGame keeps the build for the game-over screen but closes overlays', () => {
+      useGameStore.setState({
+        isPlaying: true,
+        heldMutations: [{ id: 'mirror_wager', atFood: 18 }],
+        phoenixTriggered: true,
+        choiceOptions: ['gold_trail', 'shed'],
+        mutationTile: { x: 3, y: 0, z: 3 },
+        mutationTicksRemaining: 12,
+      });
+      useGameStore.getState().endGame(100, 300, 'extracted');
+      const state = useGameStore.getState();
+      expect(state.heldMutations).toEqual([{ id: 'mirror_wager', atFood: 18 }]);
+      expect(state.phoenixTriggered).toBe(true);
+      expect(state.choiceOptions).toBeNull();
+      expect(state.mutationTile).toBeNull();
+      expect(state.mutationTicksRemaining).toBe(0);
+    });
+
+    it('resetGame clears everything Phase 2', () => {
+      useGameStore.setState({
+        heldMutations: [{ id: 'shed', atFood: 15 }],
+        phoenixTriggered: true,
+        extraFoods: [{ x: 1, y: 0, z: 1 }],
+        constellationGlyph: 1,
+        fluxPhase: 'open',
+      });
+      useGameStore.getState().resetGame();
+      const state = useGameStore.getState();
+      expect(state.heldMutations).toEqual([]);
+      expect(state.phoenixTriggered).toBe(false);
+      expect(state.extraFoods).toEqual([]);
+      expect(state.constellationGlyph).toBeNull();
+      expect(state.fluxPhase).toBeNull();
+    });
+  });
 });

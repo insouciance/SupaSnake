@@ -5,7 +5,13 @@
 
 import { create } from 'zustand';
 import type { DynastyId } from '@/shared/types/game';
-import type { Position, Direction, EndReason } from '@/lib/game/SnakeGameLogic';
+import type {
+  Position,
+  Direction,
+  EndReason,
+  FluxPhase,
+} from '@/lib/game/SnakeGameLogic';
+import type { MutationId, MutationPick } from '@/shared/game/mutations';
 import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
 import { GAME_CONFIG } from '@/shared/config/game';
 
@@ -46,6 +52,27 @@ export interface GameStore {
   /** Ticks until the live exit portal despawns. */
   exitTicksRemaining: number;
 
+  // Design v2 Phase 2: mutation food + COSMIC Flux (mirrored from engine)
+  /** Food cells beyond the primary one (Splitter pairs, COSMIC groups). */
+  extraFoods: Position[];
+  /** COSMIC: glyph (0..2) of the live constellation group, else null. */
+  constellationGlyph: number | null;
+  /** COSMIC: current chain length + combo multiplier (for the HUD chip). */
+  chainLength: number;
+  comboMultiplier: number;
+  /** Live mutation food cell, null when none. */
+  mutationTile: Position | null;
+  mutationTicksRemaining: number;
+  /** Mutations held this run, in pick order. */
+  heldMutations: MutationPick[];
+  /** Live choice-of-2 offer (engine is frozen in its choice hold). */
+  choiceOptions: [MutationId, MutationId] | null;
+  /** True once Phoenix absorbed a death this run. */
+  phoenixTriggered: boolean;
+  /** COSMIC wrap-phase state (drives the ArenaBorder rails). */
+  fluxPhase: FluxPhase | null;
+  fluxTelegraph: boolean;
+
   // Audio state
   isMuted: boolean;
 
@@ -73,6 +100,19 @@ export interface GameStore {
   setDeathPosition: (position: Position | null) => void;
   setMuted: (muted: boolean) => void;
   toggleMute: () => void;
+
+  // Design v2 Phase 2 actions
+  setExtraFoods: (extraFoods: Position[]) => void;
+  setConstellation: (
+    glyph: number | null,
+    chainLength: number,
+    comboMultiplier: number
+  ) => void;
+  setMutationTile: (tile: Position | null, ticksRemaining?: number) => void;
+  setHeldMutations: (held: MutationPick[]) => void;
+  setChoiceOptions: (options: [MutationId, MutationId] | null) => void;
+  setPhoenixTriggered: (triggered: boolean) => void;
+  setFlux: (phase: FluxPhase | null, telegraph: boolean) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -98,6 +138,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
   deathPosition: null,
   exitTile: null,
   exitTicksRemaining: 0,
+  extraFoods: [],
+  constellationGlyph: null,
+  chainLength: 0,
+  comboMultiplier: 1,
+  mutationTile: null,
+  mutationTicksRemaining: 0,
+  heldMutations: [],
+  choiceOptions: null,
+  phoenixTriggered: false,
+  fluxPhase: null,
+  fluxTelegraph: false,
   isMuted: false,
 
   // Actions
@@ -118,10 +169,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
       deathPosition: null,
       exitTile: null,
       exitTicksRemaining: 0,
+      extraFoods: [],
+      constellationGlyph: null,
+      chainLength: 0,
+      comboMultiplier: 1,
+      mutationTile: null,
+      mutationTicksRemaining: 0,
+      heldMutations: [],
+      choiceOptions: null,
+      phoenixTriggered: false,
+      fluxPhase: null,
+      fluxTelegraph: false,
     });
   },
 
   endGame: (score: number, dna: number, endReason: EndReason = 'died') => {
+    // heldMutations and phoenixTriggered survive into game-over on purpose:
+    // the game-over screen lists the run's build and its outcome multiplier
     set({
       isPlaying: false,
       isGameOver: true,
@@ -132,6 +196,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       endReason,
       exitTile: null,
       exitTicksRemaining: 0,
+      mutationTile: null,
+      mutationTicksRemaining: 0,
+      choiceOptions: null,
     });
   },
 
@@ -153,6 +220,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       deathPosition: null,
       exitTile: null,
       exitTicksRemaining: 0,
+      extraFoods: [],
+      constellationGlyph: null,
+      chainLength: 0,
+      comboMultiplier: 1,
+      mutationTile: null,
+      mutationTicksRemaining: 0,
+      heldMutations: [],
+      choiceOptions: null,
+      phoenixTriggered: false,
+      fluxPhase: null,
+      fluxTelegraph: false,
     });
   },
 
@@ -249,5 +327,41 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   toggleMute: () => {
     set((state) => ({ isMuted: !state.isMuted }));
+  },
+
+  // Design v2 Phase 2 actions
+  setExtraFoods: (extraFoods: Position[]) => {
+    set({ extraFoods });
+  },
+
+  setConstellation: (
+    glyph: number | null,
+    chainLength: number,
+    comboMultiplier: number
+  ) => {
+    set({ constellationGlyph: glyph, chainLength, comboMultiplier });
+  },
+
+  setMutationTile: (tile: Position | null, ticksRemaining: number = 0) => {
+    set({
+      mutationTile: tile,
+      mutationTicksRemaining: tile ? ticksRemaining : 0,
+    });
+  },
+
+  setHeldMutations: (held: MutationPick[]) => {
+    set({ heldMutations: held });
+  },
+
+  setChoiceOptions: (options: [MutationId, MutationId] | null) => {
+    set({ choiceOptions: options });
+  },
+
+  setPhoenixTriggered: (triggered: boolean) => {
+    set({ phoenixTriggered: triggered });
+  },
+
+  setFlux: (phase: FluxPhase | null, telegraph: boolean) => {
+    set({ fluxPhase: phase, fluxTelegraph: phase ? telegraph : false });
   },
 }));

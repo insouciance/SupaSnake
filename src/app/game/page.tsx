@@ -5,12 +5,15 @@ import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useEffect, useRef, useCallback, useState, Suspense } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import { SnakeGameLogic, Direction, Position, GameOverData } from '@/lib/game/SnakeGameLogic';
+import type { FluxPhase } from '@/lib/game/SnakeGameLogic';
 import {
-  applyOutcome,
+  applyOutcomeWithMutations,
   getRuleset,
   normalizeDynastyName,
+  outcomeMultipliers,
   rulesetExplainer,
 } from '@/shared/game/rulesets';
+import { MUTATIONS, type MutationId, type MutationPick } from '@/shared/game/mutations';
 import { useGameStore } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
@@ -34,6 +37,9 @@ import { FlickSurface } from '@/components/game/FlickSurface';
 import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
+import { MutationBeacon } from '@/components/game/MutationBeacon';
+import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
+import { MutationHUD } from '@/components/game/MutationHUD';
 import {
   createInputDebugState,
   recordDebugEvent,
@@ -138,6 +144,17 @@ export default function GamePage() {
     food,
     direction,
     queuedDirections,
+    extraFoods,
+    constellationGlyph,
+    chainLength,
+    comboMultiplier,
+    mutationTile,
+    mutationTicksRemaining,
+    heldMutations,
+    choiceOptions,
+    phoenixTriggered,
+    fluxPhase,
+    fluxTelegraph,
     startGame: storeStartGame,
     endGame,
     setSnake,
@@ -148,6 +165,13 @@ export default function GamePage() {
     setDnaCollected,
     setFoodEaten,
     setExitTile,
+    setExtraFoods,
+    setConstellation,
+    setMutationTile,
+    setHeldMutations,
+    setChoiceOptions,
+    setPhoenixTriggered,
+    setFlux,
     setSelectedDynasty,
     aimSystem,
     setAimSystem,
@@ -299,6 +323,17 @@ export default function GamePage() {
   // No playable snake: new player (never picked a starter) or nothing equipped
   const noSnakeAvailable = needsStarterSelection || (collectionLoaded && !equippedSnake);
 
+  // Mutation choice hold: the engine is frozen under the overlay (NOT paused)
+  const choiceActive = choiceOptions !== null;
+
+  const handleChooseMutation = useCallback((index: 0 | 1) => {
+    gameRef.current?.chooseMutation(index);
+  }, []);
+
+  const handleDeclineMutation = useCallback(() => {
+    gameRef.current?.declineMutation();
+  }, []);
+
   // Calculate board center for camera
   const boardCenter = GAME_CONFIG.board.gridSize / 2;
 
@@ -338,6 +373,44 @@ export default function GamePage() {
       haptics.medium();
     });
 
+    // Mutation food (Design v2 Phase 2): the engine freezes in its choice
+    // hold while the overlay is up - this is NOT the pause state, so the
+    // pause menu never renders here.
+    gameRef.current.on('mutationChoice', (data: any) => {
+      setChoiceOptions(data.options);
+      audioManager.play('pause');
+      haptics.medium();
+    });
+
+    gameRef.current.on('mutationPicked', (data: any) => {
+      setHeldMutations(data.held);
+      setChoiceOptions(null);
+      audioManager.play('uiClick');
+    });
+
+    gameRef.current.on('mutationDeclined', () => {
+      setChoiceOptions(null);
+      audioManager.play('uiClick');
+    });
+
+    gameRef.current.on('phoenixTriggered', () => {
+      // The one death that wasn't: death drama feedback, but the run lives
+      setPhoenixTriggered(true);
+      audioManager.play('death');
+      haptics.death();
+      screenShake.heavy();
+      showToast('Phoenix — one death absorbed', 'achievement', 3000);
+    });
+
+    // COSMIC Flux: audio cues for the wall-phase telegraph + flip (the
+    // ArenaBorder rails carry the visual signal)
+    gameRef.current.on('fluxTelegraph', () => {
+      audioManager.play('directionChange');
+    });
+    gameRef.current.on('fluxPhaseChange', () => {
+      audioManager.play('uiClick');
+    });
+
     gameRef.current.on('gameOver', async (rawData: unknown) => {
       const data = rawData as GameOverData;
       // Send results to server first (use refs to avoid stale closure)
@@ -347,6 +420,14 @@ export default function GamePage() {
         const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
         // If the reward POST can't be delivered, queue it for replay on the
         // next app load so a tab close at death never loses the run's DNA.
+        // Phase 2 payload fields shared by the live POST and the outbox
+        const cosmicClaim = data.cosmic
+          ? {
+              combo_dna_bonus: data.cosmic.comboDnaBonus,
+              combo_score_bonus: data.cosmic.comboScoreBonus,
+              max_chain: data.cosmic.maxChain,
+            }
+          : undefined;
         const queueForReplay = () => {
           enqueueReward({
             sessionId,
@@ -355,6 +436,11 @@ export default function GamePage() {
             duration_seconds: gameDuration,
             food_count: data.foodEaten,
             extracted: data.extracted,
+            ...(data.mutations.length > 0 ? { mutations: data.mutations } : {}),
+            ...(data.phoenixTriggeredAtFood !== null
+              ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
+              : {}),
+            ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
             timestamp: Date.now(),
           });
         };
@@ -378,6 +464,12 @@ export default function GamePage() {
               extracted: data.extracted,
               died: !data.extracted,
               victory: false,
+              // Design v2 Phase 2: mutation picks + Phoenix + COSMIC combo
+              mutations: data.mutations,
+              ...(data.phoenixTriggeredAtFood !== null
+                ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
+                : {}),
+              ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
             }),
           });
 
@@ -438,8 +530,8 @@ export default function GamePage() {
       }
     };
   // Note: session, currentSessionId, and showToast are accessed via closure
-   
-  }, [endGame, setDnaCollected, setScore, setDeathSequence, setPaused, showToast]);
+
+  }, [endGame, setDnaCollected, setScore, setDeathSequence, setPaused, setChoiceOptions, setHeldMutations, setPhoenixTriggered, showToast]);
 
   // Sync game state to store
   const syncState = useCallback(() => {
@@ -464,8 +556,14 @@ export default function GamePage() {
       setQueuedDirections(queued);
       setFoodEaten(state.foodEaten);
       setExitTile(state.exitTile, state.exitTicksRemaining);
+      // Phase 2 mirrors: extra foods (Splitter/COSMIC groups), the
+      // constellation chain, the mutation beacon, and the flux phase
+      setExtraFoods(state.foods.slice(1));
+      setConstellation(state.constellationGlyph, state.chainLength, state.comboMultiplier);
+      setMutationTile(state.mutationTile, state.mutationTicksRemaining);
+      setFlux(state.fluxPhase, state.fluxTelegraph);
     }
-  }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile]);
+  }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExtraFoods, setConstellation, setMutationTile, setFlux]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -586,6 +684,10 @@ export default function GamePage() {
         }
       }
 
+      // The mutation choice overlay owns the keyboard while it is open
+      // (1/2 pick, Escape declines - handled in the overlay, capture phase)
+      if (choiceActive) return;
+
       // Handle pause toggle
       if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && isPlaying && !isGameOver && !isDeathSequence && !isReady) {
         e.preventDefault();
@@ -621,7 +723,7 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, startGameLoop, setReady, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, startGameLoop, setReady, syncAim]);
 
   // Handle direction from D-Pad
   const handleDPadDirection = useCallback((dir: Direction) => {
@@ -765,8 +867,10 @@ export default function GamePage() {
             <span className="text-beige text-sm">DNA:</span>
             <span className="font-bold text-venom-orange">{dnaCollected}</span>
           </div>
-          {/* Extraction bank preview: what this run pays banked vs crashed.
-              Subtle by default; pulses while the exit portal is live. */}
+          {/* Extraction bank preview: what this run pays banked vs crashed
+              (mutation-aware: Mirror Wager / Compound Interest / Phoenix
+              reshape the outcome multipliers live). Subtle by default;
+              pulses while the exit portal is live. */}
           {isPlaying && dnaCollected > 0 && (
             <div
               data-testid="bank-chip"
@@ -777,12 +881,24 @@ export default function GamePage() {
               }`}
             >
               <span className="text-[#7df9ff] font-bold">
-                BANK {applyOutcome(dnaCollected, true)}
+                BANK {applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
               </span>
               <span className="text-beige/40">·</span>
               <span className="text-beige/60">
-                crash {applyOutcome(dnaCollected, false)}
+                crash {applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered)}
               </span>
+            </div>
+          )}
+          {/* COSMIC constellation combo chip - visible once a chain is live */}
+          {isPlaying && chainLength >= 2 && (
+            <div
+              data-testid="combo-chip"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-[#f0abfc]/60 bg-void/70 backdrop-blur-sm text-sm font-body"
+            >
+              <span className="text-[#f0abfc] font-bold">
+                ×{comboMultiplier.toFixed(1)}
+              </span>
+              <span className="text-beige/60">chain {chainLength}</span>
             </div>
           )}
           <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
@@ -793,6 +909,11 @@ export default function GamePage() {
             />
           </div>
         </div>
+
+        {/* Held mutations strip - the run's build at a glance */}
+        {isPlaying && (
+          <MutationHUD held={heldMutations} phoenixTriggered={phoenixTriggered} />
+        )}
 
         {/* Equipped Snake (the game always uses the equipped snake) */}
         {equippedSnake && !isPlaying && (
@@ -840,8 +961,8 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Pause Button (in-game) */}
-      {isPlaying && !isGameOver && !isPaused && (
+      {/* Pause Button (in-game) - hidden during the mutation choice hold */}
+      {isPlaying && !isGameOver && !isPaused && !choiceActive && (
         <button
           onClick={handlePause}
           className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-bone-white"
@@ -922,6 +1043,16 @@ export default function GamePage() {
         />
       )}
 
+      {/* Mutation choice-of-2 (engine frozen in its choice hold - never
+          concurrent with the pause menu: pause is refused during the hold) */}
+      {choiceOptions && isPlaying && !isGameOver && (
+        <MutationChoiceOverlay
+          options={choiceOptions}
+          onChoose={handleChooseMutation}
+          onDecline={handleDeclineMutation}
+        />
+      )}
+
       {/* Game Over / Start Screen */}
       {!isPlaying && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4">
@@ -945,7 +1076,7 @@ export default function GamePage() {
                       Extracted
                     </h2>
                     <p className="text-rarity-uncommon/90 font-body text-sm tracking-wide uppercase">
-                      Banked +25%
+                      Banked +{Math.round((outcomeMultipliers(heldMutations, phoenixTriggered).bank - 1) * 100)}%
                     </p>
                   </div>
                 ) : (
@@ -957,7 +1088,7 @@ export default function GamePage() {
                       Game Over
                     </h2>
                     <p className="text-beige/60 font-body text-sm tracking-wide uppercase">
-                      Crashed — salvaged 60%
+                      Crashed — salvaged {Math.round(outcomeMultipliers(heldMutations, phoenixTriggered).death * 100)}%
                     </p>
                   </div>
                 )}
@@ -970,14 +1101,32 @@ export default function GamePage() {
                     DNA:{' '}
                     {endReason === 'extracted' ? (
                       <span className="font-bold text-rarity-uncommon">
-                        {dnaCollected} → +{applyOutcome(dnaCollected, true)}
+                        {dnaCollected} → +{applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
                       </span>
                     ) : (
                       <span className="font-bold text-venom-orange text-glow-orange">
-                        {dnaCollected} → +{applyOutcome(dnaCollected, false)}
+                        {dnaCollected} → +{applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered)}
                       </span>
                     )}
                   </p>
+                  {/* The run's build: mutations held at the end */}
+                  {heldMutations.length > 0 && (
+                    <div
+                      className="flex flex-wrap gap-2 justify-center pt-1"
+                      data-testid="gameover-mutations"
+                    >
+                      {heldMutations.map((pick: MutationPick) => (
+                        <span
+                          key={pick.id}
+                          title={`${MUTATIONS[pick.id].effect}. Cost: ${MUTATIONS[pick.id].cost}`}
+                          className="inline-flex items-center px-2.5 py-1 rounded-arcade border border-[#a855f7]/60 bg-[#a855f7]/10 text-[#c4b5fd] text-sm font-body"
+                        >
+                          {MUTATIONS[pick.id].name}
+                          {pick.id === 'phoenix' && phoenixTriggered ? ' (spent)' : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {streakInfo && (
                     <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                       <IconFlame size={18} className="text-venom-orange" />
@@ -1246,8 +1395,14 @@ export default function GamePage() {
             dynasty={selectedDynasty}
             snake={snake}
             food={food}
+            extraFoods={extraFoods}
+            constellationGlyph={constellationGlyph}
             exitTile={exitTile}
             exitTicksRemaining={exitTicksRemaining}
+            mutationTile={mutationTile}
+            mutationTicksRemaining={mutationTicksRemaining}
+            fluxPhase={fluxPhase}
+            fluxTelegraph={fluxTelegraph}
             direction={direction}
             queuedDirections={queuedDirections}
             aimSystem={aimSystem}
@@ -1281,12 +1436,25 @@ export default function GamePage() {
   );
 }
 
+/**
+ * COSMIC constellation glyph palette - three distinct hues, all outside
+ * the violet mutation family and the cyan portal identity. Food color IS
+ * the glyph signal: same hue = chainable.
+ */
+const GLYPH_COLORS = ['#22d3ee', '#f0abfc', '#fbbf24'];
+
 interface GameBoardProps {
   dynasty: DynastyId;
   snake: Position[];
   food: Position | null;
+  extraFoods: Position[];
+  constellationGlyph: number | null;
   exitTile: Position | null;
   exitTicksRemaining: number;
+  mutationTile: Position | null;
+  mutationTicksRemaining: number;
+  fluxPhase: FluxPhase | null;
+  fluxTelegraph: boolean;
   direction: Direction;
   queuedDirections: Direction[];
   aimSystem: AimSystemId;
@@ -1301,8 +1469,14 @@ function GameBoard({
   dynasty,
   snake,
   food,
+  extraFoods,
+  constellationGlyph,
   exitTile,
   exitTicksRemaining,
+  mutationTile,
+  mutationTicksRemaining,
+  fluxPhase,
+  fluxTelegraph,
   direction,
   queuedDirections,
   aimSystem,
@@ -1313,10 +1487,17 @@ function GameBoard({
   cameraShake,
 }: GameBoardProps) {
   const theme = themeManager.getTheme(dynasty);
+  // COSMIC foods carry their constellation glyph color; other dynasties
+  // keep the dynasty accent
+  const foodColor =
+    constellationGlyph !== null
+      ? GLYPH_COLORS[constellationGlyph % GLYPH_COLORS.length]
+      : theme.accent;
 
   return (
     <group position={cameraShake}>
-      {/* Arena - void-family floor with dynasty edge wash, secondary rails */}
+      {/* Arena - void-family floor with dynasty edge wash, secondary rails.
+          On COSMIC the border rails signal the wrap phase. */}
       <ArenaFloor
         gridSize={GAME_CONFIG.board.gridSize}
         floorColor="#0b1016"
@@ -1329,6 +1510,8 @@ function GameBoard({
         color={theme.secondary}
         accentColor="#22d3ee"
         emissiveIntensity={0.5}
+        fluxPhase={fluxPhase}
+        fluxTelegraph={fluxTelegraph}
       />
 
       {/* Aim telegraph - layers rendered per the selected aim system
@@ -1354,13 +1537,21 @@ function GameBoard({
         />
       ))}
 
-      {/* Food - clean voxel block in the dynasty accent */}
+      {/* Food - clean voxel block; COSMIC tints the whole wave with its
+          constellation glyph color (same hue = chainable) */}
       {food && (
         <FoodBeacon
           position={[food.x + 0.5, 0, food.z + 0.5]}
-          color={theme.accent}
+          color={foodColor}
         />
       )}
+      {extraFoods.map((extra) => (
+        <FoodBeacon
+          key={`${extra.x}-${extra.z}`}
+          position={[extra.x + 0.5, 0, extra.z + 0.5]}
+          color={foodColor}
+        />
+      ))}
 
       {/* Exit portal - extraction banking doorway (cyan-white, urgency
           pulse as the despawn window closes) */}
@@ -1368,6 +1559,17 @@ function GameBoard({
         <ExitPortal
           position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
           ticksRemaining={exitTicksRemaining}
+        />
+      )}
+
+      {/* Mutation food - violet double helix. Deliberately NOT part of the
+          aim telegraph: AimingCrosshair tracks heading/queue only, and the
+          beacon is an optional detour, not the objective - so aim systems
+          are unaffected by mutation cells. */}
+      {mutationTile && (
+        <MutationBeacon
+          position={[mutationTile.x + 0.5, 0, mutationTile.z + 0.5]}
+          ticksRemaining={mutationTicksRemaining}
         />
       )}
 
