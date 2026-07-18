@@ -12,7 +12,9 @@ import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake, Dynasty } from '@/shared/types/snake-data-model';
 import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
+import { getTraitSlots } from '@/shared/game/traits';
 import { SnakeArt } from '@/components/lab/SnakeArt';
+import { TraitChipRow } from '@/components/traits/TraitChip';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconArrowRight, IconBolt, IconCheck, IconEgg } from '@/components/ui/icons';
 
@@ -304,6 +306,26 @@ export function VariantDetailModal({
                   {dynasty.name}
                 </span>
               </div>
+            </div>
+
+            {/* Traits (Design v2 Phase 3A): permanent snake-bound
+                sidegrades. Filled chips carry effect + tradeoff tooltips;
+                dashed slots show unlocked-but-unfilled potential. */}
+            <div className="mb-4" data-testid="variant-traits-section">
+              <span className="label-arcade block mb-2">Traits</span>
+              <TraitChipRow
+                traits={owned.traits}
+                slots={
+                  owned.traitSlots ??
+                  getTraitSlots(variant.rarity, owned.generation)
+                }
+                size="md"
+              />
+              {(owned.traits?.length ?? 0) === 0 && (
+                <p className="text-xs mt-2 font-body text-beige/60">
+                  Traitless — breed this snake to craft its lineage.
+                </p>
+              )}
             </div>
 
             {/* Ruleset identity - how this dynasty actually plays */}

@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { SnakeArt } from '@/components/lab/SnakeArt';
+import { TraitChipRow } from '@/components/traits/TraitChip';
 import { IconEgg, IconX } from '@/components/ui/icons';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { OwnedSnake, SnakeVariant } from '@/shared/types/snake-data-model';
@@ -120,7 +121,7 @@ export function ParentSlot({
         <IconX size={14} />
       </button>
 
-      {/* Name + generation footer */}
+      {/* Name + generation + trait footer */}
       <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center pointer-events-none bg-void-deep/80 border-t border-scale-blue-light/30">
         <p
           className="text-xs font-body font-semibold truncate"
@@ -131,6 +132,17 @@ export function ParentSlot({
         <p className="text-[10px] font-mono text-beige/60">
           Gen {snake.generation}
         </p>
+        {/* Trait chips (Design v2 Phase 3A): what this parent can pass on */}
+        <div
+          className="mt-1 flex justify-center"
+          data-testid={testId ? `${testId}-traits` : 'parent-slot-traits'}
+        >
+          <TraitChipRow
+            traits={snake.traits}
+            slots={snake.traitSlots}
+            size="sm"
+          />
+        </div>
       </div>
     </div>
   );

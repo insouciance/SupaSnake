@@ -24,6 +24,10 @@ export interface BredOffspring {
   rarity: Rarity | null;
   generation: number;
   dnaCost: number | null;
+  /** Inherited traits rolled server-side (slot order - reroll targets a slot). */
+  traits: string[];
+  /** Trait slot count for the offspring (section 6.1). */
+  traitSlots: number | null;
 }
 
 interface BreedingState {

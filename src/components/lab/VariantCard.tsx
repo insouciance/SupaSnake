@@ -14,6 +14,7 @@ import Image from 'next/image';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 import { SnakeArt } from '@/components/lab/SnakeArt';
+import { TraitChipRow } from '@/components/traits/TraitChip';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
 
 export interface VariantCardProps {
@@ -206,6 +207,16 @@ export function VariantCard({
           className="absolute inset-0 pointer-events-none shimmer-overlay animate-shimmer"
           aria-hidden="true"
         />
+      )}
+
+      {/* Trait chips (Design v2 Phase 3A) - owned snakes with traits only */}
+      {isOwned && (owned.traits?.length ?? 0) > 0 && (
+        <div
+          className="w-full px-2 py-1 flex justify-center bg-void-deep/70"
+          data-testid="variant-card-traits"
+        >
+          <TraitChipRow traits={owned.traits} size="sm" />
+        </div>
       )}
 
       {/* Info bar at bottom */}

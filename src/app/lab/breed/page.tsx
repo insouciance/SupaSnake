@@ -18,12 +18,15 @@ import { useBreedingStore, type BredOffspring } from '@/lib/stores/breedingStore
 import { useDynastyTheme, dynastyThemes } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
 import { validateBreedingPair, type BreedingBlockReason } from '@/lib/breeding/preview';
+import { previewInheritance } from '@/lib/breeding/inheritance';
+import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
 
 import { Navigation } from '@/components/ui/Navigation';
 import { IconArrowRight, IconDna } from '@/components/ui/icons';
 import { ParentSlot } from '@/components/breeding/ParentSlot';
 import { SnakePicker, type SnakePickerEntry } from '@/components/breeding/SnakePicker';
-import { BreedingReveal } from '@/components/breeding/BreedingReveal';
+import { BreedingReveal, type RerollResult } from '@/components/breeding/BreedingReveal';
+import { TraitChip } from '@/components/traits/TraitChip';
 
 import type { OwnedSnake, SnakeVariant, Rarity } from '@/shared/types/snake-data-model';
 import type { BreedingHistoryEntry, BreedingHistoryResponse } from '@/app/api/breeding/utils';
@@ -58,6 +61,7 @@ export default function BreedPage() {
   // Collection data (fetched by the hook on mount)
   const { ownedSnakes, variants, dnaBalance, isLoading } = useCollection();
   const addOwnedSnake = useCollectionStore((state) => state.addOwnedSnake);
+  const updateOwnedSnake = useCollectionStore((state) => state.updateOwnedSnake);
   const setDnaBalance = useCollectionStore((state) => state.setDnaBalance);
 
   // Breeding UI state
@@ -75,6 +79,9 @@ export default function BreedPage() {
 
   // Recent breedings
   const [history, setHistory] = useState<BreedingHistoryEntry[]>([]);
+
+  // Reroll tokens (Design v2 section 6.3) - refreshed by the breed POST
+  const [rerollTokens, setRerollTokens] = useState(0);
 
   // ---------------------------------------------------------------------------
   // DERIVED DATA
@@ -210,6 +217,13 @@ export default function BreedPage() {
         | { name?: string; rarity?: Rarity; dynasties?: { name?: string } | null }
         | null;
 
+      // Inherited traits: rolled server-side, read from the response
+      const childTraits = sanitizeTraits(child.traits);
+      const childTraitSlots =
+        typeof child.trait_slots === 'number'
+          ? child.trait_slots
+          : getTraitSlots(variantJoin?.rarity ?? 'common', child.generation);
+
       // Reveal payload
       const offspring: BredOffspring = {
         id: child.id,
@@ -219,8 +233,15 @@ export default function BreedPage() {
         rarity: variantJoin?.rarity ?? null,
         generation: child.generation,
         dnaCost: data.cost ?? null,
+        traits: childTraits,
+        traitSlots: childTraitSlots,
       };
       setLastOffspring(offspring);
+
+      // Reroll tokens ride the breed response (server authority)
+      if (typeof data.rerollTokens === 'number') {
+        setRerollTokens(data.rerollTokens);
+      }
 
       // Add offspring to the collection store
       addOwnedSnake({
@@ -235,8 +256,11 @@ export default function BreedPage() {
         acquiredMethod: 'bred',
         isEquipped: false,
         isFavorited: false,
+        traits: childTraits,
+        traitSlots: childTraitSlots,
         variantName: offspring.variantName,
         dynastyName: offspring.dynastyName,
+        variantRarity: variantJoin?.rarity ?? null,
       });
 
       // Server-authoritative DNA balance
@@ -275,6 +299,56 @@ export default function BreedPage() {
     },
     [pickerSlot, setParent, closePicker]
   );
+
+  // ---------------------------------------------------------------------------
+  // TRAIT REROLL (Design v2 section 6.3 crafting loop)
+  // ---------------------------------------------------------------------------
+
+  const handleReroll = useCallback(
+    async (slot: number): Promise<RerollResult | null> => {
+      const offspring = lastOffspring;
+      if (!offspring || !session?.access_token) return null;
+      try {
+        const response = await fetch('/api/breeding/reroll', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ snake_id: offspring.id, slot }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          showToast(data.error ?? 'Reroll failed', 'error');
+          return null;
+        }
+        const traits = sanitizeTraits(data.traits);
+        const tokens = typeof data.rerollTokens === 'number' ? data.rerollTokens : 0;
+        // Server authority: sync the offspring's traits into the stores
+        setRerollTokens(tokens);
+        setLastOffspring({ ...offspring, traits });
+        updateOwnedSnake(offspring.id, { traits });
+        return { traits, rerollTokens: tokens };
+      } catch {
+        showToast('Reroll failed', 'error');
+        return null;
+      }
+    },
+    [lastOffspring, session?.access_token, setLastOffspring, updateOwnedSnake, showToast]
+  );
+
+  // Inheritance preview (section 6.3): one roll from each parent's pool
+  const inheritance = useMemo(() => {
+    if (!parent1 || !parent2 || validation.offspringGeneration === null) {
+      return null;
+    }
+    return previewInheritance(
+      parent1.snake.traits,
+      parent2.snake.traits,
+      [parent1.variant.rarity, parent2.variant.rarity],
+      validation.offspringGeneration
+    );
+  }, [parent1, parent2, validation.offspringGeneration]);
 
   // ---------------------------------------------------------------------------
   // LOADING / AUTH STATES
@@ -421,6 +495,50 @@ export default function BreedPage() {
             <p className="text-xs pt-1 font-body text-beige/60">
               The offspring has a 50/50 chance of taking either parent&apos;s variant.
             </p>
+
+            {/* Trait inheritance odds (Design v2 section 6.3) */}
+            {inheritance && (
+              <div
+                className="pt-2 space-y-2 border-t border-scale-blue-light/20"
+                data-testid="inheritance-preview"
+              >
+                <p className="text-xs font-body text-beige/70">
+                  Inherits <span className="text-bone-white font-semibold">1 trait from each parent</span>
+                  {inheritance.slots < 2 && inheritance.parent2.pool.length > 0
+                    ? ' — 1 trait slot: the first roll takes it'
+                    : ''}
+                  .
+                </p>
+                {([
+                  ['Parent 1', inheritance.parent1],
+                  ['Parent 2', inheritance.parent2],
+                ] as const).map(([label, odds]) => (
+                  <div
+                    key={label}
+                    className="flex items-center gap-2 flex-wrap"
+                    data-testid={`inheritance-${label === 'Parent 1' ? 'parent1' : 'parent2'}`}
+                  >
+                    <span className="text-xs font-mono text-beige/60 shrink-0">
+                      {label}:
+                    </span>
+                    {odds.pool.length === 0 ? (
+                      <span className="text-xs font-body text-beige/50">
+                        traitless — contributes nothing
+                      </span>
+                    ) : (
+                      odds.pool.map((traitId) => (
+                        <span key={traitId} className="inline-flex items-center gap-1">
+                          <TraitChip traitId={traitId} size="sm" />
+                          <span className="text-[10px] font-mono text-beige/60">
+                            {Math.round((odds.oddsPerTrait ?? 0) * 100)}%
+                          </span>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Breed button */}
@@ -496,10 +614,12 @@ export default function BreedPage() {
         onClose={closePicker}
       />
 
-      {/* Offspring reveal */}
+      {/* Offspring reveal (traits pop in; reroll flow lives on the reveal) */}
       {lastOffspring && (
         <BreedingReveal
           offspring={lastOffspring}
+          rerollTokens={rerollTokens}
+          onReroll={handleReroll}
           onClose={() => setLastOffspring(null)}
         />
       )}

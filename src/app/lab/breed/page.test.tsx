@@ -124,6 +124,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUseAuthImpl = authenticatedAuthState;
   mockCollection.dnaBalance = 1000;
+  mockCollection.ownedSnakes = [snakeA, snakeB, snakeC];
   useBreedingStore.setState(breedingInitialState);
   useCollectionStore.setState(collectionInitialState);
   global.fetch = jest.fn().mockResolvedValue(emptyHistoryResponse) as jest.Mock;
@@ -336,5 +337,172 @@ describe('BreedPage - breeding', () => {
     });
     expect(screen.queryByTestId('breeding-reveal')).not.toBeInTheDocument();
     expect(useBreedingStore.getState().breedError).toBe('Insufficient DNA');
+  });
+});
+
+// =============================================================================
+// TRAITS (Design v2 Phase 3A, section 6.3)
+// =============================================================================
+
+describe('BreedPage - trait inheritance preview', () => {
+  it('shows each parent pool with 1/n odds when parents have traits', () => {
+    mockCollection.ownedSnakes = [
+      { ...snakeA, traits: ['sprinter', 'hoarder'], traitSlots: 2 },
+      { ...snakeB, traits: ['ascetic'], traitSlots: 1 },
+      snakeC,
+    ];
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+
+    render(<BreedPage />);
+
+    const preview = within(screen.getByTestId('inheritance-preview'));
+    expect(preview.getByText(/1 trait from each parent/)).toBeInTheDocument();
+
+    const parent1Row = within(screen.getByTestId('inheritance-parent1'));
+    expect(parent1Row.getByTestId('trait-chip-sprinter')).toBeInTheDocument();
+    expect(parent1Row.getByTestId('trait-chip-hoarder')).toBeInTheDocument();
+    expect(parent1Row.getAllByText('50%')).toHaveLength(2);
+
+    const parent2Row = within(screen.getByTestId('inheritance-parent2'));
+    expect(parent2Row.getByTestId('trait-chip-ascetic')).toBeInTheDocument();
+    expect(parent2Row.getByText('100%')).toBeInTheDocument();
+  });
+
+  it('marks traitless parents as contributing nothing', () => {
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+
+    render(<BreedPage />);
+
+    const preview = within(screen.getByTestId('inheritance-preview'));
+    expect(preview.getAllByText(/traitless — contributes nothing/)).toHaveLength(2);
+  });
+
+  it('renders no preview until both parents are chosen', () => {
+    useBreedingStore.setState({ parent1Id: 'snake-a' });
+    render(<BreedPage />);
+    expect(screen.queryByTestId('inheritance-preview')).not.toBeInTheDocument();
+  });
+
+  it('shows parent trait chips on the filled parent slots', () => {
+    mockCollection.ownedSnakes = [
+      { ...snakeA, traits: ['magnetism'], traitSlots: 1 },
+      snakeB,
+      snakeC,
+    ];
+    useBreedingStore.setState({ parent1Id: 'snake-a' });
+
+    render(<BreedPage />);
+
+    const slot = within(screen.getByTestId('parent-slot-1-traits'));
+    expect(slot.getByTestId('trait-chip-magnetism')).toBeInTheDocument();
+  });
+});
+
+describe('BreedPage - offspring traits and reroll', () => {
+  function mockBreedFetch(childTraits: string[], rerollTokens: number): void {
+    (global.fetch as jest.Mock).mockImplementation(
+      async (url: string, options?: RequestInit) => {
+        if (url === '/api/breeding' && options?.method === 'POST') {
+          return {
+            ok: true,
+            json: async () => ({
+              success: true,
+              child: {
+                id: 'child-1',
+                snake_variant_id: 'variant-b',
+                variant: {
+                  id: 'variant-b',
+                  name: 'CYBER PULSE',
+                  rarity: 'common',
+                  dynasty_id: 'dyn-cyber',
+                  dynasties: { name: 'CYBER' },
+                },
+                generation: 2,
+                traits: childTraits,
+                trait_slots: 1,
+              },
+              cost: 300,
+              remainingDna: 700,
+              rerollTokens,
+            }),
+          };
+        }
+        if (url === '/api/breeding/reroll' && options?.method === 'POST') {
+          return {
+            ok: true,
+            json: async () => ({
+              success: true,
+              traits: ['ascetic'],
+              rerollTokens: rerollTokens - 1,
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ history: [] }) };
+      }
+    );
+  }
+
+  it('reveal shows rolled traits and the offspring lands traited in the store', async () => {
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    mockBreedFetch(['sprinter'], 2);
+
+    render(<BreedPage />);
+    fireEvent.click(screen.getByTestId('breed-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('breeding-reveal')).toBeInTheDocument();
+    });
+    const reveal = within(screen.getByTestId('breeding-reveal'));
+    expect(reveal.getByTestId('trait-chip-sprinter')).toBeInTheDocument();
+    expect(reveal.getByTestId('reroll-token-count')).toHaveTextContent(
+      'Reroll tokens: 2'
+    );
+
+    const child = useCollectionStore
+      .getState()
+      .ownedSnakes.find((s) => s.id === 'child-1');
+    expect(child?.traits).toEqual(['sprinter']);
+    expect(child?.traitSlots).toBe(1);
+  });
+
+  it('reroll flow: confirm posts to /api/breeding/reroll and updates the store', async () => {
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    mockBreedFetch(['sprinter'], 2);
+
+    render(<BreedPage />);
+    fireEvent.click(screen.getByTestId('breed-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('breeding-reveal')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('reroll-slot-1'));
+    fireEvent.click(screen.getByTestId('reroll-confirm-yes'));
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId('breeding-reveal')).getByTestId(
+          'trait-chip-ascetic'
+        )
+      ).toBeInTheDocument();
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/breeding/reroll',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ snake_id: 'child-1', slot: 1 }),
+      })
+    );
+    expect(
+      within(screen.getByTestId('breeding-reveal')).getByTestId(
+        'reroll-token-count'
+      )
+    ).toHaveTextContent('Reroll tokens: 1');
+
+    const child = useCollectionStore
+      .getState()
+      .ownedSnakes.find((s) => s.id === 'child-1');
+    expect(child?.traits).toEqual(['ascetic']);
   });
 });
