@@ -88,7 +88,8 @@ export function ConsentBanner() {
   if (!showBanner) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-void-deep/95 backdrop-blur-sm border-t-2 border-venom-orange/50 shadow-[0_-8px_32px_rgba(34,211,238,0.12)] animate-fade-up">
+    <div className="fixed max-sm:top-0 max-sm:bottom-auto max-sm:border-b-2 max-sm:border-t-0 sm:bottom-0 left-0 right-0 z-50 p-4 bg-void-deep/95 backdrop-blur-sm sm:border-t-2 border-venom-orange/50 shadow-[0_-8px_32px_rgba(34,211,238,0.12)] animate-fade-up"
+      style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
       <div className="max-w-6xl mx-auto">
         {!showDetails ? (
           // Simple banner

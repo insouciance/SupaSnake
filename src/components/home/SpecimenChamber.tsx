@@ -15,7 +15,8 @@
  *   dynasty+role into a module cache, never mutated).
  * - Zero allocations in useFrame: base pose, camera vectors and grid
  *   buffers are precomputed once at module scope.
- * - dpr clamped to [1, 1.75], no shadows, antialias off (emissive glow
+ * - dpr clamped to [1, 2], no shadows, antialias ON - the voxel style is
+ * an intentional aesthetic and its edges must be crisp to read premium (glow
  *   carries the look), low-power GPU preference.
  * - Render loop pauses when the tab is hidden (frameloop -> 'never');
  *   under prefers-reduced-motion the scene renders a static composed pose
@@ -54,7 +55,11 @@ const SEGMENT_COUNT = 10;
 const SPECIMEN_BODY_SCALE = 0.5;
 const SPECIMEN_HEAD_SCALE = 0.66;
 const SEGMENT_SPACING = 0.68;
-const BODY_Y = 0.26;
+// Body height must clear the floor slab even at the undulation's lowest
+// point (half-height 0.25 + sine amplitude 0.028 + margin) - segments
+// dipping below the floor clipped their bottom faces one by one (the
+// reported cyclic flicker).
+const BODY_Y = 0.38;
 const HEAD_LIFT = 0.3;
 const NECK_LIFT = 0.12;
 const HEAD_YAW = 0.5; // three-quarter turn toward the viewer
@@ -66,7 +71,12 @@ const DRIFT_W2 = (2 * Math.PI) / 26;
 const CAMERA_ELEVATION = 0.46; // ~26 degrees above the specimen plane
 const CAMERA_AZIMUTH = 0.32; // slight three-quarter offset
 /** Fit margin: bounding radius is padded so the whole coil breathes */
-const FIT_MARGIN = 1.45;
+const FIT_MARGIN = 1.22;
+/** Distance clamps: the near bound keeps the coil from cropping hard on
+ *  wide screens; the far bound guarantees phone-portrait framing never
+ *  shrinks the specimen into invisibility. */
+const MIN_CAMERA_DISTANCE = 5.5;
+const MAX_CAMERA_DISTANCE = 10.5;
 
 // -----------------------------------------------------------------------------
 // Base pose - a coiled serpentine S the eye instantly parses as a snake:
@@ -101,16 +111,29 @@ function buildBasePose(): [number, number, number][] {
 
 const BASE_POSE = buildBasePose();
 
-/** Bounding sphere of the pose (segment extents included) for camera fit. */
+/** Axis extents of the pose (segment size included) for camera fit.
+ *  Per-axis extents beat a bounding sphere here: the coil is wide and
+ *  shallow, and the sphere's depth term made portrait framing push the
+ *  camera so far back the specimen became invisible on phones. */
 const POSE_BOUNDS = (() => {
   const center = new THREE.Vector3();
   for (const [x, y, z] of BASE_POSE) center.add(new THREE.Vector3(x, y, z));
   center.divideScalar(SEGMENT_COUNT);
-  let radius = 0;
+  let halfX = 0;
+  let halfZ = 0;
+  let maxY = 0;
   for (const [x, y, z] of BASE_POSE) {
-    radius = Math.max(radius, center.distanceTo(new THREE.Vector3(x, y, z)));
+    halfX = Math.max(halfX, Math.abs(x - center.x));
+    halfZ = Math.max(halfZ, Math.abs(z - center.z));
+    maxY = Math.max(maxY, y);
   }
-  return { center, radius: radius + SPECIMEN_HEAD_SCALE };
+  const pad = SPECIMEN_HEAD_SCALE * 0.75;
+  return {
+    center,
+    halfX: halfX + pad,
+    halfZ: halfZ + pad,
+    halfY: maxY / 2 + pad,
+  };
 })();
 
 // -----------------------------------------------------------------------------
@@ -129,10 +152,10 @@ function getHeroMaterial(
   let material = heroMaterialCache.get(key);
   if (!material) {
     material = getSnakeSegmentMaterial(dynasty, isHead).clone();
-    // Emissive stays LOW so the key/rim lights shade the cube faces -
-    // full-blast emissive renders every face identically and the form
-    // collapses into a flat silhouette.
-    material.emissiveIntensity = isHead ? 0.45 : 0.28;
+    // Emissive balanced: low enough that key/rim lights still shade the
+    // faces (full blast = flat silhouette), high enough that the specimen
+    // reads bright and premium against the void.
+    material.emissiveIntensity = isHead ? 0.62 : 0.42;
     heroMaterialCache.set(key, material);
   }
   return material;
@@ -262,14 +285,26 @@ function CameraRig({ animate }: { animate: boolean }) {
     const aspect = size.width / Math.max(1, size.height);
     const vFov = THREE.MathUtils.degToRad(persp.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    const limiting = Math.min(vFov, hFov);
-    const distance =
-      (POSE_BOUNDS.radius * FIT_MARGIN) / Math.tan(limiting / 2);
+
+    // Per-axis fit: width against the horizontal fov, the elevation-
+    // projected depth+height against the vertical fov. Clamped so portrait
+    // never pushes the specimen away into a speck (the mobile-invisible
+    // bug) and ultrawide never crops it hard.
+    const cosE = Math.cos(CAMERA_ELEVATION);
+    const sinE = Math.sin(CAMERA_ELEVATION);
+    const dh = (POSE_BOUNDS.halfX * FIT_MARGIN) / Math.tan(hFov / 2);
+    const projectedVertical =
+      POSE_BOUNDS.halfZ * sinE + POSE_BOUNDS.halfY * cosE;
+    const dv = (projectedVertical * FIT_MARGIN) / Math.tan(vFov / 2);
+    const distance = Math.min(
+      MAX_CAMERA_DISTANCE,
+      Math.max(MIN_CAMERA_DISTANCE, Math.max(dh, dv))
+    );
 
     const dir = new THREE.Vector3(
-      Math.sin(CAMERA_AZIMUTH) * Math.cos(CAMERA_ELEVATION),
-      Math.sin(CAMERA_ELEVATION),
-      Math.cos(CAMERA_AZIMUTH) * Math.cos(CAMERA_ELEVATION)
+      Math.sin(CAMERA_AZIMUTH) * cosE,
+      sinE,
+      Math.cos(CAMERA_AZIMUTH) * cosE
     );
     baseRef.current.copy(POSE_BOUNDS.center).addScaledVector(dir, distance);
     camera.position.copy(baseRef.current);
@@ -297,7 +332,7 @@ function ChamberLights({ dynasty }: { dynasty: DynastyId }) {
     <>
       <ambientLight intensity={0.16} color="#2b3b4d" />
       {/* Key: dynasty-colored, front-high-right - shapes the top faces */}
-      <directionalLight position={[3.5, 5, 4]} intensity={1.5} color={glow} />
+      <directionalLight position={[3.5, 5, 4]} intensity={1.9} color={glow} />
       {/* Rim: from behind-left for the silhouette edge */}
       <directionalLight position={[-5, 2.5, -4]} intensity={2.1} color={glow} />
       {/* Cool neutral fill from the off side keeps the dark faces readable
@@ -376,8 +411,8 @@ export function SpecimenChamber({ dynasty, onReady }: SpecimenChamberProps) {
   return (
     <Canvas
       frameloop={frameloop}
-      dpr={[1, 1.75]}
-      gl={{ antialias: false, alpha: false, powerPreference: 'low-power' }}
+      dpr={[1, 2]}
+      gl={{ antialias: true, alpha: false, powerPreference: 'low-power' }}
       camera={{ fov: 38, near: 0.1, far: 40 }}
       onCreated={() => onReady?.()}
     >

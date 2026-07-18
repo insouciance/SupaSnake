@@ -46,13 +46,25 @@ describe('AccountChip', () => {
     expect(screen.queryByTestId('account-chip')).not.toBeInTheDocument();
   });
 
-  it('links to /login when fully signed out', () => {
+  it('opens the auth menu when fully signed out (icon chip, no text)', () => {
     setAuth({ user: null });
     render(<AccountChip />);
 
     const chip = screen.getByTestId('account-chip');
-    expect(chip).toHaveAttribute('href', '/login');
-    expect(chip).toHaveTextContent(/sign in/i);
+    // Square icon chip matching the rail rhythm - no inline "Sign in" text
+    expect(chip).toHaveAttribute('aria-label', 'Sign in');
+    expect(chip).not.toHaveTextContent(/sign in/i);
+
+    fireEvent.click(chip);
+    const menu = screen.getByTestId('account-auth-menu');
+    expect(menu).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /sign in/i })).toHaveAttribute(
+      'href',
+      '/login'
+    );
+    expect(
+      screen.getByRole('menuitem', { name: /create account/i })
+    ).toHaveAttribute('href', '/signup');
   });
 
   describe('guest (anonymous session)', () => {

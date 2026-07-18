@@ -45,17 +45,42 @@ export function AccountChip({ className = '' }: AccountChipProps) {
 
   if (isLoading) return null;
 
-  // Fully signed out (no anonymous session either)
+  // Fully signed out (no anonymous session either): a square icon chip that
+  // matches the rail's proportions - a text button broke the icon rhythm.
+  // Opens a compact auth panel instead of hard-navigating to /login.
   if (!user) {
     return (
-      <Link
-        href="/login"
-        data-testid="account-chip"
-        className={`inline-flex items-center gap-2 px-3 py-1.5 min-h-[36px] rounded-arcade border border-scale-blue-light/60 bg-scale-blue/50 text-sm font-body font-semibold text-beige hover:text-bone-white hover:border-venom-orange/60 transition-all ${className}`}
-      >
-        <IconUser size={14} />
-        Sign in
-      </Link>
+      <div ref={rootRef} className={`relative ${className}`}>
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          data-testid="account-chip"
+          aria-label="Sign in"
+          className="flex items-center justify-center w-10 h-10 rounded-arcade border border-scale-blue-light/60 bg-scale-blue/50 text-beige hover:text-bone-white hover:border-venom-orange/60 transition-all"
+        >
+          <IconUser size={18} />
+        </button>
+        {menuOpen && (
+          <div
+            className="absolute bottom-12 right-0 max-sm:bottom-12 sm:bottom-auto sm:top-0 sm:right-12 w-56 panel-elevated p-3 animate-pop-in z-50"
+            data-testid="account-auth-menu"
+            role="menu"
+          >
+            <p className="label-arcade mb-2">Join the run</p>
+            <div className="flex flex-col gap-2">
+              <Link href="/login" className="btn-go px-3 py-2 text-xs text-center" role="menuitem">
+                Sign In
+              </Link>
+              <Link href="/signup" className="btn-neutral px-3 py-2 text-xs text-center" role="menuitem">
+                Create Account
+              </Link>
+            </div>
+            <p className="text-beige/60 text-[11px] font-body mt-2 leading-snug">
+              Or just hit Launch - you can play instantly as a guest and save
+              your progress later.
+            </p>
+          </div>
+        )}
+      </div>
     );
   }
 

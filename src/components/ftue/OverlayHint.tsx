@@ -49,7 +49,7 @@ export function OverlayHint({ id, message }: OverlayHintProps) {
   return (
     <div
       role="status"
-      className="fixed bottom-24 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 panel-glow animate-fade-up max-w-md w-[calc(100%-2rem)]"
+      className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 panel-glow animate-fade-up max-w-sm w-[calc(100%-2rem)]"
       style={{ '--glow': '#22d3ee' } as React.CSSProperties}
     >
       <IconBolt size={18} className="shrink-0 text-venom-orange" />
