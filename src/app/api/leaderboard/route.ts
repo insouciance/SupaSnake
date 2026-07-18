@@ -110,30 +110,42 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // For weekly/daily, query game sessions
-    let sessionQuery = supabase
-      .from('game_sessions')
-      .select(`
-        player_id,
-        score,
-        dynasty,
-        players:player_id(
-          username,
-          collected_snakes(generation)
-        )
-      `)
-      // Free Play never ranks (Design v2 §7.4: practice runs are rewardless)
-      .eq('is_free_play', false)
-      .gte('started_at', timeFilter!.toISOString())
-      .order('score', { ascending: false })
-      .range(offset, offset + limit - 1);
+    // For weekly/daily, query game sessions. Anomaly-board runs (Design
+    // v2 §7.2) score on their OWN weekly board, not the dynasty boards -
+    // excluded when the migration-021 column exists, with a filterless
+    // retry for the pre-021 window (where no anomaly session can exist).
+    const buildSessionQuery = (excludeAnomaly: boolean) => {
+      let query = supabase
+        .from('game_sessions')
+        .select(`
+          player_id,
+          score,
+          dynasty,
+          players:player_id(
+            username,
+            collected_snakes(generation)
+          )
+        `)
+        // Free Play never ranks (Design v2 §7.4: practice runs are rewardless)
+        .eq('is_free_play', false)
+        .gte('started_at', timeFilter!.toISOString())
+        .order('score', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (excludeAnomaly) {
+        query = query.is('anomaly_id', null);
+      }
+      // Apply dynasty filter if specified
+      if (dynasty) {
+        query = query.eq('dynasty', dynasty);
+      }
+      return query;
+    };
 
-    // Apply dynasty filter if specified
-    if (dynasty) {
-      sessionQuery = sessionQuery.eq('dynasty', dynasty);
+    let { data, error } = await buildSessionQuery(true);
+    if (error && /anomaly_id/i.test(error.message || '')) {
+      // Pre-021: the column does not exist yet - nothing to exclude
+      ({ data, error } = await buildSessionQuery(false));
     }
-
-    const { data, error } = await sessionQuery;
 
     if (error) {
       console.error('Leaderboard query error:', error);
@@ -165,19 +177,28 @@ export async function GET(request: NextRequest) {
       entries = entries.filter(e => e.bracket === bracket);
     }
 
-    // Get total count (with dynasty filter if specified)
-    let countQuery = supabase
-      .from('game_sessions')
-      .select('*', { count: 'exact', head: true })
-      // Same exclusion as the entries query: free sessions never rank
-      .eq('is_free_play', false)
-      .gte('started_at', timeFilter!.toISOString());
+    // Get total count (with dynasty filter if specified) - same
+    // exclusions as the entries query, same pre-021 retry
+    const buildCountQuery = (excludeAnomaly: boolean) => {
+      let query = supabase
+        .from('game_sessions')
+        .select('*', { count: 'exact', head: true })
+        // Same exclusion as the entries query: free sessions never rank
+        .eq('is_free_play', false)
+        .gte('started_at', timeFilter!.toISOString());
+      if (excludeAnomaly) {
+        query = query.is('anomaly_id', null);
+      }
+      if (dynasty) {
+        query = query.eq('dynasty', dynasty);
+      }
+      return query;
+    };
 
-    if (dynasty) {
-      countQuery = countQuery.eq('dynasty', dynasty);
+    let { count, error: countError } = await buildCountQuery(true);
+    if (countError && /anomaly_id/i.test(countError.message || '')) {
+      ({ count } = await buildCountQuery(false));
     }
-
-    const { count } = await countQuery;
 
     return NextResponse.json({
       entries,

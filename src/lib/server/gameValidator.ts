@@ -45,6 +45,7 @@ import {
   type MutationPick,
 } from '@/shared/game/mutations';
 import { type TraitId } from '@/shared/game/traits';
+import { type AnomalyId } from '@/shared/game/anomalies';
 
 export interface GameResultInput {
   /** Raw foods eaten - the minimal claimed fact the payout derives from. */
@@ -271,7 +272,14 @@ export function validateGameResult(
    * player_mastery (section 7.1) - null disables pool gating (legacy
    * callers / tests). Free Play passes the full pool (section 7.4).
    */
-  unlockedPool: MutationId[] | null = null
+  unlockedPool: MutationId[] | null = null,
+  /**
+   * The session's weekly anomaly (Design v2 Phase 4B, section 7.2) -
+   * read from the SESSION ROW (server-stamped at start), never from the
+   * claim. Its [E] effects (Gold Rush food x1.5, Twin Exits bank x1.15)
+   * join the exact recompute; [P] anomalies change nothing here.
+   */
+  anomaly: AnomalyId | null = null
 ): ValidationResult {
   const errors: string[] = [];
   const ruleset = getRuleset(dynasty);
@@ -359,7 +367,8 @@ export function validateGameResult(
     foodCount,
     mutations,
     phoenixTriggeredAtFood,
-    traits
+    traits,
+    anomaly
   );
 
   // 7. COSMIC bounded trust: accept the combo claim only up to the caps
@@ -382,7 +391,8 @@ export function validateGameResult(
     extracted,
     mutations,
     phoenixTriggeredAtFood !== null,
-    traits
+    traits,
+    anomaly
   );
   if (input.victory) {
     expectedPayout += GAME_CONFIG.economy.dna.completionBonus;

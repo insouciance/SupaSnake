@@ -20,7 +20,16 @@ import {
 } from '@/shared/game/mastery';
 import { getMasteryXp, grantMasteryXp } from '@/lib/server/mastery';
 import { getGauntletBan } from '@/lib/server/gauntlet';
+import { getSeasonalMutationIds } from '@/lib/server/season';
 import { applyGauntletBan } from '@/shared/game/gauntlet';
+import {
+  ANOMALIES,
+  anomalyForWeek,
+  anomalyWeekEnd,
+  anomalyWeekStart,
+  isAnomalyId,
+  type AnomalyId,
+} from '@/shared/game/anomalies';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
@@ -81,6 +90,13 @@ export async function POST(request: NextRequest) {
     // and validated (server authority unchanged) but marked is_free_play so
     // contracts/leaderboards/economy reads exclude it.
     const isFreePlay = mode === 'free';
+
+    // Design v2 §7.2 Weekly Anomaly board: an anomaly run is an EARNING
+    // run (energy, DNA, contracts, streak) under the week's modifier
+    // ruleset that additionally scores on the anomaly leaderboard. The
+    // anomaly itself is SERVER-DERIVED from the calendar (deterministic
+    // rotation) and stamped on the session row - never client-asserted.
+    const isAnomalyRun = mode === 'anomaly';
 
     if (action === 'start') {
       const rateCheck = await checkRateLimit(supabase, player.id, 'game_start');
@@ -162,10 +178,16 @@ export async function POST(request: NextRequest) {
       const gauntletBan = isFreePlay
         ? null
         : await getGauntletBan(supabase, player.id, startDynasty);
+      // Seasonal mutations (section 7.2): in every offer pool from their
+      // season's start onward (then permanent). Pre-021 this reads empty.
+      const seasonalIds = await getSeasonalMutationIds(supabase);
       const mutationPool = applyGauntletBan(
-        isFreePlay
-          ? fullMutationPool(startDynasty)
-          : unlockedMutationPool(startDynasty, masteryLevel),
+        [
+          ...(isFreePlay
+            ? fullMutationPool(startDynasty)
+            : unlockedMutationPool(startDynasty, masteryLevel)),
+          ...seasonalIds,
+        ],
         gauntletBan
       );
       const masteryInfo = {
@@ -175,6 +197,14 @@ export async function POST(request: NextRequest) {
       };
 
       const serverStartedAt = new Date().toISOString();
+
+      // Anomaly stamp (section 7.2): the week's modifier, derived from the
+      // deterministic rotation - the client never asserts it
+      const startedAtDate = new Date(serverStartedAt);
+      const startAnomalyId = isAnomalyRun ? anomalyForWeek(startedAtDate) : null;
+      const startAnomalyWeek = isAnomalyRun
+        ? anomalyWeekStart(startedAtDate).toISOString().slice(0, 10)
+        : null;
 
       const { data: session, error: sessionError } = await supabase
         .from('game_sessions')
@@ -187,6 +217,11 @@ export async function POST(request: NextRequest) {
           // Free-play marker (migration 016) - only sent when true so the
           // insert stays compatible with the pre-016 schema until it applies
           ...(isFreePlay ? { is_free_play: true } : {}),
+          // Anomaly markers (migration 021) - only sent on anomaly runs so
+          // the insert stays compatible with the pre-021 schema
+          ...(isAnomalyRun
+            ? { anomaly_id: startAnomalyId, anomaly_week: startAnomalyWeek }
+            : {}),
         })
         .select()
         .single();
@@ -203,8 +238,29 @@ export async function POST(request: NextRequest) {
             { status: 503 }
           );
         }
+        // Pre-migration-021 window: the anomaly columns don't exist yet -
+        // refuse anomaly mode cleanly; normal runs omit the markers and
+        // are unaffected.
+        if (isAnomalyRun && /anomaly_id|anomaly_week/i.test(sessionError.message || '')) {
+          return NextResponse.json(
+            { error: 'The Anomaly board is not live yet — try a ranked run' },
+            { status: 503 }
+          );
+        }
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
+
+      // Anomaly board context for the HUD (name + modifier + week timer)
+      const anomalyInfo =
+        isAnomalyRun && startAnomalyId
+          ? {
+              id: startAnomalyId,
+              name: ANOMALIES[startAnomalyId].name,
+              effect: ANOMALIES[startAnomalyId].effect,
+              weekStart: startAnomalyWeek,
+              endsAt: anomalyWeekEnd(anomalyWeekStart(startedAtDate)).toISOString(),
+            }
+          : null;
 
       // Free Play: no energy deduction, no regen-timer change, no economy
       // transaction - the run costs nothing and pays nothing
@@ -273,6 +329,7 @@ export async function POST(request: NextRequest) {
         mutationPool,
         mastery: masteryInfo,
         ...(gauntletBan ? { gauntletBan } : {}),
+        ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
       });
     }
 
@@ -358,12 +415,26 @@ export async function POST(request: NextRequest) {
             endDynasty,
             session.server_started_at || undefined
           );
+      // Seasonal mutations join the validation pool exactly as they join
+      // the offer pool (pre-021: empty, byte-identical behavior)
+      const endSeasonalIds = await getSeasonalMutationIds(supabase);
       const unlockedPool = applyGauntletBan(
-        isFreeSession
-          ? fullMutationPool(endDynasty)
-          : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore)),
+        [
+          ...(isFreeSession
+            ? fullMutationPool(endDynasty)
+            : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore))),
+          ...endSeasonalIds,
+        ],
         endGauntletBan
       );
+
+      // Anomaly (section 7.2): the SESSION ROW is authoritative - the
+      // server stamped it at start; select('*') keeps this read deployable
+      // pre-021 (rows simply lack the column => null => normal recompute)
+      const rawSessionAnomaly = (session as Record<string, unknown>).anomaly_id;
+      const sessionAnomaly: AnomalyId | null = isAnomalyId(rawSessionAnomaly)
+        ? rawSessionAnomaly
+        : null;
 
       // Design v2: the client sends the raw food count + how the run ended;
       // the server recomputes the payout exactly from the session row's
@@ -389,7 +460,8 @@ export async function POST(request: NextRequest) {
         serverStartedAt,
         endDynasty,
         snakeTraits,
-        unlockedPool
+        unlockedPool,
+        sessionAnomaly
       );
 
       if (!validation.valid) {
@@ -569,6 +641,7 @@ export async function POST(request: NextRequest) {
               : {}),
             ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
             ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
+            ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
           },
         });
 
@@ -762,6 +835,7 @@ export async function POST(request: NextRequest) {
         ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
+        ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
       });
     }
 
