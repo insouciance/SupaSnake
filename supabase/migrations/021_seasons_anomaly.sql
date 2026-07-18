@@ -71,7 +71,7 @@
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS seasons (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   seq INTEGER NOT NULL UNIQUE CHECK (seq >= 1),
   name TEXT NOT NULL,
   theme TEXT NOT NULL,
@@ -492,7 +492,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS season_playoff_matches (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
   round TEXT NOT NULL CHECK (round IN ('quarterfinal', 'semifinal')),
   slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 4),
