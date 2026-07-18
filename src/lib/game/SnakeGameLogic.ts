@@ -35,7 +35,9 @@ import {
 } from '@/shared/game/rulesets';
 import {
   MUTATION_PHYSICS,
+  MUTATION_POOL,
   MUTATION_SPAWN,
+  foodValueFlatBonus,
   foodValueModifier,
   rollMutationInterval,
   rollMutationOffer,
@@ -215,6 +217,15 @@ interface GameOptions {
    * payout claim (the end-of-run payload does not carry traits).
    */
   traits?: TraitId[];
+  /**
+   * The player's unlocked mutation offer pool (Design v2 section 7.1:
+   * base ten + this dynasty's mastery unlocks). Injected from the
+   * session-start response via setMutationPool - like traits, this is
+   * OFFER config only, never a payout claim: the server recomputes the
+   * player's actual pool from player_mastery and rejects out-of-pool
+   * picks regardless of what the engine offered.
+   */
+  mutationPool?: MutationId[];
 }
 
 const OPPOSITES: Record<Direction, Direction> = {
@@ -244,6 +255,7 @@ export class SnakeGameLogic {
   private ruleset: DynastyRuleset;
   private rng: () => number;
   private traits: TraitId[];
+  private mutationPool: MutationId[];
   private events: Map<GameEvent, EventCallback[]>;
   /**
    * Buffered direction inputs, consumed one per tick. Buffering (instead of
@@ -266,6 +278,12 @@ export class SnakeGameLogic {
     // Traits before createInitialState: the mutation cadence roll (Patient)
     // and the Iron Scales charge both depend on them.
     this.traits = [...(options.traits ?? [])];
+    // Empty/omitted pool falls back to the base ten (defensive - the
+    // session-start response always sends at least the base pool)
+    this.mutationPool =
+      options.mutationPool && options.mutationPool.length > 0
+        ? [...options.mutationPool]
+        : [...MUTATION_POOL];
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
@@ -387,6 +405,22 @@ export class SnakeGameLogic {
   /** The equipped snake's traits (immutable copy). */
   getTraits(): TraitId[] {
     return [...this.traits];
+  }
+
+  /**
+   * Swap the unlocked mutation offer pool (Design v2 section 7.1).
+   * Mirrors setTraits: the page constructs the engine on mount, before
+   * the session-start response delivers the server-computed pool. Offers
+   * already pending are untouched; the next offer draws from the new
+   * pool. An empty/invalid pool falls back to the base ten.
+   */
+  setMutationPool(pool: MutationId[]): void {
+    this.mutationPool = pool.length > 0 ? [...pool] : [...MUTATION_POOL];
+  }
+
+  /** The active mutation offer pool (immutable copy). */
+  getMutationPool(): MutationId[] {
+    return [...this.mutationPool];
   }
 
   /**
@@ -610,7 +644,7 @@ export class SnakeGameLogic {
       if (this.ruleset.constellation) {
         const glyph = this.state.constellationGlyph ?? 0;
         const withinWindow =
-          this.ticksSinceLastEat <= this.ruleset.constellation.chainWindowTicks;
+          this.ticksSinceLastEat <= this.effectiveChainWindowTicks();
         if (
           this.state.chainLength > 0 &&
           this.lastEatGlyph === glyph &&
@@ -636,12 +670,19 @@ export class SnakeGameLogic {
           n,
           this.state.phoenixTriggeredAtFood
         ) * traitFoodValueModifier(this.traits, n);
+      // Flat [E] bonus (Deep Roots) added after the per-food round -
+      // outside the combo, exactly mirroring computeRunTotals.
+      const flat = foodValueFlatBonus(
+        this.state.heldMutations,
+        n,
+        this.state.phoenixTriggeredAtFood
+      );
       const baseDna = this.ruleset.foodDnaValue(n);
       const baseScore = Math.round(
         FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
       );
-      const dnaNoCombo = Math.round(baseDna * mod);
-      const dnaValue = Math.round(baseDna * combo * mod);
+      const dnaNoCombo = Math.round(baseDna * mod) + flat;
+      const dnaValue = Math.round(baseDna * combo * mod) + flat;
       const scoreValue = Math.round(
         FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n) * combo
       );
@@ -708,7 +749,11 @@ export class SnakeGameLogic {
     // Magnet Pulse (mutation, radius 2) / Magnetism (trait, radius 1):
     // nearby food creeps toward the head, one cell per tick. When both are
     // active the larger radius wins - the pull itself never stacks.
-    if (this.hasMutation('magnet_pulse') || this.hasTrait('magnetism')) {
+    if (
+      this.hasMutation('magnet_pulse') ||
+      this.hasMutation('gravity_well') ||
+      this.hasTrait('magnetism')
+    ) {
       this.applyMagnetPulse();
     }
 
@@ -747,9 +792,17 @@ export class SnakeGameLogic {
       this.ticksSinceLastEat = Math.min(this.ticksSinceLastEat + 1, 1_000_000);
     }
 
-    // COSMIC Flux phase countdown + telegraph
+    // COSMIC Flux phase countdown + telegraph. Event Horizon (COSMIC M9)
+    // stretches both phases: open +25 ticks (benefit), closed +15 (cost).
     if (this.ruleset.flux && this.state.fluxPhase) {
-      const { openTicks, closedTicks, telegraphTicks } = this.ruleset.flux;
+      const { telegraphTicks } = this.ruleset.flux;
+      const horizon = this.hasMutation('event_horizon');
+      const openTicks =
+        this.ruleset.flux.openTicks +
+        (horizon ? MUTATION_PHYSICS.eventHorizonOpenTicksBonus : 0);
+      const closedTicks =
+        this.ruleset.flux.closedTicks +
+        (horizon ? MUTATION_PHYSICS.eventHorizonClosedTicksPenalty : 0);
       this.state.fluxTicksRemaining -= 1;
       if (this.state.fluxTicksRemaining <= 0) {
         const nextPhase: FluxPhase =
@@ -813,11 +866,18 @@ export class SnakeGameLogic {
     if (pick.id === 'phoenix') {
       this.state.phoenixAvailable = true;
     }
-    if (pick.id === 'gold_trail' && this.state.exitTile) {
-      // Cost applies to the live portal too: clamp to the shortened window
+    if (
+      (pick.id === 'gold_trail' ||
+        pick.id === 'deep_roots' ||
+        pick.id === 'afterburner') &&
+      this.state.exitTile
+    ) {
+      // Portal-window COSTS apply to the live portal too: clamp down to
+      // the shortened window. (Tectonic Patience deliberately does NOT
+      // extend a live portal - its benefit starts with the next spawn.)
       this.state.exitTicksRemaining = Math.min(
         this.state.exitTicksRemaining,
-        MUTATION_PHYSICS.goldTrailPortalTicks
+        this.effectiveExitDespawnTicks()
       );
     }
     if (pick.id === 'time_dilation') {
@@ -841,7 +901,11 @@ export class SnakeGameLogic {
     const constellation = this.ruleset.constellation;
     const target =
       (constellation ? constellation.groupSize : 1) +
-      (this.hasMutation('splitter') ? 1 : 0);
+      (this.hasMutation('splitter') ? 1 : 0) +
+      // Starweaver (COSMIC M3): constellation groups gain one extra food
+      (constellation && this.hasMutation('starweaver')
+        ? MUTATION_PHYSICS.starweaverExtraGroupFood
+        : 0);
 
     if (constellation) {
       this.state.constellationGlyph = Math.floor(
@@ -1142,7 +1206,8 @@ export class SnakeGameLogic {
 
     const offer = rollMutationOffer(
       this.state.heldMutations.map((m) => m.id),
-      this.rng
+      this.rng,
+      this.mutationPool
     );
     if (!offer) return;
     this.state.pendingChoice = offer;
@@ -1159,9 +1224,13 @@ export class SnakeGameLogic {
   private applyMagnetPulse(): void {
     const head = this.state.snake[0];
     if (!head) return;
-    const radius = this.hasMutation('magnet_pulse')
-      ? MUTATION_PHYSICS.magnetRadius
-      : TRAIT_PHYSICS.magnetismRadius;
+    // Largest active pull radius wins - Gravity Well (3) > Magnet Pulse
+    // (2) > Magnetism (1); the pull itself never stacks.
+    const radius = this.hasMutation('gravity_well')
+      ? MUTATION_PHYSICS.gravityWellRadius
+      : this.hasMutation('magnet_pulse')
+        ? MUTATION_PHYSICS.magnetRadius
+        : TRAIT_PHYSICS.magnetismRadius;
     for (const food of this.state.foods) {
       const dx = head.x - food.x;
       const dz = head.z - food.z;
@@ -1221,14 +1290,29 @@ export class SnakeGameLogic {
       : interval;
   }
 
-  /** Exit portal lifetime incl. the Gold Trail cost (60-tick windows). */
+  /**
+   * Exit portal lifetime incl. every held portal-window mutation:
+   * Gold Trail caps the window at 60 ticks, Deep Roots -10, Afterburner
+   * -20 (costs), Tectonic Patience +30 (its benefit). Stacked costs are
+   * floored at minExitDespawnTicks so the window never vanishes.
+   */
   private effectiveExitDespawnTicks(): number {
-    return this.hasMutation('gold_trail')
+    let ticks = this.hasMutation('gold_trail')
       ? Math.min(
           this.ruleset.extraction.despawnTicks,
           MUTATION_PHYSICS.goldTrailPortalTicks
         )
       : this.ruleset.extraction.despawnTicks;
+    if (this.hasMutation('deep_roots')) {
+      ticks -= MUTATION_PHYSICS.deepRootsPortalTicksPenalty;
+    }
+    if (this.hasMutation('afterburner')) {
+      ticks -= MUTATION_PHYSICS.afterburnerPortalTicksPenalty;
+    }
+    if (this.hasMutation('tectonic_patience')) {
+      ticks += MUTATION_PHYSICS.tectonicPatiencePortalTicksBonus;
+    }
+    return Math.max(MUTATION_PHYSICS.minExitDespawnTicks, ticks);
   }
 
   /**
@@ -1247,6 +1331,21 @@ export class SnakeGameLogic {
     }
     return (
       this.ruleset.speedForFood(foodEaten) + MUTATION_PHYSICS.timeDilationSlowMs
+    );
+  }
+
+  /**
+   * COSMIC chain window incl. the Starweaver cost: 2 ticks shorter
+   * (bigger groups, tighter chains). Floored at 1 tick defensively.
+   */
+  private effectiveChainWindowTicks(): number {
+    const base = this.ruleset.constellation?.chainWindowTicks ?? 0;
+    return Math.max(
+      1,
+      base -
+        (this.hasMutation('starweaver')
+          ? MUTATION_PHYSICS.starweaverChainWindowPenalty
+          : 0)
     );
   }
 
