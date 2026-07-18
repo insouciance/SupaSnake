@@ -8,18 +8,31 @@
 import type { CSSProperties } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import { themeManager } from '@/lib/theme/ThemeManager';
-import { applyOutcome } from '@/shared/game/rulesets';
+import { applyOutcomeWithMutations } from '@/shared/game/rulesets';
+import type { MutationPick } from '@/shared/game/mutations';
 import { IconDna } from '@/components/ui/icons';
 
 interface PauseMenuProps {
   dynasty: DynastyId;
   score: number;
   dnaCollected: number;
+  /** Held mutations (bank/crash preview is mutation-aware). */
+  heldMutations?: MutationPick[];
+  /** True once Phoenix absorbed a death (voids outcome benefits). */
+  phoenixTriggered?: boolean;
   onResume: () => void;
   onQuit: () => void;
 }
 
-export function PauseMenu({ dynasty, score, dnaCollected, onResume, onQuit }: PauseMenuProps) {
+export function PauseMenu({
+  dynasty,
+  score,
+  dnaCollected,
+  heldMutations = [],
+  phoenixTriggered = false,
+  onResume,
+  onQuit,
+}: PauseMenuProps) {
   const theme = themeManager.getTheme(dynasty);
 
   return (
@@ -53,9 +66,11 @@ export function PauseMenu({ dynasty, score, dnaCollected, onResume, onQuit }: Pa
             <div className="flex justify-between items-center text-sm font-body">
               <span className="text-beige/60">Bank / crash value</span>
               <span className="text-beige/80">
-                <span className="text-[#7df9ff]">{applyOutcome(dnaCollected, true)}</span>
+                <span className="text-[#7df9ff]">
+                  {applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
+                </span>
                 {' / '}
-                {applyOutcome(dnaCollected, false)}
+                {applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered)}
               </span>
             </div>
           )}

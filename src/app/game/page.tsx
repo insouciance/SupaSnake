@@ -1038,6 +1038,8 @@ export default function GamePage() {
           dynasty={selectedDynasty}
           score={score}
           dnaCollected={dnaCollected}
+          heldMutations={heldMutations}
+          phoenixTriggered={phoenixTriggered}
           onResume={handleResume}
           onQuit={handleQuit}
         />
