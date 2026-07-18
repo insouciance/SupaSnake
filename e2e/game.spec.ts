@@ -97,8 +97,11 @@ test.describe('Equipped-snake game flow', () => {
     await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
 
     // A guest WITH energy can still choose FREE PLAY (§7.4: practice is
-    // always available, energy meters earning runs only)
-    await page.getByTestId('mode-free').click();
+    // always available, energy meters earning runs only).
+    // force: the live WebGL canvas behind the overlay starves Playwright's
+    // hit-target stability check in headless (software rendering); the
+    // aria-pressed / watermark expectations below verify the click landed.
+    await page.getByTestId('mode-free').click({ force: true });
     await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
 
@@ -112,7 +115,7 @@ test.describe('Equipped-snake game flow', () => {
     // Pre-migration-016 window: the marker column doesn't exist yet and the
     // server refuses free mode with a clear 503 message instead - accept
     // either outcome so this spec is green before AND after 016 applies.
-    await freeStart.click();
+    await freeStart.click({ force: true });
     const watermark = page.getByTestId('free-play-watermark');
     const migrationPending = page.getByText(/free play is not available yet/i);
     await expect(watermark.or(migrationPending)).toBeVisible({ timeout: 20000 });
