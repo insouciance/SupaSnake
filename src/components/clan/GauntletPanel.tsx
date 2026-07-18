@@ -31,6 +31,8 @@ import {
 } from '@/shared/game/gauntlet';
 import { MUTATIONS, type MutationId } from '@/shared/game/mutations';
 import { modifierName, mutationName } from './DuelPanel';
+import { PlayerCard } from '@/components/identity/PlayerCard';
+import { identityFromEmbedded, type EmbeddedIdentity } from '@/lib/identity/types';
 
 interface ResearchState {
   pool: number;
@@ -42,7 +44,12 @@ interface ResearchState {
 }
 
 interface ScoutingState {
-  roster: Array<{ name: string; mastery: Record<string, { level: number; xp?: number }> }>;
+  roster: Array<{
+    name: string;
+    /** Identity v1 (migration 022): Player Card row fields, when live. */
+    identity?: EmbeddedIdentity | null;
+    mastery: Record<string, { level: number; xp?: number }>;
+  }>;
   lastPicks: Array<{
     weekStart: string;
     dynasty: string;
@@ -377,10 +384,18 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                   {gauntlet.scouting.roster.slice(0, 12).map((member, index) => (
                     <li
                       key={`${member.name}-${index}`}
-                      className="flex items-center justify-between text-sm font-body bg-void/40 border border-scale-blue-light/30 rounded-arcade px-3 py-1.5"
+                      className="flex items-center justify-between gap-2 text-sm font-body bg-void/40 border border-scale-blue-light/30 rounded-arcade px-3 py-1.5"
                     >
-                      <span className="text-bone-white">{member.name}</span>
-                      <span className="text-beige/70 text-xs font-display uppercase">
+                      {/* Identity v1: scouting rows are Player Card rows */}
+                      {member.identity ? (
+                        <PlayerCard
+                          identity={identityFromEmbedded(member.identity)}
+                          variant="row"
+                        />
+                      ) : (
+                        <span className="text-bone-white">{member.name}</span>
+                      )}
+                      <span className="text-beige/70 text-xs font-display uppercase shrink-0">
                         {Object.entries(member.mastery)
                           .map(([dyn, m]) => `${dyn.slice(0, 3)} M${m.level}`)
                           .join(' · ') || 'Unranked'}

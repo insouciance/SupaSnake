@@ -211,6 +211,35 @@ export function IconArrowRight(props: IconProps) {
   );
 }
 
+/** Medal - badges / earned prestige */
+export function IconMedal(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="15" r="5" />
+      <path d="M12 13v2.5l1.8 1M8.5 11 5 3h5l2 4.5L14 3h5l-3.5 8" />
+    </svg>
+  );
+}
+
+/** Crown - titles / sovereign ranks */
+export function IconCrown(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 18h16M4 18 3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1 10" />
+    </svg>
+  );
+}
+
+/** Edit pencil - claim / change handle */
+export function IconEdit(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 20h4L20.5 7.5a2.1 2.1 0 0 0-3-3L5 17l-1 3z" />
+      <path d="m14.5 6.5 3 3" />
+    </svg>
+  );
+}
+
 /** Snake - brand mark (stylized S-curve with head + eye) */
 export function IconSnake(props: IconProps) {
   return (

@@ -1,30 +1,41 @@
 'use client';
 
 /**
- * CareerStats Component
- * Displays player career statistics on the profile/settings page
+ * CareerStats - career statistics on the profile page, in the arcade
+ * design system (Identity v1: the legacy gray panel retired; the full
+ * Chronicle arrives in I2 - this stays a minimal stat grid).
  */
 
 import { useState, useEffect } from 'react';
+import type { ReactElement } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import type { CareerStats as CareerStatsType } from '@/app/api/player/stats/route';
+import {
+  IconChart,
+  IconDna,
+  IconEgg,
+  IconFlame,
+  IconPlay,
+  IconSnake,
+  IconTrophy,
+} from '@/components/ui/icons';
 
 interface StatCardProps {
-  icon: string;
+  icon: ReactElement;
   label: string;
   value: string | number;
   subValue?: string;
   color?: string;
 }
 
-function StatCard({ icon, label, value, subValue, color = 'text-white' }: StatCardProps) {
+function StatCard({ icon, label, value, subValue, color = 'text-bone-white' }: StatCardProps) {
   return (
-    <div className="bg-gray-800 rounded-lg p-4 flex flex-col items-center">
-      <span className="text-3xl mb-2">{icon}</span>
-      <span className={`text-2xl font-bold ${color}`}>{value}</span>
-      <span className="text-gray-400 text-sm">{label}</span>
+    <div className="panel p-4 flex flex-col items-center text-center gap-1">
+      <span className={color}>{icon}</span>
+      <span className={`font-display text-2xl ${color}`}>{value}</span>
+      <span className="label-arcade">{label}</span>
       {subValue && (
-        <span className="text-gray-500 text-xs mt-1">{subValue}</span>
+        <span className="text-beige/50 text-xs font-body">{subValue}</span>
       )}
     </div>
   );
@@ -70,18 +81,18 @@ export function CareerStats() {
 
   if (loading) {
     return (
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-xl font-bold mb-4">Career Stats</h2>
-        <div className="text-center text-gray-500 py-8">Loading...</div>
+      <div className="panel-elevated p-6">
+        <h2 className="heading-display text-xl text-bone-white mb-4">Career Stats</h2>
+        <div className="text-center text-beige/50 font-body py-8">Loading...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-xl font-bold mb-4">Career Stats</h2>
-        <div className="text-center text-red-400 py-8">{error}</div>
+      <div className="panel-elevated p-6">
+        <h2 className="heading-display text-xl text-bone-white mb-4">Career Stats</h2>
+        <div className="text-center text-strike-red font-body py-8">{error}</div>
       </div>
     );
   }
@@ -94,55 +105,58 @@ export function CareerStats() {
   const achievementPercent = Math.round((stats.achievementsCompleted / stats.totalAchievements) * 100);
 
   return (
-    <div className="bg-gray-900 rounded-xl p-6">
-      <h2 className="text-xl font-bold mb-4">Career Stats</h2>
+    <div className="panel-elevated p-6 animate-fade-up">
+      <h2 className="heading-display text-xl text-bone-white mb-4">Career Stats</h2>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <StatCard
-          icon="🏆"
+          icon={<IconTrophy size={26} />}
           label="High Score"
-          value={stats.highScore}
-          color="text-yellow-400"
+          value={stats.highScore.toLocaleString()}
+          color="text-rarity-legendary"
         />
         <StatCard
-          icon="🎮"
+          icon={<IconPlay size={26} />}
           label="Games Played"
-          value={stats.totalGamesPlayed}
+          value={stats.totalGamesPlayed.toLocaleString()}
         />
         <StatCard
-          icon="🧬"
+          icon={<IconDna size={26} />}
           label="DNA Earned"
           value={stats.totalDnaEarned.toLocaleString()}
-          color="text-green-400"
+          color="text-venom-orange"
         />
         <StatCard
-          icon="📦"
+          icon={<IconSnake size={26} />}
           label="Collection"
           value={`${stats.collectionCount}/${stats.totalVariants}`}
           subValue={`${collectionPercent}% complete`}
-          color="text-blue-400"
+          color="text-rarity-rare"
         />
         <StatCard
-          icon="🔥"
+          icon={<IconFlame size={26} />}
           label="Current Streak"
           value={`${stats.currentStreak} days`}
           subValue={`Best: ${stats.longestStreak} days`}
-          color="text-orange-400"
+          color="text-venom-orange"
         />
         <StatCard
-          icon="⭐"
+          icon={<IconChart size={26} />}
           label="Achievements"
           value={`${stats.achievementsCompleted}/${stats.totalAchievements}`}
           subValue={`${achievementPercent}% unlocked`}
-          color="text-purple-400"
+          color="text-rarity-epic"
         />
       </div>
 
       {/* Breeding stats */}
-      <div className="mt-4 pt-4 border-t border-gray-800">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-400">Snakes Bred</span>
-          <span className="text-white font-medium">{stats.breedsCompleted}</span>
+      <div className="mt-4 pt-4 border-t border-scale-blue-light/40">
+        <div className="flex justify-between items-center text-sm font-body">
+          <span className="text-beige/70 inline-flex items-center gap-1.5">
+            <IconEgg size={15} />
+            Snakes Bred
+          </span>
+          <span className="text-bone-white font-display">{stats.breedsCompleted}</span>
         </div>
       </div>
     </div>

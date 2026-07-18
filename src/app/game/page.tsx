@@ -23,6 +23,9 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import { AccountChip } from '@/components/ui/AccountChip';
+import { PlayerCard } from '@/components/identity/PlayerCard';
+import { HandleClaimModal } from '@/components/identity/HandleClaimModal';
+import type { PlayerIdentity } from '@/lib/identity/types';
 import Link from 'next/link';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
@@ -68,6 +71,33 @@ import {
   IconTrophy,
   IconUser,
 } from '@/components/ui/icons';
+
+/**
+ * First-extraction claim prompt bookkeeping (Identity v1 section 3.3):
+ * device-scoped UI state ONLY (never game progress) - shown at most once
+ * per device until claimed or dismissed twice.
+ */
+const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
+
+function handlePromptExhausted(): boolean {
+  try {
+    return Number(window.localStorage.getItem(HANDLE_PROMPT_KEY) ?? '0') >= 2;
+  } catch {
+    return true;
+  }
+}
+
+function recordHandlePromptDismissal(claimed: boolean): void {
+  try {
+    const current = Number(window.localStorage.getItem(HANDLE_PROMPT_KEY) ?? '0');
+    window.localStorage.setItem(
+      HANDLE_PROMPT_KEY,
+      claimed ? '99' : String(current + 1)
+    );
+  } catch {
+    // Storage unavailable - the prompt simply may repeat
+  }
+}
 
 export default function GamePage() {
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
@@ -137,6 +167,13 @@ export default function GamePage() {
     leveledUp: boolean;
     unlocks: { level: number; kind: string; label: string }[];
   } | null>(null);
+  // Identity v1 (section 4.3): the player's own card on the game-over
+  // screen, fetched between runs. null pre-migration-022 (card hidden).
+  const [ownIdentity, setOwnIdentity] = useState<PlayerIdentity | null>(null);
+  // The first-extraction claim ceremony (section 3.3): offered when the
+  // end response says the name is still generated, at most once per
+  // device until claimed or dismissed twice.
+  const [showHandleClaim, setShowHandleClaim] = useState(false);
 
   // Refs to hold current values for use in event handlers (avoids stale closure)
   const sessionRef = useRef(session);
@@ -323,6 +360,26 @@ export default function GamePage() {
     };
   }, [session?.access_token, isPlaying]);
 
+  // Identity v1: own Player Card for the game-over screen, refreshed
+  // between runs. { live: false } (pre-022) hides the card. Non-fatal.
+  useEffect(() => {
+    if (!session?.access_token || isPlaying) return;
+    let cancelled = false;
+    fetch('/api/player/identity', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` }
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled) {
+          setOwnIdentity(data?.live !== false && data?.identity ? data.identity : null);
+        }
+      })
+      .catch(err => console.error('Failed to fetch identity:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, isPlaying]);
+
   // Fetch per-dynasty mastery levels for the pre-game chip (non-fatal)
   useEffect(() => {
     if (!session?.access_token) return;
@@ -495,6 +552,10 @@ export default function GamePage() {
       const sessionId = currentSessionIdRef.current;
       if (currentSession?.access_token && sessionId) {
         const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
+        // Identity v1 section 9.5: the run's compact event stream + how
+        // it ended. Display/Analyst input only - the server stores it
+        // separately from the payout path and validates every bound.
+        const runEventRecord = gameRef.current?.getRunEvents() ?? null;
         // If the reward POST can't be delivered, queue it for replay on the
         // next app load so a tab close at death never loses the run's DNA.
         // Phase 2 payload fields shared by the live POST and the outbox
@@ -550,6 +611,11 @@ export default function GamePage() {
                 ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
                 : {}),
               ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
+              // Identity v1 section 9.5: death cause + run events
+              ...(data.deathCause ? { death_cause: data.deathCause } : {}),
+              ...(runEventRecord && runEventRecord.events.length > 0
+                ? { run_events: runEventRecord }
+                : {}),
             }),
           });
 
@@ -593,6 +659,17 @@ export default function GamePage() {
               result.newAchievements.forEach((name: string) => {
                 showToast(`Achievement Unlocked: ${name}`, 'achievement', 5000);
               });
+            }
+
+            // Identity v1 section 3.3: the first-extraction claim moment.
+            // "That run deserves a name on it" - banked run, generated
+            // name, prompt not yet exhausted on this device.
+            if (
+              result.identity?.isGenerated &&
+              result.validation?.extracted &&
+              !handlePromptExhausted()
+            ) {
+              setShowHandleClaim(true);
             }
           }
         } catch (err) {
@@ -1293,6 +1370,17 @@ export default function GamePage() {
                     </p>
                   </div>
                 )}
+                {/* Identity v1 (section 4.3): your card at the moment of
+                    judgment - claim affordance while the name is generated */}
+                {ownIdentity && (
+                  <PlayerCard
+                    identity={ownIdentity}
+                    variant="card"
+                    isSelf
+                    onClaim={() => setShowHandleClaim(true)}
+                    className="text-left"
+                  />
+                )}
                 <div className="space-y-2 font-body">
                   <p className="text-2xl text-bone-white">
                     Score: <span className="font-bold text-venom-orange">{score}</span>
@@ -1678,6 +1766,24 @@ export default function GamePage() {
       <AccountUpgradeModal
         isOpen={showSaveProgress}
         onClose={() => setShowSaveProgress(false)}
+      />
+
+      {/* Handle claim ceremony (Identity v1 section 3.3): offered after
+          the first banked run while the name is still generated */}
+      <HandleClaimModal
+        isOpen={showHandleClaim}
+        onClose={() => {
+          recordHandlePromptDismissal(false);
+          setShowHandleClaim(false);
+        }}
+        onClaimed={(handle) => {
+          recordHandlePromptDismissal(true);
+          setOwnIdentity((prev) =>
+            prev ? { ...prev, handle, displayHandle: handle, isGenerated: false } : prev
+          );
+          showToast(`You are ${handle} now`, 'achievement', 4000);
+        }}
+        prompt="That run deserves a name on it."
       />
 
       {/* Ready State Overlay */}

@@ -383,7 +383,16 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                       key={`${contributor.name}-${index}`}
                       className="flex items-center justify-between text-sm font-body bg-void/40 border border-scale-blue-light/30 rounded-arcade px-3 py-1.5"
                     >
-                      <span className="text-bone-white">
+                      {/* Identity v1: contributor names come from
+                          player_identity_view (display_handle) - the
+                          generated handler-NNNN form renders muted */}
+                      <span
+                        className={
+                          contributor.name.startsWith('handler-')
+                            ? 'text-beige/50'
+                            : 'text-bone-white'
+                        }
+                      >
                         <span className="text-beige/60 mr-2">{index + 1}.</span>
                         {contributor.name}
                       </span>

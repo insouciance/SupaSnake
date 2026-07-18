@@ -31,6 +31,12 @@ jest.mock('@/components/profile/CareerStats', () => ({
   CareerStats: () => <div data-testid="career-stats">Career Stats Component</div>,
 }));
 
+// Mock the Identity panel (it fetches /api/player/identity - covered by
+// its own tests; the page test only cares that it is mounted)
+jest.mock('@/components/identity/IdentityPanel', () => ({
+  IdentityPanel: () => <div data-testid="identity-panel">Identity Panel Component</div>,
+}));
+
 jest.mock('@/components/profile/AchievementBadges', () => ({
   AchievementBadges: () => <div data-testid="achievement-badges">Achievement Badges Component</div>,
 }));
@@ -59,7 +65,13 @@ describe('SettingsPage', () => {
     it('renders the profile header', () => {
       render(<SettingsPage />);
       // "Profile" also appears in the NavBar link, so scope to the heading
-      expect(screen.getByRole('heading', { name: 'Profile' })).toBeInTheDocument();
+      // (Identity v1 renamed the page to "Handler Profile")
+      expect(screen.getByRole('heading', { name: 'Handler Profile' })).toBeInTheDocument();
+    });
+
+    it('renders the Identity panel (Player Identity v1)', () => {
+      render(<SettingsPage />);
+      expect(screen.getByTestId('identity-panel')).toBeInTheDocument();
     });
 
     it('displays user email', () => {

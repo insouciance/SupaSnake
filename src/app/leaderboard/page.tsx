@@ -17,6 +17,8 @@ import {
   BRACKET_NAMES,
   BRACKET_COLORS,
 } from '@/lib/leaderboard/types';
+import { PlayerCard } from '@/components/identity/PlayerCard';
+import type { PlayerIdentity } from '@/lib/identity/types';
 import { useLeaderboardRealtime, type HighScoreEvent } from '@/hooks/useLeaderboardRealtime';
 import { useToast } from '@/components/ui/Toast';
 import { NavBar } from '@/components/ui/NavBar';
@@ -42,6 +44,41 @@ const PODIUM: Record<number, { glow: string; text: string; label: string }> = {
   2: { glow: '#d1d5db', text: 'text-gray-300', label: '2nd' },
   3: { glow: '#d97706', text: 'text-amber-500', label: '3rd' },
 };
+
+/**
+ * Identity v1 (section 4.3): leaderboard rows are Player Card `row`
+ * surfaces. The API's identity object maps into the card's shape; rows
+ * without one (pre-022) keep the legacy plain-name render.
+ */
+function entryIdentity(entry: LeaderboardEntry): PlayerIdentity | null {
+  const identity = entry.identity;
+  if (!identity) return null;
+  return {
+    playerId: entry.playerId,
+    userId: null,
+    handle: identity.isGenerated ? null : identity.handle,
+    displayHandle: identity.handle,
+    isGenerated: identity.isGenerated,
+    isFounder: identity.founder,
+    title: identity.title,
+    bannerId: null,
+    bannerRender: null,
+    badges: identity.badges ?? [],
+    avatar:
+      identity.avatarVariantId && identity.avatarVariantName
+        ? {
+            variantId: identity.avatarVariantId,
+            variantName: identity.avatarVariantName,
+            rarity: identity.avatarRarity ?? 'common',
+            dynasty: identity.avatarDynasty ?? 'COSMIC',
+            generation: 1,
+          }
+        : null,
+    clanTag: identity.clanTag,
+    clanName: null,
+    mastery: identity.mastery ?? {},
+  };
+}
 
 // Rank badge component
 function RankBadge({ rank }: { rank: number }) {
@@ -394,14 +431,28 @@ export default function LeaderboardPage() {
                   <RankBadge rank={entry.rank} />
                 </div>
 
-                {/* Player */}
-                <div className="col-span-4 font-body truncate">
-                  <span className={entry.rank <= 3 ? 'text-bone-white font-bold' : 'text-beige'}>
-                    {entry.playerName}
-                  </span>
-                  {entry.playerId === user?.id && (
-                    <span className="ml-2 text-xs text-venom-orange">(You)</span>
-                  )}
+                {/* Player - Identity v1: the Player Card row variant */}
+                <div className="col-span-4 font-body min-w-0">
+                  {(() => {
+                    const identity = entryIdentity(entry);
+                    return identity ? (
+                      <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                        <PlayerCard identity={identity} variant="row" />
+                        {entry.playerId === user?.id && (
+                          <span className="text-xs text-venom-orange shrink-0">(You)</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="truncate">
+                        <span className={entry.rank <= 3 ? 'text-bone-white font-bold' : 'text-beige'}>
+                          {entry.playerName}
+                        </span>
+                        {entry.playerId === user?.id && (
+                          <span className="ml-2 text-xs text-venom-orange">(You)</span>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* Score */}

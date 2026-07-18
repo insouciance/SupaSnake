@@ -2,10 +2,12 @@
 
 /**
  * Settings/Profile Page
- * Displays player profile, career stats, and achievements
+ * Identity (Player Identity v1: card, handle, equip), career stats, and
+ * achievements
  */
 
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { IdentityPanel } from '@/components/identity/IdentityPanel';
 import { CareerStats } from '@/components/profile/CareerStats';
 import { AchievementBadges } from '@/components/profile/AchievementBadges';
 import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
@@ -47,9 +49,9 @@ export default function SettingsPage() {
           <div>
             <h1 className="heading-display text-4xl text-venom-orange text-glow-orange flex items-center gap-3">
               <IconUser size={34} />
-              Profile
+              Handler Profile
             </h1>
-            <p className="text-beige font-body mt-1">Your stats and achievements</p>
+            <p className="text-beige font-body mt-1">Your identity, stats and achievements</p>
           </div>
           <Link
             href="/game"
@@ -57,6 +59,11 @@ export default function SettingsPage() {
           >
             Play
           </Link>
+        </div>
+
+        {/* Identity (Player Identity v1): card preview, handle, equip */}
+        <div className="mb-6">
+          <IdentityPanel />
         </div>
 
         {/* Account Info */}

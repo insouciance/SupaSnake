@@ -9,7 +9,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { IconCheck } from '@/components/ui/icons';
+import { IconCheck, IconEdit } from '@/components/ui/icons';
+import { HandleClaimModal } from '@/components/identity/HandleClaimModal';
 
 interface AccountUpgradeProps {
   onClose?: () => void;
@@ -70,6 +71,10 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
   const [error, setError] = useState<{ text: string; offerSignIn: boolean } | null>(null);
   const [success, setSuccess] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(false);
+  // Identity v1 (section 3.3): the upgrade flow's handle step - offered
+  // on the success screen, never required.
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [claimedHandle, setClaimedHandle] = useState<string | null>(null);
 
   // NOTE: after a successful upgrade the session refresh flips isAnonymous
   // to false, so the success screen must render BEFORE this guard.
@@ -133,6 +138,24 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
               ? 'One last step: check your email and click the confirmation link to lock in your account.'
               : 'Your snakes, DNA and stats now live on your account - safe on any device.'}
           </p>
+          {/* Identity v1 (section 3.3): the handle step - a real account
+              deserves a real name. Optional, never a wall. */}
+          <div className="mt-4">
+            {claimedHandle ? (
+              <p className="text-beige font-body text-sm" data-testid="upgrade-handle-claimed">
+                You are <span className="text-bone-white font-bold">{claimedHandle}</span> now.
+              </p>
+            ) : (
+              <button
+                onClick={() => setClaimOpen(true)}
+                data-testid="upgrade-claim-handle"
+                className="btn-go inline-flex items-center gap-2 px-6 py-2.5 min-h-[44px]"
+              >
+                <IconEdit size={16} />
+                Claim your handle
+              </button>
+            )}
+          </div>
           <div className="flex flex-col gap-2 mt-4">
             <Link href="/game" className="btn-go px-6 py-2.5 min-h-[44px]" onClick={onClose}>
               Keep Playing
@@ -144,6 +167,12 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
             )}
           </div>
         </div>
+        <HandleClaimModal
+          isOpen={claimOpen}
+          onClose={() => setClaimOpen(false)}
+          onClaimed={(handle) => setClaimedHandle(handle)}
+          prompt="Your progress is saved — now put a name on it."
+        />
       </div>
     );
   }
