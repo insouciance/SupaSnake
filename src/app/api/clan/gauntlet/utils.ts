@@ -114,6 +114,9 @@ export function mapGauntletPayload(payload: RpcGauntletPayload) {
                   ban: p.ban ?? null,
                 })),
                 detail: payload.gauntlet.scouting.detail === true,
+                // Identity v1 I4: cached Analyst scouting brief, attached
+                // by the route when one exists for this duel week
+                narration: null as string | null,
               }
             : null,
           canSubstitute: payload.gauntlet.can_substitute === true,

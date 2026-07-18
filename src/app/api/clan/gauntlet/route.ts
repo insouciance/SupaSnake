@@ -20,6 +20,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isMissingGauntletInfra } from '@/lib/server/gauntlet';
 import {
+  generateScoutNarration,
+  getCachedInsight,
+} from '@/lib/analyst/insights';
+import {
   mapGauntletPayload,
   mapGauntletRpcError,
   type RpcGauntletPayload,
@@ -75,10 +79,69 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load gauntlet' }, { status: 500 });
     }
 
-    return NextResponse.json(mapGauntletPayload(data as RpcGauntletPayload));
+    const payload = mapGauntletPayload(data as RpcGauntletPayload);
+    await attachScoutNarration(payload, auth.clanId);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error('Clan gauntlet GET error:', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
+}
+
+/**
+ * Identity v1 I4 (section 9.2): decorate the scouting block with the
+ * cached Analyst brief for this duel week, and — during the Mon–Wed
+ * scouting window — kick off a non-blocking, once-per-duel-per-week
+ * generation (the 025 dedup index + daily token budget inside the
+ * Analyst are the cost guards). NEVER fails the gauntlet request:
+ * pre-025 simply leaves narration null.
+ */
+async function attachScoutNarration(
+  payload: ReturnType<typeof mapGauntletPayload>,
+  clanId: string
+): Promise<void> {
+  try {
+    const gauntlet = payload.gauntlet;
+    if (!gauntlet || !gauntlet.scouting || !gauntlet.opponent) return;
+    const weekStart = String(gauntlet.weekStart).slice(0, 10);
+    const scopeRef = `${weekStart}:${gauntlet.duelId}`;
+
+    const cached = await getCachedInsight(supabase, 'scout_narration', scopeRef, {
+      clanId,
+    });
+    if (!cached.live) return;
+    if (cached.row) {
+      gauntlet.scouting.narration = cached.row.content.body;
+      return;
+    }
+
+    // Scouting briefs are a Mon–Wed artifact (section 9.2); generation
+    // is enqueue-style fire-and-forget so this request never waits.
+    if (gauntlet.phase === 'picks_open' || gauntlet.phase === 'locked') {
+      const input = {
+        weekStart,
+        opponent: gauntlet.opponent,
+        scouting: {
+          roster: gauntlet.scouting.roster.map((m) => ({
+            name: m.name,
+            mastery: m.mastery,
+          })),
+          lastPicks: gauntlet.scouting.lastPicks,
+          detail: gauntlet.scouting.detail,
+        },
+      };
+      void generateScoutNarration(supabase, {
+        clanId,
+        weekStart,
+        duelId: gauntlet.duelId,
+        input,
+      }).catch((error) => {
+        console.error('Scout narration generation failed:', error);
+      });
+    }
+  } catch (error) {
+    // Decoration is strictly additive — never break the gauntlet read
+    console.error('Scout narration decoration failed:', error);
   }
 }
 

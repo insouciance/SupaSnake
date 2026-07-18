@@ -3,6 +3,10 @@
     {
       "path": "/api/discord/dispatch",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/analyst/cron",
+      "schedule": "0 7 * * *"
     }
   ]
 }

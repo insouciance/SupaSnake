@@ -11,7 +11,8 @@ export type ActionType =
   | 'purchase'
   | 'handle_check'
   | 'handle_claim'
-  | 'records_refresh';
+  | 'records_refresh'
+  | 'analyst';
 
 export const RATE_LIMITS: Record<ActionType, number> = {
   game_start: 5000,
@@ -24,6 +25,9 @@ export const RATE_LIMITS: Record<ActionType, number> = {
   // Identity v1 I2 (section 6.3): the lazy own-Chronicle records refresh
   // recomputes at most once a minute; session end refreshes regardless.
   records_refresh: 60_000,
+  // Identity v1 I4 (section 9.3): on-demand Analyst artifacts (run
+  // insight). Cache hits bypass this; only generations are gated.
+  analyst: 30_000,
 };
 
 interface RateLimitResult {

@@ -180,6 +180,9 @@ export async function GET(request: NextRequest) {
       // Aim telegraph meta-progression
       aimSystem,
       aimStats,
+      // Identity v1 I4 (section 9.2): weekly Analyst digest email
+      // opt-in. false pre-025 (column absent from the row).
+      emailDigestOptIn: settings?.email_digest_opt_in === true,
       // Trait reroll tokens (Design v2 Phase 3A) - 0 pre-migration-018
       rerollTokens:
         typeof player.player_reroll_tokens === 'number'
@@ -213,7 +216,7 @@ export async function PATCH(request: NextRequest) {
     // - Daily rewards (via /api/player/daily)
     // - Unlock purchases (via /api/collection with RPC cost deduction)
     // - Server-calculated regeneration
-    const { selected_dynasty, aim_system } = body;
+    const { selected_dynasty, aim_system, email_digest_opt_in } = body;
 
     const { data: player } = await supabase
       .from('players')
@@ -253,6 +256,34 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
       }
     }
+    // Identity v1 I4 (section 9.2): weekly digest email opt-in. Upsert
+    // so players without a settings row can still opt in. Pre-025 the
+    // column doesn't exist - report not-live, never a hard failure.
+    if (email_digest_opt_in !== undefined) {
+      if (typeof email_digest_opt_in !== 'boolean') {
+        return NextResponse.json({ error: 'Invalid opt-in value' }, { status: 400 });
+      }
+      const { error: digestUpdateError } = await supabase
+        .from('player_settings')
+        .upsert(
+          { player_id: player.id, email_digest_opt_in },
+          { onConflict: 'player_id' }
+        );
+      if (digestUpdateError) {
+        if (digestUpdateError.code === '42703') {
+          return NextResponse.json(
+            { error: 'Digest email is not live yet', live: false },
+            { status: 503 }
+          );
+        }
+        console.error('Failed to update email_digest_opt_in:', {
+          playerId: player.id,
+          error: digestUpdateError,
+        });
+        return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+      }
+    }
+
     if (selected_dynasty) {
       const { error: settingsUpdateError } = await supabase
         .from('player_settings')
