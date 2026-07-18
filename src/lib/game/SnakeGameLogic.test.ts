@@ -31,11 +31,25 @@ function eatFoods(game: SnakeGameLogic, count: number): void {
   }
 }
 
+/** Seeded mulberry32 PRNG: deterministic but able to escape rejection sampling. */
+function mulberry(seedInit: number): () => number {
+  let seed = seedInit;
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 describe('SnakeGameLogic', () => {
   let game: SnakeGameLogic;
 
   beforeEach(() => {
-    game = new SnakeGameLogic({ gridSize: 20 });
+    // PRIMAL for the generic mechanics suites: the default (COSMIC) now
+    // carries Flux wrap phases, so wall-collision behavior differs there.
+    game = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
   });
 
   describe('Initialization', () => {
@@ -513,18 +527,20 @@ describe('SnakeGameLogic', () => {
 
   describe('Speed Progression (per ruleset)', () => {
     it('should have the COSMIC Flux fixed speed on start (COSMIC default)', () => {
-      game.start();
-      expect(game.getSpeed()).toBe(160);
+      const cosmic = new SnakeGameLogic({ gridSize: 20 });
+      cosmic.start();
+      expect(cosmic.getSpeed()).toBe(160);
     });
 
     it('keeps speed fixed on the COSMIC ruleset', () => {
-      game.start();
-      const initialSpeed = game.getSpeed();
-      const state = game.getState();
-      game.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
-      game.tick();
+      const cosmic = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.COSMIC });
+      cosmic.start();
+      const initialSpeed = cosmic.getSpeed();
+      const state = cosmic.getState();
+      cosmic.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
+      cosmic.tick();
 
-      expect(game.getSpeed()).toBe(initialSpeed);
+      expect(cosmic.getSpeed()).toBe(initialSpeed);
     });
 
     it('keeps speed fixed on PRIMAL regardless of foods eaten', () => {
@@ -727,7 +743,6 @@ describe('SnakeGameLogic', () => {
     it.each<[DynastyName, number]>([
       ['PRIMAL', 12],
       ['CYBER', 12],
-      ['COSMIC', 12],
     ])('%s totals after %i foods match computeRunTotals exactly', (dynasty, foods) => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
@@ -742,6 +757,29 @@ describe('SnakeGameLogic', () => {
       expect(state.dnaCollected).toBe(expected.rawDna);
       expect(state.score).toBe(expected.score);
       expect(state.foodEaten).toBe(foods);
+    });
+
+    it('COSMIC totals equal the base recompute plus the reported combo bonus', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.COSMIC,
+        rng: () => 0.999,
+      });
+      engine.start();
+      eatFoods(engine, 12);
+
+      const expected = computeRunTotals('COSMIC', 12);
+      const state = engine.getState();
+      // Bounded-trust bookkeeping: totals decompose exactly into base + bonus
+      expect(state.dnaCollected).toBe(expected.rawDna + state.comboDnaBonus);
+      expect(state.score).toBe(expected.score + state.comboScoreBonus);
+      expect(state.foodEaten).toBe(12);
+      // Eating every tick with one glyph builds the full chain:
+      // per-food values 10,12,14,16,18,20,22 then 24 from chain 8 on
+      expect(state.maxChain).toBe(12);
+      expect(state.dnaCollected).toBe(232);
+      expect(state.comboDnaBonus).toBe(112);
+      expect(state.comboScoreBonus).toBe(112);
     });
 
     it('CYBER out-scores PRIMAL for the same foods once tiers kick in', () => {
@@ -936,6 +974,9 @@ describe('SnakeGameLogic', () => {
         extracted: true,
         endReason: 'extracted',
         deathPosition: null,
+        mutations: [],
+        phoenixTriggeredAtFood: null,
+        cosmic: null, // non-COSMIC runs carry no combo claim
       });
       expect(extractedPayload).toEqual({
         score: expected.score,
@@ -1015,6 +1056,697 @@ describe('SnakeGameLogic', () => {
       expect(state.foodEaten).toBe(0);
       expect(state.nextExitAtFood).toBe(15);
       expect(state.isPlaying).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // Design v2 Phase 2: Mutation Food
+  // =========================================================================
+
+  describe('Mutation food: spawn cadence', () => {
+    it('first spawn lands between food 15 and 25, ticksRemaining 40', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: mulberry(7),
+      });
+      engine.start();
+      let spawned: any = null;
+      engine.on('mutationSpawned', (data) => {
+        spawned = { ...(data as object), atFood: engine.getState().foodEaten };
+      });
+
+      eatFoods(engine, 14);
+      expect(spawned).toBeNull();
+      expect(engine.getState().mutationTile).toBeNull();
+
+      eatFoods(engine, 11); // through food 25 - the max threshold
+      expect(spawned).not.toBeNull();
+      expect(spawned.atFood).toBeGreaterThanOrEqual(15);
+      expect(spawned.atFood).toBeLessThanOrEqual(25);
+      expect(spawned.ticksRemaining).toBe(40);
+    });
+
+    it('never spawns while another mutation food is on the board', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 100,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999, // threshold 25, tile parked at (99,99)
+      });
+      engine.start();
+      let spawnCount = 0;
+      engine.on('mutationSpawned', () => {
+        spawnCount += 1;
+      });
+      eatFoods(engine, 40);
+      expect(spawnCount).toBe(1);
+    });
+
+    it('despawns after its tick window and reschedules 15-25 foods out', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.5, // reschedule roll = 20
+      });
+      engine.start();
+      let despawned = false;
+      engine.on('mutationDespawned', () => {
+        despawned = true;
+      });
+
+      const head = engine.getState().snake[0];
+      engine.placeFood({ x: 0, y: 0, z: 0 }); // off the march row
+      engine.placeMutation({ x: 0, y: 0, z: head.z + 5 }, 5);
+
+      for (let expected = 4; expected >= 1; expected--) {
+        engine.tick();
+        expect(engine.getState().mutationTicksRemaining).toBe(expected);
+        expect(engine.getState().mutationTile).not.toBeNull();
+      }
+      engine.tick();
+      expect(despawned).toBe(true);
+      const state = engine.getState();
+      expect(state.mutationTile).toBeNull();
+      expect(state.nextMutationAtFood).toBe(state.foodEaten + 20);
+    });
+
+    it('stops spawning at the 4-held stacking cap', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.2, // threshold 17
+      });
+      engine.start();
+      engine.grantMutation('wall_rush');
+      engine.grantMutation('shed');
+      engine.grantMutation('magnet_pulse');
+      engine.grantMutation('mirror_wager');
+      let spawnCount = 0;
+      engine.on('mutationSpawned', () => {
+        spawnCount += 1;
+      });
+      eatFoods(engine, 20);
+      expect(spawnCount).toBe(0);
+    });
+  });
+
+  describe('Mutation food: choice hold', () => {
+    function openChoice(rng: () => number = () => 0.3): SnakeGameLogic {
+      const engine = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        rng,
+      });
+      engine.start();
+      const head = engine.getState().snake[0];
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      engine.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+      engine.tick();
+      return engine;
+    }
+
+    it('eating the helix opens a choice-of-2 without growth or DNA', () => {
+      const engine = openChoice();
+      const state = engine.getState();
+      expect(state.pendingChoice).not.toBeNull();
+      expect(state.pendingChoice![0]).not.toBe(state.pendingChoice![1]);
+      expect(state.mutationTile).toBeNull();
+      expect(state.snake.length).toBe(3); // not food - no growth
+      expect(state.dnaCollected).toBe(0);
+      expect(state.foodEaten).toBe(0);
+    });
+
+    it('emits mutationChoice with the two options', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.3,
+      });
+      engine.start();
+      let options: any = null;
+      engine.on('mutationChoice', (data: any) => {
+        options = data.options;
+      });
+      const head = engine.getState().snake[0];
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      engine.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+      engine.tick();
+      expect(options).toHaveLength(2);
+      expect(engine.getState().pendingChoice).toEqual(options);
+    });
+
+    it('freezes the engine: ticks no-op, input is inactive, pause is refused', () => {
+      const engine = openChoice();
+      const before = engine.getState();
+      engine.tick();
+      engine.tick();
+      expect(engine.getState().snake).toEqual(before.snake);
+      expect(engine.setDirection('UP')).toBe('inactive');
+      engine.pause();
+      expect(engine.getState().isPaused).toBe(false); // NOT the pause state
+    });
+
+    it('chooseMutation holds the pick at the current food count and resumes', () => {
+      const engine = openChoice();
+      let picked: any = null;
+      engine.on('mutationPicked', (data) => {
+        picked = data;
+      });
+      const options = engine.getState().pendingChoice!;
+      expect(engine.chooseMutation(0)).toBe(true);
+
+      const state = engine.getState();
+      expect(state.pendingChoice).toBeNull();
+      expect(state.heldMutations).toEqual([{ id: options[0], atFood: 0 }]);
+      expect(picked.id).toBe(options[0]);
+
+      const headBefore = engine.getState().snake[0];
+      engine.tick(); // resumes instantly
+      expect(engine.getState().snake[0]).not.toEqual(headBefore);
+    });
+
+    it('declining takes neither and resumes', () => {
+      const engine = openChoice();
+      let declined = false;
+      engine.on('mutationDeclined', () => {
+        declined = true;
+      });
+      engine.declineMutation();
+      expect(declined).toBe(true);
+      expect(engine.getState().pendingChoice).toBeNull();
+      expect(engine.getState().heldMutations).toEqual([]);
+    });
+
+    it('chooseMutation is a no-op without a pending choice', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      expect(engine.chooseMutation(0)).toBe(false);
+      expect(engine.getState().heldMutations).toEqual([]);
+    });
+
+    it('offers never include already-held mutations', () => {
+      for (let seed = 1; seed <= 20; seed++) {
+        const engine = openChoice(mulberry(seed));
+        engine.chooseMutation(0);
+        const held = engine.getState().heldMutations[0].id;
+        // Open a second choice
+        const head = engine.getState().snake[0];
+        engine.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+        engine.tick();
+        const offer = engine.getState().pendingChoice!;
+        expect(offer).not.toContain(held);
+        expect(offer[0]).not.toBe(offer[1]);
+      }
+    });
+  });
+
+  describe('Mutation effects: physical behaviors', () => {
+    it('Overgrowth grows +2 extra segments per food and pays +20%', () => {
+      const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('overgrowth');
+      eatFoods(engine, 1);
+      const state = engine.getState();
+      expect(state.snake.length).toBe(3 + 1 + 2);
+      expect(state.dnaCollected).toBe(12); // round(10 x 1.2)
+    });
+
+    it('Shed resets the tail to length 8 every 25 foods and pays -10%', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      engine.grantMutation('shed');
+      eatFoods(engine, 24);
+      expect(engine.getState().snake.length).toBe(3 + 24);
+      eatFoods(engine, 1); // food 25 - the shed boundary
+      const state = engine.getState();
+      expect(state.snake.length).toBe(8);
+      expect(state.dnaCollected).toBe(
+        computeRunTotals('PRIMAL', 25, [{ id: 'shed', atFood: 0 }]).rawDna
+      );
+    });
+
+    it('Wall Rush slides along the wall (clockwise preference) instead of dying', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('wall_rush');
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+
+      for (let i = 0; i < 9; i++) engine.tick(); // head to (19,10)
+      expect(engine.getState().snake[0]).toEqual({ x: 19, y: 0, z: 10 });
+
+      engine.tick(); // into the wall -> slide
+      const state = engine.getState();
+      expect(state.isDeathSequence).toBe(false);
+      expect(state.isGameOver).toBe(false);
+      expect(state.direction).toBe('DOWN'); // clockwise of RIGHT
+      expect(state.snake[0]).toEqual({ x: 19, y: 0, z: 11 });
+    });
+
+    it('Wall Rush slides around the corner too (DOWN -> LEFT)', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('wall_rush');
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+
+      for (let i = 0; i < 10; i++) engine.tick(); // slide onto the right wall
+      for (let i = 0; i < 20; i++) engine.tick(); // ride the wall down + around
+      const state = engine.getState();
+      expect(state.isGameOver).toBe(false);
+      expect(state.direction).toBe('LEFT'); // clockwise of DOWN at the corner
+      expect(state.snake[0].z).toBe(19);
+    });
+
+    it('Magnet Pulse pulls food within 2 cells one step toward the head', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('magnet_pulse');
+      engine.placeFood({ x: 11, y: 0, z: 12 }); // 2 below next head cell
+
+      engine.tick(); // head -> (11,10); food pulled (11,12) -> (11,11)
+      expect(engine.getState().food).toEqual({ x: 11, y: 0, z: 11 });
+    });
+
+    it('Magnet Pulse ignores food beyond its 2-cell radius', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('magnet_pulse');
+      engine.placeFood({ x: 11, y: 0, z: 14 });
+      engine.tick();
+      expect(engine.getState().food).toEqual({ x: 11, y: 0, z: 14 });
+    });
+
+    it('Magnet Pulse delays the next exit portal by 4 foods', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0, // base reroll interval 8
+      });
+      engine.start();
+      engine.grantMutation('magnet_pulse');
+      const head = engine.getState().snake[0];
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      engine.placeExit({ x: 0, y: 0, z: head.z + 5 }, 1);
+      engine.tick(); // portal despawns
+      expect(engine.getState().exitTile).toBeNull();
+      expect(engine.getState().nextExitAtFood).toBe(
+        engine.getState().foodEaten + 8 + 4
+      );
+    });
+
+    it('Time Dilation slows fixed-speed dynasties by 40ms', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      expect(engine.getSpeed()).toBe(200);
+      engine.grantMutation('time_dilation');
+      expect(engine.getSpeed()).toBe(240);
+    });
+
+    it('Time Dilation runs CYBER one tier (5 foods) behind on the speed curve', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.CYBER,
+        rng: () => 0.999,
+      });
+      engine.start();
+      eatFoods(engine, 10);
+      expect(engine.getSpeed()).toBe(RULESETS.CYBER.speedForFood(10));
+      engine.grantMutation('time_dilation');
+      expect(engine.getSpeed()).toBe(RULESETS.CYBER.speedForFood(5));
+    });
+
+    it('Splitter spawns food in pairs, each worth 70%', () => {
+      const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('splitter');
+      eatFoods(engine, 1); // wave empties -> pair spawns
+      const state = engine.getState();
+      expect(state.foods).toHaveLength(2);
+      expect(state.dnaCollected).toBe(7); // round(10 x 0.7)
+    });
+
+    it('Gold Trail clamps the live portal to 60 ticks and shortens future ones', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      const head = engine.getState().snake[0];
+      engine.placeExit({ x: 0, y: 0, z: head.z + 5 });
+      expect(engine.getState().exitTicksRemaining).toBe(90);
+      engine.grantMutation('gold_trail');
+      expect(engine.getState().exitTicksRemaining).toBe(60);
+    });
+
+    it('Gold Trail portals spawned later open with the 60-tick window', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      engine.grantMutation('gold_trail');
+      let ticksAtSpawn = 0;
+      engine.on('exitSpawned', (data: any) => {
+        ticksAtSpawn = data.ticksRemaining;
+      });
+      eatFoods(engine, 15);
+      expect(ticksAtSpawn).toBe(60);
+      // Golden math rides the shared modifier: foods 5,10,15 after pickup x3
+      expect(engine.getState().dnaCollected).toBe(
+        computeRunTotals('PRIMAL', 15, [{ id: 'gold_trail', atFood: 0 }]).rawDna
+      );
+    });
+  });
+
+  describe('Mutation effects: Phoenix', () => {
+    it('absorbs exactly one death: rebirth at length 8, rewound 3 cells', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      engine.grantMutation('phoenix');
+      eatFoods(engine, 8); // length 11, head at (18,10)
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      let phoenixEvent: any = null;
+      engine.on('phoenixTriggered', (data) => {
+        phoenixEvent = data;
+      });
+
+      engine.tick(); // head to (19,10)
+      engine.tick(); // into the wall -> phoenix
+      const state = engine.getState();
+      expect(phoenixEvent).not.toBeNull();
+      expect(phoenixEvent.atFood).toBe(8);
+      expect(state.isDeathSequence).toBe(false);
+      expect(state.isGameOver).toBe(false);
+      expect(state.phoenixAvailable).toBe(false);
+      expect(state.phoenixTriggeredAtFood).toBe(8);
+      expect(state.snake).toHaveLength(8);
+      expect(state.snake[0]).toEqual({ x: 16, y: 0, z: 10 }); // rewound 3
+      expect(state.direction).toBe('RIGHT'); // heading re-derived from the body
+
+      // The second death is real
+      for (let i = 0; i < 4; i++) engine.tick(); // back into the wall
+      expect(engine.getState().isDeathSequence).toBe(true);
+    });
+
+    it('voids economic benefits from the trigger food onward (exact parity)', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      engine.grantMutation('overgrowth');
+      engine.grantMutation('phoenix');
+      eatFoods(engine, 5); // head (15,10), trigger comes at food 5
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      for (let i = 0; i < 5; i++) engine.tick(); // wall at x=19 -> phoenix
+      expect(engine.getState().phoenixTriggeredAtFood).toBe(5);
+
+      eatFoods(engine, 3); // foods 6-8, post-trigger: +20% voided
+      const picks = engine.getState().heldMutations;
+      expect(engine.getState().dnaCollected).toBe(
+        computeRunTotals('PRIMAL', 8, picks, 5).rawDna
+      );
+    });
+
+    it('reports the trigger in the gameOver payload', async () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      engine.grantMutation('phoenix');
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      let gameOver: GameOverData | null = null;
+      engine.on('gameOver', (data) => {
+        gameOver = data as GameOverData;
+      });
+
+      for (let i = 0; i < 12; i++) engine.tick(); // wall -> phoenix -> retrace
+      for (let i = 0; i < 25; i++) engine.tick(); // second wall -> real death
+      await new Promise((resolve) => setTimeout(resolve, 900));
+
+      expect(gameOver).not.toBeNull();
+      expect(gameOver!.phoenixTriggeredAtFood).toBe(0);
+      expect(gameOver!.mutations).toEqual([{ id: 'phoenix', atFood: 0 }]);
+    });
+  });
+
+  // =========================================================================
+  // Design v2 Phase 2: COSMIC Flux
+  // =========================================================================
+
+  describe('COSMIC Flux: constellation groups + combo chain', () => {
+    function cosmicEngine(rng: () => number = () => 0.999): SnakeGameLogic {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.COSMIC,
+        rng,
+      });
+      engine.start();
+      return engine;
+    }
+
+    it('spawns foods as clustered glyph groups of 3', () => {
+      const engine = cosmicEngine(mulberry(11));
+      const state = engine.getState();
+      expect(state.foods).toHaveLength(3);
+      expect(state.constellationGlyph).toBeGreaterThanOrEqual(0);
+      expect(state.constellationGlyph).toBeLessThan(3);
+      const anchor = state.foods[0];
+      for (const food of state.foods) {
+        expect(Math.abs(food.x - anchor.x)).toBeLessThanOrEqual(4);
+        expect(Math.abs(food.z - anchor.z)).toBeLessThanOrEqual(4);
+        expect(
+          state.snake.some((s) => s.x === food.x && s.z === food.z)
+        ).toBe(false);
+      }
+    });
+
+    it('Splitter widens COSMIC groups to 4', () => {
+      const engine = cosmicEngine();
+      engine.grantMutation('splitter');
+      engine.placeFood({ x: engine.getState().snake[0].x + 1, y: 0, z: 30 });
+      engine.tick(); // eat the single placed food -> new wave
+      expect(engine.getState().foods).toHaveLength(4);
+    });
+
+    it('chains same-glyph eats within the 8-tick window: x1.2 -> x2.4', () => {
+      const engine = cosmicEngine();
+      const z = engine.getState().snake[0].z;
+
+      engine.placeFood({ x: 31, y: 0, z }, 2);
+      engine.tick(); // eat 1: chain 1, 10 DNA
+      expect(engine.getState().chainLength).toBe(1);
+      expect(engine.getState().dnaCollected).toBe(10);
+
+      engine.placeFood({ x: 33, y: 0, z }, 2);
+      engine.tick();
+      engine.tick(); // eat 2 after a 2-tick gap: chain 2, +12
+      const state = engine.getState();
+      expect(state.chainLength).toBe(2);
+      expect(state.comboMultiplier).toBeCloseTo(1.2, 10);
+      expect(state.dnaCollected).toBe(22);
+      expect(state.comboDnaBonus).toBe(2);
+      expect(state.score).toBe(22);
+    });
+
+    it('a different glyph resets the chain', () => {
+      const engine = cosmicEngine();
+      const z = engine.getState().snake[0].z;
+
+      engine.placeFood({ x: 31, y: 0, z }, 0);
+      engine.tick(); // chain 1
+      engine.placeFood({ x: 32, y: 0, z }, 0);
+      engine.tick(); // chain 2
+      expect(engine.getState().chainLength).toBe(2);
+
+      engine.placeFood({ x: 33, y: 0, z }, 1); // wrong glyph
+      engine.tick();
+      expect(engine.getState().chainLength).toBe(1);
+      expect(engine.getState().comboMultiplier).toBe(1);
+    });
+
+    it('more than 8 ticks between eats breaks the chain', () => {
+      const engine = cosmicEngine();
+      const z = engine.getState().snake[0].z;
+
+      engine.placeFood({ x: 31, y: 0, z }, 2);
+      engine.tick(); // chain 1 at x=31
+      engine.placeFood({ x: 41, y: 0, z }, 2); // 10 cells away: 10-tick gap
+      for (let i = 0; i < 10; i++) engine.tick();
+      expect(engine.getState().foodEaten).toBe(2);
+      expect(engine.getState().chainLength).toBe(1); // window missed
+
+      // But an 8-tick gap keeps it alive
+      engine.placeFood({ x: 49, y: 0, z }, 2); // 8 cells -> 8-tick gap
+      for (let i = 0; i < 8; i++) engine.tick();
+      expect(engine.getState().foodEaten).toBe(3);
+      expect(engine.getState().chainLength).toBe(2);
+    });
+
+    it('caps the combo at x2.4 from chain 8 (10,12,...,24 then flat 24)', () => {
+      const engine = cosmicEngine();
+      eatFoods(engine, 10);
+      const state = engine.getState();
+      expect(state.maxChain).toBe(10);
+      expect(state.comboMultiplier).toBe(2.4);
+      // 10+12+14+16+18+20+22+24+24+24
+      expect(state.dnaCollected).toBe(184);
+      expect(state.comboDnaBonus).toBe(84);
+    });
+  });
+
+  describe('COSMIC Flux: wrap phases', () => {
+    function parkedCosmic(gridSize = 20): SnakeGameLogic {
+      const engine = new SnakeGameLogic({
+        gridSize,
+        ruleset: RULESETS.COSMIC,
+        rng: () => 0.999,
+      });
+      engine.start();
+      engine.placeFood({ x: 0, y: 0, z: 0 }); // off the march row
+      return engine;
+    }
+
+    it('opens every run with a full open-phase window', () => {
+      const engine = parkedCosmic();
+      const state = engine.getState();
+      expect(state.fluxPhase).toBe('open');
+      expect(state.fluxTicksRemaining).toBe(75);
+      expect(state.fluxTelegraph).toBe(false);
+    });
+
+    it('non-COSMIC dynasties have no flux phase', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      expect(engine.getState().fluxPhase).toBeNull();
+    });
+
+    it('wraps the snake across the edge while the walls are open', () => {
+      const engine = parkedCosmic();
+      for (let i = 0; i < 10; i++) engine.tick(); // (10,10) -> wraps at 19
+      const state = engine.getState();
+      expect(state.isGameOver).toBe(false);
+      expect(state.isDeathSequence).toBe(false);
+      expect(state.snake[0]).toEqual({ x: 0, y: 0, z: 10 });
+    });
+
+    it('raises the telegraph ~2s before the phase flips, then flips closed', () => {
+      const engine = parkedCosmic();
+      const telegraphs: any[] = [];
+      const changes: any[] = [];
+      engine.on('fluxTelegraph', (data) => telegraphs.push(data));
+      engine.on('fluxPhaseChange', (data) => changes.push(data));
+
+      for (let i = 0; i < 63; i++) engine.tick(); // remaining hits 12
+      expect(telegraphs).toHaveLength(1);
+      expect(telegraphs[0].nextPhase).toBe('closed');
+      expect(engine.getState().fluxTelegraph).toBe(true);
+      expect(changes).toHaveLength(0);
+
+      for (let i = 0; i < 12; i++) engine.tick(); // remaining hits 0 -> flip
+      expect(changes).toHaveLength(1);
+      expect(changes[0].phase).toBe('closed');
+      const state = engine.getState();
+      expect(state.fluxPhase).toBe('closed');
+      expect(state.fluxTicksRemaining).toBe(50);
+      expect(state.fluxTelegraph).toBe(false);
+    });
+
+    it('walls kill while closed', () => {
+      const engine = parkedCosmic();
+      for (let i = 0; i < 75; i++) engine.tick(); // phase -> closed, head (5,10)
+      expect(engine.getState().fluxPhase).toBe('closed');
+      for (let i = 0; i < 15; i++) engine.tick(); // march into the wall
+      expect(engine.getState().isDeathSequence).toBe(true);
+    });
+
+    it('Wall Rush still slides during the closed phase', () => {
+      const engine = parkedCosmic();
+      engine.grantMutation('wall_rush');
+      for (let i = 0; i < 75; i++) engine.tick(); // closed, head (5,10)
+      for (let i = 0; i < 15; i++) engine.tick(); // wall -> slide
+      const state = engine.getState();
+      expect(state.isDeathSequence).toBe(false);
+      expect(state.direction).toBe('DOWN');
+    });
+
+    it('cycles back to open after the closed window', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.COSMIC,
+        rng: () => 0.999,
+      });
+      engine.start();
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      const changes: any[] = [];
+      engine.on('fluxPhaseChange', (data) => changes.push(data));
+
+      for (let i = 0; i < 75; i++) engine.tick(); // open -> closed, head (45,30)
+      engine.setDirection('DOWN');
+      for (let i = 0; i < 25; i++) engine.tick();
+      engine.setDirection('LEFT');
+      for (let i = 0; i < 25; i++) engine.tick(); // closed window survived
+
+      expect(changes.map((c) => c.phase)).toEqual(['closed', 'open']);
+      const state = engine.getState();
+      expect(state.fluxPhase).toBe('open');
+      expect(state.fluxTicksRemaining).toBe(75);
+      expect(state.isGameOver).toBe(false);
+    });
+
+    it('the choice hold freezes the flux clock (deterministic pause)', () => {
+      const engine = parkedCosmic();
+      const head = engine.getState().snake[0];
+      engine.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+      engine.tick(); // opens the choice
+      expect(engine.getState().pendingChoice).not.toBeNull();
+      const frozen = engine.getState().fluxTicksRemaining;
+      for (let i = 0; i < 5; i++) engine.tick();
+      expect(engine.getState().fluxTicksRemaining).toBe(frozen);
+      engine.chooseMutation(0);
+      engine.tick();
+      expect(engine.getState().fluxTicksRemaining).toBe(frozen - 1);
+    });
+  });
+
+  describe('Phase 2 restart hygiene', () => {
+    it('restart clears mutations, choice, phoenix, combo, and flux state', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.COSMIC,
+        rng: () => 0.5,
+      });
+      engine.start();
+      engine.grantMutation('phoenix');
+      engine.grantMutation('overgrowth');
+      eatFoods(engine, 3);
+      const head = engine.getState().snake[0];
+      engine.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+      engine.tick();
+      expect(engine.getState().pendingChoice).not.toBeNull();
+
+      engine.start();
+      const state = engine.getState();
+      expect(state.heldMutations).toEqual([]);
+      expect(state.pendingChoice).toBeNull();
+      expect(state.mutationTile).toBeNull();
+      expect(state.phoenixAvailable).toBe(false);
+      expect(state.phoenixTriggeredAtFood).toBeNull();
+      expect(state.chainLength).toBe(0);
+      expect(state.comboDnaBonus).toBe(0);
+      expect(state.maxChain).toBe(0);
+      expect(state.fluxPhase).toBe('open');
+      expect(state.fluxTicksRemaining).toBe(75);
+      expect(state.nextMutationAtFood).toBe(20); // rng 0.5 -> 20
+      expect(state.foods).toHaveLength(3);
     });
   });
 });

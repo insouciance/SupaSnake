@@ -7,15 +7,41 @@
  * extraction through a periodically spawning exit portal. All payout math
  * is delegated to the shared ruleset module so the server can recompute
  * it exactly from the raw food count.
+ *
+ * Design v2 Phase 2 adds:
+ * - Mutation food (GAME_DESIGN_V2.md section 5): a rare timed pickup that
+ *   opens a choice-of-2 "choice hold" - the engine freezes (tick() no-ops,
+ *   inputs are inactive) without entering the pause state, so the pause
+ *   menu never renders over the choice overlay. [P]hysical effects live
+ *   here; [E]conomic effects flow through the shared foodValueModifier so
+ *   the server recompute stays exact.
+ * - COSMIC Flux (section 3.3): constellation food groups with combo
+ *   chaining, and wrap phases where the arena edges cycle between wrapping
+ *   (open) and killing (closed) with a telegraph before each transition.
+ *
+ * RNG discipline: the injectable rng drives everything that tests need to
+ * be deterministic (exit/mutation cadence rolls, mutation offers, mutation
+ * tile placement, constellation glyphs). Food cell placement stays on
+ * Math.random - placement affects where things are, never what they pay.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
   FOOD_BASE_SCORE,
   RULESETS,
+  cosmicComboMultiplier,
   rollExitInterval,
   type DynastyRuleset,
 } from '@/shared/game/rulesets';
+import {
+  MUTATION_PHYSICS,
+  MUTATION_SPAWN,
+  foodValueModifier,
+  rollMutationInterval,
+  rollMutationOffer,
+  type MutationId,
+  type MutationPick,
+} from '@/shared/game/mutations';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -41,9 +67,29 @@ export interface Position {
 /** How a run ended: crashed into something, or left through the exit portal. */
 export type EndReason = 'died' | 'extracted';
 
+/** COSMIC wrap-phase state: edges wrap while open, kill while closed. */
+export type FluxPhase = 'open' | 'closed';
+
+/** COSMIC bounded-trust combo summary reported in the end-of-run payload. */
+export interface CosmicComboSummary {
+  /** Total DNA earned above the no-combo recompute. */
+  comboDnaBonus: number;
+  /** Total score earned above the no-combo recompute. */
+  comboScoreBonus: number;
+  /** Longest constellation chain of the run. */
+  maxChain: number;
+}
+
 export interface GameState {
   snake: Position[];
+  /** Primary food cell (= foods[0]) - kept for renderer/store compatibility. */
   food: Position;
+  /**
+   * All live food cells. One food normally; Splitter adds a second;
+   * COSMIC spawns constellation groups of 3 (4 with Splitter). A new
+   * wave spawns only when every food of the current one is eaten.
+   */
+  foods: Position[];
   direction: Direction;
   /** Display points (ruleset-multiplied) - no longer the food count. */
   score: number;
@@ -59,6 +105,40 @@ export interface GameState {
   nextExitAtFood: number;
   /** True once the run ended through the exit portal. */
   extracted: boolean;
+  /** Mutation food cell, when one is live. */
+  mutationTile: Position | null;
+  /** Ticks until the live mutation food despawns. */
+  mutationTicksRemaining: number;
+  /** Food count at which the next mutation food spawns. */
+  nextMutationAtFood: number;
+  /** Mutations held this run, in pick order. */
+  heldMutations: MutationPick[];
+  /**
+   * The live choice-of-2 offer. While non-null the engine is in "choice
+   * hold": tick() no-ops and direction input is inactive, but this is NOT
+   * the pause state - the pause menu must not render.
+   */
+  pendingChoice: [MutationId, MutationId] | null;
+  /** True while a held Phoenix can still absorb one death. */
+  phoenixAvailable: boolean;
+  /** Food count at the Phoenix trigger, null if never triggered. */
+  phoenixTriggeredAtFood: number | null;
+  /** COSMIC: glyph (0..2) of the current constellation group, else null. */
+  constellationGlyph: number | null;
+  /** COSMIC: current chain length (1 = no chain yet). */
+  chainLength: number;
+  /** COSMIC: combo multiplier in effect after the last eat. */
+  comboMultiplier: number;
+  /** COSMIC: running combo bonus accumulators for the bounded-trust claim. */
+  comboDnaBonus: number;
+  comboScoreBonus: number;
+  maxChain: number;
+  /** COSMIC: wrap-phase state, null outside COSMIC. */
+  fluxPhase: FluxPhase | null;
+  /** COSMIC: ticks until the wrap phase flips. */
+  fluxTicksRemaining: number;
+  /** COSMIC: true during the ~2s warning window before a phase flip. */
+  fluxTelegraph: boolean;
   isPlaying: boolean;
   isGameOver: boolean;
   isPaused: boolean;
@@ -75,6 +155,12 @@ export interface GameOverData {
   extracted: boolean;
   endReason: EndReason;
   deathPosition: Position | null;
+  /** Mutations held at run end, in pick order (server validates these). */
+  mutations: MutationPick[];
+  /** Food count at the Phoenix trigger (honest-client analytics + payout). */
+  phoenixTriggeredAtFood: number | null;
+  /** COSMIC only: the bounded-trust combo claim. Null on other dynasties. */
+  cosmic: CosmicComboSummary | null;
 }
 
 type GameEvent =
@@ -87,7 +173,15 @@ type GameEvent =
   | 'deathSequence'
   | 'exitSpawned'
   | 'exitDespawned'
-  | 'extracted';
+  | 'extracted'
+  | 'mutationSpawned'
+  | 'mutationDespawned'
+  | 'mutationChoice'
+  | 'mutationPicked'
+  | 'mutationDeclined'
+  | 'phoenixTriggered'
+  | 'fluxTelegraph'
+  | 'fluxPhaseChange';
 type EventCallback = (data?: unknown) => void;
 
 interface GameOptions {
@@ -95,17 +189,33 @@ interface GameOptions {
   initialLength?: number;
   initialSpeed?: number;
   /**
-   * Dynasty ruleset driving speed + scoring. Defaults to the COSMIC
-   * placeholder (fixed speed, flat food value). The page swaps in the
-   * equipped snake's ruleset via setRuleset once the collection resolves.
+   * Dynasty ruleset driving speed + scoring. Defaults to COSMIC. The page
+   * swaps in the equipped snake's ruleset via setRuleset once the
+   * collection resolves (always before a run starts).
    */
   ruleset?: DynastyRuleset;
   /**
-   * Random source for extraction-spawn timing (injectable for
-   * deterministic tests). Never used for scoring.
+   * Random source for cadence rolls, mutation offers/placement, and
+   * constellation glyphs (injectable for deterministic tests). Never used
+   * for scoring.
    */
   rng?: () => number;
 }
+
+const OPPOSITES: Record<Direction, Direction> = {
+  UP: 'DOWN',
+  DOWN: 'UP',
+  LEFT: 'RIGHT',
+  RIGHT: 'LEFT',
+};
+
+/** Wall Rush slide preference: try the clockwise perpendicular first. */
+const CLOCKWISE: Record<Direction, Direction> = {
+  UP: 'RIGHT',
+  RIGHT: 'DOWN',
+  DOWN: 'LEFT',
+  LEFT: 'UP',
+};
 
 /**
  * SnakeGameLogic Class
@@ -128,6 +238,9 @@ export class SnakeGameLogic {
    */
   private directionQueue: Direction[];
   private static readonly MAX_QUEUED_DIRECTIONS = 3;
+  /** COSMIC chain internals: glyph of the previous eat + ticks since it. */
+  private lastEatGlyph: number | null = null;
+  private ticksSinceLastEat = 0;
 
   constructor(options: GameOptions = {}) {
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
@@ -145,6 +258,7 @@ export class SnakeGameLogic {
     return {
       snake: [],
       food: { x: 0, y: 0, z: 0 },
+      foods: [],
       direction: 'RIGHT',
       score: 0,
       dnaCollected: 0,
@@ -153,6 +267,22 @@ export class SnakeGameLogic {
       exitTicksRemaining: 0,
       nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
       extracted: false,
+      mutationTile: null,
+      mutationTicksRemaining: 0,
+      nextMutationAtFood: rollMutationInterval(this.rng),
+      heldMutations: [],
+      pendingChoice: null,
+      phoenixAvailable: false,
+      phoenixTriggeredAtFood: null,
+      constellationGlyph: null,
+      chainLength: 0,
+      comboMultiplier: 1,
+      comboDnaBonus: 0,
+      comboScoreBonus: 0,
+      maxChain: 0,
+      fluxPhase: null,
+      fluxTicksRemaining: 0,
+      fluxTelegraph: false,
       isPlaying: false,
       isGameOver: false,
       isPaused: false,
@@ -174,28 +304,22 @@ export class SnakeGameLogic {
       snake.push({ x: centerX - i, y: 0, z: centerZ });
     }
 
-    this.state = {
-      snake,
-      food: { x: 0, y: 0, z: 0 },
-      direction: 'RIGHT',
-      score: 0,
-      dnaCollected: 0,
-      foodEaten: 0,
-      exitTile: null,
-      exitTicksRemaining: 0,
-      nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
-      extracted: false,
-      isPlaying: true,
-      isGameOver: false,
-      isPaused: false,
-      isDeathSequence: false,
-      startTime: Date.now(),
-      deathPosition: null,
-    };
+    this.state = this.createInitialState();
+    this.state.snake = snake;
+    this.state.isPlaying = true;
+    this.state.startTime = Date.now();
+
+    // COSMIC Flux: every run opens with a full open-phase window
+    if (this.ruleset.flux) {
+      this.state.fluxPhase = 'open';
+      this.state.fluxTicksRemaining = this.ruleset.flux.openTicks;
+    }
 
     this.speed = this.ruleset.speedForFood(0);
     this.directionQueue = [];
-    this.spawnFood();
+    this.lastEatGlyph = null;
+    this.ticksSinceLastEat = 0;
+    this.spawnFoods();
     this.emit('gameStart');
   }
 
@@ -204,13 +328,17 @@ export class SnakeGameLogic {
    * the engine on mount, before the equipped snake's dynasty arrives from
    * the collection API. Takes effect immediately: speed follows the new
    * ruleset's curve at the current food count, and (outside a live run)
-   * the first-exit threshold follows the new cadence.
+   * the first-exit threshold and flux state follow the new ruleset.
    */
   setRuleset(ruleset: DynastyRuleset): void {
     this.ruleset = ruleset;
-    this.speed = this.ruleset.speedForFood(this.state.foodEaten);
+    this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     if (!this.state.isPlaying && !this.state.exitTile) {
       this.state.nextExitAtFood = this.ruleset.extraction.firstExitAtFood;
+      this.state.fluxPhase = null;
+      this.state.fluxTicksRemaining = 0;
+      this.state.fluxTelegraph = false;
+      this.state.constellationGlyph = null;
     }
   }
 
@@ -227,7 +355,13 @@ export class SnakeGameLogic {
       ...this.state,
       snake: this.state.snake.map(s => ({ ...s })),
       food: { ...this.state.food },
+      foods: this.state.foods.map(f => ({ ...f })),
       exitTile: this.state.exitTile ? { ...this.state.exitTile } : null,
+      mutationTile: this.state.mutationTile ? { ...this.state.mutationTile } : null,
+      heldMutations: this.state.heldMutations.map(m => ({ ...m })),
+      pendingChoice: this.state.pendingChoice
+        ? [...this.state.pendingChoice]
+        : null,
     };
   }
 
@@ -253,16 +387,14 @@ export class SnakeGameLogic {
    * callers that ignore it.
    */
   setDirection(dir: Direction): SetDirectionResult {
-    if (!this.state.isPlaying || this.state.isGameOver || this.state.isPaused) {
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isPaused ||
+      this.state.pendingChoice !== null
+    ) {
       return 'inactive';
     }
-
-    const opposites: Record<Direction, Direction> = {
-      UP: 'DOWN',
-      DOWN: 'UP',
-      LEFT: 'RIGHT',
-      RIGHT: 'LEFT',
-    };
 
     const reference =
       this.directionQueue.length > 0
@@ -270,7 +402,7 @@ export class SnakeGameLogic {
         : this.state.direction;
 
     if (dir === reference) return 'duplicate';
-    if (dir === opposites[reference]) return 'reversal';
+    if (dir === OPPOSITES[reference]) return 'reversal';
     if (this.directionQueue.length >= SnakeGameLogic.MAX_QUEUED_DIRECTIONS) {
       return 'queue_full';
     }
@@ -289,10 +421,19 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Pause the game
+   * Pause the game. No-op during the mutation choice hold - the choice
+   * overlay owns the freeze, and allowing pause underneath would let the
+   * pause menu fight the choice UI.
    */
   pause(): void {
-    if (!this.state.isPlaying || this.state.isGameOver || this.state.isDeathSequence) return;
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isDeathSequence ||
+      this.state.pendingChoice !== null
+    ) {
+      return;
+    }
     this.state.isPaused = true;
     this.emit('pause');
   }
@@ -328,7 +469,15 @@ export class SnakeGameLogic {
    * Game tick - advance one step
    */
   tick(): void {
-    if (!this.state.isPlaying || this.state.isGameOver || this.state.isPaused || this.state.isDeathSequence) return;
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isPaused ||
+      this.state.isDeathSequence ||
+      this.state.pendingChoice !== null
+    ) {
+      return;
+    }
 
     // Consume exactly one buffered input per tick
     const queued = this.directionQueue.shift();
@@ -337,13 +486,35 @@ export class SnakeGameLogic {
     }
 
     const head = this.state.snake[0];
-    const newHead = this.getNextPosition(head, this.state.direction);
+    let newHead = this.getNextPosition(head, this.state.direction);
+    let wallHit = this.checkWallCollision(newHead);
+
+    // COSMIC Flux: while the walls are open, edges wrap to the opposite side
+    if (wallHit && this.ruleset.flux && this.state.fluxPhase === 'open') {
+      newHead = this.wrapPosition(newHead);
+      wallHit = false;
+    }
+
+    // Wall Rush: a wall hit becomes a slide along the wall (clockwise
+    // perpendicular preferred, counter-clockwise fallback). A corner or a
+    // body-blocked slide still kills - Wall Rush is not a corner pardon.
+    if (wallHit && this.hasMutation('wall_rush')) {
+      const slide = this.trySlide(head);
+      if (slide) {
+        this.state.direction = slide.dir;
+        newHead = slide.pos;
+        wallHit = false;
+      }
+    }
+
+    const exitExistedAtTickStart = this.state.exitTile !== null;
+    const mutationExistedAtTickStart = this.state.mutationTile !== null;
 
     // Exit-portal collision checks first: the portal is always in-bounds
     // and never on the snake, so stepping onto it ends the run banked -
-    // no death sequence on the way out.
-    const exitExistedAtTickStart = this.state.exitTile !== null;
+    // no death sequence on the way out. (A wrapped head can land on it.)
     if (
+      !wallHit &&
       this.state.exitTile &&
       newHead.x === this.state.exitTile.x &&
       newHead.z === this.state.exitTile.z
@@ -354,13 +525,27 @@ export class SnakeGameLogic {
       return;
     }
 
-    if (this.checkWallCollision(newHead) || this.checkSelfCollision(newHead)) {
+    if (wallHit || this.checkSelfCollision(newHead)) {
+      // Phoenix: absorb exactly one death - rebirth consumes the tick
+      if (this.state.phoenixAvailable) {
+        this.triggerPhoenix(newHead);
+        this.emit('tick');
+        return;
+      }
       // Start death sequence instead of immediate game over
       this.startDeathSequence(newHead);
       return;
     }
 
-    const ateFood = this.checkFoodCollision(newHead);
+    // Mutation food pickup: the helix is not food (no growth, no DNA) -
+    // stepping onto it opens the choice-of-2 hold after the move resolves.
+    const ateMutation =
+      this.state.mutationTile !== null &&
+      newHead.x === this.state.mutationTile.x &&
+      newHead.z === this.state.mutationTile.z;
+
+    const foodIndex = this.findFoodIndex(newHead);
+    const ateFood = foodIndex >= 0;
 
     this.state.snake.unshift(newHead);
 
@@ -368,21 +553,113 @@ export class SnakeGameLogic {
       const collectedPosition = { ...newHead }; // Position where food was eaten
       this.state.foodEaten += 1;
       const n = this.state.foodEaten;
-      this.state.score += Math.round(FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n));
-      this.state.dnaCollected += this.ruleset.foodDnaValue(n);
-      this.speed = this.ruleset.speedForFood(n);
-      this.spawnFood();
+
+      // COSMIC constellation chain: same glyph as the previous eat within
+      // the window extends the chain; anything else resets it.
+      let combo = 1;
+      if (this.ruleset.constellation) {
+        const glyph = this.state.constellationGlyph ?? 0;
+        const withinWindow =
+          this.ticksSinceLastEat <= this.ruleset.constellation.chainWindowTicks;
+        if (
+          this.state.chainLength > 0 &&
+          this.lastEatGlyph === glyph &&
+          withinWindow
+        ) {
+          this.state.chainLength += 1;
+        } else {
+          this.state.chainLength = 1;
+        }
+        this.lastEatGlyph = glyph;
+        this.ticksSinceLastEat = 0;
+        combo = cosmicComboMultiplier(this.state.chainLength);
+        this.state.comboMultiplier = combo;
+        this.state.maxChain = Math.max(this.state.maxChain, this.state.chainLength);
+      }
+
+      // Per-food value: base x combo x mutation modifier, one round per
+      // food - mirrors computeRunTotals exactly (combo aside, which the
+      // server clamps via the bounded-trust summary).
+      const mod = foodValueModifier(
+        this.state.heldMutations,
+        n,
+        this.state.phoenixTriggeredAtFood
+      );
+      const baseDna = this.ruleset.foodDnaValue(n);
+      const baseScore = Math.round(
+        FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
+      );
+      const dnaNoCombo = Math.round(baseDna * mod);
+      const dnaValue = Math.round(baseDna * combo * mod);
+      const scoreValue = Math.round(
+        FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n) * combo
+      );
+      this.state.dnaCollected += dnaValue;
+      this.state.score += scoreValue;
+      this.state.comboDnaBonus += dnaValue - dnaNoCombo;
+      this.state.comboScoreBonus += scoreValue - baseScore;
+
+      // Overgrowth: +2 extra segments per food (the head unshift above is
+      // the normal +1 growth - the tail is simply not popped)
+      if (this.hasMutation('overgrowth')) {
+        const tail = this.state.snake[this.state.snake.length - 1];
+        for (let i = 0; i < MUTATION_PHYSICS.overgrowthExtraSegments; i++) {
+          this.state.snake.push({ ...tail });
+        }
+      }
+
+      // Shed: every 25 foods after pickup, the tail resets to length 8
+      const shedPick = this.state.heldMutations.find((m) => m.id === 'shed');
+      if (
+        shedPick &&
+        n > shedPick.atFood &&
+        (n - shedPick.atFood) % MUTATION_PHYSICS.shedEveryFoods === 0 &&
+        this.state.snake.length > MUTATION_PHYSICS.shedResetLength
+      ) {
+        this.state.snake.length = MUTATION_PHYSICS.shedResetLength;
+      }
+
+      this.speed = this.effectiveSpeedForFood(n);
+
+      // Remove the eaten food; a new wave spawns only once all are eaten
+      this.state.foods.splice(foodIndex, 1);
+      if (this.state.foods.length === 0) {
+        this.spawnFoods();
+      } else {
+        this.state.food = { ...this.state.foods[0] };
+      }
+
       if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
         this.spawnExit();
+      }
+      if (
+        !this.state.mutationTile &&
+        !ateMutation &&
+        this.state.heldMutations.length < MUTATION_SPAWN.maxHeld &&
+        n >= this.state.nextMutationAtFood
+      ) {
+        this.spawnMutationFood();
       }
       this.emit('foodCollected', {
         position: collectedPosition,
         score: this.state.score,
         dna: this.state.dnaCollected,
         foodEaten: this.state.foodEaten,
+        chainLength: this.state.chainLength,
+        comboMultiplier: this.state.comboMultiplier,
       });
     } else {
       this.state.snake.pop();
+    }
+
+    // Magnet Pulse: nearby food creeps toward the head, one cell per tick
+    if (this.hasMutation('magnet_pulse')) {
+      this.applyMagnetPulse();
+    }
+
+    // Mutation pickup resolves after the move: freeze into the choice hold
+    if (ateMutation) {
+      this.openMutationChoice();
     }
 
     // Exit-portal lifetime countdown (only for portals that were already
@@ -393,8 +670,50 @@ export class SnakeGameLogic {
         this.state.exitTile = null;
         this.state.exitTicksRemaining = 0;
         this.state.nextExitAtFood =
-          this.state.foodEaten + rollExitInterval(this.ruleset.extraction, this.rng);
+          this.state.foodEaten + this.rollNextExitInterval();
         this.emit('exitDespawned');
+      }
+    }
+
+    // Mutation food lifetime countdown (same fresh-spawn grace as the exit)
+    if (this.state.mutationTile && mutationExistedAtTickStart) {
+      this.state.mutationTicksRemaining -= 1;
+      if (this.state.mutationTicksRemaining <= 0) {
+        this.state.mutationTile = null;
+        this.state.mutationTicksRemaining = 0;
+        this.state.nextMutationAtFood =
+          this.state.foodEaten + rollMutationInterval(this.rng);
+        this.emit('mutationDespawned');
+      }
+    }
+
+    // COSMIC chain window countdown
+    if (this.ruleset.constellation) {
+      this.ticksSinceLastEat = Math.min(this.ticksSinceLastEat + 1, 1_000_000);
+    }
+
+    // COSMIC Flux phase countdown + telegraph
+    if (this.ruleset.flux && this.state.fluxPhase) {
+      const { openTicks, closedTicks, telegraphTicks } = this.ruleset.flux;
+      this.state.fluxTicksRemaining -= 1;
+      if (this.state.fluxTicksRemaining <= 0) {
+        const nextPhase: FluxPhase =
+          this.state.fluxPhase === 'open' ? 'closed' : 'open';
+        this.state.fluxPhase = nextPhase;
+        this.state.fluxTicksRemaining =
+          nextPhase === 'open' ? openTicks : closedTicks;
+        this.state.fluxTelegraph =
+          this.state.fluxTicksRemaining <= telegraphTicks;
+        this.emit('fluxPhaseChange', { phase: nextPhase });
+      } else {
+        const nowTelegraph = this.state.fluxTicksRemaining <= telegraphTicks;
+        if (nowTelegraph && !this.state.fluxTelegraph) {
+          this.emit('fluxTelegraph', {
+            nextPhase: this.state.fluxPhase === 'open' ? 'closed' : 'open',
+            ticksUntilChange: this.state.fluxTicksRemaining,
+          });
+        }
+        this.state.fluxTelegraph = nowTelegraph;
       }
     }
 
@@ -402,32 +721,144 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Spawn food at random valid position
+   * Choose one of the two offered mutations (0 or 1). Applies immediate
+   * physical side effects, clears the choice hold, and the game resumes on
+   * the next tick. Returns false when no choice is pending.
    */
-  spawnFood(): void {
-    let position: Position;
+  chooseMutation(index: 0 | 1): boolean {
+    const offer = this.state.pendingChoice;
+    if (!offer) return false;
+    const id = offer[index];
+    if (!id) return false;
+
+    const pick: MutationPick = { id, atFood: this.state.foodEaten };
+    this.state.pendingChoice = null;
+    this.applyPick(pick);
+
+    this.emit('mutationPicked', {
+      id,
+      atFood: pick.atFood,
+      held: this.state.heldMutations.map((m) => ({ ...m })),
+    });
+    return true;
+  }
+
+  /**
+   * Grant a mutation directly (for testing and driven flows): the same
+   * pick pipeline as chooseMutation, without an offer. atFood defaults to
+   * the current food count. Mirrors placeFood/placeExit.
+   */
+  grantMutation(id: MutationId, atFood?: number): void {
+    this.applyPick({ id, atFood: atFood ?? this.state.foodEaten });
+  }
+
+  /** Shared pick pipeline: hold the mutation + immediate physical effects. */
+  private applyPick(pick: MutationPick): void {
+    this.state.heldMutations.push(pick);
+    if (pick.id === 'phoenix') {
+      this.state.phoenixAvailable = true;
+    }
+    if (pick.id === 'gold_trail' && this.state.exitTile) {
+      // Cost applies to the live portal too: clamp to the shortened window
+      this.state.exitTicksRemaining = Math.min(
+        this.state.exitTicksRemaining,
+        MUTATION_PHYSICS.goldTrailPortalTicks
+      );
+    }
+    if (pick.id === 'time_dilation') {
+      this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
+    }
+  }
+
+  /** Decline the offer (take neither) - clears the choice hold. */
+  declineMutation(): void {
+    if (!this.state.pendingChoice) return;
+    this.state.pendingChoice = null;
+    this.emit('mutationDeclined');
+  }
+
+  /**
+   * Spawn all foods for a new wave: a single food normally, a pair under
+   * Splitter, a constellation group of 3 (4 with Splitter) on COSMIC -
+   * clustered within groupRadius of the anchor so chains are chaseable.
+   */
+  private spawnFoods(): void {
+    const constellation = this.ruleset.constellation;
+    const target =
+      (constellation ? constellation.groupSize : 1) +
+      (this.hasMutation('splitter') ? 1 : 0);
+
+    if (constellation) {
+      this.state.constellationGlyph = Math.floor(
+        this.rng() * constellation.glyphCount
+      );
+    }
+
+    const foods: Position[] = [];
+    for (let i = 0; i < target; i++) {
+      foods.push(this.sampleFoodCell(foods, i === 0 ? null : foods[0]));
+    }
+    this.state.foods = foods;
+    this.state.food = { ...foods[0] };
+  }
+
+  /** Rejection-sample one food cell (optionally clustered near an anchor). */
+  private sampleFoodCell(placed: Position[], anchor: Position | null): Position {
+    const radius = this.ruleset.constellation?.groupRadius ?? 4;
+    let position: Position = { x: 0, y: 0, z: 0 };
     let attempts = 0;
     const maxAttempts = 1000;
 
-    do {
-      position = {
-        x: Math.floor(Math.random() * this.gridSize),
-        y: 0,
-        z: Math.floor(Math.random() * this.gridSize),
-      };
+    while (attempts < maxAttempts) {
       attempts++;
-    } while (
-      (this.isPositionOnSnake(position) || this.isPositionOnExit(position)) &&
-      attempts < maxAttempts
-    );
+      if (anchor && attempts <= maxAttempts / 2) {
+        // Cluster around the anchor; fall back to anywhere if the
+        // neighborhood is too crowded
+        position = {
+          x: anchor.x + Math.floor(Math.random() * (2 * radius + 1)) - radius,
+          y: 0,
+          z: anchor.z + Math.floor(Math.random() * (2 * radius + 1)) - radius,
+        };
+        if (
+          position.x < 0 ||
+          position.x >= this.gridSize ||
+          position.z < 0 ||
+          position.z >= this.gridSize
+        ) {
+          continue;
+        }
+      } else {
+        position = {
+          x: Math.floor(Math.random() * this.gridSize),
+          y: 0,
+          z: Math.floor(Math.random() * this.gridSize),
+        };
+      }
 
-    this.state.food = position;
+      if (
+        !this.isPositionOnSnake(position) &&
+        !this.isPositionOnExit(position) &&
+        !this.isPositionOnMutation(position) &&
+        !placed.some((p) => p.x === position.x && p.z === position.z)
+      ) {
+        return position;
+      }
+    }
+    return position;
+  }
+
+  /**
+   * Spawn food at random valid position(s). Public for compatibility -
+   * replaces the whole wave.
+   */
+  spawnFood(): void {
+    this.spawnFoods();
   }
 
   /**
    * Spawn the exit portal at a random valid position (not on the snake,
-   * not on the food). Rejection sampling, mirroring spawnFood. Uses the
-   * injectable rng so tests can drive placement deterministically.
+   * food, or mutation food). Rejection sampling, mirroring spawnFood.
+   * Uses the injectable rng so tests can drive placement deterministically.
    */
   private spawnExit(): void {
     let position: Position;
@@ -443,12 +874,13 @@ export class SnakeGameLogic {
       attempts++;
     } while (
       (this.isPositionOnSnake(position) ||
-        (position.x === this.state.food.x && position.z === this.state.food.z)) &&
+        this.isPositionOnFood(position) ||
+        this.isPositionOnMutation(position)) &&
       attempts < maxAttempts
     );
 
     this.state.exitTile = position;
-    this.state.exitTicksRemaining = this.ruleset.extraction.despawnTicks;
+    this.state.exitTicksRemaining = this.effectiveExitDespawnTicks();
     this.emit('exitSpawned', {
       position: { ...position },
       ticksRemaining: this.state.exitTicksRemaining,
@@ -456,10 +888,60 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Place food at specific position (for testing)
+   * Spawn the mutation food at a random valid position (not on the snake,
+   * food, or exit portal). Injectable rng - deterministic in tests.
    */
-  placeFood(position: Position): void {
+  private spawnMutationFood(): void {
+    let position: Position;
+    let attempts = 0;
+    const maxAttempts = 1000;
+
+    do {
+      position = {
+        x: Math.floor(this.rng() * this.gridSize),
+        y: 0,
+        z: Math.floor(this.rng() * this.gridSize),
+      };
+      attempts++;
+    } while (
+      (this.isPositionOnSnake(position) ||
+        this.isPositionOnFood(position) ||
+        this.isPositionOnExit(position)) &&
+      attempts < maxAttempts
+    );
+
+    this.state.mutationTile = position;
+    this.state.mutationTicksRemaining = MUTATION_SPAWN.despawnTicks;
+    this.emit('mutationSpawned', {
+      position: { ...position },
+      ticksRemaining: this.state.mutationTicksRemaining,
+    });
+  }
+
+  /**
+   * Place food at specific position (for testing). Replaces the whole
+   * wave with this single food. On COSMIC the current group glyph is kept
+   * (or rolled if none) unless an explicit glyph is given.
+   */
+  placeFood(position: Position, glyph?: number): void {
+    this.state.foods = [{ ...position }];
     this.state.food = { ...position };
+    if (this.ruleset.constellation) {
+      this.state.constellationGlyph =
+        glyph ??
+        this.state.constellationGlyph ??
+        Math.floor(this.rng() * this.ruleset.constellation.glyphCount);
+    }
+  }
+
+  /** Place a full food wave at specific positions (for testing). */
+  placeFoods(positions: Position[], glyph?: number): void {
+    if (positions.length === 0) return;
+    this.state.foods = positions.map((p) => ({ ...p }));
+    this.state.food = { ...positions[0] };
+    if (this.ruleset.constellation && glyph !== undefined) {
+      this.state.constellationGlyph = glyph;
+    }
   }
 
   /**
@@ -469,10 +951,21 @@ export class SnakeGameLogic {
   placeExit(position: Position, ticksRemaining?: number): void {
     this.state.exitTile = { ...position };
     this.state.exitTicksRemaining =
-      ticksRemaining ?? this.ruleset.extraction.despawnTicks;
+      ticksRemaining ?? this.effectiveExitDespawnTicks();
     this.emit('exitSpawned', {
       position: { ...position },
       ticksRemaining: this.state.exitTicksRemaining,
+    });
+  }
+
+  /** Place the mutation food at a specific position (for testing). */
+  placeMutation(position: Position, ticksRemaining?: number): void {
+    this.state.mutationTile = { ...position };
+    this.state.mutationTicksRemaining =
+      ticksRemaining ?? MUTATION_SPAWN.despawnTicks;
+    this.emit('mutationSpawned', {
+      position: { ...position },
+      ticksRemaining: this.state.mutationTicksRemaining,
     });
   }
 
@@ -516,6 +1009,174 @@ export class SnakeGameLogic {
     return moves[dir];
   }
 
+  /** Wrap an out-of-bounds position to the opposite edge (COSMIC open phase). */
+  private wrapPosition(pos: Position): Position {
+    return {
+      x: ((pos.x % this.gridSize) + this.gridSize) % this.gridSize,
+      y: 0,
+      z: ((pos.z % this.gridSize) + this.gridSize) % this.gridSize,
+    };
+  }
+
+  /**
+   * Wall Rush slide: pick a perpendicular direction along the wall
+   * (clockwise preferred) whose next cell is in-bounds and body-free.
+   */
+  private trySlide(
+    head: Position
+  ): { dir: Direction; pos: Position } | null {
+    const first = CLOCKWISE[this.state.direction];
+    for (const dir of [first, OPPOSITES[first]]) {
+      const pos = this.getNextPosition(head, dir);
+      if (!this.checkWallCollision(pos) && !this.checkSelfCollision(pos)) {
+        return { dir, pos };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Phoenix rebirth: consume the one-time save, rewind the head 3 cells
+   * along the body, truncate to length 8, void economic benefits from
+   * here on (see mutations.ts), and re-derive the heading from the body.
+   */
+  private triggerPhoenix(collisionPosition: Position): void {
+    this.state.phoenixAvailable = false;
+    this.state.phoenixTriggeredAtFood = this.state.foodEaten;
+
+    const rewind = Math.min(
+      MUTATION_PHYSICS.phoenixRewindCells,
+      Math.max(0, this.state.snake.length - 1)
+    );
+    let reborn = this.state.snake.slice(
+      rewind,
+      rewind + MUTATION_PHYSICS.phoenixRebirthLength
+    );
+    if (reborn.length === 0) {
+      reborn = this.state.snake.slice(0, MUTATION_PHYSICS.phoenixRebirthLength);
+    }
+    this.state.snake = reborn.map((s) => ({ ...s }));
+
+    // Heading = from neck to head of the rewound body. Wrap seams (COSMIC)
+    // leave adjacent segments a board apart - normalize by flipping sign.
+    if (this.state.snake.length >= 2) {
+      let dx = this.state.snake[0].x - this.state.snake[1].x;
+      let dz = this.state.snake[0].z - this.state.snake[1].z;
+      if (Math.abs(dx) > 1) dx = -Math.sign(dx);
+      if (Math.abs(dz) > 1) dz = -Math.sign(dz);
+      if (dx === 1) this.state.direction = 'RIGHT';
+      else if (dx === -1) this.state.direction = 'LEFT';
+      else if (dz === 1) this.state.direction = 'DOWN';
+      else if (dz === -1) this.state.direction = 'UP';
+    }
+    this.directionQueue = [];
+
+    this.emit('phoenixTriggered', {
+      atFood: this.state.phoenixTriggeredAtFood,
+      position: { ...this.state.snake[0] },
+      collision: { ...collisionPosition },
+    });
+  }
+
+  /** Open the choice-of-2 hold after eating the mutation food. */
+  private openMutationChoice(): void {
+    this.state.mutationTile = null;
+    this.state.mutationTicksRemaining = 0;
+    this.state.nextMutationAtFood =
+      this.state.foodEaten + rollMutationInterval(this.rng);
+
+    const offer = rollMutationOffer(
+      this.state.heldMutations.map((m) => m.id),
+      this.rng
+    );
+    if (!offer) return;
+    this.state.pendingChoice = offer;
+    this.emit('mutationChoice', { options: [...offer] });
+  }
+
+  /**
+   * Magnet Pulse: every food within 2 cells (Chebyshev) of the head moves
+   * one cell toward it per tick along its dominant axis. Pulls never move
+   * a food onto the head, the body, another food, the portal, or the
+   * mutation food - blocked pulls simply skip a tick.
+   */
+  private applyMagnetPulse(): void {
+    const head = this.state.snake[0];
+    if (!head) return;
+    for (const food of this.state.foods) {
+      const dx = head.x - food.x;
+      const dz = head.z - food.z;
+      const dist = Math.max(Math.abs(dx), Math.abs(dz));
+      if (dist < 1 || dist > MUTATION_PHYSICS.magnetRadius) continue;
+
+      const target = { ...food };
+      if (Math.abs(dx) >= Math.abs(dz) && dx !== 0) {
+        target.x += Math.sign(dx);
+      } else if (dz !== 0) {
+        target.z += Math.sign(dz);
+      } else {
+        continue;
+      }
+
+      const blocked =
+        (target.x === head.x && target.z === head.z) ||
+        this.isPositionOnSnake(target) ||
+        this.isPositionOnExit(target) ||
+        this.isPositionOnMutation(target) ||
+        this.state.foods.some(
+          (f) => f !== food && f.x === target.x && f.z === target.z
+        );
+      if (!blocked) {
+        food.x = target.x;
+        food.z = target.z;
+      }
+    }
+    this.state.food = { ...this.state.foods[0] };
+  }
+
+  /** Exit interval roll incl. the Magnet Pulse cost (+4 foods). */
+  private rollNextExitInterval(): number {
+    return (
+      rollExitInterval(this.ruleset.extraction, this.rng) +
+      (this.hasMutation('magnet_pulse')
+        ? MUTATION_PHYSICS.magnetPortalIntervalPenalty
+        : 0)
+    );
+  }
+
+  /** Exit portal lifetime incl. the Gold Trail cost (60-tick windows). */
+  private effectiveExitDespawnTicks(): number {
+    return this.hasMutation('gold_trail')
+      ? Math.min(
+          this.ruleset.extraction.despawnTicks,
+          MUTATION_PHYSICS.goldTrailPortalTicks
+        )
+      : this.ruleset.extraction.despawnTicks;
+  }
+
+  /**
+   * Tick speed incl. Time Dilation: CYBER runs the speed curve one tier
+   * (5 foods) behind while keeping its DNA multiplier; fixed-speed
+   * dynasties simply gain +40 ms/tick.
+   */
+  private effectiveSpeedForFood(foodEaten: number): number {
+    if (!this.hasMutation('time_dilation')) {
+      return this.ruleset.speedForFood(foodEaten);
+    }
+    if (this.ruleset.id === 'CYBER') {
+      return this.ruleset.speedForFood(
+        Math.max(0, foodEaten - MUTATION_PHYSICS.timeDilationCyberFoodOffset)
+      );
+    }
+    return (
+      this.ruleset.speedForFood(foodEaten) + MUTATION_PHYSICS.timeDilationSlowMs
+    );
+  }
+
+  private hasMutation(id: MutationId): boolean {
+    return this.state.heldMutations.some((m) => m.id === id);
+  }
+
   private checkWallCollision(pos: Position): boolean {
     return pos.x < 0 || pos.x >= this.gridSize || pos.z < 0 || pos.z >= this.gridSize;
   }
@@ -524,12 +1185,16 @@ export class SnakeGameLogic {
     return this.state.snake.some(s => s.x === pos.x && s.z === pos.z);
   }
 
-  private checkFoodCollision(pos: Position): boolean {
-    return pos.x === this.state.food.x && pos.z === this.state.food.z;
+  private findFoodIndex(pos: Position): number {
+    return this.state.foods.findIndex((f) => f.x === pos.x && f.z === pos.z);
   }
 
   private isPositionOnSnake(pos: Position): boolean {
     return this.state.snake.some(s => s.x === pos.x && s.z === pos.z);
+  }
+
+  private isPositionOnFood(pos: Position): boolean {
+    return this.state.foods.some((f) => f.x === pos.x && f.z === pos.z);
   }
 
   private isPositionOnExit(pos: Position): boolean {
@@ -537,6 +1202,14 @@ export class SnakeGameLogic {
       this.state.exitTile !== null &&
       this.state.exitTile.x === pos.x &&
       this.state.exitTile.z === pos.z
+    );
+  }
+
+  private isPositionOnMutation(pos: Position): boolean {
+    return (
+      this.state.mutationTile !== null &&
+      this.state.mutationTile.x === pos.x &&
+      this.state.mutationTile.z === pos.z
     );
   }
 
@@ -588,6 +1261,15 @@ export class SnakeGameLogic {
       extracted: this.state.extracted,
       endReason: reason,
       deathPosition: this.state.deathPosition,
+      mutations: this.state.heldMutations.map((m) => ({ ...m })),
+      phoenixTriggeredAtFood: this.state.phoenixTriggeredAtFood,
+      cosmic: this.ruleset.constellation
+        ? {
+            comboDnaBonus: this.state.comboDnaBonus,
+            comboScoreBonus: this.state.comboScoreBonus,
+            maxChain: this.state.maxChain,
+          }
+        : null,
     };
     this.emit('gameOver', payload);
   }
