@@ -76,6 +76,13 @@ test.describe('Equipped-snake game flow', () => {
     // HUD shows score and DNA counters before the run starts
     await expect(page.getByText(/score:/i)).toBeVisible();
     await expect(page.getByText(/dna:/i).first()).toBeVisible();
+
+    // Design v2: the equipped dynasty's ruleset identity line + the
+    // extraction banking hint are on the pre-game screen
+    await expect(page.getByTestId('ruleset-explainer')).toBeVisible();
+    await expect(
+      page.getByText(/exit portal banks \+25%/i)
+    ).toBeVisible();
   });
 });
 
