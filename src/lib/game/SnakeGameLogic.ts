@@ -42,6 +42,11 @@ import {
   type MutationId,
   type MutationPick,
 } from '@/shared/game/mutations';
+import {
+  TRAIT_PHYSICS,
+  traitFoodValueModifier,
+  type TraitId,
+} from '@/shared/game/traits';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -123,6 +128,8 @@ export interface GameState {
   phoenixAvailable: boolean;
   /** Food count at the Phoenix trigger, null if never triggered. */
   phoenixTriggeredAtFood: number | null;
+  /** True while an Iron Scales trait can still absorb one wall hit. */
+  ironScalesAvailable: boolean;
   /** COSMIC: glyph (0..2) of the current constellation group, else null. */
   constellationGlyph: number | null;
   /** COSMIC: current chain length (1 = no chain yet). */
@@ -180,6 +187,7 @@ type GameEvent =
   | 'mutationPicked'
   | 'mutationDeclined'
   | 'phoenixTriggered'
+  | 'ironScalesTriggered'
   | 'fluxTelegraph'
   | 'fluxPhaseChange';
 type EventCallback = (data?: unknown) => void;
@@ -200,6 +208,13 @@ interface GameOptions {
    * for scoring.
    */
   rng?: () => number;
+  /**
+   * The equipped snake's traits (Design v2 Phase 3A). Usually injected via
+   * setTraits once the session-start response arrives - the server reads
+   * them from the snake row, so this is display/physics config, never a
+   * payout claim (the end-of-run payload does not carry traits).
+   */
+  traits?: TraitId[];
 }
 
 const OPPOSITES: Record<Direction, Direction> = {
@@ -228,6 +243,7 @@ export class SnakeGameLogic {
   private speed: number;
   private ruleset: DynastyRuleset;
   private rng: () => number;
+  private traits: TraitId[];
   private events: Map<GameEvent, EventCallback[]>;
   /**
    * Buffered direction inputs, consumed one per tick. Buffering (instead of
@@ -247,6 +263,9 @@ export class SnakeGameLogic {
     this.initialLength = options.initialLength ?? GAME_CONFIG.snake.initialLength;
     this.ruleset = options.ruleset ?? RULESETS.COSMIC;
     this.rng = options.rng ?? Math.random;
+    // Traits before createInitialState: the mutation cadence roll (Patient)
+    // and the Iron Scales charge both depend on them.
+    this.traits = [...(options.traits ?? [])];
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
@@ -269,11 +288,12 @@ export class SnakeGameLogic {
       extracted: false,
       mutationTile: null,
       mutationTicksRemaining: 0,
-      nextMutationAtFood: rollMutationInterval(this.rng),
+      nextMutationAtFood: this.rollNextMutationInterval(),
       heldMutations: [],
       pendingChoice: null,
       phoenixAvailable: false,
       phoenixTriggeredAtFood: null,
+      ironScalesAvailable: this.hasTrait('iron_scales'),
       constellationGlyph: null,
       chainLength: 0,
       comboMultiplier: 1,
@@ -345,6 +365,28 @@ export class SnakeGameLogic {
   /** The active dynasty ruleset. */
   getRuleset(): DynastyRuleset {
     return this.ruleset;
+  }
+
+  /**
+   * Swap the equipped snake's traits. Mirrors setRuleset: the page
+   * constructs the engine on mount, before the session-start response
+   * delivers the server-trusted trait list. Outside a live run the
+   * trait-dependent cadence roll (Patient) and the Iron Scales charge are
+   * refreshed so the next start() plays under the new traits.
+   */
+  setTraits(traits: TraitId[]): void {
+    this.traits = [...traits];
+    if (!this.state.isPlaying) {
+      if (!this.state.mutationTile) {
+        this.state.nextMutationAtFood = this.rollNextMutationInterval();
+      }
+      this.state.ironScalesAvailable = this.hasTrait('iron_scales');
+    }
+  }
+
+  /** The equipped snake's traits (immutable copy). */
+  getTraits(): TraitId[] {
+    return [...this.traits];
   }
 
   /**
@@ -526,6 +568,14 @@ export class SnakeGameLogic {
     }
 
     if (wallHit || this.checkSelfCollision(newHead)) {
+      // Iron Scales (trait): absorb exactly one WALL hit per run - the
+      // snake recoils one cell off the wall and the tick is consumed.
+      // Checked before Phoenix so the trait save never burns the pickup.
+      if (wallHit && this.state.ironScalesAvailable) {
+        this.triggerIronScales(newHead);
+        this.emit('tick');
+        return;
+      }
       // Phoenix: absorb exactly one death - rebirth consumes the tick
       if (this.state.phoenixAvailable) {
         this.triggerPhoenix(newHead);
@@ -577,14 +627,15 @@ export class SnakeGameLogic {
         this.state.maxChain = Math.max(this.state.maxChain, this.state.chainLength);
       }
 
-      // Per-food value: base x combo x mutation modifier, one round per
-      // food - mirrors computeRunTotals exactly (combo aside, which the
-      // server clamps via the bounded-trust summary).
-      const mod = foodValueModifier(
-        this.state.heldMutations,
-        n,
-        this.state.phoenixTriggeredAtFood
-      );
+      // Per-food value: base x combo x mutation modifier x trait modifier,
+      // one round per food - mirrors computeRunTotals exactly (combo
+      // aside, which the server clamps via the bounded-trust summary).
+      const mod =
+        foodValueModifier(
+          this.state.heldMutations,
+          n,
+          this.state.phoenixTriggeredAtFood
+        ) * traitFoodValueModifier(this.traits, n);
       const baseDna = this.ruleset.foodDnaValue(n);
       const baseScore = Math.round(
         FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
@@ -632,9 +683,11 @@ export class SnakeGameLogic {
       if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
         this.spawnExit();
       }
+      // Ascetic (trait): mutation food never spawns - no builds, pure snake
       if (
         !this.state.mutationTile &&
         !ateMutation &&
+        !this.hasTrait('ascetic') &&
         this.state.heldMutations.length < MUTATION_SPAWN.maxHeld &&
         n >= this.state.nextMutationAtFood
       ) {
@@ -652,8 +705,10 @@ export class SnakeGameLogic {
       this.state.snake.pop();
     }
 
-    // Magnet Pulse: nearby food creeps toward the head, one cell per tick
-    if (this.hasMutation('magnet_pulse')) {
+    // Magnet Pulse (mutation, radius 2) / Magnetism (trait, radius 1):
+    // nearby food creeps toward the head, one cell per tick. When both are
+    // active the larger radius wins - the pull itself never stacks.
+    if (this.hasMutation('magnet_pulse') || this.hasTrait('magnetism')) {
       this.applyMagnetPulse();
     }
 
@@ -682,7 +737,7 @@ export class SnakeGameLogic {
         this.state.mutationTile = null;
         this.state.mutationTicksRemaining = 0;
         this.state.nextMutationAtFood =
-          this.state.foodEaten + rollMutationInterval(this.rng);
+          this.state.foodEaten + this.rollNextMutationInterval();
         this.emit('mutationDespawned');
       }
     }
@@ -1083,7 +1138,7 @@ export class SnakeGameLogic {
     this.state.mutationTile = null;
     this.state.mutationTicksRemaining = 0;
     this.state.nextMutationAtFood =
-      this.state.foodEaten + rollMutationInterval(this.rng);
+      this.state.foodEaten + this.rollNextMutationInterval();
 
     const offer = rollMutationOffer(
       this.state.heldMutations.map((m) => m.id),
@@ -1095,19 +1150,23 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Magnet Pulse: every food within 2 cells (Chebyshev) of the head moves
-   * one cell toward it per tick along its dominant axis. Pulls never move
-   * a food onto the head, the body, another food, the portal, or the
-   * mutation food - blocked pulls simply skip a tick.
+   * Magnet Pulse / Magnetism: every food within the effective radius
+   * (Chebyshev) of the head moves one cell toward it per tick along its
+   * dominant axis. Pulls never move a food onto the head, the body,
+   * another food, the portal, or the mutation food - blocked pulls simply
+   * skip a tick.
    */
   private applyMagnetPulse(): void {
     const head = this.state.snake[0];
     if (!head) return;
+    const radius = this.hasMutation('magnet_pulse')
+      ? MUTATION_PHYSICS.magnetRadius
+      : TRAIT_PHYSICS.magnetismRadius;
     for (const food of this.state.foods) {
       const dx = head.x - food.x;
       const dz = head.z - food.z;
       const dist = Math.max(Math.abs(dx), Math.abs(dz));
-      if (dist < 1 || dist > MUTATION_PHYSICS.magnetRadius) continue;
+      if (dist < 1 || dist > radius) continue;
 
       const target = { ...food };
       if (Math.abs(dx) >= Math.abs(dz) && dx !== 0) {
@@ -1134,14 +1193,32 @@ export class SnakeGameLogic {
     this.state.food = { ...this.state.foods[0] };
   }
 
-  /** Exit interval roll incl. the Magnet Pulse cost (+4 foods). */
+  /**
+   * Exit interval roll incl. the Magnet Pulse cost (+4 foods) and the
+   * Magnetism trait cost (+2 foods). The costs stack additively - each
+   * pull source pays its own portal tax.
+   */
   private rollNextExitInterval(): number {
     return (
       rollExitInterval(this.ruleset.extraction, this.rng) +
       (this.hasMutation('magnet_pulse')
         ? MUTATION_PHYSICS.magnetPortalIntervalPenalty
+        : 0) +
+      (this.hasTrait('magnetism')
+        ? TRAIT_PHYSICS.magnetismPortalIntervalPenalty
         : 0)
     );
+  }
+
+  /**
+   * Mutation cadence roll incl. the Patient trait cost: spawn rate -50%
+   * means the rolled food-interval doubles (40 +/- 10 instead of 20 +/- 5).
+   */
+  private rollNextMutationInterval(): number {
+    const interval = rollMutationInterval(this.rng);
+    return this.hasTrait('patient')
+      ? interval * TRAIT_PHYSICS.patientMutationIntervalMultiplier
+      : interval;
   }
 
   /** Exit portal lifetime incl. the Gold Trail cost (60-tick windows). */
@@ -1175,6 +1252,32 @@ export class SnakeGameLogic {
 
   private hasMutation(id: MutationId): boolean {
     return this.state.heldMutations.some((m) => m.id === id);
+  }
+
+  private hasTrait(id: TraitId): boolean {
+    return this.traits.includes(id);
+  }
+
+  /**
+   * Iron Scales: absorb one wall collision per run. The blocked move is
+   * cancelled and the snake recoils one cell backward along its own path
+   * (head withdrawn, length preserved by duplicating the tail cell -
+   * exactly how Overgrowth already grows), leaving the head a cell clear
+   * of the wall with its heading intact - the bounce buys the tick the
+   * player needed. A body hit is NOT absorbed (walls only, per the doc).
+   */
+  private triggerIronScales(collisionPosition: Position): void {
+    this.state.ironScalesAvailable = false;
+
+    if (this.state.snake.length >= 2) {
+      const tail = this.state.snake[this.state.snake.length - 1];
+      this.state.snake = [...this.state.snake.slice(1), { ...tail }];
+    }
+
+    this.emit('ironScalesTriggered', {
+      position: { ...this.state.snake[0] },
+      collision: { ...collisionPosition },
+    });
   }
 
   private checkWallCollision(pos: Position): boolean {

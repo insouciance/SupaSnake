@@ -19,6 +19,15 @@
  *   cannot reconstruct, so the claimed combo bonus is accepted only up to
  *   floor(base x 1.4) (the x2.4 per-food cap) and a sane max chain;
  *   anything beyond clamps and flags rather than recomputing.
+ *
+ * Phase 3A (section 6): traits. The traits parameter comes from the SNAKE
+ * ROW referenced by the session (collected_snakes.traits via
+ * snake_used_id) - NEVER from the client payload, which has no trait
+ * field. [E] trait effects join the exact recompute; the Ascetic trait's
+ * physical side (mutation food never spawns) makes any mutation claim on
+ * an Ascetic snake impossible, so such claims are dropped and flagged;
+ * the Patient trait doubles the mutation cadence, tightening the
+ * per-pick food bound from 15k to 30k.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -34,6 +43,7 @@ import {
   isMutationId,
   type MutationPick,
 } from '@/shared/game/mutations';
+import { type TraitId } from '@/shared/game/traits';
 
 export interface GameResultInput {
   /** Raw foods eaten - the minimal claimed fact the payout derives from. */
@@ -87,6 +97,9 @@ export const CLAIM_EPSILON = 1;
 /** Minimum food gap the spawn cadence allows before the k-th mutation pick. */
 const MIN_FOODS_PER_PICK = 15;
 
+/** Patient trait: cadence doubled, so the k-th pick needs 30k foods. */
+const MIN_FOODS_PER_PICK_PATIENT = 30;
+
 /**
  * Sanitize the claimed mutation picks against legality + cadence bounds.
  * Illegal entries are dropped and flagged; bound violations keep the legal
@@ -97,7 +110,8 @@ const MIN_FOODS_PER_PICK = 15;
 function sanitizeMutations(
   raw: unknown,
   foodCount: number,
-  errors: string[]
+  errors: string[],
+  minFoodsPerPick: number = MIN_FOODS_PER_PICK
 ): MutationPick[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
@@ -137,20 +151,21 @@ function sanitizeMutations(
     picks.length = MUTATION_SPAWN.maxHeld;
   }
 
-  // Cadence count bound: the k-th mutation food cannot exist before food 15k
-  const maxPicks = Math.floor(foodCount / MIN_FOODS_PER_PICK);
+  // Cadence count bound: the k-th mutation food cannot exist before food
+  // minFoodsPerPick x k (15k normally, 30k under the Patient trait)
+  const maxPicks = Math.floor(foodCount / minFoodsPerPick);
   if (picks.length > maxPicks) {
     errors.push(
-      `MUTATION_BOUND: ${picks.length} picks exceeds floor(${foodCount}/15) = ${maxPicks}`
+      `MUTATION_BOUND: ${picks.length} picks exceeds floor(${foodCount}/${minFoodsPerPick}) = ${maxPicks}`
     );
     picks.length = Math.max(0, maxPicks);
   }
 
-  // Per-pick window: atFood >= 15 x pick-index (1-based) and <= foodCount.
-  // A violation invalidates that pick and everything after it (later picks
-  // depend on the same cadence).
+  // Per-pick window: atFood >= minFoodsPerPick x pick-index (1-based) and
+  // <= foodCount. A violation invalidates that pick and everything after
+  // it (later picks depend on the same cadence).
   for (let i = 0; i < picks.length; i++) {
-    const minAt = MIN_FOODS_PER_PICK * (i + 1);
+    const minAt = minFoodsPerPick * (i + 1);
     if (picks[i].atFood < minAt || picks[i].atFood > foodCount) {
       errors.push(
         `MUTATION_BOUND: pick ${i + 1} (${picks[i].id}) atFood ${picks[i].atFood} outside [${minAt}, ${foodCount}]`
@@ -233,7 +248,8 @@ function sanitizeCosmicClaim(
 export function validateGameResult(
   input: GameResultInput,
   serverStartedAt: Date,
-  dynasty: DynastyName
+  dynasty: DynastyName,
+  traits: TraitId[] = []
 ): ValidationResult {
   const errors: string[] = [];
   const ruleset = getRuleset(dynasty);
@@ -276,8 +292,23 @@ export function validateGameResult(
     foodCount = maxFood;
   }
 
-  // 4. Mutation legality + cadence bounds (section 5.3)
-  const mutations = sanitizeMutations(input.mutations, foodCount, errors);
+  // 4. Mutation legality + cadence bounds (section 5.3). The Patient
+  //    trait halves the spawn rate, so the per-pick bound tightens to 30k.
+  let mutations = sanitizeMutations(
+    input.mutations,
+    foodCount,
+    errors,
+    traits.includes('patient') ? MIN_FOODS_PER_PICK_PATIENT : MIN_FOODS_PER_PICK
+  );
+
+  // 4b. Ascetic trait: mutation food never spawns, so ANY mutation claim
+  //     on an Ascetic snake is impossible - drop them all and flag.
+  if (traits.includes('ascetic') && mutations.length > 0) {
+    errors.push(
+      `TRAIT_CONFLICT: ${mutations.length} mutation pick(s) claimed on an Ascetic snake (mutation food never spawns)`
+    );
+    mutations = [];
+  }
 
   // 5. Phoenix trigger: only honored when phoenix is held and the index is
   //    plausible. Honoring a trigger strictly lowers the payout, so an
@@ -298,12 +329,14 @@ export function validateGameResult(
     }
   }
 
-  // 6. Exact recompute of the mutation-aware base - the payout authority
+  // 6. Exact recompute of the mutation- and trait-aware base - the payout
+  //    authority (traits come from the snake row, never the claim)
   const { rawDna: baseDna, score: baseScore } = computeRunTotals(
     dynasty,
     foodCount,
     mutations,
-    phoenixTriggeredAtFood
+    phoenixTriggeredAtFood,
+    traits
   );
 
   // 7. COSMIC bounded trust: accept the combo claim only up to the caps
@@ -320,12 +353,13 @@ export function validateGameResult(
     errors.push(`COSMIC_COMBO: combo summary on a ${dynasty} session - ignored`);
   }
 
-  // 8. Outcome multiplier (mutation-aware) + victory bonus
+  // 8. Outcome multiplier (mutation- and trait-aware) + victory bonus
   let expectedPayout = applyOutcomeWithMutations(
     rawDna,
     extracted,
     mutations,
-    phoenixTriggeredAtFood !== null
+    phoenixTriggeredAtFood !== null,
+    traits
   );
   if (input.victory) {
     expectedPayout += GAME_CONFIG.economy.dna.completionBonus;

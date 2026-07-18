@@ -14,6 +14,7 @@ import {
   rulesetExplainer,
 } from '@/shared/game/rulesets';
 import { MUTATIONS, type MutationId, type MutationPick } from '@/shared/game/mutations';
+import { sanitizeTraits } from '@/shared/game/traits';
 import { useGameStore, type GameMode } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
@@ -679,6 +680,12 @@ export default function GamePage() {
       freeRunRef.current = mode === 'free';
       setLastRunFree(mode === 'free');
       setHypotheticalDna(null);
+
+      // Trait config from the session-start response (Design v2 Phase 3A):
+      // the server read these from the equipped snake's row - the engine
+      // applies [P] effects and mirrors [E] math, but the payout authority
+      // stays the server recompute.
+      gameRef.current?.setTraits(sanitizeTraits(data.traits));
 
       // Now start the game locally
       storeStartGame();

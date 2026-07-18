@@ -20,6 +20,11 @@ import {
   foodValueModifier,
   type MutationPick,
 } from '@/shared/game/mutations';
+import {
+  traitFoodValueModifier,
+  traitOutcomeDeltas,
+  type TraitId,
+} from '@/shared/game/traits';
 
 export type DynastyName = 'PRIMAL' | 'CYBER' | 'COSMIC';
 
@@ -239,12 +244,19 @@ export const rulesetExplainer: Record<DynastyName, string> = {
  * (mutations shape the economy, not the leaderboard number); the COSMIC
  * combo - which does hit score - is layered on top by the engine and
  * clamped by the server (bounded trust), never recomputed here.
+ *
+ * Traits (Design v2 Phase 3A): the equipped snake's [E] traits modify each
+ * food's DNA from food 1 via the shared traitFoodValueModifier, folded
+ * into the SAME single per-food round as the mutation modifier - exactly
+ * what the engine does per eat. Like mutations, traits never touch score.
+ * The server reads traits from the snake row, never the client payload.
  */
 export function computeRunTotals(
   dynasty: DynastyName,
   foodCount: number,
   mutations: MutationPick[] = [],
-  phoenixTriggeredAtFood: number | null = null
+  phoenixTriggeredAtFood: number | null = null,
+  traits: TraitId[] = []
 ): { rawDna: number; score: number } {
   const ruleset = RULESETS[dynasty];
   const count = Number.isFinite(foodCount) ? Math.max(0, Math.floor(foodCount)) : 0;
@@ -252,10 +264,13 @@ export function computeRunTotals(
   let rawDna = 0;
   let score = 0;
   for (let n = 1; n <= count; n++) {
-    const mod =
+    let mod =
       mutations.length > 0
         ? foodValueModifier(mutations, n, phoenixTriggeredAtFood)
         : 1;
+    if (traits.length > 0) {
+      mod *= traitFoodValueModifier(traits, n);
+    }
     rawDna += Math.round(ruleset.foodDnaValue(n) * mod);
     score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n));
   }
@@ -281,10 +296,17 @@ export function applyOutcome(rawDna: number, extracted: boolean): number {
  *   cost persists - so reporting a trigger never raises a payout.
  * Mutation effects modify the outcome multiplier only - never the account
  * stack (streak x set x clanDuel), which stays a hard auditable constant.
+ *
+ * Trait outcome effects (section 6.2: Gambler / Patient / Hoarder) stack
+ * ADDITIVELY on top of the mutation-shaped multipliers - Gambler+Patient
+ * bank = 1.25 + 0.10 + 0.10 = 1.45 as specced. Phoenix never voids trait
+ * deltas (traits are snake identity, not run pickups). Both multipliers
+ * are floored at 0 so pathological stacks can never pay negative.
  */
 export function outcomeMultipliers(
   mutations: MutationPick[],
-  phoenixTriggered = false
+  phoenixTriggered = false,
+  traits: TraitId[] = []
 ): { bank: number; death: number } {
   let bank: number = BANK.extractMultiplier;
   let death: number = BANK.deathMultiplier;
@@ -296,22 +318,31 @@ export function outcomeMultipliers(
   if (ids.has('compound_interest') && !phoenixTriggered) {
     bank += MUTATION_ECONOMICS.compoundInterestPerHeld * mutations.length;
   }
+  if (traits.length > 0) {
+    const deltas = traitOutcomeDeltas(traits);
+    // Round to 4 decimals: additive float deltas must land exactly on the
+    // specced multipliers (0.60 - 0.15 must BE 0.45, not 0.4499999...),
+    // or the single floor at the end pays one DNA short of the spec.
+    bank = Math.round(Math.max(0, bank + deltas.bank) * 10000) / 10000;
+    death = Math.round(Math.max(0, death + deltas.death) * 10000) / 10000;
+  }
   return { bank, death };
 }
 
 /**
- * Mutation-aware applyOutcome: same single float->int boundary, with the
- * outcome multiplier shaped by held mutations. With no mutations held this
- * is exactly applyOutcome.
+ * Mutation- and trait-aware applyOutcome: same single float->int boundary,
+ * with the outcome multiplier shaped by held mutations and the equipped
+ * snake's traits. With neither held this is exactly applyOutcome.
  */
 export function applyOutcomeWithMutations(
   rawDna: number,
   extracted: boolean,
   mutations: MutationPick[] = [],
-  phoenixTriggered = false
+  phoenixTriggered = false,
+  traits: TraitId[] = []
 ): number {
   const raw = Number.isFinite(rawDna) ? Math.max(0, rawDna) : 0;
-  const { bank, death } = outcomeMultipliers(mutations, phoenixTriggered);
+  const { bank, death } = outcomeMultipliers(mutations, phoenixTriggered, traits);
   return Math.floor(raw * (extracted ? bank : death));
 }
 

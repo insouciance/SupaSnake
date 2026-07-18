@@ -9,6 +9,7 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { validateGameResult } from '@/lib/server/gameValidator';
 import { normalizeDynastyName } from '@/shared/game/rulesets';
+import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
@@ -88,10 +89,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'snake_id is required' }, { status: 400 });
       }
 
-      // Load the snake with its variant + dynasty; validate ownership
+      // Load the snake with its variant + dynasty; validate ownership.
+      // select('*') on the row itself so the traits column (migration 018)
+      // rides along when it exists without erroring pre-018.
       const { data: snake } = await supabase
         .from('collected_snakes')
-        .select('id, player_id, is_equipped, snake_variant_id, snake_variants(id, name, dynasties(name))')
+        .select('*, snake_variants(id, name, dynasties(name))')
         .eq('id', snake_id)
         .eq('player_id', player.id)
         .single();
@@ -124,6 +127,12 @@ export async function POST(request: NextRequest) {
       if (!dynastyName) {
         return NextResponse.json({ error: 'Snake variant data is invalid' }, { status: 500 });
       }
+
+      // Server-trusted trait config for the engine (Design v2 Phase 3A):
+      // read from the snake ROW - the client never asserts its own traits
+      const snakeTraits = sanitizeTraits(
+        (snake as Record<string, unknown>).traits
+      );
 
       const serverStartedAt = new Date().toISOString();
 
@@ -165,6 +174,7 @@ export async function POST(request: NextRequest) {
           freePlay: true,
           energy: player.energy,
           energyRegenAt: player.energy_regen_at,
+          traits: snakeTraits,
         });
       }
 
@@ -217,6 +227,7 @@ export async function POST(request: NextRequest) {
         sessionId: session.id,
         energy: newEnergy,
         energyRegenAt: newRegenAt,
+        traits: snakeTraits,
       });
     }
 
@@ -259,6 +270,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Design v2 Phase 3A: traits are read from the SNAKE ROW referenced
+      // by the session (snake_used_id, server-trusted, stored at start) -
+      // the client payload never carries them. select('*') keeps the read
+      // deployable before migration 018 (rows simply lack the column).
+      let snakeTraits: TraitId[] = [];
+      if (session.snake_used_id) {
+        const { data: usedSnake } = await supabase
+          .from('collected_snakes')
+          .select('*')
+          .eq('id', session.snake_used_id)
+          .single();
+        snakeTraits = sanitizeTraits(
+          (usedSnake as Record<string, unknown> | null)?.traits
+        );
+      }
+
       // Design v2: the client sends the raw food count + how the run ended;
       // the server recomputes the payout exactly from the session row's
       // dynasty (server-trusted, stored at start - never from this request).
@@ -281,7 +308,8 @@ export async function POST(request: NextRequest) {
           cosmic,
         },
         serverStartedAt,
-        normalizeDynastyName(session.dynasty)
+        normalizeDynastyName(session.dynasty),
+        snakeTraits
       );
 
       if (!validation.valid) {
