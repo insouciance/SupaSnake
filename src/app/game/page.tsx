@@ -37,6 +37,7 @@ import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { AimingCrosshair } from '@/components/game/AimingCrosshair';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
+import { RunInsightCard } from '@/components/game/RunInsightCard';
 import { CameraRig, DEFAULT_AZIMUTH } from '@/components/game/CameraRig';
 import { FlickSurface } from '@/components/game/FlickSurface';
 import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
@@ -1486,6 +1487,16 @@ export default function GamePage() {
                     </div>
                   )}
                 </div>
+
+                {/* The Analyst's post-run insight (Identity v1 section 9.2):
+                    lazy, additive, never blocks the game-over flow —
+                    pre-025/disabled/guest states render nothing */}
+                {currentSessionId && session?.access_token && !lastRunFree && (
+                  <RunInsightCard
+                    sessionId={currentSessionId}
+                    accessToken={session.access_token}
+                  />
+                )}
 
                 {/* Unlocked Achievements */}
                 {unlockedAchievements.length > 0 && (

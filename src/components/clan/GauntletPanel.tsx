@@ -58,6 +58,8 @@ interface ScoutingState {
     ban: string | null;
   }>;
   detail: boolean;
+  /** Identity v1 I4: cached Analyst scouting brief for this duel week. */
+  narration?: string | null;
 }
 
 interface GauntletState {
@@ -379,6 +381,15 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
           {gauntlet.scouting && (
             <div data-testid="gauntlet-scouting">
               <p className="label-arcade mb-2">Scouting</p>
+              {/* The Analyst's brief (Identity v1 I4) — cached, additive */}
+              {gauntlet.scouting.narration && (
+                <p
+                  className="text-sm font-body text-cosmic/90 italic mb-3"
+                  data-testid="gauntlet-scout-narration"
+                >
+                  {gauntlet.scouting.narration}
+                </p>
+              )}
               {gauntlet.scouting.roster.length > 0 && (
                 <ul className="space-y-1 mb-3">
                   {gauntlet.scouting.roster.slice(0, 12).map((member, index) => (

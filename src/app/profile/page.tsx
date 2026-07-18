@@ -15,8 +15,23 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
 import { ChronicleView } from '@/components/chronicle/ChronicleView';
 import { AchievementBadges } from '@/components/profile/AchievementBadges';
+import {
+  ArchetypeSection,
+  DigestCard,
+  RecallCard,
+  type AnalystArtifact,
+} from '@/components/chronicle/AnalystSections';
 import { IconMedal, IconReset } from '@/components/ui/icons';
 import type { ChroniclePayload } from '@/lib/chronicle/types';
+
+interface AnalystState {
+  digest: AnalystArtifact | null;
+  digestWeekStart: string | null;
+  archetype: AnalystArtifact | null;
+  recall: AnalystArtifact | null;
+  seasonSeq: number | null;
+  seasonName: string | null;
+}
 
 export default function ProfilePage() {
   const { user, getToken } = useAuth();
@@ -25,6 +40,58 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [earlyCareerOpen, setEarlyCareerOpen] = useState(false);
+  const [analyst, setAnalyst] = useState<AnalystState | null>(null);
+
+  // Analyst artifacts (Identity v1 I4): every failure renders nothing —
+  // the Chronicle never waits on, or breaks over, the Analyst.
+  const loadAnalyst = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const headers = { Authorization: `Bearer ${token}` };
+      const state: AnalystState = {
+        digest: null,
+        digestWeekStart: null,
+        archetype: null,
+        recall: null,
+        seasonSeq: null,
+        seasonName: null,
+      };
+
+      const digestRes = await fetch('/api/analyst/digest', { headers });
+      if (digestRes.ok) {
+        const data = await digestRes.json();
+        if (data?.digest?.headline) {
+          state.digest = data.digest;
+          state.digestWeekStart = data.weekStart ?? null;
+        }
+      }
+
+      let recallRes = await fetch('/api/analyst/recall', { headers });
+      if (recallRes.ok) {
+        let data = await recallRes.json();
+        // No cached Recall yet: ask for a generation once (cache-first,
+        // rate-limited server-side; a 429 just leaves the card absent)
+        if (data?.live && !data.recall) {
+          recallRes = await fetch('/api/analyst/recall', {
+            method: 'POST',
+            headers,
+          });
+          if (recallRes.ok) data = await recallRes.json();
+        }
+        if (data?.recall?.headline) state.recall = data.recall;
+        if (data?.archetype?.headline) state.archetype = data.archetype;
+        if (data?.season) {
+          state.seasonSeq = data.season.seq ?? null;
+          state.seasonName = data.season.name ?? null;
+        }
+      }
+
+      setAnalyst(state);
+    } catch {
+      // Graceful absence — no Analyst cards.
+    }
+  }, [getToken]);
 
   const loadChronicle = useCallback(async () => {
     try {
@@ -53,10 +120,11 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       void loadChronicle();
+      void loadAnalyst();
     } else {
       setLoading(false);
     }
-  }, [user, loadChronicle]);
+  }, [user, loadChronicle, loadAnalyst]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -151,6 +219,37 @@ export default function ProfilePage() {
           <ChronicleView
             payload={payload}
             isSelf
+            archetypeSlot={
+              analyst?.archetype && analyst.seasonSeq !== null ? (
+                <ArchetypeSection
+                  artifact={analyst.archetype}
+                  seasonSeq={analyst.seasonSeq}
+                />
+              ) : undefined
+            }
+            digestSlot={
+              analyst?.digest && analyst.digestWeekStart ? (
+                <DigestCard
+                  artifact={analyst.digest}
+                  weekStart={analyst.digestWeekStart}
+                />
+              ) : undefined
+            }
+            recallSlot={
+              analyst?.recall && analyst.seasonSeq !== null ? (
+                <RecallCard
+                  artifact={analyst.recall}
+                  identity={payload.identity}
+                  seasonSeq={analyst.seasonSeq}
+                  seasonName={analyst.seasonName}
+                  shareUrl={
+                    payload.identity.handle
+                      ? `/p/${payload.identity.handle}`
+                      : null
+                  }
+                />
+              ) : undefined
+            }
             extras={
               <section
                 className="space-y-3 animate-fade-up"

@@ -11,6 +11,7 @@ import { IdentityPanel } from '@/components/identity/IdentityPanel';
 import { DiscordConnectCard } from '@/components/identity/DiscordConnectCard';
 import { CareerStats } from '@/components/profile/CareerStats';
 import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
+import { DigestEmailPanel } from '@/components/profile/DigestEmailPanel';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 import { IconCart, IconFlask, IconLock, IconMedal, IconTrophy, IconUser } from '@/components/ui/icons';
@@ -93,6 +94,11 @@ export default function SettingsPage() {
         {/* Aim System */}
         <div className="mb-6">
           <AimSystemPanel />
+        </div>
+
+        {/* Weekly Analyst digest email (Identity v1 I4, opt-in) */}
+        <div className="mb-6">
+          <DigestEmailPanel />
         </div>
 
         {/* The Chronicle (Identity v1 section 7): achievements + records

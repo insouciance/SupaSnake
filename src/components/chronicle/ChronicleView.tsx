@@ -45,17 +45,27 @@ export interface ChronicleViewProps {
   isSelf?: boolean;
   /** Private extras (refresh button, Early Career) - own page only. */
   extras?: React.ReactNode;
+  /** Analyst artifacts (Identity v1 I4) - own page only, all optional. */
+  archetypeSlot?: React.ReactNode;
+  digestSlot?: React.ReactNode;
+  recallSlot?: React.ReactNode;
 }
 
 export function ChronicleView({
   payload,
   isSelf = false,
   extras,
+  archetypeSlot,
+  digestSlot,
+  recallSlot,
 }: ChronicleViewProps): React.ReactElement {
   return (
     <div className="space-y-8" data-testid="chronicle-view">
       {/* Header: the full Player Card (Legacy Score + founder line) */}
       <PlayerCard identity={payload.identity} variant="full" isSelf={isSelf} />
+
+      {/* Seasonal archetype (section 9.6): identity-level, header-adjacent */}
+      {archetypeSlot}
 
       {payload.limited ? (
         <p
@@ -66,6 +76,12 @@ export function ChronicleView({
         </p>
       ) : (
         <>
+          {digestSlot && (
+            <Section title="This Week" testId="section-digest">
+              {digestSlot}
+            </Section>
+          )}
+
           <Section title="Personal Bests" testId="section-pb">
             {payload.pbTimeline ? (
               <PBTimeline data={payload.pbTimeline} />
@@ -94,6 +110,12 @@ export function ChronicleView({
 
       {!payload.limited && (
         <>
+          {recallSlot && (
+            <Section title="Season Recall" testId="section-recall">
+              {recallSlot}
+            </Section>
+          )}
+
           <Section title="Season Chapters" testId="section-seasons">
             {payload.seasons ? (
               <SeasonChapters chapters={payload.seasons} />
