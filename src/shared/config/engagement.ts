@@ -15,6 +15,21 @@ export const ENGAGEMENT_CONFIG = {
   },
 
   /**
+   * Contracts (Design v2 section 7.3 - the daily loop)
+   * Offered 3, pick 2; rewards defined in contract_definitions
+   * (migration 015). Replaces the flat 28-day calendar DNA faucet;
+   * the calendar's streak multiplier and milestone days survive.
+   */
+  contracts: {
+    offersPerDay: 3,
+    picksPerDay: 2,
+    /** Season-track XP per completed contract (doc: ~150 XP each) */
+    xpPerContract: 150,
+    /** Combo/mutation contracts activate with Phase 2A session facts */
+    comboContractsEnabled: false,
+  },
+
+  /**
    * Streak System
    */
   streaks: {

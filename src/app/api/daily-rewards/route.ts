@@ -6,6 +6,12 @@
  *
  * Server authority: all grants go through the claim_daily_reward RPC
  * (row-locked, idempotent per day, logs economy transactions).
+ *
+ * DEPRECATED as the daily faucet (Design v2 section 7.3): contracts
+ * (/api/contracts) replace flat calendar DNA as the daily loop, and the
+ * home modal is now the contracts board. This route stays for streak
+ * display and the 28-day milestone days, which convert to cosmetic/
+ * reroll-token gifts at Phase 3.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
