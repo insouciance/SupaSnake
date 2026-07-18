@@ -144,6 +144,16 @@ export async function POST(request: NextRequest) {
 
       if (sessionError) {
         console.error('Session creation error:', sessionError);
+        // Pre-migration-016 window: the is_free_play column doesn't exist
+        // yet - refuse free mode with a clear signal instead of a raw 500.
+        // Earning runs are unaffected (the marker is omitted from their
+        // insert), so this branch stays deployable before 016 applies.
+        if (isFreePlay && /is_free_play/i.test(sessionError.message || '')) {
+          return NextResponse.json(
+            { error: 'Free Play is not available yet — try an earning run' },
+            { status: 503 }
+          );
+        }
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
 
@@ -215,9 +225,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
       }
 
+      // select('*') on purpose: naming is_free_play here would error the
+      // whole read during the pre-migration-016 window. With '*' pre-016
+      // rows simply lack the field (=> earning path, which they all are).
       const { data: session } = await supabase
         .from('game_sessions')
-        .select('server_started_at, snake_variant_id, ended_at, dynasty, is_free_play')
+        .select('*')
         .eq('id', sessionId)
         .eq('player_id', player.id)
         .single();

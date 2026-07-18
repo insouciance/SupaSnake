@@ -333,6 +333,25 @@ describe('Game Session Logic', () => {
       expect(isFreeSession).toBe(true);
     });
 
+    it('refuses free starts cleanly while migration 016 is pending (503)', () => {
+      // Insert fails because is_free_play does not exist yet - the route
+      // maps that to a clear 503 instead of a generic 500. Earning starts
+      // never hit this: their insert omits the marker entirely.
+      const isFreePlay = true;
+      const sessionError = {
+        message: "Could not find the 'is_free_play' column of 'game_sessions' in the schema cache",
+      };
+
+      const isMigrationPending =
+        isFreePlay && /is_free_play/i.test(sessionError.message || '');
+      expect(isMigrationPending).toBe(true);
+
+      const response = isMigrationPending
+        ? { status: 503, error: 'Free Play is not available yet — try an earning run' }
+        : { status: 500, error: 'Failed to create session' };
+      expect(response.status).toBe(503);
+    });
+
     it('free end still runs on the same idempotency guard (409 on replays)', () => {
       const session = { ended_at: '2026-07-18T10:00:00.000Z', is_free_play: true };
       const alreadyEnded = Boolean(session.ended_at);
