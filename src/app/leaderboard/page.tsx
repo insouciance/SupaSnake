@@ -77,6 +77,7 @@ function entryIdentity(entry: LeaderboardEntry): PlayerIdentity | null {
     clanTag: identity.clanTag,
     clanName: null,
     mastery: identity.mastery ?? {},
+    legacyScore: identity.legacyScore ?? 0,
   };
 }
 

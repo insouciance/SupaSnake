@@ -23,6 +23,8 @@ export interface LeaderboardIdentity {
   avatarVariantName: string | null;
   avatarRarity: string | null;
   mastery: Record<string, number>;
+  /** Legacy Score (Identity v1 section 6.2); 0 pre-migration-023. */
+  legacyScore: number;
 }
 
 export interface LeaderboardEntry {

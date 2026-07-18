@@ -9,11 +9,10 @@
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { IdentityPanel } from '@/components/identity/IdentityPanel';
 import { CareerStats } from '@/components/profile/CareerStats';
-import { AchievementBadges } from '@/components/profile/AchievementBadges';
 import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
-import { IconCart, IconFlask, IconLock, IconTrophy, IconUser } from '@/components/ui/icons';
+import { IconCart, IconFlask, IconLock, IconMedal, IconTrophy, IconUser } from '@/components/ui/icons';
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -92,10 +91,23 @@ export default function SettingsPage() {
           <AimSystemPanel />
         </div>
 
-        {/* Achievements */}
-        <div className="mb-6">
-          <AchievementBadges showAll={true} maxDisplay={12} />
-        </div>
+        {/* The Chronicle (Identity v1 section 7): achievements + records
+            live on the career surface now - settings links to it. */}
+        <Link
+          href="/profile"
+          className="panel-elevated p-6 mb-6 animate-fade-up flex items-center gap-4 hover:border-venom-orange/70 transition-colors group block"
+          data-testid="chronicle-link"
+        >
+          <IconMedal size={30} className="text-venom-orange shrink-0" />
+          <div>
+            <h2 className="heading-display text-xl text-bone-white group-hover:text-venom-orange transition-colors">
+              The Chronicle
+            </h2>
+            <p className="text-beige text-sm font-body">
+              Your records, personal bests, collection log and achievements
+            </p>
+          </div>
+        </Link>
 
         {/* Quick Links */}
         <div className="panel-elevated p-6 mb-6 animate-fade-up">

@@ -38,6 +38,7 @@ function applyIdentities(
         avatarVariantName: identity.avatar?.variantName ?? null,
         avatarRarity: identity.avatar?.rarity ?? null,
         mastery: identity.mastery,
+        legacyScore: identity.legacyScore,
       },
     };
   });

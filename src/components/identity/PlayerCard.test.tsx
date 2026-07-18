@@ -35,6 +35,7 @@ function identity(overrides: Partial<PlayerIdentity> = {}): PlayerIdentity {
     clanTag: 'FANG',
     clanName: 'Fang Dynasty',
     mastery: { PRIMAL: 7, CYBER: 2 },
+    legacyScore: 0,
     ...overrides,
   };
 }
@@ -88,6 +89,21 @@ describe('PlayerCard', () => {
     it('shows no founder line for non-founders', () => {
       render(<PlayerCard identity={identity({ isFounder: false })} variant="full" />);
       expect(screen.queryByTestId('player-card-founder')).not.toBeInTheDocument();
+    });
+
+    it('shows the Legacy Score on the full card (section 6.2)', () => {
+      render(<PlayerCard identity={identity({ legacyScore: 1230 })} variant="full" />);
+      expect(screen.getByTestId('player-card-legacy')).toHaveTextContent('1,230');
+    });
+
+    it('hides the Legacy Score at 0 (empty-state rule: never a 0-count)', () => {
+      render(<PlayerCard identity={identity({ legacyScore: 0 })} variant="full" />);
+      expect(screen.queryByTestId('player-card-legacy')).not.toBeInTheDocument();
+    });
+
+    it('keeps the Legacy Score off the card/row variants (full only)', () => {
+      render(<PlayerCard identity={identity({ legacyScore: 1230 })} variant="card" />);
+      expect(screen.queryByTestId('player-card-legacy')).not.toBeInTheDocument();
     });
   });
 

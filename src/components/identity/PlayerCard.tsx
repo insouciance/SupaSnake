@@ -309,6 +309,18 @@ export function PlayerCard({
               ))}
             </div>
           )}
+          {variant === 'full' && identity.legacyScore > 0 && (
+            <p
+              data-testid="player-card-legacy"
+              className="font-body text-xs text-beige/80 flex items-center gap-1.5 pt-1"
+            >
+              <IconMedal size={13} className="text-venom-orange" />
+              Legacy Score{' '}
+              <span className="text-venom-orange font-bold">
+                {identity.legacyScore.toLocaleString()}
+              </span>
+            </p>
+          )}
           {variant === 'full' && identity.isFounder && (
             <p
               data-testid="player-card-founder"

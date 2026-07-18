@@ -22,6 +22,7 @@ import {
   IconTrophy,
   IconShield,
   IconCart,
+  IconMedal,
   IconGear,
   type IconProps,
 } from '@/components/ui/icons';
@@ -47,6 +48,7 @@ export function Navigation() {
       ? [{ href: '/clan', label: 'Clan', Icon: IconShield }]
       : []),
     { href: '/shop', label: 'Shop', Icon: IconCart },
+    { href: '/profile', label: 'Chronicle', Icon: IconMedal },
     { href: '/settings', label: 'Settings', Icon: IconGear },
   ];
 
