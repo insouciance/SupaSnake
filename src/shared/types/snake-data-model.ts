@@ -81,9 +81,15 @@ export interface OwnedSnake {
   isEquipped: boolean;
   isFavorited: boolean;
 
+  // Traits (Design v2 Phase 3A) - slot order matters (reroll targets a slot)
+  traits?: string[]; // TraitId[] sanitized by the API mapper
+  // Trait slot count derived from variant rarity + generation (section 6.1)
+  traitSlots?: number;
+
   // Joined display data (populated when the query joins snake_variants)
   variantName?: string | null; // e.g. "CYBER SPARK"
   dynastyName?: string | null; // e.g. "CYBER"
+  variantRarity?: Rarity | null; // from the snake_variants join (trait slots)
 
   // Joined data (populated by queries)
   variant?: SnakeVariant;

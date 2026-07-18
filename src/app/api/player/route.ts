@@ -180,6 +180,11 @@ export async function GET(request: NextRequest) {
       // Aim telegraph meta-progression
       aimSystem,
       aimStats,
+      // Trait reroll tokens (Design v2 Phase 3A) - 0 pre-migration-018
+      rerollTokens:
+        typeof player.player_reroll_tokens === 'number'
+          ? player.player_reroll_tokens
+          : 0,
     });
   } catch (err) {
     console.error('Player GET error:', err);

@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     // Fetch player's collection (join variant + dynasty names for display)
     const { data: rows, error } = await supabase
       .from('collected_snakes')
-      .select('*, snake_variants(name, dynasties(name))')
+      .select('*, snake_variants(name, rarity, dynasties(name))')
       .eq('player_id', player.id)
       .order('acquired_at', { ascending: false });
 
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     // Fetch the newly created snake
     const { data: newSnake, error: fetchError } = await supabase
       .from('collected_snakes')
-      .select('*, snake_variants(name, dynasties(name))')
+      .select('*, snake_variants(name, rarity, dynasties(name))')
       .eq('id', newSnakeId)
       .single();
 

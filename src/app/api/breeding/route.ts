@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
 import { mapBreedingHistoryRow } from './utils';
 
 const supabase = createClient(
@@ -137,18 +138,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Actual DNA cost is computed server-side; read it from the history entry
+    // Actual DNA cost is computed server-side; read it from the history
+    // entry. select('*) so trait_rolls (migration 018) rides along without
+    // erroring during the pre-018 deploy window.
     const { data: historyEntry } = await supabase
       .from('breeding_history')
-      .select('dna_cost')
+      .select('*')
       .eq('child_id', childId)
       .single();
 
+    // select('*') for the same reason: player_reroll_tokens is post-018
     const { data: updatedPlayer } = await supabase
       .from('players')
-      .select('dna')
+      .select('*')
       .eq('id', player.id)
       .single();
+
+    // Inherited traits (Design v2 Phase 3A): rolled server-side by the
+    // RPC and read back from the offspring ROW - never client-asserted
+    const childTraits = sanitizeTraits(childSnake.traits);
+    const variantJoin = childSnake.snake_variants as { rarity?: string } | null;
 
     return NextResponse.json({
       success: true,
@@ -157,9 +166,19 @@ export async function POST(request: NextRequest) {
         snake_variant_id: childSnake.snake_variant_id,
         variant: childSnake.snake_variants,
         generation: childSnake.generation,
+        traits: childTraits,
+        trait_slots: getTraitSlots(
+          variantJoin?.rarity ?? 'common',
+          childSnake.generation ?? 1
+        ),
       },
       cost: historyEntry?.dna_cost ?? null,
+      traitRolls: historyEntry?.trait_rolls ?? null,
       remainingDna: updatedPlayer?.dna ?? player.dna,
+      rerollTokens:
+        typeof updatedPlayer?.player_reroll_tokens === 'number'
+          ? updatedPlayer.player_reroll_tokens
+          : 0,
     });
   } catch (err) {
     console.error('Breeding API error:', err);
