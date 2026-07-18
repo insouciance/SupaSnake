@@ -40,7 +40,9 @@ describe('the Launch Ten', () => {
       'phoenix',
       'compound_interest',
     ]);
-    expect(Object.keys(MUTATIONS)).toHaveLength(10);
+    // 10 launch + 9 mastery mutations (section 7.1) live in MUTATIONS;
+    // only the Launch Ten are in the BASE pool.
+    expect(Object.keys(MUTATIONS)).toHaveLength(19);
   });
 
   it('every mutation has a name, kind, one-line effect and cost', () => {

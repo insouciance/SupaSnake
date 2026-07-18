@@ -17,6 +17,7 @@
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
   MUTATION_ECONOMICS,
+  foodValueFlatBonus,
   foodValueModifier,
   type MutationPick,
 } from '@/shared/game/mutations';
@@ -271,7 +272,13 @@ export function computeRunTotals(
     if (traits.length > 0) {
       mod *= traitFoodValueModifier(traits, n);
     }
-    rawDna += Math.round(ruleset.foodDnaValue(n) * mod);
+    // Flat [E] bonus (Deep Roots, section 7.1): integer DNA added after
+    // the single per-food round - the engine's eat path does the same.
+    const flat =
+      mutations.length > 0
+        ? foodValueFlatBonus(mutations, n, phoenixTriggeredAtFood)
+        : 0;
+    rawDna += Math.round(ruleset.foodDnaValue(n) * mod) + flat;
     score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n));
   }
   return { rawDna, score };
@@ -317,6 +324,19 @@ export function outcomeMultipliers(
   }
   if (ids.has('compound_interest') && !phoenixTriggered) {
     bank += MUTATION_ECONOMICS.compoundInterestPerHeld * mutations.length;
+  }
+  // Overclock Harvest (CYBER M9, section 7.1): bank +0.15 is a benefit
+  // (voided post-Phoenix), the 0.45 salvage is a cost (persists). Rounded
+  // to 4 decimals like the trait deltas so 1.25 + 0.15 IS 1.40 exactly.
+  if (ids.has('overclock_harvest')) {
+    death = Math.round(
+      Math.max(0, death + MUTATION_ECONOMICS.overclockHarvestDeathDelta) * 10000
+    ) / 10000;
+    if (!phoenixTriggered) {
+      bank = Math.round(
+        (bank + MUTATION_ECONOMICS.overclockHarvestBankDelta) * 10000
+      ) / 10000;
+    }
   }
   if (traits.length > 0) {
     const deltas = traitOutcomeDeltas(traits);

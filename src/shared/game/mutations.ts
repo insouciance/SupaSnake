@@ -19,7 +19,12 @@
  * under- OR over-reporting a Phoenix trigger can never inflate the payout.
  */
 
-/** The Launch Ten mutation ids, in the section 5.2 table order. */
+/**
+ * Mutation ids: the Launch Ten (section 5.2 table order) plus the nine
+ * per-dynasty mastery mutations (section 7.1 - unlocked at M3/M6/M9 into
+ * that dynasty's offer pool; dynasty-flavored sidegrades in the same
+ * [E]/[P] taxonomy, doc-anchored by the PRIMAL M3 "Deep Roots" example).
+ */
 export type MutationId =
   | 'gold_trail'
   | 'overgrowth'
@@ -30,7 +35,19 @@ export type MutationId =
   | 'time_dilation'
   | 'splitter'
   | 'phoenix'
-  | 'compound_interest';
+  | 'compound_interest'
+  // PRIMAL mastery (M3/M6/M9)
+  | 'deep_roots'
+  | 'ancient_grove'
+  | 'tectonic_patience'
+  // CYBER mastery (M3/M6/M9)
+  | 'redline_dividend'
+  | 'afterburner'
+  | 'overclock_harvest'
+  // COSMIC mastery (M3/M6/M9)
+  | 'starweaver'
+  | 'gravity_well'
+  | 'event_horizon';
 
 /** Effect kind: E = economic (server-recomputed), P = physical (engine-only). */
 export type MutationKind = 'E' | 'P' | 'EP';
@@ -116,9 +133,80 @@ export const MUTATIONS: Record<MutationId, MutationDef> = {
     effect: 'Banked bonus +10% per mutation held at extraction',
     cost: 'Only the pick slot it occupies',
   },
+  // --- PRIMAL mastery mutations (section 7.1) -------------------------------
+  deep_roots: {
+    id: 'deep_roots',
+    name: 'Deep Roots',
+    kind: 'EP',
+    effect: '+1 DNA per food for every 25 foods survived since pickup',
+    cost: 'Exit portals despawn 10 ticks sooner',
+  },
+  ancient_grove: {
+    id: 'ancient_grove',
+    name: 'Ancient Grove',
+    kind: 'E',
+    effect: 'Foods after 40 pay +25% DNA',
+    cost: 'Foods up to 40 pay −10%',
+  },
+  tectonic_patience: {
+    id: 'tectonic_patience',
+    name: 'Tectonic Patience',
+    kind: 'EP',
+    effect: 'Exit portals linger 30 ticks longer',
+    cost: 'Food −10% DNA for the rest of the run',
+  },
+  // --- CYBER mastery mutations (section 7.1) --------------------------------
+  redline_dividend: {
+    id: 'redline_dividend',
+    name: 'Redline Dividend',
+    kind: 'E',
+    effect: 'Foods at max overclock (20+) pay +30% DNA',
+    cost: 'Foods below max tier pay −10%',
+  },
+  afterburner: {
+    id: 'afterburner',
+    name: 'Afterburner',
+    kind: 'EP',
+    effect: 'Every 10th food after pickup pays ×2 DNA',
+    cost: 'Exit portals despawn 20 ticks sooner',
+  },
+  overclock_harvest: {
+    id: 'overclock_harvest',
+    name: 'Overclock Harvest',
+    kind: 'E',
+    effect: 'Banked multiplier ×1.25 → ×1.40',
+    cost: 'Death salvage ×0.60 → ×0.45',
+  },
+  // --- COSMIC mastery mutations (section 7.1) -------------------------------
+  starweaver: {
+    id: 'starweaver',
+    name: 'Starweaver',
+    kind: 'P',
+    effect: 'Constellation groups spawn 4 foods',
+    cost: 'Chain window 2 ticks shorter',
+  },
+  gravity_well: {
+    id: 'gravity_well',
+    name: 'Gravity Well',
+    kind: 'EP',
+    effect: 'Food within 3 cells drifts toward you',
+    cost: 'Food −10% DNA for the rest of the run',
+  },
+  event_horizon: {
+    id: 'event_horizon',
+    name: 'Event Horizon',
+    kind: 'P',
+    effect: 'Open (wrap) phases last 25 ticks longer',
+    cost: 'Closed (killing) phases last 15 ticks longer',
+  },
 };
 
-/** The launch offer pool, in table order. */
+/**
+ * The BASE offer pool: the Launch Ten, in table order. Mastery mutations
+ * (section 7.1) are NOT in here - a player's effective pool is
+ * unlockedMutationPool(dynasty, masteryLevel) from the shared mastery
+ * module (base ten + that dynasty's M3/M6/M9 unlocks).
+ */
 export const MUTATION_POOL: MutationId[] = [
   'gold_trail',
   'overgrowth',
@@ -199,6 +287,27 @@ export const MUTATION_ECONOMICS = {
   mirrorWagerBank: 1.5,
   mirrorWagerDeath: 0.3,
   compoundInterestPerHeld: 0.1,
+  // Mastery mutations (section 7.1) - same discipline: pure functions of
+  // (food index, mutation set), so the server recompute stays exact.
+  /** Deep Roots: +1 flat DNA per this many foods survived since pickup. */
+  deepRootsFoodsPerBonus: 25,
+  /** Ancient Grove: foods after 40 x1.25; foods up to 40 x0.9. */
+  ancientGroveLateAfterFood: 40,
+  ancientGroveLateBonus: 1.25,
+  ancientGroveEarlyPenalty: 0.9,
+  /** Redline Dividend: foods at max CYBER tier (n >= 20) x1.3; below x0.9. */
+  redlineDividendMaxTierFood: 20,
+  redlineDividendBonus: 1.3,
+  redlineDividendPenalty: 0.9,
+  /** Afterburner: every 10th food after pickup x2. */
+  afterburnerEveryNth: 10,
+  afterburnerMultiplier: 2,
+  /** Tectonic Patience / Gravity Well: food x0.9 cost (benefit is physical). */
+  tectonicPatienceFoodPenalty: 0.9,
+  gravityWellFoodPenalty: 0.9,
+  /** Overclock Harvest: bank 1.25 -> 1.40, salvage 0.60 -> 0.45 (additive). */
+  overclockHarvestBankDelta: 0.15,
+  overclockHarvestDeathDelta: -0.15,
 } as const;
 
 /** Physical tuning constants (engine-side), exported for tests. */
@@ -213,6 +322,24 @@ export const MUTATION_PHYSICS = {
   timeDilationCyberFoodOffset: 5, // CYBER: speed as if one tier (5 foods) earlier
   phoenixRewindCells: 3,
   phoenixRebirthLength: 8,
+  // Mastery mutations (section 7.1) - engine-side physical tuning
+  /** Deep Roots cost: exit portals despawn this many ticks sooner. */
+  deepRootsPortalTicksPenalty: 10,
+  /** Afterburner cost: exit portals despawn this many ticks sooner. */
+  afterburnerPortalTicksPenalty: 20,
+  /** Tectonic Patience: exit portals linger this many ticks longer. */
+  tectonicPatiencePortalTicksBonus: 30,
+  /** Floor for the portal window after stacked despawn costs. */
+  minExitDespawnTicks: 10,
+  /** Starweaver: constellation groups gain one extra food... */
+  starweaverExtraGroupFood: 1,
+  /** ...and the chain window shrinks by 2 ticks. */
+  starweaverChainWindowPenalty: 2,
+  /** Gravity Well: pull radius (Chebyshev) - outranks Magnet Pulse (2). */
+  gravityWellRadius: 3,
+  /** Event Horizon: open phases +25 ticks, closed phases +15 ticks. */
+  eventHorizonOpenTicksBonus: 25,
+  eventHorizonClosedTicksPenalty: 15,
 } as const;
 
 /**
@@ -260,9 +387,71 @@ export function foodValueModifier(
       case 'splitter':
         mod *= MUTATION_ECONOMICS.splitterFoodPenalty;
         break;
-      // mirror_wager, magnet_pulse, phoenix, compound_interest:
-      // no per-food value effect
+      // Mastery mutations (section 7.1) - benefits void post-Phoenix,
+      // costs persist, exactly like the Launch Ten discipline.
+      case 'ancient_grove':
+        if (n > MUTATION_ECONOMICS.ancientGroveLateAfterFood) {
+          if (!benefitsVoided) mod *= MUTATION_ECONOMICS.ancientGroveLateBonus;
+        } else {
+          mod *= MUTATION_ECONOMICS.ancientGroveEarlyPenalty;
+        }
+        break;
+      case 'redline_dividend':
+        if (n >= MUTATION_ECONOMICS.redlineDividendMaxTierFood) {
+          if (!benefitsVoided) mod *= MUTATION_ECONOMICS.redlineDividendBonus;
+        } else {
+          mod *= MUTATION_ECONOMICS.redlineDividendPenalty;
+        }
+        break;
+      case 'afterburner':
+        if (
+          !benefitsVoided &&
+          (n - pick.atFood) % MUTATION_ECONOMICS.afterburnerEveryNth === 0
+        ) {
+          mod *= MUTATION_ECONOMICS.afterburnerMultiplier;
+        }
+        break;
+      case 'tectonic_patience':
+        mod *= MUTATION_ECONOMICS.tectonicPatienceFoodPenalty;
+        break;
+      case 'gravity_well':
+        mod *= MUTATION_ECONOMICS.gravityWellFoodPenalty;
+        break;
+      // mirror_wager, magnet_pulse, phoenix, compound_interest,
+      // overclock_harvest, starweaver, event_horizon, deep_roots:
+      // no per-food MULTIPLIER effect (deep_roots is a flat bonus - see
+      // foodValueFlatBonus)
     }
   }
   return mod;
+}
+
+/**
+ * The per-food FLAT [E] DNA bonus for the n-th food (1-based) - the
+ * additive counterpart of foodValueModifier, folded into the same per-food
+ * observation point by computeRunTotals and the engine's eat path.
+ *
+ * Deep Roots (PRIMAL M3, the doc's authored example): +1 DNA per food for
+ * every 25 foods survived since pickup - floor((n - atFood) / 25). A flat
+ * bonus is a benefit, so a Phoenix trigger voids it from the trigger food
+ * onward (costs persist; Deep Roots' cost is physical - portal ticks).
+ */
+export function foodValueFlatBonus(
+  picks: MutationPick[],
+  n: number,
+  phoenixTriggeredAtFood: number | null = null
+): number {
+  let bonus = 0;
+  const benefitsVoided =
+    phoenixTriggeredAtFood !== null && n > phoenixTriggeredAtFood;
+  if (benefitsVoided) return 0;
+  for (const pick of picks) {
+    if (n <= pick.atFood) continue;
+    if (pick.id === 'deep_roots') {
+      bonus += Math.floor(
+        (n - pick.atFood) / MUTATION_ECONOMICS.deepRootsFoodsPerBonus
+      );
+    }
+  }
+  return bonus;
 }
