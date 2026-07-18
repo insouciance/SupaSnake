@@ -1,3 +1,14 @@
+> **PARTIALLY SUPERSEDED (2026-07-18)** by [`docs/game/GAME_DESIGN_V2.md`](../GAME_DESIGN_V2.md).
+> Design v2 removes every stat-bonus and generation-scaling mechanic specified here:
+> the +5% dynasty stat bonuses (Core Decisions 1 & 3 and each dynasty's "Gameplay Stats"),
+> generation stat scaling (breeding "Stats: Base stats + (generation × 5%)" and the
+> `compute_effective_stats` generation multiplier), rarity base-stat differences, and the
+> set-bonus **stat doubling** (the +10% DNA set bonus itself survives). In v2, a dynasty is
+> a **ruleset** (distinct gameplay physics — see GAME_DESIGN_V2 §3) and generation is
+> prestige plus a trait-slot unlock. Everything else in this document — art direction,
+> visual identity, variant catalog, unlock costs (26,000 DNA per dynasty), breeding
+> cadence, database art fields, Panini book UX — remains authoritative.
+
 # Dynasty System Specification v1.0
 ## Production-Ready Design - LOCKED
 
