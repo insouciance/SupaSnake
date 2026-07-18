@@ -1,6 +1,23 @@
 # QA Checklist (for Josef)
 
-## 🎯 PLAYTEST GATE — Design v2 Phase 1 (LIVE NOW)
+## 🎯 PLAYTEST GATE — Design v2 Phase 2 (LIVE NOW): mutation balance
+
+- [ ] **Mutation Food** (violet double-helix, ~every 20 foods): does the
+      choice-of-2 moment feel exciting, readable at a glance, worth the
+      detour? Any of the Ten feel useless or mandatory? (Gold Trail,
+      Overgrowth, Wall Rush slide, Shed, Mirror Wager, Magnet, Time
+      Dilation, Splitter, Phoenix, Compound Interest)
+- [ ] **Runs feel different from each other now?** (the core replayability
+      bet — builds should create stories)
+- [ ] **COSMIC Flux**: constellation glyph chains (chain same glyph within
+      the window → up to ×2.4) + wall wrap-phases (rails dim = open/wrap,
+      rose pulse = closing, solid rose = deadly) — readable? fun? fair?
+- [ ] **Contracts board** (replaced the daily calendar): pick 2-of-3 —
+      do the objectives pull you into different playstyles?
+- [ ] Phoenix + closed-wall interplay, Wall Rush corner deaths — any
+      feels-unfair moments?
+
+## 🎯 PLAYTEST GATE — Design v2 Phase 1 (LIVE)
 
 The core question: **do PRIMAL and CYBER feel like different games?**
 
