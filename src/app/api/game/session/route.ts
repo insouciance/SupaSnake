@@ -19,6 +19,8 @@ import {
   unlockedMutationPool,
 } from '@/shared/game/mastery';
 import { getMasteryXp, grantMasteryXp } from '@/lib/server/mastery';
+import { getGauntletBan } from '@/lib/server/gauntlet';
+import { applyGauntletBan } from '@/shared/game/gauntlet';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
@@ -151,9 +153,21 @@ export async function POST(request: NextRequest) {
       const startDynasty = normalizeDynastyName(dynastyName);
       const masteryXp = await getMasteryXp(supabase, player.id, startDynasty);
       const masteryLevel = levelForXp(masteryXp);
-      const mutationPool = isFreePlay
-        ? fullMutationPool(startDynasty)
-        : unlockedMutationPool(startDynasty, masteryLevel);
+
+      // Clan Gauntlet (section 8.2 item 3): the mutation banned by this
+      // week's duel opponent is removed from the offer pool for counted
+      // runs. Free Play is NEVER banned (practice pool untouched); the
+      // lookup itself is pre-migration-020 safe (missing RPC => null =>
+      // unfiltered pool, exactly today's behavior).
+      const gauntletBan = isFreePlay
+        ? null
+        : await getGauntletBan(supabase, player.id, startDynasty);
+      const mutationPool = applyGauntletBan(
+        isFreePlay
+          ? fullMutationPool(startDynasty)
+          : unlockedMutationPool(startDynasty, masteryLevel),
+        gauntletBan
+      );
       const masteryInfo = {
         dynasty: startDynasty,
         xp: masteryXp,
@@ -258,6 +272,7 @@ export async function POST(request: NextRequest) {
         traits: snakeTraits,
         mutationPool,
         mastery: masteryInfo,
+        ...(gauntletBan ? { gauntletBan } : {}),
       });
     }
 
@@ -329,9 +344,26 @@ export async function POST(request: NextRequest) {
       const masteryXpBefore = isFreeSession
         ? 0
         : await getMasteryXp(supabase, player.id, endDynasty);
-      const unlockedPool = isFreeSession
-        ? fullMutationPool(endDynasty)
-        : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore));
+
+      // Gauntlet ban mirror (section 8.2 item 3): the validator must see
+      // the SAME pool the run was offered - recomputed at the session's
+      // server start time, so a run straddling the Wed->Thu boundary
+      // validates against what it actually saw. Free sessions are never
+      // banned; pre-020 the lookup returns null (no-op).
+      const endGauntletBan = isFreeSession
+        ? null
+        : await getGauntletBan(
+            supabase,
+            player.id,
+            endDynasty,
+            session.server_started_at || undefined
+          );
+      const unlockedPool = applyGauntletBan(
+        isFreeSession
+          ? fullMutationPool(endDynasty)
+          : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore)),
+        endGauntletBan
+      );
 
       // Design v2: the client sends the raw food count + how the run ended;
       // the server recomputes the payout exactly from the session row's

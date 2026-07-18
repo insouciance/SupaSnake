@@ -128,6 +128,8 @@ describe('GET /api/clan/duel', () => {
           { name: 'viper', dna: 2400 },
           { name: 'cobra', dna: 1800 },
         ],
+        // Pre-020 RPC payloads carry no gauntlet block - mapped to null
+        gauntlet: null,
       },
       rating: 1010,
       record: { wins: 3, losses: 1 },
