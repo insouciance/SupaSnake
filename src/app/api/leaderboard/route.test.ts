@@ -175,4 +175,46 @@ describe('Leaderboard Constraints', () => {
       expect(newPlayer).not.toBe(whale);
     });
   });
+
+  describe('Free Play exclusion (Design v2 §7.4)', () => {
+    it('excludes free sessions from weekly/daily rankings', () => {
+      // Mirrors the route's .eq('is_free_play', false) filter on the
+      // game_sessions entries query
+      const sessions = [
+        { player_id: 'a', score: 900, is_free_play: false },
+        { player_id: 'b', score: 5000, is_free_play: true }, // practice - never ranks
+        { player_id: 'c', score: 400, is_free_play: false },
+      ];
+
+      const ranked = sessions
+        .filter((s) => s.is_free_play === false)
+        .sort((a, b) => b.score - a.score);
+
+      expect(ranked).toHaveLength(2);
+      expect(ranked[0].score).toBe(900); // the 5000 practice run is invisible
+    });
+
+    it('route source: both session queries carry the is_free_play filter', () => {
+      // Structural guard: the entries query AND the count query must both
+      // exclude free play, or totals would disagree with the visible rows.
+      const fs = require('fs');
+      const path = require('path');
+      const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+
+      const filters = source.match(/\.eq\('is_free_play', false\)/g) || [];
+      expect(filters.length).toBe(2);
+    });
+
+    it('global leaderboard needs no filter (reads players.high_score, never free runs)', () => {
+      // Free ends skip the players update entirely, so high_score can never
+      // come from a practice run - the global board stays clean by design.
+      const playerBeforeFreeRun = { high_score: 100 };
+      const isFreeSession = true;
+      const playerAfter = isFreeSession
+        ? playerBeforeFreeRun
+        : { high_score: Math.max(100, 999) };
+
+      expect(playerAfter.high_score).toBe(100);
+    });
+  });
 });

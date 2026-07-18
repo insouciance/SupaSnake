@@ -191,6 +191,175 @@ describe('Game Session Logic', () => {
     });
   });
 
+  describe('Free Play (mode: free, Design v2 §7.4)', () => {
+    const startedAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
+    // Mirrors the route's gate: free mode bypasses the energy check entirely
+    const canStart = (mode: string | undefined, energy: number) =>
+      mode === 'free' || energy >= GAME_CONFIG.economy.energy.costPerGame;
+
+    it('start bypasses the energy gate at zero energy', () => {
+      expect(canStart('free', 0)).toBe(true);
+      // Earning runs (no mode / any other mode) still require energy
+      expect(canStart(undefined, 0)).toBe(false);
+      expect(canStart('earn', 0)).toBe(false);
+      expect(canStart(undefined, 1)).toBe(true);
+    });
+
+    it('start writes the session row with the free marker and skips deduction', () => {
+      const isFreePlay = true;
+      const player = { energy: 3, energy_regen_at: '2026-07-18T10:00:00.000Z' };
+
+      const insertRow = {
+        player_id: 'uuid-123',
+        dynasty: 'CYBER',
+        ...(isFreePlay ? { is_free_play: true } : {}),
+      };
+      expect(insertRow.is_free_play).toBe(true);
+
+      // Free start returns the player's energy untouched (no deduction, no
+      // regen-timer change, no economy transaction)
+      const response = {
+        sessionId: 'session-1',
+        freePlay: true,
+        energy: player.energy,
+        energyRegenAt: player.energy_regen_at,
+      };
+      expect(response.energy).toBe(3);
+      expect(response.freePlay).toBe(true);
+    });
+
+    it('earning start omits the free marker from the insert', () => {
+      const isFreePlay = false;
+      const insertRow: { player_id: string; is_free_play?: boolean } = {
+        player_id: 'uuid-123',
+        ...(isFreePlay ? { is_free_play: true } : {}),
+      };
+      expect('is_free_play' in insertRow).toBe(false);
+    });
+
+    it('end validates normally but records a zero payout on the session row', () => {
+      const { rawDna, score } = computeRunTotals('CYBER', 20);
+      const validation = validateGameResult(
+        {
+          food_count: 20,
+          extracted: true,
+          score,
+          dna_earned: rawDna,
+          duration_seconds: 90,
+          died: false,
+          victory: false,
+        },
+        startedAgo(95),
+        'CYBER'
+      );
+      expect(validation.valid).toBe(true);
+
+      const isFreeSession = true;
+      const finalDna = applyDnaMultiplier(validation.adjustedDna, 1);
+      const sessionUpdate = {
+        score: validation.adjustedScore,
+        dna_earned: isFreeSession ? 0 : finalDna,
+        validated: validation.valid,
+        extracted: validation.extracted,
+      };
+
+      expect(sessionUpdate.dna_earned).toBe(0);
+      expect(sessionUpdate.validated).toBe(true); // validation still runs
+      expect(sessionUpdate.extracted).toBe(true);
+    });
+
+    it('end computes hypotheticalDna from the recompute + multiplier stack', () => {
+      const { rawDna, score } = computeRunTotals('PRIMAL', 30);
+      const validation = validateGameResult(
+        {
+          food_count: 30,
+          extracted: true,
+          score,
+          dna_earned: rawDna,
+          duration_seconds: 120,
+          died: false,
+          victory: false,
+        },
+        startedAgo(125),
+        'PRIMAL'
+      );
+
+      // 7-day streak (x1.10) + 1 completed dynasty (x1.10) = x1.21
+      const { multiplier } = combineDnaMultipliers(1.1, 1);
+      const hypotheticalDna = applyDnaMultiplier(validation.adjustedDna, multiplier);
+
+      expect(validation.adjustedDna).toBe(applyOutcome(rawDna, true)); // 483
+      expect(hypotheticalDna).toBe(Math.floor(483 * 1.21)); // 584
+    });
+
+    it('free end response pays nothing and grants no achievements or streak', () => {
+      const isFreeSession = true;
+      const streak = null; // record_daily_play NOT called for free sessions
+      const response = {
+        success: true,
+        freePlay: isFreeSession,
+        validation: { adjustedDna: 0, baseDna: 483 },
+        hypotheticalDna: 584,
+        newAchievements: [] as string[],
+        ...(streak ? { streak } : {}),
+      };
+
+      expect(response.freePlay).toBe(true);
+      expect(response.validation.adjustedDna).toBe(0);
+      expect(response.hypotheticalDna).toBeGreaterThan(0);
+      expect(response.newAchievements).toHaveLength(0);
+      expect('streak' in response).toBe(false);
+    });
+
+    it('free end leaves player totals untouched (no DNA, no total_dna_earned)', () => {
+      const player = { dna: 100, total_dna_earned: 900, total_games_played: 5 };
+      const isFreeSession = true;
+
+      // The route returns before any players update on free sessions
+      const playerAfter = isFreeSession
+        ? { ...player }
+        : { ...player, dna: player.dna + 50 };
+
+      expect(playerAfter).toEqual(player);
+    });
+
+    it('the free marker on the session row is authoritative, never the end request', () => {
+      // A cheat sending mode:'earn' on end cannot convert a free session
+      const sessionRow = { is_free_play: true };
+      const endRequestBody = { mode: 'earn' };
+      const isFreeSession = sessionRow.is_free_play === true;
+
+      expect(endRequestBody.mode).toBe('earn');
+      expect(isFreeSession).toBe(true);
+    });
+
+    it('free end still runs on the same idempotency guard (409 on replays)', () => {
+      const session = { ended_at: '2026-07-18T10:00:00.000Z', is_free_play: true };
+      const alreadyEnded = Boolean(session.ended_at);
+      expect(alreadyEnded).toBe(true); // duplicate free ends 409 like earning ends
+    });
+
+    it('route source: free sessions skip payout, streak, and economy writes', () => {
+      // Structural guard on the handler itself: the free-session early
+      // return must precede every reward-side write in the end action.
+      const fs = require('fs');
+      const path = require('path');
+      const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+
+      const freeReturn = source.indexOf('if (isFreeSession) {');
+      expect(freeReturn).toBeGreaterThan(-1);
+      // Reward-side writes all appear only after the free-session return
+      expect(source.indexOf("'record_daily_play'")).toBeGreaterThan(freeReturn);
+      expect(source.indexOf('total_dna_earned: newTotalDnaEarned')).toBeGreaterThan(freeReturn);
+      expect(source.indexOf("source_type: 'game_reward'")).toBeGreaterThan(freeReturn);
+      expect(source.indexOf('checkAchievements(')).toBeGreaterThan(freeReturn);
+      // And the free start skips the energy deduction + game_start transaction
+      const freeStartReturn = source.indexOf('if (isFreePlay) {');
+      expect(freeStartReturn).toBeGreaterThan(-1);
+      expect(source.indexOf("source_type: 'game_start'")).toBeGreaterThan(freeStartReturn);
+    });
+  });
+
   describe('Action Validation', () => {
     it('should accept start action', () => {
       const validActions = ['start', 'end'];

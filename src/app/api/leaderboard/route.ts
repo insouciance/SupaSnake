@@ -122,6 +122,8 @@ export async function GET(request: NextRequest) {
           collected_snakes(generation)
         )
       `)
+      // Free Play never ranks (Design v2 §7.4: practice runs are rewardless)
+      .eq('is_free_play', false)
       .gte('started_at', timeFilter!.toISOString())
       .order('score', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -167,6 +169,8 @@ export async function GET(request: NextRequest) {
     let countQuery = supabase
       .from('game_sessions')
       .select('*', { count: 'exact', head: true })
+      // Same exclusion as the entries query: free sessions never rank
+      .eq('is_free_play', false)
       .gte('started_at', timeFilter!.toISOString());
 
     if (dynasty) {

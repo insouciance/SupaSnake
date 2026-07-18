@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       action,
+      mode,
       sessionId,
       snake_id,
       score,
@@ -63,6 +64,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
+    // Design v2 §7.4 Free Play: unlimited practice runs - no energy cost on
+    // start, no rewards of any kind on end. The session row is still written
+    // and validated (server authority unchanged) but marked is_free_play so
+    // contracts/leaderboards/economy reads exclude it.
+    const isFreePlay = mode === 'free';
+
     if (action === 'start') {
       const rateCheck = await checkRateLimit(supabase, player.id, 'game_start');
       if (!rateCheck.allowed) {
@@ -72,7 +79,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (player.energy < GAME_CONFIG.economy.energy.costPerGame) {
+      // Free Play bypasses the energy gate - energy meters earning runs only
+      if (!isFreePlay && player.energy < GAME_CONFIG.economy.energy.costPerGame) {
         return NextResponse.json({ error: 'Not enough energy' }, { status: 400 });
       }
 
@@ -127,6 +135,9 @@ export async function POST(request: NextRequest) {
           snake_variant_id: snake.snake_variant_id,
           dynasty: dynastyName,
           server_started_at: serverStartedAt,
+          // Free-play marker (migration 016) - only sent when true so the
+          // insert stays compatible with the pre-016 schema until it applies
+          ...(isFreePlay ? { is_free_play: true } : {}),
         })
         .select()
         .single();
@@ -134,6 +145,17 @@ export async function POST(request: NextRequest) {
       if (sessionError) {
         console.error('Session creation error:', sessionError);
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
+      }
+
+      // Free Play: no energy deduction, no regen-timer change, no economy
+      // transaction - the run costs nothing and pays nothing
+      if (isFreePlay) {
+        return NextResponse.json({
+          sessionId: session.id,
+          freePlay: true,
+          energy: player.energy,
+          energyRegenAt: player.energy_regen_at,
+        });
       }
 
       const newEnergy = player.energy - GAME_CONFIG.economy.energy.costPerGame;
@@ -195,7 +217,7 @@ export async function POST(request: NextRequest) {
 
       const { data: session } = await supabase
         .from('game_sessions')
-        .select('server_started_at, snake_variant_id, ended_at, dynasty')
+        .select('server_started_at, snake_variant_id, ended_at, dynasty, is_free_play')
         .eq('id', sessionId)
         .eq('player_id', player.id)
         .single();
@@ -258,9 +280,14 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // Free session (the marker on the row is authoritative, never the
+      // request): validate + record normally, PAY NOTHING on the way out.
+      const isFreeSession = session.is_free_play === true;
+
       // DNA multiplier stack: streak tier x set bonus x clan duel.
       // (Design v2: the dynasty passive is gone - the ruleset already
       // shaped the base payout.) Non-fatal: failures fall back to x1.
+      // Free sessions still compute it - it prices the hypothetical payout.
       let dnaMultiplier = 1;
       let dnaBreakdown: DnaMultiplierBreakdown | null = null;
       try {
@@ -294,7 +321,8 @@ export async function POST(request: NextRequest) {
         .from('game_sessions')
         .update({
           score: validation.adjustedScore,
-          dna_earned: finalDna,
+          // Free sessions never earn - the row records a zero payout
+          dna_earned: isFreeSession ? 0 : finalDna,
           duration_seconds: duration_seconds || 0,
           died: died ?? true,
           victory: victory ?? false,
@@ -325,6 +353,35 @@ export async function POST(request: NextRequest) {
           { error: 'Session already ended', alreadyEnded: true },
           { status: 409 }
         );
+      }
+
+      // Free Play end: the run is recorded + validated above, but nothing
+      // pays out - no DNA credit, no total_dna_earned, no streak
+      // (record_daily_play NOT called), no achievements, no economy
+      // transactions. The response carries what the run WOULD have earned
+      // so the player sees the stakes they practiced for.
+      if (isFreeSession) {
+        const { data: freePlayerState } = await supabase
+          .from('players')
+          .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+          .eq('id', player.id)
+          .single();
+
+        return NextResponse.json({
+          success: true,
+          freePlay: true,
+          player: freePlayerState,
+          validation: {
+            valid: validation.valid,
+            adjustedDna: 0,
+            baseDna: validation.adjustedDna,
+            score: validation.adjustedScore,
+            extracted: validation.extracted,
+          },
+          hypotheticalDna: finalDna,
+          newAchievements: [],
+          ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
+        });
       }
 
       const newDna = player.dna + finalDna;
