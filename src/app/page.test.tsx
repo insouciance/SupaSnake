@@ -1,6 +1,6 @@
 /**
  * Home Page Tests - Specimen Chamber menu: ambient counters, mission line,
- * daily reward auto-open, FTUE mount, identity continuity, Launch gating
+ * contracts board auto-open, FTUE mount, identity continuity, Launch gating
  */
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
@@ -44,7 +44,7 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 interface FetchFixtures {
   player?: Record<string, unknown>;
   streaks?: Record<string, unknown>;
-  daily?: Record<string, unknown>;
+  contracts?: Record<string, unknown>;
   collection?: Record<string, unknown>;
 }
 
@@ -56,13 +56,55 @@ function jsonResponse(body: unknown): Response {
   } as unknown as Response;
 }
 
-function buildTiers() {
-  return Array.from({ length: 28 }, (_, i) => ({
-    day: i + 1,
-    dna: 50,
-    energy: 0,
-    bonusType: null,
-  }));
+function buildContract(overrides: Record<string, unknown> = {}) {
+  return {
+    contractId: 'banker',
+    contractType: 'extract_n',
+    name: 'Banker',
+    description: 'Bank 3 extractions',
+    params: { count: 3 },
+    rewardDna: 400,
+    rewardEnergy: 0,
+    rewardXp: 150,
+    offeredSlot: 1,
+    picked: false,
+    progress: { current: 0, target: 3 },
+    completed: false,
+    claimed: false,
+    ...overrides,
+  };
+}
+
+/** Fresh board: 3 unpicked offers, both picks available (auto-opens) */
+function buildOffersBoard() {
+  return {
+    contracts: [
+      buildContract(),
+      buildContract({ contractId: 'sprinter', name: 'Sprinter', offeredSlot: 2 }),
+      buildContract({ contractId: 'nerve', name: 'Nerve', offeredSlot: 3 }),
+    ],
+    picksRemaining: 2,
+    claimable: false,
+  };
+}
+
+/** Quiet board: both picks made, nothing complete yet (no auto-open) */
+function buildQuietBoard() {
+  return {
+    contracts: [
+      buildContract({ picked: true, progress: { current: 1, target: 3 } }),
+      buildContract({
+        contractId: 'sprinter',
+        name: 'Sprinter',
+        offeredSlot: 2,
+        picked: true,
+        progress: { current: 0, target: 1 },
+      }),
+      buildContract({ contractId: 'nerve', name: 'Nerve', offeredSlot: 3 }),
+    ],
+    picksRemaining: 0,
+    claimable: false,
+  };
 }
 
 function setupFetch(fixtures: FetchFixtures = {}) {
@@ -72,12 +114,7 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     needsStarterSelection: false,
   };
   const streaksBody = fixtures.streaks ?? { currentStreak: 5, multiplier: 1.1 };
-  const dailyBody = fixtures.daily ?? {
-    currentDay: 3,
-    canClaimToday: true,
-    tiers: buildTiers(),
-    streak: { current: 5, multiplier: 1.1 },
-  };
+  const contractsBody = fixtures.contracts ?? buildOffersBoard();
   const collectionBody = fixtures.collection ?? {
     snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'CYBER' }],
     dnaBalance: 320,
@@ -87,7 +124,7 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     const u = String(url);
     if (u.includes('/api/player')) return jsonResponse(playerBody);
     if (u.includes('/api/streaks')) return jsonResponse(streaksBody);
-    if (u.includes('/api/daily-rewards')) return jsonResponse(dailyBody);
+    if (u.includes('/api/contracts')) return jsonResponse(contractsBody);
     if (u.includes('/api/collection')) return jsonResponse(collectionBody);
     return jsonResponse({});
   }) as jest.Mock;
@@ -156,7 +193,7 @@ describe('Home page', () => {
         expect.arrayContaining([
           '/api/player',
           '/api/streaks',
-          '/api/daily-rewards',
+          '/api/contracts',
           '/api/collection',
         ])
       );
@@ -201,33 +238,62 @@ describe('Home page', () => {
   });
 
   describe('mission line', () => {
-    it('surfaces the daily reward with a tappable line when claimable', async () => {
+    it('surfaces new contracts with a tappable beacon line when picks are open', async () => {
       setAuthed();
-      // Pre-dismiss so the calendar does not auto-open
+      // Pre-dismiss so the board does not auto-open
       const today = new Date().toISOString().split('T')[0];
       window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByText('Daily reward ready')).toBeInTheDocument();
+        expect(screen.getByText('New contracts available')).toBeInTheDocument();
       });
-      expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
+      expect(screen.queryByText('Daily Contracts')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByText('Daily reward ready'));
+      fireEvent.click(screen.getByText('New contracts available'));
 
-      expect(screen.getByText('Daily Rewards')).toBeInTheDocument();
+      expect(screen.getByText('Daily Contracts')).toBeInTheDocument();
     });
 
-    it('shows the next-goal progress line when nothing is claimable', async () => {
+    it('shows contract completion progress once both picks are made', async () => {
       setAuthed();
       setupFetch({
-        daily: {
-          currentDay: 4,
-          canClaimToday: false,
-          tiers: buildTiers(),
-          streak: { current: 5, multiplier: 1.1 },
+        contracts: {
+          contracts: [
+            buildContract({
+              picked: true,
+              completed: true,
+              progress: { current: 3, target: 3 },
+            }),
+            buildContract({
+              contractId: 'sprinter',
+              name: 'Sprinter',
+              offeredSlot: 2,
+              picked: true,
+              progress: { current: 0, target: 1 },
+            }),
+            buildContract({ contractId: 'nerve', name: 'Nerve', offeredSlot: 3 }),
+          ],
+          picksRemaining: 0,
+          claimable: true,
         },
       });
+      const today = new Date().toISOString().split('T')[0];
+      window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Contracts: 1/2 complete')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Contracts: 1/2 complete'));
+      expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
+    });
+
+    it('falls back to the next-goal progress line without contract activity', async () => {
+      setAuthed();
+      // No offers on the board (e.g. server has no active pool)
+      setupFetch({ contracts: { contracts: [], picksRemaining: 2, claimable: false } });
       render(<Home />);
 
       await waitForStats();
@@ -250,8 +316,8 @@ describe('Home page', () => {
       await waitFor(() => {
         expect(screen.getByTestId('starter-selection')).toBeInTheDocument();
       });
-      // Daily reward modal defers to FTUE
-      expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
+      // Contracts board defers to FTUE
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
     });
 
     it('does not mount StarterSelection for players with snakes', async () => {
@@ -263,30 +329,37 @@ describe('Home page', () => {
     });
   });
 
-  describe('daily reward modal', () => {
-    it('auto-opens when a reward is claimable', async () => {
+  describe('contracts board', () => {
+    it('auto-opens when picks are available', async () => {
       setAuthed();
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByText('Daily Rewards')).toBeInTheDocument();
+        expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Daily Contracts')).toBeInTheDocument();
+    });
+
+    it('auto-opens when a completed contract is claimable', async () => {
+      setAuthed();
+      const board = buildQuietBoard();
+      (board.contracts[0] as Record<string, unknown>).completed = true;
+      board.claimable = true;
+      setupFetch({ contracts: board });
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
       });
     });
 
-    it('does not auto-open when already claimed today', async () => {
+    it('does not auto-open when picked and nothing is claimable', async () => {
       setAuthed();
-      setupFetch({
-        daily: {
-          currentDay: 4,
-          canClaimToday: false,
-          tiers: buildTiers(),
-          streak: { current: 5, multiplier: 1.1 },
-        },
-      });
+      setupFetch({ contracts: buildQuietBoard() });
       render(<Home />);
 
       await waitForStats();
-      expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
     });
 
     it('does not re-open after dismissal on the same day', async () => {
@@ -296,7 +369,7 @@ describe('Home page', () => {
       render(<Home />);
 
       await waitForStats();
-      expect(screen.queryByText('Daily Rewards')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
     });
   });
 
@@ -383,14 +456,7 @@ describe('Home page', () => {
     // The cinematic home renders the chip variant only - the full-width
     // banner would break immersion and stack with other overlays; the nav
     // rail's GUEST node carries the auth-state signal.
-    const quietDaily = {
-      daily: {
-        currentDay: 4,
-        canClaimToday: false,
-        tiers: buildTiers(),
-        streak: { current: 1, multiplier: 1 },
-      },
-    };
+    const quietDaily = { contracts: buildQuietBoard() };
 
     it('shows the corner chip (never the banner) for anonymous users', async () => {
       setAuthed({ isAnonymous: true });

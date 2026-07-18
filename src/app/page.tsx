@@ -30,10 +30,11 @@ import { Navigation } from '@/components/ui/Navigation';
 import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
 import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
 import {
-  DailyRewardModal,
-  type DailyRewardTier,
-  type DailyClaimResult,
-} from '@/components/engagement/DailyRewardModal';
+  ContractsBoard,
+  summarizeContracts,
+  type ContractView,
+  type ContractClaimOutcome,
+} from '@/components/engagement/ContractsBoard';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
 import { OverlayHint } from '@/components/ftue/OverlayHint';
 import { trackEvent } from '@/lib/analytics/posthog';
@@ -58,22 +59,22 @@ interface HomeStats {
   needsStarterSelection: boolean;
 }
 
-interface DailyRewardsState {
-  currentDay: number;
-  canClaimToday: boolean;
-  tiers: DailyRewardTier[];
-  streak: { current: number; multiplier: number };
+interface ContractsState {
+  contracts: ContractView[];
+  picksRemaining: number;
+  claimable: boolean;
 }
 
 interface MissionItem {
   id: string;
   text: string;
-  /** Glowing beacon dot (daily reward ready) */
+  /** Glowing beacon dot (contract action ready) */
   beacon?: boolean;
-  /** Tapping the line performs this action (e.g. open the daily rewards) */
+  /** Tapping the line performs this action (e.g. open the contracts board) */
   onSelect?: () => void;
 }
 
+/** Same once-per-day dismissal slot the calendar used - the board replaced it */
 function dailyDismissKey(today: string): string {
   return `daily-reward-dismissed-${today}`;
 }
@@ -82,9 +83,9 @@ export default function Home() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [stats, setStats] = useState<HomeStats | null>(null);
-  const [streak, setStreak] = useState<number | null>(null);
-  const [daily, setDaily] = useState<DailyRewardsState | null>(null);
-  const [showDailyModal, setShowDailyModal] = useState(false);
+  const [streak, setStreak] = useState<{ current: number; multiplier: number } | null>(null);
+  const [contractsState, setContractsState] = useState<ContractsState | null>(null);
+  const [showContractsBoard, setShowContractsBoard] = useState(false);
   const [welcomeBack, setWelcomeBack] = useState<LastUserMarker | null>(null);
   const [showLossNotice, setShowLossNotice] = useState(false);
   const [dynasty, setDynasty] = useState<DynastyId>('CYBER');
@@ -147,7 +148,10 @@ export default function Home() {
         if (streaksRes.ok) {
           const data = await streaksRes.json();
           if (!cancelled) {
-            setStreak(data.currentStreak ?? 0);
+            setStreak({
+              current: data.currentStreak ?? 0,
+              multiplier: Number(data.multiplier ?? 1) || 1,
+            });
             trackEvent(AnalyticsEvents.DAILY_LOGIN, {
               current_streak: data.currentStreak ?? 0,
               streak_multiplier: data.multiplier ?? 1,
@@ -199,21 +203,24 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  // Daily rewards: fetch on mount, auto-open when claimable (once per day)
+  // Daily contracts (Design v2 section 7.3 - the modal is the contracts
+  // board now): fetch on mount (lazily generates today's 3 offers) and
+  // auto-open once per day while there is something to do - picks left
+  // or a completed contract to claim.
   useEffect(() => {
     if (!isAuthenticated || !token) return;
     let cancelled = false;
 
     const load = async () => {
       try {
-        const res = await fetch('/api/daily-rewards', {
+        const res = await fetch('/api/contracts', {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
 
-        const data: DailyRewardsState = await res.json();
+        const data: ContractsState = await res.json();
         if (cancelled) return;
-        setDaily(data);
+        setContractsState(data);
 
         const today = new Date().toISOString().split('T')[0];
         let dismissedToday = false;
@@ -223,11 +230,13 @@ export default function Home() {
           // localStorage unavailable - treat as not dismissed
         }
 
-        if (data.canClaimToday && !dismissedToday) {
-          setShowDailyModal(true);
+        const canPick =
+          data.picksRemaining > 0 && data.contracts.some((c) => !c.picked);
+        if ((canPick || data.claimable) && !dismissedToday) {
+          setShowContractsBoard(true);
         }
       } catch {
-        // Daily rewards UI simply stays closed on failure
+        // Contracts UI simply stays closed on failure
       }
     };
 
@@ -237,64 +246,104 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  const handleDailyClaim = useCallback(async (): Promise<DailyClaimResult | null> => {
-    if (!token) return null;
-    try {
-      const res = await fetch('/api/daily-rewards', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ action: 'claim' }),
-      });
+  const handleContractsPick = useCallback(
+    async (contractIds: string[]): Promise<boolean> => {
+      if (!token) return false;
+      try {
+        const res = await fetch('/api/contracts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: 'pick', contractIds }),
+        });
 
-      if (!res.ok) return null;
+        if (!res.ok) return false;
 
-      const data = await res.json();
-      const result: DailyClaimResult = {
-        dayClaimed: data.dayClaimed,
-        dnaGranted: data.dnaGranted,
-        energyGranted: data.energyGranted,
-        nextDay: data.nextDay,
-        cycleCompleted: data.cycleCompleted,
-      };
+        const data: ContractsState = await res.json();
+        setContractsState(data);
 
-      trackEvent(AnalyticsEvents.DAILY_REWARD_CLAIMED, {
-        day: result.dayClaimed,
-        dna_granted: result.dnaGranted,
-        energy_granted: result.energyGranted,
-        cycle_completed: result.cycleCompleted,
-        category: 'engagement',
-      });
+        trackEvent(AnalyticsEvents.CHALLENGE_STARTED, {
+          contracts: contractIds,
+          category: 'engagement',
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [token]
+  );
 
-      setDaily((prev) =>
-        prev ? { ...prev, canClaimToday: false, currentDay: result.nextDay } : prev
-      );
-      setStats((prev) =>
-        prev
-          ? {
-              ...prev,
-              dna: prev.dna + result.dnaGranted,
-              energy: prev.energy + result.energyGranted,
-            }
-          : prev
-      );
+  const handleContractClaim = useCallback(
+    async (contractId: string): Promise<ContractClaimOutcome | null> => {
+      if (!token) return null;
+      try {
+        const res = await fetch('/api/contracts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: 'claim', contractId }),
+        });
 
-      return result;
-    } catch {
-      return null;
-    }
-  }, [token]);
+        if (!res.ok) return null;
 
-  const handleDailyDismiss = useCallback(() => {
+        const data = await res.json();
+        const outcome: ContractClaimOutcome = {
+          contractId: data.contractId,
+          dnaGranted: data.dnaGranted,
+          energyGranted: data.energyGranted,
+          xpGranted: data.xpGranted,
+        };
+
+        trackEvent(AnalyticsEvents.CHALLENGE_COMPLETED, {
+          contract: outcome.contractId,
+          dna_granted: outcome.dnaGranted,
+          energy_granted: outcome.energyGranted,
+          xp_granted: outcome.xpGranted,
+          category: 'engagement',
+        });
+
+        setContractsState((prev) => {
+          if (!prev) return prev;
+          const contracts = prev.contracts.map((c) =>
+            c.contractId === contractId ? { ...c, claimed: true } : c
+          );
+          return {
+            ...prev,
+            contracts,
+            claimable: summarizeContracts(contracts).claimable,
+          };
+        });
+        setStats((prev) =>
+          prev
+            ? {
+                ...prev,
+                dna: prev.dna + outcome.dnaGranted,
+                energy: prev.energy + outcome.energyGranted,
+              }
+            : prev
+        );
+
+        return outcome;
+      } catch {
+        return null;
+      }
+    },
+    [token]
+  );
+
+  const handleContractsDismiss = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
     try {
       window.localStorage.setItem(dailyDismissKey(today), '1');
     } catch {
       // Ignore storage failures
     }
-    setShowDailyModal(false);
+    setShowContractsBoard(false);
   }, []);
 
   const handlePlay = async (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -342,13 +391,26 @@ export default function Home() {
       return [{ id: 'tagline', text: 'Where Skill Creates Legacy' }];
     }
     const items: MissionItem[] = [];
-    if (daily?.canClaimToday) {
-      items.push({
-        id: 'daily',
-        text: 'Daily reward ready',
-        beacon: true,
-        onSelect: () => setShowDailyModal(true),
-      });
+    if (contractsState) {
+      const summary = summarizeContracts(contractsState.contracts);
+      const canPick =
+        contractsState.picksRemaining > 0 &&
+        contractsState.contracts.some((c) => !c.picked);
+      if (canPick) {
+        items.push({
+          id: 'contracts',
+          text: 'New contracts available',
+          beacon: true,
+          onSelect: () => setShowContractsBoard(true),
+        });
+      } else if (summary.pickedCount > 0) {
+        items.push({
+          id: 'contracts',
+          text: `Contracts: ${summary.completedCount}/${summary.pickedCount} complete`,
+          beacon: summary.claimable,
+          onSelect: () => setShowContractsBoard(true),
+        });
+      }
     }
     if (stats) {
       items.push({
@@ -359,14 +421,14 @@ export default function Home() {
             : `Next goal · ${stats.collectionSize}/${TOTAL_VARIANTS} variants`,
       });
     }
-    if (streak !== null && streak > 0) {
-      items.push({ id: 'streak', text: `${streak}-day streak active` });
+    if (streak !== null && streak.current > 0) {
+      items.push({ id: 'streak', text: `${streak.current}-day streak active` });
     }
     if (items.length === 0) {
       items.push({ id: 'tagline', text: 'Where Skill Creates Legacy' });
     }
     return items;
-  }, [isAuthenticated, daily?.canClaimToday, stats, streak]);
+  }, [isAuthenticated, contractsState, stats, streak]);
 
   useEffect(() => {
     setMissionIndex(0);
@@ -407,7 +469,9 @@ export default function Home() {
           up so overlays never stack */}
       <SaveProgressBanner
         variant="chip"
-        suppressed={needsStarter || showDailyModal || Boolean(welcomeBack && !isAuthenticated)}
+        suppressed={
+          needsStarter || showContractsBoard || Boolean(welcomeBack && !isAuthenticated)
+        }
       />
 
       {/* Welcome back: a registered account used this device but the
@@ -492,22 +556,22 @@ export default function Home() {
       {/* FTUE: full-screen starter chooser for players with no snakes */}
       {needsStarter && <StarterSelection />}
 
-      {/* Daily reward calendar (auto-opens when claimable) */}
-      {daily && !needsStarter && (
-        <DailyRewardModal
-          isVisible={showDailyModal}
-          currentDay={daily.currentDay}
-          canClaimToday={daily.canClaimToday}
-          tiers={daily.tiers}
-          streak={daily.streak}
-          onClaim={handleDailyClaim}
-          onDismiss={handleDailyDismiss}
+      {/* Daily contracts board (auto-opens once/day when actionable) */}
+      {contractsState && !needsStarter && (
+        <ContractsBoard
+          isVisible={showContractsBoard}
+          contracts={contractsState.contracts}
+          picksRemaining={contractsState.picksRemaining}
+          streak={streak}
+          onPick={handleContractsPick}
+          onClaim={handleContractClaim}
+          onDismiss={handleContractsDismiss}
         />
       )}
 
       {/* One-time FTUE hint - never while a modal is up (single-overlay
           policy: on mobile the stacked chip+modal+rail read as clutter) */}
-      {isAuthenticated && !needsStarter && !showDailyModal && (
+      {isAuthenticated && !needsStarter && !showContractsBoard && (
         <OverlayHint id="home-play-dna" message="Play to earn DNA - spend it in the Lab" />
       )}
 
