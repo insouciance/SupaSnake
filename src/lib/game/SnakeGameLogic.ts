@@ -49,6 +49,11 @@ import {
   traitFoodValueModifier,
   type TraitId,
 } from '@/shared/game/traits';
+import {
+  ANOMALY_PHYSICS,
+  anomalyFoodValueModifier,
+  type AnomalyId,
+} from '@/shared/game/anomalies';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -106,8 +111,18 @@ export interface GameState {
   foodEaten: number;
   /** Exit portal cell, when one is live. */
   exitTile: Position | null;
+  /**
+   * Second exit portal (Twin Exits anomaly only): spawns with exitTile as
+   * a pair sharing one despawn window; entering either banks the run.
+   */
+  exitTile2: Position | null;
   /** Ticks until the live exit portal despawns. */
   exitTicksRemaining: number;
+  /**
+   * Meteor Shower anomaly: ticks until the live food wave burns up and
+   * respawns elsewhere. 0 outside the anomaly.
+   */
+  foodTicksRemaining: number;
   /** Food count at which the next exit portal spawns. */
   nextExitAtFood: number;
   /** True once the run ended through the exit portal. */
@@ -182,6 +197,7 @@ type GameEvent =
   | 'deathSequence'
   | 'exitSpawned'
   | 'exitDespawned'
+  | 'foodDespawned'
   | 'extracted'
   | 'mutationSpawned'
   | 'mutationDespawned'
@@ -226,6 +242,14 @@ interface GameOptions {
    * picks regardless of what the engine offered.
    */
   mutationPool?: MutationId[];
+  /**
+   * The weekly anomaly modifier (Design v2 Phase 4B, section 7.2), or
+   * null/omitted outside anomaly runs. Injected from the session-start
+   * response via setAnomaly - like traits, it is physics/economy config
+   * the server independently re-derives from the session row, never a
+   * payout claim.
+   */
+  anomaly?: AnomalyId | null;
 }
 
 const OPPOSITES: Record<Direction, Direction> = {
@@ -256,6 +280,7 @@ export class SnakeGameLogic {
   private rng: () => number;
   private traits: TraitId[];
   private mutationPool: MutationId[];
+  private anomaly: AnomalyId | null;
   private events: Map<GameEvent, EventCallback[]>;
   /**
    * Buffered direction inputs, consumed one per tick. Buffering (instead of
@@ -284,6 +309,7 @@ export class SnakeGameLogic {
       options.mutationPool && options.mutationPool.length > 0
         ? [...options.mutationPool]
         : [...MUTATION_POOL];
+    this.anomaly = options.anomaly ?? null;
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
@@ -301,7 +327,9 @@ export class SnakeGameLogic {
       dnaCollected: 0,
       foodEaten: 0,
       exitTile: null,
+      exitTile2: null,
       exitTicksRemaining: 0,
+      foodTicksRemaining: 0,
       nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
       extracted: false,
       mutationTile: null,
@@ -424,6 +452,22 @@ export class SnakeGameLogic {
   }
 
   /**
+   * Swap the weekly anomaly modifier (Design v2 Phase 4B). Mirrors
+   * setTraits: the page constructs the engine on mount, before the
+   * session-start response confirms the anomaly run. Refused mid-run -
+   * an anomaly is a property of the whole run, never of its second half.
+   */
+  setAnomaly(anomaly: AnomalyId | null): void {
+    if (this.state.isPlaying) return;
+    this.anomaly = anomaly;
+  }
+
+  /** The active anomaly modifier, or null outside anomaly runs. */
+  getAnomaly(): AnomalyId | null {
+    return this.anomaly;
+  }
+
+  /**
    * Get current game state (immutable copy)
    */
   getState(): GameState {
@@ -433,6 +477,7 @@ export class SnakeGameLogic {
       food: { ...this.state.food },
       foods: this.state.foods.map(f => ({ ...f })),
       exitTile: this.state.exitTile ? { ...this.state.exitTile } : null,
+      exitTile2: this.state.exitTile2 ? { ...this.state.exitTile2 } : null,
       mutationTile: this.state.mutationTile ? { ...this.state.mutationTile } : null,
       heldMutations: this.state.heldMutations.map(m => ({ ...m })),
       pendingChoice: this.state.pendingChoice
@@ -589,11 +634,15 @@ export class SnakeGameLogic {
     // Exit-portal collision checks first: the portal is always in-bounds
     // and never on the snake, so stepping onto it ends the run banked -
     // no death sequence on the way out. (A wrapped head can land on it.)
+    // Twin Exits (anomaly): either of the pair banks the run.
     if (
       !wallHit &&
-      this.state.exitTile &&
-      newHead.x === this.state.exitTile.x &&
-      newHead.z === this.state.exitTile.z
+      ((this.state.exitTile &&
+        newHead.x === this.state.exitTile.x &&
+        newHead.z === this.state.exitTile.z) ||
+        (this.state.exitTile2 &&
+          newHead.x === this.state.exitTile2.x &&
+          newHead.z === this.state.exitTile2.z))
     ) {
       this.state.snake.unshift(newHead);
       this.state.snake.pop();
@@ -664,12 +713,17 @@ export class SnakeGameLogic {
       // Per-food value: base x combo x mutation modifier x trait modifier,
       // one round per food - mirrors computeRunTotals exactly (combo
       // aside, which the server clamps via the bounded-trust summary).
+      // Anomaly [E] modifier (Gold Rush x1.5) folds into the SAME single
+      // per-food round - mirroring computeRunTotals exactly, so the
+      // HUD's DNA counter matches the server recompute to the digit.
       const mod =
         foodValueModifier(
           this.state.heldMutations,
           n,
           this.state.phoenixTriggeredAtFood
-        ) * traitFoodValueModifier(this.traits, n);
+        ) *
+        traitFoodValueModifier(this.traits, n) *
+        anomalyFoodValueModifier(this.anomaly, n);
       // Flat [E] bonus (Deep Roots) added after the per-food round -
       // outside the combo, exactly mirroring computeRunTotals.
       const flat = foodValueFlatBonus(
@@ -763,15 +817,29 @@ export class SnakeGameLogic {
     }
 
     // Exit-portal lifetime countdown (only for portals that were already
-    // live when the tick began, so a fresh spawn gets its full window)
+    // live when the tick began, so a fresh spawn gets its full window).
+    // Twin Exits: the pair shares one window and despawns together.
     if (this.state.exitTile && exitExistedAtTickStart) {
       this.state.exitTicksRemaining -= 1;
       if (this.state.exitTicksRemaining <= 0) {
         this.state.exitTile = null;
+        this.state.exitTile2 = null;
         this.state.exitTicksRemaining = 0;
         this.state.nextExitAtFood =
           this.state.foodEaten + this.rollNextExitInterval();
         this.emit('exitDespawned');
+      }
+    }
+
+    // Meteor Shower (anomaly): the live food wave burns up after 60 ticks
+    // and respawns elsewhere. Foods eaten this tick already resolved above
+    // (a fresh wave restarts the clock); the counter only runs while the
+    // wave survives untouched.
+    if (this.anomaly === 'meteor_shower' && !ateFood && this.state.foods.length > 0) {
+      this.state.foodTicksRemaining -= 1;
+      if (this.state.foodTicksRemaining <= 0) {
+        this.spawnFoods();
+        this.emit('foodDespawned');
       }
     }
 
@@ -869,7 +937,8 @@ export class SnakeGameLogic {
     if (
       (pick.id === 'gold_trail' ||
         pick.id === 'deep_roots' ||
-        pick.id === 'afterburner') &&
+        pick.id === 'afterburner' ||
+        pick.id === 'glacial_reserve') &&
       this.state.exitTile
     ) {
       // Portal-window COSTS apply to the live portal too: clamp down to
@@ -919,6 +988,12 @@ export class SnakeGameLogic {
     }
     this.state.foods = foods;
     this.state.food = { ...foods[0] };
+
+    // Meteor Shower (anomaly): every fresh wave gets a 60-tick fuse
+    this.state.foodTicksRemaining =
+      this.anomaly === 'meteor_shower'
+        ? ANOMALY_PHYSICS.meteorShowerFoodDespawnTicks
+        : 0;
   }
 
   /** Rejection-sample one food cell (optionally clustered near an anchor). */
@@ -980,6 +1055,25 @@ export class SnakeGameLogic {
    * Uses the injectable rng so tests can drive placement deterministically.
    */
   private spawnExit(): void {
+    const position = this.sampleExitCell(null);
+    this.state.exitTile = position;
+    // Twin Exits (anomaly): portals spawn as a pair sharing one window
+    this.state.exitTile2 =
+      this.anomaly === 'twin_exits' ? this.sampleExitCell(position) : null;
+    this.state.exitTicksRemaining = this.effectiveExitDespawnTicks();
+    this.emit('exitSpawned', {
+      position: { ...position },
+      ...(this.state.exitTile2 ? { position2: { ...this.state.exitTile2 } } : {}),
+      ticksRemaining: this.state.exitTicksRemaining,
+    });
+  }
+
+  /**
+   * Rejection-sample one exit cell (not on the snake, food, mutation food,
+   * or an already-placed twin portal). Injectable rng - deterministic in
+   * tests, placement only, never payout.
+   */
+  private sampleExitCell(exclude: Position | null): Position {
     let position: Position;
     let attempts = 0;
     const maxAttempts = 1000;
@@ -994,16 +1088,14 @@ export class SnakeGameLogic {
     } while (
       (this.isPositionOnSnake(position) ||
         this.isPositionOnFood(position) ||
-        this.isPositionOnMutation(position)) &&
+        this.isPositionOnMutation(position) ||
+        (exclude !== null &&
+          exclude.x === position.x &&
+          exclude.z === position.z)) &&
       attempts < maxAttempts
     );
 
-    this.state.exitTile = position;
-    this.state.exitTicksRemaining = this.effectiveExitDespawnTicks();
-    this.emit('exitSpawned', {
-      position: { ...position },
-      ticksRemaining: this.state.exitTicksRemaining,
-    });
+    return position;
   }
 
   /**
@@ -1067,12 +1159,14 @@ export class SnakeGameLogic {
    * Place the exit portal at a specific position (for testing and driven
    * integration flows). Mirrors placeFood.
    */
-  placeExit(position: Position, ticksRemaining?: number): void {
+  placeExit(position: Position, ticksRemaining?: number, position2?: Position): void {
     this.state.exitTile = { ...position };
+    this.state.exitTile2 = position2 ? { ...position2 } : null;
     this.state.exitTicksRemaining =
       ticksRemaining ?? this.effectiveExitDespawnTicks();
     this.emit('exitSpawned', {
       position: { ...position },
+      ...(position2 ? { position2: { ...position2 } } : {}),
       ticksRemaining: this.state.exitTicksRemaining,
     });
   }
@@ -1273,8 +1367,15 @@ export class SnakeGameLogic {
       (this.hasMutation('magnet_pulse')
         ? MUTATION_PHYSICS.magnetPortalIntervalPenalty
         : 0) +
+      (this.hasMutation('solstice_engine')
+        ? MUTATION_PHYSICS.solsticeEnginePortalIntervalPenalty
+        : 0) +
       (this.hasTrait('magnetism')
         ? TRAIT_PHYSICS.magnetismPortalIntervalPenalty
+        : 0) +
+      // Gold Rush (anomaly): richer food, rarer doors - interval +6
+      (this.anomaly === 'gold_rush'
+        ? ANOMALY_PHYSICS.goldRushPortalIntervalPenalty
         : 0)
     );
   }
@@ -1308,6 +1409,9 @@ export class SnakeGameLogic {
     }
     if (this.hasMutation('afterburner')) {
       ticks -= MUTATION_PHYSICS.afterburnerPortalTicksPenalty;
+    }
+    if (this.hasMutation('glacial_reserve')) {
+      ticks -= MUTATION_PHYSICS.glacialReservePortalTicksPenalty;
     }
     if (this.hasMutation('tectonic_patience')) {
       ticks += MUTATION_PHYSICS.tectonicPatiencePortalTicksBonus;
@@ -1401,9 +1505,12 @@ export class SnakeGameLogic {
 
   private isPositionOnExit(pos: Position): boolean {
     return (
-      this.state.exitTile !== null &&
-      this.state.exitTile.x === pos.x &&
-      this.state.exitTile.z === pos.z
+      (this.state.exitTile !== null &&
+        this.state.exitTile.x === pos.x &&
+        this.state.exitTile.z === pos.z) ||
+      (this.state.exitTile2 !== null &&
+        this.state.exitTile2.x === pos.x &&
+        this.state.exitTile2.z === pos.z)
     );
   }
 
@@ -1448,6 +1555,7 @@ export class SnakeGameLogic {
     if (reason === 'extracted') {
       this.state.extracted = true;
       this.state.exitTile = null;
+      this.state.exitTile2 = null;
       this.state.exitTicksRemaining = 0;
       this.emit('extracted', {
         score: this.state.score,
