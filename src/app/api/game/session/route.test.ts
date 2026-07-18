@@ -8,10 +8,7 @@ import {
   applyDnaMultiplier,
   combineDnaMultipliers,
 } from '@/lib/server/dnaMultipliers';
-import {
-  validateGameResult,
-  validateLegacyGameResult,
-} from '@/lib/server/gameValidator';
+import { validateGameResult } from '@/lib/server/gameValidator';
 import {
   applyOutcome,
   computeRunTotals,
@@ -308,26 +305,31 @@ describe('Game Session Logic', () => {
       expect(result.adjustedDna).toBe(applyOutcome(rawDna, true));
     });
 
-    it('falls back to legacy bounds math when food_count is absent (old client)', () => {
-      // Route branch: typeof food_count !== 'number' -> validateLegacyGameResult
+    it('treats payloads without food_count as zero-food runs (fallback removed)', () => {
+      // Route coerces a missing food_count to 0 - a pre-v2 payload can no
+      // longer mint DNA from a bare score claim; it flags and pays 0.
       const legacyBody: { food_count?: number; score: number } = { score: 12 };
-      expect(typeof legacyBody.food_count === 'number').toBe(false);
+      const coerced =
+        typeof legacyBody.food_count === 'number' ? legacyBody.food_count : 0;
+      expect(coerced).toBe(0);
 
-      const result = validateLegacyGameResult(
+      const result = validateGameResult(
         {
+          food_count: coerced,
+          extracted: false,
           score: 12,
           dna_earned: 121,
           duration_seconds: 60,
           died: true,
           victory: false,
         },
-        startedAgo(65)
+        startedAgo(65),
+        'COSMIC'
       );
 
-      expect(result.valid).toBe(true);
-      expect(result.adjustedDna).toBe(121); // flat 10/food + 10% bonus, no outcome cut
-      expect(result.extracted).toBe(false);
-      expect(result.foodCount).toBe(12); // legacy score IS the food count
+      expect(result.valid).toBe(false); // claim mismatch flags the session
+      expect(result.adjustedDna).toBe(0); // and pays the recompute: nothing
+      expect(result.foodCount).toBe(0);
     });
 
     it('stores recomputed score/foods/extracted on the session row', () => {

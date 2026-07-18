@@ -1,13 +1,11 @@
 /**
  * Tests for the Design v2 game validator: exact server recompute via the
  * shared ruleset module, per-dynasty bounds, outcome consistency, and the
- * "claims can flag but never inflate" guarantee. Legacy bounds-only
- * validation (deploy-window fallback) is covered at the bottom.
+ * "claims can flag but never inflate" guarantee.
  */
 
 import {
   validateGameResult,
-  validateLegacyGameResult,
   CLAIM_EPSILON,
   type GameResultInput,
 } from './gameValidator';
@@ -283,69 +281,5 @@ describe('validateGameResult (Design v2 recompute)', () => {
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DURATION'));
     });
-  });
-});
-
-describe('validateLegacyGameResult (deploy-window fallback)', () => {
-  const createInput = (overrides = {}) => ({
-    score: 10,
-    dna_earned: 101,
-    duration_seconds: 60,
-    died: true,
-    victory: false,
-    ...overrides,
-  });
-
-  it('accepts a valid legacy result and reports it as a non-extracted run', () => {
-    const result = validateLegacyGameResult(createInput(), startedAgo(65));
-
-    expect(result.valid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-    expect(result.adjustedDna).toBe(101);
-    expect(result.adjustedScore).toBe(10);
-    // Legacy score IS the food count; legacy runs always end in death
-    expect(result.foodCount).toBe(10);
-    expect(result.extracted).toBe(false);
-  });
-
-  it('rejects impossible legacy scores for the duration', () => {
-    const result = validateLegacyGameResult(
-      createInput({ score: 100, duration_seconds: 60 }),
-      startedAgo(65)
-    );
-
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('INVALID_SCORE'));
-  });
-
-  it('caps claimed DNA at the legacy formula maximum', () => {
-    const result = validateLegacyGameResult(
-      createInput({ score: 10, dna_earned: 500, duration_seconds: 120 }),
-      startedAgo(125)
-    );
-
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DNA'));
-    expect(result.adjustedDna).toBe(101);
-  });
-
-  it('adds the legacy victory bonus', () => {
-    const result = validateLegacyGameResult(
-      createInput({ dna_earned: 151, victory: true, died: false, duration_seconds: 120 }),
-      startedAgo(125)
-    );
-
-    expect(result.valid).toBe(true);
-    expect(result.adjustedDna).toBe(151);
-  });
-
-  it('rejects legacy durations exceeding server elapsed time', () => {
-    const result = validateLegacyGameResult(
-      createInput({ duration_seconds: 60 }),
-      startedAgo(30)
-    );
-
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DURATION'));
   });
 });

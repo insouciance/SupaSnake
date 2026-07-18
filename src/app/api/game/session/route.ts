@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { checkRateLimit } from '@/lib/server/rateLimit';
-import { validateGameResult, validateLegacyGameResult } from '@/lib/server/gameValidator';
+import { validateGameResult } from '@/lib/server/gameValidator';
 import { normalizeDynastyName } from '@/shared/game/rulesets';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
@@ -224,34 +224,22 @@ export async function POST(request: NextRequest) {
       // Design v2: the client sends the raw food count + how the run ended;
       // the server recomputes the payout exactly from the session row's
       // dynasty (server-trusted, stored at start - never from this request).
-      // Legacy fallback (deploy window): old clients send no food_count -
-      // validate their score-based payload with the old bounds math.
+      // Payloads without food_count validate as zero-food runs (the legacy
+      // deploy-window fallback has been removed).
       const serverStartedAt = new Date(session.server_started_at || Date.now());
-      const validation =
-        typeof food_count === 'number'
-          ? validateGameResult(
-              {
-                food_count,
-                extracted: extracted === true,
-                score: score || 0,
-                dna_earned: dna_earned || 0,
-                duration_seconds: duration_seconds || 0,
-                died: died ?? !(extracted === true),
-                victory: victory ?? false,
-              },
-              serverStartedAt,
-              normalizeDynastyName(session.dynasty)
-            )
-          : validateLegacyGameResult(
-              {
-                score: score || 0,
-                dna_earned: dna_earned || 0,
-                duration_seconds: duration_seconds || 0,
-                died: died ?? true,
-                victory: victory ?? false,
-              },
-              serverStartedAt
-            );
+      const validation = validateGameResult(
+        {
+          food_count: typeof food_count === 'number' ? food_count : 0,
+          extracted: extracted === true,
+          score: score || 0,
+          dna_earned: dna_earned || 0,
+          duration_seconds: duration_seconds || 0,
+          died: died ?? !(extracted === true),
+          victory: victory ?? false,
+        },
+        serverStartedAt,
+        normalizeDynastyName(session.dynasty)
+      );
 
       if (!validation.valid) {
         console.warn('Game result validation flags:', {

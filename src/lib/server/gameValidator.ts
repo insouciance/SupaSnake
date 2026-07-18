@@ -6,10 +6,6 @@
  * ruleset module and PAYS THE RECOMPUTED VALUE regardless of the claim.
  * Claims that mismatch beyond a rounding epsilon can only flag the session
  * (validated: false) - they can never inflate the payout.
- *
- * A legacy validator (bounds-only, flat 10 DNA/food) is kept for the
- * deploy window where old clients still send score-based payloads without
- * food_count.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -121,72 +117,6 @@ export function validateGameResult(
     adjustedScore: expectedScore,
     foodCount,
     extracted,
-    errors,
-  };
-}
-
-// ============================================================================
-// Legacy validator (deploy-window fallback for payloads without food_count)
-// ============================================================================
-
-export interface LegacyGameResultInput {
-  score: number;
-  dna_earned: number;
-  duration_seconds: number;
-  died: boolean;
-  victory: boolean;
-}
-
-/**
- * Pre-Design-v2 bounds-only validation: score IS the food count, DNA is
- * flat 10/food + 10% score bonus, no outcome multiplier. Used only while
- * old clients (payloads without food_count) are still live.
- */
-export function validateLegacyGameResult(
-  input: LegacyGameResultInput,
-  serverStartedAt: Date
-): ValidationResult {
-  const errors: string[] = [];
-  const now = Date.now();
-  const serverElapsed = Math.floor((now - serverStartedAt.getTime()) / 1000);
-
-  if (input.duration_seconds > serverElapsed + 10) {
-    errors.push('INVALID_DURATION: Client duration exceeds server elapsed time');
-  }
-
-  if (input.duration_seconds > GAME_CONFIG.session.maxDuration) {
-    errors.push('INVALID_DURATION: Duration exceeds maximum');
-  }
-
-  const maxReasonableScore = Math.ceil(input.duration_seconds / 2);
-  if (input.score > maxReasonableScore) {
-    errors.push(
-      `INVALID_SCORE: Score ${input.score} exceeds max ${maxReasonableScore} for ${input.duration_seconds}s`
-    );
-  }
-
-  const { dna } = GAME_CONFIG.economy;
-  const validScore = Math.min(input.score, maxReasonableScore);
-  let expectedDna = validScore * dna.foodValue;
-  expectedDna += Math.floor(validScore * dna.scoreMultiplier);
-
-  if (input.victory) {
-    expectedDna += dna.completionBonus;
-  }
-
-  if (input.dna_earned > expectedDna * 1.1) {
-    errors.push(`INVALID_DNA: Claimed ${input.dna_earned}, max ${expectedDna}`);
-  }
-
-  const adjustedDna = Math.min(input.dna_earned, expectedDna);
-
-  return {
-    valid: errors.length === 0,
-    adjustedDna,
-    adjustedScore: validScore,
-    // Legacy score == food count; old runs are always death-ended
-    foodCount: Math.max(0, validScore),
-    extracted: false,
     errors,
   };
 }
