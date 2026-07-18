@@ -9,7 +9,27 @@ import {
   Direction,
   Position,
   GameState,
+  GameOverData,
 } from './SnakeGameLogic';
+import {
+  RULESETS,
+  computeRunTotals,
+  type DynastyName,
+} from '@/shared/game/rulesets';
+
+/**
+ * Eat `count` foods deterministically: place the food directly in the
+ * snake's path and tick. Callers pick a grid large enough for the march.
+ */
+function eatFoods(game: SnakeGameLogic, count: number): void {
+  for (let i = 0; i < count; i++) {
+    const state = game.getState();
+    expect(state.isGameOver).toBe(false);
+    expect(state.isDeathSequence).toBe(false);
+    game.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
+    game.tick();
+  }
+}
 
 describe('SnakeGameLogic', () => {
   let game: SnakeGameLogic;
@@ -491,33 +511,58 @@ describe('SnakeGameLogic', () => {
     });
   });
 
-  describe('Speed Progression', () => {
-    beforeEach(() => {
+  describe('Speed Progression (per ruleset)', () => {
+    it('should have the initial speed on start (COSMIC default)', () => {
       game.start();
-    });
-
-    it('should have initial speed', () => {
       expect(game.getSpeed()).toBe(200);
     });
 
-    it('should increase speed after eating food', () => {
+    it('keeps speed fixed on the COSMIC placeholder ruleset', () => {
+      game.start();
       const initialSpeed = game.getSpeed();
       const state = game.getState();
       game.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
       game.tick();
 
-      expect(game.getSpeed()).toBeLessThan(initialSpeed);
+      expect(game.getSpeed()).toBe(initialSpeed);
     });
 
-    it('should not exceed minimum speed', () => {
-      for (let i = 0; i < 50; i++) {
-        const state = game.getState();
-        if (!state.isGameOver) {
-          game.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
-          game.tick();
-        }
+    it('keeps speed fixed on PRIMAL regardless of foods eaten', () => {
+      const primal = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.PRIMAL });
+      primal.start();
+      eatFoods(primal, 10);
+      expect(primal.getSpeed()).toBe(200);
+    });
+
+    it('ramps speed down with each food on CYBER', () => {
+      const cyber = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.CYBER });
+      cyber.start();
+      const speeds: number[] = [cyber.getSpeed()];
+      for (let i = 0; i < 10; i++) {
+        eatFoods(cyber, 1);
+        speeds.push(cyber.getSpeed());
       }
-      expect(game.getSpeed()).toBeGreaterThanOrEqual(50);
+      for (let i = 1; i < speeds.length; i++) {
+        expect(speeds[i]).toBeLessThan(speeds[i - 1]);
+      }
+      // speed = ruleset.speedForFood(foodEaten) exactly
+      expect(cyber.getSpeed()).toBe(RULESETS.CYBER.speedForFood(10));
+    });
+
+    it('never drops below the minimum speed on CYBER', () => {
+      const cyber = new SnakeGameLogic({ gridSize: 200, ruleset: RULESETS.CYBER });
+      cyber.start();
+      eatFoods(cyber, 60);
+      expect(cyber.getSpeed()).toBeGreaterThanOrEqual(50);
+    });
+
+    it('setRuleset re-derives speed from the current food count', () => {
+      game.start();
+      game.setRuleset(RULESETS.CYBER);
+      expect(game.getSpeed()).toBe(RULESETS.CYBER.speedForFood(0));
+      game.setRuleset(RULESETS.PRIMAL);
+      expect(game.getSpeed()).toBe(200);
+      expect(game.getRuleset().id).toBe('PRIMAL');
     });
   });
 
@@ -667,12 +712,309 @@ describe('SnakeGameLogic', () => {
       expect(game.getState().dnaCollected).toBe(10);
     });
 
-    it('should increment score by 1 per food', () => {
+    it('tracks the raw food count separately from the display score', () => {
       const state = game.getState();
       game.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
       game.tick();
 
-      expect(game.getState().score).toBe(1);
+      // Score is display points (10/food on the flat placeholder ruleset);
+      // foodEaten is the raw fact the server recomputes from
+      expect(game.getState().score).toBe(10);
+      expect(game.getState().foodEaten).toBe(1);
+    });
+  });
+  describe('Ruleset scoring parity (client mirrors server recompute)', () => {
+    it.each<[DynastyName, number]>([
+      ['PRIMAL', 12],
+      ['CYBER', 12],
+      ['COSMIC', 12],
+    ])('%s totals after %i foods match computeRunTotals exactly', (dynasty, foods) => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS[dynasty],
+        rng: () => 0.999, // exit spawns far from the march row
+      });
+      engine.start();
+      eatFoods(engine, foods);
+
+      const expected = computeRunTotals(dynasty, foods);
+      const state = engine.getState();
+      expect(state.dnaCollected).toBe(expected.rawDna);
+      expect(state.score).toBe(expected.score);
+      expect(state.foodEaten).toBe(foods);
+    });
+
+    it('CYBER out-scores PRIMAL for the same foods once tiers kick in', () => {
+      const run = (dynasty: DynastyName) => {
+        const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS[dynasty] });
+        engine.start();
+        eatFoods(engine, 10);
+        return engine.getState();
+      };
+      expect(run('CYBER').dnaCollected).toBeGreaterThan(run('PRIMAL').dnaCollected);
+    });
+
+    it('emits foodCollected with the running foodEaten count', () => {
+      const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      const counts: number[] = [];
+      engine.on('foodCollected', (data: any) => counts.push(data.foodEaten));
+      eatFoods(engine, 3);
+      expect(counts).toEqual([1, 2, 3]);
+    });
+  });
+
+  describe('Extraction: exit portal spawn cadence', () => {
+    it('spawns the first exit portal at 15 foods (not before)', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      let spawned: any = null;
+      engine.on('exitSpawned', (data) => {
+        spawned = data;
+      });
+
+      eatFoods(engine, 14);
+      expect(spawned).toBeNull();
+      expect(engine.getState().exitTile).toBeNull();
+
+      eatFoods(engine, 1);
+      expect(spawned).not.toBeNull();
+      expect(spawned.ticksRemaining).toBe(90);
+      expect(engine.getState().exitTile).not.toBeNull();
+      expect(engine.getState().exitTicksRemaining).toBe(90);
+    });
+
+    it('places the exit off the snake and off the food', () => {
+      // Seeded mulberry32 PRNG: deterministic but able to escape
+      // rejection sampling (a constant rng cannot)
+      let seed = 42;
+      const rng = () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng,
+      });
+      engine.start();
+      eatFoods(engine, 15);
+
+      const state = engine.getState();
+      const exit = state.exitTile!;
+      expect(exit).not.toBeNull();
+      expect(
+        state.snake.some((seg) => seg.x === exit.x && seg.z === exit.z)
+      ).toBe(false);
+      expect(exit.x === state.food.x && exit.z === state.food.z).toBe(false);
+      expect(exit.x).toBeGreaterThanOrEqual(0);
+      expect(exit.x).toBeLessThan(60);
+    });
+
+    it('does not spawn a second portal while one is live', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 100,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999,
+      });
+      engine.start();
+      let spawnCount = 0;
+      engine.on('exitSpawned', () => {
+        spawnCount += 1;
+      });
+
+      eatFoods(engine, 30); // well past a second threshold
+      expect(spawnCount).toBe(1);
+    });
+  });
+
+  describe('Extraction: despawn countdown', () => {
+    it('counts down each tick and despawns at zero, rescheduling the next portal', () => {
+      // rng => 0 makes the reschedule interval exactly 12 - 4 = 8 foods
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0,
+      });
+      engine.start();
+      let despawned = false;
+      engine.on('exitDespawned', () => {
+        despawned = true;
+      });
+
+      const head = engine.getState().snake[0];
+      // Portal placed away from the march row with a short 5-tick fuse
+      engine.placeExit({ x: 0, y: 0, z: head.z + 5 }, 5);
+      engine.placeFood({ x: 0, y: 0, z: head.z + 10 }); // off the path - no eats
+
+      for (let expected = 4; expected >= 1; expected--) {
+        engine.tick();
+        expect(engine.getState().exitTicksRemaining).toBe(expected);
+        expect(engine.getState().exitTile).not.toBeNull();
+      }
+
+      engine.tick(); // reaches 0 -> despawn
+      expect(despawned).toBe(true);
+      const state = engine.getState();
+      expect(state.exitTile).toBeNull();
+      expect(state.exitTicksRemaining).toBe(0);
+      // Next portal scheduled foodEaten + 8 (rng 0)
+      expect(state.nextExitAtFood).toBe(state.foodEaten + 8);
+    });
+
+    it('a placeExit spawn keeps its full window on the spawn tick', () => {
+      const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      const head = engine.getState().snake[0];
+      engine.placeFood({ x: 0, y: 0, z: head.z + 10 });
+      engine.placeExit({ x: 0, y: 0, z: head.z + 5 });
+      expect(engine.getState().exitTicksRemaining).toBe(90);
+      engine.tick();
+      expect(engine.getState().exitTicksRemaining).toBe(89);
+    });
+  });
+
+  describe('Extraction: exit collision ends the run banked', () => {
+    function extractNow(engine: SnakeGameLogic): {
+      events: string[];
+      extractedPayload: any;
+      gameOverPayload: GameOverData;
+    } {
+      const events: string[] = [];
+      let extractedPayload: any = null;
+      let gameOverPayload: any = null;
+      engine.on('extracted', (data) => {
+        events.push('extracted');
+        extractedPayload = data;
+      });
+      engine.on('gameOver', (data) => {
+        events.push('gameOver');
+        gameOverPayload = data;
+      });
+      engine.on('deathSequence', () => {
+        events.push('deathSequence');
+      });
+
+      const head = engine.getState().snake[0];
+      engine.placeExit({ x: head.x + 1, y: 0, z: head.z });
+      engine.tick();
+      return { events, extractedPayload, gameOverPayload };
+    }
+
+    it('finalizes synchronously: extracted then gameOver, no death sequence', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      const { events } = extractNow(engine);
+
+      expect(events).toEqual(['extracted', 'gameOver']);
+      const state = engine.getState();
+      expect(state.isGameOver).toBe(true);
+      expect(state.isPlaying).toBe(false);
+      expect(state.isDeathSequence).toBe(false);
+      expect(state.extracted).toBe(true);
+      expect(state.exitTile).toBeNull();
+    });
+
+    it('gameOver payload carries raw totals + extraction flags', () => {
+      const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.CYBER });
+      engine.start();
+      eatFoods(engine, 7);
+      const { gameOverPayload, extractedPayload } = extractNow(engine);
+
+      const expected = computeRunTotals('CYBER', 7);
+      expect(gameOverPayload).toEqual({
+        score: expected.score,
+        dnaCollected: expected.rawDna, // RAW - the server applies the bank bonus
+        foodEaten: 7,
+        extracted: true,
+        endReason: 'extracted',
+        deathPosition: null,
+      });
+      expect(extractedPayload).toEqual({
+        score: expected.score,
+        dnaCollected: expected.rawDna,
+        foodEaten: 7,
+      });
+    });
+
+    it('integration: spawned portal -> steer into it -> banked end (placeExit-free)', () => {
+      // Fully driven flow: eat to the spawn threshold with a deterministic
+      // rng, then walk to the portal the engine itself placed.
+      const engine = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.999, // exit lands at (59, 59)
+      });
+      engine.start();
+      let gameOver: GameOverData | null = null;
+      engine.on('gameOver', (data) => {
+        gameOver = data as GameOverData;
+      });
+
+      eatFoods(engine, 15);
+      const exit = engine.getState().exitTile!;
+      expect(exit).toEqual({ x: 59, y: 0, z: 59 });
+
+      // Steer to the exit column, then down its row. Park food far away
+      // (grid corner opposite) so no accidental eats reschedule anything.
+      engine.placeFood({ x: 0, y: 0, z: 0 });
+      let guard = 0;
+      while (engine.getState().snake[0].x < exit.x && guard++ < 100) {
+        engine.tick(); // heading RIGHT
+      }
+      engine.setDirection('DOWN');
+      while (!engine.getState().isGameOver && guard++ < 300) {
+        engine.tick();
+      }
+
+      expect(gameOver).not.toBeNull();
+      expect(gameOver!.extracted).toBe(true);
+      expect(gameOver!.endReason).toBe('extracted');
+      const expected = computeRunTotals('PRIMAL', 15);
+      expect(gameOver!.dnaCollected).toBe(expected.rawDna);
+      expect(gameOver!.foodEaten).toBe(15);
+    });
+
+    it('death still reports endReason died with extraction flags false', async () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      let gameOver: GameOverData | null = null;
+      engine.on('gameOver', (data) => {
+        gameOver = data as GameOverData;
+      });
+
+      for (let i = 0; i < 20; i++) {
+        engine.tick(); // march into the wall
+      }
+      await new Promise((resolve) => setTimeout(resolve, 900));
+
+      expect(gameOver).not.toBeNull();
+      expect(gameOver!.extracted).toBe(false);
+      expect(gameOver!.endReason).toBe('died');
+      expect(gameOver!.deathPosition).not.toBeNull();
+      expect(typeof gameOver!.foodEaten).toBe('number');
+    });
+
+    it('restart clears extraction state', () => {
+      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
+      engine.start();
+      extractNow(engine);
+      expect(engine.getState().extracted).toBe(true);
+
+      engine.start();
+      const state = engine.getState();
+      expect(state.extracted).toBe(false);
+      expect(state.exitTile).toBeNull();
+      expect(state.foodEaten).toBe(0);
+      expect(state.nextExitAtFood).toBe(15);
+      expect(state.isPlaying).toBe(true);
     });
   });
 });

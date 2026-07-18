@@ -1,9 +1,21 @@
 /**
  * Snake Game Logic - Core Game Engine
  * Pure game logic decoupled from rendering
+ *
+ * Design v2: dynasty rulesets drive speed and scoring (injected via
+ * GameOptions.ruleset / setRuleset), and runs can end two ways - death or
+ * extraction through a periodically spawning exit portal. All payout math
+ * is delegated to the shared ruleset module so the server can recompute
+ * it exactly from the raw food count.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
+import {
+  FOOD_BASE_SCORE,
+  RULESETS,
+  rollExitInterval,
+  type DynastyRuleset,
+} from '@/shared/game/rulesets';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -26,12 +38,27 @@ export interface Position {
   z: number;
 }
 
+/** How a run ended: crashed into something, or left through the exit portal. */
+export type EndReason = 'died' | 'extracted';
+
 export interface GameState {
   snake: Position[];
   food: Position;
   direction: Direction;
+  /** Display points (ruleset-multiplied) - no longer the food count. */
   score: number;
+  /** Raw DNA total (pre bank/salvage multiplier - the server applies that). */
   dnaCollected: number;
+  /** Raw foods eaten this run - the fact the server recomputes from. */
+  foodEaten: number;
+  /** Exit portal cell, when one is live. */
+  exitTile: Position | null;
+  /** Ticks until the live exit portal despawns. */
+  exitTicksRemaining: number;
+  /** Food count at which the next exit portal spawns. */
+  nextExitAtFood: number;
+  /** True once the run ended through the exit portal. */
+  extracted: boolean;
   isPlaying: boolean;
   isGameOver: boolean;
   isPaused: boolean;
@@ -40,13 +67,44 @@ export interface GameState {
   deathPosition: Position | null;
 }
 
-type GameEvent = 'gameStart' | 'gameOver' | 'foodCollected' | 'tick' | 'pause' | 'resume' | 'deathSequence';
+/** Payload of the 'gameOver' event - one event for both endings. */
+export interface GameOverData {
+  score: number;
+  dnaCollected: number;
+  foodEaten: number;
+  extracted: boolean;
+  endReason: EndReason;
+  deathPosition: Position | null;
+}
+
+type GameEvent =
+  | 'gameStart'
+  | 'gameOver'
+  | 'foodCollected'
+  | 'tick'
+  | 'pause'
+  | 'resume'
+  | 'deathSequence'
+  | 'exitSpawned'
+  | 'exitDespawned'
+  | 'extracted';
 type EventCallback = (data?: unknown) => void;
 
 interface GameOptions {
   gridSize?: number;
   initialLength?: number;
   initialSpeed?: number;
+  /**
+   * Dynasty ruleset driving speed + scoring. Defaults to the COSMIC
+   * placeholder (fixed speed, flat food value). The page swaps in the
+   * equipped snake's ruleset via setRuleset once the collection resolves.
+   */
+  ruleset?: DynastyRuleset;
+  /**
+   * Random source for extraction-spawn timing (injectable for
+   * deterministic tests). Never used for scoring.
+   */
+  rng?: () => number;
 }
 
 /**
@@ -58,8 +116,8 @@ export class SnakeGameLogic {
   private gridSize: number;
   private initialLength: number;
   private speed: number;
-  private minSpeed: number;
-  private speedIncrease: number;
+  private ruleset: DynastyRuleset;
+  private rng: () => number;
   private events: Map<GameEvent, EventCallback[]>;
   /**
    * Buffered direction inputs, consumed one per tick. Buffering (instead of
@@ -74,9 +132,9 @@ export class SnakeGameLogic {
   constructor(options: GameOptions = {}) {
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
     this.initialLength = options.initialLength ?? GAME_CONFIG.snake.initialLength;
-    this.speed = options.initialSpeed ?? GAME_CONFIG.snake.initialSpeed;
-    this.minSpeed = GAME_CONFIG.snake.minSpeed;
-    this.speedIncrease = GAME_CONFIG.snake.speedIncrease;
+    this.ruleset = options.ruleset ?? RULESETS.COSMIC;
+    this.rng = options.rng ?? Math.random;
+    this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
 
@@ -90,6 +148,11 @@ export class SnakeGameLogic {
       direction: 'RIGHT',
       score: 0,
       dnaCollected: 0,
+      foodEaten: 0,
+      exitTile: null,
+      exitTicksRemaining: 0,
+      nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
+      extracted: false,
       isPlaying: false,
       isGameOver: false,
       isPaused: false,
@@ -117,6 +180,11 @@ export class SnakeGameLogic {
       direction: 'RIGHT',
       score: 0,
       dnaCollected: 0,
+      foodEaten: 0,
+      exitTile: null,
+      exitTicksRemaining: 0,
+      nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
+      extracted: false,
       isPlaying: true,
       isGameOver: false,
       isPaused: false,
@@ -125,10 +193,30 @@ export class SnakeGameLogic {
       deathPosition: null,
     };
 
-    this.speed = GAME_CONFIG.snake.initialSpeed;
+    this.speed = this.ruleset.speedForFood(0);
     this.directionQueue = [];
     this.spawnFood();
     this.emit('gameStart');
+  }
+
+  /**
+   * Swap the active dynasty ruleset. Needed because the page constructs
+   * the engine on mount, before the equipped snake's dynasty arrives from
+   * the collection API. Takes effect immediately: speed follows the new
+   * ruleset's curve at the current food count, and (outside a live run)
+   * the first-exit threshold follows the new cadence.
+   */
+  setRuleset(ruleset: DynastyRuleset): void {
+    this.ruleset = ruleset;
+    this.speed = this.ruleset.speedForFood(this.state.foodEaten);
+    if (!this.state.isPlaying && !this.state.exitTile) {
+      this.state.nextExitAtFood = this.ruleset.extraction.firstExitAtFood;
+    }
+  }
+
+  /** The active dynasty ruleset. */
+  getRuleset(): DynastyRuleset {
+    return this.ruleset;
   }
 
   /**
@@ -139,6 +227,7 @@ export class SnakeGameLogic {
       ...this.state,
       snake: this.state.snake.map(s => ({ ...s })),
       food: { ...this.state.food },
+      exitTile: this.state.exitTile ? { ...this.state.exitTile } : null,
     };
   }
 
@@ -250,6 +339,21 @@ export class SnakeGameLogic {
     const head = this.state.snake[0];
     const newHead = this.getNextPosition(head, this.state.direction);
 
+    // Exit-portal collision checks first: the portal is always in-bounds
+    // and never on the snake, so stepping onto it ends the run banked -
+    // no death sequence on the way out.
+    const exitExistedAtTickStart = this.state.exitTile !== null;
+    if (
+      this.state.exitTile &&
+      newHead.x === this.state.exitTile.x &&
+      newHead.z === this.state.exitTile.z
+    ) {
+      this.state.snake.unshift(newHead);
+      this.state.snake.pop();
+      this.finalizeRun('extracted');
+      return;
+    }
+
     if (this.checkWallCollision(newHead) || this.checkSelfCollision(newHead)) {
       // Start death sequence instead of immediate game over
       this.startDeathSequence(newHead);
@@ -262,17 +366,36 @@ export class SnakeGameLogic {
 
     if (ateFood) {
       const collectedPosition = { ...newHead }; // Position where food was eaten
-      this.state.score += 1;
-      this.state.dnaCollected += GAME_CONFIG.economy.dna.foodValue;
-      this.increaseSpeed();
+      this.state.foodEaten += 1;
+      const n = this.state.foodEaten;
+      this.state.score += Math.round(FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n));
+      this.state.dnaCollected += this.ruleset.foodDnaValue(n);
+      this.speed = this.ruleset.speedForFood(n);
       this.spawnFood();
+      if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
+        this.spawnExit();
+      }
       this.emit('foodCollected', {
         position: collectedPosition,
         score: this.state.score,
         dna: this.state.dnaCollected,
+        foodEaten: this.state.foodEaten,
       });
     } else {
       this.state.snake.pop();
+    }
+
+    // Exit-portal lifetime countdown (only for portals that were already
+    // live when the tick began, so a fresh spawn gets its full window)
+    if (this.state.exitTile && exitExistedAtTickStart) {
+      this.state.exitTicksRemaining -= 1;
+      if (this.state.exitTicksRemaining <= 0) {
+        this.state.exitTile = null;
+        this.state.exitTicksRemaining = 0;
+        this.state.nextExitAtFood =
+          this.state.foodEaten + rollExitInterval(this.ruleset.extraction, this.rng);
+        this.emit('exitDespawned');
+      }
     }
 
     this.emit('tick');
@@ -293,9 +416,43 @@ export class SnakeGameLogic {
         z: Math.floor(Math.random() * this.gridSize),
       };
       attempts++;
-    } while (this.isPositionOnSnake(position) && attempts < maxAttempts);
+    } while (
+      (this.isPositionOnSnake(position) || this.isPositionOnExit(position)) &&
+      attempts < maxAttempts
+    );
 
     this.state.food = position;
+  }
+
+  /**
+   * Spawn the exit portal at a random valid position (not on the snake,
+   * not on the food). Rejection sampling, mirroring spawnFood. Uses the
+   * injectable rng so tests can drive placement deterministically.
+   */
+  private spawnExit(): void {
+    let position: Position;
+    let attempts = 0;
+    const maxAttempts = 1000;
+
+    do {
+      position = {
+        x: Math.floor(this.rng() * this.gridSize),
+        y: 0,
+        z: Math.floor(this.rng() * this.gridSize),
+      };
+      attempts++;
+    } while (
+      (this.isPositionOnSnake(position) ||
+        (position.x === this.state.food.x && position.z === this.state.food.z)) &&
+      attempts < maxAttempts
+    );
+
+    this.state.exitTile = position;
+    this.state.exitTicksRemaining = this.ruleset.extraction.despawnTicks;
+    this.emit('exitSpawned', {
+      position: { ...position },
+      ticksRemaining: this.state.exitTicksRemaining,
+    });
   }
 
   /**
@@ -303,6 +460,20 @@ export class SnakeGameLogic {
    */
   placeFood(position: Position): void {
     this.state.food = { ...position };
+  }
+
+  /**
+   * Place the exit portal at a specific position (for testing and driven
+   * integration flows). Mirrors placeFood.
+   */
+  placeExit(position: Position, ticksRemaining?: number): void {
+    this.state.exitTile = { ...position };
+    this.state.exitTicksRemaining =
+      ticksRemaining ?? this.ruleset.extraction.despawnTicks;
+    this.emit('exitSpawned', {
+      position: { ...position },
+      ticksRemaining: this.state.exitTicksRemaining,
+    });
   }
 
   /**
@@ -361,13 +532,12 @@ export class SnakeGameLogic {
     return this.state.snake.some(s => s.x === pos.x && s.z === pos.z);
   }
 
-  private increaseSpeed(): void {
-    // Logarithmic speed curve - stays playable at high scores
-    // Formula: speed = initialSpeed / (1 + 0.03 * score)
-    // This approaches ~80ms asymptotically instead of hitting 50ms linearly
-    const initialSpeed = GAME_CONFIG.snake.initialSpeed;
-    const newSpeed = initialSpeed / (1 + 0.03 * this.state.score);
-    this.speed = Math.max(this.minSpeed, Math.floor(newSpeed));
+  private isPositionOnExit(pos: Position): boolean {
+    return (
+      this.state.exitTile !== null &&
+      this.state.exitTile.x === pos.x &&
+      this.state.exitTile.z === pos.z
+    );
   }
 
   /**
@@ -386,23 +556,40 @@ export class SnakeGameLogic {
 
     // After slow-motion delay, trigger actual game over
     setTimeout(() => {
-      this.finalizeGameOver();
+      this.finalizeRun('died');
     }, 800); // 800ms for dramatic effect
   }
 
   /**
-   * Complete the game over after death sequence
+   * End the run - one path for both endings. Death arrives here through
+   * the 800ms death sequence; extraction calls it synchronously (no death
+   * drama when you leave on your own terms).
    */
-  private finalizeGameOver(): void {
+  private finalizeRun(reason: EndReason): void {
     this.state.isDeathSequence = false;
     this.state.isGameOver = true;
     this.state.isPlaying = false;
 
-    this.emit('gameOver', {
+    if (reason === 'extracted') {
+      this.state.extracted = true;
+      this.state.exitTile = null;
+      this.state.exitTicksRemaining = 0;
+      this.emit('extracted', {
+        score: this.state.score,
+        dnaCollected: this.state.dnaCollected,
+        foodEaten: this.state.foodEaten,
+      });
+    }
+
+    const payload: GameOverData = {
       score: this.state.score,
       dnaCollected: this.state.dnaCollected,
+      foodEaten: this.state.foodEaten,
+      extracted: this.state.extracted,
+      endReason: reason,
       deathPosition: this.state.deathPosition,
-    });
+    };
+    this.emit('gameOver', payload);
   }
 
   /**
