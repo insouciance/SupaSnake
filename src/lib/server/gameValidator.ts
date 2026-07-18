@@ -2,19 +2,38 @@
  * Game Result Validator - server-authoritative payout recompute (Design v2)
  *
  * The client claims only the raw facts of a run (food count + how it
- * ended); the server recomputes score and DNA exactly via the shared
- * ruleset module and PAYS THE RECOMPUTED VALUE regardless of the claim.
- * Claims that mismatch beyond a rounding epsilon can only flag the session
- * (validated: false) - they can never inflate the payout.
+ * ended + mutation picks); the server recomputes score and DNA exactly via
+ * the shared ruleset module and PAYS THE RECOMPUTED VALUE regardless of the
+ * claim. Claims that mismatch beyond a rounding epsilon can only flag the
+ * session (validated: false) - they can never inflate the payout.
+ *
+ * Phase 2 (GAME_DESIGN_V2.md sections 3.3 + 5.3):
+ * - Mutations: legality (known ids, no dupes, <= 4 held), count bound
+ *   (picks <= floor(foodCount / 15); the k-th pick's atFood >= 15k and
+ *   <= foodCount), then EXACT recompute of every [E] effect from its
+ *   atFood onward for PRIMAL/CYBER (and the COSMIC base).
+ * - Phoenix: a claimed trigger is only honored when phoenix is held and
+ *   the food index is plausible; honoring it strictly lowers the payout,
+ *   so there is no inflation vector in either direction.
+ * - COSMIC bounded trust: combo chains depend on tick timing the server
+ *   cannot reconstruct, so the claimed combo bonus is accepted only up to
+ *   floor(base x 1.4) (the x2.4 per-food cap) and a sane max chain;
+ *   anything beyond clamps and flags rather than recomputing.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
-  applyOutcome,
+  COSMIC_TRUST_MAX_BONUS_RATIO,
+  applyOutcomeWithMutations,
   computeRunTotals,
   getRuleset,
   type DynastyName,
 } from '@/shared/game/rulesets';
+import {
+  MUTATION_SPAWN,
+  isMutationId,
+  type MutationPick,
+} from '@/shared/game/mutations';
 
 export interface GameResultInput {
   /** Raw foods eaten - the minimal claimed fact the payout derives from. */
@@ -28,23 +47,188 @@ export interface GameResultInput {
   duration_seconds: number;
   died: boolean;
   victory: boolean;
+  /** Claimed mutation picks: [{ id, atFood }] in pick order (sanitized here). */
+  mutations?: unknown;
+  /** Claimed Phoenix trigger food index (payout-reducing when honored). */
+  phoenix_triggered_at_food?: unknown;
+  /** COSMIC combo summary: { combo_dna_bonus, combo_score_bonus, max_chain }. */
+  cosmic?: unknown;
+}
+
+/** Accepted COSMIC combo claim (post-clamp). */
+export interface CosmicClaim {
+  comboDnaBonus: number;
+  comboScoreBonus: number;
+  maxChain: number;
 }
 
 export interface ValidationResult {
   valid: boolean;
-  /** Authoritative payout: applyOutcome(computeRunTotals(...)) [+ victory bonus]. */
+  /** Authoritative payout: outcome(recomputed raw) [+ victory bonus]. */
   adjustedDna: number;
-  /** Authoritative display score (recomputed). */
+  /** Authoritative display score (recomputed; + clamped combo on COSMIC). */
   adjustedScore: number;
   /** Validated food count (claimed, clamped to the rate bound). */
   foodCount: number;
   /** Effective outcome used for payout (extracted claims that conflict with died are voided). */
   extracted: boolean;
+  /** Sanitized mutation picks the payout was computed from. */
+  mutations: MutationPick[];
+  /** Honored Phoenix trigger food index, null when absent/implausible. */
+  phoenixTriggeredAtFood: number | null;
+  /** Accepted (clamped) COSMIC combo claim, null off-COSMIC or when absent. */
+  cosmic: CosmicClaim | null;
   errors: string[];
 }
 
 /** Claims within +/- this many DNA/score of the recompute are treated as rounding noise. */
 export const CLAIM_EPSILON = 1;
+
+/** Minimum food gap the spawn cadence allows before the k-th mutation pick. */
+const MIN_FOODS_PER_PICK = 15;
+
+/**
+ * Sanitize the claimed mutation picks against legality + cadence bounds.
+ * Illegal entries are dropped and flagged; bound violations keep the legal
+ * prefix (the payout is then computed from what remains - conservative
+ * because whatever the cheat intended, the server only ever pays its own
+ * recompute of the accepted picks).
+ */
+function sanitizeMutations(
+  raw: unknown,
+  foodCount: number,
+  errors: string[]
+): MutationPick[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    errors.push('INVALID_MUTATIONS: not an array');
+    return [];
+  }
+
+  const picks: MutationPick[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    const id = (entry as { id?: unknown } | null)?.id;
+    const atFood = (entry as { atFood?: unknown } | null)?.atFood;
+    if (!isMutationId(id)) {
+      errors.push(`INVALID_MUTATIONS: unknown mutation id ${JSON.stringify(id)}`);
+      continue;
+    }
+    if (seen.has(id)) {
+      errors.push(`INVALID_MUTATIONS: duplicate mutation ${id}`);
+      continue;
+    }
+    if (
+      typeof atFood !== 'number' ||
+      !Number.isInteger(atFood) ||
+      atFood < 0
+    ) {
+      errors.push(`INVALID_MUTATIONS: ${id} atFood ${JSON.stringify(atFood)} is not a non-negative integer`);
+      continue;
+    }
+    seen.add(id);
+    picks.push({ id, atFood });
+  }
+
+  if (picks.length > MUTATION_SPAWN.maxHeld) {
+    errors.push(
+      `MUTATION_BOUND: ${picks.length} picks exceeds the stacking cap ${MUTATION_SPAWN.maxHeld}`
+    );
+    picks.length = MUTATION_SPAWN.maxHeld;
+  }
+
+  // Cadence count bound: the k-th mutation food cannot exist before food 15k
+  const maxPicks = Math.floor(foodCount / MIN_FOODS_PER_PICK);
+  if (picks.length > maxPicks) {
+    errors.push(
+      `MUTATION_BOUND: ${picks.length} picks exceeds floor(${foodCount}/15) = ${maxPicks}`
+    );
+    picks.length = Math.max(0, maxPicks);
+  }
+
+  // Per-pick window: atFood >= 15 x pick-index (1-based) and <= foodCount.
+  // A violation invalidates that pick and everything after it (later picks
+  // depend on the same cadence).
+  for (let i = 0; i < picks.length; i++) {
+    const minAt = MIN_FOODS_PER_PICK * (i + 1);
+    if (picks[i].atFood < minAt || picks[i].atFood > foodCount) {
+      errors.push(
+        `MUTATION_BOUND: pick ${i + 1} (${picks[i].id}) atFood ${picks[i].atFood} outside [${minAt}, ${foodCount}]`
+      );
+      picks.length = i;
+      break;
+    }
+  }
+
+  return picks;
+}
+
+/** Coerce a claimed non-negative integer field; null when invalid. */
+function nonNegativeInt(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+/**
+ * Sanitize + clamp the COSMIC combo claim (bounded trust). Returns the
+ * accepted claim; pushes errors (=> validated:false) when anything had to
+ * be clamped or zeroed.
+ */
+function sanitizeCosmicClaim(
+  raw: unknown,
+  foodCount: number,
+  baseDna: number,
+  baseScore: number,
+  errors: string[]
+): CosmicClaim {
+  const claim = (raw ?? {}) as Record<string, unknown>;
+  let dnaBonus = nonNegativeInt(claim.combo_dna_bonus) ?? 0;
+  let scoreBonus = nonNegativeInt(claim.combo_score_bonus) ?? 0;
+  let maxChain = nonNegativeInt(claim.max_chain) ?? 0;
+  if (
+    raw !== undefined &&
+    raw !== null &&
+    (typeof raw !== 'object' ||
+      nonNegativeInt(claim.combo_dna_bonus) === null ||
+      nonNegativeInt(claim.combo_score_bonus) === null ||
+      nonNegativeInt(claim.max_chain) === null)
+  ) {
+    errors.push('COSMIC_COMBO: malformed combo summary');
+  }
+
+  // Chain length can never exceed foods eaten
+  if (maxChain > foodCount) {
+    errors.push(`COSMIC_COMBO: max chain ${maxChain} exceeds ${foodCount} foods`);
+    maxChain = foodCount;
+  }
+
+  // A combo bonus requires at least a chain of 2
+  if ((dnaBonus > 0 || scoreBonus > 0) && maxChain < 2) {
+    errors.push('COSMIC_COMBO: combo bonus claimed without a chain');
+    dnaBonus = 0;
+    scoreBonus = 0;
+  }
+
+  // Per-dynasty ceiling: every food's combo is capped x2.4, so the bonus
+  // over the no-combo recompute is capped at base x 1.4
+  const maxDnaBonus = Math.floor(baseDna * COSMIC_TRUST_MAX_BONUS_RATIO);
+  const maxScoreBonus = Math.floor(baseScore * COSMIC_TRUST_MAX_BONUS_RATIO);
+  if (dnaBonus > maxDnaBonus) {
+    errors.push(
+      `COSMIC_COMBO: DNA bonus ${dnaBonus} exceeds ceiling ${maxDnaBonus} - clamped`
+    );
+    dnaBonus = maxDnaBonus;
+  }
+  if (scoreBonus > maxScoreBonus) {
+    errors.push(
+      `COSMIC_COMBO: score bonus ${scoreBonus} exceeds ceiling ${maxScoreBonus} - clamped`
+    );
+    scoreBonus = maxScoreBonus;
+  }
+
+  return { comboDnaBonus: dnaBonus, comboScoreBonus: scoreBonus, maxChain };
+}
 
 export function validateGameResult(
   input: GameResultInput,
@@ -92,14 +276,62 @@ export function validateGameResult(
     foodCount = maxFood;
   }
 
-  // 4. Exact recompute - the payout authority
-  const { rawDna, score: expectedScore } = computeRunTotals(dynasty, foodCount);
-  let expectedPayout = applyOutcome(rawDna, extracted);
+  // 4. Mutation legality + cadence bounds (section 5.3)
+  const mutations = sanitizeMutations(input.mutations, foodCount, errors);
+
+  // 5. Phoenix trigger: only honored when phoenix is held and the index is
+  //    plausible. Honoring a trigger strictly lowers the payout, so an
+  //    implausible claim is ignored (never inflates), just flagged.
+  let phoenixTriggeredAtFood: number | null = null;
+  const rawPhoenix = input.phoenix_triggered_at_food;
+  if (rawPhoenix !== undefined && rawPhoenix !== null) {
+    const phoenixPick = mutations.find((m) => m.id === 'phoenix');
+    const at = nonNegativeInt(rawPhoenix);
+    if (!phoenixPick) {
+      errors.push('PHOENIX_INVALID: trigger claimed without phoenix held');
+    } else if (at === null || at < phoenixPick.atFood || at > foodCount) {
+      errors.push(
+        `PHOENIX_INVALID: trigger ${JSON.stringify(rawPhoenix)} outside [${phoenixPick.atFood}, ${foodCount}]`
+      );
+    } else {
+      phoenixTriggeredAtFood = at;
+    }
+  }
+
+  // 6. Exact recompute of the mutation-aware base - the payout authority
+  const { rawDna: baseDna, score: baseScore } = computeRunTotals(
+    dynasty,
+    foodCount,
+    mutations,
+    phoenixTriggeredAtFood
+  );
+
+  // 7. COSMIC bounded trust: accept the combo claim only up to the caps
+  let rawDna = baseDna;
+  let expectedScore = baseScore;
+  let cosmic: CosmicClaim | null = null;
+  if (dynasty === 'COSMIC') {
+    if (input.cosmic !== undefined && input.cosmic !== null) {
+      cosmic = sanitizeCosmicClaim(input.cosmic, foodCount, baseDna, baseScore, errors);
+      rawDna += cosmic.comboDnaBonus;
+      expectedScore += cosmic.comboScoreBonus;
+    }
+  } else if (input.cosmic !== undefined && input.cosmic !== null) {
+    errors.push(`COSMIC_COMBO: combo summary on a ${dynasty} session - ignored`);
+  }
+
+  // 8. Outcome multiplier (mutation-aware) + victory bonus
+  let expectedPayout = applyOutcomeWithMutations(
+    rawDna,
+    extracted,
+    mutations,
+    phoenixTriggeredAtFood !== null
+  );
   if (input.victory) {
     expectedPayout += GAME_CONFIG.economy.dna.completionBonus;
   }
 
-  // 5. Claim mismatches only flag - the payout stays the recomputed value
+  // 9. Claim mismatches only flag - the payout stays the recomputed value
   if (Math.abs(input.dna_earned - rawDna) > CLAIM_EPSILON) {
     errors.push(
       `DNA_MISMATCH: claimed ${input.dna_earned}, recomputed ${rawDna} (${dynasty}, ${foodCount} foods)`
@@ -117,6 +349,9 @@ export function validateGameResult(
     adjustedScore: expectedScore,
     foodCount,
     extracted,
+    mutations,
+    phoenixTriggeredAtFood,
+    cosmic,
     errors,
   };
 }

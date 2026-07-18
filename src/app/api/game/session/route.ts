@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
       victory,
       food_count,
       extracted,
+      mutations,
+      phoenix_triggered_at_food,
+      cosmic,
     } = body;
 
     const { data: player } = await supabase
@@ -236,6 +239,11 @@ export async function POST(request: NextRequest) {
           duration_seconds: duration_seconds || 0,
           died: died ?? !(extracted === true),
           victory: victory ?? false,
+          // Design v2 Phase 2: mutation picks + Phoenix trigger + the
+          // COSMIC combo summary - all sanitized inside the validator
+          mutations,
+          phoenix_triggered_at_food,
+          cosmic,
         },
         serverStartedAt,
         normalizeDynastyName(session.dynasty)
@@ -265,6 +273,20 @@ export async function POST(request: NextRequest) {
 
       const finalDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
 
+      // Sanitized mutation record for the session row (migration 014).
+      // One JSONB blob: picks in order + Phoenix trigger + accepted COSMIC
+      // combo claim; null for mutation-free non-COSMIC runs.
+      const mutationsRecord =
+        validation.mutations.length > 0 ||
+        validation.phoenixTriggeredAtFood !== null ||
+        validation.cosmic !== null
+          ? {
+              picks: validation.mutations,
+              phoenixTriggeredAtFood: validation.phoenixTriggeredAtFood,
+              cosmic: validation.cosmic,
+            }
+          : null;
+
       // Mark the session ended BEFORE granting rewards - this is the
       // idempotency anchor. Guard on ended_at IS NULL so two concurrent
       // 'end' calls can't both pass the check above and double-grant.
@@ -281,6 +303,7 @@ export async function POST(request: NextRequest) {
           validated: validation.valid,
           validation_errors: validation.errors.length > 0 ? validation.errors : null,
           foods_collected: validation.foodCount,
+          mutations: mutationsRecord,
         })
         .eq('id', sessionId)
         .eq('player_id', player.id)
@@ -364,6 +387,13 @@ export async function POST(request: NextRequest) {
             original_dna_claimed: dna_earned || 0,
             validated: validation.valid,
             base_dna: validation.adjustedDna,
+            ...(validation.mutations.length > 0
+              ? { mutations: validation.mutations }
+              : {}),
+            ...(validation.phoenixTriggeredAtFood !== null
+              ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
+              : {}),
+            ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
             ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
           },
         });

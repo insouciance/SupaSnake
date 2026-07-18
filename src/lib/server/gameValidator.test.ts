@@ -11,9 +11,11 @@ import {
 } from './gameValidator';
 import {
   applyOutcome,
+  applyOutcomeWithMutations,
   computeRunTotals,
   type DynastyName,
 } from '@/shared/game/rulesets';
+import type { MutationPick } from '@/shared/game/mutations';
 
 /** Build an honest input: claims exactly match the recompute. */
 function honestInput(
@@ -256,6 +258,330 @@ describe('validateGameResult (Design v2 recompute)', () => {
         );
         expect(result.valid).toBe(true);
       }
+    });
+  });
+
+  describe('mutation claims (Design v2 Phase 2)', () => {
+    /** Honest mutation input: claims match the mutation-aware recompute. */
+    function honestMutationInput(
+      dynasty: DynastyName,
+      foodCount: number,
+      extracted: boolean,
+      mutations: MutationPick[],
+      duration = 120,
+      overrides: Partial<GameResultInput> = {}
+    ): GameResultInput {
+      const { rawDna, score } = computeRunTotals(dynasty, foodCount, mutations);
+      return {
+        food_count: foodCount,
+        extracted,
+        score,
+        dna_earned: rawDna,
+        duration_seconds: duration,
+        died: !extracted,
+        victory: false,
+        mutations,
+        ...overrides,
+      };
+    }
+
+    it('recomputes E-mutation payouts exactly (PRIMAL, Gold Trail + Overgrowth)', () => {
+      const picks: MutationPick[] = [
+        { id: 'gold_trail', atFood: 16 },
+        { id: 'overgrowth', atFood: 33 },
+      ];
+      const input = honestMutationInput('PRIMAL', 50, true, picks);
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+      const { rawDna } = computeRunTotals('PRIMAL', 50, picks);
+
+      expect(result.valid).toBe(true);
+      expect(result.mutations).toEqual(picks);
+      expect(result.adjustedDna).toBe(applyOutcomeWithMutations(rawDna, true, picks));
+    });
+
+    it('applies Mirror Wager to the outcome multiplier (bank x1.50, salvage x0.30)', () => {
+      const picks: MutationPick[] = [{ id: 'mirror_wager', atFood: 20 }];
+      const { rawDna } = computeRunTotals('PRIMAL', 30, picks);
+
+      const banked = validateGameResult(
+        honestMutationInput('PRIMAL', 30, true, picks),
+        startedAgo(125),
+        'PRIMAL'
+      );
+      expect(banked.adjustedDna).toBe(Math.floor(rawDna * 1.5));
+
+      const died = validateGameResult(
+        honestMutationInput('PRIMAL', 30, false, picks),
+        startedAgo(125),
+        'PRIMAL'
+      );
+      expect(died.adjustedDna).toBe(Math.floor(rawDna * 0.3));
+    });
+
+    it('applies Compound Interest per held mutation (4 held -> x1.65 base)', () => {
+      const picks: MutationPick[] = [
+        { id: 'compound_interest', atFood: 15 },
+        { id: 'magnet_pulse', atFood: 30 },
+        { id: 'wall_rush', atFood: 45 },
+        { id: 'shed', atFood: 60 },
+      ];
+      const input = honestMutationInput('PRIMAL', 70, true, picks, 180);
+      const result = validateGameResult(input, startedAgo(185), 'PRIMAL');
+      const { rawDna } = computeRunTotals('PRIMAL', 70, picks);
+      expect(result.valid).toBe(true);
+      expect(result.adjustedDna).toBe(Math.floor(rawDna * 1.65));
+    });
+
+    it('drops unknown ids and duplicates, flags, and pays the legal subset', () => {
+      const legal: MutationPick[] = [{ id: 'overgrowth', atFood: 18 }];
+      const input = honestMutationInput('PRIMAL', 40, false, legal, 120, {
+        mutations: [
+          { id: 'overgrowth', atFood: 18 },
+          { id: 'mega_snake', atFood: 20 },
+          { id: 'overgrowth', atFood: 25 },
+          { id: 'wall_rush', atFood: 'soon' },
+        ],
+      });
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('unknown mutation id'));
+      expect(result.errors).toContainEqual(expect.stringContaining('duplicate mutation'));
+      expect(result.mutations).toEqual(legal);
+      expect(result.adjustedDna).toBe(
+        applyOutcomeWithMutations(computeRunTotals('PRIMAL', 40, legal).rawDna, false, legal)
+      );
+    });
+
+    it('bounds pick count by floor(foodCount / 15)', () => {
+      const picks: MutationPick[] = [
+        { id: 'overgrowth', atFood: 15 },
+        { id: 'wall_rush', atFood: 20 },
+      ];
+      // 25 foods allow only floor(25/15) = 1 pick
+      const input = honestMutationInput('PRIMAL', 25, false, picks);
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('MUTATION_BOUND'));
+      expect(result.mutations).toEqual([picks[0]]);
+    });
+
+    it('bounds each atFood to [15 x pick-index, foodCount]', () => {
+      const early = validateGameResult(
+        honestMutationInput('PRIMAL', 40, false, [{ id: 'overgrowth', atFood: 9 }]),
+        startedAgo(125),
+        'PRIMAL'
+      );
+      expect(early.valid).toBe(false);
+      expect(early.mutations).toEqual([]);
+
+      const late = validateGameResult(
+        honestMutationInput('PRIMAL', 40, false, [{ id: 'overgrowth', atFood: 55 }]),
+        startedAgo(125),
+        'PRIMAL'
+      );
+      expect(late.valid).toBe(false);
+      expect(late.mutations).toEqual([]);
+      // Payout falls back to the mutation-free recompute
+      expect(late.adjustedDna).toBe(
+        applyOutcome(computeRunTotals('PRIMAL', 40).rawDna, false)
+      );
+    });
+
+    it('a second pick before food 30 is rejected, keeping the legal prefix', () => {
+      const picks: MutationPick[] = [
+        { id: 'overgrowth', atFood: 16 },
+        { id: 'wall_rush', atFood: 22 }, // < 15 x 2
+      ];
+      const input = honestMutationInput('PRIMAL', 45, false, picks);
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+      expect(result.valid).toBe(false);
+      expect(result.mutations).toEqual([picks[0]]);
+    });
+
+    it('honors a plausible Phoenix trigger (payout only ever drops)', () => {
+      const picks: MutationPick[] = [
+        { id: 'overgrowth', atFood: 15 },
+        { id: 'phoenix', atFood: 30 },
+      ];
+      const triggered = computeRunTotals('PRIMAL', 50, picks, 35);
+      const input = honestMutationInput('PRIMAL', 50, true, picks, 120, {
+        dna_earned: triggered.rawDna,
+        score: triggered.score,
+        phoenix_triggered_at_food: 35,
+      });
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+
+      expect(result.valid).toBe(true);
+      expect(result.phoenixTriggeredAtFood).toBe(35);
+      expect(result.adjustedDna).toBe(
+        applyOutcomeWithMutations(triggered.rawDna, true, picks, true)
+      );
+
+      const untriggeredResult = validateGameResult(
+        honestMutationInput('PRIMAL', 50, true, picks),
+        startedAgo(125),
+        'PRIMAL'
+      );
+      expect(result.adjustedDna).toBeLessThan(untriggeredResult.adjustedDna);
+    });
+
+    it('ignores a Phoenix trigger claimed without phoenix held', () => {
+      const picks: MutationPick[] = [{ id: 'overgrowth', atFood: 15 }];
+      const input = honestMutationInput('PRIMAL', 40, false, picks, 120, {
+        phoenix_triggered_at_food: 20,
+      });
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('PHOENIX_INVALID'));
+      expect(result.phoenixTriggeredAtFood).toBeNull();
+    });
+
+    it('ignores a Phoenix trigger outside [pickAtFood, foodCount]', () => {
+      const picks: MutationPick[] = [{ id: 'phoenix', atFood: 20 }];
+      for (const bad of [10, 99]) {
+        const result = validateGameResult(
+          honestMutationInput('PRIMAL', 40, false, picks, 120, {
+            phoenix_triggered_at_food: bad,
+          }),
+          startedAgo(125),
+          'PRIMAL'
+        );
+        expect(result.errors).toContainEqual(expect.stringContaining('PHOENIX_INVALID'));
+        expect(result.phoenixTriggeredAtFood).toBeNull();
+      }
+    });
+
+    it('mutation-free payloads behave exactly as before (regression)', () => {
+      const input = honestInput('CYBER', 30, true, 180);
+      const result = validateGameResult(input, startedAgo(185), 'CYBER');
+      expect(result.valid).toBe(true);
+      expect(result.mutations).toEqual([]);
+      expect(result.cosmic).toBeNull();
+      expect(result.adjustedDna).toBe(
+        applyOutcome(computeRunTotals('CYBER', 30).rawDna, true)
+      );
+    });
+  });
+
+  describe('COSMIC bounded trust (combo claims clamp, never recompute)', () => {
+    function cosmicInput(
+      foodCount: number,
+      comboDnaBonus: number,
+      comboScoreBonus: number,
+      maxChain: number,
+      overrides: Partial<GameResultInput> = {}
+    ): GameResultInput {
+      const base = computeRunTotals('COSMIC', foodCount);
+      return {
+        food_count: foodCount,
+        extracted: true,
+        score: base.score + comboScoreBonus,
+        dna_earned: base.rawDna + comboDnaBonus,
+        duration_seconds: 120,
+        died: false,
+        victory: false,
+        cosmic: {
+          combo_dna_bonus: comboDnaBonus,
+          combo_score_bonus: comboScoreBonus,
+          max_chain: maxChain,
+        },
+        ...overrides,
+      };
+    }
+
+    it('accepts an in-bounds combo claim and pays base + bonus', () => {
+      // 30 foods base 300; claimed bonus 200 <= floor(300 x 1.4) = 420
+      const result = validateGameResult(cosmicInput(30, 200, 200, 8), startedAgo(125), 'COSMIC');
+      expect(result.valid).toBe(true);
+      expect(result.cosmic).toEqual({
+        comboDnaBonus: 200,
+        comboScoreBonus: 200,
+        maxChain: 8,
+      });
+      expect(result.adjustedDna).toBe(applyOutcome(500, true));
+      expect(result.adjustedScore).toBe(500);
+    });
+
+    it('clamps a combo claim beyond the x1.4 ceiling and flags', () => {
+      const result = validateGameResult(
+        cosmicInput(30, 999, 999, 12),
+        startedAgo(125),
+        'COSMIC'
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('COSMIC_COMBO'));
+      expect(result.cosmic!.comboDnaBonus).toBe(420); // floor(300 x 1.4)
+      // Pays the clamped value - flagging, never inflating
+      expect(result.adjustedDna).toBe(applyOutcome(300 + 420, true));
+    });
+
+    it('rejects a chain longer than the food count', () => {
+      const result = validateGameResult(
+        cosmicInput(30, 100, 100, 45),
+        startedAgo(125),
+        'COSMIC'
+      );
+      expect(result.valid).toBe(false);
+      expect(result.cosmic!.maxChain).toBe(30);
+    });
+
+    it('zeroes a bonus claimed without a chain', () => {
+      const result = validateGameResult(
+        cosmicInput(30, 100, 100, 1),
+        startedAgo(125),
+        'COSMIC'
+      );
+      expect(result.valid).toBe(false);
+      expect(result.cosmic).toEqual({
+        comboDnaBonus: 0,
+        comboScoreBonus: 0,
+        maxChain: 1,
+      });
+      expect(result.adjustedDna).toBe(applyOutcome(300, true));
+    });
+
+    it('COSMIC without a combo summary pays the flat base (old clients)', () => {
+      const input = honestInput('COSMIC', 30, true, 120);
+      const result = validateGameResult(input, startedAgo(125), 'COSMIC');
+      expect(result.valid).toBe(true);
+      expect(result.cosmic).toBeNull();
+      expect(result.adjustedDna).toBe(applyOutcome(300, true));
+    });
+
+    it('ignores and flags a combo summary on a non-COSMIC session', () => {
+      const input = honestInput('PRIMAL', 30, true, 120, {
+        cosmic: { combo_dna_bonus: 400, combo_score_bonus: 400, max_chain: 9 },
+      });
+      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringContaining('COSMIC_COMBO'));
+      expect(result.cosmic).toBeNull();
+      expect(result.adjustedDna).toBe(
+        applyOutcome(computeRunTotals('PRIMAL', 30).rawDna, true)
+      );
+    });
+
+    it('E-mutations still recompute exactly under COSMIC (base layer)', () => {
+      const picks: MutationPick[] = [{ id: 'splitter', atFood: 15 }];
+      const base = computeRunTotals('COSMIC', 40, picks);
+      const input: GameResultInput = {
+        food_count: 40,
+        extracted: true,
+        score: base.score + 50,
+        dna_earned: base.rawDna + 50,
+        duration_seconds: 120,
+        died: false,
+        victory: false,
+        mutations: picks,
+        cosmic: { combo_dna_bonus: 50, combo_score_bonus: 50, max_chain: 4 },
+      };
+      const result = validateGameResult(input, startedAgo(125), 'COSMIC');
+      expect(result.valid).toBe(true);
+      expect(result.adjustedDna).toBe(
+        applyOutcomeWithMutations(base.rawDna + 50, true, picks)
+      );
     });
   });
 

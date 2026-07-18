@@ -29,6 +29,16 @@ export interface RewardOutboxEntry {
   food_count?: number;
   /** True when the run ended through the exit portal (Design v2). */
   extracted?: boolean;
+  /** Mutation picks in order (Design v2 Phase 2); optional for old entries. */
+  mutations?: Array<{ id: string; atFood: number }>;
+  /** Phoenix trigger food index, when it fired (Phase 2). */
+  phoenix_triggered_at_food?: number;
+  /** COSMIC bounded-trust combo summary (Phase 2). */
+  cosmic?: {
+    combo_dna_bonus: number;
+    combo_score_bonus: number;
+    max_chain: number;
+  };
   /** Epoch ms when the run ended (used for expiry). */
   timestamp: number;
 }
@@ -61,7 +71,12 @@ function isValidEntry(e: unknown): e is RewardOutboxEntry {
     typeof entry.duration_seconds === 'number' &&
     typeof entry.timestamp === 'number' &&
     (entry.food_count === undefined || typeof entry.food_count === 'number') &&
-    (entry.extracted === undefined || typeof entry.extracted === 'boolean')
+    (entry.extracted === undefined || typeof entry.extracted === 'boolean') &&
+    (entry.mutations === undefined || Array.isArray(entry.mutations)) &&
+    (entry.phoenix_triggered_at_food === undefined ||
+      typeof entry.phoenix_triggered_at_food === 'number') &&
+    (entry.cosmic === undefined ||
+      (typeof entry.cosmic === 'object' && entry.cosmic !== null))
   );
 }
 
@@ -169,6 +184,12 @@ export async function replayRewardOutbox(
             ? { food_count: entry.food_count }
             : {}),
           ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
+          // Phase 2 fields (mutations / Phoenix / COSMIC combo claim)
+          ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
+          ...(entry.phoenix_triggered_at_food !== undefined
+            ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
+            : {}),
+          ...(entry.cosmic !== undefined ? { cosmic: entry.cosmic } : {}),
         }),
       });
 
