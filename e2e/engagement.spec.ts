@@ -4,11 +4,15 @@
  * Full hook loop for a brand-new player, driven end to end against the real
  * server: anonymous signup -> FTUE starter selection (PRIMAL) -> game page
  * shows the equipped snake + energy -> Lab unlock attempt fails on
- * insufficient DNA -> Breeding Lab renders parent slots -> daily reward
- * (day 1, claimable on a fresh account) -> DNA balance increases.
+ * insufficient DNA -> Breeding Lab renders parent slots -> daily contracts
+ * (Design v2 section 7.3: board auto-opens with 3 offers, picks 2, picked
+ * state persists across reload).
  *
  * The snake run itself is a WebGL canvas and is not simulated; everything
- * around it is exercised. Steps run serially and share one page/session.
+ * around it is exercised. Contract completion requires real banked runs, so
+ * the claim path is covered by API/unit tests (claim_contract idempotency)
+ * rather than driven live here. Steps run serially and share one
+ * page/session.
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -105,35 +109,43 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await expect(page.getByTestId('parent-slot-2')).toBeVisible();
   });
 
-  test('daily reward day 1 is claimable and increases DNA', async () => {
+  test('daily contracts board offers 3 and picking 2 persists', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     await page.goto('/');
 
-    // Fresh account: day 1 reward auto-opens as claimable
-    const claimButton = page.getByRole('button', { name: /claim day 1 reward/i });
-    await expect(claimButton).toBeVisible({ timeout: 20000 });
-    await claimButton.click();
+    // Fresh account, fresh day: the contracts board auto-opens with the
+    // deterministic 3-of-pool offers
+    const board = page.getByTestId('contracts-board');
+    await expect(board).toBeVisible({ timeout: 20000 });
+    const cards = page.locator('[data-testid^="contract-card-"]');
+    await expect(cards).toHaveCount(3);
 
-    // Success state reports the granted DNA
-    await expect(page.getByText(/day 1 claimed/i)).toBeVisible({ timeout: 15000 });
-    const grantedText = await page
-      .locator('text=/^\\+\\d+$/')
-      .first()
-      .textContent();
-    const granted = Number((grantedText ?? '').replace('+', ''));
-    expect(granted).toBeGreaterThan(0);
+    // Pick 2 of 3: toggle two cards, confirm
+    await cards.nth(0).click();
+    await cards.nth(1).click();
+    const confirm = page.getByTestId('contracts-confirm');
+    await expect(confirm).toHaveText(/start 2 contracts/i);
+    await confirm.click();
 
-    await page.getByRole('button', { name: /awesome/i }).click();
+    // Picked state lands from the server (progress bars, no confirm button)
+    await expect(cards.nth(0)).toHaveAttribute('data-state', 'picked', {
+      timeout: 15000,
+    });
+    await expect(cards.nth(1)).toHaveAttribute('data-state', 'picked');
+    await expect(confirm).not.toBeVisible();
 
-    // Home stats reflect the new balance (starter was free, so DNA == granted)
-    await expect(
-      page.locator(`text=/^${granted.toLocaleString('en-US')}$/`).first()
-    ).toBeVisible({ timeout: 15000 });
-
-    // Claim is idempotent for the day: reopening shows "Come Back Tomorrow"
+    // Playing a run to completion is not drivable (WebGL); completion +
+    // claim are exercised in the API tests. Assert persistence instead:
+    // picks survive a reload and the board no longer auto-opens (nothing
+    // actionable), with the mission line reporting contract progress.
     await page.reload();
-    await expect(
-      page.getByRole('button', { name: /claim day 1 reward/i })
-    ).not.toBeVisible({ timeout: 10000 });
+    const missionLine = page.getByText(/contracts: 0\/2 complete/i);
+    await expect(missionLine).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('contracts-board')).not.toBeVisible();
+
+    // The mission line reopens the board with both picks intact
+    await missionLine.click();
+    await expect(page.getByTestId('contracts-board')).toBeVisible();
+    await expect(page.locator('[data-state="picked"]')).toHaveCount(2);
   });
 });
