@@ -42,6 +42,11 @@ export interface PlayerIdentity {
   clanName: string | null;
   /** Dynasty -> mastery level (0-10), e.g. { PRIMAL: 7, CYBER: 2 }. */
   mastery: Record<string, number>;
+  /**
+   * Legacy Score (Identity v1 section 6.2): sum of banked record tier
+   * points. 0 pre-migration-023 (the view column does not exist yet).
+   */
+  legacyScore: number;
 }
 
 /** Raw view row (snake_case, as Supabase returns it). */
@@ -65,6 +70,8 @@ export interface PlayerIdentityRow {
   clan_tag: string | null;
   clan_name: string | null;
   mastery: Record<string, number> | null;
+  /** Appended by migration 023 - absent (undefined) before it applies. */
+  legacy_score?: number | null;
 }
 
 /** Map a raw view row into the app-facing identity shape. */
@@ -93,6 +100,7 @@ export function identityFromRow(row: PlayerIdentityRow): PlayerIdentity {
     clanTag: row.clan_tag ?? null,
     clanName: row.clan_name ?? null,
     mastery: row.mastery ?? {},
+    legacyScore: row.legacy_score ?? 0,
   };
 }
 
@@ -131,5 +139,6 @@ export function identityFromEmbedded(embedded: EmbeddedIdentity): PlayerIdentity
     clanTag: embedded.clan_tag ?? null,
     clanName: null,
     mastery: {},
+    legacyScore: 0,
   };
 }

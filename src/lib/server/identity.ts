@@ -69,6 +69,7 @@ export function fallbackIdentity(playerId: string): PlayerIdentity {
     clanTag: null,
     clanName: null,
     mastery: {},
+    legacyScore: 0,
   };
 }
 

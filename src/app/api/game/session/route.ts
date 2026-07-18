@@ -34,6 +34,7 @@ import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
+import { refreshPlayerRecords } from '@/lib/server/records';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
   getDnaMultiplier,
@@ -876,6 +877,12 @@ export async function POST(request: NextRequest) {
         console.error('Achievement check error:', achievementError);
         // Don't fail the request if achievement checking fails
       }
+
+      // Records refresh (Identity v1 section 6.3): idempotent
+      // recompute-from-aggregates after all rewards land - like mastery,
+      // strictly non-fatal (pre-023 or any failure just skips it; the
+      // helper never throws).
+      await refreshPlayerRecords(supabase, player.id);
 
       return NextResponse.json({
         success: true,

@@ -10,7 +10,8 @@ export type ActionType =
   | 'breeding'
   | 'purchase'
   | 'handle_check'
-  | 'handle_claim';
+  | 'handle_claim'
+  | 'records_refresh';
 
 export const RATE_LIMITS: Record<ActionType, number> = {
   game_start: 5000,
@@ -20,6 +21,9 @@ export const RATE_LIMITS: Record<ActionType, number> = {
   // too, but the server holds its own line; claims are rare and deliberate.
   handle_check: 500,
   handle_claim: 3000,
+  // Identity v1 I2 (section 6.3): the lazy own-Chronicle records refresh
+  // recomputes at most once a minute; session end refreshes regardless.
+  records_refresh: 60_000,
 };
 
 interface RateLimitResult {
