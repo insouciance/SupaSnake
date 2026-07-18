@@ -6,17 +6,25 @@
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
   BANK,
+  COSMIC_CONSTELLATION,
+  COSMIC_FLUX,
+  COSMIC_SPEED_MS,
+  COSMIC_TRUST_MAX_BONUS_RATIO,
   FOOD_BASE_DNA,
   FOOD_BASE_SCORE,
   RULESETS,
   applyOutcome,
+  applyOutcomeWithMutations,
   computeRunTotals,
+  cosmicComboMultiplier,
   getRuleset,
   normalizeDynastyName,
+  outcomeMultipliers,
   rollExitInterval,
   rulesetExplainer,
   type DynastyName,
 } from './rulesets';
+import type { MutationPick } from './mutations';
 
 const ALL_DYNASTIES: DynastyName[] = ['PRIMAL', 'CYBER', 'COSMIC'];
 
@@ -112,15 +120,66 @@ describe('CYBER ruleset (Overclock)', () => {
   });
 });
 
-describe('COSMIC ruleset (Phase 2 placeholder)', () => {
+describe('COSMIC ruleset (Flux)', () => {
   const cosmic = RULESETS.COSMIC;
 
-  it('is PRIMAL-like: fixed speed, flat legacy food value', () => {
-    expect(cosmic.speedForFood(0)).toBe(GAME_CONFIG.snake.initialSpeed);
-    expect(cosmic.speedForFood(80)).toBe(GAME_CONFIG.snake.initialSpeed);
+  it('has a fixed 160 ms tick between PRIMAL and CYBER tier 1', () => {
+    expect(COSMIC_SPEED_MS).toBe(160);
+    expect(cosmic.speedForFood(0)).toBe(160);
+    expect(cosmic.speedForFood(80)).toBe(160);
+  });
+
+  it('pays a flat base food value - the combo layer sits on top', () => {
     expect(cosmic.foodDnaValue(1)).toBe(10);
     expect(cosmic.foodDnaValue(50)).toBe(10);
     expect(cosmic.scoreMultiplier(50)).toBe(1);
+  });
+
+  it('carries the constellation config: 3 glyphs, groups of 3, 8-tick window', () => {
+    expect(cosmic.constellation).toBe(COSMIC_CONSTELLATION);
+    expect(COSMIC_CONSTELLATION.glyphCount).toBe(3);
+    expect(COSMIC_CONSTELLATION.groupSize).toBe(3);
+    expect(COSMIC_CONSTELLATION.chainWindowTicks).toBe(8);
+    expect(COSMIC_CONSTELLATION.comboCap).toBe(2.4);
+  });
+
+  it('carries the flux config: 12s open / 8s closed / ~2s telegraph at 160ms', () => {
+    expect(cosmic.flux).toBe(COSMIC_FLUX);
+    expect(COSMIC_FLUX.openTicks).toBe(75); // 12s / 0.16s
+    expect(COSMIC_FLUX.closedTicks).toBe(50); // 8s / 0.16s
+    expect(COSMIC_FLUX.telegraphTicks).toBe(12); // ~2s
+  });
+
+  it('PRIMAL and CYBER carry no constellation or flux fields', () => {
+    expect(RULESETS.PRIMAL.constellation).toBeUndefined();
+    expect(RULESETS.PRIMAL.flux).toBeUndefined();
+    expect(RULESETS.CYBER.constellation).toBeUndefined();
+    expect(RULESETS.CYBER.flux).toBeUndefined();
+  });
+});
+
+describe('cosmicComboMultiplier', () => {
+  it('follows the doc table: x1.0 solo, x1.2 at chain 2, +0.2 per food, cap x2.4', () => {
+    expect(cosmicComboMultiplier(0)).toBe(1);
+    expect(cosmicComboMultiplier(1)).toBe(1);
+    expect(cosmicComboMultiplier(2)).toBeCloseTo(1.2, 10);
+    expect(cosmicComboMultiplier(3)).toBeCloseTo(1.4, 10);
+    expect(cosmicComboMultiplier(5)).toBeCloseTo(1.8, 10);
+    expect(cosmicComboMultiplier(7)).toBeCloseTo(2.2, 10);
+    expect(cosmicComboMultiplier(8)).toBe(2.4);
+    expect(cosmicComboMultiplier(20)).toBe(2.4);
+  });
+
+  it('rounds to clean per-food values at base 10', () => {
+    // round(10 x combo) for chains 1..8: the exact per-food payout steps
+    const values = [1, 2, 3, 4, 5, 6, 7, 8].map((c) =>
+      Math.round(10 * cosmicComboMultiplier(c))
+    );
+    expect(values).toEqual([10, 12, 14, 16, 18, 20, 22, 24]);
+  });
+
+  it('bounded-trust ratio is comboCap - 1 (the clamp ceiling)', () => {
+    expect(COSMIC_TRUST_MAX_BONUS_RATIO).toBeCloseTo(1.4, 10);
   });
 });
 
@@ -214,7 +273,7 @@ describe('computeRunTotals', () => {
     expect(computeRunTotals('CYBER', 30).score).toBe(670);
   });
 
-  it('COSMIC placeholder pays flat legacy totals', () => {
+  it('COSMIC base totals are flat (combo bonus is layered on top, clamped)', () => {
     expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 300, score: 300 });
   });
 });
@@ -284,7 +343,8 @@ describe('validation bounds', () => {
     );
     expect(RULESETS.PRIMAL.validation.maxFoodPerSecond).toBe(1.0);
     expect(RULESETS.CYBER.validation.maxFoodPerSecond).toBe(2.5);
-    expect(RULESETS.COSMIC.validation.maxFoodPerSecond).toBe(1.0);
+    // COSMIC: 160ms tick + clustered constellation groups eat faster than PRIMAL
+    expect(RULESETS.COSMIC.validation.maxFoodPerSecond).toBe(1.5);
   });
 });
 

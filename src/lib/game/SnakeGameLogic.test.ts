@@ -512,12 +512,12 @@ describe('SnakeGameLogic', () => {
   });
 
   describe('Speed Progression (per ruleset)', () => {
-    it('should have the initial speed on start (COSMIC default)', () => {
+    it('should have the COSMIC Flux fixed speed on start (COSMIC default)', () => {
       game.start();
-      expect(game.getSpeed()).toBe(200);
+      expect(game.getSpeed()).toBe(160);
     });
 
-    it('keeps speed fixed on the COSMIC placeholder ruleset', () => {
+    it('keeps speed fixed on the COSMIC ruleset', () => {
       game.start();
       const initialSpeed = game.getSpeed();
       const state = game.getState();
