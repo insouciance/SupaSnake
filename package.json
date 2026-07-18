@@ -19,6 +19,7 @@
     "@sentry/nextjs": "^10.66.0",
     "@supabase/supabase-js": "^2.110.6",
     "next": "15.5.20",
+    "openai": "^6.48.0",
     "posthog-js": "^1.402.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
