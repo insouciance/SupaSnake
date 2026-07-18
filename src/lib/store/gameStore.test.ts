@@ -351,4 +351,38 @@ describe('Game Store', () => {
       expect(state.fluxPhase).toBeNull();
     });
   });
+
+  describe('Game Mode (Free Play, Design v2 §7.4)', () => {
+    it('defaults to the earning mode', () => {
+      useGameStore.setState({ gameMode: 'earn' });
+      expect(useGameStore.getState().gameMode).toBe('earn');
+    });
+
+    it('setGameMode switches between earn and free', () => {
+      useGameStore.getState().setGameMode('free');
+      expect(useGameStore.getState().gameMode).toBe('free');
+
+      useGameStore.getState().setGameMode('earn');
+      expect(useGameStore.getState().gameMode).toBe('earn');
+    });
+
+    it('survives resetGame (Play Again keeps the chosen mode)', () => {
+      useGameStore.getState().setGameMode('free');
+      useGameStore.getState().startGame();
+      useGameStore.getState().endGame(10, 5);
+      useGameStore.getState().resetGame();
+
+      expect(useGameStore.getState().gameMode).toBe('free');
+    });
+
+    it('startGame does not touch the mode or energy', () => {
+      useGameStore.setState({ energy: 0, gameMode: 'free' });
+      useGameStore.getState().startGame();
+
+      const state = useGameStore.getState();
+      expect(state.isPlaying).toBe(true); // free play starts at zero energy
+      expect(state.energy).toBe(0);
+      expect(state.gameMode).toBe('free');
+    });
+  });
 });

@@ -15,6 +15,12 @@ import type { MutationId, MutationPick } from '@/shared/game/mutations';
 import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
 import { GAME_CONFIG } from '@/shared/config/game';
 
+/**
+ * Run mode (Design v2 §7.4): 'earn' spends energy and pays DNA; 'free' is
+ * unlimited, energy-free practice that pays nothing.
+ */
+export type GameMode = 'earn' | 'free';
+
 export interface GameStore {
   // Game state
   isPlaying: boolean;
@@ -33,6 +39,10 @@ export interface GameStore {
   energy: number;
   maxEnergy: number;
   energyRegenAt: string | null; // ISO timestamp from server when next energy regenerates
+
+  // Run mode: earning (energy-gated, rewarded) vs free play (unlimited,
+  // rewardless practice). Survives resetGame so Play Again keeps the mode.
+  gameMode: GameMode;
 
   // Dynasty
   selectedDynasty: DynastyId;
@@ -93,6 +103,7 @@ export interface GameStore {
   setAimSystem: (aimSystem: AimSystemId) => void;
   setEnergy: (energy: number) => void;
   syncEnergyFromServer: (energy: number, energyRegenAt: string | null) => void;
+  setGameMode: (gameMode: GameMode) => void;
   setSnake: (snake: Position[]) => void;
   setFood: (food: Position | null) => void;
   setDirection: (direction: Direction) => void;
@@ -129,6 +140,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   energy: GAME_CONFIG.economy.energy.maxEnergy,
   maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
   energyRegenAt: null, // Synced from server
+  gameMode: 'earn',
   selectedDynasty: 'CYBER',
   aimSystem: DEFAULT_AIM_SYSTEM,
   snake: [],
@@ -299,6 +311,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       energy: Math.max(0, energy),
       energyRegenAt,
     });
+  },
+
+  setGameMode: (gameMode: GameMode) => {
+    set({ gameMode });
   },
 
   setSnake: (snake: Position[]) => {

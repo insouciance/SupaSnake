@@ -14,7 +14,7 @@ import {
   rulesetExplainer,
 } from '@/shared/game/rulesets';
 import { MUTATIONS, type MutationId, type MutationPick } from '@/shared/game/mutations';
-import { useGameStore } from '@/lib/store/gameStore';
+import { useGameStore, type GameMode } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -40,6 +40,7 @@ import { ExitPortal } from '@/components/game/ExitPortal';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
 import { MutationHUD } from '@/components/game/MutationHUD';
+import { ModeToggle } from '@/components/game/ModeToggle';
 import {
   createInputDebugState,
   recordDebugEvent,
@@ -110,6 +111,12 @@ export default function GamePage() {
     graceConsumed: boolean;
   } | null>(null);
   const gameStartTime = useRef<number>(0);
+  // Free Play (Design v2 §7.4): whether the CURRENT/LAST run was free.
+  // Ref for the gameOver closure (registered once on mount), state for UI.
+  const freeRunRef = useRef(false);
+  const [lastRunFree, setLastRunFree] = useState(false);
+  // What the free run WOULD have earned (server recompute x multipliers)
+  const [hypotheticalDna, setHypotheticalDna] = useState<number | null>(null);
 
   // Refs to hold current values for use in event handlers (avoids stale closure)
   const sessionRef = useRef(session);
@@ -175,6 +182,8 @@ export default function GamePage() {
     setSelectedDynasty,
     aimSystem,
     setAimSystem,
+    gameMode,
+    setGameMode,
     resetGame,
     setPaused,
     setDeathSequence,
@@ -429,6 +438,9 @@ export default function GamePage() {
             }
           : undefined;
         const queueForReplay = () => {
+          // Free runs pay nothing - there is no reward to protect, so a
+          // failed free end is never queued for replay
+          if (freeRunRef.current) return;
           enqueueReward({
             sessionId,
             score: data.score,
@@ -485,6 +497,11 @@ export default function GamePage() {
             // Sync DNA balance to collection store (server authority)
             if (result.player?.dna !== undefined) {
               useCollectionStore.getState().setDnaBalance(result.player.dna);
+            }
+
+            // Free runs: the server reports what the run WOULD have earned
+            if (typeof result.hypotheticalDna === 'number') {
+              setHypotheticalDna(result.hypotheticalDna);
             }
 
             // Show daily streak info on the game-over screen
@@ -599,8 +616,22 @@ export default function GamePage() {
     intervalRef.current = setInterval(tick, gameRef.current?.getSpeed() || 200);
   }, [syncState]);
 
+  // Default mode: EARN when energy is available, FREE when it runs out -
+  // the zero-energy screen offers practice instead of a wall. (EARN is
+  // disabled in the toggle at 0 energy, so this can't fight the player.)
+  useEffect(() => {
+    if (
+      !isPlaying &&
+      gameMode === 'earn' &&
+      energy < GAME_CONFIG.economy.energy.costPerGame
+    ) {
+      setGameMode('free');
+    }
+  }, [energy, isPlaying, gameMode, setGameMode]);
+
   // Start game - call server API first, then enter ready state
-  const handleStart = useCallback(async () => {
+  const handleStart = useCallback(async (modeOverride?: GameMode) => {
+    const mode = modeOverride ?? gameMode;
     if (!session?.access_token) {
       setStartError('Please sign in to play');
       return;
@@ -609,7 +640,8 @@ export default function GamePage() {
       setStartError('No snake equipped. Choose one in the Lab.');
       return;
     }
-    if (energy < GAME_CONFIG.economy.energy.costPerGame) return;
+    // Free Play bypasses the energy gate (server enforces the same rule)
+    if (mode !== 'free' && energy < GAME_CONFIG.economy.energy.costPerGame) return;
     if (isStarting) return;
 
     setIsStarting(true);
@@ -624,6 +656,7 @@ export default function GamePage() {
         },
         body: JSON.stringify({
           action: 'start',
+          mode, // 'free' = practice run: no energy, no rewards (§7.4)
           snake_id: equippedSnake.id, // Server validates ownership + equipped
         }),
       });
@@ -639,10 +672,13 @@ export default function GamePage() {
         return;
       }
 
-      // Sync server state to local
+      // Sync server state to local (free starts echo energy unchanged)
       syncEnergyFromServer(data.energy, data.energyRegenAt);
       setCurrentSessionId(data.sessionId);
       gameStartTime.current = Date.now();
+      freeRunRef.current = mode === 'free';
+      setLastRunFree(mode === 'free');
+      setHypotheticalDna(null);
 
       // Now start the game locally
       storeStartGame();
@@ -655,7 +691,7 @@ export default function GamePage() {
     } finally {
       setIsStarting(false);
     }
-  }, [session?.access_token, energy, isStarting, equippedSnake, syncEnergyFromServer, storeStartGame, setReady, syncState]);
+  }, [session?.access_token, energy, isStarting, equippedSnake, gameMode, syncEnergyFromServer, storeStartGame, setReady, syncState]);
 
   // Keyboard controls
   useEffect(() => {
@@ -786,6 +822,7 @@ export default function GamePage() {
     setCurrentSessionId(null);
     setUnlockedAchievements([]);
     setStreakInfo(null);
+    setHypotheticalDna(null);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -908,6 +945,16 @@ export default function GamePage() {
               energyRegenAt={energyRegenAt}
             />
           </div>
+          {/* Free Play watermark - subtle but always on during practice
+              runs so screenshots/streams are honest about the mode */}
+          {isPlaying && lastRunFree && (
+            <div
+              data-testid="free-play-watermark"
+              className="flex items-center px-3 py-1.5 rounded-arcade border border-dashed border-beige/40 bg-void/50 backdrop-blur-sm text-beige/70 text-sm font-body tracking-widest uppercase"
+            >
+              Free Play
+            </div>
+          )}
         </div>
 
         {/* Held mutations strip - the run's build at a glance */}
@@ -1069,7 +1116,21 @@ export default function GamePage() {
           >
             {isGameOver ? (
               <>
-                {endReason === 'extracted' ? (
+                {lastRunFree ? (
+                  <div className="space-y-1">
+                    <h2
+                      className="heading-display text-4xl text-[#22d3ee] text-glow"
+                      data-testid="gameover-practice"
+                    >
+                      Practice Run
+                    </h2>
+                    <p className="text-beige/60 font-body text-sm tracking-wide uppercase">
+                      {endReason === 'extracted'
+                        ? 'Extracted — free play, no rewards'
+                        : 'Crashed — free play, no rewards'}
+                    </p>
+                  </div>
+                ) : endReason === 'extracted' ? (
                   <div className="space-y-1">
                     <h2
                       className="heading-display text-4xl text-rarity-uncommon text-glow"
@@ -1101,7 +1162,23 @@ export default function GamePage() {
                   <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
                     <IconDna size={22} className="text-venom-orange" />
                     DNA:{' '}
-                    {endReason === 'extracted' ? (
+                    {lastRunFree ? (
+                      // The stakes they practiced for: server-priced when the
+                      // end POST succeeded, local recompute as the fallback
+                      <span
+                        className="font-bold text-beige/80"
+                        data-testid="gameover-hypothetical"
+                      >
+                        would have banked +
+                        {hypotheticalDna ??
+                          applyOutcomeWithMutations(
+                            dnaCollected,
+                            endReason === 'extracted',
+                            heldMutations,
+                            phoenixTriggered
+                          )}
+                      </span>
+                    ) : endReason === 'extracted' ? (
                       <span className="font-bold text-rarity-uncommon">
                         {dnaCollected} → +{applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
                       </span>
@@ -1198,6 +1275,18 @@ export default function GamePage() {
               </>
             )}
 
+            {/* Run mode: EARN (energy, rewards) vs FREE PLAY (unlimited
+                practice, no rewards) - Design v2 §7.4 */}
+            {!noSnakeAvailable && (
+              <ModeToggle
+                mode={gameMode}
+                energy={energy}
+                maxEnergy={maxEnergy}
+                energyRegenAt={energyRegenAt}
+                onSelect={setGameMode}
+              />
+            )}
+
             {/* Aim system picker - locked chips show their unlock path */}
             {!noSnakeAvailable && (
               <div className="space-y-2">
@@ -1256,9 +1345,26 @@ export default function GamePage() {
                   <IconFlask size={20} />
                   Choose Your Snake in the Lab
                 </Link>
+              ) : gameMode === 'free' ? (
+                <button
+                  onClick={() => handleStart('free')}
+                  disabled={isStarting || !equippedSnake}
+                  data-testid="free-play-start"
+                  className={`btn-go inline-flex items-center gap-2 px-8 py-4 text-xl min-h-[44px] ${
+                    isStarting || !equippedSnake
+                      ? 'cursor-wait'
+                      : 'animate-glow-pulse shadow-venom-orange/50'
+                  }`}
+                >
+                  {isStarting
+                    ? 'Starting...'
+                    : isGameOver
+                      ? 'Play Again — Free'
+                      : 'Free Play'}
+                </button>
               ) : energy > 0 ? (
                 <button
-                  onClick={handleStart}
+                  onClick={() => handleStart('earn')}
                   disabled={isStarting || !equippedSnake}
                   className={`btn-go inline-flex items-center gap-2 px-8 py-4 text-xl min-h-[44px] ${
                     isStarting || !equippedSnake
@@ -1277,14 +1383,45 @@ export default function GamePage() {
                   )}
                 </button>
               ) : (
-                <div className="text-venom-orange font-body">
-                  <p className="heading-display text-xl flex items-center justify-center gap-1.5">
-                    <IconBolt size={20} />
-                    No Energy!
+                // Fallback (the effect above normally flips to free first):
+                // out of energy is an invitation to practice, not a wall
+                <div className="space-y-2 font-body">
+                  <p className="text-sm text-beige">
+                    Out of energy — keep practicing in Free Play or wait for
+                    your next <IconBolt size={14} className="inline" />
                   </p>
-                  <p className="text-sm text-beige">Regenerates in {GAME_CONFIG.economy.energy.regenRateMinutes} minutes</p>
+                  <button
+                    onClick={() => {
+                      setGameMode('free');
+                      handleStart('free');
+                    }}
+                    disabled={isStarting || !equippedSnake}
+                    data-testid="zero-energy-free-play"
+                    className="btn-go inline-flex items-center gap-2 px-8 py-3 text-lg min-h-[44px]"
+                  >
+                    Free Play
+                  </button>
                 </div>
               )}
+
+              {/* After a practice run, offer the earning path when the
+                  player has the energy for it */}
+              {isGameOver &&
+                lastRunFree &&
+                gameMode === 'free' &&
+                energy >= GAME_CONFIG.economy.energy.costPerGame && (
+                  <button
+                    onClick={() => setGameMode('earn')}
+                    data-testid="switch-to-earning"
+                    className="btn-neutral inline-flex items-center gap-1.5 px-6 py-3 min-h-[44px]"
+                  >
+                    Switch to Earning
+                    <span className="inline-flex items-center gap-0.5 text-sm">
+                      ({GAME_CONFIG.economy.energy.costPerGame}
+                      <IconBolt size={14} />)
+                    </span>
+                  </button>
+                )}
 
               {isGameOver && (
                 <>

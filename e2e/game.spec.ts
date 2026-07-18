@@ -84,6 +84,37 @@ test.describe('Equipped-snake game flow', () => {
       page.getByText(/exit portal banks \+25%/i)
     ).toBeVisible();
   });
+
+  test('mode toggle offers EARN and FREE PLAY; free play starts without spending energy', async ({ page }) => {
+    await seedConsent(page);
+    await signInAsGuest(page);
+    await pickStarter(page, 'CYBER');
+
+    // Pre-game overlay: both mode chips present; a fresh guest has energy,
+    // so EARN is the default selection
+    await expect(page.getByTestId('mode-earn')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('mode-free')).toBeVisible();
+    await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
+
+    // A guest WITH energy can still choose FREE PLAY (§7.4: practice is
+    // always available, energy meters earning runs only)
+    await page.getByTestId('mode-free').click();
+    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
+
+    // The primary CTA becomes Free Play with no energy cost attached
+    const freeStart = page.getByTestId('free-play-start');
+    await expect(freeStart).toBeVisible();
+    await expect(freeStart).toHaveText(/free play/i);
+
+    // Start the free session: server creates an is_free_play session with
+    // no deduction; the honest FREE PLAY watermark chip appears in the HUD
+    await freeStart.click();
+    await expect(page.getByTestId('free-play-watermark')).toBeVisible({ timeout: 20000 });
+    await expect(
+      page.getByRole('heading', { name: /^ready!$/i })
+    ).toBeVisible();
+  });
 });
 
 test.describe('Responsive design', () => {
