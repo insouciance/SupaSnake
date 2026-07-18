@@ -31,6 +31,9 @@ import {
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
+import { validateRunEvents } from '@/lib/server/runEventValidator';
+import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
+import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
   getDnaMultiplier,
@@ -73,6 +76,8 @@ export async function POST(request: NextRequest) {
       mutations,
       phoenix_triggered_at_food,
       cosmic,
+      death_cause,
+      run_events,
     } = body;
 
     const { data: player } = await supabase
@@ -544,6 +549,56 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Run-event capture (Identity v1 section 9.5) - a SEPARATE
+      // best-effort write so the critical end path above stays
+      // byte-identical (and deployable before migration 022 adds the
+      // columns). death_cause: the server decides 'extracted'; a client
+      // death claim is accepted only from the known cause list. The
+      // envelope is bounds-validated; a bad payload stores nothing.
+      // NEVER an input to payouts/records/leaderboards.
+      const serverDeathCause: RunDeathCause | null = validation.extracted
+        ? 'extracted'
+        : isRunDeathCause(death_cause) && death_cause !== 'extracted'
+          ? death_cause
+          : null;
+      const runEventEnvelope = validateRunEvents(run_events, {
+        durationSeconds: duration_seconds || 0,
+        foodCount: validation.foodCount,
+        died: (died ?? true) === true && !validation.extracted,
+        extracted: validation.extracted,
+        mutationIds: validation.mutations.map((m) => m.id),
+      });
+      if (serverDeathCause !== null || runEventEnvelope !== null) {
+        const { error: captureError } = await supabase
+          .from('game_sessions')
+          .update({
+            ...(serverDeathCause !== null ? { death_cause: serverDeathCause } : {}),
+            ...(runEventEnvelope !== null ? { run_events: runEventEnvelope } : {}),
+          })
+          .eq('id', sessionId)
+          .eq('player_id', player.id);
+        if (captureError && !isMissingIdentityInfra(captureError)) {
+          // Non-fatal by design: the run already completed normally
+          console.error('Failed to store run events:', {
+            playerId: player.id,
+            sessionId,
+            error: captureError,
+          });
+        }
+      }
+
+      // Identity (section 3.3): the game-over screen prompts a handle
+      // claim without an extra fetch. Pre-022 the view is missing and
+      // the field is simply omitted - current behavior, zero 500s.
+      const endIdentity = await getLiveIdentityForPlayer(supabase, player.id);
+      const identityInfo = endIdentity
+        ? {
+            handle: endIdentity.handle,
+            displayHandle: endIdentity.displayHandle,
+            isGenerated: endIdentity.isGenerated,
+          }
+        : null;
+
       // Free Play end: the run is recorded + validated above, but nothing
       // pays out - no DNA credit, no total_dna_earned, no streak
       // (record_daily_play NOT called), no achievements, no economy
@@ -569,6 +624,7 @@ export async function POST(request: NextRequest) {
           },
           hypotheticalDna: finalDna,
           newAchievements: [],
+          ...(identityInfo ? { identity: identityInfo } : {}),
           ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         });
       }
@@ -832,6 +888,7 @@ export async function POST(request: NextRequest) {
           extracted: validation.extracted,
         },
         newAchievements,
+        ...(identityInfo ? { identity: identityInfo } : {}),
         ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),

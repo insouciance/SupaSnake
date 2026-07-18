@@ -54,6 +54,13 @@ import {
   anomalyFoodValueModifier,
   type AnomalyId,
 } from '@/shared/game/anomalies';
+import {
+  NEAR_WALL_MIN_MS,
+  RUN_EVENTS_MAX,
+  type RunDeathCause,
+  type RunEvent,
+  type RunEventRecord,
+} from '@/shared/game/runEvents';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -181,6 +188,12 @@ export interface GameOverData {
   deathPosition: Position | null;
   /** Mutations held at run end, in pick order (server validates these). */
   mutations: MutationPick[];
+  /**
+   * How the run ended (Identity v1 section 9.5): wall/self for deaths,
+   * 'extracted' for banked runs. Display + Analyst input only - never a
+   * payout claim.
+   */
+  deathCause: RunDeathCause | null;
   /** Food count at the Phoenix trigger (honest-client analytics + payout). */
   phoenixTriggeredAtFood: number | null;
   /** COSMIC only: the bounded-trust combo claim. Null on other dynasties. */
@@ -294,6 +307,20 @@ export class SnakeGameLogic {
   /** COSMIC chain internals: glyph of the previous eat + ticks since it. */
   private lastEatGlyph: number | null = null;
   private ticksSinceLastEat = 0;
+  /**
+   * Run-event recorder (Identity v1 section 9.5): a compact discrete
+   * event stream - food/portal/bank/mutation/near-wall/terminal - capped
+   * at RUN_EVENTS_MAX. Display + Analyst input only: nothing here feeds
+   * payout math, and the server re-validates every bound.
+   */
+  private runEvents: RunEvent[] = [];
+  private runEventsTruncated = false;
+  /** How the run ended - null until finalizeRun. */
+  private deathCause: RunDeathCause | null = null;
+  /** Death cause staged by the collision that started the death sequence. */
+  private pendingDeathCause: Exclude<RunDeathCause, 'extracted'> | null = null;
+  /** Near-wall episode tracking (1-cell wall margin). */
+  private nearWallSinceMs: number | null = null;
 
   constructor(options: GameOptions = {}) {
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
@@ -385,6 +412,11 @@ export class SnakeGameLogic {
     this.directionQueue = [];
     this.lastEatGlyph = null;
     this.ticksSinceLastEat = 0;
+    this.runEvents = [];
+    this.runEventsTruncated = false;
+    this.deathCause = null;
+    this.pendingDeathCause = null;
+    this.nearWallSinceMs = null;
     this.spawnFoods();
     this.emit('gameStart');
   }
@@ -651,6 +683,8 @@ export class SnakeGameLogic {
     }
 
     if (wallHit || this.checkSelfCollision(newHead)) {
+      const collisionCause: Exclude<RunDeathCause, 'extracted' | 'timeout'> =
+        wallHit ? 'wall' : 'self';
       // Iron Scales (trait): absorb exactly one WALL hit per run - the
       // snake recoils one cell off the wall and the tick is consumed.
       // Checked before Phoenix so the trait save never burns the pickup.
@@ -666,7 +700,7 @@ export class SnakeGameLogic {
         return;
       }
       // Start death sequence instead of immediate game over
-      this.startDeathSequence(newHead);
+      this.startDeathSequence(newHead, collisionCause);
       return;
     }
 
@@ -686,6 +720,7 @@ export class SnakeGameLogic {
       const collectedPosition = { ...newHead }; // Position where food was eaten
       this.state.foodEaten += 1;
       const n = this.state.foodEaten;
+      this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
 
       // COSMIC constellation chain: same glyph as the previous eat within
       // the window extends the chain; anything else resets it.
@@ -827,6 +862,9 @@ export class SnakeGameLogic {
         this.state.exitTicksRemaining = 0;
         this.state.nextExitAtFood =
           this.state.foodEaten + this.rollNextExitInterval();
+        // Identity v1 section 9.5: a portal that expires unused was
+        // PASSED - the greed decision the Analyst narrates.
+        this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'pass' });
         this.emit('exitDespawned');
       }
     }
@@ -854,6 +892,10 @@ export class SnakeGameLogic {
         this.emit('mutationDespawned');
       }
     }
+
+    // Near-wall episode tracking (Identity v1 section 9.5): the 1-cell
+    // wall margin, recorded on episode end when >=500ms
+    this.trackNearWall(this.state.snake[0]);
 
     // COSMIC chain window countdown
     if (this.ruleset.constellation) {
@@ -931,6 +973,7 @@ export class SnakeGameLogic {
   /** Shared pick pipeline: hold the mutation + immediate physical effects. */
   private applyPick(pick: MutationPick): void {
     this.state.heldMutations.push(pick);
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'm', id: pick.id });
     if (pick.id === 'phoenix') {
       this.state.phoenixAvailable = true;
     }
@@ -1061,6 +1104,7 @@ export class SnakeGameLogic {
     this.state.exitTile2 =
       this.anomaly === 'twin_exits' ? this.sampleExitCell(position) : null;
     this.state.exitTicksRemaining = this.effectiveExitDespawnTicks();
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'spawn' });
     this.emit('exitSpawned', {
       position: { ...position },
       ...(this.state.exitTile2 ? { position2: { ...this.state.exitTile2 } } : {}),
@@ -1523,11 +1567,16 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Start death sequence with slow-motion effect
+   * Start death sequence with slow-motion effect. The collision cause
+   * (wall vs self) is staged here and stamped by finalizeRun.
    */
-  private startDeathSequence(collisionPosition: Position): void {
+  private startDeathSequence(
+    collisionPosition: Position,
+    cause: Exclude<RunDeathCause, 'extracted' | 'timeout'> = 'self'
+  ): void {
     this.state.isDeathSequence = true;
     this.state.deathPosition = { ...collisionPosition };
+    this.pendingDeathCause = cause;
 
     // Emit death sequence event for visual effects
     this.emit('deathSequence', {
@@ -1552,16 +1601,33 @@ export class SnakeGameLogic {
     this.state.isGameOver = true;
     this.state.isPlaying = false;
 
+    // Run-event capture (Identity v1 section 9.5): close any live
+    // near-wall episode, then record the ending.
+    this.closeNearWallEpisode();
+
     if (reason === 'extracted') {
       this.state.extracted = true;
       this.state.exitTile = null;
       this.state.exitTile2 = null;
       this.state.exitTicksRemaining = 0;
+      this.deathCause = 'extracted';
+      this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'enter' });
+      this.recordRunEvent({ t: this.runTimeDs(), e: 'b' });
+      this.recordRunEvent(
+        { t: this.runTimeDs(), e: 'x', c: 'extracted' },
+        true
+      );
       this.emit('extracted', {
         score: this.state.score,
         dnaCollected: this.state.dnaCollected,
         foodEaten: this.state.foodEaten,
       });
+    } else {
+      this.deathCause = this.pendingDeathCause ?? 'self';
+      this.recordRunEvent(
+        { t: this.runTimeDs(), e: 'x', c: this.deathCause },
+        true
+      );
     }
 
     const payload: GameOverData = {
@@ -1572,6 +1638,7 @@ export class SnakeGameLogic {
       endReason: reason,
       deathPosition: this.state.deathPosition,
       mutations: this.state.heldMutations.map((m) => ({ ...m })),
+      deathCause: this.deathCause,
       phoenixTriggeredAtFood: this.state.phoenixTriggeredAtFood,
       cosmic: this.ruleset.constellation
         ? {
@@ -1589,5 +1656,83 @@ export class SnakeGameLogic {
    */
   getDeathPosition(): Position | null {
     return this.state.deathPosition ? { ...this.state.deathPosition } : null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Run-event recorder (Identity v1 section 9.5)
+  // -------------------------------------------------------------------------
+
+  /** Deciseconds since run start (0 before the run starts). */
+  private runTimeDs(): number {
+    if (this.state.startTime === null) return 0;
+    return Math.max(0, Math.floor((Date.now() - this.state.startTime) / 100));
+  }
+
+  /**
+   * Append an event, honoring the hard cap: non-terminal events past the
+   * cap are dropped (truncated flag set); a terminal event displaces the
+   * last non-terminal one so the ending always survives.
+   */
+  private recordRunEvent(event: RunEvent, terminal = false): void {
+    if (this.runEvents.length >= RUN_EVENTS_MAX) {
+      this.runEventsTruncated = true;
+      if (!terminal) return;
+      this.runEvents.pop();
+    }
+    this.runEvents.push(event);
+  }
+
+  /**
+   * Near-wall episode tracking: called once per resolved tick with the
+   * live head. Entering the 1-cell wall margin starts an episode;
+   * leaving it (or the run ending) closes it, and episodes >=500ms are
+   * recorded at their END time (t = end, d = duration in deciseconds) so
+   * the stream stays monotonic.
+   */
+  private trackNearWall(head: Position | undefined): void {
+    const inMargin =
+      !!head &&
+      (head.x <= 0 ||
+        head.x >= this.gridSize - 1 ||
+        head.z <= 0 ||
+        head.z >= this.gridSize - 1);
+
+    if (inMargin && this.nearWallSinceMs === null) {
+      this.nearWallSinceMs = Date.now();
+    } else if (!inMargin && this.nearWallSinceMs !== null) {
+      this.closeNearWallEpisode();
+    }
+  }
+
+  /** Close a live near-wall episode, recording it when long enough. */
+  private closeNearWallEpisode(): void {
+    if (this.nearWallSinceMs === null) return;
+    const durationMs = Date.now() - this.nearWallSinceMs;
+    this.nearWallSinceMs = null;
+    if (durationMs >= NEAR_WALL_MIN_MS) {
+      this.recordRunEvent({
+        t: this.runTimeDs(),
+        e: 'w',
+        d: Math.max(1, Math.floor(durationMs / 100)),
+      });
+    }
+  }
+
+  /**
+   * The run's captured event stream (immutable copy) + the truncation
+   * flag. The game page ships this with the session-end request; the
+   * server re-validates every bound and stores the envelope - or null,
+   * with the run completing normally either way.
+   */
+  getRunEvents(): RunEventRecord {
+    return {
+      events: this.runEvents.map((e) => ({ ...e })),
+      truncated: this.runEventsTruncated,
+    };
+  }
+
+  /** How the run ended, or null while it is still going. */
+  getDeathCause(): RunDeathCause | null {
+    return this.deathCause;
   }
 }

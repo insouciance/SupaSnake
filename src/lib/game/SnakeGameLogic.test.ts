@@ -975,6 +975,7 @@ describe('SnakeGameLogic', () => {
         endReason: 'extracted',
         deathPosition: null,
         mutations: [],
+        deathCause: 'extracted', // Identity v1 section 9.5
         phoenixTriggeredAtFood: null,
         cosmic: null, // non-COSMIC runs carry no combo claim
       });
