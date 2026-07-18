@@ -149,7 +149,9 @@ describe('GET /api/clan/gauntlet', () => {
     });
     expect(json.gauntlet.revenge).toBe(true);
     expect(json.gauntlet.scouting.roster).toEqual([
-      { name: 'drago', mastery: { CYBER: { level: 4 } } },
+      // identity: the Player Card fields ride along once 022 is live;
+      // this payload predates it, so the mapper passes null through
+      { name: 'drago', identity: null, mastery: { CYBER: { level: 4 } } },
     ]);
     expect(json.gauntlet.scouting.lastPicks[0].ban).toBe('shed');
   });

@@ -33,6 +33,16 @@ export interface RpcGauntletDetail extends RpcGauntlet {
   scouting: {
     roster: Array<{
       name: string;
+      /** Identity v1 (migration 022): Player Card fields, when live. */
+      identity?: {
+        handle: string;
+        is_generated?: boolean;
+        title?: string | null;
+        clan_tag?: string | null;
+        founder?: boolean;
+        badges?: Array<{ id: string; name: string; rarity: string }> | null;
+        avatar_dynasty?: string | null;
+      } | null;
       mastery: Record<string, { level: number; xp?: number }>;
     }>;
     last_picks: Array<{
@@ -92,6 +102,8 @@ export function mapGauntletPayload(payload: RpcGauntletPayload) {
             ? {
                 roster: (payload.gauntlet.scouting.roster || []).map((m) => ({
                   name: m.name,
+                  // Identity v1: card fields ride along when 022 is live
+                  identity: m.identity ?? null,
                   mastery: m.mastery || {},
                 })),
                 lastPicks: (payload.gauntlet.scouting.last_picks || []).map((p) => ({

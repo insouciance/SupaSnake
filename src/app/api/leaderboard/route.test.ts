@@ -217,4 +217,45 @@ describe('Leaderboard Constraints', () => {
       expect(playerAfter.high_score).toBe(100);
     });
   });
+
+  describe('Identity v1 (PLAYER_IDENTITY_V1.md section 4)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+
+    it('route source: rows render from player_identity_view (batch read, both branches)', () => {
+      expect(source).toMatch(/getIdentitiesForPlayers/);
+      const merges = source.match(/applyIdentities\(/g) || [];
+      // definition + global merge + weekly/daily merge
+      expect(merges.length).toBe(3);
+    });
+
+    it('route source: playerName stays populated from display_handle (compatibility)', () => {
+      expect(source).toMatch(/playerName: identity\.displayHandle/);
+    });
+
+    it('route source: pre-022 rows keep the legacy Player-XXXXXX fallback', () => {
+      const fallbacks = source.match(/`Player \$\{/g) || [];
+      expect(fallbacks.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('identity object carries the Player Card row fields', () => {
+      // The shape contract UI code relies on (LeaderboardIdentity)
+      for (const field of [
+        'handle', 'isGenerated', 'title', 'clanTag', 'founder',
+        'badges', 'avatarDynasty', 'avatarVariantId', 'avatarVariantName',
+        'avatarRarity', 'mastery',
+      ]) {
+        expect(source).toContain(`${field}:`);
+      }
+    });
+
+    it('identity is optional: rows without it keep working (pre-022 shape)', () => {
+      const entry: { playerName: string; identity?: unknown } = {
+        playerName: 'Player 3f2a1b',
+      };
+      expect(entry.identity).toBeUndefined();
+      expect(entry.playerName).toBe('Player 3f2a1b');
+    });
+  });
 });

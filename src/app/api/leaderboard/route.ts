@@ -6,6 +6,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSkillBracket, type LeaderboardEntry, type LeaderboardType, type SkillBracket } from '@/lib/leaderboard/types';
+import { getIdentitiesForPlayers } from '@/lib/server/identity';
+import type { PlayerIdentity } from '@/lib/identity/types';
+
+/**
+ * Identity v1 (PLAYER_IDENTITY_V1.md section 4): leaderboard rows render
+ * from player_identity_view. playerName stays populated (display_handle)
+ * for compatibility; the identity object powers the Player Card row
+ * variant. Pre-022 the identity map is empty and rows keep the legacy
+ * fallbacks - exactly today's behavior.
+ */
+function applyIdentities(
+  entries: LeaderboardEntry[],
+  identities: Map<string, PlayerIdentity>
+): LeaderboardEntry[] {
+  return entries.map((entry) => {
+    const identity = identities.get(entry.playerId);
+    if (!identity) return entry;
+    return {
+      ...entry,
+      playerName: identity.displayHandle,
+      identity: {
+        handle: identity.displayHandle,
+        isGenerated: identity.isGenerated,
+        title: identity.title,
+        clanTag: identity.clanTag,
+        founder: identity.isFounder,
+        badges: identity.badges,
+        avatarDynasty: identity.avatar?.dynasty ?? null,
+        avatarVariantId: identity.avatar?.variantId ?? null,
+        avatarVariantName: identity.avatar?.variantName ?? null,
+        avatarRarity: identity.avatar?.rarity ?? null,
+        mastery: identity.mastery,
+      },
+    };
+  });
+}
 
 // Server-side Supabase client
 const supabase = createClient(
@@ -97,6 +133,12 @@ export async function GET(request: NextRequest) {
         entries = entries.filter(e => e.bracket === bracket);
       }
 
+      // Identity v1: rows render display_handle + card fields (no-op pre-022)
+      entries = applyIdentities(
+        entries,
+        await getIdentitiesForPlayers(supabase, entries.map(e => e.playerId))
+      );
+
       // Get total count
       const { count } = await supabase
         .from('players')
@@ -176,6 +218,12 @@ export async function GET(request: NextRequest) {
     if (bracket) {
       entries = entries.filter(e => e.bracket === bracket);
     }
+
+    // Identity v1: rows render display_handle + card fields (no-op pre-022)
+    entries = applyIdentities(
+      entries,
+      await getIdentitiesForPlayers(supabase, entries.map(e => e.playerId))
+    );
 
     // Get total count (with dynasty filter if specified) - same
     // exclusions as the entries query, same pre-021 retry

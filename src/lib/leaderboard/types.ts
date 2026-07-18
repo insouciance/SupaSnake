@@ -7,6 +7,24 @@ export type LeaderboardType = 'global' | 'weekly' | 'daily';
 
 export type SkillBracket = 'beginner' | 'intermediate' | 'advanced' | 'master';
 
+/**
+ * Identity fields for a leaderboard row (Player Identity v1 section 4) -
+ * what the Player Card row variant renders. Absent pre-migration-022.
+ */
+export interface LeaderboardIdentity {
+  handle: string;
+  isGenerated: boolean;
+  title: string | null;
+  clanTag: string | null;
+  founder: boolean;
+  badges: Array<{ id: string; name: string; rarity: string }>;
+  avatarDynasty: string | null;
+  avatarVariantId: string | null;
+  avatarVariantName: string | null;
+  avatarRarity: string | null;
+  mastery: Record<string, number>;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   playerId: string;
@@ -16,6 +34,8 @@ export interface LeaderboardEntry {
   collectionCount: number;
   bracket: SkillBracket;
   updatedAt: string;
+  /** Player Card fields (migration 022+); rows without it render legacy. */
+  identity?: LeaderboardIdentity;
 }
 
 export interface LeaderboardFilter {

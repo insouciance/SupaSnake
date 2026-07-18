@@ -63,12 +63,15 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('player_id', player.id);
 
-    // Sum total DNA earned from economy_transactions
+    // Sum total DNA earned from economy_transactions. The ledger column
+    // is resource_type (001) - the old currency_type filter matched a
+    // non-existent column, so "DNA Earned" rendered 0 forever
+    // (PLAYER_IDENTITY_V1.md section 1.2, fixed in I1).
     const { data: dnaData } = await supabase
       .from('economy_transactions')
       .select('amount')
       .eq('player_id', player.id)
-      .eq('currency_type', 'dna')
+      .eq('resource_type', 'dna')
       .gt('amount', 0);
 
     const totalDnaEarned = dnaData?.reduce((sum, t) => sum + t.amount, 0) || 0;
