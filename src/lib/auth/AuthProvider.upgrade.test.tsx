@@ -1,11 +1,12 @@
 /**
  * AuthProvider - anonymous->registered upgrade + signup session tests
  *
- * Regression coverage for the "stale is_anonymous" bug: after
- * supabase.auth.updateUser attaches an email to an anonymous user, the
- * current JWT still carries is_anonymous=true. The provider must refresh
- * the session so UI gating (shop buy buttons, upgrade banners) and
- * server-side checks see the registered account immediately.
+ * Regression coverage for the "stale is_anonymous" bug: the admin-API
+ * upgrade revokes the anonymous session's refresh tokens, so the provider
+ * cannot refreshSession() afterwards - it must sign in with the freshly
+ * attached credentials to mint a new session, so UI gating (shop buy
+ * buttons, upgrade banners) and server-side checks see the registered
+ * account immediately.
  */
 
 import { render, waitFor, act } from '@testing-library/react';
@@ -15,6 +16,7 @@ const mockGetSession = jest.fn();
 const mockOnAuthStateChange = jest.fn();
 const mockUpdateUser = jest.fn();
 const mockRefreshSession = jest.fn();
+const mockSignInWithPassword = jest.fn();
 const mockSignUp = jest.fn();
 
 jest.mock('@/lib/supabase/client', () => ({
@@ -24,6 +26,7 @@ jest.mock('@/lib/supabase/client', () => ({
       onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
       updateUser: (...args: unknown[]) => mockUpdateUser(...args),
       refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
+      signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
       signUp: (...args: unknown[]) => mockSignUp(...args),
     },
   },
@@ -85,7 +88,7 @@ describe('upgradeAnonymousToEmail', () => {
     global.fetch = mockFetch as unknown as typeof fetch;
   });
 
-  it('refreshes the session after a successful upgrade so is_anonymous clears', async () => {
+  it('signs in with the new credentials after a successful upgrade so is_anonymous clears', async () => {
     const ctx = setup(ANON_USER);
     await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
     expect(ctx.current?.isAnonymous).toBe(true);
@@ -94,7 +97,7 @@ describe('upgradeAnonymousToEmail', () => {
       ok: true,
       json: async () => ({ success: true, emailConfirmed: true }),
     });
-    mockRefreshSession.mockResolvedValue({
+    mockSignInWithPassword.mockResolvedValue({
       data: { session: makeSession(UPGRADED_USER), user: UPGRADED_USER },
       error: null,
     });
@@ -111,7 +114,13 @@ describe('upgradeAnonymousToEmail', () => {
         body: JSON.stringify({ email: 'p1@example.com', password: 'Password123' }),
       })
     );
-    expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+    // The admin upgrade revoked the old refresh token - the provider must
+    // NOT rely on refreshSession, it signs in with the new credentials.
+    expect(mockSignInWithPassword).toHaveBeenCalledWith({
+      email: 'p1@example.com',
+      password: 'Password123',
+    });
+    expect(mockRefreshSession).not.toHaveBeenCalled();
     expect(result?.error).toBeNull();
     // Admin upgrade confirms instantly - nothing pending
     expect(result?.pendingEmailConfirmation).toBe(false);
@@ -120,7 +129,7 @@ describe('upgradeAnonymousToEmail', () => {
     expect(ctx.current?.user?.id).toBe(ANON_USER.id);
   });
 
-  it('surfaces email_exists without refreshing the session', async () => {
+  it('surfaces email_exists without touching the session', async () => {
     const ctx = setup(ANON_USER);
     await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
 
@@ -136,7 +145,7 @@ describe('upgradeAnonymousToEmail', () => {
     });
 
     expect(result?.error?.message).toBe('email_exists');
-    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(mockSignInWithPassword).not.toHaveBeenCalled();
     expect(ctx.current?.isAnonymous).toBe(true);
   });
 
@@ -152,7 +161,7 @@ describe('upgradeAnonymousToEmail', () => {
     });
 
     expect(result?.error?.message).toMatch(/network error/i);
-    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(mockSignInWithPassword).not.toHaveBeenCalled();
   });
 
   it('does not toggle the global isLoading during the upgrade (form must stay mounted)', async () => {
@@ -164,7 +173,7 @@ describe('upgradeAnonymousToEmail', () => {
       loadingDuringRequest = ctx.current?.isLoading;
       return { ok: true, json: async () => ({ success: true }) };
     });
-    mockRefreshSession.mockResolvedValue({
+    mockSignInWithPassword.mockResolvedValue({
       data: { session: makeSession(UPGRADED_USER), user: UPGRADED_USER },
       error: null,
     });

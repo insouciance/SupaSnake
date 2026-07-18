@@ -161,15 +161,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // The current access token still carries is_anonymous=true until it is
-    // reissued, so everything gated on it (shop buy buttons, upgrade
-    // banners, server-side checkout checks) would keep treating the player
-    // as a guest. Refresh the session so the claim clears immediately.
-    const { data: refreshed, error: refreshError } =
-      await supabase.auth.refreshSession();
-    if (!refreshError && refreshed?.session) {
-      setSession(refreshed.session);
-      setUser(refreshed.session.user ?? refreshed.user ?? null);
+    // The admin password update REVOKES the anonymous session's refresh
+    // tokens, so refreshSession() fails with "Refresh Token Not Found" and
+    // the client would keep a stale is_anonymous=true session that dies on
+    // the next reload. Mint a fresh session with the credentials we just
+    // attached instead - same user id, is_anonymous=false. Deliberately not
+    // via signInWithEmail(): that toggles the global isLoading and would
+    // unmount the upgrade form mid-flow.
+    const { data: signedIn, error: signInError } =
+      await supabase.auth.signInWithPassword({ email, password });
+    if (!signInError && signedIn?.session) {
+      setSession(signedIn.session);
+      setUser(signedIn.session.user ?? signedIn.user ?? null);
     }
 
     // The admin upgrade confirms the email instantly - no pending link.
