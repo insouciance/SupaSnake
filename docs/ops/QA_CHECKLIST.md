@@ -1,5 +1,23 @@
 # QA Checklist (for Josef)
 
+## 🎯 PLAYTEST GATE — Design v2 Phase 1 (LIVE NOW)
+
+The core question: **do PRIMAL and CYBER feel like different games?**
+
+- [ ] PRIMAL: fixed classic speed; every food worth more than the last —
+      does a long run feel like patient compounding endurance?
+- [ ] CYBER: speed ramps with every food, multiplier climbs to ×3 —
+      does it feel like an execution gauntlet worth the risk?
+- [ ] Extraction: exit portal (first ~15 foods, then periodically, pulses
+      when about to vanish) — is push-or-bank a real decision? Bank = +25%,
+      crash = keep 60%. HUD chip shows both live.
+- [ ] Economy feel: banking a decent run should feel clearly better than
+      the old flat payout; dying should sting but not enrage
+- [ ] Gen numbers now display as pure prestige (no stat %) — any UI spots
+      still implying stat power?
+- Full design rationale: docs/game/GAME_DESIGN_V2.md
+
+
 Living document — I keep this updated as work lands. Items marked ⚠️ are
 things only you can do; everything else is my verification backlog that
 you can spot-check when back.
