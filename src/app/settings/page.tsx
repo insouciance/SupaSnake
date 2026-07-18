@@ -8,6 +8,7 @@
 
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { IdentityPanel } from '@/components/identity/IdentityPanel';
+import { DiscordConnectCard } from '@/components/identity/DiscordConnectCard';
 import { CareerStats } from '@/components/profile/CareerStats';
 import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
 import { NavBar } from '@/components/ui/NavBar';
@@ -64,6 +65,9 @@ export default function SettingsPage() {
         <div className="mb-6">
           <IdentityPanel />
         </div>
+
+        {/* Discord (Identity v1 section 8.3): connect / linked state */}
+        <DiscordConnectCard />
 
         {/* Account Info */}
         <div className="panel-elevated p-6 mb-6 animate-fade-up">

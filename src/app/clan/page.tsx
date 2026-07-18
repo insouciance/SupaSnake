@@ -15,6 +15,10 @@ import { NavBar } from '@/components/ui/NavBar';
 import { DuelPanel } from '@/components/clan/DuelPanel';
 import { GauntletPanel } from '@/components/clan/GauntletPanel';
 import { PlayoffBracket } from '@/components/clan/PlayoffBracket';
+import { ClanIdentityEditor } from '@/components/clan/ClanIdentityEditor';
+import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
+import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
+import { useClanFull } from '@/components/clan/useClanFull';
 import Link from 'next/link';
 import { IconBolt, IconShield, IconUser } from '@/components/ui/icons';
 
@@ -40,6 +44,12 @@ export default function ClanPage() {
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
   const [description, setDescription] = useState('');
+
+  // Identity v1 I3: the full clan surface (identity, roster, invites,
+  // discord) in one authed read - shared by the new panels below
+  const { view: fullView, refresh: refreshFullView } = useClanFull(
+    session?.access_token
+  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -304,9 +314,43 @@ export default function ClanPage() {
               )}
             </div>
           </section>
+
+          {/* Identity v1 I3 (section 8): heraldry editor, roster of
+              PlayerCards, Discord home - all off the one full-view read */}
+          {fullView?.clan && (
+            <>
+              <ClanIdentityEditor
+                accessToken={session?.access_token}
+                view={fullView}
+                onSaved={refreshFullView}
+              />
+              <ClanDiscordPanel
+                accessToken={session?.access_token}
+                view={fullView}
+                onChanged={refreshFullView}
+              />
+              <ClanRoster
+                accessToken={session?.access_token}
+                view={fullView}
+                onChanged={refreshFullView}
+              />
+            </>
+          )}
           </>
         ) : (
           <>
+            {/* Invite inbox (section 8.2): pending invites, accept/decline */}
+            {fullView && (
+              <InviteInbox
+                accessToken={session?.access_token}
+                view={fullView}
+                onChanged={() => {
+                  refreshFullView();
+                  fetchData();
+                }}
+              />
+            )}
+
             {/* Create Clan Section */}
             <section className="mb-10 animate-fade-up">
               {showCreate ? (
