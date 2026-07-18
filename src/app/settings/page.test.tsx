@@ -37,14 +37,22 @@ jest.mock('@/components/identity/IdentityPanel', () => ({
   IdentityPanel: () => <div data-testid="identity-panel">Identity Panel Component</div>,
 }));
 
-jest.mock('@/components/profile/AchievementBadges', () => ({
-  AchievementBadges: () => <div data-testid="achievement-badges">Achievement Badges Component</div>,
-}));
+// Identity v1 I2 (section 6.6): the achievements display surface
+// retired from settings into the Chronicle (/profile) - the page must
+// NOT mount it anymore (no mock needed; its absence is asserted below).
 
 // Mock next/link
 jest.mock('next/link', () => {
-  return function MockLink({ children, href }: { children: React.ReactNode; href: string }) {
-    return <a href={href}>{children}</a>;
+  return function MockLink({
+    children,
+    href,
+    ...rest
+  }: { children: React.ReactNode; href: string } & Record<string, unknown>) {
+    return (
+      <a href={href} {...rest}>
+        {children}
+      </a>
+    );
   };
 });
 
@@ -84,9 +92,16 @@ describe('SettingsPage', () => {
       expect(screen.getByTestId('career-stats')).toBeInTheDocument();
     });
 
-    it('renders AchievementBadges component', () => {
+    it('no longer renders the achievements panel (retired into the Chronicle, section 6.6)', () => {
       render(<SettingsPage />);
-      expect(screen.getByTestId('achievement-badges')).toBeInTheDocument();
+      expect(screen.queryByTestId('achievement-badges')).not.toBeInTheDocument();
+    });
+
+    it('links to the Chronicle (the career surface owns achievements now)', () => {
+      render(<SettingsPage />);
+      const link = screen.getByTestId('chronicle-link');
+      expect(link).toHaveAttribute('href', '/profile');
+      expect(link).toHaveTextContent('The Chronicle');
     });
 
     it('displays quick links', () => {
