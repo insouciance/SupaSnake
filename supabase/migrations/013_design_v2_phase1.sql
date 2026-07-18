@@ -43,7 +43,22 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- ============================================================================
--- 3. DEPRECATION MARKERS (columns kept - API shape unchanged, math unused)
+-- 3. STREAK TIER RETUNE (economy compatibility - GAME_DESIGN_V2.md section 4)
+-- ============================================================================
+-- The extraction bank bonus (x1.25) stacks multiplicatively with the streak
+-- multiplier. With the old 30-day x2.00 tier the stacked ceiling reaches
+-- 2.24x of today's economy, so the tiers are compressed in the same phase:
+--   3d: 1.10 -> 1.05, 7d: 1.25 -> 1.10, 14d: 1.50 -> 1.20, 30d: 2.00 -> 1.35
+-- record_daily_play reads this table, so no RPC change is needed. Keep in
+-- sync with ENGAGEMENT_CONFIG.streaks.tiers (src/shared/config/engagement.ts).
+
+UPDATE streak_bonus_tiers SET dna_multiplier = 1.05 WHERE streak_days = 3;
+UPDATE streak_bonus_tiers SET dna_multiplier = 1.10 WHERE streak_days = 7;
+UPDATE streak_bonus_tiers SET dna_multiplier = 1.20 WHERE streak_days = 14;
+UPDATE streak_bonus_tiers SET dna_multiplier = 1.35 WHERE streak_days = 30;
+
+-- ============================================================================
+-- 4. DEPRECATION MARKERS (columns kept - API shape unchanged, math unused)
 -- ============================================================================
 
 COMMENT ON COLUMN dynasties.stat_bonus_type IS

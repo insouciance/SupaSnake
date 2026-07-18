@@ -1,11 +1,12 @@
 /**
- * Tests for DNA Multipliers - streak x dynasty x set bonus stack
+ * Tests for DNA Multipliers - streak x set bonus x clan duel stack
+ * (Design v2: the dynasty passive is gone - dynasty identity lives in
+ * the ruleset module and already shapes the base payout.)
  */
 
 import {
   normalizeStreakMultiplier,
   normalizeClanDuelBonus,
-  getDynastyDnaMultiplier,
   getSetBonusMultiplier,
   countCompletedDynasties,
   combineDnaMultipliers,
@@ -13,7 +14,6 @@ import {
   getDnaMultiplier,
   SET_BONUS_PER_DYNASTY,
   CLAN_DUEL_WIN_MULTIPLIER,
-  type EquippedVariantInfo,
 } from './dnaMultipliers';
 
 describe('normalizeStreakMultiplier', () => {
@@ -35,46 +35,6 @@ describe('normalizeStreakMultiplier', () => {
     expect(normalizeStreakMultiplier(0)).toBe(1);
     expect(normalizeStreakMultiplier(0.5)).toBe(1);
     expect(normalizeStreakMultiplier(NaN)).toBe(1);
-  });
-});
-
-describe('getDynastyDnaMultiplier', () => {
-  it('grants +5% for dna_generation with fractional value (PRIMAL seed: 0.05)', () => {
-    const info: EquippedVariantInfo = {
-      statBonusType: 'dna_generation',
-      statBonusValue: 0.05,
-    };
-    expect(getDynastyDnaMultiplier(info)).toBeCloseTo(1.05);
-  });
-
-  it('grants +5% for dna_generation with percent-style value (5)', () => {
-    const info: EquippedVariantInfo = {
-      statBonusType: 'dna_generation',
-      statBonusValue: 5,
-    };
-    expect(getDynastyDnaMultiplier(info)).toBeCloseTo(1.05);
-  });
-
-  it('returns 1 for non-DNA bonus types (CYBER speed, COSMIC size)', () => {
-    expect(
-      getDynastyDnaMultiplier({ statBonusType: 'speed', statBonusValue: 0.05 })
-    ).toBe(1);
-    expect(
-      getDynastyDnaMultiplier({ statBonusType: 'size', statBonusValue: 0.05 })
-    ).toBe(1);
-  });
-
-  it('returns 1 for null info or invalid values', () => {
-    expect(getDynastyDnaMultiplier(null)).toBe(1);
-    expect(
-      getDynastyDnaMultiplier({ statBonusType: 'dna_generation', statBonusValue: null })
-    ).toBe(1);
-    expect(
-      getDynastyDnaMultiplier({ statBonusType: 'dna_generation', statBonusValue: 0 })
-    ).toBe(1);
-    expect(
-      getDynastyDnaMultiplier({ statBonusType: 'dna_generation', statBonusValue: -2 })
-    ).toBe(1);
   });
 });
 
@@ -156,42 +116,41 @@ describe('normalizeClanDuelBonus', () => {
 });
 
 describe('combineDnaMultipliers', () => {
-  it('multiplies streak x dynasty x set bonus', () => {
-    const { multiplier, breakdown } = combineDnaMultipliers(1.25, 1.05, 2);
-    // 1.25 * 1.05 * 1.2 = 1.575
-    expect(multiplier).toBeCloseTo(1.575);
+  it('multiplies streak x set bonus', () => {
+    const { multiplier, breakdown } = combineDnaMultipliers(1.2, 2);
+    // 1.2 * 1.2 = 1.44
+    expect(multiplier).toBeCloseTo(1.44);
     expect(breakdown).toEqual({
-      streak: 1.25,
-      dynasty: 1.05,
+      streak: 1.2,
       setBonus: 1.2,
       completedDynasties: 2,
       clanDuel: 1,
-      total: 1.575,
+      total: 1.44,
     });
   });
 
   it('is 1.0 with no bonuses', () => {
-    const { multiplier, breakdown } = combineDnaMultipliers(1, 1, 0);
+    const { multiplier, breakdown } = combineDnaMultipliers(1, 0);
     expect(multiplier).toBe(1);
     expect(breakdown.total).toBe(1);
     expect(breakdown.clanDuel).toBe(1);
   });
 
   it('rounds float noise to 4 decimals', () => {
-    const { multiplier } = combineDnaMultipliers(1.1, 1.05, 1);
-    // 1.1 * 1.05 * 1.1 = 1.2705000000000002 -> 1.2705
-    expect(multiplier).toBe(1.2705);
+    const { multiplier } = combineDnaMultipliers(1.05, 3, 1.05);
+    // 1.05 * 1.3 * 1.05 = 1.4332500000000003 -> 1.4333 (round4)
+    expect(multiplier).toBe(1.4333);
   });
 
   it('stacks the clan duel win bonus on top of the other factors', () => {
-    const { multiplier, breakdown } = combineDnaMultipliers(1.25, 1.05, 2, 1.05);
-    // 1.25 * 1.05 * 1.2 * 1.05 = 1.65375 -> 1.6538 (round4)
-    expect(multiplier).toBe(1.6538);
+    const { multiplier, breakdown } = combineDnaMultipliers(1.1, 2, 1.05);
+    // 1.1 * 1.2 * 1.05 = 1.386
+    expect(multiplier).toBe(1.386);
     expect(breakdown.clanDuel).toBe(1.05);
   });
 
   it('ignores invalid clan duel bonuses (never punish)', () => {
-    const { multiplier, breakdown } = combineDnaMultipliers(1, 1, 0, 0.5);
+    const { multiplier, breakdown } = combineDnaMultipliers(1, 0, 0.5);
     expect(multiplier).toBe(1);
     expect(breakdown.clanDuel).toBe(1);
   });
@@ -268,7 +227,7 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
     } as unknown as Parameters<typeof getDnaMultiplier>[0];
   }
 
-  it('combines streak, PRIMAL dynasty bonus, and one completed dynasty', async () => {
+  it('combines the streak tier and one completed dynasty', async () => {
     const supabase = createMockSupabase({
       streakMultiplier: '1.10',
       activeVariants: [
@@ -279,15 +238,11 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       ownedVariantIds: ['p1', 'p2'],
     });
 
-    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', {
-      statBonusType: 'dna_generation',
-      statBonusValue: 0.05,
-    });
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1');
 
-    // 1.10 * 1.05 * 1.10 = 1.2705
-    expect(multiplier).toBe(1.2705);
+    // 1.10 * 1.10 = 1.21
+    expect(multiplier).toBe(1.21);
     expect(breakdown.streak).toBe(1.1);
-    expect(breakdown.dynasty).toBe(1.05);
     expect(breakdown.setBonus).toBe(1.1);
     expect(breakdown.completedDynasties).toBe(1);
   });
@@ -299,12 +254,11 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       ownedVariantIds: [],
     });
 
-    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1');
 
     expect(multiplier).toBe(1);
     expect(breakdown).toEqual({
       streak: 1,
-      dynasty: 1,
       setBonus: 1,
       completedDynasties: 0,
       clanDuel: 1,
@@ -320,13 +274,13 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       clanDuelBonus: '1.05',
     });
 
-    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1');
 
     expect(multiplier).toBe(1.05);
     expect(breakdown.clanDuel).toBe(1.05);
   });
 
-  it('stacks the duel bonus with streak, dynasty, and set bonus', async () => {
+  it('stacks the duel bonus with streak and set bonus', async () => {
     const supabase = createMockSupabase({
       streakMultiplier: '1.10',
       activeVariants: [
@@ -337,13 +291,10 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       clanDuelBonus: 1.05,
     });
 
-    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', {
-      statBonusType: 'dna_generation',
-      statBonusValue: 0.05,
-    });
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1');
 
-    // 1.10 * 1.05 * 1.10 * 1.05 = 1.3340...25 -> 1.334 (round4)
-    expect(multiplier).toBe(1.334);
+    // 1.10 * 1.10 * 1.05 = 1.2705
+    expect(multiplier).toBe(1.2705);
     expect(breakdown.clanDuel).toBe(1.05);
   });
 
@@ -355,7 +306,7 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       clanDuelBonus: 'throw',
     });
 
-    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+    const { multiplier, breakdown } = await getDnaMultiplier(supabase, 'player-1');
 
     expect(multiplier).toBe(1.25);
     expect(breakdown.clanDuel).toBe(1);
@@ -369,7 +320,7 @@ describe('getDnaMultiplier (with mocked supabase)', () => {
       clanDuelBonus: null,
     });
 
-    const { breakdown } = await getDnaMultiplier(supabase, 'player-1', null);
+    const { breakdown } = await getDnaMultiplier(supabase, 'player-1');
 
     expect(breakdown.clanDuel).toBe(1);
   });

@@ -48,28 +48,28 @@ describe('Streaks API Logic', () => {
       expect(multiplier).toBe(1.0);
     });
 
-    it('should return 1.1x for 3-6 day streaks', () => {
+    it('should return 1.05x for 3-6 day streaks', () => {
       const streakDays = 5;
+      const multiplier = getStreakMultiplier(streakDays);
+      expect(multiplier).toBe(1.05);
+    });
+
+    it('should return 1.1x for 7-13 day streaks', () => {
+      const streakDays = 10;
       const multiplier = getStreakMultiplier(streakDays);
       expect(multiplier).toBe(1.1);
     });
 
-    it('should return 1.25x for 7-13 day streaks', () => {
-      const streakDays = 10;
-      const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.25);
-    });
-
-    it('should return 1.5x for 14-29 day streaks', () => {
+    it('should return 1.2x for 14-29 day streaks', () => {
       const streakDays = 20;
       const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.5);
+      expect(multiplier).toBe(1.2);
     });
 
-    it('should return 2.0x for 30+ day streaks', () => {
+    it('should return 1.35x for 30+ day streaks (Design v2 cap)', () => {
       const streakDays = 30;
       const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(2.0);
+      expect(multiplier).toBe(1.35);
     });
   });
 

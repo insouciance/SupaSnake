@@ -20,12 +20,15 @@ export const ENGAGEMENT_CONFIG = {
   streaks: {
     gracePeriodDays: 1,
     graceResetDays: 7,
-    maxMultiplier: 2.0,
+    // Design v2 retune: compressed so the extraction bank bonus (x1.25)
+    // stacked on the top streak tier stays near today's economy ceiling.
+    // Keep in sync with streak_bonus_tiers (migration 013).
+    maxMultiplier: 1.35,
     tiers: [
-      { days: 3, multiplier: 1.1, energyBonus: 0 },
-      { days: 7, multiplier: 1.25, energyBonus: 1 },
-      { days: 14, multiplier: 1.5, energyBonus: 2 },
-      { days: 30, multiplier: 2.0, energyBonus: 3 },
+      { days: 3, multiplier: 1.05, energyBonus: 0 },
+      { days: 7, multiplier: 1.1, energyBonus: 1 },
+      { days: 14, multiplier: 1.2, energyBonus: 2 },
+      { days: 30, multiplier: 1.35, energyBonus: 3 },
     ] as const,
   },
 

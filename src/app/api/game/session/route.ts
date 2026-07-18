@@ -7,14 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { checkRateLimit } from '@/lib/server/rateLimit';
-import { validateGameResult } from '@/lib/server/gameValidator';
+import { validateGameResult, validateLegacyGameResult } from '@/lib/server/gameValidator';
+import { normalizeDynastyName } from '@/shared/game/rulesets';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
   getDnaMultiplier,
   applyDnaMultiplier,
   type DnaMultiplierBreakdown,
-  type EquippedVariantInfo,
 } from '@/lib/server/dnaMultipliers';
 
 const supabase = createClient(
@@ -37,7 +37,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, sessionId, snake_id, score, dna_earned, duration_seconds, died, victory } = body;
+    const {
+      action,
+      sessionId,
+      snake_id,
+      score,
+      dna_earned,
+      duration_seconds,
+      died,
+      victory,
+      food_count,
+      extracted,
+    } = body;
 
     const { data: player } = await supabase
       .from('players')
@@ -181,7 +192,7 @@ export async function POST(request: NextRequest) {
 
       const { data: session } = await supabase
         .from('game_sessions')
-        .select('server_started_at, snake_variant_id, ended_at')
+        .select('server_started_at, snake_variant_id, ended_at, dynasty')
         .eq('id', sessionId)
         .eq('player_id', player.id)
         .single();
@@ -210,44 +221,54 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const validation = validateGameResult(
-        {
-          score: score || 0,
-          dna_earned: dna_earned || 0,
-          duration_seconds: duration_seconds || 0,
-          died: died ?? true,
-          victory: victory ?? false,
-        },
-        new Date(session.server_started_at || Date.now())
-      );
+      // Design v2: the client sends the raw food count + how the run ended;
+      // the server recomputes the payout exactly from the session row's
+      // dynasty (server-trusted, stored at start - never from this request).
+      // Legacy fallback (deploy window): old clients send no food_count -
+      // validate their score-based payload with the old bounds math.
+      const serverStartedAt = new Date(session.server_started_at || Date.now());
+      const validation =
+        typeof food_count === 'number'
+          ? validateGameResult(
+              {
+                food_count,
+                extracted: extracted === true,
+                score: score || 0,
+                dna_earned: dna_earned || 0,
+                duration_seconds: duration_seconds || 0,
+                died: died ?? !(extracted === true),
+                victory: victory ?? false,
+              },
+              serverStartedAt,
+              normalizeDynastyName(session.dynasty)
+            )
+          : validateLegacyGameResult(
+              {
+                score: score || 0,
+                dna_earned: dna_earned || 0,
+                duration_seconds: duration_seconds || 0,
+                died: died ?? true,
+                victory: victory ?? false,
+              },
+              serverStartedAt
+            );
 
-      // DNA multiplier stack: streak tier x dynasty bonus x set bonus.
-      // Non-fatal: any failure falls back to x1 (base DNA only).
+      if (!validation.valid) {
+        console.warn('Game result validation flags:', {
+          playerId: player.id,
+          sessionId,
+          dynasty: session.dynasty,
+          errors: validation.errors,
+        });
+      }
+
+      // DNA multiplier stack: streak tier x set bonus x clan duel.
+      // (Design v2: the dynasty passive is gone - the ruleset already
+      // shaped the base payout.) Non-fatal: failures fall back to x1.
       let dnaMultiplier = 1;
       let dnaBreakdown: DnaMultiplierBreakdown | null = null;
       try {
-        // The session row stores the variant played; resolve its dynasty bonus
-        let equippedInfo: EquippedVariantInfo | null = null;
-        if (session.snake_variant_id) {
-          const { data: variantRow } = await supabase
-            .from('snake_variants')
-            .select('dynasties(stat_bonus_type, stat_bonus_value)')
-            .eq('id', session.snake_variant_id)
-            .single();
-
-          const dynastyJoin = variantRow?.dynasties as unknown as
-            | { stat_bonus_type: string | null; stat_bonus_value: number | null }
-            | null;
-
-          if (dynastyJoin) {
-            equippedInfo = {
-              statBonusType: dynastyJoin.stat_bonus_type,
-              statBonusValue: dynastyJoin.stat_bonus_value,
-            };
-          }
-        }
-
-        const multiplierResult = await getDnaMultiplier(supabase, player.id, equippedInfo);
+        const multiplierResult = await getDnaMultiplier(supabase, player.id);
         dnaMultiplier = multiplierResult.multiplier;
         dnaBreakdown = multiplierResult.breakdown;
       } catch (multiplierError) {
@@ -262,15 +283,16 @@ export async function POST(request: NextRequest) {
       const { data: endedRows, error: endSessionError } = await supabase
         .from('game_sessions')
         .update({
-          score: score || 0,
+          score: validation.adjustedScore,
           dna_earned: finalDna,
           duration_seconds: duration_seconds || 0,
           died: died ?? true,
           victory: victory ?? false,
+          extracted: validation.extracted,
           ended_at: new Date().toISOString(),
           validated: validation.valid,
           validation_errors: validation.errors.length > 0 ? validation.errors : null,
-          foods_collected: score || 0,
+          foods_collected: validation.foodCount,
         })
         .eq('id', sessionId)
         .eq('player_id', player.id)
@@ -301,7 +323,7 @@ export async function POST(request: NextRequest) {
         .eq('id', player.id)
         .single();
 
-      const newHighScore = Math.max(currentPlayer?.high_score || 0, score || 0);
+      const newHighScore = Math.max(currentPlayer?.high_score || 0, validation.adjustedScore);
       const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
       const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + finalDna;
 
@@ -348,7 +370,9 @@ export async function POST(request: NextRequest) {
           source_type: 'game_reward',
           source_id: sessionId,
           metadata: {
-            score: score || 0,
+            score: validation.adjustedScore,
+            food_count: validation.foodCount,
+            extracted: validation.extracted,
             original_dna_claimed: dna_earned || 0,
             validated: validation.valid,
             base_dna: validation.adjustedDna,
@@ -492,6 +516,8 @@ export async function POST(request: NextRequest) {
           valid: validation.valid,
           adjustedDna: finalDna,
           baseDna: validation.adjustedDna,
+          score: validation.adjustedScore,
+          extracted: validation.extracted,
         },
         newAchievements,
         ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),

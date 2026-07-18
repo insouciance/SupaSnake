@@ -1,32 +1,25 @@
 /**
  * DNA Multipliers - Server-side reward multiplier stack
  *
- * Final DNA = base DNA x streak tier x dynasty bonus x set bonus x clan duel bonus
+ * Final DNA = banked/salvaged payout x streak tier x set bonus x clan duel bonus
  *
  * - Streak tier: player_streaks.streak_multiplier (maintained by the
  *   record_daily_play RPC; tiers 3:1.10, 7:1.25, 14:1.50, 30:2.00)
- * - Dynasty bonus: equipped snake's dynasty grants +N% DNA when its
- *   stat_bonus_type is 'dna_generation' (PRIMAL = +5%)
  * - Set bonus: +10% per completed dynasty (player owns every active
  *   variant of that dynasty)
  * - Clan duel bonus: +5% clan-wide for the week AFTER the player's clan
  *   won its weekly duel (clan_duel_bonus RPC; non-fatal fallback x1)
+ *
+ * Design v2: the old dynasty passive (+5% DNA for dna_generation
+ * dynasties) is gone - dynasty identity lives in the ruleset module
+ * (src/shared/game/rulesets.ts), which already shapes the base payout.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export interface EquippedVariantInfo {
-  /** dynasties.stat_bonus_type of the equipped snake's dynasty */
-  statBonusType: string | null;
-  /** dynasties.stat_bonus_value (fraction 0.05 or percent 5 - both mean 5%) */
-  statBonusValue: number | null;
-}
-
 export interface DnaMultiplierBreakdown {
   /** Streak tier multiplier, e.g. 1.25 */
   streak: number;
-  /** Dynasty DNA-generation bonus multiplier, e.g. 1.05 */
-  dynasty: number;
   /** Collection set bonus multiplier, e.g. 1.2 for 2 completed dynasties */
   setBonus: number;
   /** Number of dynasties where the player owns all active variants */
@@ -63,26 +56,6 @@ export function normalizeStreakMultiplier(raw: unknown): number {
     return 1;
   }
   return value;
-}
-
-/**
- * Dynasty DNA bonus multiplier for the equipped snake.
- *
- * Only dynasties with stat_bonus_type === 'dna_generation' grant a DNA
- * multiplier. The seed data stores the bonus as a fraction (0.05 = 5%),
- * so values below 1 are treated as fractions and values >= 1 as percents
- * (5 = 5%) - both yield x1.05.
- */
-export function getDynastyDnaMultiplier(info: EquippedVariantInfo | null): number {
-  if (!info || info.statBonusType !== 'dna_generation') {
-    return 1;
-  }
-  const value = info.statBonusValue;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return 1;
-  }
-  const fraction = value < 1 ? value : value / 100;
-  return 1 + fraction;
 }
 
 /** Set bonus multiplier: x(1 + 0.10 x completedDynasties) */
@@ -145,18 +118,16 @@ export function normalizeClanDuelBonus(raw: unknown): number {
 /** Combine the multiplier sources into a result with breakdown. */
 export function combineDnaMultipliers(
   streak: number,
-  dynasty: number,
   completedDynasties: number,
   clanDuel: number = 1
 ): DnaMultiplierResult {
   const setBonus = getSetBonusMultiplier(completedDynasties);
   const safeClanDuel = normalizeClanDuelBonus(clanDuel);
-  const total = round4(streak * dynasty * setBonus * safeClanDuel);
+  const total = round4(streak * setBonus * safeClanDuel);
   return {
     multiplier: total,
     breakdown: {
       streak: round4(streak),
-      dynasty: round4(dynasty),
       setBonus: round4(setBonus),
       completedDynasties,
       clanDuel: round4(safeClanDuel),
@@ -178,13 +149,10 @@ export function applyDnaMultiplier(baseDna: number, multiplier: number): number 
  *
  * @param supabase Service-role client
  * @param playerId players.id
- * @param equippedVariantInfo Dynasty bonus info of the equipped snake's
- *   dynasty (null when unknown - dynasty bonus then defaults to x1)
  */
 export async function getDnaMultiplier(
   supabase: SupabaseClient,
-  playerId: string,
-  equippedVariantInfo: EquippedVariantInfo | null
+  playerId: string
 ): Promise<DnaMultiplierResult> {
   // Streak tier (maintained by record_daily_play)
   const { data: streakRow } = await supabase
@@ -194,9 +162,6 @@ export async function getDnaMultiplier(
     .maybeSingle();
 
   const streak = normalizeStreakMultiplier(streakRow?.streak_multiplier);
-
-  // Dynasty bonus from equipped snake
-  const dynasty = getDynastyDnaMultiplier(equippedVariantInfo);
 
   // Set bonus: owned variants vs active catalog, grouped per dynasty
   const { data: activeRows } = await supabase
@@ -233,5 +198,5 @@ export async function getDnaMultiplier(
     clanDuel = 1;
   }
 
-  return combineDnaMultipliers(streak, dynasty, completedDynasties, clanDuel);
+  return combineDnaMultipliers(streak, completedDynasties, clanDuel);
 }
