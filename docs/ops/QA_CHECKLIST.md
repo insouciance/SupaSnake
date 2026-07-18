@@ -19,6 +19,7 @@ that breaks the spell.
 | 4. The Build | every run | Anticipation: "what will THIS run become?" |
 | 5. The Ritual | daily | Purposeful return — goals, not chores. |
 | 6. The Investment | multi-day | Roots: collection, streak, (soon) clan+traits. |
+| 7. The Season | weekly | "This week is DIFFERENT." Rhythm + spectacle. |
 
 ---
 
@@ -120,6 +121,41 @@ that breaks the spell.
 - [ ] Account: GUEST chip → save progress → instant account ("Progress
       Saved!"), chip becomes your avatar; sign out/in keeps everything
 - FEEL: is there always a visible "next thing worth wanting"?
+
+## Stage 7 — The Season (weekly anomaly + season track + playoffs)
+
+- [ ] Pre-game overlay: an ANOMALY chip sits between EARN and FREE PLAY
+      (only after migration 021 + Monday 2026-07-20); selecting it opens
+      the board panel — this week's modifier (name + one-line effect),
+      rotation countdown, your best, top 10
+- [ ] Run the anomaly (costs 1⚡ like EARN): the HUD shows an
+      "ANOMALY · <name>" chip; the modifier is FELT —
+      **Meteor Shower**: food burns up after ~60 ticks and respawns,
+      **Gold Rush**: DNA counter runs visibly hotter but portals are rarer,
+      **Blackout**: the world fades to void beyond ~6 cells of your head,
+      **Twin Exits**: two portals share one window, bank line reads +15%
+- [ ] Bank one: normal DNA lands (streak/contracts count), and your score
+      appears on the anomaly board (pre-game panel + the leaderboard
+      page's ANOMALY tab) — but NOT on the weekly dynasty boards
+- [ ] "Anomaly Tourist" contract: pick it on the contracts board, finish
+      one anomaly run (bank or crash), claim 400 DNA + 150 season XP
+- [ ] Season track: the home mission line rotates "Season 1 — Solstice ·
+      week N" (beacon when a milestone is ready) → tapping opens the track:
+      level/XP bar fed by contract claims, milestones claim cosmetics +
+      trait-reroll tokens (token count visibly increments; spend one in
+      the Lab reroll flow to close the loop)
+- [ ] Seasonal mutations: Solstice Engine / Glacial Reserve / Midnight
+      Oil appear in mutation offers (any mode) — do they read as offers
+      with costs, per the house grammar?
+- [ ] Clan page (playoff weeks — season weeks 6-7): the Season Playoffs
+      panel shows the top-8 bracket (seeds, live scores, winner glow);
+      week 7 is the championship week — two semifinals, champion = the
+      higher-scoring winner; afterwards the champions banner persists
+- [ ] Gauntlet war room: Anomaly Doctrine is now PICKABLE once
+      protocols_1 is researched (was "coming with Seasons") — picking it
+      counts anomaly runs ×1.20 in the duel score
+- FEEL: does Monday feel like a fresh event? Is the anomaly a reason to
+  come back mid-week, and the track a reason to keep contracts daily?
 
 ## 📱 Mobile pass (repeat the spine of Stages 1-5 on your phone)
 
