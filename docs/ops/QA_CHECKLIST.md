@@ -157,6 +157,46 @@ that breaks the spell.
 - FEEL: does Monday feel like a fresh event? Is the anomaly a reason to
   come back mid-week, and the track a reason to keep contracts daily?
 
+## Stage 8 — The Name (identity: handles, cards, cosmetics — needs migration 022)
+
+- [ ] Fresh guest (incognito): bank one run — the game-over screen shows
+      YOUR Player Card with a muted `handler-NNNN` name and offers the
+      claim: "That run deserves a name on it." Dismiss it twice — it
+      stops asking (settings still offers it)
+- [ ] Claim a handle: type as you go — the availability line answers live
+      (green Available / red reason). Try a TAKEN one (make a second
+      account claim `Souci` first), a RESERVED one (`admin`,
+      `supasnake`, `Handler`), and leet-disguised profanity
+      (`5h17head`) — each rejected with precise copy, never a generic
+      error
+- [ ] Claim a clean one → toast "You are <name> now"; the card on
+      game-over, the leaderboard rows, and clan contributor lists all
+      show it (no more `Player 3f2a1b` / `Anonymous` anywhere you can
+      reach)
+- [ ] Try changing it immediately (settings → Identity → Change handle):
+      the 30-day cooldown message shows the next-change date — first
+      claim was free, changes wait
+- [ ] Settings → Identity: your full card (snake portrait avatar in a
+      dynasty frame — the frame upgrades with that dynasty's mastery),
+      equip grid: claim a season-track cosmetic, equip the title /
+      banner / a badge — the card updates instantly; badges cap at 3
+      WORN (a 4th asks you to unequip one)
+- [ ] Empty slots read as invitations ("Your first emblem lands at
+      mastery M1"), never as zeros or empty grids
+- [ ] Founder check: your pre-Season-1 account shows the gold ring on the
+      avatar + "Founding Handler" badge in inventory; a fresh account
+      created today has NEITHER (it can never be earned again)
+- [ ] Leaderboard: rows are identity rows — avatar chip, handle, dimmed
+      title, [TAG], top badge; unclaimed players read as muted
+      handler-NNNN
+- [ ] Gauntlet scouting (clan page, during a duel week): the opponent
+      roster renders as identity rows with mastery pips — do you get a
+      read on WHO you're facing, not just numbers?
+- [ ] Upgrade flow: guest → create account → the success screen offers
+      "Claim your handle" — claim from right there
+- FEEL: after claiming, does the game feel like it knows YOU? Would you
+  recognize a rival's name next week?
+
 ## 📱 Mobile pass (repeat the spine of Stages 1-5 on your phone)
 
 - [ ] Chamber + board fully in frame portrait; bottom rail reachable;
