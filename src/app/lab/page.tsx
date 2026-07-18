@@ -23,6 +23,7 @@ import { IconEgg } from '@/components/ui/icons';
 import { LabHeader } from '@/components/lab/LabHeader';
 import { DynastyTabs } from '@/components/lab/DynastyTabs';
 import { CollectionProgress } from '@/components/lab/CollectionProgress';
+import { MasteryPanel, type DynastyMasteryState } from '@/components/lab/MasteryPanel';
 import { CollectionGrid } from '@/components/lab/CollectionGrid';
 import { VariantDetailModal } from '@/components/lab/VariantDetailModal';
 import { UnlockConfirmModal } from '@/components/lab/UnlockConfirmModal';
@@ -35,8 +36,34 @@ import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 
 export default function LabPage() {
   const router = useRouter();
-  const { isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
+  const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+  // Per-dynasty mastery (Design v2 §7.1) - server-read; pre-migration-019
+  // every dynasty reads level 0. Non-fatal: on error the panel just hides.
+  const [masteryByDynasty, setMasteryByDynasty] = useState<
+    Record<string, DynastyMasteryState>
+  >({});
+  useEffect(() => {
+    if (!session?.access_token) return;
+    let cancelled = false;
+    fetch('/api/mastery', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.mastery) return;
+        const byDynasty: Record<string, DynastyMasteryState> = {};
+        for (const entry of data.mastery as DynastyMasteryState[]) {
+          byDynasty[entry.dynasty] = entry;
+        }
+        setMasteryByDynasty(byDynasty);
+      })
+      .catch((err) => console.error('Failed to fetch mastery:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token]);
 
   // Celebrate a fresh unlock with a brief shimmer on the new card
   const [justUnlockedVariantId, setJustUnlockedVariantId] = useState<string | null>(null);
@@ -268,6 +295,18 @@ export default function LabPage() {
               <IconEgg size={18} />
               <span>Breed</span>
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Per-dynasty Mastery track (Design v2 §7.1) */}
+      {activeDynasty && masteryByDynasty[activeDynasty.name?.toUpperCase?.() ?? ''] && (
+        <div className="px-4 pb-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
+          <div className="max-w-6xl mx-auto">
+            <MasteryPanel
+              mastery={masteryByDynasty[activeDynasty.name.toUpperCase()]}
+              dynastyTheme={dynastyTheme}
+            />
           </div>
         </div>
       )}

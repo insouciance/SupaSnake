@@ -13,7 +13,7 @@ import {
   outcomeMultipliers,
   rulesetExplainer,
 } from '@/shared/game/rulesets';
-import { MUTATIONS, type MutationId, type MutationPick } from '@/shared/game/mutations';
+import { MUTATIONS, isMutationId, type MutationId, type MutationPick } from '@/shared/game/mutations';
 import { sanitizeTraits } from '@/shared/game/traits';
 import { useGameStore, type GameMode } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
@@ -118,6 +118,18 @@ export default function GamePage() {
   const [lastRunFree, setLastRunFree] = useState(false);
   // What the free run WOULD have earned (server recompute x multipliers)
   const [hypotheticalDna, setHypotheticalDna] = useState<number | null>(null);
+  // Per-dynasty mastery (Design v2 §7.1): levels for the pre-game chip
+  // (server-read; pre-migration-019 everything reads M0)...
+  const [masteryLevels, setMasteryLevels] = useState<Record<string, number>>({});
+  // ...and the end-of-run grant for the game-over screen (+XP, level-up)
+  const [masteryResult, setMasteryResult] = useState<{
+    dynasty: string;
+    xpGained: number;
+    xp: number;
+    level: number;
+    leveledUp: boolean;
+    unlocks: { level: number; kind: string; label: string }[];
+  } | null>(null);
 
   // Refs to hold current values for use in event handlers (avoids stale closure)
   const sessionRef = useRef(session);
@@ -278,6 +290,24 @@ export default function GamePage() {
       })
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, syncEnergyFromServer, setAimSystem]);
+
+  // Fetch per-dynasty mastery levels for the pre-game chip (non-fatal)
+  useEffect(() => {
+    if (!session?.access_token) return;
+    fetch('/api/mastery', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` }
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!data?.mastery) return;
+        const levels: Record<string, number> = {};
+        for (const entry of data.mastery as { dynasty: string; level: number }[]) {
+          levels[entry.dynasty] = entry.level;
+        }
+        setMasteryLevels(levels);
+      })
+      .catch(err => console.error('Failed to fetch mastery:', err));
+  }, [session?.access_token]);
 
   // Fetch collection to find the equipped snake (game always uses it)
   useEffect(() => {
@@ -510,6 +540,16 @@ export default function GamePage() {
               setStreakInfo(result.streak);
             }
 
+            // Mastery XP grant (Design v2 §7.1: extracted earning runs
+            // only) - powers the +XP line and the level-up moment
+            if (result.mastery) {
+              setMasteryResult(result.mastery);
+              setMasteryLevels((prev) => ({
+                ...prev,
+                [result.mastery.dynasty]: result.mastery.level,
+              }));
+            }
+
             // Show toast for each newly unlocked achievement
             if (result.newAchievements && result.newAchievements.length > 0) {
               setUnlockedAchievements(result.newAchievements);
@@ -680,12 +720,30 @@ export default function GamePage() {
       freeRunRef.current = mode === 'free';
       setLastRunFree(mode === 'free');
       setHypotheticalDna(null);
+      setMasteryResult(null);
 
       // Trait config from the session-start response (Design v2 Phase 3A):
       // the server read these from the equipped snake's row - the engine
       // applies [P] effects and mirrors [E] math, but the payout authority
       // stays the server recompute.
       gameRef.current?.setTraits(sanitizeTraits(data.traits));
+
+      // Unlocked mutation pool (Design v2 §7.1): server-computed from
+      // player_mastery (full pool on Free Play per §7.4). Offer config
+      // only - the server validates picks against its own recompute, so
+      // a tampered pool can never smuggle un-earned economics. An empty
+      // or missing pool falls back to the base ten inside the engine.
+      gameRef.current?.setMutationPool(
+        Array.isArray(data.mutationPool)
+          ? data.mutationPool.filter(isMutationId)
+          : []
+      );
+      if (data.mastery?.dynasty) {
+        setMasteryLevels((prev) => ({
+          ...prev,
+          [data.mastery.dynasty]: data.mastery.level,
+        }));
+      }
 
       // Now start the game locally
       storeStartGame();
@@ -830,6 +888,7 @@ export default function GamePage() {
     setUnlockedAchievements([]);
     setStreakInfo(null);
     setHypotheticalDna(null);
+    setMasteryResult(null);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -1222,6 +1281,50 @@ export default function GamePage() {
                       )}
                     </p>
                   )}
+                  {/* Mastery XP (Design v2 §7.1) - banked XP from this
+                      extraction + the level-up moment when a rung falls */}
+                  {masteryResult && (
+                    <div className="space-y-2 pt-1" data-testid="gameover-mastery">
+                      <p className="text-lg text-beige flex items-center justify-center gap-1.5">
+                        <span className="font-bold text-[#7df9ff]">
+                          +{masteryResult.xpGained.toLocaleString()} Mastery XP
+                        </span>
+                        <span className="text-beige/70">
+                          {masteryResult.dynasty} M{masteryResult.level}
+                        </span>
+                      </p>
+                      {masteryResult.leveledUp && (
+                        <div
+                          className="panel-glow [--glow:#facc15] px-4 py-3 space-y-1 animate-pop-in shadow-glow-sm"
+                          data-testid="mastery-levelup"
+                        >
+                          <p className="heading-display text-xl text-[#facc15] text-glow animate-breathe">
+                            Mastery M{masteryResult.level} — {masteryResult.dynasty}
+                          </p>
+                          {masteryResult.unlocks.map((unlock) => (
+                            <p
+                              key={unlock.level}
+                              className="text-sm font-body text-bone-white"
+                            >
+                              {unlock.kind === 'mutation' ? (
+                                <>
+                                  New mutation in your pool:{' '}
+                                  <span className="font-bold text-[#c4b5fd]">
+                                    {unlock.label}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  Unlocked:{' '}
+                                  <span className="font-bold">{unlock.label}</span>
+                                </>
+                              )}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Unlocked Achievements */}
@@ -1268,6 +1371,18 @@ export default function GamePage() {
                     >
                       {rulesetExplainer[normalizeDynastyName(equippedSnake.dynasty)]}
                     </p>
+                    {/* Dynasty mastery chip (Design v2 §7.1) */}
+                    {masteryLevels[normalizeDynastyName(equippedSnake.dynasty)] !== undefined && (
+                      <p
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-arcade border border-scale-blue-light/50 bg-void/60 text-sm font-body text-beige"
+                        data-testid="mastery-chip"
+                      >
+                        Mastery{' '}
+                        <span className="font-bold text-[#7df9ff]">
+                          M{masteryLevels[normalizeDynastyName(equippedSnake.dynasty)]}
+                        </span>
+                      </p>
+                    )}
                     <p className="text-beige/50 font-body text-xs">
                       Exit portal banks +25% — crashing salvages 60%
                     </p>
