@@ -87,14 +87,6 @@ export function availableModifiers(
   unlockedNodes: readonly string[]
 ): Array<{ id: GauntletModifierId; name: string; locked: boolean; reason: string | null }> {
   return (Object.values(GAUNTLET_MODIFIERS)).map((modifier) => {
-    if (modifier.requiresAnomalyBoard) {
-      return {
-        id: modifier.id,
-        name: modifier.name,
-        locked: true,
-        reason: 'Needs the Anomaly board (coming with Seasons)',
-      };
-    }
     if (modifier.requiresNode && !unlockedNodes.includes(modifier.requiresNode)) {
       return {
         id: modifier.id,

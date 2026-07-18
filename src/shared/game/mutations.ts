@@ -47,7 +47,12 @@ export type MutationId =
   // COSMIC mastery (M3/M6/M9)
   | 'starweaver'
   | 'gravity_well'
-  | 'event_horizon';
+  | 'event_horizon'
+  // Season 1 "Solstice" seasonal mutations (section 7.2 - in the offer
+  // pool all season, then they join the permanent pool)
+  | 'solstice_engine'
+  | 'glacial_reserve'
+  | 'midnight_oil';
 
 /** Effect kind: E = economic (server-recomputed), P = physical (engine-only). */
 export type MutationKind = 'E' | 'P' | 'EP';
@@ -199,6 +204,33 @@ export const MUTATIONS: Record<MutationId, MutationDef> = {
     effect: 'Open (wrap) phases last 25 ticks longer',
     cost: 'Closed (killing) phases last 15 ticks longer',
   },
+  // --- Season 1 "Solstice" seasonal mutations (section 7.2) -----------------
+  // Authored per the section 5 grammar: [E] effects are pure functions of
+  // (food index, pick point) for exact server recompute; costs are either
+  // [E] penalties or engine-side [P] portal taxes already in the engine's
+  // vocabulary. Distinct from the Launch Ten and the nine mastery
+  // mutations by construction (new periods, new windows, new curve).
+  solstice_engine: {
+    id: 'solstice_engine',
+    name: 'Solstice Engine',
+    kind: 'EP',
+    effect: 'Every 4th food after pickup pays ×2 DNA',
+    cost: 'Exit portal interval +2 foods',
+  },
+  glacial_reserve: {
+    id: 'glacial_reserve',
+    name: 'Glacial Reserve',
+    kind: 'EP',
+    effect: 'Food +1% DNA per food survived since pickup (caps at +30%)',
+    cost: 'Exit portals despawn 20 ticks sooner',
+  },
+  midnight_oil: {
+    id: 'midnight_oil',
+    name: 'Midnight Oil',
+    kind: 'E',
+    effect: 'First 15 foods after pickup +35% DNA',
+    cost: 'Foods beyond the window −5% for the rest of the run',
+  },
 };
 
 /**
@@ -308,6 +340,17 @@ export const MUTATION_ECONOMICS = {
   /** Overclock Harvest: bank 1.25 -> 1.40, salvage 0.60 -> 0.45 (additive). */
   overclockHarvestBankDelta: 0.15,
   overclockHarvestDeathDelta: -0.15,
+  // Season 1 "Solstice" seasonal mutations (section 7.2) - same discipline
+  /** Solstice Engine: every 4th food after pickup x2. */
+  solsticeEngineEveryNth: 4,
+  solsticeEngineMultiplier: 2,
+  /** Glacial Reserve: +1% per food survived since pickup, capped at +30%. */
+  glacialReservePerFood: 0.01,
+  glacialReserveCap: 0.3,
+  /** Midnight Oil: first 15 foods after pickup x1.35; beyond x0.95. */
+  midnightOilWindowFoods: 15,
+  midnightOilBonus: 1.35,
+  midnightOilLatePenalty: 0.95,
 } as const;
 
 /** Physical tuning constants (engine-side), exported for tests. */
@@ -340,6 +383,11 @@ export const MUTATION_PHYSICS = {
   /** Event Horizon: open phases +25 ticks, closed phases +15 ticks. */
   eventHorizonOpenTicksBonus: 25,
   eventHorizonClosedTicksPenalty: 15,
+  // Season 1 seasonal mutations - engine-side [P] costs
+  /** Solstice Engine cost: exit portal interval +2 foods. */
+  solsticeEnginePortalIntervalPenalty: 2,
+  /** Glacial Reserve cost: exit portals despawn this many ticks sooner. */
+  glacialReservePortalTicksPenalty: 20,
 } as const;
 
 /**
@@ -416,6 +464,31 @@ export function foodValueModifier(
         break;
       case 'gravity_well':
         mod *= MUTATION_ECONOMICS.gravityWellFoodPenalty;
+        break;
+      // Season 1 seasonal mutations (section 7.2) - benefits void
+      // post-Phoenix, costs persist, exactly like the Launch Ten.
+      case 'solstice_engine':
+        if (
+          !benefitsVoided &&
+          (n - pick.atFood) % MUTATION_ECONOMICS.solsticeEngineEveryNth === 0
+        ) {
+          mod *= MUTATION_ECONOMICS.solsticeEngineMultiplier;
+        }
+        break;
+      case 'glacial_reserve':
+        if (!benefitsVoided) {
+          mod *= 1 + Math.min(
+            MUTATION_ECONOMICS.glacialReserveCap,
+            MUTATION_ECONOMICS.glacialReservePerFood * (n - pick.atFood)
+          );
+        }
+        break;
+      case 'midnight_oil':
+        if (n - pick.atFood <= MUTATION_ECONOMICS.midnightOilWindowFoods) {
+          if (!benefitsVoided) mod *= MUTATION_ECONOMICS.midnightOilBonus;
+        } else {
+          mod *= MUTATION_ECONOMICS.midnightOilLatePenalty;
+        }
         break;
       // mirror_wager, magnet_pulse, phoenix, compound_interest,
       // overclock_harvest, starweaver, event_horizon, deep_roots:

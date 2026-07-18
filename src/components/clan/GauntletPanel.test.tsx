@@ -79,12 +79,11 @@ describe('availableModifiers', () => {
     expect(byId.get('anomaly_doctrine')!.locked).toBe(true);
   });
 
-  it('protocols_2 unlocks sudden_death; anomaly stays gated on the board', () => {
+  it('protocols_2 unlocks sudden_death; protocols_1 unlocks anomaly_doctrine (board live, 4B)', () => {
     const options = availableModifiers(['protocols_1', 'protocols_2']);
     const byId = new Map(options.map((o) => [o.id, o]));
     expect(byId.get('sudden_death')!.locked).toBe(false);
-    expect(byId.get('anomaly_doctrine')!.locked).toBe(true);
-    expect(byId.get('anomaly_doctrine')!.reason).toContain('Anomaly board');
+    expect(byId.get('anomaly_doctrine')!.locked).toBe(false);
   });
 });
 

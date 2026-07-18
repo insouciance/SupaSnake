@@ -153,10 +153,14 @@ export interface GauntletModifier {
   weight: number;
   /** Only banked (extracted) runs count. */
   extractedOnly: boolean;
+  /**
+   * Weekly-anomaly runs count too (Anomaly Doctrine, section 8.3 node
+   * protocols_1). Every other lens excludes anomaly-board runs from the
+   * counted pool (they score on their own weekly board).
+   */
+  includeAnomaly: boolean;
   /** Research node required to pick it; null = always available. */
   requiresNode: ResearchNodeId | null;
-  /** Blocked until the Weekly Anomaly board (section 7.2) ships. */
-  requiresAnomalyBoard: boolean;
 }
 
 export const BASE_TOP_MEMBERS = 10;
@@ -168,35 +172,35 @@ export const GAUNTLET_MODIFIERS: Record<GauntletModifierId, GauntletModifier> = 
     name: 'Vanguard',
     description: 'Top 8 members count (vs 10); their runs weigh x1.10',
     topMembers: 8, bestRuns: 30, weight: 1.10,
-    extractedOnly: false, requiresNode: null, requiresAnomalyBoard: false,
+    extractedOnly: false, includeAnomaly: false, requiresNode: null,
   },
   deep_bench: {
     id: 'deep_bench',
     name: 'Deep Bench',
     description: '12 members count; best 25 runs each (vs 30)',
     topMembers: 12, bestRuns: 25, weight: 1.0,
-    extractedOnly: false, requiresNode: null, requiresAnomalyBoard: false,
+    extractedOnly: false, includeAnomaly: false, requiresNode: null,
   },
   extraction_doctrine: {
     id: 'extraction_doctrine',
     name: 'Extraction Doctrine',
     description: 'Only banked runs count; weigh x1.15',
     topMembers: 10, bestRuns: 30, weight: 1.15,
-    extractedOnly: true, requiresNode: null, requiresAnomalyBoard: false,
+    extractedOnly: true, includeAnomaly: false, requiresNode: null,
   },
   anomaly_doctrine: {
     id: 'anomaly_doctrine',
     name: 'Anomaly Doctrine',
     description: 'Anomaly-board runs count, x1.20',
     topMembers: 10, bestRuns: 30, weight: 1.20,
-    extractedOnly: false, requiresNode: 'protocols_1', requiresAnomalyBoard: true,
+    extractedOnly: false, includeAnomaly: true, requiresNode: 'protocols_1',
   },
   sudden_death: {
     id: 'sudden_death',
     name: 'Sudden Death',
     description: 'Best 10 runs only, x1.40 - high variance',
     topMembers: 10, bestRuns: 10, weight: 1.40,
-    extractedOnly: false, requiresNode: 'protocols_2', requiresAnomalyBoard: false,
+    extractedOnly: false, includeAnomaly: false, requiresNode: 'protocols_2',
   },
 };
 
@@ -280,12 +284,13 @@ export function validateGauntletPicks(
     const modifier = GAUNTLET_MODIFIERS[input.modifier];
     if (!modifier) {
       errors.push('INVALID_MODIFIER');
-    } else if (modifier.requiresAnomalyBoard) {
-      errors.push('ANOMALY_NOT_LIVE');
     } else if (
       modifier.requiresNode &&
       !unlockedNodes.includes(modifier.requiresNode)
     ) {
+      // Anomaly Doctrine is pickable since the Weekly Anomaly board
+      // shipped (Phase 4B) - it gates on protocols_1 like any research
+      // option (the pre-4B ANOMALY_NOT_LIVE hard block is retired).
       errors.push(`MODIFIER_LOCKED:${modifier.requiresNode}`);
     }
   }
@@ -312,6 +317,11 @@ export interface EffectiveSideRules {
   best_runs: number;
   weight: number;
   extracted_only: boolean;
+  /**
+   * Anomaly-board runs count for this side (Anomaly Doctrine). Absent in
+   * pre-021 rules JSON - readers must treat missing as false.
+   */
+  include_anomaly?: boolean;
   /** Mutation banned BY THE OPPONENT against this side's counted runs. */
   banned: MutationId | null;
 }
@@ -340,6 +350,7 @@ export function buildSideRules(
     best_runs: bestRuns,
     weight: modifier?.weight ?? 1.0,
     extracted_only: modifier?.extractedOnly ?? false,
+    include_anomaly: modifier?.includeAnomaly ?? false,
     banned: bannedAgainst,
   };
 }
@@ -351,6 +362,12 @@ export interface CountedRunInput {
   endedAt: Date;
   dynasty: DynastyName;
   extracted: boolean;
+  /**
+   * True for weekly-anomaly-board runs (Phase 4B). Anomaly runs never
+   * count for the Gauntlet unless the side picked Anomaly Doctrine.
+   * Optional: pre-4B callers simply omit it.
+   */
+  anomaly?: boolean;
 }
 
 /**
@@ -364,6 +381,10 @@ export function runCountsForRules(
   weekStart: Date
 ): boolean {
   if (run.dnaEarned <= 0) return false;
+  // Anomaly-board runs are excluded from every lens except Anomaly
+  // Doctrine (section 8.3 node 1: "anomaly-board runs count, x1.20") -
+  // including the legacy no-rules lens.
+  if (run.anomaly === true && rules?.include_anomaly !== true) return false;
   const weekEnd = weekStart.getTime() + 7 * DAY_MS;
   if (rules === null) {
     return run.endedAt.getTime() >= weekStart.getTime() && run.endedAt.getTime() < weekEnd;

@@ -113,7 +113,8 @@ describe('modifier lenses (section 8.2 item 2)', () => {
   it('research options: Anomaly Doctrine (protocols_1, x1.20), Sudden Death (protocols_2, best 10, x1.40)', () => {
     expect(GAUNTLET_MODIFIERS.anomaly_doctrine.requiresNode).toBe('protocols_1');
     expect(GAUNTLET_MODIFIERS.anomaly_doctrine.weight).toBe(1.20);
-    expect(GAUNTLET_MODIFIERS.anomaly_doctrine.requiresAnomalyBoard).toBe(true);
+    // Phase 4B: the Anomaly board is live - the doctrine counts anomaly runs
+    expect(GAUNTLET_MODIFIERS.anomaly_doctrine.includeAnomaly).toBe(true);
     expect(GAUNTLET_MODIFIERS.sudden_death.requiresNode).toBe('protocols_2');
     expect(GAUNTLET_MODIFIERS.sudden_death.bestRuns).toBe(10);
     expect(GAUNTLET_MODIFIERS.sudden_death.weight).toBe(1.40);
@@ -166,11 +167,15 @@ describe('pick validation (RPC mirror)', () => {
     )).toEqual([]);
   });
 
-  it('anomaly_doctrine is rejected until the Anomaly board ships', () => {
+  it('anomaly_doctrine is pickable with protocols_1 now the board is live (4B)', () => {
     expect(validateGauntletPicks(
       { dynasty: 'COSMIC', modifier: 'anomaly_doctrine' },
       ['protocols_1']
-    )).toEqual(['ANOMALY_NOT_LIVE']);
+    )).toEqual([]);
+    expect(validateGauntletPicks(
+      { dynasty: 'COSMIC', modifier: 'anomaly_doctrine' },
+      []
+    )).toEqual(['MODIFIER_LOCKED:protocols_1']);
   });
 
   it('dynasty split pick requires protocols_4 and two distinct dynasties', () => {

@@ -26,6 +26,11 @@ import {
   traitOutcomeDeltas,
   type TraitId,
 } from '@/shared/game/traits';
+import {
+  anomalyBankOverride,
+  anomalyFoodValueModifier,
+  type AnomalyId,
+} from '@/shared/game/anomalies';
 
 export type DynastyName = 'PRIMAL' | 'CYBER' | 'COSMIC';
 
@@ -251,13 +256,20 @@ export const rulesetExplainer: Record<DynastyName, string> = {
  * into the SAME single per-food round as the mutation modifier - exactly
  * what the engine does per eat. Like mutations, traits never touch score.
  * The server reads traits from the snake row, never the client payload.
+ *
+ * Anomalies (Design v2 Phase 4B, section 7.2): the weekly anomaly's [E]
+ * food modifier (Gold Rush x1.5) folds into the same single per-food
+ * round. Like mutations and traits, anomalies never touch score - every
+ * player on a week's board is ranked under identical scoring math. The
+ * server reads the anomaly from the session row, never the claim.
  */
 export function computeRunTotals(
   dynasty: DynastyName,
   foodCount: number,
   mutations: MutationPick[] = [],
   phoenixTriggeredAtFood: number | null = null,
-  traits: TraitId[] = []
+  traits: TraitId[] = [],
+  anomaly: AnomalyId | null = null
 ): { rawDna: number; score: number } {
   const ruleset = RULESETS[dynasty];
   const count = Number.isFinite(foodCount) ? Math.max(0, Math.floor(foodCount)) : 0;
@@ -271,6 +283,9 @@ export function computeRunTotals(
         : 1;
     if (traits.length > 0) {
       mod *= traitFoodValueModifier(traits, n);
+    }
+    if (anomaly !== null) {
+      mod *= anomalyFoodValueModifier(anomaly, n);
     }
     // Flat [E] bonus (Deep Roots, section 7.1): integer DNA added after
     // the single per-food round - the engine's eat path does the same.
@@ -309,13 +324,20 @@ export function applyOutcome(rawDna: number, extracted: boolean): number {
  * bank = 1.25 + 0.10 + 0.10 = 1.45 as specced. Phoenix never voids trait
  * deltas (traits are snake identity, not run pickups). Both multipliers
  * are floored at 0 so pathological stacks can never pay negative.
+ *
+ * Anomaly outcome effects (section 7.2): Twin Exits replaces the BASE
+ * bank (x1.25 -> x1.15) before mutation/trait shaping - so Mirror
+ * Wager's absolute x1.50 and every additive delta behave identically on
+ * and off the board. Salvage is never anomaly-shaped.
  */
 export function outcomeMultipliers(
   mutations: MutationPick[],
   phoenixTriggered = false,
-  traits: TraitId[] = []
+  traits: TraitId[] = [],
+  anomaly: AnomalyId | null = null
 ): { bank: number; death: number } {
-  let bank: number = BANK.extractMultiplier;
+  let bank: number =
+    anomalyBankOverride(anomaly) ?? BANK.extractMultiplier;
   let death: number = BANK.deathMultiplier;
   const ids = new Set(mutations.map((m) => m.id));
   if (ids.has('mirror_wager')) {
@@ -359,10 +381,16 @@ export function applyOutcomeWithMutations(
   extracted: boolean,
   mutations: MutationPick[] = [],
   phoenixTriggered = false,
-  traits: TraitId[] = []
+  traits: TraitId[] = [],
+  anomaly: AnomalyId | null = null
 ): number {
   const raw = Number.isFinite(rawDna) ? Math.max(0, rawDna) : 0;
-  const { bank, death } = outcomeMultipliers(mutations, phoenixTriggered, traits);
+  const { bank, death } = outcomeMultipliers(
+    mutations,
+    phoenixTriggered,
+    traits,
+    anomaly
+  );
   return Math.floor(raw * (extracted ? bank : death));
 }
 
