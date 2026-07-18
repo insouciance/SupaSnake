@@ -288,6 +288,51 @@ server, and a second test account for invites/roles.*
 - FEEL: does the clan now have a HOME? Does a settled duel feel like an
   event because it lands where the clan talks?
 
+## Stage 11 — The Analyst (deterministic facts, narrated — needs migration 025)
+
+*You need: OPENAI_API_KEY in Vercel env (already validated), migration
+025 applied, and a few real runs on your account.*
+
+- [ ] **Post-run insight card**: finish a run (crash AND extraction) →
+      the game-over screen grows a cyan "THE ANALYST" panel a moment
+      later — headline + 2-3 sentences + up to 2 tips. It must be
+      SPECIFIC to the run you just played (your death cause, your DNA,
+      your portals passed), never generic filler
+- [ ] Insight is cached: replaying the same game-over (or re-opening)
+      returns the identical card instantly; a brand-new run gets a new one
+- [ ] **No numbers from nowhere**: every number in the card matches
+      something you can verify on the game-over screen / your history
+- [ ] **Weekly digest card**: after a week with ≥1 earning run, the
+      Chronicle (/profile) shows "This Week" with runs / DNA banked /
+      extraction % / best run and the narrated summary
+- [ ] **Digest email opt-in**: Settings → Weekly Digest Email → toggle ON
+      (note the privacy copy; guests see a create-account prompt instead)
+      → next Monday's cron delivers ONE arcade-styled email from
+      noreply@supasnake.com; toggle OFF stops it
+- [ ] **Season archetype** (after the season ends): the Chronicle header
+      grows the purple archetype card (e.g. "The Surgeon" — badge +
+      fantasy line + how-you-played sentence) and the epic badge appears
+      in your cabinet, equippable into your 3 worn slots. Under 20
+      earning runs → "The Hatchling", no badge
+- [ ] **Season Recall**: the Chronicle's "Season Recall" section shows
+      the flagship card — your full Player Card + season stats grid +
+      gpt-5 prose. Share button copies /p/&lt;handle&gt; (or opens the native
+      share sheet on mobile). Does it feel like something you'd post?
+- [ ] **Gauntlet scouting brief**: Mon-Wed of a duel week, the clan War
+      Room's Scouting block gains an italic Analyst line about the
+      opponent (their deep dynasty, their repeated picks). Reload once
+      if absent — it generates lazily on first view
+- [ ] **NO chatbot anywhere**: confirm there is no reply box, no
+      conversation UI, no "ask the Analyst" affordance on any surface —
+      five artifacts, zero chat
+- [ ] **Fallback quality**: set ANALYST_ENABLED=false in Vercel env →
+      every surface above still renders (templated text over the same
+      numbers, tone intact); no errors, no empty panels. Re-enable after
+- [ ] Kill checks: as a guest, game-over shows no Analyst card pre-auth
+      surfaces; /api/analyst/cron without the secret → 401
+- FEEL: do you feel SEEN — "it knows how I play" — without it ever
+  feeling like a bot you're supposed to talk to?
+
 ## 📱 Mobile pass (repeat the spine of Stages 1-5 on your phone)
 
 - [ ] Chamber + board fully in frame portrait; bottom rail reachable;
