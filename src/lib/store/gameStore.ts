@@ -16,10 +16,20 @@ import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
 import { GAME_CONFIG } from '@/shared/config/game';
 
 /**
- * Run mode (Design v2 §7.4): 'earn' spends energy and pays DNA; 'free' is
- * unlimited, energy-free practice that pays nothing.
+ * Run mode (Design v2 §7.4 + §7.2): 'earn' spends energy and pays DNA;
+ * 'free' is unlimited, energy-free practice that pays nothing; 'anomaly'
+ * is an earning run under the week's anomaly modifier that also scores on
+ * the weekly anomaly board.
  */
-export type GameMode = 'earn' | 'free';
+export type GameMode = 'earn' | 'free' | 'anomaly';
+
+/** The week's anomaly context (from the session-start response). */
+export interface AnomalyRunInfo {
+  id: string;
+  name: string;
+  effect: string;
+  endsAt: string;
+}
 
 export interface GameStore {
   // Game state
@@ -59,8 +69,12 @@ export interface GameStore {
   deathPosition: Position | null;
   /** Live exit portal cell (extraction banking), null when none. */
   exitTile: Position | null;
+  /** Second live exit portal (Twin Exits anomaly), null when none. */
+  exitTile2: Position | null;
   /** Ticks until the live exit portal despawns. */
   exitTicksRemaining: number;
+  /** The active anomaly run's context (Design v2 §7.2), null off-board. */
+  anomalyRun: AnomalyRunInfo | null;
 
   // Design v2 Phase 2: mutation food + COSMIC Flux (mirrored from engine)
   /** Food cells beyond the primary one (Splitter pairs, COSMIC groups). */
@@ -99,6 +113,8 @@ export interface GameStore {
   setDnaCollected: (dna: number) => void;
   setFoodEaten: (foodEaten: number) => void;
   setExitTile: (exitTile: Position | null, ticksRemaining?: number) => void;
+  setExitTile2: (exitTile2: Position | null) => void;
+  setAnomalyRun: (anomalyRun: AnomalyRunInfo | null) => void;
   setSelectedDynasty: (dynasty: DynastyId) => void;
   setAimSystem: (aimSystem: AimSystemId) => void;
   setEnergy: (energy: number) => void;
@@ -149,7 +165,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   queuedDirections: [],
   deathPosition: null,
   exitTile: null,
+  exitTile2: null,
   exitTicksRemaining: 0,
+  anomalyRun: null,
   extraFoods: [],
   constellationGlyph: null,
   chainLength: 0,
@@ -180,6 +198,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       queuedDirections: [],
       deathPosition: null,
       exitTile: null,
+      exitTile2: null,
       exitTicksRemaining: 0,
       extraFoods: [],
       constellationGlyph: null,
@@ -196,8 +215,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   endGame: (score: number, dna: number, endReason: EndReason = 'died') => {
-    // heldMutations and phoenixTriggered survive into game-over on purpose:
-    // the game-over screen lists the run's build and its outcome multiplier
+    // heldMutations, phoenixTriggered, and anomalyRun survive into
+    // game-over on purpose: the game-over screen lists the run's build,
+    // its outcome multiplier, and the board it scored on
     set({
       isPlaying: false,
       isGameOver: true,
@@ -207,6 +227,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       dnaCollected: dna,
       endReason,
       exitTile: null,
+      exitTile2: null,
       exitTicksRemaining: 0,
       mutationTile: null,
       mutationTicksRemaining: 0,
@@ -231,7 +252,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       queuedDirections: [],
       deathPosition: null,
       exitTile: null,
+      exitTile2: null,
       exitTicksRemaining: 0,
+      anomalyRun: null,
       extraFoods: [],
       constellationGlyph: null,
       chainLength: 0,
@@ -290,6 +313,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       exitTile,
       exitTicksRemaining: exitTile ? ticksRemaining : 0,
     });
+  },
+
+  setExitTile2: (exitTile2: Position | null) => {
+    set({ exitTile2 });
+  },
+
+  setAnomalyRun: (anomalyRun: AnomalyRunInfo | null) => {
+    set({ anomalyRun });
   },
 
   setSelectedDynasty: (dynasty: DynastyId) => {

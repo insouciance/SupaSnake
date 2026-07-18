@@ -15,6 +15,7 @@ import {
 } from '@/shared/game/rulesets';
 import { MUTATIONS, isMutationId, type MutationId, type MutationPick } from '@/shared/game/mutations';
 import { sanitizeTraits } from '@/shared/game/traits';
+import { isAnomalyId, type AnomalyId } from '@/shared/game/anomalies';
 import { useGameStore, type GameMode } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
@@ -42,6 +43,8 @@ import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
 import { MutationHUD } from '@/components/game/MutationHUD';
 import { ModeToggle } from '@/components/game/ModeToggle';
+import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
+import { BlackoutMask } from '@/components/game/BlackoutMask';
 import {
   createInputDebugState,
   recordDebugEvent,
@@ -118,6 +121,10 @@ export default function GamePage() {
   const [lastRunFree, setLastRunFree] = useState(false);
   // What the free run WOULD have earned (server recompute x multipliers)
   const [hypotheticalDna, setHypotheticalDna] = useState<number | null>(null);
+  // Weekly Anomaly board (Design v2 §7.2): this week's modifier + top 10 +
+  // the player's best, for the pre-game entry. null until fetched;
+  // { live: false } pre-migration-021 hides the ANOMALY mode chip.
+  const [anomalyBoard, setAnomalyBoard] = useState<AnomalyBoardView | null>(null);
   // Per-dynasty mastery (Design v2 §7.1): levels for the pre-game chip
   // (server-read; pre-migration-019 everything reads M0)...
   const [masteryLevels, setMasteryLevels] = useState<Record<string, number>>({});
@@ -155,7 +162,9 @@ export default function GamePage() {
     foodEaten,
     endReason,
     exitTile,
+    exitTile2,
     exitTicksRemaining,
+    anomalyRun,
     energy,
     maxEnergy,
     energyRegenAt,
@@ -185,6 +194,8 @@ export default function GamePage() {
     setDnaCollected,
     setFoodEaten,
     setExitTile,
+    setExitTile2,
+    setAnomalyRun,
     setExtraFoods,
     setConstellation,
     setMutationTile,
@@ -291,6 +302,27 @@ export default function GamePage() {
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, syncEnergyFromServer, setAimSystem]);
 
+  // Weekly Anomaly board (§7.2): fetched between runs so the pre-game
+  // entry shows the live modifier + leaderboard. Refreshes after every
+  // run (isPlaying flips back) so "your best" is current. Non-fatal.
+  useEffect(() => {
+    if (!session?.access_token || isPlaying) return;
+    let cancelled = false;
+    fetch('/api/anomaly', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` }
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data?.anomaly) {
+          setAnomalyBoard(data as AnomalyBoardView);
+        }
+      })
+      .catch(err => console.error('Failed to fetch anomaly board:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, isPlaying]);
+
   // Fetch per-dynasty mastery levels for the pre-game chip (non-fatal)
   useEffect(() => {
     if (!session?.access_token) return;
@@ -365,6 +397,11 @@ export default function GamePage() {
 
   // Mutation choice hold: the engine is frozen under the overlay (NOT paused)
   const choiceActive = choiceOptions !== null;
+
+  // The active anomaly run's modifier id (§7.2) - shapes the BANK preview
+  // and outcome copy exactly like the server recompute will
+  const activeAnomalyId: AnomalyId | null =
+    anomalyRun && isAnomalyId(anomalyRun.id) ? anomalyRun.id : null;
 
   const handleChooseMutation = useCallback((index: 0 | 1) => {
     gameRef.current?.chooseMutation(index);
@@ -614,6 +651,8 @@ export default function GamePage() {
       setQueuedDirections(queued);
       setFoodEaten(state.foodEaten);
       setExitTile(state.exitTile, state.exitTicksRemaining);
+      // Twin Exits (anomaly): the second portal of the pair
+      setExitTile2(state.exitTile2);
       // Phase 2 mirrors: extra foods (Splitter/COSMIC groups), the
       // constellation chain, the mutation beacon, and the flux phase
       setExtraFoods(state.foods.slice(1));
@@ -621,7 +660,7 @@ export default function GamePage() {
       setMutationTile(state.mutationTile, state.mutationTicksRemaining);
       setFlux(state.fluxPhase, state.fluxTelegraph);
     }
-  }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExtraFoods, setConstellation, setMutationTile, setFlux]);
+  }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -658,12 +697,13 @@ export default function GamePage() {
   }, [syncState]);
 
   // Default mode: EARN when energy is available, FREE when it runs out -
-  // the zero-energy screen offers practice instead of a wall. (EARN is
-  // disabled in the toggle at 0 energy, so this can't fight the player.)
+  // the zero-energy screen offers practice instead of a wall. (EARN and
+  // ANOMALY are disabled in the toggle at 0 energy, so this can't fight
+  // the player - anomaly runs are earning runs and cost energy too.)
   useEffect(() => {
     if (
       !isPlaying &&
-      gameMode === 'earn' &&
+      (gameMode === 'earn' || gameMode === 'anomaly') &&
       energy < GAME_CONFIG.economy.energy.costPerGame
     ) {
       setGameMode('free');
@@ -738,6 +778,27 @@ export default function GamePage() {
           ? data.mutationPool.filter(isMutationId)
           : []
       );
+
+      // Anomaly runs (§7.2): the server confirms the week's modifier at
+      // start - the engine applies its [P] physics and mirrors its [E]
+      // math; the payout authority stays the server's session-row
+      // recompute. Normal runs explicitly clear any previous anomaly.
+      const serverAnomaly =
+        mode === 'anomaly' && isAnomalyId(data.anomaly?.id)
+          ? (data.anomaly.id as AnomalyId)
+          : null;
+      gameRef.current?.setAnomaly(serverAnomaly);
+      setAnomalyRun(
+        serverAnomaly
+          ? {
+              id: serverAnomaly,
+              name: String(data.anomaly.name ?? serverAnomaly),
+              effect: String(data.anomaly.effect ?? ''),
+              endsAt: String(data.anomaly.endsAt ?? ''),
+            }
+          : null
+      );
+
       if (data.mastery?.dynasty) {
         setMasteryLevels((prev) => ({
           ...prev,
@@ -756,7 +817,7 @@ export default function GamePage() {
     } finally {
       setIsStarting(false);
     }
-  }, [session?.access_token, energy, isStarting, equippedSnake, gameMode, syncEnergyFromServer, storeStartGame, setReady, syncState]);
+  }, [session?.access_token, energy, isStarting, equippedSnake, gameMode, syncEnergyFromServer, storeStartGame, setReady, setAnomalyRun, syncState]);
 
   // Keyboard controls
   useEffect(() => {
@@ -984,11 +1045,11 @@ export default function GamePage() {
               }`}
             >
               <span className="text-[#7df9ff] font-bold">
-                BANK {applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
+                BANK {applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered, [], activeAnomalyId)}
               </span>
               <span className="text-beige/40">·</span>
               <span className="text-beige/60">
-                crash {applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered)}
+                crash {applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered, [], activeAnomalyId)}
               </span>
             </div>
           )}
@@ -1011,6 +1072,17 @@ export default function GamePage() {
               energyRegenAt={energyRegenAt}
             />
           </div>
+          {/* Anomaly run chip - the week's modifier, always visible while
+              playing the board (§7.2) */}
+          {isPlaying && anomalyRun && (
+            <div
+              data-testid="anomaly-run-chip"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-[#7df9ff]/60 bg-void/70 backdrop-blur-sm text-sm font-body tracking-widest uppercase"
+            >
+              <span className="text-[#7df9ff] font-bold">Anomaly</span>
+              <span className="text-beige/70">{anomalyRun.name}</span>
+            </div>
+          )}
           {/* Free Play watermark - subtle but always on during practice
               runs so screenshots/streams are honest about the mode */}
           {isPlaying && lastRunFree && (
@@ -1205,7 +1277,7 @@ export default function GamePage() {
                       Extracted
                     </h2>
                     <p className="text-rarity-uncommon/90 font-body text-sm tracking-wide uppercase">
-                      Banked +{Math.round((outcomeMultipliers(heldMutations, phoenixTriggered).bank - 1) * 100)}%
+                      Banked +{Math.round((outcomeMultipliers(heldMutations, phoenixTriggered, [], activeAnomalyId).bank - 1) * 100)}%
                     </p>
                   </div>
                 ) : (
@@ -1217,7 +1289,7 @@ export default function GamePage() {
                       Game Over
                     </h2>
                     <p className="text-beige/60 font-body text-sm tracking-wide uppercase">
-                      Crashed — salvaged {Math.round(outcomeMultipliers(heldMutations, phoenixTriggered).death * 100)}%
+                      Crashed — salvaged {Math.round(outcomeMultipliers(heldMutations, phoenixTriggered, [], activeAnomalyId).death * 100)}%
                     </p>
                   </div>
                 )}
@@ -1397,8 +1469,8 @@ export default function GamePage() {
               </>
             )}
 
-            {/* Run mode: EARN (energy, rewards) vs FREE PLAY (unlimited
-                practice, no rewards) - Design v2 §7.4 */}
+            {/* Run mode: EARN (energy, rewards) vs ANOMALY (weekly board,
+                §7.2) vs FREE PLAY (unlimited practice, no rewards - §7.4) */}
             {!noSnakeAvailable && (
               <ModeToggle
                 mode={gameMode}
@@ -1406,8 +1478,17 @@ export default function GamePage() {
                 maxEnergy={maxEnergy}
                 energyRegenAt={energyRegenAt}
                 onSelect={setGameMode}
+                anomalyName={
+                  anomalyBoard?.live ? anomalyBoard.anomaly.name : null
+                }
               />
             )}
+
+            {/* Weekly Anomaly board entry: modifier, timer, your best,
+                top 10 - shown while the ANOMALY mode is selected */}
+            {!noSnakeAvailable &&
+              gameMode === 'anomaly' &&
+              anomalyBoard?.live && <AnomalyPanel board={anomalyBoard} />}
 
             {/* Aim system picker - locked chips show their unlock path */}
             {!noSnakeAvailable && (
@@ -1486,8 +1567,9 @@ export default function GamePage() {
                 </button>
               ) : energy > 0 ? (
                 <button
-                  onClick={() => handleStart('earn')}
+                  onClick={() => handleStart(gameMode === 'anomaly' ? 'anomaly' : 'earn')}
                   disabled={isStarting || !equippedSnake}
+                  data-testid={gameMode === 'anomaly' ? 'anomaly-start' : 'earn-start'}
                   className={`btn-go inline-flex items-center gap-2 px-8 py-4 text-xl min-h-[44px] ${
                     isStarting || !equippedSnake
                       ? 'cursor-wait'
@@ -1496,7 +1578,13 @@ export default function GamePage() {
                 >
                   {isStarting ? 'Starting...' : (
                     <>
-                      {isGameOver ? 'Play Again' : 'Play'}
+                      {gameMode === 'anomaly'
+                        ? isGameOver
+                          ? 'Run the Anomaly Again'
+                          : 'Run the Anomaly'
+                        : isGameOver
+                          ? 'Play Again'
+                          : 'Play'}
                       <span className="inline-flex items-center gap-0.5 text-base">
                         ({GAME_CONFIG.economy.energy.costPerGame}
                         <IconBolt size={16} />)
@@ -1659,6 +1747,8 @@ export default function GamePage() {
             extraFoods={extraFoods}
             constellationGlyph={constellationGlyph}
             exitTile={exitTile}
+            exitTile2={exitTile2}
+            anomalyId={isPlaying ? activeAnomalyId : null}
             exitTicksRemaining={exitTicksRemaining}
             mutationTile={mutationTile}
             mutationTicksRemaining={mutationTicksRemaining}
@@ -1711,6 +1801,10 @@ interface GameBoardProps {
   extraFoods: Position[];
   constellationGlyph: number | null;
   exitTile: Position | null;
+  /** Second portal of the Twin Exits anomaly pair (§7.2), null otherwise. */
+  exitTile2: Position | null;
+  /** Active anomaly modifier while playing (drives the Blackout mask). */
+  anomalyId: AnomalyId | null;
   exitTicksRemaining: number;
   mutationTile: Position | null;
   mutationTicksRemaining: number;
@@ -1733,6 +1827,8 @@ function GameBoard({
   extraFoods,
   constellationGlyph,
   exitTile,
+  exitTile2,
+  anomalyId,
   exitTicksRemaining,
   mutationTile,
   mutationTicksRemaining,
@@ -1820,6 +1916,24 @@ function GameBoard({
         <ExitPortal
           position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
           ticksRemaining={exitTicksRemaining}
+        />
+      )}
+      {/* Twin Exits (anomaly §7.2): the pair's second doorway - same
+          shared despawn window, either one banks the run */}
+      {exitTile2 && (
+        <ExitPortal
+          position={[exitTile2.x + 0.5, 0, exitTile2.z + 0.5]}
+          ticksRemaining={exitTicksRemaining}
+        />
+      )}
+
+      {/* Blackout (anomaly §7.2): render-layer visibility mask - the
+          world fades to void beyond 6 cells of the head. Never engine
+          logic; payout math is untouched. */}
+      {anomalyId === 'blackout' && (
+        <BlackoutMask
+          headPosition={snake[0] ?? null}
+          gridSize={GAME_CONFIG.board.gridSize}
         />
       )}
 

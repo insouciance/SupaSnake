@@ -1,12 +1,16 @@
 'use client';
 
 /**
- * Run-mode toggle (Design v2 §7.4): EARN (energy-gated, rewarded) vs
- * FREE PLAY (unlimited, rewardless practice). Rendered on the pre-game
- * overlay using the same chip pattern as the control-mode toggle.
+ * Run-mode toggle (Design v2 §7.4 + §7.2): EARN (energy-gated, rewarded)
+ * vs ANOMALY (this week's modifier board - an earning run with its own
+ * leaderboard) vs FREE PLAY (unlimited, rewardless practice). Rendered on
+ * the pre-game overlay using the same chip pattern as the control-mode
+ * toggle.
  *
- * EARN is disabled at zero energy and shows the server-driven regen
- * countdown instead of a dead wall - Free Play is the way to keep playing.
+ * EARN and ANOMALY are disabled at zero energy and show the server-driven
+ * regen countdown instead of a dead wall - Free Play is the way to keep
+ * playing. The ANOMALY chip only renders while the board is live
+ * (pre-migration-021 the server reports { live: false }).
  */
 
 import { useEffect, useState } from 'react';
@@ -24,6 +28,8 @@ interface ModeToggleProps {
   maxEnergy: number;
   energyRegenAt: string | null;
   onSelect: (mode: GameMode) => void;
+  /** This week's anomaly name; null hides the ANOMALY chip (board not live). */
+  anomalyName?: string | null;
 }
 
 export function ModeToggle({
@@ -32,6 +38,7 @@ export function ModeToggle({
   maxEnergy,
   energyRegenAt,
   onSelect,
+  anomalyName = null,
 }: ModeToggleProps) {
   const outOfEnergy = energy < GAME_CONFIG.economy.energy.costPerGame;
 
@@ -72,6 +79,17 @@ export function ModeToggle({
             <IconBolt size={14} />)
           </span>
         </button>
+        {anomalyName !== null && (
+          <button
+            onClick={() => onSelect('anomaly')}
+            disabled={outOfEnergy}
+            data-testid="mode-anomaly"
+            aria-pressed={mode === 'anomaly'}
+            className={chipClass(mode === 'anomaly', outOfEnergy)}
+          >
+            ANOMALY
+          </button>
+        )}
         <button
           onClick={() => onSelect('free')}
           data-testid="mode-free"
@@ -84,6 +102,11 @@ export function ModeToggle({
       {mode === 'free' ? (
         <p className="text-beige/60 text-xs font-body" data-testid="mode-free-hint">
           Unlimited · no rewards — pure practice
+        </p>
+      ) : mode === 'anomaly' ? (
+        <p className="text-beige/60 text-xs font-body" data-testid="mode-anomaly-hint">
+          {anomalyName ? `This week: ${anomalyName}` : 'Weekly modifier board'} —
+          normal DNA, own leaderboard
         </p>
       ) : (
         <p className="text-beige/60 text-xs font-body" data-testid="mode-earn-hint">

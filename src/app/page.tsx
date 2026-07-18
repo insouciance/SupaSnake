@@ -35,6 +35,11 @@ import {
   type ContractView,
   type ContractClaimOutcome,
 } from '@/components/engagement/ContractsBoard';
+import {
+  SeasonTrack,
+  type SeasonView,
+  type SeasonTrackView,
+} from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
 import { OverlayHint } from '@/components/ftue/OverlayHint';
 import { trackEvent } from '@/lib/analytics/posthog';
@@ -86,6 +91,13 @@ export default function Home() {
   const [streak, setStreak] = useState<{ current: number; multiplier: number } | null>(null);
   const [contractsState, setContractsState] = useState<ContractsState | null>(null);
   const [showContractsBoard, setShowContractsBoard] = useState(false);
+  // Season track (Design v2 §7.2): the free seasonal reward track. Null
+  // until fetched or while no season is live / pre-migration-021.
+  const [seasonState, setSeasonState] = useState<{
+    season: SeasonView;
+    track: SeasonTrackView;
+  } | null>(null);
+  const [showSeasonTrack, setShowSeasonTrack] = useState(false);
   const [welcomeBack, setWelcomeBack] = useState<LastUserMarker | null>(null);
   const [showLossNotice, setShowLossNotice] = useState(false);
   const [dynasty, setDynasty] = useState<DynastyId>('CYBER');
@@ -245,6 +257,74 @@ export default function Home() {
       cancelled = true;
     };
   }, [isAuthenticated, token]);
+
+  // Season track (§7.2): fetch the live season + the player's free track.
+  // { live: false } (pre-migration-021) or no live season simply keeps the
+  // season surfaces hidden - non-fatal like every engagement fetch here.
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch('/api/season', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.live && data.season && data.track) {
+          setSeasonState({ season: data.season, track: data.track });
+        }
+      } catch {
+        // Season UI simply stays hidden on failure
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, token]);
+
+  const handleSeasonClaim = useCallback(
+    async (level: number): Promise<boolean> => {
+      if (!token) return false;
+      try {
+        const res = await fetch('/api/season', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: 'claim', level }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+
+        setSeasonState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            track: {
+              ...prev.track,
+              tiers: prev.track.tiers.map((t) =>
+                t.level === level ? { ...t, claimed: true } : t
+              ),
+              reroll_tokens:
+                typeof data.reward?.reroll_tokens === 'number'
+                  ? data.reward.reroll_tokens
+                  : prev.track.reroll_tokens,
+            },
+          };
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [token]
+  );
 
   const handleContractsPick = useCallback(
     async (contractIds: string[]): Promise<boolean> => {
@@ -412,6 +492,19 @@ export default function Home() {
         });
       }
     }
+    if (seasonState) {
+      const claimable = seasonState.track.tiers.some(
+        (t) => !t.claimed && seasonState.track.level >= t.level
+      );
+      items.push({
+        id: 'season',
+        text: claimable
+          ? `${seasonState.season.name} · milestone ready`
+          : `${seasonState.season.name} · week ${seasonState.season.week} of ${seasonState.season.weeks}`,
+        beacon: claimable,
+        onSelect: () => setShowSeasonTrack(true),
+      });
+    }
     if (stats) {
       items.push({
         id: 'goal',
@@ -428,7 +521,7 @@ export default function Home() {
       items.push({ id: 'tagline', text: 'Where Skill Creates Legacy' });
     }
     return items;
-  }, [isAuthenticated, contractsState, stats, streak]);
+  }, [isAuthenticated, contractsState, seasonState, stats, streak]);
 
   useEffect(() => {
     setMissionIndex(0);
@@ -470,7 +563,10 @@ export default function Home() {
       <SaveProgressBanner
         variant="chip"
         suppressed={
-          needsStarter || showContractsBoard || Boolean(welcomeBack && !isAuthenticated)
+          needsStarter ||
+          showContractsBoard ||
+          showSeasonTrack ||
+          Boolean(welcomeBack && !isAuthenticated)
         }
       />
 
@@ -566,6 +662,19 @@ export default function Home() {
           onPick={handleContractsPick}
           onClaim={handleContractClaim}
           onDismiss={handleContractsDismiss}
+        />
+      )}
+
+      {/* Season track (§7.2): free milestones - cosmetics + reroll tokens.
+          Opened from the mission line; single-overlay policy respected
+          (never rendered while the contracts board is up). */}
+      {seasonState && !needsStarter && !showContractsBoard && (
+        <SeasonTrack
+          isVisible={showSeasonTrack}
+          season={seasonState.season}
+          track={seasonState.track}
+          onClaim={handleSeasonClaim}
+          onDismiss={() => setShowSeasonTrack(false)}
         />
       )}
 

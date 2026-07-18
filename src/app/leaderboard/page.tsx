@@ -22,8 +22,12 @@ import { useToast } from '@/components/ui/Toast';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 import { IconTrophy } from '@/components/ui/icons';
+import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
 
 type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
+
+/** Board tabs: the three score boards + the weekly anomaly board (§7.2). */
+type BoardTab = LeaderboardType | 'anomaly';
 
 // Dynasty tokens (match tailwind cyber/primal/cosmic colors)
 const DYNASTY_CHIP_SELECTED: Record<DynastyId, string> = {
@@ -74,14 +78,19 @@ export default function LeaderboardPage() {
     redirect('/');
   }
 
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { showToast } = useToast();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [type, setType] = useState<LeaderboardType>('global');
+  const [tab, setTab] = useState<BoardTab>('global');
   const [bracket, setBracket] = useState<SkillBracket | 'all'>('all');
   const [dynasty, setDynasty] = useState<DynastyId | 'all'>('all');
   const [total, setTotal] = useState(0);
+  // Weekly Anomaly board (§7.2): fetched when its tab is selected
+  const [anomalyBoard, setAnomalyBoard] = useState<AnomalyBoardView | null>(null);
+
+  const type: LeaderboardType = tab === 'anomaly' ? 'weekly' : tab;
+  const anomalyTab = tab === 'anomaly';
 
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
@@ -131,8 +140,28 @@ export default function LeaderboardPage() {
   });
 
   useEffect(() => {
+    if (anomalyTab) return; // the anomaly tab has its own fetch below
     fetchLeaderboard();
-  }, [fetchLeaderboard]);
+  }, [fetchLeaderboard, anomalyTab]);
+
+  // Weekly Anomaly board (§7.2): its own leaderboard, normal DNA rules
+  useEffect(() => {
+    if (!anomalyTab || !session?.access_token) return;
+    let cancelled = false;
+    fetch('/api/anomaly', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.anomaly) {
+          setAnomalyBoard(data as AnomalyBoardView);
+        }
+      })
+      .catch((err) => console.error('Failed to fetch anomaly board:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [anomalyTab, session?.access_token]);
 
   const myRank = entries.find(e => e.playerId === user?.id)?.rank;
   const podiumEntries = entries.filter(e => e.rank >= 1 && e.rank <= 3);
@@ -170,14 +199,15 @@ export default function LeaderboardPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-8 animate-fade-up">
-          {/* Time Filter */}
+          {/* Board Filter: the three score boards + this week's anomaly */}
           <div className="flex flex-wrap gap-2">
-            {(['global', 'weekly', 'daily'] as LeaderboardType[]).map((t) => (
+            {(['global', 'weekly', 'daily', 'anomaly'] as BoardTab[]).map((t) => (
               <button
                 key={t}
-                onClick={() => setType(t)}
+                onClick={() => setTab(t)}
+                data-testid={`leaderboard-tab-${t}`}
                 className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-display uppercase text-sm transition-all ${
-                  type === t
+                  tab === t
                     ? 'bg-cta-gradient border-venom-orange-light text-void-deep shadow-glow-sm shadow-venom-orange/50'
                     : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange hover:text-bone-white'
                 }`}
@@ -187,7 +217,8 @@ export default function LeaderboardPage() {
             ))}
           </div>
 
-          {/* Bracket Filter */}
+          {/* Bracket Filter (score boards only) */}
+          {!anomalyTab && (
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setBracket('all')}
@@ -218,9 +249,10 @@ export default function LeaderboardPage() {
               </button>
             ))}
           </div>
+          )}
 
           {/* Dynasty Filter (only for weekly/daily) */}
-          {type !== 'global' && (
+          {!anomalyTab && type !== 'global' && (
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setDynasty('all')}
@@ -249,8 +281,38 @@ export default function LeaderboardPage() {
           )}
         </div>
 
+        {/* Weekly Anomaly board (§7.2): its own leaderboard - normal DNA
+            rules, one rotating modifier per week */}
+        {anomalyTab && (
+          <div className="max-w-xl animate-fade-up space-y-3" data-testid="anomaly-board-tab">
+            {!session?.access_token ? (
+              <p className="text-beige font-body">
+                Sign in to see this week&apos;s anomaly board.
+              </p>
+            ) : !anomalyBoard ? (
+              <div className="p-12 text-center">
+                <div className="animate-spin w-10 h-10 border-4 border-t-transparent border-venom-orange rounded-full mx-auto mb-4" />
+                <p className="text-beige font-body">Loading...</p>
+              </div>
+            ) : !anomalyBoard.live ? (
+              <p className="text-beige font-body">
+                The Anomaly board is not live yet — this week would be{' '}
+                <span className="text-bone-white">{anomalyBoard.anomaly.name}</span>.
+              </p>
+            ) : (
+              <>
+                <AnomalyPanel board={anomalyBoard} />
+                <p className="text-beige/40 text-xs font-body">
+                  Anomaly runs pay normal DNA and score here — not on the
+                  weekly dynasty boards.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
         {/* My Position */}
-        {myRank && (
+        {!anomalyTab && myRank && (
           <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 animate-fade-up">
             <p className="text-venom-orange font-body">
               Your Rank: <span className="font-display text-2xl text-glow-orange">#{myRank}</span>
@@ -259,7 +321,7 @@ export default function LeaderboardPage() {
         )}
 
         {/* Podium - top three */}
-        {!loading && podiumEntries.length > 0 && (
+        {!anomalyTab && !loading && podiumEntries.length > 0 && (
           <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 items-end animate-fade-up">
             {[2, 1, 3].map((rank) => {
               const entry = podiumEntries.find(e => e.rank === rank);
@@ -293,6 +355,7 @@ export default function LeaderboardPage() {
         )}
 
         {/* Leaderboard Table */}
+        {!anomalyTab && (
         <div className="panel-elevated overflow-hidden animate-fade-up">
           {/* Header */}
           <div className="grid grid-cols-12 gap-4 p-4 bg-void/60 border-b border-scale-blue-light/60 label-arcade">
@@ -373,17 +436,22 @@ export default function LeaderboardPage() {
             ))
           )}
         </div>
+        )}
 
         {/* Total Count */}
+        {!anomalyTab && (
         <div className="text-center text-beige/60 mt-6 text-sm font-body">
           {total.toLocaleString()} total players
         </div>
+        )}
 
         {/* Fair Play Notice */}
+        {!anomalyTab && (
         <div className="text-center text-beige/40 mt-8 text-xs font-body space-y-1">
           <p>Players compete within their skill bracket for fair competition.</p>
           <p>Brackets are based on highest snake generation.</p>
         </div>
+        )}
       </div>
     </div>
   );

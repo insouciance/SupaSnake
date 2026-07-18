@@ -14,6 +14,7 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import { DuelPanel } from '@/components/clan/DuelPanel';
 import { GauntletPanel } from '@/components/clan/GauntletPanel';
+import { PlayoffBracket } from '@/components/clan/PlayoffBracket';
 import Link from 'next/link';
 import { IconBolt, IconShield, IconUser } from '@/components/ui/icons';
 
@@ -230,6 +231,12 @@ export default function ClanPage() {
 
           {/* Clan Gauntlet - picks, scouting + research (hidden pre-020) */}
           <GauntletPanel accessToken={session?.access_token} />
+
+          {/* Season playoffs (§8.4): top-8 bracket in the final 2 weeks +
+              champions banner history (hidden pre-021 / off-season) */}
+          <div className="mb-10 animate-fade-up">
+            <PlayoffBracket accessToken={session?.access_token} />
+          </div>
 
           <section className="mb-10 animate-fade-up">
             <h2 className="heading-display text-2xl text-bone-white mb-4">My Clan</h2>

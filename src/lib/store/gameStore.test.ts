@@ -385,4 +385,40 @@ describe('Game Store', () => {
       expect(state.gameMode).toBe('free');
     });
   });
+
+  describe('Weekly Anomaly board (Design v2 §7.2)', () => {
+    it('anomaly is a first-class run mode', () => {
+      useGameStore.getState().setGameMode('anomaly');
+      expect(useGameStore.getState().gameMode).toBe('anomaly');
+    });
+
+    it('mirrors the Twin Exits second portal and clears it on end/start', () => {
+      useGameStore.getState().startGame();
+      useGameStore.getState().setExitTile2({ x: 3, y: 0, z: 4 });
+      expect(useGameStore.getState().exitTile2).toEqual({ x: 3, y: 0, z: 4 });
+
+      useGameStore.getState().endGame(10, 5, 'extracted');
+      expect(useGameStore.getState().exitTile2).toBeNull();
+
+      useGameStore.getState().setExitTile2({ x: 1, y: 0, z: 1 });
+      useGameStore.getState().startGame();
+      expect(useGameStore.getState().exitTile2).toBeNull();
+    });
+
+    it('anomalyRun context survives game over (board line on the end screen) but resets with resetGame', () => {
+      const info = {
+        id: 'gold_rush',
+        name: 'Gold Rush',
+        effect: 'All food ×1.5 DNA',
+        endsAt: '2026-07-27T00:00:00.000Z',
+      };
+      useGameStore.getState().setAnomalyRun(info);
+      useGameStore.getState().startGame();
+      useGameStore.getState().endGame(10, 5);
+      expect(useGameStore.getState().anomalyRun).toEqual(info);
+
+      useGameStore.getState().resetGame();
+      expect(useGameStore.getState().anomalyRun).toBeNull();
+    });
+  });
 });

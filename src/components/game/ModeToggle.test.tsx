@@ -75,4 +75,40 @@ describe('ModeToggle', () => {
     render(<ModeToggle {...baseProps} energy={2} />);
     expect(screen.queryByTestId('mode-out-of-energy')).toBeNull();
   });
+
+  // --- Weekly Anomaly board (Design v2 §7.2) -------------------------------
+
+  it('hides the ANOMALY chip while the board is not live (pre-021)', () => {
+    render(<ModeToggle {...baseProps} />);
+    expect(screen.queryByTestId('mode-anomaly')).toBeNull();
+  });
+
+  it('renders the ANOMALY chip when live and selects the mode on click', () => {
+    const onSelect = jest.fn();
+    render(
+      <ModeToggle {...baseProps} onSelect={onSelect} anomalyName="Gold Rush" />
+    );
+
+    const chip = screen.getByTestId('mode-anomaly');
+    expect(chip).toHaveTextContent('ANOMALY');
+    fireEvent.click(chip);
+    expect(onSelect).toHaveBeenCalledWith('anomaly');
+  });
+
+  it('shows the week-modifier hint in anomaly mode', () => {
+    render(
+      <ModeToggle {...baseProps} mode="anomaly" anomalyName="Blackout" />
+    );
+    const hint = screen.getByTestId('mode-anomaly-hint');
+    expect(hint).toHaveTextContent(/This week: Blackout/);
+    expect(hint).toHaveTextContent(/normal DNA, own leaderboard/);
+  });
+
+  it('disables ANOMALY at zero energy (anomaly runs are earning runs)', () => {
+    render(
+      <ModeToggle {...baseProps} mode="free" energy={0} anomalyName="Twin Exits" />
+    );
+    expect(screen.getByTestId('mode-anomaly')).toBeDisabled();
+    expect(screen.getByTestId('mode-free')).not.toBeDisabled();
+  });
 });
