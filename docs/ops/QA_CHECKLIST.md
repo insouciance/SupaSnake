@@ -241,6 +241,53 @@ that breaks the spell.
 - FEEL: does your career read as a STORY (beginnings, firsts, weeks) —
   or still as a stats tab? Would you send someone your /p/ link?
 
+## Stage 10 — The Muster (clan identity + Discord — needs migration 024)
+
+*You need: a clan you own (or officer), the official SupaSnake Discord
+server, and a second test account for invites/roles.*
+
+- [ ] **Link Discord from settings**: Settings → Discord card → the CTA
+      lists what connecting does (join server, clan role, 5 Linked-Role
+      stats, privacy note) → Connect → Discord authorize screen shows
+      identify + guilds.join + role connections → approve
+- [ ] **Auto-join lands you in the official server**: after the redirect
+      (`/settings?discord=linked`) open Discord — you're a member of the
+      SupaSnake server without touching an invite
+- [ ] Settings card now shows your Discord username + Unlink
+- [ ] **Officer links the clan** (clan page → Discord panel → "Link
+      Official Server"): a private `#clan-<tag>` channel + `Clan <TAG>`
+      role appear in the official guild; only role-holders see the
+      channel; your linked account got the role
+- [ ] Clan page Discord panel flips to linked: online presence (widget),
+      "Open Channel" deep link opens the channel, invite link works
+- [ ] **Duel settles → embed in the channel**: after a duel week
+      settles (or the 5-min cron `/api/discord/dispatch` fires), the
+      channel shows the ⚔️ Duel settled embed with both clans' names,
+      scores and the rating delta
+- [ ] Invite flow: officer invites the 2nd account by handle → its clan
+      page shows the invite inbox → Accept → member appears on the
+      roster (PlayerCard row + role chip) → 🤝 embed posts to the channel
+- [ ] Owner promote/demote buttons: member ↔ officer; nobody can be made
+      owner from the roster
+- [ ] Heraldry editor: without heraldry_1 research everything is locked
+      with the research hint; after unlocking, banner/emblem/colors save
+      and the preview updates
+- [ ] **Linked Role visible in Discord**: Server Settings → Roles →
+      create a role with a "SupaSnake" requirement — the 5 fields
+      (Mastery Level, Legacy Score, Season Champion, Founder,
+      Extractions) are offered; your own connection shows values under
+      User Settings → Connections
+- [ ] **Own-server flow**: on a throwaway server you own, invite the bot
+      (Manage Channels/Roles/Webhooks + Create Instant Invite), clan
+      page → "Use Our Own Server" → paste the Server ID → channel + role
+      + webhook appear in YOUR server; events post there
+- [ ] **Unlink cleanup**: clan Discord unlink deletes the provisioned
+      channel + role; settings unlink revokes the grant (Discord →
+      Authorized Apps no longer lists SupaSnake) and the card returns to
+      the connect CTA
+- FEEL: does the clan now have a HOME? Does a settled duel feel like an
+  event because it lands where the clan talks?
+
 ## 📱 Mobile pass (repeat the spine of Stages 1-5 on your phone)
 
 - [ ] Chamber + board fully in frame portrait; bottom rail reachable;
