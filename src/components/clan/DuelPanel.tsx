@@ -12,11 +12,60 @@
 import { useEffect, useState } from 'react';
 import { IconDna, IconFlame, IconTrophy, IconShield } from '@/components/ui/icons';
 import { projectedRatingChange } from '@/lib/clan/elo';
+import { GAUNTLET_MODIFIERS, type GauntletModifierId } from '@/shared/game/gauntlet';
+import { MUTATIONS, isMutationId } from '@/shared/game/mutations';
 
 export interface DuelOpponent {
   name: string;
   tag: string;
   rating: number;
+}
+
+export interface GauntletSideRules {
+  dynasty: string | null;
+  dynasty2: string | null;
+  modifier: string | null;
+  topMembers: number;
+  bestRuns: number;
+  weight: number;
+  extractedOnly: boolean;
+  banned: string | null;
+}
+
+export interface GauntletRivalry {
+  wins: number;
+  losses: number;
+  ties: number;
+  meetings: number;
+  lastWinnerMe: boolean;
+}
+
+/** Gauntlet block on the duel payload (null pre-migration-020). */
+export interface DuelGauntlet {
+  phase: 'picks_open' | 'locked' | 'scoring';
+  picksDeadline: string;
+  windowFrom: string;
+  windowTo: string;
+  revealed: boolean;
+  myPicks: { dynasty: string; ban: string | null } | null;
+  theirPicks: { dynasty: string; ban: string | null } | null;
+  myRules: GauntletSideRules | null;
+  theirRules: GauntletSideRules | null;
+  rivalry: GauntletRivalry | null;
+  revenge: boolean;
+}
+
+/** Display name for a modifier id ("vanguard" -> "Vanguard"). */
+export function modifierName(id: string | null): string | null {
+  if (!id) return null;
+  const modifier = GAUNTLET_MODIFIERS[id as GauntletModifierId];
+  return modifier ? modifier.name : id;
+}
+
+/** Display name for a banned mutation id ("phoenix" -> "Phoenix"). */
+export function mutationName(id: string | null): string | null {
+  if (!id) return null;
+  return isMutationId(id) ? MUTATIONS[id].name : id;
 }
 
 export interface DuelContributor {
@@ -33,6 +82,8 @@ export interface DuelInfo {
   theirScore: number;
   endsAt: string;
   myTopContributors: DuelContributor[];
+  /** Gauntlet evolution (migration 020); absent/null on pre-020 payloads. */
+  gauntlet?: DuelGauntlet | null;
 }
 
 export interface LastWeekResult {
@@ -199,6 +250,23 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
               <p className="font-display uppercase text-lg text-bone-white">
                 vs {duel.opponent.name}{' '}
                 <span className="text-beige/70 text-sm">[{duel.opponent.tag}]</span>
+                {duel.gauntlet?.rivalry && (
+                  <span
+                    data-testid="rivalry-record"
+                    className="ml-2 px-2 py-0.5 bg-void/60 border border-scale-blue-light/50 rounded-arcade text-xs font-display text-beige align-middle"
+                  >
+                    Rivalry {duel.gauntlet.rivalry.wins}W-{duel.gauntlet.rivalry.losses}L
+                    {duel.gauntlet.rivalry.ties > 0 ? `-${duel.gauntlet.rivalry.ties}T` : ''}
+                  </span>
+                )}
+                {duel.gauntlet?.revenge && (
+                  <span
+                    data-testid="revenge-badge"
+                    className="ml-2 px-2 py-0.5 bg-strike-red/20 border border-strike-red/70 rounded-arcade text-xs font-display text-strike-red align-middle"
+                  >
+                    Revenge match
+                  </span>
+                )}
               </p>
               <p className="text-sm font-body text-beige">
                 Their rating: <span className="text-bone-white">{duel.opponent.rating}</span>
@@ -211,6 +279,57 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                 )}
               </p>
             </div>
+
+            {/* Gauntlet: picks-open hint (Mon-Wed) */}
+            {duel.gauntlet && duel.gauntlet.phase === 'picks_open' && (
+              <p
+                data-testid="gauntlet-picks-open-hint"
+                className="text-sm text-beige font-body mb-4 bg-void/40 border border-scale-blue-light/30 rounded-arcade px-3 py-2"
+              >
+                Blind picks lock <span className="text-bone-white font-display">Wednesday 00:00 UTC</span>
+                {' '}&middot; counted runs Thu&ndash;Sun
+              </p>
+            )}
+
+            {/* Gauntlet: effective rules banner (after Wed reveal) */}
+            {duel.gauntlet?.myRules && (
+              <div
+                data-testid="gauntlet-rules-banner"
+                className="mb-4 p-3 bg-cosmic/10 border border-cosmic/60 rounded-arcade text-sm font-body text-beige"
+              >
+                <p className="font-display uppercase text-cosmic-glow mb-1">Rules in effect</p>
+                <p>
+                  Counted runs:{' '}
+                  <span className="text-bone-white font-display">
+                    {duel.gauntlet.myRules.dynasty
+                      ? duel.gauntlet.myRules.dynasty +
+                        (duel.gauntlet.myRules.dynasty2 ? ` + ${duel.gauntlet.myRules.dynasty2}` : '')
+                      : 'Any dynasty'}
+                  </span>{' '}
+                  &middot; Thu&ndash;Sun only &middot; best {duel.gauntlet.myRules.bestRuns} runs &times; top{' '}
+                  {duel.gauntlet.myRules.topMembers} members
+                  {duel.gauntlet.myRules.modifier && (
+                    <>
+                      {' '}&middot;{' '}
+                      <span className="text-venom-orange">
+                        {modifierName(duel.gauntlet.myRules.modifier)}
+                        {duel.gauntlet.myRules.weight !== 1 && ` x${duel.gauntlet.myRules.weight.toFixed(2)}`}
+                      </span>
+                    </>
+                  )}
+                </p>
+                {duel.gauntlet.myRules.banned && (
+                  <p data-testid="gauntlet-ban-received" className="mt-1 text-strike-red">
+                    {mutationName(duel.gauntlet.myRules.banned)} is banned from your offer pools this week
+                  </p>
+                )}
+                {duel.gauntlet.theirRules?.banned && (
+                  <p data-testid="gauntlet-ban-given" className="mt-1 text-venom-orange">
+                    You banned {mutationName(duel.gauntlet.theirRules.banned)} from {duel.opponent.name}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Live score bars */}
             <div className="space-y-3 mb-4">
@@ -275,8 +394,10 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-beige/50 font-body mt-2">
-                  Top 10 members count &middot; best 30 runs each &middot; skill wins, not volume
+                <p className="text-xs text-beige/50 font-body mt-2" data-testid="counted-rules-footer">
+                  {duel.gauntlet?.myRules
+                    ? `Top ${duel.gauntlet.myRules.topMembers} members count · best ${duel.gauntlet.myRules.bestRuns} runs each · Thu-Sun window · skill wins, not volume`
+                    : 'Top 10 members count · best 30 runs each · skill wins, not volume'}
                 </p>
               </div>
             )}

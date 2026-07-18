@@ -13,6 +13,7 @@ import { type Clan, CLAN_LIMITS, CLAN_BONUS_CONFIG } from '@/lib/clan/types';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import { DuelPanel } from '@/components/clan/DuelPanel';
+import { GauntletPanel } from '@/components/clan/GauntletPanel';
 import Link from 'next/link';
 import { IconBolt, IconShield, IconUser } from '@/components/ui/icons';
 
@@ -226,6 +227,9 @@ export default function ClanPage() {
           <>
           {/* This Week's Duel - weekly head-to-head clan competition */}
           <DuelPanel accessToken={session?.access_token} />
+
+          {/* Clan Gauntlet - picks, scouting + research (hidden pre-020) */}
+          <GauntletPanel accessToken={session?.access_token} />
 
           <section className="mb-10 animate-fade-up">
             <h2 className="heading-display text-2xl text-bone-white mb-4">My Clan</h2>
