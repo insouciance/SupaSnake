@@ -41,6 +41,7 @@ import {
 import {
   MUTATION_SPAWN,
   isMutationId,
+  type MutationId,
   type MutationPick,
 } from '@/shared/game/mutations';
 import { type TraitId } from '@/shared/game/traits';
@@ -76,6 +77,12 @@ export interface ValidationResult {
   valid: boolean;
   /** Authoritative payout: outcome(recomputed raw) [+ victory bonus]. */
   adjustedDna: number;
+  /**
+   * Recomputed RAW DNA (incl. accepted COSMIC combo bonus), BEFORE the
+   * outcome multiplier / victory bonus / account stack - the section 7.1
+   * mastery XP base: extracted runs grant floor(rawDna x 1.25).
+   */
+  rawDna: number;
   /** Authoritative display score (recomputed; + clamped combo on COSMIC). */
   adjustedScore: number;
   /** Validated food count (claimed, clamped to the rate bound). */
@@ -111,7 +118,8 @@ function sanitizeMutations(
   raw: unknown,
   foodCount: number,
   errors: string[],
-  minFoodsPerPick: number = MIN_FOODS_PER_PICK
+  minFoodsPerPick: number = MIN_FOODS_PER_PICK,
+  unlockedPool: MutationId[] | null = null
 ): MutationPick[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
@@ -126,6 +134,14 @@ function sanitizeMutations(
     const atFood = (entry as { atFood?: unknown } | null)?.atFood;
     if (!isMutationId(id)) {
       errors.push(`INVALID_MUTATIONS: unknown mutation id ${JSON.stringify(id)}`);
+      continue;
+    }
+    // Pool gating (section 7.1): a pick outside the player's ACTUAL
+    // unlocked pool (recomputed server-side from player_mastery - never
+    // the client's claim) is dropped and flagged. The payout is then the
+    // recompute of the accepted picks only.
+    if (unlockedPool !== null && !unlockedPool.includes(id)) {
+      errors.push(`MUTATION_LOCKED: ${id} is not in the player's unlocked pool`);
       continue;
     }
     if (seen.has(id)) {
@@ -249,7 +265,13 @@ export function validateGameResult(
   input: GameResultInput,
   serverStartedAt: Date,
   dynasty: DynastyName,
-  traits: TraitId[] = []
+  traits: TraitId[] = [],
+  /**
+   * The player's unlocked mutation pool, recomputed SERVER-SIDE from
+   * player_mastery (section 7.1) - null disables pool gating (legacy
+   * callers / tests). Free Play passes the full pool (section 7.4).
+   */
+  unlockedPool: MutationId[] | null = null
 ): ValidationResult {
   const errors: string[] = [];
   const ruleset = getRuleset(dynasty);
@@ -298,7 +320,8 @@ export function validateGameResult(
     input.mutations,
     foodCount,
     errors,
-    traits.includes('patient') ? MIN_FOODS_PER_PICK_PATIENT : MIN_FOODS_PER_PICK
+    traits.includes('patient') ? MIN_FOODS_PER_PICK_PATIENT : MIN_FOODS_PER_PICK,
+    unlockedPool
   );
 
   // 4b. Ascetic trait: mutation food never spawns, so ANY mutation claim
@@ -380,6 +403,7 @@ export function validateGameResult(
   return {
     valid: errors.length === 0,
     adjustedDna: expectedPayout,
+    rawDna,
     adjustedScore: expectedScore,
     foodCount,
     extracted,

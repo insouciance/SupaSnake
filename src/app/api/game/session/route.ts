@@ -10,6 +10,15 @@ import { checkRateLimit } from '@/lib/server/rateLimit';
 import { validateGameResult } from '@/lib/server/gameValidator';
 import { normalizeDynastyName } from '@/shared/game/rulesets';
 import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
+import {
+  MASTERY_UNLOCK_TRACK,
+  fullMutationPool,
+  levelForXp,
+  masteryUnlockLabel,
+  masteryXpForRun,
+  unlockedMutationPool,
+} from '@/shared/game/mastery';
+import { getMasteryXp, grantMasteryXp } from '@/lib/server/mastery';
 import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
@@ -134,6 +143,23 @@ export async function POST(request: NextRequest) {
         (snake as Record<string, unknown>).traits
       );
 
+      // Per-dynasty mastery (section 7.1): the offer pool the engine may
+      // draw from. Earning runs get the EARNED pool (base ten + this
+      // dynasty's M3/M6/M9 unlocks, recomputed from player_mastery -
+      // pre-019 this reads as 0 XP => base pool). Free Play gets the
+      // entire pool (section 7.4: practice is also a showroom).
+      const startDynasty = normalizeDynastyName(dynastyName);
+      const masteryXp = await getMasteryXp(supabase, player.id, startDynasty);
+      const masteryLevel = levelForXp(masteryXp);
+      const mutationPool = isFreePlay
+        ? fullMutationPool(startDynasty)
+        : unlockedMutationPool(startDynasty, masteryLevel);
+      const masteryInfo = {
+        dynasty: startDynasty,
+        xp: masteryXp,
+        level: masteryLevel,
+      };
+
       const serverStartedAt = new Date().toISOString();
 
       const { data: session, error: sessionError } = await supabase
@@ -175,6 +201,8 @@ export async function POST(request: NextRequest) {
           energy: player.energy,
           energyRegenAt: player.energy_regen_at,
           traits: snakeTraits,
+          mutationPool,
+          mastery: masteryInfo,
         });
       }
 
@@ -228,6 +256,8 @@ export async function POST(request: NextRequest) {
         energy: newEnergy,
         energyRegenAt: newRegenAt,
         traits: snakeTraits,
+        mutationPool,
+        mastery: masteryInfo,
       });
     }
 
@@ -286,6 +316,23 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Free session (the marker on the row is authoritative, never the
+      // request): validate + record normally, PAY NOTHING on the way out.
+      const isFreeSession = session.is_free_play === true;
+
+      // Per-dynasty mastery (section 7.1): recompute the player's ACTUAL
+      // unlocked pool server-side from player_mastery - the client's list
+      // (and whatever the engine offered) is never trusted. Free sessions
+      // validate against the full pool (section 7.4: everything unlocked
+      // in practice). Pre-019 the XP read is 0 => base pool.
+      const endDynasty = normalizeDynastyName(session.dynasty);
+      const masteryXpBefore = isFreeSession
+        ? 0
+        : await getMasteryXp(supabase, player.id, endDynasty);
+      const unlockedPool = isFreeSession
+        ? fullMutationPool(endDynasty)
+        : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore));
+
       // Design v2: the client sends the raw food count + how the run ended;
       // the server recomputes the payout exactly from the session row's
       // dynasty (server-trusted, stored at start - never from this request).
@@ -308,8 +355,9 @@ export async function POST(request: NextRequest) {
           cosmic,
         },
         serverStartedAt,
-        normalizeDynastyName(session.dynasty),
-        snakeTraits
+        endDynasty,
+        snakeTraits,
+        unlockedPool
       );
 
       if (!validation.valid) {
@@ -320,10 +368,6 @@ export async function POST(request: NextRequest) {
           errors: validation.errors,
         });
       }
-
-      // Free session (the marker on the row is authoritative, never the
-      // request): validate + record normally, PAY NOTHING on the way out.
-      const isFreeSession = session.is_free_play === true;
 
       // DNA multiplier stack: streak tier x set bonus x clan duel.
       // (Design v2: the dynasty passive is gone - the ruleset already
@@ -513,6 +557,53 @@ export async function POST(request: NextRequest) {
         .eq('id', player.id)
         .single();
 
+      // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
+      // (free sessions returned above; deaths grant nothing). The XP is
+      // floor(raw x 1.25) - the banked payout BEFORE Mirror Wager /
+      // Compound Interest outcome shaping and BEFORE the account
+      // multiplier stack, so streaks never inflate mastery. Non-fatal:
+      // pre-019 (missing table/RPC) or any grant failure just omits the
+      // mastery block from the response.
+      let mastery: {
+        dynasty: string;
+        xpGained: number;
+        xp: number;
+        level: number;
+        leveledUp: boolean;
+        unlocks: { level: number; kind: string; label: string }[];
+      } | null = null;
+      if (validation.extracted) {
+        const xpGained = masteryXpForRun(validation.rawDna, true);
+        if (xpGained > 0) {
+          const granted = await grantMasteryXp(
+            supabase,
+            player.id,
+            endDynasty,
+            xpGained
+          );
+          if (granted) {
+            const levelBefore = levelForXp(masteryXpBefore);
+            const levelAfter = levelForXp(granted.xpAfter);
+            const unlocks: { level: number; kind: string; label: string }[] = [];
+            for (let lvl = levelBefore + 1; lvl <= levelAfter; lvl++) {
+              unlocks.push({
+                level: lvl,
+                kind: MASTERY_UNLOCK_TRACK[lvl - 1].kind,
+                label: masteryUnlockLabel(endDynasty, lvl),
+              });
+            }
+            mastery = {
+              dynasty: endDynasty,
+              xpGained,
+              xp: granted.xpAfter,
+              level: levelAfter,
+              leveledUp: levelAfter > levelBefore,
+              unlocks,
+            };
+          }
+        }
+      }
+
       // Record daily play streak (non-fatal if it errors)
       let streak: {
         current: number;
@@ -638,6 +729,7 @@ export async function POST(request: NextRequest) {
         newAchievements,
         ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
+        ...(mastery ? { mastery } : {}),
       });
     }
 
