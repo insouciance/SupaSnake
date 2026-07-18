@@ -197,6 +197,50 @@ that breaks the spell.
 - FEEL: after claiming, does the game feel like it knows YOU? Would you
   recognize a rival's name next week?
 
+## Stage 9 — The Chronicle (records + public profiles — needs migration 023)
+
+- [ ] Nav rail → Chronicle (or Settings → "The Chronicle" panel): your
+      career page opens with the FULL Player Card on top — Legacy Score
+      line on the card (hidden while it's still 0), founder line intact
+- [ ] Records cabinet: all 21 records grouped in 6 categories, each with
+      tier pips + a progress caption toward the NEXT rung (want-list,
+      no empty grids); your Tenure/Mileage records already show real
+      values from day one
+- [ ] Reach a tier (e.g. bank 10 extractions → Clean Getaways Bronze):
+      after the next run ends (or "Refresh records"), the tier name
+      lights in its rarity color AND the badge
+      `record_clean_getaways_t1` appears in Settings → Identity
+      inventory — equip it as one of your 3 worn badges
+- [ ] "Refresh records" button: press twice fast — the second press is
+      politely rate-limited (60s window), no duplicate badges appear,
+      Legacy Score is unchanged by the double-tap (idempotent recompute)
+- [ ] PB timeline: weekly best-score lines per dynasty with your
+      record/mastery moments annotated beneath; a brand-new account
+      reads "Your first banked run starts your timeline" — never an
+      empty chart
+- [ ] Collection log: all 30 variants; discovered ones show snake art +
+      first-acquired date, missing ones are silhouettes (the want-list)
+- [ ] Season chapters: Season 1 chapter shows your track level (L*/L30);
+      champions banner names the clan; "Crowned" gold banner ONLY if you
+      were rostered on the champion clan at settlement
+- [ ] Clan chapter: tag + rating + the rating sparkline (points appear
+      as duels settle each Monday); rivalry W-L lines only vs clans
+      you've actually fought
+- [ ] Early Career: the 18 legacy achievements now live HERE (collapsed);
+      claim a pending achievement reward from this panel — DNA lands,
+      settings no longer shows the achievements grid
+- [ ] Public profile: visit `/p/<YourHandle>` (and with different
+      casing, `/p/<yourhandle>`) logged OUT — full card, records,
+      timeline, collection log, season chapters, clan section; nothing
+      private (no email, no energy/DNA balances)
+- [ ] `/p/handler-0417` and `/p/NoSuchName` → 404; a profile with <5
+      earning runs shows header + collection log only ("This chronicle
+      opens after five earning runs")
+- [ ] Leaderboard rows still render identity cards; the identity object
+      now carries legacyScore (check the API response)
+- FEEL: does your career read as a STORY (beginnings, firsts, weeks) —
+  or still as a stats tab? Would you send someone your /p/ link?
+
 ## 📱 Mobile pass (repeat the spine of Stages 1-5 on your phone)
 
 - [ ] Chamber + board fully in frame portrait; bottom rail reachable;
