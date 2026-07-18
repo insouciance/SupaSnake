@@ -2,10 +2,13 @@
  * FTUE Starter Selection - pure card-building logic
  *
  * Builds one starter card per dynasty from the variants + dynasties
- * catalogs, with dynasty colors and human-readable bonus text.
+ * catalogs, with dynasty colors and the dynasty's ruleset identity line.
+ * (Design v2: starters differ by RULESET, not by percentage stats - the
+ * old "+5% Speed/DNA/Size" copy is gone.)
  */
 
 import type { SnakeVariant, Dynasty } from '@/shared/types/snake-data-model';
+import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
 
 export interface StarterCard {
   variant: SnakeVariant;
@@ -16,28 +19,12 @@ export interface StarterCard {
   bonusText: string;
 }
 
-const BONUS_LABELS: Record<string, string> = {
-  speed: 'Speed',
-  dna_generation: 'DNA',
-  size: 'Size',
-};
-
 /**
- * Human-readable dynasty bonus, e.g. "+5% DNA".
- * Accepts fractional (0.05) or percent-style (5) bonus values.
+ * The dynasty's one-line ruleset identity, e.g. for PRIMAL:
+ * "Steady speed — every food worth more than the last".
  */
-export function bonusTextFor(
-  statBonusType: string,
-  statBonusValue: number
-): string {
-  const percent =
-    Number.isFinite(statBonusValue) && statBonusValue > 0
-      ? statBonusValue < 1
-        ? Math.round(statBonusValue * 100)
-        : Math.round(statBonusValue)
-      : 0;
-  const label = BONUS_LABELS[statBonusType] ?? statBonusType;
-  return `+${percent}% ${label}`;
+export function bonusTextFor(dynastyName: string): string {
+  return rulesetExplainer[normalizeDynastyName(dynastyName)];
 }
 
 /**
@@ -67,7 +54,7 @@ export function buildStarterCards(
       dynastyDisplayName: dynasty.displayName || dynasty.name,
       primaryColor: dynasty.colorPrimary,
       secondaryColor: dynasty.colorSecondary,
-      bonusText: bonusTextFor(dynasty.statBonusType, dynasty.statBonusValue),
+      bonusText: bonusTextFor(dynasty.name),
     });
   }
 

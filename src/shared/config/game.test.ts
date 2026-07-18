@@ -34,20 +34,17 @@ describe('Game Configuration', () => {
       expect(initialSpeed).toBeGreaterThan(minSpeed);
     });
 
-    it('should have positive speed increase', () => {
-      expect(GAME_CONFIG.snake.speedIncrease).toBeGreaterThan(0);
-    });
-
     it('should have interpolation duration less than initial speed', () => {
       const { interpolationDuration, initialSpeed } = GAME_CONFIG.snake;
       expect(interpolationDuration).toBeLessThan(initialSpeed);
     });
 
-    it('should reach min speed after reasonable food count', () => {
-      const { initialSpeed, minSpeed, speedIncrease } = GAME_CONFIG.snake;
-      const movesToMaxSpeed = (initialSpeed - minSpeed) / speedIncrease;
-      expect(movesToMaxSpeed).toBeGreaterThan(10);
-      expect(movesToMaxSpeed).toBeLessThan(100);
+    it('exposes the speed band the dynasty rulesets ramp within', () => {
+      // Design v2: speed curves live in the ruleset module (per dynasty);
+      // config only defines the band. CYBER reaches minSpeed at 100 foods.
+      const { initialSpeed, minSpeed } = GAME_CONFIG.snake;
+      expect(initialSpeed).toBe(200);
+      expect(minSpeed).toBe(50);
     });
   });
 

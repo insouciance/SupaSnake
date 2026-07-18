@@ -89,7 +89,6 @@ export const GAME_CONFIG = {
   classicMode: {
     gridSize: 20,                   // 20x20 grid
     initialSpeed: 150,              // Milliseconds per move
-    speedIncrease: 5,               // Speed up per food eaten
     minSpeed: 50,                   // Maximum speed cap
     victoryScore: 100,              // Score needed to win
   },

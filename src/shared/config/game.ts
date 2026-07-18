@@ -33,7 +33,6 @@ export const GAME_CONFIG = deepFreeze({
   snake: {
     initialLength: 3,                // Starting segments
     initialSpeed: 200,               // Milliseconds per move
-    speedIncrease: 5,                // Speed up per food (faster)
     minSpeed: 50,                    // Speed cap (fastest)
     interpolationDuration: 150,      // Smooth movement duration (ms)
   },

@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake, Dynasty } from '@/shared/types/snake-data-model';
-import { computeEffectiveStats } from '@/shared/types/snake-data-model';
+import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconArrowRight, IconBolt, IconCheck, IconEgg } from '@/components/ui/icons';
@@ -91,44 +91,10 @@ function Spinner(): React.ReactElement<any> {
 }
 
 /**
- * Format stat bonus for display
- */
-function formatStatBonus(bonusType: string, bonusValue: number): string {
-  const percentage = Math.round(bonusValue * 100);
-  const statName =
-    bonusType === 'speed'
-      ? 'speed'
-      : bonusType === 'size'
-        ? 'size'
-        : 'DNA generation';
-  return `+${percentage}% ${statName}`;
-}
-
-/**
  * Capitalize first letter of rarity
  */
 function capitalizeRarity(rarity: string): string {
   return rarity.charAt(0).toUpperCase() + rarity.slice(1);
-}
-
-/**
- * Single stat tile (SPD / SIZE / HP)
- */
-function StatTile({ label, value, glow }: { label: string; value: number; glow: string }) {
-  return (
-    <div
-      className="flex-1 rounded-arcade px-3 py-2 text-center border bg-void-deep/60"
-      style={{ borderColor: hexToRgba(glow, 0.35) }}
-    >
-      <span className="label-arcade block">{label}</span>
-      <span
-        className="font-display text-lg"
-        style={{ color: glow, textShadow: `0 0 12px ${hexToRgba(glow, 0.6)}` }}
-      >
-        {value}
-      </span>
-    </div>
-  );
 }
 
 /**
@@ -139,7 +105,7 @@ function StatTile({ label, value, glow }: { label: string; value: number; glow: 
  * - Pop-in entrance over a void backdrop
  * - Full art display with procedural SnakeArt fallback + rarity glow
  * - Lore text section
- * - Stats display (rarity, dynasty, generation, bonus)
+ * - Identity display (rarity, dynasty, prestige generation, ruleset)
  * - Action buttons: Equip, Breed, Favorite
  * - Close on backdrop click or back button
  * - Keyboard accessibility (Escape to close)
@@ -161,12 +127,8 @@ export function VariantDetailModal({
 
   const rarity = RARITY_STYLE[variant.rarity] ?? RARITY_STYLE.common;
 
-  // Compute effective stats with generation scaling and dynasty bonus
-  const effectiveStats = computeEffectiveStats(
-    variant.baseStats,
-    owned.generation,
-    dynasty
-  );
+  // Design v2: stats are flat - the dynasty's identity is its ruleset,
+  // not a percentage. Generation stays as prestige.
 
   // Handle escape key to close
   useEffect(() => {
@@ -333,25 +295,27 @@ export function VariantDetailModal({
               <div>
                 <span className="label-arcade block">Generation</span>
                 <span className="text-sm font-body font-semibold text-bone-white">
-                  {owned.generation}
+                  Gen {owned.generation}
                 </span>
               </div>
               <div>
-                <span className="label-arcade block">Bonus</span>
-                <span className="text-sm font-body font-semibold text-venom-orange-light">
-                  {formatStatBonus(dynasty.statBonusType, dynasty.statBonusValue)}
+                <span className="label-arcade block">Rules</span>
+                <span className="text-sm font-body font-semibold" style={{ color: theme.glow }}>
+                  {dynasty.name}
                 </span>
               </div>
             </div>
 
-            {/* Detailed stats row */}
+            {/* Ruleset identity - how this dynasty actually plays */}
             <div>
-              <span className="label-arcade block mb-2">Stats</span>
-              <div className="flex gap-3">
-                <StatTile label="SPD" value={effectiveStats.speed} glow={theme.glow} />
-                <StatTile label="SIZE" value={effectiveStats.size} glow={theme.glow} />
-                <StatTile label="HP" value={effectiveStats.hp} glow={theme.glow} />
-              </div>
+              <span className="label-arcade block mb-2">Playstyle</span>
+              <p
+                className="text-sm font-body leading-relaxed rounded-arcade px-3 py-2 border bg-void-deep/60 text-beige"
+                style={{ borderColor: hexToRgba(theme.glow, 0.35) }}
+                data-testid="variant-ruleset-explainer"
+              >
+                {rulesetExplainer[normalizeDynastyName(dynasty.name)]}
+              </p>
             </div>
           </div>
         </div>

@@ -81,94 +81,35 @@ const mockUnlockableVariant: SnakeVariant = {
 // computeEffectiveStats TESTS
 // =============================================================================
 
-describe('computeEffectiveStats', () => {
+describe('computeEffectiveStats (Design v2: flat stats)', () => {
   const baseStats: SnakeStats = { speed: 10, size: 5, hp: 100 };
 
-  describe('Generation Scaling', () => {
-    it('Gen 1 should equal base stats (before dynasty bonus)', () => {
-      // Using a dynasty with no applicable bonus (dna_generation)
-      const result = computeEffectiveStats(baseStats, 1, mockPrimalDynasty);
-      expect(result.speed).toBe(10);
-      expect(result.size).toBe(5);
-      expect(result.hp).toBe(100);
-    });
-
-    it('Gen 2 should be 5% higher than base', () => {
-      const result = computeEffectiveStats(baseStats, 2, mockPrimalDynasty);
-      expect(result.speed).toBeCloseTo(10.5, 2);
-      expect(result.size).toBeCloseTo(5.25, 2);
-      expect(result.hp).toBeCloseTo(105, 2);
-    });
-
-    it('Gen 5 should be 20% higher than base', () => {
-      const result = computeEffectiveStats(baseStats, 5, mockPrimalDynasty);
-      // Gen 5 multiplier = 1 + (5-1) * 0.05 = 1.20
-      expect(result.speed).toBeCloseTo(12, 2);
-      expect(result.size).toBeCloseTo(6, 2);
-      expect(result.hp).toBeCloseTo(120, 2);
-    });
-
-    it('Gen 10 should be 45% higher than base', () => {
-      const result = computeEffectiveStats(baseStats, 10, mockPrimalDynasty);
-      // Gen 10 multiplier = 1 + (10-1) * 0.05 = 1.45
-      expect(result.speed).toBeCloseTo(14.5, 2);
-      expect(result.size).toBeCloseTo(7.25, 2);
-      expect(result.hp).toBeCloseTo(145, 2);
-    });
+  it('returns base stats unchanged regardless of generation', () => {
+    for (const gen of [1, 2, 5, 10, 100]) {
+      const result = computeEffectiveStats(baseStats, gen, mockPrimalDynasty);
+      expect(result).toEqual({ speed: 10, size: 5, hp: 100 });
+    }
   });
 
-  describe('Dynasty Bonuses', () => {
-    it('CYBER dynasty should add 5% to speed', () => {
-      const result = computeEffectiveStats(baseStats, 1, mockCyberDynasty);
-      // speed = 10 * 1.0 * 1.05 = 10.5
-      expect(result.speed).toBeCloseTo(10.5, 2);
-      expect(result.size).toBe(5); // No bonus
-      expect(result.hp).toBe(100); // No bonus
-    });
-
-    it('COSMIC dynasty should add 5% to size', () => {
-      const result = computeEffectiveStats(baseStats, 1, mockCosmicDynasty);
-      expect(result.speed).toBe(10); // No bonus
-      expect(result.size).toBeCloseTo(5.25, 2); // size = 5 * 1.05 = 5.25
-      expect(result.hp).toBe(100); // No bonus
-    });
-
-    it('PRIMAL dynasty bonus (dna_generation) should not affect stats', () => {
-      const result = computeEffectiveStats(baseStats, 1, mockPrimalDynasty);
-      expect(result.speed).toBe(10);
-      expect(result.size).toBe(5);
-      expect(result.hp).toBe(100);
-    });
+  it('ignores dynasty stat bonuses (CYBER speed, COSMIC size)', () => {
+    expect(computeEffectiveStats(baseStats, 1, mockCyberDynasty)).toEqual(baseStats);
+    expect(computeEffectiveStats(baseStats, 1, mockCosmicDynasty)).toEqual(baseStats);
+    expect(computeEffectiveStats(baseStats, 1, mockPrimalDynasty)).toEqual(baseStats);
   });
 
-  describe('Combined Scaling', () => {
-    it('Gen 5 CYBER should combine generation and dynasty bonuses', () => {
-      const result = computeEffectiveStats(baseStats, 5, mockCyberDynasty);
-      // speed = 10 * 1.20 (gen) * 1.05 (dynasty) = 12.6
-      expect(result.speed).toBeCloseTo(12.6, 2);
-      expect(result.size).toBeCloseTo(6, 2); // Only gen scaling
-      expect(result.hp).toBeCloseTo(120, 2); // Only gen scaling
-    });
+  it('rounds base stats to 2 decimals (mirrors the DB function)', () => {
+    const result = computeEffectiveStats(
+      { speed: 10.005, size: 5.129, hp: 99.999 },
+      3,
+      mockCyberDynasty
+    );
+    expect(result).toEqual({ speed: 10.01, size: 5.13, hp: 100 });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle generation 0 (edge case)', () => {
-      const result = computeEffectiveStats(baseStats, 0, mockPrimalDynasty);
-      // Gen 0 multiplier = 1 + (0-1) * 0.05 = 0.95
-      expect(result.speed).toBeCloseTo(9.5, 2);
-    });
-
-    it('should handle very high generations', () => {
-      const result = computeEffectiveStats(baseStats, 100, mockPrimalDynasty);
-      // Gen 100 multiplier = 1 + 99 * 0.05 = 5.95
-      expect(result.speed).toBeCloseTo(59.5, 2);
-    });
-
-    it('should round to 2 decimal places', () => {
-      const result = computeEffectiveStats(baseStats, 3, mockCyberDynasty);
-      // Ensure no floating point issues
-      expect(String(result.speed).split('.')[1]?.length || 0).toBeLessThanOrEqual(2);
-    });
+  it('does not mutate the input stats', () => {
+    const input = { ...baseStats };
+    computeEffectiveStats(input, 7, mockCyberDynasty);
+    expect(input).toEqual(baseStats);
   });
 });
 

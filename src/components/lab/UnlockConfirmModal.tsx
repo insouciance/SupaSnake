@@ -10,6 +10,7 @@ import React, { useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, Dynasty } from '@/shared/types/snake-data-model';
+import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconCheck, IconDna, IconX } from '@/components/ui/icons';
 
@@ -40,15 +41,6 @@ function hexToRgba(hex: string, opacity: number): string {
   const g = parseInt(cleanHex.substring(2, 4), 16);
   const b = parseInt(cleanHex.substring(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-}
-
-/**
- * Get dynasty bonus description
- */
-function getDynastyBonusText(dynasty: Dynasty): string {
-  const percentage = Math.round(dynasty.statBonusValue * 100);
-  const statName = dynasty.statBonusType.replace('_', ' ');
-  return `+${percentage}% ${statName}`;
 }
 
 /**
@@ -268,12 +260,17 @@ export function UnlockConfirmModal({
             </div>
 
             {/* Dynasty */}
-            <div className="flex justify-between items-center mb-3">
+            <div className="flex justify-between items-center mb-1">
               <span className="text-sm font-body text-beige/70">Dynasty:</span>
               <span className="text-sm font-body font-medium" style={{ color: theme.glow }}>
-                {dynasty.name} ({getDynastyBonusText(dynasty)})
+                {dynasty.name}
               </span>
             </div>
+
+            {/* Ruleset identity (Design v2: dynasties differ by rules, not stats) */}
+            <p className="text-xs font-body text-beige/60 text-right mb-3">
+              {rulesetExplainer[normalizeDynastyName(dynasty.name)]}
+            </p>
 
             {/* Divider */}
             <div className="divider-glow my-3" />

@@ -3,6 +3,7 @@
  */
 
 import { bonusTextFor, buildStarterCards } from './starterUtils';
+import { rulesetExplainer } from '@/shared/game/rulesets';
 import type { SnakeVariant, Dynasty } from '@/shared/types/snake-data-model';
 
 function makeDynasty(overrides: Partial<Dynasty>): Dynasty {
@@ -42,27 +43,30 @@ function makeVariant(overrides: Partial<SnakeVariant>): SnakeVariant {
   };
 }
 
-describe('bonusTextFor', () => {
-  it('renders CYBER speed bonus', () => {
-    expect(bonusTextFor('speed', 0.05)).toBe('+5% Speed');
+describe('bonusTextFor (Design v2: ruleset identity lines)', () => {
+  it('renders the CYBER overclock line', () => {
+    expect(bonusTextFor('CYBER')).toBe(rulesetExplainer.CYBER);
+    expect(bonusTextFor('CYBER')).toContain('overclock');
   });
 
-  it('renders PRIMAL DNA bonus', () => {
-    expect(bonusTextFor('dna_generation', 0.05)).toBe('+5% DNA');
+  it('renders the PRIMAL steady-growth line', () => {
+    expect(bonusTextFor('PRIMAL')).toBe(rulesetExplainer.PRIMAL);
+    expect(bonusTextFor('PRIMAL')).toContain('Steady speed');
   });
 
-  it('renders COSMIC size bonus', () => {
-    expect(bonusTextFor('size', 0.05)).toBe('+5% Size');
+  it('renders the COSMIC placeholder line', () => {
+    expect(bonusTextFor('COSMIC')).toBe(rulesetExplainer.COSMIC);
   });
 
-  it('accepts percent-style values (5 -> +5%)', () => {
-    expect(bonusTextFor('dna_generation', 5)).toBe('+5% DNA');
+  it('is case-insensitive and falls back to COSMIC for unknown dynasties', () => {
+    expect(bonusTextFor('cyber')).toBe(rulesetExplainer.CYBER);
+    expect(bonusTextFor('GHOST')).toBe(rulesetExplainer.COSMIC);
   });
 
-  it('handles unknown bonus types and invalid values', () => {
-    expect(bonusTextFor('luck', 0.1)).toBe('+10% luck');
-    expect(bonusTextFor('speed', 0)).toBe('+0% Speed');
-    expect(bonusTextFor('speed', NaN)).toBe('+0% Speed');
+  it('never renders percentage-stat copy', () => {
+    for (const name of ['CYBER', 'PRIMAL', 'COSMIC']) {
+      expect(bonusTextFor(name)).not.toMatch(/[+]\d+%/);
+    }
   });
 });
 
@@ -109,13 +113,13 @@ describe('buildStarterCards', () => {
     expect(cards.find((c) => c.variant.id === 'v-cyber-2')).toBeUndefined();
   });
 
-  it('attaches dynasty colors and bonus text', () => {
+  it('attaches dynasty colors and the ruleset identity line', () => {
     const cards = buildStarterCards(variants, dynasties);
     const primal = cards.find((c) => c.dynastyName === 'PRIMAL')!;
 
     expect(primal.primaryColor).toBe('#2d5016');
     expect(primal.secondaryColor).toBe('#8b4513');
-    expect(primal.bonusText).toBe('+5% DNA');
+    expect(primal.bonusText).toBe(rulesetExplainer.PRIMAL);
   });
 
   it('picks the lowest sort-order starter when a dynasty has several', () => {

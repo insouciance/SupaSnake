@@ -110,46 +110,24 @@ export interface OwnedSnakeWithStats extends OwnedSnake {
 // =============================================================================
 
 /**
- * Compute effective stats with generation scaling and dynasty bonus
+ * Compute effective stats - Design v2: base stats pass through unchanged.
  *
- * Formula:
- *   effective = base × genMultiplier × dynastyBonus
- *   genMultiplier = 1 + (generation - 1) × 0.05
- *   dynastyBonus = 1 + bonusValue (only for matching stat type)
- *
- * Examples:
- *   Gen 1 CYBER (speed bonus): speed = 10 × 1.00 × 1.05 = 10.5
- *   Gen 5 CYBER: speed = 10 × 1.20 × 1.05 = 12.6
- *   Gen 1 PRIMAL (dna bonus): stats unchanged, dna_generation affects rewards
+ * Generation is prestige-only ("Gen N" display) and dynasty identity
+ * lives in the ruleset module, so neither scales stats anymore. The
+ * signature is kept (mirroring the compute_effective_stats DB function,
+ * flattened in migration 013) so existing callers stay source-compatible;
+ * the extra parameters are intentionally unused.
  */
 export function computeEffectiveStats(
   baseStats: SnakeStats,
-  generation: number,
-  dynasty: Dynasty
+  _generation: number,
+  _dynasty: Dynasty
 ): SnakeStats {
-  // Generation scaling: +5% per generation above 1
-  const genMultiplier = 1 + (generation - 1) * 0.05;
-
-  const stats: SnakeStats = {
-    speed: baseStats.speed * genMultiplier,
-    size: baseStats.size * genMultiplier,
-    hp: baseStats.hp * genMultiplier,
+  return {
+    speed: Math.round(baseStats.speed * 100) / 100,
+    size: Math.round(baseStats.size * 100) / 100,
+    hp: Math.round(baseStats.hp * 100) / 100,
   };
-
-  // Apply dynasty bonus to the appropriate stat
-  if (dynasty.statBonusType === 'speed') {
-    stats.speed *= 1 + dynasty.statBonusValue;
-  } else if (dynasty.statBonusType === 'size') {
-    stats.size *= 1 + dynasty.statBonusValue;
-  }
-  // Note: dna_generation bonus affects rewards in gameplay, not stats
-
-  // Round to 2 decimal places
-  stats.speed = Math.round(stats.speed * 100) / 100;
-  stats.size = Math.round(stats.size * 100) / 100;
-  stats.hp = Math.round(stats.hp * 100) / 100;
-
-  return stats;
 }
 
 /**
@@ -225,12 +203,15 @@ export const DEFAULT_BASE_STATS: SnakeStats = {
 };
 
 /**
- * Generation scaling factor (5% per generation)
+ * Generation scaling factor - Design v2: generations are prestige-only;
+ * this constant is retained for historical data displays but no longer
+ * feeds any stat math.
  */
 export const GENERATION_SCALING_FACTOR = 0.05;
 
 /**
- * Dynasty bonus value (5%)
+ * Dynasty bonus value - Design v2: deprecated, no longer consumed for
+ * math (dynasty identity is a ruleset, not a stat bonus).
  */
 export const DEFAULT_DYNASTY_BONUS = 0.05;
 
