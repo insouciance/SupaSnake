@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { LEGAL_CONTACT } from '@/shared/config/legal';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -130,14 +131,14 @@ export async function GET(request: NextRequest) {
 
       dataRetention: {
         policy: 'Data is retained until account deletion',
-        deletionContact: 'privacy@ogsnake.com',
+        deletionContact: LEGAL_CONTACT.dataProtectionEmail,
       },
     };
 
     // Set headers for file download
     const headers = new Headers();
     headers.set('Content-Type', 'application/json');
-    headers.set('Content-Disposition', `attachment; filename="ogsnake-data-export-${new Date().toISOString().split('T')[0]}.json"`);
+    headers.set('Content-Disposition', `attachment; filename="supasnake-data-export-${new Date().toISOString().split('T')[0]}.json"`);
 
     return new NextResponse(JSON.stringify(exportData, null, 2), {
       status: 200,

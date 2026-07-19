@@ -20,6 +20,7 @@ import { OfflineProgressProvider } from '@/components/engagement/OfflineProgress
 import { ToastProvider } from '@/components/ui/Toast';
 import { AnalyticsProvider } from '@/components/analytics/AnalyticsProvider';
 import { ConsentBanner } from '@/components/legal/ConsentBanner';
+import { Footer } from '@/components/ui/Footer';
 
 export const metadata: Metadata = {
   title: 'SupaSnake - Collection RPG',
@@ -48,6 +49,7 @@ export default function RootLayout({
             <OfflineProgressProvider>
               <AnalyticsProvider>
                 {children}
+                <Footer />
                 <ConsentBanner />
               </AnalyticsProvider>
             </OfflineProgressProvider>

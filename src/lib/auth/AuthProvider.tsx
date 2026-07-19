@@ -9,6 +9,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session, Provider } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { recordLastUser } from '@/lib/auth/lastUser';
+import { LEGAL_VERSIONS } from '@/shared/config/legal';
 
 interface AuthContextType {
   user: User | null;
@@ -104,7 +105,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string) => {
     setIsLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // The signup form requires accepting the Terms before submitting;
+    // record which version was accepted as durable evidence (GDPR
+    // accountability / consumer-law documentation).
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          terms_version: LEGAL_VERSIONS.terms,
+          terms_accepted_at: new Date().toISOString(),
+        },
+      },
+    });
     setIsLoading(false);
     return {
       error: error ? new Error(error.message) : null,

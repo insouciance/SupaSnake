@@ -4,7 +4,7 @@
  * Real flows as of Sprint 1:
  * - Home page has no login link; play starts an anonymous session.
  * - /login: email/password + Google/Apple OAuth + "Play as Guest".
- * - /signup: age gate (13+) shown before the account form.
+ * - /signup: age gate (14+) shown before the account form.
  * - /game and /lab prompt for sign-in when there is no session.
  */
 

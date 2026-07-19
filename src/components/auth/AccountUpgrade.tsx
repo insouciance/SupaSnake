@@ -68,6 +68,7 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState<{ text: string; offerSignIn: boolean } | null>(null);
   const [success, setSuccess] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(false);
@@ -95,7 +96,8 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
   const isPasswordValid = passwordErrors.length === 0;
   const passwordsMatch = password === confirmPassword;
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const canSubmit = isEmailValid && isPasswordValid && passwordsMatch && !isLoading;
+  const canSubmit =
+    isEmailValid && isPasswordValid && passwordsMatch && termsAccepted && !isLoading;
 
   const handleEmailUpgrade = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -302,6 +304,38 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
             <p className="text-strike-red text-xs mt-1 font-body">Passwords don&apos;t match</p>
           )}
         </div>
+
+        <label
+          htmlFor="upgrade-terms"
+          className="flex items-start gap-3 cursor-pointer text-sm text-beige font-body"
+        >
+          <input
+            id="upgrade-terms"
+            type="checkbox"
+            checked={termsAccepted}
+            onChange={(e) => setTermsAccepted(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-venom-orange"
+          />
+          <span>
+            I agree to the{' '}
+            <Link
+              href="/legal/terms"
+              target="_blank"
+              className="text-venom-orange hover:text-venom-orange-light underline"
+            >
+              Terms of Service
+            </Link>{' '}
+            and have read the{' '}
+            <Link
+              href="/legal/privacy"
+              target="_blank"
+              className="text-venom-orange hover:text-venom-orange-light underline"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </span>
+        </label>
 
         <button
           type="submit"

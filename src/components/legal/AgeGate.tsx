@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { IconSnake } from '@/components/ui/icons';
+import { LEGAL_CONTACT, MINIMUM_AGE } from '@/shared/config/legal';
 
 /**
  * Age Gate Component
  *
- * AAA 2026 Standard: GDPR + COPPA compliance
- * - Blocks users <13 (COPPA)
+ * - Blocks users under MINIMUM_AGE (14 — Austria's GDPR Art. 8 digital
+ *   consent age per §4(4) DSG; also satisfies COPPA's under-13 line)
  * - Stores verification (hashed, not raw birthdate)
  * - Re-verifies periodically (anti-fraud)
  *
@@ -37,7 +38,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const MIN_AGE = 13;
+  const MIN_AGE = MINIMUM_AGE;
   const currentYear = new Date().getFullYear();
   const minYear = currentYear - 100; // Reasonable age limit
 
@@ -209,7 +210,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 /**
  * Underage Screen Component
  *
- * Shown when user is <13
+ * Shown when user is under MINIMUM_AGE
  * - Explains why they can't play
  * - Provides parent contact info
  * - Doesn't collect any data
@@ -229,7 +230,7 @@ export function UnderageScreen() {
         </h2>
 
         <p className="text-bone-white font-body text-lg mb-8">
-          SupaSnake is for players aged 13 and older.
+          SupaSnake is for players aged {MINIMUM_AGE} and older.
         </p>
 
         <div className="panel p-5 mb-5 text-left">
@@ -237,17 +238,17 @@ export function UnderageScreen() {
             <strong className="text-venom-orange">Parents:</strong> If you&apos;d like to
             learn more about SupaSnake, please contact us at{' '}
             <a
-              href="mailto:bllj@proton.me"
+              href={`mailto:${LEGAL_CONTACT.email}`}
               className="text-venom-orange hover:text-venom-orange-light hover:underline"
             >
-              bllj@proton.me
+              {LEGAL_CONTACT.email}
             </a>
           </p>
         </div>
 
         <p className="text-beige/50 text-xs font-body mb-8">
-          This age restriction is required by COPPA (Children&apos;s Online Privacy
-          Protection Act) and similar laws worldwide.
+          This age restriction follows the GDPR digital consent age in Austria
+          (§4(4) DSG) and comparable laws worldwide, including COPPA.
         </p>
 
         <button

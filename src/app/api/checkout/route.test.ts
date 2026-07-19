@@ -55,7 +55,9 @@ function createCheckoutRequest(
   if (options.origin) headers['origin'] = options.origin;
   return new NextRequest('http://localhost:3000/api/checkout', {
     method: 'POST',
-    body: JSON.stringify(body),
+    // §18 FAGG consent is mandatory for every real checkout; default it on
+    // so each test doesn't have to repeat it (override to test the gate).
+    body: JSON.stringify({ withdrawalConsent: true, ...body }),
     headers,
   });
 }
@@ -156,6 +158,16 @@ describe('Checkout POST', () => {
       expect(response.status).toBe(400);
     });
 
+    it('returns 400 without §18 FAGG withdrawal consent', async () => {
+      const response = await POST(
+        createCheckoutRequest({ productId: 'energy_small', withdrawalConsent: false })
+      );
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('withdrawal_consent_required');
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+
     it('returns 404 when the player row does not exist', async () => {
       mockPlayerSingle.mockResolvedValue({ data: null, error: { message: 'not found' } });
       const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
@@ -242,12 +254,13 @@ describe('Checkout POST', () => {
         expect.objectContaining({
           mode: 'payment',
           line_items: [{ price: 'price_energy_small', quantity: 1 }],
-          metadata: {
+          metadata: expect.objectContaining({
             userId: 'user-uuid-1',
             playerId: 'player-uuid-1',
             productId: 'energy_small',
             rewards: JSON.stringify({ energy: 3 }),
-          },
+            withdrawal_consent: 'immediate_delivery_acknowledged',
+          }),
         })
       );
     });

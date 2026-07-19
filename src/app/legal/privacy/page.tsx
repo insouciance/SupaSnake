@@ -1,20 +1,58 @@
 import Link from 'next/link';
+import {
+  LEGAL_ENTITY,
+  LEGAL_CONTACT,
+  LEGAL_VERSIONS,
+  DATA_PROTECTION_AUTHORITY,
+  MINIMUM_AGE,
+  PRODUCT,
+} from '@/shared/config/legal';
+import { LegalPageFooter } from '@/components/legal/LegalPageFooter';
 
 export const metadata = {
-  title: 'Privacy Policy | OG Snake',
-  description: 'Privacy Policy for OG Snake game - How we collect, use, and protect your data',
+  title: 'Privacy Policy | SupaSnake',
+  description:
+    'How Insoucience Technologies GmbH processes personal data in SupaSnake — purposes, legal bases, recipients, retention and your rights under the GDPR.',
 };
 
-export default function PrivacyPolicyPage() {
-  const lastUpdated = '2026-07-16';
-  const companyName = 'OG Snake';
-  const contactEmail = 'bllj@proton.me';
-  const dpoEmail = 'bllj@proton.me';
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
+      <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
 
+function Activity({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-6 last:mb-0">
+      <h3 className="text-lg font-display uppercase tracking-arcade text-bone-white mb-2">
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-screen bg-scale-blue-dark text-bone-white">
       <div className="max-w-4xl mx-auto px-6 py-12">
-        {/* Header */}
         <div className="mb-8">
           <Link
             href="/"
@@ -25,253 +63,469 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange mt-4">
             Privacy Policy
           </h1>
-          <p className="text-beige font-body mt-2">Last Updated: {lastUpdated}</p>
+          <p className="text-beige font-body mt-2">
+            Last updated: {LEGAL_VERSIONS.privacy}
+          </p>
         </div>
 
-        {/* Content */}
         <div className="space-y-8 font-body text-bone-white/90">
-          {/* Introduction */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Introduction
-            </h2>
+          <Section title="1. Who we are">
             <p className="mb-4">
-              {companyName} (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) respects your privacy and is committed
-              to protecting your personal data. This Privacy Policy explains how we collect, use,
-              disclose, and safeguard your information when you use our game.
+              This privacy policy explains how personal data is processed when
+              you use {PRODUCT.name} (the &quot;Game&quot;), available at{' '}
+              {PRODUCT.url}. The controller within the meaning of Art. 4(7)
+              GDPR is:
+            </p>
+            <p className="mb-4">
+              {LEGAL_ENTITY.name}
+              <br />
+              {LEGAL_ENTITY.street}
+              <br />
+              {LEGAL_ENTITY.postalCode} {LEGAL_ENTITY.city},{' '}
+              {LEGAL_ENTITY.country}
+              <br />
+              E-mail:{' '}
+              <a
+                href={`mailto:${LEGAL_CONTACT.email}`}
+                className="text-venom-orange hover:underline"
+              >
+                {LEGAL_CONTACT.email}
+              </a>
             </p>
             <p>
-              This policy applies to users worldwide, including those in the European Economic Area
-              (EEA), United Kingdom, and California.
-            </p>
-          </section>
-
-          {/* Data We Collect */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              1. Data We Collect
-            </h2>
-
-            <h3 className="text-lg text-bone-white font-bold mb-2">Account Data</h3>
-            <ul className="list-disc list-inside space-y-1 text-beige mb-4">
-              <li>Email address (if you create an account)</li>
-              <li>Username (optional)</li>
-              <li>Authentication tokens</li>
-            </ul>
-
-            <h3 className="text-lg text-bone-white font-bold mb-2">Gameplay Data</h3>
-            <ul className="list-disc list-inside space-y-1 text-beige mb-4">
-              <li>Game progress, scores, and achievements</li>
-              <li>Virtual currency balances (DNA, Energy)</li>
-              <li>Snake collection and breeding history</li>
-              <li>Session timestamps and duration</li>
-            </ul>
-
-            <h3 className="text-lg text-bone-white font-bold mb-2">Technical Data</h3>
-            <ul className="list-disc list-inside space-y-1 text-beige mb-4">
-              <li>Device type and operating system</li>
-              <li>Browser type and version</li>
-              <li>IP address (anonymized for analytics)</li>
-              <li>Error logs and crash reports</li>
-            </ul>
-
-            <h3 className="text-lg text-bone-white font-bold mb-2">Payment Data</h3>
-            <p className="text-beige">
-              Payment processing is handled by Stripe. We do not store credit card numbers.
-              We receive only transaction confirmations and purchase history.
-            </p>
-          </section>
-
-          {/* How We Use Data */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              2. How We Use Your Data
-            </h2>
-            <ul className="list-disc list-inside space-y-2 text-beige">
-              <li><strong className="text-bone-white">Provide the Game:</strong> Save progress, sync across devices, process purchases</li>
-              <li><strong className="text-bone-white">Improve the Game:</strong> Analytics to understand player behavior and preferences</li>
-              <li><strong className="text-bone-white">Ensure Security:</strong> Detect cheating, fraud, and abuse</li>
-              <li><strong className="text-bone-white">Customer Support:</strong> Respond to inquiries and resolve issues</li>
-              <li><strong className="text-bone-white">Legal Compliance:</strong> Meet regulatory requirements</li>
-            </ul>
-          </section>
-
-          {/* Legal Basis (GDPR) */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              3. Legal Basis for Processing (GDPR)
-            </h2>
-            <p className="mb-4">For users in the EEA/UK, we process data based on:</p>
-            <ul className="list-disc list-inside space-y-2 text-beige">
-              <li><strong className="text-bone-white">Contract:</strong> To provide the Game and process purchases</li>
-              <li><strong className="text-bone-white">Legitimate Interest:</strong> Analytics, security, and fraud prevention</li>
-              <li><strong className="text-bone-white">Consent:</strong> Marketing communications (where applicable)</li>
-              <li><strong className="text-bone-white">Legal Obligation:</strong> Tax records, law enforcement requests</li>
-            </ul>
-          </section>
-
-          {/* Data Sharing */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              4. Data Sharing
-            </h2>
-            <p className="mb-4">We may share your data with:</p>
-            <ul className="list-disc list-inside space-y-2 text-beige">
-              <li><strong className="text-bone-white">Service Providers:</strong> Supabase (database and authentication, hosted in the EU), Stripe (payments), Vercel (hosting), Resend (transactional email - planned)</li>
-              <li><strong className="text-bone-white">Analytics Partners:</strong> PostHog (product analytics, EU hosting), Sentry (error tracking, hosted in Germany) - with appropriate DPAs</li>
-              <li><strong className="text-bone-white">Legal Authorities:</strong> When required by law or to protect our rights</li>
-            </ul>
-            <p className="mt-4">We do not sell your personal data to third parties.</p>
-          </section>
-
-          {/* Your Rights */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              5. Your Rights
-            </h2>
-            <p className="mb-4">Depending on your location, you may have the right to:</p>
-            <ul className="list-disc list-inside space-y-2 text-beige mb-4">
-              <li><strong className="text-bone-white">Access:</strong> Request a copy of your personal data</li>
-              <li><strong className="text-bone-white">Rectification:</strong> Correct inaccurate data</li>
-              <li><strong className="text-bone-white">Erasure:</strong> Delete your account and data (&quot;right to be forgotten&quot;)</li>
-              <li><strong className="text-bone-white">Portability:</strong> Export your data in a machine-readable format</li>
-              <li><strong className="text-bone-white">Restriction:</strong> Limit how we process your data</li>
-              <li><strong className="text-bone-white">Objection:</strong> Object to processing based on legitimate interests</li>
-              <li><strong className="text-bone-white">Withdraw Consent:</strong> Where processing is based on consent</li>
-            </ul>
-            <p>
-              To exercise these rights, visit the{' '}
-              <Link href="/settings/privacy" className="text-venom-orange hover:underline">
-                Privacy Settings
+              Data protection contact (Datenschutzbeauftragter):{' '}
+              {LEGAL_CONTACT.dataProtectionOfficer},{' '}
+              <a
+                href={`mailto:${LEGAL_CONTACT.dataProtectionEmail}`}
+                className="text-venom-orange hover:underline"
+              >
+                {LEGAL_CONTACT.dataProtectionEmail}
+              </a>
+              . You can also use our{' '}
+              <Link href="/contact" className="text-venom-orange hover:underline">
+                contact form
               </Link>{' '}
-              page or contact us at{' '}
-              <a href={`mailto:${contactEmail}`} className="text-venom-orange hover:underline">
-                {contactEmail}
-              </a>.
+              (category &quot;Privacy / data request&quot;).
             </p>
-          </section>
+          </Section>
 
-          {/* Data Retention */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              6. Data Retention
-            </h2>
+          <Section title="2. The short version">
             <ul className="list-disc list-inside space-y-2 text-beige">
-              <li>Account data: Until you delete your account</li>
-              <li>Gameplay data: Until account deletion + 30 days</li>
-              <li>Payment records: 7 years (legal requirement)</li>
-              <li>Analytics data: 2 years (anonymized)</li>
-              <li>Support tickets: 3 years after resolution</li>
+              <li>
+                You can play as a guest without giving us your name or e-mail
+                address. Game progress is stored under a pseudonymous account
+                ID.
+              </li>
+              <li>
+                Analytics runs only if you opt in via the cookie banner, and is
+                hosted in the EU.
+              </li>
+              <li>
+                We never sell personal data, and we do not show third-party
+                advertising.
+              </li>
+              <li>
+                Payment card data is handled exclusively by Stripe — it never
+                touches our servers.
+              </li>
+              <li>
+                Our AI features receive only aggregate game statistics — no
+                names, e-mail addresses or account IDs.
+              </li>
+              <li>
+                You can export or delete your data yourself at any time in{' '}
+                <Link
+                  href="/settings/privacy"
+                  className="text-venom-orange hover:underline"
+                >
+                  Settings → Privacy
+                </Link>
+                .
+              </li>
             </ul>
-          </section>
+          </Section>
 
-          {/* Children's Privacy */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              7. Children&apos;s Privacy (COPPA)
-            </h2>
+          <Section title="3. What we process, why, and on what legal basis">
+            <Activity title="3.1 Account and authentication">
+              <p className="mb-2">
+                The Game uses Supabase Auth. You can play anonymously (a random
+                account ID, no e-mail), register with e-mail and password, or
+                sign in with Google or Apple. If you upgrade a guest account,
+                the e-mail address is attached to your existing account ID so
+                your progress is preserved.
+              </p>
+              <p className="mb-2">
+                Data: account ID, e-mail address (registered accounts only),
+                password hash, OAuth provider identity (Google/Apple account
+                reference), session tokens, sign-in timestamps.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(b) GDPR (performance of the contract —
+                providing your account and saved progress). Retention: until
+                account deletion.
+              </p>
+            </Activity>
+
+            <Activity title="3.2 Game progress and gameplay data">
+              <p className="mb-2">
+                All game state is stored server-side: collected snakes, breeding
+                history, resources (DNA, energy), game sessions (score,
+                duration, DNA earned), achievements, streaks, mastery, records,
+                battle pass and season progress, and economy transactions.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(b) GDPR. Retention: until account
+                deletion.
+              </p>
+            </Activity>
+
+            <Activity title="3.3 Public profile, leaderboards and Chronicle">
+              <p className="mb-2">
+                Your public identity in the Game is a self-chosen handle (or an
+                automatically derived placeholder such as
+                &quot;handler-1234&quot;). Leaderboards and your public
+                Chronicle page show your handle, scores, clan tag, titles,
+                badges, avatar and mastery — never your e-mail address or
+                account ID. Handle changes are recorded in an internal audit
+                log.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(b) GDPR (leaderboards and public
+                profiles are a core feature of the Game). If you prefer not to
+                be recognisable, choose a handle that does not identify you, or
+                keep the generated placeholder.
+              </p>
+            </Activity>
+
+            <Activity title="3.4 Clans">
+              <p className="mb-2">
+                Clan names, tags and descriptions are user-generated content
+                visible to other players, together with the member list
+                (handles) and clan activity (duels, research, ratings).
+              </p>
+              <p>Legal basis: Art. 6(1)(b) GDPR. Retention: until deletion.</p>
+            </Activity>
+
+            <Activity title="3.5 Discord integration (optional)">
+              <p className="mb-2">
+                If you actively link your Discord account, we receive your
+                Discord user ID and username via Discord OAuth (scopes:
+                identify, guilds.join, role_connections.write), can add you to
+                our Discord server and assign roles, and push your in-game
+                handle and mastery as &quot;Linked Roles&quot; metadata. Clans
+                can connect a Discord channel; in that case in-game events
+                (duel results, level-ups, member joins, season champions) are
+                posted there with your handle and clan name. OAuth tokens are
+                stored encrypted (AES-256-GCM) and are deleted — and revoked at
+                Discord — when you unlink; stale links are purged after 30
+                days.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(a) GDPR (consent, given by linking). You
+                can withdraw it at any time by unlinking. Discord Inc. is an
+                independent controller for its own platform — see
+                Discord&apos;s privacy policy.
+              </p>
+            </Activity>
+
+            <Activity title="3.6 Analytics (PostHog) — only with your consent">
+              <p className="mb-2">
+                If (and only if) you enable the &quot;Analytics&quot; category
+                in the cookie banner, we use PostHog, hosted in the EU
+                (eu.i.posthog.com), to understand how the Game is used. We use
+                a curated event set (page views, gameplay, economy, purchases,
+                engagement and social events) with autocapture and session
+                recording disabled. PostHog sets cookies and localStorage
+                entries and assigns a device/session ID; after sign-in, events
+                are linked to your account ID. Revoking consent stops all
+                capture.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(a) GDPR and §165(3) TKG 2021 (consent).
+                Manage it any time via{' '}
+                <Link
+                  href="/settings/privacy"
+                  className="text-venom-orange hover:underline"
+                >
+                  Settings → Privacy
+                </Link>
+                .
+              </p>
+            </Activity>
+
+            <Activity title="3.7 Error tracking (Sentry)">
+              <p className="mb-2">
+                To keep the Game stable we send error reports (stack traces,
+                affected route, browser/OS context) to Sentry. Transmission of
+                personal data is disabled by default (no IP addresses attached)
+                and we do not use session replay.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(f) GDPR (legitimate interest in
+                detecting and fixing errors).
+              </p>
+            </Activity>
+
+            <Activity title="3.8 AI features (&ldquo;The Analyst&rdquo;)">
+              <p className="mb-2">
+                The Analyst generates short narrative summaries of your game
+                performance. The input sent to our AI provider (OpenAI) is a
+                fact sheet of aggregate game statistics only — runs, DNA,
+                extraction rate, dynasty mastery. No handle, e-mail address,
+                account ID or free-text content is transmitted. Generated
+                insights are cached in our database and visible only to you
+                (or your clan, for clan insights). The Analyst involves no
+                automated decision-making with legal or similarly significant
+                effects (Art. 22 GDPR).
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(f) GDPR (legitimate interest in
+                providing game features); the underlying gameplay data is
+                processed under Art. 6(1)(b).
+              </p>
+            </Activity>
+
+            <Activity title="3.9 E-mail">
+              <p className="mb-2">
+                Transactional e-mail (verification, password reset) is sent via
+                our e-mail provider Resend. The weekly &quot;Analyst
+                digest&quot; (your game stats and narration) is strictly opt-in
+                in Settings and can be disabled there at any time.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(b) GDPR for transactional mail;
+                Art. 6(1)(a) (consent) for the digest.
+              </p>
+            </Activity>
+
+            <Activity title="3.10 Purchases (Stripe)">
+              <p className="mb-2">
+                Purchases are processed by Stripe via Stripe Checkout. Stripe
+                collects your e-mail, billing and payment card details directly
+                — this data never reaches our servers. We store only the Stripe
+                session and payment-intent IDs, the product, price and purchase
+                status, linked to your account.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(b) GDPR (contract) and Art. 6(1)(c)
+                (statutory retention duties). Retention: purchase records are
+                kept for 7 years in line with Austrian tax law (§132 BAO), in
+                anonymized form if you delete your account.
+              </p>
+            </Activity>
+
+            <Activity title="3.11 Contact form and support">
+              <p className="mb-2">
+                If you contact us, we process the details you provide (name if
+                given, e-mail address, category, message) to handle your
+                request, including privacy inquiries and content reports.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(b) GDPR (contractual/pre-contractual
+                communication) or Art. 6(1)(f) (responding to inquiries);
+                Art. 6(1)(c) where handling the request is legally required.
+                Retention: 24 months after resolution, longer where a legal
+                obligation or dispute requires it.
+              </p>
+            </Activity>
+
+            <Activity title="3.12 Age verification">
+              <p className="mb-2">
+                At registration we ask for your birth year to enforce our
+                minimum age of {MINIMUM_AGE}. We do not store your birth date —
+                only a salted hash and the verification result, which expires
+                after 7 days.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(c) GDPR in conjunction with Art. 8 GDPR
+                and §4(4) DSG.
+              </p>
+            </Activity>
+          </Section>
+
+          <Section title="4. Recipients and processors">
             <p className="mb-4">
-              The Game is not intended for children under 13. We do not knowingly collect
-              personal data from children under 13. If we discover that a child under 13 has
-              provided personal data, we will delete it immediately.
+              We use the following processors (Art. 28 GDPR) and recipients.
+              Where a provider processes data outside the EU/EEA, transfers are
+              safeguarded by an adequacy decision (including the EU–U.S. Data
+              Privacy Framework) and/or EU Standard Contractual Clauses (SCCs):
             </p>
-            <p>
-              If you believe a child under 13 has provided us with personal data, please contact
-              us at{' '}
-              <a href={`mailto:${contactEmail}`} className="text-venom-orange hover:underline">
-                {contactEmail}
-              </a>.
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="text-venom-orange border-b border-scale-blue-light">
+                    <th className="py-2 pr-4">Provider</th>
+                    <th className="py-2 pr-4">Purpose</th>
+                    <th className="py-2">Location / transfer basis</th>
+                  </tr>
+                </thead>
+                <tbody className="text-beige">
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">Supabase</td>
+                    <td className="py-2 pr-4">Database, authentication</td>
+                    <td className="py-2">EU-hosted project</td>
+                  </tr>
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">Vercel</td>
+                    <td className="py-2 pr-4">Hosting, delivery</td>
+                    <td className="py-2">USA — DPF / SCCs</td>
+                  </tr>
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">PostHog</td>
+                    <td className="py-2 pr-4">Analytics (opt-in)</td>
+                    <td className="py-2">EU cloud</td>
+                  </tr>
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">Sentry</td>
+                    <td className="py-2 pr-4">Error tracking</td>
+                    <td className="py-2">USA — DPF / SCCs</td>
+                  </tr>
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">Stripe</td>
+                    <td className="py-2 pr-4">Payments</td>
+                    <td className="py-2">USA — DPF / SCCs</td>
+                  </tr>
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">Resend</td>
+                    <td className="py-2 pr-4">E-mail delivery</td>
+                    <td className="py-2">USA — DPF / SCCs</td>
+                  </tr>
+                  <tr className="border-b border-scale-blue-light/40">
+                    <td className="py-2 pr-4">OpenAI</td>
+                    <td className="py-2 pr-4">
+                      AI narration (aggregate stats only)
+                    </td>
+                    <td className="py-2">USA — DPF / SCCs</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4">Discord</td>
+                    <td className="py-2 pr-4">
+                      Optional account link (independent controller)
+                    </td>
+                    <td className="py-2">USA — DPF / SCCs</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-4">
+              We do not sell personal data and we do not share it with
+              advertisers. Beyond the providers above, data is disclosed only
+              where we are legally required to do so.
             </p>
-          </section>
+          </Section>
 
-          {/* California Rights (CCPA) */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              8. California Privacy Rights (CCPA)
-            </h2>
-            <p className="mb-4">If you are a California resident, you have the right to:</p>
+          <Section title="5. Your rights">
+            <p className="mb-4">Under the GDPR you have the right to:</p>
             <ul className="list-disc list-inside space-y-2 text-beige mb-4">
-              <li>Know what personal information is collected</li>
-              <li>Know whether your data is sold or disclosed</li>
-              <li>Say no to the sale of personal information</li>
-              <li>Request deletion of your personal information</li>
-              <li>Not be discriminated against for exercising these rights</li>
+              <li>Access your personal data (Art. 15)</li>
+              <li>Rectification of inaccurate data (Art. 16)</li>
+              <li>Erasure (&quot;right to be forgotten&quot;, Art. 17)</li>
+              <li>Restriction of processing (Art. 18)</li>
+              <li>Data portability (Art. 20)</li>
+              <li>
+                Object to processing based on legitimate interests (Art. 21)
+              </li>
+              <li>
+                Withdraw any consent at any time, with effect for the future
+                (Art. 7(3))
+              </li>
             </ul>
-            <p className="text-beige">
-              We do not sell personal information as defined by the CCPA.
+            <p className="mb-4">
+              The fastest way to exercise most rights is self-service:{' '}
+              <Link
+                href="/settings/privacy"
+                className="text-venom-orange hover:underline"
+              >
+                Settings → Privacy
+              </Link>{' '}
+              lets you export all your data (JSON) and delete your account.
+              Deletion takes effect after a 30-day grace period (sign in again
+              to cancel); purchase records are retained in anonymized form
+              where tax law requires. For anything else, contact{' '}
+              <a
+                href={`mailto:${LEGAL_CONTACT.dataProtectionEmail}`}
+                className="text-venom-orange hover:underline"
+              >
+                {LEGAL_CONTACT.dataProtectionEmail}
+              </a>
+              .
             </p>
-          </section>
-
-          {/* International Transfers */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              9. International Data Transfers
-            </h2>
             <p>
-              Your data may be processed in countries outside your residence, including the
-              United States. We ensure appropriate safeguards through Standard Contractual
-              Clauses (SCCs) and working only with service providers who maintain adequate
-              data protection standards.
-            </p>
-          </section>
-
-          {/* Security */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              10. Security
-            </h2>
-            <p className="mb-4">
-              We implement industry-standard security measures including:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-beige">
-              <li>Encryption in transit (TLS 1.3)</li>
-              <li>Encryption at rest for sensitive data</li>
-              <li>Regular security audits</li>
-              <li>Access controls and authentication</li>
-              <li>Row-level security on database tables</li>
-            </ul>
-          </section>
-
-          {/* Contact */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              11. Contact Us
-            </h2>
-            <p className="mb-4">
-              For privacy inquiries, contact our Data Protection Officer:
-            </p>
-            <p className="text-beige">
-              Email:{' '}
-              <a href={`mailto:${dpoEmail}`} className="text-venom-orange hover:underline">
-                {dpoEmail}
+              You also have the right to lodge a complaint with a supervisory
+              authority, in particular the {DATA_PROTECTION_AUTHORITY.name},{' '}
+              {DATA_PROTECTION_AUTHORITY.street},{' '}
+              {DATA_PROTECTION_AUTHORITY.postalCode}{' '}
+              {DATA_PROTECTION_AUTHORITY.city},{' '}
+              <a
+                href={DATA_PROTECTION_AUTHORITY.url}
+                className="text-venom-orange hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {DATA_PROTECTION_AUTHORITY.url.replace('https://', '')}
               </a>
+              .
             </p>
-            <p className="text-beige mt-2">
-              General Privacy:{' '}
-              <a href={`mailto:${contactEmail}`} className="text-venom-orange hover:underline">
-                {contactEmail}
-              </a>
+          </Section>
+
+          <Section title="6. Children">
+            <p>
+              The Game is not directed at children under {MINIMUM_AGE}. In line
+              with Art. 8 GDPR and §4(4) of the Austrian Data Protection Act
+              (DSG), you must be at least {MINIMUM_AGE} years old to create an
+              account. If you believe a child under {MINIMUM_AGE} has provided
+              us personal data, contact us and we will delete it.
             </p>
-          </section>
+          </Section>
+
+          <Section title="7. Cookies and similar technologies">
+            <p>
+              Details on every cookie and localStorage entry we use — and how
+              consent works — are in our{' '}
+              <Link
+                href="/legal/cookies"
+                className="text-venom-orange hover:underline"
+              >
+                Cookie Policy
+              </Link>
+              . Non-essential technologies are used only with your consent
+              (§165(3) TKG 2021), which you can change at any time.
+            </p>
+          </Section>
+
+          <Section title="8. Security">
+            <p>
+              All traffic is TLS-encrypted. Game state is server-authoritative;
+              database access is protected by row-level security so players can
+              only read their own data. Discord OAuth tokens are stored with
+              app-layer AES-256-GCM encryption. Payment card data is handled
+              only by Stripe (PCI-DSS certified). No system is perfectly
+              secure, but we follow the principle of collecting as little
+              personal data as possible in the first place.
+            </p>
+          </Section>
+
+          <Section title="9. Users outside the EEA">
+            <p>
+              We apply the GDPR standard described in this policy to all users
+              worldwide. For California residents: we do not sell or share
+              personal information within the meaning of the CCPA/CPRA, and you
+              may exercise access and deletion rights through the same channels
+              described in section 5.
+            </p>
+          </Section>
+
+          <Section title="10. Changes to this policy">
+            <p>
+              We update this policy when the Game or our providers change. The
+              date at the top reflects the latest revision; material changes
+              will be announced in the Game. Earlier versions are available on
+              request.
+            </p>
+          </Section>
         </div>
 
-        {/* Footer Links */}
-        <div className="mt-12 pt-8 border-t border-scale-blue-light">
-          <div className="flex flex-wrap gap-6 text-beige font-body text-sm">
-            <Link href="/legal/terms" className="hover:text-bone-white transition-colors">
-              Terms of Service
-            </Link>
-            <Link href="/legal/cookies" className="hover:text-bone-white transition-colors">
-              Cookie Policy
-            </Link>
-            <Link href="/settings/privacy" className="hover:text-bone-white transition-colors">
-              Privacy Settings
-            </Link>
-            <Link href="/" className="hover:text-bone-white transition-colors">
-              Back to Game
-            </Link>
-          </div>
-        </div>
+        <LegalPageFooter currentPath="/legal/privacy" />
       </div>
     </main>
   );

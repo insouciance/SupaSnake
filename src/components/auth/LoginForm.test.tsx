@@ -31,6 +31,8 @@ async function submitSignup(onSuccess?: () => void) {
   fireEvent.change(screen.getByLabelText(/password/i), {
     target: { value: 'Password123' },
   });
+  // Terms acceptance is required before the signup button enables
+  fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 }
 

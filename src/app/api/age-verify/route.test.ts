@@ -29,7 +29,7 @@ describe('Age Verify API', () => {
   });
 
   describe('POST', () => {
-    it('should verify age for users 13 and older', async () => {
+    it('should verify age for users 14 and older', async () => {
       const currentYear = new Date().getFullYear();
       const request = createMockRequest({
         birthYear: currentYear - 20,
@@ -45,7 +45,7 @@ describe('Age Verify API', () => {
       expect(data.expiresAt).toBeDefined();
     });
 
-    it('should reject users under 13', async () => {
+    it('should reject users under 14', async () => {
       const currentYear = new Date().getFullYear();
       const request = createMockRequest({
         birthYear: currentYear - 10,
@@ -57,15 +57,15 @@ describe('Age Verify API', () => {
 
       expect(response.status).toBe(403);
       expect(data.verified).toBe(false);
-      expect(data.message).toContain('13');
+      expect(data.message).toContain('14');
     });
 
-    it('should handle exactly 13 years old', async () => {
+    it('should handle exactly 14 years old', async () => {
       const currentYear = new Date().getFullYear();
       const currentMonth = new Date().getMonth() + 1;
       const request = createMockRequest({
-        birthYear: currentYear - 13,
-        birthMonth: currentMonth, // Same month = exactly 13
+        birthYear: currentYear - 14,
+        birthMonth: currentMonth, // Same month = exactly 14
       });
 
       const response = await POST(request);
@@ -75,20 +75,20 @@ describe('Age Verify API', () => {
       expect(data.verified).toBe(true);
     });
 
-    it('should handle birth month in the future (not yet 13)', async () => {
+    it('should handle birth month in the future (not yet 14)', async () => {
       const currentYear = new Date().getFullYear();
       const currentMonth = new Date().getMonth() + 1;
       const futureMonth = currentMonth === 12 ? 12 : currentMonth + 1;
 
       const request = createMockRequest({
-        birthYear: currentYear - 13,
+        birthYear: currentYear - 14,
         birthMonth: futureMonth,
       });
 
       const response = await POST(request);
       const data = await response.json();
 
-      // If birth month is after current month, they're still 12
+      // If birth month is after current month, they're still 13
       if (futureMonth > currentMonth) {
         expect(response.status).toBe(403);
         expect(data.verified).toBe(false);

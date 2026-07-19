@@ -136,6 +136,8 @@ test.describe('Stripe checkout @stripe', () => {
     await page.waitForURL(/\/game/, { timeout: 20000 });
 
     await page.goto('/shop');
+    // §18 FAGG immediate-delivery consent is required before checkout
+    await page.locator('#withdrawal-consent').check();
     await page.getByRole('button', { name: /^buy$/i }).first().click();
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
   });

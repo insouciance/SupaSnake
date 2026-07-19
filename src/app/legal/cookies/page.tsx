@@ -1,18 +1,120 @@
 import Link from 'next/link';
+import {
+  LEGAL_CONTACT,
+  LEGAL_VERSIONS,
+  PRODUCT,
+} from '@/shared/config/legal';
+import { LegalPageFooter } from '@/components/legal/LegalPageFooter';
 
 export const metadata = {
-  title: 'Cookie Policy | OG Snake',
-  description: 'Cookie Policy for OG Snake game - How we use cookies and similar technologies',
+  title: 'Cookie Policy | SupaSnake',
+  description:
+    'Which cookies and browser storage SupaSnake uses, what they do, and how consent works under §165(3) TKG 2021.',
 };
 
-export default function CookiePolicyPage() {
-  const lastUpdated = '2026-07-16';
-  const contactEmail = 'bllj@proton.me';
+type StorageEntry = {
+  name: string;
+  kind: 'Cookie' | 'localStorage';
+  purpose: string;
+  duration: string;
+};
 
+const ESSENTIAL: StorageEntry[] = [
+  {
+    name: 'sb-<project>-auth-token',
+    kind: 'localStorage',
+    purpose: 'Your Supabase sign-in session (JWT + refresh token)',
+    duration: 'Until sign-out',
+  },
+  {
+    name: 'cookie-consent',
+    kind: 'localStorage',
+    purpose: 'Stores your consent choices from the cookie banner',
+    duration: 'Until changed or cleared',
+  },
+  {
+    name: 'age_verified / age_verified_at',
+    kind: 'localStorage',
+    purpose: 'Remembers that you passed the age gate',
+    duration: 'Until cleared',
+  },
+  {
+    name: 'supasnake-last-user',
+    kind: 'localStorage',
+    purpose:
+      'Session-recovery hint (account ID and a masked e-mail hint, e.g. "jo***@…") so we can warn you before you lose guest progress',
+    duration: 'Until cleared',
+  },
+  {
+    name: 'supasnake-progress-loss-noticed',
+    kind: 'localStorage',
+    purpose: 'Remembers that the progress-loss warning was shown',
+    duration: 'Until cleared',
+  },
+];
+
+const FUNCTIONAL: StorageEntry[] = [
+  {
+    name: 'control-mode',
+    kind: 'localStorage',
+    purpose: 'Your preferred game input method',
+    duration: 'Until cleared',
+  },
+  {
+    name: 'hint-dismissed-*',
+    kind: 'localStorage',
+    purpose: 'Remembers which UI hints you have dismissed',
+    duration: 'Until cleared',
+  },
+];
+
+const ANALYTICS: StorageEntry[] = [
+  {
+    name: 'ph_* (PostHog)',
+    kind: 'Cookie',
+    purpose:
+      'Product analytics: pseudonymous device/session ID linking usage events. Set only after you enable Analytics in the cookie banner. EU-hosted.',
+    duration: 'Up to 12 months',
+  },
+  {
+    name: 'PostHog persistence entries',
+    kind: 'localStorage',
+    purpose: 'Analytics device/session identifiers (consent-gated)',
+    duration: 'Until consent is revoked or storage cleared',
+  },
+];
+
+function StorageTable({ entries }: { entries: StorageEntry[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm text-left">
+        <thead>
+          <tr className="text-venom-orange border-b border-scale-blue-light">
+            <th className="py-2 pr-4">Name</th>
+            <th className="py-2 pr-4">Type</th>
+            <th className="py-2 pr-4">Purpose</th>
+            <th className="py-2">Duration</th>
+          </tr>
+        </thead>
+        <tbody className="text-beige">
+          {entries.map((e) => (
+            <tr key={e.name} className="border-b border-scale-blue-light/40 last:border-b-0">
+              <td className="py-2 pr-4 font-mono text-xs">{e.name}</td>
+              <td className="py-2 pr-4">{e.kind}</td>
+              <td className="py-2 pr-4">{e.purpose}</td>
+              <td className="py-2">{e.duration}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function CookiePolicyPage() {
   return (
     <main className="min-h-screen bg-scale-blue-dark text-bone-white">
       <div className="max-w-4xl mx-auto px-6 py-12">
-        {/* Header */}
         <div className="mb-8">
           <Link
             href="/"
@@ -23,259 +125,130 @@ export default function CookiePolicyPage() {
           <h1 className="text-4xl font-display uppercase tracking-arcade text-venom-orange mt-4">
             Cookie Policy
           </h1>
-          <p className="text-beige font-body mt-2">Last Updated: {lastUpdated}</p>
+          <p className="text-beige font-body mt-2">
+            Last updated: {LEGAL_VERSIONS.cookies}
+          </p>
         </div>
 
-        {/* Content */}
         <div className="space-y-8 font-body text-bone-white/90">
-          {/* What Are Cookies */}
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              What Are Cookies?
+              1. How {PRODUCT.name} uses cookies and browser storage
             </h2>
             <p className="mb-4">
-              Cookies are small text files stored on your device when you visit a website or use an
-              application. They help us remember your preferences, understand how you use our game,
-              and improve your experience.
+              {PRODUCT.name} uses very few cookies. Most of what we store lives
+              in your browser&apos;s localStorage (which stays on your device
+              and is not sent with every request). This policy lists every
+              entry, grouped by category. Under §165(3) of the Austrian
+              Telecommunications Act (TKG 2021) and the GDPR, anything that is
+              not strictly necessary is used only with your prior consent,
+              which the cookie banner collects and which you can change at any
+              time in{' '}
+              <Link
+                href="/settings/privacy"
+                className="text-venom-orange hover:underline"
+              >
+                Settings → Privacy
+              </Link>
+              .
             </p>
             <p>
-              We also use similar technologies like local storage and session storage for the same purposes.
+              We set no advertising or marketing cookies, and no third-party
+              tracking pixels.
             </p>
           </section>
 
-          {/* Types of Cookies */}
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Types of Cookies We Use
-            </h2>
-
-            {/* Essential */}
-            <div className="mb-6 p-4 bg-scale-blue-dark rounded-arcade border border-scale-blue-light">
-              <h3 className="text-lg text-bone-white font-bold mb-2">Essential Cookies</h3>
-              <p className="text-beige text-sm mb-2">Required for the game to function. Cannot be disabled.</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-beige border-b border-scale-blue-light">
-                    <th className="pb-2">Cookie</th>
-                    <th className="pb-2">Purpose</th>
-                    <th className="pb-2">Duration</th>
-                  </tr>
-                </thead>
-                <tbody className="text-bone-white/80">
-                  <tr className="border-b border-scale-blue-light/50">
-                    <td className="py-2 text-venom-orange">sb-access-token</td>
-                    <td className="py-2">Authentication session</td>
-                    <td className="py-2">1 hour</td>
-                  </tr>
-                  <tr className="border-b border-scale-blue-light/50">
-                    <td className="py-2 text-venom-orange">sb-refresh-token</td>
-                    <td className="py-2">Session refresh</td>
-                    <td className="py-2">7 days</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 text-venom-orange">age-verified</td>
-                    <td className="py-2">Age verification status</td>
-                    <td className="py-2">7 days</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Functional */}
-            <div className="mb-6 p-4 bg-scale-blue-dark rounded-arcade border border-scale-blue-light">
-              <h3 className="text-lg text-bone-white font-bold mb-2">Functional Cookies</h3>
-              <p className="text-beige text-sm mb-2">Remember your preferences. Can be disabled.</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-beige border-b border-scale-blue-light">
-                    <th className="pb-2">Cookie</th>
-                    <th className="pb-2">Purpose</th>
-                    <th className="pb-2">Duration</th>
-                  </tr>
-                </thead>
-                <tbody className="text-bone-white/80">
-                  <tr className="border-b border-scale-blue-light/50">
-                    <td className="py-2 text-venom-orange">theme</td>
-                    <td className="py-2">UI theme preference</td>
-                    <td className="py-2">1 year</td>
-                  </tr>
-                  <tr className="border-b border-scale-blue-light/50">
-                    <td className="py-2 text-venom-orange">audio-enabled</td>
-                    <td className="py-2">Sound settings</td>
-                    <td className="py-2">1 year</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 text-venom-orange">selected-dynasty</td>
-                    <td className="py-2">Last selected dynasty</td>
-                    <td className="py-2">Session</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Analytics */}
-            <div className="mb-6 p-4 bg-scale-blue-dark rounded-arcade border border-scale-blue-light">
-              <h3 className="text-lg text-bone-white font-bold mb-2">Analytics Cookies</h3>
-              <p className="text-beige text-sm mb-2">Help us understand how you use the game. Can be disabled.</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-beige border-b border-scale-blue-light">
-                    <th className="pb-2">Cookie</th>
-                    <th className="pb-2">Purpose</th>
-                    <th className="pb-2">Duration</th>
-                  </tr>
-                </thead>
-                <tbody className="text-bone-white/80">
-                  <tr className="border-b border-scale-blue-light/50">
-                    <td className="py-2 text-venom-orange">ph_*</td>
-                    <td className="py-2">PostHog analytics (only set after you grant analytics consent)</td>
-                    <td className="py-2">1 year</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 text-venom-orange">sentry-*</td>
-                    <td className="py-2">Error tracking</td>
-                    <td className="py-2">Session</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Marketing */}
-            <div className="p-4 bg-scale-blue-dark rounded-arcade border border-scale-blue-light">
-              <h3 className="text-lg text-bone-white font-bold mb-2">Marketing Cookies</h3>
-              <p className="text-beige text-sm mb-2">Track advertising effectiveness. Can be disabled.</p>
-              <p className="text-bone-white/80 text-sm">
-                We do not currently set any marketing or advertising cookies. If this
-                changes, this policy will be updated and your consent requested first.
-              </p>
-            </div>
-          </section>
-
-          {/* Local Storage */}
-          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
-            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Local Storage
+              2. Strictly necessary (no consent required)
             </h2>
             <p className="mb-4">
-              We use browser local storage for non-sensitive UI preferences only. Game progress
-              and account data are stored securely on our servers, not in your browser.
+              Required for the Game to function — signing in, keeping your
+              session, remembering your consent choices, and the age gate.
+              Legal basis: §165(3) TKG 2021 (strictly necessary exemption).
             </p>
-            <ul className="list-disc list-inside space-y-2 text-beige">
-              <li><strong className="text-bone-white">UI preferences:</strong> Sound settings, visual preferences</li>
-              <li><strong className="text-bone-white">Consent choices:</strong> Your cookie preferences</li>
-            </ul>
+            <StorageTable entries={ESSENTIAL} />
           </section>
 
-          {/* Managing Cookies */}
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Managing Your Cookie Preferences
+              3. Functional (consent)
             </h2>
             <p className="mb-4">
-              You can manage your cookie preferences at any time:
+              Convenience preferences. The Game works without them; you would
+              just have to re-select preferences each visit.
             </p>
-            <ul className="list-disc list-inside space-y-2 text-beige mb-4">
-              <li>
-                <strong className="text-bone-white">In-Game:</strong> Visit{' '}
-                <Link href="/settings/privacy" className="text-venom-orange hover:underline">
-                  Privacy Settings
-                </Link>
-              </li>
-              <li>
-                <strong className="text-bone-white">Browser Settings:</strong> Most browsers allow you to
-                block or delete cookies through their settings menu
-              </li>
-            </ul>
-            <p className="text-beige text-sm">
-              Note: Disabling essential cookies may prevent the game from functioning properly.
-            </p>
+            <StorageTable entries={FUNCTIONAL} />
           </section>
 
-          {/* Third-Party Cookies */}
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Third-Party Services
+              4. Analytics (consent)
             </h2>
             <p className="mb-4">
-              We use the following third-party services that may set their own cookies:
+              Set only after you enable the Analytics category. Used to
+              understand how the Game is played so we can improve it. Details
+              on the processing are in section 3.6 of the{' '}
+              <Link
+                href="/legal/privacy"
+                className="text-venom-orange hover:underline"
+              >
+                Privacy Policy
+              </Link>
+              .
             </p>
-            <ul className="list-disc list-inside space-y-2 text-beige">
-              <li>
-                <strong className="text-bone-white">Supabase:</strong> Authentication and database{' '}
-                <a href="https://supabase.com/privacy" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
-                  (Privacy Policy)
-                </a>
-              </li>
-              <li>
-                <strong className="text-bone-white">Stripe:</strong> Payment processing{' '}
-                <a href="https://stripe.com/privacy" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
-                  (Privacy Policy)
-                </a>
-              </li>
-              <li>
-                <strong className="text-bone-white">Vercel:</strong> Hosting{' '}
-                <a href="https://vercel.com/legal/privacy-policy" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
-                  (Privacy Policy)
-                </a>
-              </li>
-              <li>
-                <strong className="text-bone-white">PostHog:</strong> Analytics (EU hosting){' '}
-                <a href="https://posthog.com/privacy" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
-                  (Privacy Policy)
-                </a>
-              </li>
-              <li>
-                <strong className="text-bone-white">Sentry:</strong> Error tracking{' '}
-                <a href="https://sentry.io/privacy/" className="text-venom-orange hover:underline" target="_blank" rel="noopener noreferrer">
-                  (Privacy Policy)
-                </a>
-              </li>
-            </ul>
+            <StorageTable entries={ANALYTICS} />
           </section>
 
-          {/* Updates */}
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Changes to This Policy
+              5. Third-party pages
             </h2>
             <p>
-              We may update this Cookie Policy from time to time. We will notify you of any
-              material changes by posting the new policy on this page and updating the
-              &quot;Last Updated&quot; date.
+              When you start a purchase you are redirected to Stripe Checkout
+              (checkout.stripe.com), which sets its own cookies for payment and
+              fraud prevention under Stripe&apos;s cookie policy. If you link
+              Discord, the OAuth flow happens on discord.com under
+              Discord&apos;s policies. Neither happens without an action you
+              take.
             </p>
           </section>
 
-          {/* Contact */}
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              Contact Us
+              6. Managing consent
             </h2>
+            <p className="mb-4">
+              You can accept all, reject all, or pick categories in the cookie
+              banner on first visit, and change your choice any time in{' '}
+              <Link
+                href="/settings/privacy"
+                className="text-venom-orange hover:underline"
+              >
+                Settings → Privacy
+              </Link>
+              . Rejecting non-essential categories never blocks you from
+              playing. You can also clear all locally stored data via your
+              browser settings.
+            </p>
             <p>
-              If you have questions about our use of cookies, please contact us at:{' '}
-              <a href={`mailto:${contactEmail}`} className="text-venom-orange hover:underline">
-                {contactEmail}
-              </a>
+              Questions? Contact{' '}
+              <a
+                href={`mailto:${LEGAL_CONTACT.email}`}
+                className="text-venom-orange hover:underline"
+              >
+                {LEGAL_CONTACT.email}
+              </a>{' '}
+              or use the{' '}
+              <Link href="/contact" className="text-venom-orange hover:underline">
+                contact form
+              </Link>
+              .
             </p>
           </section>
         </div>
 
-        {/* Footer Links */}
-        <div className="mt-12 pt-8 border-t border-scale-blue-light">
-          <div className="flex flex-wrap gap-6 text-beige font-body text-sm">
-            <Link href="/legal/terms" className="hover:text-bone-white transition-colors">
-              Terms of Service
-            </Link>
-            <Link href="/legal/privacy" className="hover:text-bone-white transition-colors">
-              Privacy Policy
-            </Link>
-            <Link href="/settings/privacy" className="hover:text-bone-white transition-colors">
-              Privacy Settings
-            </Link>
-            <Link href="/" className="hover:text-bone-white transition-colors">
-              Back to Game
-            </Link>
-          </div>
-        </div>
+        <LegalPageFooter currentPath="/legal/cookies" />
       </div>
     </main>
   );

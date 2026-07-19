@@ -5,6 +5,9 @@
  * Server-side enforcement (client UI gating is cosmetic only):
  * - anonymous users cannot purchase (403 account_required)
  * - bundle products are Day 2+ only per BM-004 (403 bundle_not_available)
+ * - consumers must expressly consent to immediate delivery of digital
+ *   content and acknowledge loss of the 14-day withdrawal right before
+ *   checkout (§18(1)(11) FAGG) — recorded in the session metadata
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -69,10 +72,20 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { productId } = body;
+    const { productId, withdrawalConsent } = body;
 
     if (!productId) {
       return NextResponse.json({ error: 'Product ID required' }, { status: 400 });
+    }
+
+    // FAGG §18(1)(11): digital content is delivered immediately, so the
+    // buyer must first expressly consent to immediate delivery and
+    // acknowledge losing the withdrawal right.
+    if (withdrawalConsent !== true) {
+      return NextResponse.json(
+        { error: 'withdrawal_consent_required' },
+        { status: 400 }
+      );
     }
 
     // Get product
@@ -133,6 +146,9 @@ export async function POST(request: NextRequest) {
         playerId: player.id,
         productId: product.id,
         rewards: JSON.stringify(product.rewards),
+        // Evidence of the §18 FAGG consent given in the shop UI
+        withdrawal_consent: 'immediate_delivery_acknowledged',
+        withdrawal_consent_at: new Date().toISOString(),
       },
       success_url: `${appUrl}/shop?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/shop?canceled=true`,

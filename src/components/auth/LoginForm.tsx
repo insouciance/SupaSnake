@@ -67,13 +67,18 @@ export function LoginForm({
   const { signInWithEmail, signUpWithEmail, signInWithOAuth, signInAnonymously, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState<FormError | null>(null);
   const [signupSuccess, setSignupSuccess] = useState(false);
 
   const isSignup = mode === 'signup';
 
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const canSubmit = isEmailValid && password.length >= 8 && !isLoading;
+  const canSubmit =
+    isEmailValid &&
+    password.length >= 8 &&
+    !isLoading &&
+    (!isSignup || termsAccepted);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,6 +237,40 @@ export function LoginForm({
           />
         </div>
 
+        {isSignup && (
+          <label
+            htmlFor="signup-terms"
+            className="flex items-start gap-3 cursor-pointer text-sm text-beige font-body"
+          >
+            <input
+              id="signup-terms"
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-venom-orange"
+            />
+            <span>
+              I agree to the{' '}
+              <Link
+                href="/legal/terms"
+                target="_blank"
+                className="text-venom-orange hover:text-venom-orange-light underline"
+              >
+                Terms of Service
+              </Link>{' '}
+              and have read the{' '}
+              <Link
+                href="/legal/privacy"
+                target="_blank"
+                className="text-venom-orange hover:text-venom-orange-light underline"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
+        )}
+
         {showForgotPassword && (
           <div className="text-right">
             <Link
@@ -283,6 +322,26 @@ export function LoginForm({
       >
         Play as Guest
       </button>
+
+      <p className="text-center text-xs text-beige/60 font-body">
+        By signing in with Google/Apple or playing as guest, you agree to our{' '}
+        <Link
+          href="/legal/terms"
+          target="_blank"
+          className="text-venom-orange/80 hover:text-venom-orange underline"
+        >
+          Terms
+        </Link>{' '}
+        and acknowledge the{' '}
+        <Link
+          href="/legal/privacy"
+          target="_blank"
+          className="text-venom-orange/80 hover:text-venom-orange underline"
+        >
+          Privacy Policy
+        </Link>
+        .
+      </p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 /**
  * Event Taxonomy
- * Standardized event definitions for OG Snake analytics
+ * Standardized event definitions for SupaSnake analytics
  *
  * Categories:
  * - Lifecycle: User session and account events

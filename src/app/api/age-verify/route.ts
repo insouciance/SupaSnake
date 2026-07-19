@@ -6,13 +6,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { MINIMUM_AGE } from '@/shared/config/legal';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const MIN_AGE = 13;
+const MIN_AGE = MINIMUM_AGE;
 
 export async function POST(request: NextRequest) {
   try {

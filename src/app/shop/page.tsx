@@ -30,6 +30,11 @@ export default function ShopPage() {
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  // §18(1)(11) FAGG: express consent to immediate delivery + loss of the
+  // 14-day withdrawal right, required before any purchase. Deliberately
+  // not persisted — it must be an active choice per shop visit.
+  const [withdrawalConsent, setWithdrawalConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   // Check URL params for success/cancel
   useEffect(() => {
@@ -55,8 +60,17 @@ export default function ShopPage() {
       return;
     }
 
+    if (!withdrawalConsent) {
+      setConsentError(true);
+      setError(
+        'Please confirm the immediate-delivery consent (below the products) first.'
+      );
+      return;
+    }
+
     setLoading(product.id);
     setError(null);
+    setConsentError(false);
 
     try {
       const response = await fetch('/api/checkout', {
@@ -65,7 +79,7 @@ export default function ShopPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ productId: product.id }),
+        body: JSON.stringify({ productId: product.id, withdrawalConsent }),
       });
 
       const data = await response.json();
@@ -277,11 +291,68 @@ export default function ShopPage() {
         </section>
       )}
 
+      {/* Consumer-law consent (§18 FAGG) — required before checkout */}
+      {!isAnonymous && (
+        <section
+          className={`panel p-4 mb-8 animate-fade-up ${
+            consentError ? 'border-2 border-strike-red' : ''
+          }`}
+        >
+          <label
+            htmlFor="withdrawal-consent"
+            className="flex items-start gap-3 cursor-pointer text-sm text-beige font-body"
+          >
+            <input
+              id="withdrawal-consent"
+              type="checkbox"
+              checked={withdrawalConsent}
+              onChange={(e) => {
+                setWithdrawalConsent(e.target.checked);
+                if (e.target.checked) {
+                  setConsentError(false);
+                  setError(null);
+                }
+              }}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-venom-orange"
+            />
+            <span>
+              I expressly request that digital content be delivered to my
+              account immediately after purchase, and I acknowledge that I
+              thereby lose my 14-day right of withdrawal (§18 FAGG). My
+              statutory warranty rights are unaffected —{' '}
+              <Link
+                href="/legal/withdrawal"
+                target="_blank"
+                className="text-venom-orange hover:underline"
+              >
+                withdrawal notice
+              </Link>
+              .
+            </span>
+          </label>
+        </section>
+      )}
+
       {/* Fair Play Notice */}
       <section className="text-center text-beige/60 text-sm font-body">
         <div className="divider-glow max-w-md mx-auto mb-4" />
         <p>All variants can be unlocked through gameplay.</p>
         <p>Purchases provide convenience, not power advantages.</p>
+        <p className="mt-2">
+          All prices include VAT where applicable. Payment is processed by
+          Stripe. See our{' '}
+          <Link href="/legal/terms" className="text-venom-orange/80 hover:underline">
+            Terms
+          </Link>{' '}
+          and{' '}
+          <Link
+            href="/legal/withdrawal"
+            className="text-venom-orange/80 hover:underline"
+          >
+            withdrawal notice
+          </Link>
+          .
+        </p>
       </section>
 
       {/* Account upgrade modal (anonymous users only) */}
