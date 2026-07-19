@@ -12,6 +12,19 @@
 -- /api/player GET fallback, which serves the default for any stored pick
 -- the player has not unlocked - safe in both mixed deploy states.
 
+-- Drop the v1 CHECK FIRST: the remap UPDATEs below write v2 ids, which the
+-- old constraint (five v1 ids only) would reject (23514).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'player_settings_aim_system_check'
+  ) THEN
+    ALTER TABLE player_settings
+      DROP CONSTRAINT player_settings_aim_system_check;
+  END IF;
+END $$;
+
 -- Remap stored selections (each UPDATE is idempotent: its WHERE matches
 -- only v1 values, which cease to exist after the first run)
 UPDATE player_settings SET aim_system = 'deadeye' WHERE aim_system = 'pulse';
@@ -24,18 +37,7 @@ UPDATE player_settings SET aim_system = 'pathline'
 UPDATE player_settings SET aim_system = 'deadeye'
   WHERE aim_system NOT IN ('deadeye', 'gridlock', 'pathline', 'firefly');
 
--- Swap the CHECK to the v2 ids (idempotent drop-and-recreate)
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'player_settings_aim_system_check'
-  ) THEN
-    ALTER TABLE player_settings
-      DROP CONSTRAINT player_settings_aim_system_check;
-  END IF;
-END $$;
-
+-- Recreate the CHECK with the v2 ids
 ALTER TABLE player_settings
   ADD CONSTRAINT player_settings_aim_system_check
   CHECK (aim_system IN ('deadeye', 'gridlock', 'pathline', 'firefly'));
