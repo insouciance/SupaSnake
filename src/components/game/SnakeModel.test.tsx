@@ -17,11 +17,14 @@ import {
   getSnakeGeometries,
   getSnakeSegmentMaterial,
   getSegmentScale,
+  getSegmentEnergy,
   SNAKE_MODEL_URL,
   HEAD_SIZE,
   BODY_SIZE,
   TAPER_SEGMENTS,
   TAPER_MIN,
+  ENERGY_FULL_SEGMENTS,
+  ENERGY_MIN,
   HEAD_EMISSIVE_INTENSITY,
   BODY_EMISSIVE_INTENSITY,
   BASE_COLOR_SCALE,
@@ -139,13 +142,58 @@ describe('getSnakeGeometries', () => {
 });
 
 describe('proportion constants (AAA rework pins)', () => {
-  it('pins the head/body proportion: head 0.9, body 0.70', () => {
+  it('pins the head/body proportion: head 0.9, body 0.75', () => {
     // Deliberate design pins - a change here is a design decision, not a
-    // refactor. BODY_SIZE dropped 0.82 -> 0.70 so the head reads first.
+    // refactor. BODY_SIZE dropped 0.82 -> 0.75: enough gap for the head to
+    // read first, tight enough that inter-segment gaps don't strobe
+    // (accordion) through curves - the eye-comfort compromise.
     expect(HEAD_SIZE).toBe(0.9);
-    expect(BODY_SIZE).toBe(0.7);
+    expect(BODY_SIZE).toBe(0.75);
     expect(TAPER_SEGMENTS).toBe(6);
     expect(TAPER_MIN).toBe(0.85);
+    expect(ENERGY_FULL_SEGMENTS).toBe(3);
+    expect(ENERGY_MIN).toBe(0.55);
+  });
+});
+
+describe('getSegmentEnergy (trunk energy falloff - eye comfort)', () => {
+  it('keeps the head and first full-glow segments at exactly 1.0', () => {
+    for (let i = 0; i <= ENERGY_FULL_SEGMENTS; i++) {
+      expect(getSegmentEnergy(i, 40)).toBe(1);
+    }
+  });
+
+  it('is monotonically non-increasing toward the tail', () => {
+    for (const length of [5, 10, 60, 100]) {
+      let previous = Infinity;
+      for (let i = 0; i < length; i++) {
+        const energy = getSegmentEnergy(i, length);
+        expect(energy).toBeLessThanOrEqual(previous);
+        previous = energy;
+      }
+    }
+  });
+
+  it('reaches exactly ENERGY_MIN at the tail tip of a long snake', () => {
+    for (const length of [10, 60, 100]) {
+      expect(getSegmentEnergy(length - 1, length)).toBeCloseTo(ENERGY_MIN, 10);
+    }
+  });
+
+  it('never leaves the [ENERGY_MIN, 1] band', () => {
+    for (const length of [1, 2, 4, 5, 30, 400]) {
+      for (let i = 0; i < length; i++) {
+        const energy = getSegmentEnergy(i, length);
+        expect(energy).toBeGreaterThanOrEqual(ENERGY_MIN);
+        expect(energy).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('short snakes stay at full energy (nothing to fall off across)', () => {
+    for (let i = 0; i < 4; i++) {
+      expect(getSegmentEnergy(i, 4)).toBe(1);
+    }
   });
 });
 
@@ -236,6 +284,16 @@ describe('getSnakeSegmentMaterial', () => {
     expect(head.emissiveIntensity).toBe(HEAD_EMISSIVE_INTENSITY);
     expect(body.emissiveIntensity).toBe(BODY_EMISSIVE_INTENSITY);
     expect(head.emissiveIntensity).toBeGreaterThan(body.emissiveIntensity);
+  });
+
+  it('keeps the body matte (no traveling specular sparkle) - eye comfort', () => {
+    const head = getSnakeSegmentMaterial('CYBER', true);
+    const body = getSnakeSegmentMaterial('CYBER', false);
+    expect(body.metalness).toBeLessThanOrEqual(0.25);
+    expect(body.roughness).toBeGreaterThanOrEqual(0.5);
+    // The head keeps the glossy premium finish
+    expect(head.metalness).toBe(0.5);
+    expect(head.roughness).toBe(0.3);
   });
 });
 

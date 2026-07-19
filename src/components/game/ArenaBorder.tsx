@@ -84,12 +84,30 @@ export function ArenaBorder({
     [accentColor]
   );
 
+  // Additive glow strip along the rail tops - the premium replacement for
+  // the deleted corner point lights: +4 draws, zero lights. Color/opacity
+  // are driven from the rail's animated state each frame, so flux phases
+  // carry through automatically.
+  const glowMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   useEffect(() => {
     return () => {
       railMaterial.dispose();
       pylonMaterial.dispose();
+      glowMaterial.dispose();
     };
-  }, [railMaterial, pylonMaterial]);
+  }, [railMaterial, pylonMaterial, glowMaterial]);
 
   // Subtle pulse animation - no allocations, a few material writes per
   // frame. COSMIC flux overrides the rail look per phase (see header).
@@ -134,6 +152,14 @@ export function ArenaBorder({
     }
   });
 
+  // Glow strip follows the rail's animated color/energy (after the flux
+  // branch above so every phase carries through) - two writes, no allocs
+  useFrame(() => {
+    glowMaterial.color.copy(railMaterial.emissive);
+    glowMaterial.opacity =
+      (0.18 + railMaterial.emissiveIntensity * 0.3) * railMaterial.opacity;
+  });
+
   const railHeight = 0.15;
   const railWidth = 0.08;
   const y = railHeight / 2;
@@ -158,6 +184,21 @@ export function ArenaBorder({
       {/* Right rail (X = gridSize) */}
       <mesh position={[gridSize + railWidth / 2, y, gridSize / 2]} material={railMaterial}>
         <boxGeometry args={[railWidth, railHeight, gridSize]} />
+      </mesh>
+
+      {/* Additive glow strips along the rail tops - the border's light
+          halo (replaces the four corner point lights) */}
+      <mesh position={[gridSize / 2, railHeight + 0.015, -railWidth / 2]} material={glowMaterial}>
+        <boxGeometry args={[gridSize + railWidth * 2, 0.03, railWidth * 1.6]} />
+      </mesh>
+      <mesh position={[gridSize / 2, railHeight + 0.015, gridSize + railWidth / 2]} material={glowMaterial}>
+        <boxGeometry args={[gridSize + railWidth * 2, 0.03, railWidth * 1.6]} />
+      </mesh>
+      <mesh position={[-railWidth / 2, railHeight + 0.015, gridSize / 2]} material={glowMaterial}>
+        <boxGeometry args={[railWidth * 1.6, 0.03, gridSize]} />
+      </mesh>
+      <mesh position={[gridSize + railWidth / 2, railHeight + 0.015, gridSize / 2]} material={glowMaterial}>
+        <boxGeometry args={[railWidth * 1.6, 0.03, gridSize]} />
       </mesh>
 
       {/* Corner pylons - venom-orange accents */}

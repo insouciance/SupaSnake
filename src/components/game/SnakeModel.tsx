@@ -29,10 +29,11 @@ import { themeManager } from '@/lib/theme/ThemeManager';
 export const SNAKE_MODEL_URL = '/assets/3D/snake_voxel.glb';
 
 /** Head is clearly larger than body segments (grid cell = 1 unit); the
- *  wider head/body gap makes the creature read head-first at a glance and
- *  gives the trunk breathing room between grid lines. */
+ *  head/body gap makes the creature read head-first at a glance. 0.75 is
+ *  the eye-comfort compromise: enough gap for head primacy, small enough
+ *  that inter-segment gaps don't strobe (accordion) through curves. */
 export const HEAD_SIZE = 0.9;
-export const BODY_SIZE = 0.7;
+export const BODY_SIZE = 0.75;
 
 /** Tail taper: the last TAPER_SEGMENTS body segments ease (smoothstep)
  *  from full trunk scale down to TAPER_MIN at the tail tip, so the snake
@@ -56,6 +57,29 @@ export function getSegmentScale(index: number, length: number): number {
   const t = (index - taperStart + 1) / (length - taperStart);
   const s = t * t * (3 - 2 * t); // smoothstep
   return 1 - (1 - TAPER_MIN) * s;
+}
+
+/** Energy falloff: the head + first ENERGY_FULL_SEGMENTS body segments
+ *  carry the identity at full glow; behind them the trunk's emissive
+ *  energy eases down to ENERGY_MIN at the tail. Eye-comfort measure: a
+ *  long snake reads as ONE calm body with a bright front, instead of a
+ *  chain of equally-hot pieces shimmering in motion. */
+export const ENERGY_FULL_SEGMENTS = 3;
+export const ENERGY_MIN = 0.55;
+
+/**
+ * Per-segment energy multiplier (1.0 near the head -> ENERGY_MIN at the
+ * tail tip, smoothstepped). Pure and allocation-free; applied to the
+ * instanced body's per-instance color so both emissive and albedo cool
+ * toward the tail. Never below ENERGY_MIN, never above 1.
+ */
+export function getSegmentEnergy(index: number, length: number): number {
+  if (index <= ENERGY_FULL_SEGMENTS || length <= ENERGY_FULL_SEGMENTS + 1) {
+    return 1;
+  }
+  const t = (index - ENERGY_FULL_SEGMENTS) / (length - 1 - ENERGY_FULL_SEGMENTS);
+  const s = t * t * (3 - 2 * t); // smoothstep
+  return 1 - (1 - ENERGY_MIN) * s;
 }
 
 /** Head glows brighter than the body for at-a-glance orientation. Crisper
@@ -153,8 +177,11 @@ export function getSnakeSegmentMaterial(
       emissiveIntensity: isHead
         ? HEAD_EMISSIVE_INTENSITY
         : BODY_EMISSIVE_INTENSITY,
-      metalness: 0.5,
-      roughness: 0.3,
+      // Head keeps a glossy premium finish; the BODY is deliberately matte
+      // (low metalness, higher roughness) so moving lights never race
+      // specular glints down the trunk - the segment-shimmer eye-comfort fix
+      metalness: isHead ? 0.5 : 0.2,
+      roughness: isHead ? 0.3 : 0.55,
     });
     materialCache.set(key, material);
   }

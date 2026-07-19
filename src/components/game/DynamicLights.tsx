@@ -32,12 +32,17 @@ export function DynamicLights({
     if (!pointLightRef.current) return;
 
     if (isDeathSequence) {
-      const flicker = Math.random() > 0.5 ? 1.2 : 0.3;
-      pointLightRef.current.intensity = flicker;
+      // Death dimming: a smooth ~2.2Hz throb, deliberately NOT the old
+      // per-frame random strobe (broadband 3-30Hz flashing violates the
+      // photosensitivity budget). The drama comes from shake + particles.
+      pointLightRef.current.intensity =
+        0.45 + Math.sin(state.clock.elapsedTime * 14) * 0.25;
       return;
     }
 
-    const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.15 + 0.55;
+    // Slow, shallow breathe (~0.32Hz, small amplitude) - the dynasty light
+    // must never read as a strobe over the moving trunk
+    const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.08 + 0.7;
     const scoreBoost = Math.min(score / 50, 1) * 0.3;
     pointLightRef.current.intensity = pulse + scoreBoost;
 
@@ -54,36 +59,20 @@ export function DynamicLights({
 
   return (
     <>
-      {/* Main dynasty-colored point light */}
+      {/* Main dynasty-colored point light - pulses, brightens with score */}
       <pointLight
         ref={pointLightRef}
         position={[center, 15, center]}
-        intensity={0.5}
+        intensity={0.7}
         color={theme.primary}
         distance={50}
         decay={2}
       />
 
-      {/* Cool blue fill light */}
-      <directionalLight
-        position={[-8, 15, -8]}
-        intensity={0.25}
-        color="#6688ff"
-      />
-
       {/* Rim light for snake silhouette pop */}
       <directionalLight
         position={[center + 15, 8, center + 15]}
-        intensity={0.4}
-        color="#ffffff"
-      />
-
-      {/* Overhead fill spot */}
-      <spotLight
-        position={[center, 25, center - 5]}
-        angle={0.8}
-        penumbra={0.8}
-        intensity={0.3}
+        intensity={0.35}
         color="#ffffff"
       />
 
@@ -101,12 +90,10 @@ export function DynamicLights({
         />
       )}
 
-      {/* Corner accent lights - slightly raised to support the dynasty
-          edge wash on the darker void-family floor */}
-      <pointLight position={[0, 2, 0]} intensity={0.2} color={theme.primary} distance={8} />
-      <pointLight position={[gridSize, 2, 0]} intensity={0.2} color={theme.primary} distance={8} />
-      <pointLight position={[0, 2, gridSize]} intensity={0.2} color={theme.primary} distance={8} />
-      <pointLight position={[gridSize, 2, gridSize]} intensity={0.2} color={theme.primary} distance={8} />
+      {/* The old blue fill, overhead spot, and 4 corner points are gone:
+          their job moved to the hemisphere base rig (page.tsx), the
+          stronger floor edge wash, and the border glow strips - premium
+          contrast for 4 fewer per-fragment light evaluations. */}
     </>
   );
 }

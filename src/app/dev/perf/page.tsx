@@ -222,11 +222,12 @@ export default function PerfHarnessPage() {
           camera.lookAt(center, 0, center);
         }}
       >
-        <fog attach="fog" args={['#06090d', 34, 65]} />
-        <ambientLight intensity={0.35} />
+        <fog attach="fog" args={['#0a0f14', 40, 75]} />
+        <hemisphereLight args={['#bcd6e8', '#0b1016', 0.5]} />
+        <ambientLight intensity={0.18} />
         <directionalLight
           position={[10, 20, 10]}
-          intensity={0.9}
+          intensity={1.1}
           castShadow
           shadow-mapSize={config.mobile ? [1024, 1024] : [2048, 2048]}
           shadow-camera-near={1}
@@ -246,9 +247,9 @@ export default function PerfHarnessPage() {
         />
         <ArenaFloor
           gridSize={GRID}
-          floorColor="#0b1016"
-          gridColor="#2b3b4d"
-          majorGridColor="#6b7d8a"
+          floorColor="#101722"
+          gridColor="#3b5266"
+          majorGridColor="#7fb2d9"
           accentColor={theme.primary}
         />
         <ArenaBorder
@@ -280,14 +281,15 @@ export default function PerfHarnessPage() {
         <ExitPortal
           position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
           ticksRemaining={100}
+          isMobile={config.mobile}
         />
         <PerfHUD />
         {!config.mobile && (
           <EffectComposer>
             <Bloom
-              luminanceThreshold={0.3}
+              luminanceThreshold={0.35}
               luminanceSmoothing={0.9}
-              intensity={0.6}
+              intensity={0.75}
               mipmapBlur
             />
           </EffectComposer>

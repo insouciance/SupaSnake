@@ -42,6 +42,7 @@ import {
   BODY_SIZE,
   HEAD_SIZE,
   SNAKE_MODEL_URL,
+  getSegmentEnergy,
   getSegmentScale,
   getSnakeGeometries,
   getSnakeSegmentMaterial,
@@ -63,6 +64,39 @@ const _position = new THREE.Vector3();
 const _scale = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion(); // identity - segments never rotate
 const _matrix = new THREE.Matrix4();
+const _energyColor = new THREE.Color();
+
+/**
+ * Instanced-body material per dynasty: a clone of the shared body material
+ * with two eye-comfort adjustments -
+ * 1. albedo trimmed so the moving trunk sits safely UNDER the bloom
+ *    threshold (only head/food/portal/glow strips may bloom; a blooming
+ *    trunk is a flicker amplifier in motion), and
+ * 2. an emissive shader patch that multiplies emissive by the per-instance
+ *    color, so the energy falloff (getSegmentEnergy) cools BOTH albedo and
+ *    glow toward the tail. The trunk itself is otherwise perfectly steady:
+ *    no time-varying material writes on body segments, ever.
+ */
+const instancedBodyMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
+
+function getInstancedBodyMaterial(dynasty: DynastyId): THREE.MeshStandardMaterial {
+  let material = instancedBodyMaterialCache.get(dynasty);
+  if (!material) {
+    material = getSnakeSegmentMaterial(dynasty, false).clone();
+    material.color.multiplyScalar(0.75);
+    material.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\n' +
+          '#ifdef USE_INSTANCING_COLOR\n' +
+          '\ttotalEmissiveRadiance *= vColor;\n' +
+          '#endif'
+      );
+    };
+    instancedBodyMaterialCache.set(dynasty, material);
+  }
+  return material;
+}
 
 /** Shared unit box for the pre-GLB fallback (same idea as SnakeModel's). */
 const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -130,9 +164,11 @@ function InstancedSnakeCore({
   const instancedRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.Group>(null);
   const yawRef = useRef(HEAD_FACE_YAW[direction]);
+  // Energy-falloff cache: instance colors only rewrite when length changes
+  const lastEnergyCountRef = useRef(-1);
 
   const headMaterial = getSnakeSegmentMaterial(dynasty, true);
-  const bodyMaterial = getSnakeSegmentMaterial(dynasty, false);
+  const bodyMaterial = getInstancedBodyMaterial(dynasty);
 
   // One-time GPU hints: the instance matrices stream every frame, and the
   // whole arena is always on screen - skip per-frame culling math.
@@ -141,6 +177,7 @@ function InstancedSnakeCore({
     if (!mesh) return;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
+    lastEnergyCountRef.current = -1;
   }, [bodyGeometry]);
 
   useFrame((_, delta) => {
@@ -166,6 +203,23 @@ function InstancedSnakeCore({
     }
     mesh.count = Math.max(0, count - 1);
     mesh.instanceMatrix.needsUpdate = true;
+
+    // Energy falloff (eye comfort): bright near the head, cooling toward
+    // the tail. Written only when the snake's length changes - the trunk's
+    // look is otherwise perfectly steady frame to frame.
+    if (
+      count !== lastEnergyCountRef.current ||
+      (count > 1 && mesh.instanceColor === null)
+    ) {
+      lastEnergyCountRef.current = count;
+      for (let i = 1; i < count; i++) {
+        _energyColor.setScalar(getSegmentEnergy(i, count));
+        mesh.setColorAt(i - 1, _energyColor);
+      }
+      if (mesh.instanceColor) {
+        mesh.instanceColor.needsUpdate = true;
+      }
+    }
 
     // Head: interpolated position + damped yaw toward the heading
     if (count > 0) {

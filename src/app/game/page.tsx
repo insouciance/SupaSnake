@@ -1866,14 +1866,19 @@ export default function GamePage() {
         dpr={isMobile ? [1, 1.5] : [1, 2]}
       >
         {/* Fog in the void family so the arena's far edge melts into the
-            page backdrop instead of cutting out against it */}
-        <fog attach="fog" args={['#06090d', 34, 65]} />
-        <ambientLight intensity={0.35} />
+            page backdrop instead of cutting out against it - lifted and
+            pulled back so the board reads bright and premium */}
+        <fog attach="fog" args={['#0a0f14', 40, 75]} />
+        {/* Premium base rig: cool sky/ground hemisphere carries the
+            ambient read (subtle top/bottom shading instead of flat fill) */}
+        <hemisphereLight args={['#bcd6e8', '#0b1016', 0.5]} />
+        <ambientLight intensity={0.18} />
+        {/* Key light - the single shadow caster */}
         <directionalLight
           position={[10, 20, 10]}
-          intensity={0.9}
+          intensity={1.1}
           castShadow
-          shadow-mapSize={[2048, 2048]}
+          shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
           shadow-camera-near={1}
           shadow-camera-far={50}
           shadow-camera-left={-15}
@@ -1894,6 +1899,7 @@ export default function GamePage() {
           <GameBoard
             dynasty={selectedDynasty}
             bufferRef={interpBufferRef}
+            isMobile={isMobile}
             snake={snake}
             food={food}
             extraFoods={extraFoods}
@@ -1926,13 +1932,15 @@ export default function GamePage() {
         {/* Dev-only render stats (?perf) */}
         {perfEnabled && <PerfHUD />}
 
-        {/* Bloom postprocessing - desktop only, to protect mobile framerate */}
+        {/* Bloom postprocessing - desktop only, to protect mobile framerate.
+            Threshold 0.35 keeps the lifted floor/grid out of the bloom while
+            the emissive identities (snake, food core, portal beam) glow. */}
         {!isMobile && (
           <EffectComposer>
             <Bloom
-              luminanceThreshold={0.3}
+              luminanceThreshold={0.35}
               luminanceSmoothing={0.9}
-              intensity={0.6}
+              intensity={0.75}
               mipmapBlur
             />
           </EffectComposer>
@@ -1953,6 +1961,8 @@ interface GameBoardProps {
   dynasty: DynastyId;
   /** Tick-alpha interpolation buffer - the snake's per-frame position source. */
   bufferRef: { readonly current: InterpolationBuffer | null };
+  /** Mobile perf profile (portal draw fallback etc.) */
+  isMobile: boolean;
   snake: Position[];
   food: Position | null;
   extraFoods: Position[];
@@ -1980,6 +1990,7 @@ interface GameBoardProps {
 function GameBoard({
   dynasty,
   bufferRef,
+  isMobile,
   snake,
   food,
   extraFoods,
@@ -2015,9 +2026,9 @@ function GameBoard({
           On COSMIC the border rails signal the wrap phase. */}
       <ArenaFloor
         gridSize={GAME_CONFIG.board.gridSize}
-        floorColor="#0b1016"
-        gridColor="#2b3b4d"
-        majorGridColor="#6b7d8a"
+        floorColor="#101722"
+        gridColor="#3b5266"
+        majorGridColor="#7fb2d9"
         accentColor={theme.primary}
       />
       <ArenaBorder
@@ -2078,12 +2089,13 @@ function GameBoard({
         />
       ))}
 
-      {/* Exit portal - extraction banking doorway (cyan-white, urgency
-          pulse as the despawn window closes) */}
+      {/* Exit portal - the champagne extraction beam (categorically
+          distinct from food; urgency spin-up/flicker as the window closes) */}
       {exitTile && (
         <ExitPortal
           position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
           ticksRemaining={exitTicksRemaining}
+          isMobile={isMobile}
         />
       )}
       {/* Twin Exits (anomaly §7.2): the pair's second doorway - same
@@ -2092,6 +2104,7 @@ function GameBoard({
         <ExitPortal
           position={[exitTile2.x + 0.5, 0, exitTile2.z + 0.5]}
           ticksRemaining={exitTicksRemaining}
+          isMobile={isMobile}
         />
       )}
 

@@ -4,9 +4,9 @@
  * ArenaFloor - Void-born arena platform
  *
  * The floor grows out of the app's void backdrop instead of floating over it:
- * a deep void-family surface (#0b1016) with a dynasty-tinted emissive wash at
- * the edges, plus an e-sports major/minor grid (thin cell lines, emphasis
- * every 5 cells) for fast line reading.
+ * a lifted void-family clearcoat surface (#101722) with a dynasty-tinted
+ * emissive wash at the edges, plus an e-sports major/minor grid (thin cell
+ * lines, emphasis every 5 cells) for fast line reading.
  */
 
 import { useEffect, useMemo } from 'react';
@@ -30,9 +30,9 @@ const MAJOR_EVERY = 5;
 
 export function ArenaFloor({
   gridSize = 20,
-  floorColor = '#0b1016',
-  gridColor = '#2b3b4d',
-  majorGridColor = '#6b7d8a',
+  floorColor = '#101722',
+  gridColor = '#3b5266',
+  majorGridColor = '#7fb2d9',
   accentColor = '#22d3ee',
 }: ArenaFloorProps) {
   const center = gridSize / 2;
@@ -83,8 +83,8 @@ export function ArenaFloor({
       size / 2, size / 2, size * 0.71
     );
     grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
-    grad.addColorStop(0.7, `rgba(${r},${g},${b},0.05)`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},0.2)`);
+    grad.addColorStop(0.7, `rgba(${r},${g},${b},0.10)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0.35)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
@@ -101,14 +101,17 @@ export function ArenaFloor({
 
   return (
     <group>
-      {/* Main platform surface - void-family, low metalness so it takes
-          light softly instead of reading as a metal slab over the backdrop */}
+      {/* Main platform surface - lifted void-family tone with a clearcoat
+          sheen so the key/hemisphere rig reads as premium lacquer instead
+          of matte plastic */}
       <mesh position={[center, -0.05, center]} receiveShadow>
         <boxGeometry args={[gridSize, 0.1, gridSize]} />
-        <meshStandardMaterial
+        <meshPhysicalMaterial
           color={floorColor}
           metalness={0.35}
-          roughness={0.65}
+          roughness={0.6}
+          clearcoat={0.3}
+          clearcoatRoughness={0.4}
         />
       </mesh>
 
@@ -130,7 +133,7 @@ export function ArenaFloor({
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[minorPositions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={gridColor} opacity={0.28} transparent />
+        <lineBasicMaterial color={gridColor} opacity={0.35} transparent />
       </lineSegments>
 
       {/* Major grid lines - every 5 cells, brighter for fast distance reads */}
@@ -138,7 +141,7 @@ export function ArenaFloor({
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[majorPositions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={majorGridColor} opacity={0.55} transparent />
+        <lineBasicMaterial color={majorGridColor} opacity={0.5} transparent />
       </lineSegments>
 
       {/* Corner accent markers - dynasty-tinted */}
