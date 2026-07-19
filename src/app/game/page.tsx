@@ -2,7 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { useEffect, useRef, useCallback, useState, Suspense } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, Suspense } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import { SnakeGameLogic, Direction, Position, GameOverData } from '@/lib/game/SnakeGameLogic';
 import type { FluxPhase } from '@/lib/game/SnakeGameLogic';
@@ -36,7 +36,8 @@ import { PauseMenu } from '@/components/game/PauseMenu';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
-import { AimingCrosshair } from '@/components/game/AimingCrosshair';
+import { AimRenderer } from '@/components/game/AimRenderer';
+import type { AimTarget } from '@/components/game/aimUtils';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import { RunInsightCard } from '@/components/game/RunInsightCard';
 import { CameraRig, DEFAULT_AZIMUTH } from '@/components/game/CameraRig';
@@ -2020,6 +2021,23 @@ function GameBoard({
       ? GLYPH_COLORS[constellationGlyph % GLYPH_COLORS.length]
       : theme.accent;
 
+  // Lockable targets for the aim systems, rebuilt per tick (deadeye lock
+  // scan + gridlock alignment). Food outranks portal outranks mutation on
+  // ties - the priority lives in aimUtils, this is just the inventory.
+  const aimTargets = useMemo<AimTarget[]>(() => {
+    const list: AimTarget[] = [];
+    if (food) list.push({ x: food.x, z: food.z, kind: 'food' });
+    for (const extra of extraFoods) {
+      list.push({ x: extra.x, z: extra.z, kind: 'food' });
+    }
+    if (exitTile) list.push({ x: exitTile.x, z: exitTile.z, kind: 'portal' });
+    if (exitTile2) list.push({ x: exitTile2.x, z: exitTile2.z, kind: 'portal' });
+    if (mutationTile) {
+      list.push({ x: mutationTile.x, z: mutationTile.z, kind: 'mutation' });
+    }
+    return list;
+  }, [food, extraFoods, exitTile, exitTile2, mutationTile]);
+
   return (
     <group position={cameraShake}>
       {/* Arena - void-family floor with dynasty edge wash, secondary rails.
@@ -2040,15 +2058,17 @@ function GameBoard({
         fluxTelegraph={fluxTelegraph}
       />
 
-      {/* Aim telegraph - layers rendered per the selected aim system
-          (pulse/vector/sequence/radar/apex meta-progression) */}
-      <AimingCrosshair
+      {/* Aim telegraph - one renderer per selected aim system
+          (deadeye/gridlock/pathline/firefly meta-progression) */}
+      <AimRenderer
         headPosition={snake[0] ?? null}
         direction={direction}
         queuedDirections={queuedDirections}
         snake={snake}
         gridSize={GAME_CONFIG.board.gridSize}
         aimSystem={aimSystem}
+        targets={aimTargets}
+        bufferRef={bufferRef}
         color={theme.accent}
         laneColor={theme.primary}
       />
@@ -2118,10 +2138,9 @@ function GameBoard({
         />
       )}
 
-      {/* Mutation food - violet double helix. Deliberately NOT part of the
-          aim telegraph: AimingCrosshair tracks heading/queue only, and the
-          beacon is an optional detour, not the objective - so aim systems
-          are unaffected by mutation cells. */}
+      {/* Mutation food - violet double helix. Part of the deadeye lock
+          inventory (lowest priority: food > portal > mutation) but never
+          steers pathline/gridlock - it stays an optional detour. */}
       {mutationTile && (
         <MutationBeacon
           position={[mutationTile.x + 0.5, 0, mutationTile.z + 0.5]}

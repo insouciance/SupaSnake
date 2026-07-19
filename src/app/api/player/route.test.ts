@@ -100,7 +100,7 @@ describe('Player API Logic', () => {
     });
   });
 
-  describe('Aim System Selection', () => {
+  describe('Aim System Selection (v2)', () => {
     const freshStats: AimStats = {
       highScore: 0,
       totalGames: 0,
@@ -108,22 +108,41 @@ describe('Player API Logic', () => {
       maxGeneration: 0,
     };
 
-    it('defaults to pulse for new players', () => {
-      expect(DEFAULT_AIM_SYSTEM).toBe('pulse');
+    /** Mirrors the GET handler's stored-selection resolution exactly. */
+    const resolveGetAimSystem = (stored: unknown, stats: AimStats) =>
+      isAimSystemId(stored) && isAimSystemUnlocked(stored, stats)
+        ? stored
+        : DEFAULT_AIM_SYSTEM;
+
+    it('defaults to deadeye for new players', () => {
+      expect(DEFAULT_AIM_SYSTEM).toBe('deadeye');
       expect(isAimSystemUnlocked(DEFAULT_AIM_SYSTEM, freshStats)).toBe(true);
     });
 
-    it('rejects unknown aim system ids (400 path)', () => {
-      expect(isAimSystemId('laser')).toBe(false);
-      expect(isAimSystemId('')).toBe(false);
-      expect(isAimSystemId(undefined)).toBe(false);
+    it('PATCH accepts gridlock at exactly high score 15', () => {
+      expect(
+        isAimSystemUnlocked('gridlock', { ...freshStats, highScore: 15 })
+      ).toBe(true);
+      expect(
+        isAimSystemUnlocked('gridlock', { ...freshStats, highScore: 14 })
+      ).toBe(false);
     });
 
     it('rejects selecting a locked system server-side (403 path)', () => {
-      // Fresh player tries to equip vector (needs high score 15)
-      expect(isAimSystemUnlocked('vector', freshStats)).toBe(false);
-      // ... and apex (needs score 50 or gen 5)
-      expect(isAimSystemUnlocked('apex', freshStats)).toBe(false);
+      // Fresh player tries to equip gridlock (needs high score 15)...
+      expect(isAimSystemUnlocked('gridlock', freshStats)).toBe(false);
+      // ...pathline (score 30 or 25 games) and firefly (breed or score 50)
+      expect(isAimSystemUnlocked('pathline', freshStats)).toBe(false);
+      expect(isAimSystemUnlocked('firefly', freshStats)).toBe(false);
+    });
+
+    it("rejects retired v1 ids like 'pulse' (400 path)", () => {
+      for (const legacy of ['pulse', 'vector', 'sequence', 'radar', 'apex']) {
+        expect(isAimSystemId(legacy)).toBe(false);
+      }
+      expect(isAimSystemId('laser')).toBe(false);
+      expect(isAimSystemId('')).toBe(false);
+      expect(isAimSystemId(undefined)).toBe(false);
     });
 
     it('allows selecting an unlocked system', () => {
@@ -133,22 +152,24 @@ describe('Player API Logic', () => {
         breeds: 2,
         maxGeneration: 3,
       };
-      expect(isAimSystemUnlocked('vector', veteran)).toBe(true);
-      expect(isAimSystemUnlocked('sequence', veteran)).toBe(true);
-      expect(isAimSystemUnlocked('radar', veteran)).toBe(true);
-      expect(isAimSystemUnlocked('apex', veteran)).toBe(false);
+      for (const id of ['deadeye', 'gridlock', 'pathline', 'firefly']) {
+        expect(isAimSystemUnlocked(id, veteran)).toBe(true);
+      }
     });
 
-    it('derives maxGeneration as MAX over collected snakes', () => {
-      const collected = [{ generation: 1 }, { generation: 5 }, { generation: 2 }];
-      const maxGeneration = collected.reduce(
-        (max, s) => Math.max(max, s.generation ?? 0),
-        0
-      );
-      expect(maxGeneration).toBe(5);
+    it('GET falls back to deadeye for a stored-but-locked pick', () => {
+      // Migration edge: a breeds-only v1 sequence player was remapped to
+      // pathline (hs>=30 or games>=25) which they have NOT unlocked
+      const breedsOnly: AimStats = { ...freshStats, breeds: 2, totalGames: 10 };
+      expect(resolveGetAimSystem('pathline', breedsOnly)).toBe('deadeye');
+      // Unlocked stored picks pass through untouched
+      expect(resolveGetAimSystem('firefly', breedsOnly)).toBe('firefly');
       expect(
-        isAimSystemUnlocked('apex', { ...freshStats, maxGeneration })
-      ).toBe(true);
+        resolveGetAimSystem('gridlock', { ...freshStats, highScore: 20 })
+      ).toBe('gridlock');
+      // Unknown/legacy stored values (pre-026 rows) resolve to the default
+      expect(resolveGetAimSystem('pulse', breedsOnly)).toBe('deadeye');
+      expect(resolveGetAimSystem(null, breedsOnly)).toBe('deadeye');
     });
   });
 

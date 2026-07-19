@@ -13,6 +13,7 @@
  *                   lerp-chase interpolation) for before/after comparison
  * - ?dynasty=CYBER|PRIMAL|COSMIC   theme under test (default CYBER)
  * - ?mobile=1       mobile profile (dpr cap 1.5, no bloom)
+ * - ?aim=deadeye|gridlock|pathline|firefly   mount the aim telegraph
  *
  * Production: notFound() - this page never ships to players.
  */
@@ -46,6 +47,9 @@ import {
   SnakeModel,
   SnakeSegmentFallback,
 } from '@/components/game/SnakeModel';
+import { AimRenderer } from '@/components/game/AimRenderer';
+import { isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
+import type { AimTarget } from '@/components/game/aimUtils';
 
 const GRID = GAME_CONFIG.board.gridSize;
 const SNAKE_LENGTH = 100;
@@ -142,8 +146,10 @@ export default function PerfHarnessPage() {
     mode: 'instanced' | 'legacy';
     dynasty: DynastyId;
     mobile: boolean;
+    aim: AimSystemId | null;
   } | null>(null);
   const [direction, setDirection] = useState<Direction>('RIGHT');
+  const [headCell, setHeadCell] = useState<Position>({ x: 0, y: 0, z: 0 });
 
   const bufferRef = useRef<InterpolationBuffer | null>(null);
   if (bufferRef.current === null) {
@@ -158,10 +164,12 @@ export default function PerfHarnessPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const dynastyParam = params.get('dynasty');
+    const aimParam = params.get('aim');
     setConfig({
       mode: params.get('mode') === 'legacy' ? 'legacy' : 'instanced',
       dynasty: isDynastyId(dynastyParam) ? dynastyParam : 'CYBER',
       mobile: params.get('mobile') === '1',
+      aim: isAimSystemId(aimParam) ? aimParam : null,
     });
   }, []);
 
@@ -187,6 +195,7 @@ export default function PerfHarnessPage() {
         segments[i].z = cell.z;
       }
       setDirection(directionBetween(path[headIndex - 1], path[headIndex]));
+      setHeadCell({ x: path[headIndex].x, y: 0, z: path[headIndex].z });
       recordTick(buffer, segments, TICK_MS, performance.now());
     };
 
@@ -201,6 +210,10 @@ export default function PerfHarnessPage() {
   const center = GRID / 2;
   const food = { x: 3, z: 3 };
   const exitTile = { x: 16, z: 16 };
+  const aimTargets: AimTarget[] = [
+    { x: food.x, z: food.z, kind: 'food' },
+    { x: exitTile.x, z: exitTile.z, kind: 'portal' },
+  ];
 
   return (
     <div className="w-screen h-dvh app-bg relative">
@@ -276,6 +289,20 @@ export default function PerfHarnessPage() {
               direction={direction}
             />
           </Suspense>
+        )}
+        {config.aim && (
+          <AimRenderer
+            headPosition={headCell}
+            direction={direction}
+            queuedDirections={[]}
+            snake={[]}
+            gridSize={GRID}
+            aimSystem={config.aim}
+            targets={aimTargets}
+            bufferRef={bufferRef}
+            color={theme.accent}
+            laneColor={theme.primary}
+          />
         )}
         <FoodBeacon position={[food.x + 0.5, 0, food.z + 0.5]} color={theme.accent} />
         <ExitPortal

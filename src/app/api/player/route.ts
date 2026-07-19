@@ -164,11 +164,17 @@ export async function GET(request: NextRequest) {
     // Calculate collection size for passive progress
     const collectionSize = player.collected_snakes?.length || 0;
 
-    // Aim system: stored selection + the stats that drive unlock chips
+    // Aim system: stored selection + the stats that drive unlock chips.
+    // Stored-but-locked picks (v1->v2 migration edges, e.g. a breeds-only
+    // sequence player remapped to pathline) fall back to the default -
+    // GET never hands the client a system it couldn't select itself.
     const settings = settingsRow(player.player_settings);
     const storedAim = settings?.aim_system;
-    const aimSystem = isAimSystemId(storedAim) ? storedAim : DEFAULT_AIM_SYSTEM;
     const aimStats = buildAimStats(player);
+    const aimSystem =
+      isAimSystemId(storedAim) && isAimSystemUnlocked(storedAim, aimStats)
+        ? storedAim
+        : DEFAULT_AIM_SYSTEM;
 
     return NextResponse.json({
       player,

@@ -13,6 +13,7 @@
 
 import {
   AIM_SYSTEMS,
+  DEFAULT_AIM_SYSTEM,
   type AimStats,
   type AimSystemId,
 } from '@/lib/game/aimSystems';
@@ -47,7 +48,10 @@ export function AimSystemSelector({
       aria-label="Aim system"
     >
       {AIM_SYSTEMS.map((def) => {
-        const unlocked = def.id === 'pulse' || (stats !== null && def.isUnlocked(stats));
+        // The default system is usable even before stats load; everything
+        // else derives from the shared unlock predicates
+        const unlocked =
+          def.id === DEFAULT_AIM_SYSTEM || (stats !== null && def.isUnlocked(stats));
         const isSelected = def.id === selected;
 
         return (
