@@ -29,7 +29,8 @@ import type { PlayerIdentity } from '@/lib/identity/types';
 import Link from 'next/link';
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
-import { SnakeModel, SnakeSegmentFallback } from '@/components/game/SnakeModel';
+import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
+import { PerfHUD } from '@/components/game/PerfHUD';
 import { VirtualDPad } from '@/components/game/VirtualDPad';
 import { PauseMenu } from '@/components/game/PauseMenu';
 import { DynamicLights } from '@/components/game/DynamicLights';
@@ -57,7 +58,12 @@ import {
 import { audioManager } from '@/lib/audio/AudioManager';
 import { haptics } from '@/lib/effects/Haptics';
 import { screenShake } from '@/lib/effects/ScreenShake';
-import { useInterpolatedMesh, useGridPosition } from '@/hooks/useInterpolatedPosition';
+import {
+  createInterpolationBuffer,
+  recordTick,
+  resetInterpolationBuffer,
+  type InterpolationBuffer,
+} from '@/lib/game/interpolationBuffer';
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward } from '@/lib/outbox/rewardOutbox';
 import { isAimSystemId, type AimStats, type AimSystemId } from '@/lib/game/aimSystems';
@@ -122,6 +128,14 @@ export default function GamePage() {
   // input path records nothing in normal play.
   const inputDebugRef = useRef<InputDebugState | null>(null);
   const [inputDebugEnabled, setInputDebugEnabled] = useState(false);
+  // ?perf render-stats overlay (dev builds only)
+  const [perfEnabled, setPerfEnabled] = useState(false);
+  // Tick-alpha interpolation buffer (fluidity core): written every engine
+  // tick, read every animation frame - lives in a ref, NEVER in zustand.
+  const interpBufferRef = useRef<InterpolationBuffer | null>(null);
+  if (interpBufferRef.current === null) {
+    interpBufferRef.current = createInterpolationBuffer();
+  }
   const prevQueueLengthRef = useRef(0);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -285,9 +299,14 @@ export default function GamePage() {
 
   // Enable input debug instrumentation only when the URL asks for it
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('debug') === 'input') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('debug') === 'input') {
       inputDebugRef.current = createInputDebugState();
       setInputDebugEnabled(true);
+    }
+    // Perf overlay: dev builds only, opt-in via ?perf
+    if (process.env.NODE_ENV !== 'production' && params.has('perf')) {
+      setPerfEnabled(true);
     }
   }, []);
 
@@ -737,6 +756,15 @@ export default function GamePage() {
       setConstellation(state.constellationGlyph, state.chainLength, state.comboMultiplier);
       setMutationTile(state.mutationTile, state.mutationTicksRemaining);
       setFlux(state.fluxPhase, state.fluxTelegraph);
+      // Fluidity core: stamp this tick into the interpolation buffer.
+      // getSpeed() AFTER the tick is the exact interval the loop re-arms
+      // with - the precise denominator for the render-side alpha.
+      recordTick(
+        interpBufferRef.current!,
+        state.snake,
+        gameRef.current.getSpeed(),
+        performance.now()
+      );
     }
   }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux]);
 
@@ -884,7 +912,10 @@ export default function GamePage() {
         }));
       }
 
-      // Now start the game locally
+      // Now start the game locally. Reset the interpolation buffer FIRST
+      // so the new run's opening tick never blends against the previous
+      // run's final pose.
+      resetInterpolationBuffer(interpBufferRef.current!);
       storeStartGame();
       setReady(true);
       gameRef.current?.start();
@@ -1830,6 +1861,9 @@ export default function GamePage() {
           fov: 50
         }}
         shadows
+        // Fluidity: cap devicePixelRatio - uncapped retina dpr (3x) was the
+        // single largest silent GPU cost on the board
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
       >
         {/* Fog in the void family so the arena's far edge melts into the
             page backdrop instead of cutting out against it */}
@@ -1859,6 +1893,7 @@ export default function GamePage() {
         <Suspense fallback={null}>
           <GameBoard
             dynasty={selectedDynasty}
+            bufferRef={interpBufferRef}
             snake={snake}
             food={food}
             extraFoods={extraFoods}
@@ -1888,6 +1923,9 @@ export default function GamePage() {
           azimuthRef={cameraAzimuthRef}
         />
 
+        {/* Dev-only render stats (?perf) */}
+        {perfEnabled && <PerfHUD />}
+
         {/* Bloom postprocessing - desktop only, to protect mobile framerate */}
         {!isMobile && (
           <EffectComposer>
@@ -1913,6 +1951,8 @@ const GLYPH_COLORS = ['#22d3ee', '#f0abfc', '#fbbf24'];
 
 interface GameBoardProps {
   dynasty: DynastyId;
+  /** Tick-alpha interpolation buffer - the snake's per-frame position source. */
+  bufferRef: { readonly current: InterpolationBuffer | null };
   snake: Position[];
   food: Position | null;
   extraFoods: Position[];
@@ -1939,6 +1979,7 @@ interface GameBoardProps {
 
 function GameBoard({
   dynasty,
+  bufferRef,
   snake,
   food,
   extraFoods,
@@ -2001,15 +2042,25 @@ function GameBoard({
         laneColor={theme.primary}
       />
 
-      {/* Snake Segments with Interpolation + GLB Voxel Models */}
-      {snake.map((seg, i) => (
-        <InterpolatedSegment
-          key={i}
-          segment={seg}
-          isHead={i === 0}
+      {/* Snake - one instanced body draw + a head mesh with eyes, both
+          reading tick-alpha interpolated positions from the buffer every
+          frame (growth never touches React). Box fallback while the GLB
+          streams shares the identical Core. */}
+      <Suspense
+        fallback={
+          <InstancedSnakeFallback
+            bufferRef={bufferRef}
+            dynasty={dynasty}
+            direction={direction}
+          />
+        }
+      >
+        <InstancedSnake
+          bufferRef={bufferRef}
           dynasty={dynasty}
+          direction={direction}
         />
-      ))}
+      </Suspense>
 
       {/* Food - clean voxel block; COSMIC tints the whole wave with its
           constellation glyph color (same hue = chainable) */}
@@ -2082,45 +2133,3 @@ function GameBoard({
   );
 }
 
-/**
- * Interpolated Snake Segment Component - Smooth movement between grid positions
- *
- * Renders the voxel GLB mesh (SnakeModel); while the GLB streams in, a box
- * with the same shared per-dynasty material renders so the game never blocks
- * on asset load. Both share the meshRef, so interpolation stays smooth across
- * the swap.
- */
-interface InterpolatedSegmentProps {
-  segment: Position;
-  isHead: boolean;
-  dynasty: DynastyId;
-}
-
-function InterpolatedSegment({
-  segment,
-  isHead,
-  dynasty,
-}: InterpolatedSegmentProps) {
-  const meshRef = useInterpolatedMesh(segment);
-  const initialPos = useGridPosition(segment);
-
-  return (
-    <Suspense
-      fallback={
-        <SnakeSegmentFallback
-          meshRef={meshRef}
-          position={initialPos}
-          isHead={isHead}
-          dynasty={dynasty}
-        />
-      }
-    >
-      <SnakeModel
-        meshRef={meshRef}
-        position={initialPos}
-        isHead={isHead}
-        dynasty={dynasty}
-      />
-    </Suspense>
-  );
-}

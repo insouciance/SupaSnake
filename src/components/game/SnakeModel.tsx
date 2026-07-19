@@ -28,10 +28,35 @@ import { themeManager } from '@/lib/theme/ThemeManager';
 
 export const SNAKE_MODEL_URL = '/assets/3D/snake_voxel.glb';
 
-/** Head is slightly larger than body segments (grid cell = 1 unit); the
- *  wider head/body gap makes the voxel rhythm read as deliberate design. */
+/** Head is clearly larger than body segments (grid cell = 1 unit); the
+ *  wider head/body gap makes the creature read head-first at a glance and
+ *  gives the trunk breathing room between grid lines. */
 export const HEAD_SIZE = 0.9;
-export const BODY_SIZE = 0.82;
+export const BODY_SIZE = 0.7;
+
+/** Tail taper: the last TAPER_SEGMENTS body segments ease (smoothstep)
+ *  from full trunk scale down to TAPER_MIN at the tail tip, so the snake
+ *  reads as a creature with a tail instead of a train of boxes. */
+export const TAPER_SEGMENTS = 6;
+export const TAPER_MIN = 0.85;
+
+/**
+ * Per-segment scale multiplier (applied on top of BODY_SIZE).
+ *
+ * Pure and allocation-free - called per segment per frame by the
+ * instanced renderer. The head (index 0) and the trunk stay at 1.0;
+ * the final TAPER_SEGMENTS indices smoothstep down to TAPER_MIN at the
+ * tail tip. Short snakes clamp the taper window to the available body
+ * (the head is never tapered, and no segment ever drops below TAPER_MIN).
+ */
+export function getSegmentScale(index: number, length: number): number {
+  if (index <= 0 || length <= 1) return 1;
+  const taperStart = Math.max(1, length - TAPER_SEGMENTS);
+  if (index < taperStart) return 1;
+  const t = (index - taperStart + 1) / (length - taperStart);
+  const s = t * t * (3 - 2 * t); // smoothstep
+  return 1 - (1 - TAPER_MIN) * s;
+}
 
 /** Head glows brighter than the body for at-a-glance orientation. Crisper
  *  emissive presence against the darker arena floor (#0b1016). */
@@ -46,7 +71,7 @@ export interface SnakeSegmentMeshProps {
   position: [number, number, number];
   isHead: boolean;
   dynasty: DynastyId;
-  /** Ref from useInterpolatedMesh - attached to the rendered mesh. */
+  /** Optional ref to the rendered mesh (for external animation). */
   meshRef?: Ref<THREE.Mesh>;
 }
 

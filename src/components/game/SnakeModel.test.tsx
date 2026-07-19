@@ -16,9 +16,12 @@ import {
   SnakeSegmentFallback,
   getSnakeGeometries,
   getSnakeSegmentMaterial,
+  getSegmentScale,
   SNAKE_MODEL_URL,
   HEAD_SIZE,
   BODY_SIZE,
+  TAPER_SEGMENTS,
+  TAPER_MIN,
   HEAD_EMISSIVE_INTENSITY,
   BODY_EMISSIVE_INTENSITY,
   BASE_COLOR_SCALE,
@@ -132,6 +135,69 @@ describe('getSnakeGeometries', () => {
     const { head, body } = getSnakeGeometries(emptyScene);
     expect(head).toBeNull();
     expect(body).toBeNull();
+  });
+});
+
+describe('proportion constants (AAA rework pins)', () => {
+  it('pins the head/body proportion: head 0.9, body 0.70', () => {
+    // Deliberate design pins - a change here is a design decision, not a
+    // refactor. BODY_SIZE dropped 0.82 -> 0.70 so the head reads first.
+    expect(HEAD_SIZE).toBe(0.9);
+    expect(BODY_SIZE).toBe(0.7);
+    expect(TAPER_SEGMENTS).toBe(6);
+    expect(TAPER_MIN).toBe(0.85);
+  });
+});
+
+describe('getSegmentScale (tail taper)', () => {
+  it('keeps the head and trunk at exactly 1.0', () => {
+    const length = 20;
+    expect(getSegmentScale(0, length)).toBe(1);
+    for (let i = 1; i < length - TAPER_SEGMENTS; i++) {
+      expect(getSegmentScale(i, length)).toBe(1);
+    }
+  });
+
+  it('is monotonically non-increasing from head to tail', () => {
+    for (const length of [3, 7, 10, 50, 100]) {
+      let previous = Infinity;
+      for (let i = 0; i < length; i++) {
+        const scale = getSegmentScale(i, length);
+        expect(scale).toBeLessThanOrEqual(previous);
+        previous = scale;
+      }
+    }
+  });
+
+  it('reaches exactly TAPER_MIN at the tail tip', () => {
+    for (const length of [8, 10, 42, 100]) {
+      expect(getSegmentScale(length - 1, length)).toBeCloseTo(TAPER_MIN, 10);
+    }
+  });
+
+  it('tapers over exactly the last TAPER_SEGMENTS segments on long snakes', () => {
+    const length = 30;
+    const taperStart = length - TAPER_SEGMENTS;
+    expect(getSegmentScale(taperStart - 1, length)).toBe(1);
+    expect(getSegmentScale(taperStart, length)).toBeLessThan(1);
+  });
+
+  it('never drops below TAPER_MIN anywhere', () => {
+    for (const length of [1, 2, 3, 5, 7, 20, 400]) {
+      for (let i = 0; i < length; i++) {
+        expect(getSegmentScale(i, length)).toBeGreaterThanOrEqual(TAPER_MIN);
+      }
+    }
+  });
+
+  it('short-snake clamp: the head never tapers, the body still does', () => {
+    // 3-segment hatchling: head full size, tail tip at TAPER_MIN
+    expect(getSegmentScale(0, 3)).toBe(1);
+    expect(getSegmentScale(1, 3)).toBeLessThan(1);
+    expect(getSegmentScale(2, 3)).toBeCloseTo(TAPER_MIN, 10);
+    // Degenerate lengths are safe
+    expect(getSegmentScale(0, 1)).toBe(1);
+    expect(getSegmentScale(1, 2)).toBeCloseTo(TAPER_MIN, 10);
   });
 });
 

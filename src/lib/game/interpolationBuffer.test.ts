@@ -1,0 +1,172 @@
+/**
+ * Interpolation buffer - the fluidity core's math.
+ *
+ * These tests pin the exact contract the render loop depends on:
+ * double-buffer copy semantics, growth seeding (prev = curr for new tail
+ * indices), alpha clamping (incl. zero-interval and late ticks), reset,
+ * and the 400-segment capacity clamp.
+ */
+
+import { describe, it, expect } from '@jest/globals';
+import {
+  INTERPOLATION_CAPACITY,
+  createInterpolationBuffer,
+  getAlpha,
+  getInterpolatedX,
+  getInterpolatedZ,
+  recordTick,
+  resetInterpolationBuffer,
+} from './interpolationBuffer';
+
+const seg = (x: number, z: number) => ({ x, y: 0, z });
+
+describe('createInterpolationBuffer', () => {
+  it('preallocates both planes at capacity 400 by default', () => {
+    const buffer = createInterpolationBuffer();
+    expect(buffer.prev.length).toBe(INTERPOLATION_CAPACITY * 2);
+    expect(buffer.curr.length).toBe(INTERPOLATION_CAPACITY * 2);
+    expect(buffer.count).toBe(0);
+    expect(buffer.tickAt).toBe(0);
+    expect(buffer.tickInterval).toBe(0);
+  });
+});
+
+describe('recordTick copy semantics', () => {
+  it('moves last tick into prev and writes the new snake into curr', () => {
+    const buffer = createInterpolationBuffer(8);
+    recordTick(buffer, [seg(5, 5), seg(4, 5)], 200, 1000);
+    recordTick(buffer, [seg(6, 5), seg(5, 5)], 200, 1200);
+
+    // prev holds tick 1, curr holds tick 2
+    expect(Array.from(buffer.prev.subarray(0, 4))).toEqual([5, 5, 4, 5]);
+    expect(Array.from(buffer.curr.subarray(0, 4))).toEqual([6, 5, 5, 5]);
+    expect(buffer.count).toBe(2);
+    expect(buffer.tickAt).toBe(1200);
+    expect(buffer.tickInterval).toBe(200);
+  });
+
+  it('swaps arrays instead of allocating (zero-allocation contract)', () => {
+    const buffer = createInterpolationBuffer(8);
+    const a = buffer.prev;
+    const b = buffer.curr;
+    recordTick(buffer, [seg(1, 1)], 100, 0);
+    // The two preallocated arrays are still the only two in play (swapped)
+    expect(buffer.prev).toBe(b);
+    expect(buffer.curr).toBe(a);
+    recordTick(buffer, [seg(2, 1)], 100, 100);
+    expect(buffer.prev).toBe(a);
+    expect(buffer.curr).toBe(b);
+  });
+
+  it('seeds prev = curr for segments that appear on growth (no streaking)', () => {
+    const buffer = createInterpolationBuffer(8);
+    recordTick(buffer, [seg(5, 5), seg(4, 5)], 200, 0);
+    // Snake grows by one: the new tail index must NOT inherit stale memory
+    recordTick(buffer, [seg(6, 5), seg(5, 5), seg(4, 5)], 200, 200);
+
+    expect(buffer.count).toBe(3);
+    // Existing segments interpolate normally...
+    expect(getInterpolatedX(buffer, 0, 0)).toBe(5);
+    expect(getInterpolatedX(buffer, 0, 1)).toBe(6);
+    // ...the grown tail is pinned at its cell for the whole tick
+    expect(getInterpolatedX(buffer, 2, 0)).toBe(4);
+    expect(getInterpolatedX(buffer, 2, 0.5)).toBe(4);
+    expect(getInterpolatedZ(buffer, 2, 0.37)).toBe(5);
+  });
+
+  it('seeds every index on the first tick after creation or reset', () => {
+    const buffer = createInterpolationBuffer(8);
+    recordTick(buffer, [seg(9, 3), seg(8, 3), seg(7, 3)], 150, 50);
+    for (let i = 0; i < 3; i++) {
+      expect(getInterpolatedX(buffer, i, 0)).toBe(getInterpolatedX(buffer, i, 1));
+      expect(getInterpolatedZ(buffer, i, 0)).toBe(getInterpolatedZ(buffer, i, 1));
+    }
+  });
+
+  it('shrinks cleanly when the snake gets shorter (reset/new run)', () => {
+    const buffer = createInterpolationBuffer(8);
+    recordTick(buffer, [seg(1, 1), seg(2, 1), seg(3, 1)], 100, 0);
+    recordTick(buffer, [seg(1, 2)], 100, 100);
+    expect(buffer.count).toBe(1);
+  });
+
+  it('clamps to capacity when the snake exceeds it', () => {
+    const buffer = createInterpolationBuffer(4);
+    const snake = Array.from({ length: 10 }, (_, i) => seg(i, 0));
+    recordTick(buffer, snake, 100, 0);
+    expect(buffer.count).toBe(4);
+    expect(getInterpolatedX(buffer, 3, 1)).toBe(3);
+  });
+
+  it('growth seeding still applies under the capacity clamp', () => {
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(0, 0), seg(1, 0)], 100, 0);
+    const grown = Array.from({ length: 10 }, (_, i) => seg(i + 5, 2));
+    recordTick(buffer, grown, 100, 100);
+    expect(buffer.count).toBe(4);
+    // Indices 2 and 3 are new - pinned at their cells
+    expect(getInterpolatedX(buffer, 2, 0)).toBe(7);
+    expect(getInterpolatedX(buffer, 2, 1)).toBe(7);
+    expect(getInterpolatedZ(buffer, 3, 0.5)).toBe(2);
+  });
+});
+
+describe('getAlpha', () => {
+  const buffer = createInterpolationBuffer(4);
+  recordTick(buffer, [seg(0, 0)], 200, 1000);
+
+  it('is 0 at the tick instant and 1 at the next tick', () => {
+    expect(getAlpha(buffer, 1000)).toBe(0);
+    expect(getAlpha(buffer, 1200)).toBe(1);
+  });
+
+  it('is linear in between (exact interval denominator)', () => {
+    expect(getAlpha(buffer, 1050)).toBeCloseTo(0.25);
+    expect(getAlpha(buffer, 1100)).toBeCloseTo(0.5);
+    expect(getAlpha(buffer, 1150)).toBeCloseTo(0.75);
+  });
+
+  it('clamps late ticks to 1 (pause/stall safety - rest at curr)', () => {
+    expect(getAlpha(buffer, 5000)).toBe(1);
+  });
+
+  it('clamps clock skew before the tick to 0', () => {
+    expect(getAlpha(buffer, 900)).toBe(0);
+  });
+
+  it('reads 1 when the interval is zero or was never armed', () => {
+    const fresh = createInterpolationBuffer(4);
+    expect(getAlpha(fresh, 123)).toBe(1);
+    recordTick(fresh, [seg(0, 0)], 0, 100);
+    expect(getAlpha(fresh, 150)).toBe(1);
+    recordTick(fresh, [seg(0, 0)], -5, 100);
+    expect(getAlpha(fresh, 150)).toBe(1);
+  });
+});
+
+describe('resetInterpolationBuffer', () => {
+  it('clears count and timing so a new run starts from scratch', () => {
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(3, 3), seg(2, 3)], 200, 500);
+    resetInterpolationBuffer(buffer);
+    expect(buffer.count).toBe(0);
+    expect(buffer.tickAt).toBe(0);
+    expect(buffer.tickInterval).toBe(0);
+    expect(getAlpha(buffer, 999)).toBe(1);
+
+    // The first tick of the new run seeds prev = curr for every index
+    recordTick(buffer, [seg(10, 10)], 200, 1000);
+    expect(getInterpolatedX(buffer, 0, 0)).toBe(10);
+    expect(getInterpolatedX(buffer, 0, 1)).toBe(10);
+  });
+});
+
+describe('interpolated reads', () => {
+  it('blends prev -> curr by alpha per axis', () => {
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(4, 8)], 100, 0);
+    recordTick(buffer, [seg(5, 8)], 100, 100);
+    expect(getInterpolatedX(buffer, 0, 0.5)).toBeCloseTo(4.5);
+    expect(getInterpolatedZ(buffer, 0, 0.5)).toBeCloseTo(8);
+  });
+});
