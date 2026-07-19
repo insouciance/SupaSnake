@@ -333,6 +333,64 @@ server, and a second test account for invites/roles.*
 - FEEL: do you feel SEEN — "it knows how I play" — without it ever
   feeling like a bot you're supposed to talk to?
 
+## Stage 12 — The Arena (board AAA rework — needs migration 026)
+
+*You need: migration 026 applied, one snake per dynasty in your
+collection, and at least one account with high score ≥30 (aim unlocks).*
+
+- [ ] **Brightness / premium feel**: the board reads BRIGHT and expensive
+      now — lacquered floor with a visible sheen, clear blue grid, glowing
+      border rails. Check all THREE dynasties (equip in the Lab): CYBER
+      cool and electric, PRIMAL lush without washing out to grey-green,
+      COSMIC deep purple with gold rails. Nothing should feel murky
+- [ ] **The snake is a creature**: head clearly bigger than the body,
+      eyes visible while it runs, body tapers over the last few segments
+      into a tail. The trunk glows brightest at the front and cools
+      toward the tail — one body, not a chain of hot boxes
+- [ ] **Fluidity at max speed**: CYBER, long run, top speed — motion must
+      be butter: no rubber-banding, no per-segment lag, growth pops in at
+      the tail without streaking. Pause/resume mid-run: no jump on resume
+- [ ] **Long-snake eye comfort in curves**: grow past ~40 segments, then
+      corner repeatedly (S-turns, spirals). Watch the TRUNK, not the head:
+      it must stay visually calm — no flicker, no shimmering glints, no
+      strobing gaps between segments. If your eyes tire, that's a FAIL
+- [ ] **Portal is unmistakable on first run**: fresh device (incognito) —
+      when the first exit spawns, you should read it instantly as "a beam
+      of light to ESCAPE INTO", never "bonus food": champagne-white
+      column, spinning floor aperture, one-time floating EXTRACT label
+      (appears exactly once per device, gone after ~6s, never again)
+- [ ] **Portal urgency**: dawdle until the window is closing — the
+      aperture spins UP, the beam throbs deeper (never a fast strobe) and
+      whitens. You should feel hurried, not assaulted
+- [ ] **Aim: Deadeye** (default): reticle brackets snap to the first
+      pickup in your heading line with a slow lock-spin; beam ticks count
+      the cells; empty line = faint open crosshair 4 ahead. Does lining
+      up a shot feel like sniping?
+- [ ] **Aim: Gridlock** (hs ≥15): row+column rails glide smoothly WITH
+      you, the snapped cell shows where the game thinks you are; a rail
+      lights up + pip when food/portal shares it. The 3D-depth ambiguity
+      fix — try judging alignment far across the board
+- [ ] **Aim: Pathline** (hs ≥30 or 25 games): the old pro telegraph —
+      5-cell ribbon, white chevrons where buffered turns fire, rose
+      danger tint before an impact
+- [ ] **Aim: Firefly** (breed or hs ≥50): the little glow drone flies to
+      your next meal, banks into turns, bobs while waiting. Does it make
+      you smile? Locked chips must show the right unlock hints; server
+      rejects picking a locked one (dev tools if you're feeling spicy)
+- [ ] **Twin Exits anomaly**: both portals carry the full beam treatment
+      and share one countdown; EXTRACT hint appears on at most ONE
+- [ ] **Blackout anomaly**: the darkness interplay still works — beam and
+      food glows swallowed beyond the 6-cell bubble, no light bleeding
+      through the mask
+- [ ] Perf spot check: /game?perf (dev build) — draw calls stay ~60,
+      frame p95 at your refresh floor on desktop; no GC hitches mid-run
+- [ ] **Mobile pass**: board still bright on the phone (no bloom there —
+      the glow strips and emissives must carry it), portal reads with its
+      simplified 3-draw look, 60fps hold at dpr 1.5, flick controls
+      unaffected by the new aim layers
+- FEEL: does the board finally look like the game the Chamber promised?
+  And after ten minutes of hard play — do your eyes feel fine?
+
 ## 📱 Mobile pass (repeat the spine of Stages 1-5 on your phone)
 
 - [ ] Chamber + board fully in frame portrait; bottom rail reachable;
