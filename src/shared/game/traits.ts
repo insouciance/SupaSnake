@@ -239,6 +239,34 @@ export function traitFoodValueModifier(traits: TraitId[], n: number): number {
   return mod;
 }
 
+// =============================================================================
+// HEIRLOOM GENES (Buildcraft: The Genome, BUILDCRAFT_GENOME_DESIGN.md §8)
+// =============================================================================
+
+/**
+ * Strain tags for the Launch Eight - under the Genome, equipped traits
+ * are "Heirloom genes": each grants 1 starting strain point in its tag
+ * (capped with lineage at 2 per strain; the cap and the starting-point
+ * derivation live in lineage.ts). Effects and validation are UNCHANGED -
+ * the tag is additive metadata.
+ *
+ * Strain ids are string literals (not the StrainId import) to keep this
+ * module import-free toward strains.ts consumers; lineage.ts narrows them.
+ */
+export const TRAIT_STRAINS: Record<
+  TraitId,
+  'AURUM' | 'VOLT' | 'FERAL' | 'FLUX' | 'UMBRA'
+> = {
+  scavenger: 'AURUM',
+  ascetic: 'AURUM',
+  sprinter: 'VOLT',
+  magnetism: 'FLUX',
+  gambler: 'UMBRA',
+  iron_scales: 'UMBRA',
+  patient: 'UMBRA',
+  hoarder: 'UMBRA',
+} as const;
+
 /**
  * Additive outcome-multiplier deltas from traits, applied on top of the
  * (mutation-aware) bank/salvage multipliers. Additive stacking is what

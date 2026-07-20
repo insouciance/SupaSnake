@@ -64,7 +64,7 @@ Validation classes: **[E]** exact server recompute (pure function of food index 
 
 ### VOLT
 - **Minor — Tempo** [P]: world −10 ms/tick slower (CYBER: speed as if 3 foods earlier; floor at `minSpeed`).
-- **Expression — Arc Lightning** [P, economically exact]: eating a food fires an arc consuming up to 2 other foods within 3 cells; arced foods pay **50% of their deterministic value** and still grow the snake +1 segment each. Arced foods increment `foodEaten`, so the server recomputes them exactly; the food-*rate* bound widens when VOLT expression is reachable (§10). Counterweight: the growth itself (board pressure).
+- **Expression — Arc Lightning** [P + E]: eating a food fires an arc consuming up to 2 other foods within 3 cells at **full value** (+1 segment each); while the expression is active, ALL food pays **×0.85** — the deterministic price of the reach. (Rationale: a per-arc 50% discount would be a client-reported *reduction*, and under-reporting arcs would inflate payouts. The aggregate cost is a pure function of the activation index — zero claim surface.) Arced foods increment `foodEaten`, so the server recomputes them exactly; the food-*rate* bound widens when VOLT expression is reachable (§10). Counterweight: the ×0.85 plus the growth itself (board pressure).
 - **Apex — Overclocked Reality** [E + P]: tick interval ×0.75 (faster world) and food **+30% DNA** from apex food onward. Counterweight: the speed, plus portal windows **−20 ticks**.
 
 ### FERAL

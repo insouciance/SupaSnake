@@ -94,6 +94,28 @@ export const GAME_CONFIG = deepFreeze({
     leaderboards: true,              // Social launch
     clans: true,                     // Social launch
     premium: true,                   // SupaSnake Premium subscription (028)
+    genome: false,                   // Buildcraft: The Genome (flips in G8)
+  },
+
+  /**
+   * Buildcraft: The Genome (BUILDCRAFT_GENOME_DESIGN.md)
+   * Tuning that is neither strain- nor gene-scoped (those live in
+   * src/shared/game/strains.ts / genes.ts). The engine only runs genome
+   * behavior when the SERVER start response carries the genome capability
+   * (runSeed + heirloom) - never on the client flag alone.
+   */
+  genome: {
+    /** Cross-dynasty breeding produces dual-lineage offspring (§7). */
+    crossDynastyBreeding: false,     // flips once migration 030 is verified
+    /** FTUE ramp (§12): banked-run counts gating each layer. */
+    ftue: {
+      strainTagsAt: 4,
+      expressionsAt: 8,
+      infuseAt: 10,
+      spawnPointsAt: 12,
+      splicesAt: 15,
+      apexesAt: 20,
+    },
   },
 } as const);
 

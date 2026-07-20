@@ -1,0 +1,882 @@
+/**
+ * Genome run math - Buildcraft: The Genome (BUILDCRAFT_GENOME_DESIGN.md)
+ *
+ * The building blocks computeGenomeRunTotals (rulesets.ts) folds over:
+ * strain activations, the deterministic length model, the fused-view
+ * per-food [E] math, the genome-aware outcome multipliers, and the
+ * bounded-trust claim caps. Everything here is a pure function of the
+ * accepted inputs - the client engine and the server validator both call
+ * these, which is what keeps genome validation exact.
+ *
+ * Determinism contract:
+ * - Deterministic [E] effects are pure in (picks with atFood, heirloom,
+ *   surges, infuses, revive, lossEvents, foodCount).
+ * - Bounded-trust [BT] claims are NEVER computed here - only their CAPS
+ *   are; the validator clamps client claims against them.
+ * - Reported events (revive, losses) are payout-non-increasing or capped
+ *   (see strains.ts header + design doc section 15).
+ */
+
+import { GAME_CONFIG } from '@/shared/config/game';
+import {
+  GENE_ECONOMICS,
+  GENE_PHYSICS,
+  geneFoodValueFlatBonus,
+  geneFoodValueModifier,
+  geneStrains,
+  type GeneId,
+  type GenePick,
+} from '@/shared/game/genes';
+import {
+  SPLICE_ECONOMICS,
+  SPLICE_PHYSICS,
+  fusePicks,
+  type FusedView,
+  type SpliceId,
+} from '@/shared/game/splices';
+import {
+  STRAIN_ECONOMICS,
+  STRAIN_IDS,
+  STRAIN_PHYSICS,
+  STRAIN_THRESHOLDS,
+  capSpawnPoints,
+  strainTier,
+  type StrainId,
+  type StrainPoints,
+  type StrainTier,
+} from '@/shared/game/strains';
+import { traitOutcomeDeltas, type TraitId } from '@/shared/game/traits';
+import {
+  anomalyBankOverride,
+  type AnomalyId,
+} from '@/shared/game/anomalies';
+import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
+
+// =============================================================================
+// INPUT TYPES - the cross-workstream contract (engine payload, validator,
+// game_sessions.genome JSONB all speak this shape)
+// =============================================================================
+
+/** How the run's one revive (if any) fired. */
+export type ReviveKind = 'phoenix' | 'styx' | 'molted' | 'second_sun';
+
+export interface GenomeRevive {
+  kind: ReviveKind;
+  atFood: number;
+}
+
+/** An infuse strain surge (+1 point, granted when infusing at gene cap). */
+export interface StrainSurge {
+  strain: StrainId;
+  atFood: number;
+}
+
+/** A reported length loss (Thick Hide, Ouroboros bites, revive resets). */
+export interface LengthLossEvent {
+  atFood: number;
+  segments: number;
+}
+
+/**
+ * The deterministic genome inputs for a run. heirloom points are
+ * SERVER-DERIVED (equipped traits + lineage) - never taken from the
+ * client claim; the engine receives them at session start.
+ */
+export interface GenomeRunInput {
+  picks: GenePick[];
+  heirloom: StrainPoints;
+  surges: StrainSurge[];
+  infuses: { atFood: number }[];
+  revive: GenomeRevive | null;
+  /** Server-derived: previous earned run ended in death (Grave Robber). */
+  prevRunDied?: boolean;
+  /** Reported, payout-non-increasing (they only shrink the length model). */
+  lossEvents?: LengthLossEvent[];
+}
+
+export const EMPTY_GENOME: GenomeRunInput = {
+  picks: [],
+  heirloom: {},
+  surges: [],
+  infuses: [],
+  revive: null,
+};
+
+/** Bounded-trust claims - clamped by genomeClaimCaps, never recomputed. */
+export interface GenomeClaims {
+  /** AURUM Gilded Wake: flat DNA from gilded-cell re-traversals. */
+  aurumWakeDna?: number;
+  /** AURUM Midas Vein: bonus DNA from golden chain-eats. */
+  midasDna?: number;
+  /** FERAL Molt: flat DNA from molt-foods eaten. */
+  moltFoodDna?: number;
+  /** FERAL Ouroboros: flat DNA from tail-tip bites. */
+  ouroborosDna?: number;
+  /** Static Charge: bonus DNA from fasting eats. */
+  staticChargeDna?: number;
+  /** Ricochet: bonus DNA from slide-eats. */
+  ricochetDna?: number;
+  /** Heartwood: flat DNA from golden shed-drops eaten. */
+  heartwoodDna?: number;
+  /** UMBRA Second Sun: the one-time trigger payment was earned. */
+  secondSunTriggered?: boolean;
+}
+
+/** The stored/validated record shape (game_sessions.genome JSONB). */
+export interface GenomeRunRecord {
+  v: 1;
+  picks: GenePick[];
+  /** Derived, for analytics/codex - never trusted as input. */
+  splices: { id: SpliceId; atFood: number }[];
+  surges: StrainSurge[];
+  infuses: { atFood: number }[];
+  revive: GenomeRevive | null;
+  /** Accepted (clamped) claims. */
+  claims: GenomeClaims;
+  /** Final strain points at run end. */
+  strainCounts: StrainPoints;
+  /** Strains whose Expression (tier >=2) activated, with food index. */
+  expressions: Partial<Record<StrainId, number>>;
+  /** Strains whose Apex (tier 3) activated, with food index. */
+  apexes: Partial<Record<StrainId, number>>;
+}
+
+// =============================================================================
+// STRAIN ACTIVATIONS
+// =============================================================================
+
+export interface StrainActivation {
+  /** Total points at run end (spawn + genes + surges). */
+  points: number;
+  /** In-run genes of this strain (splices count their parents). */
+  genes: number;
+  /** Food index where each tier activated (effects apply to n > this). */
+  minorAt: number | null;
+  expressionAt: number | null;
+  apexAt: number | null;
+}
+
+export type StrainActivations = Record<StrainId, StrainActivation>;
+
+/**
+ * Walk the run's point events in food order and record where each strain
+ * tier activated. Spawn points (heirloom+lineage, pre-capped at 2/strain)
+ * are present from food 0; gene picks grant points AND in-run gene count;
+ * surges grant points only. The Expression/Apex gene gates are applied
+ * here - points can never overflow past an unmet gate.
+ */
+export function strainActivations(
+  picks: GenePick[],
+  heirloom: StrainPoints,
+  surges: StrainSurge[] = []
+): StrainActivations {
+  const spawn = capSpawnPoints(heirloom);
+  const result = {} as StrainActivations;
+  for (const strain of STRAIN_IDS) {
+    const points = spawn[strain] ?? 0;
+    result[strain] = {
+      points,
+      genes: 0,
+      minorAt: points >= STRAIN_THRESHOLDS.minor ? 0 : null,
+      expressionAt: null,
+      apexAt: null,
+    };
+  }
+  type PointEvent = { atFood: number; strains: readonly StrainId[]; isGene: boolean; order: number };
+  const events: PointEvent[] = [];
+  picks.forEach((pick, i) =>
+    events.push({ atFood: pick.atFood, strains: geneStrains(pick.id), isGene: true, order: i })
+  );
+  surges.forEach((surge, i) =>
+    events.push({ atFood: surge.atFood, strains: [surge.strain], isGene: false, order: picks.length + i })
+  );
+  events.sort((a, b) => a.atFood - b.atFood || a.order - b.order);
+  for (const event of events) {
+    for (const strain of event.strains) {
+      const s = result[strain];
+      s.points += 1;
+      if (event.isGene) s.genes += 1;
+      const tier = strainTier(s.points, s.genes);
+      if (tier >= 1 && s.minorAt === null) s.minorAt = event.atFood;
+      if (tier >= 2 && s.expressionAt === null) s.expressionAt = event.atFood;
+      if (tier >= 3 && s.apexAt === null) s.apexAt = event.atFood;
+    }
+  }
+  return result;
+}
+
+/** Live tier of a strain at (or after) food n, from its activations. */
+export function strainTierAtFood(
+  activation: StrainActivation,
+  n: number
+): StrainTier {
+  if (activation.apexAt !== null && n > activation.apexAt) return 3;
+  if (activation.expressionAt !== null && n > activation.expressionAt) return 2;
+  if (activation.minorAt !== null && n > activation.minorAt) return 1;
+  return 0;
+}
+
+// =============================================================================
+// DETERMINISTIC LENGTH MODEL
+// =============================================================================
+
+export interface ShedEvent {
+  atFood: number;
+  segmentsShed: number;
+  source: 'shed' | 'molt' | 'regenesis' | 'molted_rebirth';
+}
+
+export interface LengthTrace {
+  /** lengthAtEat[n] = body length at the moment food n is eaten (1-based). */
+  lengthAtEat: number[];
+  shedEvents: ShedEvent[];
+}
+
+function activeAt(pick: GenePick | undefined, n: number): boolean {
+  return pick !== undefined && n > pick.atFood;
+}
+
+/**
+ * The deterministic length model: length is a pure function of the food
+ * index given picks (growth), shed cycles (fused view), the Molt
+ * expression, and reported losses. Reported losses only ever SHRINK the
+ * model, so under-reporting them is the only vector - bounded by the
+ * global raw clamp and flagged (design doc section 15.2).
+ */
+export function computeLengthTrace(
+  view: FusedView,
+  foodCount: number,
+  activations: StrainActivations,
+  input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>
+): LengthTrace {
+  const lengthAtEat: number[] = [0];
+  const shedEvents: ShedEvent[] = [];
+  const loosePick = (id: GeneId) => view.loose.find((p) => p.id === id);
+  const fused = (id: SpliceId) => view.splices.find((s) => s.spliceId === id);
+  const parentPick = (id: GeneId): GenePick | undefined => {
+    for (const s of view.splices) {
+      const p = s.parents.find((x) => x.id === id);
+      if (p) return p;
+    }
+    return undefined;
+  };
+  const overgrowth = loosePick('overgrowth') ?? parentPick('overgrowth');
+  const bulkUp = loosePick('bulk_up') ?? parentPick('bulk_up');
+  const shed = loosePick('shed');
+  const regenesis = fused('splice_regenesis');
+  const moltedRebirth = fused('splice_molted_rebirth');
+  const molt = activations.FERAL.expressionAt;
+  const losses = [...(input.lossEvents ?? [])];
+  for (const infuse of input.infuses) {
+    losses.push({ atFood: infuse.atFood, segments: STRAIN_PHYSICS.infuseSegmentCost });
+  }
+  const reviveAt = input.revive?.atFood ?? null;
+
+  let len: number = GAME_CONFIG.snake.initialLength;
+  for (let n = 1; n <= foodCount; n++) {
+    lengthAtEat[n] = len;
+    let growth = 1;
+    if (activeAt(overgrowth, n)) growth += MUTATION_PHYSICS.overgrowthExtraSegments;
+    if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
+    len += growth;
+    // Shed cycles (fused view replaces the loose Shed cycle post-fusion).
+    const cycles: { every: number; anchor: number; reset: number; source: ShedEvent['source'] }[] = [];
+    if (shed) {
+      cycles.push({
+        every: MUTATION_PHYSICS.shedEveryFoods,
+        anchor: shed.atFood,
+        reset: MUTATION_PHYSICS.shedResetLength,
+        source: 'shed',
+      });
+    }
+    if (regenesis) {
+      cycles.push({
+        every: SPLICE_ECONOMICS.regenesisShedEveryFoods,
+        anchor: regenesis.atFood,
+        reset: SPLICE_ECONOMICS.regenesisResetLength,
+        source: 'regenesis',
+      });
+    }
+    if (moltedRebirth) {
+      cycles.push({
+        every: SPLICE_PHYSICS.moltedRebirthShedEveryFoods,
+        anchor: moltedRebirth.atFood,
+        reset: SPLICE_PHYSICS.moltedRebirthResetLength,
+        source: 'molted_rebirth',
+      });
+    }
+    if (molt !== null) {
+      cycles.push({
+        every: STRAIN_PHYSICS.moltEveryFoods,
+        anchor: molt,
+        reset: STRAIN_PHYSICS.moltResetLength,
+        source: 'molt',
+      });
+    }
+    for (const cycle of cycles) {
+      const since = n - cycle.anchor;
+      if (since > 0 && since % cycle.every === 0 && len > cycle.reset) {
+        shedEvents.push({ atFood: n, segmentsShed: len - cycle.reset, source: cycle.source });
+        len = cycle.reset;
+      }
+    }
+    // Reported losses at this food (Thick Hide, Ouroboros, infuse cost).
+    for (const loss of losses) {
+      if (loss.atFood === n) {
+        len = Math.max(GAME_CONFIG.snake.initialLength, len - Math.max(0, loss.segments));
+      }
+    }
+    // Revive resets the body (Phoenix physics: reborn at length 8).
+    if (reviveAt === n) {
+      len = MUTATION_PHYSICS.phoenixRebirthLength;
+    }
+    // Molt growth floor while the expression is active.
+    if (molt !== null && n > molt) {
+      len = Math.max(STRAIN_PHYSICS.moltResetLength, len);
+    }
+  }
+  return { lengthAtEat, shedEvents };
+}
+
+// =============================================================================
+// PER-FOOD [E] MATH (fused view + strain tiers)
+// =============================================================================
+
+/** Does this revive kind void gene/strain economic benefits? */
+export function reviveVoidsBenefits(revive: GenomeRevive | null): boolean {
+  return revive !== null && revive.kind === 'phoenix';
+}
+
+function spliceFoodModifier(
+  splice: { spliceId: SpliceId; atFood: number; parents: readonly [GenePick, GenePick] },
+  n: number,
+  benefitsVoided: boolean
+): number {
+  let mod = 1;
+  switch (splice.spliceId) {
+    case 'splice_dragon_hoard': {
+      const goldTrail = splice.parents.find((p) => p.id === 'gold_trail');
+      if (
+        !benefitsVoided &&
+        goldTrail &&
+        (n - goldTrail.atFood) % MUTATION_ECONOMICS.goldTrailEveryNth === 0
+      ) {
+        mod *= MUTATION_ECONOMICS.goldTrailMultiplier;
+      }
+      break;
+    }
+    case 'splice_regenesis':
+      if (!benefitsVoided) mod *= MUTATION_ECONOMICS.overgrowthFoodBonus;
+      mod *= MUTATION_ECONOMICS.shedFoodPenalty;
+      break;
+    case 'splice_gravity_bubble':
+      mod *= SPLICE_ECONOMICS.gravityBubbleFoodPenalty;
+      break;
+    case 'splice_ricochet':
+      mod *= SPLICE_ECONOMICS.ricochetFoodPenalty;
+      break;
+    case 'splice_comet_tail': {
+      const since = n - splice.atFood;
+      if (!benefitsVoided) {
+        if (since % SPLICE_ECONOMICS.cometTailFifth === 0) {
+          mod *= SPLICE_ECONOMICS.cometTailFifthMultiplier;
+        }
+        if (since % SPLICE_ECONOMICS.cometTailTenth === 0) {
+          mod *= SPLICE_ECONOMICS.cometTailTenthMultiplier;
+        }
+      }
+      break;
+    }
+    case 'splice_old_growth': {
+      const glacial = splice.parents.find((p) => p.id === 'glacial_reserve');
+      if (!benefitsVoided && glacial) {
+        mod *= 1 + Math.min(
+          SPLICE_ECONOMICS.oldGrowthRampCap,
+          SPLICE_ECONOMICS.oldGrowthRampPerFood * (n - glacial.atFood)
+        );
+      }
+      break;
+    }
+    case 'splice_black_magnet':
+      mod *= SPLICE_ECONOMICS.blackMagnetFoodPenalty;
+      break;
+    case 'splice_molted_rebirth':
+      mod *= SPLICE_ECONOMICS.moltedRebirthFoodPenalty;
+      break;
+    // splice_styx_contract / splice_all_in: outcome-only
+  }
+  return mod;
+}
+
+function strainFoodModifier(
+  activations: StrainActivations,
+  n: number,
+  benefitsVoided: boolean
+): number {
+  let mod = 1;
+  // AURUM minor "Gilt" (benefit)
+  const aurum = activations.AURUM;
+  if (!benefitsVoided && aurum.minorAt !== null && n > aurum.minorAt) {
+    mod *= STRAIN_ECONOMICS.giltFoodBonus;
+  }
+  // VOLT expression "Arc Lightning" aggregate cost / apex benefit
+  const volt = activations.VOLT;
+  if (volt.expressionAt !== null && n > volt.expressionAt) {
+    mod *= STRAIN_ECONOMICS.arcLightningFoodPenalty;
+  }
+  if (!benefitsVoided && volt.apexAt !== null && n > volt.apexAt) {
+    mod *= STRAIN_ECONOMICS.overclockedRealityFoodBonus;
+  }
+  // FERAL apex "Ouroboros" cost
+  const feral = activations.FERAL;
+  if (feral.apexAt !== null && n > feral.apexAt) {
+    mod *= STRAIN_ECONOMICS.ouroborosFoodPenalty;
+  }
+  // FLUX expression "Rift Aura" cost
+  const flux = activations.FLUX;
+  if (flux.expressionAt !== null && n > flux.expressionAt) {
+    mod *= STRAIN_ECONOMICS.riftAuraFoodPenalty;
+  }
+  return mod;
+}
+
+/**
+ * The full deterministic per-food [E] multiplier under the genome:
+ * loose picks (legacy delegation), fused parents pre-fusion, splice math
+ * post-fusion, and strain-tier effects. Pure in its inputs.
+ */
+export function genomeFoodValueModifier(
+  view: FusedView,
+  activations: StrainActivations,
+  n: number,
+  revive: GenomeRevive | null,
+  options: { lengthAt?: (n: number) => number; prevRunDied?: boolean } = {}
+): number {
+  const voidAt = reviveVoidsBenefits(revive) ? revive!.atFood : null;
+  const benefitsVoided = voidAt !== null && n > voidAt;
+  let mod = geneFoodValueModifier(view.loose, n, voidAt, options);
+  for (const splice of view.splices) {
+    if (n <= splice.atFood) {
+      // Pre-fusion: parents act individually.
+      mod *= geneFoodValueModifier([...splice.parents], n, voidAt, options);
+    } else {
+      mod *= spliceFoodModifier(splice, n, benefitsVoided);
+    }
+  }
+  mod *= strainFoodModifier(activations, n, benefitsVoided);
+  return mod;
+}
+
+/**
+ * The full deterministic per-food FLAT bonus under the genome: loose
+ * picks (legacy delegation), fused parents pre-fusion, splice flats
+ * post-fusion (Dragon Hoard golden flats, Regenesis shed pay, Old Growth
+ * cadence), and the FLUX Singularity pull pay.
+ */
+export function genomeFoodValueFlatBonus(
+  view: FusedView,
+  activations: StrainActivations,
+  n: number,
+  revive: GenomeRevive | null,
+  lengthTrace: LengthTrace,
+  options: { lengthAt?: (n: number) => number } = {}
+): number {
+  const voidAt = reviveVoidsBenefits(revive) ? revive!.atFood : null;
+  const benefitsVoided = voidAt !== null && n > voidAt;
+  let flat = geneFoodValueFlatBonus(view.loose, n, voidAt, options);
+  for (const splice of view.splices) {
+    if (n <= splice.atFood) {
+      flat += geneFoodValueFlatBonus([...splice.parents], n, voidAt, options);
+      continue;
+    }
+    if (benefitsVoided) continue;
+    switch (splice.spliceId) {
+      case 'splice_dragon_hoard': {
+        const goldTrail = splice.parents.find((p) => p.id === 'gold_trail');
+        if (
+          goldTrail &&
+          (n - goldTrail.atFood) % MUTATION_ECONOMICS.goldTrailEveryNth === 0
+        ) {
+          flat += SPLICE_ECONOMICS.dragonHoardGoldenFlat;
+        }
+        break;
+      }
+      case 'splice_regenesis': {
+        for (const event of lengthTrace.shedEvents) {
+          if (event.atFood === n && event.source === 'regenesis') {
+            flat += SPLICE_ECONOMICS.regenesisFlatPerSegment * event.segmentsShed;
+          }
+        }
+        break;
+      }
+      case 'splice_old_growth': {
+        const since = n - splice.atFood;
+        if (since > 0 && since % SPLICE_ECONOMICS.oldGrowthFlatEveryFoods === 0) {
+          flat += 1;
+        }
+        break;
+      }
+    }
+  }
+  // FLUX apex "Singularity": +10 flat per pull event (deterministic).
+  const flux = activations.FLUX;
+  if (!benefitsVoided && flux.apexAt !== null && n > flux.apexAt) {
+    const since = n - flux.apexAt;
+    if (since % STRAIN_ECONOMICS.singularityEveryFoods === 0) {
+      flat += STRAIN_ECONOMICS.singularityFlat;
+    }
+  }
+  return flat;
+}
+
+// =============================================================================
+// OUTCOME MULTIPLIERS (genome-aware, fused view)
+// =============================================================================
+
+function round4(value: number): number {
+  return Math.round(Math.max(0, value) * 10000) / 10000;
+}
+
+/**
+ * The genome outcome multipliers: fused-view wager/interest shaping,
+ * infuse deltas, strain-tier deltas, trait deltas, then the hard clamps
+ * (bank <= 1.75, salvage <= 0.90). Benefits void under a classic Phoenix
+ * revive; Styx Contract / Molted Rebirth / Second Sun revives keep them
+ * (that is their headline). All costs always persist.
+ */
+export function genomeOutcomeMultipliers(
+  input: GenomeRunInput,
+  traits: TraitId[] = [],
+  anomaly: AnomalyId | null = null
+): { bank: number; death: number } {
+  const view = fusePicks(input.picks);
+  const activations = strainActivations(input.picks, input.heirloom, input.surges);
+  const benefitsVoided = reviveVoidsBenefits(input.revive);
+  const heldGenes = input.picks.length;
+  const looseIds = new Set(view.loose.map((p) => p.id));
+  const spliceIds = new Set(view.splices.map((s) => s.spliceId));
+
+  let bank: number = anomalyBankOverride(anomaly) ?? 1.25;
+  let death = 0.6;
+
+  // Wager-class SETs (fused view).
+  if (spliceIds.has('splice_styx_contract')) {
+    death = SPLICE_ECONOMICS.styxSalvage;
+    bank = SPLICE_ECONOMICS.styxBank; // never voided - Styx keeps benefits
+  } else if (looseIds.has('mirror_wager')) {
+    death = MUTATION_ECONOMICS.mirrorWagerDeath;
+    if (!benefitsVoided) bank = MUTATION_ECONOMICS.mirrorWagerBank;
+  }
+  if (spliceIds.has('splice_all_in')) {
+    death = SPLICE_ECONOMICS.allInSalvage; // SET, like the Wager it consumed
+    if (!benefitsVoided) {
+      bank = round4(bank + SPLICE_ECONOMICS.allInBankPerHeld * heldGenes);
+    }
+  }
+  // Interest-class additive bank (genome retune: +0.05/held, cap +0.30).
+  const interestSources =
+    (looseIds.has('compound_interest') ? 1 : 0) +
+    (spliceIds.has('splice_dragon_hoard') ? 1 : 0);
+  if (interestSources > 0 && !benefitsVoided) {
+    bank = round4(
+      bank +
+        Math.min(
+          STRAIN_ECONOMICS.compoundInterestCap,
+          STRAIN_ECONOMICS.compoundInterestPerHeld * heldGenes
+        ) * interestSources
+    );
+  }
+  // Overclock Harvest (legacy semantics preserved).
+  if (looseIds.has('overclock_harvest')) {
+    death = round4(death + MUTATION_ECONOMICS.overclockHarvestDeathDelta);
+    if (!benefitsVoided) {
+      bank = round4(bank + MUTATION_ECONOMICS.overclockHarvestBankDelta);
+    }
+  }
+  // Infuse deltas: structural (paid in segments), never voided.
+  const infuses = input.infuses.length;
+  if (infuses > 0) {
+    bank = round4(bank + STRAIN_ECONOMICS.infuseBankDelta * infuses);
+    death = round4(death + STRAIN_ECONOMICS.infuseSalvageDelta * infuses);
+  }
+  // Strain-tier deltas.
+  const umbra = activations.UMBRA;
+  if (umbra.minorAt !== null && !benefitsVoided) {
+    death = round4(death + STRAIN_ECONOMICS.shadowSkinSalvageDelta);
+  }
+  if (umbra.apexAt !== null) {
+    bank = round4(bank + STRAIN_ECONOMICS.secondSunBankDelta); // cost
+    if (!benefitsVoided) {
+      death = round4(death + STRAIN_ECONOMICS.secondSunSalvageDelta);
+    }
+  }
+  if (activations.AURUM.apexAt !== null) {
+    death = round4(death + STRAIN_ECONOMICS.midasSalvageDelta); // cost
+  }
+  // Trait deltas (never voided - snake identity).
+  if (traits.length > 0) {
+    const deltas = traitOutcomeDeltas(traits);
+    bank = round4(bank + deltas.bank);
+    death = round4(death + deltas.death);
+  }
+  // Hard clamps (section 10).
+  bank = Math.min(STRAIN_ECONOMICS.bankClamp, bank);
+  death = Math.min(STRAIN_ECONOMICS.salvageClamp, death);
+  return { bank, death };
+}
+
+// =============================================================================
+// BOUNDED-TRUST CLAIM CAPS
+// =============================================================================
+
+export interface GenomeClaimCaps {
+  aurumWakeDna: number;
+  midasDna: number;
+  moltFoodDna: number;
+  ouroborosDna: number;
+  staticChargeDna: number;
+  ricochetDna: number;
+  heartwoodDna: number;
+  secondSunFlat: number;
+  /** COSMIC combo trust ratio (2.8-cap Crown raises 1.4 -> 1.8 at M10). */
+  crownHeld: boolean;
+  /** Global backstop: deterministic + claims <= genelessRaw x 1.45. */
+  globalRawCap: number;
+}
+
+/**
+ * Per-run capsBasis: the deterministic sums the claim caps derive from.
+ * Produced by the computeGenomeRunTotals fold (rulesets.ts) so the caps
+ * use exactly the per-food DNA the recompute paid.
+ */
+export interface GenomeCapsBasis {
+  /** Cumulative deterministic DNA after each food (index 0 = 0). */
+  cumulativeDna: number[];
+  /** Gene-less (traits+anomaly only) raw total for the same food count. */
+  genelessRaw: number;
+  foodCount: number;
+}
+
+function dnaSince(basis: GenomeCapsBasis, atFood: number | null): number {
+  if (atFood === null) return 0;
+  const total = basis.cumulativeDna[basis.foodCount] ?? 0;
+  const before = basis.cumulativeDna[Math.min(atFood, basis.foodCount)] ?? 0;
+  return Math.max(0, total - before);
+}
+
+export function genomeClaimCaps(
+  input: GenomeRunInput,
+  basis: GenomeCapsBasis,
+  lengthTrace: LengthTrace
+): GenomeClaimCaps {
+  const view = fusePicks(input.picks);
+  const activations = strainActivations(input.picks, input.heirloom, input.surges);
+  const find = (id: GeneId) => view.loose.find((p) => p.id === id);
+  const fusedRicochet = view.splices.find((s) => s.spliceId === 'splice_ricochet');
+  const aurum = activations.AURUM;
+  const feral = activations.FERAL;
+  const staticCharge = find('static_charge');
+  const heartwood = find('heartwood');
+
+  const moltEvents = lengthTrace.shedEvents.filter(
+    (e) => e.source === 'molt'
+  ).length;
+  const heartwoodEvents = heartwood
+    ? lengthTrace.shedEvents.filter((e) => e.atFood > heartwood.atFood).length
+    : 0;
+  const foodsSinceFeralApex =
+    feral.apexAt !== null ? Math.max(0, basis.foodCount - feral.apexAt) : 0;
+
+  return {
+    aurumWakeDna:
+      aurum.expressionAt !== null
+        ? Math.floor(
+            dnaSince(basis, aurum.expressionAt) *
+              STRAIN_ECONOMICS.aurumWakeMaxBonusRatio
+          )
+        : 0,
+    midasDna:
+      aurum.apexAt !== null
+        ? Math.floor(
+            dnaSince(basis, aurum.apexAt) * STRAIN_ECONOMICS.midasMaxBonusRatio
+          )
+        : 0,
+    moltFoodDna:
+      moltEvents * STRAIN_ECONOMICS.moltFoodsPerEvent * STRAIN_ECONOMICS.moltFoodFlat,
+    ouroborosDna:
+      feral.apexAt !== null
+        ? Math.floor(foodsSinceFeralApex / STRAIN_ECONOMICS.ouroborosFoodsPerBite) *
+          STRAIN_ECONOMICS.ouroborosBiteFlat
+        : 0,
+    staticChargeDna: staticCharge
+      ? Math.floor(
+          dnaSince(basis, staticCharge.atFood) *
+            GENE_ECONOMICS.staticChargeMaxBonusRatio
+        )
+      : 0,
+    ricochetDna: fusedRicochet
+      ? Math.floor(
+          dnaSince(basis, fusedRicochet.atFood) *
+            SPLICE_ECONOMICS.ricochetMaxBonusRatio
+        )
+      : 0,
+    heartwoodDna: heartwoodEvents * GENE_ECONOMICS.heartwoodGoldenFlat,
+    secondSunFlat:
+      activations.UMBRA.apexAt !== null
+        ? STRAIN_ECONOMICS.secondSunTriggerFlat
+        : 0,
+    crownHeld:
+      find('constellation_crown') !== undefined ||
+      view.splices.some((s) =>
+        s.parents.some((p) => p.id === 'constellation_crown')
+      ),
+    globalRawCap: Math.floor(
+      basis.genelessRaw * STRAIN_ECONOMICS.genomeRawClampRatio
+    ),
+  };
+}
+
+/**
+ * Clamp untrusted claims against the caps. Returns the accepted claims
+ * plus the total accepted bonus DNA and whether the GLOBAL clamp bound
+ * while individual caps passed (the cheat signal - flag, never hide).
+ */
+export function clampGenomeClaims(
+  raw: GenomeClaims,
+  caps: GenomeClaimCaps,
+  deterministicRaw: number
+): { accepted: GenomeClaims; bonusDna: number; globalClampHit: boolean } {
+  const clampInt = (value: unknown, cap: number): number => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(cap, Math.floor(value)));
+  };
+  const accepted: GenomeClaims = {
+    aurumWakeDna: clampInt(raw.aurumWakeDna, caps.aurumWakeDna),
+    midasDna: clampInt(raw.midasDna, caps.midasDna),
+    moltFoodDna: clampInt(raw.moltFoodDna, caps.moltFoodDna),
+    ouroborosDna: clampInt(raw.ouroborosDna, caps.ouroborosDna),
+    staticChargeDna: clampInt(raw.staticChargeDna, caps.staticChargeDna),
+    ricochetDna: clampInt(raw.ricochetDna, caps.ricochetDna),
+    heartwoodDna: clampInt(raw.heartwoodDna, caps.heartwoodDna),
+    secondSunTriggered: raw.secondSunTriggered === true && caps.secondSunFlat > 0,
+  };
+  let bonusDna =
+    (accepted.aurumWakeDna ?? 0) +
+    (accepted.midasDna ?? 0) +
+    (accepted.moltFoodDna ?? 0) +
+    (accepted.ouroborosDna ?? 0) +
+    (accepted.staticChargeDna ?? 0) +
+    (accepted.ricochetDna ?? 0) +
+    (accepted.heartwoodDna ?? 0) +
+    (accepted.secondSunTriggered ? caps.secondSunFlat : 0);
+  let globalClampHit = false;
+  if (deterministicRaw + bonusDna > caps.globalRawCap) {
+    globalClampHit = true;
+    bonusDna = Math.max(0, caps.globalRawCap - deterministicRaw);
+  }
+  return { accepted, bonusDna, globalClampHit };
+}
+
+// =============================================================================
+// SANITIZERS (shared client/server shape guards)
+// =============================================================================
+
+export function sanitizeSurges(raw: unknown): StrainSurge[] {
+  if (!Array.isArray(raw)) return [];
+  const surges: StrainSurge[] = [];
+  for (const entry of raw) {
+    if (surges.length >= STRAIN_PHYSICS.infuseMaxPerRun) break;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { strain, atFood } = entry as { strain?: unknown; atFood?: unknown };
+    if (
+      typeof strain === 'string' &&
+      (STRAIN_IDS as readonly string[]).includes(strain) &&
+      typeof atFood === 'number' &&
+      Number.isInteger(atFood) &&
+      atFood >= 0
+    ) {
+      surges.push({ strain: strain as StrainId, atFood });
+    }
+  }
+  return surges;
+}
+
+export function sanitizeInfuses(raw: unknown, foodCount: number): { atFood: number }[] {
+  if (!Array.isArray(raw)) return [];
+  const infuses: { atFood: number }[] = [];
+  let last = -1;
+  for (const entry of raw) {
+    if (infuses.length >= STRAIN_PHYSICS.infuseMaxPerRun) break;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { atFood } = entry as { atFood?: unknown };
+    if (
+      typeof atFood === 'number' &&
+      Number.isInteger(atFood) &&
+      atFood > last &&
+      atFood <= foodCount
+    ) {
+      infuses.push({ atFood });
+      last = atFood;
+    }
+  }
+  return infuses;
+}
+
+const REVIVE_KINDS: readonly ReviveKind[] = [
+  'phoenix',
+  'styx',
+  'molted',
+  'second_sun',
+] as const;
+
+export function sanitizeRevive(raw: unknown, foodCount: number): GenomeRevive | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { kind, atFood } = raw as { kind?: unknown; atFood?: unknown };
+  if (
+    typeof kind === 'string' &&
+    (REVIVE_KINDS as readonly string[]).includes(kind) &&
+    typeof atFood === 'number' &&
+    Number.isInteger(atFood) &&
+    atFood >= 0 &&
+    atFood <= foodCount
+  ) {
+    return { kind: kind as ReviveKind, atFood };
+  }
+  return null;
+}
+
+export function sanitizeLossEvents(raw: unknown): LengthLossEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const events: LengthLossEvent[] = [];
+  for (const entry of raw) {
+    if (events.length >= 64) break;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { atFood, segments } = entry as { atFood?: unknown; segments?: unknown };
+    if (
+      typeof atFood === 'number' &&
+      Number.isInteger(atFood) &&
+      atFood >= 0 &&
+      typeof segments === 'number' &&
+      Number.isInteger(segments) &&
+      segments > 0 &&
+      segments <= 64
+    ) {
+      events.push({ atFood, segments });
+    }
+  }
+  return events;
+}
+
+/** Ascetic check under genome rules: no gene foods ever spawn. */
+export function genePoolBlockedByTraits(traits: TraitId[]): boolean {
+  return traits.includes('ascetic');
+}
+
+/** Tithe per-food floor - exported for the rulesets fold + engine. */
+export function tithePerFoodFloor(view: FusedView, n: number): number {
+  const tithe = view.loose.find((p) => p.id === 'tithe');
+  return tithe !== undefined && n > tithe.atFood ? 1 : 0;
+}
+
+export { fusePicks };
+export type { FusedView };

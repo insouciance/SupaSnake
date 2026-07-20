@@ -31,6 +31,21 @@ import {
   anomalyFoodValueModifier,
   type AnomalyId,
 } from '@/shared/game/anomalies';
+import {
+  computeLengthTrace,
+  fusePicks,
+  genomeClaimCaps,
+  genomeFoodValueFlatBonus,
+  genomeFoodValueModifier,
+  genomeOutcomeMultipliers,
+  strainActivations,
+  tithePerFoodFloor,
+  type GenomeCapsBasis,
+  type GenomeClaimCaps,
+  type GenomeRunInput,
+  type LengthTrace,
+  type StrainActivations,
+} from '@/shared/game/genome';
 
 export type DynastyName = 'PRIMAL' | 'CYBER' | 'COSMIC';
 
@@ -391,6 +406,111 @@ export function applyOutcomeWithMutations(
     traits,
     anomaly
   );
+  return Math.floor(raw * (extracted ? bank : death));
+}
+
+// =============================================================================
+// GENOME (Buildcraft: The Genome - BUILDCRAFT_GENOME_DESIGN.md)
+// =============================================================================
+
+export interface GenomeRunTotals {
+  /** Deterministic raw DNA (claims are NOT included - validator adds
+   *  clamped claims on top, engine adds live claims for display). */
+  rawDna: number;
+  /** Display score - genome NEVER touches score (same rule as mutations). */
+  score: number;
+  /** The claim-cap basis + caps for the bounded-trust validator. */
+  capsBasis: GenomeCapsBasis;
+  caps: GenomeClaimCaps;
+  /** Derived per-run facts (activations, length, sheds) for reuse. */
+  activations: StrainActivations;
+  lengthTrace: LengthTrace;
+}
+
+/**
+ * Deterministic genome run totals - the genome-era scoring authority for
+ * client and server. Same fold discipline as computeRunTotals: one
+ * Math.round per food, flats added after the round, single floor only at
+ * the outcome boundary. With an empty genome this pays exactly what
+ * computeRunTotals pays (proven by tests), so legacy sessions and the
+ * genome-off path share one authority.
+ *
+ * Tithe's -1/food can push a food negative: the per-food result is
+ * clamped at 1 while Tithe is active ("never below 1"), at 0 otherwise.
+ */
+export function computeGenomeRunTotals(
+  dynasty: DynastyName,
+  foodCount: number,
+  genome: GenomeRunInput,
+  traits: TraitId[] = [],
+  anomaly: AnomalyId | null = null
+): GenomeRunTotals {
+  const ruleset = RULESETS[dynasty];
+  const count = Number.isFinite(foodCount) ? Math.max(0, Math.floor(foodCount)) : 0;
+  const view = fusePicks(genome.picks);
+  const activations = strainActivations(genome.picks, genome.heirloom, genome.surges);
+  const lengthTrace = computeLengthTrace(view, count, activations, genome);
+  const lengthAt = (n: number) => lengthTrace.lengthAtEat[n] ?? 0;
+
+  let rawDna = 0;
+  let score = 0;
+  let genelessRaw = 0;
+  const cumulativeDna: number[] = [0];
+  for (let n = 1; n <= count; n++) {
+    let mod = genomeFoodValueModifier(view, activations, n, genome.revive, {
+      lengthAt,
+      prevRunDied: genome.prevRunDied,
+    });
+    let genelessMod = 1;
+    if (traits.length > 0) {
+      const traitMod = traitFoodValueModifier(traits, n);
+      mod *= traitMod;
+      genelessMod *= traitMod;
+    }
+    if (anomaly !== null) {
+      const anomalyMod = anomalyFoodValueModifier(anomaly, n);
+      mod *= anomalyMod;
+      genelessMod *= anomalyMod;
+    }
+    const flat = genomeFoodValueFlatBonus(
+      view,
+      activations,
+      n,
+      genome.revive,
+      lengthTrace,
+      { lengthAt }
+    );
+    const base = ruleset.foodDnaValue(n);
+    const dnaForFood = Math.max(
+      tithePerFoodFloor(view, n),
+      Math.round(base * mod) + flat
+    );
+    rawDna += dnaForFood;
+    genelessRaw += Math.round(base * genelessMod);
+    cumulativeDna[n] = rawDna;
+    score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n));
+  }
+  const capsBasis: GenomeCapsBasis = { cumulativeDna, genelessRaw, foodCount: count };
+  const caps = genomeClaimCaps(genome, capsBasis, lengthTrace);
+  return { rawDna, score, capsBasis, caps, activations, lengthTrace };
+}
+
+/**
+ * Genome-aware applyOutcome: the same single float->int boundary, with
+ * the outcome multiplier shaped by the fused genome (wagers, interest,
+ * infuses, strain tiers, traits, anomaly base) and hard-clamped
+ * (bank <= 1.75, salvage <= 0.90). With an empty genome and no traits
+ * this is exactly applyOutcome.
+ */
+export function applyGenomeOutcome(
+  rawDna: number,
+  extracted: boolean,
+  genome: GenomeRunInput,
+  traits: TraitId[] = [],
+  anomaly: AnomalyId | null = null
+): number {
+  const raw = Number.isFinite(rawDna) ? Math.max(0, rawDna) : 0;
+  const { bank, death } = genomeOutcomeMultipliers(genome, traits, anomaly);
   return Math.floor(raw * (extracted ? bank : death));
 }
 

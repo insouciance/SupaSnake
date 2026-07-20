@@ -27,9 +27,18 @@
  * completes normally.
  */
 
-export type RunEventCode = 'f' | 'p' | 'b' | 'm' | 'w' | 'x';
+/**
+ * Genome additions (BUILDCRAFT_GENOME_DESIGN.md):
+ *     i  infuse               (n = food index at infuse)
+ *     s  splice fused         (id = splice id)
+ *     g  expression activated (id = strain id, v = tier 1|2|3)
+ * Portal action gains 'infuse'. Display-only, like every other code:
+ * payout-relevant genome claims ride the session end payload's `genome`
+ * object, NEVER run events.
+ */
+export type RunEventCode = 'f' | 'p' | 'b' | 'm' | 'w' | 'x' | 'i' | 's' | 'g';
 
-export type PortalAction = 'spawn' | 'pass' | 'enter';
+export type PortalAction = 'spawn' | 'pass' | 'enter' | 'infuse';
 
 /** How a run ended - game_sessions.death_cause values (migration 022). */
 export type RunDeathCause = 'wall' | 'self' | 'timeout' | 'extracted';
@@ -42,10 +51,12 @@ export interface RunEvent {
   n?: number;
   /** p: portal action. */
   k?: PortalAction;
-  /** m: mutation id. */
+  /** m: mutation/gene id. s: splice id. g: strain id. */
   id?: string;
   /** w: episode duration in deciseconds. */
   d?: number;
+  /** g: strain tier reached (1 minor, 2 expression, 3 apex). */
+  v?: number;
   /** x: death cause. */
   c?: RunDeathCause;
 }
