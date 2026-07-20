@@ -5,6 +5,7 @@
 **Date:** 2026-07-18
 **Status:** APPROVED — implementation phased (see §12); supersedes the stat-bonus and generation-scaling portions of `systems/DYNASTY_SYSTEM_specification_v1.0.md`
 **Companion docs:** `systems/CLAN_DUELS_spec.md` (v1 duels — the base the Gauntlet builds on), approved plan + Phase-1 implementation mapping (plan archive)
+**Buildcraft note (2026-07-20):** `BUILDCRAFT_GENOME_DESIGN.md` evolves §5 (Mutation Food) and §6 (Traits) into the Genome system — strains, expressions, splices, infusion, lineage. All mechanics, ids and validation proofs in §5/§6 remain valid; the Genome doc layers on top and is authoritative where the two overlap (held cap, Compound Interest tuning, outcome clamps, offer algorithm).
 
 ---
 
@@ -251,6 +252,11 @@ account stack ceiling is a hard, auditable constant.
 
 ## 5. Mutation Food *(Phase 2)*
 
+> **Genome (2026-07-20):** mutations are now **genes** with strain tags — see
+> `BUILDCRAFT_GENOME_DESIGN.md` §1–§5 for the authoritative held cap (6),
+> Compound Interest retune (+0.05/held, cap +0.30), seeded offer gravity and
+> splice fusion. Everything below remains valid as the base layer.
+
 Run-lasting build variance: rare timed spawns offering a choice of 2
 mutations, ~10 in the launch pool. Every mutation is an offer **with a cost**
 — sidegrades that bend the run, never straight upgrades.
@@ -315,6 +321,11 @@ index at pickup). The server:
 ---
 
 ## 6. Traits & Breeding Rework *(Phase 3)*
+
+> **Genome (2026-07-20):** traits are now **Heirloom genes** (strain-tagged,
+> grant starting strain points) and variants carry **Lineage** — see
+> `BUILDCRAFT_GENOME_DESIGN.md` §7–§8. Effects, slots and inheritance below
+> remain valid as the base layer.
 
 Traits replace generation stats: permanent, snake-bound **sidegrades** that
 tilt *how* a snake earns, never *how much* on net. Breeding becomes trait
