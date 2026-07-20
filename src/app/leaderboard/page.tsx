@@ -60,6 +60,7 @@ function entryIdentity(entry: LeaderboardEntry): PlayerIdentity | null {
     displayHandle: identity.handle,
     isGenerated: identity.isGenerated,
     isFounder: identity.founder,
+    isPremium: identity.premium === true,
     title: identity.title,
     bannerId: null,
     bannerRender: null,

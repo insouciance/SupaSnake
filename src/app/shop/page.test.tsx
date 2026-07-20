@@ -79,7 +79,12 @@ describe('Shop page', () => {
       );
 
       expect(screen.getByTestId('account-upgrade-modal')).toBeInTheDocument();
-      expect(global.fetch).not.toHaveBeenCalled();
+      // The premium section may read /api/premium/status on mount, but no
+      // checkout request may ever fire for an anonymous account
+      const checkoutCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        ([url]) => String(url).includes('/api/checkout') || String(url).includes('/api/premium/checkout')
+      );
+      expect(checkoutCalls).toHaveLength(0);
     });
 
     it('shows the save-progress notice with an account button', () => {

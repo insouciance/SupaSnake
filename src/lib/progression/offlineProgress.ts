@@ -23,7 +23,16 @@ export interface OfflineProgress {
   hasRewards: boolean;
 }
 
-type PassiveProgressConfig = typeof ENGAGEMENT_CONFIG.passiveProgress;
+/**
+ * Widened shape of ENGAGEMENT_CONFIG.passiveProgress (whose values are
+ * literal types) so callers can override the cap - SupaSnake Premium
+ * raises maxOfflineHours 24 -> 48.
+ */
+export interface PassiveProgressConfig {
+  readonly dnaPerSnakePerHour: number;
+  readonly maxOfflineHours: number;
+  readonly minOfflineMinutes: number;
+}
 
 /**
  * Calculate passive DNA earned while offline
@@ -70,10 +79,14 @@ export function calculateEnergyRestored(
 
 /**
  * Calculate complete offline progress
- * Main entry point for both client preview and server validation
+ * Main entry point for both client preview and server validation.
+ * The optional config override raises the DNA cap for SupaSnake Premium
+ * (48h instead of 24h - PREMIUM_CONFIG.passiveProgress).
  */
-export function calculateOfflineProgress(input: OfflineProgressInput): OfflineProgress {
-  const config = ENGAGEMENT_CONFIG.passiveProgress;
+export function calculateOfflineProgress(
+  input: OfflineProgressInput,
+  config: PassiveProgressConfig = ENGAGEMENT_CONFIG.passiveProgress
+): OfflineProgress {
   const energyConfig = GAME_CONFIG.economy.energy;
 
   // Handle null/invalid lastLoginAt
@@ -125,8 +138,10 @@ export function calculateOfflineProgress(input: OfflineProgressInput): OfflinePr
 /**
  * Format duration for display in Welcome Back modal
  */
-export function formatOfflineDuration(elapsedMs: number): string {
-  const config = ENGAGEMENT_CONFIG.passiveProgress;
+export function formatOfflineDuration(
+  elapsedMs: number,
+  config: PassiveProgressConfig = ENGAGEMENT_CONFIG.passiveProgress
+): string {
   const maxMs = config.maxOfflineHours * 60 * 60 * 1000;
 
   // Cap display at max hours

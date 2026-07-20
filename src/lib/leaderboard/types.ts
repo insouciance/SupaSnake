@@ -17,6 +17,8 @@ export interface LeaderboardIdentity {
   title: string | null;
   clanTag: string | null;
   founder: boolean;
+  /** SupaSnake Premium supporter flair (migration 028) - cosmetic only. */
+  premium?: boolean;
   badges: Array<{ id: string; name: string; rarity: string }>;
   avatarDynasty: string | null;
   avatarVariantId: string | null;

@@ -61,6 +61,7 @@ export function fallbackIdentity(playerId: string): PlayerIdentity {
     displayHandle: generatedHandleFor(playerId),
     isGenerated: true,
     isFounder: false,
+    isPremium: false,
     title: null,
     bannerId: null,
     bannerRender: null,

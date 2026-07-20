@@ -19,6 +19,12 @@ jest.mock('@/hooks/useOfflineProgress', () => ({
   }),
 }));
 
+// The provider reads auth (for the premium stipend piggyback) - render
+// outside a real AuthProvider
+jest.mock('@/lib/auth/AuthProvider', () => ({
+  useAuth: () => ({ session: null, isAuthenticated: false }),
+}));
+
 describe('OfflineProgressProvider', () => {
   it('renders children', () => {
     render(

@@ -18,6 +18,8 @@ import {
 import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { NavBar } from '@/components/ui/NavBar';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
+import { PremiumSection } from '@/components/engagement/PremiumSection';
+import { GAME_CONFIG } from '@/shared/config/game';
 import Link from 'next/link';
 import { IconBolt, IconCart, IconDna, IconSnake } from '@/components/ui/icons';
 
@@ -29,6 +31,7 @@ export default function ShopPage() {
   const [showBundles, setShowBundles] = useState(false);
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
+  const [premiumSuccess, setPremiumSuccess] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   // §18(1)(11) FAGG: express consent to immediate delivery + loss of the
   // 14-day withdrawal right, required before any purchase. Deliberately
@@ -43,6 +46,12 @@ export default function ShopPage() {
       setSuccess(true);
     }
     if (params.get('canceled') === 'true') {
+      setCanceled(true);
+    }
+    if (params.get('premium') === 'success') {
+      setPremiumSuccess(true);
+    }
+    if (params.get('premium') === 'canceled') {
       setCanceled(true);
     }
   }, []);
@@ -170,6 +179,17 @@ export default function ShopPage() {
         </div>
       )}
 
+      {/* Premium Success Message */}
+      {premiumSuccess && (
+        <div className="panel-glow [--glow:#fbbf24] p-4 mb-6 animate-pop-in">
+          <p className="text-amber-300 font-display uppercase">Welcome to Premium!</p>
+          <p className="text-beige text-sm font-body">
+            Thank you for supporting SupaSnake. Your perks are active — claim
+            your first daily stipend from the Lab.
+          </p>
+        </div>
+      )}
+
       {/* Canceled Message */}
       {canceled && (
         <div className="panel p-4 mb-6 animate-fade-up">
@@ -203,6 +223,11 @@ export default function ShopPage() {
         </div>
       )}
 
+      {/* SupaSnake Premium subscription */}
+      {GAME_CONFIG.features.premium && (
+        <PremiumSection onRequireAccount={() => setShowUpgrade(true)} />
+      )}
+
       {/* Energy Section */}
       <section className="mb-10 animate-fade-up">
         <h2 className="heading-display text-2xl text-bone-white mb-2">Energy Packs</h2>
@@ -224,7 +249,7 @@ export default function ShopPage() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="text-2xl font-display text-venom-orange">
-                  ${product.priceUsd.toFixed(2)}
+                  €{product.price.toFixed(2)}
                 </span>
                 {renderPurchaseButton(product, 'Buy')}
               </div>
@@ -281,7 +306,7 @@ export default function ShopPage() {
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-2xl font-display text-venom-orange text-glow-orange">
-                    ${product.priceUsd.toFixed(2)}
+                    €{product.price.toFixed(2)}
                   </span>
                   {renderPurchaseButton(product, 'Buy Bundle')}
                 </div>

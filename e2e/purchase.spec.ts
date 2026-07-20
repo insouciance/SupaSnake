@@ -29,12 +29,12 @@ test.describe('Shop page', () => {
     await expect(page.getByText('Energy Vault', { exact: true })).toBeVisible();
   });
 
-  test('displays product prices in USD', async ({ page }) => {
+  test('displays gross product prices in EUR (Austrian/EU storefront)', async ({ page }) => {
     await page.goto('/shop');
 
-    await expect(page.getByText('$0.99')).toBeVisible();
-    await expect(page.getByText('$2.49')).toBeVisible();
-    await expect(page.getByText('$4.99')).toBeVisible();
+    await expect(page.getByText('€0.99')).toBeVisible();
+    await expect(page.getByText('€2.49')).toBeVisible();
+    await expect(page.getByText('€4.99').first()).toBeVisible();
   });
 
   test('displays fair play notice', async ({ page }) => {

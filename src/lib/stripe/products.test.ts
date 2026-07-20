@@ -3,68 +3,66 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import { ALL_PRODUCTS, ENERGY_PRODUCTS, BUNDLE_PRODUCTS, getProductById } from './products';
 
 describe('Stripe Products', () => {
   describe('Energy Products', () => {
-    it('should have small energy pack at $0.99', () => {
-      const product = {
-        id: 'energy_small',
-        priceUsd: 0.99,
-        rewards: { energy: 3 },
-      };
-      expect(product.priceUsd).toBe(0.99);
-      expect(product.rewards.energy).toBe(3);
+    it('should have small energy pack at €0.99', () => {
+      const product = getProductById('energy_small');
+      expect(product?.price).toBe(0.99);
+      expect(product?.rewards.energy).toBe(3);
     });
 
-    it('should have medium energy bundle at $2.49', () => {
-      const product = {
-        id: 'energy_medium',
-        priceUsd: 2.49,
-        rewards: { energy: 10 },
-      };
-      expect(product.priceUsd).toBe(2.49);
-      expect(product.rewards.energy).toBe(10);
+    it('should have medium energy bundle at €2.49', () => {
+      const product = getProductById('energy_medium');
+      expect(product?.price).toBe(2.49);
+      expect(product?.rewards.energy).toBe(10);
     });
 
-    it('should have large energy vault at $4.99', () => {
-      const product = {
-        id: 'energy_large',
-        priceUsd: 4.99,
-        rewards: { energy: 25 },
-      };
-      expect(product.priceUsd).toBe(4.99);
-      expect(product.rewards.energy).toBe(25);
+    it('should have large energy vault at €4.99', () => {
+      const product = getProductById('energy_large');
+      expect(product?.price).toBe(4.99);
+      expect(product?.rewards.energy).toBe(25);
     });
 
     it('should comply with BM-001 (pay for convenience)', () => {
       // Energy is time-saving, not power advantage
-      const energyProduct = { type: 'energy', rewards: { energy: 3 } };
-      expect(energyProduct.type).toBe('energy');
-      // No stats boost or exclusive content
-      expect(energyProduct.rewards).not.toHaveProperty('statsBoost');
+      for (const product of ENERGY_PRODUCTS) {
+        expect(product.type).toBe('energy');
+        // No stats boost or exclusive content
+        expect(product.rewards).not.toHaveProperty('statsBoost');
+      }
+    });
+  });
+
+  describe('EUR storefront (Austrian/EU launch)', () => {
+    it('should price every one-time product in EUR', () => {
+      for (const product of ALL_PRODUCTS) {
+        expect(product.currency).toBe('eur');
+        expect(product.price).toBeGreaterThan(0);
+      }
     });
   });
 
   describe('Bundle Products', () => {
-    it('should have starter bundle at $2.99', () => {
-      const product = {
-        id: 'starter_bundle',
-        priceUsd: 2.99,
-        rewards: { energy: 20, dna: 1000, variants: ['CYBER VORTEX'] },
-      };
-      expect(product.priceUsd).toBe(2.99);
-      expect(product.rewards.energy).toBe(20);
-      expect(product.rewards.dna).toBe(1000);
+    it('should have starter bundle at €2.99', () => {
+      const product = getProductById('starter_bundle');
+      expect(product?.price).toBe(2.99);
+      expect(product?.rewards.energy).toBe(20);
+      expect(product?.rewards.dna).toBe(1000);
     });
 
-    it('should have dynasty bundle at $9.99', () => {
-      const product = {
-        id: 'dynasty_bundle',
-        priceUsd: 9.99,
-        rewards: { energy: 50, dna: 3000, variants: ['COSMIC SUPERNOVA'] },
-      };
-      expect(product.priceUsd).toBe(9.99);
-      expect(product.rewards.energy).toBe(50);
+    it('should have dynasty bundle at €9.99', () => {
+      const product = getProductById('dynasty_bundle');
+      expect(product?.price).toBe(9.99);
+      expect(product?.rewards.energy).toBe(50);
+    });
+
+    it('should keep all bundles in the catalog', () => {
+      expect(BUNDLE_PRODUCTS.map((p) => p.id)).toEqual([
+        'starter_bundle',
+        'dynasty_bundle',
+      ]);
     });
   });
 

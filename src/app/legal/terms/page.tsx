@@ -170,6 +170,49 @@ export default function TermsOfServicePage() {
             </p>
           </Section>
 
+          <Section title="4a. SupaSnake Premium (subscription)">
+            <p className="mb-4">
+              SupaSnake Premium is an optional, auto-renewing subscription
+              (monthly or yearly; prices are shown before purchase in EUR and
+              include VAT). It provides convenience and cosmetic benefits only
+              — e.g. the premium season track, a daily energy stipend, an
+              extra daily contract slot, a longer offline-progress window,
+              exclusive cosmetics and supporter flair, and the analytics
+              dashboard. Premium never grants competitive power: leaderboards
+              and clan competitions are unaffected by paying.
+            </p>
+            <p className="mb-4">
+              <strong>Term and renewal:</strong> the subscription renews
+              automatically for the chosen billing period until cancelled.
+              You can cancel at any time via Settings → Subscription (Stripe
+              customer portal); cancellation takes effect at the end of the
+              paid period, and until then all perks remain active. Rewards
+              already granted (cosmetics, claimed season-track items) remain
+              yours after the subscription ends; ongoing perks (daily
+              stipend, extra contract slot, analytics) stop when the
+              subscription lapses.
+            </p>
+            <p className="mb-4">
+              <strong>Age:</strong> SupaSnake Premium may only be purchased
+              by adults (18+). Checkout requires a corresponding
+              confirmation.
+            </p>
+            <p>
+              <strong>Withdrawal:</strong> the subscription is a digital
+              service. You expressly request that it starts immediately; if
+              you withdraw within 14 days you owe only a proportionate amount
+              for the service already provided (§§ 10, 16 FAGG). Details in
+              the{' '}
+              <Link
+                href="/legal/withdrawal"
+                className="text-venom-orange hover:underline"
+              >
+                withdrawal notice
+              </Link>
+              .
+            </p>
+          </Section>
+
           <Section title="5. Fair play and conduct">
             <p className="mb-4">When using the Game you must not:</p>
             <ul className="list-disc list-inside space-y-2 text-beige">

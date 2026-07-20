@@ -27,6 +27,8 @@ export interface PlayerIdentity {
   displayHandle: string;
   isGenerated: boolean;
   isFounder: boolean;
+  /** SupaSnake Premium supporter flair (migration 028) - cosmetic only. */
+  isPremium: boolean;
   title: string | null;
   bannerId: string | null;
   bannerRender: BannerRender | null;
@@ -72,6 +74,8 @@ export interface PlayerIdentityRow {
   mastery: Record<string, number> | null;
   /** Appended by migration 023 - absent (undefined) before it applies. */
   legacy_score?: number | null;
+  /** Appended by migration 028 - absent (undefined) before it applies. */
+  is_premium?: boolean | null;
 }
 
 /** Map a raw view row into the app-facing identity shape. */
@@ -83,6 +87,7 @@ export function identityFromRow(row: PlayerIdentityRow): PlayerIdentity {
     displayHandle: row.display_handle,
     isGenerated: row.is_generated_name === true,
     isFounder: row.is_founder === true,
+    isPremium: row.is_premium === true,
     title: row.title ?? null,
     bannerId: row.banner_id ?? null,
     bannerRender: row.banner_render ?? null,
@@ -114,6 +119,7 @@ export interface EmbeddedIdentity {
   title?: string | null;
   clan_tag?: string | null;
   founder?: boolean;
+  premium?: boolean;
   badges?: IdentityBadge[] | null;
   avatar_dynasty?: string | null;
 }
@@ -131,6 +137,7 @@ export function identityFromEmbedded(embedded: EmbeddedIdentity): PlayerIdentity
     displayHandle: embedded.handle,
     isGenerated: embedded.is_generated === true,
     isFounder: embedded.founder === true,
+    isPremium: embedded.premium === true,
     title: embedded.title ?? null,
     bannerId: null,
     bannerRender: null,

@@ -77,10 +77,16 @@ export function mapContractRow(row: ContractRpcRow): ContractView {
   };
 }
 
-/** Picks remaining today: 2 per day, cumulative and irreversible */
-export function computePicksRemaining(contracts: Pick<ContractView, 'picked'>[]): number {
+/**
+ * Picks remaining today: cumulative and irreversible. 2 per day free,
+ * 3 while premium (pick_contracts in migration 028 is the enforcement).
+ */
+export function computePicksRemaining(
+  contracts: Pick<ContractView, 'picked'>[],
+  maxPicks = 2
+): number {
   const picked = contracts.filter((c) => c.picked).length;
-  return Math.max(0, 2 - picked);
+  return Math.max(0, maxPicks - picked);
 }
 
 /** Map a claim_contract RPC row (snake_case) to the API shape */

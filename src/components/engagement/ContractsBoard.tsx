@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * ContractsBoard - Daily Contracts (pick 2 of 3)
+ * ContractsBoard - Daily Contracts (pick 2 of 3; SupaSnake Premium picks
+ * all 3 - picksRemaining arrives server-computed from /api/contracts)
  *
  * Design v2 section 7.3: the daily modal IS the contract board now. Each
  * day the player is offered 3 contracts and picks 2 - objectives about

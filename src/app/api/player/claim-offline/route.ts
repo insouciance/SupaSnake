@@ -13,6 +13,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { calculateOfflineProgress } from '@/lib/progression/offlineProgress';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
+import { PREMIUM_CONFIG } from '@/shared/config/premium';
+import { hasPremium } from '@/lib/server/premium';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,13 +57,25 @@ export async function POST(request: NextRequest) {
 
     const collectionSize = collectionCount || 0;
 
+    // SupaSnake Premium: offline DNA accrues up to 48h instead of 24h
+    const isPremium = await hasPremium(supabase, player.id);
+    const passiveConfig = isPremium
+      ? {
+          ...ENGAGEMENT_CONFIG.passiveProgress,
+          maxOfflineHours: PREMIUM_CONFIG.passiveProgress.maxOfflineHoursPremium,
+        }
+      : ENGAGEMENT_CONFIG.passiveProgress;
+
     // Calculate rewards server-side (authoritative)
-    const progress = calculateOfflineProgress({
-      lastLoginAt: player.last_login_at || new Date().toISOString(),
-      currentEnergy: player.energy,
-      maxEnergy: player.max_energy || GAME_CONFIG.economy.energy.maxEnergy,
-      collectionSize,
-    });
+    const progress = calculateOfflineProgress(
+      {
+        lastLoginAt: player.last_login_at || new Date().toISOString(),
+        currentEnergy: player.energy,
+        maxEnergy: player.max_energy || GAME_CONFIG.economy.energy.maxEnergy,
+        collectionSize,
+      },
+      passiveConfig
+    );
 
     // If no rewards to claim, just update last_login_at
     if (!progress.hasRewards) {

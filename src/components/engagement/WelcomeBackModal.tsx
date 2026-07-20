@@ -23,6 +23,11 @@ interface WelcomeBackModalProps {
   onDismiss: () => void;
   /** Whether claim is in progress */
   isLoading?: boolean;
+  /**
+   * SupaSnake Premium daily stipend rides the claim (migration 028):
+   * when set, an extra reward row renders and onClaim also claims it.
+   */
+  stipendEnergy?: number | null;
 }
 
 interface RewardRowProps {
@@ -49,6 +54,7 @@ export function WelcomeBackModal({
   onClaim,
   onDismiss,
   isLoading = false,
+  stipendEnergy = null,
 }: WelcomeBackModalProps) {
   // Don't render if not visible or no progress data
   if (!isVisible || !progress) {
@@ -95,6 +101,13 @@ export function WelcomeBackModal({
             label="DNA Gathered"
             value={`+${progress.passiveDnaEarned}`}
           />
+          {stipendEnergy != null && stipendEnergy > 0 && (
+            <RewardRow
+              icon={<IconBolt size={22} className="text-amber-300" />}
+              label="Premium Daily Stipend"
+              value={`+${stipendEnergy}`}
+            />
+          )}
         </div>
 
         {/* Action buttons */}

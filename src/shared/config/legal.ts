@@ -77,6 +77,27 @@ export const DATA_PROTECTION_AUTHORITY = {
 export const MINIMUM_AGE = 14;
 
 /**
+ * SupaSnake Premium subscription (migration 028) — legal parameters.
+ *
+ * The subscription is a recurring DIGITAL SERVICE (not one-off digital
+ * content): checkout collects the §10 FAGG service-start consent
+ * (withdrawal then owes pro-rata per §16 FAGG) plus an 18+
+ * self-declaration (recurring billing is adults-only; MINIMUM_AGE governs
+ * the game itself, not subscriptions).
+ *
+ * OPEN ITEMS for human legal review before launch:
+ * - final 18+/parental-consent wording in terms §4a
+ * - §312k BGB "Kündigungsbutton" if actively marketing to Germany
+ *   (the Settings cancel button + Stripe portal are the current surface)
+ */
+export const SUBSCRIPTION = {
+  minimumAge: 18,
+  cancellationPath: '/settings',
+  /** Withdrawal: §§10, 16 FAGG (digital service, pro-rata refund) */
+  withdrawalRegime: 'digital_service_pro_rata',
+} as const;
+
+/**
  * Document versions (ISO dates). Bump when a document materially changes;
  * TERMS_VERSION is recorded with each account's acceptance.
  */

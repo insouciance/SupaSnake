@@ -2,6 +2,11 @@
  * Breeding API - Combine snakes to create new variants
  * Server authority: the breed_snakes RPC atomically validates ownership,
  * deducts DNA, rolls the offspring variant, and logs breeding_history.
+ *
+ * NOTE: breeding is instant today (no queue). When the breeding queue
+ * ships (GAME_CONFIG.breeding.maxActive), the slot count must read
+ * has_premium (src/lib/server/premium.ts): premium raises slots to
+ * PREMIUM_CONFIG.breeding.maxActivePremium.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

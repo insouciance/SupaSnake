@@ -8,7 +8,10 @@ export interface StoreProduct {
   id: string;
   name: string;
   description: string;
-  priceUsd: number;
+  /** Gross price incl. VAT (PAngG display rule; Stripe Tax inclusive) */
+  price: number;
+  /** ISO currency - EUR storefront for the Austrian/EU launch */
+  currency: 'eur';
   stripePriceId: string; // Set from environment variables
   type: 'energy' | 'bundle' | 'battlepass';
   rewards: {
@@ -28,7 +31,8 @@ export const ENERGY_PRODUCTS: StoreProduct[] = [
     id: 'energy_small',
     name: 'Energy Pack',
     description: '3 Energy - Play more today',
-    priceUsd: 0.99,
+    price: 0.99,
+    currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_ENERGY_SMALL || '',
     type: 'energy',
     rewards: { energy: 3 },
@@ -37,7 +41,8 @@ export const ENERGY_PRODUCTS: StoreProduct[] = [
     id: 'energy_medium',
     name: 'Energy Bundle',
     description: '10 Energy - Best value',
-    priceUsd: 2.49,
+    price: 2.49,
+    currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_ENERGY_MEDIUM || '',
     type: 'energy',
     rewards: { energy: 10 },
@@ -46,7 +51,8 @@ export const ENERGY_PRODUCTS: StoreProduct[] = [
     id: 'energy_large',
     name: 'Energy Vault',
     description: '25 Energy - For dedicated players',
-    priceUsd: 4.99,
+    price: 4.99,
+    currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_ENERGY_LARGE || '',
     type: 'energy',
     rewards: { energy: 25 },
@@ -62,7 +68,8 @@ export const BUNDLE_PRODUCTS: StoreProduct[] = [
     id: 'starter_bundle',
     name: 'Starter Bundle',
     description: '20 Energy + 1000 DNA + 1 Rare Variant',
-    priceUsd: 2.99,
+    price: 2.99,
+    currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_BUNDLE || '',
     type: 'bundle',
     rewards: {
@@ -75,7 +82,8 @@ export const BUNDLE_PRODUCTS: StoreProduct[] = [
     id: 'dynasty_bundle',
     name: 'Dynasty Booster',
     description: '50 Energy + 3000 DNA + 1 Epic Variant',
-    priceUsd: 9.99,
+    price: 9.99,
+    currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE || '',
     type: 'bundle',
     rewards: {

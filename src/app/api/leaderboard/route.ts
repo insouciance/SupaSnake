@@ -32,6 +32,7 @@ function applyIdentities(
         title: identity.title,
         clanTag: identity.clanTag,
         founder: identity.isFounder,
+        premium: identity.isPremium,
         badges: identity.badges,
         avatarDynasty: identity.avatar?.dynasty ?? null,
         avatarVariantId: identity.avatar?.variantId ?? null,

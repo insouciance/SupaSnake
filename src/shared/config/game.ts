@@ -93,6 +93,7 @@ export const GAME_CONFIG = deepFreeze({
     multiplayer: false,              // v1.0+
     leaderboards: true,              // Social launch
     clans: true,                     // Social launch
+    premium: true,                   // SupaSnake Premium subscription (028)
   },
 } as const);
 

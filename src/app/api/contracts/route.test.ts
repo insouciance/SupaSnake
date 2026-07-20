@@ -179,7 +179,9 @@ describe('Contracts API route', () => {
 
     it.each([
       [[]],
-      [['a', 'b', 'c']],
+      // 3 ids are a VALID shape since 028 (premium picks 3 of 3; the RPC
+      // enforces the real per-day limit) - 4 exceeds every entitlement
+      [['a', 'b', 'c', 'd']],
       [[42]],
       ['banker'],
       [undefined],

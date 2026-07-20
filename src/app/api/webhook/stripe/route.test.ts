@@ -11,10 +11,14 @@ const mockUpsert = jest.fn();
 const mockPlayerSingle = jest.fn();
 const mockCaptureException = jest.fn();
 const mockCaptureMessage = jest.fn();
+const mockSubscriptionsRetrieve = jest.fn();
 
 jest.mock('stripe', () =>
   jest.fn().mockImplementation(() => ({
     webhooks: { constructEvent: mockConstructEvent },
+    subscriptions: {
+      retrieve: (...args: unknown[]) => mockSubscriptionsRetrieve(...args),
+    },
   }))
 );
 
@@ -326,6 +330,225 @@ describe('Stripe Webhook POST', () => {
 
       expect(response.status).toBe(500);
       expect(mockCaptureException).toHaveBeenCalled();
+    });
+  });
+
+  describe('Premium subscription lifecycle (migration 028)', () => {
+    function subscription(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'sub_test_1',
+        status: 'active',
+        customer: 'cus_test_1',
+        cancel_at_period_end: false,
+        metadata: { userId: 'user-uuid-1', playerId: 'player-uuid-1' },
+        items: {
+          data: [
+            {
+              current_period_start: 1_780_000_000,
+              current_period_end: 1_782_600_000,
+              price: { recurring: { interval: 'month' } },
+            },
+          ],
+        },
+        ...overrides,
+      };
+    }
+
+    function subscriptionEvent(
+      type: string,
+      overrides: Record<string, unknown> = {},
+      eventOverrides: Record<string, unknown> = {}
+    ) {
+      return {
+        id: 'evt_sub_1',
+        type,
+        created: 1_780_000_100,
+        data: { object: subscription(overrides) },
+        ...eventOverrides,
+      };
+    }
+
+    it('syncs customer.subscription.updated through apply_subscription_update', async () => {
+      mockConstructEvent.mockReturnValue(subscriptionEvent('customer.subscription.updated'));
+
+      const response = await POST(createWebhookRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe('processed');
+      expect(mockRpc).toHaveBeenCalledWith('apply_subscription_update', {
+        p_event_id: 'evt_sub_1',
+        p_event_type: 'customer.subscription.updated',
+        p_event_created: new Date(1_780_000_100 * 1000).toISOString(),
+        p_player_id: 'player-uuid-1',
+        p_customer_id: 'cus_test_1',
+        p_subscription_id: 'sub_test_1',
+        p_status: 'active',
+        p_interval: 'month',
+        p_period_start: new Date(1_780_000_000 * 1000).toISOString(),
+        p_period_end: new Date(1_782_600_000 * 1000).toISOString(),
+        p_cancel_at_period_end: false,
+      });
+    });
+
+    it('maps yearly prices and cancel_at_period_end', async () => {
+      mockConstructEvent.mockReturnValue(
+        subscriptionEvent('customer.subscription.updated', {
+          cancel_at_period_end: true,
+          items: {
+            data: [
+              {
+                current_period_start: 1_780_000_000,
+                current_period_end: 1_811_536_000,
+                price: { recurring: { interval: 'year' } },
+              },
+            ],
+          },
+        })
+      );
+
+      await POST(createWebhookRequest());
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'apply_subscription_update',
+        expect.objectContaining({
+          p_interval: 'year',
+          p_cancel_at_period_end: true,
+        })
+      );
+    });
+
+    it('customer.subscription.deleted passes the canceled status through', async () => {
+      mockConstructEvent.mockReturnValue(
+        subscriptionEvent('customer.subscription.deleted', { status: 'canceled' })
+      );
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockRpc).toHaveBeenCalledWith(
+        'apply_subscription_update',
+        expect.objectContaining({ p_status: 'canceled' })
+      );
+    });
+
+    it('falls back to the customer mapping when subscription metadata is empty', async () => {
+      mockConstructEvent.mockReturnValue(
+        subscriptionEvent('customer.subscription.created', { metadata: {} })
+      );
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockPlayerSingle).toHaveBeenCalled();
+      expect(mockRpc).toHaveBeenCalledWith(
+        'apply_subscription_update',
+        expect.objectContaining({ p_player_id: 'player-uuid-1' })
+      );
+    });
+
+    it('returns 500 (retryable) when the player cannot be resolved', async () => {
+      mockConstructEvent.mockReturnValue(
+        subscriptionEvent('customer.subscription.created', { metadata: {} })
+      );
+      mockPlayerSingle.mockResolvedValue({ data: null, error: { message: 'not found' } });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(500);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('tolerates out-of-order delivery: stale_event is acknowledged with 200', async () => {
+      mockConstructEvent.mockReturnValue(subscriptionEvent('customer.subscription.updated'));
+      mockRpc.mockResolvedValue({ data: 'stale_event', error: null });
+
+      const response = await POST(createWebhookRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe('stale_event');
+    });
+
+    it('returns 500 (retryable) when apply_subscription_update fails', async () => {
+      mockConstructEvent.mockReturnValue(subscriptionEvent('customer.subscription.updated'));
+      mockRpc.mockResolvedValue({ data: null, error: { message: 'db down' } });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(500);
+      expect(mockCaptureException).toHaveBeenCalled();
+    });
+
+    it('checkout.session.completed in subscription mode NEVER hits the one-time grant path', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_sub_checkout_1',
+        type: 'checkout.session.completed',
+        created: 1_780_000_050,
+        data: {
+          object: {
+            id: 'cs_sub_1',
+            mode: 'subscription',
+            subscription: 'sub_test_1',
+            metadata: { userId: 'user-uuid-1', playerId: 'player-uuid-1' },
+          },
+        },
+      });
+      mockSubscriptionsRetrieve.mockResolvedValue(subscription());
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockSubscriptionsRetrieve).toHaveBeenCalledWith('sub_test_1');
+      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(mockRpc).toHaveBeenCalledWith(
+        'apply_subscription_update',
+        expect.objectContaining({ p_subscription_id: 'sub_test_1' })
+      );
+    });
+
+    it('records invoice.payment_failed and warns Sentry (no state change)', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_inv_fail_1',
+        type: 'invoice.payment_failed',
+        data: {
+          object: {
+            id: 'in_test_1',
+            customer: 'cus_test_1',
+            amount_due: 999,
+            currency: 'eur',
+          },
+        },
+      });
+
+      const response = await POST(createWebhookRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe('recorded');
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'evt_inv_fail_1', type: 'invoice.payment_failed' }),
+        expect.objectContaining({ onConflict: 'id', ignoreDuplicates: true })
+      );
+      expect(mockCaptureMessage).toHaveBeenCalledWith(
+        'Stripe invoice.payment_failed',
+        expect.objectContaining({ level: 'warning' })
+      );
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('acknowledges invoice.paid without touching state', async () => {
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_inv_paid_1',
+        type: 'invoice.paid',
+        data: { object: { id: 'in_test_2' } },
+      });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(200);
+      expect(mockRpc).not.toHaveBeenCalled();
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
 

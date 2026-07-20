@@ -1,10 +1,15 @@
 'use client';
 
 /**
- * Season Track (Design v2 §7.2) - the FREE seasonal reward track carried
- * by the battle pass structure: contract completions feed ~150 XP each
+ * Season Track (Design v2 §7.2) - the seasonal reward track carried by
+ * the battle pass structure: contract completions feed ~150 XP each
  * (§7.3), milestones grant cosmetics + trait-reroll tokens, the capstone
- * is a title. No premium lane; seasons add and never wipe.
+ * is a title. Seasons add and never wipe.
+ *
+ * SupaSnake Premium (migration 028): premium tiers (cosmetics only)
+ * render in the same list - claimable while subscribed (or when this
+ * season was locked in while subscribed), locked with a shop hint
+ * otherwise. Entitlement is enforced server-side by claim_season_tier.
  *
  * Rendered as a modal in the ContractsBoard visual pattern; data comes
  * from GET /api/season (fetched by the host page), claims go back through
@@ -12,7 +17,8 @@
  */
 
 import { useState } from 'react';
-import { IconTrophy } from '@/components/ui/icons';
+import Link from 'next/link';
+import { IconCrown, IconTrophy } from '@/components/ui/icons';
 
 export interface SeasonView {
   seq: number;
@@ -25,6 +31,8 @@ export interface SeasonView {
 
 export interface SeasonTierView {
   level: number;
+  /** Absent pre-migration-028 (free tiers only). */
+  is_premium?: boolean;
   reward_type: string;
   reward_id: string | null;
   reward_amount: number | null;
@@ -37,6 +45,8 @@ export interface SeasonTrackView {
   max_level: number;
   xp_per_level: number;
   reroll_tokens: number;
+  /** Absent pre-migration-028. */
+  premium?: { is_premium: boolean; season_locked_in: boolean } | null;
   tiers: SeasonTierView[];
 }
 
@@ -145,26 +155,44 @@ export function SeasonTrack({
           </p>
         </div>
 
-        {/* Milestones */}
+        {/* Milestones (free + premium tiers in one list) */}
         <div className="space-y-2 mb-5">
           {track.tiers.map((tier) => {
+            const isPremiumTier = tier.is_premium === true;
+            const entitled =
+              !isPremiumTier ||
+              track.premium?.is_premium === true ||
+              track.premium?.season_locked_in === true;
             const reached = track.level >= tier.level;
-            const claimable = reached && !tier.claimed;
+            const claimable = reached && !tier.claimed && entitled;
+            const testId = isPremiumTier
+              ? `season-tier-${tier.level}-premium`
+              : `season-tier-${tier.level}`;
             return (
               <div
-                key={tier.level}
-                data-testid={`season-tier-${tier.level}`}
+                key={`${tier.level}-${isPremiumTier ? 'p' : 'f'}`}
+                data-testid={testId}
                 data-state={tier.claimed ? 'claimed' : claimable ? 'claimable' : 'locked'}
                 className={`flex items-center justify-between gap-3 rounded-arcade border px-3 py-2 ${
                   claimable
-                    ? 'border-venom-orange bg-venom-orange/10'
+                    ? isPremiumTier
+                      ? 'border-amber-300 bg-amber-300/10'
+                      : 'border-venom-orange bg-venom-orange/10'
                     : tier.claimed
                       ? 'border-rarity-uncommon/40 bg-void/40'
                       : 'border-scale-blue-light/30 bg-void/40 opacity-70'
                 }`}
               >
                 <div className="text-left">
-                  <p className="text-xs font-body text-beige/50">Level {tier.level}</p>
+                  <p className="text-xs font-body text-beige/50 flex items-center gap-1.5">
+                    Level {tier.level}
+                    {isPremiumTier && (
+                      <span className="inline-flex items-center gap-1 text-amber-300">
+                        <IconCrown size={11} />
+                        Premium
+                      </span>
+                    )}
+                  </p>
                   <p className="text-sm font-body text-bone-white">
                     {tierRewardLabel(tier)}
                   </p>
@@ -177,11 +205,20 @@ export function SeasonTrack({
                   <button
                     onClick={() => handleClaim(tier.level)}
                     disabled={claimingLevel !== null}
-                    data-testid={`season-claim-${tier.level}`}
+                    data-testid={`season-claim-${tier.level}${isPremiumTier ? '-premium' : ''}`}
                     className="btn-go px-4 py-1.5 text-sm"
                   >
                     {claimingLevel === tier.level ? 'Claiming…' : 'Claim'}
                   </button>
+                ) : isPremiumTier && !entitled ? (
+                  <Link
+                    href="/shop"
+                    data-testid={`season-premium-upsell-${tier.level}`}
+                    className="text-amber-300/80 hover:text-amber-300 text-xs font-body uppercase tracking-wide inline-flex items-center gap-1"
+                  >
+                    <IconCrown size={11} />
+                    Premium
+                  </Link>
                 ) : (
                   <span className="text-beige/40 text-xs font-body uppercase tracking-wide">
                     Locked

@@ -102,7 +102,42 @@ export default function WithdrawalPage() {
 
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              3. Statutory warranty is unaffected
+              3. Subscriptions (SupaSnake Premium)
+            </h2>
+            <p className="mb-4">
+              SupaSnake Premium is a recurring <em>digital service</em>, not
+              one-off digital content. Different rules therefore apply
+              (§§ 10, 16 FAGG):
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-beige mb-4">
+              <li>
+                At checkout you expressly request that the service starts
+                immediately, during the 14-day withdrawal period.
+              </li>
+              <li>
+                You may still withdraw within 14 days of subscribing. In that
+                case you pay only a proportionate amount for the period in
+                which the service was already provided; the rest is refunded
+                without undue delay and at the latest within 14 days.
+              </li>
+              <li>
+                The withdrawal right expires only once the service has been
+                fully performed for the agreed period.
+              </li>
+            </ul>
+            <p>
+              Independently of the withdrawal right, you can cancel the
+              subscription at any time — effective at the end of the paid
+              billing period — via <em>Settings → Subscription → Manage /
+              cancel subscription</em> (Stripe customer portal). No reasons,
+              no fees. Perks already granted (cosmetics, claimed season
+              rewards) are never taken away.
+            </p>
+          </section>
+
+          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
+            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
+              4. Statutory warranty is unaffected
             </h2>
             <p>
               The expiry of the withdrawal right never affects your statutory
@@ -121,7 +156,7 @@ export default function WithdrawalPage() {
 
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
             <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
-              4. Model withdrawal form
+              5. Model withdrawal form
             </h2>
             <p className="mb-4 text-beige">
               (Complete and return this form only if you wish to withdraw from

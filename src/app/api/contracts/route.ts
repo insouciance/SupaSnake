@@ -1,11 +1,13 @@
 /**
- * Contracts API - daily pick-2-of-3 contracts (Design v2 section 7.3)
+ * Contracts API - daily pick-2-of-3 contracts (Design v2 section 7.3).
+ * SupaSnake Premium picks 3 of 3 (migration 028 pick_contracts enforces
+ * the real limit; picksAllowed in the response drives the UI).
  *
  * GET  /api/contracts - today's board: offers/picks/progress/claimable.
  *      Generation is lazy: the first GET of a UTC day creates the day's 3
  *      deterministic offers (offer_daily_contracts RPC) and refreshes
  *      progress server-side from that day's game_sessions.
- * POST /api/contracts { action: 'pick', contractIds: [id, id?] }
+ * POST /api/contracts { action: 'pick', contractIds: [id, id?, id?] }
  * POST /api/contracts { action: 'claim', contractId: id }
  *
  * Server authority: all state transitions go through the migration 015
@@ -24,6 +26,8 @@ import {
   computePicksRemaining,
   type ContractRpcRow,
 } from './utils';
+import { hasPremium } from '@/lib/server/premium';
+import { PREMIUM_CONFIG } from '@/shared/config/premium';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,13 +63,21 @@ async function getAuthedPlayer(request: NextRequest) {
   return { player };
 }
 
-function boardResponse(rows: ContractRpcRow[] | null | undefined) {
+function boardResponse(rows: ContractRpcRow[] | null | undefined, picksAllowed: number) {
   const contracts = (rows || []).map(mapContractRow);
   return {
     contracts,
-    picksRemaining: computePicksRemaining(contracts),
+    picksAllowed,
+    picksRemaining: computePicksRemaining(contracts, picksAllowed),
     claimable: contracts.some((c) => c.picked && c.completed && !c.claimed),
   };
+}
+
+/** 2 picks/day free, 3 while premium (mirrors pick_contracts in 028) */
+async function getPicksAllowed(playerId: string): Promise<number> {
+  return (await hasPremium(supabase, playerId))
+    ? PREMIUM_CONFIG.contracts.picksPerDayPremium
+    : PREMIUM_CONFIG.contracts.picksPerDayFree;
 }
 
 export async function GET(request: NextRequest) {
@@ -82,7 +94,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load contracts' }, { status: 500 });
     }
 
-    return NextResponse.json(boardResponse(rows as ContractRpcRow[]));
+    const picksAllowed = await getPicksAllowed(player.id);
+    return NextResponse.json(boardResponse(rows as ContractRpcRow[], picksAllowed));
   } catch (err) {
     console.error('Contracts GET error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -99,14 +112,16 @@ export async function POST(request: NextRequest) {
 
     if (action === 'pick') {
       const contractIds = body.contractIds;
+      // Shape validation only: the real per-day limit (2 free / 3 premium)
+      // is enforced by the pick_contracts RPC (migration 028)
       if (
         !Array.isArray(contractIds) ||
         contractIds.length < 1 ||
-        contractIds.length > 2 ||
+        contractIds.length > PREMIUM_CONFIG.contracts.picksPerDayPremium ||
         !contractIds.every((id) => typeof id === 'string')
       ) {
         return NextResponse.json(
-          { error: 'contractIds must be 1 or 2 contract ids' },
+          { error: 'contractIds must be 1 to 3 contract ids' },
           { status: 400 }
         );
       }
@@ -125,7 +140,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({ success: true, ...boardResponse(rows as ContractRpcRow[]) });
+      const picksAllowed = await getPicksAllowed(player.id);
+      return NextResponse.json({
+        success: true,
+        ...boardResponse(rows as ContractRpcRow[], picksAllowed),
+      });
     }
 
     if (action === 'claim') {

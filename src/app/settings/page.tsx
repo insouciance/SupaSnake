@@ -12,6 +12,7 @@ import { DiscordConnectCard } from '@/components/identity/DiscordConnectCard';
 import { CareerStats } from '@/components/profile/CareerStats';
 import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
 import { DigestEmailPanel } from '@/components/profile/DigestEmailPanel';
+import { SubscriptionPanel } from '@/components/profile/SubscriptionPanel';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 import { IconCart, IconFlask, IconLock, IconMedal, IconTrophy, IconUser } from '@/components/ui/icons';
@@ -85,6 +86,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* SupaSnake Premium (EU easy cancellation: manage/cancel lives here) */}
+        <SubscriptionPanel />
 
         {/* Career Stats */}
         <div className="mb-6">

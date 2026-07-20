@@ -186,6 +186,15 @@ function HandleText({
       >
         {identity.displayHandle}
       </span>
+      {identity.isPremium && (
+        <span
+          data-testid="player-card-premium"
+          title="SupaSnake Premium supporter"
+          className="inline-flex text-amber-300"
+        >
+          <IconCrown size={13} />
+        </span>
+      )}
       {identity.isGenerated && isSelf && onClaim && (
         <button
           onClick={onClaim}
