@@ -9,7 +9,8 @@ import type { CSSProperties } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import { applyOutcomeWithMutations } from '@/shared/game/rulesets';
-import type { MutationPick } from '@/shared/game/mutations';
+import { isMutationId, type MutationPick } from '@/shared/game/mutations';
+import type { GenePick } from '@/shared/game/genes';
 import { IconDna } from '@/components/ui/icons';
 
 interface PauseMenuProps {
@@ -17,7 +18,7 @@ interface PauseMenuProps {
   score: number;
   dnaCollected: number;
   /** Held mutations (bank/crash preview is mutation-aware). */
-  heldMutations?: MutationPick[];
+  heldMutations?: GenePick[];
   /** True once Phoenix absorbed a death (voids outcome benefits). */
   phoenixTriggered?: boolean;
   onResume: () => void;
@@ -67,10 +68,10 @@ export function PauseMenu({
               <span className="text-beige/60">Bank / crash value</span>
               <span className="text-beige/80">
                 <span className="text-[#7df9ff]">
-                  {applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
+                  {applyOutcomeWithMutations(dnaCollected, true, heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered)}
                 </span>
                 {' / '}
-                {applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered)}
+                {applyOutcomeWithMutations(dnaCollected, false, heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered)}
               </span>
             </div>
           )}

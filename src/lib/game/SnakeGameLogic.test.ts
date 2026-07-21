@@ -978,6 +978,7 @@ describe('SnakeGameLogic', () => {
         deathCause: 'extracted', // Identity v1 section 9.5
         phoenixTriggeredAtFood: null,
         cosmic: null, // non-COSMIC runs carry no combo claim
+        genome: null, // legacy runs carry no genome payload
       });
       expect(extractedPayload).toEqual({
         score: expected.score,

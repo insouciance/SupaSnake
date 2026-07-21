@@ -7,13 +7,15 @@ import { themeManager } from '@/lib/theme/ThemeManager';
 import { SnakeGameLogic, Direction, Position, GameOverData } from '@/lib/game/SnakeGameLogic';
 import type { FluxPhase } from '@/lib/game/SnakeGameLogic';
 import {
+  applyGenomeOutcome,
   applyOutcomeWithMutations,
   getRuleset,
   normalizeDynastyName,
   outcomeMultipliers,
   rulesetExplainer,
 } from '@/shared/game/rulesets';
-import { MUTATIONS, isMutationId, type MutationId, type MutationPick } from '@/shared/game/mutations';
+import { isMutationId, type MutationPick } from '@/shared/game/mutations';
+import { GENES } from '@/shared/game/genes';
 import { sanitizeTraits } from '@/shared/game/traits';
 import { isAnomalyId, type AnomalyId } from '@/shared/game/anomalies';
 import { useGameStore, type GameMode } from '@/lib/store/gameStore';
@@ -237,6 +239,9 @@ export default function GamePage() {
     phoenixTriggered,
     fluxPhase,
     fluxTelegraph,
+    genomeRun,
+    infusesCount,
+    revive,
     startGame: storeStartGame,
     endGame,
     setSnake,
@@ -267,6 +272,43 @@ export default function GamePage() {
     setReady,
     syncEnergyFromServer,
   } = useGameStore();
+
+  /**
+   * Bank/crash preview for the HUD chip and game-over screen. Genome
+   * runs price the full outcome pipeline (fused wagers, infuse deltas,
+   * strain deltas, clamps) via applyGenomeOutcome; legacy runs keep the
+   * mutation-era math. Display-only - the server prices the real payout.
+   */
+  const previewOutcome = useCallback(
+    (extracted: boolean, anomaly: AnomalyId | null = null): number => {
+      if (genomeRun) {
+        return applyGenomeOutcome(
+          dnaCollected,
+          extracted,
+          {
+            picks: heldMutations,
+            heirloom: {},
+            surges: [],
+            infuses: Array.from({ length: infusesCount }, (_, i) => ({
+              atFood: i,
+            })),
+            revive,
+          },
+          [],
+          anomaly
+        );
+      }
+      return applyOutcomeWithMutations(
+        dnaCollected,
+        extracted,
+        heldMutations.filter((m): m is MutationPick => isMutationId(m.id)),
+        phoenixTriggered,
+        [],
+        anomaly
+      );
+    },
+    [genomeRun, dnaCollected, heldMutations, infusesCount, revive, phoenixTriggered]
+  );
 
   // Detect mobile device
   useEffect(() => {
@@ -1155,11 +1197,11 @@ export default function GamePage() {
               }`}
             >
               <span className="text-[#7df9ff] font-bold">
-                BANK {applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered, [], activeAnomalyId)}
+                BANK {previewOutcome(true, activeAnomalyId)}
               </span>
               <span className="text-beige/40">·</span>
               <span className="text-beige/60">
-                crash {applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered, [], activeAnomalyId)}
+                crash {previewOutcome(false, activeAnomalyId)}
               </span>
             </div>
           )}
@@ -1387,7 +1429,7 @@ export default function GamePage() {
                       Extracted
                     </h2>
                     <p className="text-rarity-uncommon/90 font-body text-sm tracking-wide uppercase">
-                      Banked +{Math.round((outcomeMultipliers(heldMutations, phoenixTriggered, [], activeAnomalyId).bank - 1) * 100)}%
+                      Banked +{Math.round((outcomeMultipliers(heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered, [], activeAnomalyId).bank - 1) * 100)}%
                     </p>
                   </div>
                 ) : (
@@ -1399,7 +1441,7 @@ export default function GamePage() {
                       Game Over
                     </h2>
                     <p className="text-beige/60 font-body text-sm tracking-wide uppercase">
-                      Crashed — salvaged {Math.round(outcomeMultipliers(heldMutations, phoenixTriggered, [], activeAnomalyId).death * 100)}%
+                      Crashed — salvaged {Math.round(outcomeMultipliers(heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered, [], activeAnomalyId).death * 100)}%
                     </p>
                   </div>
                 )}
@@ -1429,21 +1471,15 @@ export default function GamePage() {
                         data-testid="gameover-hypothetical"
                       >
                         would have banked +
-                        {hypotheticalDna ??
-                          applyOutcomeWithMutations(
-                            dnaCollected,
-                            endReason === 'extracted',
-                            heldMutations,
-                            phoenixTriggered
-                          )}
+                        {hypotheticalDna ?? previewOutcome(endReason === 'extracted')}
                       </span>
                     ) : endReason === 'extracted' ? (
                       <span className="font-bold text-rarity-uncommon">
-                        {dnaCollected} → +{applyOutcomeWithMutations(dnaCollected, true, heldMutations, phoenixTriggered)}
+                        {dnaCollected} → +{previewOutcome(true)}
                       </span>
                     ) : (
                       <span className="font-bold text-venom-orange text-glow-orange">
-                        {dnaCollected} → +{applyOutcomeWithMutations(dnaCollected, false, heldMutations, phoenixTriggered)}
+                        {dnaCollected} → +{previewOutcome(false)}
                       </span>
                     )}
                   </p>
@@ -1453,13 +1489,13 @@ export default function GamePage() {
                       className="flex flex-wrap gap-2 justify-center pt-1"
                       data-testid="gameover-mutations"
                     >
-                      {heldMutations.map((pick: MutationPick) => (
+                      {heldMutations.map((pick) => (
                         <span
                           key={pick.id}
-                          title={`${MUTATIONS[pick.id].effect}. Cost: ${MUTATIONS[pick.id].cost}`}
+                          title={`${GENES[pick.id].effect}. Cost: ${GENES[pick.id].cost}`}
                           className="inline-flex items-center px-2.5 py-1 rounded-arcade border border-[#a855f7]/60 bg-[#a855f7]/10 text-[#c4b5fd] text-sm font-body"
                         >
-                          {MUTATIONS[pick.id].name}
+                          {GENES[pick.id].name}
                           {pick.id === 'phoenix' && phoenixTriggered ? ' (spent)' : ''}
                         </span>
                       ))}

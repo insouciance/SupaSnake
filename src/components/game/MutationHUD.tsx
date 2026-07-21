@@ -9,7 +9,7 @@
  * trigger (they are voided from that food onward - see mutations.ts).
  */
 
-import { MUTATIONS, type MutationPick } from '@/shared/game/mutations';
+import { GENES, type GenePick } from '@/shared/game/genes';
 
 /** Two-letter monograms - stable, readable at chip size. */
 const MONOGRAMS: Record<string, string> = {
@@ -25,6 +25,20 @@ const MONOGRAMS: Record<string, string> = {
   compound_interest: 'CI',
 };
 
+/** Fallback monogram: first letters of the gene name's words. */
+function monogram(id: string): string {
+  const known = MONOGRAMS[id];
+  if (known) return known;
+  const name = GENES[id as keyof typeof GENES]?.name ?? '';
+  const initials = name
+    .split(/\s+/)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || '??';
+}
+
 /** Benefit-carrying mutations that a Phoenix trigger voids. */
 const VOIDED_ON_PHOENIX = new Set([
   'gold_trail',
@@ -34,7 +48,7 @@ const VOIDED_ON_PHOENIX = new Set([
 ]);
 
 interface MutationHUDProps {
-  held: MutationPick[];
+  held: GenePick[];
   phoenixTriggered: boolean;
 }
 
@@ -44,7 +58,7 @@ export function MutationHUD({ held, phoenixTriggered }: MutationHUDProps) {
   return (
     <div className="flex items-center gap-1.5" data-testid="mutation-hud">
       {held.map((pick) => {
-        const def = MUTATIONS[pick.id];
+        const def = GENES[pick.id];
         const dimmed =
           phoenixTriggered &&
           (pick.id === 'phoenix' || VOIDED_ON_PHOENIX.has(pick.id));
@@ -61,7 +75,7 @@ export function MutationHUD({ held, phoenixTriggered }: MutationHUDProps) {
                 : 'border-[#a855f7]/60 bg-[#a855f7]/15 text-[#c4b5fd]'
             }`}
           >
-            {MONOGRAMS[pick.id] ?? '??'}
+            {monogram(pick.id)}
           </span>
         );
       })}

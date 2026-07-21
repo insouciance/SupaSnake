@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { MUTATIONS, type MutationId } from '@/shared/game/mutations';
+import { GENES, type GeneId } from '@/shared/game/genes';
 
 /** Input lock after the overlay opens (doc: prevent accidental picks). */
 export const CHOICE_INPUT_LOCK_MS = 300;
@@ -22,7 +22,7 @@ export const CHOICE_INPUT_LOCK_MS = 300;
 const MUTATION_COLOR = '#a855f7';
 
 interface MutationChoiceOverlayProps {
-  options: [MutationId, MutationId];
+  options: [GeneId, GeneId];
   onChoose: (index: 0 | 1) => void;
   onDecline: () => void;
 }
@@ -86,7 +86,7 @@ export function MutationChoiceOverlay({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {options.map((id, index) => {
-            const def = MUTATIONS[id];
+            const def = GENES[id];
             return (
               <button
                 key={id}

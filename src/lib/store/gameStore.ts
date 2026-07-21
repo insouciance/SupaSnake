@@ -11,7 +11,10 @@ import type {
   EndReason,
   FluxPhase,
 } from '@/lib/game/SnakeGameLogic';
-import type { MutationId, MutationPick } from '@/shared/game/mutations';
+import type { GeneId, GenePick } from '@/shared/game/genes';
+import type { SpliceId } from '@/shared/game/splices';
+import type { StrainId, StrainPoints } from '@/shared/game/strains';
+import type { GenomeRevive } from '@/shared/game/genome';
 import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
 import { GAME_CONFIG } from '@/shared/config/game';
 
@@ -87,15 +90,39 @@ export interface GameStore {
   /** Live mutation food cell, null when none. */
   mutationTile: Position | null;
   mutationTicksRemaining: number;
-  /** Mutations held this run, in pick order. */
-  heldMutations: MutationPick[];
+  /** Genes held this run, in raw pick order. */
+  heldMutations: GenePick[];
   /** Live choice-of-2 offer (engine is frozen in its choice hold). */
-  choiceOptions: [MutationId, MutationId] | null;
+  choiceOptions: [GeneId, GeneId] | null;
   /** True once Phoenix absorbed a death this run. */
   phoenixTriggered: boolean;
   /** COSMIC wrap-phase state (drives the ArenaBorder rails). */
   fluxPhase: FluxPhase | null;
   fluxTelegraph: boolean;
+
+  // Buildcraft: The Genome (mirrored from the engine; inert in legacy runs)
+  /** True when this run plays under genome rules (server capability). */
+  genomeRun: boolean;
+  /** Live strain points (heirloom + genes + surges). */
+  strainCounts: StrainPoints;
+  /** Strain -> live tier (1 minor / 2 expression / 3 apex). */
+  strainTiers: Partial<Record<StrainId, number>>;
+  /** Fused splices, in fusion order (survives into game-over recap). */
+  fusedSplices: { id: SpliceId; atFood: number }[];
+  /** AURUM Gilded Wake trail cells (renderer). */
+  gildedCells: { x: number; z: number; ticks: number }[];
+  /** Bonus foods (molt drops / Heartwood goldens) - renderer. */
+  bonusFoods: { x: number; z: number; kind: 'molt' | 'heartwood' }[];
+  /** Committed infuses (drives the bank-preview HUD + game-over recap). */
+  infusesCount: number;
+  /** Where the live gene offer came from (choice card framing). */
+  choiceSource: 'gene_food' | 'infuse' | null;
+  /** BANK/INFUSE portal hold is live (PortalChoiceOverlay renders). */
+  portalChoicePending: boolean;
+  /** Strain Surge choice hold is live (infuse at the gene cap). */
+  surgeChoicePending: boolean;
+  /** The run's one revive, once fired (survives into game-over recap). */
+  revive: GenomeRevive | null;
 
   // Audio state
   isMuted: boolean;
@@ -136,10 +163,29 @@ export interface GameStore {
     comboMultiplier: number
   ) => void;
   setMutationTile: (tile: Position | null, ticksRemaining?: number) => void;
-  setHeldMutations: (held: MutationPick[]) => void;
-  setChoiceOptions: (options: [MutationId, MutationId] | null) => void;
+  setHeldMutations: (held: GenePick[]) => void;
+  setChoiceOptions: (
+    options: [GeneId, GeneId] | null,
+    source?: 'gene_food' | 'infuse' | null
+  ) => void;
   setPhoenixTriggered: (triggered: boolean) => void;
   setFlux: (phase: FluxPhase | null, telegraph: boolean) => void;
+
+  // Genome actions
+  setGenomeRun: (genomeRun: boolean) => void;
+  setStrains: (
+    counts: StrainPoints,
+    tiers: Partial<Record<StrainId, number>>
+  ) => void;
+  setFusedSplices: (splices: { id: SpliceId; atFood: number }[]) => void;
+  setGildedCells: (cells: { x: number; z: number; ticks: number }[]) => void;
+  setBonusFoods: (
+    foods: { x: number; z: number; kind: 'molt' | 'heartwood' }[]
+  ) => void;
+  setInfusesCount: (count: number) => void;
+  setPortalChoicePending: (pending: boolean) => void;
+  setSurgeChoicePending: (pending: boolean) => void;
+  setRevive: (revive: GenomeRevive | null) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -179,6 +225,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
   phoenixTriggered: false,
   fluxPhase: null,
   fluxTelegraph: false,
+  genomeRun: false,
+  strainCounts: {},
+  strainTiers: {},
+  fusedSplices: [],
+  gildedCells: [],
+  bonusFoods: [],
+  infusesCount: 0,
+  choiceSource: null,
+  portalChoicePending: false,
+  surgeChoicePending: false,
+  revive: null,
   isMuted: false,
 
   // Actions
@@ -211,12 +268,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
       phoenixTriggered: false,
       fluxPhase: null,
       fluxTelegraph: false,
+      strainCounts: {},
+      strainTiers: {},
+      fusedSplices: [],
+      gildedCells: [],
+      bonusFoods: [],
+      infusesCount: 0,
+      choiceSource: null,
+      portalChoicePending: false,
+      surgeChoicePending: false,
+      revive: null,
     });
   },
 
   endGame: (score: number, dna: number, endReason: EndReason = 'died') => {
-    // heldMutations, phoenixTriggered, and anomalyRun survive into
-    // game-over on purpose: the game-over screen lists the run's build,
+    // heldMutations, phoenixTriggered, anomalyRun, strainCounts/Tiers,
+    // fusedSplices, infusesCount and revive survive into game-over on
+    // purpose: the game-over screen (Genome Card) lists the run's build,
     // its outcome multiplier, and the board it scored on
     set({
       isPlaying: false,
@@ -232,6 +300,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       mutationTile: null,
       mutationTicksRemaining: 0,
       choiceOptions: null,
+      choiceSource: null,
+      portalChoicePending: false,
+      surgeChoicePending: false,
+      gildedCells: [],
+      bonusFoods: [],
     });
   },
 
@@ -266,6 +339,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       phoenixTriggered: false,
       fluxPhase: null,
       fluxTelegraph: false,
+      strainCounts: {},
+      strainTiers: {},
+      fusedSplices: [],
+      gildedCells: [],
+      bonusFoods: [],
+      infusesCount: 0,
+      choiceSource: null,
+      portalChoicePending: false,
+      surgeChoicePending: false,
+      revive: null,
     });
   },
 
@@ -396,12 +479,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  setHeldMutations: (held: MutationPick[]) => {
+  setHeldMutations: (held: GenePick[]) => {
     set({ heldMutations: held });
   },
 
-  setChoiceOptions: (options: [MutationId, MutationId] | null) => {
-    set({ choiceOptions: options });
+  setChoiceOptions: (
+    options: [GeneId, GeneId] | null,
+    source: 'gene_food' | 'infuse' | null = null
+  ) => {
+    set({ choiceOptions: options, choiceSource: options ? source : null });
   },
 
   setPhoenixTriggered: (triggered: boolean) => {
@@ -410,5 +496,47 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setFlux: (phase: FluxPhase | null, telegraph: boolean) => {
     set({ fluxPhase: phase, fluxTelegraph: phase ? telegraph : false });
+  },
+
+  // Genome actions
+  setGenomeRun: (genomeRun: boolean) => {
+    set({ genomeRun });
+  },
+
+  setStrains: (
+    counts: StrainPoints,
+    tiers: Partial<Record<StrainId, number>>
+  ) => {
+    set({ strainCounts: counts, strainTiers: tiers });
+  },
+
+  setFusedSplices: (splices: { id: SpliceId; atFood: number }[]) => {
+    set({ fusedSplices: splices });
+  },
+
+  setGildedCells: (cells: { x: number; z: number; ticks: number }[]) => {
+    set({ gildedCells: cells });
+  },
+
+  setBonusFoods: (
+    foods: { x: number; z: number; kind: 'molt' | 'heartwood' }[]
+  ) => {
+    set({ bonusFoods: foods });
+  },
+
+  setInfusesCount: (count: number) => {
+    set({ infusesCount: count });
+  },
+
+  setPortalChoicePending: (pending: boolean) => {
+    set({ portalChoicePending: pending });
+  },
+
+  setSurgeChoicePending: (pending: boolean) => {
+    set({ surgeChoicePending: pending });
+  },
+
+  setRevive: (revive: GenomeRevive | null) => {
+    set({ revive });
   },
 }));

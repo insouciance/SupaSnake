@@ -61,6 +61,46 @@ import {
   type RunEvent,
   type RunEventRecord,
 } from '@/shared/game/runEvents';
+import { isMutationId } from '@/shared/game/mutations';
+import {
+  GENE_ECONOMICS,
+  GENE_PHYSICS,
+  GENE_POOL,
+  GENOME_SPAWN,
+  geneFoodValueFlatBonus,
+  geneFoodValueModifier,
+  type GeneId,
+  type GenePick,
+} from '@/shared/game/genes';
+import {
+  SPLICE_ECONOMICS,
+  SPLICE_PHYSICS,
+  type SpliceId,
+} from '@/shared/game/splices';
+import {
+  STRAIN_ECONOMICS,
+  STRAIN_PHYSICS,
+  type StrainId,
+  type StrainPoints,
+} from '@/shared/game/strains';
+import {
+  fusePicks,
+  genomeFoodValueFlatBonus,
+  genomeFoodValueModifier,
+  strainActivations,
+  strainTierAtFood,
+  type FusedView,
+  type GenomeClaims,
+  type GenomeRevive,
+  type LengthLossEvent,
+  type StrainActivations,
+  type StrainSurge,
+} from '@/shared/game/genome';
+import {
+  rollGeneOffer,
+  type LineageBias,
+  type OfferTraceEntry,
+} from '@/shared/game/offerGravity';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -140,14 +180,53 @@ export interface GameState {
   mutationTicksRemaining: number;
   /** Food count at which the next mutation food spawns. */
   nextMutationAtFood: number;
-  /** Mutations held this run, in pick order. */
-  heldMutations: MutationPick[];
+  /** Genes (mutations) held this run, in raw pick order (wire format). */
+  heldMutations: GenePick[];
   /**
    * The live choice-of-2 offer. While non-null the engine is in "choice
    * hold": tick() no-ops and direction input is inactive, but this is NOT
    * the pause state - the pause menu must not render.
    */
-  pendingChoice: [MutationId, MutationId] | null;
+  pendingChoice: [GeneId, GeneId] | null;
+  // --- GENOME (Buildcraft: The Genome) - all inert in legacy mode ----------
+  /** Live strain points (heirloom + genes + surges). */
+  strainCounts: StrainPoints;
+  /** Strain -> live tier (1 minor / 2 expression / 3 apex). */
+  strainTiers: Partial<Record<StrainId, number>>;
+  /** Fused splices, in fusion order (display; server re-derives). */
+  fusedSplices: { id: SpliceId; atFood: number }[];
+  /** AURUM Gilded Wake trail cells with per-cell remaining ticks. */
+  gildedCells: { x: number; z: number; ticks: number }[];
+  /** Bonus foods (FERAL molt drops / Heartwood goldens) - not run food. */
+  bonusFoods: { x: number; z: number; kind: 'molt' | 'heartwood' }[];
+  /** Committed infuses, in order. */
+  infuses: { atFood: number }[];
+  /** Strain surges granted by infusing at the gene cap. */
+  surges: StrainSurge[];
+  /** Where the live choice offer came from. */
+  choiceSource: 'gene_food' | 'infuse' | null;
+  /**
+   * Portal-choice hold (genome runs): stepping onto the exit portal
+   * freezes the engine (like the gene choice hold) until the player
+   * resolves BANK or INFUSE. Null when no portal decision is pending.
+   */
+  pendingPortalChoice: { canInfuse: boolean } | null;
+  /** Surge-strain choice hold (infusing while at the gene cap). */
+  pendingSurgeChoice: boolean;
+  /** The run's one revive, once fired (generalizes phoenixTriggeredAtFood). */
+  revive: GenomeRevive | null;
+  /** Bounded-trust claim accumulators (display + end-of-run claim). */
+  genomeClaims: GenomeClaims;
+  /** Reported length losses (Thick Hide, Ouroboros) for the length model. */
+  lossEvents: LengthLossEvent[];
+  /** FERAL Thick Hide: one self-collision pardon per run. */
+  thickHideAvailable: boolean;
+  /** FLUX Warp Skin: free-wrap charge state. */
+  warpSkinCharged: boolean;
+  /** Pocket Rift: wall-teleport charge state. */
+  pocketRiftCharged: boolean;
+  /** UMBRA Phantom Coil: ticks of tail-phase remaining. */
+  phantomTicksRemaining: number;
   /** True while a held Phoenix can still absorb one death. */
   phoenixAvailable: boolean;
   /** Food count at the Phoenix trigger, null if never triggered. */
@@ -186,8 +265,8 @@ export interface GameOverData {
   extracted: boolean;
   endReason: EndReason;
   deathPosition: Position | null;
-  /** Mutations held at run end, in pick order (server validates these). */
-  mutations: MutationPick[];
+  /** Genes held at run end, in raw pick order (server validates these). */
+  mutations: GenePick[];
   /**
    * How the run ended (Identity v1 section 9.5): wall/self for deaths,
    * 'extracted' for banked runs. Display + Analyst input only - never a
@@ -198,6 +277,27 @@ export interface GameOverData {
   phoenixTriggeredAtFood: number | null;
   /** COSMIC only: the bounded-trust combo claim. Null on other dynasties. */
   cosmic: CosmicComboSummary | null;
+  /**
+   * Genome payload (null in legacy mode): the raw picks ride in
+   * `mutations` above (wire compat); this carries the genome-only claims
+   * and facts. Everything here is either re-derived or clamped
+   * server-side - nothing is trusted.
+   */
+  genome: GameOverGenome | null;
+}
+
+/** The genome block of the end-of-run payload. */
+export interface GameOverGenome {
+  infuses: { atFood: number }[];
+  surges: StrainSurge[];
+  revive: GenomeRevive | null;
+  claims: GenomeClaims;
+  lossEvents: LengthLossEvent[];
+  offerTrace: OfferTraceEntry[];
+  /** Display facts (server re-derives its own): */
+  fusedSplices: { id: SpliceId; atFood: number }[];
+  strainCounts: StrainPoints;
+  strainTiers: Partial<Record<StrainId, number>>;
 }
 
 type GameEvent =
@@ -220,7 +320,22 @@ type GameEvent =
   | 'phoenixTriggered'
   | 'ironScalesTriggered'
   | 'fluxTelegraph'
-  | 'fluxPhaseChange';
+  | 'fluxPhaseChange'
+  // Genome events (never fire in legacy mode)
+  | 'portalChoice'
+  | 'infused'
+  | 'surgeChoice'
+  | 'surged'
+  | 'spliceFused'
+  | 'expressionActivated'
+  | 'gildedPaid'
+  | 'arcCollected'
+  | 'ouroborosBite'
+  | 'thickHideTriggered'
+  | 'warpSkinTriggered'
+  | 'pocketRiftTriggered'
+  | 'moltShed'
+  | 'reviveTriggered';
 type EventCallback = (data?: unknown) => void;
 
 interface GameOptions {
@@ -263,6 +378,36 @@ interface GameOptions {
    * payout claim.
    */
   anomaly?: AnomalyId | null;
+  /**
+   * Genome capability (Buildcraft: The Genome). The engine runs genome
+   * behavior ONLY when the server start response supplied a runSeed -
+   * never on the client feature flag alone (mid-deploy safety). All
+   * fields are server-derived config, never payout claims.
+   */
+  genome?: GenomeEngineConfig | null;
+}
+
+/** Server-issued genome capability + run-start context. */
+export interface GenomeEngineConfig {
+  /** The session's offer seed (stored on the session row). */
+  runSeed: string;
+  /** Starting strain points (heirloom traits + lineage, server-derived). */
+  heirloom?: StrainPoints;
+  /** The unlocked gene offer pool (server-composed). */
+  genePool?: GeneId[];
+  /** Lineage offer bias (strength 0+ lineages). */
+  lineage?: LineageBias | null;
+  /** Anomaly strain week: +weight on this strain's genes in offers. */
+  anomalyStrain?: StrainId | null;
+  /** Server fact: the previous earned run ended in death (Grave Robber). */
+  prevRunDied?: boolean;
+  /** FTUE gating (server-derived from banked-run count). */
+  ftue?: {
+    expressionsUnlocked: boolean;
+    infuseUnlocked: boolean;
+    splicesUnlocked: boolean;
+    apexesUnlocked: boolean;
+  };
 }
 
 const OPPOSITES: Record<Direction, Direction> = {
@@ -294,6 +439,25 @@ export class SnakeGameLogic {
   private traits: TraitId[];
   private mutationPool: MutationId[];
   private anomaly: AnomalyId | null;
+  /** Genome capability - non-null only when the server issued a runSeed. */
+  private genome: GenomeEngineConfig | null;
+  /** Derived fused view of heldMutations - recomputed on every pick. */
+  private fusedView: FusedView = { loose: [], splices: [] };
+  /** Derived strain activations - recomputed on pick/surge. */
+  private activations: StrainActivations | null = null;
+  /** Offer stream counter (cadence + infuse offers share it). */
+  private offerIndex = 0;
+  /** Offer trace shipped in the genome payload (advisory verification). */
+  private offerTrace: OfferTraceEntry[] = [];
+  /** The last two offers (pity window input). */
+  private recentOffers: GeneId[][] = [];
+  /** Ticks since ANY eat (Midas window / Static Charge fasting). */
+  private ticksSinceAnyEat = 1_000_000;
+  /** True when this tick's move resolved via a Wall Rush slide (Ricochet). */
+  private slidThisTick = false;
+  /** Foods eaten at the last Warp Skin / Pocket Rift recharge. */
+  private warpSkinLastRecharge = 0;
+  private pocketRiftLastRecharge = 0;
   private events: Map<GameEvent, EventCallback[]>;
   /**
    * Buffered direction inputs, consumed one per tick. Buffering (instead of
@@ -337,11 +501,132 @@ export class SnakeGameLogic {
         ? [...options.mutationPool]
         : [...MUTATION_POOL];
     this.anomaly = options.anomaly ?? null;
+    this.genome = options.genome ?? null;
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
 
     this.state = this.createInitialState();
+  }
+
+  /** True while the run plays under genome rules (server capability). */
+  private genomeActive(): boolean {
+    return this.genome !== null;
+  }
+
+  /**
+   * Swap the genome capability config. Mirrors setTraits: the page
+   * constructs the engine on mount, before the session-start response
+   * arrives. Refused mid-run - a run is genome or legacy for its whole
+   * life, never half of each.
+   */
+  setGenome(genome: GenomeEngineConfig | null): void {
+    if (this.state.isPlaying) return;
+    this.genome = genome;
+    this.state.strainCounts = this.spawnStrainPoints();
+  }
+
+  /** The active genome config (or null in legacy mode). */
+  getGenome(): GenomeEngineConfig | null {
+    return this.genome ? { ...this.genome } : null;
+  }
+
+  /** Spawn strain points (heirloom+lineage, server-derived, pre-capped). */
+  private spawnStrainPoints(): StrainPoints {
+    return { ...(this.genome?.heirloom ?? {}) };
+  }
+
+  /** The active gene offer pool under genome rules. */
+  private effectiveGenePool(): GeneId[] {
+    const pool = this.genome?.genePool;
+    return pool && pool.length > 0 ? pool : GENE_POOL;
+  }
+
+  /** Held-gene cap: 6 under genome rules, 4 legacy. */
+  private maxHeld(): number {
+    return this.genomeActive() ? GENOME_SPAWN.maxHeld : MUTATION_SPAWN.maxHeld;
+  }
+
+  /** Recompute the fused view + activations + live tiers after a change. */
+  private refreshGenomeDerived(): void {
+    if (!this.genomeActive()) return;
+    this.fusedView = fusePicks(this.state.heldMutations);
+    this.state.fusedSplices = this.fusedView.splices.map((s) => ({
+      id: s.spliceId,
+      atFood: s.atFood,
+    }));
+    const before = this.activations;
+    this.activations = strainActivations(
+      this.state.heldMutations,
+      this.spawnStrainPoints(),
+      this.state.surges
+    );
+    const counts: StrainPoints = {};
+    const tiers: Partial<Record<StrainId, number>> = {};
+    for (const strain of Object.keys(this.activations) as StrainId[]) {
+      const a = this.activations[strain];
+      if (a.points > 0) counts[strain] = a.points;
+      const gate = this.ftueTierCap();
+      const tier = Math.min(gate, strainTierAtFood(a, Number.MAX_SAFE_INTEGER));
+      if (tier > 0) tiers[strain] = tier;
+      const beforeTier = before
+        ? Math.min(gate, strainTierAtFood(before[strain], Number.MAX_SAFE_INTEGER))
+        : 0;
+      if (tier > beforeTier && tier >= 1) {
+        this.recordRunEvent({ t: this.runTimeDs(), e: 'g', id: strain, v: tier });
+        this.emit('expressionActivated', { strain, tier });
+        this.onTierActivated(strain, tier);
+      }
+    }
+    this.state.strainCounts = counts;
+    this.state.strainTiers = tiers;
+  }
+
+  /** FTUE tier ceiling: expressions/apexes stay invisible until unlocked. */
+  private ftueTierCap(): number {
+    const ftue = this.genome?.ftue;
+    if (!ftue) return 3;
+    if (!ftue.expressionsUnlocked) return 1;
+    if (!ftue.apexesUnlocked) return 2;
+    return 3;
+  }
+
+  /** Immediate physical consequences of a strain tier activating. */
+  private onTierActivated(strain: StrainId, tier: number): void {
+    if (strain === 'VOLT') {
+      // Tempo (minor) / Overclocked Reality (apex) reshape the tick rate.
+      this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
+    }
+    if (strain === 'FLUX' && tier >= 1) {
+      this.state.warpSkinCharged = true;
+      this.warpSkinLastRecharge = this.state.foodEaten;
+    }
+    if (strain === 'FERAL' && tier >= 1) {
+      this.state.thickHideAvailable = true;
+    }
+    if (
+      (strain === 'AURUM' && tier >= 2) ||
+      (strain === 'UMBRA' && tier >= 2) ||
+      (strain === 'VOLT' && tier >= 3)
+    ) {
+      // Portal-window costs (Gilded Wake -15, Phantom Coil -10,
+      // Overclocked -20) clamp a live portal down, like gold_trail does.
+      if (this.state.exitTile) {
+        this.state.exitTicksRemaining = Math.min(
+          this.state.exitTicksRemaining,
+          this.effectiveExitDespawnTicks()
+        );
+      }
+    }
+  }
+
+  /** Live tier of a strain at the current food count (0-3, FTUE-capped). */
+  private strainTierNow(strain: StrainId): number {
+    if (!this.genomeActive() || !this.activations) return 0;
+    return Math.min(
+      this.ftueTierCap(),
+      strainTierAtFood(this.activations[strain], this.state.foodEaten + 0.5)
+    );
   }
 
   private createInitialState(): GameState {
@@ -364,6 +649,23 @@ export class SnakeGameLogic {
       nextMutationAtFood: this.rollNextMutationInterval(),
       heldMutations: [],
       pendingChoice: null,
+      strainCounts: this.spawnStrainPoints(),
+      strainTiers: {},
+      fusedSplices: [],
+      gildedCells: [],
+      bonusFoods: [],
+      infuses: [],
+      surges: [],
+      choiceSource: null,
+      pendingPortalChoice: null,
+      pendingSurgeChoice: false,
+      revive: null,
+      genomeClaims: {},
+      lossEvents: [],
+      thickHideAvailable: false,
+      warpSkinCharged: false,
+      pocketRiftCharged: false,
+      phantomTicksRemaining: 0,
       phoenixAvailable: false,
       phoenixTriggeredAtFood: null,
       ironScalesAvailable: this.hasTrait('iron_scales'),
@@ -417,6 +719,20 @@ export class SnakeGameLogic {
     this.deathCause = null;
     this.pendingDeathCause = null;
     this.nearWallSinceMs = null;
+    // Genome derived state
+    this.fusedView = { loose: [], splices: [] };
+    this.activations = null;
+    this.offerIndex = 0;
+    this.offerTrace = [];
+    this.recentOffers = [];
+    this.ticksSinceAnyEat = 1_000_000;
+    this.slidThisTick = false;
+    this.warpSkinLastRecharge = 0;
+    this.pocketRiftLastRecharge = 0;
+    if (this.genomeActive()) {
+      this.state.pocketRiftCharged = true;
+      this.refreshGenomeDerived();
+    }
     this.spawnFoods();
     this.emit('gameStart');
   }
@@ -515,6 +831,19 @@ export class SnakeGameLogic {
       pendingChoice: this.state.pendingChoice
         ? [...this.state.pendingChoice]
         : null,
+      strainCounts: { ...this.state.strainCounts },
+      strainTiers: { ...this.state.strainTiers },
+      fusedSplices: this.state.fusedSplices.map((s) => ({ ...s })),
+      gildedCells: this.state.gildedCells.map((c) => ({ ...c })),
+      bonusFoods: this.state.bonusFoods.map((f) => ({ ...f })),
+      infuses: this.state.infuses.map((i) => ({ ...i })),
+      surges: this.state.surges.map((s) => ({ ...s })),
+      pendingPortalChoice: this.state.pendingPortalChoice
+        ? { ...this.state.pendingPortalChoice }
+        : null,
+      revive: this.state.revive ? { ...this.state.revive } : null,
+      genomeClaims: { ...this.state.genomeClaims },
+      lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
     };
   }
 
@@ -544,7 +873,9 @@ export class SnakeGameLogic {
       !this.state.isPlaying ||
       this.state.isGameOver ||
       this.state.isPaused ||
-      this.state.pendingChoice !== null
+      this.state.pendingChoice !== null ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
     ) {
       return 'inactive';
     }
@@ -583,7 +914,9 @@ export class SnakeGameLogic {
       !this.state.isPlaying ||
       this.state.isGameOver ||
       this.state.isDeathSequence ||
-      this.state.pendingChoice !== null
+      this.state.pendingChoice !== null ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
     ) {
       return;
     }
@@ -627,7 +960,9 @@ export class SnakeGameLogic {
       this.state.isGameOver ||
       this.state.isPaused ||
       this.state.isDeathSequence ||
-      this.state.pendingChoice !== null
+      this.state.pendingChoice !== null ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
     ) {
       return;
     }
@@ -637,6 +972,7 @@ export class SnakeGameLogic {
     if (queued) {
       this.state.direction = queued;
     }
+    this.slidThisTick = false;
 
     const head = this.state.snake[0];
     let newHead = this.getNextPosition(head, this.state.direction);
@@ -648,6 +984,31 @@ export class SnakeGameLogic {
       wallHit = false;
     }
 
+    // FLUX Expression "Rift Aura": all four walls wrap permanently.
+    if (wallHit && this.strainTierNow('FLUX') >= 2) {
+      newHead = this.wrapPosition(newHead);
+      wallHit = false;
+    }
+
+    // Pocket Rift (gene): a charged wall hit teleports to the opposite
+    // wall (a wrap), recharging every 20 foods.
+    if (wallHit && this.hasMutation('pocket_rift') && this.state.pocketRiftCharged) {
+      newHead = this.wrapPosition(newHead);
+      wallHit = false;
+      this.state.pocketRiftCharged = false;
+      this.pocketRiftLastRecharge = this.state.foodEaten;
+      this.emit('pocketRiftTriggered', { position: { ...newHead } });
+    }
+
+    // FLUX Minor "Warp Skin": one free edge-wrap per 30 foods.
+    if (wallHit && this.strainTierNow('FLUX') >= 1 && this.state.warpSkinCharged) {
+      newHead = this.wrapPosition(newHead);
+      wallHit = false;
+      this.state.warpSkinCharged = false;
+      this.warpSkinLastRecharge = this.state.foodEaten;
+      this.emit('warpSkinTriggered', { position: { ...newHead } });
+    }
+
     // Wall Rush: a wall hit becomes a slide along the wall (clockwise
     // perpendicular preferred, counter-clockwise fallback). A corner or a
     // body-blocked slide still kills - Wall Rush is not a corner pardon.
@@ -657,6 +1018,7 @@ export class SnakeGameLogic {
         this.state.direction = slide.dir;
         newHead = slide.pos;
         wallHit = false;
+        this.slidThisTick = true;
       }
     }
 
@@ -664,9 +1026,10 @@ export class SnakeGameLogic {
     const mutationExistedAtTickStart = this.state.mutationTile !== null;
 
     // Exit-portal collision checks first: the portal is always in-bounds
-    // and never on the snake, so stepping onto it ends the run banked -
-    // no death sequence on the way out. (A wrapped head can land on it.)
-    // Twin Exits (anomaly): either of the pair banks the run.
+    // and never on the snake. Legacy: stepping onto it banks immediately.
+    // Genome: stepping onto it opens the BANK / INFUSE choice hold when
+    // infusing is possible (PASS = never step in) - the trichotomy.
+    // Twin Exits (anomaly): either of the pair triggers the decision.
     if (
       !wallHit &&
       ((this.state.exitTile &&
@@ -678,24 +1041,51 @@ export class SnakeGameLogic {
     ) {
       this.state.snake.unshift(newHead);
       this.state.snake.pop();
+      if (this.genomeActive() && this.canInfuse()) {
+        this.state.pendingPortalChoice = { canInfuse: true };
+        this.emit('portalChoice', {
+          canInfuse: true,
+          infusesUsed: this.state.infuses.length,
+        });
+        return;
+      }
       this.finalizeRun('extracted');
       return;
     }
 
-    if (wallHit || this.checkSelfCollision(newHead)) {
+    // FERAL Apex "Ouroboros": biting your own TAIL TIP is a meal, not a
+    // death - consume 3 segments, pay 30 flat DNA (bounded-trust claim).
+    if (!wallHit && this.tryOuroborosBite(newHead)) {
+      wallHit = false; // the tail tip is gone; the move resolves normally
+    }
+
+    if (wallHit || this.checkSelfCollisionForDeath(newHead)) {
       const collisionCause: Exclude<RunDeathCause, 'extracted' | 'timeout'> =
         wallHit ? 'wall' : 'self';
       // Iron Scales (trait): absorb exactly one WALL hit per run - the
       // snake recoils one cell off the wall and the tick is consumed.
-      // Checked before Phoenix so the trait save never burns the pickup.
+      // Checked before any revive so the trait save never burns one.
       if (wallHit && this.state.ironScalesAvailable) {
         this.triggerIronScales(newHead);
         this.emit('tick');
         return;
       }
-      // Phoenix: absorb exactly one death - rebirth consumes the tick
-      if (this.state.phoenixAvailable) {
-        this.triggerPhoenix(newHead);
+      // FERAL Minor "Thick Hide": absorb one SELF collision - lose 5 tail
+      // segments instead of dying (reported, payout-non-increasing).
+      if (
+        !wallHit &&
+        this.state.thickHideAvailable &&
+        this.strainTierNow('FERAL') >= 1
+      ) {
+        this.triggerThickHide(newHead);
+        this.emit('tick');
+        return;
+      }
+      // One revive per run (hard rule): Styx/Molted (fused), classic
+      // Phoenix, or Second Sun (UMBRA apex) - in that priority.
+      const reviveKind = this.availableReviveKind();
+      if (reviveKind) {
+        this.triggerRevive(reviveKind, newHead);
         this.emit('tick');
         return;
       }
@@ -745,65 +1135,74 @@ export class SnakeGameLogic {
         this.state.maxChain = Math.max(this.state.maxChain, this.state.chainLength);
       }
 
-      // Per-food value: base x combo x mutation modifier x trait modifier,
+      // Per-food value: base x combo x gene modifier x trait modifier,
       // one round per food - mirrors computeRunTotals exactly (combo
       // aside, which the server clamps via the bounded-trust summary).
       // Anomaly [E] modifier (Gold Rush x1.5) folds into the SAME single
       // per-food round - mirroring computeRunTotals exactly, so the
       // HUD's DNA counter matches the server recompute to the digit.
-      const mod =
-        foodValueModifier(
-          this.state.heldMutations,
-          n,
-          this.state.phoenixTriggeredAtFood
-        ) *
-        traitFoodValueModifier(this.traits, n) *
-        anomalyFoodValueModifier(this.anomaly, n);
-      // Flat [E] bonus (Deep Roots) added after the per-food round -
-      // outside the combo, exactly mirroring computeRunTotals.
-      const flat = foodValueFlatBonus(
-        this.state.heldMutations,
-        n,
-        this.state.phoenixTriggeredAtFood
-      );
-      const baseDna = this.ruleset.foodDnaValue(n);
-      const baseScore = Math.round(
-        FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
-      );
-      const dnaNoCombo = Math.round(baseDna * mod) + flat;
-      const dnaValue = Math.round(baseDna * combo * mod) + flat;
-      const scoreValue = Math.round(
-        FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n) * combo
-      );
+      // Under genome rules the modifier/flat come from the fused-view
+      // genome math (mirroring computeGenomeRunTotals); in legacy mode
+      // geneFoodValueModifier delegates byte-identically to the mutation
+      // math (proven by tests).
+      const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
+        this.resolveFoodEconomy(n, combo);
       this.state.dnaCollected += dnaValue;
       this.state.score += scoreValue;
       this.state.comboDnaBonus += dnaValue - dnaNoCombo;
       this.state.comboScoreBonus += scoreValue - baseScore;
 
-      // Overgrowth: +2 extra segments per food (the head unshift above is
-      // the normal +1 growth - the tail is simply not popped)
-      if (this.hasMutation('overgrowth')) {
+      // Genome bonus layers (Midas / Static Charge / Ricochet / Gilded
+      // Wake drop) - display + bounded-trust claim accumulators only.
+      if (this.genomeActive()) {
+        this.applyGenomeEatExtras(n, dnaValue, collectedPosition);
+      }
+      this.ticksSinceAnyEat = 0;
+
+      // Growth beyond the normal +1 (head unshift, tail not popped):
+      // Overgrowth +2, Bulk Up +3 - fused parents keep their growth.
+      const extraGrowth =
+        (this.hasGene('overgrowth') ? MUTATION_PHYSICS.overgrowthExtraSegments : 0) +
+        (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0);
+      if (extraGrowth > 0) {
         const tail = this.state.snake[this.state.snake.length - 1];
-        for (let i = 0; i < MUTATION_PHYSICS.overgrowthExtraSegments; i++) {
+        for (let i = 0; i < extraGrowth; i++) {
           this.state.snake.push({ ...tail });
         }
       }
 
-      // Shed: every 25 foods after pickup, the tail resets to length 8
-      const shedPick = this.state.heldMutations.find((m) => m.id === 'shed');
-      if (
-        shedPick &&
-        n > shedPick.atFood &&
-        (n - shedPick.atFood) % MUTATION_PHYSICS.shedEveryFoods === 0 &&
-        this.state.snake.length > MUTATION_PHYSICS.shedResetLength
-      ) {
-        this.state.snake.length = MUTATION_PHYSICS.shedResetLength;
+      // Shed cycles: loose Shed (25 -> 8), Regenesis (20 -> 8, pays
+      // 3/segment), Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12,
+      // drops molt-food). Mirrors computeLengthTrace's cycle model.
+      this.applyShedCycles(n);
+
+      // Warp Skin / Pocket Rift recharges (food-count cadence).
+      if (this.genomeActive()) {
+        if (
+          !this.state.warpSkinCharged &&
+          this.strainTierNow('FLUX') >= 1 &&
+          n - this.warpSkinLastRecharge >= STRAIN_PHYSICS.warpSkinRechargeFoods
+        ) {
+          this.state.warpSkinCharged = true;
+        }
+        if (
+          !this.state.pocketRiftCharged &&
+          this.hasGene('pocket_rift') &&
+          n - this.pocketRiftLastRecharge >= GENE_PHYSICS.pocketRiftRechargeFoods
+        ) {
+          this.state.pocketRiftCharged = true;
+        }
       }
 
       this.speed = this.effectiveSpeedForFood(n);
 
-      // Remove the eaten food; a new wave spawns only once all are eaten
+      // Remove the eaten food, then VOLT Arc Lightning may auto-collect
+      // up to 2 more foods within 3 cells (full value, +1 segment each);
+      // a new wave spawns only once all are eaten.
       this.state.foods.splice(foodIndex, 1);
+      if (this.strainTierNow('VOLT') >= 2 && this.state.foods.length > 0) {
+        this.consumeArcFoods(collectedPosition);
+      }
       if (this.state.foods.length === 0) {
         this.spawnFoods();
       } else {
@@ -818,7 +1217,7 @@ export class SnakeGameLogic {
         !this.state.mutationTile &&
         !ateMutation &&
         !this.hasTrait('ascetic') &&
-        this.state.heldMutations.length < MUTATION_SPAWN.maxHeld &&
+        this.state.heldMutations.length < this.maxHeld() &&
         n >= this.state.nextMutationAtFood
       ) {
         this.spawnMutationFood();
@@ -833,6 +1232,13 @@ export class SnakeGameLogic {
       });
     } else {
       this.state.snake.pop();
+    }
+
+    // Genome pickups on the resolved head cell: bonus foods (molt drops /
+    // Heartwood goldens) and AURUM gilded cells - flat claims, not run food.
+    if (this.genomeActive()) {
+      this.tryConsumeBonusFood(this.state.snake[0]);
+      this.tryConsumeGildedCell(this.state.snake[0]);
     }
 
     // Magnet Pulse (mutation, radius 2) / Magnetism (trait, radius 1):
@@ -902,6 +1308,26 @@ export class SnakeGameLogic {
       this.ticksSinceLastEat = Math.min(this.ticksSinceLastEat + 1, 1_000_000);
     }
 
+    // Genome per-tick upkeep: eat-gap counter (Midas window / Static
+    // Charge fasting), gilded-cell expiry, phantom-phase countdown.
+    if (this.genomeActive()) {
+      if (!ateFood) {
+        this.ticksSinceAnyEat = Math.min(this.ticksSinceAnyEat + 1, 1_000_000);
+      }
+      if (this.state.gildedCells.length > 0) {
+        for (const cell of this.state.gildedCells) cell.ticks -= 1;
+        this.state.gildedCells = this.state.gildedCells.filter(
+          (cell) => cell.ticks > 0
+        );
+      }
+      if (this.state.phantomTicksRemaining > 0) {
+        this.state.phantomTicksRemaining -= 1;
+      }
+      if (ateFood && this.strainTierNow('UMBRA') >= 2) {
+        this.state.phantomTicksRemaining = STRAIN_PHYSICS.phantomCoilTicks;
+      }
+    }
+
     // COSMIC Flux phase countdown + telegraph. Event Horizon (COSMIC M9)
     // stretches both phases: open +25 ticks (benefit), closed +15 (cost).
     if (this.ruleset.flux && this.state.fluxPhase) {
@@ -949,8 +1375,12 @@ export class SnakeGameLogic {
     const id = offer[index];
     if (!id) return false;
 
-    const pick: MutationPick = { id, atFood: this.state.foodEaten };
+    const pick: GenePick = { id, atFood: this.state.foodEaten };
     this.state.pendingChoice = null;
+    this.state.choiceSource = null;
+    if (this.genomeActive()) {
+      this.resolveOfferTrace(id);
+    }
     this.applyPick(pick);
 
     this.emit('mutationPicked', {
@@ -962,26 +1392,36 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Grant a mutation directly (for testing and driven flows): the same
-   * pick pipeline as chooseMutation, without an offer. atFood defaults to
-   * the current food count. Mirrors placeFood/placeExit.
+   * Grant a gene directly (for testing and driven flows): the same pick
+   * pipeline as chooseMutation, without an offer. atFood defaults to the
+   * current food count. Mirrors placeFood/placeExit.
    */
-  grantMutation(id: MutationId, atFood?: number): void {
+  grantMutation(id: GeneId, atFood?: number): void {
     this.applyPick({ id, atFood: atFood ?? this.state.foodEaten });
   }
 
-  /** Shared pick pipeline: hold the mutation + immediate physical effects. */
-  private applyPick(pick: MutationPick): void {
+  /** Shared pick pipeline: hold the gene + immediate physical effects. */
+  private applyPick(pick: GenePick): void {
     this.state.heldMutations.push(pick);
     this.recordRunEvent({ t: this.runTimeDs(), e: 'm', id: pick.id });
     if (pick.id === 'phoenix') {
       this.state.phoenixAvailable = true;
     }
+    if (this.genomeActive()) {
+      const splicesBefore = this.state.fusedSplices.length;
+      this.refreshGenomeDerived();
+      const fused = this.state.fusedSplices[this.state.fusedSplices.length - 1];
+      if (this.state.fusedSplices.length > splicesBefore && fused) {
+        this.recordRunEvent({ t: this.runTimeDs(), e: 's', id: fused.id });
+        this.emit('spliceFused', { id: fused.id, atFood: fused.atFood });
+      }
+    }
     if (
       (pick.id === 'gold_trail' ||
         pick.id === 'deep_roots' ||
         pick.id === 'afterburner' ||
-        pick.id === 'glacial_reserve') &&
+        pick.id === 'glacial_reserve' ||
+        pick.id === 'static_charge') &&
       this.state.exitTile
     ) {
       // Portal-window COSTS apply to the live portal too: clamp down to
@@ -1001,7 +1441,537 @@ export class SnakeGameLogic {
   declineMutation(): void {
     if (!this.state.pendingChoice) return;
     this.state.pendingChoice = null;
+    this.state.choiceSource = null;
+    if (this.genomeActive()) {
+      this.resolveOfferTrace(null);
+    }
     this.emit('mutationDeclined');
+  }
+
+  // ---------------------------------------------------------------------------
+  // GENOME: offers, portal trichotomy, infuse, strain physics
+  // ---------------------------------------------------------------------------
+
+  /** Record the resolution of the pending offer into the trace. */
+  private resolveOfferTrace(picked: GeneId | null): void {
+    const entry = this.offerTrace[this.offerTrace.length - 1];
+    if (entry && entry.picked === undefined) {
+      entry.picked = picked;
+    }
+  }
+
+  /** Roll a seeded gravity offer and enter the choice hold. */
+  private openGeneChoice(source: 'gene_food' | 'infuse'): void {
+    const genome = this.genome;
+    if (!genome) return;
+    const points: StrainPoints = { ...this.state.strainCounts };
+    const offer = rollGeneOffer({
+      runSeed: genome.runSeed,
+      offerIndex: this.offerIndex,
+      picks: this.state.heldMutations.map((m) => ({ ...m })),
+      pool: this.effectiveGenePool(),
+      points,
+      recentOffers: this.recentOffers.slice(-2),
+      lineage: genome.lineage ?? null,
+      anomalyStrain: genome.anomalyStrain ?? null,
+    });
+    if (!offer) return;
+    this.offerTrace.push({
+      k: this.offerIndex,
+      atFood: this.state.foodEaten,
+      picked: undefined as unknown as GeneId | null,
+    });
+    this.offerIndex += 1;
+    this.recentOffers.push([...offer]);
+    if (this.recentOffers.length > 4) this.recentOffers.shift();
+    this.state.pendingChoice = offer;
+    this.state.choiceSource = source;
+    this.emit('mutationChoice', { options: [...offer], source });
+  }
+
+  /** Can the player INFUSE the portal they just stepped on? */
+  private canInfuse(): boolean {
+    const ftue = this.genome?.ftue;
+    if (ftue && !ftue.infuseUnlocked) return false;
+    return (
+      this.state.infuses.length < STRAIN_PHYSICS.infuseMaxPerRun &&
+      this.state.snake.length >= STRAIN_PHYSICS.infuseMinLength
+    );
+  }
+
+  /**
+   * Resolve the portal-choice hold: BANK ends the run through the portal;
+   * INFUSE consumes it for build power (4 tail segments, bank +0.05 /
+   * salvage -0.05, next portal +2 foods, and a gene offer - or a Strain
+   * Surge choice at the gene cap). Returns false when nothing is pending.
+   */
+  resolvePortalChoice(action: 'bank' | 'infuse'): boolean {
+    const pending = this.state.pendingPortalChoice;
+    if (!pending) return false;
+    this.state.pendingPortalChoice = null;
+    if (action === 'bank' || !pending.canInfuse) {
+      this.finalizeRun('extracted');
+      return true;
+    }
+    this.performInfuse();
+    return true;
+  }
+
+  /** The infuse itself - portal consumed, body paid, power gained. */
+  private performInfuse(): void {
+    const atFood = this.state.foodEaten;
+    this.state.infuses.push({ atFood });
+    // Pay 4 tail segments (never below the initial length).
+    const pay = Math.min(
+      STRAIN_PHYSICS.infuseSegmentCost,
+      Math.max(0, this.state.snake.length - this.initialLength)
+    );
+    if (pay > 0) this.state.snake.length = this.state.snake.length - pay;
+    // Consume the portal; the next one spawns a full interval away
+    // (+2 foods per infuse via rollNextExitInterval).
+    this.state.exitTile = null;
+    this.state.exitTile2 = null;
+    this.state.exitTicksRemaining = 0;
+    this.state.nextExitAtFood = atFood + this.rollNextExitInterval();
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'infuse' });
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'i', n: atFood });
+    this.emit('infused', {
+      atFood,
+      infusesUsed: this.state.infuses.length,
+      segmentsPaid: pay,
+    });
+    // Build power: a gene offer - or a Strain Surge at the gene cap.
+    if (this.state.heldMutations.length < this.maxHeld()) {
+      this.openGeneChoice('infuse');
+    } else {
+      this.state.pendingSurgeChoice = true;
+      this.emit('surgeChoice', {
+        strains: Object.keys(this.state.strainCounts),
+      });
+    }
+  }
+
+  /**
+   * Resolve the Strain Surge choice (infusing at the gene cap): +1 point
+   * to the chosen strain. Points from surges count toward thresholds but
+   * never toward the in-run gene gates.
+   */
+  chooseSurge(strain: StrainId): boolean {
+    if (!this.state.pendingSurgeChoice) return false;
+    this.state.pendingSurgeChoice = false;
+    this.state.surges.push({ strain, atFood: this.state.foodEaten });
+    this.refreshGenomeDerived();
+    this.emit('surged', { strain, atFood: this.state.foodEaten });
+    return true;
+  }
+
+  /** Per-food economy under genome or legacy rules - one round per food. */
+  private resolveFoodEconomy(
+    n: number,
+    combo: number
+  ): { dnaValue: number; scoreValue: number; dnaNoCombo: number; baseScore: number } {
+    let mod: number;
+    let flat: number;
+    if (this.genomeActive() && this.activations) {
+      const lengthAt = () => this.state.snake.length;
+      mod = genomeFoodValueModifier(this.fusedView, this.activations, n, this.state.revive, {
+        lengthAt,
+        prevRunDied: this.genome?.prevRunDied,
+      });
+      flat = genomeFoodValueFlatBonus(
+        this.fusedView,
+        this.activations,
+        n,
+        this.state.revive,
+        { lengthAtEat: [], shedEvents: [] },
+        { lengthAt }
+      );
+    } else {
+      mod = geneFoodValueModifier(
+        this.state.heldMutations,
+        n,
+        this.state.phoenixTriggeredAtFood
+      );
+      flat = geneFoodValueFlatBonus(
+        this.state.heldMutations,
+        n,
+        this.state.phoenixTriggeredAtFood
+      );
+    }
+    mod *=
+      traitFoodValueModifier(this.traits, n) *
+      anomalyFoodValueModifier(this.anomaly, n);
+    const baseDna = this.ruleset.foodDnaValue(n);
+    const baseScore = Math.round(
+      FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
+    );
+    const floor = this.hasGene('tithe') ? 1 : 0;
+    const dnaNoCombo = Math.max(floor, Math.round(baseDna * mod) + flat);
+    const dnaValue = Math.max(floor, Math.round(baseDna * combo * mod) + flat);
+    const scoreValue = Math.round(
+      FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n) * combo
+    );
+    return { dnaValue, scoreValue, dnaNoCombo, baseScore };
+  }
+
+  /** Genome eat-time bonus layers - display + claim accumulators. */
+  private applyGenomeEatExtras(
+    n: number,
+    dnaValue: number,
+    position: Position
+  ): void {
+    const claims = this.state.genomeClaims;
+    // AURUM Apex "Midas Vein": a food within 3 ticks of the previous is
+    // golden x2 - the bonus half is the bounded-trust claim.
+    if (
+      this.strainTierNow('AURUM') >= 3 &&
+      this.ticksSinceAnyEat <= STRAIN_PHYSICS.midasWindowTicks
+    ) {
+      this.state.dnaCollected += dnaValue;
+      claims.midasDna = (claims.midasDna ?? 0) + dnaValue;
+    } else if (
+      this.hasGene('static_charge') &&
+      this.ticksSinceAnyEat >= GENE_ECONOMICS.staticChargeFastingTicks &&
+      this.pickAtFoodOf('static_charge') !== null &&
+      n > (this.pickAtFoodOf('static_charge') as number)
+    ) {
+      // Static Charge: a food eaten after >=8 ticks of fasting pays x2.
+      this.state.dnaCollected += dnaValue;
+      claims.staticChargeDna = (claims.staticChargeDna ?? 0) + dnaValue;
+    }
+    // Ricochet (splice): foods eaten while wall-sliding +50%.
+    if (
+      this.slidThisTick &&
+      this.state.fusedSplices.some((s) => s.id === 'splice_ricochet')
+    ) {
+      const bonus = Math.round(dnaValue * SPLICE_ECONOMICS.ricochetSlideBonusRatio);
+      this.state.dnaCollected += bonus;
+      claims.ricochetDna = (claims.ricochetDna ?? 0) + bonus;
+    }
+    // AURUM Expression "Gilded Wake": the eaten cell turns gilded.
+    if (this.strainTierNow('AURUM') >= 2) {
+      this.state.gildedCells.push({
+        x: position.x,
+        z: position.z,
+        ticks: STRAIN_PHYSICS.gildedCellLifetimeTicks,
+      });
+      if (this.state.gildedCells.length > STRAIN_PHYSICS.gildedMaxCells) {
+        this.state.gildedCells.shift();
+      }
+    }
+  }
+
+  /** atFood of a held gene, or null. */
+  private pickAtFoodOf(id: GeneId): number | null {
+    const pick = this.state.heldMutations.find((m) => m.id === id);
+    return pick ? pick.atFood : null;
+  }
+
+  /**
+   * Shed cycles under genome rules (mirrors computeLengthTrace): loose
+   * Shed 25->8, Regenesis 20->8 (pays 3 flat per shed segment), Molted
+   * Rebirth 25->8, FERAL Molt 20->12 (drops 6 molt-foods). Heartwood
+   * adds one golden drop per event. Legacy mode: loose Shed only.
+   */
+  private applyShedCycles(n: number): void {
+    type Cycle = {
+      every: number;
+      anchor: number;
+      reset: number;
+      source: 'shed' | 'regenesis' | 'molted_rebirth' | 'molt';
+    };
+    const cycles: Cycle[] = [];
+    const shedPick = this.fusedLoosePick('shed');
+    if (shedPick) {
+      cycles.push({
+        every: MUTATION_PHYSICS.shedEveryFoods,
+        anchor: shedPick.atFood,
+        reset: MUTATION_PHYSICS.shedResetLength,
+        source: 'shed',
+      });
+    }
+    if (this.genomeActive()) {
+      for (const splice of this.state.fusedSplices) {
+        if (splice.id === 'splice_regenesis') {
+          cycles.push({
+            every: SPLICE_ECONOMICS.regenesisShedEveryFoods,
+            anchor: splice.atFood,
+            reset: SPLICE_ECONOMICS.regenesisResetLength,
+            source: 'regenesis',
+          });
+        }
+        if (splice.id === 'splice_molted_rebirth') {
+          cycles.push({
+            every: SPLICE_PHYSICS.moltedRebirthShedEveryFoods,
+            anchor: splice.atFood,
+            reset: SPLICE_PHYSICS.moltedRebirthResetLength,
+            source: 'molted_rebirth',
+          });
+        }
+      }
+      const moltAt = this.activations?.FERAL.expressionAt ?? null;
+      if (moltAt !== null && this.strainTierNow('FERAL') >= 2) {
+        cycles.push({
+          every: STRAIN_PHYSICS.moltEveryFoods,
+          anchor: moltAt,
+          reset: STRAIN_PHYSICS.moltResetLength,
+          source: 'molt',
+        });
+      }
+    }
+    for (const cycle of cycles) {
+      const since = n - cycle.anchor;
+      if (
+        since <= 0 ||
+        since % cycle.every !== 0 ||
+        this.state.snake.length <= cycle.reset
+      ) {
+        continue;
+      }
+      const removed = this.state.snake.slice(cycle.reset);
+      const segmentsShed = removed.length;
+      this.state.snake.length = cycle.reset;
+      if (!this.genomeActive()) continue;
+      if (cycle.source === 'regenesis') {
+        const pay = SPLICE_ECONOMICS.regenesisFlatPerSegment * segmentsShed;
+        this.state.dnaCollected += pay;
+      }
+      if (cycle.source === 'molt') {
+        const drops = removed.slice(0, STRAIN_ECONOMICS.moltFoodsPerEvent);
+        for (const cell of drops) {
+          this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'molt' });
+        }
+        this.emit('moltShed', { atFood: n, drops: drops.length });
+      }
+      if (this.hasGene('heartwood') && removed.length > 0) {
+        const cell = removed[removed.length - 1];
+        this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'heartwood' });
+      }
+    }
+    // FERAL Molt growth floor while the expression is active.
+    if (
+      this.genomeActive() &&
+      this.strainTierNow('FERAL') >= 2 &&
+      this.state.snake.length < STRAIN_PHYSICS.moltResetLength
+    ) {
+      const tail = this.state.snake[this.state.snake.length - 1];
+      while (this.state.snake.length < STRAIN_PHYSICS.moltResetLength) {
+        this.state.snake.push({ ...tail });
+      }
+    }
+  }
+
+  /** A pick that is NOT consumed by a fusion (its own cycle still runs). */
+  private fusedLoosePick(id: GeneId): GenePick | undefined {
+    if (!this.genomeActive()) {
+      return this.state.heldMutations.find((m) => m.id === id);
+    }
+    return this.fusedView.loose.find((m) => m.id === id);
+  }
+
+  /** VOLT Arc Lightning: auto-collect up to 2 foods within 3 cells. */
+  private consumeArcFoods(origin: Position): void {
+    let arcs = 0;
+    while (arcs < STRAIN_PHYSICS.arcMaxPerEat && this.state.foods.length > 0) {
+      const index = this.state.foods.findIndex(
+        (f) =>
+          Math.max(Math.abs(f.x - origin.x), Math.abs(f.z - origin.z)) <=
+          STRAIN_PHYSICS.arcRadius
+      );
+      if (index < 0) break;
+      const food = this.state.foods[index];
+      this.state.foods.splice(index, 1);
+      arcs += 1;
+      this.state.foodEaten += 1;
+      const n = this.state.foodEaten;
+      this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
+      // Full per-food pipeline at combo 1 (arcs never extend chains).
+      const { dnaValue, scoreValue } = this.resolveFoodEconomy(n, 1);
+      this.state.dnaCollected += dnaValue;
+      this.state.score += scoreValue;
+      // +1 segment each (board pressure is the arc's physical price).
+      const tail = this.state.snake[this.state.snake.length - 1];
+      this.state.snake.push({ ...tail });
+      this.applyShedCycles(n);
+      this.speed = this.effectiveSpeedForFood(n);
+      this.emit('arcCollected', {
+        position: { x: food.x, y: 0, z: food.z },
+        foodEaten: n,
+        dna: this.state.dnaCollected,
+      });
+    }
+    if (this.state.foods.length > 0) {
+      this.state.food = { ...this.state.foods[0] };
+    }
+  }
+
+  /** Consume a bonus food (molt drop / Heartwood golden) under the head. */
+  private tryConsumeBonusFood(head: Position | undefined): void {
+    if (!head || this.state.bonusFoods.length === 0) return;
+    const index = this.state.bonusFoods.findIndex(
+      (f) => f.x === head.x && f.z === head.z
+    );
+    if (index < 0) return;
+    const food = this.state.bonusFoods[index];
+    this.state.bonusFoods.splice(index, 1);
+    const claims = this.state.genomeClaims;
+    if (food.kind === 'molt') {
+      this.state.dnaCollected += STRAIN_ECONOMICS.moltFoodFlat;
+      claims.moltFoodDna = (claims.moltFoodDna ?? 0) + STRAIN_ECONOMICS.moltFoodFlat;
+    } else {
+      this.state.dnaCollected += GENE_ECONOMICS.heartwoodGoldenFlat;
+      claims.heartwoodDna =
+        (claims.heartwoodDna ?? 0) + GENE_ECONOMICS.heartwoodGoldenFlat;
+    }
+  }
+
+  /**
+   * Traverse a gilded cell: +2 flat DNA, cell consumed (AURUM claim).
+   * A cell dropped THIS tick (ticks still at full lifetime) never pays -
+   * the head is standing on the food it just ate; RE-traversal is the
+   * mechanic.
+   */
+  private tryConsumeGildedCell(head: Position | undefined): void {
+    if (!head || this.state.gildedCells.length === 0) return;
+    const index = this.state.gildedCells.findIndex(
+      (c) =>
+        c.x === head.x &&
+        c.z === head.z &&
+        c.ticks < STRAIN_PHYSICS.gildedCellLifetimeTicks
+    );
+    if (index < 0) return;
+    this.state.gildedCells.splice(index, 1);
+    this.state.dnaCollected += STRAIN_ECONOMICS.aurumWakeCellFlat;
+    const claims = this.state.genomeClaims;
+    claims.aurumWakeDna =
+      (claims.aurumWakeDna ?? 0) + STRAIN_ECONOMICS.aurumWakeCellFlat;
+    this.emit('gildedPaid', {
+      position: { ...head },
+      total: claims.aurumWakeDna,
+    });
+  }
+
+  /** FERAL Apex "Ouroboros": tail-tip bites are meals (capped cadence). */
+  private tryOuroborosBite(newHead: Position): boolean {
+    if (!this.genomeActive() || this.strainTierNow('FERAL') < 3) return false;
+    const tail = this.state.snake[this.state.snake.length - 1];
+    if (!tail || tail.x !== newHead.x || tail.z !== newHead.z) return false;
+    if (this.state.snake.length <= STRAIN_PHYSICS.ouroborosSegmentsPerBite + 2) {
+      return false;
+    }
+    const apexAt = this.activations?.FERAL.apexAt ?? 0;
+    const bitesSoFar = (this.state.lossEvents ?? []).filter(
+      (e) => e.segments === STRAIN_PHYSICS.ouroborosSegmentsPerBite
+    ).length;
+    const biteCap = Math.floor(
+      Math.max(0, this.state.foodEaten - apexAt) /
+        STRAIN_ECONOMICS.ouroborosFoodsPerBite
+    );
+    if (bitesSoFar >= biteCap) return false;
+    this.state.snake.length =
+      this.state.snake.length - STRAIN_PHYSICS.ouroborosSegmentsPerBite;
+    this.state.lossEvents.push({
+      atFood: this.state.foodEaten,
+      segments: STRAIN_PHYSICS.ouroborosSegmentsPerBite,
+    });
+    this.state.dnaCollected += STRAIN_ECONOMICS.ouroborosBiteFlat;
+    const claims = this.state.genomeClaims;
+    claims.ouroborosDna =
+      (claims.ouroborosDna ?? 0) + STRAIN_ECONOMICS.ouroborosBiteFlat;
+    this.emit('ouroborosBite', {
+      position: { ...newHead },
+      total: claims.ouroborosDna,
+    });
+    return true;
+  }
+
+  /** FERAL Minor "Thick Hide": lose 5 tail segments instead of dying. */
+  private triggerThickHide(collisionPosition: Position): void {
+    this.state.thickHideAvailable = false;
+    const loss = Math.min(
+      STRAIN_PHYSICS.thickHideSegmentLoss,
+      Math.max(0, this.state.snake.length - this.initialLength)
+    );
+    if (loss > 0) this.state.snake.length = this.state.snake.length - loss;
+    this.state.lossEvents.push({
+      atFood: this.state.foodEaten,
+      segments: STRAIN_PHYSICS.thickHideSegmentLoss,
+    });
+    this.emit('thickHideTriggered', {
+      position: { ...this.state.snake[0] },
+      collision: { ...collisionPosition },
+    });
+  }
+
+  /**
+   * Self-collision check with the genome survival layers applied:
+   * Phantom Coil (UMBRA expression) phases through the whole tail for 3
+   * ticks after every eat; Serpentine exempts the last 5 tail segments.
+   */
+  private checkSelfCollisionForDeath(pos: Position): boolean {
+    if (!this.genomeActive()) return this.checkSelfCollision(pos);
+    if (this.state.phantomTicksRemaining > 0 && this.strainTierNow('UMBRA') >= 2) {
+      return false;
+    }
+    const safeTail = this.hasGene('serpentine')
+      ? GENE_PHYSICS.serpentineSafeTailSegments
+      : 0;
+    const body =
+      safeTail > 0
+        ? this.state.snake.slice(0, Math.max(1, this.state.snake.length - safeTail))
+        : this.state.snake;
+    return body.some((s) => s.x === pos.x && s.z === pos.z);
+  }
+
+  /** The revive that would fire now, honoring one-revive-per-run. */
+  private availableReviveKind(): GenomeRevive['kind'] | null {
+    if (this.state.revive !== null) return null;
+    if (!this.genomeActive()) {
+      return this.state.phoenixAvailable ? 'phoenix' : null;
+    }
+    const splices = new Set(this.state.fusedSplices.map((s) => s.id));
+    if (this.state.phoenixAvailable) {
+      if (splices.has('splice_styx_contract')) return 'styx';
+      if (splices.has('splice_molted_rebirth')) return 'molted';
+      return 'phoenix';
+    }
+    if (this.strainTierNow('UMBRA') >= 3) return 'second_sun';
+    return null;
+  }
+
+  /**
+   * Fire the run's one revive: Phoenix physics for every kind (rewind 3
+   * cells, reborn at length 8). Classic Phoenix voids economic benefits;
+   * Styx / Molted Rebirth / Second Sun keep them (their headline). A
+   * Second Sun revive pays +150 flat (bounded-trust claim).
+   */
+  private triggerRevive(
+    kind: GenomeRevive['kind'],
+    collisionPosition: Position
+  ): void {
+    this.state.phoenixAvailable = false;
+    this.state.revive = { kind, atFood: this.state.foodEaten };
+    if (kind === 'phoenix') {
+      this.state.phoenixTriggeredAtFood = this.state.foodEaten;
+    }
+    if (kind === 'second_sun') {
+      this.state.dnaCollected += STRAIN_ECONOMICS.secondSunTriggerFlat;
+      this.state.genomeClaims.secondSunTriggered = true;
+    }
+    this.rebirthBody();
+    this.emit('reviveTriggered', {
+      kind,
+      atFood: this.state.revive.atFood,
+      position: { ...this.state.snake[0] },
+      collision: { ...collisionPosition },
+    });
+    if (kind === 'phoenix') {
+      this.emit('phoenixTriggered', {
+        atFood: this.state.phoenixTriggeredAtFood,
+        position: { ...this.state.snake[0] },
+        collision: { ...collisionPosition },
+      });
+    }
   }
 
   /**
@@ -1293,14 +2263,11 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Phoenix rebirth: consume the one-time save, rewind the head 3 cells
-   * along the body, truncate to length 8, void economic benefits from
-   * here on (see mutations.ts), and re-derive the heading from the body.
+   * Revive physics (Phoenix and every genome revive kind): rewind the
+   * head 3 cells along the body, truncate to length 8, and re-derive the
+   * heading from the body. Economic voiding is the caller's concern.
    */
-  private triggerPhoenix(collisionPosition: Position): void {
-    this.state.phoenixAvailable = false;
-    this.state.phoenixTriggeredAtFood = this.state.foodEaten;
-
+  private rebirthBody(): void {
     const rewind = Math.min(
       MUTATION_PHYSICS.phoenixRewindCells,
       Math.max(0, this.state.snake.length - 1)
@@ -1327,12 +2294,6 @@ export class SnakeGameLogic {
       else if (dz === -1) this.state.direction = 'UP';
     }
     this.directionQueue = [];
-
-    this.emit('phoenixTriggered', {
-      atFood: this.state.phoenixTriggeredAtFood,
-      position: { ...this.state.snake[0] },
-      collision: { ...collisionPosition },
-    });
   }
 
   /** Open the choice-of-2 hold after eating the mutation food. */
@@ -1342,8 +2303,13 @@ export class SnakeGameLogic {
     this.state.nextMutationAtFood =
       this.state.foodEaten + this.rollNextMutationInterval();
 
+    // Genome runs: seeded gravity offers (server-verifiable trace).
+    if (this.genomeActive()) {
+      this.openGeneChoice('gene_food');
+      return;
+    }
     const offer = rollMutationOffer(
-      this.state.heldMutations.map((m) => m.id),
+      this.state.heldMutations.map((m) => m.id).filter(isMutationId),
       this.rng,
       this.mutationPool
     );
@@ -1362,13 +2328,18 @@ export class SnakeGameLogic {
   private applyMagnetPulse(): void {
     const head = this.state.snake[0];
     if (!head) return;
-    // Largest active pull radius wins - Gravity Well (3) > Magnet Pulse
-    // (2) > Magnetism (1); the pull itself never stacks.
-    const radius = this.hasMutation('gravity_well')
-      ? MUTATION_PHYSICS.gravityWellRadius
-      : this.hasMutation('magnet_pulse')
-        ? MUTATION_PHYSICS.magnetRadius
-        : TRAIT_PHYSICS.magnetismRadius;
+    // Largest active pull radius wins - Black Magnet (4) > Gravity Well /
+    // Gravity Bubble (3) > Magnet Pulse (2) > Magnetism (1); the pull
+    // itself never stacks.
+    const radius = this.hasSplice('splice_black_magnet')
+      ? SPLICE_PHYSICS.blackMagnetPullRadius
+      : this.hasMutation('gravity_well')
+        ? MUTATION_PHYSICS.gravityWellRadius
+        : this.hasSplice('splice_gravity_bubble')
+          ? SPLICE_PHYSICS.gravityBubblePullRadius
+          : this.hasMutation('magnet_pulse')
+            ? MUTATION_PHYSICS.magnetRadius
+            : TRAIT_PHYSICS.magnetismRadius;
     for (const food of this.state.foods) {
       const dx = head.x - food.x;
       const dz = head.z - food.z;
@@ -1406,7 +2377,7 @@ export class SnakeGameLogic {
    * pull source pays its own portal tax.
    */
   private rollNextExitInterval(): number {
-    return (
+    let interval =
       rollExitInterval(this.ruleset.extraction, this.rng) +
       (this.hasMutation('magnet_pulse')
         ? MUTATION_PHYSICS.magnetPortalIntervalPenalty
@@ -1420,8 +2391,25 @@ export class SnakeGameLogic {
       // Gold Rush (anomaly): richer food, rarer doors - interval +6
       (this.anomaly === 'gold_rush'
         ? ANOMALY_PHYSICS.goldRushPortalIntervalPenalty
-        : 0)
-    );
+        : 0);
+    if (this.genomeActive()) {
+      if (this.strainTierNow('FLUX') >= 2) {
+        interval += STRAIN_PHYSICS.riftAuraPortalIntervalPenalty;
+      }
+      if (this.strainTierNow('FLUX') >= 3) {
+        interval += STRAIN_PHYSICS.singularityPortalIntervalPenalty;
+      }
+      if (this.hasGene('pocket_rift')) {
+        interval += GENE_PHYSICS.pocketRiftPortalIntervalPenalty;
+      }
+      if (this.hasSplice('splice_black_magnet')) {
+        interval += SPLICE_PHYSICS.blackMagnetPortalIntervalPenalty;
+      }
+      // Every infuse pushes the next door 2 foods deeper (exposure).
+      interval +=
+        this.state.infuses.length * STRAIN_PHYSICS.infusePortalIntervalPenalty;
+    }
+    return interval;
   }
 
   /**
@@ -1460,6 +2448,26 @@ export class SnakeGameLogic {
     if (this.hasMutation('tectonic_patience')) {
       ticks += MUTATION_PHYSICS.tectonicPatiencePortalTicksBonus;
     }
+    if (this.genomeActive()) {
+      if (this.strainTierNow('AURUM') >= 2) {
+        ticks -= STRAIN_PHYSICS.aurumWakePortalTicksPenalty;
+      }
+      if (this.strainTierNow('UMBRA') >= 2) {
+        ticks -= STRAIN_PHYSICS.phantomPortalTicksPenalty;
+      }
+      if (this.strainTierNow('VOLT') >= 3) {
+        ticks -= STRAIN_PHYSICS.overclockedPortalTicksPenalty;
+      }
+      if (this.hasGene('static_charge')) {
+        ticks -= GENE_PHYSICS.staticChargePortalTicksPenalty;
+      }
+      if (this.hasSplice('splice_comet_tail')) {
+        ticks -= SPLICE_PHYSICS.cometTailPortalTicksPenalty;
+      }
+      if (this.hasSplice('splice_old_growth')) {
+        ticks -= SPLICE_PHYSICS.oldGrowthPortalTicksPenalty;
+      }
+    }
     return Math.max(MUTATION_PHYSICS.minExitDespawnTicks, ticks);
   }
 
@@ -1469,17 +2477,30 @@ export class SnakeGameLogic {
    * dynasties simply gain +40 ms/tick.
    */
   private effectiveSpeedForFood(foodEaten: number): number {
-    if (!this.hasMutation('time_dilation')) {
-      return this.ruleset.speedForFood(foodEaten);
+    // Time Dilation (Gravity Bubble carries it) + VOLT Tempo both slow
+    // the world by shifting the food offset (CYBER) or adding ms.
+    let offset = 0;
+    let slowMs = 0;
+    if (this.hasGene('time_dilation')) {
+      offset += MUTATION_PHYSICS.timeDilationCyberFoodOffset;
+      slowMs += MUTATION_PHYSICS.timeDilationSlowMs;
     }
-    if (this.ruleset.id === 'CYBER') {
-      return this.ruleset.speedForFood(
-        Math.max(0, foodEaten - MUTATION_PHYSICS.timeDilationCyberFoodOffset)
+    if (this.genomeActive() && this.strainTierNow('VOLT') >= 1) {
+      offset += STRAIN_PHYSICS.tempoCyberFoodOffset;
+      slowMs += STRAIN_PHYSICS.tempoSlowMs;
+    }
+    let speed =
+      this.ruleset.id === 'CYBER'
+        ? this.ruleset.speedForFood(Math.max(0, foodEaten - offset))
+        : this.ruleset.speedForFood(foodEaten) + slowMs;
+    // VOLT Apex "Overclocked Reality": the world runs 25% faster.
+    if (this.genomeActive() && this.strainTierNow('VOLT') >= 3) {
+      speed = Math.max(
+        25,
+        Math.floor(speed * STRAIN_PHYSICS.overclockedRealityTickFactor)
       );
     }
-    return (
-      this.ruleset.speedForFood(foodEaten) + MUTATION_PHYSICS.timeDilationSlowMs
-    );
+    return speed;
   }
 
   /**
@@ -1497,8 +2518,21 @@ export class SnakeGameLogic {
     );
   }
 
-  private hasMutation(id: MutationId): boolean {
+  /**
+   * A gene's effect is live when its pick is held - fused parents KEEP
+   * their physical effects (a splice is the union plus extras), so this
+   * checks raw picks. Cycle/radius overrides live where they differ.
+   */
+  private hasGene(id: GeneId): boolean {
     return this.state.heldMutations.some((m) => m.id === id);
+  }
+
+  private hasMutation(id: GeneId): boolean {
+    return this.hasGene(id);
+  }
+
+  private hasSplice(id: SpliceId): boolean {
+    return this.state.fusedSplices.some((s) => s.id === id);
   }
 
   private hasTrait(id: TraitId): boolean {
@@ -1645,6 +2679,19 @@ export class SnakeGameLogic {
             comboDnaBonus: this.state.comboDnaBonus,
             comboScoreBonus: this.state.comboScoreBonus,
             maxChain: this.state.maxChain,
+          }
+        : null,
+      genome: this.genomeActive()
+        ? {
+            infuses: this.state.infuses.map((i) => ({ ...i })),
+            surges: this.state.surges.map((s) => ({ ...s })),
+            revive: this.state.revive ? { ...this.state.revive } : null,
+            claims: { ...this.state.genomeClaims },
+            lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
+            offerTrace: this.offerTrace.map((o) => ({ ...o })),
+            fusedSplices: this.state.fusedSplices.map((s) => ({ ...s })),
+            strainCounts: { ...this.state.strainCounts },
+            strainTiers: { ...this.state.strainTiers },
           }
         : null,
     };
