@@ -205,12 +205,14 @@ export const STRAIN_ECONOMICS = {
   bankClamp: 1.75,
   salvageClamp: 0.9,
   /**
-   * Global raw clamp: deterministic genome effects + all BT claims may
-   * never exceed this ratio of the gene-less recompute. Individual BT
-   * caps bind first in practice; this is the audit backstop (binding
-   * while individual caps pass is a cheat signal - flag, don't hide).
+   * Global claims clamp: the SUM of all bounded-trust claims may never
+   * exceed this ratio of the DETERMINISTIC recompute. (Deterministic
+   * gene effects are exact and unforgeable - clamping them would punish
+   * honest builds like Loan Shark windows; only the claim surface needs
+   * an aggregate backstop.) Individual BT caps bind first in practice;
+   * this binding while they pass is a cheat signal - flag, don't hide.
    */
-  genomeRawClampRatio: 1.45,
+  genomeClaimsCapRatio: 0.35,
 } as const;
 
 // =============================================================================

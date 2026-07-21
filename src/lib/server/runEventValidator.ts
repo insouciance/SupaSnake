@@ -29,11 +29,14 @@ import {
 const runEventSchema = z
   .object({
     t: z.number().int().min(0),
-    e: z.enum(['f', 'p', 'b', 'm', 'w', 'x']),
-    n: z.number().int().min(1).optional(),
-    k: z.enum(['spawn', 'pass', 'enter']).optional(),
+    // Genome additions: i (infuse), s (splice fused), g (expression)
+    e: z.enum(['f', 'p', 'b', 'm', 'w', 'x', 'i', 's', 'g']),
+    n: z.number().int().min(0).optional(),
+    k: z.enum(['spawn', 'pass', 'enter', 'infuse']).optional(),
     id: z.string().max(64).optional(),
     d: z.number().int().min(1).optional(),
+    // g: strain tier reached (1 minor / 2 expression / 3 apex)
+    v: z.number().int().min(1).max(3).optional(),
     c: z.enum(['wall', 'self', 'timeout', 'extracted']).optional(),
   })
   .strict();

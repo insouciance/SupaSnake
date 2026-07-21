@@ -276,7 +276,7 @@ The 8 traits keep their exact `traits.ts` effects, slots (1-2, rarity/Gen3 rule)
 ## 10. Economy retune
 
 Two global server clamps backstop everything:
-- **Genome raw clamp**: total per-run raw (deterministic genome effects + all BT claims) ≤ **×1.45** of the gene-less recompute for the same food count. Individual BT caps (25/35/40/60%) bind first in practice; the global clamp is the audit backstop — when it binds while individual caps pass, the run is *flagged*, not silently clamped (cheat signal).
+- **Aggregate claims clamp**: the SUM of all bounded-trust claims ≤ **35% of the deterministic recompute**. (Implementation note, corrected from the earlier "×1.45 of gene-less" formulation: deterministic gene effects are exact and unforgeable — Loan Shark windows legitimately exceed ×1.45 of a gene-less run, so only the *claim* surface carries the aggregate backstop.) Individual BT caps (25/35/40/60%) bind first in practice; the aggregate clamp binding while they pass is *flagged*, never silently hidden (cheat signal).
 - **Outcome clamps**: bank ≤ **1.75**, salvage ∈ [0, **0.90**].
 
 **Food-rate bound**: Arc Lightning and Molt raise the honest eat rate; the per-dynasty `maxFoodPerSecond` bound widens by a fixed allowance only when the accepted picks make a VOLT/FERAL expression reachable — a widened but still hard cap.

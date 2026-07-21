@@ -233,7 +233,8 @@ describe('claim caps + clamping', () => {
     expect(caps.aurumWakeDna).toBe(0);
     expect(caps.midasDna).toBe(0);
     expect(caps.secondSunFlat).toBe(0);
-    expect(caps.globalRawCap).toBe(1450);
+    // claims backstop: 35% of the deterministic total (1000)
+    expect(caps.globalClaimsCap).toBe(350);
   });
 
   it('AURUM expression cap = 25% of dna since activation; clamps claims', () => {
@@ -252,15 +253,14 @@ describe('claim caps + clamping', () => {
     expect(caps.aurumWakeDna).toBe(150);
     const { accepted, bonusDna, globalClampHit } = clampGenomeClaims(
       { aurumWakeDna: 999 },
-      caps,
-      1000
+      caps
     );
     expect(accepted.aurumWakeDna).toBe(150);
     expect(bonusDna).toBe(150);
     expect(globalClampHit).toBe(false);
   });
 
-  it('the global raw clamp binds and flags', () => {
+  it('the aggregate claims cap binds and flags', () => {
     const caps = {
       aurumWakeDna: 500,
       midasDna: 0,
@@ -271,15 +271,14 @@ describe('claim caps + clamping', () => {
       heartwoodDna: 0,
       secondSunFlat: 0,
       crownHeld: false,
-      globalRawCap: 1450,
+      globalClaimsCap: 250,
     };
     const { bonusDna, globalClampHit } = clampGenomeClaims(
       { aurumWakeDna: 500 },
-      caps,
-      1200
+      caps
     );
     expect(globalClampHit).toBe(true);
-    expect(bonusDna).toBe(250); // 1450 - 1200
+    expect(bonusDna).toBe(250); // clamped to the aggregate cap
   });
 });
 

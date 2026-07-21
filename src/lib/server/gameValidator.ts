@@ -33,7 +33,9 @@
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
   COSMIC_TRUST_MAX_BONUS_RATIO,
+  applyGenomeOutcome,
   applyOutcomeWithMutations,
+  computeGenomeRunTotals,
   computeRunTotals,
   getRuleset,
   type DynastyName,
@@ -46,6 +48,28 @@ import {
 } from '@/shared/game/mutations';
 import { type TraitId } from '@/shared/game/traits';
 import { type AnomalyId } from '@/shared/game/anomalies';
+import {
+  GENE_ECONOMICS,
+  GENOME_SPAWN,
+  isGeneId,
+  type GeneId,
+  type GenePick,
+} from '@/shared/game/genes';
+import { STRAIN_PHYSICS, type StrainPoints } from '@/shared/game/strains';
+import {
+  clampGenomeClaims,
+  fusePicks,
+  sanitizeInfuses,
+  sanitizeLossEvents,
+  sanitizeRevive,
+  sanitizeSurges,
+  strainActivations,
+  type GenomeClaims,
+  type GenomeRevive,
+  type GenomeRunInput,
+  type StrainSurge,
+} from '@/shared/game/genome';
+import { isSpliceId, type SpliceId } from '@/shared/game/splices';
 
 export interface GameResultInput {
   /** Raw foods eaten - the minimal claimed fact the payout derives from. */
@@ -65,6 +89,42 @@ export interface GameResultInput {
   phoenix_triggered_at_food?: unknown;
   /** COSMIC combo summary: { combo_dna_bonus, combo_score_bonus, max_chain }. */
   cosmic?: unknown;
+  /**
+   * Genome claim block (Buildcraft: The Genome): { infuses, surges,
+   * revive, claims, lossEvents, offerTrace } - sanitized here. Only
+   * honored when the session carries a run_seed (server capability).
+   */
+  genome?: unknown;
+}
+
+/** Server context for genome validation - all fields server-derived. */
+export interface GenomeValidationContext {
+  /** Starting strain points (traits + lineage, from the snake row). */
+  heirloom: StrainPoints;
+  /** The player's unlocked GENE pool (server-composed), null = ungated. */
+  genePool: GeneId[] | null;
+  /** Server fact: the previous earned run ended in death (Grave Robber). */
+  prevRunDied: boolean;
+  /** COSMIC M10: Constellation Crown may raise the combo trust ratio. */
+  crownAllowed: boolean;
+  /** FTUE tier ceiling (economy-binding; mirrors the engine's cap). */
+  tierCap: 1 | 2 | 3;
+}
+
+/** The validator-accepted genome record (game_sessions.genome JSONB). */
+export interface AcceptedGenome {
+  v: 1;
+  picks: GenePick[];
+  splices: { id: SpliceId; atFood: number }[];
+  surges: StrainSurge[];
+  infuses: { atFood: number }[];
+  revive: GenomeRevive | null;
+  claims: GenomeClaims;
+  strainCounts: StrainPoints;
+  expressions: Partial<Record<string, number>>;
+  apexes: Partial<Record<string, number>>;
+  /** The global raw clamp bound while individual caps passed (cheat signal). */
+  globalClampHit: boolean;
 }
 
 /** Accepted COSMIC combo claim (post-clamp). */
@@ -96,6 +156,14 @@ export interface ValidationResult {
   phoenixTriggeredAtFood: number | null;
   /** Accepted (clamped) COSMIC combo claim, null off-COSMIC or when absent. */
   cosmic: CosmicClaim | null;
+  /**
+   * Mastery XP base: the DETERMINISTIC recompute only - bounded-trust
+   * claims never feed mastery (BUILDCRAFT_GENOME_DESIGN.md §9). Equals
+   * rawDna on legacy runs (which have no genome claims).
+   */
+  masteryRawDna: number;
+  /** Accepted genome record (game_sessions.genome), null on legacy runs. */
+  genome: AcceptedGenome | null;
   errors: string[];
 }
 
@@ -212,7 +280,8 @@ function sanitizeCosmicClaim(
   foodCount: number,
   baseDna: number,
   baseScore: number,
-  errors: string[]
+  errors: string[],
+  trustRatio: number = COSMIC_TRUST_MAX_BONUS_RATIO
 ): CosmicClaim {
   const claim = (raw ?? {}) as Record<string, unknown>;
   let dnaBonus = nonNegativeInt(claim.combo_dna_bonus) ?? 0;
@@ -243,9 +312,10 @@ function sanitizeCosmicClaim(
   }
 
   // Per-dynasty ceiling: every food's combo is capped x2.4, so the bonus
-  // over the no-combo recompute is capped at base x 1.4
-  const maxDnaBonus = Math.floor(baseDna * COSMIC_TRUST_MAX_BONUS_RATIO);
-  const maxScoreBonus = Math.floor(baseScore * COSMIC_TRUST_MAX_BONUS_RATIO);
+  // over the no-combo recompute is capped at base x 1.4 (x1.8 when the
+  // Constellation Crown is held at COSMIC M10 - cap x2.8).
+  const maxDnaBonus = Math.floor(baseDna * trustRatio);
+  const maxScoreBonus = Math.floor(baseScore * trustRatio);
   if (dnaBonus > maxDnaBonus) {
     errors.push(
       `COSMIC_COMBO: DNA bonus ${dnaBonus} exceeds ceiling ${maxDnaBonus} - clamped`
@@ -279,7 +349,14 @@ export function validateGameResult(
    * claim. Its [E] effects (Gold Rush food x1.5, Twin Exits bank x1.15)
    * join the exact recompute; [P] anomalies change nothing here.
    */
-  anomaly: AnomalyId | null = null
+  anomaly: AnomalyId | null = null,
+  /**
+   * Genome context (Buildcraft: The Genome) - non-null only when the
+   * session carries a run_seed (server capability). Switches steps 4-8
+   * into the genome pipeline: gene-pool legality, infuse bounds, fused
+   * splice derivation, exact genome recompute, bounded-trust clamps.
+   */
+  genomeCtx: GenomeValidationContext | null = null
 ): ValidationResult {
   const errors: string[] = [];
   const ruleset = getRuleset(dynasty);
@@ -320,6 +397,22 @@ export function validateGameResult(
       `INVALID_FOOD_RATE: ${foodCount} foods exceeds max ${maxFood} for ${input.duration_seconds}s (${dynasty})`
     );
     foodCount = maxFood;
+  }
+
+  // GENOME BRANCH (Buildcraft: The Genome): sessions stamped with a
+  // run_seed validate steps 4-8 under the genome pipeline.
+  if (genomeCtx !== null) {
+    return validateGenomeBranch(
+      input,
+      dynasty,
+      traits,
+      anomaly,
+      genomeCtx,
+      extracted,
+      foodCount,
+      maxFood,
+      errors
+    );
   }
 
   // 4. Mutation legality + cadence bounds (section 5.3). The Patient
@@ -420,6 +513,378 @@ export function validateGameResult(
     mutations,
     phoenixTriggeredAtFood,
     cosmic,
+    masteryRawDna: rawDna,
+    genome: null,
+    errors,
+  };
+}
+
+// =============================================================================
+// GENOME VALIDATION (Buildcraft: The Genome - BUILDCRAFT_GENOME_DESIGN.md)
+// =============================================================================
+
+/**
+ * VOLT Arc Lightning auto-collects up to 2 extra foods per eat, raising
+ * the honest eat rate. The food-rate bound WIDENS (a still-hard cap) by
+ * this factor only when the accepted picks make the expression reachable.
+ */
+export const VOLT_RATE_ALLOWANCE_FACTOR = 1.5;
+
+/** Minimum food index of any gene pick (first gene food / first portal). */
+const MIN_FIRST_GENE_FOOD = 15;
+
+/** Conservative portal count bound: first at 15, then every >= 8 foods. */
+function maxPortalsSpawnable(foodCount: number): number {
+  if (foodCount < MIN_FIRST_GENE_FOOD) return 0;
+  return 1 + Math.floor((foodCount - MIN_FIRST_GENE_FOOD) / 8);
+}
+
+/** Sanitize claimed gene picks (genome mode): pool, cap 6, order, bounds. */
+function sanitizeGenes(
+  raw: unknown,
+  foodCount: number,
+  infuseCount: number,
+  errors: string[],
+  minFoodsPerPick: number,
+  genePool: GeneId[] | null
+): GenePick[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    errors.push('INVALID_GENES: not an array');
+    return [];
+  }
+  const picks: GenePick[] = [];
+  const seen = new Set<string>();
+  let lastAt = -1;
+  for (const entry of raw) {
+    const id = (entry as { id?: unknown } | null)?.id;
+    const atFood = (entry as { atFood?: unknown } | null)?.atFood;
+    if (isSpliceId(id)) {
+      // Splices are DERIVED, never claimed - a direct claim is a red flag.
+      errors.push(`SPLICE_CLAIMED_DIRECTLY: ${id}`);
+      continue;
+    }
+    if (!isGeneId(id)) {
+      errors.push(`INVALID_GENES: unknown gene id ${JSON.stringify(id)}`);
+      continue;
+    }
+    if (genePool !== null && !genePool.includes(id)) {
+      errors.push(`GENE_LOCKED: ${id} is not in the player's unlocked pool`);
+      continue;
+    }
+    if (seen.has(id)) {
+      errors.push(`INVALID_GENES: duplicate gene ${id}`);
+      continue;
+    }
+    if (
+      typeof atFood !== 'number' ||
+      !Number.isInteger(atFood) ||
+      atFood < MIN_FIRST_GENE_FOOD ||
+      atFood > foodCount ||
+      atFood < lastAt
+    ) {
+      errors.push(
+        `GENE_BOUND: ${id} atFood ${JSON.stringify(atFood)} outside [max(${MIN_FIRST_GENE_FOOD}, ${lastAt}), ${foodCount}]`
+      );
+      continue;
+    }
+    seen.add(id);
+    lastAt = atFood;
+    picks.push({ id, atFood });
+  }
+  if (picks.length > GENOME_SPAWN.maxHeld) {
+    errors.push(
+      `GENE_BOUND: ${picks.length} picks exceeds the held cap ${GENOME_SPAWN.maxHeld}`
+    );
+    picks.length = GENOME_SPAWN.maxHeld;
+  }
+  // Offer-source bound: cadence offers (every >= minFoodsPerPick foods)
+  // plus one offer per accepted infuse.
+  const maxPicks = Math.floor(foodCount / minFoodsPerPick) + infuseCount;
+  if (picks.length > maxPicks) {
+    errors.push(
+      `GENE_BOUND: ${picks.length} picks exceeds floor(${foodCount}/${minFoodsPerPick}) + ${infuseCount} infuses = ${maxPicks}`
+    );
+    picks.length = Math.max(0, maxPicks);
+  }
+  return picks;
+}
+
+/**
+ * Validate + honor the claimed revive against what the accepted build can
+ * actually fire (one revive per run): phoenix needs a LOOSE phoenix pick,
+ * styx/molted need their fusion, second_sun needs the UMBRA apex. An
+ * implausible claim is ignored + flagged (never honored).
+ */
+function sanitizeGenomeRevive(
+  raw: unknown,
+  foodCount: number,
+  picks: GenePick[],
+  heirloom: StrainPoints,
+  surges: StrainSurge[],
+  tierCap: 1 | 2 | 3,
+  errors: string[]
+): GenomeRevive | null {
+  const revive = sanitizeRevive(raw, foodCount);
+  if (!revive) {
+    if (raw !== undefined && raw !== null) {
+      errors.push('REVIVE_INVALID: malformed revive claim');
+    }
+    return null;
+  }
+  const view = fusePicks(picks);
+  const spliceIds = new Set(view.splices.map((s) => s.spliceId));
+  const phoenixLoose = view.loose.find((p) => p.id === 'phoenix');
+  const activations = strainActivations(picks, heirloom, surges, tierCap);
+  switch (revive.kind) {
+    case 'phoenix':
+      if (!phoenixLoose || revive.atFood < phoenixLoose.atFood) {
+        errors.push('REVIVE_INVALID: phoenix revive without a loose phoenix');
+        return null;
+      }
+      return revive;
+    case 'styx':
+      if (!spliceIds.has('splice_styx_contract')) {
+        errors.push('REVIVE_INVALID: styx revive without the Styx Contract');
+        return null;
+      }
+      return revive;
+    case 'molted':
+      if (!spliceIds.has('splice_molted_rebirth')) {
+        errors.push('REVIVE_INVALID: molted revive without Molted Rebirth');
+        return null;
+      }
+      return revive;
+    case 'second_sun': {
+      const apexAt = activations.UMBRA.apexAt;
+      if (apexAt === null || revive.atFood < apexAt) {
+        errors.push('REVIVE_INVALID: second_sun revive without the UMBRA apex');
+        return null;
+      }
+      return revive;
+    }
+  }
+}
+
+function validateGenomeBranch(
+  input: GameResultInput,
+  dynasty: DynastyName,
+  traits: TraitId[],
+  anomaly: AnomalyId | null,
+  ctx: GenomeValidationContext,
+  extracted: boolean,
+  foodCount: number,
+  baseMaxFood: number,
+  errors: string[]
+): ValidationResult {
+  const claim = (input.genome ?? {}) as Record<string, unknown>;
+  const minFoodsPerPick = traits.includes('patient')
+    ? MIN_FOODS_PER_PICK_PATIENT
+    : MIN_FOODS_PER_PICK;
+
+  // g4. Infuses first (they widen the pick-count bound): strictly
+  // increasing, <= 3, bounded by spawnable portals; an extraction uses
+  // one portal of its own.
+  let infuses = sanitizeInfuses(claim.infuses, foodCount);
+  const portalBudget = Math.max(
+    0,
+    maxPortalsSpawnable(foodCount) - (extracted ? 1 : 0)
+  );
+  if (infuses.length > portalBudget) {
+    errors.push(
+      `INFUSE_BOUND: ${infuses.length} infuses exceeds the ${portalBudget}-portal budget for ${foodCount} foods`
+    );
+    infuses = infuses.slice(0, portalBudget);
+  }
+  for (const infuse of infuses) {
+    if (infuse.atFood < MIN_FIRST_GENE_FOOD) {
+      errors.push(`INFUSE_BOUND: infuse at food ${infuse.atFood} before the first portal`);
+      infuses = infuses.filter((i) => i.atFood >= MIN_FIRST_GENE_FOOD);
+      break;
+    }
+  }
+
+  // g5. Gene picks (pool + cap + cadence-with-infuse-allowance).
+  let picks = sanitizeGenes(
+    input.mutations,
+    foodCount,
+    infuses.length,
+    errors,
+    minFoodsPerPick,
+    ctx.genePool
+  );
+  if (traits.includes('ascetic') && picks.length > 0) {
+    errors.push(
+      `TRAIT_CONFLICT: ${picks.length} gene pick(s) claimed on an Ascetic snake (gene food never spawns)`
+    );
+    picks = [];
+  }
+
+  // g6. Surges: only granted by infusing AT the gene cap - every surge
+  // must ride an accepted infuse's food index.
+  const infuseFoods = new Set(infuses.map((i) => i.atFood));
+  let surges = sanitizeSurges(claim.surges).filter((s) => {
+    if (!infuseFoods.has(s.atFood)) {
+      errors.push(`SURGE_INVALID: surge at food ${s.atFood} without an infuse`);
+      return false;
+    }
+    return true;
+  });
+  if (surges.length > infuses.length) surges = surges.slice(0, infuses.length);
+
+  // g7. Revive plausibility (one per run; kind must be fireable).
+  const revive = sanitizeGenomeRevive(
+    claim.revive,
+    foodCount,
+    picks,
+    ctx.heirloom,
+    surges,
+    ctx.tierCap,
+    errors
+  );
+
+  const lossEvents = sanitizeLossEvents(claim.lossEvents);
+
+  const genomeInput: GenomeRunInput = {
+    picks,
+    heirloom: ctx.heirloom,
+    surges,
+    infuses,
+    revive,
+    prevRunDied: ctx.prevRunDied,
+    lossEvents,
+    tierCap: ctx.tierCap,
+  };
+
+  // g8. VOLT rate allowance: arcs raise the honest eat rate - widen the
+  // (still hard) bound only when the accepted picks reach the expression.
+  const totalsProbe = computeGenomeRunTotals(
+    dynasty,
+    foodCount,
+    genomeInput,
+    traits,
+    anomaly
+  );
+  const voltReachable = totalsProbe.activations.VOLT.expressionAt !== null;
+  const claimedFood = Number.isFinite(input.food_count)
+    ? Math.max(0, Math.floor(input.food_count))
+    : 0;
+  if (voltReachable && claimedFood > foodCount) {
+    const widenedMax = Math.ceil(baseMaxFood * VOLT_RATE_ALLOWANCE_FACTOR);
+    const restored = Math.min(claimedFood, widenedMax);
+    if (restored > foodCount) {
+      foodCount = restored;
+    }
+  }
+
+  // g9. Exact deterministic recompute (the payout authority) + claim caps.
+  const totals =
+    foodCount === totalsProbe.capsBasis.foodCount
+      ? totalsProbe
+      : computeGenomeRunTotals(dynasty, foodCount, genomeInput, traits, anomaly);
+  const rawClaims = (claim.claims ?? {}) as GenomeClaims;
+  const { accepted, bonusDna, globalClampHit } = clampGenomeClaims(
+    rawClaims,
+    totals.caps
+  );
+  if (globalClampHit) {
+    errors.push(
+      'GENOME_GLOBAL_CLAMP: claims bound by the aggregate claims cap while individual caps passed'
+    );
+  }
+  let rawDna = totals.rawDna + bonusDna;
+  let expectedScore = totals.score;
+
+  // g10. COSMIC combo bounded trust on top (Crown raises the ratio at M10).
+  let cosmic: CosmicClaim | null = null;
+  if (dynasty === 'COSMIC') {
+    if (input.cosmic !== undefined && input.cosmic !== null) {
+      const crownHeld = ctx.crownAllowed && totals.caps.crownHeld;
+      cosmic = sanitizeCosmicClaim(
+        input.cosmic,
+        foodCount,
+        totals.rawDna,
+        totals.score,
+        errors,
+        crownHeld
+          ? GENE_ECONOMICS.crownTrustMaxBonusRatio
+          : COSMIC_TRUST_MAX_BONUS_RATIO
+      );
+      rawDna += cosmic.comboDnaBonus;
+      expectedScore += cosmic.comboScoreBonus;
+    }
+  } else if (input.cosmic !== undefined && input.cosmic !== null) {
+    errors.push(`COSMIC_COMBO: combo summary on a ${dynasty} session - ignored`);
+  }
+
+  // g11. Genome outcome (clamped bank <= 1.75 / salvage <= 0.90) + victory.
+  let expectedPayout = applyGenomeOutcome(
+    rawDna,
+    extracted,
+    genomeInput,
+    traits,
+    anomaly
+  );
+  if (input.victory) {
+    expectedPayout += GAME_CONFIG.economy.dna.completionBonus;
+  }
+
+  // g12. Claim mismatches flag only - the payout stays the recompute.
+  // (The engine's display adds live claims, so compare against raw+claims.)
+  if (Math.abs(input.dna_earned - rawDna) > CLAIM_EPSILON) {
+    errors.push(
+      `DNA_MISMATCH: claimed ${input.dna_earned}, recomputed ${rawDna} (genome, ${dynasty}, ${foodCount} foods)`
+    );
+  }
+  if (Math.abs(input.score - expectedScore) > CLAIM_EPSILON) {
+    errors.push(
+      `SCORE_MISMATCH: claimed ${input.score}, recomputed ${expectedScore} (genome, ${dynasty}, ${foodCount} foods)`
+    );
+  }
+
+  const expressions: Partial<Record<string, number>> = {};
+  const apexes: Partial<Record<string, number>> = {};
+  const strainCounts: StrainPoints = {};
+  for (const strain of Object.keys(totals.activations) as (keyof typeof totals.activations)[]) {
+    const a = totals.activations[strain];
+    if (a.points > 0) strainCounts[strain] = a.points;
+    if (a.expressionAt !== null) expressions[strain] = a.expressionAt;
+    if (a.apexAt !== null) apexes[strain] = a.apexAt;
+  }
+
+  const acceptedGenome: AcceptedGenome = {
+    v: 1,
+    picks,
+    splices: fusePicks(picks).splices.map((s) => ({
+      id: s.spliceId,
+      atFood: s.atFood,
+    })),
+    surges,
+    infuses,
+    revive,
+    claims: accepted,
+    strainCounts,
+    expressions,
+    apexes,
+    globalClampHit,
+  };
+
+  return {
+    valid: errors.length === 0,
+    adjustedDna: expectedPayout,
+    rawDna,
+    adjustedScore: expectedScore,
+    foodCount,
+    extracted,
+    // Wire-compat: legacy consumers (mutations blob, run-event cross
+    // checks) see the legacy-id subset of the picks.
+    mutations: picks.filter((p): p is MutationPick => isMutationId(p.id)),
+    phoenixTriggeredAtFood:
+      revive && revive.kind === 'phoenix' ? revive.atFood : null,
+    cosmic,
+    // Mastery XP base: deterministic only - claims never feed mastery.
+    masteryRawDna: totals.rawDna,
+    genome: acceptedGenome,
     errors,
   };
 }

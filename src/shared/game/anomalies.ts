@@ -85,6 +85,21 @@ export function isAnomalyId(value: unknown): value is AnomalyId {
   return typeof value === 'string' && value in ANOMALIES;
 }
 
+/**
+ * Genome strain weeks (BUILDCRAFT_GENOME_DESIGN.md §9): each anomaly
+ * week tilts gene offers toward one strain (+100 offer weight). The
+ * mechanics of the anomalies themselves are unchanged.
+ */
+export const ANOMALY_STRAINS: Record<
+  AnomalyId,
+  'AURUM' | 'VOLT' | 'FERAL' | 'FLUX' | 'UMBRA'
+> = {
+  gold_rush: 'AURUM',
+  meteor_shower: 'VOLT',
+  blackout: 'UMBRA',
+  twin_exits: 'FLUX',
+};
+
 /** Economic tuning ([E] - exact server recompute), exported for tests + UI. */
 export const ANOMALY_ECONOMICS = {
   /** Gold Rush: every food pays x1.5 DNA. */

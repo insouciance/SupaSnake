@@ -556,10 +556,13 @@ export class SnakeGameLogic {
       atFood: s.atFood,
     }));
     const before = this.activations;
+    // The FTUE tier cap binds the ECONOMY here too (activations feed the
+    // per-food math), mirroring the server's capped recompute exactly.
     this.activations = strainActivations(
       this.state.heldMutations,
       this.spawnStrainPoints(),
-      this.state.surges
+      this.state.surges,
+      this.ftueTierCap() as 0 | 1 | 2 | 3
     );
     const counts: StrainPoints = {};
     const tiers: Partial<Record<StrainId, number>> = {};

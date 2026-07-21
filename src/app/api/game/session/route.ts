@@ -34,6 +34,18 @@ import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
+import {
+  composeGenePool,
+  deriveFtue,
+  deriveHeirloom,
+  ftueTierCap,
+  getGenomeRunFacts,
+  lineageFromRows,
+} from '@/lib/server/genome';
+import { verifyOfferTrace } from '@/lib/server/offerVerifier';
+import { ANOMALY_STRAINS } from '@/shared/game/anomalies';
+import type { GenomeValidationContext } from '@/lib/server/gameValidator';
+import { randomUUID } from 'crypto';
 import { refreshPlayerRecords } from '@/lib/server/records';
 import {
   enqueueMasteryLevelup,
@@ -81,6 +93,7 @@ export async function POST(request: NextRequest) {
       mutations,
       phoenix_triggered_at_food,
       cosmic,
+      genome,
       death_cause,
       run_events,
     } = body;
@@ -129,9 +142,11 @@ export async function POST(request: NextRequest) {
       // Load the snake with its variant + dynasty; validate ownership.
       // select('*') on the row itself so the traits column (migration 018)
       // rides along when it exists without erroring pre-018.
+      // snake_variants(*) so genome lineage columns (migration 030) ride
+      // along when they exist without erroring pre-030.
       const { data: snake } = await supabase
         .from('collected_snakes')
-        .select('*, snake_variants(id, name, dynasties(name))')
+        .select('*, snake_variants(*, dynasties(name))')
         .eq('id', snake_id)
         .eq('player_id', player.id)
         .single();
@@ -206,6 +221,51 @@ export async function POST(request: NextRequest) {
         level: masteryLevel,
       };
 
+      // GENOME capability (Buildcraft: The Genome): the server issues a
+      // run seed + the derived run-start context. The engine only runs
+      // genome behavior when it receives this block - never on a client
+      // flag. Everything here is server-derived.
+      let genomeBlock: Record<string, unknown> | null = null;
+      let genomeSeed: string | null = null;
+      if (GAME_CONFIG.features.genome) {
+        genomeSeed = randomUUID();
+        const { bankedRuns, prevRunDied } = await getGenomeRunFacts(
+          supabase,
+          player.id
+        );
+        const ftue = deriveFtue(bankedRuns, masteryLevel);
+        const lineage = lineageFromRows(
+          snake as Record<string, unknown>,
+          (snake.snake_variants as Record<string, unknown> | null) ?? null
+        );
+        const { heirloom, lineageBias } = deriveHeirloom(
+          lineage,
+          snakeTraits,
+          ftue
+        );
+        const genePool = composeGenePool(
+          startDynasty,
+          masteryLevel,
+          seasonalIds,
+          isFreePlay ? null : gauntletBan,
+          isFreePlay
+        );
+        genomeBlock = {
+          runSeed: genomeSeed,
+          heirloom,
+          genePool,
+          lineage: lineageBias,
+          anomalyStrain: null, // set below once the week's anomaly is derived
+          prevRunDied,
+          ftue: {
+            expressionsUnlocked: ftue.expressionsUnlocked,
+            infuseUnlocked: ftue.infuseUnlocked,
+            splicesUnlocked: ftue.splicesUnlocked,
+            apexesUnlocked: ftue.apexesUnlocked,
+          },
+        };
+      }
+
       const serverStartedAt = new Date().toISOString();
 
       // Anomaly stamp (section 7.2): the week's modifier, derived from the
@@ -215,26 +275,50 @@ export async function POST(request: NextRequest) {
       const startAnomalyWeek = isAnomalyRun
         ? anomalyWeekStart(startedAtDate).toISOString().slice(0, 10)
         : null;
+      // Genome strain week (§9): the anomaly tilts gene offers
+      if (genomeBlock && startAnomalyId) {
+        genomeBlock.anomalyStrain = ANOMALY_STRAINS[startAnomalyId] ?? null;
+      }
 
-      const { data: session, error: sessionError } = await supabase
+      const sessionInsert: Record<string, unknown> = {
+        player_id: player.id,
+        snake_used_id: snake.id,
+        snake_variant_id: snake.snake_variant_id,
+        dynasty: dynastyName,
+        server_started_at: serverStartedAt,
+        // Free-play marker (migration 016) - only sent when true so the
+        // insert stays compatible with the pre-016 schema until it applies
+        ...(isFreePlay ? { is_free_play: true } : {}),
+        // Anomaly markers (migration 021) - only sent on anomaly runs so
+        // the insert stays compatible with the pre-021 schema
+        ...(isAnomalyRun
+          ? { anomaly_id: startAnomalyId, anomaly_week: startAnomalyWeek }
+          : {}),
+      };
+      // Genome seed (migration 029): stamped only when the capability is
+      // on. Pre-029 window: the insert fails on the unknown column, so
+      // retry WITHOUT the seed and start the run as legacy - the engine
+      // only goes genome when the response carries the block.
+      let { data: session, error: sessionError } = await supabase
         .from('game_sessions')
-        .insert({
-          player_id: player.id,
-          snake_used_id: snake.id,
-          snake_variant_id: snake.snake_variant_id,
-          dynasty: dynastyName,
-          server_started_at: serverStartedAt,
-          // Free-play marker (migration 016) - only sent when true so the
-          // insert stays compatible with the pre-016 schema until it applies
-          ...(isFreePlay ? { is_free_play: true } : {}),
-          // Anomaly markers (migration 021) - only sent on anomaly runs so
-          // the insert stays compatible with the pre-021 schema
-          ...(isAnomalyRun
-            ? { anomaly_id: startAnomalyId, anomaly_week: startAnomalyWeek }
-            : {}),
-        })
+        .insert(
+          genomeSeed ? { ...sessionInsert, run_seed: genomeSeed } : sessionInsert
+        )
         .select()
         .single();
+      if (
+        sessionError &&
+        genomeSeed &&
+        /run_seed/i.test(sessionError.message || '')
+      ) {
+        genomeSeed = null;
+        genomeBlock = null;
+        ({ data: session, error: sessionError } = await supabase
+          .from('game_sessions')
+          .insert(sessionInsert)
+          .select()
+          .single());
+      }
 
       if (sessionError) {
         console.error('Session creation error:', sessionError);
@@ -283,6 +367,7 @@ export async function POST(request: NextRequest) {
           traits: snakeTraits,
           mutationPool,
           mastery: masteryInfo,
+          ...(genomeBlock ? { genome: genomeBlock } : {}),
         });
       }
 
@@ -340,6 +425,7 @@ export async function POST(request: NextRequest) {
         mastery: masteryInfo,
         ...(gauntletBan ? { gauntletBan } : {}),
         ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
+        ...(genomeBlock ? { genome: genomeBlock } : {}),
       });
     }
 
@@ -387,15 +473,17 @@ export async function POST(request: NextRequest) {
       // the client payload never carries them. select('*') keeps the read
       // deployable before migration 018 (rows simply lack the column).
       let snakeTraits: TraitId[] = [];
+      let usedSnakeRow: Record<string, unknown> | null = null;
       if (session.snake_used_id) {
+        // snake_variants(*) so genome lineage columns (migration 030)
+        // ride along when they exist without erroring pre-030.
         const { data: usedSnake } = await supabase
           .from('collected_snakes')
-          .select('*')
+          .select('*, snake_variants(*)')
           .eq('id', session.snake_used_id)
           .single();
-        snakeTraits = sanitizeTraits(
-          (usedSnake as Record<string, unknown> | null)?.traits
-        );
+        usedSnakeRow = usedSnake as Record<string, unknown> | null;
+        snakeTraits = sanitizeTraits(usedSnakeRow?.traits);
       }
 
       // Free session (the marker on the row is authoritative, never the
@@ -446,6 +534,48 @@ export async function POST(request: NextRequest) {
         ? rawSessionAnomaly
         : null;
 
+      // GENOME (Buildcraft: The Genome): the SESSION ROW's run_seed is the
+      // capability authority - a stamped session validates under the
+      // genome pipeline regardless of the current flag state. All context
+      // is re-derived server-side (never the claim).
+      const sessionRunSeed = (session as Record<string, unknown>).run_seed;
+      let genomeCtx: GenomeValidationContext | null = null;
+      let endLineageBias: ReturnType<typeof deriveHeirloom>['lineageBias'] = null;
+      if (typeof sessionRunSeed === 'string' && sessionRunSeed.length > 0) {
+        const { bankedRuns, prevRunDied } = await getGenomeRunFacts(
+          supabase,
+          player.id
+        );
+        const endMasteryLevel = levelForXp(masteryXpBefore);
+        const endFtue = deriveFtue(bankedRuns, endMasteryLevel);
+        const endLineage = usedSnakeRow
+          ? lineageFromRows(
+              usedSnakeRow,
+              (usedSnakeRow.snake_variants as Record<string, unknown> | null) ??
+                null
+            )
+          : null;
+        const { heirloom: endHeirloom, lineageBias } = deriveHeirloom(
+          endLineage,
+          snakeTraits,
+          endFtue
+        );
+        endLineageBias = lineageBias;
+        genomeCtx = {
+          heirloom: endHeirloom,
+          genePool: composeGenePool(
+            endDynasty,
+            isFreeSession ? 10 : endMasteryLevel,
+            endSeasonalIds,
+            isFreeSession ? null : endGauntletBan,
+            isFreeSession
+          ),
+          prevRunDied,
+          crownAllowed: isFreeSession || endMasteryLevel >= 10,
+          tierCap: ftueTierCap(endFtue),
+        };
+      }
+
       // Design v2: the client sends the raw food count + how the run ended;
       // the server recomputes the payout exactly from the session row's
       // dynasty (server-trusted, stored at start - never from this request).
@@ -466,13 +596,44 @@ export async function POST(request: NextRequest) {
           mutations,
           phoenix_triggered_at_food,
           cosmic,
+          // Genome claim block (infuses/surges/revive/claims/lossEvents)
+          genome,
         },
         serverStartedAt,
         endDynasty,
         snakeTraits,
         unlockedPool,
-        sessionAnomaly
+        sessionAnomaly,
+        genomeCtx
       );
+
+      // Offer-trace verification (ADVISORY, §5): replay the seeded offer
+      // stream against the accepted picks. A mismatch flags the session
+      // (validated:false) but never changes the payout at launch.
+      if (genomeCtx && validation.genome && typeof sessionRunSeed === 'string') {
+        const claimTrace = (genome as Record<string, unknown> | null)?.offerTrace;
+        if (claimTrace !== undefined && claimTrace !== null) {
+          const offerCheck = verifyOfferTrace(claimTrace, validation.genome.picks, {
+            runSeed: sessionRunSeed,
+            pool: genomeCtx.genePool ?? [],
+            heirloom: genomeCtx.heirloom,
+            surges: validation.genome.surges,
+            // Mirror the engine's start-time lineage bias exactly - a
+            // bias-free replay would false-flag every lineage player.
+            lineage: endLineageBias,
+            anomalyStrain: sessionAnomaly
+              ? ANOMALY_STRAINS[sessionAnomaly] ?? null
+              : null,
+            tierCap: genomeCtx.tierCap,
+          });
+          if (!offerCheck.ok) {
+            validation.errors.push(
+              `OFFER_SEED_MISMATCH: ${offerCheck.mismatches.slice(0, 3).join('; ')}`
+            );
+            validation.valid = false;
+          }
+        }
+      }
 
       if (!validation.valid) {
         console.warn('Game result validation flags:', {
@@ -571,14 +732,25 @@ export async function POST(request: NextRequest) {
         foodCount: validation.foodCount,
         died: (died ?? true) === true && !validation.extracted,
         extracted: validation.extracted,
-        mutationIds: validation.mutations.map((m) => m.id),
+        // Genome runs: m-events may name ANY accepted gene pick
+        mutationIds: validation.genome
+          ? validation.genome.picks.map((p) => p.id)
+          : validation.mutations.map((m) => m.id),
       });
-      if (serverDeathCause !== null || runEventEnvelope !== null) {
+      if (
+        serverDeathCause !== null ||
+        runEventEnvelope !== null ||
+        validation.genome !== null
+      ) {
         const { error: captureError } = await supabase
           .from('game_sessions')
           .update({
             ...(serverDeathCause !== null ? { death_cause: serverDeathCause } : {}),
             ...(runEventEnvelope !== null ? { run_events: runEventEnvelope } : {}),
+            // Genome record (migration 029) - best-effort like run_events:
+            // pre-029 the column is missing and this update just fails
+            // non-fatally (the critical end path above never names it).
+            ...(validation.genome !== null ? { genome: validation.genome } : {}),
           })
           .eq('id', sessionId)
           .eq('player_id', player.id);
@@ -739,7 +911,9 @@ export async function POST(request: NextRequest) {
         unlocks: { level: number; kind: string; label: string }[];
       } | null = null;
       if (validation.extracted) {
-        const xpGained = masteryXpForRun(validation.rawDna, true);
+        // Mastery XP base: the DETERMINISTIC recompute only - genome
+        // bounded-trust claims never feed mastery (§9).
+        const xpGained = masteryXpForRun(validation.masteryRawDna, true);
         if (xpGained > 0) {
           const granted = await grantMasteryXp(
             supabase,
@@ -920,6 +1094,7 @@ export async function POST(request: NextRequest) {
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
+        ...(validation.genome ? { genome: validation.genome } : {}),
       });
     }
 

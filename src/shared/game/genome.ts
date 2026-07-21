@@ -92,6 +92,13 @@ export interface GenomeRunInput {
   prevRunDied?: boolean;
   /** Reported, payout-non-increasing (they only shrink the length model). */
   lossEvents?: LengthLossEvent[];
+  /**
+   * FTUE tier ceiling (server-derived from banked-run count): 1 caps at
+   * minors, 2 at expressions, 3 = everything. Binds the ECONOMY, not
+   * just the visuals - client and server must use the same cap or the
+   * recompute drifts. Default 3.
+   */
+  tierCap?: StrainTier;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -168,7 +175,9 @@ export type StrainActivations = Record<StrainId, StrainActivation>;
 export function strainActivations(
   picks: GenePick[],
   heirloom: StrainPoints,
-  surges: StrainSurge[] = []
+  surges: StrainSurge[] = [],
+  /** FTUE ceiling: tiers above the cap never activate (economy-binding). */
+  tierCap: StrainTier = 3
 ): StrainActivations {
   const spawn = capSpawnPoints(heirloom);
   const result = {} as StrainActivations;
@@ -196,7 +205,7 @@ export function strainActivations(
       const s = result[strain];
       s.points += 1;
       if (event.isGene) s.genes += 1;
-      const tier = strainTier(s.points, s.genes);
+      const tier = Math.min(tierCap, strainTier(s.points, s.genes));
       if (tier >= 1 && s.minorAt === null) s.minorAt = event.atFood;
       if (tier >= 2 && s.expressionAt === null) s.expressionAt = event.atFood;
       if (tier >= 3 && s.apexAt === null) s.apexAt = event.atFood;
@@ -550,7 +559,12 @@ export function genomeOutcomeMultipliers(
   anomaly: AnomalyId | null = null
 ): { bank: number; death: number } {
   const view = fusePicks(input.picks);
-  const activations = strainActivations(input.picks, input.heirloom, input.surges);
+  const activations = strainActivations(
+    input.picks,
+    input.heirloom,
+    input.surges,
+    input.tierCap ?? 3
+  );
   const benefitsVoided = reviveVoidsBenefits(input.revive);
   const heldGenes = input.picks.length;
   const looseIds = new Set(view.loose.map((p) => p.id));
@@ -640,8 +654,8 @@ export interface GenomeClaimCaps {
   secondSunFlat: number;
   /** COSMIC combo trust ratio (2.8-cap Crown raises 1.4 -> 1.8 at M10). */
   crownHeld: boolean;
-  /** Global backstop: deterministic + claims <= genelessRaw x 1.45. */
-  globalRawCap: number;
+  /** Aggregate claims backstop: sum of claims <= deterministic x 0.35. */
+  globalClaimsCap: number;
 }
 
 /**
@@ -670,7 +684,12 @@ export function genomeClaimCaps(
   lengthTrace: LengthTrace
 ): GenomeClaimCaps {
   const view = fusePicks(input.picks);
-  const activations = strainActivations(input.picks, input.heirloom, input.surges);
+  const activations = strainActivations(
+    input.picks,
+    input.heirloom,
+    input.surges,
+    input.tierCap ?? 3
+  );
   const find = (id: GeneId) => view.loose.find((p) => p.id === id);
   const fusedRicochet = view.splices.find((s) => s.spliceId === 'splice_ricochet');
   const aurum = activations.AURUM;
@@ -730,8 +749,9 @@ export function genomeClaimCaps(
       view.splices.some((s) =>
         s.parents.some((p) => p.id === 'constellation_crown')
       ),
-    globalRawCap: Math.floor(
-      basis.genelessRaw * STRAIN_ECONOMICS.genomeRawClampRatio
+    globalClaimsCap: Math.floor(
+      (basis.cumulativeDna[basis.foodCount] ?? 0) *
+        STRAIN_ECONOMICS.genomeClaimsCapRatio
     ),
   };
 }
@@ -743,8 +763,7 @@ export function genomeClaimCaps(
  */
 export function clampGenomeClaims(
   raw: GenomeClaims,
-  caps: GenomeClaimCaps,
-  deterministicRaw: number
+  caps: GenomeClaimCaps
 ): { accepted: GenomeClaims; bonusDna: number; globalClampHit: boolean } {
   const clampInt = (value: unknown, cap: number): number => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
@@ -770,9 +789,9 @@ export function clampGenomeClaims(
     (accepted.heartwoodDna ?? 0) +
     (accepted.secondSunTriggered ? caps.secondSunFlat : 0);
   let globalClampHit = false;
-  if (deterministicRaw + bonusDna > caps.globalRawCap) {
+  if (bonusDna > caps.globalClaimsCap) {
     globalClampHit = true;
-    bonusDna = Math.max(0, caps.globalRawCap - deterministicRaw);
+    bonusDna = caps.globalClaimsCap;
   }
   return { accepted, bonusDna, globalClampHit };
 }

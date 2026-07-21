@@ -448,7 +448,12 @@ export function computeGenomeRunTotals(
   const ruleset = RULESETS[dynasty];
   const count = Number.isFinite(foodCount) ? Math.max(0, Math.floor(foodCount)) : 0;
   const view = fusePicks(genome.picks);
-  const activations = strainActivations(genome.picks, genome.heirloom, genome.surges);
+  const activations = strainActivations(
+    genome.picks,
+    genome.heirloom,
+    genome.surges,
+    genome.tierCap ?? 3
+  );
   const lengthTrace = computeLengthTrace(view, count, activations, genome);
   const lengthAt = (n: number) => lengthTrace.lengthAtEat[n] ?? 0;
 

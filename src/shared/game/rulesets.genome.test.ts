@@ -183,13 +183,11 @@ describe('genome-shaped runs', () => {
     expect(totals.rawDna).toBeGreaterThanOrEqual(30);
   });
 
-  it('the global raw cap tracks the gene-less recompute', () => {
+  it('the aggregate claims cap tracks the deterministic recompute', () => {
     const totals = computeGenomeRunTotals('PRIMAL', 100, EMPTY_GENOME, ['ascetic']);
-    // Ascetic x1.4 is a TRAIT - part of the gene-less basis.
-    expect(totals.caps.globalRawCap).toBe(
-      Math.floor(
-        totals.capsBasis.genelessRaw * STRAIN_ECONOMICS.genomeRawClampRatio
-      )
+    // Ascetic x1.4 is a TRAIT - in both the deterministic and geneless folds.
+    expect(totals.caps.globalClaimsCap).toBe(
+      Math.floor(totals.rawDna * STRAIN_ECONOMICS.genomeClaimsCapRatio)
     );
     expect(totals.capsBasis.genelessRaw).toBe(totals.rawDna);
   });
