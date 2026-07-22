@@ -42,7 +42,6 @@ import { PlayerCard } from '@/components/identity/PlayerCard';
 import { HandleClaimModal } from '@/components/identity/HandleClaimModal';
 import type { PlayerIdentity } from '@/lib/identity/types';
 import Link from 'next/link';
-import { EnergyTimer } from '@/components/ui/EnergyTimer';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
 import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
 import { PerfHUD } from '@/components/game/PerfHUD';
@@ -149,6 +148,13 @@ export default function GamePage() {
   const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
   const [viewResetToken, setViewResetToken] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const hudRef = useRef<HTMLDivElement | null>(null);
+  const [hudHeight, setHudHeight] = useState(0);
+  // A pause or build decision never releases directly into movement. The
+  // engine stays frozen until the player's next deliberate direction input.
+  const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
+  const [pauseRearming, setPauseRearming] = useState(false);
+  const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile control scheme: flick-anywhere is the default, D-pad the
   // fallback. Client preference, persisted in localStorage.
   const [controlMode, setControlMode] = useState<'flick' | 'dpad'>('flick');
@@ -390,6 +396,29 @@ export default function GamePage() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // The telemetry deck grows when bank/build information becomes available.
+  // Reserve its measured height above the WebGL canvas so no responsive wrap
+  // can ever cover the playable board.
+  useEffect(() => {
+    const hud = hudRef.current;
+    if (!hud) return;
+    const measure = () => setHudHeight(Math.ceil(hud.getBoundingClientRect().height));
+    measure();
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(measure);
+    observer?.observe(hud);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [authLoading, isAuthenticated]);
+
+  useEffect(() => () => {
+    if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
   }, []);
 
   // Restore the persisted control-mode preference (default: flick)
@@ -641,6 +670,40 @@ export default function GamePage() {
   const activeAnomalyId: AnomalyId | null =
     anomalyRun && isAnomalyId(anomalyRun.id) ? anomalyRun.id : null;
 
+  const beginPauseRearm = useCallback(() => {
+    if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
+    setPauseRearming(true);
+    pauseRearmTimerRef.current = setTimeout(() => {
+      setPauseRearming(false);
+      pauseRearmTimerRef.current = null;
+    }, 600);
+  }, []);
+
+  const releaseResumeGate = useCallback(() => {
+    const game = gameRef.current;
+    if (!game || !awaitingResumeInput) return;
+    game.resume();
+    setAwaitingResumeInput(false);
+    beginPauseRearm();
+  }, [awaitingResumeInput, beginPauseRearm]);
+
+  const armResumeAfterDecision = useCallback(() => {
+    const game = gameRef.current;
+    if (!game) return;
+    const state = game.getState();
+    if (
+      !state.isPlaying ||
+      state.isGameOver ||
+      state.pendingChoice !== null ||
+      state.pendingPortalChoice !== null ||
+      state.pendingSurgeChoice
+    ) {
+      return;
+    }
+    game.pause();
+    setAwaitingResumeInput(true);
+  }, []);
+
   const handleChooseMutation = useCallback((index: 0 | 1) => {
     gameRef.current?.chooseMutation(index);
   }, []);
@@ -653,8 +716,9 @@ export default function GamePage() {
     if (gameRef.current?.resolvePortalChoice(choice)) {
       setPortalChoicePending(false);
       audioManager.play('uiClick');
+      armResumeAfterDecision();
     }
-  }, [setPortalChoicePending]);
+  }, [armResumeAfterDecision, setPortalChoicePending]);
 
   const handleSurgeChoice = useCallback((strain: StrainId) => {
     if (gameRef.current?.chooseSurge(strain)) {
@@ -662,8 +726,9 @@ export default function GamePage() {
       setSurgeChoicePending(false);
       setStrains(state.strainCounts, state.strainTiers);
       audioManager.play('uiClick');
+      armResumeAfterDecision();
     }
-  }, [setStrains, setSurgeChoicePending]);
+  }, [armResumeAfterDecision, setStrains, setSurgeChoicePending]);
 
   const handleFlourishDone = useCallback(() => {
     setExpressionFlourish(null);
@@ -723,6 +788,7 @@ export default function GamePage() {
     // hold while the overlay is up - this is NOT the pause state, so the
     // pause menu never renders here.
     gameRef.current.on('mutationChoice', (data: any) => {
+      setAwaitingResumeInput(false);
       setChoiceOptions(data.options, data.source ?? 'gene_food');
       audioManager.play('pause');
       haptics.medium();
@@ -733,14 +799,17 @@ export default function GamePage() {
       setChoiceOptions(null);
       mirrorGenomeState();
       audioManager.play('uiClick');
+      armResumeAfterDecision();
     });
 
     gameRef.current.on('mutationDeclined', () => {
       setChoiceOptions(null);
       audioManager.play('uiClick');
+      armResumeAfterDecision();
     });
 
     gameRef.current.on('portalChoice', (data: any) => {
+      setAwaitingResumeInput(false);
       setPortalCanInfuse(data?.canInfuse === true);
       setPortalChoicePending(true);
       audioManager.play('pause');
@@ -754,6 +823,7 @@ export default function GamePage() {
     });
 
     gameRef.current.on('surgeChoice', () => {
+      setAwaitingResumeInput(false);
       setSurgeChoicePending(true);
     });
 
@@ -973,6 +1043,7 @@ export default function GamePage() {
       }
 
       endGame(data.score, data.dnaCollected, data.endReason);
+      setAwaitingResumeInput(false);
       setDeathSequence(false);
       setShowDeathExplosion(false);
       if (intervalRef.current) {
@@ -1015,6 +1086,7 @@ export default function GamePage() {
     setStrains,
     setSurgeChoicePending,
     fetchCodex,
+    armResumeAfterDecision,
     showToast,
   ]);
 
@@ -1235,6 +1307,7 @@ export default function GamePage() {
       // run's final pose.
       resetInterpolationBuffer(interpBufferRef.current!);
       storeStartGame();
+      setAwaitingResumeInput(false);
       setReady(true);
       gameRef.current?.start();
       syncState();
@@ -1250,13 +1323,17 @@ export default function GamePage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Handle ready state - first input starts movement
-      if (isReady && !intervalRef.current) {
+      if ((isReady && !intervalRef.current) || awaitingResumeInput) {
         const validStartKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
                                 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D', ' '];
         if (validStartKeys.includes(e.key)) {
           e.preventDefault();
-          setReady(false);
-          startGameLoop();
+          if (awaitingResumeInput) {
+            releaseResumeGate();
+          } else {
+            setReady(false);
+            startGameLoop();
+          }
 
           // If direction key, also set direction
           const keyMap: Record<string, Direction> = {
@@ -1280,7 +1357,11 @@ export default function GamePage() {
       // Handle pause toggle
       if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && isPlaying && !isGameOver && !isDeathSequence && !isReady) {
         e.preventDefault();
-        gameRef.current?.togglePause();
+        if (isPaused) {
+          setAwaitingResumeInput((armed) => !armed);
+        } else if (!pauseRearming) {
+          gameRef.current?.pause();
+        }
         return;
       }
 
@@ -1312,20 +1393,27 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, startGameLoop, setReady, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, awaitingResumeInput, pauseRearming, releaseResumeGate, startGameLoop, setReady, syncAim]);
 
   // Handle direction from D-Pad
   const handleDPadDirection = useCallback((dir: Direction) => {
-    if (!isPlaying || isGameOver || isPaused || !gameRef.current) return;
+    if (!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || !gameRef.current) return;
+    if (awaitingResumeInput) releaseResumeGate();
     gameRef.current.setDirection(dir);
     syncAim();
-  }, [isPlaying, isGameOver, isPaused, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, awaitingResumeInput, releaseResumeGate, syncAim]);
 
-  // First flick while ready starts the run (FlickSurface calls this once)
-  const handleFlickReadyStart = useCallback(() => {
+  // The same deliberate input starts a fresh run or releases a post-choice /
+  // post-pause hold. FlickSurface invokes this synchronously before queuing
+  // the direction, so the engine accepts that very first steering command.
+  const handleInputReadyStart = useCallback(() => {
+    if (awaitingResumeInput) {
+      releaseResumeGate();
+      return;
+    }
     setReady(false);
     startGameLoop();
-  }, [setReady, startGameLoop]);
+  }, [awaitingResumeInput, releaseResumeGate, setReady, startGameLoop]);
 
   // Select an aim system - optimistic with rollback; the server re-checks
   // the unlock predicate (403 on a locked pick)
@@ -1354,11 +1442,16 @@ export default function GamePage() {
 
   // Handle pause/resume
   const handlePause = useCallback(() => {
+    if (awaitingResumeInput) {
+      setAwaitingResumeInput(false);
+      return;
+    }
+    if (pauseRearming) return;
     gameRef.current?.pause();
-  }, []);
+  }, [awaitingResumeInput, pauseRearming]);
 
   const handleResume = useCallback(() => {
-    gameRef.current?.resume();
+    setAwaitingResumeInput(true);
   }, []);
 
   const handleQuit = useCallback(() => {
@@ -1366,6 +1459,7 @@ export default function GamePage() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    setAwaitingResumeInput(false);
     resetGame();
   }, [resetGame]);
 
@@ -1377,6 +1471,7 @@ export default function GamePage() {
     setStreakInfo(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
+    setAwaitingResumeInput(false);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -1440,24 +1535,49 @@ export default function GamePage() {
           }}
         />
       )}
-      {/* HUD - small void chips, safe-area aware */}
+      {/* Responsive telemetry deck. Its measured height is reserved above
+          the canvas below, so even late-run build data cannot cover play. */}
       <div
-        className="absolute left-4 z-10 text-bone-white space-y-2"
+        ref={hudRef}
+        data-testid="game-hud"
+        className="pointer-events-none absolute inset-x-0 z-10 px-3 text-bone-white sm:px-4"
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       >
-        <h1 className="heading-display text-2xl text-venom-orange text-glow-orange">SupaSnake</h1>
+        <div className="mx-auto max-w-5xl space-y-1.5 pr-14 sm:pr-16">
+          <div className="flex h-6 items-center gap-2">
+            <h1 className="heading-display shrink-0 text-base tracking-[0.16em] text-venom-orange text-glow-orange sm:text-xl">
+              SupaSnake
+            </h1>
+            <div className="h-px flex-1 bg-gradient-to-r from-scale-blue-light/45 to-transparent" />
+            {isPlaying && (
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-beige/45">
+                Run telemetry
+              </span>
+            )}
+          </div>
 
-        {/* Stats */}
-        <div className="flex flex-wrap gap-2 items-start font-body">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
-            <span className="text-beige text-sm">Score:</span>
-            <span className="font-bold text-bone-white">{score}</span>
+          {/* Three equal telemetry cells never reflow as values change. */}
+          <div className="grid grid-cols-3 gap-1.5 font-body sm:max-w-xl">
+            <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
+              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Score</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{score}</span>
+            </div>
+            <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
+              <IconDna size={13} className="shrink-0 text-venom-orange" />
+              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">DNA</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{dnaCollected}</span>
+            </div>
+            <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
+              <IconBolt size={13} className="shrink-0 text-venom-orange" />
+              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Energy</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{energy}/{maxEnergy}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
-            <IconDna size={15} className="text-venom-orange" />
-            <span className="text-beige text-sm">DNA:</span>
-            <span className="font-bold text-venom-orange">{dnaCollected}</span>
-          </div>
+
+          {/* Stable one-line run ticker: the row exists from tick zero, so
+              earning the first food never moves or resizes the board. */}
+          {isPlaying && (
+            <div className="flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
           {/* Extraction bank preview: what this run pays banked vs crashed
               (mutation-aware: Mirror Wager / Compound Interest / Phoenix
               reshape the outcome multipliers live). Subtle by default;
@@ -1465,18 +1585,18 @@ export default function GamePage() {
           {isPlaying && dnaCollected > 0 && (
             <div
               data-testid="bank-chip"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border bg-void/70 backdrop-blur-sm text-sm font-body transition-colors ${
+              className={`flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border bg-void/80 backdrop-blur-md transition-colors ${
                 exitTile
                   ? 'border-[#7df9ff]/80 animate-pulse'
                   : 'border-scale-blue-light/50'
               }`}
             >
               <span className="text-[#7df9ff] font-bold">
-                BANK {previewOutcome(true, activeAnomalyId)}
+                <span className="hidden sm:inline">BANK </span>{previewOutcome(true, activeAnomalyId)}
               </span>
               <span className="text-beige/40">·</span>
               <span className="text-beige/60">
-                crash {previewOutcome(false, activeAnomalyId)}
+                <span className="hidden sm:inline">crash </span>{previewOutcome(false, activeAnomalyId)}
               </span>
             </div>
           )}
@@ -1484,7 +1604,7 @@ export default function GamePage() {
           {isPlaying && chainLength >= 2 && (
             <div
               data-testid="combo-chip"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-[#f0abfc]/60 bg-void/70 backdrop-blur-sm text-sm font-body"
+              className="flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border border-[#f0abfc]/60 bg-void/80 backdrop-blur-md"
             >
               <span className="text-[#f0abfc] font-bold">
                 ×{comboMultiplier.toFixed(1)}
@@ -1492,19 +1612,12 @@ export default function GamePage() {
               <span className="text-beige/60">chain {chainLength}</span>
             </div>
           )}
-          <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm">
-            <EnergyTimer
-              energy={energy}
-              maxEnergy={maxEnergy}
-              energyRegenAt={energyRegenAt}
-            />
-          </div>
           {/* Anomaly run chip - the week's modifier, always visible while
               playing the board (§7.2) */}
           {isPlaying && anomalyRun && (
             <div
               data-testid="anomaly-run-chip"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-arcade border border-[#7df9ff]/60 bg-void/70 backdrop-blur-sm text-sm font-body tracking-widest uppercase"
+              className="flex h-7 min-w-0 shrink items-center gap-1 px-2 rounded-arcade border border-[#7df9ff]/60 bg-void/80 backdrop-blur-md tracking-wider uppercase"
             >
               <span className="text-[#7df9ff] font-bold">Anomaly</span>
               <span className="text-beige/70">{anomalyRun.name}</span>
@@ -1515,22 +1628,30 @@ export default function GamePage() {
           {isPlaying && lastRunFree && (
             <div
               data-testid="free-play-watermark"
-              className="flex items-center px-3 py-1.5 rounded-arcade border border-dashed border-beige/40 bg-void/50 backdrop-blur-sm text-beige/70 text-sm font-body tracking-widest uppercase"
+              className="flex h-7 shrink-0 items-center px-2 rounded-arcade border border-dashed border-beige/40 bg-void/60 backdrop-blur-md text-beige/70 tracking-wider uppercase"
             >
               Free Play
             </div>
           )}
-        </div>
+            </div>
+          )}
 
         {/* Held mutations strip - the run's build at a glance */}
         {isPlaying && (
-          <MutationHUD
-            held={heldMutations}
-            phoenixTriggered={phoenixTriggered}
-            splicesEnabled={
-              genomeRun && genomeFtue?.splicesUnlocked === true
-            }
-          />
+          <div className="flex h-7 items-center gap-2 overflow-hidden">
+            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-beige/45">Build</span>
+            {heldMutations.length > 0 ? (
+              <MutationHUD
+                held={heldMutations}
+                phoenixTriggered={phoenixTriggered}
+                splicesEnabled={
+                  genomeRun && genomeFtue?.splicesUnlocked === true
+                }
+              />
+            ) : (
+              <span className="font-mono text-[9px] uppercase tracking-wider text-beige/30">No genes acquired</span>
+            )}
+          </div>
         )}
         {isPlaying && genomeRun && genomeFtue?.strainTagsUnlocked && (
           <StrainMeterHUD
@@ -1549,6 +1670,7 @@ export default function GamePage() {
             <span className="text-beige/70">Gen {equippedSnake.generation}</span>
           </div>
         )}
+        </div>
       </div>
 
       {/* Navigation (when not playing) - z-30 so it stays clickable above
@@ -1587,12 +1709,18 @@ export default function GamePage() {
       )}
 
       {/* Pause Button (in-game) - hidden during the mutation choice hold */}
-      {isPlaying && !isGameOver && !isPaused && !choiceActive && (
+      {isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <button
           onClick={handlePause}
-          className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-bone-white"
+          disabled={pauseRearming && !awaitingResumeInput}
+          className={`absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border bg-void/80 backdrop-blur-md transition-all text-bone-white ${
+            pauseRearming && !awaitingResumeInput
+              ? 'cursor-not-allowed border-scale-blue-light/30 opacity-45'
+              : 'border-scale-blue-light/60 hover:border-venom-orange/70'
+          }`}
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
-          aria-label="Pause game"
+          aria-label={awaitingResumeInput ? 'Return to pause menu' : 'Pause game'}
+          title={pauseRearming ? 'Pause rearming' : undefined}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="4" width="4" height="16" />
@@ -1602,7 +1730,7 @@ export default function GamePage() {
       )}
 
       {/* Controls Info (desktop) */}
-      {!isMobile && (
+      {!isMobile && !isPlaying && (
         <div className="absolute bottom-4 left-4 z-10 text-beige/60 text-sm font-body space-y-0.5">
           <p>Controls: Arrow Keys or WASD</p>
           <p>Pause: ESC or P</p>
@@ -1614,7 +1742,9 @@ export default function GamePage() {
       <button
         onClick={() => setViewResetToken((t) => t + 1)}
         className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+        style={isPlaying
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 62px)' }
+          : { bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
         title="Reset view"
         aria-label="Reset view"
       >
@@ -1625,12 +1755,12 @@ export default function GamePage() {
           between the canvas and the HUD (z-10+), so HUD buttons stay live.
           Camera touch-orbit is intentionally ceded to flick input while
           playing - the reset-view button remains available. */}
-      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && !isPaused && !choiceActive && (
+      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <FlickSurface
           gameRef={gameRef}
           getAzimuth={getCameraAzimuth}
-          isReady={isReady}
-          onReadyStart={handleFlickReadyStart}
+          isReady={isReady || awaitingResumeInput}
+          onReadyStart={handleInputReadyStart}
           onAim={syncAim}
           debugRef={inputDebugRef}
         />
@@ -1639,14 +1769,14 @@ export default function GamePage() {
       {/* Virtual D-Pad (mobile fallback via control-mode toggle). bottom
           offset includes the safe-area inset so the DOWN button clears home
           indicators / browser chrome. */}
-      {isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && !isPaused && !choiceActive && (
+      {isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <div
           className="absolute left-1/2 -translate-x-1/2 z-10"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         >
           <VirtualDPad
             onDirectionChange={handleDPadDirection}
-            disabled={!isPlaying || isGameOver || isPaused || choiceActive}
+            disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || choiceActive}
             isReady={isReady}
             setReady={setReady}
             onStartGame={startGameLoop}
@@ -1658,7 +1788,7 @@ export default function GamePage() {
       {inputDebugEnabled && <InputDebugOverlay debugRef={inputDebugRef} />}
 
       {/* Pause Menu */}
-      {isPaused && isPlaying && !isGameOver && (
+      {isPaused && !awaitingResumeInput && isPlaying && !isGameOver && (
         <PauseMenu
           dynasty={selectedDynasty}
           score={score}
@@ -2259,23 +2389,30 @@ export default function GamePage() {
       />
 
       {/* Ready State Overlay */}
-      {isReady && (
+      {(isReady || awaitingResumeInput) && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="text-center space-y-4 animate-fade-up">
-            <h2 className="heading-display text-5xl text-venom-orange text-glow-orange animate-breathe">Ready!</h2>
+          <div className="mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-6 py-5 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-3 animate-fade-up">
+            <h2 className="heading-display text-3xl text-venom-orange text-glow-orange animate-breathe sm:text-5xl">
+              {awaitingResumeInput ? 'Choose Your Line' : 'Ready!'}
+            </h2>
+            {awaitingResumeInput && (
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#7df9ff]">
+                Board held · movement begins on your input
+              </p>
+            )}
             {isMobile && controlMode === 'flick' ? (
               <>
-                <p className="text-bone-white text-lg font-body">Flick anywhere to start</p>
+                <p className="text-bone-white text-lg font-body">Flick a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
                 <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
               </>
             ) : isMobile ? (
               <>
-                <p className="text-bone-white text-lg font-body">Tap a direction to start</p>
+                <p className="text-bone-white text-lg font-body">Tap a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
                 <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
               </>
             ) : (
               <>
-                <p className="text-bone-white text-lg font-body">Press SPACE or Arrow Key to Start</p>
+                <p className="text-bone-white text-lg font-body">Press SPACE or a direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
                 <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
               </>
             )}
@@ -2285,6 +2422,15 @@ export default function GamePage() {
 
       {/* 3D Canvas - initial position approximates CameraRig's default
           south-side 70-degree view to avoid a first-frame jump */}
+      <div
+        className="absolute inset-x-0 bottom-0 transition-[top] duration-200 ease-out"
+        style={{
+          top: isPlaying
+            ? `calc(env(safe-area-inset-top, 0px) + ${hudHeight + 24}px)`
+            : 0,
+        }}
+        data-testid="game-board-viewport"
+      >
       <Canvas
         camera={{
           position: [boardCenter, boardCenter * 2.4, boardCenter * 1.9],
@@ -2379,6 +2525,7 @@ export default function GamePage() {
           </EffectComposer>
         )}
       </Canvas>
+      </div>
     </div>
   );
 }

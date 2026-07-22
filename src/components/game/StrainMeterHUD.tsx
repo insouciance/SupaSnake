@@ -29,7 +29,7 @@ export function StrainMeterHUD({
 }: StrainMeterHUDProps) {
   return (
     <div
-      className="flex flex-wrap gap-1.5 rounded-arcade border border-scale-blue-light/40 bg-void/70 p-2 backdrop-blur-sm"
+      className="grid grid-cols-5 gap-1 rounded-arcade border border-scale-blue-light/40 bg-void/80 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-md"
       data-testid="strain-meter"
       aria-label="Genome strain meter"
     >
@@ -43,7 +43,7 @@ export function StrainMeterHUD({
             key={strain}
             data-testid={`strain-meter-${strain}`}
             title={`${def.identity} — ${isSuppressed ? 'suppressed above Minor' : activeTierName(strain, tier)}`}
-            className={`min-w-[64px] rounded-arcade border px-2 py-1 ${
+            className={`min-w-0 rounded-arcade border px-1.5 py-1 ${
               isSuppressed ? 'border-dashed opacity-70' : ''
             }`}
             style={{
@@ -52,16 +52,16 @@ export function StrainMeterHUD({
             }}
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[9px] font-mono font-bold uppercase" style={{ color: def.color }}>
+              <span className="truncate text-[8px] font-mono font-bold uppercase sm:text-[9px]" style={{ color: def.color }}>
                 {def.name}
               </span>
               {isSuppressed && <span className="text-[8px] text-strike-red">CAP</span>}
             </div>
-            <div className="mt-1 flex gap-0.5" aria-label={`${points} strain points`}>
+            <div className="mt-1 flex gap-px sm:gap-0.5" aria-label={`${points} strain points`}>
               {[1, 2, 3, 4].map((pip) => (
                 <span
                   key={pip}
-                  className="h-1.5 w-2.5 rounded-full border"
+                  className="h-1.5 min-w-0 flex-1 rounded-full border sm:w-2.5 sm:flex-none"
                   style={{
                     borderColor: `${def.color}88`,
                     backgroundColor: pip <= points ? def.color : 'transparent',

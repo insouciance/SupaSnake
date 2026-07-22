@@ -74,8 +74,8 @@ test.describe('Equipped-snake game flow', () => {
     ).toBeVisible();
 
     // HUD shows score and DNA counters before the run starts
-    await expect(page.getByText(/score:/i)).toBeVisible();
-    await expect(page.getByText(/dna:/i).first()).toBeVisible();
+    await expect(page.getByText(/^score$/i)).toBeVisible();
+    await expect(page.getByText(/^dna$/i).first()).toBeVisible();
 
     // Design v2: the equipped dynasty's ruleset identity line + the
     // extraction banking hint are on the pre-game screen
@@ -123,6 +123,20 @@ test.describe('Equipped-snake game flow', () => {
       await expect(
         page.getByRole('heading', { name: /^ready!$/i })
       ).toBeVisible();
+
+      // The responsive HUD owns layout space above the WebGL viewport; it
+      // must never sit on top of the playable board at either breakpoint.
+      const expectHudClearOfBoard = async () => {
+        const hud = await page.getByTestId('game-hud').boundingBox();
+        const board = await page.getByTestId('game-board-viewport').boundingBox();
+        expect(hud).not.toBeNull();
+        expect(board).not.toBeNull();
+        expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height);
+      };
+      await expectHudClearOfBoard();
+      await page.setViewportSize({ width: 375, height: 667 });
+      await page.waitForTimeout(300);
+      await expectHudClearOfBoard();
     }
   });
 });

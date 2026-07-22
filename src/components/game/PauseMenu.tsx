@@ -103,7 +103,7 @@ export function PauseMenu({
             onClick={onResume}
             className="btn-go w-full py-4 px-6 text-lg min-h-[44px]"
           >
-            Resume
+            Plan Next Move
           </button>
 
           <button
@@ -115,10 +115,13 @@ export function PauseMenu({
         </div>
 
         {/* Controls hint */}
-        <p className="text-center text-beige/60 font-body text-sm mt-6">
-          Press <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">ESC</kbd> or{' '}
-          <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">P</kbd> to resume
-        </p>
+        <div className="mt-6 space-y-2 text-center font-body text-sm text-beige/60">
+          <p>Your next direction releases the board. Nothing moves before then.</p>
+          <p>
+            <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">ESC</kbd> or{' '}
+            <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">P</kbd> arms your next move
+          </p>
+        </div>
       </div>
     </div>
   );

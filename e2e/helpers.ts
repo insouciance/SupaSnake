@@ -64,9 +64,9 @@ export async function signInAsGuest(page: Page): Promise<void> {
   await page.getByRole('button', { name: /play as guest/i }).click();
   await page.waitForURL(/\/game/, { timeout: 20000 });
 
-  // Authenticated /game always renders the HUD ("Score:"); a failed
+  // Authenticated /game always renders the HUD ("Score"); a failed
   // anonymous sign-in lands on the sign-in prompt instead.
-  const authedMarker = page.getByText(/score:/i);
+  const authedMarker = page.getByText(/^score$/i);
   const signInPrompt = page.getByText(/sign in to play and save/i);
   await authedMarker
     .or(signInPrompt)
