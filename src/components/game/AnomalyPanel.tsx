@@ -10,6 +10,8 @@
 
 import { useEffect, useState } from 'react';
 import { IconTrophy } from '@/components/ui/icons';
+import { StrainChip } from '@/components/traits/StrainChip';
+import type { StrainId } from '@/shared/game/strains';
 
 export interface AnomalyBoardView {
   live: boolean;
@@ -17,6 +19,7 @@ export interface AnomalyBoardView {
     id: string;
     name: string;
     effect: string;
+    strainBias: StrainId;
     endsAt: string;
   };
   top: Array<{ rank: number; name: string; score: number }>;
@@ -63,6 +66,10 @@ export function AnomalyPanel({ board }: AnomalyPanelProps) {
             {board.anomaly.name}
           </p>
           <p className="text-beige/70 text-xs font-body">{board.anomaly.effect}</p>
+          <div className="mt-2 flex items-center gap-2" data-testid="anomaly-strain-bias">
+            <StrainChip strain={board.anomaly.strainBias} />
+            <span className="text-beige/50 text-[11px] font-body">+100 offer gravity this week</span>
+          </div>
         </div>
         <span
           className="shrink-0 px-2 py-1 rounded-arcade border border-scale-blue-light/50 text-beige/70 text-xs font-body"

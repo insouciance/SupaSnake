@@ -4,9 +4,9 @@
  * Pure client-side mirrors of the breed_snakes RPC math so the UI can show
  * cost and offspring generation before the server call. The server remains
  * authoritative: the RPC recomputes and validates everything atomically
- * (ownership, same dynasty, DNA cost, generation cap).
+ * (ownership, the configured dynasty gate, DNA cost, generation cap).
  *
- * RPC formulas (supabase/migrations/009_dynasty_unification.sql):
+ * RPC formulas (supabase/migrations/030_genome_lineage.sql):
  *   cost = 200 + floor((gen1 + gen2) / 2) * 100
  *   offspring generation = max(gen1, gen2) + 1, capped at 50
  *   offspring variant = 50/50 roll between the two parent variants
@@ -76,7 +76,8 @@ export interface BreedingValidation {
 export function validateBreedingPair(
   parent1: BreedingParentInfo | null,
   parent2: BreedingParentInfo | null,
-  dnaBalance: number
+  dnaBalance: number,
+  allowCrossDynasty = false
 ): BreedingValidation {
   if (!parent1 || !parent2) {
     return { valid: false, reason: 'missing_parent', cost: null, offspringGeneration: null };
@@ -95,7 +96,7 @@ export function validateBreedingPair(
   if (
     !parent1.dynastyId ||
     !parent2.dynastyId ||
-    parent1.dynastyId !== parent2.dynastyId
+    (!allowCrossDynasty && parent1.dynastyId !== parent2.dynastyId)
   ) {
     return { valid: false, reason: 'different_dynasty', cost, offspringGeneration };
   }

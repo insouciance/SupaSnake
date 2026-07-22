@@ -86,6 +86,28 @@ describe('equivalence with the legacy authority', () => {
 });
 
 describe('genome-shaped runs', () => {
+  it('keeps splice recipes loose until the server FTUE gate unlocks them', () => {
+    const picks: GenePick[] = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'compound_interest', atFood: 30 },
+    ];
+    const locked = computeGenomeRunTotals(
+      'PRIMAL',
+      60,
+      genome({ picks, splicesEnabled: false })
+    );
+    const unlocked = computeGenomeRunTotals(
+      'PRIMAL',
+      60,
+      genome({ picks, splicesEnabled: true })
+    );
+    // Dragon Hoard adds +5 flat to golden foods after fusion; loose parent
+    // genes do not. Both paths retain the same two AURUM strain points.
+    expect(unlocked.rawDna).toBeGreaterThan(locked.rawDna);
+    expect(locked.activations.AURUM.points).toBe(2);
+    expect(unlocked.activations.AURUM.points).toBe(2);
+  });
+
   it('AURUM minor (Gilt) pays +5% on foods after activation', () => {
     const picks: GenePick[] = [
       { id: 'grave_robber', atFood: 5 }, // UMBRA (neutral without prev death)

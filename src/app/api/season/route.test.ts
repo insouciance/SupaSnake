@@ -75,7 +75,13 @@ describe('GET /api/season', () => {
     authedUser();
     mockRpc.mockResolvedValue({
       data: {
-        season: { seq: 1, name: 'Season 1 — Solstice', week: 3, playoff_phase: 'none' },
+        season: {
+          seq: 1,
+          name: 'Season 1 — Solstice',
+          week: 3,
+          playoff_phase: 'none',
+          mutations: [{ id: 'solstice_engine', name: 'Solstice Engine' }],
+        },
         track: { xp: 1200, level: 4, max_level: 30, xp_per_level: 400, tiers: [], reroll_tokens: 2 },
         playoffs: [],
         champions: [{ seq: 1, clan_name: 'VIPERS' }],
@@ -88,6 +94,8 @@ describe('GET /api/season', () => {
     const body = await response.json();
     expect(body.live).toBe(true);
     expect(body.season.seq).toBe(1);
+    expect(body.season.genes).toEqual([{ id: 'solstice_engine', name: 'Solstice Engine' }]);
+    expect(body.season.mutations).toEqual([{ id: 'solstice_engine', name: 'Solstice Engine' }]);
     expect(body.track.level).toBe(4);
     expect(body.champions).toHaveLength(1);
     expect(mockRpc).toHaveBeenCalledWith('get_season', { p_player_id: PLAYER_ID });

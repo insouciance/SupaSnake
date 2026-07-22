@@ -169,6 +169,8 @@ describe('unlock track (doc table M1-M10)', () => {
     expect(masteryUnlockLabel('CYBER', 9)).toBe('Overclock Harvest');
     expect(masteryUnlockLabel('COSMIC', 6)).toBe('Gravity Well');
     expect(masteryUnlockLabel('PRIMAL', 1)).toBe('Dynasty Emblem I');
-    expect(masteryUnlockLabel('PRIMAL', 10)).toBe('Sovereign Emblem + Title');
+    expect(masteryUnlockLabel('PRIMAL', 10)).toBe(
+      'Heartwood + Sovereign Emblem + Title'
+    );
   });
 });

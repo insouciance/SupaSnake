@@ -27,7 +27,7 @@ jest.mock('@supabase/supabase-js', () => ({
 
 import { describe, it, expect } from '@jest/globals';
 import { NextRequest } from 'next/server';
-import { GET } from './route';
+import { GET, POST } from './route';
 import { mapBreedingHistoryRow } from './utils';
 
 /** Mirrors the breed_snakes RPC cost formula (integer division) */
@@ -204,6 +204,7 @@ describe('mapBreedingHistoryRow', () => {
       parent1: { id: 'snake-1', generation: 1, variantName: 'CYBER SPARK', rarity: 'common' },
       parent2: { id: 'snake-2', generation: 2, variantName: 'CYBER PULSE', rarity: 'uncommon' },
       child: { id: 'snake-3', generation: 3, variantName: 'CYBER SPARK', rarity: 'common' },
+      lineage: null,
     });
   });
 
@@ -240,6 +241,29 @@ describe('mapBreedingHistoryRow', () => {
       rarity: null,
     });
     expect(result.child).toBeNull();
+    expect(result.lineage).toBeNull();
+  });
+
+  it('sanitizes the audited child lineage from trait_rolls', () => {
+    const result = mapBreedingHistoryRow({
+      id: 'history-lineage',
+      dna_cost: 300,
+      bred_at: '2026-07-02T10:00:00Z',
+      trait_rolls: {
+        lineage: {
+          child: {
+            strains: ['VOLT', 'FERAL', 'NOPE'],
+            strength: 8,
+            primary: 'FERAL',
+          },
+        },
+      },
+    });
+    expect(result.lineage).toEqual({
+      strains: ['VOLT', 'FERAL'],
+      strength: 2,
+      primary: 'FERAL',
+    });
   });
 });
 
@@ -393,5 +417,85 @@ describe('GET /api/breeding', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(500);
+  });
+});
+
+// =============================================================================
+// POST /api/breeding rolling migration compatibility
+// =============================================================================
+
+describe('POST /api/breeding', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth = jest.fn().mockResolvedValue({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+    mockFrom = jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({
+        data: { id: 'player-123', dna: 1_000 },
+        error: null,
+      }),
+    });
+    mockRpc = jest.fn();
+  });
+
+  it('retries migration 018 RPC arguments on a migration 030 signature miss', async () => {
+    mockRpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: 'PGRST202',
+          message: 'Could not find breed_snakes with p_allow_cross_dynasty',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0001', message: 'Parents must be same dynasty' },
+      });
+
+    const response = await POST(new NextRequest('http://localhost:3000/api/breeding', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer valid-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ parent1_id: 'snake-1', parent2_id: 'snake-2' }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    expect(mockRpc).toHaveBeenNthCalledWith(1, 'breed_snakes', {
+      p_player_id: 'player-123',
+      p_parent1_id: 'snake-1',
+      p_parent2_id: 'snake-2',
+      p_allow_cross_dynasty: true,
+    });
+    expect(mockRpc).toHaveBeenNthCalledWith(2, 'breed_snakes', {
+      p_player_id: 'player-123',
+      p_parent1_id: 'snake-1',
+      p_parent2_id: 'snake-2',
+    });
+  });
+
+  it('does not retry a genuine breeding rejection', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'Insufficient DNA: need 300, have 100' },
+    });
+
+    const response = await POST(new NextRequest('http://localhost:3000/api/breeding', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer valid-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ parent1_id: 'snake-1', parent2_id: 'snake-2' }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 });

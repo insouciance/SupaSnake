@@ -28,9 +28,11 @@ import {
   TITHE_WEEKLY_CAP,
   type GauntletModifierId,
   type ResearchNode,
+  gauntletBanName,
 } from '@/shared/game/gauntlet';
-import { MUTATIONS, type MutationId } from '@/shared/game/mutations';
-import { modifierName, mutationName } from './DuelPanel';
+import { GENES, type GeneId } from '@/shared/game/genes';
+import { STRAINS, STRAIN_IDS } from '@/shared/game/strains';
+import { modifierName } from './DuelPanel';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { identityFromEmbedded, type EmbeddedIdentity } from '@/lib/identity/types';
 
@@ -132,6 +134,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
   const [dynasty, setDynasty] = useState<string>('');
   const [modifier, setModifier] = useState<string>('');
   const [ban, setBan] = useState<string>('');
+  const [banKind, setBanKind] = useState<'gene' | 'strain'>('gene');
 
   // Tithe form state
   const [titheAmount, setTitheAmount] = useState<string>('');
@@ -310,7 +313,29 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
               </div>
 
               <div>
-                <p className="label-arcade mb-2">Mutation ban (removed from their offer pools)</p>
+                <p className="label-arcade mb-2">Genome ban</p>
+                <div className="flex gap-2 mb-2" role="tablist" aria-label="Genome ban type">
+                  {(['gene', 'strain'] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      role="tab"
+                      aria-selected={banKind === kind}
+                      data-testid={`ban-tab-${kind}`}
+                      onClick={() => {
+                        setBanKind(kind);
+                        setBan('');
+                      }}
+                      className={`px-3 py-1.5 rounded-arcade border text-xs font-display uppercase ${
+                        banKind === kind
+                          ? 'border-cosmic text-cosmic bg-cosmic/15'
+                          : 'border-scale-blue-light/50 text-beige'
+                      }`}
+                    >
+                      Ban a {kind}
+                    </button>
+                  ))}
+                </div>
                 <select
                   value={ban}
                   onChange={(e) => setBan(e.target.value)}
@@ -318,12 +343,21 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                   className="w-full px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-body focus:border-venom-orange focus:outline-none"
                 >
                   <option value="">No ban</option>
-                  {(Object.keys(MUTATIONS) as MutationId[]).map((id) => (
-                    <option key={id} value={id}>
-                      {MUTATIONS[id].name}
-                    </option>
-                  ))}
+                  {banKind === 'gene'
+                    ? (Object.keys(GENES) as GeneId[]).map((id) => (
+                        <option key={id} value={`gene:${id}`}>
+                          {GENES[id].name}
+                        </option>
+                      ))
+                    : STRAIN_IDS.map((id) => (
+                        <option key={id} value={`strain:${id}`}>
+                          {STRAINS[id].name} — suppress Expressions/Apexes
+                        </option>
+                      ))}
                 </select>
+                <p className="text-xs text-beige/50 mt-1">
+                  Gene bans remove one offer; strain bans leave genes available but cap that strain at its Minor.
+                </p>
               </div>
 
               <button
@@ -357,7 +391,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                   <span className="text-bone-white font-display"> + {gauntlet.myPicks.dynasty2}</span>
                 )}
                 {gauntlet.myPicks.modifier && <> &middot; {modifierName(gauntlet.myPicks.modifier)}</>}
-                {gauntlet.myPicks.ban && <> &middot; ban: {mutationName(gauntlet.myPicks.ban)}</>}
+                {gauntlet.myPicks.ban && <> &middot; ban: {gauntletBanName(gauntlet.myPicks.ban)}</>}
               </p>
             </div>
           )}
@@ -372,7 +406,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                   <span className="text-bone-white font-display"> + {gauntlet.theirPicks.dynasty2}</span>
                 )}
                 {gauntlet.theirPicks.modifier && <> &middot; {modifierName(gauntlet.theirPicks.modifier)}</>}
-                {gauntlet.theirPicks.ban && <> &middot; banned vs us: {mutationName(gauntlet.theirPicks.ban)}</>}
+                {gauntlet.theirPicks.ban && <> &middot; banned vs us: {gauntletBanName(gauntlet.theirPicks.ban)}</>}
               </p>
             </div>
           )}

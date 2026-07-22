@@ -149,6 +149,76 @@ describe('gene pick validation', () => {
     expect(result.genome!.picks.length).toBe(4);
   });
 
+  it('accepts seven raw picks when one splice keeps them within six slots', () => {
+    const picks = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'compound_interest', atFood: 30 }, // Dragon Hoard: one slot
+      { id: 'overgrowth', atFood: 45 },
+      { id: 'wall_rush', atFood: 60 },
+      { id: 'mirror_wager', atFood: 75 },
+      { id: 'slipstream', atFood: 90 },
+      { id: 'serpentine', atFood: 105 },
+    ] as GenomeRunInput['picks'];
+    const totals = computeGenomeRunTotals('PRIMAL', 120, genomeOf({ picks }));
+    const result = validateGameResult(
+      baseInput({
+        food_count: 120,
+        duration_seconds: 200,
+        score: totals.score,
+        dna_earned: totals.rawDna,
+        mutations: picks,
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx()
+    );
+    expect(result.valid).toBe(true);
+    expect(result.genome!.picks).toHaveLength(7);
+    expect(result.genome!.splices).toEqual([
+      { id: 'splice_dragon_hoard', atFood: 30 },
+    ]);
+  });
+
+  it('enforces six raw slots while the splice FTUE gate is locked', () => {
+    const rawPicks = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'compound_interest', atFood: 30 },
+      { id: 'overgrowth', atFood: 45 },
+      { id: 'wall_rush', atFood: 60 },
+      { id: 'mirror_wager', atFood: 75 },
+      { id: 'slipstream', atFood: 90 },
+      { id: 'serpentine', atFood: 105 },
+    ] as GenomeRunInput['picks'];
+    const accepted = rawPicks.slice(0, 6);
+    const totals = computeGenomeRunTotals(
+      'PRIMAL',
+      120,
+      genomeOf({ picks: accepted, splicesEnabled: false })
+    );
+    const result = validateGameResult(
+      baseInput({
+        food_count: 120,
+        duration_seconds: 200,
+        score: totals.score,
+        dna_earned: totals.rawDna,
+        mutations: rawPicks,
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx({ splicesUnlocked: false })
+    );
+    expect(result.valid).toBe(false);
+    expect(result.genome!.picks).toEqual(accepted);
+    expect(result.genome!.splices).toEqual([]);
+    expect(result.errors.join(' ')).toMatch(/would occupy 7 slots/);
+  });
+
   it('derives splices server-side from raw parent picks', () => {
     const result = validateGameResult(
       baseInput({
@@ -212,6 +282,160 @@ describe('infuse validation + outcome', () => {
     expect(result.valid).toBe(false);
     expect(result.genome!.infuses.length).toBe(0);
     expect(result.errors.join(' ')).toMatch(/INFUSE_BOUND/);
+  });
+
+  it('accepts one surge only when an infuse occurs at six occupied slots', () => {
+    const picks = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'overgrowth', atFood: 30 },
+      { id: 'wall_rush', atFood: 45 },
+      { id: 'slipstream', atFood: 60 },
+      { id: 'serpentine', atFood: 75 },
+      { id: 'bulk_up', atFood: 90 },
+    ] as GenomeRunInput['picks'];
+    const genome = genomeOf({
+      picks,
+      infuses: [{ atFood: 95 }],
+      surges: [{ strain: 'AURUM', atFood: 95 }],
+    });
+    const totals = computeGenomeRunTotals('PRIMAL', 100, genome);
+    const result = validateGameResult(
+      baseInput({
+        food_count: 100,
+        duration_seconds: 180,
+        score: totals.score,
+        dna_earned: totals.rawDna,
+        mutations: picks,
+        genome: {
+          infuses: genome.infuses,
+          surges: genome.surges,
+        },
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx()
+    );
+    expect(result.valid).toBe(true);
+    expect(result.genome!.surges).toEqual([
+      { strain: 'AURUM', atFood: 95 },
+    ]);
+  });
+
+  it('drops surges without a full build or a held strain', () => {
+    const picks = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'overgrowth', atFood: 30 },
+      { id: 'wall_rush', atFood: 45 },
+      { id: 'slipstream', atFood: 60 },
+      { id: 'serpentine', atFood: 75 },
+      { id: 'bulk_up', atFood: 90 },
+    ];
+    const result = validateGameResult(
+      baseInput({
+        food_count: 100,
+        duration_seconds: 180,
+        mutations: picks,
+        genome: {
+          infuses: [{ atFood: 20 }, { atFood: 95 }],
+          surges: [
+            { strain: 'AURUM', atFood: 20 }, // build is not full yet
+            { strain: 'UMBRA', atFood: 95 }, // no held UMBRA gene
+            { strain: 'AURUM', atFood: 95 },
+          ],
+        },
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.genome!.surges).toEqual([
+      { strain: 'AURUM', atFood: 95 },
+    ]);
+    expect(result.errors.join(' ')).toMatch(/without 6 occupied gene slots/);
+    expect(result.errors.join(' ')).toMatch(/UMBRA is not represented/);
+  });
+
+  it('allows at most one surge per infuse', () => {
+    const picks = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'overgrowth', atFood: 30 },
+      { id: 'wall_rush', atFood: 45 },
+      { id: 'slipstream', atFood: 60 },
+      { id: 'serpentine', atFood: 75 },
+      { id: 'bulk_up', atFood: 90 },
+    ];
+    const result = validateGameResult(
+      baseInput({
+        food_count: 100,
+        duration_seconds: 180,
+        mutations: picks,
+        genome: {
+          infuses: [{ atFood: 95 }],
+          surges: [
+            { strain: 'AURUM', atFood: 95 },
+            { strain: 'FERAL', atFood: 95 },
+          ],
+        },
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.genome!.surges).toEqual([
+      { strain: 'AURUM', atFood: 95 },
+    ]);
+    expect(result.errors.join(' ')).toMatch(/multiple surges/);
+  });
+
+  it('does not let one infuse fund both a seventh raw pick and a surge', () => {
+    const picks = [
+      { id: 'gold_trail', atFood: 15 },
+      { id: 'compound_interest', atFood: 30 }, // splice frees one slot
+      { id: 'overgrowth', atFood: 45 },
+      { id: 'wall_rush', atFood: 60 },
+      { id: 'slipstream', atFood: 75 },
+      { id: 'serpentine', atFood: 90 },
+      { id: 'bulk_up', atFood: 95 }, // needs the infuse offer
+    ] as GenomeRunInput['picks'];
+    const acceptedGenome = genomeOf({
+      picks,
+      infuses: [{ atFood: 95 }],
+    });
+    const totals = computeGenomeRunTotals('PRIMAL', 100, acceptedGenome);
+    const result = validateGameResult(
+      baseInput({
+        food_count: 100,
+        duration_seconds: 180,
+        score: totals.score,
+        dna_earned: totals.rawDna,
+        mutations: picks,
+        genome: {
+          infuses: acceptedGenome.infuses,
+          surges: [{ strain: 'AURUM', atFood: 95 }],
+        },
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.genome!.picks).toHaveLength(7);
+    expect(result.genome!.surges).toEqual([]);
+    expect(result.errors.join(' ')).toMatch(/infuse-sourced gene picks/);
   });
 });
 

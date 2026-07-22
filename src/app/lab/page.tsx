@@ -17,6 +17,9 @@ import { useCollection } from '@/hooks/useCollection';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
+import { useToast } from '@/components/ui/Toast';
+import { sanitizeLineage } from '@/shared/game/lineage';
+import type { StrainId } from '@/shared/game/strains';
 
 import { Navigation } from '@/components/ui/Navigation';
 import { IconEgg } from '@/components/ui/icons';
@@ -37,7 +40,25 @@ import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 export default function LabPage() {
   const router = useRouter();
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
+  const { showToast } = useToast();
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const [codexUnlocked, setCodexUnlocked] = useState(false);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    let cancelled = false;
+    fetch('/api/player', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) {
+          setCodexUnlocked(data?.genomeFtue?.splicesUnlocked === true);
+        }
+      })
+      .catch((err) => console.error('Failed to fetch Genome FTUE:', err));
+    return () => { cancelled = true; };
+  }, [session?.access_token]);
 
   // Per-dynasty mastery (Design v2 §7.1) - server-read; pre-migration-019
   // every dynasty reads level 0. Non-fatal: on error the panel just hides.
@@ -103,6 +124,9 @@ export default function LabPage() {
   const isUnlocking = useCollectionStore((state) => state.isUnlocking);
   const isEquipping = useCollectionStore((state) => state.isEquipping);
   const unlockError = useCollectionStore((state) => state.unlockError);
+  const updateOwnedSnake = useCollectionStore((state) => state.updateOwnedSnake);
+  const setDnaBalance = useCollectionStore((state) => state.setDnaBalance);
+  const [isUpdatingLineage, setIsUpdatingLineage] = useState(false);
 
   // Get energy from game store
   const energy = useGameStore((state) => state.energy);
@@ -183,6 +207,55 @@ export default function LabPage() {
     router.push('/lab/breed');
   }, [router]);
 
+  const updateLineage = useCallback(
+    async (action: 'reroll' | 'select_primary', primary?: StrainId) => {
+      if (!selectedOwned || !session?.access_token || isUpdatingLineage) return;
+      setIsUpdatingLineage(true);
+      try {
+        const response = await fetch('/api/breeding/lineage', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            action,
+            snake_id: selectedOwned.id,
+            ...(primary ? { primary } : {}),
+          }),
+        });
+        const data = await response.json();
+        const lineage = sanitizeLineage(data.lineage);
+        if (!response.ok || !data.success || !lineage) {
+          throw new Error(data.error ?? 'Lineage update failed');
+        }
+        updateOwnedSnake(selectedOwned.id, { lineage });
+        if (typeof data.remainingDna === 'number') {
+          setDnaBalance(data.remainingDna);
+        }
+        showToast(
+          action === 'reroll' ? 'Lineage strain rerolled' : `${primary} selected`,
+          'success'
+        );
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : 'Lineage update failed',
+          'error'
+        );
+      } finally {
+        setIsUpdatingLineage(false);
+      }
+    },
+    [
+      selectedOwned,
+      session?.access_token,
+      isUpdatingLineage,
+      updateOwnedSnake,
+      setDnaBalance,
+      showToast,
+    ]
+  );
+
   // ---------------------------------------------------------------------------
   // LOADING STATE
   // ---------------------------------------------------------------------------
@@ -260,7 +333,12 @@ export default function LabPage() {
 
       {/* Header with energy and DNA */}
       <div className="pt-4 animate-fade-up">
-        <LabHeader energy={energy} maxEnergy={maxEnergy} dna={dnaBalance} />
+        <LabHeader
+          energy={energy}
+          maxEnergy={maxEnergy}
+          dna={dnaBalance}
+          codexUnlocked={codexUnlocked}
+        />
       </div>
 
       {/* Dynasty tabs - glowing segmented control */}
@@ -355,6 +433,12 @@ export default function LabPage() {
           onBreed={handleBreed}
           isEquipping={isEquipping}
           isEquipped={equippedSnake?.id === selectedOwned.id}
+          dnaBalance={dnaBalance}
+          isUpdatingLineage={isUpdatingLineage}
+          onRerollLineage={() => updateLineage('reroll')}
+          onSelectLineagePrimary={(strain) =>
+            updateLineage('select_primary', strain)
+          }
         />
       )}
 

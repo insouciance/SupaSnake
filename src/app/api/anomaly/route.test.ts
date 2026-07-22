@@ -79,6 +79,7 @@ describe('GET /api/anomaly', () => {
     expect(body.anomaly.id).toBe(expected);
     expect(body.anomaly.name).toBe(ANOMALIES[expected].name);
     expect(body.anomaly.effect).toBe(ANOMALIES[expected].effect);
+    expect(body.anomaly.strainBias).toBe(ANOMALIES[expected].strainBias);
     expect(new Date(body.anomaly.endsAt).getTime()).toBeGreaterThan(Date.now());
     expect(body.top).toEqual([{ rank: 1, name: 'Viper', score: 4200 }]);
     expect(body.my).toEqual({ best: 900, rank: 7, runs: 3 });

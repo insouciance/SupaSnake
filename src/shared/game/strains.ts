@@ -70,6 +70,18 @@ export const STRAIN_IDS: readonly StrainId[] = [
   'UMBRA',
 ] as const;
 
+/** Player-facing names for the three activation tiers. */
+export const STRAIN_TIER_NAMES: Record<
+  StrainId,
+  { minor: string; expression: string; apex: string }
+> = {
+  AURUM: { minor: 'Gilt', expression: 'Gilded Wake', apex: 'Midas Vein' },
+  VOLT: { minor: 'Tempo', expression: 'Arc Lightning', apex: 'Overclocked Reality' },
+  FERAL: { minor: 'Thick Hide', expression: 'Molt', apex: 'Ouroboros' },
+  FLUX: { minor: 'Warp Skin', expression: 'Rift Aura', apex: 'Singularity' },
+  UMBRA: { minor: 'Shadow Skin', expression: 'Phantom Coil', apex: 'Second Sun' },
+};
+
 export function isStrainId(value: unknown): value is StrainId {
   return typeof value === 'string' && value in STRAINS;
 }

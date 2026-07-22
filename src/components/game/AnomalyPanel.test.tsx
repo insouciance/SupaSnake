@@ -18,6 +18,7 @@ function board(overrides: Partial<AnomalyBoardView> = {}): AnomalyBoardView {
       id: 'gold_rush',
       name: 'Gold Rush',
       effect: 'All food ×1.5 DNA — exit portals spawn 6 foods later',
+      strainBias: 'AURUM',
       endsAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
     },
     top: [
@@ -34,6 +35,7 @@ describe('AnomalyPanel', () => {
     render(<AnomalyPanel board={board()} />);
     expect(screen.getByTestId('anomaly-name')).toHaveTextContent('Gold Rush');
     expect(screen.getByText(/All food ×1\.5 DNA/)).toBeInTheDocument();
+    expect(screen.getByTestId('anomaly-strain-bias')).toHaveTextContent(/Aurum/);
     expect(screen.getByTestId('anomaly-countdown')).toHaveTextContent(/2d 2[0-3]h|3d 0h/);
   });
 

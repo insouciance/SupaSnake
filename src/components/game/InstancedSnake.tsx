@@ -31,6 +31,7 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
 import type { Direction } from '@/lib/game/SnakeGameLogic';
+import { STRAINS, type StrainId } from '@/shared/game/strains';
 import {
   getAlpha,
   getInterpolatedX,
@@ -54,6 +55,8 @@ export interface InstancedSnakeProps {
   dynasty: DynastyId;
   /** Committed heading - drives the head's damped yaw. */
   direction: Direction;
+  /** One strain band per held gene; colors reuse the existing instances. */
+  strainBands?: readonly StrainId[];
 }
 
 // -----------------------------------------------------------------------------
@@ -158,6 +161,7 @@ function InstancedSnakeCore({
   bufferRef,
   dynasty,
   direction,
+  strainBands = [],
   headGeometry,
   bodyGeometry,
 }: InstancedSnakeCoreProps) {
@@ -166,6 +170,7 @@ function InstancedSnakeCore({
   const yawRef = useRef(HEAD_FACE_YAW[direction]);
   // Energy-falloff cache: instance colors only rewrite when length changes
   const lastEnergyCountRef = useRef(-1);
+  const lastStrainSignatureRef = useRef('');
 
   const headMaterial = getSnakeSegmentMaterial(dynasty, true);
   const bodyMaterial = getInstancedBodyMaterial(dynasty);
@@ -178,6 +183,7 @@ function InstancedSnakeCore({
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     lastEnergyCountRef.current = -1;
+    lastStrainSignatureRef.current = '';
   }, [bodyGeometry]);
 
   useFrame((_, delta) => {
@@ -207,13 +213,27 @@ function InstancedSnakeCore({
     // Energy falloff (eye comfort): bright near the head, cooling toward
     // the tail. Written only when the snake's length changes - the trunk's
     // look is otherwise perfectly steady frame to frame.
+    const strainSignature = strainBands.join('|');
     if (
       count !== lastEnergyCountRef.current ||
+      strainSignature !== lastStrainSignatureRef.current ||
       (count > 1 && mesh.instanceColor === null)
     ) {
       lastEnergyCountRef.current = count;
+      lastStrainSignatureRef.current = strainSignature;
+      const bodyCount = Math.max(1, count - 1);
       for (let i = 1; i < count; i++) {
-        _energyColor.setScalar(getSegmentEnergy(i, count));
+        if (strainBands.length > 0) {
+          const band = Math.min(
+            strainBands.length - 1,
+            Math.floor(((i - 1) / bodyCount) * strainBands.length)
+          );
+          _energyColor
+            .set(STRAINS[strainBands[band]].color)
+            .multiplyScalar(getSegmentEnergy(i, count));
+        } else {
+          _energyColor.setScalar(getSegmentEnergy(i, count));
+        }
         mesh.setColorAt(i - 1, _energyColor);
       }
       if (mesh.instanceColor) {

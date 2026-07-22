@@ -51,6 +51,9 @@ export interface SnakeVariant {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Innate Genome affinity supplied by migration 030; absent pre-migration. */
+  lineageStrain?: import('@/shared/game/strains').StrainId | null;
+  affinityStrength?: import('@/shared/game/lineage').LineageStrength;
 }
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
@@ -85,6 +88,11 @@ export interface OwnedSnake {
   traits?: string[]; // TraitId[] sanitized by the API mapper
   // Trait slot count derived from variant rarity + generation (section 6.1)
   traitSlots?: number;
+
+  // Lineage (Buildcraft: The Genome §7) - the snake's effective strain
+  // affinity (own JSONB, else the variant's innate affinity); null when
+  // neither exists (pre-030 rows)
+  lineage?: import('@/shared/game/lineage').Lineage | null;
 
   // Joined display data (populated when the query joins snake_variants)
   variantName?: string | null; // e.g. "CYBER SPARK"

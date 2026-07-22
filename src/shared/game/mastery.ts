@@ -16,10 +16,10 @@
  */
 
 import {
-  MUTATIONS,
   MUTATION_POOL,
   type MutationId,
 } from '@/shared/game/mutations';
+import { GENES, SIGNATURE_GENES } from '@/shared/game/genes';
 import { BANK, type DynastyName } from '@/shared/game/rulesets';
 
 export const MASTERY_MAX_LEVEL = 10;
@@ -170,7 +170,10 @@ export function masteryUnlockLabel(
   if (rung.kind === 'mutation') {
     const id =
       MASTERY_MUTATIONS[dynasty][level as MasteryMutationLevel];
-    return MUTATIONS[id].name;
+    return GENES[id].name;
+  }
+  if (level === 10) {
+    return `${GENES[SIGNATURE_GENES[dynasty]].name} + ${rung.label}`;
   }
   return rung.label;
 }

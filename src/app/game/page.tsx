@@ -16,7 +16,20 @@ import {
 } from '@/shared/game/rulesets';
 import { isMutationId, type MutationPick } from '@/shared/game/mutations';
 import { GENES } from '@/shared/game/genes';
-import { sanitizeTraits } from '@/shared/game/traits';
+import { sanitizeTraits, TRAITS, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
+import { sanitizeLineage, startingStrainPoints, type Lineage } from '@/shared/game/lineage';
+import { isStrainId, type StrainId } from '@/shared/game/strains';
+import { SPLICES, isSpliceId, type SpliceId } from '@/shared/game/splices';
+import {
+  sanitizeGenomeCapability,
+  sanitizeGenomeFtue,
+  type GenomeFtueCapability,
+} from '@/lib/game/genomeCapability';
+import {
+  codexEntryName,
+  sanitizeCodexDiscoveryResult,
+  type CodexDiscovery,
+} from '@/shared/game/codex';
 import { isAnomalyId, type AnomalyId } from '@/shared/game/anomalies';
 import { useGameStore, type GameMode } from '@/lib/store/gameStore';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
@@ -50,6 +63,16 @@ import { ExitPortal } from '@/components/game/ExitPortal';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
 import { MutationHUD } from '@/components/game/MutationHUD';
+import { GenomeBoardEffects } from '@/components/game/GenomeBoardEffects';
+import { GeneChoiceOverlay } from '@/components/game/GeneChoiceOverlay';
+import { StrainMeterHUD } from '@/components/game/StrainMeterHUD';
+import { ExpressionFlourish } from '@/components/game/ExpressionFlourish';
+import {
+  PortalChoiceOverlay,
+  StrainSurgeOverlay,
+} from '@/components/game/PortalChoiceOverlay';
+import { GenomeCard } from '@/components/game/GenomeCard';
+import { StrainChip } from '@/components/traits/StrainChip';
 import { ModeToggle } from '@/components/game/ModeToggle';
 import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
 import { BlackoutMask } from '@/components/game/BlackoutMask';
@@ -69,6 +92,11 @@ import {
 } from '@/lib/game/interpolationBuffer';
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward } from '@/lib/outbox/rewardOutbox';
+import { useCodexStore } from '@/lib/stores/codexStore';
+import {
+  buildGenomeCardModel,
+  type GenomeCardModel,
+} from '@/lib/share/genomeCardImage';
 import { isAimSystemId, type AimStats, type AimSystemId } from '@/lib/game/aimSystems';
 import {
   IconBolt,
@@ -152,6 +180,8 @@ export default function GamePage() {
     name: string;
     generation: number;
     dynasty: string;
+    traits: TraitId[];
+    lineage: Lineage | null;
   } | null>(null);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
@@ -192,10 +222,20 @@ export default function GamePage() {
   // end response says the name is still generated, at most once per
   // device until claimed or dismissed twice.
   const [showHandleClaim, setShowHandleClaim] = useState(false);
+  const [genomeFtue, setGenomeFtue] = useState<GenomeFtueCapability | null>(null);
+  const [portalCanInfuse, setPortalCanInfuse] = useState(false);
+  const [expressionFlourish, setExpressionFlourish] = useState<{
+    strain: StrainId;
+    tier: 2 | 3;
+  } | null>(null);
+  const [lastGenomeCard, setLastGenomeCard] = useState<GenomeCardModel | null>(null);
+  const [codexDiscoveries, setCodexDiscoveries] = useState<CodexDiscovery[]>([]);
+  const { data: codexData, fetchCodex } = useCodexStore();
 
   // Refs to hold current values for use in event handlers (avoids stale closure)
   const sessionRef = useRef(session);
   const currentSessionIdRef = useRef(currentSessionId);
+  const equippedSnakeRef = useRef(equippedSnake);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -205,6 +245,10 @@ export default function GamePage() {
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
+
+  useEffect(() => {
+    equippedSnakeRef.current = equippedSnake;
+  }, [equippedSnake]);
 
   const {
     isPlaying,
@@ -240,6 +284,13 @@ export default function GamePage() {
     fluxPhase,
     fluxTelegraph,
     genomeRun,
+    strainCounts,
+    strainTiers,
+    gildedCells,
+    bonusFoods,
+    choiceSource,
+    portalChoicePending,
+    surgeChoicePending,
     infusesCount,
     revive,
     startGame: storeStartGame,
@@ -261,6 +312,15 @@ export default function GamePage() {
     setChoiceOptions,
     setPhoenixTriggered,
     setFlux,
+    setGenomeRun,
+    setStrains,
+    setFusedSplices,
+    setGildedCells,
+    setBonusFoods,
+    setInfusesCount,
+    setPortalChoicePending,
+    setSurgeChoicePending,
+    setRevive,
     setSelectedDynasty,
     aimSystem,
     setAimSystem,
@@ -282,19 +342,31 @@ export default function GamePage() {
   const previewOutcome = useCallback(
     (extracted: boolean, anomaly: AnomalyId | null = null): number => {
       if (genomeRun) {
+        const liveState = gameRef.current?.getState();
+        const capability = gameRef.current?.getGenome();
+        const ftue = capability?.ftue;
         return applyGenomeOutcome(
           dnaCollected,
           extracted,
           {
             picks: heldMutations,
-            heirloom: {},
-            surges: [],
-            infuses: Array.from({ length: infusesCount }, (_, i) => ({
-              atFood: i,
-            })),
-            revive,
+            heirloom: capability?.heirloom ?? {},
+            surges: liveState?.surges ?? [],
+            infuses: liveState?.infuses ?? [],
+            revive: liveState?.revive ?? revive,
+            prevRunDied: capability?.prevRunDied,
+            lossEvents: liveState?.lossEvents ?? [],
+            tierCap: ftue
+              ? !ftue.expressionsUnlocked
+                ? 1
+                : !ftue.apexesUnlocked
+                  ? 2
+                  : 3
+              : 3,
+            suppressedStrains: capability?.suppressedStrains ?? [],
+            splicesEnabled: ftue?.splicesUnlocked !== false,
           },
-          [],
+          equippedSnake?.traits ?? [],
           anomaly
         );
       }
@@ -307,7 +379,7 @@ export default function GamePage() {
         anomaly
       );
     },
-    [genomeRun, dnaCollected, heldMutations, infusesCount, revive, phoenixTriggered]
+    [genomeRun, dnaCollected, heldMutations, revive, phoenixTriggered, equippedSnake?.traits]
   );
 
   // Detect mobile device
@@ -380,7 +452,7 @@ export default function GamePage() {
 
   // Fetch player data from server on mount
   useEffect(() => {
-    if (!session?.access_token) return;
+    if (!session?.access_token || isPlaying) return;
 
     fetch('/api/player', {
       headers: { 'Authorization': `Bearer ${session.access_token}` }
@@ -398,9 +470,12 @@ export default function GamePage() {
         if (data.aimStats) {
           setAimStats(data.aimStats);
         }
+        if (data.genomeFtue) {
+          setGenomeFtue(sanitizeGenomeFtue(data.genomeFtue));
+        }
       })
       .catch(err => console.error('Failed to fetch player data:', err));
-  }, [session?.access_token, syncEnergyFromServer, setAimSystem]);
+  }, [session?.access_token, isPlaying, syncEnergyFromServer, setAimSystem]);
 
   // Weekly Anomaly board (§7.2): fetched between runs so the pre-game
   // entry shows the live modifier + leaderboard. Refreshes after every
@@ -477,6 +552,8 @@ export default function GamePage() {
           variantName?: string | null;
           variantId?: string;
           dynastyName?: string | null;
+          traits?: unknown;
+          lineage?: unknown;
         }> = data.snakes ?? [];
 
         const equipped = snakes.find((s) => s.isEquipped) ?? null;
@@ -487,6 +564,8 @@ export default function GamePage() {
             name: equipped.variantName ?? equipped.variantId ?? 'Snake',
             generation: equipped.generation,
             dynasty: dynastyName,
+            traits: sanitizeTraits(equipped.traits),
+            lineage: sanitizeLineage(equipped.lineage),
           });
           // Theme follows the equipped snake's dynasty
           if (dynastyName === 'CYBER' || dynastyName === 'PRIMAL' || dynastyName === 'COSMIC') {
@@ -500,6 +579,43 @@ export default function GamePage() {
         setCollectionLoaded(true);
       });
   }, [session?.access_token, setSelectedDynasty]);
+
+  // Splice hints reveal names only after the player has discovered them.
+  // The Codex remains free, but its in-run integration follows the FTUE
+  // splice gate and refreshes between runs after new discoveries land.
+  useEffect(() => {
+    if (
+      !session?.access_token ||
+      isPlaying ||
+      !genomeFtue?.splicesUnlocked
+    ) return;
+    void fetchCodex(session.access_token);
+  }, [session?.access_token, isPlaying, genomeFtue?.splicesUnlocked, fetchCodex]);
+
+  const discoveredSplices = useMemo<SpliceId[]>(
+    () => codexData?.splices.filter((splice) => splice.discovered).map((splice) => splice.id) ?? [],
+    [codexData]
+  );
+
+  const buildSeedPoints = useMemo(
+    () => equippedSnake
+      ? startingStrainPoints(equippedSnake.lineage, equippedSnake.traits)
+      : {},
+    [equippedSnake]
+  );
+  const buildSeedStrains = useMemo(() => {
+    if (!equippedSnake) return [];
+    return Array.from(new Set<StrainId>([
+      ...(equippedSnake.lineage?.strains ?? []),
+      ...equippedSnake.traits.map((trait) => TRAIT_STRAINS[trait]),
+    ]));
+  }, [equippedSnake]);
+  const snakeStrainBands = useMemo<StrainId[]>(
+    () => genomeRun && genomeFtue?.strainTagsUnlocked
+      ? heldMutations.map((pick) => GENES[pick.id].strains[0])
+      : [],
+    [genomeRun, genomeFtue?.strainTagsUnlocked, heldMutations]
+  );
 
   const theme = themeManager.getTheme(selectedDynasty);
 
@@ -515,8 +631,10 @@ export default function GamePage() {
   // No playable snake: new player (never picked a starter) or nothing equipped
   const noSnakeAvailable = needsStarterSelection || (collectionLoaded && !equippedSnake);
 
-  // Mutation choice hold: the engine is frozen under the overlay (NOT paused)
-  const choiceActive = choiceOptions !== null;
+  // Engine choice holds are frozen but not paused. All input surfaces and
+  // the pause button stay disabled until the active decision resolves.
+  const choiceActive =
+    choiceOptions !== null || portalChoicePending || surgeChoicePending;
 
   // The active anomaly run's modifier id (§7.2) - shapes the BANK preview
   // and outcome copy exactly like the server recompute will
@@ -531,12 +649,43 @@ export default function GamePage() {
     gameRef.current?.declineMutation();
   }, []);
 
+  const handlePortalChoice = useCallback((choice: 'bank' | 'pass' | 'infuse') => {
+    if (gameRef.current?.resolvePortalChoice(choice)) {
+      setPortalChoicePending(false);
+      audioManager.play('uiClick');
+    }
+  }, [setPortalChoicePending]);
+
+  const handleSurgeChoice = useCallback((strain: StrainId) => {
+    if (gameRef.current?.chooseSurge(strain)) {
+      const state = gameRef.current.getState();
+      setSurgeChoicePending(false);
+      setStrains(state.strainCounts, state.strainTiers);
+      audioManager.play('uiClick');
+    }
+  }, [setStrains, setSurgeChoicePending]);
+
+  const handleFlourishDone = useCallback(() => {
+    setExpressionFlourish(null);
+  }, []);
+
   // Calculate board center for camera
   const boardCenter = GAME_CONFIG.board.gridSize / 2;
 
   // Initialize game logic
   useEffect(() => {
     gameRef.current = new SnakeGameLogic({ gridSize: GAME_CONFIG.board.gridSize });
+
+    const mirrorGenomeState = () => {
+      const state = gameRef.current?.getState();
+      if (!state) return;
+      setStrains(state.strainCounts, state.strainTiers);
+      setFusedSplices(state.fusedSplices);
+      setGildedCells(state.gildedCells);
+      setBonusFoods(state.bonusFoods);
+      setInfusesCount(state.infuses.length);
+      setRevive(state.revive);
+    };
 
     gameRef.current.on('foodCollected', (data: any) => {
       setScore(data.score);
@@ -574,7 +723,7 @@ export default function GamePage() {
     // hold while the overlay is up - this is NOT the pause state, so the
     // pause menu never renders here.
     gameRef.current.on('mutationChoice', (data: any) => {
-      setChoiceOptions(data.options);
+      setChoiceOptions(data.options, data.source ?? 'gene_food');
       audioManager.play('pause');
       haptics.medium();
     });
@@ -582,12 +731,54 @@ export default function GamePage() {
     gameRef.current.on('mutationPicked', (data: any) => {
       setHeldMutations(data.held);
       setChoiceOptions(null);
+      mirrorGenomeState();
       audioManager.play('uiClick');
     });
 
     gameRef.current.on('mutationDeclined', () => {
       setChoiceOptions(null);
       audioManager.play('uiClick');
+    });
+
+    gameRef.current.on('portalChoice', (data: any) => {
+      setPortalCanInfuse(data?.canInfuse === true);
+      setPortalChoicePending(true);
+      audioManager.play('pause');
+      haptics.medium();
+    });
+
+    gameRef.current.on('infused', () => {
+      setPortalChoicePending(false);
+      mirrorGenomeState();
+      showToast('Portal infused — body became build power', 'achievement', 2600);
+    });
+
+    gameRef.current.on('surgeChoice', () => {
+      setSurgeChoicePending(true);
+    });
+
+    gameRef.current.on('surged', () => {
+      setSurgeChoicePending(false);
+      mirrorGenomeState();
+    });
+
+    gameRef.current.on('spliceFused', (data: any) => {
+      mirrorGenomeState();
+      const spliceId: unknown = data?.id;
+      if (isSpliceId(spliceId)) {
+        showToast(`Splice fused: ${SPLICES[spliceId].name}`, 'achievement', 3500);
+      }
+    });
+
+    gameRef.current.on('expressionActivated', (data: any) => {
+      mirrorGenomeState();
+      if (isStrainId(data?.strain) && (data?.tier === 2 || data?.tier === 3)) {
+        setExpressionFlourish({ strain: data.strain, tier: data.tier });
+      }
+    });
+
+    gameRef.current.on('reviveTriggered', () => {
+      mirrorGenomeState();
     });
 
     gameRef.current.on('phoenixTriggered', () => {
@@ -645,6 +836,7 @@ export default function GamePage() {
               ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
               : {}),
             ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
+            ...(data.genome ? { genome: data.genome } : {}),
             timestamp: Date.now(),
           });
         };
@@ -674,6 +866,7 @@ export default function GamePage() {
                 ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
                 : {}),
               ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
+              ...(data.genome ? { genome: data.genome } : {}),
               // Identity v1 section 9.5: death cause + run events
               ...(data.deathCause ? { death_cause: data.deathCause } : {}),
               ...(runEventRecord && runEventRecord.events.length > 0
@@ -699,6 +892,44 @@ export default function GamePage() {
             // Free runs: the server reports what the run WOULD have earned
             if (typeof result.hypotheticalDna === 'number') {
               setHypotheticalDna(result.hypotheticalDna);
+            }
+
+            const snakeMeta = equippedSnakeRef.current;
+            if (snakeMeta) {
+              setLastGenomeCard(buildGenomeCardModel(result, {
+                snakeName: snakeMeta.name,
+                dynasty: snakeMeta.dynasty,
+                generation: snakeMeta.generation,
+                score: data.score,
+                foods: data.foodEaten,
+              }));
+            }
+
+            if (result.codex) {
+              const discoveryResult = sanitizeCodexDiscoveryResult(result.codex);
+              setCodexDiscoveries(discoveryResult.discoveries);
+              for (const discovery of discoveryResult.discoveries) {
+                const worldFirst = discovery.worldFirst ? ' · WORLD FIRST' : '';
+                const reward = discovery.rewardDna > 0
+                  ? ` · +${discovery.rewardDna} DNA`
+                  : '';
+                showToast(
+                  `Codex: ${codexEntryName(discovery.type, discovery.entryId)}${reward}${worldFirst}`,
+                  'achievement',
+                  5000
+                );
+              }
+              if (discoveryResult.genomeWeaverUnlocked) {
+                showToast('Genome Weaver unlocked', 'achievement', 5000);
+              }
+              if (
+                discoveryResult.discoveries.length > 0 ||
+                discoveryResult.genomeWeaverUnlocked
+              ) {
+                // Refresh after the recorder commits so the next run's
+                // offer cards reveal newly known splice names immediately.
+                void fetchCodex(currentSession.access_token);
+              }
             }
 
             // Show daily streak info on the game-over screen
@@ -766,7 +997,26 @@ export default function GamePage() {
     };
   // Note: session, currentSessionId, and showToast are accessed via closure
 
-  }, [endGame, setDnaCollected, setScore, setDeathSequence, setPaused, setChoiceOptions, setHeldMutations, setPhoenixTriggered, showToast]);
+  }, [
+    endGame,
+    setBonusFoods,
+    setChoiceOptions,
+    setDeathSequence,
+    setDnaCollected,
+    setFusedSplices,
+    setGildedCells,
+    setHeldMutations,
+    setInfusesCount,
+    setPaused,
+    setPhoenixTriggered,
+    setPortalChoicePending,
+    setRevive,
+    setScore,
+    setStrains,
+    setSurgeChoicePending,
+    fetchCodex,
+    showToast,
+  ]);
 
   // Sync game state to store
   const syncState = useCallback(() => {
@@ -787,6 +1037,8 @@ export default function GamePage() {
       prevQueueLengthRef.current = queued.length;
       setSnake(state.snake);
       setFood(state.food);
+      setScore(state.score);
+      setDnaCollected(state.dnaCollected);
       setDirection(state.direction);
       setQueuedDirections(queued);
       setFoodEaten(state.foodEaten);
@@ -799,6 +1051,16 @@ export default function GamePage() {
       setConstellation(state.constellationGlyph, state.chainLength, state.comboMultiplier);
       setMutationTile(state.mutationTile, state.mutationTicksRemaining);
       setFlux(state.fluxPhase, state.fluxTelegraph);
+      if (gameRef.current.getGenome()) {
+        setStrains(state.strainCounts, state.strainTiers);
+        setFusedSplices(state.fusedSplices);
+        setGildedCells(state.gildedCells);
+        setBonusFoods(state.bonusFoods);
+        setInfusesCount(state.infuses.length);
+        setPortalChoicePending(state.pendingPortalChoice !== null);
+        setSurgeChoicePending(state.pendingSurgeChoice);
+        setRevive(state.revive);
+      }
       // Fluidity core: stamp this tick into the interpolation buffer.
       // getSpeed() AFTER the tick is the exact interval the loop re-arms
       // with - the precise denominator for the render-side alpha.
@@ -809,7 +1071,7 @@ export default function GamePage() {
         performance.now()
       );
     }
-  }, [setSnake, setFood, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux, setStrains, setFusedSplices, setGildedCells, setBonusFoods, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -910,12 +1172,25 @@ export default function GamePage() {
       setLastRunFree(mode === 'free');
       setHypotheticalDna(null);
       setMasteryResult(null);
+      setLastGenomeCard(null);
+      setCodexDiscoveries([]);
+      setExpressionFlourish(null);
+      setPortalChoicePending(false);
+      setSurgeChoicePending(false);
 
       // Trait config from the session-start response (Design v2 Phase 3A):
       // the server read these from the equipped snake's row - the engine
       // applies [P] effects and mirrors [E] math, but the payout authority
       // stays the server recompute.
       gameRef.current?.setTraits(sanitizeTraits(data.traits));
+
+      // The server capability is the only Genome switch. A malformed or
+      // missing block explicitly resets the engine to the legacy path so
+      // mixed app/migration deploys cannot create half-Genome runs.
+      const genomeCapability = sanitizeGenomeCapability(data.genome);
+      gameRef.current?.setGenome(genomeCapability);
+      setGenomeRun(genomeCapability !== null);
+      if (genomeCapability) setGenomeFtue(genomeCapability.ftue);
 
       // Unlocked mutation pool (Design v2 §7.1): server-computed from
       // player_mastery (full pool on Free Play per §7.4). Offer config
@@ -969,7 +1244,7 @@ export default function GamePage() {
     } finally {
       setIsStarting(false);
     }
-  }, [session?.access_token, energy, isStarting, equippedSnake, gameMode, syncEnergyFromServer, storeStartGame, setReady, setAnomalyRun, syncState]);
+  }, [session?.access_token, energy, isStarting, equippedSnake, gameMode, syncEnergyFromServer, storeStartGame, setReady, setAnomalyRun, syncState, setGenomeRun, setPortalChoicePending, setSurgeChoicePending]);
 
   // Keyboard controls
   useEffect(() => {
@@ -1249,7 +1524,20 @@ export default function GamePage() {
 
         {/* Held mutations strip - the run's build at a glance */}
         {isPlaying && (
-          <MutationHUD held={heldMutations} phoenixTriggered={phoenixTriggered} />
+          <MutationHUD
+            held={heldMutations}
+            phoenixTriggered={phoenixTriggered}
+            splicesEnabled={
+              genomeRun && genomeFtue?.splicesUnlocked === true
+            }
+          />
+        )}
+        {isPlaying && genomeRun && genomeFtue?.strainTagsUnlocked && (
+          <StrainMeterHUD
+            counts={strainCounts}
+            tiers={strainTiers}
+            suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
+          />
         )}
 
         {/* Equipped Snake (the game always uses the equipped snake) */}
@@ -1337,7 +1625,7 @@ export default function GamePage() {
           between the canvas and the HUD (z-10+), so HUD buttons stay live.
           Camera touch-orbit is intentionally ceded to flick input while
           playing - the reset-view button remains available. */}
-      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && !isPaused && (
+      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && !isPaused && !choiceActive && (
         <FlickSurface
           gameRef={gameRef}
           getAzimuth={getCameraAzimuth}
@@ -1351,14 +1639,14 @@ export default function GamePage() {
       {/* Virtual D-Pad (mobile fallback via control-mode toggle). bottom
           offset includes the safe-area inset so the DOWN button clears home
           indicators / browser chrome. */}
-      {isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && !isPaused && (
+      {isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && !isPaused && !choiceActive && (
         <div
           className="absolute left-1/2 -translate-x-1/2 z-10"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         >
           <VirtualDPad
             onDirectionChange={handleDPadDirection}
-            disabled={!isPlaying || isGameOver || isPaused}
+            disabled={!isPlaying || isGameOver || isPaused || choiceActive}
             isReady={isReady}
             setReady={setReady}
             onStartGame={startGameLoop}
@@ -1377,6 +1665,8 @@ export default function GamePage() {
           dnaCollected={dnaCollected}
           heldMutations={heldMutations}
           phoenixTriggered={phoenixTriggered}
+          bankDna={previewOutcome(true, activeAnomalyId)}
+          crashDna={previewOutcome(false, activeAnomalyId)}
           onResume={handleResume}
           onQuit={handleQuit}
         />
@@ -1384,19 +1674,61 @@ export default function GamePage() {
 
       {/* Mutation choice-of-2 (engine frozen in its choice hold - never
           concurrent with the pause menu: pause is refused during the hold) */}
-      {choiceOptions && isPlaying && !isGameOver && (
+      {choiceOptions && isPlaying && !isGameOver && genomeRun ? (
+        <GeneChoiceOverlay
+          options={choiceOptions}
+          held={heldMutations}
+          strainCounts={strainCounts}
+          source={choiceSource}
+          showStrains={genomeFtue?.strainTagsUnlocked === true}
+          splicesUnlocked={genomeFtue?.splicesUnlocked === true}
+          discoveredSplices={discoveredSplices}
+          onChoose={handleChooseMutation}
+          onDecline={handleDeclineMutation}
+        />
+      ) : choiceOptions && isPlaying && !isGameOver ? (
         <MutationChoiceOverlay
           options={choiceOptions}
           onChoose={handleChooseMutation}
           onDecline={handleDeclineMutation}
         />
+      ) : null}
+
+      {portalChoicePending && isPlaying && !isGameOver && (
+        <PortalChoiceOverlay
+          canInfuse={portalCanInfuse}
+          infusesUsed={infusesCount}
+          snakeLength={snake.length}
+          bankDna={previewOutcome(true, activeAnomalyId)}
+          crashDna={previewOutcome(false, activeAnomalyId)}
+          onBank={() => handlePortalChoice('bank')}
+          onPass={() => handlePortalChoice('pass')}
+          onInfuse={() => handlePortalChoice('infuse')}
+        />
+      )}
+
+      {surgeChoicePending && isPlaying && !isGameOver && (
+        <StrainSurgeOverlay
+          strains={Array.from(
+            new Set(heldMutations.flatMap((pick) => GENES[pick.id].strains))
+          )}
+          onChoose={handleSurgeChoice}
+        />
+      )}
+
+      {expressionFlourish && isPlaying && (
+        <ExpressionFlourish
+          strain={expressionFlourish.strain}
+          tier={expressionFlourish.tier}
+          onDone={handleFlourishDone}
+        />
       )}
 
       {/* Game Over / Start Screen */}
       {!isPlaying && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4">
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-void-deep/85 backdrop-blur-sm p-4">
           <div
-            className={`panel-elevated p-8 text-center space-y-6 min-w-[320px] max-w-full animate-pop-in ${
+            className={`panel-elevated my-auto w-full p-8 text-center space-y-6 min-w-[320px] max-w-2xl animate-pop-in ${
               isGameOver
                 ? endReason === 'extracted'
                   ? '[--glow:#4ade80]'
@@ -1556,6 +1888,26 @@ export default function GamePage() {
                   )}
                 </div>
 
+                {lastGenomeCard && <GenomeCard model={lastGenomeCard} />}
+
+                {codexDiscoveries.length > 0 && (
+                  <div className="panel p-3 text-left" data-testid="codex-discoveries">
+                    <p className="label-arcade mb-2 text-cosmic">New Codex discoveries</p>
+                    <div className="flex flex-wrap gap-2">
+                      {codexDiscoveries.map((discovery) => (
+                        <span
+                          key={`${discovery.type}:${discovery.entryId}`}
+                          className="rounded-arcade border border-cosmic/50 bg-cosmic/10 px-2 py-1 text-xs font-body text-bone-white"
+                        >
+                          {codexEntryName(discovery.type, discovery.entryId)}
+                          {discovery.worldFirst ? ' · WORLD FIRST' : ''}
+                          {discovery.rewardDna > 0 ? ` · +${discovery.rewardDna} DNA` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* The Analyst's post-run insight (Identity v1 section 9.2):
                     lazy, additive, never blocks the game-over flow —
                     pre-025/disabled/guest states render nothing */}
@@ -1622,6 +1974,44 @@ export default function GamePage() {
                         </span>
                       </p>
                     )}
+                    {GAME_CONFIG.features.genome && genomeFtue?.spawnPointsUnlocked && (
+                      <div
+                        className="panel mx-auto max-w-lg space-y-2 p-3 text-left"
+                        data-testid="build-seed"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="label-arcade text-cosmic">Build Seed</p>
+                          {genomeFtue.splicesUnlocked && (
+                            <Link href="/codex" className="text-xs font-body text-cosmic underline">
+                              Open Codex
+                            </Link>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {buildSeedStrains.length > 0 ? buildSeedStrains.map((strain) => (
+                            <StrainChip
+                              key={strain}
+                              strain={strain}
+                              points={buildSeedPoints[strain]}
+                              size="md"
+                            />
+                          )) : (
+                            <span className="text-xs font-body text-beige/55">No inherited strain affinity</span>
+                          )}
+                        </div>
+                        {equippedSnake.traits.length > 0 && (
+                          <p className="text-xs font-body text-beige/60">
+                            Heirlooms: {equippedSnake.traits.map((trait) => TRAITS[trait].name).join(' · ')}
+                          </p>
+                        )}
+                        {equippedSnake.lineage && (
+                          <p className="text-xs font-body text-beige/60">
+                            Lineage strength {equippedSnake.lineage.strength}
+                            {equippedSnake.lineage.primary ? ` · ${equippedSnake.lineage.primary} primary` : ''}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <p className="text-beige/50 font-body text-xs">
                       Exit portal banks +25% — crashing salvages 60%
                     </p>
@@ -1647,6 +2037,9 @@ export default function GamePage() {
                 onSelect={setGameMode}
                 anomalyName={
                   anomalyBoard?.live ? anomalyBoard.anomaly.name : null
+                }
+                anomalyStrain={
+                  anomalyBoard?.live ? anomalyBoard.anomaly.strainBias : null
                 }
               />
             )}
@@ -1938,8 +2331,11 @@ export default function GamePage() {
             bufferRef={interpBufferRef}
             isMobile={isMobile}
             snake={snake}
+            strainBands={snakeStrainBands}
             food={food}
             extraFoods={extraFoods}
+            gildedCells={gildedCells}
+            bonusFoods={bonusFoods}
             constellationGlyph={constellationGlyph}
             exitTile={exitTile}
             exitTile2={exitTile2}
@@ -2001,8 +2397,11 @@ interface GameBoardProps {
   /** Mobile perf profile (portal draw fallback etc.) */
   isMobile: boolean;
   snake: Position[];
+  strainBands: readonly StrainId[];
   food: Position | null;
   extraFoods: Position[];
+  gildedCells: readonly { x: number; z: number; ticks: number }[];
+  bonusFoods: readonly { x: number; z: number; kind: 'molt' | 'heartwood' }[];
   constellationGlyph: number | null;
   exitTile: Position | null;
   /** Second portal of the Twin Exits anomaly pair (§7.2), null otherwise. */
@@ -2029,8 +2428,11 @@ function GameBoard({
   bufferRef,
   isMobile,
   snake,
+  strainBands,
   food,
   extraFoods,
+  gildedCells,
+  bonusFoods,
   constellationGlyph,
   exitTile,
   exitTile2,
@@ -2066,13 +2468,16 @@ function GameBoard({
     for (const extra of extraFoods) {
       list.push({ x: extra.x, z: extra.z, kind: 'food' });
     }
+    for (const bonus of bonusFoods) {
+      list.push({ x: bonus.x, z: bonus.z, kind: 'food' });
+    }
     if (exitTile) list.push({ x: exitTile.x, z: exitTile.z, kind: 'portal' });
     if (exitTile2) list.push({ x: exitTile2.x, z: exitTile2.z, kind: 'portal' });
     if (mutationTile) {
       list.push({ x: mutationTile.x, z: mutationTile.z, kind: 'mutation' });
     }
     return list;
-  }, [food, extraFoods, exitTile, exitTile2, mutationTile]);
+  }, [food, extraFoods, bonusFoods, exitTile, exitTile2, mutationTile]);
 
   return (
     <group position={cameraShake}>
@@ -2109,6 +2514,8 @@ function GameBoard({
         laneColor={theme.primary}
       />
 
+      <GenomeBoardEffects gildedCells={gildedCells} bonusFoods={bonusFoods} />
+
       {/* Snake - one instanced body draw + a head mesh with eyes, both
           reading tick-alpha interpolated positions from the buffer every
           frame (growth never touches React). Box fallback while the GLB
@@ -2119,6 +2526,7 @@ function GameBoard({
             bufferRef={bufferRef}
             dynasty={dynasty}
             direction={direction}
+            strainBands={strainBands}
           />
         }
       >
@@ -2126,6 +2534,7 @@ function GameBoard({
           bufferRef={bufferRef}
           dynasty={dynasty}
           direction={direction}
+          strainBands={strainBands}
         />
       </Suspense>
 
@@ -2200,4 +2609,3 @@ function GameBoard({
     </group>
   );
 }
-

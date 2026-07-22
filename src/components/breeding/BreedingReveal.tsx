@@ -15,6 +15,7 @@ import { IconDna } from '@/components/ui/icons';
 import { dynastyThemes } from '@/hooks/useDynastyTheme';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { TraitChip, EmptyTraitSlot } from '@/components/traits/TraitChip';
+import { StrainChip } from '@/components/traits/StrainChip';
 import { TRAITS, type TraitId } from '@/shared/game/traits';
 import type { BredOffspring } from '@/lib/stores/breedingStore';
 
@@ -185,6 +186,38 @@ export function BreedingReveal({
             </p>
           )}
         </div>
+
+        {offspring.lineage && (
+          <div className="w-full max-w-xs text-center space-y-2" data-testid="reveal-lineage">
+            <p className="label-arcade">Lineage</p>
+            <div className="flex justify-center items-center gap-2 flex-wrap">
+              {offspring.lineage.strains.map((strain, index) => (
+                <span
+                  key={strain}
+                  className="animate-pop-in"
+                  style={{
+                    animationDelay: `${1.05 + index * 0.12}s`,
+                    animationFillMode: 'backwards',
+                  }}
+                >
+                  <StrainChip
+                    strain={strain}
+                    size="md"
+                    emphasis
+                    points={offspring.lineage?.strength}
+                  />
+                </span>
+              ))}
+            </div>
+            {offspring.lineage.strains.length === 2 &&
+              offspring.lineage.strength > 0 &&
+              !offspring.lineage.primary && (
+                <p className="text-xs font-body text-beige/60">
+                  Dual lineage — choose its primary before the next run.
+                </p>
+              )}
+          </div>
+        )}
 
         {/* Inherited traits (Design v2 section 6.3): one roll from each
             parent's pool. Each rolled chip pops in on its own beat; the

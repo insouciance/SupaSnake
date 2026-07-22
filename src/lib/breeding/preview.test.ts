@@ -91,6 +91,21 @@ describe('validateBreedingPair', () => {
     expect(result.reason).toBe('different_dynasty');
   });
 
+  it('accepts cross-dynasty parents only when the Genome gate is enabled', () => {
+    const result = validateBreedingPair(
+      parent('a', 1, 'dyn-cyber'),
+      parent('b', 1, 'dyn-primal'),
+      1000,
+      true
+    );
+    expect(result).toEqual({
+      valid: true,
+      reason: null,
+      cost: 300,
+      offspringGeneration: 2,
+    });
+  });
+
   it('rejects parents with unknown dynasty', () => {
     const result = validateBreedingPair(
       parent('a', 1, null),

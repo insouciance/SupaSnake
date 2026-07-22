@@ -1,3 +1,5 @@
+import type { GameOverGenome } from '@/lib/game/SnakeGameLogic';
+
 /**
  * Reward Outbox - localStorage-backed queue of unsent game-session-end
  * payloads.
@@ -39,6 +41,8 @@ export interface RewardOutboxEntry {
     combo_score_bonus: number;
     max_chain: number;
   };
+  /** Genome-only trace. Required to replay a run_seed-backed session. */
+  genome?: GameOverGenome;
   /** Epoch ms when the run ended (used for expiry). */
   timestamp: number;
 }
@@ -76,7 +80,9 @@ function isValidEntry(e: unknown): e is RewardOutboxEntry {
     (entry.phoenix_triggered_at_food === undefined ||
       typeof entry.phoenix_triggered_at_food === 'number') &&
     (entry.cosmic === undefined ||
-      (typeof entry.cosmic === 'object' && entry.cosmic !== null))
+      (typeof entry.cosmic === 'object' && entry.cosmic !== null)) &&
+    (entry.genome === undefined ||
+      (typeof entry.genome === 'object' && entry.genome !== null))
   );
 }
 
@@ -190,6 +196,7 @@ export async function replayRewardOutbox(
             ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
             : {}),
           ...(entry.cosmic !== undefined ? { cosmic: entry.cosmic } : {}),
+          ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
         }),
       });
 

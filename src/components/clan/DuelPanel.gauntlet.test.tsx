@@ -157,10 +157,10 @@ describe('DuelPanel gauntlet states', () => {
     expect(banner).toHaveTextContent('top 8 members');
     expect(banner).toHaveTextContent('Vanguard');
     expect(screen.getByTestId('gauntlet-ban-received')).toHaveTextContent(
-      'Phoenix is banned from your offer pools'
+      'Phoenix affects your Genome this week'
     );
     expect(screen.getByTestId('gauntlet-ban-given')).toHaveTextContent(
-      'You banned Shed from Dragon Lords'
+      'You chose Shed against Dragon Lords'
     );
     // The contributors footer reflects the effective lens (+1 node baked in)
     expect(screen.getByTestId('counted-rules-footer')).toHaveTextContent(

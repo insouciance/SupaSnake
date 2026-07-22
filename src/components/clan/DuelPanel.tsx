@@ -12,8 +12,12 @@
 import { useEffect, useState } from 'react';
 import { IconDna, IconFlame, IconTrophy, IconShield } from '@/components/ui/icons';
 import { projectedRatingChange } from '@/lib/clan/elo';
-import { GAUNTLET_MODIFIERS, type GauntletModifierId } from '@/shared/game/gauntlet';
-import { MUTATIONS, isMutationId } from '@/shared/game/mutations';
+import {
+  GAUNTLET_MODIFIERS,
+  gauntletBanName,
+  parseGauntletBan,
+  type GauntletModifierId,
+} from '@/shared/game/gauntlet';
 
 export interface DuelOpponent {
   name: string;
@@ -62,10 +66,10 @@ export function modifierName(id: string | null): string | null {
   return modifier ? modifier.name : id;
 }
 
-/** Display name for a banned mutation id ("phoenix" -> "Phoenix"). */
+/** Display name for a Genome ban, including legacy bare mutation ids. */
 export function mutationName(id: string | null): string | null {
   if (!id) return null;
-  return isMutationId(id) ? MUTATIONS[id].name : id;
+  return parseGauntletBan(id) ? gauntletBanName(id) : id;
 }
 
 export interface DuelContributor {
@@ -320,12 +324,12 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                 </p>
                 {duel.gauntlet.myRules.banned && (
                   <p data-testid="gauntlet-ban-received" className="mt-1 text-strike-red">
-                    {mutationName(duel.gauntlet.myRules.banned)} is banned from your offer pools this week
+                    {mutationName(duel.gauntlet.myRules.banned)} affects your Genome this week
                   </p>
                 )}
                 {duel.gauntlet.theirRules?.banned && (
                   <p data-testid="gauntlet-ban-given" className="mt-1 text-venom-orange">
-                    You banned {mutationName(duel.gauntlet.theirRules.banned)} from {duel.opponent.name}
+                    You chose {mutationName(duel.gauntlet.theirRules.banned)} against {duel.opponent.name}
                   </p>
                 )}
               </div>

@@ -58,17 +58,39 @@ describe('startingStrainPoints', () => {
         []
       )
     ).toEqual({ FERAL: 1 });
+    expect(
+      startingStrainPoints(
+        { strains: ['VOLT', 'FERAL'], strength: 1 },
+        []
+      )
+    ).toEqual({});
   });
 
   it('offer bias exists at every strength; guarantee only at 2', () => {
     expect(lineageOfferBias({ strains: ['VOLT'], strength: 0 })).toEqual({
       strains: ['VOLT'],
       guaranteeFirstOffer: false,
+      guaranteeStrains: ['VOLT'],
     });
     expect(
       lineageOfferBias({ strains: ['VOLT'], strength: 2 })!.guaranteeFirstOffer
     ).toBe(true);
     expect(lineageOfferBias(null)).toBeNull();
+    expect(
+      lineageOfferBias({
+        strains: ['VOLT', 'FERAL'],
+        strength: 2,
+        primary: 'FERAL',
+      })
+    ).toEqual({
+      strains: ['VOLT', 'FERAL'],
+      guaranteeFirstOffer: true,
+      guaranteeStrains: ['FERAL'],
+    });
+    expect(
+      lineageOfferBias({ strains: ['VOLT', 'FERAL'], strength: 2 })
+        ?.guaranteeStrains
+    ).toEqual([]);
   });
 });
 
@@ -119,6 +141,20 @@ describe('sanitizeLineage', () => {
       strains: ['VOLT'],
       strength: 0,
     });
+    expect(
+      sanitizeLineage({
+        strains: ['VOLT', 'VOLT', 'FERAL'],
+        strength: 1,
+        primary: 'VOLT',
+      })
+    ).toEqual({
+      strains: ['VOLT', 'FERAL'],
+      strength: 1,
+      primary: 'VOLT',
+    });
+    expect(
+      sanitizeLineage({ strains: ['VOLT', 'VOLT'], strength: 1, primary: 'VOLT' })
+    ).toEqual({ strains: ['VOLT'], strength: 1 });
   });
 });
 

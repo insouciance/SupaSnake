@@ -97,10 +97,11 @@ describe('ModeToggle', () => {
 
   it('shows the week-modifier hint in anomaly mode', () => {
     render(
-      <ModeToggle {...baseProps} mode="anomaly" anomalyName="Blackout" />
+      <ModeToggle {...baseProps} mode="anomaly" anomalyName="Blackout" anomalyStrain="UMBRA" />
     );
     const hint = screen.getByTestId('mode-anomaly-hint');
     expect(hint).toHaveTextContent(/This week: Blackout/);
+    expect(hint).toHaveTextContent(/Umbra strain/);
     expect(hint).toHaveTextContent(/normal DNA, own leaderboard/);
   });
 

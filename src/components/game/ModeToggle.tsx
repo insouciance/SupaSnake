@@ -21,6 +21,7 @@ import {
   formatTimeRemaining,
 } from '@/components/ui/EnergyTimer';
 import { IconBolt } from '@/components/ui/icons';
+import { STRAINS, type StrainId } from '@/shared/game/strains';
 
 interface ModeToggleProps {
   mode: GameMode;
@@ -30,6 +31,8 @@ interface ModeToggleProps {
   onSelect: (mode: GameMode) => void;
   /** This week's anomaly name; null hides the ANOMALY chip (board not live). */
   anomalyName?: string | null;
+  /** Genome strain favored by the current anomaly week. */
+  anomalyStrain?: StrainId | null;
 }
 
 export function ModeToggle({
@@ -39,6 +42,7 @@ export function ModeToggle({
   energyRegenAt,
   onSelect,
   anomalyName = null,
+  anomalyStrain = null,
 }: ModeToggleProps) {
   const outOfEnergy = energy < GAME_CONFIG.economy.energy.costPerGame;
 
@@ -87,7 +91,16 @@ export function ModeToggle({
             aria-pressed={mode === 'anomaly'}
             className={chipClass(mode === 'anomaly', outOfEnergy)}
           >
-            ANOMALY
+            <span className="inline-flex items-center gap-1.5">
+              {anomalyStrain && (
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: STRAINS[anomalyStrain].color }}
+                />
+              )}
+              ANOMALY
+            </span>
           </button>
         )}
         <button
@@ -105,7 +118,8 @@ export function ModeToggle({
         </p>
       ) : mode === 'anomaly' ? (
         <p className="text-beige/60 text-xs font-body" data-testid="mode-anomaly-hint">
-          {anomalyName ? `This week: ${anomalyName}` : 'Weekly modifier board'} —
+          {anomalyName ? `This week: ${anomalyName}` : 'Weekly modifier board'}
+          {anomalyStrain ? ` · ${STRAINS[anomalyStrain].name} strain` : ''} —
           normal DNA, own leaderboard
         </p>
       ) : (

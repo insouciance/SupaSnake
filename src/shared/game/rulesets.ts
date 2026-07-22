@@ -447,14 +447,17 @@ export function computeGenomeRunTotals(
 ): GenomeRunTotals {
   const ruleset = RULESETS[dynasty];
   const count = Number.isFinite(foodCount) ? Math.max(0, Math.floor(foodCount)) : 0;
-  const view = fusePicks(genome.picks);
+  const view = genome.splicesEnabled === false
+    ? { loose: [...genome.picks], splices: [] }
+    : fusePicks(genome.picks);
   const activations = strainActivations(
     genome.picks,
     genome.heirloom,
     genome.surges,
-    genome.tierCap ?? 3
+    genome.tierCap ?? 3,
+    genome.suppressedStrains ?? []
   );
-  const lengthTrace = computeLengthTrace(view, count, activations, genome);
+  const lengthTrace = computeLengthTrace(view, count, activations, genome, anomaly);
   const lengthAt = (n: number) => lengthTrace.lengthAtEat[n] ?? 0;
 
   let rawDna = 0;
@@ -496,7 +499,7 @@ export function computeGenomeRunTotals(
     score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n));
   }
   const capsBasis: GenomeCapsBasis = { cumulativeDna, genelessRaw, foodCount: count };
-  const caps = genomeClaimCaps(genome, capsBasis, lengthTrace);
+  const caps = genomeClaimCaps(genome, capsBasis, lengthTrace, anomaly);
   return { rawDna, score, capsBasis, caps, activations, lengthTrace };
 }
 

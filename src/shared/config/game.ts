@@ -94,7 +94,7 @@ export const GAME_CONFIG = deepFreeze({
     leaderboards: true,              // Social launch
     clans: true,                     // Social launch
     premium: true,                   // SupaSnake Premium subscription (028)
-    genome: false,                   // Buildcraft: The Genome (flips in G8)
+    genome: true,                    // Buildcraft: The Genome (server capability-gated)
   },
 
   /**
@@ -106,7 +106,7 @@ export const GAME_CONFIG = deepFreeze({
    */
   genome: {
     /** Cross-dynasty breeding produces dual-lineage offspring (§7). */
-    crossDynastyBreeding: false,     // flips once migration 030 is verified
+    crossDynastyBreeding: true,      // migration 030 RPC remains server authority
     /** FTUE ramp (§12): banked-run counts gating each layer. */
     ftue: {
       strainTagsAt: 4,

@@ -17,8 +17,11 @@ import {
 } from '@/shared/game/genes';
 import {
   MUTATION_POOL,
-  type MutationId,
 } from '@/shared/game/mutations';
+import {
+  applyGauntletBan,
+  type GauntletBanLike,
+} from '@/shared/game/gauntlet';
 import {
   fullMutationPool,
   unlockedMutationPool,
@@ -27,6 +30,7 @@ import type { DynastyName } from '@/shared/game/rulesets';
 import type { TraitId } from '@/shared/game/traits';
 import type { StrainPoints, StrainTier } from '@/shared/game/strains';
 import {
+  lineageFromAffinity,
   lineageOfferBias,
   sanitizeLineage,
   startingStrainPoints,
@@ -36,6 +40,7 @@ import type { LineageBias } from '@/shared/game/offerGravity';
 
 /** FTUE unlock state derived from the player's banked-run count (§12). */
 export interface GenomeFtue {
+  strainTagsUnlocked: boolean;
   expressionsUnlocked: boolean;
   infuseUnlocked: boolean;
   spawnPointsUnlocked: boolean;
@@ -43,12 +48,18 @@ export interface GenomeFtue {
   apexesUnlocked: boolean;
 }
 
-export function deriveFtue(bankedRuns: number, masteryLevel: number): GenomeFtue {
+export function deriveFtue(
+  bankedRuns: number,
+  masteryLevel: number,
+  ownedVariants: number = 2
+): GenomeFtue {
   const ftue = GAME_CONFIG.genome.ftue;
   return {
+    strainTagsUnlocked: bankedRuns >= ftue.strainTagsAt,
     expressionsUnlocked: bankedRuns >= ftue.expressionsAt,
     infuseUnlocked: bankedRuns >= ftue.infuseAt,
-    spawnPointsUnlocked: bankedRuns >= ftue.spawnPointsAt,
+    spawnPointsUnlocked:
+      bankedRuns >= ftue.spawnPointsAt && ownedVariants >= 2,
     splicesUnlocked: bankedRuns >= ftue.splicesAt,
     // "20 banked runs (or any M3)" - design §12
     apexesUnlocked: bankedRuns >= ftue.apexesAt || masteryLevel >= 3,
@@ -71,8 +82,8 @@ export function ftueTierCap(ftue: GenomeFtue): Extract<StrainTier, 1 | 2 | 3> {
 export function composeGenePool(
   dynasty: DynastyName,
   masteryLevel: number,
-  seasonalIds: MutationId[],
-  gauntletBan: string | null,
+  seasonalIds: GeneId[],
+  gauntletBan: GauntletBanLike | null,
   isFreePlay: boolean
 ): GeneId[] {
   const masteryUnlocks = (
@@ -89,7 +100,7 @@ export function composeGenePool(
     pool.push(SIGNATURE_GENES[dynasty]);
   }
   const deduped = Array.from(new Set(pool));
-  return gauntletBan ? deduped.filter((id) => id !== gauntletBan) : deduped;
+  return applyGauntletBan(deduped, gauntletBan);
 }
 
 /**
@@ -103,14 +114,10 @@ export function lineageFromRows(
 ): Lineage | null {
   const own = sanitizeLineage(snakeRow.lineage);
   if (own) return own;
-  const strain = variantRow?.lineage_strain;
-  if (typeof strain !== 'string') return null;
-  const strengthRaw = variantRow?.affinity_strength;
-  const strength =
-    typeof strengthRaw === 'number' && Number.isInteger(strengthRaw)
-      ? Math.max(0, Math.min(2, strengthRaw))
-      : 0;
-  return sanitizeLineage({ strains: [strain], strength });
+  return lineageFromAffinity(
+    variantRow?.lineage_strain,
+    variantRow?.affinity_strength
+  );
 }
 
 /** Starting strain points + offer bias, honoring the FTUE spawn gate. */
@@ -129,30 +136,49 @@ export function deriveHeirloom(
 }
 
 /**
- * Banked-run count (FTUE) + previous-run outcome (Grave Robber), one
- * round trip each - both best-effort (errors degrade to zero/false).
+ * Banked-run count (FTUE), distinct owned variants (Build Seed gate), and
+ * previous earned-run outcome (Grave Robber). Every read is best-effort.
  */
 export async function getGenomeRunFacts(
   supabase: SupabaseClient,
   playerId: string
-): Promise<{ bankedRuns: number; prevRunDied: boolean }> {
+): Promise<{ bankedRuns: number; prevRunDied: boolean; ownedVariants: number }> {
   let bankedRuns = 0;
   let prevRunDied = false;
+  let ownedVariants = 0;
   try {
     const { count } = await supabase
       .from('game_sessions')
       .select('*', { count: 'exact', head: true })
       .eq('player_id', playerId)
-      .eq('extracted', true);
+      .eq('extracted', true)
+      .eq('validated', true)
+      .eq('is_free_play', false)
+      .not('ended_at', 'is', null);
     bankedRuns = count ?? 0;
   } catch {
     bankedRuns = 0;
   }
   try {
     const { data } = await supabase
+      .from('collected_snakes')
+      .select('snake_variant_id')
+      .eq('player_id', playerId);
+    ownedVariants = new Set(
+      (data ?? [])
+        .map((row) => row.snake_variant_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    ).size;
+  } catch {
+    ownedVariants = 0;
+  }
+  try {
+    const { data } = await supabase
       .from('game_sessions')
       .select('extracted, ended_at')
       .eq('player_id', playerId)
+      .eq('validated', true)
+      .eq('is_free_play', false)
       .not('ended_at', 'is', null)
       .order('ended_at', { ascending: false })
       .limit(1);
@@ -161,5 +187,5 @@ export async function getGenomeRunFacts(
   } catch {
     prevRunDied = false;
   }
-  return { bankedRuns, prevRunDied };
+  return { bankedRuns, prevRunDied, ownedVariants };
 }

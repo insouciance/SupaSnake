@@ -143,7 +143,7 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO splice_definitions (id, name, gene_a, gene_b, effect, cost) VALUES
   ('splice_dragon_hoard', 'Dragon Hoard', 'gold_trail', 'compound_interest', 'Every 5th food ×3 +5 flat; bank +0.05 per gene held', 'Exit portals despawn 30 ticks sooner'),
-  ('splice_regenesis', 'Regenesis', 'overgrowth', 'shed', 'Food +20%; every 20 foods the tail resets to 8 and each shed segment pays 3 flat DNA', 'Food −10% DNA'),
+  ('splice_regenesis', 'Regenesis', 'overgrowth', 'shed', 'Food +20%; every 20 foods the tail resets to 8 and each shed segment pays 1 flat DNA', 'Food −10% DNA'),
   ('splice_styx_contract', 'Styx Contract', 'mirror_wager', 'phoenix', 'Bank ×1.50, survive one death — the revive keeps your benefits', 'Salvage locked at ×0.30'),
   ('splice_gravity_bubble', 'Gravity Bubble', 'time_dilation', 'magnet_pulse', 'Speed −1 tier AND pull radius 3', 'Food −25% DNA'),
   ('splice_ricochet', 'Ricochet', 'wall_rush', 'splitter', 'Wall-slide; food in pairs; foods eaten while sliding +50%', 'Each food worth 80%'),

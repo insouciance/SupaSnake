@@ -21,6 +21,10 @@ const season: SeasonView = {
   week: 3,
   weeks: 7,
   playoff_phase: 'none',
+  genes: [
+    { id: 'solstice_engine', name: 'Solstice Engine' },
+    { id: 'glacial_reserve', name: 'Glacial Reserve' },
+  ],
 };
 
 function tier(overrides: Partial<SeasonTierView>): SeasonTierView {
@@ -70,6 +74,7 @@ describe('SeasonTrack', () => {
     expect(screen.getByText('Season 1 — Solstice')).toBeInTheDocument();
     expect(screen.getByTestId('season-week-line')).toHaveTextContent('Week 3 of 7');
     expect(screen.getByTestId('season-level')).toHaveTextContent('Level 6');
+    expect(screen.getByTestId('season-genes')).toHaveTextContent('Solstice Engine');
     // 2200 XP at 400/level -> 200 into the current level
     expect(screen.getByText('200 / 400 XP')).toBeInTheDocument();
     expect(screen.getByText(/2 reroll tokens held/)).toBeInTheDocument();

@@ -123,6 +123,49 @@ describe('mapOwnedSnakeRow', () => {
     expect(result.acquiredMethod).toBe('bred');
     expect(result.isFavorited).toBe(true);
   });
+
+  it('prefers valid owned lineage and falls back to variant affinity', () => {
+    const base = {
+      id: 'uuid-123',
+      player_id: 'player-uuid',
+      snake_variant_id: 'variant-uuid',
+      generation: 1,
+      acquired_method: 'unlock',
+    };
+    const fallback = mapOwnedSnakeRow({
+      ...base,
+      snake_variants: {
+        name: 'CYBER VORTEX',
+        rarity: 'rare',
+        lineage_strain: 'VOLT',
+        affinity_strength: 1,
+      },
+    });
+    expect(fallback.lineage).toEqual({ strains: ['VOLT'], strength: 1 });
+
+    const own = mapOwnedSnakeRow({
+      ...base,
+      lineage: { strains: ['AURUM'], strength: 2 },
+      snake_variants: {
+        name: 'CYBER VORTEX',
+        rarity: 'rare',
+        lineage_strain: 'VOLT',
+        affinity_strength: 1,
+      },
+    });
+    expect(own.lineage).toEqual({ strains: ['AURUM'], strength: 2 });
+
+    const hostile = mapOwnedSnakeRow({
+      ...base,
+      lineage: { strains: ['NOPE'], strength: 2 },
+      snake_variants: {
+        name: 'CYBER VORTEX',
+        lineage_strain: 'VOLT',
+        affinity_strength: 1,
+      },
+    });
+    expect(hostile.lineage).toEqual({ strains: ['VOLT'], strength: 1 });
+  });
 });
 
 // =============================================================================

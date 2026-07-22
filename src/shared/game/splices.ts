@@ -52,7 +52,7 @@ export const SPLICES: Record<SpliceId, SpliceDef> = {
     id: 'splice_regenesis',
     name: 'Regenesis',
     parents: ['overgrowth', 'shed'],
-    effect: 'Food +20%; every 20 foods the tail resets to 8 and each shed segment pays 3 flat DNA',
+    effect: 'Food +20%; every 20 foods the tail resets to 8 and each shed segment pays 1 flat DNA',
     cost: 'Food −10% DNA',
   },
   splice_styx_contract: {
@@ -204,9 +204,9 @@ export const SPLICE_ECONOMICS = {
   dragonHoardGoldenFlat: 5,
   dragonHoardBankPerHeld: 0.05,
   dragonHoardBankCap: 0.3,
-  /** Regenesis: shed cycle 20 foods; +3 flat per shed segment. */
+  /** Regenesis: shed cycle 20 foods; +1 flat per shed segment (G8 balance pass). */
   regenesisShedEveryFoods: 20,
-  regenesisFlatPerSegment: 3,
+  regenesisFlatPerSegment: 1,
   regenesisResetLength: 8,
   /** Gravity Bubble: food x0.75 total (replaces Time Dilation's x0.8). */
   gravityBubbleFoodPenalty: 0.75,

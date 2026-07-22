@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { checkRateLimit } from '@/lib/server/rateLimit';
 import { validateGameResult } from '@/lib/server/gameValidator';
-import { normalizeDynastyName } from '@/shared/game/rulesets';
+import { computeRunTotals, normalizeDynastyName } from '@/shared/game/rulesets';
 import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import {
   MASTERY_UNLOCK_TRACK,
@@ -20,8 +20,14 @@ import {
 } from '@/shared/game/mastery';
 import { getMasteryXp, grantMasteryXp } from '@/lib/server/mastery';
 import { getGauntletBan } from '@/lib/server/gauntlet';
-import { getSeasonalMutationIds } from '@/lib/server/season';
-import { applyGauntletBan } from '@/shared/game/gauntlet';
+import {
+  getSeasonalGeneIds,
+  getSeasonalMutationIds,
+} from '@/lib/server/season';
+import {
+  applyGauntletBan,
+  gauntletSuppressedStrains,
+} from '@/shared/game/gauntlet';
 import {
   ANOMALIES,
   anomalyForWeek,
@@ -57,6 +63,7 @@ import {
   applyDnaMultiplier,
   type DnaMultiplierBreakdown,
 } from '@/lib/server/dnaMultipliers';
+import { recordCodexDiscoveries } from '@/lib/server/codex';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -206,6 +213,7 @@ export async function POST(request: NextRequest) {
       // Seasonal mutations (section 7.2): in every offer pool from their
       // season's start onward (then permanent). Pre-021 this reads empty.
       const seasonalIds = await getSeasonalMutationIds(supabase);
+      const seasonalGeneIds = await getSeasonalGeneIds(supabase);
       const mutationPool = applyGauntletBan(
         [
           ...(isFreePlay
@@ -229,11 +237,11 @@ export async function POST(request: NextRequest) {
       let genomeSeed: string | null = null;
       if (GAME_CONFIG.features.genome) {
         genomeSeed = randomUUID();
-        const { bankedRuns, prevRunDied } = await getGenomeRunFacts(
+        const { bankedRuns, prevRunDied, ownedVariants } = await getGenomeRunFacts(
           supabase,
           player.id
         );
-        const ftue = deriveFtue(bankedRuns, masteryLevel);
+        const ftue = deriveFtue(bankedRuns, masteryLevel, ownedVariants);
         const lineage = lineageFromRows(
           snake as Record<string, unknown>,
           (snake.snake_variants as Record<string, unknown> | null) ?? null
@@ -246,7 +254,7 @@ export async function POST(request: NextRequest) {
         const genePool = composeGenePool(
           startDynasty,
           masteryLevel,
-          seasonalIds,
+          seasonalGeneIds,
           isFreePlay ? null : gauntletBan,
           isFreePlay
         );
@@ -256,10 +264,14 @@ export async function POST(request: NextRequest) {
           genePool,
           lineage: lineageBias,
           anomalyStrain: null, // set below once the week's anomaly is derived
+          suppressedStrains: gauntletSuppressedStrains(gauntletBan),
           prevRunDied,
           ftue: {
+            bankedRuns,
+            strainTagsUnlocked: ftue.strainTagsUnlocked,
             expressionsUnlocked: ftue.expressionsUnlocked,
             infuseUnlocked: ftue.infuseUnlocked,
+            spawnPointsUnlocked: ftue.spawnPointsUnlocked,
             splicesUnlocked: ftue.splicesUnlocked,
             apexesUnlocked: ftue.apexesUnlocked,
           },
@@ -516,6 +528,7 @@ export async function POST(request: NextRequest) {
       // Seasonal mutations join the validation pool exactly as they join
       // the offer pool (pre-021: empty, byte-identical behavior)
       const endSeasonalIds = await getSeasonalMutationIds(supabase);
+      const endSeasonalGeneIds = await getSeasonalGeneIds(supabase);
       const unlockedPool = applyGauntletBan(
         [
           ...(isFreeSession
@@ -542,12 +555,12 @@ export async function POST(request: NextRequest) {
       let genomeCtx: GenomeValidationContext | null = null;
       let endLineageBias: ReturnType<typeof deriveHeirloom>['lineageBias'] = null;
       if (typeof sessionRunSeed === 'string' && sessionRunSeed.length > 0) {
-        const { bankedRuns, prevRunDied } = await getGenomeRunFacts(
+        const { bankedRuns, prevRunDied, ownedVariants } = await getGenomeRunFacts(
           supabase,
           player.id
         );
         const endMasteryLevel = levelForXp(masteryXpBefore);
-        const endFtue = deriveFtue(bankedRuns, endMasteryLevel);
+        const endFtue = deriveFtue(bankedRuns, endMasteryLevel, ownedVariants);
         const endLineage = usedSnakeRow
           ? lineageFromRows(
               usedSnakeRow,
@@ -566,13 +579,15 @@ export async function POST(request: NextRequest) {
           genePool: composeGenePool(
             endDynasty,
             isFreeSession ? 10 : endMasteryLevel,
-            endSeasonalIds,
+            endSeasonalGeneIds,
             isFreeSession ? null : endGauntletBan,
             isFreeSession
           ),
           prevRunDied,
           crownAllowed: isFreeSession || endMasteryLevel >= 10,
           tierCap: ftueTierCap(endFtue),
+          suppressedStrains: gauntletSuppressedStrains(endGauntletBan),
+          splicesUnlocked: endFtue.splicesUnlocked,
         };
       }
 
@@ -659,6 +674,17 @@ export async function POST(request: NextRequest) {
       }
 
       const finalDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+      // Genome Card cascade anchor: the same run with traits/anomaly but no
+      // in-run genes. This is display data from server authority, never an
+      // input to rewards.
+      const genelessRawDna = computeRunTotals(
+        endDynasty,
+        validation.foodCount,
+        [],
+        null,
+        snakeTraits,
+        sessionAnomaly
+      ).rawDna;
 
       // Sanitized mutation record for the session row (migration 014).
       // One JSONB blob: picks in order + Phoenix trigger + accepted COSMIC
@@ -796,6 +822,8 @@ export async function POST(request: NextRequest) {
             valid: validation.valid,
             adjustedDna: 0,
             baseDna: validation.adjustedDna,
+            rawDna: validation.rawDna,
+            genelessRawDna,
             score: validation.adjustedScore,
             extracted: validation.extracted,
           },
@@ -803,6 +831,9 @@ export async function POST(request: NextRequest) {
           newAchievements: [],
           ...(identityInfo ? { identity: identityInfo } : {}),
           ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
+          // Free Play still gets an authoritative recap card. Discoveries
+          // and rewards remain disabled; this is validator output only.
+          ...(validation.genome ? { genome: validation.genome } : {}),
         });
       }
 
@@ -888,6 +919,18 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+
+      // Genome Codex (migration 031): only validator-accepted earning runs
+      // reach this point. Discovery grants are atomic/idempotent in the RPC
+      // and deliberately non-fatal to the completed run payout.
+      const codex = validation.valid && validation.genome
+        ? await recordCodexDiscoveries(
+            supabase,
+            player.id,
+            sessionId,
+            validation.genome
+          )
+        : null;
 
       const { data: updatedPlayer } = await supabase
         .from('players')
@@ -1085,6 +1128,8 @@ export async function POST(request: NextRequest) {
           valid: validation.valid,
           adjustedDna: finalDna,
           baseDna: validation.adjustedDna,
+          rawDna: validation.rawDna,
+          genelessRawDna,
           score: validation.adjustedScore,
           extracted: validation.extracted,
         },
@@ -1095,6 +1140,7 @@ export async function POST(request: NextRequest) {
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
+        ...(codex ? { codex } : {}),
       });
     }
 

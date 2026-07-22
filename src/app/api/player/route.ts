@@ -13,6 +13,9 @@ import {
   isAimSystemUnlocked,
   type AimStats,
 } from '@/lib/game/aimSystems';
+import { getGenomeRunFacts, deriveFtue } from '@/lib/server/genome';
+import { getMasteryXp } from '@/lib/server/mastery';
+import { levelForXp } from '@/shared/game/mastery';
 
 const VALID_DYNASTIES = ['CYBER', 'PRIMAL', 'COSMIC'];
 
@@ -176,6 +179,27 @@ export async function GET(request: NextRequest) {
         ? storedAim
         : DEFAULT_AIM_SYSTEM;
 
+    // Pre-run FTUE visibility comes from the same server facts used when a
+    // session starts. This lets Build Seed remain hidden until its actual
+    // gameplay benefit is unlocked; failures degrade to the locked state.
+    let genomeFtue = null;
+    if (GAME_CONFIG.features.genome) {
+      const [{ bankedRuns, ownedVariants }, ...masteryXp] = await Promise.all([
+        getGenomeRunFacts(supabase, player.id),
+        getMasteryXp(supabase, player.id, 'CYBER'),
+        getMasteryXp(supabase, player.id, 'PRIMAL'),
+        getMasteryXp(supabase, player.id, 'COSMIC'),
+      ]);
+      const maxMasteryLevel = masteryXp.reduce(
+        (max, xp) => Math.max(max, levelForXp(xp)),
+        0
+      );
+      genomeFtue = {
+        bankedRuns,
+        ...deriveFtue(bankedRuns, maxMasteryLevel, ownedVariants),
+      };
+    }
+
     return NextResponse.json({
       player,
       // Additional fields for Welcome Back modal
@@ -186,6 +210,7 @@ export async function GET(request: NextRequest) {
       // Aim telegraph meta-progression
       aimSystem,
       aimStats,
+      ...(genomeFtue ? { genomeFtue } : {}),
       // Identity v1 I4 (section 9.2): weekly Analyst digest email
       // opt-in. false pre-025 (column absent from the row).
       emailDigestOptIn: settings?.email_digest_opt_in === true,

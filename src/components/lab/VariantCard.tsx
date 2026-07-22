@@ -15,6 +15,7 @@ import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
+import { StrainChip } from '@/components/traits/StrainChip';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
 
 export interface VariantCardProps {
@@ -207,6 +208,27 @@ export function VariantCard({
           className="absolute inset-0 pointer-events-none shimmer-overlay animate-shimmer"
           aria-hidden="true"
         />
+      )}
+
+      {/* Trait chips (Design v2 Phase 3A) - owned snakes with traits only */}
+      {isOwned && owned.lineage && (
+        <div
+          className="w-full px-2 py-1 flex justify-center gap-1 bg-void-deep/70"
+          data-testid="variant-card-lineage"
+        >
+          {owned.lineage.strains.map((strain) => (
+            <StrainChip
+              key={strain}
+              strain={strain}
+              points={
+                owned.lineage?.strains.length === 1 ||
+                owned.lineage?.primary === strain
+                  ? owned.lineage.strength
+                  : 0
+              }
+            />
+          ))}
+        </div>
       )}
 
       {/* Trait chips (Design v2 Phase 3A) - owned snakes with traits only */}

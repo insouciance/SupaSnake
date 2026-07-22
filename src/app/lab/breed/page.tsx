@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Breeding Lab - Combine two same-dynasty snakes into a new offspring.
+ * Breeding Lab - Combine two snakes into a new offspring and lineage.
  *
  * Two parent slots + offspring preview (cost, generation, 50/50 variant
  * hint), server-authoritative breeding via POST /api/breeding, recent
@@ -20,6 +20,8 @@ import { useToast } from '@/components/ui/Toast';
 import { validateBreedingPair, type BreedingBlockReason } from '@/lib/breeding/preview';
 import { previewInheritance } from '@/lib/breeding/inheritance';
 import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
+import { combineLineages, sanitizeLineage } from '@/shared/game/lineage';
+import { GAME_CONFIG } from '@/shared/config/game';
 
 import { Navigation } from '@/components/ui/Navigation';
 import { IconArrowRight, IconDna } from '@/components/ui/icons';
@@ -27,6 +29,7 @@ import { ParentSlot } from '@/components/breeding/ParentSlot';
 import { SnakePicker, type SnakePickerEntry } from '@/components/breeding/SnakePicker';
 import { BreedingReveal, type RerollResult } from '@/components/breeding/BreedingReveal';
 import { TraitChip } from '@/components/traits/TraitChip';
+import { StrainChip } from '@/components/traits/StrainChip';
 
 import type { OwnedSnake, SnakeVariant, Rarity } from '@/shared/types/snake-data-model';
 import type { BreedingHistoryEntry, BreedingHistoryResponse } from '@/app/api/breeding/utils';
@@ -116,7 +119,8 @@ export default function BreedPage() {
         parent2
           ? { id: parent2.snake.id, generation: parent2.snake.generation, dynastyId: parent2.dynastyId }
           : null,
-        dnaBalance
+        dnaBalance,
+        GAME_CONFIG.genome.crossDynastyBreeding
       ),
     [parent1, parent2, dnaBalance]
   );
@@ -124,8 +128,9 @@ export default function BreedPage() {
   const theme1 = useDynastyTheme(parent1?.dynastyName ?? 'CYBER');
   const theme2 = useDynastyTheme(parent2?.dynastyName ?? parent1?.dynastyName ?? 'CYBER');
 
-  // Picker entries: all owned snakes; when choosing the second parent,
-  // restrict to the anchor parent's dynasty and exclude the anchor itself.
+  // Picker entries: all owned snakes. The feature gate determines whether
+  // the second parent must share the anchor's dynasty; a snake can never be
+  // paired with itself.
   const pickerEntries = useMemo((): SnakePickerEntry[] => {
     if (pickerSlot === null) return [];
     const anchor = pickerSlot === 1 ? parent2 : parent1;
@@ -142,7 +147,10 @@ export default function BreedPage() {
           if (snake.id === anchor.snake.id) {
             disabled = true;
             disabledReason = 'Selected';
-          } else if (variant.dynastyId !== anchor.dynastyId) {
+          } else if (
+            !GAME_CONFIG.genome.crossDynastyBreeding &&
+            variant.dynastyId !== anchor.dynastyId
+          ) {
             disabled = true;
             disabledReason = 'Other dynasty';
           }
@@ -223,6 +231,7 @@ export default function BreedPage() {
         typeof child.trait_slots === 'number'
           ? child.trait_slots
           : getTraitSlots(variantJoin?.rarity ?? 'common', child.generation);
+      const childLineage = sanitizeLineage(child.lineage);
 
       // Reveal payload
       const offspring: BredOffspring = {
@@ -235,6 +244,7 @@ export default function BreedPage() {
         dnaCost: data.cost ?? null,
         traits: childTraits,
         traitSlots: childTraitSlots,
+        lineage: childLineage,
       };
       setLastOffspring(offspring);
 
@@ -258,6 +268,7 @@ export default function BreedPage() {
         isFavorited: false,
         traits: childTraits,
         traitSlots: childTraitSlots,
+        lineage: childLineage,
         variantName: offspring.variantName,
         dynastyName: offspring.dynastyName,
         variantRarity: variantJoin?.rarity ?? null,
@@ -349,6 +360,14 @@ export default function BreedPage() {
       validation.offspringGeneration
     );
   }, [parent1, parent2, validation.offspringGeneration]);
+
+  const lineageOutcomes = useMemo(() => {
+    if (!parent1 || !parent2) return [];
+    return combineLineages(
+      { lineage: sanitizeLineage(parent1.snake.lineage), dynasty: parent1.dynastyName },
+      { lineage: sanitizeLineage(parent2.snake.lineage), dynasty: parent2.dynastyName }
+    );
+  }, [parent1, parent2]);
 
   // ---------------------------------------------------------------------------
   // LOADING / AUTH STATES
@@ -539,6 +558,43 @@ export default function BreedPage() {
                 ))}
               </div>
             )}
+
+            {lineageOutcomes.length > 0 && (
+              <div
+                className="pt-2 space-y-2 border-t border-scale-blue-light/20"
+                data-testid="lineage-preview"
+              >
+                <p className="text-xs font-body text-beige/70">
+                  Lineage outcome{lineageOutcomes.length > 1 ? 's' : ''}
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {lineageOutcomes.map((outcome) => (
+                    <div
+                      key={outcome.lineage.strains.join('-')}
+                      className="inline-flex items-center gap-1.5 rounded-arcade border border-scale-blue-light/25 bg-void-deep/60 px-2 py-1"
+                    >
+                      {outcome.lineage.strains.map((strain) => (
+                        <StrainChip
+                          key={strain}
+                          strain={strain}
+                          points={outcome.lineage.strength}
+                        />
+                      ))}
+                      {outcome.chance < 1 && (
+                        <span className="text-[10px] font-mono text-beige/60">
+                          {Math.round(outcome.chance * 100)}%
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {lineageOutcomes.some((outcome) => outcome.lineage.strains.length === 2) && (
+                  <p className="text-[10px] font-body text-beige/60">
+                    Dual lineage biases both strains; choose its primary before a run.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Breed button */}
@@ -591,6 +647,17 @@ export default function BreedPage() {
                         <p className="text-xs font-body truncate text-beige/60">
                           {entry.parent1?.variantName ?? '?'} × {entry.parent2?.variantName ?? '?'}
                         </p>
+                        {entry.lineage && (
+                          <div className="flex gap-1 mt-1" data-testid="history-lineage">
+                            {entry.lineage.strains.map((strain) => (
+                              <StrainChip
+                                key={strain}
+                                strain={strain}
+                                points={entry.lineage?.strength}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <span className="text-xs font-mono font-medium shrink-0 text-beige/60 inline-flex items-center gap-1">
                         -{entry.dnaCost}

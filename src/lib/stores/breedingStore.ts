@@ -8,6 +8,7 @@
 
 import { create } from 'zustand';
 import type { Rarity } from '@/shared/types/snake-data-model';
+import type { Lineage } from '@/shared/game/lineage';
 
 // =============================================================================
 // TYPES
@@ -28,6 +29,8 @@ export interface BredOffspring {
   traits: string[];
   /** Trait slot count for the offspring (section 6.1). */
   traitSlots: number | null;
+  /** Server-rolled Genome lineage. */
+  lineage: Lineage | null;
 }
 
 interface BreedingState {

@@ -72,9 +72,25 @@ export async function GET(request: NextRequest) {
     }
 
     const payload = (data ?? {}) as Record<string, unknown>;
+    const rawSeason = payload.season && typeof payload.season === 'object'
+      ? payload.season as Record<string, unknown>
+      : null;
+    // get_season's stable pre-Genome wire key is `mutations`. Every row in
+    // that frozen catalog is a gene, so expose a correctly named alias while
+    // retaining the old field for rolling-deploy clients.
+    const season = rawSeason
+      ? {
+          ...rawSeason,
+          genes: Array.isArray(rawSeason.genes)
+            ? rawSeason.genes
+            : Array.isArray(rawSeason.mutations)
+              ? rawSeason.mutations
+              : [],
+        }
+      : null;
     return NextResponse.json({
       live: true,
-      season: payload.season ?? null,
+      season,
       track: payload.track ?? null,
       playoffs: Array.isArray(payload.playoffs) ? payload.playoffs : [],
       champions: Array.isArray(payload.champions) ? payload.champions : [],

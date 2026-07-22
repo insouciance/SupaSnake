@@ -18,7 +18,43 @@
  */
 
 import { isMutationId, type MutationId } from '@/shared/game/mutations';
+import { GENES, isGeneId, type GeneId } from '@/shared/game/genes';
+import { STRAINS, isStrainId, type StrainId } from '@/shared/game/strains';
 import type { DynastyName } from '@/shared/game/rulesets';
+
+export type GauntletBan = `gene:${GeneId}` | `strain:${StrainId}`;
+export type GauntletBanLike = GauntletBan | MutationId;
+
+export type ParsedGauntletBan =
+  | { kind: 'gene'; id: GeneId }
+  | { kind: 'strain'; id: StrainId };
+
+/** Parse migration-032 domains and legacy pre-032 bare mutation ids. */
+export function parseGauntletBan(value: unknown): ParsedGauntletBan | null {
+  if (typeof value !== 'string') return null;
+  if (value.startsWith('gene:')) {
+    const id = value.slice('gene:'.length);
+    return isGeneId(id) ? { kind: 'gene', id } : null;
+  }
+  if (value.startsWith('strain:')) {
+    const id = value.slice('strain:'.length);
+    return isStrainId(id) ? { kind: 'strain', id } : null;
+  }
+  // Deploy window: migration 020/021 stored a bare mutation id.
+  return isMutationId(value) ? { kind: 'gene', id: value } : null;
+}
+
+export function isGauntletBan(value: unknown): value is GauntletBanLike {
+  return parseGauntletBan(value) !== null;
+}
+
+export function gauntletBanName(value: unknown): string {
+  const parsed = parseGauntletBan(value);
+  if (!parsed) return 'Unknown ban';
+  return parsed.kind === 'gene'
+    ? GENES[parsed.id].name
+    : `${STRAINS[parsed.id].name} strain`;
+}
 
 /** Hard cap on tithes: 500 DNA per member per week (section 8.3). */
 export const TITHE_WEEKLY_CAP = 500;
@@ -253,7 +289,7 @@ export interface GauntletPicksInput {
   dynasty: DynastyName;
   dynasty2?: DynastyName | null;
   modifier?: GauntletModifierId | null;
-  ban?: MutationId | null;
+  ban?: GauntletBanLike | null;
 }
 
 const DYNASTIES: readonly string[] = ['PRIMAL', 'CYBER', 'COSMIC'];
@@ -295,7 +331,7 @@ export function validateGauntletPicks(
     }
   }
 
-  if (input.ban != null && !isMutationId(input.ban)) {
+  if (input.ban != null && !isGauntletBan(input.ban)) {
     errors.push('INVALID_BAN');
   }
 
@@ -322,8 +358,8 @@ export interface EffectiveSideRules {
    * pre-021 rules JSON - readers must treat missing as false.
    */
   include_anomaly?: boolean;
-  /** Mutation banned BY THE OPPONENT against this side's counted runs. */
-  banned: MutationId | null;
+  /** Gene removed or strain tier-suppressed by the opponent. */
+  banned: GauntletBanLike | null;
 }
 
 /**
@@ -334,7 +370,7 @@ export interface EffectiveSideRules {
 export function buildSideRules(
   picks: GauntletPicksInput | null,
   unlockedNodes: readonly string[],
-  bannedAgainst: MutationId | null = null
+  bannedAgainst: GauntletBanLike | null = null
 ): EffectiveSideRules {
   const modifier = picks?.modifier ? GAUNTLET_MODIFIERS[picks.modifier] : null;
   const topMembers = modifier?.topMembers ?? BASE_TOP_MEMBERS;
@@ -448,10 +484,19 @@ export function countedSideScore(
  * ban === null (no duel / not resolved / outside the counted window /
  * pre-migration-020) is a no-op - Free Play always passes null.
  */
-export function applyGauntletBan(
-  pool: readonly MutationId[],
-  ban: MutationId | null
-): MutationId[] {
-  if (ban === null) return [...pool];
-  return pool.filter((id) => id !== ban);
+export function applyGauntletBan<T extends GeneId>(
+  pool: readonly T[],
+  ban: GauntletBanLike | null
+): T[] {
+  const parsed = parseGauntletBan(ban);
+  if (!parsed || parsed.kind === 'strain') return [...pool];
+  return pool.filter((id) => id !== parsed.id);
+}
+
+/** A strain ban changes tier activation, not offer availability. */
+export function gauntletSuppressedStrains(
+  ban: GauntletBanLike | null
+): StrainId[] {
+  const parsed = parseGauntletBan(ban);
+  return parsed?.kind === 'strain' ? [parsed.id] : [];
 }

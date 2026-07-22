@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isMutationId, type MutationId } from '@/shared/game/mutations';
+import { isGeneId, type GeneId } from '@/shared/game/genes';
 
 interface SupabaseErrorLike {
   code?: string;
@@ -37,7 +38,7 @@ export function isMissingSeasonInfra(
   ) {
     return true;
   }
-  return /season_mutations|season_playoff|season_champions|get_season|get_anomaly_board|claim_season_tier|anomaly_id|anomaly_week|\bseasons\b/i.test(
+  return /season_mutations|season_genes|season_playoff|season_champions|get_season|get_anomaly_board|claim_season_tier|anomaly_id|anomaly_week|\bseasons\b/i.test(
     error.message || ''
   );
 }
@@ -76,5 +77,39 @@ export async function getSeasonalMutationIds(
   } catch (err) {
     console.error('Seasonal mutation pool read error:', err);
     return [];
+  }
+}
+
+/**
+ * Genome-era seasonal pool. Migration 032 keeps season_mutations frozen and
+ * introduces season_genes; during the deploy window we fall back to the
+ * legacy seasonal ids because every existing seasonal mutation is a gene.
+ */
+export async function getSeasonalGeneIds(
+  supabase: SupabaseClient
+): Promise<GeneId[]> {
+  try {
+    const { data, error } = await supabase
+      .from('season_genes')
+      .select('gene_id, seasons!inner(starts_on)')
+      .lte('seasons.starts_on', new Date().toISOString().slice(0, 10));
+
+    if (error) {
+      if (!isMissingSeasonInfra(error)) {
+        console.error('Seasonal gene pool read error:', error);
+        return [];
+      }
+      return getSeasonalMutationIds(supabase);
+    }
+
+    const ids: GeneId[] = [];
+    for (const row of data ?? []) {
+      const id = (row as { gene_id?: unknown }).gene_id;
+      if (isGeneId(id) && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  } catch (error) {
+    console.error('Seasonal gene pool read error:', error);
+    return getSeasonalMutationIds(supabase);
   }
 }

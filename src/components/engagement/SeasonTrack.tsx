@@ -27,6 +27,8 @@ export interface SeasonView {
   week: number;
   weeks: number;
   playoff_phase: 'none' | 'quarterfinal' | 'championship';
+  /** Genome alias supplied by /api/season; absent on older deployments. */
+  genes?: Array<{ id: string; name: string }>;
 }
 
 export interface SeasonTierView {
@@ -129,6 +131,22 @@ export function SeasonTrack({
             )}
           </p>
         </div>
+
+        {season.genes && season.genes.length > 0 && (
+          <div className="mb-4 text-center" data-testid="season-genes">
+            <p className="label-arcade mb-2">Season Genes</p>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {season.genes.map((gene) => (
+                <span
+                  key={gene.id}
+                  className="rounded-arcade border border-cosmic/50 bg-cosmic/10 px-2 py-1 text-xs font-body text-cosmic"
+                >
+                  {gene.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Track progress: level + XP bar (contracts feed it, §7.3) */}
         <div className="mb-4 space-y-1.5">

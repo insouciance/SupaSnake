@@ -274,21 +274,41 @@ describe('portal trichotomy', () => {
     game.grantMutation('gold_trail', 0);
     game.grantMutation('overgrowth', 0);
     game.grantMutation('wall_rush', 0);
-    game.grantMutation('mirror_wager', 0);
     game.grantMutation('slipstream', 0);
     game.grantMutation('serpentine', 0);
+    game.grantMutation('bulk_up', 0);
     expect(game.getState().heldMutations.length).toBe(GENOME_SPAWN.maxHeld);
     eatFoods(game, 10);
     driveToPortal(game);
     game.resolvePortalChoice('infuse');
     const state = game.getState();
     expect(state.pendingSurgeChoice).toBe(true);
+    expect(game.chooseSurge('UMBRA')).toBe(false); // no held UMBRA gene
+    expect(game.getState().pendingSurgeChoice).toBe(true);
     expect(game.chooseSurge('AURUM')).toBe(true);
     expect(game.getState().surges).toEqual([{ strain: 'AURUM', atFood: 10 }]);
     expect(game.getState().strainCounts.AURUM).toBe(2); // gene + surge
   });
 
-  it('short snakes cannot infuse - the portal banks immediately', () => {
+  it('a splice frees one held slot for an infuse gene offer', () => {
+    const game = makeGenomeGame();
+    game.grantMutation('gold_trail', 0);
+    game.grantMutation('compound_interest', 0); // Dragon Hoard: one slot
+    game.grantMutation('overgrowth', 0);
+    game.grantMutation('wall_rush', 0);
+    game.grantMutation('slipstream', 0);
+    game.grantMutation('serpentine', 0);
+    expect(game.getState().heldMutations.length).toBe(GENOME_SPAWN.maxHeld);
+    expect(game.getState().fusedSplices).toHaveLength(1); // five occupied slots
+
+    eatFoods(game, 10);
+    driveToPortal(game);
+    expect(game.resolvePortalChoice('infuse')).toBe(true);
+    expect(game.getState().pendingChoice).not.toBeNull();
+    expect(game.getState().pendingSurgeChoice).toBe(false);
+  });
+
+  it('short snakes cannot infuse but can still BANK or PASS', () => {
     const game = makeGenomeGame();
     eatFoods(game, 2); // length 5 < 8
     let over = false;
@@ -296,7 +316,12 @@ describe('portal trichotomy', () => {
       over = true;
     });
     driveToPortal(game);
-    expect(over).toBe(true);
+    expect(over).toBe(false);
+    expect(game.getState().pendingPortalChoice).toEqual({ canInfuse: false });
+    expect(game.resolvePortalChoice('pass')).toBe(true);
+    expect(game.getState().pendingPortalChoice).toBeNull();
+    expect(game.getState().exitTile).toBeNull();
+    expect(over).toBe(false);
   });
 
   it('FTUE: infuse locked -> the portal banks immediately', () => {

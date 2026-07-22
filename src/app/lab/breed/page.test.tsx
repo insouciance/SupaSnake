@@ -223,7 +223,7 @@ describe('BreedPage - parent selection and preview', () => {
     expect(screen.getByTestId('breed-block-reason')).toHaveTextContent('Not enough DNA');
   });
 
-  it('opens the picker and restricts parent 2 to the same dynasty', async () => {
+  it('opens the picker and allows a different-dynasty Genome parent', async () => {
     useBreedingStore.setState({ parent1Id: 'snake-a' });
 
     render(<BreedPage />);
@@ -235,13 +235,14 @@ describe('BreedPage - parent selection and preview', () => {
     expect(screen.getByTestId('picker-snake-snake-a')).toBeDisabled();
     // Same dynasty -> selectable
     expect(screen.getByTestId('picker-snake-snake-b')).toBeEnabled();
-    // Other dynasty -> disabled
-    expect(screen.getByTestId('picker-snake-snake-c')).toBeDisabled();
+    // Genome lineage breeding also permits a cross-dynasty parent.
+    expect(screen.getByTestId('picker-snake-snake-c')).toBeEnabled();
 
-    fireEvent.click(screen.getByTestId('picker-snake-snake-b'));
+    fireEvent.click(screen.getByTestId('picker-snake-snake-c'));
 
-    expect(useBreedingStore.getState().parent2Id).toBe('snake-b');
+    expect(useBreedingStore.getState().parent2Id).toBe('snake-c');
     expect(screen.queryByTestId('snake-picker')).not.toBeInTheDocument();
+    expect(screen.getByTestId('breed-button')).toBeEnabled();
   });
 });
 

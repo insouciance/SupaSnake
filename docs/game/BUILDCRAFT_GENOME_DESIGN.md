@@ -164,7 +164,7 @@ Fusion trigger: pick gene B while holding gene A (order-free). The two genes are
 | # | Recipe | Splice | Strains | Kind | Effect | Cost |
 |---|---|---|---|---|---|---|
 | 1 | Gold Trail + Compound Interest | **Dragon Hoard** | AURUM×2 | E | Every 5th food ×3 **+5 flat**; bank +0.05/gene held | Portals −30 ticks |
-| 2 | Overgrowth + Shed | **Regenesis** | FERAL×2 | EP | Food +20%; every 20 foods tail resets to 8, each shed segment pays 3 flat (deterministic count) | Food −10% |
+| 2 | Overgrowth + Shed | **Regenesis** | FERAL×2 | EP | Food +20%; every 20 foods tail resets to 8, each shed segment pays 1 flat (deterministic count; G8 balance pass) | Food −10% |
 | 3 | Mirror Wager + Phoenix | **Styx Contract** | UMBRA×2 | EP | Bank ×1.50, salvage ×0.30, survive one death; trigger does NOT void benefits | Salvage locked ×0.30 post-trigger |
 | 4 | Time Dilation + Magnet Pulse | **Gravity Bubble** | VOLT+FLUX | EP | Speed −1 tier AND pull radius 3 | Food −25% |
 | 5 | Wall Rush + Splitter | **Ricochet** | FLUX+VOLT | EP+BT | Wall-slide; food in pairs; foods eaten while sliding +50% | Each food worth 80%. BT: slide-eat claims ≤ 40% of foods since fusion |

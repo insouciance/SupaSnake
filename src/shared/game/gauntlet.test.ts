@@ -18,6 +18,7 @@ import {
   buildSideRules,
   countedSideScore,
   gauntletPhase,
+  gauntletSuppressedStrains,
   gauntletWeekStart,
   isResearchNodeId,
   picksDeadline,
@@ -309,5 +310,16 @@ describe('pool ban (section 8.2 item 3)', () => {
 
   it('null ban (no duel / pre-020 / Free Play) is a no-op', () => {
     expect(applyGauntletBan(MUTATION_POOL, null)).toEqual([...MUTATION_POOL]);
+  });
+
+  it('supports the migration-032 gene domain and preserves legacy ids', () => {
+    expect(applyGauntletBan(MUTATION_POOL, 'gene:phoenix')).not.toContain('phoenix');
+    expect(applyGauntletBan(MUTATION_POOL, 'phoenix')).not.toContain('phoenix');
+  });
+
+  it('strain bans suppress activation tiers without removing offers', () => {
+    expect(applyGauntletBan(MUTATION_POOL, 'strain:UMBRA')).toEqual([...MUTATION_POOL]);
+    expect(gauntletSuppressedStrains('strain:UMBRA')).toEqual(['UMBRA']);
+    expect(gauntletSuppressedStrains('gene:phoenix')).toEqual([]);
   });
 });

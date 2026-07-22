@@ -1,7 +1,9 @@
 /**
  * Breeding API utilities
  * Row mapping for GET /api/breeding (recent breeding history).
- */
+*/
+
+import { sanitizeLineage, type Lineage } from '@/shared/game/lineage';
 
 // =============================================================================
 // TYPES
@@ -23,6 +25,8 @@ export interface BreedingHistoryEntry {
   parent1: BreedingHistorySnake | null;
   parent2: BreedingHistorySnake | null;
   child: BreedingHistorySnake | null;
+  /** The audited lineage rolled at birth (not a later reroll). */
+  lineage: Lineage | null;
 }
 
 export interface BreedingHistoryResponse {
@@ -68,6 +72,10 @@ function mapSnakeJoin(
  * joins aliased as parent1/parent2/child) into the camelCase API shape.
  */
 export function mapBreedingHistoryRow(row: Record<string, unknown>): BreedingHistoryEntry {
+  const traitRolls = row.trait_rolls as
+    | { lineage?: { child?: unknown } | null }
+    | null
+    | undefined;
   return {
     id: row.id as string,
     dnaCost: (row.dna_cost as number) ?? 0,
@@ -75,5 +83,6 @@ export function mapBreedingHistoryRow(row: Record<string, unknown>): BreedingHis
     parent1: mapSnakeJoin(row.parent1 as SnakeJoinRow | SnakeJoinRow[] | null),
     parent2: mapSnakeJoin(row.parent2 as SnakeJoinRow | SnakeJoinRow[] | null),
     child: mapSnakeJoin(row.child as SnakeJoinRow | SnakeJoinRow[] | null),
+    lineage: sanitizeLineage(traitRolls?.lineage?.child),
   };
 }

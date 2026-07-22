@@ -8,6 +8,9 @@
 
 import { create } from 'zustand';
 import type { Dynasty, SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
+import { sanitizeLineage, startingStrainPoints } from '@/shared/game/lineage';
+import { sanitizeTraits } from '@/shared/game/traits';
+import type { StrainPoints } from '@/shared/game/strains';
 
 // =============================================================================
 // TYPES
@@ -72,6 +75,7 @@ interface CollectionState extends CollectionUIState {
   getEquippedSnake: () => OwnedSnake | null;
   getDynastyById: (id: string) => Dynasty | undefined;
   getVariantById: (id: string) => SnakeVariant | undefined;
+  getStartingStrains: (snakeId: string) => StrainPoints;
 }
 
 // =============================================================================
@@ -164,6 +168,10 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       ownedSnakes: state.ownedSnakes.map((snake) =>
         snake.id === id ? { ...snake, ...updates } : snake
       ),
+      selectedOwned:
+        state.selectedOwned?.id === id
+          ? { ...state.selectedOwned, ...updates }
+          : state.selectedOwned,
     })),
 
   // Selectors
@@ -191,5 +199,14 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   getVariantById: (id) => {
     const { variants } = get();
     return variants.find((v) => v.id === id);
+  },
+
+  getStartingStrains: (snakeId) => {
+    const snake = get().ownedSnakes.find((entry) => entry.id === snakeId);
+    if (!snake) return {};
+    return startingStrainPoints(
+      sanitizeLineage(snake.lineage),
+      sanitizeTraits(snake.traits)
+    );
   },
 }));

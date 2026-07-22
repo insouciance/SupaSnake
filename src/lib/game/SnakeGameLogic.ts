@@ -50,6 +50,7 @@ import {
   type TraitId,
 } from '@/shared/game/traits';
 import {
+  ANOMALY_ECONOMICS,
   ANOMALY_PHYSICS,
   anomalyFoodValueModifier,
   type AnomalyId,
@@ -69,12 +70,14 @@ import {
   GENOME_SPAWN,
   geneFoodValueFlatBonus,
   geneFoodValueModifier,
+  geneStrains,
   type GeneId,
   type GenePick,
 } from '@/shared/game/genes';
 import {
   SPLICE_ECONOMICS,
   SPLICE_PHYSICS,
+  fusedSlotCount,
   type SpliceId,
 } from '@/shared/game/splices';
 import {
@@ -399,12 +402,16 @@ export interface GenomeEngineConfig {
   lineage?: LineageBias | null;
   /** Anomaly strain week: +weight on this strain's genes in offers. */
   anomalyStrain?: StrainId | null;
+  /** Gauntlet strain ban: Expressions/Apexes are disabled; minor remains. */
+  suppressedStrains?: StrainId[];
   /** Server fact: the previous earned run ended in death (Grave Robber). */
   prevRunDied?: boolean;
   /** FTUE gating (server-derived from banked-run count). */
   ftue?: {
+    strainTagsUnlocked?: boolean;
     expressionsUnlocked: boolean;
     infuseUnlocked: boolean;
+    spawnPointsUnlocked?: boolean;
     splicesUnlocked: boolean;
     apexesUnlocked: boolean;
   };
@@ -547,10 +554,29 @@ export class SnakeGameLogic {
     return this.genomeActive() ? GENOME_SPAWN.maxHeld : MUTATION_SPAWN.maxHeld;
   }
 
+  /**
+   * Occupied offer slots. Raw parent picks remain in the run payload so the
+   * server can derive splices, but each derived splice occupies one slot.
+   */
+  private heldSlotCount(): number {
+    return this.genomeActive()
+      ? fusedSlotCount(this.fusedView)
+      : this.state.heldMutations.length;
+  }
+
+  /** Strains represented by genes picked this run (spawn points excluded). */
+  private heldGeneStrains(): StrainId[] {
+    return Array.from(
+      new Set(this.state.heldMutations.flatMap((pick) => geneStrains(pick.id)))
+    );
+  }
+
   /** Recompute the fused view + activations + live tiers after a change. */
   private refreshGenomeDerived(): void {
     if (!this.genomeActive()) return;
-    this.fusedView = fusePicks(this.state.heldMutations);
+    this.fusedView = this.genome?.ftue?.splicesUnlocked === false
+      ? { loose: [...this.state.heldMutations], splices: [] }
+      : fusePicks(this.state.heldMutations);
     this.state.fusedSplices = this.fusedView.splices.map((s) => ({
       id: s.spliceId,
       atFood: s.atFood,
@@ -562,7 +588,8 @@ export class SnakeGameLogic {
       this.state.heldMutations,
       this.spawnStrainPoints(),
       this.state.surges,
-      this.ftueTierCap() as 0 | 1 | 2 | 3
+      this.ftueTierCap() as 0 | 1 | 2 | 3,
+      this.genome?.suppressedStrains ?? []
     );
     const counts: StrainPoints = {};
     const tiers: Partial<Record<StrainId, number>> = {};
@@ -1044,10 +1071,11 @@ export class SnakeGameLogic {
     ) {
       this.state.snake.unshift(newHead);
       this.state.snake.pop();
-      if (this.genomeActive() && this.canInfuse()) {
-        this.state.pendingPortalChoice = { canInfuse: true };
+      if (this.genomeActive() && this.portalChoicesUnlocked()) {
+        const canInfuse = this.canInfuse();
+        this.state.pendingPortalChoice = { canInfuse };
         this.emit('portalChoice', {
-          canInfuse: true,
+          canInfuse,
           infusesUsed: this.state.infuses.length,
         });
         return;
@@ -1166,7 +1194,10 @@ export class SnakeGameLogic {
       // Overgrowth +2, Bulk Up +3 - fused parents keep their growth.
       const extraGrowth =
         (this.hasGene('overgrowth') ? MUTATION_PHYSICS.overgrowthExtraSegments : 0) +
-        (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0);
+        (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
+        (this.anomaly === 'overgrown'
+          ? ANOMALY_PHYSICS.overgrownExtraSegments
+          : 0);
       if (extraGrowth > 0) {
         const tail = this.state.snake[this.state.snake.length - 1];
         for (let i = 0; i < extraGrowth; i++) {
@@ -1175,7 +1206,7 @@ export class SnakeGameLogic {
       }
 
       // Shed cycles: loose Shed (25 -> 8), Regenesis (20 -> 8, pays
-      // 3/segment), Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12,
+      // 1/segment), Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12,
       // drops molt-food). Mirrors computeLengthTrace's cycle model.
       this.applyShedCycles(n);
 
@@ -1220,7 +1251,7 @@ export class SnakeGameLogic {
         !this.state.mutationTile &&
         !ateMutation &&
         !this.hasTrait('ascetic') &&
-        this.state.heldMutations.length < this.maxHeld() &&
+        this.heldSlotCount() < this.maxHeld() &&
         n >= this.state.nextMutationAtFood
       ) {
         this.spawnMutationFood();
@@ -1502,22 +1533,43 @@ export class SnakeGameLogic {
     );
   }
 
+  /** Post-FTUE portals expose the explicit BANK / PASS / INFUSE hold. */
+  private portalChoicesUnlocked(): boolean {
+    const ftue = this.genome?.ftue;
+    return ftue ? ftue.infuseUnlocked : true;
+  }
+
   /**
    * Resolve the portal-choice hold: BANK ends the run through the portal;
    * INFUSE consumes it for build power (4 tail segments, bank +0.05 /
    * salvage -0.05, next portal +2 foods, and a gene offer - or a Strain
    * Surge choice at the gene cap). Returns false when nothing is pending.
    */
-  resolvePortalChoice(action: 'bank' | 'infuse'): boolean {
+  resolvePortalChoice(action: 'bank' | 'pass' | 'infuse'): boolean {
     const pending = this.state.pendingPortalChoice;
     if (!pending) return false;
     this.state.pendingPortalChoice = null;
+    if (action === 'pass') {
+      this.consumePassedPortal();
+      return true;
+    }
     if (action === 'bank' || !pending.canInfuse) {
       this.finalizeRun('extracted');
       return true;
     }
     this.performInfuse();
     return true;
+  }
+
+  /** PASS consumes this door and schedules the next normal interval. */
+  private consumePassedPortal(): void {
+    this.state.exitTile = null;
+    this.state.exitTile2 = null;
+    this.state.exitTicksRemaining = 0;
+    this.state.nextExitAtFood =
+      this.state.foodEaten + this.rollNextExitInterval();
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'pass' });
+    this.emit('exitDespawned', { deliberate: true });
   }
 
   /** The infuse itself - portal consumed, body paid, power gained. */
@@ -1544,12 +1596,12 @@ export class SnakeGameLogic {
       segmentsPaid: pay,
     });
     // Build power: a gene offer - or a Strain Surge at the gene cap.
-    if (this.state.heldMutations.length < this.maxHeld()) {
+    if (this.heldSlotCount() < this.maxHeld()) {
       this.openGeneChoice('infuse');
     } else {
       this.state.pendingSurgeChoice = true;
       this.emit('surgeChoice', {
-        strains: Object.keys(this.state.strainCounts),
+        strains: this.heldGeneStrains(),
       });
     }
   }
@@ -1561,6 +1613,7 @@ export class SnakeGameLogic {
    */
   chooseSurge(strain: StrainId): boolean {
     if (!this.state.pendingSurgeChoice) return false;
+    if (!this.heldGeneStrains().includes(strain)) return false;
     this.state.pendingSurgeChoice = false;
     this.state.surges.push({ strain, atFood: this.state.foodEaten });
     this.refreshGenomeDerived();
@@ -1672,7 +1725,7 @@ export class SnakeGameLogic {
 
   /**
    * Shed cycles under genome rules (mirrors computeLengthTrace): loose
-   * Shed 25->8, Regenesis 20->8 (pays 3 flat per shed segment), Molted
+   * Shed 25->8, Regenesis 20->8 (pays 1 flat per shed segment), Molted
    * Rebirth 25->8, FERAL Molt 20->12 (drops 6 molt-foods). Heartwood
    * adds one golden drop per event. Legacy mode: loose Shed only.
    */
@@ -1819,8 +1872,12 @@ export class SnakeGameLogic {
     this.state.bonusFoods.splice(index, 1);
     const claims = this.state.genomeClaims;
     if (food.kind === 'molt') {
-      this.state.dnaCollected += STRAIN_ECONOMICS.moltFoodFlat;
-      claims.moltFoodDna = (claims.moltFoodDna ?? 0) + STRAIN_ECONOMICS.moltFoodFlat;
+      const value =
+        this.anomaly === 'overgrown'
+          ? ANOMALY_ECONOMICS.overgrownMoltFoodFlat
+          : STRAIN_ECONOMICS.moltFoodFlat;
+      this.state.dnaCollected += value;
+      claims.moltFoodDna = (claims.moltFoodDna ?? 0) + value;
     } else {
       this.state.dnaCollected += GENE_ECONOMICS.heartwoodGoldenFlat;
       claims.heartwoodDna =

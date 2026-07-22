@@ -51,14 +51,18 @@ import { type AnomalyId } from '@/shared/game/anomalies';
 import {
   GENE_ECONOMICS,
   GENOME_SPAWN,
+  geneStrains,
   isGeneId,
   type GeneId,
   type GenePick,
 } from '@/shared/game/genes';
-import { STRAIN_PHYSICS, type StrainPoints } from '@/shared/game/strains';
+import {
+  STRAIN_PHYSICS,
+  type StrainId,
+  type StrainPoints,
+} from '@/shared/game/strains';
 import {
   clampGenomeClaims,
-  fusePicks,
   sanitizeInfuses,
   sanitizeLossEvents,
   sanitizeRevive,
@@ -69,7 +73,12 @@ import {
   type GenomeRunInput,
   type StrainSurge,
 } from '@/shared/game/genome';
-import { isSpliceId, type SpliceId } from '@/shared/game/splices';
+import {
+  fusePicks,
+  fusedSlotCount,
+  isSpliceId,
+  type SpliceId,
+} from '@/shared/game/splices';
 
 export interface GameResultInput {
   /** Raw foods eaten - the minimal claimed fact the payout derives from. */
@@ -109,6 +118,10 @@ export interface GenomeValidationContext {
   crownAllowed: boolean;
   /** FTUE tier ceiling (economy-binding; mirrors the engine's cap). */
   tierCap: 1 | 2 | 3;
+  /** Server-derived Gauntlet strain ban; Expressions/Apexes are disabled. */
+  suppressedStrains?: readonly StrainId[];
+  /** Server-derived FTUE gate. Defaults true for existing callers/tests. */
+  splicesUnlocked?: boolean;
 }
 
 /** The validator-accepted genome record (game_sessions.genome JSONB). */
@@ -533,20 +546,34 @@ export const VOLT_RATE_ALLOWANCE_FACTOR = 1.5;
 /** Minimum food index of any gene pick (first gene food / first portal). */
 const MIN_FIRST_GENE_FOOD = 15;
 
+function occupiedGeneSlots(
+  picks: GenePick[],
+  splicesUnlocked: boolean
+): number {
+  return splicesUnlocked
+    ? fusedSlotCount(fusePicks(picks))
+    : picks.length;
+}
+
 /** Conservative portal count bound: first at 15, then every >= 8 foods. */
 function maxPortalsSpawnable(foodCount: number): number {
   if (foodCount < MIN_FIRST_GENE_FOOD) return 0;
   return 1 + Math.floor((foodCount - MIN_FIRST_GENE_FOOD) / 8);
 }
 
-/** Sanitize claimed gene picks (genome mode): pool, cap 6, order, bounds. */
+/**
+ * Sanitize claimed gene picks (genome mode): pool, six occupied slots,
+ * order, and bounds. Raw splice parents remain picks, so a legal history can
+ * contain more than six picks while still occupying at most six slots.
+ */
 function sanitizeGenes(
   raw: unknown,
   foodCount: number,
   infuseCount: number,
   errors: string[],
   minFoodsPerPick: number,
-  genePool: GeneId[] | null
+  genePool: GeneId[] | null,
+  splicesUnlocked: boolean
 ): GenePick[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
@@ -588,15 +615,18 @@ function sanitizeGenes(
       );
       continue;
     }
+    const pick = { id, atFood };
+    const candidate = [...picks, pick];
+    const occupied = occupiedGeneSlots(candidate, splicesUnlocked);
+    if (occupied > GENOME_SPAWN.maxHeld) {
+      errors.push(
+        `GENE_BOUND: ${id} would occupy ${occupied} slots, above the held cap ${GENOME_SPAWN.maxHeld}`
+      );
+      continue;
+    }
     seen.add(id);
     lastAt = atFood;
-    picks.push({ id, atFood });
-  }
-  if (picks.length > GENOME_SPAWN.maxHeld) {
-    errors.push(
-      `GENE_BOUND: ${picks.length} picks exceeds the held cap ${GENOME_SPAWN.maxHeld}`
-    );
-    picks.length = GENOME_SPAWN.maxHeld;
+    picks.push(pick);
   }
   // Offer-source bound: cadence offers (every >= minFoodsPerPick foods)
   // plus one offer per accepted infuse.
@@ -623,6 +653,8 @@ function sanitizeGenomeRevive(
   heirloom: StrainPoints,
   surges: StrainSurge[],
   tierCap: 1 | 2 | 3,
+  suppressedStrains: readonly StrainId[],
+  splicesUnlocked: boolean,
   errors: string[]
 ): GenomeRevive | null {
   const revive = sanitizeRevive(raw, foodCount);
@@ -632,10 +664,18 @@ function sanitizeGenomeRevive(
     }
     return null;
   }
-  const view = fusePicks(picks);
+  const view = splicesUnlocked
+    ? fusePicks(picks)
+    : { loose: [...picks], splices: [] };
   const spliceIds = new Set(view.splices.map((s) => s.spliceId));
   const phoenixLoose = view.loose.find((p) => p.id === 'phoenix');
-  const activations = strainActivations(picks, heirloom, surges, tierCap);
+  const activations = strainActivations(
+    picks,
+    heirloom,
+    surges,
+    tierCap,
+    suppressedStrains
+  );
   switch (revive.kind) {
     case 'phoenix':
       if (!phoenixLoose || revive.atFood < phoenixLoose.atFood) {
@@ -711,7 +751,8 @@ function validateGenomeBranch(
     infuses.length,
     errors,
     minFoodsPerPick,
-    ctx.genePool
+    ctx.genePool,
+    ctx.splicesUnlocked !== false
   );
   if (traits.includes('ascetic') && picks.length > 0) {
     errors.push(
@@ -723,14 +764,60 @@ function validateGenomeBranch(
   // g6. Surges: only granted by infusing AT the gene cap - every surge
   // must ride an accepted infuse's food index.
   const infuseFoods = new Set(infuses.map((i) => i.atFood));
+  const usedSurgeInfuses = new Set<number>();
+  const splicesUnlocked = ctx.splicesUnlocked !== false;
   let surges = sanitizeSurges(claim.surges).filter((s) => {
     if (!infuseFoods.has(s.atFood)) {
       errors.push(`SURGE_INVALID: surge at food ${s.atFood} without an infuse`);
       return false;
     }
+    if (usedSurgeInfuses.has(s.atFood)) {
+      errors.push(`SURGE_INVALID: multiple surges claimed for infuse at food ${s.atFood}`);
+      return false;
+    }
+    const heldAtInfuse = picks.filter((pick) => pick.atFood <= s.atFood);
+    if (
+      occupiedGeneSlots(heldAtInfuse, splicesUnlocked) !==
+      GENOME_SPAWN.maxHeld
+    ) {
+      errors.push(
+        `SURGE_INVALID: surge at food ${s.atFood} without ${GENOME_SPAWN.maxHeld} occupied gene slots`
+      );
+      return false;
+    }
+    const heldStrains = new Set(
+      heldAtInfuse.flatMap((pick) => geneStrains(pick.id))
+    );
+    if (!heldStrains.has(s.strain)) {
+      errors.push(
+        `SURGE_INVALID: ${s.strain} is not represented by a held gene at food ${s.atFood}`
+      );
+      return false;
+    }
+    usedSurgeInfuses.add(s.atFood);
     return true;
   });
   if (surges.length > infuses.length) surges = surges.slice(0, infuses.length);
+
+  // Each infuse yields exactly one build-power source: a gene offer OR a
+  // surge. Cadence offers provide the remaining raw picks. Keep accepted
+  // gene picks and drop surplus surge claims when the same infuse would
+  // otherwise be spent twice.
+  const cadenceOfferBudget = Math.floor(foodCount / minFoodsPerPick);
+  const infuseGeneOffersNeeded = Math.max(
+    0,
+    picks.length - cadenceOfferBudget
+  );
+  const surgeSourceBudget = Math.max(
+    0,
+    infuses.length - infuseGeneOffersNeeded
+  );
+  if (surges.length > surgeSourceBudget) {
+    errors.push(
+      `SURGE_INVALID: ${surges.length} surges plus ${infuseGeneOffersNeeded} infuse-sourced gene picks exceed ${infuses.length} infuses`
+    );
+    surges = surges.slice(0, surgeSourceBudget);
+  }
 
   // g7. Revive plausibility (one per run; kind must be fireable).
   const revive = sanitizeGenomeRevive(
@@ -740,6 +827,8 @@ function validateGenomeBranch(
     ctx.heirloom,
     surges,
     ctx.tierCap,
+    ctx.suppressedStrains ?? [],
+    ctx.splicesUnlocked !== false,
     errors
   );
 
@@ -754,6 +843,8 @@ function validateGenomeBranch(
     prevRunDied: ctx.prevRunDied,
     lossEvents,
     tierCap: ctx.tierCap,
+    suppressedStrains: ctx.suppressedStrains ?? [],
+    splicesEnabled: ctx.splicesUnlocked !== false,
   };
 
   // g8. VOLT rate allowance: arcs raise the honest eat rate - widen the
@@ -855,7 +946,10 @@ function validateGenomeBranch(
   const acceptedGenome: AcceptedGenome = {
     v: 1,
     picks,
-    splices: fusePicks(picks).splices.map((s) => ({
+    splices: (ctx.splicesUnlocked === false
+      ? []
+      : fusePicks(picks).splices
+    ).map((s) => ({
       id: s.spliceId,
       atFood: s.atFood,
     })),

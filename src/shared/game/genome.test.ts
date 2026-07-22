@@ -143,6 +143,26 @@ describe('deterministic length model', () => {
     expect(molt?.atFood).toBe(30); // every 20 after activation at 10
     expect(trace.lengthAtEat[31]).toBe(STRAIN_PHYSICS.moltResetLength);
   });
+
+  it('applies a same-index infuse after the Molt food floor', () => {
+    const picks: GenePick[] = [
+      { id: 'overgrowth', atFood: 0 },
+      { id: 'deep_roots', atFood: 5 },
+      { id: 'glacial_reserve', atFood: 10 },
+    ];
+    const acts = strainActivations(picks, {});
+    const trace = computeLengthTrace(
+      fusePicks(picks),
+      31,
+      acts,
+      genome({ picks, infuses: [{ atFood: 30 }] })
+    );
+    // Food 30 resolves the Molt cycle at 12; the later portal infuse pays
+    // four segments, so food 31 sees length 8 just like the engine.
+    expect(trace.lengthAtEat[31]).toBe(
+      STRAIN_PHYSICS.moltResetLength - STRAIN_PHYSICS.infuseSegmentCost
+    );
+  });
 });
 
 describe('genome outcome multipliers', () => {

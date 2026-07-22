@@ -7,6 +7,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  getSeasonalGeneIds,
   getSeasonalMutationIds,
   isMissingSeasonInfra,
 } from '@/lib/server/season';
@@ -73,5 +74,43 @@ describe('getSeasonalMutationIds', () => {
   it('an empty catalog (pre-season) is an empty pool', async () => {
     const supabase = supabaseReturning({ data: [], error: null });
     await expect(getSeasonalMutationIds(supabase)).resolves.toEqual([]);
+  });
+});
+
+describe('getSeasonalGeneIds', () => {
+  it('reads and sanitizes the dedicated migration-032 catalog', async () => {
+    const supabase = supabaseReturning({
+      data: [
+        { gene_id: 'solstice_engine' },
+        { gene_id: 'loan_shark' },
+        { gene_id: 'loan_shark' },
+        { gene_id: 'not_a_gene' },
+      ],
+      error: null,
+    });
+    await expect(getSeasonalGeneIds(supabase)).resolves.toEqual([
+      'solstice_engine',
+      'loan_shark',
+    ]);
+  });
+
+  it('falls back to season_mutations while migration 032 is not live', async () => {
+    const lte = jest
+      .fn()
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: '42P01', message: 'relation "season_genes" does not exist' },
+      })
+      .mockResolvedValueOnce({
+        data: [{ mutation_id: 'midnight_oil' }],
+        error: null,
+      });
+    const select = jest.fn(() => ({ lte }));
+    const from = jest.fn(() => ({ select }));
+    await expect(
+      getSeasonalGeneIds({ from } as unknown as SupabaseClient)
+    ).resolves.toEqual(['midnight_oil']);
+    expect(from).toHaveBeenNthCalledWith(1, 'season_genes');
+    expect(from).toHaveBeenNthCalledWith(2, 'season_mutations');
   });
 });

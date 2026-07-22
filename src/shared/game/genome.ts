@@ -47,6 +47,8 @@ import {
 } from '@/shared/game/strains';
 import { traitOutcomeDeltas, type TraitId } from '@/shared/game/traits';
 import {
+  ANOMALY_ECONOMICS,
+  ANOMALY_PHYSICS,
   anomalyBankOverride,
   type AnomalyId,
 } from '@/shared/game/anomalies';
@@ -99,6 +101,10 @@ export interface GenomeRunInput {
    * recompute drifts. Default 3.
    */
   tierCap?: StrainTier;
+  /** Server-derived Gauntlet strain suppression; minors remain active. */
+  suppressedStrains?: readonly StrainId[];
+  /** FTUE gate: false keeps parent genes loose and disables Splice effects. */
+  splicesEnabled?: boolean;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -177,7 +183,8 @@ export function strainActivations(
   heirloom: StrainPoints,
   surges: StrainSurge[] = [],
   /** FTUE ceiling: tiers above the cap never activate (economy-binding). */
-  tierCap: StrainTier = 3
+  tierCap: StrainTier = 3,
+  suppressedStrains: readonly StrainId[] = []
 ): StrainActivations {
   const spawn = capSpawnPoints(heirloom);
   const result = {} as StrainActivations;
@@ -205,7 +212,8 @@ export function strainActivations(
       const s = result[strain];
       s.points += 1;
       if (event.isGene) s.genes += 1;
-      const tier = Math.min(tierCap, strainTier(s.points, s.genes));
+      const strainCap = suppressedStrains.includes(strain) ? 1 : tierCap;
+      const tier = Math.min(strainCap, strainTier(s.points, s.genes));
       if (tier >= 1 && s.minorAt === null) s.minorAt = event.atFood;
       if (tier >= 2 && s.expressionAt === null) s.expressionAt = event.atFood;
       if (tier >= 3 && s.apexAt === null) s.apexAt = event.atFood;
@@ -256,7 +264,8 @@ export function computeLengthTrace(
   view: FusedView,
   foodCount: number,
   activations: StrainActivations,
-  input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>
+  input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>,
+  anomaly: AnomalyId | null = null
 ): LengthTrace {
   const lengthAtEat: number[] = [0];
   const shedEvents: ShedEvent[] = [];
@@ -285,6 +294,7 @@ export function computeLengthTrace(
   for (let n = 1; n <= foodCount; n++) {
     lengthAtEat[n] = len;
     let growth = 1;
+    if (anomaly === 'overgrown') growth += ANOMALY_PHYSICS.overgrownExtraSegments;
     if (activeAt(overgrowth, n)) growth += MUTATION_PHYSICS.overgrowthExtraSegments;
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
     len += growth;
@@ -329,7 +339,14 @@ export function computeLengthTrace(
         len = cycle.reset;
       }
     }
-    // Reported losses at this food (Thick Hide, Ouroboros, infuse cost).
+    // Molt's growth floor is part of resolving this food, before any
+    // later portal/collision/revive event stamped with the same food count.
+    if (molt !== null && n > molt) {
+      len = Math.max(STRAIN_PHYSICS.moltResetLength, len);
+    }
+    // Reported losses at this food happen after the food resolves (Thick
+    // Hide, Ouroboros, infuse cost), so they can take the body below the
+    // Molt growth floor until another food is eaten.
     for (const loss of losses) {
       if (loss.atFood === n) {
         len = Math.max(GAME_CONFIG.snake.initialLength, len - Math.max(0, loss.segments));
@@ -338,10 +355,6 @@ export function computeLengthTrace(
     // Revive resets the body (Phoenix physics: reborn at length 8).
     if (reviveAt === n) {
       len = MUTATION_PHYSICS.phoenixRebirthLength;
-    }
-    // Molt growth floor while the expression is active.
-    if (molt !== null && n > molt) {
-      len = Math.max(STRAIN_PHYSICS.moltResetLength, len);
     }
   }
   return { lengthAtEat, shedEvents };
@@ -558,12 +571,15 @@ export function genomeOutcomeMultipliers(
   traits: TraitId[] = [],
   anomaly: AnomalyId | null = null
 ): { bank: number; death: number } {
-  const view = fusePicks(input.picks);
+  const view = input.splicesEnabled === false
+    ? { loose: [...input.picks], splices: [] }
+    : fusePicks(input.picks);
   const activations = strainActivations(
     input.picks,
     input.heirloom,
     input.surges,
-    input.tierCap ?? 3
+    input.tierCap ?? 3,
+    input.suppressedStrains ?? []
   );
   const benefitsVoided = reviveVoidsBenefits(input.revive);
   const heldGenes = input.picks.length;
@@ -681,14 +697,18 @@ function dnaSince(basis: GenomeCapsBasis, atFood: number | null): number {
 export function genomeClaimCaps(
   input: GenomeRunInput,
   basis: GenomeCapsBasis,
-  lengthTrace: LengthTrace
+  lengthTrace: LengthTrace,
+  anomaly: AnomalyId | null = null
 ): GenomeClaimCaps {
-  const view = fusePicks(input.picks);
+  const view = input.splicesEnabled === false
+    ? { loose: [...input.picks], splices: [] }
+    : fusePicks(input.picks);
   const activations = strainActivations(
     input.picks,
     input.heirloom,
     input.surges,
-    input.tierCap ?? 3
+    input.tierCap ?? 3,
+    input.suppressedStrains ?? []
   );
   const find = (id: GeneId) => view.loose.find((p) => p.id === id);
   const fusedRicochet = view.splices.find((s) => s.spliceId === 'splice_ricochet');
@@ -721,7 +741,11 @@ export function genomeClaimCaps(
           )
         : 0,
     moltFoodDna:
-      moltEvents * STRAIN_ECONOMICS.moltFoodsPerEvent * STRAIN_ECONOMICS.moltFoodFlat,
+      moltEvents *
+      STRAIN_ECONOMICS.moltFoodsPerEvent *
+      (anomaly === 'overgrown'
+        ? ANOMALY_ECONOMICS.overgrownMoltFoodFlat
+        : STRAIN_ECONOMICS.moltFoodFlat),
     ouroborosDna:
       feral.apexAt !== null
         ? Math.floor(foodsSinceFeralApex / STRAIN_ECONOMICS.ouroborosFoodsPerBite) *

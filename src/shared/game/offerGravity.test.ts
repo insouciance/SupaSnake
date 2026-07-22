@@ -121,6 +121,36 @@ describe('rollGeneOffer', () => {
     }
   });
 
+  it('uses the selected primary for a dual-lineage first-offer guarantee', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const offer = rollGeneOffer(
+        ctx({
+          runSeed: `dual-seed-${seed}`,
+          lineage: {
+            strains: ['FERAL', 'VOLT'],
+            guaranteeFirstOffer: true,
+            guaranteeStrains: ['VOLT'],
+          },
+        })
+      );
+      expect(geneStrains(offer![0])).toContain('VOLT');
+    }
+  });
+
+  it('does not invent a guarantee for an unselected dual lineage', () => {
+    expect(() =>
+      rollGeneOffer(
+        ctx({
+          lineage: {
+            strains: ['FERAL', 'VOLT'],
+            guaranteeFirstOffer: true,
+            guaranteeStrains: [],
+          },
+        })
+      )
+    ).not.toThrow();
+  });
+
   it('wildcard: off-build genes appear in slot 2 even under heavy gravity', () => {
     let offBuild = 0;
     for (let k = 0; k < 200; k++) {

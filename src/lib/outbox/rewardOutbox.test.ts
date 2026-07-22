@@ -191,6 +191,33 @@ describe('rewardOutbox', () => {
       expect(body.food_count).toBe(7);
     });
 
+    it('preserves the Genome trace needed to validate an offline run', async () => {
+      const genome = {
+        infuses: [{ atFood: 20 }],
+        surges: [],
+        revive: null,
+        claims: {
+          gildedWakeDna: 0,
+          collectedArcDna: 0,
+          ouroborosBites: 0,
+          overgrowthBonusFoods: 0,
+          secondSunTriggered: false,
+        },
+        lossEvents: [],
+        offerTrace: [],
+        fusedSplices: [],
+        strainCounts: { AURUM: 1 },
+        strainTiers: { AURUM: 1 },
+      } as RewardOutboxEntry['genome'];
+      enqueueReward(makeEntry({ genome }));
+      const fetchFn = jest.fn().mockResolvedValue(mockResponse(200));
+
+      await replayRewardOutbox('token', undefined, fetchFn);
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+      expect(body.genome).toEqual(genome);
+    });
+
     it('removes entries the server reports as already ended (409)', async () => {
       enqueueReward(makeEntry());
       const fetchFn = jest.fn().mockResolvedValue(mockResponse(409));

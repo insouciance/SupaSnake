@@ -21,6 +21,9 @@ interface PauseMenuProps {
   heldMutations?: GenePick[];
   /** True once Phoenix absorbed a death (voids outcome benefits). */
   phoenixTriggered?: boolean;
+  /** Server-capability-aware values supplied by the game page in Genome runs. */
+  bankDna?: number;
+  crashDna?: number;
   onResume: () => void;
   onQuit: () => void;
 }
@@ -31,10 +34,27 @@ export function PauseMenu({
   dnaCollected,
   heldMutations = [],
   phoenixTriggered = false,
+  bankDna,
+  crashDna,
   onResume,
   onQuit,
 }: PauseMenuProps) {
   const theme = themeManager.getTheme(dynasty);
+  const legacyPicks = heldMutations.filter(
+    (mutation): mutation is MutationPick => isMutationId(mutation.id)
+  );
+  const bankValue = bankDna ?? applyOutcomeWithMutations(
+    dnaCollected,
+    true,
+    legacyPicks,
+    phoenixTriggered
+  );
+  const crashValue = crashDna ?? applyOutcomeWithMutations(
+    dnaCollected,
+    false,
+    legacyPicks,
+    phoenixTriggered
+  );
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4">
@@ -68,10 +88,10 @@ export function PauseMenu({
               <span className="text-beige/60">Bank / crash value</span>
               <span className="text-beige/80">
                 <span className="text-[#7df9ff]">
-                  {applyOutcomeWithMutations(dnaCollected, true, heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered)}
+                  {bankValue}
                 </span>
                 {' / '}
-                {applyOutcomeWithMutations(dnaCollected, false, heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered)}
+                {crashValue}
               </span>
             </div>
           )}

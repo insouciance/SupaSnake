@@ -17,6 +17,9 @@ const mockOffspring: BredOffspring = {
   rarity: 'common',
   generation: 2,
   dnaCost: 300,
+  traits: [],
+  traitSlots: 1,
+  lineage: null,
 };
 
 // =============================================================================

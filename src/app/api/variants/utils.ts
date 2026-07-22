@@ -3,11 +3,16 @@
  */
 
 import type { SnakeVariant, SnakeStats } from '@/shared/types/snake-data-model';
+import { lineageFromAffinity } from '@/shared/game/lineage';
 
 /**
  * Convert database row to SnakeVariant type (snake_case to camelCase)
  */
 export function mapVariantRow(row: Record<string, unknown>): SnakeVariant {
+  const affinity = lineageFromAffinity(
+    row.lineage_strain,
+    row.affinity_strength
+  );
   return {
     id: row.id as string,
     dynastyId: row.dynasty_id as string,
@@ -22,5 +27,7 @@ export function mapVariantRow(row: Record<string, unknown>): SnakeVariant {
     isActive: row.is_active as boolean,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    lineageStrain: affinity?.strains[0] ?? null,
+    affinityStrength: affinity?.strength ?? 0,
   };
 }

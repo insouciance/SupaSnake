@@ -88,6 +88,8 @@ export interface LineageBias {
   strains: readonly StrainId[];
   /** Strength 2 lineage: slot 1 of offer 0 must contain a lineage gene. */
   guaranteeFirstOffer: boolean;
+  /** Selected strain eligible for the guarantee; dual lineage needs a primary. */
+  guaranteeStrains?: readonly StrainId[];
 }
 
 export interface OfferContext {
@@ -208,9 +210,13 @@ export function rollGeneOffer(ctx: OfferContext): [GeneId, GeneId] | null {
   if (
     ctx.lineage?.guaranteeFirstOffer &&
     ctx.offerIndex === 0 &&
-    !geneStrains(slot1Roll).some((s) => ctx.lineage!.strains.includes(s))
+    (ctx.lineage.guaranteeStrains?.length ?? ctx.lineage.strains.length) > 0 &&
+    !geneStrains(slot1Roll).some((s) =>
+      (ctx.lineage!.guaranteeStrains ?? ctx.lineage!.strains).includes(s)
+    )
   ) {
-    slot1 = bestOfStrain(ctx.lineage.strains[0]) ?? slot1Roll;
+    const guaranteeStrain = (ctx.lineage.guaranteeStrains ?? ctx.lineage.strains)[0];
+    slot1 = guaranteeStrain ? bestOfStrain(guaranteeStrain) ?? slot1Roll : slot1Roll;
   } else {
     const top = topStrain(ctx.points);
     const recent = ctx.recentOffers ?? [];

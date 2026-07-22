@@ -1,0 +1,83 @@
+'use client';
+
+import {
+  STRAINS,
+  STRAIN_IDS,
+  STRAIN_TIER_NAMES,
+  type StrainId,
+  type StrainPoints,
+} from '@/shared/game/strains';
+
+interface StrainMeterHUDProps {
+  counts: StrainPoints;
+  tiers: Partial<Record<StrainId, number>>;
+  suppressed?: readonly StrainId[];
+}
+
+function activeTierName(strain: StrainId, tier: number): string {
+  if (tier >= 3) return STRAIN_TIER_NAMES[strain].apex;
+  if (tier >= 2) return STRAIN_TIER_NAMES[strain].expression;
+  if (tier >= 1) return STRAIN_TIER_NAMES[strain].minor;
+  return 'Dormant';
+}
+
+/** Five-slot, low-frequency DOM HUD. It updates only on picks/surges. */
+export function StrainMeterHUD({
+  counts,
+  tiers,
+  suppressed = [],
+}: StrainMeterHUDProps) {
+  return (
+    <div
+      className="flex flex-wrap gap-1.5 rounded-arcade border border-scale-blue-light/40 bg-void/70 p-2 backdrop-blur-sm"
+      data-testid="strain-meter"
+      aria-label="Genome strain meter"
+    >
+      {STRAIN_IDS.map((strain) => {
+        const def = STRAINS[strain];
+        const points = Math.max(0, Math.min(4, Math.floor(counts[strain] ?? 0)));
+        const tier = Math.max(0, Math.min(3, Math.floor(tiers[strain] ?? 0)));
+        const isSuppressed = suppressed.includes(strain);
+        return (
+          <div
+            key={strain}
+            data-testid={`strain-meter-${strain}`}
+            title={`${def.identity} — ${isSuppressed ? 'suppressed above Minor' : activeTierName(strain, tier)}`}
+            className={`min-w-[64px] rounded-arcade border px-2 py-1 ${
+              isSuppressed ? 'border-dashed opacity-70' : ''
+            }`}
+            style={{
+              borderColor: `${def.color}66`,
+              backgroundColor: `${def.color}12`,
+            }}
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[9px] font-mono font-bold uppercase" style={{ color: def.color }}>
+                {def.name}
+              </span>
+              {isSuppressed && <span className="text-[8px] text-strike-red">CAP</span>}
+            </div>
+            <div className="mt-1 flex gap-0.5" aria-label={`${points} strain points`}>
+              {[1, 2, 3, 4].map((pip) => (
+                <span
+                  key={pip}
+                  className="h-1.5 w-2.5 rounded-full border"
+                  style={{
+                    borderColor: `${def.color}88`,
+                    backgroundColor: pip <= points ? def.color : 'transparent',
+                    opacity: pip <= points ? 1 : 0.3,
+                  }}
+                />
+              ))}
+            </div>
+            <p className="mt-1 truncate text-[8px] font-body text-beige/60">
+              {activeTierName(strain, tier)}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default StrainMeterHUD;

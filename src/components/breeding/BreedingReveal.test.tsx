@@ -20,6 +20,7 @@ function makeOffspring(overrides: Partial<BredOffspring> = {}): BredOffspring {
     dnaCost: 300,
     traits: ['sprinter', 'hoarder'],
     traitSlots: 2,
+    lineage: null,
     ...overrides,
   };
 }

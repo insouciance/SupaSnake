@@ -64,4 +64,22 @@ describe('mapVariantRow', () => {
     expect(result.unlockCostDna).toBe(0);
     expect(result.artUrl).toBe('https://example.com/art.png');
   });
+
+  it('maps and sanitizes Genome affinity columns', () => {
+    const result = mapVariantRow({
+      id: 'uuid-123',
+      dynasty_id: 'dynasty-uuid',
+      name: 'CYBER VORTEX',
+      rarity: 'rare',
+      base_stats: { speed: 10, size: 5, hp: 100 },
+      unlock_cost_dna: 2000,
+      is_starter: false,
+      sort_order: 7,
+      is_active: true,
+      lineage_strain: 'VOLT',
+      affinity_strength: 1,
+    });
+    expect(result.lineageStrain).toBe('VOLT');
+    expect(result.affinityStrength).toBe(1);
+  });
 });

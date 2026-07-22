@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
       name: ANOMALIES[anomalyId].name,
       effect: ANOMALIES[anomalyId].effect,
       kind: ANOMALIES[anomalyId].kind,
+      strainBias: ANOMALIES[anomalyId].strainBias,
       weekStart: weekStart.toISOString(),
       endsAt: anomalyWeekEnd(weekStart).toISOString(),
     };

@@ -156,7 +156,7 @@ export function mapGauntletRpcError(message: string): {
     { code: 'INVALID_MODIFIER', status: 400, error: 'Unknown modifier' },
     { code: 'ANOMALY_NOT_LIVE', status: 400, error: 'Anomaly Doctrine needs the Anomaly board (coming with Seasons)' },
     { code: 'MODIFIER_LOCKED', status: 400, error: 'That modifier requires a research unlock' },
-    { code: 'INVALID_BAN', status: 400, error: 'Unknown mutation to ban' },
+    { code: 'INVALID_BAN', status: 400, error: 'Unknown Genome ban' },
     { code: 'SUBSTITUTION_LOCKED', status: 400, error: 'Roster substitution requires the Logistics 2 research node' },
     { code: 'NO_LOCKED_ROSTER', status: 400, error: 'No locked roster this week' },
     { code: 'ALREADY_SUBSTITUTED', status: 400, error: 'Substitution already used this week' },

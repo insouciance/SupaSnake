@@ -142,7 +142,7 @@ describe('GauntletPanel render states', () => {
 
     fireEvent.click(screen.getByTestId('dynasty-pick-CYBER'));
     fireEvent.change(screen.getByTestId('modifier-select'), { target: { value: 'vanguard' } });
-    fireEvent.change(screen.getByTestId('ban-select'), { target: { value: 'phoenix' } });
+    fireEvent.change(screen.getByTestId('ban-select'), { target: { value: 'gene:phoenix' } });
     fireEvent.click(screen.getByTestId('submit-picks'));
 
     await waitFor(() => {
@@ -154,7 +154,29 @@ describe('GauntletPanel render states', () => {
         action: 'submit_picks',
         dynasty: 'CYBER',
         modifier: 'vanguard',
-        ban: 'phoenix',
+        ban: 'gene:phoenix',
+      });
+    });
+  });
+
+  it('can suppress a strain instead of removing a gene', async () => {
+    mockFetch(liveData());
+    render(<GauntletPanel accessToken="token" />);
+    await waitFor(() => expect(screen.getByTestId('gauntlet-pick-form')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('dynasty-pick-PRIMAL'));
+    fireEvent.click(screen.getByTestId('ban-tab-strain'));
+    fireEvent.change(screen.getByTestId('ban-select'), { target: { value: 'strain:FERAL' } });
+    fireEvent.click(screen.getByTestId('submit-picks'));
+
+    await waitFor(() => {
+      const calls = (global.fetch as jest.Mock).mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'POST'
+      );
+      expect(JSON.parse((calls[0][1] as RequestInit).body as string)).toMatchObject({
+        action: 'submit_picks',
+        dynasty: 'PRIMAL',
+        ban: 'strain:FERAL',
       });
     });
   });

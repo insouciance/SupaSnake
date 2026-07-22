@@ -12,7 +12,10 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isMutationId, type MutationId } from '@/shared/game/mutations';
+import {
+  isGauntletBan,
+  type GauntletBanLike,
+} from '@/shared/game/gauntlet';
 import type { DynastyName } from '@/shared/game/rulesets';
 
 interface SupabaseErrorLike {
@@ -38,7 +41,7 @@ export function isMissingGauntletInfra(
 }
 
 /**
- * The mutation banned AGAINST the player's clan for this run, or null.
+ * The gene/strain banned AGAINST the player's clan for this run, or null.
  * Null legitimately means: no clan, no duel, rules not resolved, the run
  * is outside the Thu-Sun counted window, the run's dynasty is not the
  * clan's picked dynasty, no ban was submitted - or migration 020 is not
@@ -54,7 +57,7 @@ export async function getGauntletBan(
   playerId: string,
   dynasty: DynastyName,
   at?: string | Date
-): Promise<MutationId | null> {
+): Promise<GauntletBanLike | null> {
   try {
     const { data, error } = await supabase.rpc('player_gauntlet_ban', {
       p_player_id: playerId,
@@ -71,7 +74,7 @@ export async function getGauntletBan(
       return null;
     }
 
-    return isMutationId(data) ? data : null;
+    return isGauntletBan(data) ? data : null;
   } catch (err) {
     console.error('Gauntlet ban read error:', { playerId, dynasty, err });
     return null;

@@ -32,9 +32,11 @@ export const DYNASTY_STRAINS: Record<'PRIMAL' | 'CYBER' | 'COSMIC', StrainId> = 
 /** Lineage strength: 0 = offer bias only, 1 = +1 point, 2 = +1 point + guarantee. */
 export type LineageStrength = 0 | 1 | 2;
 
+export type LineageStrains = [StrainId] | [StrainId, StrainId];
+
 export interface Lineage {
   /** 1 strain normally; 2 for cross-dynasty dual-lineage snakes. */
-  strains: StrainId[];
+  strains: LineageStrains;
   strength: LineageStrength;
   /** Dual lineage only: which strain receives the strength point(s). */
   primary?: StrainId;
@@ -76,17 +78,33 @@ export function sanitizeLineage(raw: unknown): Lineage | null {
     primary?: unknown;
   };
   if (!Array.isArray(strains)) return null;
-  const clean = strains.filter(isStrainId).slice(0, 2);
+  const clean = Array.from(new Set(strains.filter(isStrainId))).slice(0, 2);
   if (clean.length === 0) return null;
   const s =
     typeof strength === 'number' && Number.isInteger(strength)
       ? (Math.max(0, Math.min(2, strength)) as LineageStrength)
       : 0;
-  const lineage: Lineage = { strains: clean, strength: s };
-  if (isStrainId(primary) && clean.includes(primary)) {
+  const lineage: Lineage = {
+    strains: clean as LineageStrains,
+    strength: s,
+  };
+  if (clean.length === 2 && isStrainId(primary) && clean.includes(primary)) {
     lineage.primary = primary;
   }
   return lineage;
+}
+
+/** Build a sanitized lineage from a variant's innate affinity columns. */
+export function lineageFromAffinity(
+  strain: unknown,
+  strength: unknown
+): Lineage | null {
+  if (!isStrainId(strain)) return null;
+  return sanitizeLineage({
+    strains: [strain],
+    strength:
+      typeof strength === 'number' && Number.isInteger(strength) ? strength : 0,
+  });
 }
 
 /**
@@ -102,9 +120,13 @@ export function startingStrainPoints(
   if (lineage && lineage.strength >= 1) {
     const target =
       lineage.strains.length > 1
-        ? lineage.primary ?? lineage.strains[0]
+        ? lineage.primary
         : lineage.strains[0];
-    points[target] = (points[target] ?? 0) + 1;
+    // A rare+ dual-lineage snake grants no lineage point until its owner
+    // explicitly chooses the primary strain before a run (§7).
+    if (target) {
+      points[target] = (points[target] ?? 0) + 1;
+    }
   }
   for (const trait of traits) {
     const strain = TRAIT_STRAINS[trait];
@@ -117,10 +139,16 @@ export function startingStrainPoints(
 
 /** The offer bias every lineage grants (strength 0 included). */
 export function lineageOfferBias(lineage: Lineage | null): LineageBias | null {
-  if (!lineage || lineage.strains.length === 0) return null;
+  if (!lineage) return null;
   return {
     strains: lineage.strains,
     guaranteeFirstOffer: lineage.strength >= 2,
+    guaranteeStrains:
+      lineage.strains.length === 2 && lineage.primary
+        ? [lineage.primary]
+        : lineage.strains.length === 1
+          ? lineage.strains
+          : [],
   };
 }
 
@@ -139,6 +167,14 @@ export interface LineageOutcome {
   chance: number;
 }
 
+/** The strain a parent passes into a new inheritance roll. */
+export function inheritableLineageStrain(lineage: Lineage | null): StrainId | null {
+  if (!lineage) return null;
+  return lineage.strains.length === 2
+    ? lineage.primary ?? lineage.strains[0]
+    : lineage.strains[0];
+}
+
 /**
  * Enumerate the possible offspring lineages for the breeding preview -
  * the TS mirror of the breed_snakes lineage roll (§7):
@@ -153,8 +189,8 @@ export function combineLineages(
   parent1: LineageParent,
   parent2: LineageParent
 ): LineageOutcome[] {
-  const s1 = parent1.lineage?.strains[0] ?? null;
-  const s2 = parent2.lineage?.strains[0] ?? null;
+  const s1 = inheritableLineageStrain(parent1.lineage);
+  const s2 = inheritableLineageStrain(parent2.lineage);
   const str1 = parent1.lineage?.strength ?? 0;
   const str2 = parent2.lineage?.strength ?? 0;
   const maxStrength = Math.max(str1, str2);

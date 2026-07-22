@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { OwnedSnake, Rarity } from '@/shared/types/snake-data-model';
 import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
+import { lineageFromAffinity, sanitizeLineage } from '@/shared/game/lineage';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,7 +25,13 @@ const supabase = createClient(
  */
 export function mapOwnedSnakeRow(row: Record<string, unknown>): OwnedSnake {
   const variantJoin = row.snake_variants as
-    | { name?: string; rarity?: Rarity; dynasties?: { name?: string } | null }
+    | {
+        name?: string;
+        rarity?: Rarity;
+        dynasties?: { name?: string } | null;
+        lineage_strain?: string | null;
+        affinity_strength?: number | null;
+      }
     | null
     | undefined;
 
@@ -48,6 +55,14 @@ export function mapOwnedSnakeRow(row: Record<string, unknown>): OwnedSnake {
     variantName: variantJoin?.name ?? null,
     dynastyName: variantJoin?.dynasties?.name ?? null,
     variantRarity: rarity,
+    // Lineage (Genome §7): the snake's own JSONB wins; the variant's
+    // innate affinity is the fallback; pre-030 rows map to null.
+    lineage:
+      sanitizeLineage(row.lineage) ??
+      lineageFromAffinity(
+        variantJoin?.lineage_strain,
+        variantJoin?.affinity_strength
+      ),
   };
 }
 

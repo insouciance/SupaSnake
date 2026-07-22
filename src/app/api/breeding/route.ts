@@ -12,6 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
+import { lineageFromAffinity, sanitizeLineage } from '@/shared/game/lineage';
+import { GAME_CONFIG } from '@/shared/config/game';
 import { mapBreedingHistoryRow } from './utils';
 
 const supabase = createClient(
@@ -54,6 +56,7 @@ export async function GET(request: NextRequest) {
         `id, dna_cost, bred_at,
          parent1:collected_snakes!breeding_history_parent1_id_fkey(id, generation, snake_variants(name, rarity)),
          parent2:collected_snakes!breeding_history_parent2_id_fkey(id, generation, snake_variants(name, rarity)),
+         trait_rolls,
          child:collected_snakes!breeding_history_child_id_fkey(id, generation, snake_variants(name, rarity))`
       )
       .eq('player_id', player.id)
@@ -114,11 +117,45 @@ export async function POST(request: NextRequest) {
 
     // Atomic server-side breeding (validates ownership, same dynasty,
     // DNA cost, generation cap; creates offspring + history entry)
-    const { data: childId, error: breedError } = await supabase.rpc('breed_snakes', {
+    // Cross-dynasty breeding (Genome §7): dual-lineage offspring - only
+    // when the config allows it (the RPC default keeps it refused, so the
+    // pre-030 deploy window behaves exactly like today).
+    const rpcArgs: Record<string, unknown> = {
       p_player_id: player.id,
       p_parent1_id: parent1_id,
       p_parent2_id: parent2_id,
-    });
+    };
+    if (GAME_CONFIG.genome.crossDynastyBreeding) {
+      rpcArgs.p_allow_cross_dynasty = true;
+    }
+    let { data: childId, error: breedError } = await supabase.rpc(
+      'breed_snakes',
+      rpcArgs
+    );
+
+    // Rolling-deploy compatibility: before migration 030, PostgREST only
+    // knows the three-argument RPC. Retry that signature solely when schema
+    // resolution failed; its existing same-dynasty gate remains authoritative.
+    if (
+      GAME_CONFIG.genome.crossDynastyBreeding &&
+      breedError &&
+      (
+        breedError.code === 'PGRST202' ||
+        breedError.code === '42883' ||
+        /breed_snakes.*p_allow_cross_dynasty|p_allow_cross_dynasty.*breed_snakes/i.test(
+          breedError.message ?? ''
+        )
+      )
+    ) {
+      ({ data: childId, error: breedError } = await supabase.rpc(
+        'breed_snakes',
+        {
+          p_player_id: player.id,
+          p_parent1_id: parent1_id,
+          p_parent2_id: parent2_id,
+        }
+      ));
+    }
 
     if (breedError || !childId) {
       console.error('breed_snakes RPC error:', breedError);
@@ -131,7 +168,7 @@ export async function POST(request: NextRequest) {
     // Load the offspring with its variant + dynasty for the response
     const { data: childSnake, error: childError } = await supabase
       .from('collected_snakes')
-      .select('*, snake_variants(id, name, rarity, dynasty_id, dynasties(name))')
+      .select('*, snake_variants(*, dynasties(name))')
       .eq('id', childId)
       .single();
 
@@ -162,16 +199,41 @@ export async function POST(request: NextRequest) {
     // Inherited traits (Design v2 Phase 3A): rolled server-side by the
     // RPC and read back from the offspring ROW - never client-asserted
     const childTraits = sanitizeTraits(childSnake.traits);
-    const variantJoin = childSnake.snake_variants as { rarity?: string } | null;
+    const variantJoin = childSnake.snake_variants as {
+      id?: string;
+      name?: string;
+      rarity?: string;
+      dynasty_id?: string;
+      lineage_strain?: string | null;
+      affinity_strength?: number | null;
+      dynasties?: { name?: string } | null;
+    } | null;
+    const childLineage =
+      sanitizeLineage(childSnake.lineage) ??
+      lineageFromAffinity(
+        variantJoin?.lineage_strain,
+        variantJoin?.affinity_strength
+      );
 
     return NextResponse.json({
       success: true,
       child: {
         id: childSnake.id,
         snake_variant_id: childSnake.snake_variant_id,
-        variant: childSnake.snake_variants,
+        variant: variantJoin
+          ? {
+              id: variantJoin.id ?? childSnake.snake_variant_id,
+              name: variantJoin.name ?? null,
+              rarity: variantJoin.rarity ?? null,
+              dynasty_id: variantJoin.dynasty_id ?? null,
+              dynasties: variantJoin.dynasties ?? null,
+            }
+          : null,
         generation: childSnake.generation,
         traits: childTraits,
+        // Lineage (Genome §7): rolled server-side by the RPC, read back
+        // from the offspring ROW (pre-030 rows simply lack the column)
+        lineage: childLineage,
         trait_slots: getTraitSlots(
           variantJoin?.rarity ?? 'common',
           childSnake.generation ?? 1

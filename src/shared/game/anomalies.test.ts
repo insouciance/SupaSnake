@@ -20,26 +20,29 @@ import {
 } from '@/shared/game/anomalies';
 import { gauntletWeekStart } from '@/shared/game/gauntlet';
 
-describe('the four launch anomalies (section 7.2)', () => {
+describe('the five Genome anomaly boards', () => {
   it('defines exactly the doc pool, in rotation order', () => {
     expect(ANOMALY_ROTATION).toEqual([
       'meteor_shower',
       'gold_rush',
       'blackout',
       'twin_exits',
+      'overgrown',
     ]);
     expect(Object.keys(ANOMALIES).sort()).toEqual(
       [...ANOMALY_ROTATION].sort()
     );
   });
 
-  it('carries the doc numbers: 60-tick despawn, x1.5 food, +6 portal interval, radius 6, x1.15 bank', () => {
+  it('carries the doc numbers, including Overgrown growth and Molt payout', () => {
     expect(ANOMALY_PHYSICS.meteorShowerFoodDespawnTicks).toBe(60);
     expect(ANOMALY_ECONOMICS.goldRushFoodMultiplier).toBe(1.5);
     expect(ANOMALY_PHYSICS.goldRushPortalIntervalPenalty).toBe(6);
     expect(ANOMALY_PHYSICS.blackoutVisibilityRadius).toBe(6);
     expect(ANOMALY_ECONOMICS.twinExitsBankMultiplier).toBe(1.15);
     expect(ANOMALY_PHYSICS.twinExitsPortalCount).toBe(2);
+    expect(ANOMALY_PHYSICS.overgrownExtraSegments).toBe(1);
+    expect(ANOMALY_ECONOMICS.overgrownMoltFoodFlat).toBe(10);
   });
 
   it('taxonomy: Gold Rush food and Twin Exits bank are [E]; Meteor/Blackout are [P]', () => {
@@ -47,6 +50,10 @@ describe('the four launch anomalies (section 7.2)', () => {
     expect(ANOMALIES.twin_exits.kind).toBe('EP');
     expect(ANOMALIES.meteor_shower.kind).toBe('P');
     expect(ANOMALIES.blackout.kind).toBe('P');
+    expect(ANOMALIES.overgrown.kind).toBe('P');
+    expect(Object.values(ANOMALIES).map((entry) => entry.strainBias).sort()).toEqual(
+      ['AURUM', 'FERAL', 'FLUX', 'UMBRA', 'VOLT']
+    );
   });
 
   it('isAnomalyId guards the id set', () => {
@@ -63,6 +70,7 @@ describe('[E] hooks (exact server recompute)', () => {
       expect(anomalyFoodValueModifier('meteor_shower', n)).toBe(1);
       expect(anomalyFoodValueModifier('blackout', n)).toBe(1);
       expect(anomalyFoodValueModifier('twin_exits', n)).toBe(1);
+      expect(anomalyFoodValueModifier('overgrown', n)).toBe(1);
       expect(anomalyFoodValueModifier(null, n)).toBe(1);
     }
   });
@@ -72,6 +80,7 @@ describe('[E] hooks (exact server recompute)', () => {
     expect(anomalyBankOverride('gold_rush')).toBeNull();
     expect(anomalyBankOverride('meteor_shower')).toBeNull();
     expect(anomalyBankOverride('blackout')).toBeNull();
+    expect(anomalyBankOverride('overgrown')).toBeNull();
     expect(anomalyBankOverride(null)).toBeNull();
   });
 });
@@ -97,23 +106,24 @@ describe('rotation: deterministic function of the ISO week', () => {
     expect(anomalyWeekEnd(week).toISOString()).toBe('2026-07-20T00:00:00.000Z');
   });
 
-  it('rotates through the 4-anomaly pool week by week from the epoch', () => {
-    // Epoch week 0 = meteor_shower, then gold_rush, blackout, twin_exits
+  it('rotates through the 5-anomaly pool week by week from the epoch', () => {
+    // Epoch week 0 = meteor_shower, then gold_rush, blackout, twin_exits, overgrown
     expect(anomalyForWeek(new Date(Date.UTC(2024, 0, 1)))).toBe('meteor_shower');
     expect(anomalyForWeek(new Date(Date.UTC(2024, 0, 8)))).toBe('gold_rush');
     expect(anomalyForWeek(new Date(Date.UTC(2024, 0, 15)))).toBe('blackout');
     expect(anomalyForWeek(new Date(Date.UTC(2024, 0, 22)))).toBe('twin_exits');
-    expect(anomalyForWeek(new Date(Date.UTC(2024, 0, 29)))).toBe('meteor_shower');
+    expect(anomalyForWeek(new Date(Date.UTC(2024, 0, 29)))).toBe('overgrown');
+    expect(anomalyForWeek(new Date(Date.UTC(2024, 1, 5)))).toBe('meteor_shower');
   });
 
-  it('is stable within a week and has period 4 across any horizon', () => {
+  it('is stable within a week and has period 5 across any horizon', () => {
     const monday = new Date(Date.UTC(2026, 6, 20));
     const sunday = new Date(Date.UTC(2026, 6, 26, 23, 59, 59));
     expect(anomalyForWeek(monday)).toBe(anomalyForWeek(sunday));
 
     for (let w = 0; w < 12; w++) {
       const at = new Date(monday.getTime() + w * 7 * 86_400_000);
-      const later = new Date(at.getTime() + 4 * 7 * 86_400_000);
+      const later = new Date(at.getTime() + 5 * 7 * 86_400_000);
       expect(anomalyForWeek(later)).toBe(anomalyForWeek(at));
     }
   });
