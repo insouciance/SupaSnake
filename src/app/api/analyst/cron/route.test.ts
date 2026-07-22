@@ -1,8 +1,8 @@
 /**
  * @jest-environment node
  *
- * Analyst cron route tests (Identity v1 §9.2): CRON_SECRET /
- * x-vercel-cron auth, the daily prune, UTC-Monday gating of the digest
+ * Analyst cron route tests (Identity v1 §9.2): exact CRON_SECRET auth,
+ * the daily prune, UTC-Monday gating of the digest
  * batch (with the ≥3-earning-runs floor, budget stop and opt-in email),
  * the post-season-week gating of archetypes + Recalls, and pre-025
  * degradation.
@@ -57,7 +57,11 @@ import { NextRequest } from 'next/server';
 const MONDAY = new Date('2026-07-13T07:00:00Z');
 const TUESDAY = new Date('2026-07-14T07:00:00Z');
 
-function cronRequest(headers: Record<string, string> = { 'x-vercel-cron': '1' }) {
+function cronRequest(
+  headers: Record<string, string> = {
+    authorization: 'Bearer cron-secret-test',
+  }
+) {
   return new NextRequest('http://localhost/api/analyst/cron', { headers });
 }
 
@@ -124,7 +128,7 @@ beforeEach(() => {
   mockBudgetRemaining.mockReset().mockResolvedValue(1_000_000);
   mockSendDigestEmail.mockReset().mockResolvedValue(true);
   mockDigestEmailEnabled.mockReset().mockReturnValue(true);
-  delete process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'cron-secret-test';
 });
 
 afterEach(() => {
@@ -140,6 +144,15 @@ describe('GET /api/analyst/cron — auth', () => {
     expect(response.status).toBe(401);
   });
 
+  it('fails closed when CRON_SECRET is not configured', async () => {
+    jest.setSystemTime(TUESDAY);
+    delete process.env.CRON_SECRET;
+    const response = await GET(
+      cronRequest({ authorization: 'Bearer cron-secret-test' })
+    );
+    expect(response.status).toBe(401);
+  });
+
   it('accepts the CRON_SECRET bearer', async () => {
     jest.setSystemTime(TUESDAY);
     process.env.CRON_SECRET = 'shh';
@@ -150,10 +163,9 @@ describe('GET /api/analyst/cron — auth', () => {
     expect(response.status).toBe(200);
   });
 
-  it('accepts the x-vercel-cron header', async () => {
+  it('rejects a forged x-vercel-cron marker', async () => {
     jest.setSystemTime(TUESDAY);
-    wireTables();
-    expect((await GET(cronRequest())).status).toBe(200);
+    expect((await GET(cronRequest({ 'x-vercel-cron': '1' }))).status).toBe(401);
   });
 });
 

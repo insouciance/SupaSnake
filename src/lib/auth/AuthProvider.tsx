@@ -56,6 +56,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
+  const cancelPendingDeletion = (activeSession: Session) => {
+    // A pending 30-day erasure is cancelled only by a fresh SIGNED_IN auth
+    // event. Token refreshes and ordinary page loads do not silently cancel
+    // it. This request is deliberately best-effort: auth must remain usable
+    // while a pre-035 deployment window is in progress.
+    void fetch('/api/user/delete-account', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${activeSession.access_token}` },
+    }).catch(() => undefined);
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -76,6 +87,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.user) {
           recordLastUser(session.user);
+        }
+
+        if (event === 'SIGNED_IN' && session) {
+          cancelPendingDeletion(session);
         }
 
         if (event === 'PASSWORD_RECOVERY') {

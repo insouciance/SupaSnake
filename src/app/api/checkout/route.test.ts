@@ -254,6 +254,7 @@ describe('Checkout POST', () => {
         expect.objectContaining({
           mode: 'payment',
           line_items: [{ price: 'price_energy_small', quantity: 1 }],
+          automatic_tax: { enabled: true },
           metadata: expect.objectContaining({
             userId: 'user-uuid-1',
             playerId: 'player-uuid-1',

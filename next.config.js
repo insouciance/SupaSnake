@@ -1,4 +1,31 @@
 const { withSentryConfig } = require('@sentry/nextjs');
+const {
+  validateProductionEnvironment,
+} = require('./scripts/production-env-validation.cjs');
+
+// Sensitive Vercel variables are deliberately unreadable to local CI and are
+// decrypted only inside Vercel's build. Validate the real values here so a
+// malformed production configuration cannot produce a releasable build.
+if (
+  process.env.VERCEL_ENV === 'production' ||
+  process.env.VERCEL_TARGET_ENV === 'production'
+) {
+  const paymentsMode = process.env.EXPECTED_PAYMENTS_MODE || 'test';
+  const { errors, warnings } = validateProductionEnvironment(
+    process.env,
+    paymentsMode
+  );
+  for (const warning of warnings) {
+    console.warn(`Production environment warning: ${warning}`);
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `Production environment validation failed:\n${errors
+        .map((error) => `- ${error}`)
+        .join('\n')}`
+    );
+  }
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

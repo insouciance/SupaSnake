@@ -18,6 +18,12 @@ const mockUpdateUser = jest.fn();
 const mockRefreshSession = jest.fn();
 const mockSignInWithPassword = jest.fn();
 const mockSignUp = jest.fn();
+let authStateCallback:
+  | ((
+      event: 'SIGNED_IN' | 'TOKEN_REFRESHED',
+      session: ReturnType<typeof makeSession> | null
+    ) => void)
+  | null = null;
 
 jest.mock('@/lib/supabase/client', () => ({
   supabase: {
@@ -57,8 +63,9 @@ function setup(initialUser: AnyUser | null) {
   mockGetSession.mockResolvedValue({
     data: { session: initialUser ? makeSession(initialUser) : null },
   });
-  mockOnAuthStateChange.mockReturnValue({
-    data: { subscription: { unsubscribe: jest.fn() } },
+  mockOnAuthStateChange.mockImplementation((callback) => {
+    authStateCallback = callback;
+    return { data: { subscription: { unsubscribe: jest.fn() } } };
   });
 
   const ctx: { current: AuthContext | null } = { current: null };
@@ -76,7 +83,30 @@ function setup(initialUser: AnyUser | null) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  authStateCallback = null;
   window.localStorage.clear();
+});
+
+describe('pending account deletion cancellation', () => {
+  it('cancels only on a new sign-in event, not initial load or token refresh', async () => {
+    const mockFetch = jest.fn().mockResolvedValue(new Response('{}'));
+    global.fetch = mockFetch as unknown as typeof fetch;
+    const session = makeSession(UPGRADED_USER);
+    const ctx = setup(UPGRADED_USER);
+    await waitFor(() => expect(ctx.current?.isLoading).toBe(false));
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    act(() => authStateCallback?.('TOKEN_REFRESHED', session));
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    act(() => authStateCallback?.('SIGNED_IN', session));
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith('/api/user/delete-account', {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer token-user-1' },
+      })
+    );
+  });
 });
 
 describe('upgradeAnonymousToEmail', () => {

@@ -1,194 +1,255 @@
 /**
- * GDPR Account Deletion API
- * Allows users to delete their account and all personal data
- * Complies with GDPR Article 17 (Right to Erasure / Right to be Forgotten)
+ * GDPR account erasure API.
+ *
+ * POST   schedules a registered account for deletion after 30 days.
+ * PATCH  cancels a pending request (called after a genuine new sign-in).
+ * DELETE immediately erases an account after an additional confirmation;
+ *        the UI uses this for anonymous accounts that cannot sign back in.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User } from '@supabase/supabase-js';
+import { AccountDeleteSchema } from '@/lib/validation/schemas';
+import { processClaimedAccountDeletion } from '@/lib/server/accountDeletion';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// POST: Request scheduled deletion (30-day grace period)
+const NO_STORE = { 'Cache-Control': 'no-store' };
+const GRACE_PERIOD_DAYS = 30;
+
+function bearerToken(request: NextRequest): string | null {
+  const header = request.headers.get('authorization');
+  const match = header?.match(/^Bearer\s+([^\s]+)$/i);
+  return match?.[1] ?? null;
+}
+
+async function authenticatedUser(
+  request: NextRequest
+): Promise<{ user: User | null; response: NextResponse | null }> {
+  const token = bearerToken(request);
+  if (!token) {
+    return {
+      user: null,
+      response: NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: NO_STORE }
+      ),
+    };
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) {
+    return {
+      user: null,
+      response: NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401, headers: NO_STORE }
+      ),
+    };
+  }
+  return { user, response: null };
+}
+
+function confirmationMatches(
+  user: User,
+  input: { confirmEmail?: string; confirmation?: string }
+): boolean {
+  if (user.email) {
+    return input.confirmEmail?.trim().toLowerCase() === user.email.toLowerCase();
+  }
+  return input.confirmation === 'DELETE MY ACCOUNT';
+}
+
+function deletionInfraUnavailable(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    /request_account_deletion|cancel_account_deletion|claim_account_deletion/i.test(
+      error.message ?? ''
+    )
+  );
+}
+
+async function parseConfirmation(request: NextRequest) {
+  const body = await request.json().catch(() => null);
+  return AccountDeleteSchema.safeParse(body);
+}
+
+/** Schedule registered-user erasure after the documented grace period. */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
+    const auth = await authenticatedUser(request);
+    if (!auth.user) return auth.response!;
+
+    const parsed = await parseConfirmation(request);
+    if (!parsed.success || !confirmationMatches(auth.user, parsed.data)) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        { error: 'Deletion confirmation does not match' },
+        { status: 400, headers: NO_STORE }
       );
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
+    // Guests cannot recover credentials after sign-out, so the UI routes
+    // them through immediate DELETE instead of creating an orphaned request.
+    if (auth.user.is_anonymous) {
       return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
+        { error: 'Anonymous accounts require immediate deletion' },
+        { status: 409, headers: NO_STORE }
       );
     }
 
-    const body = await request.json();
-    const { confirmEmail } = body;
-
-    // Require email confirmation
-    if (confirmEmail !== user.email) {
-      return NextResponse.json(
-        { error: 'Email confirmation does not match' },
-        { status: 400 }
-      );
-    }
-
-    // Schedule deletion (30-day grace period per GDPR best practice)
     const scheduledDate = new Date();
-    scheduledDate.setDate(scheduledDate.getDate() + 30);
+    scheduledDate.setUTCDate(scheduledDate.getUTCDate() + GRACE_PERIOD_DAYS);
 
-    // Store deletion request
-    // Wrapped in try/catch - table may not exist yet
-    try {
-      await supabase.from('gdpr_requests').insert({
-        user_id: user.id,
-        request_type: 'delete',
-        status: 'pending',
-        scheduled_at: scheduledDate.toISOString(),
-        requested_at: new Date().toISOString(),
+    const { data: requestId, error } = await supabase.rpc(
+      'request_account_deletion',
+      {
+        p_user_id: auth.user.id,
+        p_scheduled_at: scheduledDate.toISOString(),
+      }
+    );
+
+    if (error || typeof requestId !== 'string') {
+      console.error('Account deletion scheduling failed:', {
+        code: error?.code,
       });
-    } catch {
-      // Table may not exist, continue
+      return NextResponse.json(
+        {
+          error:
+            error && deletionInfraUnavailable(error)
+              ? 'Account deletion is temporarily unavailable'
+              : 'Failed to schedule deletion',
+        },
+        { status: error && deletionInfraUnavailable(error) ? 503 : 500, headers: NO_STORE }
+      );
     }
 
-    // Update player record to mark for deletion
-    await supabase
-      .from('players')
-      .update({ deletion_scheduled_at: scheduledDate.toISOString() })
-      .eq('user_id', user.id);
-
-    return NextResponse.json({
-      message: 'Account deletion scheduled',
-      scheduledDeletion: scheduledDate.toISOString(),
-      gracePeriodDays: 30,
-      cancellationInfo: 'You can cancel this request by logging in before the scheduled date',
-    });
-  } catch (err) {
-    console.error('Deletion request error:', err);
+    return NextResponse.json(
+      {
+        message: 'Account deletion scheduled',
+        scheduledDeletion: scheduledDate.toISOString(),
+        gracePeriodDays: GRACE_PERIOD_DAYS,
+        cancellationInfo: 'Sign in again before the scheduled date to cancel',
+      },
+      { headers: NO_STORE }
+    );
+  } catch (error) {
+    console.error('Deletion request error:', error);
     return NextResponse.json(
       { error: 'Failed to schedule deletion' },
-      { status: 500 }
+      { status: 500, headers: NO_STORE }
     );
   }
 }
 
-// DELETE: Immediate deletion (no grace period)
+/** Cancel any pending erasure request for the authenticated user. */
+export async function PATCH(request: NextRequest) {
+  try {
+    const auth = await authenticatedUser(request);
+    if (!auth.user) return auth.response!;
+
+    const { data: cancelled, error } = await supabase.rpc(
+      'cancel_account_deletion',
+      { p_user_id: auth.user.id }
+    );
+    if (error) {
+      console.error('Account deletion cancellation failed:', {
+        code: error.code,
+      });
+      return NextResponse.json(
+        { error: 'Failed to cancel account deletion' },
+        { status: deletionInfraUnavailable(error) ? 503 : 500, headers: NO_STORE }
+      );
+    }
+
+    return NextResponse.json(
+      { cancelled: cancelled === true },
+      { headers: NO_STORE }
+    );
+  } catch (error) {
+    console.error('Deletion cancellation error:', error);
+    return NextResponse.json(
+      { error: 'Failed to cancel account deletion' },
+      { status: 500, headers: NO_STORE }
+    );
+  }
+}
+
+/** Immediate, irreversible erasure after explicit confirmation. */
 export async function DELETE(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await authenticatedUser(request);
+    if (!auth.user) return auth.response!;
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const { confirm, confirmEmail } = body;
-
-    // Require explicit confirmation
-    if (!confirm || confirmEmail !== user.email) {
+    const parsed = await parseConfirmation(request);
+    if (
+      !parsed.success ||
+      parsed.data.confirm !== true ||
+      !confirmationMatches(auth.user, parsed.data)
+    ) {
       return NextResponse.json(
         { error: 'Deletion requires explicit confirmation' },
-        { status: 400 }
+        { status: 400, headers: NO_STORE }
       );
     }
 
-    // Get player ID
-    const { data: player } = await supabase
-      .from('players')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (player) {
-      // Delete all related data in order (respecting foreign key constraints)
-      await Promise.all([
-        supabase.from('game_sessions').delete().eq('player_id', player.id),
-        supabase.from('breeding_history').delete().eq('player_id', player.id),
-        supabase.from('player_achievements').delete().eq('player_id', player.id),
-        supabase.from('player_daily_state').delete().eq('player_id', player.id),
-        supabase.from('player_streaks').delete().eq('player_id', player.id),
-        supabase.from('economy_transactions').delete().eq('player_id', player.id),
-      ]);
-
-      // Delete snakes
-      await supabase.from('collected_snakes').delete().eq('player_id', player.id);
-
-      // Delete player settings
-      await supabase.from('player_settings').delete().eq('player_id', player.id);
-
-      // Delete player record
-      await supabase.from('players').delete().eq('id', player.id);
-    }
-
-    // Delete purchase history (keep for tax purposes, but anonymize)
-    await supabase
-      .from('purchase_history')
-      .update({
-        user_id: null,
-        anonymized_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id);
-
-    // Log GDPR request completion
-    // Wrapped in try/catch - table may not exist yet
-    try {
-      await supabase.from('gdpr_requests').insert({
-        user_id: user.id,
-        request_type: 'delete',
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        requested_at: new Date().toISOString(),
+    const now = new Date().toISOString();
+    const { error: requestError } = await supabase.rpc(
+      'request_account_deletion',
+      { p_user_id: auth.user.id, p_scheduled_at: now }
+    );
+    if (requestError) {
+      console.error('Immediate account deletion request failed:', {
+        code: requestError.code,
       });
-    } catch {
-      // Table may not exist
+      return NextResponse.json(
+        { error: 'Failed to start account deletion' },
+        { status: deletionInfraUnavailable(requestError) ? 503 : 500, headers: NO_STORE }
+      );
     }
 
-    // Delete auth user (this must be last)
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(user.id);
+    const { data: requestId, error: claimError } = await supabase.rpc(
+      'claim_account_deletion',
+      { p_user_id: auth.user.id }
+    );
+    if (claimError || typeof requestId !== 'string') {
+      console.error('Immediate account deletion claim failed:', {
+        code: claimError?.code,
+      });
+      return NextResponse.json(
+        { error: 'Failed to start account deletion' },
+        { status: 500, headers: NO_STORE }
+      );
+    }
 
-    if (deleteError) {
-      console.error('Failed to delete auth user:', deleteError);
+    const outcome = await processClaimedAccountDeletion(supabase, {
+      request_id: requestId,
+      user_id: auth.user.id,
+      auth_deleted: false,
+    });
+    if (outcome !== 'completed') {
       return NextResponse.json(
         { error: 'Failed to complete account deletion' },
-        { status: 500 }
+        { status: 500, headers: NO_STORE }
       );
     }
 
-    return NextResponse.json({
-      deleted: true,
-      message: 'Account and all personal data have been permanently deleted',
-      deletedAt: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('Account deletion error:', err);
+    return NextResponse.json(
+      {
+        deleted: true,
+        message: 'Account and personal gameplay data permanently deleted',
+        deletedAt: new Date().toISOString(),
+      },
+      { headers: NO_STORE }
+    );
+  } catch (error) {
+    console.error('Account deletion error:', error);
     return NextResponse.json(
       { error: 'Deletion failed' },
-      { status: 500 }
+      { status: 500, headers: NO_STORE }
     );
   }
 }

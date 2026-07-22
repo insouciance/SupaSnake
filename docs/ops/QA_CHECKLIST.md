@@ -522,8 +522,8 @@ Judge on desktop AND phone at supasnake.com:
 
 ## 🆕 Previous wave (deployed 2026-07-17)
 
-- [ ] **Your login works now**: bllj@proton.me was stuck unconfirmed (the
-      localhost-link bug) — admin-confirmed. Try signing in.
+- [ ] **Operator login works now**: the previously unconfirmed account was
+      admin-confirmed after the localhost-link bug. Try signing in.
 - [ ] **Auth journey**: as a guest with progress, /signup now UPGRADES your
       account (progress attached) instead of creating an empty new one;
       after upgrading, the "save your progress" prompts disappear
@@ -551,13 +551,16 @@ Judge on desktop AND phone at supasnake.com:
 - One e2e flake: engagement spec "breeding lab renders parent slots"
   occasionally times out in full-suite runs, passes standalone.
 
-## ✅ Environment (done today, for reference)
+## ✅ Environment reference (updated 2026-07-22)
 
-- Supabase: fresh `supasnake` project (eu-central-1), migrations 001–009,
-  30 variants seeded, stale projects deleted
-- Vercel: prod live at supasnake.com (+ supasnake.vercel.app), env complete
-- Stripe: dedicated "Supa Snake sandbox" account — 5 products/prices,
-  webhook → supasnake.com, all keys in env
-- PostHog: EU project "SupaSnake", key live
-- Sentry: org modusopus / project supasnake, DSN + build token set
-- GitHub: modvsopvs/SupaSnake, branches pushed
+- Supabase: `supasnake` in eu-central-1; production is at migration 026 and
+  migrations 027–036 are intentionally pending the app-first release
+- Vercel: production is live at supasnake.com; production variables are
+  Sensitive and the release cloud build validates their real values
+- Stripe: dedicated sandbox with five one-time and two Premium EUR prices,
+  automatic tax and the production-domain test webhook
+- PostHog: EU project; Sentry project/build token configured
+- GitHub: `insouciance/SupaSnake`; manual production environment restricted to
+  `main`
+- Preview is not isolated from production data. Use the disposable local
+  Supabase E2E stack until a hosted staging project exists.

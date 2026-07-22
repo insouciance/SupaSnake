@@ -20,6 +20,7 @@ playwright-report/
 
 # Supabase CLI artifacts
 supabase/.temp/
+supabase/.branches/
 
 # Python leftovers
 __pycache__/

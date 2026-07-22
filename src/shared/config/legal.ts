@@ -2,11 +2,8 @@
  * Central legal/company configuration — single source of truth for every
  * legal page, consent surface, and disclosure in the app.
  *
- * Fields typed `string | null` are statutory disclosures (ECG §5, UGB §14,
- * MedienG §25) whose values were not available at implementation time.
- * They MUST be filled in before public launch; pages render a visible
- * "to be completed" marker while they are null so the gap cannot ship
- * silently.
+ * Nullable statutory disclosures render a visible "to be completed" marker,
+ * so any future missing register data cannot ship silently.
  */
 
 export const LEGAL_ENTITY = {
@@ -22,12 +19,12 @@ export const LEGAL_ENTITY = {
   /** Corporate seat per Firmenbuch */
   seat: 'Vienna, Austria',
   /** FN + court — mandatory under §14 UGB / §5 ECG */
-  commercialRegisterNumber: null as string | null,
+  commercialRegisterNumber: 'FN 672280y' as string | null,
   commercialRegisterCourt: 'Handelsgericht Wien',
   /** UID — mandatory in the Impressum if the company holds one (§5 ECG) */
-  vatId: null as string | null,
+  vatId: 'ATU82996527' as string | null,
   /** §25 MedienG requires disclosing management for a "große Website" */
-  managingDirectors: null as string | null,
+  managingDirectors: 'Josef Willy Pepe Bell' as string | null,
   /** WKO membership is mandatory for Austrian GmbHs; verify Fachgruppe */
   chamberMembership:
     'Wirtschaftskammer Wien (Austrian Economic Chamber, Vienna)',
@@ -41,19 +38,18 @@ export const LEGAL_CONTACT = {
   /**
    * Electronic contact address required by §5 ECG — must be a real,
    * monitored mailbox and must be published (a contact form alone does
-   * not satisfy §5 ECG). Swap for a role mailbox (e.g. contact@…) once
-   * one exists; every page reads this constant.
+   * not satisfy §5 ECG). Every page reads this constant.
    */
-  email: 'bllj@proton.me',
+  email: 'support@supasnake.com',
   /** Data protection contact (named Datenschutzbeauftragter) */
   dataProtectionOfficer: 'Josef Bell',
-  dataProtectionEmail: 'bllj@proton.me',
+  dataProtectionEmail: 'support@supasnake.com',
   contactFormPath: '/contact',
 } as const;
 
 export const PRODUCT = {
   name: 'SupaSnake',
-  url: 'https://supasnake.vercel.app',
+  url: 'https://supasnake.com',
   operator: LEGAL_ENTITY.name,
 } as const;
 
@@ -102,12 +98,12 @@ export const SUBSCRIPTION = {
  * TERMS_VERSION is recorded with each account's acceptance.
  */
 export const LEGAL_VERSIONS = {
-  terms: '2026-07-19',
-  privacy: '2026-07-19',
-  cookies: '2026-07-19',
-  impressum: '2026-07-19',
-  withdrawal: '2026-07-19',
-  accessibility: '2026-07-19',
+  terms: '2026-07-22',
+  privacy: '2026-07-22',
+  cookies: '2026-07-22',
+  impressum: '2026-07-22',
+  withdrawal: '2026-07-22',
+  accessibility: '2026-07-22',
 } as const;
 
 /** Formatted single-line postal address (English) */

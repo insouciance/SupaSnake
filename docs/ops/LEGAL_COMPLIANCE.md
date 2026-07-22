@@ -1,85 +1,80 @@
 # Legal & Compliance — Status and Runbook
 
-Operator: **Insoucience Technologies GmbH**, Modecenterstraße 20/1/410, 1030 Vienna, Austria.
-Data protection contact: Josef Bell.
+Operator: **Insoucience Technologies GmbH**, Modecenterstraße 20/1/410,
+1030 Wien, Austria. The central source of truth is
+`src/shared/config/legal.ts`; legal pages must not duplicate company data.
 
-Single source of truth for company data, contact addresses, minimum age and
-document versions: `src/shared/config/legal.ts`. Every legal surface reads
-from it — update it there, never inline in pages.
+This is an engineering compliance inventory, not legal advice. Final launch
+approval remains a human/legal decision.
 
-## Implemented (2026-07-19)
+## Implemented
 
-| Surface | Route / file | Legal basis |
+| Surface | Route / artifact | Control |
 |---|---|---|
-| Impressum + Offenlegung + DSA contact point + ADR statement | `/legal/impressum` | §5 ECG, §14 UGB, §§24–25 MedienG, Art. 11–12 DSA, AStG |
-| Privacy policy (per-activity legal bases, processor table, DSB complaint info) | `/legal/privacy` | Art. 13/14 GDPR, §165(3) TKG |
-| Cookie policy (actual cookies + localStorage inventory) | `/legal/cookies` | §165(3) TKG |
-| Terms of Service (consumer-law compliant, DSA moderation, virtual items) | `/legal/terms` | KSchG, FAGG, VGG, DSA |
-| Withdrawal notice + model form | `/legal/withdrawal` | §§4, 11, 18 FAGG |
-| Accessibility statement | `/legal/accessibility` | BaFG / EAA |
-| Contact form (privacy requests, DSA content reports) | `/contact` → `/api/contact` → `contact_messages` table (migration 027) | Art. 12 GDPR, Art. 12/16 DSA |
-| Global footer with all legal links | `src/components/ui/Footer.tsx` in root layout | — |
-| Terms acceptance at signup + guest upgrade (version recorded in auth metadata) | `LoginForm.tsx`, `AccountUpgrade.tsx`, `AuthProvider.tsx` | accountability |
-| Age gate raised 13 → 14 | `AgeGate.tsx`, `/api/age-verify` | Art. 8 GDPR + §4(4) DSG |
-| §18 FAGG immediate-delivery consent before checkout (server-enforced, stored in Stripe metadata) | shop page + `/api/checkout` | §18(1)(11) FAGG |
-| Cookie consent banner (pre-existing, opt-in, gates PostHog) | `ConsentBanner.tsx`, `AnalyticsProvider.tsx` | §165(3) TKG |
-| Data export + 30-day-grace deletion self-service (pre-existing) | `/settings/privacy` | Art. 17/20 GDPR |
+| Impressum, disclosure, DSA contact and ADR statement | `/legal/impressum` | ECG / UGB / MedienG / DSA disclosures |
+| Privacy and cookie notices | `/legal/privacy`, `/legal/cookies` | Activity, processor, storage and consent inventory |
+| Terms, withdrawal, accessibility | `/legal/terms`, `/legal/withdrawal`, `/legal/accessibility` | Consumer/digital-service disclosures |
+| Contact and data-subject intake | `/contact`, migration 027 | RLS-protected request records |
+| Terms evidence | signup and guest upgrade | Accepted version and timestamp in Auth metadata |
+| Austrian age threshold | age gate and `/api/age-verify` | 14+, opaque random receipt; DOB is not stored or hashed |
+| Consent-gated analytics | consent and analytics providers | PostHog remains off before opt-in |
+| Immediate-delivery consent | shop and `/api/checkout` | Server-enforced, stored in Stripe metadata |
+| Data portability | `/settings/privacy`, `/api/user/export-data` | RLS-scoped export; no arbitrary-user SECURITY DEFINER RPC |
+| Account erasure | `/settings/privacy`, migration 035, daily worker | 30-day registered grace; immediate explicit guest erasure; recoverable worker |
 
-Deliberately **not** included: link to the EU ODR platform (discontinued
-20 July 2025 by Regulation (EU) 2024/3228 — linking it is now a defect, not
-a duty).
+Migration 035 removes public access to age-verification records. Its deletion
+state machine uses service-only functions, row-lock serialization, server-side
+re-login detection, a 15-minute stale lease, post-Auth purchase anonymization,
+and recovery when a worker stops between Auth erasure and audit completion.
 
-## Launch blockers — must be completed before go-live
+## Verified company disclosures (2026-07-22)
 
-1. **Firmenbuchnummer + UID + managing director(s)** — fill in
-   `src/shared/config/legal.ts` (`commercialRegisterNumber`, `vatId`,
-   `managingDirectors`). The Impressum renders a red "[To be completed
-   before launch]" marker until set. Required by §5 ECG / §14 UGB.
-2. **Role mailbox** — `bllj@proton.me` is currently published (an e-mail
-   address in the Impressum is mandatory under §5 ECG; a contact form alone
-   is not enough). Set up e.g. `contact@insoucience.at` and swap
-   `LEGAL_CONTACT.email` / `dataProtectionEmail` in one place.
-3. **Apply migration 027** (`contact_messages`) to the production Supabase
-   project, and decide who monitors the inbox (`status='new'` rows) —
-   GDPR requests have a one-month statutory deadline.
-4. **Verify the Supabase project region is EU** — the privacy policy states
-   EU hosting.
-5. **DPAs / transfer safeguards** — confirm signed DPAs (all standard
-   click-through) with: Supabase, Vercel, PostHog (EU), Sentry, Stripe,
-   Resend, OpenAI. Confirm current EU–U.S. DPF certification for the US
-   providers; the policy claims DPF/SCCs.
-6. **WKO Fachgruppe** — confirm the actual chamber section (likely UBIT
-   Wien) and tighten the `chamberMembership` string.
+- Austrian JustizOnline reports active `Insoucience Technologies GmbH`,
+  `FN 672280y`, Wien; register court is Handelsgericht Wien.
+- European Commission VIES validates `ATU82996527` for the same entity/address.
+- Management disclosure is `Josef Willy Pepe Bell`.
+- The canonical legal, privacy and support contact is
+  `support@supasnake.com`; the domain owner is responsible for routing and
+  monitoring it.
+- The Impressum version was bumped after these fields were populated.
 
-## Recommended (not blocking)
+## Commercial-launch gates
 
-- **Server-side consent audit trail**: migration 008 created
-  `user_consents` (with ip/user-agent columns) but nothing writes to it;
-  consent lives in localStorage only. Either wire the ConsentBanner to
-  record consent server-side for signed-in users, or drop the unused
-  columns (data-minimisation).
-- **`analytics_events` legacy table** (migration 008) is unused — drop it.
-- **Middleware CORS** allowlists `ogsnake.com` domains the company may not
-  own (`src/middleware.ts`) — remove them (squats could gain credentialed
-  CORS access) and update `middleware.test.ts`.
-- **Records of processing activities (Art. 30 GDPR)**: keep an internal
-  RoPA; the privacy policy's section 3 is a ready-made skeleton.
-- **Guest-play age gate**: the age gate currently runs only at signup;
-  anonymous play has no gate. Analytics is consent-gated so risk is low,
-  but consider gating first launch too.
-- **Stripe Tax**: enable automatic tax in Stripe Checkout so "prices incl.
-  VAT" holds in every jurisdiction, and configure OSS registration once
-  EU B2C sales start.
-- **Breach response**: document the 72-hour Art. 33 GDPR notification path
-  (who calls the DSB, dsb.gv.at).
-- When new processors/features ship (new AI providers, new OAuth,
-  tournaments), extend privacy policy section 3 + the processor table, bump
-  `LEGAL_VERSIONS.privacy`, and announce material changes in-game.
+These items do not block an operator-only production-environment deployment,
+but must be closed before marketing or opening the product commercially.
 
-## How to change legal documents
+1. Verify delivery and operational monitoring for `support@supasnake.com`.
+2. Confirm the exact WKO Fachgruppe and supervisory-authority wording.
+3. Confirm signed/click-through DPAs and transfer mechanisms for Supabase,
+   Vercel, PostHog, Sentry, Stripe, Resend and OpenAI.
+4. Apply migrations 027–036 only through the app-first production runbook and
+   assign an operator for `contact_messages` and `gdpr_requests` deadlines.
+5. Complete counsel review of the Premium subscription, Germany cancellation
+   surface, Terms, withdrawal flow, and final legal copy.
+6. Establish the internal Article 30 processing record and Article 33
+   72-hour breach-response owner/path.
 
-1. Edit the page under `src/app/legal/*`.
-2. Bump the matching date in `LEGAL_VERSIONS` (`src/shared/config/legal.ts`).
-3. For Terms changes: material changes need 30 days' advance notice
-   (Terms §10) — announce in-game/by e-mail before the version takes
-   effect; the accepted version is recorded per account at signup.
+## Operational rules
+
+- Data-subject requests receive an owner and due date immediately; the GDPR
+  response deadline is not delegated to an unattended database row.
+- Do not manually delete an Auth user before migration 035 and the worker are
+  live; use the application flow so retained accounting rows are anonymized.
+- Stripe remains the authoritative payment/tax record. The application retains
+  non-identifying product totals after erasure, not provider lookup IDs.
+- Failed Auth erasure returns the request to pending. Post-Auth finalization
+  failures remain processing and are automatically recovered after the lease.
+- Vercel does not retry cron calls. Alert on non-2xx worker responses and inspect
+  the daily report counts.
+- When adding a processor, OAuth provider, AI feature, or new data category,
+  update the processor/activity inventory and bump the applicable document
+  version before release.
+
+## Follow-up improvements
+
+- Decide whether the unused server-side consent audit table should be wired or
+  removed for data minimization.
+- Remove the unused legacy `analytics_events` table in a separately reviewed
+  migration.
+- Configure Resend and verify `noreply@supasnake.com` before advertising weekly
+  digest e-mail as available.

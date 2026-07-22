@@ -35,6 +35,7 @@ function GateBrand() {
 
 export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
   const [birthYear, setBirthYear] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -49,6 +50,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
     try {
       const year = parseInt(birthYear, 10);
+      const month = parseInt(birthMonth, 10);
 
       // Validation
       if (isNaN(year)) {
@@ -69,17 +71,24 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
         return;
       }
 
+      if (isNaN(month) || month < 1 || month > 12) {
+        setError('Please select your birth month');
+        setLoading(false);
+        return;
+      }
+
       // Calculate age
-      const age = currentYear - year;
+      const currentMonth = new Date().getMonth() + 1;
+      const age = currentYear - year - (currentMonth < month ? 1 : 0);
 
       if (age < MIN_AGE) {
         // Underage - block and notify parent
-        await handleUnderage(year);
+        await handleUnderage(year, month);
         return;
       }
 
       // Verified! Save to server
-      await saveAgeVerification(year);
+      await saveAgeVerification(year, month);
       onVerified(true);
 
     } catch (err) {
@@ -89,7 +98,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
     }
   };
 
-  const handleUnderage = async (year: number) => {
+  const handleUnderage = async (year: number, month: number) => {
     try {
       // Log underage attempt server-side (GDPR: legitimate interest for
       // fraud prevention). The API stores only an anonymized hash and
@@ -99,8 +108,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           birthYear: year,
-          // Whole-year check: month 1 is the most permissive interpretation
-          birthMonth: 1,
+          birthMonth: month,
         }),
       });
 
@@ -113,15 +121,14 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
     }
   };
 
-  const saveAgeVerification = async (year: number) => {
+  const saveAgeVerification = async (year: number, month: number) => {
     // Server verifies and stores only an anonymized hash (no raw birthdate)
     const response = await fetch('/api/age-verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         birthYear: year,
-        // Whole-year check: month 1 is the most permissive interpretation
-        birthMonth: 1,
+        birthMonth: month,
       }),
     });
 
@@ -175,6 +182,43 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
             />
           </div>
 
+          <div>
+            <label
+              htmlFor="birthMonth"
+              className="block label-arcade text-left mb-2"
+            >
+              What month were you born?
+            </label>
+            <select
+              id="birthMonth"
+              value={birthMonth}
+              onChange={(e) => setBirthMonth(e.target.value)}
+              required
+              disabled={loading}
+              className="w-full px-4 py-3 min-h-[48px] bg-void-deep/70 border-2 border-scale-blue-light rounded-arcade font-mono text-lg text-bone-white focus:outline-none focus:border-venom-orange transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="" disabled>Select month</option>
+              {[
+                'January',
+                'February',
+                'March',
+                'April',
+                'May',
+                'June',
+                'July',
+                'August',
+                'September',
+                'October',
+                'November',
+                'December',
+              ].map((name, index) => (
+                <option key={name} value={index + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {error && (
             <div className="bg-strike-red/15 border-2 border-strike-red rounded-arcade p-3 text-strike-red text-sm font-body font-semibold">
               {error}
@@ -183,7 +227,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
           <button
             type="submit"
-            disabled={loading || !birthYear}
+            disabled={loading || !birthYear || !birthMonth}
             className="btn-go w-full py-3 min-h-[48px]"
           >
             {loading ? 'Verifying...' : 'Continue'}
@@ -192,7 +236,7 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
 
         {/* Privacy notice */}
         <p className="text-beige/50 text-xs font-body">
-          We don&apos;t store your birth year. We only verify you&apos;re {MIN_AGE}+.
+          We don&apos;t store your birth year or month. We only verify you&apos;re {MIN_AGE}+.
           <br />
           <a
             href="/legal/privacy"

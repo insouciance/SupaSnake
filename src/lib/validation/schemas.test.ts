@@ -9,6 +9,7 @@ import {
   BreedingRequestSchema,
   PlayerProfileSchema,
   PurchaseSchema,
+  AccountDeleteSchema,
   validateRequest,
   ValidationError,
 } from './schemas';
@@ -67,29 +68,62 @@ describe('Validation Schemas', () => {
   });
 
   describe('AgeVerifySchema', () => {
-    it('should validate valid date of birth', () => {
+    it('should validate numeric birth year and month', () => {
       const validData = {
-        dateOfBirth: '2000-01-15',
+        birthYear: 2000,
+        birthMonth: 1,
       };
 
       const result = AgeVerifySchema.safeParse(validData);
       expect(result.success).toBe(true);
     });
 
-    it('should reject invalid date format', () => {
-      const invalidData = {
-        dateOfBirth: '01/15/2000',
-      };
+    it('normalizes digit-only form strings', () => {
+      const result = AgeVerifySchema.safeParse({
+        birthYear: '2000',
+        birthMonth: '12',
+      });
 
-      const result = AgeVerifySchema.safeParse(invalidData);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual({ birthYear: 2000, birthMonth: 12 });
+      }
     });
 
-    it('should reject missing date of birth', () => {
-      const invalidData = {};
+    it('rejects legacy and partially numeric shapes', () => {
+      expect(
+        AgeVerifySchema.safeParse({ dateOfBirth: '2000-01-15' }).success
+      ).toBe(false);
+      expect(
+        AgeVerifySchema.safeParse({ birthYear: '2000x', birthMonth: 1 }).success
+      ).toBe(false);
+    });
 
-      const result = AgeVerifySchema.safeParse(invalidData);
-      expect(result.success).toBe(false);
+    it('should reject missing birth input', () => {
+      expect(AgeVerifySchema.safeParse({}).success).toBe(false);
+    });
+  });
+
+  describe('AccountDeleteSchema', () => {
+    it('accepts registered and anonymous confirmation forms', () => {
+      expect(
+        AccountDeleteSchema.safeParse({ confirmEmail: 'player@example.com' })
+          .success
+      ).toBe(true);
+      expect(
+        AccountDeleteSchema.safeParse({ confirmation: 'DELETE MY ACCOUNT' })
+          .success
+      ).toBe(true);
+    });
+
+    it('rejects malformed confirmation values', () => {
+      expect(AccountDeleteSchema.safeParse({}).success).toBe(false);
+      expect(
+        AccountDeleteSchema.safeParse({ confirmEmail: 'not-an-email' }).success
+      ).toBe(false);
+      expect(
+        AccountDeleteSchema.safeParse({ confirmation: 'DELETE' }).success
+      ).toBe(false);
     });
   });
 

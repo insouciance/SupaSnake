@@ -15,10 +15,33 @@ if (typeof global.TransformStream === 'undefined') global.TransformStream = Tran
 const { Blob } = require('buffer')
 if (typeof global.Blob === 'undefined') global.Blob = Blob
 
-const { MessagePort, MessageChannel, BroadcastChannel } = require('worker_threads')
+// jsdom omits Node's immediate scheduler. React 19 otherwise falls back to a
+// worker-thread MessageChannel whose listener keeps Jest alive after all tests
+// finish. Restoring the Node primitive gives React its preferred Node path.
+const { setImmediate, clearImmediate } = require('timers')
+if (typeof global.setImmediate === 'undefined') global.setImmediate = setImmediate
+if (typeof global.clearImmediate === 'undefined') global.clearImmediate = clearImmediate
+
+const { MessagePort, MessageChannel } = require('worker_threads')
 if (typeof global.MessagePort === 'undefined') global.MessagePort = MessagePort
 if (typeof global.MessageChannel === 'undefined') global.MessageChannel = MessageChannel
-if (typeof global.BroadcastChannel === 'undefined') global.BroadcastChannel = BroadcastChannel
+
+// Supabase opens a BroadcastChannel for browser session synchronization. A
+// worker-thread BroadcastChannel is not a browser-faithful polyfill because it
+// keeps the Jest process alive. Tests run in one tab, so a no-op channel is the
+// correct boundary and still exercises the client initialization path.
+class TestBroadcastChannel {
+  constructor(name) {
+    this.name = name
+  }
+
+  addEventListener() {}
+  removeEventListener() {}
+  postMessage() {}
+  close() {}
+}
+
+global.BroadcastChannel = TestBroadcastChannel
 
 const { fetch, Request, Response, Headers, FormData } = require('undici')
 

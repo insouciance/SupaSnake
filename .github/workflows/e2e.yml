@@ -1,18 +1,19 @@
 # End-to-end tests (Playwright, chromium)
 #
-# Required repository secrets:
-#   NEXT_PUBLIC_SUPABASE_URL    - Supabase project URL (same as build.yml)
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY - Supabase anon key
-#   SUPABASE_SERVICE_ROLE_KEY   - service-role key (API routes use it at runtime)
-# Optional secrets:
-#   STRIPE_SECRET_KEY           - Stripe TEST-mode key. Without it the
-#                                 anonymous-checkout 403 test self-skips
-#                                 (route answers 503 payments-not-configured).
+# CI starts an isolated local Supabase stack and applies every migration.
+# Tests must never create anonymous users or gameplay rows in production.
 #
 # @stripe-tagged tests (real Stripe checkout) are always excluded here;
 # run them locally with E2E_STRIPE=1 npx playwright test --grep @stripe
 
 name: E2E
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   push:
@@ -38,11 +39,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      - name: Start isolated Supabase
+        run: |
+          supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
+          supabase status --output env \
+            --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
+            --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+            >> "$GITHUB_ENV"
+
       - name: Build (production)
         run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
       - name: Install Playwright chromium
         run: npx playwright install --with-deps chromium
@@ -52,10 +64,6 @@ jobs:
         run: npx playwright test --grep-invert "@stripe"
         env:
           CI: 'true'
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -64,3 +72,7 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+      - name: Stop isolated Supabase
+        if: always()
+        run: supabase stop --no-backup

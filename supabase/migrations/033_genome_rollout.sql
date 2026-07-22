@@ -1,8 +1,8 @@
 -- Migration 033: Genome rollout gate
 --
 -- Deployment order is intentional:
---   1. apply 029-032 (schema/RPCs; Genome contracts remain inactive),
---   2. deploy the capability-handshake application,
+--   1. deploy the capability-handshake application (it supports pre-029),
+--   2. apply 029-032 (schema/RPCs; Genome contracts remain inactive),
 --   3. apply this migration to admit FTUE-eligible Genome contracts.
 --
 -- This avoids offering impossible contracts during a migration-first

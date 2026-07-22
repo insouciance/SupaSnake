@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { MINIMUM_AGE } from '@/shared/config/legal';
+import { AgeVerifySchema } from '@/lib/validation/schemas';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,11 +19,15 @@ const MIN_AGE = MINIMUM_AGE;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { birthYear, birthMonth } = body;
+    const parsed = AgeVerifySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid birth year or month' },
+        { status: 400 }
+      );
+    }
 
-    // Validate input
-    const year = parseInt(birthYear, 10);
-    const month = parseInt(birthMonth, 10);
+    const { birthYear: year, birthMonth: month } = parsed.data;
     const currentYear = new Date().getFullYear();
 
     if (isNaN(year) || year < 1900 || year > currentYear) {
@@ -49,35 +54,36 @@ export async function POST(request: NextRequest) {
 
     const isVerified = age >= MIN_AGE;
 
-    // Create a hash for verification tracking (no personal data stored)
+    // Return an opaque one-time token while storing only its digest. Birth
+    // input is deliberately excluded from both values: year/month have too
+    // little entropy to become anonymous merely by hashing them.
+    const verificationToken = crypto.randomBytes(32).toString('base64url');
     const verificationHash = crypto
       .createHash('sha256')
-      .update(`${year}-${month}-${Date.now()}`)
-      .digest('hex')
-      .substring(0, 16);
+      .update(verificationToken)
+      .digest('hex');
 
-    // Get user if authenticated
-    const authHeader = request.headers.get('authorization');
-    let userId: string | null = null;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user } } = await supabase.auth.getUser(token);
-      userId = user?.id || null;
-    }
-
-    // Log verification attempt (anonymized)
-    // Wrapped in try/catch - table may not exist yet
-    try {
-      await supabase.from('age_verifications').insert({
-        user_id: userId,
+    // Migration 008's exact schema uses session_id + age_verified. Fail
+    // closed if the compliance record cannot be persisted.
+    const { error: insertError } = await supabase
+      .from('age_verifications')
+      .insert({
+        session_id: verificationHash,
         verification_hash: verificationHash,
-        is_verified: isVerified,
-        verified_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+        age_verified: isVerified,
+        verified_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
       });
-    } catch {
-      // Table may not exist yet, continue silently
+
+    if (insertError) {
+      console.error('Age verification audit write failed:', insertError);
+      return NextResponse.json(
+        { error: 'Verification temporarily unavailable' },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } }
+      );
     }
 
     if (!isVerified) {
@@ -86,15 +92,18 @@ export async function POST(request: NextRequest) {
           verified: false,
           message: `You must be at least ${MIN_AGE} years old to use this service`,
         },
-        { status: 403 }
+        { status: 403, headers: { 'Cache-Control': 'no-store' } }
       );
     }
 
-    return NextResponse.json({
-      verified: true,
-      token: verificationHash,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    });
+    return NextResponse.json(
+      {
+        verified: true,
+        token: verificationToken,
+        expiresAt: expiresAt.toISOString(),
+      },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (err) {
     console.error('Age verification error:', err);
     return NextResponse.json(

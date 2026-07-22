@@ -244,9 +244,7 @@ This template provides structure only. **GDPR fines can reach €20M or 4% of gl
 
 ```
 [LAWYER TO DETAIL]
-- Privacy questions: privacy@supasnake.com
-- DPO (if EU): dpo@supasnake.com
-- Support: support@supasnake.com
+- Privacy, legal, and support questions: support@supasnake.com
 - Mail address: [Company address]
 ```
 

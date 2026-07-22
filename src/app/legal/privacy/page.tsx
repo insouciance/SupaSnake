@@ -331,8 +331,8 @@ export default function PrivacyPolicyPage() {
 
             <Activity title="3.12 Age verification">
               <p className="mb-2">
-                At registration we ask for your birth year to enforce our
-                minimum age of {MINIMUM_AGE}. We do not store your birth date —
+                At registration we ask for your birth year and month to enforce
+                our minimum age of {MINIMUM_AGE}. We do not store either value —
                 only a salted hash and the verification result, which expires
                 after 7 days.
               </p>

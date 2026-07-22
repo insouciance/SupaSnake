@@ -14,10 +14,51 @@ import type { NextRequest } from 'next/server';
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://ogsnake.com',
-  'https://www.ogsnake.com',
-  'https://staging.ogsnake.com',
+  'https://supasnake.com',
+  'https://www.supasnake.com',
+  'https://supasnake.vercel.app',
 ];
+
+const staticConnectSources = [
+  "'self'",
+  'https://*.supabase.co',
+  'wss://*.supabase.co',
+  'https://api.stripe.com',
+  'https://eu.i.posthog.com',
+  'https://eu-assets.i.posthog.com',
+];
+
+function addUrlOrigin(
+  sources: Set<string>,
+  value: string | undefined,
+  includeWebSocket = false
+): void {
+  if (!value) return;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
+
+    sources.add(url.origin);
+    if (includeWebSocket) {
+      const socketProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      sources.add(`${socketProtocol}//${url.host}`);
+    }
+  } catch {
+    // Invalid environment URLs are excluded instead of entering a CSP header.
+  }
+}
+
+/** Build the browser connection allowlist from validated public service URLs. */
+export function buildConnectSources(
+  env: Readonly<Record<string, string | undefined>> = process.env
+): string[] {
+  const sources = new Set(staticConnectSources);
+  addUrlOrigin(sources, env.NEXT_PUBLIC_SUPABASE_URL, true);
+  addUrlOrigin(sources, env.NEXT_PUBLIC_SENTRY_DSN);
+  addUrlOrigin(sources, env.NEXT_PUBLIC_POSTHOG_HOST);
+  return Array.from(sources);
+}
 
 /**
  * Main middleware function
@@ -71,7 +112,7 @@ export function middleware(request: NextRequest): NextResponse {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://eu.i.posthog.com https://eu-assets.i.posthog.com wss://*.supabase.co",
+    `connect-src ${buildConnectSources().join(' ')}`,
     "frame-src 'self' https://js.stripe.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",

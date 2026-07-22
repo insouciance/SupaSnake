@@ -720,7 +720,7 @@ Lazy-load language files (only load selected language). Reduces initial bundle s
 - Third-party sharing (Supabase, analytics providers, payment processors)
 - User rights (GDPR, COPPA, CCPA compliance)
 - Data retention (how long data kept, deletion process)
-- Contact information (privacy@supasnake.com)
+- Contact information (support@supasnake.com)
 
 **Length:** 3,000-5,000 words
 **Legal review:** 8-12 hours ($2,000-$3,000 legal fees)

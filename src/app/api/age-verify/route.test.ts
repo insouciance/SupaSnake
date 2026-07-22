@@ -1,14 +1,13 @@
 import { POST } from './route';
 import { NextRequest } from 'next/server';
 
+const mockInsert = jest.fn();
+
 // Mock Supabase
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({
-    auth: {
-      getUser: jest.fn().mockResolvedValue({ data: { user: null } }),
-    },
     from: jest.fn(() => ({
-      insert: jest.fn().mockResolvedValue({ data: null, error: null }),
+      insert: (...args: unknown[]) => mockInsert(...args),
     })),
   })),
 }));
@@ -26,6 +25,7 @@ function createMockRequest(body: object): NextRequest {
 describe('Age Verify API', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockInsert.mockResolvedValue({ data: null, error: null });
   });
 
   describe('POST', () => {
@@ -43,6 +43,17 @@ describe('Age Verify API', () => {
       expect(data.verified).toBe(true);
       expect(data.token).toBeDefined();
       expect(data.expiresAt).toBeDefined();
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session_id: expect.stringMatching(/^[a-f0-9]{64}$/),
+          verification_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          age_verified: true,
+        })
+      );
+      const inserted = mockInsert.mock.calls[0][0];
+      expect(inserted.session_id).toBe(inserted.verification_hash);
+      expect(inserted).not.toHaveProperty('user_id');
+      expect(inserted).not.toHaveProperty('is_verified');
     });
 
     it('should reject users under 14', async () => {
@@ -157,6 +168,33 @@ describe('Age Verify API', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
+    });
+
+    it('rejects partially numeric input rather than parseInt-coercing it', async () => {
+      const request = createMockRequest({
+        birthYear: '2000oops',
+        birthMonth: '1x',
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the anonymized audit record cannot be stored', async () => {
+      mockInsert.mockResolvedValueOnce({
+        data: null,
+        error: { code: '42P01', message: 'relation missing' },
+      });
+      const request = createMockRequest({ birthYear: 2000, birthMonth: 1 });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(data.error).toMatch(/temporarily unavailable/i);
     });
   });
 });

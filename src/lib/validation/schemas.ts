@@ -67,10 +67,14 @@ export type GameSubmitInput = z.infer<typeof GameSubmitSchema>;
  * POST /api/age-verify
  */
 export const AgeVerifySchema = z.object({
-  dateOfBirth: z.string().regex(
-    /^\d{4}-\d{2}-\d{2}$/,
-    'Date must be in YYYY-MM-DD format'
-  ),
+  birthYear: z.union([
+    z.number().int(),
+    z.string().regex(/^\d{4}$/).transform(Number),
+  ]),
+  birthMonth: z.union([
+    z.number().int(),
+    z.string().regex(/^\d{1,2}$/).transform(Number),
+  ]),
 });
 
 export type AgeVerifyInput = z.infer<typeof AgeVerifySchema>;
@@ -184,10 +188,13 @@ export type DataExportInput = z.infer<typeof DataExportSchema>;
  * POST /api/user/delete-account
  */
 export const AccountDeleteSchema = z.object({
-  confirmation: z.literal('DELETE MY ACCOUNT', {
-    message: 'Must type "DELETE MY ACCOUNT" to confirm',
-  }),
+  confirmEmail: z.string().trim().email().optional(),
+  confirmation: z.literal('DELETE MY ACCOUNT').optional(),
+  confirm: z.boolean().optional(),
   reason: z.string().max(500).optional(),
-});
+}).refine(
+  (value) => Boolean(value.confirmEmail || value.confirmation),
+  { message: 'Account deletion confirmation is required' }
+);
 
 export type AccountDeleteInput = z.infer<typeof AccountDeleteSchema>;

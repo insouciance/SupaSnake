@@ -1,39 +1,75 @@
 # Environment & Credentials Matrix
 
-Status as of 2026-07-16. One row per variable: where it lives, who creates it.
+Status: 2026-07-22. Values are never recorded in this file.
 
-## Already configured ✅
+## Production
 
-| Variable | Local `.env` | Vercel (prod+preview) | Source |
-|---|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | ✅ | Fresh project `supasnake` (`gmpwyzqafoyowndbvlma`, eu-central-1) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | ✅ | Same |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | ✅ | Same |
-| `DATABASE_URL` | ✅ | ✅ | Session pooler; password in `.supabase-db-password` (gitignored, chmod 600) |
-| `NEXT_PUBLIC_POSTHOG_HOST` | ✅ | ✅ | `https://eu.i.posthog.com` |
-| `NEXT_PUBLIC_APP_URL` | ✅ | ✅ | prod: `https://supasnake.vercel.app` |
-| `MIN_AGE_REQUIREMENT` | ✅ | ✅ | 13 |
+Vercel project: `josef-bells-projects/supasnake`. Canonical URL:
+`https://supasnake.com`. Production variables are marked **Sensitive**, so
+Vercel returns `[SENSITIVE]` to local pulls and decrypts the real values only
+inside its cloud build/runtime.
 
-Old Vercel project vars from 299 days ago were purged (none were Stripe; no Court OS leakage found).
-
-## Needs YOU (dashboard signups/keys) — paste into `.env`, then I push to Vercel
-
-| Service | What to do | Variables |
+| Area | Required variables | State |
 |---|---|---|
-| **PostHog** | Create EU-cloud project "supasnake" at posthog.com → Project Settings → copy API key | `NEXT_PUBLIC_POSTHOG_KEY` |
-| **Sentry** | Create project "supasnake" (platform: Next.js) → copy DSN; create org auth token (scope: project:releases) for sourcemap upload | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` |
-| **Stripe** | Dashboard → account switcher → **Create new account** "SupaSnake" (NEVER reuse Court OS). Test-mode keys first; products come later with shop go-live | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY` (+ webhook secret and 5 price IDs at shop go-live) |
-| **Resend** | Create account → verify sending domain → SMTP credentials → paste into **Supabase Dashboard → Auth → SMTP settings** (no app env var needed) | — |
+| Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Configured; dedicated EU (`eu-central-1`) project |
+| Stripe core | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Configured in sandbox/test mode |
+| Stripe catalog | Five one-time `NEXT_PUBLIC_STRIPE_*` price IDs plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured; EUR, tax-inclusive prices |
+| Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
+| PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT` | `https://supasnake.com`, age 14 |
+| Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
+| Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
+| Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |
+| Digest email | `RESEND_API_KEY` | **Missing**; weekly e-mail degrades off without affecting gameplay |
 
-## Supabase project state
+Run the non-disclosing contract check after `vercel pull`:
 
-- Fresh project `supasnake` (eu-central-1), migrations 001–008 applied (004 claude_memories removed from repo), seed: 3 dynasties / 5 variants / 28 daily-reward tiers / 18 achievements.
-- Old projects `snake`, `SupaSnake`, `Supe_Snake` deleted 2026-07-16.
-- DB password: `.supabase-db-password` in repo root (gitignored). Also needed for `supabase link`/`db push`.
-- **Auto-pause warning:** free-tier projects pause after ~1 week idle — this likely caused the historical "lost progress / broken DB" episodes. Upgrade to Pro before launch, or keep traffic/pings running.
+```sh
+npm run verify:production-env -- \
+  --env-file .vercel/.env.production.local \
+  --allow-sealed \
+  --payments-mode test
+```
 
-## Vercel
+This proves every required name is present. Exact URL, key mode, price-ID and
+key-shape validation runs again inside the Vercel production build, where the
+Sensitive values are available.
 
-- Project: `josef-bells-projects/supasnake` (linked via `.vercel/project.json`).
-- Deploys: CLI (`npx vercel deploy` preview, `--prod` for production). GitHub auto-deploys can be wired with `npx vercel git connect` once repo/project mapping is wanted; the old GH-Actions deploy workflows (`deploy-staging.yml`/`deploy-production.yml`) need `VERCEL_TOKEN`/`ORG_ID`/`PROJECT_ID` secrets or should be replaced by Vercel Git integration (decision pending in WS3).
-- `.npmrc` carries `legacy-peer-deps=true` until the R3F 9 / React 19 upgrade lands.
+## Supabase
+
+- Linked production project: `gmpwyzqafoyowndbvlma` (`supasnake`,
+  `eu-central-1`).
+- Production currently has migrations 001–026. Migrations 027–036 remain a
+  deliberate release batch and must not be applied before the capability-aware
+  application is promoted.
+- Local and CI E2E use `supabase/config.toml` and a disposable Supabase stack;
+  they do not use hosted credentials or production player data.
+- `DATABASE_URL` is an operator convenience only. Runtime code does not use it,
+  and `scripts/run_sql.sh` now refuses to run unless it is explicitly supplied.
+
+## GitHub Actions
+
+Repository: `insouciance/SupaSnake` (the legacy origin redirects here).
+Environment `production` is restricted to `main` and contains only deployment
+credentials:
+
+- `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
+- `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID`
+
+Application secrets remain in Vercel rather than being duplicated in GitHub.
+The production workflow is manual and requires the literal confirmation
+`DEPLOY` plus an expected Stripe mode.
+
+## Hosted development policy
+
+Vercel Preview intentionally points at the existing hosted Supabase project
+and Stripe sandbox so development receives hosted-environment feedback. The
+project currently contains operator test data only. Preserve it: never reset,
+truncate, reseed, or run destructive E2E/account-deletion flows there.
+Automated E2E remains isolated in the disposable local Supabase stack.
+
+## Local development
+
+`.env` and `.env*.local` are ignored. `.env.example` is the variable-name and
+format reference. Never copy a production service-role key into a test fixture,
+commit, issue, or CI log.

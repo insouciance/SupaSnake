@@ -8,7 +8,7 @@
 - Supabase (Postgres, auth, realtime) — server-authoritative game state; no game progress in localStorage
 - Stripe (energy packs + bundles) — **dedicated SupaSnake Stripe account; never use the Court OS account**
 - zustand (client stores), Tailwind CSS
-- jest (unit, 80% coverage threshold) + Playwright (e2e), GitHub Actions CI → Vercel
+- jest (unit, measured coverage ratchet) + Playwright (e2e), GitHub Actions CI → Vercel
 
 ## Layout
 ```
@@ -17,7 +17,7 @@ src/components/     # game (R3F scene), lab, auth, engagement, profile, ui
 src/lib/            # game engine (game/SnakeGameLogic.ts), stores, auth, audio, effects, server helpers
 src/shared/config/  # game.ts (economy/features), engagement.ts
 src/shared/game/    # deterministic gameplay rules and Genome catalogs
-supabase/migrations # schema 001-034; 029-033 are the staged Genome rollout
+supabase/migrations # schema 001-036; 029-033 Genome, 034-036 security/compliance hardening
 docs/game/          # design specs (Genome + LOCKED CYBER/PRIMAL/COSMIC dynasties)
 e2e/                # Playwright specs
 ```
@@ -37,4 +37,4 @@ npx tsc --noEmit    # typecheck
 ```
 
 ## Release plan
-Active release-readiness plan: see `~/.claude/plans/investigate-this-repo-it-rosy-charm.md` (workstreams: dependency upgrade, dynasty unification + engagement loop, persistence reliability, launch readiness).
+Production procedure and rollback boundaries: `docs/ops/RELEASE_RUNBOOK.md`.

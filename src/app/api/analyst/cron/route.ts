@@ -14,8 +14,8 @@
  *  - POST-SEASON WEEK (the 7 days after a season's ends_on): archetype
  *    detection + badge grant + season Recall for ≥3-run players.
  *
- * Auth: CRON_SECRET Bearer or the x-vercel-cron header (same contract
- * as /api/discord/dispatch). Reports counts as JSON.
+ * Auth: exact CRON_SECRET bearer (same contract as
+ * /api/discord/dispatch). Reports counts as JSON.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -31,6 +31,7 @@ import {
 import { budgetRemaining } from '@/lib/analyst/narrate';
 import { digestEmailEnabled, sendDigestEmail } from '@/lib/analyst/email';
 import type { DigestFacts } from '@/lib/analyst/facts';
+import { isAuthorizedCron } from '@/lib/server/cronAuth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -42,16 +43,6 @@ export const maxDuration = 60;
 const DIGEST_BATCH_MAX = 100;
 const SEASON_BATCH_MAX = 100;
 const MIN_EARNING_RUNS = 3;
-
-function isAuthorizedCron(request: NextRequest): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    return true;
-  }
-  // Vercel strips inbound x-vercel-* from external requests
-  return request.headers.get('x-vercel-cron') !== null;
-}
 
 function addDays(day: string, days: number): string {
   const d = new Date(day + 'T00:00:00Z');
@@ -85,7 +76,7 @@ async function earningRunCounts(
 
 export async function GET(request: NextRequest) {
   try {
-    if (!isAuthorizedCron(request)) {
+    if (!isAuthorizedCron(request.headers)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

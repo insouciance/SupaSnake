@@ -692,7 +692,7 @@ We keep your data only as long as necessary for the purposes described in this p
 
 **Why we wait 30 days:** Account deletion is permanent. The grace period protects against accidental deletions or hacked accounts.
 
-**Your control:** Contact privacy@supasnake.com within 30 days to cancel deletion.
+**Your control:** Contact support@supasnake.com within 30 days to cancel deletion.
 
 🚨 **[LAWYER REVIEW]** Some jurisdictions (e.g., California) require immediate deletion upon request. Verify if 30-day grace period is permitted.
 
@@ -778,7 +778,7 @@ Depending on where you live, you may have these rights:
 | **Rectification** | Correct inaccurate data | Settings → Account Info |
 | **Erasure** ("Right to be Forgotten") | Delete your data | Privacy Dashboard → Delete Account |
 | **Portability** | Download data in portable format | Privacy Dashboard → Export Data (JSON) |
-| **Restriction** | Pause processing while disputing accuracy | 🚨 Contact privacy@supasnake.com |
+| **Restriction** | Pause processing while disputing accuracy | 🚨 Contact support@supasnake.com |
 | **Objection** | Object to processing based on legitimate interest | Consent Settings → Opt Out |
 | **Withdraw Consent** | Revoke previously granted consent | Consent Settings → Manage |
 | **Automated Decision-Making** | Opt out of automated decisions | N/A - we don't use automated decisions |
@@ -806,7 +806,7 @@ Depending on where you live, you may have these rights:
 4. Download link sent within 48 hours (JSON format)
 
 **By email:**
-- Send request to privacy@supasnake.com
+- Send request to support@supasnake.com
 - Include: Your username, email, and "GDPR Access Request" in subject
 - We may ask for ID verification to protect your privacy
 - Response within 30 days (GDPR) or 45 days (CCPA)
@@ -858,11 +858,11 @@ Depending on where you live, you may have these rights:
 5. Permanent deletion on Day 30
 
 **By email:**
-- Send request to privacy@supasnake.com
+- Send request to support@supasnake.com
 - Include: "DELETE MY ACCOUNT" in subject
 - We'll confirm via email and start 30-day countdown
 
-**Grace period:** 30 days to change your mind. Contact privacy@supasnake.com to cancel deletion.
+**Grace period:** 30 days to change your mind. Contact support@supasnake.com to cancel deletion.
 
 **Exceptions (we may refuse deletion):**
 - Active legal dispute or investigation
@@ -887,7 +887,7 @@ Depending on where you live, you may have these rights:
 3. Confirm via email (for email changes)
 
 **By email:**
-- Contact privacy@supasnake.com with correction request
+- Contact support@supasnake.com with correction request
 
 **What you can't correct:**
 - Gameplay data (scores, collections) - these are accurate records
@@ -929,7 +929,7 @@ Depending on where you live, you may have these rights:
 - Processing only with your consent or for legal claims
 
 **How to request:**
-- Email privacy@supasnake.com with "RESTRICTION REQUEST" in subject
+- Email support@supasnake.com with "RESTRICTION REQUEST" in subject
 - Explain why you're requesting restriction
 
 **Response time:** 30 days
@@ -1029,7 +1029,7 @@ You can exercise all CCPA rights without penalty.
 - We may contact you directly to confirm
 
 **How:**
-- Email privacy@supasnake.com with authorization letter
+- Email support@supasnake.com with authorization letter
 - Include your username and email
 - Agent must provide their contact info
 
@@ -1135,8 +1135,8 @@ Even for ages 13-17, we do NOT collect:
 
 **If your child has an account:**
 
-**Access:** Request copy of your child's data via privacy@supasnake.com
-**Delete:** Request account deletion via privacy@supasnake.com
+**Access:** Request copy of your child's data via support@supasnake.com
+**Delete:** Request account deletion via support@supasnake.com
 **Correct:** Request data corrections
 **Verification:** We'll verify you're the parent (ID may be required)
 
@@ -1410,7 +1410,7 @@ We take data security seriously. Here's how we protect your information:
 - Penetration testing (🚨 before launch)
 - Bug bounty program (🚨 consider for post-launch)
 
-**Your help:** If you discover a security vulnerability, please report it responsibly to security@supasnake.com (don't publicly disclose).
+**Your help:** If you discover a security vulnerability, please report it responsibly to support@supasnake.com (don't publicly disclose).
 
 ### 10.8 Security Limitations
 
@@ -1484,7 +1484,7 @@ We may update this Privacy Policy from time to time.
 **Your choices during 30-day period:**
 1. **Accept changes** - continue using SupaSnake (implies acceptance)
 2. **Decline changes** - delete your account before effective date
-3. **Ask questions** - email privacy@supasnake.com
+3. **Ask questions** - email support@supasnake.com
 
 **Important:** Continued use after effective date means you accept the new policy.
 
@@ -1526,7 +1526,7 @@ We may update this Privacy Policy from time to time.
 
 ### 12.2 Privacy Requests
 
-**Email:** privacy@supasnake.com
+**Email:** support@supasnake.com
 **Response time:** 30 days (GDPR), 45 days (CCPA)
 
 **For:**
@@ -1545,7 +1545,7 @@ We may update this Privacy Policy from time to time.
 
 ### 12.3 Security Issues
 
-**Email:** security@supasnake.com
+**Email:** support@supasnake.com
 **Response time:** 24 hours for critical issues
 
 **For:**
@@ -1578,11 +1578,11 @@ We may update this Privacy Policy from time to time.
 
 **If YES:**
 - **Name:** [INSERT DPO NAME]
-- **Email:** dpo@supasnake.com
+- **Email:** support@supasnake.com
 - **Phone:** [INSERT]
 
 **If NO:**
-- "A Data Protection Officer is not required under GDPR Article 37 for SupaSnake. Privacy inquiries can be directed to privacy@supasnake.com."
+- "A Data Protection Officer is not required under GDPR Article 37 for SupaSnake. Privacy inquiries can be directed to support@supasnake.com."
 
 ### 12.5 Company Information
 
@@ -1681,7 +1681,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 **If YES:**
 - **EU Representative:** [NAME]
 - **Address:** [EU ADDRESS]
-- **Email:** eurep@supasnake.com
+- **Email:** support@supasnake.com
 
 ### 13.2 California (CCPA/CPRA)
 
@@ -1711,7 +1711,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 
 **Retention:** See Section 6
 
-**How to exercise rights:** See Section 7 (Privacy Dashboard or privacy@supasnake.com)
+**How to exercise rights:** See Section 7 (Privacy Dashboard or support@supasnake.com)
 
 **Response time:** 45 days (can extend to 90 days if complex)
 
@@ -1757,7 +1757,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 
 **DPO Details:**
 - **Name:** [INSERT DPO NAME]
-- **Email:** dpo@supasnake.com
+- **Email:** support@supasnake.com
 - **Phone:** [INSERT]
 
 **International transfers:** We transfer data to the United States (see Section 5). Brazil requires adequate safeguards (similar to GDPR SCCs).
@@ -1765,7 +1765,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 **Supervisory authority:** Autoridade Nacional de Proteção de Dados (ANPD)
 **Website:** https://www.gov.br/anpd
 
-**How to exercise rights:** Email privacy@supasnake.com or dpo@supasnake.com
+**How to exercise rights:** Email support@supasnake.com
 
 **Response time:** 15 days (LGPD Article 19)
 
@@ -1789,7 +1789,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 - Suspension of use or deletion
 - Suspension of third-party provision
 
-**How to exercise rights:** Email privacy@supasnake.com
+**How to exercise rights:** Email support@supasnake.com
 
 **Response time:** Without delay (typically 30 days)
 
@@ -1825,7 +1825,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 **If YES:**
 - **UK Representative:** [NAME]
 - **Address:** [UK ADDRESS]
-- **Email:** ukrep@supasnake.com
+- **Email:** support@supasnake.com
 
 ### 13.6 South Korea
 
@@ -1851,7 +1851,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 
 **Personal Information Protection Commission:** https://www.pipc.go.kr/np/
 
-**How to exercise rights:** Email privacy@supasnake.com
+**How to exercise rights:** Email support@supasnake.com
 
 ### 13.7 Australia
 
@@ -1878,7 +1878,7 @@ If you're NOT established in the EU but offer services to EU users, you must app
 
 **Office of the Australian Information Commissioner (OAIC):** https://www.oaic.gov.au
 
-**How to exercise rights:** Email privacy@supasnake.com
+**How to exercise rights:** Email support@supasnake.com
 
 ### 13.8 Other Jurisdictions
 
@@ -1888,7 +1888,7 @@ We still respect your privacy and offer similar protections:
 - Transparency about data collection
 - Security measures
 - Ability to access and delete your data
-- Contact privacy@supasnake.com for requests
+- Contact support@supasnake.com for requests
 
 **Compliance:** We monitor privacy law developments worldwide and update this policy as needed.
 
@@ -1961,7 +1961,7 @@ We still respect your privacy and offer similar protections:
 - We block under-13 signups
 
 **Questions?**
-- Email: privacy@supasnake.com
+- Email: support@supasnake.com
 - We respond within 30 days
 
 **Remember:** This summary is for convenience only. The full policy above is the legally binding version.

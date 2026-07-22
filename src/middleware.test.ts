@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { middleware } from './middleware';
+import { buildConnectSources, middleware } from './middleware';
 
 // Export internal functions for testing via the public middleware behavior
 // These are tested indirectly through the middleware function
@@ -71,6 +71,32 @@ describe('Security Middleware', () => {
       expect(csp).toContain('https://api.stripe.com');
     });
 
+    it('should allow the configured Supabase and Sentry origins', () => {
+      const sources = buildConnectSources({
+        NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321/rest/v1',
+        NEXT_PUBLIC_SENTRY_DSN:
+          'https://public-key@o123.ingest.de.sentry.io/456',
+        NEXT_PUBLIC_POSTHOG_HOST: 'https://eu.i.posthog.com/capture',
+      });
+
+      expect(sources).toContain('http://127.0.0.1:54321');
+      expect(sources).toContain('ws://127.0.0.1:54321');
+      expect(sources).toContain('https://o123.ingest.de.sentry.io');
+      expect(sources).toContain('https://eu.i.posthog.com');
+    });
+
+    it('should exclude malformed or non-network environment values', () => {
+      const sources = buildConnectSources({
+        NEXT_PUBLIC_SUPABASE_URL: "https://safe.supabase.co; script-src *",
+        NEXT_PUBLIC_SENTRY_DSN: 'javascript:alert(1)',
+        NEXT_PUBLIC_POSTHOG_HOST: 'not a URL',
+      });
+
+      expect(sources.join(' ')).not.toContain('script-src');
+      expect(sources.join(' ')).not.toContain('javascript:');
+      expect(sources.join(' ')).not.toContain('not a URL');
+    });
+
     it('should deny frame-ancestors', async () => {
       const request = createMockRequest('/');
       const response = await middleware(request);
@@ -93,22 +119,22 @@ describe('Security Middleware', () => {
 
     it('should allow production domain', async () => {
       const request = createMockRequest('/api/health', {
-        'Origin': 'https://ogsnake.com',
+        'Origin': 'https://supasnake.com',
       });
 
       const response = await middleware(request);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://ogsnake.com');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://supasnake.com');
     });
 
-    it('should allow staging domain', async () => {
+    it('should allow the canonical Vercel fallback domain', async () => {
       const request = createMockRequest('/api/health', {
-        'Origin': 'https://staging.ogsnake.com',
+        'Origin': 'https://supasnake.vercel.app',
       });
 
       const response = await middleware(request);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://staging.ogsnake.com');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://supasnake.vercel.app');
     });
 
     it('should not set CORS header for disallowed origins', async () => {

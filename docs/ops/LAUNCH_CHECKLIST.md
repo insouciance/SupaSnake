@@ -1,38 +1,75 @@
 # v0.1 Launch Checklist (Web)
 
-Ship gate for supasnake.com. Every box checked before flipping Stripe out of
-sandbox / announcing. Owner: bllj@proton.me.
+Ship gate for `supasnake.com`. The production workflow may be exercised with
+Stripe sandbox credentials before launch; do not select `live` or announce the
+game until every applicable box is checked. Owner: the monitored legal mailbox.
 
-## Automated gates (must be green)
+## Release-commit gates
 
-- [ ] `npx tsc --noEmit` clean
-- [ ] Jest suite green (`npm test`) - all suites, no skips added since last release
-- [ ] `npm run lint` clean
-- [ ] `npm run build` succeeds with production env
-- [ ] E2E green: `npm run test:e2e` (chromium, excludes `@stripe`) locally **and** the E2E workflow on the release PR
-- [ ] CI workflows (Build / Lint / Test / E2E) green on the release commit
+- [ ] `npm ci` succeeds on Node 22
+- [ ] Full Jest suite and the coverage ratchet pass
+- [ ] `npx tsc --noEmit` is clean
+- [ ] `npm run lint` is clean
+- [ ] `npm audit --audit-level=high` reports no blocking advisory
+- [ ] `npm run build` succeeds
+- [ ] All migrations apply from 001 through 036 on a clean database
+- [ ] `supabase db push --linked --include-all --dry-run` lists only 027–036
+- [ ] Build / Lint / Test / E2E workflows are green on the release commit
+- [ ] Production environment presence check passes; Vercel cloud-build value
+      validation passes for the selected Stripe mode
 
-## Manual verification
+## Manual staging and product checks
 
-- [ ] Lighthouse >= 80 on `/`, `/game`, `/shop` (run manually: Chrome DevTools > Lighthouse, mobile preset, production URL)
-- [ ] Sentry receiving events: trigger a test error on staging, confirm it lands in the project
-- [ ] Crash-free sessions > 99% over a 48h staging soak (Sentry release health)
-- [ ] One real sandbox purchase completed end-to-end (Stripe test card) - energy credited, webhook processed, purchase visible in Stripe dashboard
-- [ ] That purchase refunded via Stripe dashboard - refund webhook handled, no orphaned entitlements
-- [ ] Consent verified: fresh browser shows banner; PostHog makes **zero** network calls before "Accept"; Reject All keeps it silent; choice persists
-- [ ] Age gate on signup blocks a birth year < 13 and lets 13+ through
-- [ ] Fresh-player loop by hand: guest play -> starter pick -> one game run -> DNA credited -> daily reward claim
-- [ ] Account upgrade (guest -> email) keeps collection + DNA
+- [ ] Hosted preview smoke tests preserve the existing operator test data
+- [ ] E2E is green against the disposable local stack; no test touched hosted data
+- [ ] Lighthouse mobile score is at least 80 on `/`, `/game`, and `/shop`
+- [ ] Sentry receives a staged release and a deliberate test error
+- [ ] Crash-free sessions exceed 99% during a 48-hour staging soak
+- [ ] Fresh browser: no PostHog request before consent; Reject remains silent
+- [ ] Age gate rejects under-14 and accepts an eligible 14+ user
+- [ ] Guest → starter → run → DNA → daily reward flow persists after reload
+- [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and Codex
+- [ ] Registered deletion schedules 30 days out; a new sign-in cancels it
+- [ ] Guest deletion requires `DELETE MY ACCOUNT` and erases immediately
 
-## No-go triggers (any one blocks launch)
+## Payments
 
-- Payment bug of any kind: double charge, missing credit, webhook failure, refund not honored
-- Save corruption: player state (DNA, collection, equipped snake) lost or wrong after reload/upgrade
-- Crash-free < 99% during soak
-- Consent or age gate not enforcing (compliance risk)
-- Supabase RLS misconfiguration exposing another player's data
+- [ ] Stripe remains in sandbox while running pre-launch checks
+- [ ] All five one-time and both Premium prices are EUR and tax-inclusive
+- [ ] Stripe Tax is active and Checkout requests automatic tax
+- [ ] Sandbox purchase credits exactly once and records the webhook event
+- [ ] Sandbox refund is reflected without an orphaned entitlement
+- [ ] Premium monthly/yearly checkout, portal cancellation, renewal, and failed
+      payment behavior are verified
+- [ ] Live-mode keys, seven live Price IDs, and a live webhook are installed as
+      one reviewed change; the production workflow is run with `live`
 
-## Rollback
+## Legal and operations
 
-- Vercel: promote previous production deployment (instant)
-- Keep Stripe in sandbox until the first post-launch smoke test passes
+- [x] Company register number, VAT ID, and management disclosure populated
+- [x] All application legal/privacy/support surfaces use `support@supasnake.com`
+- [ ] Verify delivery and active monitoring for `support@supasnake.com`
+- [ ] Confirm the exact WKO Fachgruppe wording
+- [ ] Confirm processor DPAs and transfer safeguards
+- [ ] Verify Supabase Auth SMTP/domain delivery and configure `RESEND_API_KEY` if
+      weekly digests are a launch feature
+- [ ] Assign an owner and SLA for contact/GDPR requests
+- [ ] Review the Impressum, Terms, Privacy, withdrawal and accessibility pages
+      with Austrian counsel
+- [ ] Document the GDPR Article 33 breach-notification path
+
+## Release execution
+
+- [ ] Backups/PITR and current Vercel production deployment ID are recorded
+- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (application first, database second)
+- [ ] Post-migration health and core smoke checks pass on `supasnake.com`
+- [ ] All three cron routes reject no/incorrect bearer tokens
+- [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs
+
+## No-go triggers
+
+- Any double charge, missing credit, webhook failure, or refund inconsistency
+- Save/collection/lineage corruption or cross-player data exposure
+- Failed production environment, migration dry-run, health, or RLS check
+- Unresolved consent, age, legal-disclosure, or account-erasure defect
+- Crash-free sessions below 99% during soak

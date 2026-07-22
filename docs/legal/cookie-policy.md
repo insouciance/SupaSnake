@@ -271,8 +271,7 @@ What they don't get:
 
 ```
 [LAWYER TO DETAIL]
-- Cookie questions: privacy@supasnake.com
-- DPO (EU): dpo@supasnake.com
+- Cookie, privacy, and legal questions: support@supasnake.com
 - Opt-out requests: Settings → Privacy or email above
 ```
 

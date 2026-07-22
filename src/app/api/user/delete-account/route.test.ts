@@ -1,119 +1,243 @@
-import { POST, DELETE } from './route';
+import { DELETE, PATCH, POST } from './route';
 import { NextRequest } from 'next/server';
 
-// Mock Supabase
+const mockGetUser = jest.fn();
+const mockDeleteUser = jest.fn();
+const mockRpc = jest.fn();
+const mockUpdate = jest.fn();
+const mockEq = jest.fn();
+const mockFrom = jest.fn();
+
+const mockQuery: Record<string, jest.Mock> = {};
+mockQuery.update = mockUpdate.mockImplementation(() => mockQuery);
+mockQuery.eq = mockEq.mockImplementation(() => mockQuery);
+mockFrom.mockImplementation(() => mockQuery);
+
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({
     auth: {
-      getUser: jest.fn().mockResolvedValue({
-        data: { user: { id: 'test-user-id', email: 'test@example.com' } },
-        error: null,
-      }),
+      getUser: (...args: unknown[]) => mockGetUser(...args),
       admin: {
-        deleteUser: jest.fn().mockResolvedValue({ error: null }),
+        deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
       },
     },
-    from: jest.fn(() => ({
-      select: jest.fn().mockReturnThis(),
-      delete: jest.fn().mockReturnThis(),
-      update: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({
-        data: { id: 'player-id' },
-        error: null,
-      }),
-      insert: jest.fn().mockResolvedValue({ error: null }),
-    })),
+    rpc: (...args: unknown[]) => mockRpc(...args),
+    from: (...args: unknown[]) => mockFrom(...args),
   })),
 }));
 
-function createMockRequest(
+const REGISTERED_USER = {
+  id: 'user-1',
+  email: 'player@example.com',
+  is_anonymous: false,
+};
+
+function request(
   method: string,
   body?: object,
-  headers: Record<string, string> = {}
+  token: string | null = 'valid-token'
 ): NextRequest {
-  const init: RequestInit = {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return new NextRequest('http://localhost/api/user/delete-account', {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-  };
-
-  if (body) {
-    init.body = JSON.stringify(body);
-  }
-
-  return new NextRequest('http://localhost:3000/api/user/delete-account', init);
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
 }
 
-describe('Delete Account API', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+beforeEach(() => {
+  mockGetUser.mockReset();
+  mockDeleteUser.mockReset();
+  mockRpc.mockReset();
+  mockUpdate.mockReset();
+  mockEq.mockReset();
+  mockFrom.mockReset();
+  mockGetUser.mockResolvedValue({
+    data: { user: REGISTERED_USER },
+    error: null,
+  });
+  mockDeleteUser.mockResolvedValue({ data: {}, error: null });
+  mockUpdate.mockImplementation(() => mockQuery);
+  mockEq.mockImplementation(() => mockQuery);
+  mockFrom.mockImplementation(() => mockQuery);
+});
+
+describe('POST /api/user/delete-account', () => {
+  it('requires an exact bearer token', async () => {
+    expect((await POST(request('POST', undefined, null))).status).toBe(401);
+    expect(
+      (
+        await POST(
+          new NextRequest('http://localhost/api/user/delete-account', {
+            method: 'POST',
+            headers: { Authorization: 'Basic nope' },
+          })
+        )
+      ).status
+    ).toBe(401);
   });
 
-  describe('POST (Request Deletion)', () => {
-    it('should return 401 without authorization header', async () => {
-      const request = createMockRequest('POST');
-      const response = await POST(request);
+  it('schedules a registered account through the service-only RPC', async () => {
+    mockRpc.mockResolvedValueOnce({ data: 'request-1', error: null });
 
-      expect(response.status).toBe(401);
-    });
+    const response = await POST(
+      request('POST', { confirmEmail: ' PLAYER@example.com ' })
+    );
+    const data = await response.json();
 
-    it('should accept deletion request with valid authorization', async () => {
-      const request = createMockRequest('POST', { confirmEmail: 'test@example.com' }, {
-        Authorization: 'Bearer valid-token',
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data).toHaveProperty('message');
-      expect(data).toHaveProperty('scheduledDeletion');
-    });
-
-    it('should reject if confirmation email does not match', async () => {
-      const request = createMockRequest('POST', { confirmEmail: 'wrong@example.com' }, {
-        Authorization: 'Bearer valid-token',
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(400);
-    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(data.gracePeriodDays).toBe(30);
+    expect(new Date(data.scheduledDeletion).getTime()).toBeGreaterThan(Date.now());
+    expect(mockRpc).toHaveBeenCalledWith(
+      'request_account_deletion',
+      expect.objectContaining({ p_user_id: 'user-1' })
+    );
   });
 
-  describe('DELETE (Immediate Deletion)', () => {
-    it('should return 401 without authorization header', async () => {
-      const request = createMockRequest('DELETE');
-      const response = await DELETE(request);
+  it('rejects a mismatched email without touching deletion state', async () => {
+    const response = await POST(
+      request('POST', { confirmEmail: 'somebody@example.com' })
+    );
 
-      expect(response.status).toBe(401);
+    expect(response.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule an unrecoverable anonymous account', async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: 'guest-1', email: null, is_anonymous: true } },
+      error: null,
     });
 
-    it('should require confirmation for immediate deletion', async () => {
-      const request = createMockRequest('DELETE', { confirm: false }, {
-        Authorization: 'Bearer valid-token',
-      });
+    const response = await POST(
+      request('POST', { confirmation: 'DELETE MY ACCOUNT' })
+    );
 
-      const response = await DELETE(request);
-      expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('reports a pre-migration deployment window as unavailable', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'PGRST202', message: 'function not found' },
     });
 
-    it('should process immediate deletion with confirmation', async () => {
-      const request = createMockRequest('DELETE', {
+    const response = await POST(
+      request('POST', { confirmEmail: 'player@example.com' })
+    );
+
+    expect(response.status).toBe(503);
+  });
+});
+
+describe('PATCH /api/user/delete-account', () => {
+  it('cancels pending deletion for the authenticated user', async () => {
+    mockRpc.mockResolvedValueOnce({ data: true, error: null });
+
+    const response = await PATCH(request('PATCH'));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.cancelled).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('cancel_account_deletion', {
+      p_user_id: 'user-1',
+    });
+  });
+});
+
+describe('DELETE /api/user/delete-account', () => {
+  it('requires the immediate flag as well as identity confirmation', async () => {
+    const response = await DELETE(
+      request('DELETE', {
+        confirm: false,
+        confirmEmail: 'player@example.com',
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('deletes Auth before finalizing retained accounting references', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'request-1', error: null })
+      .mockResolvedValueOnce({ data: 'request-1', error: null })
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: true, error: null });
+
+    const response = await DELETE(
+      request('DELETE', {
         confirm: true,
-        confirmEmail: 'test@example.com',
-      }, {
-        Authorization: 'Bearer valid-token',
-      });
+        confirmEmail: 'player@example.com',
+      })
+    );
+    const data = await response.json();
 
-      const response = await DELETE(request);
-      expect(response.status).toBe(200);
+    expect(response.status).toBe(200);
+    expect(data.deleted).toBe(true);
+    expect(mockRpc.mock.calls.map(([name]) => name)).toEqual([
+      'request_account_deletion',
+      'claim_account_deletion',
+      'prepare_account_deletion',
+      'finalize_account_deletion',
+    ]);
+    expect(mockDeleteUser).toHaveBeenCalledWith('user-1');
+    const finalizeCall = mockRpc.mock.calls.findIndex(
+      ([name]) => name === 'finalize_account_deletion'
+    );
+    expect(mockDeleteUser.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRpc.mock.invocationCallOrder[finalizeCall]
+    );
+  });
 
-      const data = await response.json();
-      expect(data).toHaveProperty('deleted');
-      expect(data.deleted).toBe(true);
+  it('supports explicit immediate erasure for anonymous accounts', async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: 'guest-1', email: null, is_anonymous: true } },
+      error: null,
     });
+    mockRpc
+      .mockResolvedValueOnce({ data: 'request-2', error: null })
+      .mockResolvedValueOnce({ data: 'request-2', error: null })
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: true, error: null });
+
+    const response = await DELETE(
+      request('DELETE', {
+        confirm: true,
+        confirmation: 'DELETE MY ACCOUNT',
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockDeleteUser).toHaveBeenCalledWith('guest-1');
+  });
+
+  it('keeps a failed auth deletion retryable', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'request-1', error: null })
+      .mockResolvedValueOnce({ data: 'request-1', error: null })
+      .mockResolvedValueOnce({ data: true, error: null });
+    mockDeleteUser.mockResolvedValueOnce({
+      data: null,
+      error: { status: 500, message: 'unavailable' },
+    });
+
+    const response = await DELETE(
+      request('DELETE', {
+        confirm: true,
+        confirmEmail: 'player@example.com',
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(mockRpc.mock.calls.map(([name]) => name)).not.toContain(
+      'finalize_account_deletion'
+    );
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'pending' })
+    );
   });
 });

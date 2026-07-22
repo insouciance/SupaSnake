@@ -17,7 +17,7 @@ interface ConsentPreferences {
 }
 
 export default function PrivacySettingsPage() {
-  const { session, isAuthenticated } = useAuth();
+  const { user, session, isAuthenticated, isAnonymous, signOut } = useAuth();
   const [preferences, setPreferences] = useState<ConsentPreferences>({
     essential: true,
     functional: true,
@@ -103,13 +103,21 @@ export default function PrivacySettingsPage() {
 
     setDeleteLoading(true);
     try {
+      const immediate = isAnonymous;
       const response = await fetch('/api/user/delete-account', {
-        method: 'POST',
+        method: immediate ? 'DELETE' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ confirmEmail: deleteEmail }),
+        body: JSON.stringify(
+          immediate
+            ? {
+                confirm: true,
+                confirmation: deleteEmail,
+              }
+            : { confirmEmail: deleteEmail }
+        ),
       });
 
       const data = await response.json();
@@ -118,10 +126,22 @@ export default function PrivacySettingsPage() {
         throw new Error(data.error || 'Deletion request failed');
       }
 
-      setMessage({
-        type: 'success',
-        text: `Account deletion scheduled for ${new Date(data.scheduledDeletion).toLocaleDateString()}. You can cancel by logging in before this date.`,
-      });
+      if (immediate) {
+        await signOut();
+        setMessage({
+          type: 'success',
+          text: 'Your guest account and gameplay data have been deleted.',
+        });
+      } else {
+        const deletionDate = new Date(data.scheduledDeletion).toLocaleDateString();
+        // End the current session so cancellation really requires a new
+        // authentication event, matching the legal copy and server behavior.
+        await signOut();
+        setMessage({
+          type: 'success',
+          text: `Account deletion scheduled for ${deletionDate}. Sign in again before then to cancel.`,
+        });
+      }
       setShowDeleteConfirm(false);
       setDeleteEmail('');
     } catch (err) {
@@ -277,8 +297,9 @@ export default function PrivacySettingsPage() {
             Delete Account
           </h2>
           <p className="text-beige font-body mb-4">
-            Permanently delete your account and all associated data. This action has a 30-day
-            grace period during which you can cancel by logging in.
+            {isAnonymous
+              ? 'Permanently delete this guest account and its gameplay data immediately. Guest accounts cannot be recovered after sign-out.'
+              : 'Permanently delete your account and associated gameplay data after a 30-day grace period. Signing in again during that period cancels the request.'}
           </p>
 
           {!showDeleteConfirm ? (
@@ -292,13 +313,15 @@ export default function PrivacySettingsPage() {
           ) : (
             <div className="space-y-4">
               <p className="text-strike-red font-body font-bold">
-                Enter your email to confirm deletion:
+                {isAnonymous
+                  ? 'Type DELETE MY ACCOUNT to confirm:'
+                  : 'Enter your email to confirm deletion:'}
               </p>
               <input
-                type="email"
+                type={isAnonymous ? 'text' : 'email'}
                 value={deleteEmail}
                 onChange={(e) => setDeleteEmail(e.target.value)}
-                placeholder="your@email.com"
+                placeholder={isAnonymous ? 'DELETE MY ACCOUNT' : user?.email ?? 'your@email.com'}
                 className="w-full px-4 py-3 bg-scale-blue-dark border-[3px] border-scale-blue-light rounded-arcade text-bone-white font-body focus:border-strike-red focus:outline-none"
               />
               <div className="flex gap-4">
@@ -316,7 +339,11 @@ export default function PrivacySettingsPage() {
                   disabled={deleteLoading || !deleteEmail}
                   className="flex-1 px-6 py-3 bg-strike-red border-[3px] border-red-900 rounded-arcade font-display uppercase tracking-arcade text-bone-white hover:bg-red-700 transition-all disabled:opacity-50"
                 >
-                  {deleteLoading ? 'Processing...' : 'Confirm Delete'}
+                  {deleteLoading
+                    ? 'Processing...'
+                    : isAnonymous
+                      ? 'Delete Now'
+                      : 'Schedule Deletion'}
                 </button>
               </div>
             </div>

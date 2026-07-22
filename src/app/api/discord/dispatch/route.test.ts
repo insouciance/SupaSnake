@@ -3,8 +3,8 @@
  */
 
 /**
- * Dispatch cron tests (Identity v1 section 8.4): CRON_SECRET / Vercel
- * cron-header auth, the batch-10 drain + stale-grant sweep, and the
+ * Dispatch cron tests (Identity v1 section 8.4): exact CRON_SECRET
+ * auth, the batch-10 drain + stale-grant sweep, and the
  * counts-only response (no payloads, no tokens).
  */
 
@@ -56,10 +56,10 @@ describe('GET /api/discord/dispatch', () => {
     expect(mockSweep).toHaveBeenCalledTimes(1);
   });
 
-  it('accepts the Vercel cron header', async () => {
+  it('rejects a forged Vercel cron marker without the bearer', async () => {
     const response = await GET(request({ 'x-vercel-cron': '1' }));
-    expect(response.status).toBe(200);
-    expect(mockDrain).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(401);
+    expect(mockDrain).not.toHaveBeenCalled();
   });
 
   it('skips the sweep pre-024 and reports live:false', async () => {

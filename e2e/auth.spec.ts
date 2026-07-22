@@ -104,6 +104,7 @@ test.describe('Signup age gate', () => {
 
     await expect(page.getByTestId('age-gate')).toBeVisible({ timeout: 10000 });
     await expect(page.getByLabel(/what year were you born/i)).toBeVisible();
+    await expect(page.getByLabel(/what month were you born/i)).toBeVisible();
   });
 
   test('blocks users under 13', async ({ page }) => {
@@ -111,6 +112,7 @@ test.describe('Signup age gate', () => {
 
     const underageYear = new Date().getFullYear() - 10;
     await page.getByLabel(/what year were you born/i).fill(String(underageYear));
+    await page.getByLabel(/what month were you born/i).selectOption('1');
     await page.getByRole('button', { name: /continue/i }).click();
 
     await expect(page.getByText(/age requirement not met/i)).toBeVisible({
@@ -123,6 +125,7 @@ test.describe('Signup age gate', () => {
 
     const adultYear = new Date().getFullYear() - 30;
     await page.getByLabel(/what year were you born/i).fill(String(adultYear));
+    await page.getByLabel(/what month were you born/i).selectOption('1');
     await page.getByRole('button', { name: /continue/i }).click();
 
     await expect(
@@ -186,6 +189,7 @@ test.describe('Guest upgrade flow', () => {
     await modal.getByLabel(/^email$/i).fill(email);
     await modal.getByLabel(/^password$/i).fill('E2eUpgradePass123');
     await modal.getByLabel(/confirm password/i).fill('E2eUpgradePass123');
+    await modal.getByLabel(/I agree to the Terms of Service/i).check();
     await modal.getByRole('button', { name: /create account/i }).click();
 
     const success = page.getByTestId('upgrade-success');
