@@ -205,7 +205,7 @@ describe('Migration 028: premium season track (owner of claim_season_tier: 022 -
   });
 });
 
-describe('Migration 028: identity flair (owner of player_identity_view: 022 -> 028)', () => {
+describe('Migration 028: identity flair (owner of player_identity_view: 023 -> 028)', () => {
   it('adds is_premium to the view and keeps it public-safe', () => {
     expect(sql).toMatch(/has_premium\(p\.id\) AS is_premium/);
     // No billing columns leak into the public identity read path
@@ -221,6 +221,12 @@ describe('Migration 028: identity flair (owner of player_identity_view: 022 -> 0
     expect(sql).toMatch(/AS is_founder/);
     expect(sql).toMatch(/AS badges/);
     expect(sql).toMatch(/cm\.player_id = p\.user_id/);
+  });
+
+  it('preserves the 023 column order and appends premium after legacy_score', () => {
+    expect(sql).toMatch(
+      /AS mastery,\s*\n\s*p\.legacy_score,\s*\n\s*has_premium\(p\.id\) AS is_premium\s*\nFROM players p/
+    );
   });
 });
 

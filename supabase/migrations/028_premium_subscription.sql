@@ -799,11 +799,12 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ----------------------------------------------------------------------------
--- 12. PLAYER_IDENTITY_VIEW: re-created FROM THE 022 BODY (every non-premium
---     byte is a carryover) with one addition: is_premium - the supporter
+-- 12. PLAYER_IDENTITY_VIEW: re-created FROM THE 023 BODY (every non-premium
+--     byte is a carryover) with one APPENDED addition: is_premium - the supporter
 --     flair flag every identity surface (PlayerCard, leaderboard, clan
 --     roster) renders from. Public-safe: a boolean, no billing data.
---     028 is now the owner.
+--     PostgreSQL only permits CREATE OR REPLACE VIEW to append columns, so
+--     legacy_score must remain in its 023 position. 028 is now the owner.
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW player_identity_view AS
@@ -820,7 +821,6 @@ SELECT
   ) AS display_handle,
   (p.handle IS NULL) AS is_generated_name,
   (p.created_at < TIMESTAMPTZ '2026-07-20 00:00:00+00') AS is_founder,
-  has_premium(p.id) AS is_premium,
   p.created_at,
   title_def.id AS title_id,
   title_def.name AS title,
@@ -849,7 +849,9 @@ SELECT
     (SELECT jsonb_object_agg(pm.dynasty, level_for_xp(pm.xp))
      FROM player_mastery pm WHERE pm.player_id = p.id),
     '{}'::jsonb
-  ) AS mastery
+  ) AS mastery,
+  p.legacy_score,
+  has_premium(p.id) AS is_premium
 FROM players p
 LEFT JOIN player_loadout pl_title
   ON pl_title.player_id = p.id AND pl_title.slot = 'title' AND pl_title.position = 1
