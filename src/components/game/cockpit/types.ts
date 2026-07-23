@@ -36,6 +36,8 @@ export interface RunCockpitModel {
   isFirstMovementPrompt: boolean;
   score: number;
   dna: number;
+  energy: number;
+  maxEnergy: number;
   bankDna: number;
   crashDna: number;
   comboMultiplier: number;

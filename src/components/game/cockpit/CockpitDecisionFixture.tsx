@@ -32,6 +32,8 @@ const MODEL: RunCockpitModel = {
   isFirstMovementPrompt: false,
   score: 12840,
   dna: 186,
+  energy: 4,
+  maxEnergy: 5,
   bankDna: 168,
   crashDna: 52,
   comboMultiplier: 1.8,

@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
 import {
   DnaGlyph,
+  EnergyGlyph,
   GeneGlyph,
   ModeGlyph,
   PauseGlyph,
@@ -42,16 +43,19 @@ function Instrument({
   className,
   children,
   label,
+  testId,
 }: {
   className: string;
   children: ReactNode;
   label: string;
+  testId?: string;
 }) {
   return (
     <section
       className={`${styles.instrument} ${className}`}
       aria-label={label}
       data-cockpit-zone="instrument"
+      data-testid={testId}
     >
       {children}
     </section>
@@ -186,11 +190,23 @@ export function RunCockpit({
             </div>
           </Instrument>
 
-          <Instrument className={styles.modeInstrument} label={`${model.modeLabel}, ${model.dynasty} dynasty`}>
+          <Instrument
+            className={styles.modeInstrument}
+            label={`${model.modeLabel}, ${model.dynasty} dynasty`}
+            testId={model.mode === 'free' ? 'free-play-watermark' : undefined}
+          >
             <span className={styles.modeIcon}><ModeGlyph mode={model.mode} /></span>
             <span className={styles.modeCopy}>
               <strong>{model.modeLabel}</strong>
               <span>{model.modeDetail}</span>
+            </span>
+            <span
+              className={styles.energyReadout}
+              aria-label={`Energy ${model.energy} of ${model.maxEnergy}`}
+              title={`Energy ${model.energy} of ${model.maxEnergy}`}
+            >
+              <span aria-hidden="true"><EnergyGlyph /></span>
+              <strong>{model.energy}/{model.maxEnergy}</strong>
             </span>
           </Instrument>
 
@@ -244,7 +260,11 @@ export function RunCockpit({
           )}
 
           {decisionDock && (
-            <div className={styles.decisionDock} data-testid="cockpit-decision-dock">
+            <div
+              className={styles.decisionDock}
+              data-testid="cockpit-decision-dock"
+              data-cockpit-zone="decision"
+            >
               {decisionDock}
             </div>
           )}

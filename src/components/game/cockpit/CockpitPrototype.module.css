@@ -445,6 +445,28 @@
   font-size: 14px;
 }
 
+.energyReadout {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--system-cyan);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.energyReadout > span {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.energyReadout strong {
+  color: var(--bone);
+}
+
 .statusRail {
   grid-area: status;
   display: flex;
@@ -1076,6 +1098,17 @@
     display: none;
   }
 
+  .energyReadout {
+    gap: 2px;
+    margin-left: 0;
+    font-size: 11px;
+  }
+
+  .energyReadout > span {
+    width: 14px;
+    height: 14px;
+  }
+
   .statusRail {
     display: none;
   }
@@ -1253,6 +1286,17 @@
 
   .modeCopy span {
     display: none;
+  }
+
+  .energyReadout {
+    gap: 2px;
+    margin-left: 0;
+    font-size: 10px;
+  }
+
+  .energyReadout > span {
+    width: 13px;
+    height: 13px;
   }
 
   .controls {

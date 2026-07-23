@@ -12,6 +12,8 @@ const MODEL: RunCockpitModel = {
   isFirstMovementPrompt: true,
   score: 12840,
   dna: 186,
+  energy: 4,
+  maxEnergy: 5,
   bankDna: 168,
   crashDna: 52,
   comboMultiplier: 1.8,
@@ -39,6 +41,7 @@ describe('RunCockpit', () => {
 
     expect(screen.getByLabelText(/score 12,840, combo 1.8/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/run dna 186/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/energy 4 of 5/i)).toHaveTextContent('4/5');
     expect(screen.getByLabelText('Gold Trail')).toBeInTheDocument();
     expect(screen.getByLabelText(/Umbra 2 of 4, tier 1, suppressed/i)).toBeInTheDocument();
     expect(screen.getByTestId('first-movement-prompt')).toHaveTextContent(
@@ -48,6 +51,22 @@ describe('RunCockpit', () => {
     const board = screen.getByTestId('game-board-viewport');
     expect(board).toContainElement(screen.getByTestId('real-board'));
     expect(board).not.toHaveTextContent(/score|dna|gold trail|swipe/i);
+  });
+
+  it('keeps free-play identity machine-readable and visible', () => {
+    render(
+      <RunCockpit
+        model={{ ...MODEL, mode: 'free', modeLabel: 'Free play' }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+
+    expect(screen.getByTestId('free-play-watermark')).toHaveAccessibleName(
+      /free play, primal dynasty/i
+    );
   });
 
   it('keeps controls actionable above flick input and reserves decisions', () => {

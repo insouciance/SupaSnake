@@ -38,6 +38,15 @@ export function DnaGlyph() {
   );
 }
 
+export function EnergyGlyph() {
+  return (
+    <Svg>
+      <path d="M13.5 2 5.8 13h5.8L10.5 22l7.7-11h-5.8l1.1-9Z" />
+      <path d="M4 5.5h3M17 18.5h3" opacity=".6" />
+    </Svg>
+  );
+}
+
 export function ShieldGlyph() {
   return (
     <Svg>

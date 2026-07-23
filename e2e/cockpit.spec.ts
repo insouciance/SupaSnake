@@ -104,6 +104,42 @@ function rectanglesOverlap(
     left.y + left.height > right.y + 0.5;
 }
 
+interface CockpitLayoutSnapshot {
+  board: { x: number; y: number; width: number; height: number };
+  zones: Array<{
+    kind: string;
+    box: { x: number; y: number; width: number; height: number };
+  }>;
+  overflow: { horizontal: boolean; vertical: boolean };
+}
+
+async function readCockpitLayout(page: Page): Promise<CockpitLayoutSnapshot | null> {
+  return page.evaluate(() => {
+    const board = document.querySelector<HTMLElement>('[data-testid="game-board-viewport"]');
+    if (!board) return null;
+
+    const toBox = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const zones = Array.from(document.querySelectorAll<HTMLElement>('[data-cockpit-zone]'))
+      .map((zone) => ({
+        kind: zone.dataset.cockpitZone ?? 'unknown',
+        box: toBox(zone),
+      }))
+      .filter(({ box }) => box.width > 0 && box.height > 0);
+
+    return {
+      board: toBox(board),
+      zones,
+      overflow: {
+        horizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        vertical: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+      },
+    };
+  });
+}
+
 test.describe('Run Cockpit v1', () => {
   test.skip(!COCKPIT_ENABLED, 'Run Cockpit is validated only in its opt-in build.');
 
@@ -117,11 +153,14 @@ test.describe('Run Cockpit v1', () => {
       timeout: 60_000,
     });
     const freeMode = page.getByTestId('mode-free');
-    await freeMode.click();
+    // The live WebGL canvas continuously repaints behind this screen. Force
+    // avoids treating that intentional motion as an unstable hit target; the
+    // pressed state below still proves the interaction landed.
+    await freeMode.click({ force: true });
     await expect(freeMode).toHaveAttribute('aria-pressed', 'true');
     const freePlayStart = page.getByTestId('free-play-start');
     await expect(freePlayStart).toBeEnabled();
-    await freePlayStart.click();
+    await freePlayStart.click({ force: true });
 
     const cockpit = page.getByTestId('game-hud');
     const board = page.getByTestId('game-board-viewport');
@@ -143,35 +182,24 @@ test.describe('Run Cockpit v1', () => {
 
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
-      await page.evaluate(() => new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      ));
+      // One atomic browser-side read forces layout and avoids dozens of CDP
+      // round trips competing with the continuously rendered WebGL scene.
+      const layout = await readCockpitLayout(page);
+      expect(layout).not.toBeNull();
+      const boardBox = layout!.board;
+      expect(Math.abs(boardBox.width - boardBox.height)).toBeLessThanOrEqual(1);
+      expect(boardBox.width).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
 
-      const boardBox = await board.boundingBox();
-      expect(boardBox).not.toBeNull();
-      expect(Math.abs(boardBox!.width - boardBox!.height)).toBeLessThanOrEqual(1);
-      expect(boardBox!.width).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
-
-      const boardCenterX = boardBox!.x + boardBox!.width / 2;
-      const boardCenterY = boardBox!.y + boardBox!.height / 2;
+      const boardCenterX = boardBox.x + boardBox.width / 2;
+      const boardCenterY = boardBox.y + boardBox.height / 2;
       expect(Math.abs(boardCenterX - viewport.width / 2)).toBeLessThanOrEqual(9);
       expect(Math.abs(boardCenterY - viewport.height / 2)).toBeLessThanOrEqual(10);
 
-      const zones = cockpit.locator('[data-cockpit-zone]');
-      for (let index = 0; index < await zones.count(); index += 1) {
-        const zone = zones.nth(index);
-        const zoneBox = await zone.boundingBox();
-        // Responsive rail variants can be swapped during the same resize
-        // frame. A null box is an inactive variant, not an overlapping one.
-        if (!zoneBox) continue;
-        expect(rectanglesOverlap(boardBox!, zoneBox!)).toBe(false);
+      for (const zone of layout!.zones) {
+        expect(rectanglesOverlap(boardBox, zone.box)).toBe(false);
       }
 
-      const overflow = await page.evaluate(() => ({
-        horizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        vertical: document.documentElement.scrollHeight > document.documentElement.clientHeight,
-      }));
-      expect(overflow).toEqual({ horizontal: false, vertical: false });
+      expect(layout!.overflow).toEqual({ horizontal: false, vertical: false });
 
       if (CAPTURE_VISUALS) {
         await testInfo.attach(`cockpit-live-${viewport.name}`, {
@@ -197,15 +225,12 @@ test.describe('Run Cockpit v1', () => {
       { name: 'pause-desktop', width: 1440, height: 900 },
     ] as const) {
       await page.setViewportSize(viewport);
-      await page.evaluate(() => new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      ));
-      const boardBox = await board.boundingBox();
-      const decisionBox = await decisionDock.boundingBox();
-      expect(boardBox).not.toBeNull();
-      expect(decisionBox).not.toBeNull();
-      expect(rectanglesOverlap(boardBox!, decisionBox!)).toBe(false);
-      expect(boardBox!.width).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
+      const layout = await readCockpitLayout(page);
+      expect(layout).not.toBeNull();
+      const decision = layout!.zones.find((zone) => zone.kind === 'decision');
+      expect(decision).toBeDefined();
+      expect(rectanglesOverlap(layout!.board, decision!.box)).toBe(false);
+      expect(layout!.board.width).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
       if (CAPTURE_VISUALS) {
         await testInfo.attach(`cockpit-live-${viewport.name}`, {
           body: await page.screenshot(),
@@ -214,7 +239,10 @@ test.describe('Run Cockpit v1', () => {
       }
     }
 
-    await page.getByRole('button', { name: /plan next move/i }).click();
+    await page.getByRole('button', { name: /plan next move/i }).click({
+      force: true,
+      noWaitAfter: true,
+    });
     await expect(decisionDock).toBeHidden();
     await expect(gate).toBeVisible();
 
@@ -227,20 +255,19 @@ test.describe('Run Cockpit v1', () => {
       timeout: 30_000,
     });
     const reloadedFreeMode = page.getByTestId('mode-free');
-    await reloadedFreeMode.click();
+    await reloadedFreeMode.click({ force: true });
     await expect(reloadedFreeMode).toHaveAttribute('aria-pressed', 'true');
     const reloadedFreePlayStart = page.getByTestId('free-play-start');
     await expect(reloadedFreePlayStart).toBeEnabled();
-    await reloadedFreePlayStart.click();
+    await reloadedFreePlayStart.click({ force: true });
     await expect(cockpit).toHaveAttribute('data-input', 'dpad', { timeout: 30_000 });
     await expect(gate).toBeVisible();
 
-    const dpadDock = cockpit.locator('[data-cockpit-zone="input"]');
-    const dpadBoardBox = await board.boundingBox();
-    const dpadDockBox = await dpadDock.boundingBox();
-    expect(dpadBoardBox).not.toBeNull();
-    expect(dpadDockBox).not.toBeNull();
-    expect(rectanglesOverlap(dpadBoardBox!, dpadDockBox!)).toBe(false);
+    const dpadLayout = await readCockpitLayout(page);
+    expect(dpadLayout).not.toBeNull();
+    const dpadDock = dpadLayout!.zones.find((zone) => zone.kind === 'input');
+    expect(dpadDock).toBeDefined();
+    expect(rectanglesOverlap(dpadLayout!.board, dpadDock!.box)).toBe(false);
     for (const label of ['Move Up', 'Move Down', 'Move Left', 'Move Right']) {
       const target = page.getByRole('button', { name: label });
       const box = await target.boundingBox();
@@ -248,7 +275,7 @@ test.describe('Run Cockpit v1', () => {
       expect(box!.width).toBeGreaterThanOrEqual(44);
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
-    await page.getByRole('button', { name: 'Move Up' }).click();
+    await page.getByRole('button', { name: 'Move Up' }).click({ force: true });
     await expect(gate).toBeHidden();
   });
 });

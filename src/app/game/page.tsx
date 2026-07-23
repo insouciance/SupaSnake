@@ -1819,6 +1819,8 @@ export default function GamePage() {
     isFirstMovementPrompt: minimalFirstRunPrompt && isReady,
     score,
     dna: dnaCollected,
+    energy,
+    maxEnergy,
     bankDna: previewOutcome(true, activeAnomalyId),
     crashDna: previewOutcome(false, activeAnomalyId),
     comboMultiplier,

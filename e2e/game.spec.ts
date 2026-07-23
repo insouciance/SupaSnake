@@ -159,14 +159,32 @@ test.describe('Equipped-snake game flow', () => {
         )
       ).toBeVisible();
 
-      // The responsive HUD owns layout space above the WebGL viewport; it
-      // must never sit on top of the playable board at either breakpoint.
+      // Both HUD generations must keep their telemetry clear of the WebGL
+      // viewport. The cockpit surrounds the board, while the rollback HUD
+      // owns a single strip above it.
       const expectHudClearOfBoard = async () => {
-        const hud = await page.getByTestId('game-hud').boundingBox();
+        const hudLocator = page.getByTestId('game-hud');
+        const hud = await hudLocator.boundingBox();
         const board = await page.getByTestId('game-board-viewport').boundingBox();
         expect(hud).not.toBeNull();
         expect(board).not.toBeNull();
-        expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height);
+        const isCockpit = await hudLocator.getAttribute('data-input') !== null;
+        if (isCockpit) {
+          const zones = hudLocator.locator('[data-cockpit-zone]:visible');
+          for (let index = 0; index < await zones.count(); index += 1) {
+            const zone = await zones.nth(index).boundingBox();
+            expect(zone).not.toBeNull();
+            const overlaps = !(
+              zone!.x + zone!.width <= board!.x ||
+              board!.x + board!.width <= zone!.x ||
+              zone!.y + zone!.height <= board!.y ||
+              board!.y + board!.height <= zone!.y
+            );
+            expect(overlaps).toBe(false);
+          }
+        } else {
+          expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height);
+        }
       };
       await expectHudClearOfBoard();
       await page.setViewportSize({ width: 375, height: 667 });
