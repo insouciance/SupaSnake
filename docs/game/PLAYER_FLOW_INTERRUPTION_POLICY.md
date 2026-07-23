@@ -116,13 +116,16 @@ Only one transition chain may run at a time. Errors remain on Home with an actio
 8. Automated incognito, input, accessibility, and responsive verification
 9. Canary with `NEXT_PUBLIC_FTUE_V2=true`, followed by production rollout and kill-switch monitoring
 
-The source implementation and automated coverage are complete, but rollout is
-deliberately not complete: migration `037_ftue_v2_player_flow.sql` must be
-reviewed and applied before enabling FTUE v2 in a deployed environment. The
-database migration precedes the application flag so the bootstrap RPC always
-exists when the one-click client path becomes reachable. No hosted database or
-production flag is changed as part of this implementation branch. The switch
-is opt-in: an omitted value behaves as `false`.
+Production rollout completed on 2026-07-23 in the required order. Migration
+`037_ftue_v2_player_flow.sql` was reviewed, validated against an isolated copy
+of hosted migrations 001–036, applied to hosted Supabase, and invariant-checked
+before the application flag was enabled. The FTUE application release
+(`f86f8ae`) was then verified on a protected canary and promoted as Vercel
+deployment `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc`. `NEXT_PUBLIC_FTUE_V2=true` is
+now a Production environment default for future builds. An omitted or false
+value still selects the coherent rollback path, and deployment
+`dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` remains available as the pre-FTUE rollback
+artifact.
 
 ## Verification gates
 

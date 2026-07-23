@@ -19,43 +19,45 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `e5b00c5` — HUD reservation and deliberate resume input |
-| Vercel deployment | `dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` |
+| Production commit | `f86f8ae` — FTUE v2 player-flow release |
+| Vercel deployment | `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc` |
+| Rollback deployment | `dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` — pre-FTUE production |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–037 deployed; migration 037 backfill and runtime bootstrap verified |
+| FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Active development branch | `feat/genome` |
+| Release branch | `release/ftue-v2`; runtime release commit `f86f8ae` |
 
-The production application stays on the deployment above until a later
-promotion is explicitly announced. Migration 037 is already live behind the
-disabled-by-default application flag. The frozen HUD/Pause visual candidate is
-preserved for regression reference and is not part of the FTUE release tree.
+Migration 037 and FTUE v2 are live. The frozen HUD/Pause visual candidate is
+preserved for regression reference and was not deployed unchanged. The release
+keeps the established HUD/Ready/Pause visual language, reserves board geometry
+in CSS from first paint, and includes only the interaction fixes required for a
+safe, deliberate first movement.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
 mailbox monitoring are commercial-launch gates, not blockers for this
 operator-only deployment.
 
-### Known production rechecks
+### Post-production manual rechecks
 
-The following cases are confirmed follow-up work against `e5b00c5`. Continue
-the rest of QA now, but rerun every item marked **RECHECK** after the next
-deployment:
+The automated production acceptance run is green. These tactile and
+state-heavy cases still require real-device or exploratory verification:
 
-- **RECHECK:** at 844×390 with a full Genome HUD, the playable viewport was
-  measured at only 162 CSS px high.
-- **RECHECK:** an opposite-direction/reversal input can dismiss the deliberate
-  resume gate even though the engine rejects the turn.
-- **RECHECK:** the pause control can be exposed in the untouched initial Ready
-  state, where there is no running tick loop to resume.
-- **RECHECK:** verify that HUD-driven canvas resizing has no transient overlap,
-  camera jump, or clipping while its top boundary changes.
+- Real-device safe areas, mobile browser chrome, touch feel, and camera motion
+  while live HUD content changes.
+- The full Genome HUD at 844×390 using the released visual treatment, including
+  first-food, BANK/combo/anomaly, and one-to-six gene states.
+- Real mutation, portal, surge, BANK, and choice-overlay focus journeys.
+- The frozen visual candidate's compact HUD and Pause treatment still require a
+  product-design rework before they can become a future release candidate.
 
-### Local HUD/input candidate evidence (not production sign-off)
+### Frozen HUD/input candidate evidence (reference only)
 
-The current uncommitted candidate was revalidated on 2026-07-23. Production is
-still `e5b00c5`, so keep every production checkbox and **RECHECK** above open
-until a later deployment is promoted and inspected on real devices.
+The uncommitted candidate was revalidated on 2026-07-23, then frozen because
+its HUD/Pause visual design is scheduled for rework. Its evidence is useful for
+regression reference, but its compact grid and status-rail presentation are not
+the production FTUE design.
 
 - Playwright passed the real game/canvas HUD journey at 320×568, 375×667,
   390×844, 844×390, 768×1024, 1280×720, 1440×900, and 2560×1080. At every
@@ -85,8 +87,8 @@ until a later deployment is promoted and inspected on real devices.
 - The added/modified/untracked-file credential-pattern scan passed.
 - The focused HUD journey uses deterministic authenticated player/collection/
   session responses. Separately, the selective FTUE release artifact passed
-  14/14 Playwright checks against hosted migration 037, including a genuinely
-  new anonymous PRIMAL bootstrap; the unaliased Vercel canary remains pending.
+  14/14 protected-canary and 14/14 production Playwright checks against hosted
+  migration 037, including genuinely new anonymous PRIMAL bootstraps.
 - Still manual: real-device safe areas and touch feel, camera motion during
   live HUD changes, first-food/bank/combo/anomaly states, one-to-six live genes,
   real overlay focus, and mutation/portal/surge/BANK UI journeys.
@@ -555,6 +557,20 @@ Check both benefit and counterweight when encountered.
 
 Apply migration 037, run the application with `NEXT_PUBLIC_FTUE_V2=true`, and
 use a clean browser context with a genuinely new anonymous identity.
+
+Release evidence (2026-07-23):
+
+- Migration `037` passed repeated, concurrent, preservation, repair, permission,
+  uniqueness, equip, and unlock-and-equip checks before hosted application.
+- The exact application release passed TypeScript, full ESLint, 225 Jest suites
+  / 2,857 tests, a production build with 81 routes, and credential/diff checks.
+- Protected canary and public production each passed all 14 focused real-server
+  Playwright checks. Post-production logs contained no errors or HTTP 500s.
+- After final production browser verification, all 283 hosted players had one settings
+  row and exactly one equipped snake matching `active_snake_id`; zero players
+  were inconsistent.
+- The temporary canary alias and test-only bypass credential were removed after
+  promotion. The prior deployment remains intact for rollback.
 
 - [ ] Launch state progresses through authenticating → bootstrapping → loading
       run; duplicate clicks stay disabled and the label reads “Launching…”.

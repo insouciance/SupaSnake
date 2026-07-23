@@ -6,6 +6,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000';
+const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+const usesRemoteServer = !/^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(
+  baseURL
+);
 
 export default defineConfig({
   // Test directory
@@ -39,6 +43,15 @@ export default defineConfig({
   use: {
     // Base URL for all tests
     baseURL,
+
+    // Authenticate automated checks against Vercel-protected canaries without
+    // weakening deployment protection for normal visitors.
+    extraHTTPHeaders: protectionBypass
+      ? {
+          'x-vercel-protection-bypass': protectionBypass,
+          'x-vercel-set-bypass-cookie': 'true',
+        }
+      : undefined,
 
     // Collect trace when retrying the failed test
     trace: 'on-first-retry',
@@ -76,12 +89,14 @@ export default defineConfig({
   // Local: reuse an already-running `npm run dev` (or start one).
   // CI: the workflow builds first (`next build`), then we serve the
   // production build with `next start` - faster and closer to prod.
-  webServer: {
-    command: process.env.CI ? 'npm run start' : 'npm run dev',
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  webServer: usesRemoteServer
+    ? undefined
+    : {
+        command: process.env.CI ? 'npm run start' : 'npm run dev',
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120000,
+      },
 
   // Timeout for each test
   timeout: 60000,

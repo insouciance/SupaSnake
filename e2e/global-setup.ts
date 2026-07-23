@@ -32,10 +32,20 @@ export default async function globalSetup(config: FullConfig) {
     config.projects[0]?.use?.baseURL ||
     process.env.PLAYWRIGHT_TEST_BASE_URL ||
     'http://localhost:3000';
+  const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const headers = protectionBypass
+    ? {
+        'x-vercel-protection-bypass': protectionBypass,
+        'x-vercel-set-bypass-cookie': 'true',
+      }
+    : undefined;
 
   for (const route of ROUTES) {
     try {
-      await fetch(`${baseURL}${route}`, { signal: AbortSignal.timeout(60000) });
+      await fetch(`${baseURL}${route}`, {
+        headers,
+        signal: AbortSignal.timeout(60000),
+      });
     } catch {
       // Warmup only - the actual tests will surface real failures
     }
