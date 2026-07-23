@@ -1,0 +1,79 @@
+.environment {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.authoredBackground,
+.dynastyAtmosphere,
+.environmentGrade {
+  position: absolute;
+  inset: 0;
+}
+
+.authoredBackground {
+  background-image: url('/textures/minimalistic_background_texture_of_space_1.png');
+  background-position: 52% 50%;
+  background-size: cover;
+  opacity: 0.5;
+  transform: scale(1.015);
+}
+
+.dynastyAtmosphere {
+  background:
+    radial-gradient(ellipse 62% 52% at 50% 48%, transparent 28%, var(--dynasty-ambient) 82%, transparent 100%),
+    linear-gradient(115deg, transparent 20%, color-mix(in srgb, var(--dynasty-primary) 8%, transparent) 70%, transparent 100%);
+  opacity: 0.72;
+}
+
+.environmentGrade {
+  background:
+    radial-gradient(ellipse 56% 72% at 50% 48%, rgba(2, 5, 8, 0.82) 0%, rgba(3, 7, 11, 0.66) 46%, rgba(3, 6, 10, 0.18) 78%, transparent 100%),
+    linear-gradient(90deg, rgba(1, 3, 6, 0.64) 0%, transparent 18%, transparent 82%, rgba(1, 3, 6, 0.64) 100%),
+    linear-gradient(180deg, rgba(1, 3, 6, 0.42) 0%, transparent 30%, transparent 70%, rgba(1, 3, 6, 0.72) 100%);
+}
+
+.environment[data-contrast='high'] .authoredBackground {
+  opacity: 0.36;
+}
+
+.environment[data-contrast='high'] .environmentGrade {
+  background:
+    radial-gradient(ellipse 60% 76% at 50% 48%, rgba(1, 3, 5, 0.94) 0%, rgba(2, 5, 8, 0.78) 52%, rgba(2, 5, 8, 0.34) 82%, transparent 100%),
+    linear-gradient(90deg, rgba(1, 3, 5, 0.72), transparent 22%, transparent 78%, rgba(1, 3, 5, 0.72)),
+    linear-gradient(180deg, rgba(1, 3, 5, 0.62), transparent 36%, transparent 66%, rgba(1, 3, 5, 0.82));
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .authoredBackground {
+    background-position: 50% 47%;
+    opacity: 0.46;
+  }
+
+  .environmentGrade {
+    background:
+      radial-gradient(ellipse 68% 105% at 50% 50%, rgba(2, 5, 8, 0.82), rgba(3, 6, 10, 0.58) 56%, rgba(3, 6, 10, 0.12) 86%, transparent),
+      linear-gradient(90deg, rgba(1, 3, 6, 0.68), transparent 21%, transparent 79%, rgba(1, 3, 6, 0.68));
+  }
+}
+
+@media (max-aspect-ratio: 4 / 5) {
+  .authoredBackground {
+    background-position: 61% 52%;
+    opacity: 0.45;
+  }
+
+  .dynastyAtmosphere {
+    background:
+      radial-gradient(ellipse 115% 50% at 50% 46%, transparent 24%, var(--dynasty-ambient) 84%, transparent 100%),
+      linear-gradient(160deg, transparent 30%, color-mix(in srgb, var(--dynasty-primary) 9%, transparent) 80%);
+  }
+
+  .environmentGrade {
+    background:
+      radial-gradient(ellipse 112% 49% at 50% 45%, rgba(2, 5, 8, 0.84), rgba(3, 7, 11, 0.64) 54%, rgba(3, 6, 10, 0.14) 84%, transparent),
+      linear-gradient(180deg, rgba(1, 3, 6, 0.62), transparent 20%, transparent 74%, rgba(1, 3, 6, 0.76));
+  }
+}

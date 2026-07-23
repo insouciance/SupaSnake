@@ -25,6 +25,8 @@ interface MutationBeaconProps {
   position: [number, number, number];
   /** Ticks until the beacon despawns (drives the urgency pulse) */
   ticksRemaining: number;
+  /** Visual-only scale; released default remains 1. */
+  visualScale?: number;
 }
 
 /** Violet pulse family - outside all dynasty accents */
@@ -40,7 +42,11 @@ const EMISSIVE_BASE = 0.9;
 /** Below this many ticks the pulse goes urgent */
 const URGENT_TICKS = 15;
 
-export function MutationBeacon({ position, ticksRemaining }: MutationBeaconProps) {
+export function MutationBeacon({
+  position,
+  ticksRemaining,
+  visualScale = 1,
+}: MutationBeaconProps) {
   const groupRef = useRef<THREE.Group>(null);
   const helixARef = useRef<THREE.Mesh>(null);
   const helixBRef = useRef<THREE.Mesh>(null);
@@ -63,7 +69,7 @@ export function MutationBeacon({ position, ticksRemaining }: MutationBeaconProps
       spawnScale = 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 2);
     }
     if (groupRef.current) {
-      groupRef.current.scale.setScalar(spawnScale);
+      groupRef.current.scale.setScalar(spawnScale * visualScale);
       groupRef.current.rotation.y = time * 1.6;
     }
 

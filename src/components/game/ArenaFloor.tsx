@@ -23,6 +23,15 @@ interface ArenaFloorProps {
   majorGridColor?: string;
   /** Dynasty color for the emissive edge wash */
   accentColor?: string;
+  /** Released material is the rollback default; cockpit is matte composite. */
+  surfacePreset?: 'released' | 'cockpit';
+  /** Multiplier for the generated edge-wash alpha. */
+  edgeWashStrength?: number;
+  /** Grid weights can be tuned without changing geometry. */
+  minorGridOpacity?: number;
+  majorGridOpacity?: number;
+  /** The cockpit undertray owns orientation nodes, avoiding duplicate corners. */
+  showCornerMarkers?: boolean;
 }
 
 /** Cells between major (emphasized) grid lines */
@@ -34,6 +43,11 @@ export function ArenaFloor({
   gridColor = '#3b5266',
   majorGridColor = '#7fb2d9',
   accentColor = '#22d3ee',
+  surfacePreset = 'released',
+  edgeWashStrength = 1,
+  minorGridOpacity = 0.35,
+  majorGridOpacity = 0.5,
+  showCornerMarkers = true,
 }: ArenaFloorProps) {
   const center = gridSize / 2;
 
@@ -83,15 +97,17 @@ export function ArenaFloor({
       size / 2, size / 2, size * 0.71
     );
     grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
-    grad.addColorStop(0.7, `rgba(${r},${g},${b},0.10)`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},0.35)`);
+    grad.addColorStop(0.7, `rgba(${r},${g},${b},${0.1 * edgeWashStrength})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},${0.35 * edgeWashStrength})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
-  }, [accentColor]);
+  }, [accentColor, edgeWashStrength]);
+
+  const cockpitSurface = surfacePreset === 'cockpit';
 
   useEffect(() => {
     return () => {
@@ -108,10 +124,10 @@ export function ArenaFloor({
         <boxGeometry args={[gridSize, 0.1, gridSize]} />
         <meshPhysicalMaterial
           color={floorColor}
-          metalness={0.35}
-          roughness={0.6}
-          clearcoat={0.3}
-          clearcoatRoughness={0.4}
+          metalness={cockpitSurface ? 0.22 : 0.35}
+          roughness={cockpitSurface ? 0.78 : 0.6}
+          clearcoat={cockpitSurface ? 0.12 : 0.3}
+          clearcoatRoughness={cockpitSurface ? 0.72 : 0.4}
         />
       </mesh>
 
@@ -133,7 +149,7 @@ export function ArenaFloor({
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[minorPositions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={gridColor} opacity={0.35} transparent />
+        <lineBasicMaterial color={gridColor} opacity={minorGridOpacity} transparent />
       </lineSegments>
 
       {/* Major grid lines - every 5 cells, brighter for fast distance reads */}
@@ -141,11 +157,11 @@ export function ArenaFloor({
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[majorPositions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={majorGridColor} opacity={0.5} transparent />
+        <lineBasicMaterial color={majorGridColor} opacity={majorGridOpacity} transparent />
       </lineSegments>
 
       {/* Corner accent markers - dynasty-tinted */}
-      {[[0, 0], [gridSize, 0], [0, gridSize], [gridSize, gridSize]].map(([x, z], i) => (
+      {showCornerMarkers && [[0, 0], [gridSize, 0], [0, gridSize], [gridSize, gridSize]].map(([x, z], i) => (
         <mesh key={i} position={[x, 0.03, z]}>
           <boxGeometry args={[0.3, 0.02, 0.3]} />
           <meshStandardMaterial

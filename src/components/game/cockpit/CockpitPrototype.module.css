@@ -1,0 +1,1122 @@
+.root {
+  --void: #030609;
+  --graphite-0: #070c12;
+  --graphite-1: #0b121a;
+  --graphite-2: #121d28;
+  --graphite-3: #213143;
+  --arena-floor: #0c141d;
+  --grid-minor: rgba(116, 151, 181, 0.16);
+  --grid-major: rgba(135, 186, 218, 0.34);
+  --system-cyan: #67e8f9;
+  --secure-gold: #f5c85b;
+  --danger-rose: #fb7185;
+  --bone: #edf5fb;
+  --muted: #8fa3b6;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--bone);
+  background: var(--void);
+  font-family: var(--font-body), Rajdhani, sans-serif;
+}
+
+.cockpitShell {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  container-type: size;
+  padding:
+    max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+}
+
+.composition {
+  --cockpit-rail: clamp(116px, 11.2vw, 168px);
+  --cockpit-gap: clamp(7px, 0.8vw, 13px);
+  display: grid;
+  grid-template-columns: var(--cockpit-rail) minmax(0, 1fr) var(--cockpit-rail);
+  grid-template-rows: 60px minmax(0, 1fr) 60px;
+  grid-template-areas:
+    'score . dna'
+    'genes arena systems'
+    'mode status controls';
+  gap: var(--cockpit-gap);
+  width: min(100%, calc(100cqh - 120px + var(--cockpit-rail) + var(--cockpit-rail)));
+  height: 100%;
+  margin: 0 auto;
+}
+
+.instrument {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid transparent;
+  clip-path: polygon(0 9px, 9px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+  background:
+    linear-gradient(145deg, rgba(20, 31, 43, 0.94), rgba(5, 10, 15, 0.98)) padding-box,
+    linear-gradient(145deg, rgba(164, 203, 229, 0.32), rgba(44, 73, 97, 0.18) 60%, color-mix(in srgb, var(--dynasty-primary) 44%, transparent)) border-box;
+  box-shadow:
+    inset 0 1px 0 rgba(235, 247, 255, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.instrument::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  border-top: 1px solid rgba(167, 204, 230, 0.06);
+  border-left: 1px solid rgba(167, 204, 230, 0.035);
+}
+
+.scoreInstrument,
+.dnaInstrument {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+}
+
+.scoreInstrument {
+  grid-area: score;
+}
+
+.dnaInstrument {
+  grid-area: dna;
+}
+
+.primaryIcon {
+  flex: 0 0 auto;
+  width: 29px;
+  height: 29px;
+  color: var(--dynasty-secondary);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--dynasty-secondary) 34%, transparent));
+}
+
+.primaryIcon svg,
+.modeIcon svg,
+.controls svg,
+.geneSocket svg,
+.strainIcon svg,
+.portalDial svg,
+.outcomes svg,
+.mutationBeacon svg,
+.portalBeacon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.dnaIcon {
+  color: var(--system-cyan);
+}
+
+.primaryCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1;
+}
+
+.instrumentLabel {
+  margin-bottom: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.primaryValue {
+  color: var(--bone);
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(20px, 1.6vw, 26px);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.comboValue {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  color: var(--secure-gold);
+  font-family: var(--font-display), sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.geneRack {
+  grid-area: genes;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+.geneSockets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 45px));
+  gap: clamp(7px, 1cqh, 12px);
+  align-content: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.geneSocket {
+  position: relative;
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  clip-path: polygon(23% 0, 77% 0, 100% 23%, 100% 77%, 77% 100%, 23% 100%, 0 77%, 0 23%);
+  color: rgba(127, 153, 174, 0.3);
+  background:
+    radial-gradient(circle at 45% 35%, rgba(133, 165, 190, 0.08), transparent 52%),
+    #070d13;
+  box-shadow: inset 0 0 0 1px rgba(111, 151, 180, 0.24);
+}
+
+.geneSocket::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  clip-path: inherit;
+  border: 1px solid rgba(126, 161, 187, 0.16);
+}
+
+.geneSocket > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(122, 149, 170, 0.2);
+}
+
+.geneSocketFilled {
+  color: var(--dynasty-secondary);
+  background:
+    radial-gradient(circle at 45% 38%, color-mix(in srgb, var(--dynasty-primary) 22%, transparent), transparent 58%),
+    linear-gradient(145deg, rgba(17, 29, 39, 0.98), #060a0f);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--dynasty-primary) 72%, transparent),
+    inset 0 0 16px color-mix(in srgb, var(--dynasty-primary) 10%, transparent);
+}
+
+.geneSocket svg {
+  width: 66%;
+  height: 66%;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--dynasty-secondary) 28%, transparent));
+}
+
+.systemsRack {
+  grid-area: systems;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  align-content: center;
+  padding: 12px 10px;
+}
+
+.portalDial {
+  position: relative;
+  display: grid;
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  place-items: center;
+  border: 1px solid rgba(102, 143, 173, 0.3);
+  border-radius: 50%;
+  color: rgba(120, 151, 174, 0.48);
+  background: radial-gradient(circle, rgba(34, 49, 63, 0.6), rgba(4, 9, 14, 0.94) 68%);
+}
+
+.portalDial > svg {
+  width: 26px;
+  height: 26px;
+}
+
+.portalProgress {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid rgba(99, 131, 153, 0.2);
+  border-top-color: transparent;
+  border-radius: 50%;
+}
+
+.portalDialLive {
+  color: #b6fbff;
+  border-color: rgba(103, 232, 249, 0.68);
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.13), inset 0 0 14px rgba(34, 211, 238, 0.08);
+}
+
+.portalDialLive .portalProgress {
+  border-color: var(--system-cyan);
+  border-right-color: rgba(103, 232, 249, 0.18);
+  filter: drop-shadow(0 0 4px rgba(103, 232, 249, 0.4));
+  animation: portalArrival 500ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.outcomes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.outcomes > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 32px;
+  border: 1px solid rgba(96, 129, 153, 0.2);
+  background: rgba(3, 8, 12, 0.58);
+}
+
+.outcomes svg {
+  width: 18px;
+  height: 18px;
+}
+
+.outcomes strong {
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.secureOutcome {
+  color: var(--secure-gold);
+}
+
+.riskOutcome {
+  color: var(--danger-rose);
+}
+
+.strainArray {
+  display: grid;
+  grid-template-rows: repeat(5, minmax(34px, 1fr));
+  gap: 6px;
+  min-height: 0;
+}
+
+.strainGauge {
+  display: grid;
+  grid-template-columns: 29px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 5px;
+  border-left: 2px solid color-mix(in srgb, var(--strain) 68%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--strain) 8%, transparent), transparent 78%);
+}
+
+.strainIcon {
+  width: 26px;
+  height: 26px;
+  color: var(--strain);
+}
+
+.strainSegments {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.strainSegments i {
+  height: 5px;
+  transform: skewX(-18deg);
+  background: rgba(105, 130, 150, 0.18);
+}
+
+.strainSegments i[data-active='true'] {
+  background: var(--strain);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--strain) 35%, transparent);
+}
+
+.modeInstrument {
+  grid-area: mode;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.modeIcon {
+  flex: 0 0 auto;
+  width: 27px;
+  height: 27px;
+  color: var(--dynasty-secondary);
+}
+
+.modeCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.modeCopy strong,
+.modeCopy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modeCopy strong {
+  color: var(--bone);
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.modeCopy span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.statusRail {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 0;
+  border-top: 1px solid rgba(111, 154, 185, 0.16);
+  color: var(--muted);
+  font-size: clamp(14px, 1.15vw, 17px);
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.statusMarker {
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  background: var(--dynasty-secondary);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--dynasty-secondary) 55%, transparent);
+}
+
+.root[data-state='ready'] .statusRail,
+.root[data-state='portal'] .statusRail,
+.root[data-state='apex'] .statusRail {
+  color: var(--bone);
+}
+
+.root[data-state='portal'] .statusMarker {
+  background: var(--system-cyan);
+}
+
+.root[data-state='apex'] .statusMarker {
+  background: var(--secure-gold);
+}
+
+.controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.controls button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid rgba(126, 164, 192, 0.36);
+  clip-path: polygon(0 7px, 7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  color: var(--bone);
+  background: linear-gradient(145deg, rgba(19, 31, 43, 0.95), rgba(5, 10, 15, 0.98));
+  cursor: pointer;
+}
+
+.controls button:hover,
+.controls button:focus-visible {
+  outline: 2px solid var(--system-cyan);
+  outline-offset: 2px;
+  color: var(--system-cyan);
+}
+
+.controls svg {
+  width: 23px;
+  height: 23px;
+}
+
+.arenaBay {
+  position: relative;
+  z-index: 1;
+  grid-area: arena;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  container-type: size;
+}
+
+.arenaQuietZone {
+  position: absolute;
+  inset: 3%;
+  border-radius: 16%;
+  background: radial-gradient(ellipse, rgba(0, 3, 6, 0.82), rgba(0, 3, 6, 0.6) 64%, transparent 78%);
+  opacity: 0.72;
+}
+
+.arenaFrame {
+  position: relative;
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  filter: drop-shadow(0 28px 30px rgba(0, 0, 0, 0.48));
+}
+
+.arenaFrame::before {
+  content: '';
+  position: absolute;
+  inset: 1.2%;
+  z-index: -1;
+  clip-path: polygon(4.2% 0, 95.8% 0, 100% 4.2%, 100% 95.8%, 95.8% 100%, 4.2% 100%, 0 95.8%, 0 4.2%);
+  background: color-mix(in srgb, var(--dynasty-primary) 15%, #101923);
+  box-shadow: 0 0 36px color-mix(in srgb, var(--dynasty-primary) 10%, transparent);
+}
+
+.webglViewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  clip-path: polygon(4% 0, 96% 0, 100% 4%, 100% 96%, 96% 100%, 4% 100%, 0 96%, 0 4%);
+  background: rgba(3, 7, 11, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(138, 177, 204, 0.2),
+    0 0 0 1px rgba(0, 0, 0, 0.72);
+}
+
+.apron {
+  position: absolute;
+  inset: 2.2%;
+  padding: clamp(10px, 2.45cqw, 23px);
+  clip-path: polygon(4% 0, 96% 0, 100% 4%, 100% 96%, 96% 100%, 4% 100%, 0 96%, 0 4%);
+  background:
+    linear-gradient(135deg, rgba(171, 207, 231, 0.07), transparent 24%),
+    linear-gradient(145deg, #121d28, #070c12 66%, #101923);
+  box-shadow:
+    inset 0 0 0 1px rgba(138, 177, 204, 0.2),
+    inset 0 -12px 18px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(0, 0, 0, 0.72);
+}
+
+.apron::before,
+.apron::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.apron::before {
+  inset: 1.1%;
+  clip-path: inherit;
+  border-top: 1px solid color-mix(in srgb, var(--dynasty-primary) 35%, transparent);
+  border-right: 1px solid rgba(108, 147, 176, 0.16);
+}
+
+.apron::after {
+  right: 9%;
+  bottom: 1.4%;
+  left: 9%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--dynasty-primary) 54%, transparent), transparent);
+  opacity: 0.62;
+}
+
+.board {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(20, 1fr);
+  grid-template-rows: repeat(20, 1fr);
+  overflow: visible;
+  border: 1px solid rgba(143, 187, 217, 0.34);
+  background-color: var(--arena-floor);
+  background-image:
+    linear-gradient(to right, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-minor) 1px, transparent 1px),
+    radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--dynasty-primary) 4%, transparent), transparent 66%),
+    linear-gradient(145deg, rgba(26, 41, 55, 0.28), transparent 28%);
+  background-position: -1px -1px;
+  background-size: 25% 25%, 25% 25%, 5% 5%, 5% 5%, 100% 100%, 100% 100%;
+  box-shadow:
+    inset 0 0 34px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 3px rgba(2, 7, 11, 0.7),
+    0 0 0 2px rgba(81, 119, 146, 0.24);
+}
+
+.board::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--dynasty-primary) 8%, transparent), transparent 8%, transparent 92%, color-mix(in srgb, var(--dynasty-primary) 8%, transparent)),
+    linear-gradient(0deg, color-mix(in srgb, var(--dynasty-primary) 8%, transparent), transparent 8%, transparent 92%, color-mix(in srgb, var(--dynasty-primary) 8%, transparent));
+}
+
+.cornerNode {
+  position: absolute;
+  z-index: 4;
+  width: clamp(14px, 3.7cqw, 31px);
+  height: clamp(14px, 3.7cqw, 31px);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  background:
+    radial-gradient(circle, var(--dynasty-secondary) 0 13%, transparent 15%),
+    linear-gradient(135deg, #263847, #070c12 68%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dynasty-primary) 65%, transparent);
+}
+
+.cornerNorthWest { top: 0.4%; left: 0.4%; }
+.cornerNorthEast { top: 0.4%; right: 0.4%; }
+.cornerSouthWest { bottom: 0.4%; left: 0.4%; }
+.cornerSouthEast { right: 0.4%; bottom: 0.4%; }
+
+.orientationMark {
+  position: absolute;
+  top: 1.4%;
+  left: 50%;
+  width: 7%;
+  height: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, var(--dynasty-secondary), transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dynasty-secondary) 35%, transparent);
+}
+
+.aimLane {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 52.5%;
+  width: 1px;
+  height: 67.5%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--system-cyan) 40%, transparent) 24%, color-mix(in srgb, var(--system-cyan) 12%, transparent));
+}
+
+.aimLane::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border: 1px solid rgba(103, 232, 249, 0.62);
+}
+
+.snakeCell {
+  z-index: 3;
+  align-self: stretch;
+  justify-self: stretch;
+  margin: 7%;
+  border: 1px solid color-mix(in srgb, var(--dynasty-secondary) 58%, transparent);
+  border-radius: 26%;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--snake-color) 85%, white), var(--snake-color) 50%, color-mix(in srgb, var(--snake-color) 62%, #071009));
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.24),
+    0 2px 5px rgba(0, 0, 0, 0.42);
+}
+
+.snakeHead {
+  position: relative;
+  z-index: 5;
+  margin: -3%;
+  border-radius: 32% 32% 38% 38%;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.32),
+    0 0 8px color-mix(in srgb, var(--dynasty-primary) 42%, transparent),
+    0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.snakeHead::before,
+.snakeHead::after,
+.snakeEye {
+  content: '';
+  position: absolute;
+  top: 17%;
+  width: 17%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #f4fbff;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
+}
+
+.snakeHead::before { left: 18%; }
+.snakeHead::after { right: 18%; }
+.snakeEye { display: none; }
+
+.foodBeacon,
+.mutationBeacon,
+.portalBeacon {
+  position: relative;
+  z-index: 5;
+  align-self: center;
+  justify-self: center;
+}
+
+.foodBeacon {
+  width: 56%;
+  aspect-ratio: 1;
+  transform: rotate(45deg);
+  border: 1px solid white;
+  background: var(--system-cyan);
+  box-shadow:
+    0 0 0 3px rgba(103, 232, 249, 0.1),
+    0 0 8px rgba(103, 232, 249, 0.68);
+}
+
+.foodBeacon::after {
+  content: '';
+  position: absolute;
+  inset: 28%;
+  background: white;
+}
+
+.mutationBeacon {
+  display: grid;
+  width: 94%;
+  height: 94%;
+  place-items: center;
+  border: 1px solid rgba(210, 147, 255, 0.62);
+  border-radius: 50%;
+  color: #dc9cff;
+  background: rgba(90, 30, 126, 0.34);
+  box-shadow: 0 0 9px rgba(190, 98, 245, 0.44);
+}
+
+.mutationBeacon svg {
+  width: 68%;
+  height: 68%;
+}
+
+.portalBeacon {
+  display: grid;
+  width: 130%;
+  height: 190%;
+  place-items: center;
+  border: 1px solid rgba(245, 200, 91, 0.74);
+  border-radius: 50%;
+  color: #fff2bd;
+  background: radial-gradient(ellipse, rgba(255, 226, 146, 0.26), rgba(74, 196, 217, 0.1) 48%, transparent 70%);
+  box-shadow: 0 0 10px rgba(245, 200, 91, 0.48);
+}
+
+.portalBeacon svg {
+  width: 80%;
+  height: 80%;
+}
+
+.apexTrace {
+  position: absolute;
+  z-index: 2;
+  inset: 9%;
+  border: 1px solid color-mix(in srgb, var(--secure-gold) 42%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--secure-gold) 14%, transparent);
+  animation: apexArrival 600ms cubic-bezier(0.2, 0.75, 0.15, 1) both;
+}
+
+.root[data-motion='reduced'] *,
+.root[data-motion='reduced'] *::before,
+.root[data-motion='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@keyframes portalArrival {
+  from { transform: rotate(-80deg); opacity: 0.2; }
+  to { transform: rotate(0); opacity: 1; }
+}
+
+@keyframes apexArrival {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .cockpitShell {
+    padding:
+      max(7px, env(safe-area-inset-top, 0px))
+      max(8px, env(safe-area-inset-right, 0px))
+      max(7px, env(safe-area-inset-bottom, 0px))
+      max(8px, env(safe-area-inset-left, 0px));
+  }
+
+  .composition {
+    --cockpit-rail: clamp(90px, 11.5vw, 112px);
+    --cockpit-gap: 6px;
+    grid-template-columns: var(--cockpit-rail) minmax(0, 1fr) var(--cockpit-rail);
+    grid-template-rows: 55px minmax(0, 1fr) 52px;
+    grid-template-areas:
+      'score arena dna'
+      'genes arena systems'
+      'mode arena controls';
+    gap: var(--cockpit-gap);
+    width: min(100%, calc(100cqh + var(--cockpit-rail) + var(--cockpit-rail) + var(--cockpit-gap) + var(--cockpit-gap)));
+  }
+
+  .scoreInstrument,
+  .dnaInstrument {
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .primaryIcon {
+    width: 23px;
+    height: 23px;
+  }
+
+  .instrumentLabel,
+  .comboValue {
+    display: none;
+  }
+
+  .primaryValue {
+    font-size: clamp(18px, 2.35vw, 22px);
+  }
+
+  .geneRack {
+    padding: 6px;
+  }
+
+  .geneSockets {
+    grid-template-columns: repeat(2, minmax(0, 34px));
+    gap: 6px;
+  }
+
+  .systemsRack {
+    grid-template-rows: auto auto 1fr;
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .portalDial {
+    width: 33px;
+    height: 33px;
+  }
+
+  .portalDial > svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .outcomes {
+    gap: 3px;
+  }
+
+  .outcomes > span {
+    min-height: 25px;
+    gap: 2px;
+  }
+
+  .outcomes svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .outcomes strong {
+    font-size: 14px;
+  }
+
+  .strainArray {
+    grid-template-rows: repeat(5, minmax(25px, 1fr));
+    gap: 2px;
+  }
+
+  .strainGauge {
+    grid-template-columns: 20px 1fr;
+    gap: 3px;
+    padding: 2px 3px;
+  }
+
+  .strainIcon {
+    width: 19px;
+    height: 19px;
+  }
+
+  .strainSegments {
+    gap: 2px;
+  }
+
+  .strainSegments i {
+    height: 3px;
+  }
+
+  .modeInstrument {
+    justify-content: center;
+    padding: 5px;
+  }
+
+  .modeIcon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .modeCopy {
+    display: none;
+  }
+
+  .statusRail {
+    display: none;
+  }
+
+  .controls {
+    gap: 5px;
+  }
+
+  .controls button {
+    width: 44px;
+    height: 44px;
+  }
+
+}
+
+@media (max-aspect-ratio: 4 / 5) {
+  .cockpitShell {
+    padding:
+      max(9px, env(safe-area-inset-top, 0px))
+      max(8px, env(safe-area-inset-right, 0px))
+      max(9px, env(safe-area-inset-bottom, 0px))
+      max(8px, env(safe-area-inset-left, 0px));
+  }
+
+  .composition {
+    --cockpit-rail: auto;
+    --cockpit-gap: 7px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 98px;
+    grid-template-rows: 58px 44px minmax(0, 1fr) 58px 60px;
+    grid-template-areas:
+      'score dna controls'
+      'status status status'
+      'arena arena arena'
+      'genes genes genes'
+      'systems systems mode';
+    gap: 7px;
+    width: 100%;
+  }
+
+  .scoreInstrument,
+  .dnaInstrument {
+    padding: 7px 8px;
+  }
+
+  .primaryIcon {
+    width: 27px;
+    height: 27px;
+  }
+
+  .instrumentLabel {
+    font-size: 14px;
+  }
+
+  .primaryValue {
+    font-size: clamp(20px, 6vw, 25px);
+  }
+
+  .comboValue {
+    display: none;
+  }
+
+  .geneRack {
+    padding: 7px 10px;
+  }
+
+  .geneSockets {
+    grid-template-columns: repeat(6, minmax(0, 42px));
+    gap: 7px;
+  }
+
+  .systemsRack {
+    display: grid;
+    grid-template-columns: 45px 92px minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 8px;
+  }
+
+  .portalDial {
+    width: 38px;
+    height: 38px;
+  }
+
+  .portalDial > svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .outcomes {
+    gap: 4px;
+  }
+
+  .outcomes > span {
+    min-height: 38px;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .outcomes svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .outcomes strong {
+    font-size: 14px;
+  }
+
+  .strainArray {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-rows: 1fr;
+    gap: 4px;
+  }
+
+  .strainGauge {
+    grid-template-columns: 1fr;
+    grid-template-rows: 25px 5px;
+    gap: 4px;
+    justify-items: center;
+    padding: 3px 4px;
+    border-left: 0;
+    border-bottom: 2px solid color-mix(in srgb, var(--strain) 68%, transparent);
+    background: linear-gradient(0deg, color-mix(in srgb, var(--strain) 8%, transparent), transparent 84%);
+  }
+
+  .strainIcon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .strainSegments {
+    width: 100%;
+  }
+
+  .strainSegments i {
+    height: 4px;
+  }
+
+  .modeInstrument {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 5px;
+    text-align: center;
+  }
+
+  .modeIcon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .modeCopy strong {
+    font-size: 14px;
+  }
+
+  .modeCopy span {
+    display: none;
+  }
+
+  .controls {
+    justify-content: flex-end;
+  }
+
+  .controls button {
+    width: 44px;
+    height: 44px;
+  }
+
+}
+
+@media (max-width: 350px) and (orientation: portrait) {
+  .composition {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 94px;
+    grid-template-rows: 54px 42px minmax(0, 1fr) 52px 56px;
+    gap: 5px;
+  }
+
+  .scoreInstrument,
+  .dnaInstrument {
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .primaryIcon {
+    width: 23px;
+    height: 23px;
+  }
+
+  .instrumentLabel {
+    display: none;
+  }
+
+  .primaryValue {
+    font-size: 20px;
+  }
+
+  .geneSockets {
+    grid-template-columns: repeat(6, minmax(0, 36px));
+    gap: 5px;
+  }
+
+  .systemsRack {
+    grid-template-columns: 38px 78px minmax(0, 1fr);
+    gap: 5px;
+    padding: 5px;
+  }
+
+  .portalDial {
+    width: 34px;
+    height: 34px;
+  }
+
+  .outcomes > span {
+    min-height: 33px;
+  }
+
+  .strainGauge {
+    grid-template-rows: 21px 4px;
+    padding: 2px;
+  }
+
+  .strainIcon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .modeCopy strong {
+    overflow: visible;
+    font-size: 14px;
+    white-space: normal;
+  }
+
+  .statusRail {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portalDialLive .portalProgress,
+  .apexTrace {
+    animation: none;
+  }
+}

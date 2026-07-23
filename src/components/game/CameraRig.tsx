@@ -84,10 +84,10 @@ export function computeFitDistance(
   return distance;
 }
 
-/** Board corner points (with margin cell + vertical extent) used by the fit */
-export function buildFitPoints(gridSize: number): THREE.Vector3[] {
-  const lo = -1;
-  const hi = gridSize + 1;
+/** Board/chassis corner points (with configurable margin) used by the fit. */
+export function buildFitPoints(gridSize: number, frameMargin = 1): THREE.Vector3[] {
+  const lo = -frameMargin;
+  const hi = gridSize + frameMargin;
   const points: THREE.Vector3[] = [];
   for (const x of [lo, hi]) {
     for (const z of [lo, hi]) {
@@ -109,9 +109,22 @@ interface CameraRigProps {
    * the rig's perspective; a plain number write allocates nothing.
    */
   azimuthRef?: MutableRefObject<number>;
+  /** Visible non-playable chassis beyond the board; released default is 1. */
+  frameMargin?: number;
+  /** Multiplier on the computed baseline distance; released default is 1. */
+  fitScale?: number;
+  /** Default/reset pitch, expressed as polar angle from zenith. */
+  defaultPolar?: number;
 }
 
-export function CameraRig({ gridSize, resetToken, azimuthRef }: CameraRigProps) {
+export function CameraRig({
+  gridSize,
+  resetToken,
+  azimuthRef,
+  frameMargin = 1,
+  fitScale = 1,
+  defaultPolar = DEFAULT_POLAR,
+}: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -127,7 +140,10 @@ export function CameraRig({ gridSize, resetToken, azimuthRef }: CameraRigProps) 
     () => new THREE.Vector3(gridSize / 2, 0, gridSize / 2),
     [gridSize]
   );
-  const fitPoints = useMemo(() => buildFitPoints(gridSize), [gridSize]);
+  const fitPoints = useMemo(
+    () => buildFitPoints(gridSize, frameMargin),
+    [gridSize, frameMargin]
+  );
   /** Shared per-frame scratch vector (never reallocated) */
   const scratch = useMemo(() => new THREE.Vector3(), []);
 
@@ -136,7 +152,7 @@ export function CameraRig({ gridSize, resetToken, azimuthRef }: CameraRigProps) 
       const persp = camera as THREE.PerspectiveCamera;
       const dir = new THREE.Vector3();
       if (resetOrientation || persp.position.distanceToSquared(target) < 1e-6) {
-        dir.setFromSphericalCoords(1, DEFAULT_POLAR, DEFAULT_AZIMUTH);
+        dir.setFromSphericalCoords(1, defaultPolar, DEFAULT_AZIMUTH);
       } else {
         dir.copy(persp.position).sub(target).normalize();
       }
@@ -147,7 +163,7 @@ export function CameraRig({ gridSize, resetToken, azimuthRef }: CameraRigProps) 
         dir,
         target,
         fitPoints
-      );
+      ) * fitScale;
 
       setMinDistance(distance * ZOOM_IN_RATIO);
       setMaxDistance(distance * ZOOM_OUT_RATIO);
@@ -158,7 +174,7 @@ export function CameraRig({ gridSize, resetToken, azimuthRef }: CameraRigProps) 
       snapTarget.current = null;
       controlsRef.current?.update();
     },
-    [camera, size.width, size.height, target, fitPoints]
+    [camera, size.width, size.height, target, fitPoints, fitScale, defaultPolar]
   );
 
   // Mount: full default view. Resize: refit preserving orientation.

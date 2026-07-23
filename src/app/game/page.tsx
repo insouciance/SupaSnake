@@ -56,6 +56,9 @@ import { PauseMenu } from '@/components/game/PauseMenu';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
+import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
+import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
+import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
 import { AimRenderer } from '@/components/game/AimRenderer';
 import type { AimTarget } from '@/components/game/aimUtils';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
@@ -103,6 +106,7 @@ import {
   consumeLaunchHandoff,
   type GameSessionStartPayload,
 } from '@/lib/ftue/launchFlow';
+import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import type { FtueBootstrapSnake } from '@/lib/ftue/types';
 import {
   buildGenomeCardModel,
@@ -127,6 +131,7 @@ import {
  * per device until claimed or dismissed twice.
  */
 const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
+const COCKPIT_DEFAULT_POLAR = (16 * Math.PI) / 180;
 const DIRECTION_BY_KEY: Record<string, Direction> = {
   ArrowUp: 'UP',
   ArrowDown: 'DOWN',
@@ -1693,27 +1698,30 @@ export default function GamePage() {
 
   return (
     <div className="consent-safe-viewport w-screen h-dvh relative flex flex-col overflow-hidden app-bg">
-      {/* Dynasty ambient tint - lets the void backdrop participate in the
-          equipped dynasty's identity without leaving the app palette */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: `radial-gradient(ellipse 90% 70% at 50% 45%, ${theme.ambient} 0%, transparent 70%)`,
-          opacity: 0.55,
-        }}
-      />
-      {/* Faint star-field hint for depth while playing - opacity kept very
-          low so the arena reads as part of the void, not a photo backdrop */}
-      {isPlaying && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: 'url(/textures/minimalistic_background_texture_of_space_1.png)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.12,
-          }}
-        />
+      {HUD_COCKPIT_V1_ENABLED && isPlaying ? (
+        <GameEnvironment dynasty={selectedDynasty} />
+      ) : (
+        <>
+          {/* Released environment remains the default and rollback path. */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: `radial-gradient(ellipse 90% 70% at 50% 45%, ${theme.ambient} 0%, transparent 70%)`,
+              opacity: 0.55,
+            }}
+          />
+          {isPlaying && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundImage: 'url(/textures/minimalistic_background_texture_of_space_1.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                opacity: 0.12,
+              }}
+            />
+          )}
+        </>
       )}
       {/* CSS flow reserves the HUD from the first paint. The established
           production treatment stays intact while its visual redesign waits. */}
@@ -2648,7 +2656,7 @@ export default function GamePage() {
       <Canvas
         camera={{
           position: [boardCenter, boardCenter * 2.4, boardCenter * 1.9],
-          fov: 50
+          fov: HUD_COCKPIT_V1_ENABLED ? 44 : 50
         }}
         shadows
         // Fluidity: cap devicePixelRatio - uncapped retina dpr (3x) was the
@@ -2658,15 +2666,24 @@ export default function GamePage() {
         {/* Fog in the void family so the arena's far edge melts into the
             page backdrop instead of cutting out against it - lifted and
             pulled back so the board reads bright and premium */}
-        <fog attach="fog" args={['#0a0f14', 40, 75]} />
+        <fog
+          attach="fog"
+          args={HUD_COCKPIT_V1_ENABLED
+            ? [GAME_SCREEN_COLORS.void, 39, 72]
+            : ['#0a0f14', 40, 75]}
+        />
         {/* Premium base rig: cool sky/ground hemisphere carries the
             ambient read (subtle top/bottom shading instead of flat fill) */}
-        <hemisphereLight args={['#bcd6e8', '#0b1016', 0.5]} />
-        <ambientLight intensity={0.18} />
+        <hemisphereLight
+          args={HUD_COCKPIT_V1_ENABLED
+            ? ['#a9c3d5', GAME_SCREEN_COLORS.graphiteDeep, 0.42]
+            : ['#bcd6e8', '#0b1016', 0.5]}
+        />
+        <ambientLight intensity={HUD_COCKPIT_V1_ENABLED ? 0.12 : 0.18} />
         {/* Key light - the single shadow caster */}
         <directionalLight
           position={[10, 20, 10]}
-          intensity={1.1}
+          intensity={HUD_COCKPIT_V1_ENABLED ? 0.92 : 1.1}
           castShadow
           shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
           shadow-camera-near={1}
@@ -2683,6 +2700,7 @@ export default function GamePage() {
           isDeathSequence={isDeathSequence}
           foodPosition={food}
           gridSize={GAME_CONFIG.board.gridSize}
+          intensityScale={HUD_COCKPIT_V1_ENABLED ? 0.62 : 1}
         />
 
         <Suspense fallback={null}>
@@ -2720,6 +2738,11 @@ export default function GamePage() {
           gridSize={GAME_CONFIG.board.gridSize}
           resetToken={viewResetToken}
           azimuthRef={cameraAzimuthRef}
+          frameMargin={HUD_COCKPIT_V1_ENABLED ? 1.25 : 1}
+          fitScale={HUD_COCKPIT_V1_ENABLED ? 0.82 : 1}
+          defaultPolar={HUD_COCKPIT_V1_ENABLED
+            ? COCKPIT_DEFAULT_POLAR
+            : undefined}
         />
 
         {/* Dev-only render stats (?perf) */}
@@ -2731,9 +2754,9 @@ export default function GamePage() {
         {!isMobile && (
           <EffectComposer>
             <Bloom
-              luminanceThreshold={0.35}
-              luminanceSmoothing={0.9}
-              intensity={0.75}
+              luminanceThreshold={HUD_COCKPIT_V1_ENABLED ? 0.55 : 0.35}
+              luminanceSmoothing={HUD_COCKPIT_V1_ENABLED ? 0.88 : 0.9}
+              intensity={HUD_COCKPIT_V1_ENABLED ? 0.58 : 0.75}
               mipmapBlur
             />
           </EffectComposer>
@@ -2842,23 +2865,33 @@ function GameBoard({
 
   return (
     <group position={cameraShake}>
-      {/* Arena - void-family floor with dynasty edge wash, secondary rails.
-          On COSMIC the border rails signal the wrap phase. */}
-      <ArenaFloor
-        gridSize={GAME_CONFIG.board.gridSize}
-        floorColor="#101722"
-        gridColor="#3b5266"
-        majorGridColor="#7fb2d9"
-        accentColor={theme.primary}
-      />
-      <ArenaBorder
-        gridSize={GAME_CONFIG.board.gridSize}
-        color={theme.secondary}
-        accentColor="#22d3ee"
-        emissiveIntensity={0.5}
-        fluxPhase={fluxPhase}
-        fluxTelegraph={fluxTelegraph}
-      />
+      {/* The released arena remains byte-for-byte the default rollback. */}
+      {HUD_COCKPIT_V1_ENABLED ? (
+        <ArenaAssembly
+          gridSize={GAME_CONFIG.board.gridSize}
+          dynasty={dynasty}
+          fluxPhase={fluxPhase}
+          fluxTelegraph={fluxTelegraph}
+        />
+      ) : (
+        <>
+          <ArenaFloor
+            gridSize={GAME_CONFIG.board.gridSize}
+            floorColor="#101722"
+            gridColor="#3b5266"
+            majorGridColor="#7fb2d9"
+            accentColor={theme.primary}
+          />
+          <ArenaBorder
+            gridSize={GAME_CONFIG.board.gridSize}
+            color={theme.secondary}
+            accentColor="#22d3ee"
+            emissiveIntensity={0.5}
+            fluxPhase={fluxPhase}
+            fluxTelegraph={fluxTelegraph}
+          />
+        </>
+      )}
 
       {/* Aim telegraph - one renderer per selected aim system
           (deadeye/gridlock/pathline/firefly meta-progression) */}
@@ -2905,6 +2938,7 @@ function GameBoard({
         <FoodBeacon
           position={[food.x + 0.5, 0, food.z + 0.5]}
           color={foodColor}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.12 : 1}
         />
       )}
       {extraFoods.map((extra) => (
@@ -2912,6 +2946,7 @@ function GameBoard({
           key={`${extra.x}-${extra.z}`}
           position={[extra.x + 0.5, 0, extra.z + 0.5]}
           color={foodColor}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.12 : 1}
         />
       ))}
 
@@ -2922,6 +2957,7 @@ function GameBoard({
           position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
           ticksRemaining={exitTicksRemaining}
           isMobile={isMobile}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.08 : 1}
         />
       )}
       {/* Twin Exits (anomaly §7.2): the pair's second doorway - same
@@ -2931,6 +2967,7 @@ function GameBoard({
           position={[exitTile2.x + 0.5, 0, exitTile2.z + 0.5]}
           ticksRemaining={exitTicksRemaining}
           isMobile={isMobile}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.08 : 1}
         />
       )}
 
@@ -2951,6 +2988,7 @@ function GameBoard({
         <MutationBeacon
           position={[mutationTile.x + 0.5, 0, mutationTile.z + 0.5]}
           ticksRemaining={mutationTicksRemaining}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.3 : 1}
         />
       )}
 

@@ -43,6 +43,10 @@ interface ExitPortalProps {
   ticksRemaining: number;
   /** Mobile perf lever: drops the ground decal + arc ticks (5 -> 3 draws) */
   isMobile?: boolean;
+  /** Keep the released first-portal lesson by default; visual fixtures may disable it. */
+  showExtractHint?: boolean;
+  /** Visual-only scale; released default remains 1. */
+  visualScale?: number;
 }
 
 /** Portal identity color - pale champagne-white ("extraction beam"). */
@@ -248,6 +252,8 @@ export function ExitPortal({
   position,
   ticksRemaining,
   isMobile = false,
+  showExtractHint = true,
+  visualScale = 1,
 }: ExitPortalProps) {
   const groupRef = useRef<THREE.Group>(null);
   const apertureRef = useRef<THREE.Mesh>(null);
@@ -260,6 +266,7 @@ export function ExitPortal({
   // claim is immediate so a Twin Exits pair never shows it twice)
   const [showHint, setShowHint] = useState(false);
   useEffect(() => {
+    if (!showExtractHint) return;
     try {
       const key = hintStorageKey(EXTRACT_HINT_ID);
       if (!window.localStorage.getItem(key)) {
@@ -269,7 +276,7 @@ export function ExitPortal({
     } catch {
       // Storage unavailable (private mode) - skip the hint
     }
-  }, []);
+  }, [showExtractHint]);
 
   const decalMaterial = !isMobile ? getDecalMaterial() : null;
   const extractMaterial = showHint ? getExtractMaterial() : null;
@@ -289,7 +296,7 @@ export function ExitPortal({
       spawnScale = 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 2);
     }
     if (groupRef.current) {
-      groupRef.current.scale.setScalar(spawnScale);
+      groupRef.current.scale.setScalar(spawnScale * visualScale);
     }
 
     // Urgency ramp: 0 while calm, rises to 1 as the window closes

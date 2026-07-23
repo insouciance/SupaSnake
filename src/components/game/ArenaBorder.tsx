@@ -37,6 +37,15 @@ interface ArenaBorderProps {
   fluxPhase?: 'open' | 'closed' | null;
   /** True during the ~2s warning window before a phase flip */
   fluxTelegraph?: boolean;
+  /** Physical rail dimensions; released values remain the default. */
+  railHeight?: number;
+  railWidth?: number;
+  /** Scales the additive top strip without adding lights. */
+  glowStrength?: number;
+  /** Resting rail pulse values; released defaults preserve the current look. */
+  restingEmissiveIntensity?: number;
+  restingPulseAmplitude?: number;
+  pylonEmissiveIntensity?: number;
 }
 
 export function ArenaBorder({
@@ -46,6 +55,12 @@ export function ArenaBorder({
   emissiveIntensity = 0.5,
   fluxPhase = null,
   fluxTelegraph = false,
+  railHeight = 0.15,
+  railWidth = 0.08,
+  glowStrength = 1,
+  restingEmissiveIntensity = 0.4,
+  restingPulseAmplitude = 0.15,
+  pylonEmissiveIntensity = 0.55,
 }: ArenaBorderProps) {
   // One shared material per role - the pulse mutates two materials per
   // frame instead of walking every child mesh.
@@ -113,13 +128,15 @@ export function ArenaBorder({
   // frame. COSMIC flux overrides the rail look per phase (see header).
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    pylonMaterial.emissiveIntensity = 0.55 + Math.sin(t * 2 + 0.8) * 0.18;
+    pylonMaterial.emissiveIntensity =
+      pylonEmissiveIntensity + Math.sin(t * 2 + 0.8) * restingPulseAmplitude;
 
     if (!fluxPhase) {
       railMaterial.color.copy(baseRailColor);
       railMaterial.emissive.copy(baseRailColor);
       railMaterial.opacity = 1;
-      railMaterial.emissiveIntensity = 0.4 + Math.sin(t * 2) * 0.15;
+      railMaterial.emissiveIntensity =
+        restingEmissiveIntensity + Math.sin(t * 2) * restingPulseAmplitude;
       return;
     }
 
@@ -157,11 +174,9 @@ export function ArenaBorder({
   useFrame(() => {
     glowMaterial.color.copy(railMaterial.emissive);
     glowMaterial.opacity =
-      (0.18 + railMaterial.emissiveIntensity * 0.3) * railMaterial.opacity;
+      (0.18 + railMaterial.emissiveIntensity * 0.3) * railMaterial.opacity * glowStrength;
   });
 
-  const railHeight = 0.15;
-  const railWidth = 0.08;
   const y = railHeight / 2;
 
   return (

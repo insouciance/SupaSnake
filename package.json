@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "verify:cockpit-prototype": "node scripts/verify-cockpit-prototype.mjs",
+    "verify:cockpit-webgl": "node scripts/verify-cockpit-webgl.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
     "test": "jest",
     "test:watch": "jest --watch",

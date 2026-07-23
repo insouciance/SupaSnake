@@ -72,6 +72,16 @@ describe('buildFitPoints', () => {
     expect(Math.max(...zs)).toBe(GRID + 1);
     expect(Math.max(...ys)).toBeGreaterThan(0);
   });
+
+  it('can fit a wider visual chassis without changing the released default', () => {
+    const points = buildFitPoints(GRID, 1.25);
+    const xs = points.map((point) => point.x);
+    const zs = points.map((point) => point.z);
+    expect(Math.min(...xs)).toBe(-1.25);
+    expect(Math.max(...xs)).toBe(GRID + 1.25);
+    expect(Math.min(...zs)).toBe(-1.25);
+    expect(Math.max(...zs)).toBe(GRID + 1.25);
+  });
 });
 
 describe('computeFitDistance', () => {

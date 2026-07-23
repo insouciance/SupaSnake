@@ -1,0 +1,264 @@
+'use client';
+
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Bloom, EffectComposer } from '@react-three/postprocessing';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { DynastyId } from '@/shared/types/game';
+import type { Position } from '@/lib/game/SnakeGameLogic';
+import { GAME_CONFIG } from '@/shared/config/game';
+import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
+import { ArenaFloor } from '@/components/game/ArenaFloor';
+import { ArenaBorder } from '@/components/game/ArenaBorder';
+import { CameraRig } from '@/components/game/CameraRig';
+import { DynamicLights } from '@/components/game/DynamicLights';
+import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { MutationBeacon } from '@/components/game/MutationBeacon';
+import { ExitPortal } from '@/components/game/ExitPortal';
+import {
+  SnakeModel,
+  SnakeSegmentFallback,
+} from '@/components/game/SnakeModel';
+import { AimRenderer } from '@/components/game/AimRenderer';
+import type { AimTarget } from '@/components/game/aimUtils';
+import type { InterpolationBuffer } from '@/lib/game/interpolationBuffer';
+import {
+  GAME_SCREEN_COLORS,
+  getDynastyScreenTokens,
+} from '@/components/game/screen/gameScreenTokens';
+
+type PrototypeState = 'ready' | 'active' | 'portal' | 'apex';
+
+interface ArenaPrototypeCanvasProps {
+  dynasty: DynastyId;
+  state: PrototypeState;
+  arenaVariant?: 'released' | 'cockpit';
+  effectsEnabled?: boolean;
+}
+
+const GRID = GAME_CONFIG.board.gridSize;
+const COCKPIT_DEFAULT_POLAR = (16 * Math.PI) / 180;
+const STATIC_SNAKE: readonly Position[] = [
+  { x: 10, y: 0, z: 13 },
+  { x: 10, y: 0, z: 14 },
+  { x: 9, y: 0, z: 14 },
+  { x: 8, y: 0, z: 14 },
+  { x: 7, y: 0, z: 14 },
+  { x: 7, y: 0, z: 15 },
+  { x: 7, y: 0, z: 16 },
+  { x: 6, y: 0, z: 16 },
+  { x: 5, y: 0, z: 16 },
+] as const;
+const FOOD = { x: 14, y: 0, z: 6 } as const;
+const MUTATION = { x: 16, y: 0, z: 13 } as const;
+const PORTAL = { x: 4, y: 0, z: 3 } as const;
+
+function StaticSnake({ dynasty }: { dynasty: DynastyId }) {
+  return (
+    <>
+      {STATIC_SNAKE.map((segment, index) => {
+        const props = {
+          position: [segment.x + 0.5, 0.5, segment.z + 0.5] as [number, number, number],
+          isHead: index === 0,
+          dynasty,
+        };
+        return (
+          <Suspense
+            key={`${segment.x}-${segment.z}`}
+            fallback={<SnakeSegmentFallback {...props} />}
+          >
+            <SnakeModel {...props} />
+          </Suspense>
+        );
+      })}
+    </>
+  );
+}
+
+function PrototypeScene({
+  dynasty,
+  state,
+  isMobile,
+  arenaVariant = 'cockpit',
+  effectsEnabled = true,
+}: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
+  const theme = getDynastyScreenTokens(dynasty);
+  const bufferRef = useRef<InterpolationBuffer | null>(null);
+  const portalLive = state === 'portal' || state === 'apex';
+  const aimTargets = useMemo<AimTarget[]>(
+    () => [
+      { x: FOOD.x, z: FOOD.z, kind: 'food' },
+      { x: MUTATION.x, z: MUTATION.z, kind: 'mutation' },
+      ...(portalLive ? [{ x: PORTAL.x, z: PORTAL.z, kind: 'portal' } as const] : []),
+    ],
+    [portalLive]
+  );
+
+  return (
+    <>
+      <fog attach="fog" args={[GAME_SCREEN_COLORS.void, 39, 72]} />
+      <hemisphereLight args={['#a9c3d5', GAME_SCREEN_COLORS.graphiteDeep, 0.42]} />
+      <ambientLight intensity={0.12} />
+      <directionalLight
+        position={[9, 20, 11]}
+        intensity={0.92}
+        castShadow
+        shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
+        shadow-camera-near={1}
+        shadow-camera-far={50}
+        shadow-camera-left={-15}
+        shadow-camera-right={15}
+        shadow-camera-top={15}
+        shadow-camera-bottom={-15}
+        shadow-bias={-0.0001}
+      />
+      <DynamicLights
+        dynasty={dynasty}
+        score={32}
+        isDeathSequence={false}
+        foodPosition={FOOD}
+        gridSize={GRID}
+        intensityScale={0.62}
+      />
+
+      {arenaVariant === 'cockpit' ? (
+        <ArenaAssembly
+          gridSize={GRID}
+          dynasty={dynasty}
+          fluxPhase={dynasty === 'COSMIC' && state === 'apex' ? 'closed' : null}
+          fluxTelegraph={dynasty === 'COSMIC' && state === 'apex'}
+        />
+      ) : (
+        <>
+          <ArenaFloor
+            gridSize={GRID}
+            floorColor="#101722"
+            gridColor="#3b5266"
+            majorGridColor="#7fb2d9"
+            accentColor={theme.primary}
+          />
+          <ArenaBorder
+            gridSize={GRID}
+            color={theme.secondary}
+            accentColor={GAME_SCREEN_COLORS.systemCyan}
+            emissiveIntensity={0.5}
+          />
+        </>
+      )}
+      <AimRenderer
+        headPosition={STATIC_SNAKE[0]}
+        direction="UP"
+        queuedDirections={[]}
+        snake={STATIC_SNAKE}
+        gridSize={GRID}
+        aimSystem="deadeye"
+        targets={aimTargets}
+        bufferRef={bufferRef}
+        color={GAME_SCREEN_COLORS.systemCyan}
+        laneColor={theme.primary}
+      />
+      <StaticSnake dynasty={dynasty} />
+      <FoodBeacon
+        position={[FOOD.x + 0.5, 0, FOOD.z + 0.5]}
+        color={GAME_SCREEN_COLORS.systemCyan}
+        visualScale={1.12}
+      />
+      <MutationBeacon
+        position={[MUTATION.x + 0.5, 0, MUTATION.z + 0.5]}
+        ticksRemaining={28}
+        visualScale={1.3}
+      />
+      {portalLive && (
+        <ExitPortal
+          position={[PORTAL.x + 0.5, 0, PORTAL.z + 0.5]}
+          ticksRemaining={46}
+          isMobile={isMobile}
+          showExtractHint={false}
+          visualScale={1.08}
+        />
+      )}
+
+      <CameraRig
+        gridSize={GRID}
+        resetToken={0}
+        frameMargin={1.25}
+        fitScale={0.82}
+        defaultPolar={COCKPIT_DEFAULT_POLAR}
+      />
+
+      {!isMobile && effectsEnabled && (
+        <EffectComposer>
+          <Bloom
+            luminanceThreshold={0.55}
+            luminanceSmoothing={0.88}
+            intensity={0.58}
+            mipmapBlur
+          />
+        </EffectComposer>
+      )}
+    </>
+  );
+}
+
+function RenderStatsProbe() {
+  const gl = useThree((state) => state.gl);
+  const frameRef = useRef(0);
+  useFrame(() => {
+    frameRef.current += 1;
+    if (frameRef.current % 12 !== 0) return;
+    const host = document.querySelector<HTMLElement>('[data-testid="cockpit-webgl-board"]');
+    if (!host) return;
+    host.dataset.drawCalls = String(gl.info.render.calls);
+    host.dataset.triangles = String(gl.info.render.triangles);
+  });
+  return null;
+}
+
+export function ArenaPrototypeCanvas({
+  dynasty,
+  state,
+  arenaVariant = 'cockpit',
+  effectsEnabled = true,
+}: ArenaPrototypeCanvasProps) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px), (max-height: 500px)');
+    const update = () => setIsMobile(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  const center = GRID / 2;
+  return (
+    <div
+      data-testid="cockpit-webgl-board"
+      style={{ width: '100%', height: '100%', overflow: 'hidden' }}
+    >
+      <Canvas
+        camera={{
+          position: [center, center * 2.4, center * 1.9],
+          fov: 44,
+        }}
+        shadows
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
+        gl={{ alpha: true, antialias: true }}
+        onCreated={({ gl, camera }) => {
+          gl.setClearColor(0x000000, 0);
+          camera.lookAt(center, 0, center);
+        }}
+      >
+        <PrototypeScene
+          dynasty={dynasty}
+          state={state}
+          isMobile={isMobile}
+          arenaVariant={arenaVariant}
+          effectsEnabled={effectsEnabled}
+        />
+        <RenderStatsProbe />
+      </Canvas>
+    </div>
+  );
+}
+
+export default ArenaPrototypeCanvas;

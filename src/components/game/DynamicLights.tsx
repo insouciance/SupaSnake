@@ -14,6 +14,8 @@ interface DynamicLightsProps {
   foodPosition?: { x: number; z: number } | null;
   /** Grid size for positioning */
   gridSize?: number;
+  /** Cockpit-v1 can calm dynasty spill while preserving released defaults. */
+  intensityScale?: number;
 }
 
 export function DynamicLights({
@@ -22,6 +24,7 @@ export function DynamicLights({
   isDeathSequence,
   foodPosition,
   gridSize = 20,
+  intensityScale = 1,
 }: DynamicLightsProps) {
   const pointLightRef = useRef<THREE.PointLight>(null);
   const foodSpotRef = useRef<THREE.SpotLight>(null);
@@ -36,7 +39,7 @@ export function DynamicLights({
       // per-frame random strobe (broadband 3-30Hz flashing violates the
       // photosensitivity budget). The drama comes from shake + particles.
       pointLightRef.current.intensity =
-        0.45 + Math.sin(state.clock.elapsedTime * 14) * 0.25;
+        (0.45 + Math.sin(state.clock.elapsedTime * 14) * 0.25) * intensityScale;
       return;
     }
 
@@ -44,7 +47,7 @@ export function DynamicLights({
     // must never read as a strobe over the moving trunk
     const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.08 + 0.7;
     const scoreBoost = Math.min(score / 50, 1) * 0.3;
-    pointLightRef.current.intensity = pulse + scoreBoost;
+    pointLightRef.current.intensity = (pulse + scoreBoost) * intensityScale;
 
     // Update food spotlight target
     if (foodSpotRef.current && foodPosition) {
@@ -72,7 +75,7 @@ export function DynamicLights({
       {/* Rim light for snake silhouette pop */}
       <directionalLight
         position={[center + 15, 8, center + 15]}
-        intensity={0.35}
+        intensity={0.35 * Math.max(0.7, intensityScale)}
         color="#ffffff"
       />
 
@@ -83,7 +86,7 @@ export function DynamicLights({
           position={[foodPosition.x + 0.5, 8, foodPosition.z + 0.5]}
           angle={0.4}
           penumbra={0.6}
-          intensity={0.6}
+          intensity={0.6 * intensityScale}
           color={theme.accent}
           distance={15}
           decay={2}

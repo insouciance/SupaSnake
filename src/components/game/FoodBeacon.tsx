@@ -25,6 +25,8 @@ interface FoodBeaconProps {
   position: [number, number, number];
   /** Dynasty accent color (or COSMIC constellation glyph color) */
   color?: string;
+  /** Visual-only scale; released default remains 1. */
+  visualScale?: number;
 }
 
 /** Inner core - the bloom emitter */
@@ -78,7 +80,11 @@ function getShellMaterial(color: string): THREE.MeshBasicMaterial {
   return material;
 }
 
-export function FoodBeacon({ position, color = '#22d3ee' }: FoodBeaconProps) {
+export function FoodBeacon({
+  position,
+  color = '#22d3ee',
+  visualScale = 1,
+}: FoodBeaconProps) {
   const groupRef = useRef<THREE.Group>(null);
   const coreRef = useRef<THREE.Mesh>(null);
   const shellRef = useRef<THREE.Mesh>(null);
@@ -113,7 +119,7 @@ export function FoodBeacon({ position, color = '#22d3ee' }: FoodBeaconProps) {
       if (spawnScale < 0.001) spawnScale = 0.001;
     }
     if (groupRef.current) {
-      groupRef.current.scale.setScalar(spawnScale);
+      groupRef.current.scale.setScalar(spawnScale * visualScale);
     }
 
     // Core: slow tumble one way + emissive breathe (idempotent time-based
