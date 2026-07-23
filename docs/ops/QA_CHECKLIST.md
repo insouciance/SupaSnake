@@ -610,14 +610,20 @@ Release evidence (2026-07-23):
 Run every viewport once at score zero and once after the first food makes all
 live telemetry appear:
 
-- [ ] 320×568 mobile portrait.
-- [ ] 375×667 mobile portrait.
-- [ ] 390×844 mobile portrait.
-- [ ] 844×390 mobile landscape. **RECHECK**
-- [ ] 768×1024 tablet portrait.
-- [ ] 1280×720 desktop.
-- [ ] 1440×900 desktop.
-- [ ] 2560×1080 ultrawide desktop.
+Run Cockpit v1 release evidence (2026-07-24): the exact production bundle
+passed the matrix locally and again on `supasnake.com` without retries. Every
+visible telemetry/status/control/decision/input zone was sampled atomically
+with the real WebGL board and proved non-intersecting. The authored background
+hash remained unchanged. Physical-device checks listed below remain manual.
+
+- [x] 320×568 mobile portrait.
+- [x] 375×667 mobile portrait.
+- [x] 390×844 mobile portrait.
+- [x] 844×390 mobile landscape.
+- [x] 768×1024 tablet portrait.
+- [x] 1280×720 desktop.
+- [x] 1440×900 desktop.
+- [x] 2560×1080 ultrawide desktop.
 
 At each relevant viewport, inspect these HUD states individually and in the
 largest legitimate combination:
@@ -633,16 +639,16 @@ largest legitimate combination:
 
 Geometry and quality checks:
 
-- [ ] HUD, ticker, pause/reset controls, desktop hints, D-pad, and browser safe
+- [x] HUD, ticker, pause/reset controls, desktop hints, D-pad, and browser safe
       areas never intersect the playable board surface or hide a boundary.
-- [ ] Score, DNA, and energy use consistent telemetry cells and typography;
+- [x] Score, DNA, and energy use consistent telemetry cells and typography;
       dynamic run information uses stable rows instead of reflowing the board.
 - [ ] The canvas starts at the measured HUD boundary on first authenticated
       paint and after every HUD resize; no 200ms-style transient overlap is
       visible. **RECHECK**
-- [ ] The board remains centered, fully framed, and large enough for reliable
+- [x] The board remains centered, fully framed, and large enough for reliable
       play. Reduced-height landscape retains at least the current 180 CSS px
-      engineering floor and usable controls. **RECHECK**
+      engineering floor and usable controls.
 - [ ] Eating the first food, adding/removing a ticker item, taking a gene,
       activating a tier, rotating the phone, and browser chrome expanding do
       not cause a disruptive camera jump, clipping, or input loss.
@@ -767,28 +773,29 @@ Test keyboard, Flick, and D-pad separately.
 
 These are agent/operator checks, not a substitute for the human feel pass.
 
-- [ ] `npx tsc --noEmit` passes.
-- [ ] `npm run lint` passes without automated fixes.
-- [ ] `npm test -- --runInBand` passes.
-- [ ] Focused SnakeGameLogic, Genome, lineage, breeding, collection, Codex,
+- [x] `npx tsc --noEmit` passes.
+- [x] `npm run lint` passes without automated fixes.
+- [x] `npm test -- --runInBand` passes (228 suites / 2,865 tests).
+- [x] Focused SnakeGameLogic, Genome, lineage, breeding, collection, Codex,
       migration, HUD, and input-gate regression tests pass.
-- [ ] `npm run build` passes with the intended environment validation.
-- [ ] Playwright passes the real-game viewport matrix and keyboard/Flick/D-pad
+- [x] `npm run build` passes locally and in the Vercel cloud with the intended
+      production environment validation.
+- [x] Playwright passes the real-game viewport matrix and keyboard/Flick/D-pad
       input matrix without relying only on mocked UI state.
-- [ ] A disposable local Supabase reset applies migrations 001–037 from zero;
+- [x] A disposable local Supabase reset applies migrations 001–037 from zero;
       database lint and migration tests pass without modifying hosted data.
-- [ ] Linked migration dry-run/list shows local and hosted histories aligned;
+- [x] Linked migration dry-run/list shows local and hosted histories aligned;
       migrations 029, 030, and 037 remain forward-safe and idempotent where promised.
 - [ ] Hosted RLS/security checks cover collection, breeding history, lineage,
       Codex rewards, contact records, deletion workflow, and service-role-only
       operations.
-- [ ] No committed generated Supabase `Database` type artifact currently exists;
+- [x] No committed generated Supabase `Database` type artifact currently exists;
       manual schema mirrors (`snake-data-model.ts`, API row mappers, and SQL/TS
       lineage logic) are checked together. If generated types are introduced,
       regenerate them after migration 036 and review the diff.
-- [ ] Secret scan finds no credentials, `.env` material, tokens, webhook
+- [x] Secret scan finds no credentials, `.env` material, tokens, webhook
       secrets, customer data, or exported hosted rows in the diff/history.
-- [ ] Final `git diff`, untracked-file review, production environment check,
+- [x] Final `git diff`, untracked-file review, production environment check,
       Vercel cloud build, migration action, and rollback/forward-fix plan are
       reviewed before promotion.
 

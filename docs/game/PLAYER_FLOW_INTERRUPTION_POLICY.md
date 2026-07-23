@@ -121,11 +121,20 @@ Production rollout completed on 2026-07-23 in the required order. Migration
 of hosted migrations 001–036, applied to hosted Supabase, and invariant-checked
 before the application flag was enabled. The FTUE application release
 (`f86f8ae`) was then verified on a protected canary and promoted as Vercel
-deployment `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc`. `NEXT_PUBLIC_FTUE_V2=true` is
-now a Production environment default for future builds. An omitted or false
-value still selects the coherent rollback path, and deployment
-`dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` remains available as the pre-FTUE rollback
-artifact.
+deployment `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc`. On 2026-07-24, Run Cockpit &
+Arena v1 (`7ce2ade`) was layered onto that verified player flow and promoted as
+deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX`. Its peripheral telemetry and
+reserved pause/decision/input docks introduce no new automatic interruption
+and never cover the board. The final hosted migration dry-run was a no-op;
+migration `037` remained live and byte-aligned with the reviewed bootstrap
+implementation.
+
+`NEXT_PUBLIC_FTUE_V2=true` and `NEXT_PUBLIC_HUD_COCKPIT_V1=true` are now
+Production environment defaults for future builds. Disabling only the cockpit
+flag restores the prior HUD while retaining FTUE v2; deployment
+`dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc` remains the pre-cockpit rollback. An omitted
+or false FTUE value still selects its coherent rollback path, and deployment
+`dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` remains the pre-FTUE rollback artifact.
 
 ## Verification gates
 

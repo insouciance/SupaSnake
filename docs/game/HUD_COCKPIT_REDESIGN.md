@@ -1007,3 +1007,62 @@ The redesign is ready only when:
 - Putting telemetry at the far monitor edges on ultrawide.
 - A configuration screen before first gameplay.
 - Shipping the frozen HUD/Pause candidate unchanged.
+
+## 19. Implementation and production record
+
+Run Cockpit & Arena v1 shipped on 2026-07-24 from commit `7ce2ade` as Vercel
+deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX`. The production domain was
+promoted only after an unaliased production build, protected route checks, a
+healthy application/database response, and the public browser checks below.
+`NEXT_PUBLIC_HUD_COCKPIT_V1=true` selects the cockpit; setting it false and
+redeploying restores the coherent released HUD without touching run or player
+state.
+
+Implemented product contract:
+
+- the original 2048×2048 authored space image remains the only game-screen
+  background and is byte-identical at SHA-256
+  `2483414cdf955525a80a9000c2c6e6e0221d20825099c8ffe56d6eed19aae74c`;
+- one production WebGL canvas remains centered inside an opaque, grounded arena
+  floor, chassis, undertray, restrained dynasty lighting, and protected quiet
+  zone;
+- score, run DNA, energy, secure/crash outcome, portal, combo, mode, six gene
+  sockets, and five strain gauges adapt canonical run state without owning or
+  recalculating gameplay/economy facts;
+- all 34 catalog genes and all five strains use local semantic silhouettes;
+  precise names remain available through accessible labels and titles rather
+  than unreadable active-run microtext;
+- Ready/resume guidance, pause, gene/mutation/portal/surge decisions, event
+  feedback, and optional D-pad controls occupy reserved peripheral regions and
+  never overlay the playable board rectangle;
+- Free Play identity and current/max Energy remain visible and accessible in
+  the cockpit, preserving existing player and automation contracts;
+- FTUE v2, one-click Launch, consent containment, voluntary Lab behavior,
+  notification-first discovery, payout authority, and deliberate first
+  movement are unchanged.
+
+Release evidence:
+
+- TypeScript, full ESLint, diff/credential checks, and the Vercel cloud build
+  passed;
+- 228 Jest suites / 2,865 tests passed with the configured hosted public test
+  environment;
+- the exact feature-on production bundle passed 15 local real-route browser
+  checks: the eight-viewport WebGL matrix, pause/decision layouts, 44px D-pad,
+  engagement loop, one-click Launch, Free Play, Energy, and consent;
+- representative real WebGL captures remained within 53–62 draw calls, with
+  the arena adding three calls, and 586–1,852 triangles across the measured
+  dynasty/viewport samples;
+- hosted migrations remained aligned through `037`; the final deployment
+  dry-run returned “Remote database is up to date” and made no database write;
+- public production passed a genuine fresh-incognito Launch/bootstrap/PRIMAL
+  journey in 18.5 seconds and the full live cockpit viewport/pause/D-pad matrix
+  in 19.0 seconds, both without retries;
+- `https://supasnake.com/api/health` reported healthy application and database
+  state after promotion.
+
+The remaining manual field pass is intentionally not represented as automated
+evidence: physical iOS Safari and Android Chrome safe areas, browser chrome,
+long-session touch feel, haptics/audio mix, and camera feel should be checked on
+real devices. These checks tune feel; the feature flag remains the immediate
+rollback if field evidence reveals a release-blocking problem.
