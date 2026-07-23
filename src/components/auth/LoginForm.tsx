@@ -118,7 +118,11 @@ export function LoginForm({
 
   const handleGuestPlay = async () => {
     setError(null);
-    await signInAnonymously();
+    const result = await signInAnonymously();
+    if (result?.error) {
+      setError(describeAuthError(result.error.message, mode));
+      return;
+    }
     onSuccess?.();
   };
 

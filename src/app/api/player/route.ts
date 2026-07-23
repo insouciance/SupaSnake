@@ -16,6 +16,8 @@ import {
 import { getGenomeRunFacts, deriveFtue } from '@/lib/server/genome';
 import { getMasteryXp } from '@/lib/server/mastery';
 import { levelForXp } from '@/shared/game/mastery';
+import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
+import type { FtueBootstrapResponse } from '@/lib/ftue/types';
 
 const VALID_DYNASTIES = ['CYBER', 'PRIMAL', 'COSMIC'];
 
@@ -68,6 +70,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    // FTUE v2 has one authoritative entry point for create/recover/grant/
+    // equip. GET also invokes it so direct links and returning broken
+    // profiles self-heal without ever redirecting to the Lab.
+    let bootstrapState: Omit<FtueBootstrapResponse, 'ftueV2'> | null = null;
+    if (FTUE_V2_ENABLED) {
+      const { data: bootstrapData, error: bootstrapError } = await supabase.rpc(
+        'bootstrap_player',
+        { p_user_id: user.id }
+      );
+      if (bootstrapError || !bootstrapData) {
+        console.error('Player bootstrap failed during GET:', {
+          userId: user.id,
+          error: bootstrapError,
+        });
+        return NextResponse.json(
+          { error: 'Failed to prepare player' },
+          { status: 500 }
+        );
+      }
+      bootstrapState = bootstrapData as Omit<FtueBootstrapResponse, 'ftueV2'>;
+    }
+
     let { data: player, error } = await supabase
       .from('players')
       .select('*, collected_snakes(*), player_settings(*)')
@@ -92,7 +116,7 @@ export async function GET(request: NextRequest) {
 
       const { error: settingsInsertError } = await supabase.from('player_settings').insert({
         player_id: newPlayer.id,
-        selected_dynasty: 'CYBER',
+        selected_dynasty: 'PRIMAL',
       });
       if (settingsInsertError) {
         // Non-fatal: player exists, defaults apply until settings are saved
@@ -102,8 +126,8 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // No auto-seeded starter snake: the player picks one in the Lab
-      // (client is told via needsStarterSelection below).
+      // Legacy fallback only (FTUE v2 creates through bootstrap_player).
+      // A disabled rollout flag preserves the old collection contract.
       const { data: fullPlayer } = await supabase
         .from('players')
         .select('*, collected_snakes(*), player_settings(*)')
@@ -205,8 +229,10 @@ export async function GET(request: NextRequest) {
       // Additional fields for Welcome Back modal
       lastLoginAt: player.last_login_at || null,
       collectionSize,
-      // New players own zero snakes until they pick a starter in the Lab
-      needsStarterSelection: collectionSize === 0,
+      // Starter selection is never a blocking state under FTUE v2.
+      needsStarterSelection: FTUE_V2_ENABLED ? false : collectionSize === 0,
+      hasCompletedFirstRun: (player.total_games_played ?? 0) > 0,
+      ...(bootstrapState ? { onboarding: bootstrapState.onboarding } : {}),
       // Aim telegraph meta-progression
       aimSystem,
       aimStats,

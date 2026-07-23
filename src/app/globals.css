@@ -38,12 +38,64 @@ body {
   padding: 0;
 }
 
+/* The consent component publishes its measured height. A trailing spacer
+   lets scrollable pages move their final action above the fixed legal UI;
+   full-viewport Home consumes the same token on its Launch dock below. */
+html[data-consent-visible='true'] body::after {
+  content: '';
+  display: block;
+  height: var(--consent-banner-height, 0px);
+  pointer-events: none;
+}
+
+/* Full-screen gameplay cannot rely on the body's trailing spacer. On phones
+   the consent surface is top-anchored; on larger screens it is bottom-anchored.
+   Shrink and offset the viewport by the measured token so no HUD, board, or
+   result action can sit beneath the legal UI. */
+html[data-consent-visible='true'] .consent-safe-viewport {
+  height: calc(100dvh - var(--consent-banner-height, 0px));
+  min-height: 0;
+  margin-top: var(--consent-banner-height, 0px);
+}
+
+@media (min-width: 40rem) {
+  html[data-consent-visible='true'] .consent-safe-viewport {
+    margin-top: 0;
+  }
+}
+
 canvas {
   display: block;
   touch-action: none;
 }
 
 @layer components {
+  .consent-banner {
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  }
+
+  .home-launch-dock {
+    bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (min-width: 40rem) {
+    .consent-banner {
+      padding-top: 1rem;
+      padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    }
+
+    .home-launch-dock {
+      bottom: calc(3rem + var(--consent-banner-height, 0px));
+    }
+  }
+
+  @media (orientation: landscape) and (max-height: 31.25rem) {
+    .consent-summary {
+      flex-direction: row;
+      align-items: center;
+    }
+  }
+
   /* ==========================================================================
      Surfaces - the game scene's language (void + emissive glow) as UI chrome
      ========================================================================== */

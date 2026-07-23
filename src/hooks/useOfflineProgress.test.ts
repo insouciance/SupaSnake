@@ -88,7 +88,11 @@ describe('useOfflineProgress', () => {
     jest.useRealTimers();
   });
 
-  function mockPlayerResponse(lastLoginAt: string | null, collectionSize: number) {
+  function mockPlayerResponse(
+    lastLoginAt: string | null,
+    collectionSize: number,
+    totalGamesPlayed = 3
+  ) {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -96,6 +100,7 @@ describe('useOfflineProgress', () => {
           energy: 2,
           max_energy: 5,
           last_login_at: lastLoginAt,
+          total_games_played: totalGamesPlayed,
         },
         lastLoginAt,
         collectionSize,
@@ -181,6 +186,19 @@ describe('useOfflineProgress', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
+    expect(result.current.showModal).toBe(false);
+  });
+
+  it('does not interrupt a player before the first completed run', async () => {
+    const now = new Date('2024-01-15T12:00:00Z');
+    jest.setSystemTime(now);
+    const twoHoursAgo = new Date('2024-01-15T10:00:00Z').toISOString();
+    mockPlayerResponse(twoHoursAgo, 10, 0);
+
+    const { result } = renderHook(() => useOfflineProgress());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.progress?.hasRewards).toBe(true);
     expect(result.current.showModal).toBe(false);
   });
 

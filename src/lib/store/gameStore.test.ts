@@ -14,7 +14,7 @@ describe('Game Store', () => {
       dnaCollected: 0,
       energy: 5,
       maxEnergy: 5,
-      selectedDynasty: 'CYBER',
+      selectedDynasty: 'PRIMAL',
       snake: [],
       food: null,
       direction: 'RIGHT',
@@ -28,7 +28,7 @@ describe('Game Store', () => {
       expect(state.isGameOver).toBe(false);
       expect(state.score).toBe(0);
       expect(state.energy).toBe(5);
-      expect(state.selectedDynasty).toBe('CYBER');
+      expect(state.selectedDynasty).toBe('PRIMAL');
     });
   });
 

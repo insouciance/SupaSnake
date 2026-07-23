@@ -50,11 +50,11 @@ export const dynastyThemes: Record<string, DynastyTheme> = {
 
 /**
  * Returns theme values for a given dynasty name
- * Defaults to CYBER theme if dynasty is unknown
+ * Defaults to the PRIMAL onboarding theme if dynasty is unknown.
  */
 export function useDynastyTheme(dynastyName: string): DynastyTheme {
   return useMemo(() => {
     const normalizedName = dynastyName?.toUpperCase() ?? '';
-    return dynastyThemes[normalizedName] ?? dynastyThemes.CYBER;
+    return dynastyThemes[normalizedName] ?? dynastyThemes.PRIMAL;
   }, [dynastyName]);
 }

@@ -1,12 +1,14 @@
 /**
  * Home Page Tests - Specimen Chamber menu: ambient counters, mission line,
- * contracts board auto-open, FTUE mount, identity continuity, Launch gating
+ * notification-first meta discovery, identity continuity, and one-click launch
  */
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
 import { recordLastUser, readLastUser, PROGRESS_LOSS_NOTICE_KEY } from '@/lib/auth/lastUser';
 import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
+import { LAUNCH_HANDOFF_KEY } from '@/lib/ftue/launchFlow';
 
 // The 3D chamber is dynamically imported (WebGL); stub the dynamic loader
 jest.mock('next/dynamic', () => ({
@@ -109,23 +111,67 @@ function buildQuietBoard() {
 
 function setupFetch(fixtures: FetchFixtures = {}) {
   const playerBody = fixtures.player ?? {
-    player: { dna: 320, energy: 4, max_energy: 5, high_score: 777 },
+    player: {
+      id: 'player-1',
+      dna: 320,
+      energy: 4,
+      max_energy: 5,
+      high_score: 777,
+      total_games_played: 3,
+    },
     collectionSize: 3,
     needsStarterSelection: false,
+    hasCompletedFirstRun: true,
   };
   const streaksBody = fixtures.streaks ?? { currentStreak: 5, multiplier: 1.1 };
   const contractsBody = fixtures.contracts ?? buildOffersBoard();
   const collectionBody = fixtures.collection ?? {
-    snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'CYBER' }],
+    snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'PRIMAL' }],
     dnaBalance: 320,
   };
 
-  global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+  global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url);
+    if (u.includes('/api/player/bootstrap')) {
+      return jsonResponse({
+        ftueV2: true,
+        player: {
+          id: 'player-1',
+          dna: 0,
+          energy: 5,
+          maxEnergy: 5,
+          highScore: 0,
+          totalGamesPlayed: 0,
+        },
+        equippedSnake: {
+          id: 'snake-1',
+          variantId: 'variant-1',
+          name: 'PRIMAL SEED',
+          dynasty: 'PRIMAL',
+          generation: 1,
+          traits: [],
+          lineage: { strains: ['FERAL'], strength: 0 },
+        },
+        onboarding: {
+          version: 2,
+          isNewPlayer: true,
+          starterGranted: true,
+          equipmentRepaired: true,
+          hasCompletedFirstRun: false,
+          needsStarterSelection: false,
+        },
+      });
+    }
     if (u.includes('/api/player')) return jsonResponse(playerBody);
     if (u.includes('/api/streaks')) return jsonResponse(streaksBody);
     if (u.includes('/api/contracts')) return jsonResponse(contractsBody);
     if (u.includes('/api/collection')) return jsonResponse(collectionBody);
+    if (u.includes('/api/game/session')) {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      return body.action === 'start'
+        ? jsonResponse({ sessionId: 'session-1', energy: 4, energyRegenAt: null })
+        : jsonResponse({ success: true });
+    }
     return jsonResponse({});
   }) as jest.Mock;
 }
@@ -136,12 +182,15 @@ function setAuthed(opts: { isAnonymous?: boolean } = {}) {
     isLoading: false,
     isAnonymous: opts.isAnonymous ?? false,
     signInAnonymously: jest.fn(),
-    session: { access_token: 'test-token' },
+    session: { access_token: 'test-token', user: { id: 'user-1' } },
   });
 }
 
 function setUnauthed() {
-  const signInAnonymously = jest.fn();
+  const signInAnonymously = jest.fn().mockResolvedValue({
+    error: null,
+    session: { access_token: 'anon-token', user: { id: 'anon-1' } },
+  });
   mockUseAuth.mockReturnValue({
     isAuthenticated: false,
     isLoading: false,
@@ -163,6 +212,9 @@ describe('Home page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
+    useNotificationStore.setState({ notifications: {}, hasHydrated: true });
     setupFetch();
   });
 
@@ -301,46 +353,52 @@ describe('Home page', () => {
     });
   });
 
-  describe('FTUE starter selection', () => {
-    it('mounts StarterSelection when the player owns no snakes', async () => {
+  describe('FTUE v2 first-run policy', () => {
+    it('never mounts mandatory starter selection or fetches meta systems before a run', async () => {
       setAuthed();
       setupFetch({
         player: {
-          player: { dna: 0, energy: 5, max_energy: 5, high_score: 0 },
+          player: {
+            id: 'player-1',
+            dna: 0,
+            energy: 5,
+            max_energy: 5,
+            high_score: 0,
+            total_games_played: 0,
+          },
           collectionSize: 0,
           needsStarterSelection: true,
+          hasCompletedFirstRun: false,
         },
       });
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('starter-selection')).toBeInTheDocument();
+        expect(screen.getByText('Your first run is ready')).toBeInTheDocument();
       });
-      // Contracts board defers to FTUE
-      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
-    });
-
-    it('does not mount StarterSelection for players with snakes', async () => {
-      setAuthed();
-      render(<Home />);
-
-      await waitForStats();
       expect(screen.queryByTestId('starter-selection')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
+      const urls = (global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]));
+      expect(urls).not.toContain('/api/contracts');
+      expect(urls).not.toContain('/api/season');
     });
   });
 
-  describe('contracts board', () => {
-    it('auto-opens when picks are available', async () => {
+  describe('notification-first contracts', () => {
+    it('publishes a badge but never auto-opens when picks are available', async () => {
       setAuthed();
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
+        expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
+          badgeKind: 'exclamation',
+          href: '/#contracts',
+        });
       });
-      expect(screen.getByText('Daily Contracts')).toBeInTheDocument();
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
     });
 
-    it('auto-opens when a completed contract is claimable', async () => {
+    it('publishes a numeric badge without auto-opening a claimable reward', async () => {
       setAuthed();
       const board = buildQuietBoard();
       (board.contracts[0] as Record<string, unknown>).completed = true;
@@ -349,27 +407,36 @@ describe('Home page', () => {
       render(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
+        expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
+          badgeKind: 'numeric',
+          count: 1,
+        });
+      });
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Contracts: 1/2 complete'));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
+        badgeKind: 'numeric',
+        count: 1,
       });
     });
 
-    it('does not auto-open when picked and nothing is claimable', async () => {
+    it('opens after an explicit mission action', async () => {
       setAuthed();
-      setupFetch({ contracts: buildQuietBoard() });
       render(<Home />);
 
-      await waitForStats();
-      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
+      const mission = await screen.findByText('New contracts available');
+      fireEvent.click(mission);
+      expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
     });
 
-    it('does not re-open after dismissal on the same day', async () => {
+    it('opens when the player follows the inbox hash', async () => {
       setAuthed();
-      const today = new Date().toISOString().split('T')[0];
-      window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
+      window.history.replaceState(null, '', '/#contracts');
       render(<Home />);
 
-      await waitForStats();
-      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
+      expect(await screen.findByTestId('contracts-board')).toBeInTheDocument();
     });
   });
 
@@ -423,7 +490,6 @@ describe('Home page', () => {
 
     it('continue-as-guest signs in anonymously and marks the notice as seen', async () => {
       const { signInAnonymously } = setUnauthed();
-      signInAnonymously.mockResolvedValue(undefined);
       recordLastUser({ id: 'anon-1', is_anonymous: true });
       render(<Home />);
 
@@ -433,13 +499,14 @@ describe('Home page', () => {
       await waitFor(() => {
         expect(signInAnonymously).toHaveBeenCalled();
       });
-      expect(mockPush).toHaveBeenCalledWith('/game');
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith('/game?launch=ftue-v2');
+      });
       expect(window.localStorage.getItem(PROGRESS_LOSS_NOTICE_KEY)).toBe('1');
     });
 
-    it('signs in anonymously without prompts on a truly fresh device', async () => {
+    it('takes a truly fresh guest from one Launch through auth, bootstrap, and run loading', async () => {
       const { signInAnonymously } = setUnauthed();
-      signInAnonymously.mockResolvedValue(undefined);
       render(<Home />);
 
       fireEvent.click(screen.getByText('Launch'));
@@ -447,39 +514,31 @@ describe('Home page', () => {
       await waitFor(() => {
         expect(signInAnonymously).toHaveBeenCalled();
       });
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith('/game?launch=ftue-v2');
+      });
+      const urls = (global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]));
+      expect(urls.indexOf('/api/player/bootstrap')).toBeLessThan(
+        urls.indexOf('/api/game/session')
+      );
+      expect(JSON.parse(String(sessionStorage.getItem(LAUNCH_HANDOFF_KEY)))).toMatchObject({
+        mode: 'earn',
+        bootstrap: { equippedSnake: { name: 'PRIMAL SEED', dynasty: 'PRIMAL' } },
+        run: { sessionId: 'session-1' },
+      });
       expect(screen.queryByTestId('progress-loss-notice')).not.toBeInTheDocument();
       expect(screen.queryByTestId('welcome-back-modal')).not.toBeInTheDocument();
     });
   });
 
-  describe('save-progress prompt for anonymous players', () => {
-    // The cinematic home renders the chip variant only - the full-width
-    // banner would break immersion and stack with other overlays; the nav
-    // rail's GUEST node carries the auth-state signal.
-    const quietDaily = { contracts: buildQuietBoard() };
-
-    it('shows the corner chip (never the banner) for anonymous users', async () => {
+  describe('first-run account policy', () => {
+    it('does not push a save-progress banner or chip at anonymous players', async () => {
       setAuthed({ isAnonymous: true });
-      setupFetch(quietDaily);
       render(<Home />);
 
-      await waitFor(() => {
-        expect(screen.getByTestId('save-progress-chip')).toBeInTheDocument();
-      });
+      await waitForStats();
+      expect(screen.queryByTestId('save-progress-chip')).not.toBeInTheDocument();
       expect(screen.queryByTestId('save-progress-banner')).not.toBeInTheDocument();
-    });
-
-    it('opens the upgrade modal from the chip', async () => {
-      setAuthed({ isAnonymous: true });
-      setupFetch(quietDaily);
-      render(<Home />);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('save-progress-chip')).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByTestId('save-progress-chip'));
-
-      expect(screen.getByTestId('account-upgrade-modal')).toBeInTheDocument();
     });
 
     it('never renders for registered users', async () => {
@@ -530,21 +589,9 @@ describe('Home page', () => {
     });
   });
 
-  describe('FTUE hint', () => {
-    it('shows the one-time home hint for authed players', async () => {
+  describe('progressive discovery', () => {
+    it('does not auto-overlay a Lab/DNA tutorial on Home', async () => {
       setAuthed();
-      render(<Home />);
-
-      await waitFor(() => {
-        expect(
-          screen.getByText('Play to earn DNA - spend it in the Lab')
-        ).toBeInTheDocument();
-      });
-    });
-
-    it('hides the hint once dismissed previously', async () => {
-      setAuthed();
-      window.localStorage.setItem('hint-dismissed-home-play-dna', '1');
       render(<Home />);
 
       await waitForStats();

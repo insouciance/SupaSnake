@@ -910,6 +910,15 @@ export class SnakeGameLogic {
       return 'inactive';
     }
 
+    return this.enqueueDirection(dir);
+  }
+
+  /**
+   * Validate and queue a direction without consulting the pause flag.
+   * Kept separate so a post-pause safety gate can accept the player's first
+   * steering command before releasing the engine.
+   */
+  private enqueueDirection(dir: Direction): SetDirectionResult {
     const reference =
       this.directionQueue.length > 0
         ? this.directionQueue[this.directionQueue.length - 1]
@@ -926,6 +935,36 @@ export class SnakeGameLogic {
   }
 
   /**
+   * Atomically release a paused board with a deliberate direction.
+   *
+   * A legal turn is queued before resume, an exact duplicate deliberately
+   * resumes the current heading, and unsafe/rejected commands leave the
+   * engine paused. If a rapid follow-up arrives after the first command has
+   * already released the board, it falls through to normal input buffering.
+   */
+  resumeWithDirection(dir: Direction): SetDirectionResult {
+    if (!this.state.isPaused) {
+      return this.setDirection(dir);
+    }
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isDeathSequence ||
+      this.state.pendingChoice !== null ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
+    ) {
+      return 'inactive';
+    }
+
+    const result = this.enqueueDirection(dir);
+    if (result === 'accepted' || result === 'duplicate') {
+      this.resume();
+    }
+    return result;
+  }
+
+  /**
    * Get the currently buffered direction inputs (immutable copy), in the
    * order they will be consumed (one per tick). Read-only view for the
    * renderer's aim telegraph - queued turns are drawn before they execute.
@@ -937,7 +976,8 @@ export class SnakeGameLogic {
   /**
    * Pause the game. No-op during the mutation choice hold - the choice
    * overlay owns the freeze, and allowing pause underneath would let the
-   * pause menu fight the choice UI.
+   * pause menu fight the choice UI. Buffered turns are cleared so resuming
+   * can never execute an old command before the player's newly planned move.
    */
   pause(): void {
     if (
@@ -950,6 +990,7 @@ export class SnakeGameLogic {
     ) {
       return;
     }
+    this.directionQueue = [];
     this.state.isPaused = true;
     this.emit('pause');
   }

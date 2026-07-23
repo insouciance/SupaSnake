@@ -179,7 +179,7 @@ export function UnlockConfirmModal({
             id="unlock-modal-title"
             className="heading-display text-xl text-bone-white"
           >
-            Unlock {variant.name}?
+            Unlock &amp; equip {variant.name}?
           </h2>
         </div>
 
@@ -337,18 +337,18 @@ export function UnlockConfirmModal({
             onClick={onConfirm}
             disabled={!canAfford || isUnlocking}
             className="btn-go flex-1 flex items-center justify-center gap-2 py-3 px-4 text-sm min-h-[44px]"
-            aria-label={`Unlock ${variant.name} for ${variant.unlockCostDna} DNA`}
+            aria-label={`Unlock and equip ${variant.name} for ${variant.unlockCostDna} DNA`}
             data-testid="unlock-confirm-button"
           >
             {isUnlocking ? (
               <>
                 <LoadingSpinner />
-                <span>Unlocking...</span>
+                <span>Unlocking &amp; equipping...</span>
               </>
             ) : (
               <>
                 <IconCheck size={16} />
-                <span>Unlock ({formatNumber(variant.unlockCostDna)})</span>
+                <span>Unlock &amp; Equip ({formatNumber(variant.unlockCostDna)})</span>
               </>
             )}
           </button>

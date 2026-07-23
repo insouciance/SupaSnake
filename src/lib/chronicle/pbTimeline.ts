@@ -57,7 +57,7 @@ export function buildPbTimeline(
   const points: PbTimelinePoint[] = rows
     .map((row) => ({
       weekStart: String(row.week_start).slice(0, 10),
-      dynasty: (row.dynasty || 'CYBER').toUpperCase(),
+      dynasty: (row.dynasty || 'PRIMAL').toUpperCase(),
       bestScore: row.best_score ?? 0,
       runs: row.runs ?? 0,
     }))

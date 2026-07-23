@@ -24,7 +24,7 @@ import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
-import { IconArrowRight, IconBolt, IconCheck, IconEgg } from '@/components/ui/icons';
+import { IconArrowRight, IconBolt, IconCheck, IconEgg, IconSnake } from '@/components/ui/icons';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -33,8 +33,10 @@ export interface VariantDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onEquip: () => void;
+  onPlay?: () => void;
   onBreed: () => void;
   isEquipping: boolean;
+  isLaunching?: boolean;
   isEquipped: boolean;
   dnaBalance?: number;
   isUpdatingLineage?: boolean;
@@ -131,8 +133,10 @@ export function VariantDetailModal({
   isOpen,
   onClose,
   onEquip,
+  onPlay,
   onBreed,
   isEquipping,
+  isLaunching = false,
   isEquipped,
   dnaBalance = 0,
   isUpdatingLineage = false,
@@ -474,9 +478,22 @@ export function VariantDetailModal({
 
         {/* Action buttons - fixed at bottom */}
         <div
-          className="px-4 py-4 flex gap-3 border-t bg-void/80"
+          className="px-4 py-4 flex flex-wrap gap-3 border-t bg-void/80"
           style={{ borderColor: hexToRgba(theme.glow, 0.3) }}
         >
+          {onPlay && (
+            <button
+              type="button"
+              onClick={onPlay}
+              disabled={isLaunching || isEquipping}
+              className="btn-go flex basis-full items-center justify-center gap-2 px-4 py-3 text-sm min-h-[44px] disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label={`Play with ${variant.name}`}
+            >
+              {isLaunching ? <Spinner /> : <IconSnake size={18} />}
+              <span>{isLaunching ? 'Preparing run…' : 'Play with this Snake'}</span>
+            </button>
+          )}
+
           {/* Equip button */}
           <button
             type="button"

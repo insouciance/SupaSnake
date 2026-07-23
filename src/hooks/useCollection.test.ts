@@ -409,10 +409,13 @@ describe('useCollection', () => {
       });
     });
 
-    it('should auto-select first dynasty if none active', () => {
+    it('should auto-select the equipped snake dynasty if none is active', () => {
       // Create a store with dynasties already loaded but no active dynasty
       const storeWithDynasties = createMockStore({
         dynasties: mockDynasties,
+        variants: mockVariants,
+        ownedSnakes: mockOwnedSnakes,
+        equippedSnakeId: 'owned-1',
         activeDynastyId: null,
       });
 
@@ -431,8 +434,32 @@ describe('useCollection', () => {
 
       renderHook(() => useCollection());
 
-      // The useEffect should auto-select first dynasty
+      // The equipped CYBER snake wins even though PRIMAL is the fallback.
       expect(storeWithDynasties.setActiveDynasty).toHaveBeenCalledWith('dynasty-1');
+    });
+
+    it('uses PRIMAL rather than catalog order when no equipped snake exists', () => {
+      const storeWithDynasties = createMockStore({
+        dynasties: mockDynasties,
+        variants: mockVariants,
+        ownedSnakes: [],
+        equippedSnakeId: null,
+        activeDynastyId: null,
+      });
+      (useCollectionStore as jest.Mock).mockImplementation((selector?: unknown) => {
+        if (typeof selector === 'function') {
+          return (selector as (state: MockStore) => unknown)(storeWithDynasties);
+        }
+        return storeWithDynasties;
+      });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ dynasties: [], variants: [], snakes: [] }),
+      });
+
+      renderHook(() => useCollection());
+
+      expect(storeWithDynasties.setActiveDynasty).toHaveBeenCalledWith('dynasty-2');
     });
   });
 
@@ -631,10 +658,11 @@ describe('useCollection', () => {
                 parent2Id: null,
                 acquiredAt: '2024-01-03T00:00:00Z',
                 acquiredMethod: 'unlock',
-                isEquipped: false,
+                isEquipped: true,
                 isFavorited: false,
               },
               newDnaBalance: 400,
+              equipped: true,
             }),
         });
 
@@ -654,7 +682,7 @@ describe('useCollection', () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${TEST_TOKEN}`,
         },
-        body: JSON.stringify({ variantId: 'variant-2' }),
+        body: JSON.stringify({ variantId: 'variant-2', equip: true }),
       });
     });
 
@@ -696,8 +724,9 @@ describe('useCollection', () => {
                     json: () =>
                       Promise.resolve({
                         success: true,
-                        snake: { id: 'new-snake' },
+                        snake: { id: 'new-snake', isEquipped: true },
                         newDnaBalance: 400,
+                        equipped: true,
                       }),
                   }),
                 100
@@ -715,8 +744,11 @@ describe('useCollection', () => {
         result.current.unlockVariant('variant-2');
       });
 
-      // Optimistic update should call addOwnedSnake immediately
-      expect(storeWithData.addOwnedSnake).toHaveBeenCalled();
+      // Optimistic update swaps ownership + equipment in one projected list.
+      expect(storeWithData.setOwnedSnakes).toHaveBeenCalled();
+      expect(storeWithData.setEquippedSnakeId).toHaveBeenCalledWith(
+        expect.stringMatching(/^temp-/)
+      );
       expect(storeWithData.setDnaBalance).toHaveBeenCalled();
     });
 

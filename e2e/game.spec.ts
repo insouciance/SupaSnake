@@ -3,12 +3,12 @@
  *
  * The game itself is a WebGL canvas (react-three-fiber) and cannot be
  * meaningfully simulated here. These tests drive everything around it:
- * home page entry, the equipped-snake requirement, and the pre-game screen.
+ * home page entry, authoritative bootstrap, and the pre-game screen.
  * The full hook loop lives in engagement.spec.ts.
  */
 
 import { test, expect } from '@playwright/test';
-import { seedConsent, signInAsGuest, pickStarter } from './helpers';
+import { seedConsent, signInAsGuest } from './helpers';
 
 test.describe('Home page', () => {
   test.beforeEach(async ({ page }) => {
@@ -26,40 +26,72 @@ test.describe('Home page', () => {
   test('displays Launch and Lab entry points', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('link', { name: /launch/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^launch$/i })).toBeVisible();
     await expect(
       page.getByRole('link', { name: /lab/i }).first()
     ).toBeVisible();
   });
 
-  test('Launch starts a guest session and opens the game', async ({ page }) => {
+  test('one Launch bootstraps Primal and opens the held board', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByRole('link', { name: /launch/i }).click();
-    await expect(page).toHaveURL(/\/game/, { timeout: 20000 });
+    const bootstrapResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/player/bootstrap',
+      { timeout: 60000 }
+    ).catch(() => null);
+    await page.getByRole('button', { name: /^launch$/i }).click();
+
+    const bootstrap = await bootstrapResponse;
+    if (!bootstrap) {
+      const launchError = await page.getByRole('alert').textContent().catch(() => '');
+      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(launchError ?? '')) {
+        test.skip(true, 'Anonymous sign-ins are disabled in the Supabase project.');
+      }
+      throw new Error(`Bootstrap request did not run: ${launchError || 'no launch error shown'}`);
+    }
+    if (!bootstrap.ok()) {
+      const body = await bootstrap.text();
+      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(body)) {
+        test.skip(true, 'Anonymous sign-ins are disabled in the Supabase project.');
+      }
+    }
+    expect(bootstrap.ok()).toBe(true);
+    expect((await bootstrap.json()).equippedSnake.dynasty).toBe('PRIMAL');
+
+    await expect(page).toHaveURL(/\/game/, { timeout: 60000 });
+    await expect(page.getByTestId('first-movement-prompt')).toHaveText(
+      'Swipe or press an arrow to move'
+    );
+    await expect(page.getByRole('heading', { name: /ready to play/i })).not.toBeVisible();
+    await expect(page.getByTestId('contracts-board')).not.toBeVisible();
+    await expect(page.getByTestId('account-upgrade-modal')).not.toBeVisible();
+
+    // Space cannot accidentally begin FTUE; a deliberate direction does.
+    await page.keyboard.press('Space');
+    await expect(page.getByTestId('first-movement-prompt')).toBeVisible();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId('first-movement-prompt')).not.toBeVisible();
   });
 });
 
 test.describe('Equipped-snake game flow', () => {
-  test('fresh guest is routed to pick a snake before playing', async ({ page }) => {
+  test('fresh direct-route guest is repaired with Primal without a mandatory Lab', async ({ page }) => {
     await seedConsent(page);
     await signInAsGuest(page);
 
-    // A brand-new account owns no snakes: the game blocks play
-    await expect(
-      page.getByText(/you need a snake before you can play/i)
-    ).toBeVisible({ timeout: 20000 });
-
-    const chooseLink = page.getByRole('link', {
-      name: /choose your snake in the lab/i,
+    await expect(page.getByText(/you need a snake before you can play/i)).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
+      timeout: 30000,
     });
-    await expect(chooseLink).toBeVisible();
+    await expect(page.getByText(/primal/i).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /choose your snake in the lab/i })).not.toBeVisible();
   });
 
-  test('with a starter equipped the pre-game screen is ready', async ({ page }) => {
+  test('the bootstrapped pre-game screen is ready', async ({ page }) => {
     await seedConsent(page);
     await signInAsGuest(page);
-    await pickStarter(page, 'CYBER');
 
     // Pre-game screen: ready state with the equipped snake and energy cost
     await expect(
@@ -88,7 +120,6 @@ test.describe('Equipped-snake game flow', () => {
   test('mode toggle offers EARN and FREE PLAY; free play starts without spending energy', async ({ page }) => {
     await seedConsent(page);
     await signInAsGuest(page);
-    await pickStarter(page, 'CYBER');
 
     // Pre-game overlay: both mode chips present; a fresh guest has energy,
     // so EARN is the default selection
@@ -120,8 +151,12 @@ test.describe('Equipped-snake game flow', () => {
     const migrationPending = page.getByText(/free play is not available yet/i);
     await expect(watermark.or(migrationPending)).toBeVisible({ timeout: 20000 });
     if (await watermark.isVisible()) {
+      // A fresh FTUE-v2 guest sees the intentionally minimal movement line;
+      // a returning player keeps the existing Ready treatment.
       await expect(
-        page.getByRole('heading', { name: /^ready!$/i })
+        page.getByTestId('first-movement-prompt').or(
+          page.getByRole('heading', { name: /^ready!$/i })
+        )
       ).toBeVisible();
 
       // The responsive HUD owns layout space above the WebGL viewport; it
@@ -150,7 +185,7 @@ test.describe('Responsive design', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    await expect(page.getByRole('link', { name: /launch/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^launch$/i })).toBeVisible();
   });
 
   test('home has no horizontal scroll on tablet', async ({ page }) => {
@@ -161,5 +196,47 @@ test.describe('Responsive design', () => {
     const clientWidth = await page.evaluate(() => document.body.clientWidth);
 
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  });
+});
+
+test.describe('Responsive consent containment', () => {
+  test('consent never overlaps Launch or game recovery actions', async ({ page }) => {
+    const expectNoOverlap = async (
+      first: ReturnType<typeof page.getByRole>,
+      second: ReturnType<typeof page.getByRole>
+    ) => {
+      const firstBox = await first.boundingBox();
+      const secondBox = await second.boundingBox();
+      expect(firstBox).not.toBeNull();
+      expect(secondBox).not.toBeNull();
+      const overlaps = !(
+        firstBox!.x + firstBox!.width <= secondBox!.x ||
+        secondBox!.x + secondBox!.width <= firstBox!.x ||
+        firstBox!.y + firstBox!.height <= secondBox!.y ||
+        secondBox!.y + secondBox!.height <= firstBox!.y
+      );
+      expect(overlaps).toBe(false);
+    };
+
+    for (const viewport of [
+      { width: 375, height: 667 },
+      { width: 667, height: 375 },
+      { width: 1280, height: 720 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+      const banner = page.getByRole('region', { name: /cookie consent/i });
+      const launch = page.getByRole('button', { name: /^launch$/i });
+      await expect(banner).toBeVisible();
+      await expect(launch).toBeVisible();
+      await expectNoOverlap(banner, launch);
+
+      await page.goto('/game');
+      const gameBanner = page.getByRole('region', { name: /cookie consent/i });
+      const signIn = page.getByRole('link', { name: /^sign in$/i }).first();
+      await expect(gameBanner).toBeVisible();
+      await expect(signIn).toBeVisible();
+      await expectNoOverlap(gameBanner, signIn);
+    }
   });
 });

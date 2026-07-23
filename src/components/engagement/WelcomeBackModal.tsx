@@ -64,7 +64,12 @@ export function WelcomeBackModal({
   const durationText = formatOfflineDuration(progress.elapsedMs);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="offline-rewards-title"
+    >
       <div
         className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4"
         style={{ '--glow': '#22d3ee' } as React.CSSProperties}
@@ -80,7 +85,7 @@ export function WelcomeBackModal({
               className="mx-auto mb-3 w-24 h-auto drop-shadow-[0_0_24px_rgba(34,211,238,0.45)]"
             />
           </div>
-          <h2 className="heading-display text-2xl text-venom-orange text-glow-orange mb-2">
+          <h2 id="offline-rewards-title" className="heading-display text-2xl text-venom-orange text-glow-orange mb-2">
             Welcome Back!
           </h2>
           <p className="text-beige/70 font-body">

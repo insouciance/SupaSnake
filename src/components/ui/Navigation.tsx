@@ -16,6 +16,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { AccountChip } from '@/components/ui/AccountChip';
+import { NotificationBadge } from '@/components/ui/NotificationBadge';
+import { NotificationCenter } from '@/components/ui/NotificationCenter';
+import {
+  destinationBadge,
+  useNotificationStore,
+  type NotificationDestination,
+} from '@/lib/stores/notificationStore';
 import {
   IconHome,
   IconFlask,
@@ -31,16 +38,18 @@ interface RailNode {
   href: string;
   label: string;
   Icon: (p: IconProps) => React.JSX.Element;
+  notificationDestination?: NotificationDestination;
 }
 
 export function Navigation() {
   const pathname = usePathname();
+  const notifications = useNotificationStore((state) => state.notifications);
 
   const nodes: RailNode[] = [
     ...(pathname === '/'
       ? []
       : [{ href: '/', label: 'Home', Icon: IconHome }]),
-    { href: '/lab', label: 'Lab', Icon: IconFlask },
+    { href: '/lab', label: 'Lab', Icon: IconFlask, notificationDestination: 'lab' },
     ...(GAME_CONFIG.features.leaderboards
       ? [{ href: '/leaderboard', label: 'Leaderboard', Icon: IconTrophy }]
       : []),
@@ -48,15 +57,18 @@ export function Navigation() {
       ? [{ href: '/clan', label: 'Clan', Icon: IconShield }]
       : []),
     { href: '/shop', label: 'Shop', Icon: IconCart },
-    { href: '/profile', label: 'Chronicle', Icon: IconMedal },
+    { href: '/profile', label: 'Chronicle', Icon: IconMedal, notificationDestination: 'identity' },
     { href: '/settings', label: 'Settings', Icon: IconGear },
   ];
 
   return (
     <nav aria-label="Primary">
       <div className="fixed z-50 flex flex-row sm:flex-col items-center gap-1.5 sm:gap-2 bottom-[calc(0.625rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 sm:bottom-auto sm:left-auto sm:translate-x-0 sm:right-3 sm:top-1/2 sm:-translate-y-1/2">
-        {nodes.map(({ href, label, Icon }, i) => {
+        {nodes.map(({ href, label, Icon, notificationDestination }, i) => {
           const isActive = pathname === href;
+          const badge = notificationDestination
+            ? destinationBadge(notifications, notificationDestination)
+            : { kind: 'hidden' as const };
           return (
             <Link
               key={href}
@@ -71,6 +83,12 @@ export function Navigation() {
               style={{ animationDelay: `${i * 60}ms` }}
             >
               <Icon size={19} />
+              <NotificationBadge
+                kind={badge.kind}
+                count={badge.count}
+                label={`New ${label} activity`}
+                className="absolute -right-1 -top-1"
+              />
               {/* Label flyout - desktop only, slides out on hover/focus */}
               <span className="pointer-events-none absolute right-full top-1/2 -translate-y-1/2 mr-3 hidden sm:block whitespace-nowrap rounded-arcade border border-scale-blue-light/50 bg-void-deep/90 px-2.5 py-1 font-display text-[11px] uppercase tracking-wide-arcade text-bone-white opacity-0 translate-x-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0 group-focus-visible:opacity-100 group-focus-visible:translate-x-0">
                 {label}
@@ -79,11 +97,18 @@ export function Navigation() {
           );
         })}
 
+        <div
+          className="animate-fade-up"
+          style={{ animationDelay: `${nodes.length * 60}ms` }}
+        >
+          <NotificationCenter />
+        </div>
+
         {/* You node - identity chip (guest save-progress / account menu).
             On the mobile bottom rail the chip's popover must open upward. */}
         <div
           className="animate-fade-up sm:mt-1 max-sm:[&_[data-testid=account-chip-menu]]:top-auto max-sm:[&_[data-testid=account-chip-menu]]:bottom-full max-sm:[&_[data-testid=account-chip-menu]]:mt-0 max-sm:[&_[data-testid=account-chip-menu]]:mb-2"
-          style={{ animationDelay: `${nodes.length * 60}ms` }}
+          style={{ animationDelay: `${(nodes.length + 1) * 60}ms` }}
         >
           <AccountChip />
         </div>

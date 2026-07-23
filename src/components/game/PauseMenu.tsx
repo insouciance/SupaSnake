@@ -5,13 +5,14 @@
  * Void surface + dynasty glow, on the shared panel system.
  */
 
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import { applyOutcomeWithMutations } from '@/shared/game/rulesets';
 import { isMutationId, type MutationPick } from '@/shared/game/mutations';
 import type { GenePick } from '@/shared/game/genes';
 import { IconDna } from '@/components/ui/icons';
+import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 
 interface PauseMenuProps {
   dynasty: DynastyId;
@@ -39,6 +40,8 @@ export function PauseMenu({
   onResume,
   onQuit,
 }: PauseMenuProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocusTrap(dialogRef);
   const theme = themeManager.getTheme(dynasty);
   const legacyPicks = heldMutations.filter(
     (mutation): mutation is MutationPick => isMutationId(mutation.id)
@@ -57,13 +60,22 @@ export function PauseMenu({
   );
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pause-menu-title"
+      aria-describedby="pause-menu-help"
+      tabIndex={-1}
+      className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4"
+    >
       <div
         className="panel-glow p-8 min-w-[300px] max-w-full animate-pop-in"
         style={{ '--glow': theme.primary } as CSSProperties}
       >
         {/* Header */}
         <h2
+          id="pause-menu-title"
           className="heading-display text-3xl text-center mb-6 text-glow"
           style={{ color: theme.primary }}
         >
@@ -100,22 +112,24 @@ export function PauseMenu({
         {/* Buttons */}
         <div className="space-y-3">
           <button
+            type="button"
             onClick={onResume}
-            className="btn-go w-full py-4 px-6 text-lg min-h-[44px]"
+            className="btn-go w-full py-4 px-6 text-lg min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]"
           >
             Plan Next Move
           </button>
 
           <button
+            type="button"
             onClick={onQuit}
-            className="btn-stop w-full py-3 px-6 min-h-[44px]"
+            className="btn-stop w-full py-3 px-6 min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]"
           >
             Quit to Menu
           </button>
         </div>
 
         {/* Controls hint */}
-        <div className="mt-6 space-y-2 text-center font-body text-sm text-beige/60">
+        <div id="pause-menu-help" className="mt-6 space-y-2 text-center font-body text-sm text-beige/60">
           <p>Your next direction releases the board. Nothing moves before then.</p>
           <p>
             <kbd className="px-2 py-1 bg-scale-blue border border-scale-blue-light/60 rounded-arcade text-xs text-bone-white">ESC</kbd> or{' '}

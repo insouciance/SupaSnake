@@ -16,6 +16,11 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import { IconUser, IconGear } from '@/components/ui/icons';
+import { NotificationBadge } from '@/components/ui/NotificationBadge';
+import {
+  destinationBadge,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 interface AccountChipProps {
   className?: string;
@@ -26,6 +31,30 @@ export function AccountChip({ className = '' }: AccountChipProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const notifications = useNotificationStore((state) => state.notifications);
+  const clearDestination = useNotificationStore((state) => state.clearDestination);
+  const accountBadge = destinationBadge(notifications, 'account');
+
+  useEffect(() => {
+    if (user && !isAnonymous) clearDestination('account');
+  }, [user, isAnonymous, clearDestination]);
+
+  useEffect(() => {
+    if (!isAnonymous) return;
+    const openFromNotification = () => {
+      if (window.location.hash === '#save-progress') setShowUpgrade(true);
+    };
+    openFromNotification();
+    window.addEventListener('hashchange', openFromNotification);
+    return () => window.removeEventListener('hashchange', openFromNotification);
+  }, [isAnonymous]);
+
+  const closeUpgrade = () => {
+    setShowUpgrade(false);
+    if (window.location.hash === '#save-progress') {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+  };
 
   // Close the popover on outside taps
   useEffect(() => {
@@ -84,15 +113,17 @@ export function AccountChip({ className = '' }: AccountChipProps) {
     );
   }
 
-  // Guest (anonymous) - identity + save-progress affordance
+  // Guest identity is always visible. Save-progress emphasis is notification-
+  // driven only after gameplay has established value; the chip remains an
+  // explicit, voluntary way to open account creation at any time.
   if (isAnonymous) {
     return (
       <div ref={rootRef} className={`relative ${className}`}>
         <button
           onClick={() => setShowUpgrade(true)}
           data-testid="account-chip"
-          aria-label="Playing as guest - save progress"
-          className="flex items-center gap-2 px-2 py-1 min-h-[36px] rounded-arcade border border-scale-blue-light/60 bg-scale-blue/50 hover:border-venom-orange/60 transition-all"
+          aria-label={accountBadge.kind === 'hidden' ? 'Playing as guest' : 'Playing as guest - save progress available'}
+          className="relative flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-arcade border border-scale-blue-light/60 bg-scale-blue/50 hover:border-venom-orange/60 transition-all"
         >
           <span className="flex items-center justify-center w-6 h-6 rounded-arcade border border-scale-blue-light/70 bg-void/70 text-beige">
             <IconUser size={13} />
@@ -101,14 +132,22 @@ export function AccountChip({ className = '' }: AccountChipProps) {
             <span className="font-display text-[10px] tracking-wide-arcade text-beige/80 uppercase">
               Guest
             </span>
-            <span className="hidden sm:block font-body text-[10px] font-semibold text-venom-orange">
-              Save progress
-            </span>
+            {accountBadge.kind !== 'hidden' && (
+              <span className="hidden sm:block font-body text-[10px] font-semibold text-venom-orange">
+                Save progress
+              </span>
+            )}
           </span>
+          <NotificationBadge
+            kind={accountBadge.kind}
+            count={accountBadge.count}
+            label="Save progress available"
+            className="absolute -right-1 -top-1"
+          />
         </button>
         <AccountUpgradeModal
           isOpen={showUpgrade}
-          onClose={() => setShowUpgrade(false)}
+          onClose={closeUpgrade}
         />
       </div>
     );

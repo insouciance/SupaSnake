@@ -21,6 +21,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { AnalyticsProvider } from '@/components/analytics/AnalyticsProvider';
 import { ConsentBanner } from '@/components/legal/ConsentBanner';
 import { Footer } from '@/components/ui/Footer';
+import { NotificationProvider } from '@/components/ui/NotificationProvider';
 
 export const metadata: Metadata = {
   title: 'SupaSnake - Collection RPG',
@@ -46,13 +47,15 @@ export default function RootLayout({
       <body>
         <AuthProvider>
           <ToastProvider>
-            <OfflineProgressProvider>
-              <AnalyticsProvider>
-                {children}
-                <Footer />
-                <ConsentBanner />
-              </AnalyticsProvider>
-            </OfflineProgressProvider>
+            <NotificationProvider>
+              <OfflineProgressProvider>
+                <AnalyticsProvider>
+                  {children}
+                  <Footer />
+                  <ConsentBanner />
+                </AnalyticsProvider>
+              </OfflineProgressProvider>
+            </NotificationProvider>
           </ToastProvider>
         </AuthProvider>
       </body>

@@ -100,7 +100,7 @@ export default function BreedPage() {
       return {
         snake,
         variant,
-        dynastyName: snake.dynastyName ?? 'CYBER',
+        dynastyName: snake.dynastyName ?? 'PRIMAL',
         dynastyId: variant.dynastyId,
       };
     },
@@ -125,8 +125,8 @@ export default function BreedPage() {
     [parent1, parent2, dnaBalance]
   );
 
-  const theme1 = useDynastyTheme(parent1?.dynastyName ?? 'CYBER');
-  const theme2 = useDynastyTheme(parent2?.dynastyName ?? parent1?.dynastyName ?? 'CYBER');
+  const theme1 = useDynastyTheme(parent1?.dynastyName ?? 'PRIMAL');
+  const theme2 = useDynastyTheme(parent2?.dynastyName ?? parent1?.dynastyName ?? 'PRIMAL');
 
   // Picker entries: all owned snakes. The feature gate determines whether
   // the second parent must share the anchor's dynasty; a snake can never be
@@ -159,7 +159,7 @@ export default function BreedPage() {
         return {
           snake,
           variant,
-          dynastyName: snake.dynastyName ?? 'CYBER',
+          dynastyName: snake.dynastyName ?? 'PRIMAL',
           disabled,
           disabledReason,
         };
@@ -632,7 +632,7 @@ export default function BreedPage() {
                 {history.map((entry) => {
                   const childDynasty =
                     entry.child?.variantName?.split(' ')[0] ?? '';
-                  const theme = dynastyThemes[childDynasty] ?? dynastyThemes.CYBER;
+                  const theme = dynastyThemes[childDynasty] ?? dynastyThemes.PRIMAL;
                   return (
                     <li
                       key={entry.id}

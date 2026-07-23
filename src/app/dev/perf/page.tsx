@@ -11,7 +11,7 @@
  * Query flags:
  * - ?mode=legacy    render the pre-rework pipeline (one mesh per segment,
  *                   lerp-chase interpolation) for before/after comparison
- * - ?dynasty=CYBER|PRIMAL|COSMIC   theme under test (default CYBER)
+ * - ?dynasty=CYBER|PRIMAL|COSMIC   theme under test (default PRIMAL)
  * - ?mobile=1       mobile profile (dpr cap 1.5, no bloom)
  * - ?aim=deadeye|gridlock|pathline|firefly   mount the aim telegraph
  *
@@ -167,7 +167,7 @@ export default function PerfHarnessPage() {
     const aimParam = params.get('aim');
     setConfig({
       mode: params.get('mode') === 'legacy' ? 'legacy' : 'instanced',
-      dynasty: isDynastyId(dynastyParam) ? dynastyParam : 'CYBER',
+      dynasty: isDynastyId(dynastyParam) ? dynastyParam : 'PRIMAL',
       mobile: params.get('mobile') === '1',
       aim: isAimSystemId(aimParam) ? aimParam : null,
     });

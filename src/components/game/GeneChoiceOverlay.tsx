@@ -10,6 +10,7 @@ import {
 } from '@/shared/game/strains';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { CHOICE_INPUT_LOCK_MS } from '@/components/game/MutationChoiceOverlay';
+import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 
 interface GeneChoiceOverlayProps {
   options: [GeneId, GeneId];
@@ -64,6 +65,8 @@ export function GeneChoiceOverlay({
 }: GeneChoiceOverlayProps) {
   const [locked, setLocked] = useState(true);
   const lockedRef = useRef(true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocusTrap(dialogRef, !locked);
   const discovered = useMemo(
     () => new Set(discoveredSplices),
     [discoveredSplices]
@@ -95,6 +98,11 @@ export function GeneChoiceOverlay({
 
   return (
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gene-choice-title"
+      tabIndex={-1}
       className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 p-4 backdrop-blur-sm"
       data-testid="gene-choice-overlay"
     >
@@ -102,7 +110,7 @@ export function GeneChoiceOverlay({
         className="panel-elevated w-full max-w-lg p-6 animate-pop-in"
         style={{ '--glow': '#a855f7' } as CSSProperties}
       >
-        <h2 className="heading-display text-center text-2xl text-[#c4b5fd] text-glow">
+        <h2 id="gene-choice-title" className="heading-display text-center text-2xl text-[#c4b5fd] text-glow">
           {source === 'infuse' ? 'Infused Gene' : 'Gene Offer'}
         </h2>
         <p className="mb-5 text-center text-sm font-body text-beige/70">
@@ -120,6 +128,7 @@ export function GeneChoiceOverlay({
                 type="button"
                 onClick={() => onChoose(index as 0 | 1)}
                 disabled={locked}
+                aria-keyshortcuts={`${index + 1}`}
                 data-testid={`gene-option-${index}`}
                 className={`min-h-[44px] rounded-arcade border bg-void/60 p-4 text-left transition-all ${
                   locked
@@ -161,8 +170,10 @@ export function GeneChoiceOverlay({
         <button
           type="button"
           onClick={() => !locked && onDecline()}
+          disabled={locked}
+          aria-keyshortcuts="Escape"
           data-testid="gene-decline"
-          className="mx-auto mt-4 block min-h-[44px] text-sm font-body text-beige/60 underline transition-colors hover:text-bone-white"
+          className="mx-auto mt-4 block min-h-[44px] text-sm font-body text-beige/60 underline transition-colors hover:text-bone-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]"
         >
           Take neither (Esc)
         </button>

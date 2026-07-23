@@ -32,7 +32,7 @@ export function CollectionLog({
       </p>
       <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
         {entries.map((entry) => {
-          const theme = dynastyThemes[entry.dynasty] ?? dynastyThemes.CYBER;
+          const theme = dynastyThemes[entry.dynasty] ?? dynastyThemes.PRIMAL;
           const discovered = entry.acquiredAt !== null;
           return (
             <div

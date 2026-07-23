@@ -23,6 +23,7 @@ import {
 } from '@/components/chronicle/AnalystSections';
 import { IconMedal, IconReset } from '@/components/ui/icons';
 import type { ChroniclePayload } from '@/lib/chronicle/types';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 interface AnalystState {
   digest: AnalystArtifact | null;
@@ -35,12 +36,19 @@ interface AnalystState {
 
 export default function ProfilePage() {
   const { user, getToken } = useAuth();
+  const clearDestination = useNotificationStore((state) => state.clearDestination);
   const [payload, setPayload] = useState<ChroniclePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [earlyCareerOpen, setEarlyCareerOpen] = useState(false);
   const [analyst, setAnalyst] = useState<AnalystState | null>(null);
+
+  // Reaching the Chronicle is the intentional discovery action represented
+  // by the identity badge. Claiming a handle remains optional inside it.
+  useEffect(() => {
+    clearDestination('identity');
+  }, [clearDestination]);
 
   // Analyst artifacts (Identity v1 I4): every failure renders nothing —
   // the Chronicle never waits on, or breaks over, the Analyst.

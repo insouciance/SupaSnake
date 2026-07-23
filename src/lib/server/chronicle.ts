@@ -205,7 +205,7 @@ async function buildCollectionLog(
     return {
       variantId: variant.id as string,
       name: variant.name as string,
-      dynasty: dynasty?.name ?? 'CYBER',
+      dynasty: dynasty?.name ?? 'PRIMAL',
       rarity: (variant.rarity as string) ?? 'common',
       sortOrder: (variant.sort_order as number) ?? 0,
       acquiredAt: acquisition?.acquiredAt ?? null,

@@ -33,8 +33,8 @@ export default function SignupPage() {
   // "registered user -> /game" redirect below doesn't yank away the
   // success screen the moment isAnonymous flips to false.
   const [upgradedHere, setUpgradedHere] = useState(false);
-  // Latched when a fresh auto-confirmed signup completes on this page:
-  // that flow routes to "/" (home hosts the starter-selection FTUE), and
+  // Latched when a fresh auto-confirmed signup completes on this page. That
+  // flow routes to Home so the same one-click bootstrap path is authoritative;
   // the /game redirect below must not race it.
   const [signedUpHere, setSignedUpHere] = useState(false);
 
@@ -125,8 +125,8 @@ export default function SignupPage() {
             <LoginForm
               mode="signup"
               onSuccess={() => {
-                // New account is live (auto-confirm): land on home, where the
-                // starter-selection FTUE opens for brand-new players.
+                // New account is live (auto-confirm): land on Home, where
+                // Launch bootstraps and equips PRIMAL before gameplay.
                 setSignedUpHere(true);
                 router.push('/');
               }}
