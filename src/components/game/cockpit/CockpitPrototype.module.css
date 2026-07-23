@@ -1,4 +1,5 @@
-.root {
+.root,
+.liveRoot {
   --void: #030609;
   --graphite-0: #070c12;
   --graphite-1: #0b121a;
@@ -12,14 +13,40 @@
   --danger-rose: #fb7185;
   --bone: #edf5fb;
   --muted: #8fa3b6;
-  position: fixed;
-  inset: 0;
-  z-index: 50;
   isolation: isolate;
   overflow: hidden;
   color: var(--bone);
-  background: var(--void);
   font-family: var(--font-body), Rajdhani, sans-serif;
+}
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--void);
+}
+
+.liveRoot {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  isolation: auto;
+  background: transparent;
+}
+
+.liveRoot .cockpitShell {
+  z-index: auto;
+}
+
+.decisionFixtureRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  overflow: hidden;
+  background: var(--void, #030609);
 }
 
 .cockpitShell {
@@ -212,6 +239,21 @@
     inset 0 0 16px color-mix(in srgb, var(--dynasty-primary) 10%, transparent);
 }
 
+.geneSocketSpent {
+  opacity: 0.42;
+  filter: saturate(0.35);
+}
+
+.geneSocketSpent::after {
+  content: '';
+  position: absolute;
+  width: 130%;
+  height: 1px;
+  transform: rotate(-45deg);
+  background: rgba(237, 245, 251, 0.64);
+  box-shadow: 0 0 5px rgba(237, 245, 251, 0.25);
+}
+
 .geneSocket svg {
   width: 66%;
   height: 66%;
@@ -344,6 +386,24 @@
   box-shadow: 0 0 5px color-mix(in srgb, var(--strain) 35%, transparent);
 }
 
+.strainSuppressed {
+  opacity: 0.34;
+  filter: grayscale(0.8);
+}
+
+.strainSuppressed .strainIcon {
+  text-decoration: line-through;
+}
+
+.systemDormant {
+  opacity: 0.3;
+  filter: saturate(0.2);
+}
+
+.telemetryDormant {
+  opacity: 0.28;
+}
+
 .modeInstrument {
   grid-area: mode;
   display: flex;
@@ -411,24 +471,163 @@
 
 .root[data-state='ready'] .statusRail,
 .root[data-state='portal'] .statusRail,
-.root[data-state='apex'] .statusRail {
+.root[data-state='apex'] .statusRail,
+.liveRoot[data-state='ready'] .statusRail,
+.liveRoot[data-state='held'] .statusRail,
+.liveRoot[data-state='portal'] .statusRail,
+.liveRoot[data-state='apex'] .statusRail {
   color: var(--bone);
 }
 
-.root[data-state='portal'] .statusMarker {
+.root[data-state='portal'] .statusMarker,
+.liveRoot[data-state='portal'] .statusMarker {
   background: var(--system-cyan);
 }
 
-.root[data-state='apex'] .statusMarker {
+.root[data-state='apex'] .statusMarker,
+.liveRoot[data-state='apex'] .statusMarker {
   background: var(--secure-gold);
 }
 
+.liveRoot[data-state='held'] .statusMarker {
+  background: var(--system-cyan);
+}
+
 .controls {
+  position: relative;
+  z-index: 10;
   grid-area: controls;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 7px;
+}
+
+.controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.controlHidden {
+  visibility: hidden;
+}
+
+.inputDock {
+  position: relative;
+  z-index: 10;
+  grid-area: genes;
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+}
+
+.liveRoot[data-input='dpad'] .geneRack {
+  display: none;
+}
+
+.liveRoot[data-input='dpad'] .inputDock {
+  display: grid;
+}
+
+.eventCallout {
+  position: relative;
+  z-index: 2;
+  grid-area: status;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+}
+
+.decisionDock {
+  position: relative;
+  z-index: 12;
+  grid-area: decision;
+  min-width: 0;
+  min-height: 0;
+  container-name: decision-dock;
+  container-type: size;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dynasty-primary) 34%, rgba(126, 164, 192, 0.24));
+  clip-path: polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  background: linear-gradient(155deg, rgba(15, 26, 36, 0.97), rgba(3, 7, 11, 0.99));
+  box-shadow:
+    inset 0 1px 0 rgba(235, 247, 255, 0.06),
+    0 18px 42px rgba(0, 0, 0, 0.34);
+}
+
+.decisionDock > :global([role='dialog']) {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  display: flex !important;
+  width: auto !important;
+  height: auto !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  overflow: auto !important;
+  padding: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  scrollbar-color: color-mix(in srgb, var(--dynasty-primary) 52%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.decisionDock > :global([role='dialog']) > :global(.panel-elevated),
+.decisionDock > :global([role='dialog']) > :global(.panel-glow) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: max-content;
+  min-height: 100%;
+  margin: 0 !important;
+  padding: clamp(10px, 1.25vw, 16px) !important;
+  overflow: visible;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.decisionDock :global(h2) {
+  font-size: clamp(18px, 1.5vw, 23px) !important;
+  line-height: 1.08 !important;
+}
+
+.decisionDock :global(p),
+.decisionDock :global(button) {
+  font-size: 14px;
+}
+
+.decisionDock :global(button) {
+  min-height: 44px;
+}
+
+.decisionDock :global(kbd),
+.decisionDock :global([class*='text-[10px]']) {
+  font-size: 14px !important;
+}
+
+.decisionDock :global([data-testid='gene-choice-overlay']) > :global(.panel-elevated) > :global(div),
+.decisionDock :global([data-testid='mutation-choice-overlay']) > :global(.panel-elevated) > :global(div),
+.decisionDock :global([data-testid='portal-choice-overlay']) > :global(.panel-elevated) > :global(div) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.liveRoot[data-decision='true'] .composition {
+  --cockpit-rail: clamp(210px, 18vw, 260px);
+  grid-template-areas:
+    'score arena decision'
+    'genes arena decision'
+    'mode status decision';
+}
+
+.liveRoot[data-decision='true'] .dnaInstrument,
+.liveRoot[data-decision='true'] .systemsRack,
+.liveRoot[data-decision='true'] .controls {
+  display: none;
 }
 
 .controls button {
@@ -890,6 +1089,26 @@
     height: 44px;
   }
 
+  .liveRoot[data-input='dpad'] .composition {
+    --cockpit-rail: clamp(140px, 17vw, 154px);
+  }
+
+  .liveRoot[data-input='dpad'] .geneRack {
+    display: none;
+  }
+
+  .liveRoot[data-input='dpad'] .inputDock {
+    display: grid;
+  }
+
+  .liveRoot[data-decision='true'] .composition {
+    --cockpit-rail: clamp(188px, 23vw, 210px);
+    grid-template-areas:
+      'score arena decision'
+      'genes arena decision'
+      'mode arena decision';
+  }
+
 }
 
 @media (max-aspect-ratio: 4 / 5) {
@@ -1045,6 +1264,56 @@
     height: 44px;
   }
 
+  .liveRoot[data-input='dpad'] .composition {
+    grid-template-rows: 58px 44px minmax(0, 1fr) 140px;
+    grid-template-areas:
+      'score dna controls'
+      'status status status'
+      'arena arena arena'
+      'input input input';
+  }
+
+  .liveRoot[data-input='dpad'] .geneRack,
+  .liveRoot[data-input='dpad'] .systemsRack,
+  .liveRoot[data-input='dpad'] .modeInstrument {
+    display: none;
+  }
+
+  .liveRoot[data-input='dpad'] .inputDock {
+    display: grid;
+    grid-area: input;
+  }
+
+  .liveRoot[data-decision='true'] .composition {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 98px;
+    grid-template-rows: 58px 44px minmax(0, 1fr) 184px;
+    grid-template-areas:
+      'score dna controls'
+      'status status status'
+      'arena arena arena'
+      'decision decision decision';
+  }
+
+  .liveRoot[data-decision='true'] .geneRack,
+  .liveRoot[data-decision='true'] .systemsRack,
+  .liveRoot[data-decision='true'] .modeInstrument {
+    display: none;
+  }
+
+  .liveRoot[data-decision='true'] .dnaInstrument,
+  .liveRoot[data-decision='true'] .controls {
+    display: flex;
+  }
+
+  .decisionDock > :global([role='dialog']) > :global(.panel-elevated),
+  .decisionDock > :global([role='dialog']) > :global(.panel-glow) {
+    padding: 9px !important;
+  }
+
+  .decisionDock :global(h2) {
+    font-size: 18px !important;
+  }
+
 }
 
 @media (max-width: 350px) and (orientation: portrait) {
@@ -1111,6 +1380,213 @@
 
   .statusRail {
     font-size: 14px;
+  }
+
+  .liveRoot[data-input='dpad'] .composition {
+    grid-template-rows: 54px 42px minmax(0, 1fr) 140px;
+  }
+
+  .liveRoot[data-decision='true'] .composition {
+    grid-template-rows: 54px 42px minmax(0, 1fr) 178px;
+  }
+}
+
+/* Portrait decision mode uses the space previously occupied by the lower
+   telemetry deck. Compress the established dialogs into a readable console
+   instead of forcing the player to scroll past the action buttons. */
+@container decision-dock (max-height: 230px) {
+  .decisionDock > :global([role='dialog']) > :global(.panel-elevated),
+  .decisionDock > :global([role='dialog']) > :global(.panel-glow) {
+    min-height: 100% !important;
+    height: 100%;
+    padding: 6px !important;
+  }
+
+  .decisionDock :global(h2) {
+    margin: 0 !important;
+    font-size: 17px !important;
+    line-height: 24px !important;
+  }
+
+  .decisionDock :global(p) {
+    font-size: 14px !important;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) {
+    display: grid;
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+    grid-template-rows: 24px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) > :global(h2) {
+    grid-column: 1 / -1;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) > :global(div:nth-child(2)) {
+    min-width: 0;
+    margin: 0 !important;
+    padding: 6px !important;
+    overflow: hidden;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) > :global(div:nth-child(2)) > :global(div) {
+    gap: 4px;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) > :global(div:nth-child(3)) {
+    display: grid;
+    min-width: 0;
+    align-content: stretch;
+    gap: 6px;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) > :global(div:nth-child(3)) > :global(button) {
+    margin: 0 !important;
+    padding: 5px 7px !important;
+    font-size: 14px !important;
+    line-height: 1.05;
+  }
+
+  .decisionDock :global([data-testid='pause-menu']) > :global(.panel-glow) > :global(div:nth-child(4)) {
+    display: none;
+  }
+
+  .decisionDock :global([data-testid='gene-choice-overlay']) > :global(.panel-elevated),
+  .decisionDock :global([data-testid='mutation-choice-overlay']) > :global(.panel-elevated) {
+    display: grid;
+    grid-template-rows: 24px minmax(0, 1fr) 44px;
+    gap: 4px;
+  }
+
+  .decisionDock :global([data-testid='gene-choice-overlay']) > :global(.panel-elevated) > :global(p),
+  .decisionDock :global([data-testid='mutation-choice-overlay']) > :global(.panel-elevated) > :global(p) {
+    display: none;
+  }
+
+  .decisionDock :global([data-testid='gene-choice-overlay']) > :global(.panel-elevated) > :global(div),
+  .decisionDock :global([data-testid='mutation-choice-overlay']) > :global(.panel-elevated) > :global(div) {
+    display: grid;
+    grid-template-columns: none !important;
+    grid-auto-columns: minmax(82%, 1fr);
+    grid-auto-flow: column;
+    gap: 6px !important;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+  }
+
+  .decisionDock :global([data-testid^='gene-option-']),
+  .decisionDock :global([data-testid^='mutation-option-']) {
+    min-width: 0;
+    height: 100%;
+    padding: 6px !important;
+    overflow: hidden;
+    scroll-snap-align: center;
+  }
+
+  .decisionDock :global([data-testid^='gene-option-']) > :global(div:first-child),
+  .decisionDock :global([data-testid^='mutation-option-']) > :global(div:first-child) {
+    margin: 0 0 3px !important;
+  }
+
+  .decisionDock :global([data-testid^='gene-option-']) > :global(div:first-child) > :global(span:last-child),
+  .decisionDock :global([data-testid^='mutation-option-']) > :global(div:first-child) > :global(span:last-child),
+  .decisionDock :global([data-testid^='gene-option-']) > :global(div:nth-child(2)),
+  .decisionDock :global([data-testid^='gene-option-']) > :global([class~='border-t']) {
+    display: none;
+  }
+
+  .decisionDock :global([data-testid^='gene-option-']) > :global(p),
+  .decisionDock :global([data-testid^='mutation-option-']) > :global(p) {
+    display: -webkit-box;
+    margin-top: 2px !important;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.05 !important;
+  }
+
+  .decisionDock :global([data-testid='gene-decline']),
+  .decisionDock :global([data-testid='mutation-decline']) {
+    margin: 0 !important;
+  }
+
+  .decisionDock :global([data-testid='portal-choice-overlay']) > :global(.panel-elevated) {
+    display: grid;
+    grid-template-rows: 24px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .decisionDock :global([data-testid='portal-choice-overlay']) > :global(.panel-elevated) > :global(p) {
+    display: none;
+  }
+
+  .decisionDock :global([data-testid='portal-choice-overlay']) > :global(.panel-elevated) > :global(div) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+    min-height: 0;
+  }
+
+  .decisionDock :global([data-testid^='portal-']) {
+    min-width: 0;
+    padding: 6px !important;
+    overflow: hidden;
+  }
+
+  .decisionDock :global([data-testid^='portal-']) > :global(p) {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.05 !important;
+  }
+
+  .decisionDock :global([data-testid^='portal-']) > :global(p:last-child) {
+    display: none;
+  }
+
+  .decisionDock :global([data-testid='surge-choice-overlay']) > :global(.panel-elevated) {
+    display: grid;
+    grid-template-rows: 24px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .decisionDock :global([data-testid='surge-choice-overlay']) > :global(.panel-elevated) > :global(p) {
+    display: none;
+  }
+
+  .decisionDock :global([data-testid='surge-choice-overlay']) > :global(.panel-elevated) > :global(div) {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow-x: auto;
+  }
+}
+
+/* A top-anchored legal banner can leave only ~450px on compact phones. In a
+   frozen decision, temporarily give the lower console the normal telemetry
+   rows and protect a useful arena instead of crushing the board. */
+@container (max-width: 500px) and (max-height: 500px) {
+  .liveRoot[data-decision='true'] .composition {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 184px;
+    grid-template-areas:
+      'arena'
+      'decision';
+  }
+
+  .liveRoot[data-decision='true'] .scoreInstrument,
+  .liveRoot[data-decision='true'] .dnaInstrument,
+  .liveRoot[data-decision='true'] .controls,
+  .liveRoot[data-decision='true'] .statusRail,
+  .liveRoot[data-decision='true'] .eventCallout {
+    display: none;
   }
 }
 

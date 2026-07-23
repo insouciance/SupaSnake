@@ -11,10 +11,16 @@ interface ExpressionFlourishProps {
   strain: StrainId;
   tier: 2 | 3;
   onDone?: () => void;
+  presentation?: 'overlay' | 'cockpit';
 }
 
 /** A single slow wash (well below the 2.5Hz photosensitivity budget). */
-export function ExpressionFlourish({ strain, tier, onDone }: ExpressionFlourishProps) {
+export function ExpressionFlourish({
+  strain,
+  tier,
+  onDone,
+  presentation = 'overlay',
+}: ExpressionFlourishProps) {
   const [reducedMotion, setReducedMotion] = useState(false);
   const def = STRAINS[strain];
   const name = tier === 3
@@ -32,6 +38,28 @@ export function ExpressionFlourish({ strain, tier, onDone }: ExpressionFlourishP
     );
     return () => window.clearTimeout(timer);
   }, [onDone]);
+
+  if (presentation === 'cockpit') {
+    return (
+      <div
+        className={`flex h-full w-full items-center justify-center border-y bg-void-deep/76 px-3 text-center ${
+          reducedMotion ? '' : 'animate-pop-in'
+        }`}
+        data-testid="expression-flourish"
+        role="status"
+        aria-live="polite"
+        style={{ borderColor: `${def.color}70`, boxShadow: `inset 0 0 22px ${def.color}18` }}
+      >
+        <p className="truncate font-body text-sm font-bold uppercase tracking-[0.08em] text-bone-white">
+          <span style={{ color: def.color }}>
+            {tier === 3 ? `${def.name} Apex` : `${def.name} Expression`}
+          </span>
+          <span className="mx-2 text-beige/45">·</span>
+          {name}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -133,7 +133,14 @@ try {
 
     let baseline = null;
     for (const variant of VARIANTS) {
-      await page.goto(`${BASE_URL}/dev/cockpit?${variant}`, { waitUntil: 'networkidle' });
+      await page.goto(`${BASE_URL}/dev/cockpit?${variant}`, { waitUntil: 'domcontentloaded' });
+      await page.locator('[data-testid="cockpit-prototype"]').waitFor({ state: 'visible' });
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+      });
       await page.locator('[data-testid="cockpit-board"]').waitFor({ state: 'visible' });
       const metrics = await readMetrics(page);
       const prefix = `${width}x${height} (${variant})`;

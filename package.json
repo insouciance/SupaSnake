@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "verify:cockpit-prototype": "node scripts/verify-cockpit-prototype.mjs",
     "verify:cockpit-webgl": "node scripts/verify-cockpit-webgl.mjs",
+    "verify:cockpit-decisions": "node scripts/verify-cockpit-decisions.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
     "test": "jest",
     "test:watch": "jest --watch",

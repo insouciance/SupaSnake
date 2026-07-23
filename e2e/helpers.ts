@@ -76,9 +76,11 @@ export async function signInAsGuest(page: Page): Promise<void> {
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
   }
 
-  // Authenticated /game always renders the HUD ("Score"); a failed
-  // anonymous sign-in lands on the sign-in prompt instead.
-  const authedMarker = page.getByText(/^score$/i);
+  // Authenticated /game renders either the HUD or the ready-to-play setup
+  // surface. The setup surface intentionally obscures the pre-run HUD, so it
+  // is the stronger marker on slower production/WebGL boots.
+  const authedMarker = page.getByText(/^score$/i)
+    .or(page.getByRole('heading', { name: /ready to play/i }));
   const signInPrompt = page.getByText(/sign in to play and save/i);
   await authedMarker
     .or(signInPrompt)

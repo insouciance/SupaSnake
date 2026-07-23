@@ -2,7 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { useEffect, useRef, useCallback, useMemo, useState, Suspense } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, Suspense, type ReactNode } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import {
   SnakeGameLogic,
@@ -24,7 +24,13 @@ import { isMutationId, type MutationPick } from '@/shared/game/mutations';
 import { GENES } from '@/shared/game/genes';
 import { sanitizeTraits, TRAITS, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints, type Lineage } from '@/shared/game/lineage';
-import { isStrainId, type StrainId } from '@/shared/game/strains';
+import {
+  STRAINS,
+  STRAIN_IDS,
+  isStrainId,
+  type StrainId,
+  type StrainTier,
+} from '@/shared/game/strains';
 import { SPLICES, isSpliceId, type SpliceId } from '@/shared/game/splices';
 import {
   sanitizeGenomeCapability,
@@ -59,6 +65,8 @@ import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
+import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
+import type { RunCockpitModel } from '@/components/game/cockpit/types';
 import { AimRenderer } from '@/components/game/AimRenderer';
 import type { AimTarget } from '@/components/game/aimUtils';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
@@ -154,6 +162,70 @@ interface EquippedSnakeView {
   dynasty: string;
   traits: TraitId[];
   lineage: Lineage | null;
+}
+
+interface BoardViewportShellProps {
+  cockpitEnabled: boolean;
+  isPlaying: boolean;
+  model: RunCockpitModel;
+  onPause: () => void;
+  onResetView: () => void;
+  pauseDisabled: boolean;
+  showPause: boolean;
+  pauseLabel: string;
+  inputDock?: ReactNode;
+  decisionDock?: ReactNode;
+  eventCallout?: ReactNode;
+  children: ReactNode;
+}
+
+function BoardViewportShell({
+  cockpitEnabled,
+  isPlaying,
+  model,
+  onPause,
+  onResetView,
+  pauseDisabled,
+  showPause,
+  pauseLabel,
+  inputDock,
+  decisionDock,
+  eventCallout,
+  children,
+}: BoardViewportShellProps) {
+  if (cockpitEnabled && isPlaying) {
+    return (
+      <RunCockpit
+        model={model}
+        onPause={onPause}
+        onResetView={onResetView}
+        pauseDisabled={pauseDisabled}
+        showPause={showPause}
+        pauseLabel={pauseLabel}
+        inputDock={inputDock}
+        decisionDock={decisionDock}
+        eventCallout={eventCallout}
+      >
+        {children}
+      </RunCockpit>
+    );
+  }
+
+  return (
+    <div
+      className={isPlaying ? 'relative min-h-0 flex-1' : 'absolute inset-0'}
+      data-testid="game-board-viewport"
+    >
+      {children}
+    </div>
+  );
+}
+
+function normalizeStrainTier(value: number | undefined): StrainTier {
+  if (value === 3) return 3;
+  if (value === 2) return 2;
+  if (value === 1) return 1;
+  return 0;
 }
 
 function directionCanRelease(result: SetDirectionResult): boolean {
@@ -1696,8 +1768,157 @@ export default function GamePage() {
     );
   }
 
+  const cockpitGenomeVisible = heldMutations.length > 0 || (
+    genomeRun && genomeFtue?.strainTagsUnlocked === true
+  );
+  const suppressedStrains = new Set(
+    gameRef.current?.getGenome()?.suppressedStrains ?? []
+  );
+  const cockpitState: RunCockpitModel['state'] = isReady
+    ? 'ready'
+    : awaitingResumeInput
+      ? 'held'
+      : expressionFlourish?.tier === 3
+        ? 'apex'
+        : exitTile
+          ? 'portal'
+          : 'active';
+  const cockpitMode: RunCockpitModel['mode'] = anomalyRun
+    ? 'anomaly'
+    : lastRunFree
+      ? 'free'
+      : 'standard';
+  const cockpitStatus = minimalFirstRunPrompt && isReady
+    ? 'Swipe or press an arrow to move'
+    : awaitingResumeInput
+      ? isMobile
+        ? `${controlMode === 'flick' ? 'Flick' : 'Tap'} a safe direction to continue`
+        : 'Press a safe direction to continue'
+      : isReady
+        ? isMobile
+          ? `${controlMode === 'flick' ? 'Flick' : 'Tap'} a direction to start`
+          : 'Press Space or a direction to start'
+        : choiceActive
+          ? 'Run held for your decision'
+          : expressionFlourish
+            ? `${STRAINS[expressionFlourish.strain].name} ${expressionFlourish.tier === 3 ? 'apex' : 'expression'} online`
+            : exitTile
+              ? 'Extraction window open'
+              : 'Run stable';
+  const cockpitModel: RunCockpitModel = {
+    dynasty: selectedDynasty,
+    state: cockpitState,
+    mode: cockpitMode,
+    modeLabel: anomalyRun?.name ?? (lastRunFree ? 'Free play' : selectedDynasty),
+    modeDetail: isReady || awaitingResumeInput
+      ? 'Board held'
+      : genomeRun
+        ? 'Genome run'
+        : 'Classic run',
+    statusText: cockpitStatus,
+    isFirstMovementPrompt: minimalFirstRunPrompt && isReady,
+    score,
+    dna: dnaCollected,
+    bankDna: previewOutcome(true, activeAnomalyId),
+    crashDna: previewOutcome(false, activeAnomalyId),
+    comboMultiplier,
+    chainLength,
+    genes: heldMutations.slice(0, 6).map((pick) => ({
+      id: pick.id,
+      name: GENES[pick.id].name,
+      strains: GENES[pick.id].strains,
+      spent: pick.id === 'phoenix' && phoenixTriggered,
+    })),
+    strains: STRAIN_IDS.map((id) => ({
+      id,
+      name: STRAINS[id].name,
+      color: STRAINS[id].color,
+      points: strainCounts[id] ?? 0,
+      tier: normalizeStrainTier(strainTiers[id]),
+      suppressed: suppressedStrains.has(id),
+    })),
+    showGenome: cockpitGenomeVisible,
+    portalLive: Boolean(exitTile),
+    portalTicksRemaining: Math.max(0, exitTicksRemaining),
+  };
+  const cockpitDecisionDock: ReactNode = !HUD_COCKPIT_V1_ENABLED
+    ? undefined
+    : isPaused && !awaitingResumeInput && isPlaying && !isGameOver
+      ? (
+          <PauseMenu
+            dynasty={selectedDynasty}
+            score={score}
+            dnaCollected={dnaCollected}
+            heldMutations={heldMutations}
+            phoenixTriggered={phoenixTriggered}
+            bankDna={previewOutcome(true, activeAnomalyId)}
+            crashDna={previewOutcome(false, activeAnomalyId)}
+            onResume={handleResume}
+            onQuit={handleQuit}
+          />
+        )
+      : choiceOptions && isPlaying && !isGameOver && genomeRun
+        ? (
+            <GeneChoiceOverlay
+              options={choiceOptions}
+              held={heldMutations}
+              strainCounts={strainCounts}
+              source={choiceSource}
+              showStrains={genomeFtue?.strainTagsUnlocked === true}
+              splicesUnlocked={genomeFtue?.splicesUnlocked === true}
+              discoveredSplices={discoveredSplices}
+              onChoose={handleChooseMutation}
+              onDecline={handleDeclineMutation}
+            />
+          )
+        : choiceOptions && isPlaying && !isGameOver
+          ? (
+              <MutationChoiceOverlay
+                options={choiceOptions}
+                onChoose={handleChooseMutation}
+                onDecline={handleDeclineMutation}
+              />
+            )
+          : portalChoicePending && isPlaying && !isGameOver
+            ? (
+                <PortalChoiceOverlay
+                  canInfuse={portalCanInfuse}
+                  infusesUsed={infusesCount}
+                  snakeLength={snake.length}
+                  bankDna={previewOutcome(true, activeAnomalyId)}
+                  crashDna={previewOutcome(false, activeAnomalyId)}
+                  onBank={() => handlePortalChoice('bank')}
+                  onPass={() => handlePortalChoice('pass')}
+                  onInfuse={() => handlePortalChoice('infuse')}
+                />
+              )
+            : surgeChoicePending && isPlaying && !isGameOver
+              ? (
+                  <StrainSurgeOverlay
+                    strains={Array.from(
+                      new Set(heldMutations.flatMap((pick) => GENES[pick.id].strains))
+                    )}
+                    onChoose={handleSurgeChoice}
+                  />
+                )
+              : undefined;
+  const cockpitEventCallout = HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying
+    ? (
+        <ExpressionFlourish
+          strain={expressionFlourish.strain}
+          tier={expressionFlourish.tier}
+          onDone={handleFlourishDone}
+          presentation="cockpit"
+        />
+      )
+    : undefined;
+
   return (
-    <div className="consent-safe-viewport w-screen h-dvh relative flex flex-col overflow-hidden app-bg">
+    <div
+      className={`consent-safe-viewport w-screen h-dvh flex flex-col overflow-hidden app-bg ${
+        HUD_COCKPIT_V1_ENABLED ? 'cockpit-game-viewport' : 'relative'
+      }`}
+    >
       {HUD_COCKPIT_V1_ENABLED && isPlaying ? (
         <GameEnvironment dynasty={selectedDynasty} />
       ) : (
@@ -1723,9 +1944,9 @@ export default function GamePage() {
           )}
         </>
       )}
-      {/* CSS flow reserves the HUD from the first paint. The established
-          production treatment stays intact while its visual redesign waits. */}
-      <div
+      {/* The released HUD remains the complete rollback path and pre-run HUD. */}
+      {(!HUD_COCKPIT_V1_ENABLED || !isPlaying) && (
+        <div
         data-testid="game-hud"
         className={`pointer-events-none inset-x-0 z-10 shrink-0 px-3 text-bone-white sm:px-4 ${
           isPlaying ? 'relative' : 'absolute'
@@ -1735,8 +1956,12 @@ export default function GamePage() {
           paddingBottom: isPlaying ? '8px' : undefined,
         }}
       >
-        <div className="mx-auto max-w-5xl space-y-1.5 pr-14 sm:pr-16">
-          <div className="flex h-6 items-center gap-2">
+        <div
+          className={`mx-auto max-w-5xl pr-14 sm:pr-16 ${
+            isPlaying ? 'game-hud-deck' : 'space-y-1.5'
+          }`}
+        >
+          <div className="game-hud-brand flex h-6 items-center gap-2">
             <h1 className="heading-display shrink-0 text-base tracking-[0.16em] text-venom-orange text-glow-orange sm:text-xl">
               SupaSnake
             </h1>
@@ -1749,7 +1974,7 @@ export default function GamePage() {
           </div>
 
           {/* Three equal telemetry cells never reflow as values change. */}
-          <div className="grid grid-cols-3 gap-1.5 font-body sm:max-w-xl">
+          <div className="game-hud-telemetry grid grid-cols-3 gap-1.5 font-body">
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Score</span>
               <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{score}</span>
@@ -1761,7 +1986,10 @@ export default function GamePage() {
             </div>
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <IconBolt size={13} className="shrink-0 text-venom-orange" />
-              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Energy</span>
+              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">
+                <span className="lg:hidden">NRG</span>
+                <span className="hidden lg:inline">Energy</span>
+              </span>
               <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{energy}/{maxEnergy}</span>
             </div>
           </div>
@@ -1769,7 +1997,7 @@ export default function GamePage() {
           {/* Stable one-line run ticker: the row exists from tick zero, so
               earning the first food never moves or resizes the board. */}
           {isPlaying && (
-            <div className="flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
+            <div className="game-hud-ticker flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
           {/* Extraction bank preview: what this run pays banked vs crashed
               (mutation-aware: Mirror Wager / Compound Interest / Phoenix
               reshape the outcome multipliers live). Subtle by default;
@@ -1830,7 +2058,7 @@ export default function GamePage() {
 
         {/* Held mutations strip - the run's build at a glance */}
         {isPlaying && (
-          <div className="flex h-7 items-center gap-2 overflow-hidden">
+          <div className="game-hud-build flex h-7 min-w-0 items-center gap-2 overflow-hidden">
             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-beige/45">Build</span>
             {heldMutations.length > 0 ? (
               <MutationHUD
@@ -1846,11 +2074,13 @@ export default function GamePage() {
           </div>
         )}
         {isPlaying && genomeRun && genomeFtue?.strainTagsUnlocked && (
-          <StrainMeterHUD
-            counts={strainCounts}
-            tiers={strainTiers}
-            suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
-          />
+          <div className="game-hud-strains min-w-0">
+            <StrainMeterHUD
+              counts={strainCounts}
+              tiers={strainTiers}
+              suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
+            />
+          </div>
         )}
 
         {/* Equipped Snake (the game always uses the equipped snake) */}
@@ -1863,7 +2093,8 @@ export default function GamePage() {
           </div>
         )}
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Navigation (when not playing) - z-30 so it stays clickable above
           the start/game-over overlay (z-20): no dead end on those screens */}
@@ -1901,7 +2132,7 @@ export default function GamePage() {
       )}
 
       {/* Pause Button (in-game) - hidden during the mutation choice hold */}
-      {isPlaying && !isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive && (
+      {!HUD_COCKPIT_V1_ENABLED && isPlaying && !isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <button
           onClick={handlePause}
           disabled={pauseRearming && !awaitingResumeInput}
@@ -1931,7 +2162,8 @@ export default function GamePage() {
       )}
 
       {/* Reset view - restores the default side-aligned camera */}
-      <button
+      {(!HUD_COCKPIT_V1_ENABLED || !isPlaying) && (
+        <button
         onClick={() => setViewResetToken((t) => t + 1)}
         className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
         style={isPlaying
@@ -1941,7 +2173,8 @@ export default function GamePage() {
         aria-label="Reset view"
       >
         <IconReset size={20} />
-      </button>
+        </button>
+      )}
 
       {/* Flick-anywhere touch layer (mobile default). Sits in the z-band
           between the canvas and the HUD (z-10+), so HUD buttons stay live.
@@ -1961,7 +2194,7 @@ export default function GamePage() {
       {/* Virtual D-Pad (mobile fallback via control-mode toggle). bottom
           offset includes the safe-area inset so the DOWN button clears home
           indicators / browser chrome. */}
-      {isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
+      {!HUD_COCKPIT_V1_ENABLED && isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <div
           className="absolute left-1/2 -translate-x-1/2 z-10"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
@@ -1977,7 +2210,7 @@ export default function GamePage() {
       {inputDebugEnabled && <InputDebugOverlay debugRef={inputDebugRef} />}
 
       {/* Pause Menu */}
-      {isPaused && !awaitingResumeInput && isPlaying && !isGameOver && (
+      {!HUD_COCKPIT_V1_ENABLED && isPaused && !awaitingResumeInput && isPlaying && !isGameOver && (
         <PauseMenu
           dynasty={selectedDynasty}
           score={score}
@@ -1993,7 +2226,7 @@ export default function GamePage() {
 
       {/* Mutation choice-of-2 (engine frozen in its choice hold - never
           concurrent with the pause menu: pause is refused during the hold) */}
-      {choiceOptions && isPlaying && !isGameOver && genomeRun ? (
+      {!HUD_COCKPIT_V1_ENABLED && (choiceOptions && isPlaying && !isGameOver && genomeRun ? (
         <GeneChoiceOverlay
           options={choiceOptions}
           held={heldMutations}
@@ -2011,9 +2244,9 @@ export default function GamePage() {
           onChoose={handleChooseMutation}
           onDecline={handleDeclineMutation}
         />
-      ) : null}
+      ) : null)}
 
-      {portalChoicePending && isPlaying && !isGameOver && (
+      {!HUD_COCKPIT_V1_ENABLED && portalChoicePending && isPlaying && !isGameOver && (
         <PortalChoiceOverlay
           canInfuse={portalCanInfuse}
           infusesUsed={infusesCount}
@@ -2026,7 +2259,7 @@ export default function GamePage() {
         />
       )}
 
-      {surgeChoicePending && isPlaying && !isGameOver && (
+      {!HUD_COCKPIT_V1_ENABLED && surgeChoicePending && isPlaying && !isGameOver && (
         <StrainSurgeOverlay
           strains={Array.from(
             new Set(heldMutations.flatMap((pick) => GENES[pick.id].strains))
@@ -2035,7 +2268,7 @@ export default function GamePage() {
         />
       )}
 
-      {expressionFlourish && isPlaying && (
+      {!HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying && (
         <ExpressionFlourish
           strain={expressionFlourish.strain}
           tier={expressionFlourish.tier}
@@ -2601,56 +2834,86 @@ export default function GamePage() {
 
       {/* 3D Canvas - initial position approximates CameraRig's default
           south-side 70-degree view to avoid a first-frame jump */}
-      <div
-        className={isPlaying
-          ? 'relative min-h-0 flex-1'
-          : 'absolute inset-0'}
-        data-testid="game-board-viewport"
+      <BoardViewportShell
+        cockpitEnabled={HUD_COCKPIT_V1_ENABLED}
+        isPlaying={isPlaying}
+        model={cockpitModel}
+        onPause={handlePause}
+        onResetView={() => setViewResetToken((token) => token + 1)}
+        pauseDisabled={pauseRearming && !awaitingResumeInput}
+        showPause={!isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive}
+        pauseLabel={awaitingResumeInput ? 'Return to pause menu' : 'Pause game'}
+        inputDock={
+          isMobile && controlMode === 'dpad' && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive ? (
+            <VirtualDPad
+              density="cockpit"
+              onDirectionChange={handleDPadDirection}
+              disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || choiceActive}
+            />
+          ) : undefined
+        }
+        decisionDock={cockpitDecisionDock}
+        eventCallout={cockpitEventCallout}
       >
       {/* Keep the production Ready/Pause presentation inside the reserved
           board. FTUE replaces its contents with one minimal movement line. */}
-      {(isReady || awaitingResumeInput) && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div
-            className="mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-6 py-5 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-3 animate-fade-up"
-            data-testid="resume-gate"
-          >
-            {minimalFirstRunPrompt && !awaitingResumeInput ? (
-              <p
-                className="text-bone-white text-lg font-body"
-                data-testid="first-movement-prompt"
-              >
-                Swipe or press an arrow to move
+      {!HUD_COCKPIT_V1_ENABLED && (isReady || awaitingResumeInput) && (
+        <div
+          className={`absolute inset-0 z-20 flex pointer-events-none ${
+            awaitingResumeInput
+              ? 'items-start justify-center pt-2'
+              : 'items-center justify-center'
+          }`}
+        >
+          {awaitingResumeInput ? (
+            <div
+              className="mx-3 flex max-w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-arcade border border-scale-blue-light/40 bg-void-deep/82 px-3 py-2 text-center shadow-[0_0_24px_rgba(34,211,238,0.12)] backdrop-blur-md animate-fade-up sm:gap-4 sm:px-4"
+              data-testid="resume-gate"
+            >
+              <h2 className="heading-display shrink-0 text-lg text-venom-orange text-glow-orange sm:text-xl">
+                Choose Your Line
+              </h2>
+              <p className="max-w-60 font-mono text-[8px] leading-tight uppercase tracking-[0.14em] text-[#7df9ff] sm:text-[9px]">
+                Board held · next direction resumes
               </p>
-            ) : (
-              <>
-                <h2 className="heading-display text-3xl text-venom-orange text-glow-orange animate-breathe sm:text-5xl">
-                  {awaitingResumeInput ? 'Choose Your Line' : 'Ready!'}
-                </h2>
-                {awaitingResumeInput && (
-                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#7df9ff]">
-                    Board held · movement begins on your input
-                  </p>
-                )}
-                {isMobile && controlMode === 'flick' ? (
-                  <>
-                    <p className="text-bone-white text-lg font-body">Flick a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                    <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
-                  </>
-                ) : isMobile ? (
-                  <>
-                    <p className="text-bone-white text-lg font-body">Tap a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                    <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-bone-white text-lg font-body">Press SPACE or a direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                    <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div
+              className="mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-6 py-5 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-3 animate-fade-up"
+              data-testid="resume-gate"
+            >
+              {minimalFirstRunPrompt ? (
+                <p
+                  className="text-bone-white text-lg font-body"
+                  data-testid="first-movement-prompt"
+                >
+                  Swipe or press an arrow to move
+                </p>
+              ) : (
+                <>
+                  <h2 className="heading-display text-3xl text-venom-orange text-glow-orange animate-breathe sm:text-5xl">
+                    Ready!
+                  </h2>
+                  {isMobile && controlMode === 'flick' ? (
+                    <>
+                      <p className="text-bone-white text-lg font-body">Flick a safe direction to start</p>
+                      <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
+                    </>
+                  ) : isMobile ? (
+                    <>
+                      <p className="text-bone-white text-lg font-body">Tap a safe direction to start</p>
+                      <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-bone-white text-lg font-body">Press SPACE or a direction to start</p>
+                      <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
       <Canvas
@@ -2762,7 +3025,7 @@ export default function GamePage() {
           </EffectComposer>
         )}
       </Canvas>
-      </div>
+      </BoardViewportShell>
     </div>
   );
 }

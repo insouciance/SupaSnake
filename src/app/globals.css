@@ -64,6 +64,38 @@ html[data-consent-visible='true'] .consent-safe-viewport {
   }
 }
 
+/* Cockpit builds remove the game route from document flow so the global
+   legal footer can never be scrolled over the arena. Consent remains above
+   this z-band and explicitly shortens the fixed viewport on the edge where
+   its measured surface lives. */
+.cockpit-game-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+/* The game is a true full-screen route. Its global legal footer remains
+   available everywhere else, but must not ghost through the translucent
+   consent surface while the fixed cockpit is mounted. */
+body:has(.cockpit-game-viewport) > :is(footer),
+body:has(.cockpit-game-viewport) footer {
+  visibility: hidden;
+}
+
+html[data-consent-visible='true'] .consent-safe-viewport.cockpit-game-viewport {
+  top: var(--consent-banner-height, 0px);
+  bottom: 0;
+  height: auto;
+  margin-top: 0;
+}
+
+@media (min-width: 40rem) {
+  html[data-consent-visible='true'] .consent-safe-viewport.cockpit-game-viewport {
+    top: 0;
+    bottom: var(--consent-banner-height, 0px);
+  }
+}
+
 canvas {
   display: block;
   touch-action: none;
@@ -92,6 +124,38 @@ canvas {
   @media (orientation: landscape) and (max-height: 31.25rem) {
     .consent-summary {
       flex-direction: row;
+      align-items: center;
+    }
+  }
+
+  /* The cockpit kill-switch keeps the released HUD usable. During an active
+     run, wider and short-landscape screens arrange its five information bands
+     into two compact columns so the reserved WebGL region never collapses. */
+  .game-hud-deck {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'brand'
+      'telemetry'
+      'ticker'
+      'build'
+      'strains';
+    gap: 0.375rem;
+  }
+
+  .game-hud-brand { grid-area: brand; }
+  .game-hud-telemetry { grid-area: telemetry; }
+  .game-hud-ticker { grid-area: ticker; }
+  .game-hud-build { grid-area: build; }
+  .game-hud-strains { grid-area: strains; }
+
+  @media (min-width: 48rem) {
+    .game-hud-deck {
+      grid-template-columns: minmax(20rem, 5fr) minmax(0, 7fr);
+      grid-template-areas:
+        'brand brand'
+        'telemetry ticker'
+        'build strains';
       align-items: center;
     }
   }

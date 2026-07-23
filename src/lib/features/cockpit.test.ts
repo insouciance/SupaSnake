@@ -17,7 +17,6 @@ describe('HUD_COCKPIT_V1_ENABLED', () => {
       process.env.NEXT_PUBLIC_HUD_COCKPIT_V1 = value;
     }
     jest.resetModules();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('./cockpit').HUD_COCKPIT_V1_ENABLED as boolean;
   }
 

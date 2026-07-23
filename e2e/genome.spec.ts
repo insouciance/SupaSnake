@@ -108,8 +108,12 @@ test.describe('Genome capability UI', () => {
     await expect(page.getByTestId('build-seed')).toContainText(/heirlooms/i);
     await expect(page.getByRole('link', { name: /open codex/i })).toBeVisible();
 
-    await page.getByTestId('mode-free').click({ force: true });
-    await page.getByTestId('free-play-start').click({ force: true });
+    const freeMode = page.getByTestId('mode-free');
+    await freeMode.click();
+    await expect(freeMode).toHaveAttribute('aria-pressed', 'true');
+    const freePlayStart = page.getByTestId('free-play-start');
+    await expect(freePlayStart).toBeEnabled();
+    await freePlayStart.click();
     await expect(page.getByTestId('strain-meter')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('strain-meter-AURUM')).toContainText('Aurum');
 

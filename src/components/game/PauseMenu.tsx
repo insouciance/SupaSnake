@@ -68,6 +68,7 @@ export function PauseMenu({
       aria-describedby="pause-menu-help"
       tabIndex={-1}
       className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4"
+      data-testid="pause-menu"
     >
       <div
         className="panel-glow p-8 min-w-[300px] max-w-full animate-pop-in"

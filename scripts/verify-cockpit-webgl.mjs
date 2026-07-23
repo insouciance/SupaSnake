@@ -51,7 +51,7 @@ async function measure(testCase, arena) {
     motion: 'reduced',
     effects: 'off',
   });
-  await page.goto(`${BASE_URL}/dev/cockpit?${query}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}/dev/cockpit?${query}`, { waitUntil: 'domcontentloaded' });
   const host = page.locator('[data-testid="cockpit-webgl-board"]');
   await host.locator('canvas').waitFor({ state: 'visible' });
   await page.waitForFunction(() => {

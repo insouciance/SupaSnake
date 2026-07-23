@@ -2,9 +2,11 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import type { DynastyId } from '@/shared/types/game';
+import type { GeneId } from '@/shared/game/genes';
 import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
+import { GeneGlyph as CatalogGeneGlyph } from './CockpitGlyphs';
 import styles from './CockpitPrototype.module.css';
 
 export type CockpitPrototypeState = 'ready' | 'active' | 'portal' | 'apex';
@@ -25,13 +27,13 @@ interface CockpitPrototypeProps {
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
 
 const GENE_NAMES = [
-  'Gold Trail',
-  'Magnet Pulse',
-  'Phoenix',
-  'Pocket Rift',
-  'Overgrowth',
-  'Static Charge',
-] as const;
+  { id: 'gold_trail', name: 'Gold Trail' },
+  { id: 'magnet_pulse', name: 'Magnet Pulse' },
+  { id: 'phoenix', name: 'Phoenix' },
+  { id: 'pocket_rift', name: 'Pocket Rift' },
+  { id: 'overgrowth', name: 'Overgrowth' },
+  { id: 'static_charge', name: 'Static Charge' },
+] as const satisfies readonly { id: GeneId; name: string }[];
 
 const STRAINS = [
   { id: 'AURUM', name: 'Aurum', color: '#f5c542', points: 3 },
@@ -156,19 +158,6 @@ function ResetGlyph() {
       <path d="M4 11a8 8 0 1 1 2.1 6.6M4 5v6h6" />
     </Svg>
   );
-}
-
-function GeneGlyph({ index }: { index: number }) {
-  const glyphs = [
-    <><path key="a" d="M5 17c4-1 6-4.5 7-10 1.2 4.8 3.4 7.6 7 9" /><path key="b" d="M5 17h14M8 20h8" /><circle key="c" cx="12" cy="6" r="2" /></>,
-    <><circle key="a" cx="12" cy="12" r="3" /><path key="b" d="M3 12h4M17 12h4M12 3v4M12 17v4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" /></>,
-    <><path key="a" d="M12 20c-5-2.5-7-5.2-7-9a7 7 0 0 1 14 0c0 3.8-2 6.5-7 9Z" /><path key="b" d="M8 13c2.7-.1 5-1.8 6.4-5 .5 3 .1 5.4-1.4 7.2" /></>,
-    <><ellipse key="a" cx="12" cy="12" rx="6.5" ry="9" /><path key="b" d="M3 12h6M15 12h6M12 3l-2 4M12 21l2-4" /></>,
-    <><path key="a" d="M12 21V9M12 15c-4 0-7-2.2-7-6 4 0 7 2.2 7 6ZM12 12c4 0 7-2.2 7-6-4 0-7 2.2-7 6Z" /></>,
-    <><path key="a" d="m13 2-8 11h6l-1 9 9-12h-6V2Z" /><path key="b" d="M4 5h4M17 19h3" /></>,
-  ];
-
-  return <Svg>{glyphs[index % glyphs.length]}</Svg>;
 }
 
 function StrainGlyph({ id }: { id: (typeof STRAINS)[number]['id'] }) {
@@ -343,16 +332,16 @@ export function CockpitPrototype({
 
           <Instrument className={styles.geneRack} label={`${normalizedGeneCount} of 6 genes held`}>
             <div className={styles.geneSockets}>
-              {GENE_NAMES.map((name, index) => {
+              {GENE_NAMES.map(({ id, name }, index) => {
                 const filled = index < normalizedGeneCount;
                 return (
                   <span
-                    key={name}
+                    key={id}
                     className={`${styles.geneSocket} ${filled ? styles.geneSocketFilled : ''}`}
                     aria-label={filled ? name : `Empty gene slot ${index + 1}`}
                     title={filled ? name : `Empty slot ${index + 1}`}
                   >
-                    {filled ? <GeneGlyph index={index} /> : <i />}
+                    {filled ? <CatalogGeneGlyph id={id} /> : <i />}
                   </span>
                 );
               })}

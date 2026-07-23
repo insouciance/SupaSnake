@@ -13,6 +13,8 @@ interface VirtualDPadProps {
   onDirectionChange: (direction: Direction) => void;
   disabled?: boolean;
   className?: string;
+  /** Compact 44px targets for the reserved cockpit input dock. */
+  density?: 'standard' | 'cockpit';
 }
 
 interface ButtonState {
@@ -26,6 +28,7 @@ export function VirtualDPad({
   onDirectionChange,
   disabled = false,
   className = '',
+  density = 'standard',
 }: VirtualDPadProps) {
   const [pressed, setPressed] = useState<ButtonState>({
     UP: false,
@@ -46,9 +49,17 @@ export function VirtualDPad({
     setPressed(prev => ({ ...prev, [direction]: false }));
   }, []);
 
+  const targetSize = density === 'cockpit'
+    ? 'w-11 h-11'
+    : 'w-16 h-16 sm:w-20 sm:h-20';
+  const centerSize = density === 'cockpit'
+    ? 'w-11 h-11'
+    : 'w-16 h-16 sm:w-20 sm:h-20';
+  const arrowSize = density === 'cockpit' ? 22 : 32;
+
   const buttonClass = (dir: Direction) => `
     flex items-center justify-center
-    w-16 h-16 sm:w-20 sm:h-20
+    ${targetSize}
     rounded-arcade
     border backdrop-blur-sm
     transition-all duration-75
@@ -62,8 +73,8 @@ export function VirtualDPad({
 
   const arrowSvg = (rotation: number) => (
     <svg
-      width="32"
-      height="32"
+      width={arrowSize}
+      height={arrowSize}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -109,7 +120,7 @@ export function VirtualDPad({
         </button>
 
         {/* Center spacer */}
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-arcade bg-void/30" />
+        <div className={`${centerSize} rounded-arcade bg-void/30`} aria-hidden="true" />
 
         <button
           className={buttonClass('RIGHT')}
