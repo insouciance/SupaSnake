@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgrade } from '@/components/auth/AccountUpgrade';
 import { IconShield } from '@/components/ui/icons';
+import { ModalDialog } from '@/components/ui/ModalDialog';
 import {
   isUpgradeBannerDismissed,
   dismissUpgradeBanner,
@@ -28,15 +29,19 @@ export function AccountUpgradeModal({ isOpen, onClose }: AccountUpgradeModalProp
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4 overflow-y-auto"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Create an account"
-      data-testid="account-upgrade-modal"
+    <ModalDialog
+      onClose={onClose}
+      ariaLabel="Create an account"
+      testId="account-upgrade-modal"
+      panelClassName="max-w-md"
+      closeOnBackdrop={false}
+      closeOnEscape={false}
     >
-      <AccountUpgrade onClose={onClose} className="w-full max-w-md my-8 animate-pop-in" />
-    </div>
+      <AccountUpgrade
+        onClose={onClose}
+        className="max-h-[calc(100dvh-2rem)] w-full overflow-y-auto animate-pop-in"
+      />
+    </ModalDialog>
   );
 }
 

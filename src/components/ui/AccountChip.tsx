@@ -4,7 +4,7 @@
  * AccountChip - persistent identity indicator for the command bar.
  *
  * Answers "am I logged in?" at a glance from every screen:
- * - Signed out entirely -> "Sign in" link to /login
+ * - Signed out entirely -> icon opens viewport-level sign-in choices
  * - Guest (anonymous session) -> subtle GUEST chip + "Save progress"
  *   affordance that opens the existing AccountUpgradeModal
  * - Registered -> email-derived initial in a small avatar square; tap
@@ -15,7 +15,8 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
-import { IconUser, IconGear } from '@/components/ui/icons';
+import { ModalDialog } from '@/components/ui/ModalDialog';
+import { IconUser, IconGear, IconX } from '@/components/ui/icons';
 import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import {
   destinationBadge,
@@ -58,7 +59,10 @@ export function AccountChip({ className = '' }: AccountChipProps) {
 
   // Close the popover on outside taps
   useEffect(() => {
-    if (!menuOpen) return;
+    // The signed-out surface is a viewport-level modal with its own backdrop.
+    // This listener is only for the registered account popover that remains
+    // attached to the chip.
+    if (!menuOpen || !user) return;
     const onPointerDown = (e: MouseEvent | TouchEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
@@ -70,44 +74,75 @@ export function AccountChip({ className = '' }: AccountChipProps) {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('touchstart', onPointerDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, user]);
 
   if (isLoading) return null;
 
   // Fully signed out (no anonymous session either): a square icon chip that
   // matches the rail's proportions - a text button broke the icon rhythm.
-  // Opens a compact auth panel instead of hard-navigating to /login.
+  // Opens a viewport-level dialog so the auth choices cannot inherit the
+  // animated navigation rail's stacking context or clipping boundaries.
   if (!user) {
     return (
       <div ref={rootRef} className={`relative ${className}`}>
         <button
+          type="button"
           onClick={() => setMenuOpen((v) => !v)}
           data-testid="account-chip"
           aria-label="Sign in"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? 'account-auth-dialog' : undefined}
           className="flex items-center justify-center w-10 h-10 rounded-arcade border border-scale-blue-light/60 bg-scale-blue/50 text-beige hover:text-bone-white hover:border-venom-orange/60 transition-all"
         >
           <IconUser size={18} />
         </button>
         {menuOpen && (
-          <div
-            className="absolute bottom-12 right-0 max-sm:bottom-12 sm:bottom-auto sm:top-0 sm:right-12 w-56 panel-elevated p-3 animate-pop-in z-50"
-            data-testid="account-auth-menu"
-            role="menu"
+          <ModalDialog
+            id="account-auth-dialog"
+            testId="account-auth-dialog"
+            onClose={() => setMenuOpen(false)}
+            ariaLabelledBy="account-auth-dialog-title"
+            ariaDescribedBy="account-auth-dialog-description"
+            panelClassName="panel-elevated max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 animate-pop-in"
           >
-            <p className="label-arcade mb-2">Join the run</p>
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <h2 id="account-auth-dialog-title" className="label-arcade text-bone-white">
+                Join the run
+              </h2>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close sign in dialog"
+                className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center text-beige transition-colors hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+              >
+                <IconX size={18} />
+              </button>
+            </div>
             <div className="flex flex-col gap-2">
-              <Link href="/login" className="btn-go px-3 py-2 text-xs text-center" role="menuitem">
+              <Link
+                href="/login"
+                className="btn-go px-3 py-2.5 text-center text-xs"
+                onClick={() => setMenuOpen(false)}
+              >
                 Sign In
               </Link>
-              <Link href="/signup" className="btn-neutral px-3 py-2 text-xs text-center" role="menuitem">
+              <Link
+                href="/signup"
+                className="btn-neutral px-3 py-2.5 text-center text-xs"
+                onClick={() => setMenuOpen(false)}
+              >
                 Create Account
               </Link>
             </div>
-            <p className="text-beige/60 text-[11px] font-body mt-2 leading-snug">
+            <p
+              id="account-auth-dialog-description"
+              className="mt-3 text-[11px] leading-snug text-beige/60 font-body"
+            >
               Or just hit Launch - you can play instantly as a guest and save
               your progress later.
             </p>
-          </div>
+          </ModalDialog>
         )}
       </div>
     );
