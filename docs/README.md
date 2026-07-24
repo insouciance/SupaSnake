@@ -11,6 +11,7 @@ documents remain useful context but do not override the files listed here.
 | Player flow, onboarding, and interruptions | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
 | Genome/buildcraft | [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
+| Deliberate practice | [Training Lab](game/TRAINING_LAB_DESIGN.md) |
 | Monetization behavior | [Monetization Design](game/MONETIZATION_DESIGN.md) |
 | Player identity | [Player Identity v1](game/PLAYER_IDENTITY_V1.md) |
 

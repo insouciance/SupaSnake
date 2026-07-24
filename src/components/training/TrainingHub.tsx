@@ -135,7 +135,7 @@ export function TrainingHub({
           </div>
           {!profile.live && !profileLoading && (
             <p className="mt-3 font-body text-xs text-amber-200/80" data-testid="training-profile-offline">
-              Verified play is available; cross-device best storage activates with the coordinated Training migration.
+              Verified practice remains available; the cross-device skill profile is temporarily unavailable.
             </p>
           )}
         </section>
@@ -311,7 +311,7 @@ export function TrainingHub({
                   </button>
                 </div>
                 {!presetsLive && (
-                  <p className="font-body text-xs text-beige/50">Cross-device preset storage activates with Training persistence.</p>
+                  <p className="font-body text-xs text-beige/50">Cross-device preset storage is temporarily unavailable.</p>
                 )}
                 {presets.length > 0 && (
                   <div className="space-y-2" data-testid="training-presets">
