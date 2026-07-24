@@ -12,19 +12,20 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–037 deployed and aligned |
+| Schema | Migrations 001–038 deployed and aligned |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
-| Runtime commit | `fc0fea4` |
-| Vercel deployment | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` |
-| Immediate rollback | `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` |
+| Practice | Training Lab enabled; deterministic and rewardless |
+| Runtime commit | `645578e` |
+| Vercel deployment | `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB` |
+| Immediate app rollback | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` |
 | Payments | Test/sandbox mode only |
 
-The current release passed 230 Jest suites / 2,871 tests, full lint and type
+The current release passed 245 Jest suites / 2,944 tests, full lint and type
 checking, dependency and credential scans, the production build, deterministic
-cockpit fixtures, and 16/16 local, protected-canary, and public-production
-Playwright checks without retries. Detailed evidence is maintained in
-`docs/ops/QA_CHECKLIST.md`.
+cockpit fixtures, the complete isolated-Supabase E2E gate, protected PR and
+post-main CI, and focused public-production smoke. Detailed evidence is
+maintained in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
 
@@ -39,6 +40,8 @@ Playwright checks without retries. Detailed evidence is maintained in
   frozen arena in centered dialogs.
 - Pause is a tactical hold, not a menu. Accepted movement resumes; Abandon Run
   is a secondary confirmed action.
+- The Training Lab provides voluntary drills, circuits, and custom routes;
+  attempts are server-replayed and cannot grant run rewards.
 
 ## Engineering baseline
 

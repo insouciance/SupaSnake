@@ -11,16 +11,18 @@ Production: <https://supasnake.com>
 
 - Next.js 15 App Router, React, TypeScript, react-three-fiber, and Zustand
 - Supabase Auth/Postgres with server-authoritative economy and progression
-- Migrations 001–037 deployed and aligned
-- FTUE v2 and the refined Run Cockpit enabled in production
+- Migrations 001–038 deployed and aligned
+- FTUE v2, the refined Run Cockpit, and the Training Lab enabled in production
 - Stripe sandbox/test mode until the commercial-launch checklist is complete
-- Runtime release commit `fc0fea4`
-- Vercel deployment `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`
-- Immediate rollback deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX`
+- Runtime release commit `645578e`
+- Vercel deployment `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`
+- Immediate application rollback deployment `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`
 
 The live cockpit keeps the arena centered and unobstructed, uses compact
 telemetry decks, presents consequential Genome/portal decisions as dominant
 engine-frozen dialogs, and turns Pause into a board-visible tactical hold.
+The Training Lab adds deterministic, rewardless practice without spending
+Energy or advancing the economy.
 
 ## Local development
 

@@ -2,9 +2,9 @@
 
 _Last updated: 2026-07-24_
 
-This is the current player-facing QA path for the deployed Genome release. Work
-from top to bottom when doing a broad playtest; use the focused matrices near
-the end when verifying a fix.
+This is the current player-facing QA path for the deployed Genome and Training
+release. Work from top to bottom when doing a broad playtest; use the focused
+matrices near the end when verifying a fix.
 
 Design references:
 
@@ -19,20 +19,19 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `fc0fea4` — refined Run Cockpit, tactical decisions, and session-start repair |
-| Vercel deployment | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` |
-| Rollback deployment | `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` — Run Cockpit & Arena v1 |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–037 deployed; migration 037 backfill and runtime bootstrap verified |
+| Production commit | `645578e` — Training Lab and integrated UX feature batch |
+| Vercel deployment | `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB` |
+| Rollback deployment | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` — refined Run Cockpit; schema-038 compatible |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–038 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; visual/runtime refinement `5431e8a`, final runtime release `fc0fea4` |
+| Canonical source | `main`; production release/tag `645578e` / `production-2026-07-24-training-ux` |
 
-Migration 037, FTUE v2, and the refined Run Cockpit & Arena are live. The
-refinement replaces sparse desktop side panels with compact mobile-derived
-top/bottom decks, fits the complete chassis at the default/reset camera pose,
-centers strategic decisions over an atomically frozen board, and replaces the
-Pause modal with a board-visible tactical hold.
+Migration 038, the Training Lab, FTUE v2, the refined Run Cockpit & Arena,
+Deadeye guide, account-dialog layering, and notification-attention fixes are
+live. Training is voluntary, deterministic, server-replayed, and rewardless;
+the additive schema remains compatible with the immediate rollback runtime.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -50,6 +49,33 @@ state-heavy cases still require real-device or exploratory verification:
   infusion, surge, and BANK journeys against the live refinement.
 - Real-device tactile confirmation that tactical hold, subsequent deliberate
   flick, and the compact landscape controls remain comfortable.
+- Full live Deadeye targeting and Training preset save/reload/delete, PB
+  persistence, and reward-invariance journeys.
+
+### Training and UX release evidence
+
+- Release workflow `30123163234` deployed exact main SHA `645578e` in Stripe
+  test mode. Its migration dry-run named only `038_training_lab.sql`.
+- The staged production-target app passed authenticated health against schema
+  037 before Vercel promoted deployment `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`.
+  Migration 038 then applied, linked database lint passed without errors, and
+  canonical application/database health passed.
+- Independent hosted migration listing reports local/remote parity through
+  038. The expected four warnings remain confined to older functions; no new
+  Training lint warning was introduced.
+- Complete release gates passed: 245/245 Jest suites and 2,944/2,944 tests,
+  TypeScript, full ESLint, dependency and credential scans, production build,
+  deterministic cockpit geometry/WebGL/decision checks, full isolated E2E,
+  both protected PR check sets, and both post-main check sets.
+- Public production passed the account-dialog viewport/focus matrix, both
+  notification-attention journeys, the rewardless Training journey, and the
+  canonical one-click PRIMAL launch test. In the first combined headless run,
+  WebGL software rendering starved the URL poll even though the board was
+  visible; an instrumented navigation trace reached `/game` and the exact test
+  passed alone without retries in 11.4 seconds.
+- The release is tagged `production-2026-07-24-training-ux`. The previous
+  deployment `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` is the immediate application
+  rollback; forward-only migration 038 must remain applied.
 
 ### Cockpit refinement production evidence
 
@@ -114,7 +140,9 @@ below before the exact canary artifact was promoted.
   Their exact source revision passed locally before deployment: 8 viewports ×
   4 cockpit states, 4 real-WebGL profiles, and 22 frozen decision/legal-surface
   checks. The manual real-device cases above remain a field-quality follow-up;
-  deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` is the immediate rollback.
+  deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` was the rollback artifact for
+  that earlier cockpit release; the current immediate rollback is recorded in
+  the target table above.
 - The temporary automation bypass was revoked after verification, its old value
   no longer reaches the protected deployment, and the local bypass/env capture
   files were removed.
@@ -817,17 +845,17 @@ These are agent/operator checks, not a substitute for the human feel pass.
 
 - [x] `npx tsc --noEmit` passes.
 - [x] `npm run lint` passes without automated fixes.
-- [x] `npm test -- --runInBand` passes (228 suites / 2,865 tests).
+- [x] `npm test -- --runInBand` passes (245 suites / 2,944 tests).
 - [x] Focused SnakeGameLogic, Genome, lineage, breeding, collection, Codex,
       migration, HUD, and input-gate regression tests pass.
 - [x] `npm run build` passes locally and in the Vercel cloud with the intended
       production environment validation.
 - [x] Playwright passes the real-game viewport matrix and keyboard/Flick/D-pad
       input matrix without relying only on mocked UI state.
-- [x] A disposable local Supabase reset applies migrations 001–037 from zero;
+- [x] A disposable local Supabase reset applies migrations 001–038 from zero;
       database lint and migration tests pass without modifying hosted data.
 - [x] Linked migration dry-run/list shows local and hosted histories aligned;
-      migrations 029, 030, and 037 remain forward-safe and idempotent where promised.
+      migrations 029, 030, 037, and 038 remain forward-safe and idempotent where promised.
 - [ ] Hosted RLS/security checks cover collection, breeding history, lineage,
       Codex rewards, contact records, deletion workflow, and service-role-only
       operations.

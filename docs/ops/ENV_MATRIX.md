@@ -39,8 +39,9 @@ Sensitive values are available.
 
 - Linked production project: `gmpwyzqafoyowndbvlma` (`supasnake`,
   `eu-central-1`).
-- Production has migrations 001–037. Migration 037's bootstrap/backfill and
-  post-apply invariants were verified; the current linked dry-run is a no-op.
+- Production has migrations 001–038. Migration 037's bootstrap/backfill and
+  migration 038's additive Training persistence were verified; the current
+  linked dry-run is a no-op.
 - Future pending migrations must be named in the release evidence and applied
   through the reviewed production workflow only.
 - Local and CI E2E use `supabase/config.toml` and a disposable Supabase stack;

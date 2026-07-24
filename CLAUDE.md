@@ -17,7 +17,7 @@ src/components/     # game (R3F scene), lab, auth, engagement, profile, ui
 src/lib/            # game engine (game/SnakeGameLogic.ts), stores, auth, audio, effects, server helpers
 src/shared/config/  # game.ts (economy/features), engagement.ts
 src/shared/game/    # deterministic gameplay rules and Genome catalogs
-supabase/migrations # schema 001-037; 029-033 Genome, 034-036 security/compliance, 037 FTUE v2
+supabase/migrations # schema 001-038; 029-033 Genome, 034-036 security/compliance, 037 FTUE v2, 038 Training
 docs/game/          # design specs (Genome + LOCKED CYBER/PRIMAL/COSMIC dynasties)
 e2e/                # Playwright specs
 ```
