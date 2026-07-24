@@ -117,7 +117,10 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward } from '@/lib/outbox/rewardOutbox';
 import { useCodexStore } from '@/lib/stores/codexStore';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  NOTIFICATION_TARGETS,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 import {
   consumeLaunchHandoff,
   type GameSessionStartPayload,
@@ -1161,9 +1164,9 @@ export default function GamePage() {
                 id: 'claim-handle',
                 title: 'Claim your player name',
                 description: 'Your generated identity is ready to personalize whenever you want.',
-                destination: 'identity',
+                ...NOTIFICATION_TARGETS.identity,
                 badgeKind: 'exclamation',
-                href: '/profile',
+                attentionReason: 'progression-opportunity',
                 actionLabel: 'View player card',
               });
             }
@@ -1186,9 +1189,9 @@ export default function GamePage() {
           id: 'lab-discovery',
           title: 'The Lab is ready',
           description: 'Discover more snakes when you feel like changing your run.',
-          destination: 'lab',
+          ...NOTIFICATION_TARGETS.lab,
           badgeKind: 'exclamation',
-          href: '/lab',
+          attentionReason: 'progression-opportunity',
           actionLabel: 'Visit the Lab',
         });
         if (currentSession?.user?.is_anonymous === true) {
@@ -1196,9 +1199,9 @@ export default function GamePage() {
             id: 'save-progress',
             title: 'Keep your progress',
             description: 'Add an email whenever you want to play on another device.',
-            destination: 'account',
+            ...NOTIFICATION_TARGETS.saveProgress,
             badgeKind: 'exclamation',
-            href: '/#save-progress',
+            attentionReason: 'action-required',
             actionLabel: 'Save progress',
           });
         }

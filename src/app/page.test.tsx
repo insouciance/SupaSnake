@@ -3,11 +3,14 @@
  * notification-first meta discovery, identity continuity, and one-click launch
  */
 
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
 import { recordLastUser, readLastUser, PROGRESS_LOSS_NOTICE_KEY } from '@/lib/auth/lastUser';
 import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  dispatchNotificationAction,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 import { LAUNCH_HANDOFF_KEY } from '@/lib/ftue/launchFlow';
 
 // The 3D chamber is dynamically imported (WebGL); stub the dynamic loader
@@ -48,6 +51,7 @@ interface FetchFixtures {
   streaks?: Record<string, unknown>;
   contracts?: Record<string, unknown>;
   collection?: Record<string, unknown>;
+  season?: Record<string, unknown>;
 }
 
 function jsonResponse(body: unknown): Response {
@@ -109,6 +113,38 @@ function buildQuietBoard() {
   };
 }
 
+function buildSeason({ premiumTier = false }: { premiumTier?: boolean } = {}) {
+  return {
+    live: true,
+    season: {
+      seq: 1,
+      name: 'Solstice',
+      theme: 'cosmic',
+      week: 1,
+      weeks: 8,
+      playoff_phase: 'none',
+    },
+    track: {
+      xp: 100,
+      level: 1,
+      max_level: 10,
+      xp_per_level: 100,
+      reroll_tokens: 0,
+      premium: { is_premium: false, season_locked_in: false },
+      tiers: [
+        {
+          level: 1,
+          is_premium: premiumTier,
+          reward_type: 'reroll_token',
+          reward_id: null,
+          reward_amount: 1,
+          claimed: false,
+        },
+      ],
+    },
+  };
+}
+
 function setupFetch(fixtures: FetchFixtures = {}) {
   const playerBody = fixtures.player ?? {
     player: {
@@ -165,6 +201,7 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     if (u.includes('/api/player')) return jsonResponse(playerBody);
     if (u.includes('/api/streaks')) return jsonResponse(streaksBody);
     if (u.includes('/api/contracts')) return jsonResponse(contractsBody);
+    if (u.includes('/api/season')) return jsonResponse(fixtures.season ?? {});
     if (u.includes('/api/collection')) return jsonResponse(collectionBody);
     if (u.includes('/api/game/session')) {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -240,15 +277,17 @@ describe('Home page', () => {
       expect(screen.getByText('320')).toBeInTheDocument(); // DNA
       expect(screen.getByText('4/5')).toBeInTheDocument(); // Energy
 
-      const calls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
-      expect(calls).toEqual(
-        expect.arrayContaining([
-          '/api/player',
-          '/api/streaks',
-          '/api/contracts',
-          '/api/collection',
-        ])
-      );
+      await waitFor(() => {
+        const calls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
+        expect(calls).toEqual(
+          expect.arrayContaining([
+            '/api/player',
+            '/api/streaks',
+            '/api/contracts',
+            '/api/collection',
+          ])
+        );
+      });
     });
 
     it('sends the auth token with stat requests', async () => {
@@ -437,6 +476,134 @@ describe('Home page', () => {
       render(<Home />);
 
       expect(await screen.findByTestId('contracts-board')).toBeInTheDocument();
+    });
+
+    it('opens the existing contracts board for the semantic notification action', async () => {
+      setAuthed();
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.contracts).toBeDefined();
+      });
+      act(() => dispatchNotificationAction('open-contracts'));
+
+      expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
+    });
+
+    it('keeps an unresolved contract-choice badge after the board is closed', async () => {
+      setAuthed();
+      render(<Home />);
+
+      const mission = await screen.findByText('New contracts available');
+      fireEvent.click(mission);
+      fireEvent.click(screen.getByRole('button', { name: 'Maybe Later' }));
+
+      expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
+        badgeKind: 'exclamation',
+        actionLabel: 'Choose Contracts',
+      });
+    });
+
+    it('clears the choice badge immediately after the contracts are selected', async () => {
+      setAuthed();
+      const pickedBoard = buildQuietBoard();
+      const fallbackFetch = global.fetch;
+      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes('/api/contracts') && init?.method === 'POST') {
+          return jsonResponse(pickedBoard);
+        }
+        return fallbackFetch(url, init);
+      }) as jest.Mock;
+      render(<Home />);
+
+      fireEvent.click(await screen.findByText('New contracts available'));
+      fireEvent.click(screen.getByTestId('contract-card-banker'));
+      fireEvent.click(screen.getByTestId('contract-card-sprinter'));
+      fireEvent.click(screen.getByTestId('contracts-confirm'));
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
+      });
+    });
+
+    it('clears a numeric reward badge immediately after the final claim', async () => {
+      setAuthed();
+      const board = buildQuietBoard();
+      (board.contracts[0] as Record<string, unknown>).completed = true;
+      board.claimable = true;
+      setupFetch({ contracts: board });
+      const fallbackFetch = global.fetch;
+      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes('/api/contracts') && init?.method === 'POST') {
+          return jsonResponse({
+            contractId: 'banker',
+            dnaGranted: 400,
+            energyGranted: 0,
+            xpGranted: 150,
+          });
+        }
+        return fallbackFetch(url, init);
+      }) as jest.Mock;
+      render(<Home />);
+
+      fireEvent.click(await screen.findByText('Contracts: 1/2 complete'));
+      fireEvent.click(screen.getByTestId('contract-claim-banker'));
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
+      });
+    });
+  });
+
+  describe('notification-first season rewards', () => {
+    it('opens the existing season track for its semantic notification action', async () => {
+      setAuthed();
+      setupFetch({ season: buildSeason() });
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.season).toMatchObject({
+          badgeKind: 'numeric',
+          action: 'open-season',
+        });
+      });
+      act(() => dispatchNotificationAction('open-season'));
+
+      expect(screen.getByTestId('season-track')).toBeInTheDocument();
+    });
+
+    it('does not advertise a premium reward the player cannot claim', async () => {
+      setAuthed();
+      setupFetch({ season: buildSeason({ premiumTier: true }) });
+      render(<Home />);
+
+      await waitForStats();
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.season).toBeUndefined();
+      });
+    });
+
+    it('clears the season badge immediately after the final reward is claimed', async () => {
+      setAuthed();
+      setupFetch({ season: buildSeason() });
+      const fallbackFetch = global.fetch;
+      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes('/api/season') && init?.method === 'POST') {
+          return jsonResponse({ reward: { reroll_tokens: 1 } });
+        }
+        return fallbackFetch(url, init);
+      }) as jest.Mock;
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.season).toBeDefined();
+      });
+      act(() => dispatchNotificationAction('open-season'));
+      fireEvent.click(screen.getByTestId('season-claim-1'));
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications.season).toBeUndefined();
+      });
     });
   });
 

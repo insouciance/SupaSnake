@@ -36,7 +36,8 @@ interface AnalystState {
 
 export default function ProfilePage() {
   const { user, getToken } = useAuth();
-  const clearDestination = useNotificationStore((state) => state.clearDestination);
+  const clearNotification = useNotificationStore((state) => state.clear);
+  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
   const [payload, setPayload] = useState<ChroniclePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +48,8 @@ export default function ProfilePage() {
   // Reaching the Chronicle is the intentional discovery action represented
   // by the identity badge. Claiming a handle remains optional inside it.
   useEffect(() => {
-    clearDestination('identity');
-  }, [clearDestination]);
+    if (notificationsHydrated) clearNotification('claim-handle');
+  }, [clearNotification, notificationsHydrated]);
 
   // Analyst artifacts (Identity v1 I4): every failure renders nothing —
   // the Chronicle never waits on, or breaks over, the Analyst.

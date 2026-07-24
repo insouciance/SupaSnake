@@ -20,6 +20,7 @@ import { IconUser, IconGear, IconX } from '@/components/ui/icons';
 import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import {
   destinationBadge,
+  subscribeNotificationAction,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 
@@ -33,21 +34,31 @@ export function AccountChip({ className = '' }: AccountChipProps) {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const notifications = useNotificationStore((state) => state.notifications);
-  const clearDestination = useNotificationStore((state) => state.clearDestination);
+  const clearNotification = useNotificationStore((state) => state.clear);
+  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
   const accountBadge = destinationBadge(notifications, 'account');
 
   useEffect(() => {
-    if (user && !isAnonymous) clearDestination('account');
-  }, [user, isAnonymous, clearDestination]);
+    if (notificationsHydrated && !isLoading && !isAnonymous) {
+      clearNotification('save-progress');
+    }
+  }, [isAnonymous, isLoading, notificationsHydrated, clearNotification]);
 
   useEffect(() => {
     if (!isAnonymous) return;
     const openFromNotification = () => {
       if (window.location.hash === '#save-progress') setShowUpgrade(true);
     };
+    const unsubscribe = subscribeNotificationAction(
+      'open-save-progress',
+      () => setShowUpgrade(true)
+    );
     openFromNotification();
     window.addEventListener('hashchange', openFromNotification);
-    return () => window.removeEventListener('hashchange', openFromNotification);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('hashchange', openFromNotification);
+    };
   }, [isAnonymous]);
 
   const closeUpgrade = () => {

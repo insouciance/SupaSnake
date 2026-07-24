@@ -1,10 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import {
+  attentionBadge,
+  dispatchNotificationAction,
+  notificationActionForHref,
   notificationList,
   useNotificationStore,
+  type GameNotification,
 } from '@/lib/stores/notificationStore';
 import { NotificationBadge } from './NotificationBadge';
 
@@ -22,53 +28,165 @@ function BellIcon() {
   );
 }
 
-export function NotificationCenter() {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const notifications = useNotificationStore((state) => state.notifications);
-  const hasHydrated = useNotificationStore((state) => state.hasHydrated);
-  const clear = useNotificationStore((state) => state.clear);
-  const ordered = useMemo(() => notificationList(notifications), [notifications]);
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+      <path
+        d="m6 6 12 12M18 6 6 18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      triggerRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
-  const badge = ordered.length > 0
-    ? {
-        kind: ordered.some((item) => item.badgeKind === 'numeric')
-          ? ('numeric' as const)
-          : ('exclamation' as const),
-        count: ordered.reduce(
-          (sum, item) => sum + (item.badgeKind === 'numeric' ? item.count ?? 0 : 0),
-          0
-        ),
-      }
-    : { kind: 'hidden' as const, count: 0 };
+function NotificationItem({
+  notification,
+  onAction,
+}: {
+  notification: GameNotification;
+  onAction: () => void;
+}) {
+  const action = notification.action ?? notificationActionForHref(notification.href);
 
   return (
-    <div ref={rootRef} className="relative">
+    <li className="border-b border-scale-blue-light/20 last:border-0">
+      <Link
+        href={notification.href}
+        className="flex min-h-[72px] gap-3 px-4 py-3 text-left transition-colors hover:bg-scale-blue/20 focus:outline-none focus-visible:bg-scale-blue/30"
+        onClick={() => {
+          if (action) dispatchNotificationAction(action);
+          onAction();
+        }}
+      >
+        <NotificationBadge
+          kind={notification.badgeKind}
+          count={notification.count}
+          label={`${notification.title} needs attention`}
+          animate={false}
+          className="mt-0.5 shrink-0"
+        />
+        <span className="min-w-0">
+          <span className="block font-body text-sm font-bold text-bone-white">
+            {notification.title}
+          </span>
+          <span className="mt-0.5 block font-body text-xs text-beige/75">
+            {notification.description}
+          </span>
+          {notification.actionLabel && (
+            <span className="mt-1 block font-body text-xs font-bold text-venom-orange">
+              {notification.actionLabel}
+            </span>
+          )}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function NotificationDialog({
+  notifications,
+  onClose,
+}: {
+  notifications: GameNotification[];
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useDialogFocusTrap(dialogRef);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-void-deep/85 p-3 backdrop-blur-sm sm:p-6 [padding-top:calc(0.75rem+env(safe-area-inset-top))] [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="flex max-h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-arcade border-2 border-scale-blue-light bg-void-deep shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notification-center-title"
+        tabIndex={-1}
+      >
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-scale-blue-light/40 px-4 py-3">
+          <div>
+            <h2
+              id="notification-center-title"
+              className="font-display text-sm uppercase tracking-wider text-bone-white"
+            >
+              Notifications
+            </h2>
+            <p className="mt-0.5 font-body text-xs text-beige/60">
+              Actions stay here until they are resolved or acknowledged.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-arcade border border-scale-blue-light/50 text-beige transition-colors hover:border-venom-orange hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+            aria-label="Close notifications"
+          >
+            <CloseIcon />
+          </button>
+        </header>
+
+        {notifications.length === 0 ? (
+          <p className="px-4 py-8 text-center font-body text-sm text-beige/70">
+            You&apos;re all caught up.
+          </p>
+        ) : (
+          <ul
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            data-testid="notification-list"
+          >
+            {notifications.map((notification) => (
+              <NotificationItem
+                key={notification.id}
+                notification={notification}
+                onAction={onClose}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+export function NotificationCenter() {
+  const [open, setOpen] = useState(false);
+  const notifications = useNotificationStore((state) => state.notifications);
+  const hasHydrated = useNotificationStore((state) => state.hasHydrated);
+  const ordered = useMemo(() => notificationList(notifications), [notifications]);
+  const badge = useMemo(() => attentionBadge(notifications), [notifications]);
+
+  return (
+    <div className="relative">
       <button
-        ref={triggerRef}
         type="button"
         className="relative inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-arcade border border-scale-blue-light/60 bg-void-deep/80 text-beige transition-colors hover:border-venom-orange hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
-        aria-label={ordered.length > 0 ? `Notifications, ${ordered.length} unread` : 'Notifications'}
+        aria-label={
+          ordered.length > 0
+            ? `Notifications, ${ordered.length} action${ordered.length === 1 ? '' : 's'} available`
+            : 'Notifications'
+        }
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((value) => !value)}
@@ -78,6 +196,13 @@ export function NotificationCenter() {
           <NotificationBadge
             kind={badge.kind}
             count={badge.count}
+            label={
+              badge.kind === 'numeric'
+                ? `${badge.count ?? 0} items need attention`
+                : ordered.length === 1
+                  ? '1 action needs attention'
+                  : `${ordered.length} actions need attention`
+            }
             animate={false}
             className="absolute -right-1 -top-1"
           />
@@ -85,77 +210,10 @@ export function NotificationCenter() {
       </button>
 
       {open && (
-        <section
-          className="absolute right-0 z-[80] mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-arcade border-2 border-scale-blue-light bg-void-deep shadow-2xl"
-          role="dialog"
-          aria-label="Notification center"
-        >
-          <header className="border-b border-scale-blue-light/40 px-4 py-3">
-            <h2 className="font-display text-sm uppercase tracking-wider text-bone-white">
-              Notifications
-            </h2>
-          </header>
-
-          {ordered.length === 0 ? (
-            <p className="px-4 py-6 text-center font-body text-sm text-beige/70">
-              You&apos;re all caught up.
-            </p>
-          ) : (
-            <ul className="max-h-[min(60dvh,28rem)] overflow-y-auto">
-              {ordered.map((notification) => (
-                <li key={notification.id} className="border-b border-scale-blue-light/20 last:border-0">
-                  {notification.href ? (
-                    <Link
-                      href={notification.href}
-                      className="flex min-h-[64px] gap-3 px-4 py-3 text-left transition-colors hover:bg-scale-blue/20 focus:outline-none focus-visible:bg-scale-blue/30"
-                      onClick={() => {
-                        if (notification.clearOnOpen !== false) clear(notification.id);
-                        setOpen(false);
-                      }}
-                    >
-                      <NotificationBadge
-                        kind={notification.badgeKind}
-                        count={notification.count}
-                        animate={false}
-                        className="mt-0.5 shrink-0"
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-body text-sm font-bold text-bone-white">
-                          {notification.title}
-                        </span>
-                        <span className="mt-0.5 block font-body text-xs text-beige/75">
-                          {notification.description}
-                        </span>
-                        {notification.actionLabel && (
-                          <span className="mt-1 block font-body text-xs font-bold text-venom-orange">
-                            {notification.actionLabel}
-                          </span>
-                        )}
-                      </span>
-                    </Link>
-                  ) : (
-                    <div className="flex min-h-[64px] gap-3 px-4 py-3">
-                      <NotificationBadge
-                        kind={notification.badgeKind}
-                        count={notification.count}
-                        animate={false}
-                        className="mt-0.5 shrink-0"
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-body text-sm font-bold text-bone-white">
-                          {notification.title}
-                        </span>
-                        <span className="mt-0.5 block font-body text-xs text-beige/75">
-                          {notification.description}
-                        </span>
-                      </span>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <NotificationDialog
+          notifications={ordered}
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   );

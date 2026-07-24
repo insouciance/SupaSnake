@@ -4,6 +4,15 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type NotificationBadgeKind = 'hidden' | 'exclamation' | 'numeric';
+export type NotificationAttentionReason =
+  | 'action-required'
+  | 'reward-available'
+  | 'progression-opportunity';
+export type NotificationAction =
+  | 'open-contracts'
+  | 'open-season'
+  | 'open-offline-rewards'
+  | 'open-save-progress';
 export type NotificationDestination =
   | 'global'
   | 'home'
@@ -13,29 +22,107 @@ export type NotificationDestination =
   | 'account'
   | 'identity';
 
-export interface GameNotification {
+interface NotificationTarget {
+  destination: NotificationDestination;
+  href: string;
+  action?: NotificationAction;
+}
+
+/**
+ * Canonical destinations for every current attention item. Hashes remain a
+ * reload/cross-route fallback; semantic actions make same-page modal opening
+ * deterministic instead of depending on a browser hashchange.
+ */
+export const NOTIFICATION_TARGETS = {
+  contracts: {
+    destination: 'contracts',
+    href: '/#contracts',
+    action: 'open-contracts',
+  },
+  season: {
+    destination: 'season',
+    href: '/#season',
+    action: 'open-season',
+  },
+  offlineRewards: {
+    destination: 'home',
+    href: '/#offline-rewards',
+    action: 'open-offline-rewards',
+  },
+  saveProgress: {
+    destination: 'account',
+    href: '/#save-progress',
+    action: 'open-save-progress',
+  },
+  lab: {
+    destination: 'lab',
+    href: '/lab',
+  },
+  identity: {
+    destination: 'identity',
+    href: '/profile',
+  },
+} as const satisfies Record<string, NotificationTarget>;
+
+const NOTIFICATION_ACTION_EVENT = 'supasnake:notification-action';
+
+export function notificationActionForHref(href: string): NotificationAction | undefined {
+  const target = Object.values(NOTIFICATION_TARGETS).find(
+    (candidate) => candidate.href === href
+  );
+  return target && 'action' in target ? target.action : undefined;
+}
+
+export function dispatchNotificationAction(action: NotificationAction): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(NOTIFICATION_ACTION_EVENT, { detail: { action } })
+  );
+}
+
+export function subscribeNotificationAction(
+  action: NotificationAction,
+  listener: () => void
+): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+
+  const handleAction = (event: Event) => {
+    if (
+      event instanceof CustomEvent &&
+      (event.detail as { action?: NotificationAction } | null)?.action === action
+    ) {
+      listener();
+    }
+  };
+
+  window.addEventListener(NOTIFICATION_ACTION_EVENT, handleAction);
+  return () => window.removeEventListener(NOTIFICATION_ACTION_EVENT, handleAction);
+}
+
+interface NotificationBase {
   id: string;
   title: string;
   description: string;
   destination: NotificationDestination;
+}
+
+export interface GameNotification extends NotificationBase {
   badgeKind: Exclude<NotificationBadgeKind, 'hidden'>;
+  attentionReason: NotificationAttentionReason;
   /** Required for numeric badges; values are normalized to positive integers. */
   count?: number;
-  href?: string;
+  href: string;
+  action?: NotificationAction;
   actionLabel?: string;
-  /** False for notifications that resolve only after a claim or mutation. */
-  clearOnOpen?: boolean;
   /** False for ephemeral, same-page notices that must not survive reload. */
   persistent?: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface NotificationInput
-  extends Omit<GameNotification, 'createdAt' | 'updatedAt' | 'badgeKind'> {
-  badgeKind: NotificationBadgeKind;
-  createdAt?: number;
-}
+export type NotificationInput =
+  | (NotificationBase & { badgeKind: 'hidden' })
+  | (Omit<GameNotification, 'createdAt' | 'updatedAt'> & { createdAt?: number });
 
 interface NotificationState {
   notifications: Record<string, GameNotification>;
@@ -59,8 +146,17 @@ export const useNotificationStore = create<NotificationState>()(
       hasHydrated: false,
       publish: (input) =>
         set((state) => {
+          if (input.badgeKind === 'hidden') {
+            const { [input.id]: _removed, ...remaining } = state.notifications;
+            return { notifications: remaining };
+          }
+
           const count = normalizeCount(input.count);
-          if (input.badgeKind === 'hidden' || (input.badgeKind === 'numeric' && count === 0)) {
+          if (
+            (input.badgeKind === 'numeric' && count === 0) ||
+            typeof input.href !== 'string' ||
+            input.href.trim().length === 0
+          ) {
             const { [input.id]: _removed, ...remaining } = state.notifications;
             return { notifications: remaining };
           }
@@ -71,7 +167,6 @@ export const useNotificationStore = create<NotificationState>()(
             ...input,
             badgeKind: input.badgeKind,
             ...(input.badgeKind === 'numeric' ? { count } : { count: undefined }),
-            clearOnOpen: input.clearOnOpen ?? true,
             persistent: input.persistent ?? true,
             createdAt: existing?.createdAt ?? input.createdAt ?? now,
             updatedAt: now,
@@ -120,17 +215,20 @@ export const useNotificationStore = create<NotificationState>()(
 export function notificationList(
   notifications: Record<string, GameNotification>
 ): GameNotification[] {
-  return Object.values(notifications).sort(
-    (a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
-  );
+  return Object.values(notifications)
+    .filter(
+      (notification) =>
+        typeof notification.href === 'string' && notification.href.trim().length > 0
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
 }
 
-export function destinationBadge(
+export function attentionBadge(
   notifications: Record<string, GameNotification>,
-  destination: NotificationDestination
+  destination?: NotificationDestination
 ): { kind: NotificationBadgeKind; count?: number } {
-  const matching = Object.values(notifications).filter(
-    (notification) => notification.destination === destination
+  const matching = notificationList(notifications).filter(
+    (notification) => destination === undefined || notification.destination === destination
   );
   if (matching.length === 0) return { kind: 'hidden' };
 
@@ -140,6 +238,18 @@ export function destinationBadge(
     0
   );
 
-  if (numericCount > 0) return { kind: 'numeric', count: numericCount };
+  if (numericCount > 0) {
+    const exclamationCount = matching.filter(
+      (notification) => notification.badgeKind === 'exclamation'
+    ).length;
+    return { kind: 'numeric', count: numericCount + exclamationCount };
+  }
   return { kind: 'exclamation' };
+}
+
+export function destinationBadge(
+  notifications: Record<string, GameNotification>,
+  destination: NotificationDestination
+): { kind: NotificationBadgeKind; count?: number } {
+  return attentionBadge(notifications, destination);
 }

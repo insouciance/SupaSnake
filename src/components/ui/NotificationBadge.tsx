@@ -24,8 +24,8 @@ export function NotificationBadge({
   const accessibleLabel =
     label ??
     (kind === 'numeric'
-      ? `${numericCount} unread notification${numericCount === 1 ? '' : 's'}`
-      : 'New notification');
+      ? `${numericCount} item${numericCount === 1 ? ' needs' : 's need'} attention`
+      : 'Action needs attention');
 
   return (
     <span

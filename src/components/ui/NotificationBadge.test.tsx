@@ -13,7 +13,9 @@ describe('NotificationBadge', () => {
   it('announces exact counts while visually capping large values', () => {
     render(<NotificationBadge kind="numeric" count={120} />);
 
-    expect(screen.getByRole('status', { name: '120 unread notifications' })).toHaveTextContent('99+');
+    expect(
+      screen.getByRole('status', { name: '120 items need attention' })
+    ).toHaveTextContent('99+');
   });
 
   it('supports an accessible exclamation indicator', () => {

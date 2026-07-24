@@ -76,6 +76,21 @@ All discoverable meta systems use one notification model:
 - persistence only for UI discovery state, never authoritative player progress
 - reduced-motion-aware animation and an accessible text label
 
+The red presentation is an attention badge, not an unread receipt. It appears
+only for an action the player needs to complete, an available item or reward,
+or an optional action that meaningfully benefits or protects progression. Each
+record has one semantic id and one reachable destination; unavailable,
+inaccessible, duplicate, and already-resolved actions remain hidden. Opening
+the notification center does not acknowledge its contents. A record resolves
+only after its underlying action is completed, claimed, explicitly
+acknowledged, or no longer available.
+
+The notification center is a viewport-bound dialog with an explicit close
+action. Its list scrolls internally at constrained heights, and selecting an
+item invokes the existing destination interface through a semantic action with
+a route/hash fallback. Notification surfaces never duplicate Contracts,
+rewards, account, Lab, Season, or identity interfaces.
+
 Feature code publishes semantic items (for example `contracts`, `offline-rewards`, `lab-discovery`, `save-progress`, or `identity`) rather than rendering an automatic modal. The notification center is an optional inbox, and destination badges derive from the same records.
 
 ## Authoritative bootstrap invariants
