@@ -341,6 +341,60 @@ describe('portal trichotomy', () => {
     driveToPortal(game);
     expect(over).toBe(true);
   });
+
+  it('PASS can hand off synchronously to a frozen planning gate', () => {
+    const game = makeGenomeGame();
+    eatFoods(game, 2);
+    driveToPortal(game);
+
+    expect(game.resolvePortalChoice('pass')).toBe(true);
+    game.pause(); // mirrors GamePage.armResumeAfterDecision in the same turn
+
+    expect(game.isPaused).toBe(true);
+    const head = { ...game.getState().snake[0] };
+    game.tick();
+    expect(game.getState().snake[0]).toEqual(head);
+  });
+
+  it('INFUSE waits for its gene choice, then freezes before another tick', () => {
+    const game = makeGenomeGame();
+    eatFoods(game, 10);
+    driveToPortal(game);
+    expect(game.resolvePortalChoice('infuse')).toBe(true);
+    expect(game.getState().pendingChoice).not.toBeNull();
+
+    game.on('mutationPicked', () => game.pause());
+    expect(game.chooseMutation(0)).toBe(true);
+
+    expect(game.getState().pendingChoice).toBeNull();
+    expect(game.isPaused).toBe(true);
+    const head = { ...game.getState().snake[0] };
+    game.tick();
+    expect(game.getState().snake[0]).toEqual(head);
+  });
+
+  it('a Strain Surge can freeze synchronously after the six-gene choice', () => {
+    const game = makeGenomeGame();
+    game.grantMutation('gold_trail', 0);
+    game.grantMutation('overgrowth', 0);
+    game.grantMutation('wall_rush', 0);
+    game.grantMutation('slipstream', 0);
+    game.grantMutation('serpentine', 0);
+    game.grantMutation('bulk_up', 0);
+    eatFoods(game, 10);
+    driveToPortal(game);
+    expect(game.resolvePortalChoice('infuse')).toBe(true);
+    expect(game.getState().pendingSurgeChoice).toBe(true);
+
+    game.on('surged', () => game.pause());
+    expect(game.chooseSurge('AURUM')).toBe(true);
+
+    expect(game.getState().pendingSurgeChoice).toBe(false);
+    expect(game.isPaused).toBe(true);
+    const head = { ...game.getState().snake[0] };
+    game.tick();
+    expect(game.getState().snake[0]).toEqual(head);
+  });
 });
 
 describe('offers under genome rules', () => {

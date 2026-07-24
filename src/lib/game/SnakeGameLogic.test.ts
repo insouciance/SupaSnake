@@ -302,6 +302,59 @@ describe('SnakeGameLogic', () => {
       });
     });
 
+    describe('resumeWithDirection (post-pause safety gate)', () => {
+      it('queues a legal direction before atomically resuming', () => {
+        game.pause();
+
+        expect(game.resumeWithDirection('UP')).toBe('accepted');
+        expect(game.isPaused).toBe(false);
+        expect(game.getQueuedDirections()).toEqual(['UP']);
+
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+      });
+
+      it('treats the current heading as deliberate and resumes', () => {
+        game.pause();
+
+        expect(game.resumeWithDirection('RIGHT')).toBe('duplicate');
+        expect(game.isPaused).toBe(false);
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+
+      it('keeps the board frozen after an unsafe reversal', () => {
+        game.pause();
+        const head = { ...game.getState().snake[0] };
+
+        expect(game.resumeWithDirection('LEFT')).toBe('reversal');
+        expect(game.isPaused).toBe(true);
+        game.tick();
+        expect(game.getState().snake[0]).toEqual(head);
+      });
+
+      it('buffers a rapid follow-up after the release command', () => {
+        game.pause();
+
+        expect(game.resumeWithDirection('UP')).toBe('accepted');
+        expect(game.resumeWithDirection('LEFT')).toBe('accepted');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+        game.tick();
+        expect(game.getState().direction).toBe('LEFT');
+      });
+
+      it('clears stale buffered turns whenever the game pauses', () => {
+        game.setDirection('UP');
+        game.setDirection('LEFT');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+
+        game.pause();
+        expect(game.getQueuedDirections()).toEqual([]);
+      });
+    });
+
     describe('getQueuedDirections (aim telegraph read-only view)', () => {
       it('returns an empty array when nothing is buffered', () => {
         expect(game.getQueuedDirections()).toEqual([]);
@@ -1208,7 +1261,7 @@ describe('SnakeGameLogic', () => {
       expect(engine.getState().isPaused).toBe(false); // NOT the pause state
     });
 
-    it('chooseMutation holds the pick at the current food count and resumes', () => {
+    it('chooseMutation holds the pick at the current food count and clears the choice hold', () => {
       const engine = openChoice();
       let picked: any = null;
       engine.on('mutationPicked', (data) => {
@@ -1223,11 +1276,22 @@ describe('SnakeGameLogic', () => {
       expect(picked.id).toBe(options[0]);
 
       const headBefore = engine.getState().snake[0];
-      engine.tick(); // resumes instantly
+      engine.tick(); // the engine can advance unless its UI listener arms a gate
       expect(engine.getState().snake[0]).not.toEqual(headBefore);
     });
 
-    it('declining takes neither and resumes', () => {
+    it('can be synchronously gated by the mutationPicked listener before any tick', () => {
+      const engine = openChoice();
+      engine.on('mutationPicked', () => engine.pause());
+      const headBefore = { ...engine.getState().snake[0] };
+
+      expect(engine.chooseMutation(0)).toBe(true);
+      expect(engine.isPaused).toBe(true);
+      engine.tick();
+      expect(engine.getState().snake[0]).toEqual(headBefore);
+    });
+
+    it('declining takes neither and clears the choice hold', () => {
       const engine = openChoice();
       let declined = false;
       engine.on('mutationDeclined', () => {
@@ -1237,6 +1301,17 @@ describe('SnakeGameLogic', () => {
       expect(declined).toBe(true);
       expect(engine.getState().pendingChoice).toBeNull();
       expect(engine.getState().heldMutations).toEqual([]);
+    });
+
+    it('can be synchronously gated by the mutationDeclined listener before any tick', () => {
+      const engine = openChoice();
+      engine.on('mutationDeclined', () => engine.pause());
+      const headBefore = { ...engine.getState().snake[0] };
+
+      engine.declineMutation();
+      expect(engine.isPaused).toBe(true);
+      engine.tick();
+      expect(engine.getState().snake[0]).toEqual(headBefore);
     });
 
     it('chooseMutation is a no-op without a pending choice', () => {

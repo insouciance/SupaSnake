@@ -154,6 +154,48 @@ canvas {
     background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.5), transparent);
   }
 
+  /* Active-run telemetry layout. Portrait phones keep the five compact
+     information bands; tablet, desktop, and short landscape use two columns
+     across three rows so the HUD reserves less vertical board space. */
+  .game-hud-deck {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'brand'
+      'telemetry'
+      'ticker'
+      'build'
+      'strains';
+    gap: 0.375rem;
+  }
+
+  .game-hud-brand { grid-area: brand; }
+  .game-hud-telemetry { grid-area: telemetry; }
+  .game-hud-ticker { grid-area: ticker; }
+  .game-hud-build { grid-area: build; }
+  .game-hud-strains { grid-area: strains; }
+
+  @media (min-width: 48rem) {
+    .game-hud-deck {
+      grid-template-columns: minmax(20rem, 5fr) minmax(0, 7fr);
+      grid-template-areas:
+        'brand brand'
+        'telemetry ticker'
+        'build strains';
+      align-items: center;
+    }
+  }
+
+  /* A real phone in landscape can be wider than the usual mobile breakpoint.
+     Keep touch controls compact without violating the 44px target floor. */
+  @media (max-height: 430px) and (orientation: landscape) {
+    .game-dpad-button,
+    .game-dpad-spacer {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+  }
+
   /* Shimmer sweep for celebratory highlights (pair with animate-shimmer) */
   .shimmer-overlay {
     background-size: 200% 100%;

@@ -4,7 +4,13 @@ import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useEffect, useRef, useCallback, useMemo, useState, Suspense } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
-import { SnakeGameLogic, Direction, Position, GameOverData } from '@/lib/game/SnakeGameLogic';
+import {
+  SnakeGameLogic,
+  Direction,
+  Position,
+  GameOverData,
+  type SetDirectionResult,
+} from '@/lib/game/SnakeGameLogic';
 import type { FluxPhase } from '@/lib/game/SnakeGameLogic';
 import {
   applyGenomeOutcome,
@@ -115,6 +121,24 @@ import {
  * per device until claimed or dismissed twice.
  */
 const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
+const DIRECTION_BY_KEY: Record<string, Direction> = {
+  ArrowUp: 'UP',
+  ArrowDown: 'DOWN',
+  ArrowLeft: 'LEFT',
+  ArrowRight: 'RIGHT',
+  w: 'UP',
+  s: 'DOWN',
+  a: 'LEFT',
+  d: 'RIGHT',
+  W: 'UP',
+  S: 'DOWN',
+  A: 'LEFT',
+  D: 'RIGHT',
+};
+
+function directionCanRelease(result: SetDirectionResult): boolean {
+  return result === 'accepted' || result === 'duplicate';
+}
 
 function handlePromptExhausted(): boolean {
   try {
@@ -148,12 +172,11 @@ export default function GamePage() {
   const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
   const [viewResetToken, setViewResetToken] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
-  const hudRef = useRef<HTMLDivElement | null>(null);
-  const [hudHeight, setHudHeight] = useState(0);
   // A pause or build decision never releases directly into movement. The
   // engine stays frozen until the player's next deliberate direction input.
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
+  const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile control scheme: flick-anywhere is the default, D-pad the
   // fallback. Client preference, persisted in localStorage.
@@ -397,25 +420,6 @@ export default function GamePage() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  // The telemetry deck grows when bank/build information becomes available.
-  // Reserve its measured height above the WebGL canvas so no responsive wrap
-  // can ever cover the playable board.
-  useEffect(() => {
-    const hud = hudRef.current;
-    if (!hud) return;
-    const measure = () => setHudHeight(Math.ceil(hud.getBoundingClientRect().height));
-    measure();
-    const observer = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(measure);
-    observer?.observe(hud);
-    window.addEventListener('resize', measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [authLoading, isAuthenticated]);
 
   useEffect(() => () => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
@@ -672,19 +676,33 @@ export default function GamePage() {
 
   const beginPauseRearm = useCallback(() => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
+    pauseRearmingRef.current = true;
     setPauseRearming(true);
     pauseRearmTimerRef.current = setTimeout(() => {
+      pauseRearmingRef.current = false;
       setPauseRearming(false);
       pauseRearmTimerRef.current = null;
     }, 600);
   }, []);
 
-  const releaseResumeGate = useCallback(() => {
+  const cancelPauseRearm = useCallback(() => {
+    if (pauseRearmTimerRef.current) {
+      clearTimeout(pauseRearmTimerRef.current);
+      pauseRearmTimerRef.current = null;
+    }
+    pauseRearmingRef.current = false;
+    setPauseRearming(false);
+  }, []);
+
+  const releaseResumeGate = useCallback((dir?: Direction): SetDirectionResult | null => {
     const game = gameRef.current;
-    if (!game || !awaitingResumeInput) return;
-    game.resume();
+    if (!game || !awaitingResumeInput) return 'inactive';
+    const result = dir ? game.resumeWithDirection(dir) : null;
+    if (!dir) game.resume();
+    if (game.isPaused) return result;
     setAwaitingResumeInput(false);
     beginPauseRearm();
+    return result;
   }, [awaitingResumeInput, beginPauseRearm]);
 
   const armResumeAfterDecision = useCallback(() => {
@@ -1054,6 +1072,7 @@ export default function GamePage() {
 
     gameRef.current.on('pause', () => {
       setPaused(true);
+      setQueuedDirections([]);
       audioManager.play('pause');
     });
 
@@ -1085,6 +1104,7 @@ export default function GamePage() {
     setScore,
     setStrains,
     setSurgeChoicePending,
+    setQueuedDirections,
     fetchCodex,
     armResumeAfterDecision,
     showToast,
@@ -1324,27 +1344,24 @@ export default function GamePage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Handle ready state - first input starts movement
       if ((isReady && !intervalRef.current) || awaitingResumeInput) {
-        const validStartKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-                                'w', 'a', 's', 'd', 'W', 'A', 'S', 'D', ' '];
-        if (validStartKeys.includes(e.key)) {
+        const dir = DIRECTION_BY_KEY[e.key];
+        if (dir || e.key === ' ') {
           e.preventDefault();
-          if (awaitingResumeInput) {
+          if (dir && gameRef.current) {
+            const result = awaitingResumeInput
+              ? releaseResumeGate(dir)
+              : gameRef.current.setDirection(dir);
+            if (!result || !directionCanRelease(result)) return;
+            if (!awaitingResumeInput) {
+              setReady(false);
+              startGameLoop();
+            }
+            syncAim();
+          } else if (awaitingResumeInput) {
             releaseResumeGate();
           } else {
             setReady(false);
             startGameLoop();
-          }
-
-          // If direction key, also set direction
-          const keyMap: Record<string, Direction> = {
-            ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
-            w: 'UP', s: 'DOWN', a: 'LEFT', d: 'RIGHT',
-            W: 'UP', S: 'DOWN', A: 'LEFT', D: 'RIGHT',
-          };
-          const dir = keyMap[e.key];
-          if (dir && gameRef.current) {
-            gameRef.current.setDirection(dir);
-            syncAim();
           }
           return;
         }
@@ -1359,7 +1376,7 @@ export default function GamePage() {
         e.preventDefault();
         if (isPaused) {
           setAwaitingResumeInput((armed) => !armed);
-        } else if (!pauseRearming) {
+        } else if (!pauseRearmingRef.current) {
           gameRef.current?.pause();
         }
         return;
@@ -1368,22 +1385,7 @@ export default function GamePage() {
       // Existing direction logic (only when game is running)
       if (!isPlaying || isGameOver || isPaused || isReady) return;
 
-      const keyMap: Record<string, Direction> = {
-        ArrowUp: 'UP',
-        ArrowDown: 'DOWN',
-        ArrowLeft: 'LEFT',
-        ArrowRight: 'RIGHT',
-        w: 'UP',
-        s: 'DOWN',
-        a: 'LEFT',
-        d: 'RIGHT',
-        W: 'UP',
-        S: 'DOWN',
-        A: 'LEFT',
-        D: 'RIGHT',
-      };
-
-      const dir = keyMap[e.key];
+      const dir = DIRECTION_BY_KEY[e.key];
       if (dir && gameRef.current) {
         e.preventDefault();
         gameRef.current.setDirection(dir);
@@ -1393,26 +1395,38 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, awaitingResumeInput, pauseRearming, releaseResumeGate, startGameLoop, setReady, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, awaitingResumeInput, releaseResumeGate, startGameLoop, setReady, syncAim]);
 
   // Handle direction from D-Pad
   const handleDPadDirection = useCallback((dir: Direction) => {
     if (!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || !gameRef.current) return;
-    if (awaitingResumeInput) releaseResumeGate();
-    gameRef.current.setDirection(dir);
-    syncAim();
-  }, [isPlaying, isGameOver, isPaused, awaitingResumeInput, releaseResumeGate, syncAim]);
-
-  // The same deliberate input starts a fresh run or releases a post-choice /
-  // post-pause hold. FlickSurface invokes this synchronously before queuing
-  // the direction, so the engine accepts that very first steering command.
-  const handleInputReadyStart = useCallback(() => {
     if (awaitingResumeInput) {
-      releaseResumeGate();
-      return;
+      const result = releaseResumeGate(dir);
+      if (!result || !directionCanRelease(result)) return;
+    } else if (isReady) {
+      const result = gameRef.current.setDirection(dir);
+      if (!directionCanRelease(result)) return;
+      setReady(false);
+      startGameLoop();
+    } else {
+      gameRef.current.setDirection(dir);
     }
+    syncAim();
+  }, [isPlaying, isGameOver, isPaused, isReady, awaitingResumeInput, releaseResumeGate, setReady, startGameLoop, syncAim]);
+
+  // FlickSurface delegates its first direction here so validation, queuing,
+  // and release/start happen atomically before any engine tick.
+  const handleReadyDirection = useCallback((dir: Direction): SetDirectionResult => {
+    if (awaitingResumeInput) {
+      return releaseResumeGate(dir) ?? 'inactive';
+    }
+    const game = gameRef.current;
+    if (!game) return 'inactive';
+    const result = game.setDirection(dir);
+    if (!directionCanRelease(result)) return result;
     setReady(false);
     startGameLoop();
+    return result;
   }, [awaitingResumeInput, releaseResumeGate, setReady, startGameLoop]);
 
   // Select an aim system - optimistic with rollback; the server re-checks
@@ -1446,9 +1460,9 @@ export default function GamePage() {
       setAwaitingResumeInput(false);
       return;
     }
-    if (pauseRearming) return;
+    if (pauseRearmingRef.current) return;
     gameRef.current?.pause();
-  }, [awaitingResumeInput, pauseRearming]);
+  }, [awaitingResumeInput]);
 
   const handleResume = useCallback(() => {
     setAwaitingResumeInput(true);
@@ -1460,8 +1474,9 @@ export default function GamePage() {
       intervalRef.current = null;
     }
     setAwaitingResumeInput(false);
+    cancelPauseRearm();
     resetGame();
-  }, [resetGame]);
+  }, [cancelPauseRearm, resetGame]);
 
   // Restart
   const handleRestart = useCallback(() => {
@@ -1472,11 +1487,12 @@ export default function GamePage() {
     setHypotheticalDna(null);
     setMasteryResult(null);
     setAwaitingResumeInput(false);
+    cancelPauseRearm();
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  }, [resetGame]);
+  }, [cancelPauseRearm, resetGame]);
 
   // Show loading while checking auth
   if (authLoading) {
@@ -1512,7 +1528,7 @@ export default function GamePage() {
   }
 
   return (
-    <div className="w-screen h-dvh relative overflow-hidden app-bg">
+    <div className="w-screen h-dvh relative flex flex-col overflow-hidden app-bg">
       {/* Dynasty ambient tint - lets the void backdrop participate in the
           equipped dynasty's identity without leaving the app palette */}
       <div
@@ -1535,16 +1551,25 @@ export default function GamePage() {
           }}
         />
       )}
-      {/* Responsive telemetry deck. Its measured height is reserved above
-          the canvas below, so even late-run build data cannot cover play. */}
+      {/* Responsive telemetry deck. While a run is active this participates
+          in the root flex layout, so the board begins after the HUD on the
+          very first paint—no ResizeObserver race or animated overlap. */}
       <div
-        ref={hudRef}
         data-testid="game-hud"
-        className="pointer-events-none absolute inset-x-0 z-10 px-3 text-bone-white sm:px-4"
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        className={`pointer-events-none inset-x-0 z-10 shrink-0 px-3 text-bone-white sm:px-4 ${
+          isPlaying ? 'relative' : 'absolute'
+        }`}
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+          paddingBottom: isPlaying ? '8px' : undefined,
+        }}
       >
-        <div className="mx-auto max-w-5xl space-y-1.5 pr-14 sm:pr-16">
-          <div className="flex h-6 items-center gap-2">
+        <div
+          className={`mx-auto max-w-5xl pr-14 sm:pr-16 ${
+            isPlaying ? 'game-hud-deck' : 'space-y-1.5'
+          }`}
+        >
+          <div className="game-hud-brand flex h-6 items-center gap-2">
             <h1 className="heading-display shrink-0 text-base tracking-[0.16em] text-venom-orange text-glow-orange sm:text-xl">
               SupaSnake
             </h1>
@@ -1557,7 +1582,7 @@ export default function GamePage() {
           </div>
 
           {/* Three equal telemetry cells never reflow as values change. */}
-          <div className="grid grid-cols-3 gap-1.5 font-body sm:max-w-xl">
+          <div className="game-hud-telemetry grid grid-cols-3 gap-1.5 font-body">
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Score</span>
               <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{score}</span>
@@ -1569,7 +1594,10 @@ export default function GamePage() {
             </div>
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <IconBolt size={13} className="shrink-0 text-venom-orange" />
-              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Energy</span>
+              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">
+                <span className="lg:hidden">NRG</span>
+                <span className="hidden lg:inline">Energy</span>
+              </span>
               <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{energy}/{maxEnergy}</span>
             </div>
           </div>
@@ -1577,7 +1605,7 @@ export default function GamePage() {
           {/* Stable one-line run ticker: the row exists from tick zero, so
               earning the first food never moves or resizes the board. */}
           {isPlaying && (
-            <div className="flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
+            <div className="game-hud-ticker flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
           {/* Extraction bank preview: what this run pays banked vs crashed
               (mutation-aware: Mirror Wager / Compound Interest / Phoenix
               reshape the outcome multipliers live). Subtle by default;
@@ -1638,7 +1666,7 @@ export default function GamePage() {
 
         {/* Held mutations strip - the run's build at a glance */}
         {isPlaying && (
-          <div className="flex h-7 items-center gap-2 overflow-hidden">
+          <div className="game-hud-build flex h-7 min-w-0 items-center gap-2 overflow-hidden">
             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-beige/45">Build</span>
             {heldMutations.length > 0 ? (
               <MutationHUD
@@ -1654,11 +1682,13 @@ export default function GamePage() {
           </div>
         )}
         {isPlaying && genomeRun && genomeFtue?.strainTagsUnlocked && (
-          <StrainMeterHUD
-            counts={strainCounts}
-            tiers={strainTiers}
-            suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
-          />
+          <div className="game-hud-strains min-w-0">
+            <StrainMeterHUD
+              counts={strainCounts}
+              tiers={strainTiers}
+              suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
+            />
+          </div>
         )}
 
         {/* Equipped Snake (the game always uses the equipped snake) */}
@@ -1709,7 +1739,7 @@ export default function GamePage() {
       )}
 
       {/* Pause Button (in-game) - hidden during the mutation choice hold */}
-      {isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
+      {isPlaying && !isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <button
           onClick={handlePause}
           disabled={pauseRearming && !awaitingResumeInput}
@@ -1760,7 +1790,7 @@ export default function GamePage() {
           gameRef={gameRef}
           getAzimuth={getCameraAzimuth}
           isReady={isReady || awaitingResumeInput}
-          onReadyStart={handleInputReadyStart}
+          onReadyDirection={handleReadyDirection}
           onAim={syncAim}
           debugRef={inputDebugRef}
         />
@@ -1777,9 +1807,6 @@ export default function GamePage() {
           <VirtualDPad
             onDirectionChange={handleDPadDirection}
             disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || choiceActive}
-            isReady={isReady}
-            setReady={setReady}
-            onStartGame={startGameLoop}
           />
         </div>
       )}
@@ -2388,49 +2415,50 @@ export default function GamePage() {
         prompt="That run deserves a name on it."
       />
 
-      {/* Ready State Overlay */}
+      {/* 3D Canvas - initial position approximates CameraRig's default
+          south-side 70-degree view to avoid a first-frame jump */}
+      <div
+        className={isPlaying
+          ? 'relative min-h-0 flex-1'
+          : 'absolute inset-0'}
+        data-testid="game-board-viewport"
+      >
+      {/* Ready / post-decision hold belongs to the board, not the viewport.
+          Centering inside this reserved region keeps compact landscape
+          prompts from obscuring telemetry while the engine is frozen. */}
       {(isReady || awaitingResumeInput) && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-6 py-5 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-3 animate-fade-up">
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+          data-testid="resume-gate"
+        >
+          <div className="mx-4 max-h-[calc(100%-1rem)] rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-5 py-4 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-2.5 animate-fade-up sm:px-6 sm:py-5 sm:space-y-3">
             <h2 className="heading-display text-3xl text-venom-orange text-glow-orange animate-breathe sm:text-5xl">
               {awaitingResumeInput ? 'Choose Your Line' : 'Ready!'}
             </h2>
             {awaitingResumeInput && (
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#7df9ff]">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#7df9ff] sm:text-[10px] sm:tracking-[0.2em]">
                 Board held · movement begins on your input
               </p>
             )}
             {isMobile && controlMode === 'flick' ? (
               <>
-                <p className="text-bone-white text-lg font-body">Flick a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
+                <p className="text-bone-white text-base font-body sm:text-lg">Flick a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
+                <p className="text-beige/60 text-xs font-body sm:text-sm">Short flicks steer - chain them for fast turns</p>
               </>
             ) : isMobile ? (
               <>
-                <p className="text-bone-white text-lg font-body">Tap a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
+                <p className="text-bone-white text-base font-body sm:text-lg">Tap a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
+                <p className="text-beige/60 text-xs font-body sm:text-sm">Use the D-Pad to move</p>
               </>
             ) : (
               <>
-                <p className="text-bone-white text-lg font-body">Press SPACE or a direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
+                <p className="text-bone-white text-base font-body sm:text-lg">Press SPACE or a direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
+                <p className="text-beige/60 text-xs font-body sm:text-sm">Use Arrow Keys or WASD to move</p>
               </>
             )}
           </div>
         </div>
       )}
-
-      {/* 3D Canvas - initial position approximates CameraRig's default
-          south-side 70-degree view to avoid a first-frame jump */}
-      <div
-        className="absolute inset-x-0 bottom-0 transition-[top] duration-200 ease-out"
-        style={{
-          top: isPlaying
-            ? `calc(env(safe-area-inset-top, 0px) + ${hudHeight + 24}px)`
-            : 0,
-        }}
-        data-testid="game-board-viewport"
-      >
       <Canvas
         camera={{
           position: [boardCenter, boardCenter * 2.4, boardCenter * 1.9],

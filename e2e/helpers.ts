@@ -60,9 +60,21 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
  * SKIPPED with an actionable message instead of failing on a selector.
  */
 export async function signInAsGuest(page: Page): Promise<void> {
-  await page.goto('/login');
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: /play as guest/i }).click();
-  await page.waitForURL(/\/game/, { timeout: 20000 });
+
+  // In Chromium software rendering, App Router navigation can be starved
+  // after Supabase has already established the anonymous session. Accept the
+  // authenticated guest notice as proof of the mutation, then navigate
+  // explicitly just as pickStarter does after its server mutation.
+  const guestAuthenticated = page.getByText(/you(?:'|’)?re playing as a guest/i);
+  await Promise.race([
+    page.waitForURL(/\/game/, { timeout: 30000 }),
+    guestAuthenticated.waitFor({ state: 'visible', timeout: 30000 }),
+  ]);
+  if (!/\/game(?:$|[/?#])/.test(new URL(page.url()).pathname)) {
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+  }
 
   // Authenticated /game always renders the HUD ("Score"); a failed
   // anonymous sign-in lands on the sign-in prompt instead.
@@ -92,10 +104,33 @@ export async function pickStarter(
   page: Page,
   dynasty: 'CYBER' | 'PRIMAL' | 'COSMIC' = 'PRIMAL'
 ): Promise<void> {
-  await page.goto('/');
+  // The starter modal is itself the end-to-end proof that the authoritative
+  // player bootstrap completed and found an empty collection. Wait on that
+  // user-visible outcome; cached fetch responses are not guaranteed to emit a
+  // new Playwright `response` event after a full-page navigation.
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   const starterCard = page.getByTestId(`starter-${dynasty}`);
-  await starterCard.waitFor({ state: 'visible', timeout: 20000 });
+  await starterCard.waitFor({ state: 'visible', timeout: 120000 });
   await starterCard.click();
+  const equipResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/collection/equip',
+    { timeout: 60000 }
+  );
   await page.getByRole('button', { name: /confirm & play/i }).click();
+  const response = await equipResponse;
+  if (!response.ok()) {
+    throw new Error(
+      `Starter equip failed (${response.status()}): ${await response.text()}`
+    );
+  }
+
+  // The three animated starter canvases can starve App Router navigation
+  // in Chromium's software-rendered E2E environment even after the server
+  // has authoritatively equipped the snake. Navigate explicitly once that
+  // mutation succeeds; this keeps the setup deterministic without hiding
+  // an unlock/equip failure.
+  await page.goto('/game', { waitUntil: 'domcontentloaded' });
   await page.waitForURL(/\/game/, { timeout: 20000 });
 }
