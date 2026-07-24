@@ -1,6 +1,11 @@
 # SupaSnake AAA - Production Roadmap
 ## Vision → Reality: 36-Month Journey to $300M Franchise
 
+> **Document role:** aspirational business and franchise planning. This is not
+> the current shipped-scope, production-status, QA, legal, or release source of
+> truth. Use `docs/README.md` to reach the authoritative product and operations
+> documents.
+
 **Document Version:** 1.0
 **Created:** 2025-10-19
 **Status:** Production Blueprint

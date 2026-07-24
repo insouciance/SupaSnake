@@ -21,6 +21,12 @@ const customJestConfig = {
     '!src/**/*.d.ts',
     '!src/**/*.stories.tsx',
     '!src/**/*.test.{js,jsx,ts,tsx}',
+    // Deterministic visual-review fixtures are exercised by the dedicated
+    // Playwright cockpit scripts, not by the production Jest coverage gate.
+    '!src/app/dev/**',
+    '!src/components/game/arena/ArenaPrototypeCanvas.tsx',
+    '!src/components/game/cockpit/CockpitPrototype.tsx',
+    '!src/components/game/cockpit/CockpitDecisionFixture.tsx',
   ],
   coverageThreshold: {
     // Honest ratchet at the current measured baseline. The previous 80%

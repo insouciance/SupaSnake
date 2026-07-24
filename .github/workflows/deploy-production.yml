@@ -32,6 +32,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
+      NEXT_PUBLIC_FTUE_V2: 'true'
+      NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,9 +68,9 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # The application is deliberately deployed first. It feature-detects
-      # migrations 027-036 and is compatible with both sides of the rollout;
-      # the pre-Genome production build is not compatible with migration 030.
+      # The application is deliberately staged before any pending forward-only
+      # migration. For the current 001-037 baseline the dry-run is a no-op;
+      # future releases must document any expected migration list explicitly.
       - name: Pull production environment
         run: npx vercel@56.3.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
       - name: Validate production environment contract
@@ -102,9 +104,13 @@ jobs:
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Smoke staged application against the current schema
         run: |
-          curl --fail --show-error --silent \
+          npx vercel@56.3.1 curl /api/health \
+            --deployment "${{ steps.app.outputs.url }}" \
+            --yes \
+            --token="$VERCEL_TOKEN" \
+            -- \
+            --fail --show-error --silent \
             --retry 6 --retry-delay 5 --retry-all-errors \
-            "${{ steps.app.outputs.url }}/api/health" \
             | jq -e '.status == "healthy" and .checks.database.status == "healthy"'
       - name: Promote staged application
         run: >-

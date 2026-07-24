@@ -26,7 +26,7 @@ Design references:
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Release branch | `feat/cockpit-refinement`; visual/runtime refinement `5431e8a`, final release `fc0fea4` |
+| Canonical source | `main`; visual/runtime refinement `5431e8a`, final runtime release `fc0fea4` |
 
 Migration 037, FTUE v2, and the refined Run Cockpit & Arena are live. The
 refinement replaces sparse desktop side panels with compact mobile-derived

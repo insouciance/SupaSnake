@@ -12,9 +12,13 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm run lint` is clean
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
-- [ ] All migrations apply from 001 through 036 on a clean database
-- [ ] `supabase db push --linked --include-all --dry-run` lists only 027–036
+- [ ] All migrations apply from 001 through 037 on a clean database
+- [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
+      current baseline, or lists exactly the migrations named in a future
+      release plan
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
+- [ ] CI and production builds both use `NEXT_PUBLIC_FTUE_V2=true` and
+      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, unless deliberately testing rollback
 - [ ] Production environment presence check passes; Vercel cloud-build value
       validation passes for the selected Stripe mode
 
@@ -27,7 +31,8 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Crash-free sessions exceed 99% during a 48-hour staging soak
 - [ ] Fresh browser: no PostHog request before consent; Reject remains silent
 - [ ] Age gate rejects under-14 and accepts an eligible 14+ user
-- [ ] Guest → starter → run → DNA → daily reward flow persists after reload
+- [ ] Guest → atomic PRIMAL bootstrap → run → DNA → daily reward flow persists
+      after reload without mandatory Lab or a second Play action
 - [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and Codex
 - [ ] Registered deletion schedules 30 days out; a new sign-in cancels it
 - [ ] Guest deletion requires `DELETE MY ACCOUNT` and erases immediately
@@ -62,7 +67,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 
 - [ ] Backups/PITR and current Vercel production deployment ID are recorded
 - [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (application first, database second)
-- [ ] Post-migration health and core smoke checks pass on `supasnake.com`
+- [ ] Post-release health and core smoke checks pass on `supasnake.com`
 - [ ] All three cron routes reject no/incorrect bearer tokens
 - [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs
 

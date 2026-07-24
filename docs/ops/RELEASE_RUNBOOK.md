@@ -1,8 +1,13 @@
 # Production Release Runbook
 
-The production schema is behind the Genome-capable application. Release the
-application first and database migrations second. The manual GitHub workflow
-encodes this order; do not run `supabase db push` independently.
+Current baseline: application runtime `fc0fea4`, Vercel deployment
+`dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`, and hosted migrations 001–037. The linked
+migration dry-run is currently a no-op.
+
+Future releases stage and verify the application before applying any named
+forward-only migration. The manual GitHub workflow encodes this order; do not
+run `supabase db push` independently. A repository-only merge that reconciles
+`main` with an already-live artifact is not a production deployment.
 
 ## Preconditions
 
@@ -11,8 +16,9 @@ encodes this order; do not run `supabase db push` independently.
 3. Record the current Vercel deployment ID and confirm Supabase backup/PITR.
 4. Confirm the expected Stripe mode. Use `test` until the reviewed live catalog,
    webhook and keys have all been installed.
-5. Confirm the linked project ref is `gmpwyzqafoyowndbvlma` and dry-run output is
-   exactly the intended pending release (currently 027–036).
+5. Confirm the linked project ref is `gmpwyzqafoyowndbvlma`. Dry-run output must
+   be either “Remote database is up to date” or exactly the migration list named
+   in the release plan. Any extra migration is a stop condition.
 
 ## Automated sequence
 
@@ -24,16 +30,30 @@ mode. The workflow performs:
 3. Supabase link and migration dry-run (no state change).
 4. A production-target cloud build. `next.config.js` validates the decrypted
    environment values and fails on wrong URL, Stripe mode, Price IDs or keys.
-5. A staged `--prod --skip-domain` deployment and health check against the
-   current pre-migration schema.
+5. A staged `--prod --skip-domain` deployment and authenticated health check
+   against the current schema. Deployment protection must remain enabled.
 6. Promotion of that capability-aware build to `supasnake.com`.
 7. Application of pending Supabase migrations and linked database lint.
-8. Canonical production health check after migration.
+8. Canonical production health check after the migration step, including when
+   that step is a no-op.
 
-This closes the unsafe window: the old pre-Genome application never serves the
-post-030 schema. If migration application fails, the newly promoted app is
-designed to continue operating against the old schema while the migration issue
-is investigated.
+This closes the unsafe window in a capability-changing release: an older
+application never serves a schema it cannot understand. Every release with a
+pending migration must document compatibility on both sides of the boundary.
+If no migration is pending, the database step must remain a verified no-op.
+
+## Repository-only mainline reconciliation
+
+When production was deployed from a reviewed release branch before `main` was
+updated:
+
+1. Prove `origin/main` is an ancestor of the release line and record both SHAs.
+2. Run the complete local and pull-request gates.
+3. Preserve the deployed runtime commit identity; do not squash or rebase it.
+4. Update `main` without dispatching **Deploy to Production**.
+5. Wait for the post-main CI checks and confirm the canonical health endpoint.
+6. Verify the Vercel production alias and hosted migration history did not
+   change as a side effect of the repository merge.
 
 ## Post-release smoke
 
@@ -54,9 +74,9 @@ is investigated.
 | Verification, env validation, dry-run or staged build fails | Stop. Production is unchanged. |
 | Staged health fails | Do not promote or migrate. Inspect Vercel logs. |
 | Promotion fails | Do not migrate. Production remains on the previous alias. |
-| Migration fails before any migration commits | Keep the new compatible app; repair and rerun the forward migration. |
-| Migration partially applies | Do not promote a pre-Genome build. Assess migration table/state, take a backup, and forward-fix. |
-| Post-migration app regression | Deploy a capability-aware fix/revert based on this release line. Do not instant-rollback to the old pre-Genome production build. |
+| Migration fails before any migration commits | Keep the compatible staged application only when the release plan proves that state safe; repair and rerun the forward migration. |
+| Migration partially applies | Do not promote an incompatible build. Assess migration table/state, take a backup, and forward-fix. |
+| Post-migration app regression | Deploy a schema-compatible fix/revert based on the current release line; do not assume an older artifact is database-compatible. |
 
 Database migrations are forward-only unless a separately reviewed restoration
 plan proves reversal is lossless. `git revert`, Vercel Instant Rollback and a

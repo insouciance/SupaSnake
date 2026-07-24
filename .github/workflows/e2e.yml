@@ -29,6 +29,7 @@ jobs:
       # The isolated database applies every migration, including FTUE v2's
       # bootstrap RPC, before the production build starts.
       NEXT_PUBLIC_FTUE_V2: 'true'
+      NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
 
     steps:
       - name: Checkout

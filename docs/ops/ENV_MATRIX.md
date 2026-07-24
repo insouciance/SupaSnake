@@ -1,6 +1,6 @@
 # Environment & Credentials Matrix
 
-Status: 2026-07-22. Values are never recorded in this file.
+Status: 2026-07-24. Values are never recorded in this file.
 
 ## Production
 
@@ -16,7 +16,7 @@ inside its cloud build/runtime.
 | Stripe catalog | Five one-time `NEXT_PUBLIC_STRIPE_*` price IDs plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured; EUR, tax-inclusive prices |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
-| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT` | `https://supasnake.com`, age 14 |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1` | `https://supasnake.com`, age 14, FTUE v2 and refined cockpit enabled |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
 | Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |
@@ -39,9 +39,10 @@ Sensitive values are available.
 
 - Linked production project: `gmpwyzqafoyowndbvlma` (`supasnake`,
   `eu-central-1`).
-- Production currently has migrations 001–026. Migrations 027–036 remain a
-  deliberate release batch and must not be applied before the capability-aware
-  application is promoted.
+- Production has migrations 001–037. Migration 037's bootstrap/backfill and
+  post-apply invariants were verified; the current linked dry-run is a no-op.
+- Future pending migrations must be named in the release evidence and applied
+  through the reviewed production workflow only.
 - Local and CI E2E use `supabase/config.toml` and a disposable Supabase stack;
   they do not use hosted credentials or production player data.
 - `DATABASE_URL` is an operator convenience only. Runtime code does not use it,
@@ -49,7 +50,7 @@ Sensitive values are available.
 
 ## GitHub Actions
 
-Repository: `insouciance/SupaSnake` (the legacy origin redirects here).
+Repository: `insouciance/SupaSnake`.
 Environment `production` is restricted to `main` and contains only deployment
 credentials:
 

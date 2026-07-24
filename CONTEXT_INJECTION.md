@@ -1,43 +1,58 @@
-# SupaSnake: Context Injection for AAA Development
+# SupaSnake development context
 
-## 1. Project Status & Vision Gap
-**Current State:** The project has been reset. We have platform infrastructure (scripts, docs) but **no game code**.
-**AAA Vision:** "SupaSnake" is not just a snake clone. It is a **Collection RPG** where the Snake game is the *resource gathering mechanic* (DNA) for a deep meta-game (Breeding/Genetics).
-**The Goal:** Rebuild the `SnakeGame` component not as a standalone toy, but as the **Core Loop Engine** of a larger system.
+SupaSnake is an active production game, not a blank template or early rebuild.
+Preserve shipped behavior and consult the authoritative documents before
+changing gameplay, player flow, economy, or production operations.
 
-## 2. Core Design Principles (The "Why")
-*From `vision/aaa_design_principles.md`:*
-1.  **Theme as North Star:** "Skill creates Legacy." The better you play Snake, the more DNA you earn, the better Snakes you can breed.
-2.  **Visual Language:** 3 Distinct Dynasties. Even in the MVP, visuals must communicate identity:
-    *   **CYBER:** Neon, Digital, Glitch, Angular. (Blue/Cyan/Magenta)
-    *   **PRIMAL:** Organic, Tribal, Visceral, Curves. (Green/Brown/Orange)
-    *   **COSMIC:** Ethereal, Float, Particle-heavy. (Purple/Gold/Teal)
-3.  **Feel:** 60FPS fluid movement. Haptic feedback on collect. Particle bursts. "Juice" is mandatory, not optional.
+## Product priority
 
-## 3. Implementation Directives (The "How")
+The core promise is immediate, satisfying play. Gameplay outranks meta systems;
+discovery is player-pulled and notification-first. A fresh player launches once,
+receives PRIMAL through the atomic FTUE v2 bootstrap, reaches a held arena, and
+starts only with deliberate movement.
 
-### Architecture
-*   **Framework:** Next.js 14 (App Router) + React.
-*   **Graphics:** `react-three-fiber` (Three.js) for the game board. **Do not use 2D Canvas.** We need 3D for the "AAA" lighting/material effects later.
-*   **State:** Use `zustand` for game state (score, speed, DNA collected, current dynasty theme).
-*   **Backend Sync:** The game must inherently support "Sessions".
-    *   `startGame(sessionId)`
-    *   `endGame(score, dnaCollected)` -> Sends to API.
+## Current game screen
 
-### MVP Features (Sprint 1)
-1.  **The Board:** 3D Grid.
-2.  **The Snake:** 3D Segmented Mesh (Sphere/Cube depending on Dynasty).
-    *   *Requirement:* Smooth interpolation between grid cells (not jerky 90-degree turns).
-3.  **Visuals:**
-    *   Implement a `ThemeManager` that swaps colors/materials based on selected Dynasty.
-    *   Simple Particle System for "Food" (DNA) collection.
-4.  **UI:**
-    *   Minimal HUD (Score, DNA).
-    *   "Game Over" screen that emphasizes *DNA Earned* (Currency) over just High Score.
+- The game board is the centered visual and geometric hero.
+- Routine telemetry never overlays the playable board.
+- Desktop uses compact top/bottom cockpit decks; mobile retains its proven
+  responsive composition.
+- Gene and strain identity is graphical and accessible, not tiny microtext.
+- Consequential gene, mutation, portal, infusion, and surge choices are the
+  deliberate overlay exception: centered dialogs own an atomically frozen run.
+- Pause enters a board-visible tactical hold. Accepted movement resumes;
+  Abandon Run requires destructive confirmation.
 
-## 4. Immediate Task
-**Objective:** Create `src/components/game/SnakeEngine.tsx` (and necessary sub-components).
-**Constraints:**
-*   Use `react-three-fiber`.
-*   Implement "Cyber" theme as default.
-*   Ensure movement logic is decoupled from rendering (Update loop vs Render loop).
+## Architecture constraints
+
+- Game rules and validation remain deterministic and independent of rendering.
+- Supabase APIs/RPCs are authoritative for player progress, resources, grants,
+  equipment, session settlement, and rewards.
+- Never write progress directly from the client or store authoritative progress
+  in localStorage.
+- Migrations are forward-only. Production is aligned through migration 037.
+- Use environment variables; never commit credentials or production data.
+- CYBER, PRIMAL, and COSMIC are the active dynasty model. PRIMAL is the starter.
+
+## Production defaults
+
+```text
+NEXT_PUBLIC_FTUE_V2=true
+NEXT_PUBLIC_HUD_COCKPIT_V1=true
+```
+
+An omitted or false flag is a deliberate rollback test, not the default
+development assumption.
+
+## Read before changing behavior
+
+1. `docs/README.md`
+2. `docs/game/GAME_DESIGN_V2.md`
+3. `docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md`
+4. `docs/game/BUILDCRAFT_GENOME_DESIGN.md`
+5. `docs/game/HUD_COCKPIT_REDESIGN.md`
+6. `docs/ops/QA_CHECKLIST.md`
+
+For deployments or schema work, follow `docs/ops/RELEASE_RUNBOOK.md`. A request
+to merge or clean the repository does not authorize a production deployment,
+database migration, payment-mode change, or deletion of unpreserved dirty work.
