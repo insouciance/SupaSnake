@@ -37,6 +37,11 @@ mode. The workflow performs:
 8. Canonical production health check after the migration step, including when
    that step is a no-op.
 
+The protected staged-health command consumes `VERCEL_TOKEN` from the job
+environment. With Vercel CLI 56, do not repeat that credential as an explicit
+`vercel curl --token` option: the subcommand forwards it to raw curl instead of
+using it for CLI authentication.
+
 This closes the unsafe window in a capability-changing release: an older
 application never serves a schema it cannot understand. Every release with a
 pending migration must document compatibility on both sides of the boundary.
