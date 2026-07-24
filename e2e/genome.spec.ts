@@ -142,10 +142,26 @@ test.describe('Genome capability UI', () => {
           )
       );
 
-      const hud = await page.getByTestId('game-hud').boundingBox();
-      const board = await page.getByTestId('game-board-viewport').boundingBox();
-      const gateBox = await page.getByTestId('resume-gate').boundingBox();
-      const strain = await page.getByTestId('strain-meter').boundingBox();
+      // Read the settled geometry in one browser task. Four sequential
+      // locator.boundingBox() protocol calls can stall under software WebGL
+      // load even though every target is already visible.
+      const { hud, board, gateBox, strain } = await page.evaluate(() => {
+        const bounds = (testId: string) => {
+          const element = document.querySelector<HTMLElement>(
+            `[data-testid="${testId}"]`
+          );
+          if (!element || element.getClientRects().length === 0) return null;
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+
+        return {
+          hud: bounds('game-hud'),
+          board: bounds('game-board-viewport'),
+          gateBox: bounds('resume-gate'),
+          strain: bounds('strain-meter'),
+        };
+      });
       expect(hud).not.toBeNull();
       expect(board).not.toBeNull();
       expect(strain).not.toBeNull();
