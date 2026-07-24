@@ -14,8 +14,8 @@ import {
 } from '@/lib/game/interpolationBuffer';
 import {
   AimRenderer,
-  DEADEYE_CROSSHAIR_SCALE,
-  updateDeadeyeVisualPositions,
+  getDeadeyeGuideLayout,
+  updateDeadeyeVisualTransforms,
 } from './AimRenderer';
 
 jest.mock('@react-three/fiber', () => ({
@@ -46,11 +46,12 @@ function expectVectorClose(actual: number[], expected: number[]): void {
 }
 
 describe('Deadeye reticle', () => {
-  it('renders only two equal centered lines as a symmetrical plus', () => {
+  it('renders only a board-wide crossbar and forward stem as a clean T', () => {
     const { container } = render(
       <AimRenderer
         headPosition={head}
         direction="LEFT"
+        gridSize={20}
         aimSystem="deadeye"
         targets={[{ x: 1, z: 6, kind: 'food' }]}
         color="#22d3ee"
@@ -58,33 +59,22 @@ describe('Deadeye reticle', () => {
     );
 
     const crosshair = container.querySelector('group[name="deadeye-crosshair"]');
-    const horizontal = container.querySelector(
-      'mesh[name="deadeye-crosshair-horizontal"]'
+    const crossbar = container.querySelector(
+      'mesh[name="deadeye-crosshair-crossbar"]'
     );
-    const vertical = container.querySelector(
-      'mesh[name="deadeye-crosshair-vertical"]'
+    const stem = container.querySelector(
+      'mesh[name="deadeye-crosshair-stem"]'
     );
 
     expect(crosshair).not.toBeNull();
-    expect(horizontal).not.toBeNull();
-    expect(vertical).not.toBeNull();
-    expectVectorClose(vectorAttribute(crosshair!, 'position'), [4.5, 0, 6.5]);
-    expectVectorClose(vectorAttribute(horizontal!, 'position'), [0, 0.06, 0]);
-    expectVectorClose(vectorAttribute(vertical!, 'position'), [0, 0.06, 0]);
-    expect(vectorAttribute(horizontal!, 'scale')).toEqual(
-      DEADEYE_CROSSHAIR_SCALE.horizontal
-    );
-    expect(vectorAttribute(vertical!, 'scale')).toEqual(
-      DEADEYE_CROSSHAIR_SCALE.vertical
-    );
-    expect(DEADEYE_CROSSHAIR_SCALE.horizontal[0]).toBe(
-      DEADEYE_CROSSHAIR_SCALE.vertical[1]
-    );
-    expect(DEADEYE_CROSSHAIR_SCALE.horizontal[1]).toBe(
-      DEADEYE_CROSSHAIR_SCALE.vertical[0]
-    );
+    expect(crossbar).not.toBeNull();
+    expect(stem).not.toBeNull();
+    expectVectorClose(vectorAttribute(crossbar!, 'position'), [4.5, 0.06, 10]);
+    expectVectorClose(vectorAttribute(crossbar!, 'scale'), [0.06, 20, 1]);
+    expectVectorClose(vectorAttribute(stem!, 'position'), [2.25, 0.06, 6.5]);
+    expectVectorClose(vectorAttribute(stem!, 'scale'), [4.5, 0.06, 1]);
 
-    // One floor tile plus the two clean crosshair lines: no beam ticks,
+    // One floor tile plus the two clean T-guide lines: no beam ticks,
     // lock brackets, center dot, or distant idle ornament remains.
     expect(container.querySelectorAll('mesh')).toHaveLength(3);
     expect(container.querySelector('instancedmesh')).toBeNull();
@@ -103,26 +93,86 @@ describe('Deadeye reticle', () => {
   });
 });
 
-describe('updateDeadeyeVisualPositions', () => {
-  it('keeps the crosshair fluid while the floor tile snaps to the current cell', () => {
+describe('getDeadeyeGuideLayout', () => {
+  it('rotates the T through all four headings and reaches each relevant board edge', () => {
+    const up = getDeadeyeGuideLayout(head, 'UP', 20);
+    const down = getDeadeyeGuideLayout(head, 'DOWN', 20);
+    const left = getDeadeyeGuideLayout(head, 'LEFT', 20);
+    const right = getDeadeyeGuideLayout(head, 'RIGHT', 20);
+
+    expect(up.crossbar).toEqual({
+      position: [10, 0.06, 6.5],
+      scale: [20, 0.06, 1],
+    });
+    expect(up.stem).toEqual({
+      position: [4.5, 0.06, 3.25],
+      scale: [0.06, 6.5, 1],
+    });
+    expect(down.crossbar).toEqual(up.crossbar);
+    expect(down.stem).toEqual({
+      position: [4.5, 0.06, 13.25],
+      scale: [0.06, 13.5, 1],
+    });
+    expect(left.crossbar).toEqual({
+      position: [4.5, 0.06, 10],
+      scale: [0.06, 20, 1],
+    });
+    expect(left.stem).toEqual({
+      position: [2.25, 0.06, 6.5],
+      scale: [4.5, 0.06, 1],
+    });
+    expect(right.crossbar).toEqual(left.crossbar);
+    expect(right.stem).toEqual({
+      position: [12.25, 0.06, 6.5],
+      scale: [15.5, 0.06, 1],
+    });
+  });
+
+  it('keeps a half-cell stem at the outward board-edge cells', () => {
+    const left = getDeadeyeGuideLayout(segment(0, 8), 'LEFT', 20);
+    const right = getDeadeyeGuideLayout(segment(19, 8), 'RIGHT', 20);
+    const up = getDeadeyeGuideLayout(segment(8, 0), 'UP', 20);
+    const down = getDeadeyeGuideLayout(segment(8, 19), 'DOWN', 20);
+
+    expect(left.stem.position[0] - left.stem.scale[0] / 2).toBe(0);
+    expect(right.stem.position[0] + right.stem.scale[0] / 2).toBe(20);
+    expect(up.stem.position[2] - up.stem.scale[1] / 2).toBe(0);
+    expect(down.stem.position[2] + down.stem.scale[1] / 2).toBe(20);
+    expect(left.stem.scale[0]).toBe(0.5);
+    expect(right.stem.scale[0]).toBe(0.5);
+    expect(up.stem.scale[1]).toBe(0.5);
+    expect(down.stem.scale[1]).toBe(0.5);
+  });
+});
+
+describe('updateDeadeyeVisualTransforms', () => {
+  it('keeps the T fluid while the floor tile snaps to the current cell', () => {
     const buffer = createInterpolationBuffer(4);
     recordTick(buffer, [segment(4, 6)], 200, 1000);
     recordTick(buffer, [segment(5, 6)], 200, 1200);
     const previousBefore = Array.from(buffer.prev);
     const currentBefore = Array.from(buffer.curr);
-    const crosshairPosition = new THREE.Vector3();
+    const crossbar = new THREE.Object3D();
+    const stem = new THREE.Object3D();
     const highlightPosition = new THREE.Vector3();
 
-    updateDeadeyeVisualPositions(
+    updateDeadeyeVisualTransforms(
       segment(5, 6),
+      'RIGHT',
+      20,
       buffer,
       1300,
-      crosshairPosition,
+      crossbar,
+      stem,
       highlightPosition
     );
 
-    // Halfway from grid x=4 to x=5, plus the half-cell world offset.
-    expect(crosshairPosition.toArray()).toEqual([5, 0, 6.5]);
+    // Halfway from grid x=4 to x=5, plus the half-cell world offset. The
+    // perpendicular bar follows that smooth center while still spanning Z.
+    expect(crossbar.position.toArray()).toEqual([5, 0.06, 10]);
+    expect(crossbar.scale.toArray()).toEqual([0.06, 20, 1]);
+    expect(stem.position.toArray()).toEqual([12.5, 0.06, 6.5]);
+    expect(stem.scale.toArray()).toEqual([15, 0.06, 1]);
     // The visual tile stays on the authoritative current grid cell.
     expect(highlightPosition.toArray()).toEqual([5.5, 0.04, 6.5]);
     expect(Array.from(buffer.prev)).toEqual(previousBefore);
@@ -130,18 +180,25 @@ describe('updateDeadeyeVisualPositions', () => {
   });
 
   it('falls back to the supplied head cell before interpolation is available', () => {
-    const crosshairPosition = new THREE.Vector3();
+    const crossbar = new THREE.Object3D();
+    const stem = new THREE.Object3D();
     const highlightPosition = new THREE.Vector3();
 
-    updateDeadeyeVisualPositions(
+    updateDeadeyeVisualTransforms(
       head,
+      'UP',
+      20,
       null,
       0,
-      crosshairPosition,
+      crossbar,
+      stem,
       highlightPosition
     );
 
-    expect(crosshairPosition.toArray()).toEqual([4.5, 0, 6.5]);
+    expect(crossbar.position.toArray()).toEqual([10, 0.06, 6.5]);
+    expect(crossbar.scale.toArray()).toEqual([20, 0.06, 1]);
+    expect(stem.position.toArray()).toEqual([4.5, 0.06, 3.25]);
+    expect(stem.scale.toArray()).toEqual([0.06, 6.5, 1]);
     expect(highlightPosition.toArray()).toEqual([4.5, 0.04, 6.5]);
   });
 });

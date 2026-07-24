@@ -4,10 +4,9 @@
  * AimRenderer - the aim telegraph, one renderer per selected aim system
  * (v2 meta-progression, see src/lib/game/aimSystems.ts):
  *
- * - deadeye:  clean, symmetrical crosshair smooth-following the head + a
- *             grid-snapped cell highlight under it. The floor cue keeps
- *             the authoritative grid position readable while the snake
- *             and reticle continue to move fluidly.
+ * - deadeye:  heading-relative T guide smooth-following the head: its
+ *             crossbar spans the board and its forward stem reaches the
+ *             wall, plus a grid-snapped cell highlight under the head.
  * - gridlock: full row+column rails smooth-following the INTERPOLATED
  *             head + a grid-snapped cell highlight under it (the "where
  *             exactly am I" fix); a rail brightens when a target sits on
@@ -82,14 +81,9 @@ const DANGER_OPACITIES = [0.7, 0.52, 0.38, 0.26, 0.16];
 /** Neon rose - the palette's danger accent */
 const DANGER_COLOR = '#f43f5e';
 
-/** Deadeye's two equal line scales pin a true, centered "+" silhouette. */
-export const DEADEYE_CROSSHAIR_SCALE: {
-  readonly horizontal: [number, number, number];
-  readonly vertical: [number, number, number];
-} = {
-  horizontal: [3, 0.06, 1],
-  vertical: [0.06, 3, 1],
-};
+/** Deadeye guide line dimensions. */
+const DEADEYE_LINE_THICKNESS = 0.06;
+const DEADEYE_LINE_Y = 0.06;
 
 const EMPTY_QUEUE: readonly Direction[] = [];
 const EMPTY_SNAKE: readonly Position[] = [];
@@ -122,7 +116,7 @@ const chevronGeometry = (() => {
   return new THREE.ShapeGeometry(shape);
 })();
 
-/** Deadeye crosshair: one unit plane shared by both equal-length lines. */
+/** Deadeye guide: one unit plane shared by the crossbar and forward stem. */
 const crosshairLineGeometry = new THREE.PlaneGeometry(1, 1);
 
 /** Gridlock rail: unit plane, scaled per axis at mount. */
@@ -193,6 +187,8 @@ function getFireflyGlowMaterial(): THREE.SpriteMaterial | null {
 
 interface DeadeyeProps {
   head: Position;
+  direction: Direction;
+  gridSize: number;
   bufferRef: { readonly current: InterpolationBuffer | null };
   color: string;
 }
@@ -201,17 +197,104 @@ interface PositionWriter {
   set(x: number, y: number, z: number): unknown;
 }
 
+interface TransformWriter {
+  position: PositionWriter;
+  scale: PositionWriter;
+}
+
+type VectorTuple = [number, number, number];
+
+export interface DeadeyeGuideLayout {
+  crossbar: {
+    position: VectorTuple;
+    scale: VectorTuple;
+  };
+  stem: {
+    position: VectorTuple;
+    scale: VectorTuple;
+  };
+}
+
 /**
- * Track the reticle and floor cue without mutating engine or movement state.
- * The crosshair follows the same interpolated head position as the snake;
+ * Write the two T-guide transforms without allocating in the render loop.
+ * The crossbar spans the complete board perpendicular to the heading. The
+ * stem starts at the head center and ends exactly at the forward boundary.
+ */
+function writeDeadeyeGuideTransforms(
+  headCenterX: number,
+  headCenterZ: number,
+  direction: Direction,
+  gridSize: number,
+  crossbar: TransformWriter,
+  stem: TransformWriter
+): void {
+  const delta = DIRECTION_DELTAS[direction];
+  const boardCenter = gridSize / 2;
+
+  if (delta.x !== 0) {
+    const forwardEdge = delta.x > 0 ? gridSize : 0;
+    crossbar.position.set(headCenterX, DEADEYE_LINE_Y, boardCenter);
+    crossbar.scale.set(DEADEYE_LINE_THICKNESS, gridSize, 1);
+    stem.position.set((headCenterX + forwardEdge) / 2, DEADEYE_LINE_Y, headCenterZ);
+    stem.scale.set(Math.abs(forwardEdge - headCenterX), DEADEYE_LINE_THICKNESS, 1);
+    return;
+  }
+
+  const forwardEdge = delta.z > 0 ? gridSize : 0;
+  crossbar.position.set(boardCenter, DEADEYE_LINE_Y, headCenterZ);
+  crossbar.scale.set(gridSize, DEADEYE_LINE_THICKNESS, 1);
+  stem.position.set(headCenterX, DEADEYE_LINE_Y, (headCenterZ + forwardEdge) / 2);
+  stem.scale.set(DEADEYE_LINE_THICKNESS, Math.abs(forwardEdge - headCenterZ), 1);
+}
+
+/** Initial-render layout; per-frame updates use the allocation-free writer. */
+export function getDeadeyeGuideLayout(
+  head: Position,
+  direction: Direction,
+  gridSize: number
+): DeadeyeGuideLayout {
+  const crossbar = {
+    position: new THREE.Vector3(),
+    scale: new THREE.Vector3(),
+  };
+  const stem = {
+    position: new THREE.Vector3(),
+    scale: new THREE.Vector3(),
+  };
+  writeDeadeyeGuideTransforms(
+    head.x + 0.5,
+    head.z + 0.5,
+    direction,
+    gridSize,
+    crossbar,
+    stem
+  );
+  return {
+    crossbar: {
+      position: crossbar.position.toArray() as VectorTuple,
+      scale: crossbar.scale.toArray() as VectorTuple,
+    },
+    stem: {
+      position: stem.position.toArray() as VectorTuple,
+      scale: stem.scale.toArray() as VectorTuple,
+    },
+  };
+}
+
+/**
+ * Track the guide and floor cue without mutating engine or movement state.
+ * The T guide follows the same interpolated head position as the snake;
  * the tile deliberately uses the current authoritative cell, matching the
  * existing Gridlock visual-feedback contract.
  */
-export function updateDeadeyeVisualPositions(
+export function updateDeadeyeVisualTransforms(
   head: Position,
+  direction: Direction,
+  gridSize: number,
   buffer: InterpolationBuffer | null,
   now: number,
-  crosshairPosition: PositionWriter,
+  crossbar: TransformWriter,
+  stem: TransformWriter,
   highlightPosition: PositionWriter
 ): void {
   let smoothX = head.x;
@@ -227,13 +310,25 @@ export function updateDeadeyeVisualPositions(
     snapZ = buffer.curr[1];
   }
 
-  crosshairPosition.set(smoothX + 0.5, 0, smoothZ + 0.5);
+  writeDeadeyeGuideTransforms(
+    smoothX + 0.5,
+    smoothZ + 0.5,
+    direction,
+    gridSize,
+    crossbar,
+    stem
+  );
   highlightPosition.set(snapX + 0.5, AIM_Y - 0.01, snapZ + 0.5);
 }
 
-function Deadeye({ head, bufferRef, color }: DeadeyeProps) {
-  const crosshairRef = useRef<THREE.Group>(null);
+function Deadeye({ head, direction, gridSize, bufferRef, color }: DeadeyeProps) {
+  const crossbarRef = useRef<THREE.Mesh>(null);
+  const stemRef = useRef<THREE.Mesh>(null);
   const highlightRef = useRef<THREE.Mesh>(null);
+  const initialGuide = useMemo(
+    () => getDeadeyeGuideLayout(head, direction, gridSize),
+    [head, direction, gridSize]
+  );
 
   const crosshairMaterial = useMemo(
     () =>
@@ -267,14 +362,18 @@ function Deadeye({ head, bufferRef, color }: DeadeyeProps) {
   }, [crosshairMaterial, highlightMaterial]);
 
   useFrame(({ clock }) => {
-    const crosshair = crosshairRef.current;
+    const crossbar = crossbarRef.current;
+    const stem = stemRef.current;
     const highlight = highlightRef.current;
-    if (crosshair && highlight) {
-      updateDeadeyeVisualPositions(
+    if (crossbar && stem && highlight) {
+      updateDeadeyeVisualTransforms(
         head,
+        direction,
+        gridSize,
         bufferRef.current,
         performance.now(),
-        crosshair.position,
+        crossbar,
+        stem,
         highlight.position
       );
     }
@@ -295,27 +394,25 @@ function Deadeye({ head, bufferRef, color }: DeadeyeProps) {
         rotation-x={-Math.PI / 2}
       />
 
-      {/* Two equal centered lines; the snake naturally occludes the rear arm. */}
-      <group
-        ref={crosshairRef}
-        name="deadeye-crosshair"
-        position={[head.x + 0.5, 0, head.z + 0.5]}
-      >
+      {/* Board-wide crossbar plus a stem that projects only toward the heading. */}
+      <group name="deadeye-crosshair">
         <mesh
-          name="deadeye-crosshair-horizontal"
+          ref={crossbarRef}
+          name="deadeye-crosshair-crossbar"
           geometry={crosshairLineGeometry}
           material={crosshairMaterial}
-          position={[0, AIM_Y + 0.01, 0]}
+          position={initialGuide.crossbar.position}
           rotation-x={-Math.PI / 2}
-          scale={DEADEYE_CROSSHAIR_SCALE.horizontal}
+          scale={initialGuide.crossbar.scale}
         />
         <mesh
-          name="deadeye-crosshair-vertical"
+          ref={stemRef}
+          name="deadeye-crosshair-stem"
           geometry={crosshairLineGeometry}
           material={crosshairMaterial}
-          position={[0, AIM_Y + 0.01, 0]}
+          position={initialGuide.stem.position}
           rotation-x={-Math.PI / 2}
-          scale={DEADEYE_CROSSHAIR_SCALE.vertical}
+          scale={initialGuide.stem.scale}
         />
       </group>
     </group>
@@ -791,6 +888,8 @@ export function AimRenderer({
       return (
         <Deadeye
           head={headPosition}
+          direction={direction}
+          gridSize={gridSize}
           bufferRef={bufferRef}
           color={color}
         />
