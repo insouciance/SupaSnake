@@ -19,21 +19,20 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `7ce2ade` — Run Cockpit & Arena v1 |
-| Vercel deployment | `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` |
-| Rollback deployment | `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc` — FTUE v2 production |
+| Production commit | `fc0fea4` — refined Run Cockpit, tactical decisions, and session-start repair |
+| Vercel deployment | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` |
+| Rollback deployment | `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` — Run Cockpit & Arena v1 |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–037 deployed; migration 037 backfill and runtime bootstrap verified |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Release branch | `feat/cockpit-v1`; runtime release commit `7ce2ade` |
+| Release branch | `feat/cockpit-refinement`; visual/runtime refinement `5431e8a`, final release `fc0fea4` |
 
-Migration 037, FTUE v2, and Run Cockpit & Arena v1 are live. A second cockpit
-refinement is implemented in isolated branch `feat/cockpit-refinement` and is
-still a pre-production candidate. It replaces sparse desktop side panels with
-compact mobile-derived top/bottom decks, fits the complete chassis at the
-default/reset camera pose, centers strategic decisions over an atomically
-frozen board, and replaces the Pause modal with a board-visible tactical hold.
+Migration 037, FTUE v2, and the refined Run Cockpit & Arena are live. The
+refinement replaces sparse desktop side panels with compact mobile-derived
+top/bottom decks, fits the complete chassis at the default/reset camera pose,
+centers strategic decisions over an atomically frozen board, and replaces the
+Pause modal with a board-visible tactical hold.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -48,15 +47,15 @@ state-heavy cases still require real-device or exploratory verification:
 - Real-device safe areas, mobile browser chrome, touch feel, and camera motion
   while live HUD content changes.
 - First-food, BANK/combo/anomaly, one-to-six gene, real mutation, portal,
-  infusion, surge, and BANK journeys against the refinement candidate.
+  infusion, surge, and BANK journeys against the live refinement.
 - Real-device tactile confirmation that tactical hold, subsequent deliberate
   flick, and the compact landscape controls remain comfortable.
 
-### Cockpit refinement candidate evidence (pre-production)
+### Cockpit refinement production evidence
 
 The earlier uncommitted HUD/Pause candidate remains frozen for regression
-reference and is not being shipped. The current isolated refinement is the
-approved product direction and must complete every gate below before promotion.
+reference and was not shipped. The isolated refinement completed every gate
+below before the exact canary artifact was promoted.
 
 - The deterministic cockpit fixture passes 8 supported viewports × 4 telemetry
   states with a centered, stable arena and no overflow. Desktop now uses equal
@@ -79,7 +78,7 @@ approved product direction and must complete every gate below before promotion.
 - Engine regressions continue to cover synchronous PASS, INFUSE → gene,
   INFUSE → Strain Surge, reversal, duplicate direction, queue cleanup, and
   atomic resume. Flick/D-pad regressions cover accepted and rejected paths.
-- The complete application gate passes 229 Jest suites / 2,869 tests, full
+- The complete application gate passes 230 Jest suites / 2,871 tests, full
   ESLint, TypeScript, the 83-page production build, `npm audit` with zero
   vulnerabilities, and diff/credential checks. The exact production-server
   artifact passes 16/16 focused Playwright checks with retries disabled.
@@ -93,13 +92,32 @@ approved product direction and must complete every gate below before promotion.
   parameter warnings in `settle_and_pair_duels`, `reroll_trait`,
   `grant_purchase_rewards`, and `compute_effective_stats`.
 - The added/modified/untracked-file credential-pattern scan passed.
+- The first protected canary exposed a real direct-route race: a new anonymous
+  user could submit `POST /api/game/session` before the player row existed and
+  receive 404. The final release makes session start invoke migration 037's
+  atomic, idempotent `bootstrap_player` repair before rate, Energy, or session
+  writes. Route-handler tests cover successful repair and retryable bootstrap
+  failure; existing player choices remain protected by the RPC contract.
 - The focused HUD journey uses deterministic authenticated player/collection/
   session responses. Separately, the selective FTUE release artifact passed
   14/14 protected-canary and 14/14 production Playwright checks against hosted
   migration 037, including genuinely new anonymous PRIMAL bootstraps.
-- Still required before promotion: protected canary and live route/health/log
-  checks. The manual real-device cases listed above remain a field-quality
-  follow-up and the cockpit flag remains the immediate rollback.
+- Final deployment `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` passed 16/16 protected-
+  canary and 16/16 public-production Playwright checks with retries disabled,
+  including one-click anonymous PRIMAL bootstrap, authoritative run start,
+  input, cockpit, strategic decisions, and consent. App/database health stayed
+  healthy; no session-start 404, 5xx, error, or fatal runtime log occurred.
+  The broader shared-deployment log contained only handled collection-
+  validation 400s, the active-season Analyst 409, the guarded fixture 404s
+  below, and a crawler request for the currently absent `/robots.txt`.
+- Development-only geometry fixtures intentionally return 404 in production.
+  Their exact source revision passed locally before deployment: 8 viewports ×
+  4 cockpit states, 4 real-WebGL profiles, and 22 frozen decision/legal-surface
+  checks. The manual real-device cases above remain a field-quality follow-up;
+  deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` is the immediate rollback.
+- The temporary automation bypass was revoked after verification, its old value
+  no longer reaches the protected deployment, and the local bypass/env capture
+  files were removed.
 
 ### Suggested test accounts and evidence
 

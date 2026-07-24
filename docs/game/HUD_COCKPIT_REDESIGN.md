@@ -1,17 +1,15 @@
 # SupaSnake Run Cockpit & Arena — Premium Game-Screen Redesign
 
-**Status:** cockpit refinement implemented; production validation and rollout in progress
+**Status:** cockpit refinement live in production
 
 **Date:** 2026-07-24
 
-**Implementation checkpoint:** Run Cockpit & Arena v1 is live behind
-`NEXT_PUBLIC_HUD_COCKPIT_V1`. The 2026-07-24 refinement is implemented in the
-isolated `feat/cockpit-refinement` worktree and is moving through the complete
-production gate. The responsive fixture currently passes 8 viewports × 4
-telemetry states, the real-WebGL fixture passes all 4 representative profiles,
-and the decision fixture passes 22 frozen-state/legal-surface checks. The
-refinement has not yet been promoted to production; section 19 remains the
-record of the current v1 deployment until promotion is complete.
+**Implementation checkpoint:** the 2026-07-24 refinement is live behind
+`NEXT_PUBLIC_HUD_COCKPIT_V1` from final release commit `fc0fea4`, Vercel
+deployment `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`. It passed the responsive fixture
+at 8 viewports × 4 telemetry states, all 4 real-WebGL profiles, 22 frozen-state/
+legal-surface checks, and the complete protected-canary and public-production
+gates. Section 19 records both the original v1 rollout and this promotion.
 
 **Scope:** the complete active game screen: authored background treatment,
 cockpit chassis, arena geometry and materials, board grid, camera/framing,
@@ -1122,3 +1120,64 @@ evidence: physical iOS Safari and Android Chrome safe areas, browser chrome,
 long-session touch feel, haptics/audio mix, and camera feel should be checked on
 real devices. These checks tune feel; the feature flag remains the immediate
 rollback if field evidence reveals a release-blocking problem.
+
+### 19.1 Cockpit refinement promotion — 2026-07-24
+
+The compact cockpit and tactical-decision refinement shipped from `5431e8a`;
+the final release commit `fc0fea4` adds the canary-discovered authoritative
+session-start repair. The exact protected artifact was Vercel deployment
+`dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`, promoted unchanged to
+<https://supasnake.com>. Deployment `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX`
+remains the immediate, known-good Run Cockpit v1 rollback.
+
+Refined product contract delivered:
+
+- desktop uses the mobile-proven compact top command deck and lower genome/
+  extraction deck instead of sparse full-height side panels; the arena remains
+  geometrically centered and portrait mobile geometry remains intact;
+- the default/reset 16° camera fits the complete chassis envelope with 1.175
+  frame margin, 0.94 fit scale, and −0.3 target, so all four corners remain
+  visible on mobile, desktop, and ultrawide;
+- gene, mutation, portal, infusion, and strain-surge choices are dominant,
+  centered strategic dialogs over the atomically frozen arena; they trap focus,
+  block input leakage, show readable consequences, and return non-terminal
+  choices to deliberate tactical hold;
+- Pause opens no modal. It enters a board-visible tactical hold that resumes
+  only through accepted movement input. The secondary Abandon Run action uses
+  an accurate destructive confirmation and returns cancellation to the same
+  held state.
+
+The first canary correctly blocked promotion after a new direct-route guest
+received a 404 from `POST /api/game/session`: the browser reached Start at the
+boundary before its player row existed. The final route now invokes migration
+037's atomic, idempotent `bootstrap_player` RPC before any rate, Energy, or
+session write, then re-queries the player. Bootstrap failure remains a
+retryable 503 in context; existing player choices are never overwritten.
+
+Final release evidence:
+
+- 230 Jest suites / 2,871 tests, full ESLint, TypeScript, diff and credential
+  checks, zero dependency vulnerabilities, and the 83-page production build
+  passed;
+- the production-server artifact passed 16/16 local Playwright checks with
+  retries disabled;
+- the same deployment passed 16/16 protected-canary and 16/16 public-production
+  checks without retries, including genuine anonymous PRIMAL bootstrap and
+  authoritative run start;
+- app and database health were healthy before and after promotion; there was no
+  session-start 404 and no 5xx, error, or fatal runtime log. Broader shared-
+  deployment 4xx traffic was limited to handled collection validation, an
+  active-season Analyst response, intentional fixture guards, and the absent
+  `/robots.txt` crawler path;
+- hosted migrations remained aligned through 037 and no database change was
+  required for this refinement;
+- development-only visual fixtures remained unavailable in production by
+  design. The exact release source passed 8 × 4 responsive states, 4 real-WebGL
+  profiles, and 22 decision/legal-surface checks locally before deployment;
+- the temporary canary automation bypass was revoked after verification and
+  its local credential/environment captures were removed.
+
+Physical iOS Safari and Android Chrome safe areas, browser chrome, long-session
+touch feel, haptics/audio mix, and camera feel remain the explicit real-device
+field pass. They are quality-tuning follow-ups; the production evidence and
+rollback artifact remain recorded above.

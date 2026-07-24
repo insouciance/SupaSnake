@@ -48,9 +48,9 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | Identity/handle claim | Automatic after first banked extraction | Replace | Notification plus explicit Player Card action. |
 | Lab account upgrade | Automatic after first unlock | Replace | Subtle success toast/notification; account creation remains optional. |
 | Results | Automatic at the end of a run | Keep | It is the required boundary between gameplay and rewards and contains only contextual, player-chosen next actions. |
-| In-run gene/mutation/portal/surge choices | Triggered by gameplay rules | Keep | These are gameplay decisions, not meta-system promotion. They pause safely and resume only on deliberate input. |
+| In-run gene/mutation/portal/infusion/surge choices | Triggered by gameplay rules | Keep as strategic modal | These are consequential gameplay decisions, not meta-system promotion. A dominant centered dialog owns the frozen arena, focus, and input; non-terminal choices return to deliberate tactical hold. |
 | First portal EXTRACT label | Once-per-device in-run visual teaching moment | Keep | It is nonblocking, contextual, and teaches the required extraction action without opening an overlay. |
-| Pause menu | Explicit player action | Keep | Player-pulled and reversible. |
+| Pause menu | Explicit player action | Replace | Pause immediately enters a board-visible tactical hold with no redundant modal or Resume button. Accepted movement resumes; Abandon Run is a secondary destructive action with confirmation. |
 | Cookie consent | Legal requirement | Keep and contain | It reserves its measured layout height, respects safe areas, and never overlaps Launch. |
 | Lost registered session notice | Identity-continuity risk | Keep | Prevents silently replacing durable progress with a new anonymous identity. |
 | Lost anonymous progress confirmation | Destructive progress-loss boundary | Keep | Explicit confirmation is required before abandoning an unrecoverable local identity. |
@@ -129,9 +129,20 @@ and never cover the board. The final hosted migration dry-run was a no-op;
 migration `037` remained live and byte-aligned with the reviewed bootstrap
 implementation.
 
+Later on 2026-07-24, the compact cockpit refinement (`5431e8a`, final release
+`fc0fea4`) was verified as protected canary
+`dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` and promoted unchanged to production. It
+preserves routine board protection while recognizing one deliberate exception:
+gene, mutation, portal, infusion, and surge decisions are core play, so they
+command attention in a centered modal over an atomically frozen arena. Pause
+itself is now a board-visible tactical hold rather than a modal. The first
+canary also exposed and blocked a direct-route guest race; session start now
+invokes the same atomic `bootstrap_player` repair before any gameplay write.
+
 `NEXT_PUBLIC_FTUE_V2=true` and `NEXT_PUBLIC_HUD_COCKPIT_V1=true` are now
 Production environment defaults for future builds. Disabling only the cockpit
-flag restores the prior HUD while retaining FTUE v2; deployment
+flag restores the prior HUD while retaining FTUE v2. Deployment
+`dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` is the immediate Run Cockpit v1 rollback;
 `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc` remains the pre-cockpit rollback. An omitted
 or false FTUE value still selects its coherent rollback path, and deployment
 `dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` remains the pre-FTUE rollback artifact.
@@ -139,6 +150,8 @@ or false FTUE value still selects its coherent rollback path, and deployment
 ## Verification gates
 
 - Repeated and concurrent bootstrap calls produce one grant and one equipped snake.
+- A direct authenticated guest session start repairs a missing player through
+  the same idempotent bootstrap before rate, Energy, or session writes.
 - Existing ownership, equipped choice, dynasty, resources, and progress are preserved.
 - A fresh guest reaches a held board with one Launch action and PRIMAL equipped.
 - The first safe keyboard, D-pad, or flick direction starts movement; no timer advances beforehand.
