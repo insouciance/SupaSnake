@@ -1,6 +1,7 @@
 # Training Lab product and systems contract
 
-Status: approved feature design, implemented on `feat/training-lab`.
+Status: approved feature contract, implemented with server-authoritative
+persistence in migration 038.
 
 ## Player outcome
 
@@ -153,9 +154,11 @@ The durable model consists of owner-scoped `training_attempts`,
 `training_bests`, and `training_presets`, plus the
 `record_training_attempt` transaction. Deletes cascade from `players`. No
 training write touches Energy, DNA, mastery, contracts, seasons, streaks, or
-game sessions. Until its centrally numbered migration is present, reads return
-an explicit non-live profile and verified attempts remain session-local; this
-degradation never falls back to `localStorage`.
+game sessions. During staged application deployment before migration 038 is
+present, reads return an explicit non-live profile and verified attempts remain
+session-local; this compatibility mode never falls back to `localStorage`.
+Once migration 038 is applied, verified bests, recent attempts, and presets
+persist across devices.
 
 ## Retention hypothesis and evaluation
 

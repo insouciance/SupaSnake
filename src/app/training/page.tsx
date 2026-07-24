@@ -304,7 +304,7 @@ export default function TrainingPage() {
       const payload = await response.json() as { live?: boolean; preset?: TrainingPreset; error?: string };
       if (!response.ok) throw new Error(payload.error || 'Preset could not be saved.');
       if (!payload.live || !payload.preset) {
-        setHubError('Cross-device preset storage is waiting for the coordinated Training migration.');
+        setHubError('Cross-device preset storage is temporarily unavailable.');
         return;
       }
       setPresets((current) => [payload.preset!, ...current]);

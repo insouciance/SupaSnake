@@ -113,7 +113,7 @@ export function TrainingRecap({
         <p className="text-center font-body text-xs text-beige/55" data-testid="training-verification">
           {verification === 'verifying' && 'Replaying this attempt on the server…'}
           {verification === 'verified' && `Verified · ${best ? `best ${best.rating}` : 'recorded'}`}
-          {verification === 'offline' && 'Verified locally; authoritative profile storage is not active yet.'}
+          {verification === 'offline' && 'Verified locally; the cross-device skill profile is temporarily unavailable.'}
           {verification === 'failed' && 'The result could not be verified and was not added to your profile.'}
           {verification === 'diagnostic' && 'Sandbox diagnostic · custom routes do not enter standardized bests.'}
         </p>

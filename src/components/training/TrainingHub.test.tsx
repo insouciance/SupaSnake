@@ -78,7 +78,7 @@ describe('TrainingHub', () => {
     expect(onStartExercise).toHaveBeenCalledWith('tempo');
     expect(onStartCircuit).toHaveBeenCalledTimes(1);
     expect(onStartSandbox).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('training-profile-offline')).toHaveTextContent(/migration/i);
+    expect(screen.getByTestId('training-profile-offline')).toHaveTextContent(/temporarily unavailable/i);
   });
 
   it('explains how PB guidance degrades before a matching best exists', () => {
