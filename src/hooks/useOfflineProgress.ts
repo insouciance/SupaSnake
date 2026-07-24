@@ -28,7 +28,7 @@ interface UseOfflineProgressReturn {
   /** Whether rewards have been claimed */
   claimed: boolean;
   /** Claim rewards from server */
-  claimRewards: () => Promise<void>;
+  claimRewards: () => Promise<boolean>;
   /** Dismiss modal without claiming */
   dismissModal: () => void;
   /** Server-confirmed rewards after claiming */
@@ -86,7 +86,11 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
         setProgress(offlineProgress);
 
         // Show modal if there are rewards and enough time has passed
-        if (offlineProgress.shouldShowModal && offlineProgress.hasRewards) {
+        if (
+          (player.total_games_played ?? 0) > 0 &&
+          offlineProgress.shouldShowModal &&
+          offlineProgress.hasRewards
+        ) {
           setShowModal(true);
         }
       } catch (err) {
@@ -101,7 +105,7 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
   const claimRewards = useCallback(async () => {
     if (!session?.access_token) {
       setError('Not authenticated');
-      return;
+      return false;
     }
 
     try {
@@ -127,8 +131,10 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
 
       setClaimed(true);
       setShowModal(false);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to claim rewards');
+      return false;
     }
   }, [session?.access_token]);
 

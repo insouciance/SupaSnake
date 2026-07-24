@@ -13,9 +13,6 @@ interface VirtualDPadProps {
   onDirectionChange: (direction: Direction) => void;
   disabled?: boolean;
   className?: string;
-  isReady?: boolean;
-  setReady?: (ready: boolean) => void;
-  onStartGame?: () => void;
 }
 
 interface ButtonState {
@@ -29,9 +26,6 @@ export function VirtualDPad({
   onDirectionChange,
   disabled = false,
   className = '',
-  isReady = false,
-  setReady,
-  onStartGame
 }: VirtualDPadProps) {
   const [pressed, setPressed] = useState<ButtonState>({
     UP: false,
@@ -43,17 +37,10 @@ export function VirtualDPad({
   const handlePress = useCallback((direction: Direction) => {
     if (disabled) return;
 
-    // Handle ready state - first press starts the game
-    if (isReady && onStartGame && setReady) {
-      haptics.light();
-      setReady(false);
-      onStartGame();
-    }
-
     haptics.light();
     setPressed(prev => ({ ...prev, [direction]: true }));
     onDirectionChange(direction);
-  }, [disabled, onDirectionChange, isReady, onStartGame, setReady]);
+  }, [disabled, onDirectionChange]);
 
   const handleRelease = useCallback((direction: Direction) => {
     setPressed(prev => ({ ...prev, [direction]: false }));
@@ -61,7 +48,7 @@ export function VirtualDPad({
 
   const buttonClass = (dir: Direction) => `
     flex items-center justify-center
-    w-16 h-16 sm:w-20 sm:h-20
+    game-dpad-button w-16 h-16 sm:w-20 sm:h-20
     rounded-arcade
     border backdrop-blur-sm
     transition-all duration-75
@@ -122,7 +109,7 @@ export function VirtualDPad({
         </button>
 
         {/* Center spacer */}
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-arcade bg-void/30" />
+        <div className="game-dpad-spacer w-16 h-16 sm:w-20 sm:h-20 rounded-arcade bg-void/30" />
 
         <button
           className={buttonClass('RIGHT')}

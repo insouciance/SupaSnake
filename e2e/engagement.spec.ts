@@ -2,11 +2,9 @@
  * Engagement Loop E2E Test
  *
  * Full hook loop for a brand-new player, driven end to end against the real
- * server: anonymous signup -> FTUE starter selection (PRIMAL) -> game page
- * shows the equipped snake + energy -> Lab unlock attempt fails on
- * insufficient DNA -> Breeding Lab renders parent slots -> daily contracts
- * (Design v2 section 7.3: board auto-opens with 3 offers, picks 2, picked
- * state persists across reload).
+ * server: one-click anonymous launch -> authoritative PRIMAL bootstrap -> held
+ * game board -> voluntary Lab -> Breeding Lab. It also proves contracts stay
+ * absent until the first completed result instead of interrupting FTUE.
  *
  * The snake run itself is a WebGL canvas and is not simulated; everything
  * around it is exercised. Contract completion requires real banked runs, so
@@ -15,8 +13,8 @@
  * page/session.
  */
 
-import { test, expect, type Page } from '@playwright/test';
-import { seedConsent, signInAsGuest, pickStarter } from './helpers';
+import { test, expect, type Page, type Request } from '@playwright/test';
+import { seedConsent } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -36,40 +34,46 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await page.context().close();
   });
 
-  test('anonymous signup and PRIMAL starter selection land on the game', async () => {
-    await signInAsGuest(page);
+  test('one Launch authenticates, bootstraps PRIMAL, and lands on the board', async () => {
+    await page.goto('/');
+    const bootstrapPromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/player/bootstrap',
+      { timeout: 60000 }
+    ).catch(() => null);
+    await page.getByRole('button', { name: /^launch$/i }).click();
+    const response = await bootstrapPromise;
+    if (!response) {
+      const launchError = await page.getByRole('alert').textContent().catch(() => '');
+      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(launchError ?? '')) {
+        test.skip(true, 'Anonymous sign-ins are disabled in the Supabase project.');
+      }
+      throw new Error(`Bootstrap request did not run: ${launchError || 'no launch error shown'}`);
+    }
+    expect(response.ok()).toBe(true);
+    const bootstrap = await response.json();
+    expect(bootstrap.equippedSnake.dynasty).toBe('PRIMAL');
+    expect(bootstrap.onboarding.needsStarterSelection).toBe(false);
     guestReady = true;
 
-    // Fresh account: game blocks play until a snake is owned
-    await expect(
-      page.getByText(/you need a snake before you can play/i)
-    ).toBeVisible({ timeout: 20000 });
-
-    // FTUE starter chooser on home; pick PRIMAL
-    await page.goto('/');
-    const primal = page.getByTestId('starter-PRIMAL');
-    await primal.waitFor({ state: 'visible', timeout: 20000 });
-    await expect(
-      page.getByRole('heading', { name: /choose your snake/i })
-    ).toBeVisible();
-    await primal.click();
-    await page.getByRole('button', { name: /confirm & play/i }).click();
-    await page.waitForURL(/\/game/, { timeout: 20000 });
+    await page.waitForURL(/\/game/, { timeout: 60000 });
+    await expect(page.getByTestId('first-movement-prompt')).toHaveText(
+      'Swipe or press an arrow to move'
+    );
+    await expect(page.getByTestId('starter-PRIMAL')).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: /choose your snake/i })).not.toBeVisible();
   });
 
   test('game page shows the equipped snake name and energy', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
-    // Equipped starter is displayed by name next to the "Snake:" label
-    await expect(page.getByText(/^snake:$/i)).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText(/primal/i).first()).toBeVisible();
-
     // Energy meter (EnergyTimer) shows current/max pills + count
     await expect(page.getByText(/^\d+\/\d+$/).first()).toBeVisible();
 
-    // Ready-to-play state with the equipped snake
-    await expect(
-      page.getByRole('heading', { name: /ready to play/i })
-    ).toBeVisible();
+    // The one-click route has no second Play screen and remains held until
+    // the player's deliberate first direction.
+    await expect(page.getByRole('heading', { name: /ready to play/i })).not.toBeVisible();
+    await expect(page.getByTestId('first-movement-prompt')).toBeVisible();
   });
 
   test('lab unlock attempt on a paid variant shows insufficient DNA', async () => {
@@ -109,43 +113,23 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await expect(page.getByTestId('parent-slot-2')).toBeVisible();
   });
 
-  test('daily contracts board offers 3 and picking 2 persists', async () => {
+  test('daily contracts do not load or open before the first completed result', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
+    const contractRequests: string[] = [];
+    const recordRequest = (request: Request) => {
+      if (new URL(request.url()).pathname === '/api/contracts') {
+        contractRequests.push(request.url());
+      }
+    };
+    page.on('request', recordRequest);
     await page.goto('/');
 
-    // Fresh account, fresh day: the contracts board auto-opens with the
-    // deterministic 3-of-pool offers
-    const board = page.getByTestId('contracts-board');
-    await expect(board).toBeVisible({ timeout: 20000 });
-    const cards = page.locator('[data-testid^="contract-card-"]');
-    await expect(cards).toHaveCount(3);
-
-    // Pick 2 of 3: toggle two cards, confirm
-    await cards.nth(0).click();
-    await cards.nth(1).click();
-    const confirm = page.getByTestId('contracts-confirm');
-    await expect(confirm).toHaveText(/start 2 contracts/i);
-    await confirm.click();
-
-    // Picked state lands from the server (progress bars, no confirm button)
-    await expect(cards.nth(0)).toHaveAttribute('data-state', 'picked', {
-      timeout: 15000,
+    await expect(page.getByText(/your first run is ready/i)).toBeVisible({
+      timeout: 30000,
     });
-    await expect(cards.nth(1)).toHaveAttribute('data-state', 'picked');
-    await expect(confirm).not.toBeVisible();
-
-    // Playing a run to completion is not drivable (WebGL); completion +
-    // claim are exercised in the API tests. Assert persistence instead:
-    // picks survive a reload and the board no longer auto-opens (nothing
-    // actionable), with the mission line reporting contract progress.
-    await page.reload();
-    const missionLine = page.getByText(/contracts: 0\/2 complete/i);
-    await expect(missionLine).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId('contracts-board')).not.toBeVisible();
-
-    // The mission line reopens the board with both picks intact
-    await missionLine.click();
-    await expect(page.getByTestId('contracts-board')).toBeVisible();
-    await expect(page.locator('[data-state="picked"]')).toHaveCount(2);
+    await expect(page.getByText(/daily contracts/i)).not.toBeVisible();
+    expect(contractRequests).toEqual([]);
+    page.off('request', recordRequest);
   });
 });

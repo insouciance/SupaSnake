@@ -25,28 +25,32 @@ describe('Player API Logic', () => {
       expect(newPlayerDefaults.max_energy).toBe(GAME_CONFIG.economy.energy.maxEnergy);
     });
 
-    it('should not auto-seed a starter snake (player picks in Lab)', () => {
-      // New players own zero snakes until they select a starter
-      const collectionSize = 0;
-      const needsStarterSelection = collectionSize === 0;
-      expect(needsStarterSelection).toBe(true);
+    it('should bootstrap a starter without requiring Lab selection', () => {
+      const bootstrap = {
+        equippedSnake: { name: 'PRIMAL SEED', dynasty: 'PRIMAL' },
+        onboarding: { needsStarterSelection: false },
+      };
+      expect(bootstrap.equippedSnake.dynasty).toBe('PRIMAL');
+      expect(bootstrap.onboarding.needsStarterSelection).toBe(false);
     });
 
-    it('should start with CYBER dynasty selected', () => {
-      const defaultDynasty = 'CYBER';
-      expect(defaultDynasty).toBe('CYBER');
+    it('should start with PRIMAL dynasty selected', () => {
+      const defaultDynasty = 'PRIMAL';
+      expect(defaultDynasty).toBe('PRIMAL');
     });
   });
 
-  describe('Starter Selection Flag', () => {
-    it('should flag needsStarterSelection when collection is empty', () => {
+  describe('Starter Bootstrap State', () => {
+    it('never exposes mandatory starter selection in FTUE v2', () => {
+      const ftueV2Enabled = true;
       const collectionSize = 0;
-      expect(collectionSize === 0).toBe(true);
+      expect(ftueV2Enabled ? false : collectionSize === 0).toBe(false);
     });
 
-    it('should not flag needsStarterSelection when player owns snakes', () => {
+    it('remains non-blocking when a player already owns snakes', () => {
+      const ftueV2Enabled = true;
       const collectionSize = 3;
-      expect(collectionSize === 0).toBe(false);
+      expect(ftueV2Enabled ? false : collectionSize === 0).toBe(false);
     });
   });
 

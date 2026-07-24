@@ -3,6 +3,12 @@
 // route handlers (NextRequest/NextResponse) require them at import time.
 const { TextEncoder, TextDecoder } = require('util')
 
+// Unit/integration tests exercise the current player-flow contract by default.
+// Production remains opt-in and must enable this only after migration 037.
+if (typeof process.env.NEXT_PUBLIC_FTUE_V2 === 'undefined') {
+  process.env.NEXT_PUBLIC_FTUE_V2 = 'true'
+}
+
 if (typeof global.TextEncoder === 'undefined') global.TextEncoder = TextEncoder
 if (typeof global.TextDecoder === 'undefined') global.TextDecoder = TextDecoder
 

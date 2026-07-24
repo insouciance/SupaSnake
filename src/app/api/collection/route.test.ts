@@ -303,4 +303,57 @@ describe('POST /api/collection (unlock)', () => {
       p_variant_id: 'variant-uuid',
     });
   });
+
+  it('uses the atomic unlock-and-equip RPC when requested by the Lab', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: { id: 'player-123', dna: 1000 },
+        error: null,
+      }),
+    });
+    mockRpc.mockResolvedValueOnce({ data: 'new-snake-uuid', error: null });
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: {
+          id: 'new-snake-uuid',
+          snake_variant_id: 'variant-uuid',
+          is_equipped: true,
+          snake_variants: { name: 'PRIMAL VINE', dynasties: { name: 'PRIMAL' } },
+        },
+        error: null,
+      }),
+    });
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({ data: { dna: 500 }, error: null }),
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost:3000/api/collection', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer valid-token',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ variantId: 'variant-uuid', equip: true }),
+      })
+    );
+    const body = await response.json();
+
+    expect(mockRpc).toHaveBeenCalledWith('unlock_and_equip_variant', {
+      p_player_id: 'player-123',
+      p_variant_id: 'variant-uuid',
+    });
+    expect(body.equipped).toBe(true);
+    expect(body.snake.isEquipped).toBe(true);
+  });
 });

@@ -10,7 +10,7 @@
  * primary action: LAUNCH.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useReducer, useRef } from 'react';
 import Link from 'next/link';
 import dynamicImport from 'next/dynamic';
 import { useRouter } from 'next/navigation';
@@ -23,7 +23,6 @@ import {
   type LastUserMarker,
 } from '@/lib/auth/lastUser';
 import { replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
-import { SaveProgressBanner } from '@/components/auth/UpgradePrompt';
 import { MVP_DYNASTIES } from '@/shared/types/snake-data-model';
 import type { DynastyId } from '@/shared/types/game';
 import { Navigation } from '@/components/ui/Navigation';
@@ -41,9 +40,20 @@ import {
   type SeasonTrackView,
 } from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
-import { OverlayHint } from '@/components/ftue/OverlayHint';
 import { trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
+import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
+import {
+  INITIAL_LAUNCH_STATE,
+  LAUNCH_PHASE_LABEL,
+  LaunchFlowError,
+  bootstrapForLaunch,
+  launchHandoffStorageAvailable,
+  prepareLaunchHandoff,
+  storeLaunchHandoff,
+  transitionLaunch,
+} from '@/lib/ftue/launchFlow';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 // The chamber is WebGL-heavy: lazy-mount client-side only, with the styled
 // gradient placeholder holding the space (zero layout shift).
@@ -62,6 +72,7 @@ interface HomeStats {
   highScore: number;
   collectionSize: number;
   needsStarterSelection: boolean;
+  hasCompletedFirstRun: boolean;
 }
 
 interface ContractsState {
@@ -100,9 +111,16 @@ export default function Home() {
   const [showSeasonTrack, setShowSeasonTrack] = useState(false);
   const [welcomeBack, setWelcomeBack] = useState<LastUserMarker | null>(null);
   const [showLossNotice, setShowLossNotice] = useState(false);
-  const [dynasty, setDynasty] = useState<DynastyId>('CYBER');
+  const [dynasty, setDynasty] = useState<DynastyId>('PRIMAL');
   const [chamberReady, setChamberReady] = useState(false);
   const [missionIndex, setMissionIndex] = useState(0);
+  const [launchState, dispatchLaunch] = useReducer(
+    transitionLaunch,
+    INITIAL_LAUNCH_STATE
+  );
+  const launchInFlightRef = useRef(false);
+  const publishNotification = useNotificationStore((state) => state.publish);
+  const clearNotification = useNotificationStore((state) => state.clear);
 
   const token = session?.access_token;
 
@@ -153,6 +171,9 @@ export default function Home() {
               highScore: data.player.high_score ?? 0,
               collectionSize: data.collectionSize ?? 0,
               needsStarterSelection: data.needsStarterSelection ?? false,
+              hasCompletedFirstRun:
+                data.hasCompletedFirstRun === true ||
+                (data.player.total_games_played ?? 0) > 0,
             });
           }
         }
@@ -183,7 +204,7 @@ export default function Home() {
   }, [isAuthenticated, token]);
 
   // The chamber presents the EQUIPPED snake: resolve its dynasty from the
-  // collection. Fresh visitors (or failures) get the CYBER specimen.
+  // collection. Fresh visitors (or failures) get the PRIMAL specimen.
   useEffect(() => {
     if (!isAuthenticated || !token) return;
     let cancelled = false;
@@ -205,7 +226,7 @@ export default function Home() {
           setDynasty(name as DynastyId);
         }
       } catch {
-        // CYBER specimen fallback
+        // PRIMAL specimen fallback
       }
     };
 
@@ -215,12 +236,14 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  // Daily contracts (Design v2 section 7.3 - the modal is the contracts
-  // board now): fetch on mount (lazily generates today's 3 offers) and
-  // auto-open once per day while there is something to do - picks left
-  // or a completed contract to claim.
+  // Daily contracts are generated only after the first completed run. Under
+  // FTUE v2 they publish a persistent mission/badge and never auto-open.
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (
+      !isAuthenticated ||
+      !token ||
+      (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
+    ) return;
     let cancelled = false;
 
     const load = async () => {
@@ -234,18 +257,19 @@ export default function Home() {
         if (cancelled) return;
         setContractsState(data);
 
-        const today = new Date().toISOString().split('T')[0];
-        let dismissedToday = false;
-        try {
-          dismissedToday = window.localStorage.getItem(dailyDismissKey(today)) === '1';
-        } catch {
-          // localStorage unavailable - treat as not dismissed
-        }
-
         const canPick =
           data.picksRemaining > 0 && data.contracts.some((c) => !c.picked);
-        if ((canPick || data.claimable) && !dismissedToday) {
-          setShowContractsBoard(true);
+        if (!FTUE_V2_ENABLED) {
+          const today = new Date().toISOString().split('T')[0];
+          let dismissedToday = false;
+          try {
+            dismissedToday = window.localStorage.getItem(dailyDismissKey(today)) === '1';
+          } catch {
+            // localStorage unavailable - treat as not dismissed
+          }
+          if ((canPick || data.claimable) && !dismissedToday) {
+            setShowContractsBoard(true);
+          }
         }
       } catch {
         // Contracts UI simply stays closed on failure
@@ -256,13 +280,17 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, stats?.hasCompletedFirstRun]);
 
   // Season track (§7.2): fetch the live season + the player's free track.
   // { live: false } (pre-migration-021) or no live season simply keeps the
   // season surfaces hidden - non-fatal like every engagement fetch here.
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (
+      !isAuthenticated ||
+      !token ||
+      (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
+    ) return;
     let cancelled = false;
 
     const load = async () => {
@@ -285,7 +313,86 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, stats?.hasCompletedFirstRun]);
+
+  // One notification source drives the contracts badge, mission indicator,
+  // and inbox. No parallel automatic modal exists.
+  useEffect(() => {
+    if (!FTUE_V2_ENABLED || !contractsState || !stats?.hasCompletedFirstRun) return;
+    const summary = summarizeContracts(contractsState.contracts);
+    const claimableCount = contractsState.contracts.filter(
+      (contract) => contract.completed && !contract.claimed
+    ).length;
+    const canPick =
+      contractsState.picksRemaining > 0 &&
+      contractsState.contracts.some((contract) => !contract.picked);
+
+    if (!canPick && claimableCount === 0) {
+      publishNotification({
+        id: 'contracts',
+        title: 'Daily Contracts',
+        description: 'No action needed.',
+        destination: 'contracts',
+        badgeKind: 'hidden',
+      });
+      return;
+    }
+
+    publishNotification({
+      id: 'contracts',
+      title: claimableCount > 0 ? 'Contract reward ready' : 'Daily Contracts ready',
+      description:
+        claimableCount > 0
+          ? `${summary.completedCount}/${summary.pickedCount} selected contracts complete.`
+          : `Choose ${contractsState.picksRemaining} contract${contractsState.picksRemaining === 1 ? '' : 's'} when you’re ready.`,
+      destination: 'contracts',
+      badgeKind: claimableCount > 0 ? 'numeric' : 'exclamation',
+      count: claimableCount || undefined,
+      href: '/#contracts',
+      actionLabel: 'View contracts',
+      clearOnOpen: false,
+    });
+  }, [contractsState, stats?.hasCompletedFirstRun, publishNotification]);
+
+  useEffect(() => {
+    if (!FTUE_V2_ENABLED || !seasonState || !stats?.hasCompletedFirstRun) return;
+    const claimableCount = seasonState.track.tiers.filter(
+      (tier) => !tier.claimed && seasonState.track.level >= tier.level
+    ).length;
+    if (claimableCount === 0) {
+      publishNotification({
+        id: 'season',
+        title: seasonState.season.name,
+        description: 'No action needed.',
+        destination: 'season',
+        badgeKind: 'hidden',
+      });
+      return;
+    }
+    publishNotification({
+      id: 'season',
+      title: `${seasonState.season.name} milestone ready`,
+      description: `${claimableCount} seasonal reward${claimableCount === 1 ? '' : 's'} available.`,
+      destination: 'season',
+      badgeKind: 'numeric',
+      count: claimableCount,
+      href: '/#season',
+      actionLabel: 'View season',
+      clearOnOpen: false,
+    });
+  }, [seasonState, stats?.hasCompletedFirstRun, publishNotification]);
+
+  // Hash destinations represent an explicit inbox/mission action. Merely
+  // loading Home never opens these overlays.
+  useEffect(() => {
+    const syncExplicitDestination = () => {
+      if (window.location.hash === '#contracts') setShowContractsBoard(true);
+      if (window.location.hash === '#season') setShowSeasonTrack(true);
+    };
+    syncExplicitDestination();
+    window.addEventListener('hashchange', syncExplicitDestination);
+    return () => window.removeEventListener('hashchange', syncExplicitDestination);
+  }, []);
 
   const handleSeasonClaim = useCallback(
     async (level: number): Promise<boolean> => {
@@ -417,50 +524,122 @@ export default function Home() {
   );
 
   const handleContractsDismiss = useCallback(() => {
-    const today = new Date().toISOString().split('T')[0];
-    try {
-      window.localStorage.setItem(dailyDismissKey(today), '1');
-    } catch {
-      // Ignore storage failures
+    if (!FTUE_V2_ENABLED) {
+      const today = new Date().toISOString().split('T')[0];
+      try {
+        window.localStorage.setItem(dailyDismissKey(today), '1');
+      } catch {
+        // Ignore storage failures
+      }
+    }
+    const hasClaimableReward = contractsState?.contracts.some(
+      (contract) => contract.completed && !contract.claimed
+    );
+    // Viewing is enough to acknowledge a discovery exclamation. Numeric
+    // reward counts remain until the server-backed claim state reaches zero.
+    if (!hasClaimableReward) clearNotification('contracts');
+    if (window.location.hash === '#contracts') {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
     setShowContractsBoard(false);
-  }, []);
+  }, [clearNotification, contractsState]);
 
-  const handlePlay = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (isAuthenticated) return;
+  const runLaunch = useCallback(async (skipIdentityGate = false) => {
+    if (launchInFlightRef.current) return;
 
-    const gate = evaluateAnonymousSignInGate(readLastUser());
+    if (!skipIdentityGate && !isAuthenticated) {
+      const gate = evaluateAnonymousSignInGate(readLastUser());
+      if (gate === 'welcome-back') {
+        setWelcomeBack(readLastUser());
+        return;
+      }
+      if (gate === 'warn-progress-loss') {
+        setShowLossNotice(true);
+        return;
+      }
+    }
 
-    if (gate === 'welcome-back') {
-      // A registered account used this device - never silently replace it
-      e.preventDefault();
-      setWelcomeBack(readLastUser());
+    if (!FTUE_V2_ENABLED) {
+      if (!isAuthenticated) {
+        const result = await signInAnonymously();
+        if (result?.error) {
+          dispatchLaunch({ type: 'FAIL', error: result.error.message });
+          return;
+        }
+      }
+      router.push('/game');
       return;
     }
 
-    if (gate === 'warn-progress-loss') {
-      // Previous anonymous session is gone - warn once before a new identity
-      e.preventDefault();
-      setShowLossNotice(true);
+    if (!launchHandoffStorageAvailable()) {
+      dispatchLaunch({
+        type: 'FAIL',
+        error: 'This browser cannot safely prepare a run. Enable session storage and Retry.',
+      });
       return;
     }
 
-    await signInAnonymously();
-  };
+    launchInFlightRef.current = true;
+    dispatchLaunch({ type: 'BEGIN', alreadyAuthenticated: isAuthenticated });
+    try {
+      let launchSession = session;
+      if (!launchSession?.access_token) {
+        if (isAuthenticated) {
+          throw new LaunchFlowError('Your session is still loading. Please Retry.');
+        }
+        const result = await signInAnonymously();
+        if (result?.error || !result?.session) {
+          throw new LaunchFlowError(
+            result?.error?.message ?? 'Anonymous authentication did not complete'
+          );
+        }
+        launchSession = result.session;
+        dispatchLaunch({ type: 'AUTHENTICATED' });
+      }
+
+      const bootstrap = await bootstrapForLaunch(launchSession.access_token);
+      setDynasty(bootstrap.equippedSnake.dynasty);
+      dispatchLaunch({ type: 'BOOTSTRAPPED' });
+
+      const handoff = await prepareLaunchHandoff(
+        launchSession.access_token,
+        launchSession.user.id,
+        bootstrap
+      );
+      if (!storeLaunchHandoff(handoff)) {
+        throw new LaunchFlowError('Could not transfer the prepared run. Please Retry.');
+      }
+
+      dispatchLaunch({ type: 'RUN_LOADED' });
+      router.push('/game?launch=ftue-v2');
+    } catch (error) {
+      const message =
+        error instanceof LaunchFlowError && error.retryAfterMs
+          ? `${error.message}. Retry in ${Math.ceil(error.retryAfterMs / 1000)}s.`
+          : error instanceof Error
+            ? error.message
+            : 'Could not launch the run';
+      dispatchLaunch({ type: 'FAIL', error: message });
+    } finally {
+      launchInFlightRef.current = false;
+    }
+  }, [isAuthenticated, router, session, signInAnonymously]);
 
   const handleContinueAfterLossNotice = useCallback(async () => {
     markProgressLossNoticed();
     setShowLossNotice(false);
-    await signInAnonymously();
-    router.push('/game');
-  }, [signInAnonymously, router]);
+    await runLaunch(true);
+  }, [runLaunch]);
 
   const handleStartFresh = useCallback(() => {
     clearLastUser();
     setWelcomeBack(null);
   }, []);
 
-  const needsStarter = isAuthenticated && stats?.needsStarterSelection === true;
+  const needsStarter =
+    !FTUE_V2_ENABLED &&
+    isAuthenticated &&
+    stats?.needsStarterSelection === true;
 
   // ---------------------------------------------------------------------------
   // Mission line - one contextual line above Launch, rotating every 6s
@@ -469,6 +648,9 @@ export default function Home() {
   const missionItems = useMemo<MissionItem[]>(() => {
     if (!isAuthenticated) {
       return [{ id: 'tagline', text: 'Where Skill Creates Legacy' }];
+    }
+    if (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true) {
+      return [{ id: 'first-run', text: 'Your first run is ready' }];
     }
     const items: MissionItem[] = [];
     if (contractsState) {
@@ -557,19 +739,6 @@ export default function Home() {
       {/* Navigation rail */}
       <Navigation />
 
-      {/* Anonymous users: corner chip only on the cinematic home (the nav
-          rail's GUEST node signals auth state); hidden while any modal is
-          up so overlays never stack */}
-      <SaveProgressBanner
-        variant="chip"
-        suppressed={
-          needsStarter ||
-          showContractsBoard ||
-          showSeasonTrack ||
-          Boolean(welcomeBack && !isAuthenticated)
-        }
-      />
-
       {/* Welcome back: a registered account used this device but the
           session is gone - never silently create a new anonymous identity */}
       {welcomeBack && !isAuthenticated && !isLoading && (
@@ -649,10 +818,10 @@ export default function Home() {
         </div>
       )}
 
-      {/* FTUE: full-screen starter chooser for players with no snakes */}
+      {/* Rollback-only legacy path. FTUE v2 never exposes starter selection. */}
       {needsStarter && <StarterSelection />}
 
-      {/* Daily contracts board (auto-opens once/day when actionable) */}
+      {/* Daily contracts board opens only after a mission/inbox action. */}
       {contractsState && !needsStarter && (
         <ContractsBoard
           isVisible={showContractsBoard}
@@ -674,14 +843,17 @@ export default function Home() {
           season={seasonState.season}
           track={seasonState.track}
           onClaim={handleSeasonClaim}
-          onDismiss={() => setShowSeasonTrack(false)}
+          onDismiss={() => {
+            const hasClaimableReward = seasonState.track.tiers.some(
+              (tier) => !tier.claimed && seasonState.track.level >= tier.level
+            );
+            if (!hasClaimableReward) clearNotification('season');
+            if (window.location.hash === '#season') {
+              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+            }
+            setShowSeasonTrack(false);
+          }}
         />
-      )}
-
-      {/* One-time FTUE hint - never while a modal is up (single-overlay
-          policy: on mobile the stacked chip+modal+rail read as clutter) */}
-      {isAuthenticated && !needsStarter && !showContractsBoard && (
-        <OverlayHint id="home-play-dna" message="Play to earn DNA - spend it in the Lab" />
       )}
 
       {/* Wordmark - small and confident; the character below is the hero */}
@@ -716,7 +888,7 @@ export default function Home() {
       )}
 
       {/* Mission line + LAUNCH - the one obvious primary action */}
-      <div className="absolute inset-x-0 z-10 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] sm:bottom-12 flex flex-col items-center gap-4 px-4">
+      <div className="home-launch-dock absolute inset-x-0 z-10 flex flex-col items-center gap-4 px-4">
         <div
           className="h-6 flex items-center justify-center animate-fade-up"
           style={{ animationDelay: '360ms' }}
@@ -747,14 +919,29 @@ export default function Home() {
         </div>
 
         <div className="animate-fade-up" style={{ animationDelay: '480ms' }}>
-          <Link
-            href="/game"
-            onClick={handlePlay}
-            className="btn-go px-16 sm:px-20 py-5 text-2xl min-h-[64px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70"
+          <button
+            type="button"
+            onClick={() => void runLaunch()}
+            disabled={
+              isLoading ||
+              (launchState.phase !== 'idle' && launchState.phase !== 'failed')
+            }
+            className="btn-go px-16 sm:px-20 py-5 text-2xl min-h-[64px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70 disabled:cursor-wait disabled:opacity-70"
+            aria-describedby={launchState.error ? 'launch-error' : undefined}
+            data-launch-phase={launchState.phase}
           >
             <IconPlay size={26} />
-            <span>Launch</span>
-          </Link>
+            <span>{LAUNCH_PHASE_LABEL[launchState.phase]}</span>
+          </button>
+          {launchState.error && (
+            <p
+              id="launch-error"
+              role="alert"
+              className="mt-2 max-w-sm text-center font-body text-sm text-strike-red"
+            >
+              {launchState.error}
+            </p>
+          )}
         </div>
       </div>
     </main>

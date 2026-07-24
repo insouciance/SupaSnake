@@ -60,9 +60,21 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
  * SKIPPED with an actionable message instead of failing on a selector.
  */
 export async function signInAsGuest(page: Page): Promise<void> {
-  await page.goto('/login');
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: /play as guest/i }).click();
-  await page.waitForURL(/\/game/, { timeout: 20000 });
+
+  // In Chromium software rendering, App Router navigation can be starved
+  // after Supabase has already established the anonymous session. Accept the
+  // authenticated guest notice as proof of the mutation, then navigate
+  // explicitly so the test can continue from the server-bootstrapped game.
+  const guestAuthenticated = page.getByText(/you(?:'|’)?re playing as a guest/i);
+  await Promise.race([
+    page.waitForURL(/\/game/, { timeout: 30000 }),
+    guestAuthenticated.waitFor({ state: 'visible', timeout: 30000 }),
+  ]);
+  if (!/\/game(?:$|[/?#])/.test(new URL(page.url()).pathname)) {
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+  }
 
   // Authenticated /game always renders the HUD ("Score"); a failed
   // anonymous sign-in lands on the sign-in prompt instead.
@@ -81,21 +93,4 @@ export async function signInAsGuest(page: Page): Promise<void> {
         'Guest-flow tests cannot run until it is enabled.'
     );
   }
-}
-
-/**
- * Complete the FTUE starter selection from the home page.
- * Requires an authenticated session that still needs a starter.
- * Ends on /game with the starter equipped.
- */
-export async function pickStarter(
-  page: Page,
-  dynasty: 'CYBER' | 'PRIMAL' | 'COSMIC' = 'PRIMAL'
-): Promise<void> {
-  await page.goto('/');
-  const starterCard = page.getByTestId(`starter-${dynasty}`);
-  await starterCard.waitFor({ state: 'visible', timeout: 20000 });
-  await starterCard.click();
-  await page.getByRole('button', { name: /confirm & play/i }).click();
-  await page.waitForURL(/\/game/, { timeout: 20000 });
 }

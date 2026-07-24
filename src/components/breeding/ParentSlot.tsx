@@ -102,7 +102,7 @@ export function ParentSlot({
         <SnakeArt
           seed={variant.id}
           name={variant.name}
-          dynasty={dynastyName ?? 'CYBER'}
+          dynasty={dynastyName ?? 'PRIMAL'}
           primaryColor={theme.primary}
           secondaryColor={theme.secondary}
           rarity={variant.rarity}

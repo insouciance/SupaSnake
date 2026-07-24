@@ -118,7 +118,7 @@ export function PBTimeline({
 
           {/* One PB line per dynasty */}
           {dynasties.map((dynasty) => {
-            const theme = dynastyThemes[dynasty] ?? dynastyThemes.CYBER;
+            const theme = dynastyThemes[dynasty] ?? dynastyThemes.PRIMAL;
             const dynastyPoints = data.points
               .filter((point) => point.dynasty === dynasty)
               .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
@@ -160,7 +160,7 @@ export function PBTimeline({
       {/* Legend */}
       <div className="flex flex-wrap gap-3">
         {dynasties.map((dynasty) => {
-          const theme = dynastyThemes[dynasty] ?? dynastyThemes.CYBER;
+          const theme = dynastyThemes[dynasty] ?? dynastyThemes.PRIMAL;
           return (
             <span
               key={dynasty}

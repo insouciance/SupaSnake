@@ -18,6 +18,10 @@ describe('GeneChoiceOverlay', () => {
         onDecline={jest.fn()}
       />
     );
+    expect(screen.getByRole('dialog', { name: 'Gene Offer' })).toHaveAttribute(
+      'aria-modal',
+      'true'
+    );
     expect(screen.getAllByTestId('strain-chip-AURUM')).toHaveLength(2);
     expect(screen.getByTestId('gene-fusion-0')).toHaveTextContent('Fuses: ???');
     expect(screen.getAllByText(/Gilded Wake/).length).toBeGreaterThan(0);
@@ -38,9 +42,11 @@ describe('GeneChoiceOverlay', () => {
       />
     );
     expect(screen.getByTestId('gene-fusion-0')).toHaveTextContent('Dragon Hoard');
+    expect(screen.getByTestId('gene-option-0')).toBeDisabled();
     fireEvent.click(screen.getByTestId('gene-option-0'));
     expect(onChoose).not.toHaveBeenCalled();
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    expect(screen.getByTestId('gene-option-0')).toHaveFocus();
     fireEvent.click(screen.getByTestId('gene-option-0'));
     expect(onChoose).toHaveBeenCalledWith(0);
   });

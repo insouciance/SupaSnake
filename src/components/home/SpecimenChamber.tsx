@@ -387,7 +387,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 export interface SpecimenChamberProps {
-  /** Dynasty of the equipped snake (CYBER specimen for fresh visitors). */
+  /** Dynasty of the equipped snake (PRIMAL specimen for fresh visitors). */
   dynasty: DynastyId;
   /** Fired once the WebGL scene is live - drives the page's 600ms fade-in. */
   onReady?: () => void;

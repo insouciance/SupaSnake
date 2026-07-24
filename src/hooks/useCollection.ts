@@ -53,8 +53,11 @@ export interface UseCollectionReturn {
   closeDetailModal: () => void;
   openUnlockModal: (variant: SnakeVariant) => void;
   closeUnlockModal: () => void;
-  unlockVariant: (variantId: string) => Promise<void>;
-  equipSnake: (snakeId: string) => Promise<void>;
+  unlockVariant: (
+    variantId: string,
+    options?: { equip?: boolean }
+  ) => Promise<OwnedSnake | null>;
+  equipSnake: (snakeId: string) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
 
@@ -136,7 +139,6 @@ export function useCollection(): UseCollectionReturn {
     setUnlocking,
     setEquipping,
     setUnlockError,
-    addOwnedSnake,
   } = useCollectionStore();
 
   // DNA balance from store (proper typed access)
@@ -176,6 +178,8 @@ export function useCollection(): UseCollectionReturn {
       const equipped = collectionData.snakes.find((s) => s.isEquipped);
       if (equipped) {
         setEquippedSnakeId(equipped.id);
+      } else {
+        setEquippedSnakeId(null);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load collection';
@@ -199,13 +203,31 @@ export function useCollection(): UseCollectionReturn {
     refresh();
   }, [refresh]);
 
-  // Auto-select first dynasty if none active
+  // Voluntary Lab opens on the equipped snake's dynasty. A genuinely fresh
+  // fallback is PRIMAL, independent of catalog sort order (which may still
+  // list CYBER first for existing collection presentation).
   useEffect(() => {
     if (!activeDynastyId && dynasties.length > 0) {
-      const firstDynasty = dynasties[0];
-      setActiveDynasty(firstDynasty.id);
+      const equipped =
+        ownedSnakes.find((snake) => snake.id === equippedSnakeId) ??
+        ownedSnakes.find((snake) => snake.isEquipped);
+      const equippedVariant = variants.find(
+        (variant) => variant.id === equipped?.snakeVariantId
+      );
+      const preferred =
+        dynasties.find((dynasty) => dynasty.id === equippedVariant?.dynastyId) ??
+        dynasties.find((dynasty) => dynasty.name === 'PRIMAL') ??
+        dynasties[0];
+      setActiveDynasty(preferred.id);
     }
-  }, [activeDynastyId, dynasties, setActiveDynasty]);
+  }, [
+    activeDynastyId,
+    dynasties,
+    equippedSnakeId,
+    ownedSnakes,
+    variants,
+    setActiveDynasty,
+  ]);
 
   // ===========================================================================
   // DERIVED DATA
@@ -261,7 +283,10 @@ export function useCollection(): UseCollectionReturn {
   // ===========================================================================
 
   const unlockVariant = useCallback(
-    async (variantId: string) => {
+    async (
+      variantId: string,
+      { equip = true }: { equip?: boolean } = {}
+    ): Promise<OwnedSnake | null> => {
       setUnlocking(true);
       setUnlockError(null);
 
@@ -270,12 +295,13 @@ export function useCollection(): UseCollectionReturn {
       if (!variant) {
         setUnlockError('Variant not found');
         setUnlocking(false);
-        return;
+        return null;
       }
 
       // Store previous state for rollback
       const previousOwnedSnakes = [...ownedSnakes];
       const previousDnaBalance = dnaBalance;
+      const previousEquippedId = equippedSnakeId;
 
       // Optimistic update: create a temporary owned snake
       const optimisticSnake: OwnedSnake = {
@@ -288,12 +314,18 @@ export function useCollection(): UseCollectionReturn {
         parent2Id: null,
         acquiredAt: new Date().toISOString(),
         acquiredMethod: 'unlock',
-        isEquipped: false,
+        isEquipped: equip,
         isFavorited: false,
       };
 
       // Apply optimistic update
-      addOwnedSnake(optimisticSnake);
+      setOwnedSnakes([
+        ...previousOwnedSnakes.map((snake) =>
+          equip ? { ...snake, isEquipped: false } : snake
+        ),
+        optimisticSnake,
+      ]);
+      if (equip) setEquippedSnakeId(optimisticSnake.id);
       setDnaBalance(Math.max(0, dnaBalance - variant.unlockCostDna));
 
       try {
@@ -303,7 +335,7 @@ export function useCollection(): UseCollectionReturn {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${session?.access_token}`,
           },
-          body: JSON.stringify({ variantId }),
+          body: JSON.stringify({ variantId, equip }),
         });
 
         const data: UnlockResponse = await response.json();
@@ -312,13 +344,16 @@ export function useCollection(): UseCollectionReturn {
           throw new Error(data.error ?? 'Failed to unlock variant');
         }
 
-        // Replace optimistic snake with real one
-        if (data.snake) {
-          setOwnedSnakes([
-            ...previousOwnedSnakes,
-            data.snake,
-          ]);
-        }
+        if (!data.snake) throw new Error('Unlock returned incomplete snake data');
+
+        const becameEquipped = data.equipped === true && data.snake.isEquipped;
+        setOwnedSnakes([
+          ...previousOwnedSnakes.map((snake) =>
+            becameEquipped ? { ...snake, isEquipped: false } : snake
+          ),
+          data.snake,
+        ]);
+        if (becameEquipped) setEquippedSnakeId(data.snake.id);
 
         // Update DNA balance with server value
         if (data.newDnaBalance !== undefined) {
@@ -327,13 +362,16 @@ export function useCollection(): UseCollectionReturn {
 
         // Close the modal on success
         closeUnlockModal();
+        return data.snake;
       } catch (err) {
         // Rollback optimistic update
         setOwnedSnakes(previousOwnedSnakes);
         setDnaBalance(previousDnaBalance);
+        setEquippedSnakeId(previousEquippedId);
 
         const message = err instanceof Error ? err.message : 'Failed to unlock variant';
         setUnlockError(message);
+        return null;
       } finally {
         setUnlocking(false);
       }
@@ -343,8 +381,9 @@ export function useCollection(): UseCollectionReturn {
       variants,
       ownedSnakes,
       dnaBalance,
-      addOwnedSnake,
+      equippedSnakeId,
       setOwnedSnakes,
+      setEquippedSnakeId,
       setDnaBalance,
       setUnlocking,
       setUnlockError,
@@ -353,7 +392,7 @@ export function useCollection(): UseCollectionReturn {
   );
 
   const equipSnake = useCallback(
-    async (snakeId: string) => {
+    async (snakeId: string): Promise<boolean> => {
       setEquipping(true);
 
       // Store previous state for rollback
@@ -387,6 +426,7 @@ export function useCollection(): UseCollectionReturn {
 
         // Close detail modal after successful equip
         closeDetailModal();
+        return true;
       } catch (err) {
         // Rollback optimistic update
         setEquippedSnakeId(previousEquippedId);
@@ -394,6 +434,7 @@ export function useCollection(): UseCollectionReturn {
 
         const message = err instanceof Error ? err.message : 'Failed to equip snake';
         setError(message);
+        return false;
       } finally {
         setEquipping(false);
       }

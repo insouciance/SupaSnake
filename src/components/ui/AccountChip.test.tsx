@@ -7,6 +7,7 @@
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AccountChip } from './AccountChip';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 const mockUseAuth = jest.fn();
 jest.mock('@/lib/auth/AuthProvider', () => ({
@@ -37,6 +38,7 @@ function setAuth(state: {
 describe('AccountChip', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useNotificationStore.setState({ notifications: {}, hasHydrated: true });
   });
 
   it('renders nothing while auth is loading', () => {
@@ -72,12 +74,28 @@ describe('AccountChip', () => {
       setAuth({ user: { id: 'anon-1', is_anonymous: true }, isAnonymous: true });
     });
 
-    it('shows the GUEST identity with a save-progress affordance', () => {
+    it('shows only the calm GUEST identity before a post-run notification', () => {
       render(<AccountChip />);
 
       const chip = screen.getByTestId('account-chip');
       expect(chip).toHaveTextContent(/guest/i);
+      expect(chip).not.toHaveTextContent(/save progress/i);
+      expect(chip).toHaveAccessibleName('Playing as guest');
+    });
+
+    it('surfaces save progress when the centralized post-run badge exists', () => {
+      useNotificationStore.getState().publish({
+        id: 'save-progress',
+        title: 'Keep your collection',
+        description: 'Optional account',
+        destination: 'account',
+        badgeKind: 'exclamation',
+      });
+      render(<AccountChip />);
+
+      const chip = screen.getByTestId('account-chip');
       expect(chip).toHaveTextContent(/save progress/i);
+      expect(chip).toHaveAccessibleName(/save progress available/i);
     });
 
     it('opens the account upgrade modal on tap', () => {

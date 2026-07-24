@@ -51,17 +51,17 @@ describe('useDynastyTheme', () => {
   });
 
   describe('default behavior', () => {
-    it('should default to CYBER theme for unknown dynasty', () => {
+    it('should default to PRIMAL theme for unknown dynasty', () => {
       const { result } = renderHook(() => useDynastyTheme('UNKNOWN'));
 
-      expect(result.current.primary).toBe('#00FFFF');
-      expect(result.current.secondary).toBe('#FF00FF');
+      expect(result.current.primary).toBe('#2d5016');
+      expect(result.current.secondary).toBe('#8b4513');
     });
 
-    it('should default to CYBER theme for empty string', () => {
+    it('should default to PRIMAL theme for empty string', () => {
       const { result } = renderHook(() => useDynastyTheme(''));
 
-      expect(result.current.primary).toBe('#00FFFF');
+      expect(result.current.primary).toBe('#2d5016');
     });
   });
 

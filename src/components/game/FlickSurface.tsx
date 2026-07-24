@@ -36,6 +36,7 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   SnakeGameLogic,
+  type Direction,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
 import {
@@ -60,8 +61,11 @@ interface FlickSurfaceProps {
   getAzimuth: () => number;
   /** Ready phase: the first flick starts the run. */
   isReady: boolean;
-  /** Called once when the first flick arrives while ready (starts the loop). */
-  onReadyStart: () => void;
+  /**
+   * Owns the first ready/gated direction. It queues a safe command before
+   * starting or resuming and leaves the board held when the command is unsafe.
+   */
+  onReadyDirection: (direction: Direction) => SetDirectionResult;
   /** Called after an accepted input so the aim telegraph updates instantly. */
   onAim: () => void;
   /** Debug sink for ?debug=input; current === null means no recording. */
@@ -94,7 +98,7 @@ export function FlickSurface({
   gameRef,
   getAzimuth,
   isReady,
-  onReadyStart,
+  onReadyDirection,
   onAim,
   debugRef,
 }: FlickSurfaceProps) {
@@ -110,13 +114,13 @@ export function FlickSurface({
   const edgeRefs = useRef<Partial<Record<ScreenFlickDirection, HTMLDivElement | null>>>({});
 
   // Latest volatile props behind stable refs so handlers never re-bind.
-  const stateRef = useRef({ isReady, onReadyStart, onAim, getAzimuth });
+  const stateRef = useRef({ isReady, onReadyDirection, onAim, getAzimuth });
   useEffect(() => {
     stateRef.current.isReady = isReady;
-    stateRef.current.onReadyStart = onReadyStart;
+    stateRef.current.onReadyDirection = onReadyDirection;
     stateRef.current.onAim = onAim;
     stateRef.current.getAzimuth = getAzimuth;
-  }, [isReady, onReadyStart, onAim, getAzimuth]);
+  }, [isReady, onReadyDirection, onAim, getAzimuth]);
 
   const pulseEdge = useCallback(
     (side: ScreenFlickDirection, kind: 'accept' | 'reject') => {
@@ -138,12 +142,11 @@ export function FlickSurface({
 
       const world = mapFlickToWorld(cmd.direction, quadrantRef.current);
 
-      // First flick while ready starts the run (mirrors D-pad behavior).
-      if (stateRef.current.isReady) {
-        stateRef.current.onReadyStart();
-      }
-
-      const result: SetDirectionResult = game.setDirection(world);
+      // Ready/gated input is owned atomically by the page: it validates and
+      // queues this direction before allowing the first tick.
+      const result: SetDirectionResult = stateRef.current.isReady
+        ? stateRef.current.onReadyDirection(world)
+        : game.setDirection(world);
       const feedback = feedbackForResult(result);
 
       if (feedback.haptic) haptics.light();

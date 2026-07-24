@@ -1,0 +1,299 @@
+import { GAME_CONFIG } from '@/shared/config/game';
+import type { FtueBootstrapResponse } from './types';
+
+export type LaunchPhase =
+  | 'idle'
+  | 'authenticating'
+  | 'bootstrapping'
+  | 'loading-run'
+  | 'board-ready'
+  | 'failed';
+
+export interface LaunchState {
+  phase: LaunchPhase;
+  error: string | null;
+}
+
+export type LaunchEvent =
+  | { type: 'BEGIN'; alreadyAuthenticated: boolean }
+  | { type: 'AUTHENTICATED' }
+  | { type: 'BOOTSTRAPPED' }
+  | { type: 'RUN_LOADED' }
+  | { type: 'FAIL'; error: string }
+  | { type: 'RESET' };
+
+export const INITIAL_LAUNCH_STATE: LaunchState = { phase: 'idle', error: null };
+
+/**
+ * Pure transition function used by Home. Invalid/stale completion events are
+ * ignored, which prevents a late request from skipping a launch prerequisite.
+ */
+export function transitionLaunch(
+  state: LaunchState,
+  event: LaunchEvent
+): LaunchState {
+  if (event.type === 'FAIL') return { phase: 'failed', error: event.error };
+  if (event.type === 'RESET') return INITIAL_LAUNCH_STATE;
+
+  switch (state.phase) {
+    case 'idle':
+    case 'failed':
+      return event.type === 'BEGIN'
+        ? {
+            phase: event.alreadyAuthenticated ? 'bootstrapping' : 'authenticating',
+            error: null,
+          }
+        : state;
+    case 'authenticating':
+      return event.type === 'AUTHENTICATED'
+        ? { phase: 'bootstrapping', error: null }
+        : state;
+    case 'bootstrapping':
+      return event.type === 'BOOTSTRAPPED'
+        ? { phase: 'loading-run', error: null }
+        : state;
+    case 'loading-run':
+      return event.type === 'RUN_LOADED'
+        ? { phase: 'board-ready', error: null }
+        : state;
+    case 'board-ready':
+      return state;
+  }
+}
+
+export const LAUNCH_PHASE_LABEL: Record<LaunchPhase, string> = {
+  idle: 'Launch',
+  authenticating: 'Launching…',
+  bootstrapping: 'Launching…',
+  'loading-run': 'Launching…',
+  'board-ready': 'Launching…',
+  failed: 'Retry',
+};
+
+export interface GameSessionStartPayload {
+  sessionId: string;
+  energy: number;
+  energyRegenAt: string | null;
+  freePlay?: boolean;
+  traits?: unknown;
+  mutationPool?: unknown;
+  mastery?: unknown;
+  anomaly?: unknown;
+  genome?: unknown;
+  gauntletBan?: unknown;
+  [key: string]: unknown;
+}
+
+export interface LaunchHandoff {
+  version: 1;
+  createdAt: number;
+  userId: string;
+  mode: 'earn' | 'free';
+  bootstrap: FtueBootstrapResponse;
+  run: GameSessionStartPayload;
+}
+
+type Fetcher = typeof fetch;
+
+export class LaunchFlowError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly retryAfterMs?: number
+  ) {
+    super(message);
+    this.name = 'LaunchFlowError';
+  }
+}
+
+async function responseBody(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const value: unknown = await response.json();
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function bootstrapForLaunch(
+  accessToken: string,
+  fetcher: Fetcher = fetch
+): Promise<FtueBootstrapResponse> {
+  const response = await fetcher('/api/player/bootstrap', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const body = await responseBody(response);
+
+  if (!response.ok) {
+    throw new LaunchFlowError(
+      typeof body.error === 'string' ? body.error : 'Could not prepare your player',
+      response.status
+    );
+  }
+
+  const bootstrap = body as unknown as FtueBootstrapResponse;
+  if (
+    bootstrap.ftueV2 !== true ||
+    !bootstrap.equippedSnake?.id ||
+    !bootstrap.player?.id
+  ) {
+    throw new LaunchFlowError('Player setup returned incomplete data');
+  }
+  return bootstrap;
+}
+
+async function startSession(
+  accessToken: string,
+  snakeId: string,
+  mode: 'earn' | 'free',
+  fetcher: Fetcher
+): Promise<GameSessionStartPayload> {
+  const response = await fetcher('/api/game/session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ action: 'start', mode, snake_id: snakeId }),
+  });
+  const body = await responseBody(response);
+
+  if (!response.ok) {
+    throw new LaunchFlowError(
+      typeof body.error === 'string' ? body.error : 'Could not load the run',
+      response.status,
+      typeof body.retryAfterMs === 'number' ? body.retryAfterMs : undefined
+    );
+  }
+  if (typeof body.sessionId !== 'string' || body.sessionId.length === 0) {
+    throw new LaunchFlowError('Run setup returned incomplete data');
+  }
+
+  return body as unknown as GameSessionStartPayload;
+}
+
+export async function prepareLaunchHandoff(
+  accessToken: string,
+  userId: string,
+  bootstrap: FtueBootstrapResponse,
+  fetcher: Fetcher = fetch
+): Promise<LaunchHandoff> {
+  const preferredMode: 'earn' | 'free' =
+    bootstrap.player.energy >= GAME_CONFIG.economy.energy.costPerGame ? 'earn' : 'free';
+
+  let mode = preferredMode;
+  let run: GameSessionStartPayload;
+  try {
+    run = await startSession(
+      accessToken,
+      bootstrap.equippedSnake.id,
+      mode,
+      fetcher
+    );
+  } catch (error) {
+    // Energy can change between bootstrap and session start (another tab).
+    // Practice remains a valid one-click path, so recover only this precise
+    // server-authoritative race and preserve every other failure for Retry.
+    if (
+      mode === 'earn' &&
+      error instanceof LaunchFlowError &&
+      error.status === 400 &&
+      /not enough energy/i.test(error.message)
+    ) {
+      mode = 'free';
+      run = await startSession(
+        accessToken,
+        bootstrap.equippedSnake.id,
+        mode,
+        fetcher
+      );
+    } else {
+      throw error;
+    }
+  }
+
+  return {
+    version: 1,
+    createdAt: Date.now(),
+    userId,
+    mode,
+    bootstrap,
+    run,
+  };
+}
+
+export const LAUNCH_HANDOFF_KEY = 'supasnake-ftue-v2-launch';
+const LAUNCH_HANDOFF_MAX_AGE_MS = 5 * 60 * 1000;
+const STORAGE_PROBE_KEY = `${LAUNCH_HANDOFF_KEY}-probe`;
+
+function browserSessionStorage(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function launchHandoffStorageAvailable(
+  storage: Storage | null = browserSessionStorage()
+): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(STORAGE_PROBE_KEY, '1');
+    storage.removeItem(STORAGE_PROBE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function storeLaunchHandoff(
+  handoff: LaunchHandoff,
+  storage: Storage | null = browserSessionStorage()
+): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(LAUNCH_HANDOFF_KEY, JSON.stringify(handoff));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Consume-on-read prevents reload/back navigation from reusing a paid run. */
+export function consumeLaunchHandoff(
+  expectedUserId: string,
+  storage: Storage | null = browserSessionStorage(),
+  now = Date.now()
+): LaunchHandoff | null {
+  if (!storage) return null;
+
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(LAUNCH_HANDOFF_KEY);
+    storage.removeItem(LAUNCH_HANDOFF_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+
+  try {
+    const handoff = JSON.parse(raw) as Partial<LaunchHandoff>;
+    if (
+      handoff.version !== 1 ||
+      handoff.userId !== expectedUserId ||
+      typeof handoff.createdAt !== 'number' ||
+      now - handoff.createdAt < 0 ||
+      now - handoff.createdAt > LAUNCH_HANDOFF_MAX_AGE_MS ||
+      !handoff.bootstrap?.equippedSnake?.id ||
+      !handoff.run?.sessionId ||
+      (handoff.mode !== 'earn' && handoff.mode !== 'free')
+    ) {
+      return null;
+    }
+    return handoff as LaunchHandoff;
+  } catch {
+    return null;
+  }
+}

@@ -57,7 +57,7 @@ export function useLeaderboardRealtime(
         onNewHighScore({
           playerId: session.player_id as string,
           score,
-          dynasty: (session.dynasty as string) || 'CYBER',
+          dynasty: (session.dynasty as string) || 'PRIMAL',
           timestamp: new Date().toISOString(),
         });
       }

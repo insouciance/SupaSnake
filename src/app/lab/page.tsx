@@ -11,10 +11,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
-import { shouldShowUpgradePrompt, markUpgradePrompted } from '@/lib/auth/upgradePrompts';
 import { useCollection } from '@/hooks/useCollection';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  bootstrapForLaunch,
+  launchHandoffStorageAvailable,
+  prepareLaunchHandoff,
+  storeLaunchHandoff,
+} from '@/lib/ftue/launchFlow';
 import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
@@ -39,10 +44,17 @@ import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 
 export default function LabPage() {
   const router = useRouter();
-  const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
+  const { user, session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
-  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [codexUnlocked, setCodexUnlocked] = useState(false);
+  const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
+  const publishNotification = useNotificationStore((state) => state.publish);
+  const clearDestination = useNotificationStore((state) => state.clearDestination);
+
+  // Entering the Lab is the player's acknowledgement of its discovery badge.
+  useEffect(() => {
+    clearDestination('lab');
+  }, [clearDestination]);
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -54,6 +66,7 @@ export default function LabPage() {
       .then((data) => {
         if (!cancelled) {
           setCodexUnlocked(data?.genomeFtue?.splicesUnlocked === true);
+          setHasCompletedFirstRun(data?.hasCompletedFirstRun === true);
         }
       })
       .catch((err) => console.error('Failed to fetch Genome FTUE:', err));
@@ -127,6 +140,7 @@ export default function LabPage() {
   const updateOwnedSnake = useCollectionStore((state) => state.updateOwnedSnake);
   const setDnaBalance = useCollectionStore((state) => state.setDnaBalance);
   const [isUpdatingLineage, setIsUpdatingLineage] = useState(false);
+  const [isLaunchingSnake, setIsLaunchingSnake] = useState(false);
 
   // Get energy from game store
   const energy = useGameStore((state) => state.energy);
@@ -136,7 +150,7 @@ export default function LabPage() {
   const activeDynasty = dynasties.find((d) => d.id === activeDynastyId);
 
   // Get dynasty theme for current dynasty
-  const dynastyTheme = useDynastyTheme(activeDynasty?.name ?? 'CYBER');
+  const dynastyTheme = useDynastyTheme(activeDynasty?.name ?? 'PRIMAL');
 
   // Get current dynasty completion stats
   const currentCompletion = activeDynastyId
@@ -169,9 +183,8 @@ export default function LabPage() {
   const handleUnlockConfirm = useCallback(async () => {
     if (selectedVariant) {
       const unlockedId = selectedVariant.id;
-      await unlockVariant(unlockedId);
-
-      const succeeded = useCollectionStore.getState().unlockError === null;
+      const unlockedSnake = await unlockVariant(unlockedId, { equip: true });
+      const succeeded = unlockedSnake !== null;
 
       // Celebration shimmer on the freshly unlocked card
       if (succeeded) {
@@ -180,16 +193,31 @@ export default function LabPage() {
         shimmerTimeoutRef.current = setTimeout(() => {
           setJustUnlockedVariantId(null);
         }, 2400);
+        showToast(`${selectedVariant.name} unlocked and equipped`, 'success');
       }
 
-      // High-investment moment: after the first successful unlock, prompt
-      // anonymous players once to secure their progress with an account
-      if (succeeded && isAnonymous && shouldShowUpgradePrompt('first-unlock')) {
-        markUpgradePrompted('first-unlock');
-        setShowUpgradePrompt(true);
+      // Account creation remains optional and player-pulled. Even this badge
+      // waits until gameplay has established value.
+      if (succeeded && isAnonymous && hasCompletedFirstRun) {
+        publishNotification({
+          id: 'save-progress',
+          title: 'Keep your collection',
+          description: 'Add an email whenever you want to play on another device.',
+          destination: 'account',
+          badgeKind: 'exclamation',
+          href: '/#save-progress',
+          actionLabel: 'Save progress',
+        });
       }
     }
-  }, [selectedVariant, unlockVariant, isAnonymous]);
+  }, [
+    selectedVariant,
+    unlockVariant,
+    isAnonymous,
+    hasCompletedFirstRun,
+    publishNotification,
+    showToast,
+  ]);
 
   /**
    * Handle equip action from detail modal
@@ -199,6 +227,62 @@ export default function LabPage() {
       await equipSnake(selectedOwned.id);
     }
   }, [selectedOwned, equipSnake]);
+
+  /** Equip when needed, create the run, then hand the ready board to game. */
+  const handlePlayWithSnake = useCallback(async () => {
+    if (
+      !selectedOwned ||
+      !session?.access_token ||
+      !user?.id ||
+      isLaunchingSnake
+    ) {
+      return;
+    }
+
+    if (!launchHandoffStorageAvailable()) {
+      // Storage-restricted browsers retain the safe legacy pre-run screen;
+      // no paid session is created without a reliable consume-once handoff.
+      const equipped =
+        selectedOwned.id === equippedSnake?.id ||
+        (await equipSnake(selectedOwned.id));
+      if (equipped) router.push('/game');
+      return;
+    }
+
+    setIsLaunchingSnake(true);
+    try {
+      if (selectedOwned.id !== equippedSnake?.id) {
+        const equipped = await equipSnake(selectedOwned.id);
+        if (!equipped) throw new Error('Could not equip this snake');
+      }
+      const bootstrap = await bootstrapForLaunch(session.access_token);
+      const handoff = await prepareLaunchHandoff(
+        session.access_token,
+        user.id,
+        bootstrap
+      );
+      if (!storeLaunchHandoff(handoff)) {
+        throw new Error('Could not transfer the prepared run');
+      }
+      router.push('/game?launch=ftue-v2&source=lab');
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Could not prepare the run',
+        'error'
+      );
+    } finally {
+      setIsLaunchingSnake(false);
+    }
+  }, [
+    selectedOwned,
+    session?.access_token,
+    user?.id,
+    isLaunchingSnake,
+    equippedSnake?.id,
+    equipSnake,
+    router,
+    showToast,
+  ]);
 
   /**
    * Handle breed action - navigate to the Breeding Lab
@@ -430,8 +514,10 @@ export default function LabPage() {
           isOpen={isDetailModalOpen}
           onClose={closeDetailModal}
           onEquip={handleEquip}
+          onPlay={handlePlayWithSnake}
           onBreed={handleBreed}
           isEquipping={isEquipping}
+          isLaunching={isLaunchingSnake}
           isEquipped={equippedSnake?.id === selectedOwned.id}
           dnaBalance={dnaBalance}
           isUpdatingLineage={isUpdatingLineage}
@@ -455,12 +541,6 @@ export default function LabPage() {
           error={unlockError}
         />
       )}
-
-      {/* One-time account upgrade prompt after the first unlock */}
-      <AccountUpgradeModal
-        isOpen={showUpgradePrompt}
-        onClose={() => setShowUpgradePrompt(false)}
-      />
     </div>
   );
 }

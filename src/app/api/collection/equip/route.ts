@@ -92,33 +92,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Unequip any previously equipped snake
-    const { error: unequipError } = await supabase
-      .from('collected_snakes')
-      .update({ is_equipped: false })
-      .eq('player_id', playerId)
-      .eq('is_equipped', true);
+    // One locked database operation normalizes equipment and synchronizes
+    // player_settings.active_snake_id + selected_dynasty.
+    const { error: equipError } = await supabase.rpc('equip_snake', {
+      p_player_id: playerId,
+      p_snake_id: snakeId,
+    });
 
-    if (unequipError) {
-      console.error('Failed to unequip previous snake:', unequipError);
+    if (equipError) {
+      console.error('Failed to equip snake:', equipError);
       return NextResponse.json(
-        { error: 'Failed to update equipment' },
+        { error: 'Failed to equip snake' },
         { status: 500 }
       );
     }
 
-    // Equip the target snake
-    const { data: equippedRow, error: equipError } = await supabase
+    const { data: equippedRow, error: fetchEquippedError } = await supabase
       .from('collected_snakes')
-      .update({ is_equipped: true })
-      .eq('id', snakeId)
       .select('*, snake_variants(name, dynasties(name))')
+      .eq('id', snakeId)
+      .eq('player_id', playerId)
       .single();
 
-    if (equipError || !equippedRow) {
-      console.error('Failed to equip snake:', equipError);
+    if (fetchEquippedError || !equippedRow) {
+      console.error('Failed to read equipped snake:', fetchEquippedError);
       return NextResponse.json(
-        { error: 'Failed to equip snake' },
+        { error: 'Equipment updated but could not be reloaded' },
         { status: 500 }
       );
     }

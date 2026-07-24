@@ -51,7 +51,7 @@ export function BreedingReveal({
   rerollTokens = 0,
   onReroll,
 }: BreedingRevealProps): React.ReactElement<any> {
-  const theme = dynastyThemes[offspring.dynastyName ?? ''] ?? dynastyThemes.CYBER;
+  const theme = dynastyThemes[offspring.dynastyName ?? ''] ?? dynastyThemes.PRIMAL;
   const rarity = RARITY_STYLE[offspring.rarity ?? 'common'] ?? RARITY_STYLE.common;
 
   // Trait state is local so a reroll updates the reveal in place
@@ -137,7 +137,7 @@ export function BreedingReveal({
           <SnakeArt
             seed={offspring.snakeVariantId}
             name={offspring.variantName}
-            dynasty={offspring.dynastyName ?? 'CYBER'}
+            dynasty={offspring.dynastyName ?? 'PRIMAL'}
             primaryColor={theme.primary}
             secondaryColor={theme.secondary}
             rarity={offspring.rarity ?? 'common'}

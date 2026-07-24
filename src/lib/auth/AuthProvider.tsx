@@ -18,7 +18,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAnonymous: boolean;
   isPasswordRecovery: boolean;
-  signInAnonymously: () => Promise<void>;
+  signInAnonymously: () => Promise<{ error: Error | null; session: Session | null }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
   /**
    * `session` is non-null when the project auto-confirms emails (no
@@ -104,11 +104,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInAnonymously = async () => {
     setIsLoading(true);
-    const { error } = await supabase.auth.signInAnonymously();
+    const { data, error } = await supabase.auth.signInAnonymously();
     if (error) {
       console.error('Anonymous sign in failed:', error);
+    } else if (data.session) {
+      // Do not wait for the auth-state listener before launch continues: the
+      // returned access token is the deterministic input to bootstrap.
+      setSession(data.session);
+      setUser(data.session.user);
+      recordLastUser(data.session.user);
     }
     setIsLoading(false);
+    return {
+      error: error ? new Error(error.message) : null,
+      session: data.session ?? null,
+    };
   };
 
   const signInWithEmail = async (email: string, password: string) => {

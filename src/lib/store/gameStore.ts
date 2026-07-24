@@ -203,7 +203,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
   energyRegenAt: null, // Synced from server
   gameMode: 'earn',
-  selectedDynasty: 'CYBER',
+  selectedDynasty: 'PRIMAL',
   aimSystem: DEFAULT_AIM_SYSTEM,
   snake: [],
   food: null,

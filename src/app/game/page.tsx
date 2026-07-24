@@ -4,7 +4,13 @@ import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useEffect, useRef, useCallback, useMemo, useState, Suspense } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
-import { SnakeGameLogic, Direction, Position, GameOverData } from '@/lib/game/SnakeGameLogic';
+import {
+  SnakeGameLogic,
+  Direction,
+  Position,
+  GameOverData,
+  type SetDirectionResult,
+} from '@/lib/game/SnakeGameLogic';
 import type { FluxPhase } from '@/lib/game/SnakeGameLogic';
 import {
   applyGenomeOutcome,
@@ -92,6 +98,12 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward } from '@/lib/outbox/rewardOutbox';
 import { useCodexStore } from '@/lib/stores/codexStore';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  consumeLaunchHandoff,
+  type GameSessionStartPayload,
+} from '@/lib/ftue/launchFlow';
+import type { FtueBootstrapSnake } from '@/lib/ftue/types';
 import {
   buildGenomeCardModel,
   type GenomeCardModel,
@@ -115,13 +127,32 @@ import {
  * per device until claimed or dismissed twice.
  */
 const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
+const DIRECTION_BY_KEY: Record<string, Direction> = {
+  ArrowUp: 'UP',
+  ArrowDown: 'DOWN',
+  ArrowLeft: 'LEFT',
+  ArrowRight: 'RIGHT',
+  w: 'UP',
+  s: 'DOWN',
+  a: 'LEFT',
+  d: 'RIGHT',
+  W: 'UP',
+  S: 'DOWN',
+  A: 'LEFT',
+  D: 'RIGHT',
+};
 
-function handlePromptExhausted(): boolean {
-  try {
-    return Number(window.localStorage.getItem(HANDLE_PROMPT_KEY) ?? '0') >= 2;
-  } catch {
-    return true;
-  }
+interface EquippedSnakeView {
+  id: string;
+  name: string;
+  generation: number;
+  dynasty: string;
+  traits: TraitId[];
+  lineage: Lineage | null;
+}
+
+function directionCanRelease(result: SetDirectionResult): boolean {
+  return result === 'accepted' || result === 'duplicate';
 }
 
 function recordHandlePromptDismissal(claimed: boolean): void {
@@ -148,12 +179,11 @@ export default function GamePage() {
   const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
   const [viewResetToken, setViewResetToken] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
-  const hudRef = useRef<HTMLDivElement | null>(null);
-  const [hudHeight, setHudHeight] = useState(0);
   // A pause or build decision never releases directly into movement. The
   // engine stays frozen until the player's next deliberate direction input.
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
+  const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile control scheme: flick-anywhere is the default, D-pad the
   // fallback. Client preference, persisted in localStorage.
@@ -177,18 +207,19 @@ export default function GamePage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  // Every /game entry resolves whether it carries Home's consume-once run
+  // before rendering a second Play action. Direct navigation resolves to the
+  // existing voluntary pre-run screen; FTUE launch proceeds straight to board.
+  const [routeInitializing, setRouteInitializing] = useState(true);
+  const [requiresDirectionalStart, setRequiresDirectionalStart] = useState(false);
+  const [minimalFirstRunPrompt, setMinimalFirstRunPrompt] = useState(false);
+  const [showFirstResultDiscovery, setShowFirstResultDiscovery] = useState(false);
+  const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
   // Post-run save-progress prompt for guests (never shown on the way INTO
   // a game - account nudges belong after a run, not before it)
   const [showSaveProgress, setShowSaveProgress] = useState(false);
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
-  const [equippedSnake, setEquippedSnake] = useState<{
-    id: string;
-    name: string;
-    generation: number;
-    dynasty: string;
-    traits: TraitId[];
-    lineage: Lineage | null;
-  } | null>(null);
+  const [equippedSnake, setEquippedSnake] = useState<EquippedSnakeView | null>(null);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
   const [aimStats, setAimStats] = useState<AimStats | null>(null);
@@ -242,6 +273,8 @@ export default function GamePage() {
   const sessionRef = useRef(session);
   const currentSessionIdRef = useRef(currentSessionId);
   const equippedSnakeRef = useRef(equippedSnake);
+  const firstRunAtStartRef = useRef(false);
+  const handoffAttemptedRef = useRef(false);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -398,25 +431,6 @@ export default function GamePage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // The telemetry deck grows when bank/build information becomes available.
-  // Reserve its measured height above the WebGL canvas so no responsive wrap
-  // can ever cover the playable board.
-  useEffect(() => {
-    const hud = hudRef.current;
-    if (!hud) return;
-    const measure = () => setHudHeight(Math.ceil(hud.getBoundingClientRect().height));
-    measure();
-    const observer = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(measure);
-    observer?.observe(hud);
-    window.addEventListener('resize', measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [authLoading, isAuthenticated]);
-
   useEffect(() => () => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
   }, []);
@@ -490,6 +504,10 @@ export default function GamePage() {
       .then(data => {
         if (data.player) {
           syncEnergyFromServer(data.player.energy, data.player.energy_regen_at);
+          setHasCompletedFirstRun(
+            data.hasCompletedFirstRun === true ||
+              Number(data.player.total_games_played ?? 0) > 0
+          );
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
         // Aim system meta-progression: server-stored selection + unlock stats
@@ -587,7 +605,7 @@ export default function GamePage() {
 
         const equipped = snakes.find((s) => s.isEquipped) ?? null;
         if (equipped) {
-          const dynastyName = (equipped.dynastyName ?? 'CYBER').toUpperCase();
+          const dynastyName = (equipped.dynastyName ?? 'PRIMAL').toUpperCase();
           setEquippedSnake({
             id: equipped.id,
             name: equipped.variantName ?? equipped.variantId ?? 'Snake',
@@ -657,7 +675,8 @@ export default function GamePage() {
     }
   }, [equippedSnake]);
 
-  // No playable snake: new player (never picked a starter) or nothing equipped
+  // Under FTUE v2, no playable snake is a critical bootstrap/load failure.
+  // The recovery path returns to Home Retry; it never makes Lab mandatory.
   const noSnakeAvailable = needsStarterSelection || (collectionLoaded && !equippedSnake);
 
   // Engine choice holds are frozen but not paused. All input surfaces and
@@ -672,19 +691,33 @@ export default function GamePage() {
 
   const beginPauseRearm = useCallback(() => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
+    pauseRearmingRef.current = true;
     setPauseRearming(true);
     pauseRearmTimerRef.current = setTimeout(() => {
+      pauseRearmingRef.current = false;
       setPauseRearming(false);
       pauseRearmTimerRef.current = null;
     }, 600);
   }, []);
 
-  const releaseResumeGate = useCallback(() => {
+  const cancelPauseRearm = useCallback(() => {
+    if (pauseRearmTimerRef.current) {
+      clearTimeout(pauseRearmTimerRef.current);
+      pauseRearmTimerRef.current = null;
+    }
+    pauseRearmingRef.current = false;
+    setPauseRearming(false);
+  }, []);
+
+  const releaseResumeGate = useCallback((dir?: Direction): SetDirectionResult | null => {
     const game = gameRef.current;
-    if (!game || !awaitingResumeInput) return;
-    game.resume();
+    if (!game || !awaitingResumeInput) return 'inactive';
+    const result = dir ? game.resumeWithDirection(dir) : null;
+    if (!dir) game.resume();
+    if (game.isPaused) return result;
     setAwaitingResumeInput(false);
     beginPauseRearm();
+    return result;
   }, [awaitingResumeInput, beginPauseRearm]);
 
   const armResumeAfterDecision = useCallback(() => {
@@ -1025,20 +1058,57 @@ export default function GamePage() {
               });
             }
 
-            // Identity v1 section 3.3: the first-extraction claim moment.
-            // "That run deserves a name on it" - banked run, generated
-            // name, prompt not yet exhausted on this device.
+            // Identity discovery is persistent and player-pulled. The result
+            // still exposes the PlayerCard claim action, while the global
+            // notification replaces the former automatic ceremony modal.
             if (
               result.identity?.isGenerated &&
-              result.validation?.extracted &&
-              !handlePromptExhausted()
+              result.validation?.extracted
             ) {
-              setShowHandleClaim(true);
+              useNotificationStore.getState().publish({
+                id: 'claim-handle',
+                title: 'Claim your player name',
+                description: 'Your generated identity is ready to personalize whenever you want.',
+                destination: 'identity',
+                badgeKind: 'exclamation',
+                href: '/profile',
+                actionLabel: 'View player card',
+              });
             }
           }
         } catch (err) {
           console.error('Failed to send game results, queueing for replay:', err);
           queueForReplay();
+        }
+      }
+
+      // The first completed result is the earliest point where meta systems
+      // may introduce themselves. Keep that discovery contextual here and
+      // persistent elsewhere; never open Lab, contracts, or account UI.
+      if (firstRunAtStartRef.current) {
+        firstRunAtStartRef.current = false;
+        setHasCompletedFirstRun(true);
+        setShowFirstResultDiscovery(true);
+        const notifications = useNotificationStore.getState();
+        notifications.publish({
+          id: 'lab-discovery',
+          title: 'The Lab is ready',
+          description: 'Discover more snakes when you feel like changing your run.',
+          destination: 'lab',
+          badgeKind: 'exclamation',
+          href: '/lab',
+          actionLabel: 'Visit the Lab',
+        });
+        if (currentSession?.user?.is_anonymous === true) {
+          notifications.publish({
+            id: 'save-progress',
+            title: 'Keep your progress',
+            description: 'Add an email whenever you want to play on another device.',
+            destination: 'account',
+            badgeKind: 'exclamation',
+            href: '/#save-progress',
+            actionLabel: 'Save progress',
+          });
         }
       }
 
@@ -1054,6 +1124,7 @@ export default function GamePage() {
 
     gameRef.current.on('pause', () => {
       setPaused(true);
+      setQueuedDirections([]);
       audioManager.play('pause');
     });
 
@@ -1085,6 +1156,7 @@ export default function GamePage() {
     setScore,
     setStrains,
     setSurgeChoicePending,
+    setQueuedDirections,
     fetchCodex,
     armResumeAfterDecision,
     showToast,
@@ -1193,7 +1265,113 @@ export default function GamePage() {
     }
   }, [energy, isPlaying, gameMode, setGameMode]);
 
-  // Start game - call server API first, then enter ready state
+  /**
+   * Apply the server-authoritative start response to the local engine. Both
+   * the voluntary pre-run button and Home's one-click handoff use this exact
+   * path, so a prepared run is never charged or created a second time.
+   */
+  const applyStartedRun = useCallback((
+    data: GameSessionStartPayload,
+    mode: GameMode,
+    snakeMeta: EquippedSnakeView
+  ) => {
+    const game = gameRef.current;
+    if (!game) throw new Error('The game board is not ready');
+
+    const dynasty = normalizeDynastyName(snakeMeta.dynasty);
+    game.setRuleset(getRuleset(dynasty));
+    setSelectedDynasty(dynasty);
+    setGameMode(mode);
+
+    // Sync server state to local (free starts echo energy unchanged).
+    syncEnergyFromServer(data.energy, data.energyRegenAt);
+    setCurrentSessionId(data.sessionId);
+    gameStartTime.current = Date.now();
+    freeRunRef.current = mode === 'free';
+    setLastRunFree(mode === 'free');
+    setHypotheticalDna(null);
+    setMasteryResult(null);
+    setLastGenomeCard(null);
+    setCodexDiscoveries([]);
+    setExpressionFlourish(null);
+    setPortalChoicePending(false);
+    setSurgeChoicePending(false);
+    setShowFirstResultDiscovery(false);
+
+    // Trait config comes from the server-owned equipped snake row.
+    game.setTraits(sanitizeTraits(data.traits));
+
+    // The server capability is the only Genome switch. Missing or malformed
+    // capability data resets the engine cleanly to the legacy rules.
+    const genomeCapability = sanitizeGenomeCapability(data.genome);
+    game.setGenome(genomeCapability);
+    setGenomeRun(genomeCapability !== null);
+    setGenomeFtue(genomeCapability?.ftue ?? null);
+
+    game.setMutationPool(
+      Array.isArray(data.mutationPool)
+        ? data.mutationPool.filter(isMutationId)
+        : []
+    );
+
+    const anomalyData =
+      data.anomaly && typeof data.anomaly === 'object'
+        ? (data.anomaly as Record<string, unknown>)
+        : null;
+    const serverAnomaly =
+      mode === 'anomaly' && isAnomalyId(anomalyData?.id)
+        ? anomalyData.id
+        : null;
+    game.setAnomaly(serverAnomaly);
+    setAnomalyRun(
+      serverAnomaly
+        ? {
+            id: serverAnomaly,
+            name: String(anomalyData?.name ?? serverAnomaly),
+            effect: String(anomalyData?.effect ?? ''),
+            endsAt: String(anomalyData?.endsAt ?? ''),
+          }
+        : null
+    );
+
+    const masteryData =
+      data.mastery && typeof data.mastery === 'object'
+        ? (data.mastery as Record<string, unknown>)
+        : null;
+    if (
+      typeof masteryData?.dynasty === 'string' &&
+      typeof masteryData.level === 'number'
+    ) {
+      setMasteryLevels((prev) => ({
+        ...prev,
+        [masteryData.dynasty as string]: masteryData.level as number,
+      }));
+    }
+
+    // Reset interpolation before the opening pose, then hold the engine at
+    // Ready. The input work already guarantees no tick occurs until the
+    // player's accepted first direction.
+    resetInterpolationBuffer(interpBufferRef.current!);
+    storeStartGame();
+    setAwaitingResumeInput(false);
+    setReady(true);
+    game.start();
+    syncState();
+  }, [
+    setAnomalyRun,
+    setGameMode,
+    setGenomeRun,
+    setPortalChoicePending,
+    setReady,
+    setSelectedDynasty,
+    setSurgeChoicePending,
+    storeStartGame,
+    syncEnergyFromServer,
+    syncState,
+  ]);
+
+  // Start game from the voluntary pre-run screen. Home/Lab handoffs bypass
+  // this request because their server session already exists.
   const handleStart = useCallback(async (modeOverride?: GameMode) => {
     const mode = modeOverride ?? gameMode;
     if (!session?.access_token) {
@@ -1201,7 +1379,7 @@ export default function GamePage() {
       return;
     }
     if (!equippedSnake) {
-      setStartError('No snake equipped. Choose one in the Lab.');
+      setStartError('No snake is equipped. Return Home and Retry setup.');
       return;
     }
     // Free Play bypasses the energy gate (server enforces the same rule)
@@ -1236,115 +1414,113 @@ export default function GamePage() {
         return;
       }
 
-      // Sync server state to local (free starts echo energy unchanged)
-      syncEnergyFromServer(data.energy, data.energyRegenAt);
-      setCurrentSessionId(data.sessionId);
-      gameStartTime.current = Date.now();
-      freeRunRef.current = mode === 'free';
-      setLastRunFree(mode === 'free');
-      setHypotheticalDna(null);
-      setMasteryResult(null);
-      setLastGenomeCard(null);
-      setCodexDiscoveries([]);
-      setExpressionFlourish(null);
-      setPortalChoicePending(false);
-      setSurgeChoicePending(false);
-
-      // Trait config from the session-start response (Design v2 Phase 3A):
-      // the server read these from the equipped snake's row - the engine
-      // applies [P] effects and mirrors [E] math, but the payout authority
-      // stays the server recompute.
-      gameRef.current?.setTraits(sanitizeTraits(data.traits));
-
-      // The server capability is the only Genome switch. A malformed or
-      // missing block explicitly resets the engine to the legacy path so
-      // mixed app/migration deploys cannot create half-Genome runs.
-      const genomeCapability = sanitizeGenomeCapability(data.genome);
-      gameRef.current?.setGenome(genomeCapability);
-      setGenomeRun(genomeCapability !== null);
-      if (genomeCapability) setGenomeFtue(genomeCapability.ftue);
-
-      // Unlocked mutation pool (Design v2 §7.1): server-computed from
-      // player_mastery (full pool on Free Play per §7.4). Offer config
-      // only - the server validates picks against its own recompute, so
-      // a tampered pool can never smuggle un-earned economics. An empty
-      // or missing pool falls back to the base ten inside the engine.
-      gameRef.current?.setMutationPool(
-        Array.isArray(data.mutationPool)
-          ? data.mutationPool.filter(isMutationId)
-          : []
-      );
-
-      // Anomaly runs (§7.2): the server confirms the week's modifier at
-      // start - the engine applies its [P] physics and mirrors its [E]
-      // math; the payout authority stays the server's session-row
-      // recompute. Normal runs explicitly clear any previous anomaly.
-      const serverAnomaly =
-        mode === 'anomaly' && isAnomalyId(data.anomaly?.id)
-          ? (data.anomaly.id as AnomalyId)
-          : null;
-      gameRef.current?.setAnomaly(serverAnomaly);
-      setAnomalyRun(
-        serverAnomaly
-          ? {
-              id: serverAnomaly,
-              name: String(data.anomaly.name ?? serverAnomaly),
-              effect: String(data.anomaly.effect ?? ''),
-              endsAt: String(data.anomaly.endsAt ?? ''),
-            }
-          : null
-      );
-
-      if (data.mastery?.dynasty) {
-        setMasteryLevels((prev) => ({
-          ...prev,
-          [data.mastery.dynasty]: data.mastery.level,
-        }));
-      }
-
-      // Now start the game locally. Reset the interpolation buffer FIRST
-      // so the new run's opening tick never blends against the previous
-      // run's final pose.
-      resetInterpolationBuffer(interpBufferRef.current!);
-      storeStartGame();
-      setAwaitingResumeInput(false);
-      setReady(true);
-      gameRef.current?.start();
-      syncState();
+      const firstRun = !hasCompletedFirstRun;
+      firstRunAtStartRef.current = firstRun;
+      setRequiresDirectionalStart(firstRun);
+      setMinimalFirstRunPrompt(firstRun);
+      applyStartedRun(data as GameSessionStartPayload, mode, equippedSnake);
     } catch (err) {
       console.error('Failed to start game:', err);
       setStartError('Network error. Please try again.');
     } finally {
       setIsStarting(false);
     }
-  }, [session?.access_token, energy, isStarting, equippedSnake, gameMode, syncEnergyFromServer, storeStartGame, setReady, setAnomalyRun, syncState, setGenomeRun, setPortalChoicePending, setSurgeChoicePending]);
+  }, [
+    applyStartedRun,
+    energy,
+    equippedSnake,
+    gameMode,
+    hasCompletedFirstRun,
+    isStarting,
+    session?.access_token,
+  ]);
+
+  // Consume Home/Lab's prepared run once. This effect is declared after the
+  // engine initialization effect, so the local board exists before the
+  // handoff is applied. Invalid/expired handoffs remain on this screen with a
+  // recoverable Retry path; initialization failures never redirect to Lab.
+  useEffect(() => {
+    if (authLoading) return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('launch') !== 'ftue-v2') {
+      setRouteInitializing(false);
+      return;
+    }
+    if (handoffAttemptedRef.current) return;
+    if (!session?.user?.id || !gameRef.current) {
+      setRouteInitializing(false);
+      return;
+    }
+
+    handoffAttemptedRef.current = true;
+    const handoff = consumeLaunchHandoff(session.user.id);
+    params.delete('launch');
+    params.delete('source');
+    const cleanUrl = `${window.location.pathname}${params.size > 0 ? `?${params}` : ''}${window.location.hash}`;
+    window.history.replaceState(null, '', cleanUrl);
+
+    if (!handoff) {
+      setStartError('The prepared run expired. Retry when you are ready.');
+      setRouteInitializing(false);
+      return;
+    }
+
+    const bootstrapSnake: FtueBootstrapSnake = handoff.bootstrap.equippedSnake;
+    const snakeMeta: EquippedSnakeView = {
+      id: bootstrapSnake.id,
+      name: bootstrapSnake.name,
+      generation: bootstrapSnake.generation,
+      dynasty: bootstrapSnake.dynasty,
+      traits: sanitizeTraits(bootstrapSnake.traits),
+      lineage: sanitizeLineage(bootstrapSnake.lineage),
+    };
+    const firstRun = !handoff.bootstrap.onboarding.hasCompletedFirstRun;
+
+    try {
+      setEquippedSnake(snakeMeta);
+      equippedSnakeRef.current = snakeMeta;
+      setCollectionLoaded(true);
+      setNeedsStarterSelection(false);
+      setHasCompletedFirstRun(!firstRun);
+      firstRunAtStartRef.current = firstRun;
+      setRequiresDirectionalStart(firstRun);
+      setMinimalFirstRunPrompt(firstRun);
+      applyStartedRun(handoff.run, handoff.mode, snakeMeta);
+    } catch (error) {
+      console.error('Failed to apply prepared run:', error);
+      setStartError('The board could not load the prepared run. Retry when you are ready.');
+    } finally {
+      setRouteInitializing(false);
+    }
+  }, [applyStartedRun, authLoading, session?.user?.id]);
 
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Handle ready state - first input starts movement
       if ((isReady && !intervalRef.current) || awaitingResumeInput) {
-        const validStartKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-                                'w', 'a', 's', 'd', 'W', 'A', 'S', 'D', ' '];
-        if (validStartKeys.includes(e.key)) {
+        const dir = DIRECTION_BY_KEY[e.key];
+        // FTUE's opening board requires an intentional movement direction;
+        // Space remains a convenience on later ready/resume screens.
+        if (dir || (e.key === ' ' && !requiresDirectionalStart)) {
           e.preventDefault();
-          if (awaitingResumeInput) {
+          if (dir && gameRef.current) {
+            const result = awaitingResumeInput
+              ? releaseResumeGate(dir)
+              : gameRef.current.setDirection(dir);
+            if (!result || !directionCanRelease(result)) return;
+            if (!awaitingResumeInput) {
+              setRequiresDirectionalStart(false);
+              setReady(false);
+              startGameLoop();
+            }
+            syncAim();
+          } else if (awaitingResumeInput) {
             releaseResumeGate();
           } else {
             setReady(false);
             startGameLoop();
-          }
-
-          // If direction key, also set direction
-          const keyMap: Record<string, Direction> = {
-            ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
-            w: 'UP', s: 'DOWN', a: 'LEFT', d: 'RIGHT',
-            W: 'UP', S: 'DOWN', A: 'LEFT', D: 'RIGHT',
-          };
-          const dir = keyMap[e.key];
-          if (dir && gameRef.current) {
-            gameRef.current.setDirection(dir);
-            syncAim();
           }
           return;
         }
@@ -1359,7 +1535,7 @@ export default function GamePage() {
         e.preventDefault();
         if (isPaused) {
           setAwaitingResumeInput((armed) => !armed);
-        } else if (!pauseRearming) {
+        } else if (!pauseRearmingRef.current) {
           gameRef.current?.pause();
         }
         return;
@@ -1368,22 +1544,7 @@ export default function GamePage() {
       // Existing direction logic (only when game is running)
       if (!isPlaying || isGameOver || isPaused || isReady) return;
 
-      const keyMap: Record<string, Direction> = {
-        ArrowUp: 'UP',
-        ArrowDown: 'DOWN',
-        ArrowLeft: 'LEFT',
-        ArrowRight: 'RIGHT',
-        w: 'UP',
-        s: 'DOWN',
-        a: 'LEFT',
-        d: 'RIGHT',
-        W: 'UP',
-        S: 'DOWN',
-        A: 'LEFT',
-        D: 'RIGHT',
-      };
-
-      const dir = keyMap[e.key];
+      const dir = DIRECTION_BY_KEY[e.key];
       if (dir && gameRef.current) {
         e.preventDefault();
         gameRef.current.setDirection(dir);
@@ -1393,26 +1554,40 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, awaitingResumeInput, pauseRearming, releaseResumeGate, startGameLoop, setReady, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, awaitingResumeInput, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim]);
 
   // Handle direction from D-Pad
   const handleDPadDirection = useCallback((dir: Direction) => {
     if (!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || !gameRef.current) return;
-    if (awaitingResumeInput) releaseResumeGate();
-    gameRef.current.setDirection(dir);
-    syncAim();
-  }, [isPlaying, isGameOver, isPaused, awaitingResumeInput, releaseResumeGate, syncAim]);
-
-  // The same deliberate input starts a fresh run or releases a post-choice /
-  // post-pause hold. FlickSurface invokes this synchronously before queuing
-  // the direction, so the engine accepts that very first steering command.
-  const handleInputReadyStart = useCallback(() => {
     if (awaitingResumeInput) {
-      releaseResumeGate();
-      return;
+      const result = releaseResumeGate(dir);
+      if (!result || !directionCanRelease(result)) return;
+    } else if (isReady) {
+      const result = gameRef.current.setDirection(dir);
+      if (!directionCanRelease(result)) return;
+      setRequiresDirectionalStart(false);
+      setReady(false);
+      startGameLoop();
+    } else {
+      gameRef.current.setDirection(dir);
     }
+    syncAim();
+  }, [isPlaying, isGameOver, isPaused, isReady, awaitingResumeInput, releaseResumeGate, setReady, startGameLoop, syncAim]);
+
+  // FlickSurface delegates its first direction here so validation, queuing,
+  // and release/start happen atomically before any engine tick.
+  const handleReadyDirection = useCallback((dir: Direction): SetDirectionResult => {
+    if (awaitingResumeInput) {
+      return releaseResumeGate(dir) ?? 'inactive';
+    }
+    const game = gameRef.current;
+    if (!game) return 'inactive';
+    const result = game.setDirection(dir);
+    if (!directionCanRelease(result)) return result;
+    setRequiresDirectionalStart(false);
     setReady(false);
     startGameLoop();
+    return result;
   }, [awaitingResumeInput, releaseResumeGate, setReady, startGameLoop]);
 
   // Select an aim system - optimistic with rollback; the server re-checks
@@ -1446,9 +1621,9 @@ export default function GamePage() {
       setAwaitingResumeInput(false);
       return;
     }
-    if (pauseRearming) return;
+    if (pauseRearmingRef.current) return;
     gameRef.current?.pause();
-  }, [awaitingResumeInput, pauseRearming]);
+  }, [awaitingResumeInput]);
 
   const handleResume = useCallback(() => {
     setAwaitingResumeInput(true);
@@ -1460,8 +1635,9 @@ export default function GamePage() {
       intervalRef.current = null;
     }
     setAwaitingResumeInput(false);
+    cancelPauseRearm();
     resetGame();
-  }, [resetGame]);
+  }, [cancelPauseRearm, resetGame]);
 
   // Restart
   const handleRestart = useCallback(() => {
@@ -1471,20 +1647,24 @@ export default function GamePage() {
     setStreakInfo(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
+    setMinimalFirstRunPrompt(false);
+    setRequiresDirectionalStart(false);
     setAwaitingResumeInput(false);
+    cancelPauseRearm();
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  }, [resetGame]);
+  }, [cancelPauseRearm, resetGame]);
 
-  // Show loading while checking auth
-  if (authLoading) {
+  // Resolve authentication and any consume-once launch handoff before a
+  // second Play action can appear.
+  if (authLoading || routeInitializing) {
     return (
-      <div className="w-screen h-dvh app-bg flex items-center justify-center">
+      <div className="consent-safe-viewport w-screen h-dvh app-bg flex items-center justify-center">
         <div className="text-center space-y-4 animate-fade-up">
           <div className="animate-spin w-12 h-12 border-4 border-t-transparent border-venom-orange rounded-full mx-auto" />
-          <p className="text-beige font-body">Loading...</p>
+          <p className="text-beige font-body">Preparing board...</p>
         </div>
       </div>
     );
@@ -1493,7 +1673,7 @@ export default function GamePage() {
   // Prompt sign-in if not authenticated (anonymous auth should auto-sign in)
   if (!isAuthenticated) {
     return (
-      <div className="w-screen h-dvh app-bg flex items-center justify-center p-4">
+      <div className="consent-safe-viewport w-screen h-dvh app-bg flex items-center justify-center p-4">
         <div className="panel-elevated p-8 text-center space-y-6 w-full max-w-sm animate-pop-in">
           <h1 className="heading-display text-3xl text-venom-orange text-glow-orange">SupaSnake</h1>
           <p className="text-beige font-body">Sign in to play and save your progress</p>
@@ -1512,7 +1692,7 @@ export default function GamePage() {
   }
 
   return (
-    <div className="w-screen h-dvh relative overflow-hidden app-bg">
+    <div className="consent-safe-viewport w-screen h-dvh relative flex flex-col overflow-hidden app-bg">
       {/* Dynasty ambient tint - lets the void backdrop participate in the
           equipped dynasty's identity without leaving the app palette */}
       <div
@@ -1535,16 +1715,25 @@ export default function GamePage() {
           }}
         />
       )}
-      {/* Responsive telemetry deck. Its measured height is reserved above
-          the canvas below, so even late-run build data cannot cover play. */}
+      {/* Responsive telemetry deck. While a run is active this participates
+          in the root flex layout, so the board begins after the HUD on the
+          very first paint—no ResizeObserver race or animated overlap. */}
       <div
-        ref={hudRef}
         data-testid="game-hud"
-        className="pointer-events-none absolute inset-x-0 z-10 px-3 text-bone-white sm:px-4"
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        className={`pointer-events-none inset-x-0 z-10 shrink-0 px-3 text-bone-white sm:px-4 ${
+          isPlaying ? 'relative' : 'absolute'
+        }`}
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+          paddingBottom: isPlaying ? '8px' : undefined,
+        }}
       >
-        <div className="mx-auto max-w-5xl space-y-1.5 pr-14 sm:pr-16">
-          <div className="flex h-6 items-center gap-2">
+        <div
+          className={`mx-auto max-w-5xl pr-14 sm:pr-16 ${
+            isPlaying ? 'game-hud-deck' : 'space-y-1.5'
+          }`}
+        >
+          <div className="game-hud-brand flex h-6 items-center gap-2">
             <h1 className="heading-display shrink-0 text-base tracking-[0.16em] text-venom-orange text-glow-orange sm:text-xl">
               SupaSnake
             </h1>
@@ -1557,7 +1746,7 @@ export default function GamePage() {
           </div>
 
           {/* Three equal telemetry cells never reflow as values change. */}
-          <div className="grid grid-cols-3 gap-1.5 font-body sm:max-w-xl">
+          <div className="game-hud-telemetry grid grid-cols-3 gap-1.5 font-body">
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Score</span>
               <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{score}</span>
@@ -1569,7 +1758,9 @@ export default function GamePage() {
             </div>
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <IconBolt size={13} className="shrink-0 text-venom-orange" />
-              <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Energy</span>
+              <span className="sr-only">Energy</span>
+              <span aria-hidden="true" className="hidden text-[9px] uppercase tracking-wider text-beige/65 min-[360px]:inline lg:hidden sm:text-[10px]">NRG</span>
+              <span aria-hidden="true" className="hidden text-[10px] uppercase tracking-wider text-beige/65 lg:inline">Energy</span>
               <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{energy}/{maxEnergy}</span>
             </div>
           </div>
@@ -1577,7 +1768,7 @@ export default function GamePage() {
           {/* Stable one-line run ticker: the row exists from tick zero, so
               earning the first food never moves or resizes the board. */}
           {isPlaying && (
-            <div className="flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
+            <div className="game-hud-ticker flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
           {/* Extraction bank preview: what this run pays banked vs crashed
               (mutation-aware: Mirror Wager / Compound Interest / Phoenix
               reshape the outcome multipliers live). Subtle by default;
@@ -1638,7 +1829,7 @@ export default function GamePage() {
 
         {/* Held mutations strip - the run's build at a glance */}
         {isPlaying && (
-          <div className="flex h-7 items-center gap-2 overflow-hidden">
+          <div className="game-hud-build flex h-7 min-w-0 items-center gap-2 overflow-hidden">
             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-beige/45">Build</span>
             {heldMutations.length > 0 ? (
               <MutationHUD
@@ -1654,11 +1845,13 @@ export default function GamePage() {
           </div>
         )}
         {isPlaying && genomeRun && genomeFtue?.strainTagsUnlocked && (
-          <StrainMeterHUD
-            counts={strainCounts}
-            tiers={strainTiers}
-            suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
-          />
+          <div className="game-hud-strains min-w-0">
+            <StrainMeterHUD
+              counts={strainCounts}
+              tiers={strainTiers}
+              suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
+            />
+          </div>
         )}
 
         {/* Equipped Snake (the game always uses the equipped snake) */}
@@ -1709,7 +1902,7 @@ export default function GamePage() {
       )}
 
       {/* Pause Button (in-game) - hidden during the mutation choice hold */}
-      {isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
+      {isPlaying && !isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive && (
         <button
           onClick={handlePause}
           disabled={pauseRearming && !awaitingResumeInput}
@@ -1760,7 +1953,7 @@ export default function GamePage() {
           gameRef={gameRef}
           getAzimuth={getCameraAzimuth}
           isReady={isReady || awaitingResumeInput}
-          onReadyStart={handleInputReadyStart}
+          onReadyDirection={handleReadyDirection}
           onAim={syncAim}
           debugRef={inputDebugRef}
         />
@@ -1777,9 +1970,6 @@ export default function GamePage() {
           <VirtualDPad
             onDirectionChange={handleDPadDirection}
             disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || choiceActive}
-            isReady={isReady}
-            setReady={setReady}
-            onStartGame={startGameLoop}
           />
         </div>
       )}
@@ -2018,6 +2208,28 @@ export default function GamePage() {
                   )}
                 </div>
 
+                {showFirstResultDiscovery && (
+                  <div
+                    className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg space-y-2 px-5 py-4 text-left animate-fade-up"
+                    data-testid="first-result-discovery"
+                  >
+                    <p className="heading-display text-xl text-[#7df9ff]">
+                      {lastRunFree ? 'Your first run is complete.' : 'You earned DNA.'}
+                    </p>
+                    <p className="font-body text-sm text-beige/80">
+                      Visit the Lab to discover more snakes, or keep playing with{' '}
+                      {equippedSnake?.name ?? 'your current snake'}.
+                    </p>
+                    <Link
+                      href="/lab"
+                      className="inline-flex min-h-[44px] items-center gap-2 text-sm font-body font-bold text-venom-orange underline hover:text-venom-orange-light"
+                    >
+                      <IconFlask size={17} />
+                      Visit the Lab
+                    </Link>
+                  </div>
+                )}
+
                 {lastGenomeCard && <GenomeCard model={lastGenomeCard} />}
 
                 {codexDiscoveries.length > 0 && (
@@ -2148,7 +2360,7 @@ export default function GamePage() {
                   </div>
                 ) : noSnakeAvailable ? (
                   <p className="text-beige font-body">
-                    You need a snake before you can play.
+                    We couldn&apos;t prepare your snake. Return Home and Retry.
                   </p>
                 ) : (
                   <p className="text-beige/70 font-body">Loading your snake...</p>
@@ -2232,11 +2444,11 @@ export default function GamePage() {
             <div className="flex flex-wrap gap-4 justify-center items-center">
               {noSnakeAvailable ? (
                 <Link
-                  href="/lab"
+                  href="/"
                   className="btn-go inline-flex items-center gap-2 px-8 py-3 text-lg min-h-[44px]"
                 >
-                  <IconFlask size={20} />
-                  Choose Your Snake in the Lab
+                  <IconHome size={20} />
+                  Return Home to Retry
                 </Link>
               ) : gameMode === 'free' ? (
                 <button
@@ -2388,49 +2600,83 @@ export default function GamePage() {
         prompt="That run deserves a name on it."
       />
 
-      {/* Ready State Overlay */}
-      {(isReady || awaitingResumeInput) && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-6 py-5 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-3 animate-fade-up">
-            <h2 className="heading-display text-3xl text-venom-orange text-glow-orange animate-breathe sm:text-5xl">
-              {awaitingResumeInput ? 'Choose Your Line' : 'Ready!'}
-            </h2>
-            {awaitingResumeInput && (
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#7df9ff]">
-                Board held · movement begins on your input
-              </p>
-            )}
-            {isMobile && controlMode === 'flick' ? (
-              <>
-                <p className="text-bone-white text-lg font-body">Flick a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
-              </>
-            ) : isMobile ? (
-              <>
-                <p className="text-bone-white text-lg font-body">Tap a safe direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
-              </>
-            ) : (
-              <>
-                <p className="text-bone-white text-lg font-body">Press SPACE or a direction to {awaitingResumeInput ? 'continue' : 'start'}</p>
-                <p className="text-beige/60 text-sm font-body">Use Arrow Keys or WASD to move</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* 3D Canvas - initial position approximates CameraRig's default
           south-side 70-degree view to avoid a first-frame jump */}
       <div
-        className="absolute inset-x-0 bottom-0 transition-[top] duration-200 ease-out"
-        style={{
-          top: isPlaying
-            ? `calc(env(safe-area-inset-top, 0px) + ${hudHeight + 24}px)`
-            : 0,
-        }}
+        className={isPlaying
+          ? 'relative min-h-0 flex-1'
+          : 'absolute inset-0'}
         data-testid="game-board-viewport"
       >
+      {/* Ready / post-decision hold belongs to the board, not the viewport.
+          The planning gate stays compact at the board's top so the player
+          can inspect danger; the first-start prompt may remain centered. */}
+      {(isReady || awaitingResumeInput) && (
+        <div
+          className={`absolute inset-0 z-20 flex justify-center pointer-events-none ${
+            awaitingResumeInput ? 'items-start pt-2 sm:pt-3' : 'items-center'
+          }`}
+        >
+          {awaitingResumeInput ? (
+            <div
+              className="mx-2 flex max-w-[95%] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-arcade border border-[#7df9ff]/45 bg-void-deep/80 px-3 py-2 text-center shadow-[0_0_24px_rgba(34,211,238,0.14)] backdrop-blur-md animate-fade-up sm:px-4"
+              data-testid="resume-gate"
+            >
+              <div className="flex items-baseline gap-2">
+                <h2 className="heading-display text-base text-venom-orange text-glow-orange sm:text-lg">
+                  Choose Your Line
+                </h2>
+                <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-[#7df9ff] sm:text-[9px] sm:tracking-[0.18em]">
+                  Board held
+                </span>
+              </div>
+              <p className="text-xs font-body text-bone-white sm:text-sm">
+                {isMobile && controlMode === 'flick'
+                  ? 'Flick a safe direction to continue'
+                  : isMobile
+                    ? 'Tap a safe direction to continue'
+                    : 'Press Space or a safe direction to continue'}
+              </p>
+            </div>
+          ) : (
+            <div
+              className="game-ready-gate mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-4 py-3 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-2 animate-fade-up sm:px-5 sm:py-4 sm:space-y-2.5"
+              data-testid="resume-gate"
+            >
+              {minimalFirstRunPrompt ? (
+                <p
+                  className="game-ready-gate-primary text-bone-white text-sm font-body sm:text-base"
+                  data-testid="first-movement-prompt"
+                >
+                  Swipe or press an arrow to move
+                </p>
+              ) : (
+                <>
+                  <h2 className="game-ready-gate-title heading-display text-2xl text-venom-orange text-glow-orange animate-breathe sm:text-4xl">
+                    Ready!
+                  </h2>
+                  {isMobile && controlMode === 'flick' ? (
+                    <>
+                      <p className="game-ready-gate-primary text-bone-white text-sm font-body sm:text-base">Flick a safe direction to start</p>
+                      <p className="game-ready-gate-secondary text-beige/60 text-xs font-body sm:text-sm">Short flicks steer - chain them for fast turns</p>
+                    </>
+                  ) : isMobile ? (
+                    <>
+                      <p className="game-ready-gate-primary text-bone-white text-sm font-body sm:text-base">Tap a safe direction to start</p>
+                      <p className="game-ready-gate-secondary text-beige/60 text-xs font-body sm:text-sm">Use the D-Pad to move</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="game-ready-gate-primary text-bone-white text-sm font-body sm:text-base">Press SPACE or a direction to start</p>
+                      <p className="game-ready-gate-secondary text-beige/60 text-xs font-body sm:text-sm">Use Arrow Keys or WASD to move</p>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <Canvas
         camera={{
           position: [boardCenter, boardCenter * 2.4, boardCenter * 1.9],

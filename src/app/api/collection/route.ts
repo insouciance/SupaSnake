@@ -104,18 +104,25 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { variantId } = body;
+    const { variantId, equip = false } = body;
 
-    if (!variantId) {
+    if (typeof variantId !== 'string' || variantId.length === 0) {
       return NextResponse.json(
         { error: 'variantId is required' },
         { status: 400 }
       );
     }
+    if (typeof equip !== 'boolean') {
+      return NextResponse.json(
+        { error: 'equip must be a boolean' },
+        { status: 400 }
+      );
+    }
 
-    // Call server-authoritative unlock function
+    // Server-authoritative transaction. Lab's convenience action does not
+    // split unlock and equipment across two requests.
     const { data: newSnakeId, error: unlockError } = await supabase.rpc(
-      'unlock_variant',
+      equip ? 'unlock_and_equip_variant' : 'unlock_variant',
       {
         p_player_id: player.id,
         p_variant_id: variantId,
@@ -156,6 +163,7 @@ export async function POST(request: NextRequest) {
       success: true,
       snake: mapOwnedSnakeRow(newSnake),
       newDnaBalance: updatedPlayer?.dna ?? player.dna,
+      equipped: equip,
     });
   } catch (err) {
     console.error('Collection unlock error:', err);

@@ -7,7 +7,7 @@
  */
 
 import Link from 'next/link';
-import { IconBolt, IconDna } from '@/components/ui/icons';
+import { IconBolt, IconDna, IconHome } from '@/components/ui/icons';
 
 interface LabHeaderProps {
   /** Current energy amount */
@@ -42,6 +42,13 @@ export function LabHeader({ energy, maxEnergy, dna, codexUnlocked = false }: Lab
       <div className="h-[60px] px-4 flex items-center justify-between max-w-6xl mx-auto">
         {/* Title - Left side */}
         <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-arcade text-beige transition-colors hover:bg-bone-white/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+            aria-label="Back Home"
+          >
+            <IconHome size={19} />
+          </Link>
           <h1 className="heading-display text-glow-orange text-bone-white text-lg sm:text-xl">
             Supasnake <span className="text-venom-orange">Lab</span>
           </h1>

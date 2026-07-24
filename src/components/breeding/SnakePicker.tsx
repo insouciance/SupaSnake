@@ -109,7 +109,7 @@ export function SnakePicker({
           ) : (
             <div className="grid grid-cols-3 gap-3">
               {entries.map(({ snake, variant, dynastyName, disabled, disabledReason }) => {
-                const theme = dynastyThemes[dynastyName] ?? dynastyThemes.CYBER;
+                const theme = dynastyThemes[dynastyName] ?? dynastyThemes.PRIMAL;
                 return (
                   <button
                     key={snake.id}

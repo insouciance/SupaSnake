@@ -8,6 +8,10 @@ describe('PortalChoiceOverlay', () => {
 
   it('shows the payout tradeoff and disables an ineligible infuse', () => {
     render(<PortalChoiceOverlay canInfuse={false} infusesUsed={0} snakeLength={6} bankDna={400} crashDna={180} onBank={jest.fn()} onPass={jest.fn()} onInfuse={jest.fn()} />);
+    expect(screen.getByRole('dialog', { name: 'Exit Portal' })).toHaveAttribute(
+      'aria-modal',
+      'true'
+    );
     expect(screen.getByTestId('portal-bank')).toHaveTextContent('400 DNA');
     expect(screen.getByTestId('portal-infuse')).toBeDisabled();
     expect(screen.getByTestId('portal-infuse')).toHaveTextContent('Needs length 8');
@@ -19,13 +23,19 @@ describe('PortalChoiceOverlay', () => {
     fireEvent.click(screen.getByTestId('portal-pass'));
     expect(onPass).not.toHaveBeenCalled();
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    expect(screen.getByTestId('portal-bank')).toHaveFocus();
     fireEvent.click(screen.getByTestId('portal-pass'));
     expect(onPass).toHaveBeenCalledTimes(1);
   });
 
   it('renders a surge choice at the six-gene cap', () => {
     render(<StrainSurgeOverlay strains={['AURUM', 'UMBRA']} onChoose={jest.fn()} />);
+    expect(screen.getByRole('dialog', { name: 'Strain Surge' })).toHaveAttribute(
+      'aria-modal',
+      'true'
+    );
     expect(screen.getByTestId('surge-AURUM')).toBeInTheDocument();
+    expect(screen.getByTestId('surge-AURUM')).toHaveFocus();
     expect(screen.getByTestId('surge-UMBRA')).toBeInTheDocument();
   });
 });

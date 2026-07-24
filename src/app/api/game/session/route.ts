@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
 
         if (!count) {
           return NextResponse.json(
-            { error: 'No snakes in collection. Choose a starter in the Lab.' },
+            { error: 'No playable snake is available. Retry player setup from Home.' },
             { status: 400 }
           );
         }

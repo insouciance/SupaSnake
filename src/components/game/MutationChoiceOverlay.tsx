@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { GENES, type GeneId } from '@/shared/game/genes';
+import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 
 /** Input lock after the overlay opens (doc: prevent accidental picks). */
 export const CHOICE_INPUT_LOCK_MS = 300;
@@ -34,6 +35,8 @@ export function MutationChoiceOverlay({
 }: MutationChoiceOverlayProps) {
   const [locked, setLocked] = useState(true);
   const lockedRef = useRef(true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocusTrap(dialogRef, !locked);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -67,6 +70,11 @@ export function MutationChoiceOverlay({
 
   return (
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mutation-choice-title"
+      tabIndex={-1}
       className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4"
       data-testid="mutation-choice-overlay"
     >
@@ -75,6 +83,7 @@ export function MutationChoiceOverlay({
         style={{ '--glow': MUTATION_COLOR } as CSSProperties}
       >
         <h2
+          id="mutation-choice-title"
           className="heading-display text-2xl text-center mb-1 text-glow"
           style={{ color: MUTATION_COLOR }}
         >
@@ -92,6 +101,7 @@ export function MutationChoiceOverlay({
                 key={id}
                 onClick={() => onChoose(index as 0 | 1)}
                 disabled={locked}
+                aria-keyshortcuts={`${index + 1}`}
                 data-testid={`mutation-option-${index}`}
                 className={`text-left p-4 rounded-arcade border transition-all min-h-[44px] bg-void/60 ${
                   locked
@@ -136,8 +146,10 @@ export function MutationChoiceOverlay({
           onClick={() => {
             if (!locked) onDecline();
           }}
+          disabled={locked}
+          aria-keyshortcuts="Escape"
           data-testid="mutation-decline"
-          className="block mx-auto mt-4 text-sm font-body text-beige/60 underline hover:text-bone-white transition-colors min-h-[44px]"
+          className="block mx-auto mt-4 text-sm font-body text-beige/60 underline hover:text-bone-white transition-colors min-h-[44px] disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]"
         >
           Take neither (Esc)
         </button>

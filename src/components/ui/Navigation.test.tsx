@@ -7,6 +7,7 @@
 import { render, screen } from '@testing-library/react';
 import { Navigation } from './Navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 let mockPathname = '/';
 jest.mock('next/navigation', () => ({
@@ -27,6 +28,7 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 describe('Navigation', () => {
   beforeEach(() => {
     mockPathname = '/';
+    useNotificationStore.setState({ notifications: {}, hasHydrated: true });
   });
 
   it('renders the core rail nodes with game aria labels', () => {
@@ -89,5 +91,19 @@ describe('Navigation', () => {
     render(<Navigation />);
 
     expect(screen.getByTestId('account-chip')).toBeInTheDocument();
+  });
+
+  it('renders Lab activity from the shared notification state', () => {
+    useNotificationStore.getState().publish({
+      id: 'lab-discovery',
+      title: 'Lab ready',
+      description: 'Discover more snakes',
+      destination: 'lab',
+      badgeKind: 'exclamation',
+    });
+
+    render(<Navigation />);
+
+    expect(screen.getByRole('status', { name: 'New Lab activity' })).toHaveTextContent('!');
   });
 });

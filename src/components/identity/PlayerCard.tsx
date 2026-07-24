@@ -85,7 +85,7 @@ function Avatar({
   size: number;
 }): React.ReactElement {
   const dynasty = identity.avatar?.dynasty ?? 'COSMIC';
-  const theme = dynastyThemes[dynasty] ?? dynastyThemes.CYBER;
+  const theme = dynastyThemes[dynasty] ?? dynastyThemes.PRIMAL;
   const level = identity.mastery[dynasty] ?? 0;
   const tier = frameTierForLevel(level);
   const frame = FRAME_STYLE[tier];

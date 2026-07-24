@@ -24,6 +24,10 @@ const ROUTES = [
 ];
 
 export default async function globalSetup(config: FullConfig) {
+  // Focused local debugging often reuses an already-warm dev server. Allow
+  // those runs to skip compiling every unrelated route; CI never sets this.
+  if (process.env.PLAYWRIGHT_SKIP_WARMUP === '1') return;
+
   const baseURL =
     config.projects[0]?.use?.baseURL ||
     process.env.PLAYWRIGHT_TEST_BASE_URL ||

@@ -185,6 +185,8 @@ export interface CollectionResponse {
 
 export interface UnlockRequest {
   variantId: string;
+  /** Lab convenience: performs unlock + equip in one server transaction. */
+  equip?: boolean;
 }
 
 export interface UnlockResponse {
@@ -192,6 +194,7 @@ export interface UnlockResponse {
   snake?: OwnedSnake;
   error?: string;
   newDnaBalance?: number;
+  equipped?: boolean;
 }
 
 export interface EquipRequest {
