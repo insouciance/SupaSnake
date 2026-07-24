@@ -52,10 +52,16 @@ jobs:
       - name: Start isolated Supabase
         run: |
           supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
-          supabase status --output env \
-            --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
-            --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
-            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+          # `status --output env` shell-quotes every value. Appending that
+          # output directly makes the quotes part of GitHub Actions values and
+          # produces an invalid Supabase URL during `next build`. Export only
+          # the three required fields from JSON, without shell quoting.
+          supabase status --output json \
+            | jq -r '
+                "NEXT_PUBLIC_SUPABASE_URL=\(.API_URL)",
+                "NEXT_PUBLIC_SUPABASE_ANON_KEY=\(.ANON_KEY)",
+                "SUPABASE_SERVICE_ROLE_KEY=\(.SERVICE_ROLE_KEY)"
+              ' \
             >> "$GITHUB_ENV"
 
       - name: Build (production)
