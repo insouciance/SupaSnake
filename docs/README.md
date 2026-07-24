@@ -30,6 +30,8 @@ contract and its explicit supersession language win.
 
 ## Supporting material
 
+- Root `AGENTS.md` defines the clean-context, branch-isolated working agreement
+  for parallel coding agents.
 - `game/systems/analysis/` contains deep system research and historical design
   analysis. It is not automatically the current implementation contract.
 - `platform/` documents the earlier ZTE/context-engineering toolchain. It is
