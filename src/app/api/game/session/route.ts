@@ -64,6 +64,7 @@ import {
   type DnaMultiplierBreakdown,
 } from '@/lib/server/dnaMultipliers';
 import { recordCodexDiscoveries } from '@/lib/server/codex';
+import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -105,13 +106,46 @@ export async function POST(request: NextRequest) {
       run_events,
     } = body;
 
-    const { data: player } = await supabase
+    let { data: player, error: playerError } = await supabase
       .from('players')
       .select('id, energy, dna, max_energy, energy_regen_at')
       .eq('user_id', user.id)
       .single();
 
+    // A direct /game guest can submit Start at the boundary between auth and
+    // the profile GET that normally performs FTUE repair. Keep session start
+    // authoritative too: migration 037's bootstrap is atomic/idempotent and
+    // preserves every existing choice, so a missing row is safely repaired
+    // before any rate check, Energy deduction, or session write occurs.
+    if (!player && action === 'start' && FTUE_V2_ENABLED) {
+      const { error: bootstrapError } = await supabase.rpc('bootstrap_player', {
+        p_user_id: user.id,
+      });
+      if (bootstrapError) {
+        console.error('Session-start player repair failed:', {
+          userId: user.id,
+          error: bootstrapError,
+        });
+        return NextResponse.json(
+          { error: 'Player preparation failed — retry when you are ready' },
+          { status: 503 }
+        );
+      }
+
+      ({ data: player, error: playerError } = await supabase
+        .from('players')
+        .select('id, energy, dna, max_energy, energy_regen_at')
+        .eq('user_id', user.id)
+        .single());
+    }
+
     if (!player) {
+      if (playerError) {
+        console.error('Session player lookup failed:', {
+          userId: user.id,
+          code: playerError.code,
+        });
+      }
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 

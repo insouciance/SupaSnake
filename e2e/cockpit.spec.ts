@@ -260,7 +260,15 @@ test.describe('Run Cockpit v1', () => {
     });
     const reloadedEarnStart = page.getByTestId('earn-start');
     await expect(reloadedEarnStart).toBeEnabled();
+    const reloadedStartResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/game/session',
+      { timeout: 30_000 }
+    );
     await reloadedEarnStart.click({ force: true });
+    await reloadedStartResponse;
+    await expect(board).toBeVisible({ timeout: 30_000 });
     await expect(cockpit).toHaveAttribute('data-input', 'dpad', { timeout: 30_000 });
     await expect(gate).toBeVisible();
 

@@ -143,54 +143,57 @@ test.describe('Equipped-snake game flow', () => {
 
     // Start the free session: server creates an is_free_play session with
     // no deduction; the honest FREE PLAY watermark chip appears in the HUD.
-    // Pre-migration-016 window: the marker column doesn't exist yet and the
-    // server refuses free mode with a clear 503 message instead - accept
-    // either outcome so this spec is green before AND after 016 applies.
+    // Wait for the authoritative response so this release gate cannot race
+    // past (or silently tolerate) a failed session start.
+    const startResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/game/session',
+      { timeout: 30_000 }
+    );
     await freeStart.click({ force: true });
+    expect((await startResponse).status()).toBe(200);
     const watermark = page.getByTestId('free-play-watermark');
-    const migrationPending = page.getByText(/free play is not available yet/i);
-    await expect(watermark.or(migrationPending)).toBeVisible({ timeout: 20000 });
-    if (await watermark.isVisible()) {
-      // A fresh FTUE-v2 guest sees the intentionally minimal movement line;
-      // a returning player keeps the existing Ready treatment.
-      await expect(
-        page.getByTestId('first-movement-prompt').or(
-          page.getByRole('heading', { name: /^ready!$/i })
-        )
-      ).toBeVisible();
+    await expect(watermark).toBeVisible({ timeout: 20000 });
+    // A fresh FTUE-v2 guest sees the intentionally minimal movement line;
+    // a returning player keeps the existing Ready treatment.
+    await expect(
+      page.getByTestId('first-movement-prompt').or(
+        page.getByRole('heading', { name: /^ready!$/i })
+      )
+    ).toBeVisible();
 
-      // Both HUD generations must keep their telemetry clear of the WebGL
-      // viewport. The cockpit surrounds the board, while the rollback HUD
-      // owns a single strip above it.
-      const expectHudClearOfBoard = async () => {
-        const hudLocator = page.getByTestId('game-hud');
-        const hud = await hudLocator.boundingBox();
-        const board = await page.getByTestId('game-board-viewport').boundingBox();
-        expect(hud).not.toBeNull();
-        expect(board).not.toBeNull();
-        const isCockpit = await hudLocator.getAttribute('data-input') !== null;
-        if (isCockpit) {
-          const zones = hudLocator.locator('[data-cockpit-zone]:visible');
-          for (let index = 0; index < await zones.count(); index += 1) {
-            const zone = await zones.nth(index).boundingBox();
-            expect(zone).not.toBeNull();
-            const overlaps = !(
-              zone!.x + zone!.width <= board!.x ||
-              board!.x + board!.width <= zone!.x ||
-              zone!.y + zone!.height <= board!.y ||
-              board!.y + board!.height <= zone!.y
-            );
-            expect(overlaps).toBe(false);
-          }
-        } else {
-          expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height);
+    // Both HUD generations must keep their telemetry clear of the WebGL
+    // viewport. The cockpit surrounds the board, while the rollback HUD
+    // owns a single strip above it.
+    const expectHudClearOfBoard = async () => {
+      const hudLocator = page.getByTestId('game-hud');
+      const hud = await hudLocator.boundingBox();
+      const board = await page.getByTestId('game-board-viewport').boundingBox();
+      expect(hud).not.toBeNull();
+      expect(board).not.toBeNull();
+      const isCockpit = (await hudLocator.getAttribute('data-input')) !== null;
+      if (isCockpit) {
+        const zones = hudLocator.locator('[data-cockpit-zone]:visible');
+        for (let index = 0; index < (await zones.count()); index += 1) {
+          const zone = await zones.nth(index).boundingBox();
+          expect(zone).not.toBeNull();
+          const overlaps = !(
+            zone!.x + zone!.width <= board!.x ||
+            board!.x + board!.width <= zone!.x ||
+            zone!.y + zone!.height <= board!.y ||
+            board!.y + board!.height <= zone!.y
+          );
+          expect(overlaps).toBe(false);
         }
-      };
-      await expectHudClearOfBoard();
-      await page.setViewportSize({ width: 375, height: 667 });
-      await page.waitForTimeout(300);
-      await expectHudClearOfBoard();
-    }
+      } else {
+        expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height);
+      }
+    };
+    await expectHudClearOfBoard();
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForTimeout(300);
+    await expectHudClearOfBoard();
   });
 });
 
