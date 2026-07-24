@@ -3137,9 +3137,9 @@ function GameBoard({
       ? GLYPH_COLORS[constellationGlyph % GLYPH_COLORS.length]
       : theme.accent;
 
-  // Lockable targets for the aim systems, rebuilt per tick (deadeye lock
-  // scan + gridlock alignment). Food outranks portal outranks mutation on
-  // ties - the priority lives in aimUtils, this is just the inventory.
+  // Target-bearing cells for the aim systems, rebuilt per tick (Gridlock
+  // alignment + Firefly pursuit). Food outranks portal outranks mutation
+  // on Gridlock ties - the priority lives in aimUtils; this is inventory.
   const aimTargets = useMemo<AimTarget[]>(() => {
     const list: AimTarget[] = [];
     if (food) list.push({ x: food.x, z: food.z, kind: 'food' });
@@ -3275,9 +3275,9 @@ function GameBoard({
         />
       )}
 
-      {/* Mutation food - violet double helix. Part of the deadeye lock
-          inventory (lowest priority: food > portal > mutation) but never
-          steers pathline/gridlock - it stays an optional detour. */}
+      {/* Mutation food - violet double helix. It participates in Gridlock's
+          alignment inventory at the lowest priority, but never steers
+          Deadeye or Pathline - it stays an optional detour. */}
       {mutationTile && (
         <MutationBeacon
           position={[mutationTile.x + 0.5, 0, mutationTile.z + 0.5]}

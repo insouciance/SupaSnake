@@ -87,7 +87,7 @@ export interface DangerPath {
  * warning system.
  */
 // -----------------------------------------------------------------------------
-// Aim v2 target scanning (deadeye / gridlock)
+// Aim v2 target scanning (gridlock)
 // -----------------------------------------------------------------------------
 
 export type AimTargetKind = 'food' | 'portal' | 'mutation';
@@ -105,54 +105,6 @@ const KIND_PRIORITY: Record<AimTargetKind, number> = {
   portal: 1,
   mutation: 2,
 };
-
-/**
- * Deadeye lock: the nearest target sitting ON the committed heading line,
- * strictly ahead of the head. Targets behind the head or off the line are
- * ignored; out-of-bounds targets never match (the wall bounds the line).
- * Equal-distance ties resolve food > portal > mutation.
- */
-export function findFirstTargetInLine(
-  head: Position,
-  direction: Direction,
-  targets: readonly AimTarget[],
-  gridSize: number
-): AimTarget | null {
-  const delta = DIRECTION_DELTAS[direction];
-  let best: AimTarget | null = null;
-  let bestDistance = Infinity;
-
-  for (const target of targets) {
-    if (
-      target.x < 0 ||
-      target.x >= gridSize ||
-      target.z < 0 ||
-      target.z >= gridSize
-    ) {
-      continue;
-    }
-    let distance: number;
-    if (delta.x !== 0) {
-      if (target.z !== head.z) continue;
-      distance = (target.x - head.x) * delta.x;
-    } else {
-      if (target.x !== head.x) continue;
-      distance = (target.z - head.z) * delta.z;
-    }
-    if (distance <= 0) continue; // behind (or under) the head
-    if (
-      distance < bestDistance ||
-      (distance === bestDistance &&
-        best !== null &&
-        KIND_PRIORITY[target.kind] < KIND_PRIORITY[best.kind])
-    ) {
-      best = target;
-      bestDistance = distance;
-    }
-  }
-
-  return best;
-}
 
 export interface AlignedTargets {
   /** Nearest target sharing the head's ROW (same z), either side; null if none */

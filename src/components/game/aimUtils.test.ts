@@ -7,7 +7,6 @@
 import { describe, it, expect } from '@jest/globals';
 import {
   findAlignedTargets,
-  findFirstTargetInLine,
   projectAimPath,
   projectDangerPath,
   type AimTarget,
@@ -117,70 +116,6 @@ describe('projectDangerPath (radar danger sense)', () => {
     const result = projectDangerPath(head, 'RIGHT', snake, GRID, 5);
     expect(result.impact).toBe(false);
     expect(result.cells).toHaveLength(5);
-  });
-});
-
-describe('findFirstTargetInLine (deadeye lock)', () => {
-  it('finds the target ahead in all four directions', () => {
-    const targets = [
-      target(15, 10), // right of head
-      target(4, 10), // left of head
-      target(10, 3), // up from head
-      target(10, 17), // down from head
-    ];
-    expect(findFirstTargetInLine(head, 'RIGHT', targets, GRID)).toBe(targets[0]);
-    expect(findFirstTargetInLine(head, 'LEFT', targets, GRID)).toBe(targets[1]);
-    expect(findFirstTargetInLine(head, 'UP', targets, GRID)).toBe(targets[2]);
-    expect(findFirstTargetInLine(head, 'DOWN', targets, GRID)).toBe(targets[3]);
-  });
-
-  it('ignores targets behind the head', () => {
-    const behind = [target(4, 10)];
-    expect(findFirstTargetInLine(head, 'RIGHT', behind, GRID)).toBeNull();
-    expect(findFirstTargetInLine(head, 'LEFT', behind, GRID)).toBe(behind[0]);
-  });
-
-  it('ignores a target on the head cell itself', () => {
-    expect(findFirstTargetInLine(head, 'RIGHT', [target(10, 10)], GRID)).toBeNull();
-  });
-
-  it('ignores off-line targets', () => {
-    const offLine = [target(15, 11), target(9, 9)];
-    expect(findFirstTargetInLine(head, 'RIGHT', offLine, GRID)).toBeNull();
-  });
-
-  it('stops at the wall: out-of-bounds targets never lock', () => {
-    expect(findFirstTargetInLine(head, 'RIGHT', [target(20, 10)], GRID)).toBeNull();
-    expect(findFirstTargetInLine(head, 'UP', [target(10, -1)], GRID)).toBeNull();
-  });
-
-  it('locks the NEAREST target first', () => {
-    const targets = [target(17, 10), target(12, 10), target(14, 10)];
-    expect(findFirstTargetInLine(head, 'RIGHT', targets, GRID)).toBe(targets[1]);
-  });
-
-  it('prefers food > portal > mutation on the same cell', () => {
-    const cell: AimTarget[] = [
-      target(13, 10, 'mutation'),
-      target(13, 10, 'portal'),
-      target(13, 10, 'food'),
-    ];
-    expect(findFirstTargetInLine(head, 'RIGHT', cell, GRID)?.kind).toBe('food');
-
-    const noFood: AimTarget[] = [
-      target(13, 10, 'mutation'),
-      target(13, 10, 'portal'),
-    ];
-    expect(findFirstTargetInLine(head, 'RIGHT', noFood, GRID)?.kind).toBe('portal');
-  });
-
-  it('a nearer mutation still beats a farther food (priority is a tie-break only)', () => {
-    const targets: AimTarget[] = [target(12, 10, 'mutation'), target(15, 10, 'food')];
-    expect(findFirstTargetInLine(head, 'RIGHT', targets, GRID)?.kind).toBe('mutation');
-  });
-
-  it('returns null with no targets', () => {
-    expect(findFirstTargetInLine(head, 'RIGHT', [], GRID)).toBeNull();
   });
 });
 
