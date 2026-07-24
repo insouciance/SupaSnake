@@ -452,6 +452,10 @@ describe('one revive per run', () => {
     game.grantMutation('mirror_wager', 0); // UMBRA x4 genes -> apex
     expect(game.getState().strainTiers.UMBRA).toBe(3);
     eatFoods(game, 6);
+    // Park the automatically respawned food away from the wall-crash route.
+    // This assertion isolates the Second Sun flat claim from incidental food
+    // DNA instead of depending on a random spawn missing the 60-cell path.
+    game.placeFood({ x: 0, y: 0, z: 0 });
     const revives: unknown[] = [];
     game.on('reviveTriggered', (d) => revives.push(d));
     // Drive into the left wall
