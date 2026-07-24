@@ -51,6 +51,7 @@ describe('ModeToggle', () => {
     expect(screen.getByTestId('mode-free-hint')).toHaveTextContent(
       /no rewards — pure practice/
     );
+    expect(screen.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
   });
 
   it('disables EARN at zero energy and keeps FREE PLAY available', () => {

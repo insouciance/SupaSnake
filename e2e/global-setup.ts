@@ -14,6 +14,7 @@ const ROUTES = [
   '/login',
   '/signup',
   '/game',
+  '/training',
   '/lab',
   '/lab/breed',
   '/shop',

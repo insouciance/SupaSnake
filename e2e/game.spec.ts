@@ -135,6 +135,7 @@ test.describe('Equipped-snake game flow', () => {
     await page.getByTestId('mode-free').click({ force: true });
     await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
+    await expect(page.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
 
     // The primary CTA becomes Free Play with no energy cost attached
     const freeStart = page.getByTestId('free-play-start');

@@ -15,6 +15,8 @@ import {
   ScoreGlyph,
   ShieldGlyph,
   StrainGlyph,
+  TrainingObjectiveGlyph,
+  TrainingTickGlyph,
 } from './CockpitGlyphs';
 import type { RunCockpitModel } from './types';
 import styles from './CockpitPrototype.module.css';
@@ -88,6 +90,11 @@ export function RunCockpit({
   } as TokenStyle;
   const comboLive = model.chainLength >= 2;
   const readyStatus = model.state === 'ready' || model.state === 'held';
+  const training = model.training;
+  const primaryLabel = training?.primaryLabel ?? 'Score';
+  const primaryValue = training?.primaryValue ?? formatTelemetry(model.score);
+  const secondaryLabel = training?.secondaryLabel ?? 'Run DNA';
+  const secondaryValue = training?.secondaryValue ?? formatTelemetry(model.dna);
 
   return (
     <main
@@ -103,31 +110,49 @@ export function RunCockpit({
         <div className={styles.composition}>
           <Instrument
             className={styles.scoreInstrument}
-            label={`Score ${formatTelemetry(model.score)}${comboLive ? `, combo ${model.comboMultiplier.toFixed(1)}` : ''}`}
+            label={`${primaryLabel} ${primaryValue}${!training && comboLive ? `, combo ${model.comboMultiplier.toFixed(1)}` : ''}`}
           >
-            <span className={styles.primaryIcon}><ScoreGlyph /></span>
+            <span className={styles.primaryIcon}>
+              {training ? <TrainingObjectiveGlyph /> : <ScoreGlyph />}
+            </span>
             <span className={styles.primaryCopy}>
-              <span className={styles.instrumentLabel}>Score</span>
-              <strong className={styles.primaryValue}>{formatTelemetry(model.score)}</strong>
+              <span className={styles.instrumentLabel}>{primaryLabel}</span>
+              <strong className={styles.primaryValue}>{primaryValue}</strong>
             </span>
-            <span className={`${styles.comboValue} ${comboLive ? '' : styles.telemetryDormant}`}>
-              {comboLive ? `×${model.comboMultiplier.toFixed(1)}` : '×1.0'}
-            </span>
+            {!training && (
+              <span className={`${styles.comboValue} ${comboLive ? '' : styles.telemetryDormant}`}>
+                {comboLive ? `×${model.comboMultiplier.toFixed(1)}` : '×1.0'}
+              </span>
+            )}
           </Instrument>
 
-          <Instrument className={styles.dnaInstrument} label={`Run DNA ${formatTelemetry(model.dna)}`}>
-            <span className={`${styles.primaryIcon} ${styles.dnaIcon}`}><DnaGlyph /></span>
+          <Instrument className={styles.dnaInstrument} label={`${secondaryLabel} ${secondaryValue}`}>
+            <span className={`${styles.primaryIcon} ${training ? '' : styles.dnaIcon}`}>
+              {training ? <TrainingTickGlyph /> : <DnaGlyph />}
+            </span>
             <span className={styles.primaryCopy}>
-              <span className={styles.instrumentLabel}>Run DNA</span>
-              <strong className={styles.primaryValue}>{formatTelemetry(model.dna)}</strong>
+              <span className={styles.instrumentLabel}>{secondaryLabel}</span>
+              <strong className={styles.primaryValue}>{secondaryValue}</strong>
             </span>
           </Instrument>
 
           <Instrument
             className={`${styles.geneRack} ${model.showGenome ? '' : styles.systemDormant}`}
-            label={model.showGenome ? `${model.genes.length} of 6 genes held` : 'Genome telemetry not yet discovered'}
+            label={training
+              ? `${training.progressLabel} ${training.progress} of ${training.progressTotal}`
+              : model.showGenome ? `${model.genes.length} of 6 genes held` : 'Genome telemetry not yet discovered'}
           >
-            <div className={styles.geneSockets}>
+            {training ? (
+              <div className={styles.trainingProgress}>
+                <span>
+                  <strong>{training.progressLabel}</strong>
+                  <em>{training.progress}/{training.progressTotal}</em>
+                </span>
+                <i aria-hidden="true">
+                  <b style={{ width: `${training.progressTotal > 0 ? Math.min(100, training.progress / training.progressTotal * 100) : 0}%` }} />
+                </i>
+              </div>
+            ) : <div className={styles.geneSockets}>
               {EMPTY_GENE_SLOTS.map((index) => {
                 const gene = model.showGenome ? model.genes[index] : undefined;
                 return (
@@ -141,10 +166,23 @@ export function RunCockpit({
                   </span>
                 );
               })}
-            </div>
+            </div>}
           </Instrument>
 
-          <Instrument className={styles.systemsRack} label="Extraction risk and strain state">
+          <Instrument
+            className={styles.systemsRack}
+            label={training ? 'Training attempt metrics' : 'Extraction risk and strain state'}
+          >
+            {training ? (
+              <div className={styles.trainingMetrics}>
+                {training.metrics.slice(0, 3).map((metric) => (
+                  <span key={metric.label}>
+                    <small>{metric.label}</small>
+                    <strong>{metric.value}</strong>
+                  </span>
+                ))}
+              </div>
+            ) : <>
             <div
               className={`${styles.portalDial} ${model.portalLive ? styles.portalDialLive : ''}`}
               aria-label={model.portalLive
@@ -193,26 +231,35 @@ export function RunCockpit({
                 );
               })}
             </div>
+            </>}
           </Instrument>
 
           <Instrument
             className={styles.modeInstrument}
             label={`${model.modeLabel}, ${model.dynasty} dynasty`}
-            testId={model.mode === 'free' ? 'free-play-watermark' : undefined}
+            testId={model.mode === 'free'
+              ? 'free-play-watermark'
+              : model.mode === 'training' ? 'training-watermark' : undefined}
           >
             <span className={styles.modeIcon}><ModeGlyph mode={model.mode} /></span>
             <span className={styles.modeCopy}>
               <strong>{model.modeLabel}</strong>
               <span>{model.modeDetail}</span>
             </span>
-            <span
-              className={styles.energyReadout}
-              aria-label={`Energy ${model.energy} of ${model.maxEnergy}`}
-              title={`Energy ${model.energy} of ${model.maxEnergy}`}
-            >
-              <span aria-hidden="true"><EnergyGlyph /></span>
-              <strong>{model.energy}/{model.maxEnergy}</strong>
-            </span>
+            {training ? (
+              <span className={styles.energyReadout} aria-label={training.comparison} title={training.comparison}>
+                <strong>{training.comparison}</strong>
+              </span>
+            ) : (
+              <span
+                className={styles.energyReadout}
+                aria-label={`Energy ${model.energy} of ${model.maxEnergy}`}
+                title={`Energy ${model.energy} of ${model.maxEnergy}`}
+              >
+                <span aria-hidden="true"><EnergyGlyph /></span>
+                <strong>{model.energy}/{model.maxEnergy}</strong>
+              </span>
+            )}
           </Instrument>
 
           {eventCallout ? (
