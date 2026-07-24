@@ -390,6 +390,16 @@ interface GameOptions {
   genome?: GenomeEngineConfig | null;
 }
 
+/**
+ * A deterministic board opening supplied by a driven mode such as Training.
+ * The normal game still owns its canonical centered opening through start().
+ */
+export interface DrivenStartState {
+  snake: Position[];
+  direction: Direction;
+  foods: Position[];
+}
+
 /** Server-issued genome capability + run-start context. */
 export interface GenomeEngineConfig {
   /** The session's offer seed (stored on the session row). */
@@ -721,6 +731,10 @@ export class SnakeGameLogic {
    * Start or restart the game
    */
   start(): void {
+    this.beginRun(null);
+  }
+
+  private beginRun(opening: DrivenStartState | null): void {
     const centerX = Math.floor(this.gridSize / 2);
     const centerZ = Math.floor(this.gridSize / 2);
 
@@ -764,7 +778,77 @@ export class SnakeGameLogic {
       this.refreshGenomeDerived();
     }
     this.spawnFoods();
+    if (opening) {
+      this.state.snake = opening.snake.map((cell) => ({ ...cell, y: 0 }));
+      this.state.direction = opening.direction;
+      this.placeFoods(opening.foods.map((cell) => ({ ...cell, y: 0 })));
+    }
     this.emit('gameStart');
+  }
+
+  /**
+   * Start the same engine from an authored board state.
+   *
+   * Training scenarios need repeatable recovery positions, but they must not
+   * fork collision, buffering, dynasty, or movement logic. This method first
+   * performs the canonical run reset and then replaces only the opening body,
+   * heading, and food wave. Invalid geometry is rejected before any state is
+   * changed.
+   */
+  startDriven(opening: DrivenStartState): void {
+    if (opening.snake.length === 0 || opening.foods.length === 0) {
+      throw new Error('Driven starts require a snake and at least one food');
+    }
+
+    const occupied = new Set<string>();
+    for (let index = 0; index < opening.snake.length; index += 1) {
+      const cell = opening.snake[index];
+      if (!this.isInBounds(cell)) {
+        throw new Error('Driven snake cells must be inside the board');
+      }
+      const key = `${cell.x}:${cell.z}`;
+      if (occupied.has(key)) {
+        throw new Error('Driven snake cells must be unique');
+      }
+      occupied.add(key);
+
+      const previous = opening.snake[index - 1];
+      if (
+        previous &&
+        Math.abs(previous.x - cell.x) + Math.abs(previous.z - cell.z) !== 1
+      ) {
+        throw new Error('Driven snake cells must form one contiguous body');
+      }
+    }
+
+    if (opening.snake.length > 1) {
+      const head = opening.snake[0];
+      const neck = opening.snake[1];
+      const delta = opening.direction === 'UP' ? { x: 0, z: -1 }
+        : opening.direction === 'DOWN' ? { x: 0, z: 1 }
+          : opening.direction === 'LEFT' ? { x: -1, z: 0 }
+            : { x: 1, z: 0 };
+      if (neck.x !== head.x - delta.x || neck.z !== head.z - delta.z) {
+        throw new Error('Driven snake heading must point away from its neck');
+      }
+    }
+
+    const foodCells = new Set<string>();
+    for (const food of opening.foods) {
+      if (!this.isInBounds(food)) {
+        throw new Error('Driven food cells must be inside the board');
+      }
+      const key = `${food.x}:${food.z}`;
+      if (occupied.has(key)) {
+        throw new Error('Driven food cannot overlap the snake');
+      }
+      if (foodCells.has(key)) {
+        throw new Error('Driven food cells must be unique');
+      }
+      foodCells.add(key);
+    }
+
+    this.beginRun(opening);
   }
 
   /**
@@ -2664,6 +2748,10 @@ export class SnakeGameLogic {
 
   private checkWallCollision(pos: Position): boolean {
     return pos.x < 0 || pos.x >= this.gridSize || pos.z < 0 || pos.z >= this.gridSize;
+  }
+
+  private isInBounds(pos: Position): boolean {
+    return !this.checkWallCollision(pos);
   }
 
   private checkSelfCollision(pos: Position): boolean {
