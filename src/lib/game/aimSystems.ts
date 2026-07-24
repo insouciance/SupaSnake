@@ -5,8 +5,8 @@
  * (pulse/vector/sequence/radar/apex), unlocked by stats the server already
  * tracks (high score, games played, breeds - NO new tracking):
  *
- * - deadeye  (default)  symmetrical crosshair following the fluid head +
- *                       snapped floor tile marking its current grid cell
+ * - deadeye  (default)  heading-relative T guide extending from the fluid
+ *                       head to the board edges + a snapped current-cell tile
  * - gridlock            row+column rails following the head + snapped
  *                       cell highlight; aligned rails brighten toward
  *                       food/portal with a pip at the target
@@ -53,7 +53,7 @@ export const AIM_SYSTEMS: readonly AimSystemDef[] = [
     id: 'deadeye',
     name: 'Deadeye',
     description:
-      'A centered crosshair tracks your head; a highlighted tile marks its current grid cell.',
+      'A heading-relative T guide reaches the board edges while a highlighted tile marks your current cell.',
     unlockHint: 'Always available',
     isUnlocked: () => true,
   },
