@@ -1,6 +1,6 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-07-23_
+_Last updated: 2026-07-24_
 
 This is the current player-facing QA path for the deployed Genome release. Work
 from top to bottom when doing a broad playtest; use the focused matrices near
@@ -19,20 +19,21 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `f86f8ae` — FTUE v2 player-flow release |
-| Vercel deployment | `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc` |
-| Rollback deployment | `dpl_ADggGtqUnAkWJ5j3rYZdg7bdQHZ4` — pre-FTUE production |
+| Production commit | `7ce2ade` — Run Cockpit & Arena v1 |
+| Vercel deployment | `dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX` |
+| Rollback deployment | `dpl_76p6GsNbsrp7S6qgVH3RFxm68GLc` — FTUE v2 production |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–037 deployed; migration 037 backfill and runtime bootstrap verified |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Release branch | `release/ftue-v2`; runtime release commit `f86f8ae` |
+| Release branch | `feat/cockpit-v1`; runtime release commit `7ce2ade` |
 
-Migration 037 and FTUE v2 are live. The frozen HUD/Pause visual candidate is
-preserved for regression reference and was not deployed unchanged. The release
-keeps the established HUD/Ready/Pause visual language, reserves board geometry
-in CSS from first paint, and includes only the interaction fixes required for a
-safe, deliberate first movement.
+Migration 037, FTUE v2, and Run Cockpit & Arena v1 are live. A second cockpit
+refinement is implemented in isolated branch `feat/cockpit-refinement` and is
+still a pre-production candidate. It replaces sparse desktop side panels with
+compact mobile-derived top/bottom decks, fits the complete chassis at the
+default/reset camera pose, centers strategic decisions over an atomically
+frozen board, and replaces the Pause modal with a board-visible tactical hold.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -46,37 +47,44 @@ state-heavy cases still require real-device or exploratory verification:
 
 - Real-device safe areas, mobile browser chrome, touch feel, and camera motion
   while live HUD content changes.
-- The full Genome HUD at 844×390 using the released visual treatment, including
-  first-food, BANK/combo/anomaly, and one-to-six gene states.
-- Real mutation, portal, surge, BANK, and choice-overlay focus journeys.
-- The frozen visual candidate's compact HUD and Pause treatment still require a
-  product-design rework before they can become a future release candidate.
+- First-food, BANK/combo/anomaly, one-to-six gene, real mutation, portal,
+  infusion, surge, and BANK journeys against the refinement candidate.
+- Real-device tactile confirmation that tactical hold, subsequent deliberate
+  flick, and the compact landscape controls remain comfortable.
 
-### Frozen HUD/input candidate evidence (reference only)
+### Cockpit refinement candidate evidence (pre-production)
 
-The uncommitted candidate was revalidated on 2026-07-23, then frozen because
-its HUD/Pause visual design is scheduled for rework. Its evidence is useful for
-regression reference, but its compact grid and status-rail presentation are not
-the production FTUE design.
+The earlier uncommitted HUD/Pause candidate remains frozen for regression
+reference and is not being shipped. The current isolated refinement is the
+approved product direction and must complete every gate below before promotion.
 
-- Playwright passed the real game/canvas HUD journey at 320×568, 375×667,
-  390×844, 844×390, 768×1024, 1280×720, 1440×900, and 2560×1080. At every
-  size the visible Ready surface and all five strain meters stayed inside the
-  reserved board/HUD geometry with no horizontal overflow.
-- The 844×390 playable viewport is now 236.5 CSS px high (up from the 162px
-  production recheck). Short-landscape Ready and planning prompts collapse to
-  status rails instead of concealing the board.
-- Separate 320×568, 390×844, and 844×390 planning-state screenshots prove the
-  “Choose Your Line” rail starts within 24px of the board top, is at most 84px
-  high, and leaves at least 180px of visible board.
-- The same journey passed deliberate Flick, keyboard, Space, Escape/P, and
-  D-pad release; reversal rejection; duplicate-direction release; a 700ms
-  frozen hold; the 600ms pause-rearm guard; and return-to-menu behavior.
-- Engine regressions cover synchronous PASS, INFUSE → gene, INFUSE → Strain
-  Surge, reversal, duplicate direction, queue cleanup, and atomic resume.
-  Flick/D-pad component regressions cover accepted and rejected input paths.
-- Current candidate gates: TypeScript passed; ESLint passed; Jest passed 224
-  suites / 2,855 tests; production build passed; focused Playwright passed.
+- The deterministic cockpit fixture passes 8 supported viewports × 4 telemetry
+  states with a centered, stable arena and no overflow. Desktop now uses equal
+  shallow top/bottom decks; portrait geometry is preserved; 844×390 retains
+  the proven compact symmetric side rails.
+- The real-WebGL fixture passes four representative dynasty/viewport profiles
+  at 53–62 calls and 586–1,852 triangles, with the arena still adding only
+  three calls.
+- The projected-camera unit contract proves the exact undertray envelope
+  remains inside the clipped frame at 16° polar, 1.175 margin, 0.94 fit scale,
+  and −0.3 target. Screenshot review confirms all four corners on phone
+  portrait, phone landscape, desktop, and ultrawide.
+- The decision fixture passes 22 frozen-state/legal-surface checks covering
+  tactical hold, abandon confirmation, gene, mutation, portal, surge, and
+  expression presentations. Strategic panels center on the arena; tactical
+  hold has no modal; input surfaces are unavailable while a dialog owns focus.
+- Focused unit coverage passes for camera projection, RunCockpit semantics,
+  abandon focus/copy/actions, and gene/mutation/portal overlays. Focused ESLint,
+  TypeScript, and the responsive/WebGL/decision verification scripts pass.
+- Engine regressions continue to cover synchronous PASS, INFUSE → gene,
+  INFUSE → Strain Surge, reversal, duplicate direction, queue cleanup, and
+  atomic resume. Flick/D-pad regressions cover accepted and rejected paths.
+- The complete application gate passes 229 Jest suites / 2,869 tests, full
+  ESLint, TypeScript, the 83-page production build, `npm audit` with zero
+  vulnerabilities, and diff/credential checks. The exact production-server
+  artifact passes 16/16 focused Playwright checks with retries disabled.
+- The Vercel Production environment contract passes in sealed-value mode for
+  sandbox payments; both FTUE v2 and cockpit flags are configured `true`.
 - Hosted migration history is aligned through 037. Migration 037 was applied
   after an isolated clone, repeated/concurrent bootstrap checks, and a
   restricted logical recovery snapshot; the post-backfill invariant check
@@ -89,9 +97,9 @@ the production FTUE design.
   session responses. Separately, the selective FTUE release artifact passed
   14/14 protected-canary and 14/14 production Playwright checks against hosted
   migration 037, including genuinely new anonymous PRIMAL bootstraps.
-- Still manual: real-device safe areas and touch feel, camera motion during
-  live HUD changes, first-food/bank/combo/anomaly states, one-to-six live genes,
-  real overlay focus, and mutation/portal/surge/BANK UI journeys.
+- Still required before promotion: protected canary and live route/health/log
+  checks. The manual real-device cases listed above remain a field-quality
+  follow-up and the cockpit flag remains the immediate rollback.
 
 ### Suggested test accounts and evidence
 
@@ -639,10 +647,11 @@ largest legitimate combination:
 
 Geometry and quality checks:
 
-- [x] HUD, ticker, pause/reset controls, desktop hints, D-pad, and browser safe
-      areas never intersect the playable board surface or hide a boundary.
-- [x] Score, DNA, and energy use consistent telemetry cells and typography;
-      dynamic run information uses stable rows instead of reflowing the board.
+- [x] Telemetry decks, tactical-hold status, reset/abandon controls, D-pad, and
+      browser safe areas never intersect the playable board or hide a boundary.
+      Strategic decision dialogs are the intentional frozen-state exception.
+- [x] Score, DNA, mode/Energy, genes, strains, and extraction risk use stable
+      compact instruments without reflowing the board.
 - [ ] The canvas starts at the measured HUD boundary on first authenticated
       paint and after every HUD resize; no 200ms-style transient overlap is
       visible. **RECHECK**
@@ -659,18 +668,19 @@ Geometry and quality checks:
 - [ ] Layout remains premium and internally consistent without changing the
       established visual identity.
 
-## Focused regression — pause and deliberate resume input
+## Focused regression — tactical hold and deliberate resume input
 
 Test keyboard, Flick, and D-pad separately.
 
-### Initial Ready and manual pause
+### Initial Ready and manual tactical hold
 
 - [ ] On initial Ready, no engine tick occurs and the pause control is hidden;
       only a legal start input begins movement. **RECHECK**
-- [ ] Escape/P during active play opens Pause exactly once and freezes head,
-      score, timers, pickups, portal windows, and animations tied to ticks.
-- [ ] “Plan Next Move” closes the menu into “Choose Your Line”; the board stays
-      frozen indefinitely until deliberate input.
+- [ ] Escape/P or the Pause control during active play enters tactical hold
+      exactly once and freezes head, score, timers, pickups, portal windows, and
+      animations tied to ticks. No Pause modal appears.
+- [ ] Tactical hold keeps the complete board visible indefinitely and exposes
+      concise resume guidance plus a secondary Abandon control.
 - [ ] Space releases the desktop gate while preserving current heading.
 - [ ] A legal direction atomically sets/queues the direction and releases the
       gate; there is no tick between those operations.
@@ -679,16 +689,19 @@ Test keyboard, Flick, and D-pad separately.
       frozen until a safe input arrives. **RECHECK**
 - [ ] A legal flick and a legal D-pad direction release the gate; a rejected
       gesture gives feedback without releasing it.
-- [ ] Escape/P while “Choose Your Line” returns to the Pause menu; Escape/P
-      from Pause arms the next move without starting movement.
-- [ ] The pause button and Escape/P cannot reopen Pause during the 600ms rearm
-      period, then work normally afterward.
+- [ ] Escape/P while held is a no-op; it cannot bounce into a redundant menu or
+      silently resume the engine.
+- [ ] Pause and Escape/P cannot re-enter hold during the 600ms rearm period,
+      then work normally afterward.
 - [ ] Rapid directions at the gate preserve the accepted input and normal
       two-entry queue rules; there is no double loop, skipped cell, or stale
       direction from before the pause.
 
 ### Choice overlays
 
+- [ ] Gene, mutation, portal, infusion, and surge choices are dominant centered
+      dialogs over the visibly frozen arena, with readable consequences at
+      every supported viewport.
 - [ ] Gene pick and gene decline both end at the deliberate input gate.
 - [ ] Portal PASS ends at the deliberate input gate.
 - [ ] Portal INFUSE followed by a gene choice remains frozen across both
@@ -702,12 +715,23 @@ Test keyboard, Flick, and D-pad separately.
       engine before resolution.
 - [ ] Overlay focus is trapped, controls have visible focus, 1/2/3 shortcuts
       match labels, and closing restores a logical input target.
+- [ ] Direction keys, Space, flick, D-pad, pause, and camera shortcuts cannot
+      leak through a strategic dialog or destructive confirmation.
 
-### Pause-abuse and state cleanup
+### Abandon confirmation
+
+- [ ] Abandon is available only from tactical hold and opens a destructive
+      `alertdialog`; it does not alter cockpit geometry.
+- [ ] Copy states that current score and run DNA will not be recorded and only
+      warns about Energy when the run actually consumed Energy.
+- [ ] Keep planning or Escape returns to the same frozen tactical hold. Confirm
+      ends the run, clears session/gate/rearm state, and records no run reward.
+
+### Hold-abuse and state cleanup
 
 - [ ] Pause is useful for planning but cannot be toggled every adjacent tick by
       holding/repeating P or Escape.
-- [ ] Quit and Play Again cancel rearm timers and clear all gate/queue state.
+- [ ] Abandon and Play Again cancel rearm timers and clear all gate/queue state.
 - [ ] Backgrounding/foregrounding, visibility changes, resize/orientation, and
       brief network delay do not silently release the board.
 - [ ] Long pauses do not change server payout facts or produce impossible event

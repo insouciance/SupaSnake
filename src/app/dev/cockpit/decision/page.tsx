@@ -9,7 +9,8 @@ interface DecisionFixturePageProps {
 }
 
 const KINDS = new Set<CockpitDecisionFixtureKind>([
-  'pause',
+  'hold',
+  'abandon',
   'gene',
   'mutation',
   'portal',

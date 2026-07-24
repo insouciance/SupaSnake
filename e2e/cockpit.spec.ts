@@ -216,20 +216,20 @@ test.describe('Run Cockpit v1', () => {
 
     await page.keyboard.press('p');
     const decisionDock = page.getByTestId('cockpit-decision-dock');
-    await expect(page.getByRole('heading', { name: /^paused$/i })).toBeVisible();
-    await expect(decisionDock).toBeVisible();
+    await expect(gate).toBeVisible();
+    await expect(gate).toContainText(/tactical hold/i);
+    await expect(decisionDock).toBeHidden();
+    await expect(page.getByRole('button', { name: /abandon run/i })).toBeVisible();
 
     for (const viewport of [
-      { name: 'pause-mobile-compact', width: 320, height: 568 },
-      { name: 'pause-mobile-landscape', width: 844, height: 390 },
-      { name: 'pause-desktop', width: 1440, height: 900 },
+      { name: 'hold-mobile-compact', width: 320, height: 568 },
+      { name: 'hold-mobile-landscape', width: 844, height: 390 },
+      { name: 'hold-desktop', width: 1440, height: 900 },
     ] as const) {
       await page.setViewportSize(viewport);
       const layout = await readCockpitLayout(page);
       expect(layout).not.toBeNull();
-      const decision = layout!.zones.find((zone) => zone.kind === 'decision');
-      expect(decision).toBeDefined();
-      expect(rectanglesOverlap(layout!.board, decision!.box)).toBe(false);
+      expect(layout!.zones.find((zone) => zone.kind === 'decision')).toBeUndefined();
       expect(layout!.board.width).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
       if (CAPTURE_VISUALS) {
         await testInfo.attach(`cockpit-live-${viewport.name}`, {
@@ -239,12 +239,16 @@ test.describe('Run Cockpit v1', () => {
       }
     }
 
-    await page.getByRole('button', { name: /plan next move/i }).click({
-      force: true,
-      noWaitAfter: true,
-    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: /abandon run/i }).click();
+    const abandonDialog = page.getByTestId('abandon-run-dialog');
+    await expect(abandonDialog).toBeVisible();
+    await expect(abandonDialog).toContainText(/will not be recorded/i);
+    await abandonDialog.getByRole('button', { name: /keep planning/i }).click();
     await expect(decisionDock).toBeHidden();
     await expect(gate).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(gate).toBeHidden();
 
     // The fallback D-pad occupies a reserved console row/rail; it never
     // floats over the arena and preserves the same deliberate start path.
@@ -254,12 +258,9 @@ test.describe('Run Cockpit v1', () => {
     await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
       timeout: 30_000,
     });
-    const reloadedFreeMode = page.getByTestId('mode-free');
-    await reloadedFreeMode.click({ force: true });
-    await expect(reloadedFreeMode).toHaveAttribute('aria-pressed', 'true');
-    const reloadedFreePlayStart = page.getByTestId('free-play-start');
-    await expect(reloadedFreePlayStart).toBeEnabled();
-    await reloadedFreePlayStart.click({ force: true });
+    const reloadedEarnStart = page.getByTestId('earn-start');
+    await expect(reloadedEarnStart).toBeEnabled();
+    await reloadedEarnStart.click({ force: true });
     await expect(cockpit).toHaveAttribute('data-input', 'dpad', { timeout: 30_000 });
     await expect(gate).toBeVisible();
 

@@ -20,6 +20,10 @@ jest.mock('@react-three/drei', () => ({
 import * as THREE from 'three';
 import {
   buildFitPoints,
+  COCKPIT_DEFAULT_POLAR,
+  COCKPIT_FIT_SCALE,
+  COCKPIT_FRAME_MARGIN,
+  COCKPIT_TARGET_Y,
   computeFitDistance,
   DEFAULT_AZIMUTH,
   DEFAULT_POLAR,
@@ -29,6 +33,7 @@ import {
 
 const GRID = 20;
 const FOV = 50;
+const COCKPIT_FOV = 44;
 
 function maxNdcExtent(
   fov: number,
@@ -52,10 +57,60 @@ function maxNdcExtent(
   return extent;
 }
 
+function projectedPoints(
+  fov: number,
+  aspect: number,
+  dir: THREE.Vector3,
+  target: THREE.Vector3,
+  points: THREE.Vector3[],
+  distance: number
+): THREE.Vector2[] {
+  const cam = new THREE.PerspectiveCamera(fov, aspect, 0.1, 1000);
+  cam.position.copy(target).addScaledVector(dir, distance);
+  cam.lookAt(target);
+  cam.updateMatrixWorld(true);
+  cam.updateProjectionMatrix();
+  return points.map((point) => {
+    const projected = point.clone().project(cam);
+    return new THREE.Vector2(projected.x, projected.y);
+  });
+}
+
+function isInsideViewportCornerMask(point: THREE.Vector2): boolean {
+  const x = (point.x + 1) / 2;
+  const y = (1 - point.y) / 2;
+  const cut = 0.04;
+  return (
+    x >= 0 && x <= 1 && y >= 0 && y <= 1 &&
+    x + y >= cut &&
+    x - y <= 1 - cut &&
+    x + y <= 2 - cut &&
+    y - x <= 1 - cut
+  );
+}
+
+function cockpitChassisPoints(): THREE.Vector3[] {
+  const points: THREE.Vector3[] = [];
+  for (const x of [-COCKPIT_FRAME_MARGIN, GRID + COCKPIT_FRAME_MARGIN]) {
+    for (const z of [-COCKPIT_FRAME_MARGIN, GRID + COCKPIT_FRAME_MARGIN]) {
+      for (const y of [-0.4, 0.3]) points.push(new THREE.Vector3(x, y, z));
+    }
+  }
+  return points;
+}
+
 function defaultDir(): THREE.Vector3 {
   return new THREE.Vector3().setFromSphericalCoords(
     1,
     DEFAULT_POLAR,
+    DEFAULT_AZIMUTH
+  );
+}
+
+function cockpitDir(): THREE.Vector3 {
+  return new THREE.Vector3().setFromSphericalCoords(
+    1,
+    COCKPIT_DEFAULT_POLAR,
     DEFAULT_AZIMUTH
   );
 }
@@ -127,5 +182,40 @@ describe('computeFitDistance', () => {
     expect(dir.z).toBeGreaterThan(0);
     // 70-degree down-look: y component dominates
     expect(dir.y).toBeCloseTo(Math.cos(DEFAULT_POLAR), 10);
+  });
+
+  it('keeps the full cockpit chassis inside the clipped square arena viewport', () => {
+    // Cockpit CSS keeps the WebGL viewport square at every supported page
+    // aspect; the responsive matrix verifies that geometry independently.
+    const aspect = 1;
+    const dir = cockpitDir();
+    const cockpitTarget = new THREE.Vector3(
+      GRID / 2,
+      COCKPIT_TARGET_Y,
+      GRID / 2
+    );
+    const cockpitPoints = buildFitPoints(GRID, COCKPIT_FRAME_MARGIN);
+    const distance = computeFitDistance(
+      COCKPIT_FOV,
+      aspect,
+      dir,
+      cockpitTarget,
+      cockpitPoints
+    ) * COCKPIT_FIT_SCALE;
+    const chassisProjection = projectedPoints(
+      COCKPIT_FOV,
+      aspect,
+      dir,
+      cockpitTarget,
+      cockpitChassisPoints(),
+      distance
+    );
+    const extent = Math.max(
+      ...chassisProjection.flatMap((point) => [Math.abs(point.x), Math.abs(point.y)])
+    );
+
+    expect(COCKPIT_FIT_SCALE).toBeGreaterThan(0.82);
+    expect(chassisProjection.every(isInsideViewportCornerMask)).toBe(true);
+    expect(extent).toBeGreaterThan(0.9);
   });
 });

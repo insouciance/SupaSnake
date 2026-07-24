@@ -2,7 +2,7 @@
 
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
-import { PauseMenu } from '@/components/game/PauseMenu';
+import { AbandonRunDialog } from '@/components/game/AbandonRunDialog';
 import { GeneChoiceOverlay } from '@/components/game/GeneChoiceOverlay';
 import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
 import {
@@ -15,7 +15,8 @@ import type { RunCockpitModel } from './types';
 import styles from './CockpitPrototype.module.css';
 
 export type CockpitDecisionFixtureKind =
-  | 'pause'
+  | 'hold'
+  | 'abandon'
   | 'gene'
   | 'mutation'
   | 'portal'
@@ -57,16 +58,14 @@ const MODEL: RunCockpitModel = {
 };
 
 function Decision({ kind }: { kind: CockpitDecisionFixtureKind }) {
-  if (kind === 'pause') {
+  if (kind === 'abandon') {
     return (
-      <PauseMenu
-        dynasty="PRIMAL"
+      <AbandonRunDialog
         score={12840}
         dnaCollected={186}
-        bankDna={168}
-        crashDna={52}
-        onResume={() => undefined}
-        onQuit={() => undefined}
+        costsEnergy
+        onCancel={() => undefined}
+        onConfirm={() => undefined}
       />
     );
   }
@@ -119,6 +118,8 @@ export function CockpitDecisionFixture({ kind }: { kind: CockpitDecisionFixtureK
   const eventCallout = kind === 'expression'
     ? <ExpressionFlourish strain="FERAL" tier={3} presentation="cockpit" />
     : undefined;
+  const held = kind === 'hold' || kind === 'abandon';
+  const decisionVisible = kind !== 'expression' && kind !== 'hold';
   return (
     <main
       className={`${styles.decisionFixtureRoot} consent-safe-viewport cockpit-game-viewport`}
@@ -126,11 +127,22 @@ export function CockpitDecisionFixture({ kind }: { kind: CockpitDecisionFixtureK
     >
       <GameEnvironment dynasty="PRIMAL" />
       <RunCockpit
-        model={kind === 'expression' ? { ...MODEL, state: 'apex' } : MODEL}
+        model={kind === 'expression'
+          ? { ...MODEL, state: 'apex' }
+          : held
+            ? {
+                ...MODEL,
+                state: 'held',
+                modeDetail: 'Tactical hold',
+                statusText: 'Tactical hold · press a safe direction to resume',
+              }
+            : MODEL}
         onPause={() => undefined}
+        onAbandon={() => undefined}
         onResetView={() => undefined}
         showPause={false}
-        decisionDock={kind === 'expression' ? undefined : <Decision kind={kind} />}
+        showAbandon={kind === 'hold'}
+        decisionDock={decisionVisible ? <Decision kind={kind} /> : undefined}
         eventCallout={eventCallout}
       >
         <ArenaPrototypeCanvas

@@ -28,6 +28,18 @@ import * as THREE from 'three';
 
 /** Default pitch: 70 degrees down from horizontal = 20 degrees from zenith */
 export const DEFAULT_POLAR = THREE.MathUtils.degToRad(20);
+/** Cockpit pitch: a slightly flatter broadcast view without sacrificing fit. */
+export const COCKPIT_DEFAULT_POLAR = THREE.MathUtils.degToRad(16);
+/** Exact outer half-overhang of the premium undertray chassis. */
+export const COCKPIT_FRAME_MARGIN = 1.175;
+/**
+ * Calibrated against the chassis bounds and the viewport's 4% corner mask.
+ * This retains a broadcast-tight board while keeping all four chassis
+ * corners visible; the former 0.82 value crossed that mask on reset.
+ */
+export const COCKPIT_FIT_SCALE = 0.94;
+/** Small framing bias that protects the near (south) chassis corners. */
+export const COCKPIT_TARGET_Y = -0.3;
 /** Pitch limits (polar angle from zenith) */
 export const MIN_POLAR = THREE.MathUtils.degToRad(12);
 export const MAX_POLAR = THREE.MathUtils.degToRad(45);
@@ -115,6 +127,8 @@ interface CameraRigProps {
   fitScale?: number;
   /** Default/reset pitch, expressed as polar angle from zenith. */
   defaultPolar?: number;
+  /** Vertical orbit target used to bias ground-plane framing. */
+  targetY?: number;
 }
 
 export function CameraRig({
@@ -124,6 +138,7 @@ export function CameraRig({
   frameMargin = 1,
   fitScale = 1,
   defaultPolar = DEFAULT_POLAR,
+  targetY = 0,
 }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
@@ -137,8 +152,8 @@ export function CameraRig({
   const [maxDistance, setMaxDistance] = useState(60);
 
   const target = useMemo(
-    () => new THREE.Vector3(gridSize / 2, 0, gridSize / 2),
-    [gridSize]
+    () => new THREE.Vector3(gridSize / 2, targetY, gridSize / 2),
+    [gridSize, targetY]
   );
   const fitPoints = useMemo(
     () => buildFitPoints(gridSize, frameMargin),

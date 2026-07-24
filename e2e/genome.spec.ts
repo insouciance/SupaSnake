@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { seedConsent, signInAsGuest } from './helpers';
 
+const COCKPIT_ENABLED = process.env.NEXT_PUBLIC_HUD_COCKPIT_V1 === 'true';
+
 test.describe('Genome capability UI', () => {
   test('reveals Build Seed and keeps the full telemetry deck clear of the board', async ({ page }, testInfo) => {
     test.setTimeout(300_000);
@@ -115,7 +117,9 @@ test.describe('Genome capability UI', () => {
     await expect(freePlayStart).toBeEnabled();
     await freePlayStart.click();
     await expect(page.getByTestId('strain-meter')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('strain-meter-AURUM')).toContainText('Aurum');
+    await expect(page.getByTestId('strain-meter-AURUM')).toHaveAccessibleName(
+      /Aurum 2 of 4, tier 1/i
+    );
 
     const viewports = [
       { name: 'mobile-compact', width: 320, height: 568 },
@@ -144,13 +148,25 @@ test.describe('Genome capability UI', () => {
       const strain = await page.getByTestId('strain-meter').boundingBox();
       expect(hud).not.toBeNull();
       expect(board).not.toBeNull();
-      expect(gateBox).not.toBeNull();
       expect(strain).not.toBeNull();
-      expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height - 0.5);
-      expect(gateBox!.y).toBeGreaterThanOrEqual(board!.y);
-      expect(gateBox!.y + gateBox!.height).toBeLessThanOrEqual(
-        board!.y + board!.height + 0.5
-      );
+      if (COCKPIT_ENABLED) {
+        const boardCenterX = board!.x + board!.width / 2;
+        const boardCenterY = board!.y + board!.height / 2;
+        expect(Math.abs(boardCenterX - viewport.width / 2)).toBeLessThanOrEqual(9);
+        expect(Math.abs(boardCenterY - viewport.height / 2)).toBeLessThanOrEqual(10);
+        if (gateBox) {
+          expect(gateBox.y + gateBox.height).toBeLessThanOrEqual(board!.y + 0.5);
+        } else {
+          expect(viewport.height).toBeLessThanOrEqual(430);
+        }
+      } else {
+        expect(gateBox).not.toBeNull();
+        expect(board!.y).toBeGreaterThanOrEqual(hud!.y + hud!.height - 0.5);
+        expect(gateBox!.y).toBeGreaterThanOrEqual(board!.y);
+        expect(gateBox!.y + gateBox!.height).toBeLessThanOrEqual(
+          board!.y + board!.height + 0.5
+        );
+      }
       expect(board!.height).toBeGreaterThanOrEqual(
         viewport.height <= 430 ? 180 : Math.min(360, viewport.height * 0.5)
       );
@@ -186,7 +202,9 @@ test.describe('Genome capability UI', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     const gate = page.getByTestId('resume-gate');
     const flickSurface = page.getByTestId('flick-surface');
-    await expect(gate).toContainText(/Ready!|Swipe or press an arrow to move/);
+    await expect(gate).toContainText(
+      /Ready!|Swipe or press an arrow to move|(?:Flick|Tap) a direction to start/
+    );
     await expect(page.getByRole('button', { name: /pause game/i })).toBeHidden();
     const flickBox = await flickSurface.boundingBox();
     expect(flickBox).not.toBeNull();
@@ -214,18 +232,27 @@ test.describe('Genome capability UI', () => {
     });
     await expect(gate).toBeHidden();
 
-    // Escape arms a move, the board remains gated across multiple would-be
-    // ticks, a reversal is rejected, and a duplicate direction deliberately
-    // resumes. P and Escape both return between menu and held board.
+    // The rollback HUD retains its legacy two-step pause menu. The refined
+    // cockpit enters tactical hold directly, so movement remains the only
+    // resume action.
     await page.keyboard.press('p');
     const pausedHeading = page.getByRole('heading', { name: /^paused$/i });
-    await expect(pausedHeading).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(gate).toContainText('Choose Your Line');
+    if (!COCKPIT_ENABLED) {
+      await expect(pausedHeading).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(gate).toContainText('Choose Your Line');
+      await page.keyboard.press('ArrowRight');
+      await expect(gate).toBeHidden();
+      return;
+    }
 
-    // Planning is only useful when the frozen board remains readable. The
-    // compact hold banner must stay near the board's top and leave most of
-    // even the short-landscape playfield exposed.
+    await expect(pausedHeading).toBeHidden();
+    await expect(gate).toContainText(/tactical hold/i);
+    await expect(page.getByRole('button', { name: /abandon run/i })).toBeVisible();
+
+    // Tactical hold never replaces the board. Portrait uses the status deck;
+    // short landscape uses a compact chassis rail because its status deck is
+    // intentionally collapsed.
     for (const viewport of [
       { name: 'planning-mobile-compact', width: 320, height: 568 },
       { name: 'planning-mobile-tall', width: 390, height: 844 },
@@ -239,15 +266,14 @@ test.describe('Genome capability UI', () => {
           )
       );
       const heldBoard = await page.getByTestId('game-board-viewport').boundingBox();
-      const heldBanner = await gate.boundingBox();
       expect(heldBoard).not.toBeNull();
-      expect(heldBanner).not.toBeNull();
-      expect(heldBanner!.y).toBeGreaterThanOrEqual(heldBoard!.y);
-      expect(heldBanner!.y).toBeLessThanOrEqual(heldBoard!.y + 24);
-      expect(heldBanner!.height).toBeLessThanOrEqual(
-        Math.min(84, heldBoard!.height * 0.35)
-      );
-      expect(heldBoard!.height - heldBanner!.height).toBeGreaterThanOrEqual(180);
+      expect(heldBoard!.height).toBeGreaterThanOrEqual(180);
+      await expect(page.getByTestId('cockpit-decision-dock')).toBeHidden();
+      if (viewport.height <= 430) {
+        await expect(page.getByTestId('tactical-hold')).toBeVisible();
+      } else {
+        await expect(gate).toBeVisible();
+      }
       await testInfo.attach(viewport.name, {
         body: await page.screenshot(),
         contentType: 'image/png',
@@ -255,29 +281,34 @@ test.describe('Genome capability UI', () => {
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(700);
-    await expect(gate).toContainText('Choose Your Line');
+    await expect(gate).toContainText(/tactical hold/i);
+
+    // Escape/P do not bounce into a redundant pause screen. A reversal is
+    // rejected while held; a duplicate safe direction deliberately resumes.
     await page.keyboard.press('Escape');
-    await expect(pausedHeading).toBeVisible();
+    await expect(gate).toContainText(/tactical hold/i);
     await page.keyboard.press('p');
-    await expect(gate).toContainText('Choose Your Line');
+    await expect(gate).toContainText(/tactical hold/i);
     await page.keyboard.press('ArrowLeft');
-    await expect(gate).toContainText('Choose Your Line');
+    await expect(gate).toContainText(/tactical hold/i);
     await page.keyboard.press('ArrowRight');
     await expect(gate).toBeHidden();
 
     // Pause cannot be spammed in the 600ms rearm window. Once rearmed, the
-    // HUD button can enter/leave planning without moving the board; Space is
-    // an explicit desktop release that preserves the current heading.
+    // cockpit enters hold directly. The abandon confirmation blocks movement
+    // leakage and cancel returns to the same frozen tactical state.
     await page.keyboard.press('p');
-    await expect(pausedHeading).toBeHidden();
+    await expect(gate).toBeHidden();
     await page.waitForTimeout(650);
     await page.keyboard.press('p');
-    await expect(pausedHeading).toBeVisible();
-    await page.getByRole('button', { name: /plan next move/i }).click();
-    await expect(gate).toContainText('Choose Your Line');
-    await page.getByRole('button', { name: /return to pause menu/i }).click();
-    await expect(pausedHeading).toBeVisible();
-    await page.getByRole('button', { name: /plan next move/i }).click();
+    await expect(gate).toContainText(/tactical hold/i);
+    await page.getByRole('button', { name: /abandon run/i }).click();
+    const abandonDialog = page.getByTestId('abandon-run-dialog');
+    await expect(abandonDialog).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(abandonDialog).toBeVisible();
+    await abandonDialog.getByRole('button', { name: /keep planning/i }).click();
+    await expect(gate).toContainText(/tactical hold/i);
     await page.keyboard.press('Space');
     await expect(gate).toBeHidden();
 
@@ -285,8 +316,10 @@ test.describe('Genome capability UI', () => {
     // and prove a safe tap starts and resumes without an automatic tick.
     await page.waitForTimeout(650);
     await page.keyboard.press('p');
-    await expect(pausedHeading).toBeVisible();
-    await page.getByRole('button', { name: /quit to menu/i }).click();
+    await expect(gate).toContainText(/tactical hold/i);
+    await page.getByRole('button', { name: /abandon run/i }).click();
+    const finalAbandonDialog = page.getByTestId('abandon-run-dialog');
+    await finalAbandonDialog.getByRole('button', { name: /^abandon run$/i }).click();
     await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible();
     await page.getByTestId('control-mode-dpad').click();
     await expect(page.getByTestId('control-mode-dpad')).toHaveAttribute(
@@ -303,16 +336,17 @@ test.describe('Genome capability UI', () => {
     await page.getByTestId('free-play-start').click({ force: true });
     await secondStart;
     await expect(gate).toContainText(
-      /Ready!|Swipe or press an arrow to move/,
+      /Ready!|Swipe or press an arrow to move|(?:Flick|Tap) a direction to start/,
       { timeout: 20_000 }
     );
     await page.getByRole('button', { name: /move up/i }).click();
     await expect(gate).toBeHidden();
     await page.waitForTimeout(650);
     await page.keyboard.press('p');
-    await expect(pausedHeading).toBeVisible();
-    await page.getByRole('button', { name: /plan next move/i }).click();
-    await page.getByRole('button', { name: /move left/i }).click();
+    await expect(gate).toContainText(/tactical hold/i);
+    // RIGHT is safe whether the opening UP has already become the authoritative
+    // heading or the engine is still on its initial RIGHT heading.
+    await page.getByRole('button', { name: /move right/i }).click();
     await expect(gate).toBeHidden();
   });
 });

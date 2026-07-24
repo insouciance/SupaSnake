@@ -11,7 +11,7 @@ const VIEWPORTS = [
   { name: 'landscape', width: 844, height: 390 },
   { name: 'desktop', width: 1440, height: 900 },
 ];
-const KINDS = ['pause', 'gene', 'mutation', 'portal', 'surge', 'expression'];
+const KINDS = ['hold', 'abandon', 'gene', 'mutation', 'portal', 'surge', 'expression'];
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -83,11 +83,14 @@ async function openCase({ kind, viewport, consent }) {
     const board = document.querySelector('[data-testid="game-board-viewport"]');
     const dock = document.querySelector('[data-testid="cockpit-decision-dock"]');
     const callout = document.querySelector('[data-testid="expression-flourish"]');
+    const holdRail = document.querySelector('[data-testid="tactical-hold"]');
+    const resumeGate = document.querySelector('[data-testid="resume-gate"]');
+    const abandonControl = document.querySelector('button[aria-label="Abandon run"]');
     const consentBanner = document.querySelector('.consent-banner');
     const footer = document.querySelector('footer');
     if (!root || !board) throw new Error('Decision fixture did not render');
 
-    const targetRoot = dock ?? callout;
+    const targetRoot = kind === 'hold' ? root : dock ?? callout;
     const buttons = targetRoot
       ? [...targetRoot.querySelectorAll('button')]
           .filter((button) => getComputedStyle(button).visibility !== 'hidden')
@@ -104,7 +107,8 @@ async function openCase({ kind, viewport, consent }) {
             size: Number.parseFloat(getComputedStyle(element).fontSize),
           }))
       : [];
-    const dialog = dock?.querySelector('[role="dialog"]');
+    const dialog = dock?.querySelector('[role="dialog"], [role="alertdialog"]');
+    const panel = dialog?.firstElementChild;
     return {
       kind,
       consent,
@@ -113,6 +117,14 @@ async function openCase({ kind, viewport, consent }) {
       dock: dock ? rect(dock) : null,
       callout: callout ? rect(callout) : null,
       dialog: dialog ? rect(dialog) : null,
+      panel: panel ? rect(panel) : null,
+      holdRail: holdRail && getComputedStyle(holdRail).display !== 'none'
+        ? rect(holdRail)
+        : null,
+      resumeGate: resumeGate && getComputedStyle(resumeGate).display !== 'none'
+        ? rect(resumeGate)
+        : null,
+      abandonControl: abandonControl ? rect(abandonControl) : null,
       buttons,
       primaryText,
       footerVisibility: footer ? getComputedStyle(footer).visibility : null,
@@ -125,20 +137,41 @@ async function openCase({ kind, viewport, consent }) {
   }, { kind, consent });
 
   invariant(errors.length === 0, `${kind}/${viewport.name}: page errors: ${errors.join('; ')}`);
-  const peripheral = metrics.dock ?? metrics.callout;
-  invariant(peripheral, `${kind}/${viewport.name}: peripheral surface missing`);
-  invariant(
-    !intersects(metrics.board, peripheral),
-    `${kind}/${viewport.name}: peripheral surface intersects board`
-  );
-  if (metrics.dock) {
+  if (kind === 'hold') {
+    invariant(!metrics.dock, `${kind}/${viewport.name}: tactical hold opened a modal`);
+    invariant(
+      metrics.resumeGate || metrics.holdRail,
+      `${kind}/${viewport.name}: tactical hold has no visible guidance`
+    );
+    invariant(metrics.abandonControl, `${kind}/${viewport.name}: abandon control missing`);
+  } else if (metrics.dock) {
     invariant(metrics.dialog, `${kind}/${viewport.name}: dialog missing from dock`);
+    invariant(metrics.panel, `${kind}/${viewport.name}: decision panel missing`);
     invariant(
       metrics.dialog.x >= metrics.dock.x - 0.5 &&
       metrics.dialog.y >= metrics.dock.y - 0.5 &&
       metrics.dialog.right <= metrics.dock.right + 0.5 &&
       metrics.dialog.bottom <= metrics.dock.bottom + 0.5,
       `${kind}/${viewport.name}: dialog escaped decision dock`
+    );
+    invariant(
+      intersects(metrics.board, metrics.dock),
+      `${kind}/${viewport.name}: strategic modal does not command the board`
+    );
+    const panelCenterX = metrics.panel.x + metrics.panel.width / 2;
+    const panelCenterY = metrics.panel.y + metrics.panel.height / 2;
+    const boardCenterX = metrics.board.x + metrics.board.width / 2;
+    const boardCenterY = metrics.board.y + metrics.board.height / 2;
+    invariant(
+      Math.abs(panelCenterX - boardCenterX) <= 10 &&
+      Math.abs(panelCenterY - boardCenterY) <= 10,
+      `${kind}/${viewport.name}: strategic panel is not centered on the arena`
+    );
+  } else {
+    invariant(metrics.callout, `${kind}/${viewport.name}: expression callout missing`);
+    invariant(
+      !intersects(metrics.board, metrics.callout),
+      `${kind}/${viewport.name}: expression callout intersects board`
     );
   }
   for (const target of metrics.buttons) {

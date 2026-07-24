@@ -1,26 +1,67 @@
 # SupaSnake Run Cockpit & Arena — Premium Game-Screen Redesign
 
-**Status:** implementation-ready product and engineering plan
+**Status:** cockpit refinement implemented; production validation and rollout in progress
 
-**Date:** 2026-07-23
+**Date:** 2026-07-24
 
-**Implementation checkpoint:** Phase 0 is implemented and verified in the
-isolated `feat/cockpit-v1` worktree. The static whole-screen fixture passes 8
-viewports × 4 telemetry states with a centered, stable, unobstructed board,
-14px minimum visible text, 44px controls, explicit background crops, and no
-overflow. The Phase 1 isolated WebGL foundation is also running with the
-canonical environment component, shared DOM/Three.js tokens, physical arena
-undertray, matte floor/grid, camera tuning, and real entity previews; it adds
-3 measured raw-scene draw calls versus the released arena. Nothing is wired to
-the live `/game` route or deployed yet.
+**Implementation checkpoint:** Run Cockpit & Arena v1 is live behind
+`NEXT_PUBLIC_HUD_COCKPIT_V1`. The 2026-07-24 refinement is implemented in the
+isolated `feat/cockpit-refinement` worktree and is moving through the complete
+production gate. The responsive fixture currently passes 8 viewports × 4
+telemetry states, the real-WebGL fixture passes all 4 representative profiles,
+and the decision fixture passes 22 frozen-state/legal-surface checks. The
+refinement has not yet been promoted to production; section 19 remains the
+record of the current v1 deployment until promotion is complete.
 
 **Scope:** the complete active game screen: authored background treatment,
 cockpit chassis, arena geometry and materials, board grid, camera/framing,
 lighting, run telemetry, genes, strains, prompts, pause/choice presentation,
 responsive behavior, accessibility, performance, and rollout
 
-**Non-goal:** gameplay rules, economy, progression, input semantics, validation
-rules, or replacement/redrawing of the player-authored background artwork
+**Non-goal:** gameplay rules, economy, progression, validation rules, or
+replacement/redrawing of the player-authored background artwork
+
+## 0. Authoritative refinement contract — 2026-07-24
+
+This section supersedes any older layout or pause/decision wording elsewhere
+in this document. The earlier sections preserve the research and v1 design
+history; where they conflict, this contract is authoritative.
+
+- Desktop adopts the compact composition already proven on portrait mobile:
+  one shallow top command deck, a geometrically centered arena, and one shallow
+  lower genome/extraction deck. Sparse full-height desktop side panels are
+  removed. Related telemetry stays attached to the arena rather than drifting
+  to monitor edges on ultrawide screens.
+- Portrait mobile retains its successful top/arena/bottom composition. Short
+  mobile landscape retains compact symmetric side rails because vertical room
+  is the limiting dimension there.
+- Score, run DNA, status, mode/Energy, and controls occupy stable top-deck
+  instruments. Six graphical gene sockets, portal state, secured/crash value,
+  and five graphical strain gauges occupy the lower deck. Runtime values never
+  resize or move the arena.
+- Active-run gene and strain identity is graphical and accessible. Full names
+  and consequences belong in strategic decisions, results, Codex, accessible
+  names, and pointer titles—not unreadable permanent microtext.
+- Telemetry, prompts, controls, event callouts, and the tactical-hold message
+  never overlay the playable board. Gene, mutation, portal, infusion, and
+  strain-surge decisions are the intentional exception: they are core
+  gameplay, so they become dominant centered modal dialogs over the visibly
+  frozen arena with a full-cockpit scrim.
+- A strategic dialog owns focus and input atomically. Directions, flick, D-pad,
+  pause, and camera shortcuts cannot leak through. BANK ends the run;
+  non-terminal choices return to a deliberate tactical hold.
+- Pause has no menu. Pause immediately freezes the simulation while preserving
+  the visible board for tactical planning. A later accepted safe direction,
+  duplicate/current direction, deliberate flick, D-pad input, or eligible
+  Space input resumes atomically; reversal remains rejected. Escape/P cannot
+  bounce between redundant pause surfaces.
+- Tactical hold exposes a secondary **Abandon run** control. It opens a
+  destructive `alertdialog` that states which score, run DNA, and—when
+  applicable—Energy will be forfeited. Cancelling returns to the same hold.
+- Default/reset camera uses the complete chassis envelope, not only playable
+  cell bounds. The calibrated pose is 16° polar, 1.175 frame margin, 0.94 fit
+  scale, and −0.3 vertical target, keeping all four chassis corners visible on
+  both mobile and desktop without making the arena feel unnecessarily small.
 
 ## 1. Product intent
 
@@ -38,8 +79,8 @@ The run cockpit must be:
 - **glanceable:** symbols, silhouettes, values, and short state changes replace
   microcopy;
 - **stable:** telemetry updates never resize, shift, or cover the board;
-- **learnable:** a gene uses the same icon in its offer, held slot, pause detail,
-  results, and Codex;
+- **learnable:** a gene uses the same icon in its offer, held slot, strategic
+  decision, results, and Codex;
 - **premium:** restrained materials, precise alignment, controlled motion, and
   strong hierarchy replace rows of generic glowing chips;
 - **competitive:** a spectator can read score, run value, mode, build, and strain
@@ -154,7 +195,7 @@ The complete screen uses this fixed depth and attention order:
 | 5. Board plane and grid | Defines playable space and distance | Consistent contrast across every crop and dynasty |
 | 6. Snake, food, hazards, portals | What the player acts on now | Highest semantic contrast, distinct silhouettes, restrained bloom |
 | 7. Peripheral instruments | Explains the run without covering it | Immediately readable, but never brighter than an urgent board event |
-| 8. Frozen-state sidecars | Supports an explicit decision while simulation is held | Highest temporary UI priority, still outside/replacing rather than overlaying the board |
+| 8. Strategic-decision modal | Supports a consequential choice while simulation is atomically held | Highest temporary UI priority; centered over the frozen arena by design |
 
 No lower layer may imitate the shape, motion, luminance, or semantic color of a
 higher layer. In particular, background stars must not read as food, dynasty
@@ -295,9 +336,10 @@ the cockpit is DOM and the arena is WebGL.
 
 ### Protected arena rectangle
 
-`game-board-viewport` becomes a protected rectangle.
+`game-board-viewport` is a protected rectangle during navigation and active
+play.
 
-- No visible HUD, label, toast, prompt, button, choice card, pause panel, or
+- No telemetry, toast, prompt, routine control, tactical-hold surface, or
   flourish may intersect its bounding box.
 - Invisible pointer/flick capture may cover the canvas only when it is the
   intended board input surface.
@@ -305,9 +347,10 @@ the cockpit is DOM and the arena is WebGL.
   rails.
 - HUD content appearing or changing does not alter the board rectangle during
   a live run.
-- Frozen decisions may use dedicated sidecars. On narrow screens, a decision
-  surface may replace the board region while the simulation is held; it may not
-  layer text over playable cells.
+- Consequential gene, mutation, portal, infusion, and strain-surge dialogs may
+  deliberately overlay the arena only after the engine has atomically frozen.
+  They center the decision, dim the cockpit, trap focus, and block every board
+  input until resolution.
 
 ### Stable chassis
 
@@ -335,39 +378,38 @@ and make another element jump.
 | 2 | Strain progress/tier | Five distinct glyphs with four-segment gauges |
 | 2 | Combo | Reserved multiplier dial; dormant when inactive |
 | 3 | Mode/anomaly | Compact persistent symbol; readable label where space permits |
-| 3 | Pause/reset controls | Outer chassis, 44px targets, never above the arena |
-| 4 | Energy, snake name/generation | Pre-run, pause, and results; not primary during a live run |
-| 4 | Gene effects/costs and tier names | Choice, pause detail, results, and Codex only |
-
-Removing live-run energy from the primary trio is intentional. It is a session
-entry resource, not an in-run decision variable. The player still sees it
-before starting and after finishing.
+| 3 | Pause/reset controls | Compact command deck, 44px targets, never over the arena |
+| 3 | Energy | Compact context beside mode; visually secondary but available during a run |
+| 4 | Snake name/generation | Pre-run and results, not primary during a live run |
+| 4 | Gene effects/costs and tier names | Strategic decisions, results, and Codex only |
 
 ## 7. Cockpit composition
 
 ### Wide desktop and ultrawide
 
-Side rails have equal width and remain visually attached to the arena rather
-than the physical monitor edges.
+Desktop uses the same compact information architecture as portrait mobile,
+scaled for couch-distance legibility rather than expanded into sparse side
+panels.
 
 ```text
-             ┌──── SCORE / COMBO ────┐   ┌──── DNA / RISK ──────┐
-┌───────────┐┌───────────────────────────────────────────────────┐┌───────────┐
-│ GENE RACK ││                                                   ││ STRAINS   │
-│ [1] [2]   ││                                                   ││ ◉ ◉ ◉ ◉ ◉ │
-│ [3] [4]   ││                 GAME BOARD                        ││           │
-│ [5] [6]   ││                                                   ││ PORTAL    │
-│           ││                                                   ││ / ANOMALY │
-└───────────┘└───────────────────────────────────────────────────┘└───────────┘
-             └──── HELD / MODE STATUS ─┘   └──── PAUSE / VIEW ───┘
+┌── SCORE ── DNA ── STATUS ── MODE / ENERGY ── VIEW / PAUSE ──┐
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│                         GAME BOARD                           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+└── GENE SOCKETS 1–6 ── PORTAL / BANK / CRASH / STRAINS ─────┘
 ```
 
-- Central arena width is capped from viewport height so ultrawide screens do
-  not pull related telemetry metres away from the board.
-- Score anchors the board's upper-left corner; DNA/risk anchors upper-right.
-- Genes read vertically or as a 2×3 rack on the left.
-- Strains, portal state, anomaly, pause, and reset live on the right.
-- The redundant in-run logo and “Run telemetry” label are removed.
+- Top and bottom decks have equal shallow heights so the arena remains at the
+  viewport's geometric center.
+- The complete composition is capped from viewport height; ultrawide screens
+  add breathing room outside the cockpit instead of stretching its modules.
+- Genes read horizontally as six symbol sockets. Portal, secured/crash value,
+  and strains form one compact systems rack.
+- Score, DNA, mode, Energy, reset, and pause remain immediately legible without
+  turning low-information instruments into full-height panels.
+- The redundant in-run logo and “Run telemetry” label remain removed.
 
 ### Short mobile landscape
 
@@ -406,8 +448,8 @@ Portrait uses a shallow top instrument bar and two compact bottom docks.
 - Flick mode gives the board more height; D-pad mode owns a separate bottom
   control dock.
 - No horizontal text ticker is allowed.
-- Low-priority text becomes accessible labels and pause detail, not smaller
-  typography.
+- Low-priority text becomes accessible labels and strategic-detail copy, not
+  smaller typography.
 
 ### Tablet portrait
 
@@ -474,7 +516,7 @@ The six held slots become a visual loadout rack.
   render splice initials.
 - Hover/focus may reveal a tooltip on pointer devices, but no gameplay
   information may be hover-only.
-- Pause and choice views show icon, full name, effect, cost, strain, and state at
+- Strategic choices show icon, full name, effect, cost, strain, and state at
   readable sizes.
 
 ### Offer-to-rack learning loop
@@ -483,7 +525,7 @@ The six held slots become a visual loadout rack.
 2. Choosing it produces one short icon-to-socket transition while the board is
    held.
 3. The same icon persists in the rack, results, Genome Card, and Codex.
-4. The pause panel is the player's on-demand legend.
+4. Results and Codex remain the player's persistent on-demand legend.
 
 ### Icon brief for all offerable genes
 
@@ -562,14 +604,15 @@ Replace five mini-cards with five distinct symbols and segmented gauges.
   is not encoded only by color.
 - Suppression adds a fixed cap/slash glyph and hatched outer arc; remove tiny
   `CAP` text.
-- Tier names appear in the pause/detail panel and in a readable one-time rail
-  callout, not permanently beneath every gauge.
+- Tier names appear in strategic/detail contexts and in a readable one-time
+  rail callout, not permanently beneath every gauge.
 - Expression/Apex activation lights the relevant rail and announces the name
   without covering the board.
 
-## 11. Prompts, pause, and frozen decisions
+## 11. Prompts, tactical hold, and strategic decisions
 
-The protected-board rule applies to transient UI too.
+The protected-board rule applies to routine transient UI. Consequential
+strategic decisions are an explicit, engine-frozen exception.
 
 ### Ready and resume
 
@@ -585,23 +628,28 @@ The protected-board rule applies to transient UI too.
 - The board may receive a subtle in-world color response from gameplay VFX, but
   DOM UI may not cover it.
 
-### Pause
+### Tactical hold
 
-- Desktop/landscape: expand the left sidecar into a Run Systems panel while the
-  board remains held and visible.
-- Portrait: switch to a dedicated pause layout in normal flow. It may replace
-  the Canvas region while paused; it must not layer a panel over the board.
-- Show score, DNA, bank/salvage, all gene icons with full details, strains, mode,
-  Resume/Plan Next Move, and Quit.
-- Resume returns to the deliberate-direction gate outside the board.
+- Pause immediately freezes the engine and changes the persistent status rail
+  to **Tactical hold**; no Pause modal or intermediate Resume button appears.
+- The board remains fully visible so the player can inspect a difficult line.
+- A later accepted movement input resumes atomically. A reversal leaves the
+  hold intact; a 600ms rearm guard prevents adjacent-tick pause abuse.
+- Pause control becomes a secondary Abandon control without changing deck
+  geometry. Abandon requires an accurate destructive confirmation.
 
 ### Gene, portal, and surge choices
 
-- Desktop/landscape: use the two sidecars as opposing choice panels with the
-  held board visible between them.
-- Portrait: transition to a full-width frozen-decision layout that replaces the
-  board region. Do not squeeze full gene effects into a tiny strip.
-- Preserve input locks, focus trap, keyboard shortcuts, and atomic engine hold.
+- Present each choice as a dominant centered modal over the visibly frozen
+  arena on desktop, landscape, and portrait.
+- Use a full-cockpit scrim, restrained backdrop blur, readable consequence
+  copy, and enough panel width for side-by-side comparison where space permits.
+  The smallest portrait may scroll inside the dialog rather than shrink copy.
+- Preserve focus trap, visible focus, advertised keyboard shortcuts, and the
+  atomic engine hold. No directional, flick, D-pad, pause, or camera input may
+  leak through.
+- BANK proceeds to Results. PASS, decline, pick, INFUSE→gene, and
+  INFUSE→surge resolve fully before entering the deliberate tactical hold.
 
 ## 12. Visual system
 
@@ -749,7 +797,7 @@ Implementation rules:
   capacity without explanatory prose.
 - Strain array appears only after strain tags unlock.
 - Portal risk instrument is introduced contextually at the first portal.
-- Full labels live in the held choice/pause surfaces, not in motion.
+- Full labels live in strategic choices, results, and Codex, not in motion.
 
 After the default is proven, add optional settings:
 
@@ -829,15 +877,18 @@ portal/combo/anomaly transitions do not move the board or neighboring modules.
 **Exit:** no monograms or 8–11px gene/strain labels remain in active gameplay;
 every catalog entry resolves to a tested bespoke glyph.
 
-### Phase 5 — Frozen-state sidecars
+### Phase 5 — Tactical hold and strategic-decision modals
 
-- Redesign Pause as Run Systems.
+- Remove the redundant Pause surface; keep the frozen board visible and resume
+  only through accepted movement input.
+- Add a secondary Abandon control with destructive confirmation.
 - Move Expression/Apex feedback to the strain rail.
-- Move gene, portal, and surge choices out of the board rectangle.
-- Preserve focus, keyboard, touch, and atomic engine-hold behavior.
+- Center gene, mutation, portal, and surge choices over the frozen arena.
+- Preserve focus, keyboard, touch, shortcuts, and atomic engine-hold behavior.
 
-**Exit:** board protection holds during Ready, resume, pause, gene offer, portal,
-surge, Expression, and Apex states.
+**Exit:** routine telemetry never covers the board; tactical hold preserves the
+complete arena; every strategic dialog commands attention without allowing
+input leakage or a premature engine tick.
 
 ### Phase 6 — Accessibility, polish, and preference controls
 
@@ -885,7 +936,7 @@ device in portrait and landscape.
 - single/dual-strain gene, spent Phoenix, and every splice;
 - zero through four points for each strain;
 - Minor, Expression, Apex, and suppressed strain;
-- Ready, resume hold, Pause, gene choice, portal choice, surge choice;
+- Ready, tactical hold, abandon confirmation, gene choice, portal choice, surge choice;
 - COSMIC walls open, closing telegraph, closed, and opening telegraph;
 - normal arena and Blackout visibility mask;
 - flick and D-pad control modes;
@@ -902,8 +953,9 @@ device in portrait and landscape.
   playable 20×20 bounds at every permitted camera pose.
 - Every playable board corner remains visible at default and limit camera
   poses; decorative apron visibility may never be purchased by cropping a cell.
-- Every visible cockpit region has a bounding box that does not intersect the
-  board.
+- Every routine cockpit region has a bounding box that does not intersect the
+  board; strategic decision dialogs intersect and center on it only while the
+  engine is frozen.
 - Wide/landscape board center is within one CSS pixel of the viewport center.
 - Board bounds are unchanged when telemetry progresses through every dynamic
   state.
@@ -972,14 +1024,17 @@ The redesign is ready only when:
 - default and limit camera poses frame the complete playable board and arena
   chassis without allowing DOM UI to intersect play;
 - the game board is the visual and geometric center of active play;
-- visible UI never overlays the protected board rectangle;
+- routine telemetry, prompts, controls, and flourishes never overlay the
+  protected board rectangle; strategic decision dialogs do so intentionally
+  only while the engine is frozen;
 - score and DNA are immediately readable on all supported screens;
 - active-run genes use clear bespoke graphics, never monograms or tiny names;
 - strains communicate identity, points, tier, and suppression without relying
   on color or microcopy;
 - energy and long-form descriptions appear only where they are useful;
 - no telemetry state changes board geometry;
-- Ready, pause, choices, and tier feedback respect the protected board;
+- Ready, tactical hold, and tier feedback respect the protected board;
+  consequential choices are centered, readable, focus-trapped modal moments;
 - default motion is restrained and reduced-motion loses no information;
 - all existing gameplay, input, payout, FTUE, consent, and interruption-policy
   tests remain green;
@@ -1003,7 +1058,8 @@ The redesign is ready only when:
 - Five colored strain cards that differ mainly by hue.
 - Permanent scrolling tickers.
 - Conditional chips that cause neighboring modules to move.
-- HUD glass, prompts, or celebration cards over the board.
+- HUD glass, routine prompts, or celebration cards over the board. Strategic
+  engine-frozen decision dialogs are the deliberate exception.
 - Putting telemetry at the far monitor edges on ultrawide.
 - A configuration screen before first gameplay.
 - Shipping the frozen HUD/Pause candidate unchanged.

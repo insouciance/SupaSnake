@@ -9,7 +9,13 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
-import { CameraRig } from '@/components/game/CameraRig';
+import {
+  CameraRig,
+  COCKPIT_DEFAULT_POLAR,
+  COCKPIT_FIT_SCALE,
+  COCKPIT_FRAME_MARGIN,
+  COCKPIT_TARGET_Y,
+} from '@/components/game/CameraRig';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
@@ -36,7 +42,6 @@ interface ArenaPrototypeCanvasProps {
 }
 
 const GRID = GAME_CONFIG.board.gridSize;
-const COCKPIT_DEFAULT_POLAR = (16 * Math.PI) / 180;
 const STATIC_SNAKE: readonly Position[] = [
   { x: 10, y: 0, z: 13 },
   { x: 10, y: 0, z: 14 },
@@ -180,9 +185,10 @@ function PrototypeScene({
       <CameraRig
         gridSize={GRID}
         resetToken={0}
-        frameMargin={1.25}
-        fitScale={0.82}
+        frameMargin={COCKPIT_FRAME_MARGIN}
+        fitScale={COCKPIT_FIT_SCALE}
         defaultPolar={COCKPIT_DEFAULT_POLAR}
+        targetY={COCKPIT_TARGET_Y}
       />
 
       {!isMobile && effectsEnabled && (

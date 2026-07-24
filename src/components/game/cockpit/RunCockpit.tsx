@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
 import {
+  AbandonGlyph,
   DnaGlyph,
   EnergyGlyph,
   GeneGlyph,
@@ -22,9 +23,11 @@ interface RunCockpitProps {
   model: RunCockpitModel;
   children: ReactNode;
   onPause: () => void;
+  onAbandon?: () => void;
   onResetView: () => void;
   pauseDisabled?: boolean;
   showPause?: boolean;
+  showAbandon?: boolean;
   pauseLabel?: string;
   inputDock?: ReactNode;
   decisionDock?: ReactNode;
@@ -66,9 +69,11 @@ export function RunCockpit({
   model,
   children,
   onPause,
+  onAbandon,
   onResetView,
   pauseDisabled = false,
   showPause = true,
+  showAbandon = false,
   pauseLabel = 'Pause run',
   inputDock,
   decisionDock,
@@ -237,16 +242,37 @@ export function RunCockpit({
             <button type="button" onClick={onResetView} aria-label="Reset arena view" title="Reset view">
               <ResetGlyph />
             </button>
-            <button
-              type="button"
-              onClick={onPause}
-              disabled={pauseDisabled || !showPause}
-              aria-label={pauseLabel}
-              title={pauseDisabled ? 'Pause rearming' : pauseLabel}
-              className={!showPause ? styles.controlHidden : undefined}
-            >
-              <PauseGlyph />
-            </button>
+            {showPause ? (
+              <button
+                type="button"
+                onClick={onPause}
+                disabled={pauseDisabled}
+                aria-label={pauseLabel}
+                title={pauseDisabled ? 'Pause rearming' : pauseLabel}
+              >
+                <PauseGlyph />
+              </button>
+            ) : showAbandon && onAbandon ? (
+              <button
+                type="button"
+                onClick={onAbandon}
+                aria-label="Abandon run"
+                title="Abandon run"
+                className={styles.abandonControl}
+              >
+                <AbandonGlyph />
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled
+                aria-hidden="true"
+                tabIndex={-1}
+                className={styles.controlHidden}
+              >
+                <PauseGlyph />
+              </button>
+            )}
           </div>
 
           {inputDock && (
@@ -271,6 +297,17 @@ export function RunCockpit({
 
           <div className={styles.arenaBay} data-testid="cockpit-arena-bay">
             <div className={styles.arenaQuietZone} aria-hidden="true" />
+            {model.state === 'held' && (
+              <div
+                className={styles.tacticalHoldRail}
+                role="status"
+                aria-live="polite"
+                data-testid="tactical-hold"
+              >
+                <strong>Tactical hold</strong>
+                <span>Move to resume</span>
+              </div>
+            )}
             <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
               <div className={styles.webglViewport} data-testid="game-board-viewport">
                 {children}

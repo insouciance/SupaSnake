@@ -96,4 +96,36 @@ describe('RunCockpit', () => {
     expect(onResetView).toHaveBeenCalledTimes(1);
     expect(onPause).toHaveBeenCalledTimes(1);
   });
+
+  it('turns a tactical hold into board-visible resume guidance plus an abandon action', () => {
+    const onAbandon = jest.fn();
+    render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'held',
+          statusText: 'Tactical hold · press a safe direction to resume',
+          isFirstMovementPrompt: false,
+        }}
+        onPause={jest.fn()}
+        onAbandon={onAbandon}
+        onResetView={jest.fn()}
+        showPause={false}
+        showAbandon
+      >
+        <canvas data-testid="held-board" />
+      </RunCockpit>
+    );
+
+    expect(screen.getByTestId('tactical-hold')).toHaveTextContent(
+      'Tactical holdMove to resume'
+    );
+    expect(screen.getByTestId('tactical-hold')).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('button', { name: 'Pause run' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Abandon run' }));
+    expect(onAbandon).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('game-board-viewport')).toContainElement(
+      screen.getByTestId('held-board')
+    );
+  });
 });

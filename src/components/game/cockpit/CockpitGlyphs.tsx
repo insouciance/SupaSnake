@@ -107,6 +107,14 @@ export function ResetGlyph() {
   return <Svg><path d="M4 11a8 8 0 1 1 2.1 6.6M4 5v6h6" /></Svg>;
 }
 
+export function AbandonGlyph() {
+  return (
+    <Svg>
+      <path d="M10 4H5v16h5M13 8l4 4-4 4M8 12h9" />
+    </Svg>
+  );
+}
+
 /**
  * The complete gene catalog expressed as semantic silhouettes. These stay
  * intentionally free of letters and numerals: the rack is glance telemetry,

@@ -59,6 +59,7 @@ import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/Instan
 import { PerfHUD } from '@/components/game/PerfHUD';
 import { VirtualDPad } from '@/components/game/VirtualDPad';
 import { PauseMenu } from '@/components/game/PauseMenu';
+import { AbandonRunDialog } from '@/components/game/AbandonRunDialog';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
@@ -71,7 +72,14 @@ import { AimRenderer } from '@/components/game/AimRenderer';
 import type { AimTarget } from '@/components/game/aimUtils';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import { RunInsightCard } from '@/components/game/RunInsightCard';
-import { CameraRig, DEFAULT_AZIMUTH } from '@/components/game/CameraRig';
+import {
+  CameraRig,
+  COCKPIT_DEFAULT_POLAR,
+  COCKPIT_FIT_SCALE,
+  COCKPIT_FRAME_MARGIN,
+  COCKPIT_TARGET_Y,
+  DEFAULT_AZIMUTH,
+} from '@/components/game/CameraRig';
 import { FlickSurface } from '@/components/game/FlickSurface';
 import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
@@ -139,7 +147,6 @@ import {
  * per device until claimed or dismissed twice.
  */
 const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
-const COCKPIT_DEFAULT_POLAR = (16 * Math.PI) / 180;
 const DIRECTION_BY_KEY: Record<string, Direction> = {
   ArrowUp: 'UP',
   ArrowDown: 'DOWN',
@@ -169,9 +176,11 @@ interface BoardViewportShellProps {
   isPlaying: boolean;
   model: RunCockpitModel;
   onPause: () => void;
+  onAbandon?: () => void;
   onResetView: () => void;
   pauseDisabled: boolean;
   showPause: boolean;
+  showAbandon?: boolean;
   pauseLabel: string;
   inputDock?: ReactNode;
   decisionDock?: ReactNode;
@@ -184,9 +193,11 @@ function BoardViewportShell({
   isPlaying,
   model,
   onPause,
+  onAbandon,
   onResetView,
   pauseDisabled,
   showPause,
+  showAbandon,
   pauseLabel,
   inputDock,
   decisionDock,
@@ -198,9 +209,11 @@ function BoardViewportShell({
       <RunCockpit
         model={model}
         onPause={onPause}
+        onAbandon={onAbandon}
         onResetView={onResetView}
         pauseDisabled={pauseDisabled}
         showPause={showPause}
+        showAbandon={showAbandon}
         pauseLabel={pauseLabel}
         inputDock={inputDock}
         decisionDock={decisionDock}
@@ -259,6 +272,7 @@ export default function GamePage() {
   // A pause or build decision never releases directly into movement. The
   // engine stays frozen until the player's next deliberate direction input.
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -760,6 +774,7 @@ export default function GamePage() {
   // the pause button stay disabled until the active decision resolves.
   const choiceActive =
     choiceOptions !== null || portalChoicePending || surgeChoicePending;
+  const blockingOverlayActive = choiceActive || showAbandonConfirm;
 
   // The active anomaly run's modifier id (§7.2) - shapes the BANK preview
   // and outcome copy exactly like the server recompute will
@@ -1371,6 +1386,7 @@ export default function GamePage() {
     setLastGenomeCard(null);
     setCodexDiscoveries([]);
     setExpressionFlourish(null);
+    setShowAbandonConfirm(false);
     setPortalChoicePending(false);
     setSurgeChoicePending(false);
     setShowFirstResultDiscovery(false);
@@ -1575,6 +1591,10 @@ export default function GamePage() {
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Strategic choices and destructive confirmation own the keyboard in
+      // capture phase. Movement, pause, and camera shortcuts cannot leak.
+      if (blockingOverlayActive) return;
+
       // Handle ready state - first input starts movement
       if ((isReady && !intervalRef.current) || awaitingResumeInput) {
         const dir = DIRECTION_BY_KEY[e.key];
@@ -1603,14 +1623,15 @@ export default function GamePage() {
         }
       }
 
-      // The mutation choice overlay owns the keyboard while it is open
-      // (1/2 pick, Escape declines - handled in the overlay, capture phase)
-      if (choiceActive) return;
-
       // Handle pause toggle
       if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && isPlaying && !isGameOver && !isDeathSequence && !isReady) {
         e.preventDefault();
-        if (isPaused) {
+        if (HUD_COCKPIT_V1_ENABLED) {
+          if (!isPaused && !pauseRearmingRef.current) {
+            gameRef.current?.pause();
+            setAwaitingResumeInput(true);
+          }
+        } else if (isPaused) {
           setAwaitingResumeInput((armed) => !armed);
         } else if (!pauseRearmingRef.current) {
           gameRef.current?.pause();
@@ -1631,7 +1652,7 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, choiceActive, awaitingResumeInput, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim]);
 
   // Handle direction from D-Pad
   const handleDPadDirection = useCallback((dir: Direction) => {
@@ -1695,11 +1716,12 @@ export default function GamePage() {
   // Handle pause/resume
   const handlePause = useCallback(() => {
     if (awaitingResumeInput) {
-      setAwaitingResumeInput(false);
+      if (!HUD_COCKPIT_V1_ENABLED) setAwaitingResumeInput(false);
       return;
     }
     if (pauseRearmingRef.current) return;
     gameRef.current?.pause();
+    if (HUD_COCKPIT_V1_ENABLED) setAwaitingResumeInput(true);
   }, [awaitingResumeInput]);
 
   const handleResume = useCallback(() => {
@@ -1711,8 +1733,10 @@ export default function GamePage() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    setShowAbandonConfirm(false);
     setAwaitingResumeInput(false);
     cancelPauseRearm();
+    setCurrentSessionId(null);
     resetGame();
   }, [cancelPauseRearm, resetGame]);
 
@@ -1726,6 +1750,7 @@ export default function GamePage() {
     setMasteryResult(null);
     setMinimalFirstRunPrompt(false);
     setRequiresDirectionalStart(false);
+    setShowAbandonConfirm(false);
     setAwaitingResumeInput(false);
     cancelPauseRearm();
     if (intervalRef.current) {
@@ -1792,8 +1817,8 @@ export default function GamePage() {
     ? 'Swipe or press an arrow to move'
     : awaitingResumeInput
       ? isMobile
-        ? `${controlMode === 'flick' ? 'Flick' : 'Tap'} a safe direction to continue`
-        : 'Press a safe direction to continue'
+        ? `Tactical hold · ${controlMode === 'flick' ? 'flick' : 'tap'} a safe direction to resume`
+        : 'Tactical hold · press a safe direction to resume'
       : isReady
         ? isMobile
           ? `${controlMode === 'flick' ? 'Flick' : 'Tap'} a direction to start`
@@ -1810,11 +1835,13 @@ export default function GamePage() {
     state: cockpitState,
     mode: cockpitMode,
     modeLabel: anomalyRun?.name ?? (lastRunFree ? 'Free play' : selectedDynasty),
-    modeDetail: isReady || awaitingResumeInput
-      ? 'Board held'
-      : genomeRun
-        ? 'Genome run'
-        : 'Classic run',
+    modeDetail: awaitingResumeInput
+      ? 'Tactical hold'
+      : isReady
+        ? 'Board held'
+        : genomeRun
+          ? 'Genome run'
+          : 'Classic run',
     statusText: cockpitStatus,
     isFirstMovementPrompt: minimalFirstRunPrompt && isReady,
     score,
@@ -1845,18 +1872,14 @@ export default function GamePage() {
   };
   const cockpitDecisionDock: ReactNode = !HUD_COCKPIT_V1_ENABLED
     ? undefined
-    : isPaused && !awaitingResumeInput && isPlaying && !isGameOver
+    : showAbandonConfirm && isPlaying && !isGameOver
       ? (
-          <PauseMenu
-            dynasty={selectedDynasty}
+          <AbandonRunDialog
             score={score}
             dnaCollected={dnaCollected}
-            heldMutations={heldMutations}
-            phoenixTriggered={phoenixTriggered}
-            bankDna={previewOutcome(true, activeAnomalyId)}
-            crashDna={previewOutcome(false, activeAnomalyId)}
-            onResume={handleResume}
-            onQuit={handleQuit}
+            costsEnergy={!lastRunFree}
+            onCancel={() => setShowAbandonConfirm(false)}
+            onConfirm={handleQuit}
           />
         )
       : choiceOptions && isPlaying && !isGameOver && genomeRun
@@ -2182,7 +2205,7 @@ export default function GamePage() {
           between the canvas and the HUD (z-10+), so HUD buttons stay live.
           Camera touch-orbit is intentionally ceded to flick input while
           playing - the reset-view button remains available. */}
-      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
+      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive && (
         <FlickSurface
           gameRef={gameRef}
           getAzimuth={getCameraAzimuth}
@@ -2196,14 +2219,14 @@ export default function GamePage() {
       {/* Virtual D-Pad (mobile fallback via control-mode toggle). bottom
           offset includes the safe-area inset so the DOWN button clears home
           indicators / browser chrome. */}
-      {!HUD_COCKPIT_V1_ENABLED && isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive && (
+      {!HUD_COCKPIT_V1_ENABLED && isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive && (
         <div
           className="absolute left-1/2 -translate-x-1/2 z-10"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         >
           <VirtualDPad
             onDirectionChange={handleDPadDirection}
-            disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || choiceActive}
+            disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || blockingOverlayActive}
           />
         </div>
       )}
@@ -2841,24 +2864,26 @@ export default function GamePage() {
         isPlaying={isPlaying}
         model={cockpitModel}
         onPause={handlePause}
+        onAbandon={() => setShowAbandonConfirm(true)}
         onResetView={() => setViewResetToken((token) => token + 1)}
         pauseDisabled={pauseRearming && !awaitingResumeInput}
-        showPause={!isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive}
-        pauseLabel={awaitingResumeInput ? 'Return to pause menu' : 'Pause game'}
+        showPause={!isGameOver && !isReady && !isPaused && !blockingOverlayActive}
+        showAbandon={awaitingResumeInput && !showAbandonConfirm}
+        pauseLabel="Pause game"
         inputDock={
-          isMobile && controlMode === 'dpad' && !isGameOver && (!isPaused || awaitingResumeInput) && !choiceActive ? (
+          isMobile && controlMode === 'dpad' && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive ? (
             <VirtualDPad
               density="cockpit"
               onDirectionChange={handleDPadDirection}
-              disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || choiceActive}
+              disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || blockingOverlayActive}
             />
           ) : undefined
         }
         decisionDock={cockpitDecisionDock}
         eventCallout={cockpitEventCallout}
       >
-      {/* Keep the production Ready/Pause presentation inside the reserved
-          board. FTUE replaces its contents with one minimal movement line. */}
+      {/* The rollback HUD keeps its legacy Ready/tactical-hold presentation.
+          FTUE replaces Ready with one minimal movement line. */}
       {!HUD_COCKPIT_V1_ENABLED && (isReady || awaitingResumeInput) && (
         <div
           className={`absolute inset-0 z-20 flex pointer-events-none ${
@@ -3003,11 +3028,12 @@ export default function GamePage() {
           gridSize={GAME_CONFIG.board.gridSize}
           resetToken={viewResetToken}
           azimuthRef={cameraAzimuthRef}
-          frameMargin={HUD_COCKPIT_V1_ENABLED ? 1.25 : 1}
-          fitScale={HUD_COCKPIT_V1_ENABLED ? 0.82 : 1}
+          frameMargin={HUD_COCKPIT_V1_ENABLED ? COCKPIT_FRAME_MARGIN : 1}
+          fitScale={HUD_COCKPIT_V1_ENABLED ? COCKPIT_FIT_SCALE : 1}
           defaultPolar={HUD_COCKPIT_V1_ENABLED
             ? COCKPIT_DEFAULT_POLAR
             : undefined}
+          targetY={HUD_COCKPIT_V1_ENABLED ? COCKPIT_TARGET_Y : undefined}
         />
 
         {/* Dev-only render stats (?perf) */}
