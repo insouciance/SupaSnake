@@ -69,8 +69,8 @@ jobs:
       - run: npm ci
 
       # The application is deliberately staged before any pending forward-only
-      # migration. For the current 001-037 baseline the dry-run is a no-op;
-      # future releases must document any expected migration list explicitly.
+      # migration. Every release must document its exact expected migration
+      # list; any additional pending migration is a stop condition.
       - name: Pull production environment
         run: npx vercel@56.3.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
       - name: Validate production environment contract
@@ -104,10 +104,12 @@ jobs:
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Smoke staged application against the current schema
         run: |
+          # `vercel curl` v56 forwards an explicit global token option to the
+          # underlying curl process. It reads the job's VERCEL_TOKEN environment
+          # variable directly, so do not repeat that credential as a CLI flag.
           npx vercel@56.3.1 curl /api/health \
             --deployment "${{ steps.app.outputs.url }}" \
             --yes \
-            --token="$VERCEL_TOKEN" \
             -- \
             --fail --show-error --silent \
             --retry 6 --retry-delay 5 --retry-all-errors \
