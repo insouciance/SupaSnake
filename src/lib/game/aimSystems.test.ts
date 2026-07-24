@@ -38,11 +38,14 @@ describe('aim system registry', () => {
     expect(getAimSystem(DEFAULT_AIM_SYSTEM).isUnlocked(zeroStats)).toBe(true);
   });
 
-  it('describes deadeye as a centered head crosshair with a grid-cell cue', () => {
+  it('describes deadeye as a heading-relative board-edge guide with a cell cue', () => {
     const description = getAimSystem('deadeye').description.toLowerCase();
-    expect(description).toContain('centered crosshair');
+    expect(description).toContain('heading-relative');
+    expect(description).toContain('t guide');
+    expect(description).toContain('board edges');
     expect(description).toContain('highlighted tile');
-    expect(description).toContain('grid cell');
+    expect(description).toContain('current cell');
+    expect(description).not.toContain('centered crosshair');
     expect(description).not.toContain('target lock');
   });
 
