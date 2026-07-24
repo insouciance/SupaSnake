@@ -1,8 +1,10 @@
 # Production Release Runbook
 
-Current baseline: application runtime `fc0fea4`, Vercel deployment
-`dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`, and hosted migrations 001–037. The linked
-migration dry-run is currently a no-op.
+Current baseline: application runtime `645578e`, Vercel deployment
+`dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`, and hosted migrations 001–038. The linked
+migration dry-run is currently a no-op. The immediate application rollback is
+`dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`; migration 038 remains in place because it is
+forward-only and compatible with that runtime.
 
 Future releases stage and verify the application before applying any named
 forward-only migration. The manual GitHub workflow encodes this order; do not

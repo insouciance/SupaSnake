@@ -17,10 +17,10 @@ Production_Payments: Stripe sandbox/test
 ## PRODUCTION_BASELINE
 
 ```text
-Runtime_Commit: fc0fea4
-Deployment: dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6
-Rollback_Deployment: dpl_5WdZhdbqF5RcgiSmuUPtiEk8WstX
-Migrations: 001-037 deployed and aligned
+Runtime_Commit: 645578e
+Deployment: dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB
+Rollback_Deployment: dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6
+Migrations: 001-038 deployed and aligned
 FTUE_Flag: NEXT_PUBLIC_FTUE_V2=true
 Cockpit_Flag: NEXT_PUBLIC_HUD_COCKPIT_V1=true
 ```

@@ -1,10 +1,16 @@
 # Training and UX feature-batch release plan
 
 - **Date:** 2026-07-24
-- **Status:** Integration candidate
+- **Status:** Deployed and verified
 - **Production payments mode:** Stripe test/sandbox
 - **Application base:** `b28648580e3a1488d10125aa42b519272136ea4b`
 - **Hosted schema before release:** migrations 001–037
+- **Production release commit:** `645578ed83483d350e99fff201e984a6f8c25e4e`
+- **Production deployment:** `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`
+- **Hosted schema after release:** migrations 001–038
+- **Immediate application rollback:** `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`
+- **Deployment evidence:** GitHub Actions run `30123163234`
+- **Release tag:** `production-2026-07-24-training-ux`
 
 ## Release contents
 
@@ -102,6 +108,27 @@ After promotion and migration:
 7. Confirm Training spends no Energy and changes no DNA, contract, season,
    mastery, streak, or leaderboard state.
 8. Check production logs for new 5xx, auth, migration, RLS, or rendering errors.
+
+## Release outcome
+
+- The hosted dry-run selected only `038_training_lab.sql`; the workflow staged
+  and health-checked the new app against schema 037 before promotion.
+- Vercel promoted `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`, then Supabase applied
+  migration 038. Linked database lint completed with the four previously
+  documented older-function warnings and no errors.
+- Independent migration listing shows local/remote parity through 038. The
+  canonical health endpoint reports both application and database healthy.
+- The protected feature and deployment-fix PRs, both post-main CI runs, 245/245
+  Jest suites (2,944/2,944 tests), the production build, full isolated E2E, and
+  deterministic cockpit checks passed.
+- Public production passed account-dialog viewport/focus, notification-center,
+  Training, and one-click PRIMAL launch checks. One combined headless run
+  starved the URL assertion while the WebGL board was visibly loaded; an
+  instrumented trace confirmed `/game` navigation and the exact isolated test
+  then passed without retries in 11.4 seconds.
+- Remaining work is tactile/manual: real-device safe areas, browser chrome,
+  touch feel, live camera motion, full Deadeye play, and the state-heavy
+  Training preset and reward-invariance journeys.
 
 ## Failure and rollback
 

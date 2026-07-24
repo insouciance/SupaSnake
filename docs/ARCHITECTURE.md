@@ -28,7 +28,7 @@ Supabase Postgres/Auth
   ├─ players, collection, settings, sessions, progression
   ├─ Genome, lineage, Codex, identity, clans, compliance
   ├─ RLS and service-role boundaries
-  └─ forward-only migrations 001–037
+  └─ forward-only migrations 001–038
 
 External services: Stripe, Vercel, Sentry, PostHog, Discord, OpenAI, Resend
 ```
@@ -67,6 +67,7 @@ Server-authoritative operations include:
 - score/DNA validation and reward grants;
 - contracts, achievements, mastery, Codex, and lineage progression;
 - purchases, Premium entitlements, and stipends;
+- Training attempt replay, personal bests, and route-preset caps;
 - account export, deletion, and compliance records.
 
 The client never writes balances directly and never stores authoritative game
