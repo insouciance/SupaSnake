@@ -196,6 +196,51 @@
   padding: 7px 10px;
 }
 
+.trainingProgress {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+}
+
+.trainingProgress > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.trainingProgress strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trainingProgress em {
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.trainingProgress > i {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  background: rgba(92, 128, 154, 0.24);
+}
+
+.trainingProgress > i > b {
+  display: block;
+  height: 100%;
+  background: var(--dynasty-secondary);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dynasty-secondary) 45%, transparent);
+  transition: width 120ms linear;
+}
+
 .geneSockets {
   display: grid;
   grid-template-columns: repeat(6, minmax(24px, 42px));
@@ -273,6 +318,42 @@
   gap: clamp(7px, 0.8vw, 12px);
   align-items: center;
   padding: 7px 10px;
+}
+
+.trainingMetrics {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  width: 100%;
+}
+
+.trainingMetrics > span {
+  display: flex;
+  min-width: 0;
+  min-height: 40px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(96, 129, 153, 0.2);
+  background: rgba(3, 8, 12, 0.58);
+}
+
+.trainingMetrics small {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.trainingMetrics strong {
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 .portalDial {

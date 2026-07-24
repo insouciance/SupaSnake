@@ -3,7 +3,7 @@ import type { StrainId, StrainTier } from '@/shared/game/strains';
 import type { DynastyId } from '@/shared/types/game';
 
 export type RunCockpitState = 'ready' | 'held' | 'active' | 'portal' | 'apex';
-export type RunCockpitMode = 'standard' | 'free' | 'anomaly';
+export type RunCockpitMode = 'standard' | 'free' | 'anomaly' | 'training';
 
 export interface RunCockpitGene {
   id: GeneId;
@@ -47,4 +47,16 @@ export interface RunCockpitModel {
   showGenome: boolean;
   portalLive: boolean;
   portalTicksRemaining: number;
+  /** Training swaps economy instruments for presentation-only skill facts. */
+  training?: {
+    primaryLabel: string;
+    primaryValue: string;
+    secondaryLabel: string;
+    secondaryValue: string;
+    progressLabel: string;
+    progress: number;
+    progressTotal: number;
+    metrics: readonly { label: string; value: string }[];
+    comparison: string;
+  };
 }

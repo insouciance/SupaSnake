@@ -47,6 +47,25 @@ export function EnergyGlyph() {
   );
 }
 
+export function TrainingObjectiveGlyph() {
+  return (
+    <Svg>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+    </Svg>
+  );
+}
+
+export function TrainingTickGlyph() {
+  return (
+    <Svg>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M9 2h6M12 5v3M12 13l3-2M18 7l2-2" />
+    </Svg>
+  );
+}
+
 export function ShieldGlyph() {
   return (
     <Svg>
@@ -75,7 +94,10 @@ export function PortalGlyph() {
   );
 }
 
-export function ModeGlyph({ mode }: { mode: 'standard' | 'free' | 'anomaly' }) {
+export function ModeGlyph({ mode }: { mode: 'standard' | 'free' | 'anomaly' | 'training' }) {
+  if (mode === 'training') {
+    return <TrainingObjectiveGlyph />;
+  }
   if (mode === 'free') {
     return (
       <Svg>

@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { GAME_CONFIG } from '@/shared/config/game';
 import type { GameMode } from '@/lib/store/gameStore';
 import {
@@ -113,9 +114,18 @@ export function ModeToggle({
         </button>
       </div>
       {mode === 'free' ? (
-        <p className="text-beige/60 text-xs font-body" data-testid="mode-free-hint">
-          Unlimited · no rewards — pure practice
-        </p>
+        <div className="space-y-2" data-testid="mode-free-hint">
+          <p className="text-beige/60 text-xs font-body">
+            Unlimited · no rewards — pure practice
+          </p>
+          <Link
+            href="/training"
+            className="inline-flex min-h-[44px] items-center rounded-arcade border border-[#67e8f9]/45 bg-[#67e8f9]/10 px-4 font-body text-sm text-[#67e8f9] transition-colors hover:border-[#67e8f9]/80 hover:text-bone-white"
+            data-testid="training-lab-link"
+          >
+            Open Training Lab
+          </Link>
+        </div>
       ) : mode === 'anomaly' ? (
         <p className="text-beige/60 text-xs font-body" data-testid="mode-anomaly-hint">
           {anomalyName ? `This week: ${anomalyName}` : 'Weekly modifier board'}

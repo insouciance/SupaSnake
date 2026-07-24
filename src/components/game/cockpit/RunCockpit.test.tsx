@@ -69,6 +69,46 @@ describe('RunCockpit', () => {
     );
   });
 
+  it('adapts training progress without exposing economy instruments', () => {
+    render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          mode: 'training',
+          modeLabel: 'Training · Trace',
+          showGenome: true,
+          training: {
+            primaryLabel: 'Gates',
+            primaryValue: '3/6',
+            secondaryLabel: 'Tick',
+            secondaryValue: '18/40',
+            progressLabel: 'Path accuracy',
+            progress: 3,
+            progressTotal: 6,
+            metrics: [
+              { label: 'Pace', value: '90ms' },
+              { label: 'Guide', value: 'next' },
+              { label: 'Level', value: 'elite' },
+            ],
+            comparison: 'PB 88',
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas data-testid="training-board" />
+      </RunCockpit>
+    );
+    expect(screen.getByTestId('training-watermark')).toHaveAccessibleName(/training.*trace/i);
+    expect(screen.getByLabelText('Gates 3/6')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tick 18/40')).toBeInTheDocument();
+    expect(screen.getByLabelText('PB 88')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/run dna 186/i)).toBeNull();
+    expect(screen.getByTestId('game-board-viewport')).toContainElement(
+      screen.getByTestId('training-board')
+    );
+  });
+
   it('keeps controls actionable above flick input and reserves decisions', () => {
     const onPause = jest.fn();
     const onResetView = jest.fn();
