@@ -4,11 +4,10 @@
  * AimRenderer - the aim telegraph, one renderer per selected aim system
  * (v2 meta-progression, see src/lib/game/aimSystems.ts):
  *
- * - deadeye:  target-lock reticle (bracket crosshair + center dot with a
- *             slow lock-spin) on the first food/portal/mutation in the
- *             heading line, plus a thin heading beam with per-cell tick
- *             marks; a faint open crosshair floats 4 cells ahead when
- *             nothing is in line.
+ * - deadeye:  clean, symmetrical crosshair smooth-following the head + a
+ *             grid-snapped cell highlight under it. The floor cue keeps
+ *             the authoritative grid position readable while the snake
+ *             and reticle continue to move fluidly.
  * - gridlock: full row+column rails smooth-following the INTERPOLATED
  *             head + a grid-snapped cell highlight under it (the "where
  *             exactly am I" fix); a rail brightens when a target sits on
@@ -44,7 +43,6 @@ import {
   DIRECTION_DELTAS,
   DIRECTION_YAW,
   findAlignedTargets,
-  findFirstTargetInLine,
   projectAimPath,
   projectDangerPath,
   type AimTarget,
@@ -63,9 +61,9 @@ export interface AimRendererProps {
   gridSize?: number;
   /** Player-selected aim system */
   aimSystem?: AimSystemId;
-  /** Lockable targets on the board (rebuilt per tick by the game page) */
+  /** Target-bearing cells on the board (rebuilt per tick by the game page) */
   targets?: readonly AimTarget[];
-  /** Interpolation buffer - smooth-follow source for gridlock/firefly */
+  /** Interpolation buffer - smooth-follow source for deadeye/gridlock/firefly */
   bufferRef?: { readonly current: InterpolationBuffer | null };
   /** Accent color (dynasty accent) */
   color?: string;
@@ -83,10 +81,15 @@ const LANE_OPACITIES = [0.3, 0.22, 0.16, 0.11, 0.07];
 const DANGER_OPACITIES = [0.7, 0.52, 0.38, 0.26, 0.16];
 /** Neon rose - the palette's danger accent */
 const DANGER_COLOR = '#f43f5e';
-/** Deadeye: open-crosshair distance when nothing is in line */
-const OPEN_CROSSHAIR_CELLS = 4;
-/** Deadeye: pre-mounted tick capacity (a 20-grid line is at most 19 cells) */
-const TICK_CAPACITY = 19;
+
+/** Deadeye's two equal line scales pin a true, centered "+" silhouette. */
+export const DEADEYE_CROSSHAIR_SCALE: {
+  readonly horizontal: [number, number, number];
+  readonly vertical: [number, number, number];
+} = {
+  horizontal: [3, 0.06, 1],
+  vertical: [0.06, 3, 1],
+};
 
 const EMPTY_QUEUE: readonly Direction[] = [];
 const EMPTY_SNAKE: readonly Position[] = [];
@@ -97,12 +100,6 @@ const NULL_BUFFER = { current: null } as const;
 // Module-scope scratch - the render loops allocate NOTHING
 // -----------------------------------------------------------------------------
 
-const _matrix = new THREE.Matrix4();
-const _tickPosition = new THREE.Vector3();
-const _tickScale = new THREE.Vector3(1, 1, 1);
-const _flatQuaternion = new THREE.Quaternion().setFromEuler(
-  new THREE.Euler(-Math.PI / 2, 0, 0)
-);
 const _pursuit = new THREE.Vector3();
 
 // -----------------------------------------------------------------------------
@@ -125,69 +122,8 @@ const chevronGeometry = (() => {
   return new THREE.ShapeGeometry(shape);
 })();
 
-/** Deadeye beam: unit plane spanning y 0..1 so a flat-rotated mesh scales
- *  cleanly from the head toward -Z (the yawed heading). */
-const beamGeometry = (() => {
-  const geometry = new THREE.PlaneGeometry(1, 1);
-  geometry.translate(0, 0.5, 0);
-  return geometry;
-})();
-
-/** Deadeye per-cell tick mark. */
-const tickGeometry = new THREE.PlaneGeometry(0.3, 0.045);
-
-/** Deadeye lock reticle: 4 L-brackets around the cell, one geometry. */
-const bracketGeometry = (() => {
-  const shapes: THREE.Shape[] = [];
-  const half = 0.44; // bracket corner radius from cell center
-  const arm = 0.2;
-  const thickness = 0.06;
-  for (const [sx, sy] of [
-    [1, 1],
-    [-1, 1],
-    [1, -1],
-    [-1, -1],
-  ] as const) {
-    const shape = new THREE.Shape();
-    // L corner at (sx*half, sy*half), arms pointing inward
-    shape.moveTo(sx * half, sy * half);
-    shape.lineTo(sx * (half - arm), sy * half);
-    shape.lineTo(sx * (half - arm), sy * (half - thickness));
-    shape.lineTo(sx * (half - thickness), sy * (half - thickness));
-    shape.lineTo(sx * (half - thickness), sy * (half - arm));
-    shape.lineTo(sx * half, sy * (half - arm));
-    shape.closePath();
-    shapes.push(shape);
-  }
-  return new THREE.ShapeGeometry(shapes);
-})();
-
-const dotGeometry = new THREE.CircleGeometry(0.055, 16);
-
-/** Deadeye idle: open crosshair - 4 inward arms with a hollow center. */
-const openCrossGeometry = (() => {
-  const shapes: THREE.Shape[] = [];
-  const inner = 0.12;
-  const outer = 0.34;
-  const thickness = 0.05;
-  for (const [dx, dy] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ] as const) {
-    const shape = new THREE.Shape();
-    const px = dy * thickness * 0.5;
-    const py = dx * thickness * 0.5;
-    shape.moveTo(dx * inner - px, dy * inner - py);
-    shape.lineTo(dx * outer - px, dy * outer - py);
-    shape.lineTo(dx * outer + px, dy * outer + py);
-    shape.lineTo(dx * inner + px, dy * inner + py);
-    shape.closePath();
-    shapes.push(shape);
-  }
-  return new THREE.ShapeGeometry(shapes);
-})();
+/** Deadeye crosshair: one unit plane shared by both equal-length lines. */
+const crosshairLineGeometry = new THREE.PlaneGeometry(1, 1);
 
 /** Gridlock rail: unit plane, scaled per axis at mount. */
 const railGeometry = new THREE.PlaneGeometry(1, 1);
@@ -257,55 +193,61 @@ function getFireflyGlowMaterial(): THREE.SpriteMaterial | null {
 
 interface DeadeyeProps {
   head: Position;
-  direction: Direction;
-  targets: readonly AimTarget[];
-  gridSize: number;
   bufferRef: { readonly current: InterpolationBuffer | null };
   color: string;
 }
 
-function Deadeye({ head, direction, targets, gridSize, bufferRef, color }: DeadeyeProps) {
-  const anchorRef = useRef<THREE.Group>(null);
-  const ticksRef = useRef<THREE.InstancedMesh>(null);
-  const bracketRef = useRef<THREE.Mesh>(null);
+interface PositionWriter {
+  set(x: number, y: number, z: number): unknown;
+}
 
-  const beamMaterial = useMemo(
+/**
+ * Track the reticle and floor cue without mutating engine or movement state.
+ * The crosshair follows the same interpolated head position as the snake;
+ * the tile deliberately uses the current authoritative cell, matching the
+ * existing Gridlock visual-feedback contract.
+ */
+export function updateDeadeyeVisualPositions(
+  head: Position,
+  buffer: InterpolationBuffer | null,
+  now: number,
+  crosshairPosition: PositionWriter,
+  highlightPosition: PositionWriter
+): void {
+  let smoothX = head.x;
+  let smoothZ = head.z;
+  let snapX = head.x;
+  let snapZ = head.z;
+
+  if (buffer && buffer.count > 0) {
+    const alpha = getAlpha(buffer, now);
+    smoothX = getInterpolatedX(buffer, 0, alpha);
+    smoothZ = getInterpolatedZ(buffer, 0, alpha);
+    snapX = buffer.curr[0];
+    snapZ = buffer.curr[1];
+  }
+
+  crosshairPosition.set(smoothX + 0.5, 0, smoothZ + 0.5);
+  highlightPosition.set(snapX + 0.5, AIM_Y - 0.01, snapZ + 0.5);
+}
+
+function Deadeye({ head, bufferRef, color }: DeadeyeProps) {
+  const crosshairRef = useRef<THREE.Group>(null);
+  const highlightRef = useRef<THREE.Mesh>(null);
+
+  const crosshairMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.4,
+        opacity: 0.68,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.DoubleSide,
       }),
     [color]
   );
-  const tickMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    [color]
-  );
-  const reticleMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.9,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    [color]
-  );
-  const openMaterial = useMemo(
+  const highlightMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
         color,
@@ -313,121 +255,67 @@ function Deadeye({ head, direction, targets, gridSize, bufferRef, color }: Deade
         opacity: 0.3,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.DoubleSide,
       }),
     [color]
   );
 
   useEffect(() => {
     return () => {
-      beamMaterial.dispose();
-      tickMaterial.dispose();
-      reticleMaterial.dispose();
-      openMaterial.dispose();
+      crosshairMaterial.dispose();
+      highlightMaterial.dispose();
     };
-  }, [beamMaterial, tickMaterial, reticleMaterial, openMaterial]);
+  }, [crosshairMaterial, highlightMaterial]);
 
-  // Pre-mounted tick pool: static flat matrices marching -Z, written once;
-  // only the instance COUNT changes per tick.
-  useEffect(() => {
-    const mesh = ticksRef.current;
-    if (!mesh) return;
-    for (let i = 0; i < TICK_CAPACITY; i++) {
-      _tickPosition.set(0, 0.004, -(i + 1));
-      _matrix.compose(_tickPosition, _flatQuaternion, _tickScale);
-      mesh.setMatrixAt(i, _matrix);
+  useFrame(({ clock }) => {
+    const crosshair = crosshairRef.current;
+    const highlight = highlightRef.current;
+    if (crosshair && highlight) {
+      updateDeadeyeVisualPositions(
+        head,
+        bufferRef.current,
+        performance.now(),
+        crosshair.position,
+        highlight.position
+      );
     }
-    mesh.instanceMatrix.needsUpdate = true;
-  }, []);
-
-  // Per-tick lock scan
-  const locked = useMemo(
-    () => findFirstTargetInLine(head, direction, targets, gridSize),
-    [head, direction, targets, gridSize]
-  );
-  const lockDistance = locked
-    ? Math.abs(locked.x - head.x) + Math.abs(locked.z - head.z)
-    : 0;
-  const delta = DIRECTION_DELTAS[direction];
-  const openInBounds =
-    head.x + delta.x * OPEN_CROSSHAIR_CELLS >= 0 &&
-    head.x + delta.x * OPEN_CROSSHAIR_CELLS < gridSize &&
-    head.z + delta.z * OPEN_CROSSHAIR_CELLS >= 0 &&
-    head.z + delta.z * OPEN_CROSSHAIR_CELLS < gridSize;
-  const beamLength = locked ? lockDistance : OPEN_CROSSHAIR_CELLS;
-  const tickCount = Math.min(Math.max(beamLength - 1, 0), TICK_CAPACITY);
-
-  useFrame(({ clock }, frameDelta) => {
-    const buffer = bufferRef.current;
-    const anchor = anchorRef.current;
-    if (anchor) {
-      if (buffer && buffer.count > 0) {
-        const alpha = getAlpha(buffer, performance.now());
-        anchor.visible = true;
-        anchor.position.set(
-          getInterpolatedX(buffer, 0, alpha) + 0.5,
-          0,
-          getInterpolatedZ(buffer, 0, alpha) + 0.5
-        );
-      } else {
-        anchor.position.set(head.x + 0.5, 0, head.z + 0.5);
-      }
-      anchor.rotation.y = DIRECTION_YAW[direction];
-    }
-    // Gentle beam pulse (~0.8Hz - far under the flash band)
-    beamMaterial.opacity = 0.32 + Math.sin(clock.getElapsedTime() * 5) * 0.1;
-    // Lock-spin: the reticle slowly rotates while locked
-    if (bracketRef.current) {
-      bracketRef.current.rotation.z += frameDelta * 0.9;
-    }
+    // Exact reuse of Gridlock's quiet current-cell breathe (~0.35Hz).
+    highlightMaterial.opacity =
+      0.28 + Math.sin(clock.getElapsedTime() * 2.2) * 0.05;
   });
 
   return (
     <group>
-      {/* Head-anchored kit: beam, ticks, idle crosshair (yawed to heading) */}
-      <group ref={anchorRef}>
-        <mesh
-          geometry={beamGeometry}
-          material={beamMaterial}
-          position={[0, AIM_Y, 0]}
-          rotation-x={-Math.PI / 2}
-          scale={[0.055, beamLength, 1]}
-        />
-        <instancedMesh
-          ref={ticksRef}
-          args={[tickGeometry, tickMaterial, TICK_CAPACITY]}
-          count={tickCount}
-          position={[0, AIM_Y, 0]}
-          frustumCulled={false}
-        />
-        <mesh
-          geometry={openCrossGeometry}
-          material={openMaterial}
-          visible={!locked && openInBounds}
-          position={[0, AIM_Y + 0.01, -OPEN_CROSSHAIR_CELLS]}
-          rotation-x={-Math.PI / 2}
-        />
-      </group>
+      {/* Authoritative grid cell: snapped, visual-only, below the snake. */}
+      <mesh
+        ref={highlightRef}
+        name="deadeye-head-cell-highlight"
+        geometry={highlightGeometry}
+        material={highlightMaterial}
+        position={[head.x + 0.5, AIM_Y - 0.01, head.z + 0.5]}
+        rotation-x={-Math.PI / 2}
+      />
 
-      {/* Lock reticle - pre-mounted, visibility-toggled, world-positioned */}
+      {/* Two equal centered lines; the snake naturally occludes the rear arm. */}
       <group
-        visible={locked !== null}
-        position={[
-          (locked?.x ?? 0) + 0.5,
-          AIM_Y + 0.015,
-          (locked?.z ?? 0) + 0.5,
-        ]}
+        ref={crosshairRef}
+        name="deadeye-crosshair"
+        position={[head.x + 0.5, 0, head.z + 0.5]}
       >
         <mesh
-          ref={bracketRef}
-          geometry={bracketGeometry}
-          material={reticleMaterial}
+          name="deadeye-crosshair-horizontal"
+          geometry={crosshairLineGeometry}
+          material={crosshairMaterial}
+          position={[0, AIM_Y + 0.01, 0]}
           rotation-x={-Math.PI / 2}
+          scale={DEADEYE_CROSSHAIR_SCALE.horizontal}
         />
         <mesh
-          geometry={dotGeometry}
-          material={reticleMaterial}
+          name="deadeye-crosshair-vertical"
+          geometry={crosshairLineGeometry}
+          material={crosshairMaterial}
+          position={[0, AIM_Y + 0.01, 0]}
           rotation-x={-Math.PI / 2}
+          scale={DEADEYE_CROSSHAIR_SCALE.vertical}
         />
       </group>
     </group>
@@ -903,9 +791,6 @@ export function AimRenderer({
       return (
         <Deadeye
           head={headPosition}
-          direction={direction}
-          targets={targets}
-          gridSize={gridSize}
           bufferRef={bufferRef}
           color={color}
         />

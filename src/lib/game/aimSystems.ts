@@ -5,9 +5,8 @@
  * (pulse/vector/sequence/radar/apex), unlocked by stats the server already
  * tracks (high score, games played, breeds - NO new tracking):
  *
- * - deadeye  (default)  target-lock reticle: bracket crosshair on the
- *                       first food/portal/mutation in the heading line +
- *                       heading beam with per-cell ticks
+ * - deadeye  (default)  symmetrical crosshair following the fluid head +
+ *                       snapped floor tile marking its current grid cell
  * - gridlock            row+column rails following the head + snapped
  *                       cell highlight; aligned rails brighten toward
  *                       food/portal with a pip at the target
@@ -54,7 +53,7 @@ export const AIM_SYSTEMS: readonly AimSystemDef[] = [
     id: 'deadeye',
     name: 'Deadeye',
     description:
-      'Target lock: a reticle snaps to the first pickup in your heading line.',
+      'A centered crosshair tracks your head; a highlighted tile marks its current grid cell.',
     unlockHint: 'Always available',
     isUnlocked: () => true,
   },
