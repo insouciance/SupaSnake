@@ -3,9 +3,14 @@
  */
 
 import {
+  attentionBadge,
+  dispatchNotificationAction,
   destinationBadge,
+  NOTIFICATION_TARGETS,
   notificationList,
+  subscribeNotificationAction,
   useNotificationStore,
+  type NotificationInput,
 } from './notificationStore';
 
 describe('notificationStore', () => {
@@ -20,18 +25,18 @@ describe('notificationStore', () => {
       id: 'lab-discovery',
       title: 'The Lab is ready',
       description: 'Discover more snakes when you want to.',
-      destination: 'lab',
+      ...NOTIFICATION_TARGETS.lab,
       badgeKind: 'exclamation',
-      href: '/lab',
+      attentionReason: 'progression-opportunity',
     });
     publish({
       id: 'contracts',
       title: 'Contracts',
       description: 'Two rewards are ready.',
-      destination: 'contracts',
+      ...NOTIFICATION_TARGETS.contracts,
       badgeKind: 'numeric',
+      attentionReason: 'reward-available',
       count: 2.9,
-      href: '/?open=contracts',
     });
 
     const state = useNotificationStore.getState().notifications;
@@ -47,6 +52,9 @@ describe('notificationStore', () => {
       title: 'Contracts',
       description: 'Ready',
       destination: 'contracts' as const,
+      attentionReason: 'reward-available' as const,
+      href: '/#contracts',
+      action: 'open-contracts' as const,
     };
 
     publish({ ...base, badgeKind: 'numeric', count: 3 });
@@ -54,7 +62,13 @@ describe('notificationStore', () => {
     expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
 
     publish({ ...base, badgeKind: 'exclamation' });
-    publish({ ...base, badgeKind: 'hidden' });
+    publish({
+      id: base.id,
+      title: base.title,
+      description: base.description,
+      destination: base.destination,
+      badgeKind: 'hidden',
+    });
     expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
   });
 
@@ -66,6 +80,8 @@ describe('notificationStore', () => {
       description: 'Ready',
       destination: 'lab',
       badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+      href: '/lab',
     });
     store.publish({
       id: 'save',
@@ -73,6 +89,9 @@ describe('notificationStore', () => {
       description: 'Optional',
       destination: 'account',
       badgeKind: 'exclamation',
+      attentionReason: 'action-required',
+      href: '/#save-progress',
+      action: 'open-save-progress',
     });
 
     useNotificationStore.getState().clearDestination('lab');
@@ -90,6 +109,8 @@ describe('notificationStore', () => {
       description: 'A',
       destination: 'global',
       badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+      href: '/lab',
     });
     publish({
       id: 'b',
@@ -97,6 +118,8 @@ describe('notificationStore', () => {
       description: 'B',
       destination: 'global',
       badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+      href: '/profile',
     });
     publish({
       id: 'a',
@@ -104,11 +127,72 @@ describe('notificationStore', () => {
       description: 'A',
       destination: 'global',
       badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+      href: '/lab',
     });
 
     const list = notificationList(useNotificationStore.getState().notifications);
     expect(list.map((item) => item.id)).toEqual(['a', 'b']);
     expect(list[0].createdAt).toBe(100);
     jest.restoreAllMocks();
+  });
+
+  it('deduplicates unresolved attention by semantic id and aggregates all attention units', () => {
+    const { publish } = useNotificationStore.getState();
+    publish({
+      id: 'contracts',
+      title: 'Contracts ready',
+      description: 'Choose two.',
+      ...NOTIFICATION_TARGETS.contracts,
+      badgeKind: 'exclamation',
+      attentionReason: 'action-required',
+    });
+    publish({
+      id: 'contracts',
+      title: 'Contract rewards ready',
+      description: 'Two can be claimed.',
+      ...NOTIFICATION_TARGETS.contracts,
+      badgeKind: 'numeric',
+      attentionReason: 'reward-available',
+      count: 2,
+    });
+    publish({
+      id: 'lab-discovery',
+      title: 'Lab ready',
+      description: 'Visit the Lab.',
+      ...NOTIFICATION_TARGETS.lab,
+      badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+    });
+
+    const notifications = useNotificationStore.getState().notifications;
+    expect(Object.keys(notifications)).toEqual(['contracts', 'lab-discovery']);
+    expect(attentionBadge(notifications)).toEqual({ kind: 'numeric', count: 3 });
+  });
+
+  it('suppresses records without a working target', () => {
+    useNotificationStore.getState().publish({
+      id: 'dead-end',
+      title: 'Dead end',
+      description: 'No destination.',
+      destination: 'global',
+      badgeKind: 'exclamation',
+      attentionReason: 'action-required',
+      href: '',
+    } as NotificationInput);
+
+    expect(useNotificationStore.getState().notifications['dead-end']).toBeUndefined();
+  });
+
+  it('dispatches semantic actions to existing destination interfaces', () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeNotificationAction('open-contracts', listener);
+
+    dispatchNotificationAction('open-contracts');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    dispatchNotificationAction('open-contracts');
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

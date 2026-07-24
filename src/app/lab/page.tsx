@@ -13,7 +13,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useCollection } from '@/hooks/useCollection';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  NOTIFICATION_TARGETS,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 import {
   bootstrapForLaunch,
   launchHandoffStorageAvailable,
@@ -49,12 +52,13 @@ export default function LabPage() {
   const [codexUnlocked, setCodexUnlocked] = useState(false);
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
   const publishNotification = useNotificationStore((state) => state.publish);
-  const clearDestination = useNotificationStore((state) => state.clearDestination);
+  const clearNotification = useNotificationStore((state) => state.clear);
+  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
 
   // Entering the Lab is the player's acknowledgement of its discovery badge.
   useEffect(() => {
-    clearDestination('lab');
-  }, [clearDestination]);
+    if (notificationsHydrated) clearNotification('lab-discovery');
+  }, [clearNotification, notificationsHydrated]);
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -203,9 +207,9 @@ export default function LabPage() {
           id: 'save-progress',
           title: 'Keep your collection',
           description: 'Add an email whenever you want to play on another device.',
-          destination: 'account',
+          ...NOTIFICATION_TARGETS.saveProgress,
           badgeKind: 'exclamation',
-          href: '/#save-progress',
+          attentionReason: 'action-required',
           actionLabel: 'Save progress',
         });
       }

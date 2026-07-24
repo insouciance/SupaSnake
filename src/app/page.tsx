@@ -53,7 +53,11 @@ import {
   storeLaunchHandoff,
   transitionLaunch,
 } from '@/lib/ftue/launchFlow';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  NOTIFICATION_TARGETS,
+  subscribeNotificationAction,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 // The chamber is WebGL-heavy: lazy-mount client-side only, with the styled
 // gradient placeholder holding the space (zero layout shift).
@@ -121,8 +125,25 @@ export default function Home() {
   const launchInFlightRef = useRef(false);
   const publishNotification = useNotificationStore((state) => state.publish);
   const clearNotification = useNotificationStore((state) => state.clear);
+  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
 
   const token = session?.access_token;
+
+  // Persisted attention belongs only to an eligible signed-in player. Clear
+  // stale meta links once auth or first-run authority proves them unavailable.
+  useEffect(() => {
+    if (!FTUE_V2_ENABLED || !notificationsHydrated || isLoading) return;
+    if (!isAuthenticated || stats?.hasCompletedFirstRun === false) {
+      clearNotification('contracts');
+      clearNotification('season');
+    }
+  }, [
+    clearNotification,
+    isAuthenticated,
+    isLoading,
+    notificationsHydrated,
+    stats?.hasCompletedFirstRun,
+  ]);
 
   // No silent new identity: if a registered account previously used this
   // device and the session is gone, surface "Welcome back" instead of
@@ -242,6 +263,7 @@ export default function Home() {
     if (
       !isAuthenticated ||
       !token ||
+      !notificationsHydrated ||
       (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
     ) return;
     let cancelled = false;
@@ -280,7 +302,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, token, stats?.hasCompletedFirstRun]);
+  }, [isAuthenticated, notificationsHydrated, token, stats?.hasCompletedFirstRun]);
 
   // Season track (§7.2): fetch the live season + the player's free track.
   // { live: false } (pre-migration-021) or no live season simply keeps the
@@ -289,6 +311,7 @@ export default function Home() {
     if (
       !isAuthenticated ||
       !token ||
+      !notificationsHydrated ||
       (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
     ) return;
     let cancelled = false;
@@ -303,6 +326,9 @@ export default function Home() {
         if (cancelled) return;
         if (data.live && data.season && data.track) {
           setSeasonState({ season: data.season, track: data.track });
+        } else {
+          setSeasonState(null);
+          clearNotification('season');
         }
       } catch {
         // Season UI simply stays hidden on failure
@@ -313,12 +339,23 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, token, stats?.hasCompletedFirstRun]);
+  }, [
+    clearNotification,
+    isAuthenticated,
+    notificationsHydrated,
+    token,
+    stats?.hasCompletedFirstRun,
+  ]);
 
   // One notification source drives the contracts badge, mission indicator,
   // and inbox. No parallel automatic modal exists.
   useEffect(() => {
-    if (!FTUE_V2_ENABLED || !contractsState || !stats?.hasCompletedFirstRun) return;
+    if (
+      !FTUE_V2_ENABLED ||
+      !notificationsHydrated ||
+      !contractsState ||
+      !stats?.hasCompletedFirstRun
+    ) return;
     const summary = summarizeContracts(contractsState.contracts);
     const claimableCount = contractsState.contracts.filter(
       (contract) => contract.completed && !contract.claimed
@@ -328,13 +365,7 @@ export default function Home() {
       contractsState.contracts.some((contract) => !contract.picked);
 
     if (!canPick && claimableCount === 0) {
-      publishNotification({
-        id: 'contracts',
-        title: 'Daily Contracts',
-        description: 'No action needed.',
-        destination: 'contracts',
-        badgeKind: 'hidden',
-      });
+      clearNotification('contracts');
       return;
     }
 
@@ -345,42 +376,59 @@ export default function Home() {
         claimableCount > 0
           ? `${summary.completedCount}/${summary.pickedCount} selected contracts complete.`
           : `Choose ${contractsState.picksRemaining} contract${contractsState.picksRemaining === 1 ? '' : 's'} when you’re ready.`,
-      destination: 'contracts',
+      ...NOTIFICATION_TARGETS.contracts,
       badgeKind: claimableCount > 0 ? 'numeric' : 'exclamation',
+      attentionReason: claimableCount > 0 ? 'reward-available' : 'action-required',
       count: claimableCount || undefined,
-      href: '/#contracts',
-      actionLabel: 'View contracts',
-      clearOnOpen: false,
+      actionLabel:
+        claimableCount > 0
+          ? `Claim ${claimableCount === 1 ? 'reward' : 'rewards'}`
+          : 'Choose Contracts',
     });
-  }, [contractsState, stats?.hasCompletedFirstRun, publishNotification]);
+  }, [
+    clearNotification,
+    contractsState,
+    notificationsHydrated,
+    stats?.hasCompletedFirstRun,
+    publishNotification,
+  ]);
 
   useEffect(() => {
-    if (!FTUE_V2_ENABLED || !seasonState || !stats?.hasCompletedFirstRun) return;
+    if (
+      !FTUE_V2_ENABLED ||
+      !notificationsHydrated ||
+      !seasonState ||
+      !stats?.hasCompletedFirstRun
+    ) return;
     const claimableCount = seasonState.track.tiers.filter(
-      (tier) => !tier.claimed && seasonState.track.level >= tier.level
+      (tier) =>
+        !tier.claimed &&
+        seasonState.track.level >= tier.level &&
+        (tier.is_premium !== true ||
+          seasonState.track.premium?.is_premium === true ||
+          seasonState.track.premium?.season_locked_in === true)
     ).length;
     if (claimableCount === 0) {
-      publishNotification({
-        id: 'season',
-        title: seasonState.season.name,
-        description: 'No action needed.',
-        destination: 'season',
-        badgeKind: 'hidden',
-      });
+      clearNotification('season');
       return;
     }
     publishNotification({
       id: 'season',
       title: `${seasonState.season.name} milestone ready`,
       description: `${claimableCount} seasonal reward${claimableCount === 1 ? '' : 's'} available.`,
-      destination: 'season',
+      ...NOTIFICATION_TARGETS.season,
       badgeKind: 'numeric',
+      attentionReason: 'reward-available',
       count: claimableCount,
-      href: '/#season',
-      actionLabel: 'View season',
-      clearOnOpen: false,
+      actionLabel: 'Review rewards',
     });
-  }, [seasonState, stats?.hasCompletedFirstRun, publishNotification]);
+  }, [
+    clearNotification,
+    notificationsHydrated,
+    seasonState,
+    stats?.hasCompletedFirstRun,
+    publishNotification,
+  ]);
 
   // Hash destinations represent an explicit inbox/mission action. Merely
   // loading Home never opens these overlays.
@@ -389,9 +437,21 @@ export default function Home() {
       if (window.location.hash === '#contracts') setShowContractsBoard(true);
       if (window.location.hash === '#season') setShowSeasonTrack(true);
     };
+    const unsubscribeContracts = subscribeNotificationAction(
+      'open-contracts',
+      () => setShowContractsBoard(true)
+    );
+    const unsubscribeSeason = subscribeNotificationAction(
+      'open-season',
+      () => setShowSeasonTrack(true)
+    );
     syncExplicitDestination();
     window.addEventListener('hashchange', syncExplicitDestination);
-    return () => window.removeEventListener('hashchange', syncExplicitDestination);
+    return () => {
+      unsubscribeContracts();
+      unsubscribeSeason();
+      window.removeEventListener('hashchange', syncExplicitDestination);
+    };
   }, []);
 
   const handleSeasonClaim = useCallback(
@@ -532,17 +592,11 @@ export default function Home() {
         // Ignore storage failures
       }
     }
-    const hasClaimableReward = contractsState?.contracts.some(
-      (contract) => contract.completed && !contract.claimed
-    );
-    // Viewing is enough to acknowledge a discovery exclamation. Numeric
-    // reward counts remain until the server-backed claim state reaches zero.
-    if (!hasClaimableReward) clearNotification('contracts');
     if (window.location.hash === '#contracts') {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
     setShowContractsBoard(false);
-  }, [clearNotification, contractsState]);
+  }, []);
 
   const runLaunch = useCallback(async (skipIdentityGate = false) => {
     if (launchInFlightRef.current) return;
@@ -844,10 +898,6 @@ export default function Home() {
           track={seasonState.track}
           onClaim={handleSeasonClaim}
           onDismiss={() => {
-            const hasClaimableReward = seasonState.track.tiers.some(
-              (tier) => !tier.claimed && seasonState.track.level >= tier.level
-            );
-            if (!hasClaimableReward) clearNotification('season');
             if (window.location.hash === '#season') {
               window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
             }

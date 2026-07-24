@@ -17,7 +17,11 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { usePremiumStore } from '@/lib/stores/premiumStore';
 import { PREMIUM_CONFIG } from '@/shared/config/premium';
 import { WelcomeBackModal } from './WelcomeBackModal';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  NOTIFICATION_TARGETS,
+  subscribeNotificationAction,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 interface OfflineProgressProviderProps {
   children: ReactNode;
@@ -28,6 +32,7 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
     progress,
     showModal,
     isLoading,
+    error,
     claimRewards,
     dismissModal,
   } = useOfflineProgress();
@@ -37,17 +42,29 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
     usePremiumStore();
   const publish = useNotificationStore((state) => state.publish);
   const clear = useNotificationStore((state) => state.clear);
+  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
   const [openedByPlayer, setOpenedByPlayer] = useState(false);
 
   useEffect(() => {
     const readHash = () => setOpenedByPlayer(window.location.hash === '#offline-rewards');
+    const unsubscribe = subscribeNotificationAction(
+      'open-offline-rewards',
+      () => setOpenedByPlayer(true)
+    );
     readHash();
     window.addEventListener('hashchange', readHash);
-    return () => window.removeEventListener('hashchange', readHash);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('hashchange', readHash);
+    };
   }, []);
 
   useEffect(() => {
-    if (!showModal || !progress?.hasRewards) return;
+    if (!notificationsHydrated || isLoading || error) return;
+    if (!showModal || !progress?.hasRewards) {
+      clear('offline-rewards');
+      return;
+    }
     const rewardParts = [
       progress.passiveDnaEarned > 0 ? `${progress.passiveDnaEarned} DNA` : null,
       progress.energyRestored > 0 ? `${progress.energyRestored} energy` : null,
@@ -58,13 +75,20 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
       description: rewardParts.length > 0
         ? `Claim ${rewardParts.join(' and ')} when you’re ready.`
         : 'Your return rewards are ready to claim.',
-      destination: 'home',
+      ...NOTIFICATION_TARGETS.offlineRewards,
       badgeKind: 'exclamation',
-      href: '/#offline-rewards',
+      attentionReason: 'reward-available',
       actionLabel: 'Review rewards',
-      clearOnOpen: false,
     });
-  }, [showModal, progress, publish]);
+  }, [
+    clear,
+    error,
+    isLoading,
+    notificationsHydrated,
+    showModal,
+    progress,
+    publish,
+  ]);
 
   useEffect(() => {
     if (isAuthenticated && session?.access_token) {

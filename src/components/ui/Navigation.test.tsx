@@ -7,7 +7,10 @@
 import { render, screen } from '@testing-library/react';
 import { Navigation } from './Navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  NOTIFICATION_TARGETS,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 let mockPathname = '/';
 jest.mock('next/navigation', () => ({
@@ -98,8 +101,9 @@ describe('Navigation', () => {
       id: 'lab-discovery',
       title: 'Lab ready',
       description: 'Discover more snakes',
-      destination: 'lab',
+      ...NOTIFICATION_TARGETS.lab,
       badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
     });
 
     render(<Navigation />);

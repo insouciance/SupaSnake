@@ -5,9 +5,13 @@
  * signed-out authentication dialog.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AccountChip } from './AccountChip';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
+import {
+  dispatchNotificationAction,
+  NOTIFICATION_TARGETS,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 const mockUseAuth = jest.fn();
 jest.mock('@/lib/auth/AuthProvider', () => ({
@@ -107,8 +111,9 @@ describe('AccountChip', () => {
         id: 'save-progress',
         title: 'Keep your collection',
         description: 'Optional account',
-        destination: 'account',
+        ...NOTIFICATION_TARGETS.saveProgress,
         badgeKind: 'exclamation',
+        attentionReason: 'action-required',
       });
       render(<AccountChip />);
 
@@ -124,6 +129,14 @@ describe('AccountChip', () => {
       fireEvent.click(screen.getByTestId('account-chip'));
       expect(screen.getByTestId('account-upgrade-modal')).toBeInTheDocument();
     });
+
+    it('opens the existing upgrade modal for a semantic notification action', () => {
+      render(<AccountChip />);
+
+      act(() => dispatchNotificationAction('open-save-progress'));
+
+      expect(screen.getByTestId('account-upgrade-modal')).toBeInTheDocument();
+    });
   });
 
   describe('registered account', () => {
@@ -135,6 +148,23 @@ describe('AccountChip', () => {
       render(<AccountChip />);
 
       expect(screen.getByTestId('account-chip')).toHaveTextContent('P');
+    });
+
+    it('removes stale save-progress attention once the account is durable', async () => {
+      useNotificationStore.getState().publish({
+        id: 'save-progress',
+        title: 'Keep your collection',
+        description: 'Optional account',
+        ...NOTIFICATION_TARGETS.saveProgress,
+        badgeKind: 'exclamation',
+        attentionReason: 'action-required',
+      });
+
+      render(<AccountChip />);
+
+      await waitFor(() => {
+        expect(useNotificationStore.getState().notifications['save-progress']).toBeUndefined();
+      });
     });
 
     it('reveals email, Settings link and Sign out in the popover', () => {
