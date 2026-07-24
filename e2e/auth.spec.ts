@@ -2,7 +2,7 @@
  * Authentication E2E Tests
  *
  * Real flows as of Sprint 1:
- * - Home page has no login link; play starts an anonymous session.
+ * - Home offers player-pulled sign-in choices; Launch starts an anonymous session.
  * - /login: email/password + Google/Apple OAuth + "Play as Guest".
  * - /signup: age gate (14+) shown before the account form.
  * - /game and /lab prompt for sign-in when there is no session.
@@ -24,6 +24,82 @@ test.describe('Consent banner', () => {
     // Decision persists across reloads
     await page.reload();
     await expect(banner).not.toBeVisible({ timeout: 5000 });
+  });
+});
+
+test.describe('Home authentication dialog', () => {
+  test('stays above Home controls and within portrait, landscape, and desktop viewports', async ({
+    page,
+  }) => {
+    await seedConsent(page);
+
+    for (const viewport of [
+      { width: 320, height: 568 },
+      { width: 390, height: 844 },
+      { width: 844, height: 390 },
+      { width: 1280, height: 720 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+
+      const trigger = page.getByTestId('account-chip');
+      await expect(trigger).toBeVisible();
+      await trigger.click();
+
+      const dialog = page.getByRole('dialog', { name: /join the run/i });
+      const layer = page.locator('[data-modal-layer="true"]');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole('link', { name: /^sign in$/i })).toBeVisible();
+
+      const metrics = await page.evaluate(() => {
+        const panel = document.querySelector<HTMLElement>('[data-testid="account-auth-dialog"]');
+        const modalLayer = document.querySelector<HTMLElement>('[data-modal-layer="true"]');
+        const accountTrigger = document.querySelector<HTMLElement>('[data-testid="account-chip"]');
+        if (!panel || !modalLayer || !accountTrigger) {
+          throw new Error('Authentication dialog elements did not mount');
+        }
+
+        const panelRect = panel.getBoundingClientRect();
+        const triggerRect = accountTrigger.getBoundingClientRect();
+        const topAtTrigger = document.elementFromPoint(
+          triggerRect.left + triggerRect.width / 2,
+          triggerRect.top + triggerRect.height / 2
+        );
+
+        return {
+          panel: {
+            left: panelRect.left,
+            top: panelRect.top,
+            right: panelRect.right,
+            bottom: panelRect.bottom,
+          },
+          layerIsBodyChild: modalLayer.parentElement === document.body,
+          layerPosition: getComputedStyle(modalLayer).position,
+          layerZIndex: Number(getComputedStyle(modalLayer).zIndex),
+          triggerZIndex: Number(
+            getComputedStyle(accountTrigger.closest('nav')?.querySelector('.fixed') ?? accountTrigger)
+              .zIndex || 0
+          ),
+          triggerIsTopmost: accountTrigger.contains(topAtTrigger),
+          focusIsInside: panel.contains(document.activeElement),
+        };
+      });
+
+      expect(metrics.panel.left).toBeGreaterThanOrEqual(0);
+      expect(metrics.panel.top).toBeGreaterThanOrEqual(0);
+      expect(metrics.panel.right).toBeLessThanOrEqual(viewport.width);
+      expect(metrics.panel.bottom).toBeLessThanOrEqual(viewport.height);
+      expect(metrics.layerIsBodyChild).toBe(true);
+      expect(metrics.layerPosition).toBe('fixed');
+      expect(metrics.layerZIndex).toBeGreaterThan(metrics.triggerZIndex);
+      expect(metrics.triggerIsTopmost).toBe(false);
+      expect(metrics.focusIsInside).toBe(true);
+
+      await page.keyboard.press('Escape');
+      await expect(dialog).not.toBeVisible();
+      await expect(trigger).toBeFocused();
+      await expect(layer).toHaveCount(0);
+    }
   });
 });
 

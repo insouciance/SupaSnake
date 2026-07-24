@@ -2,7 +2,7 @@
  * AccountChip Tests
  * The persistent identity indicator: guest chip with save-progress
  * affordance, registered avatar with popover (email, Settings, Sign out),
- * signed-out fallback link.
+ * signed-out authentication dialog.
  */
 
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -48,25 +48,44 @@ describe('AccountChip', () => {
     expect(screen.queryByTestId('account-chip')).not.toBeInTheDocument();
   });
 
-  it('opens the auth menu when fully signed out (icon chip, no text)', () => {
+  it('opens authentication choices in a viewport-level dialog when fully signed out', () => {
     setAuth({ user: null });
-    render(<AccountChip />);
+    render(
+      <div className="animate-fade-up overflow-hidden" data-testid="navigation-context">
+        <AccountChip />
+      </div>
+    );
 
     const chip = screen.getByTestId('account-chip');
     // Square icon chip matching the rail rhythm - no inline "Sign in" text
     expect(chip).toHaveAttribute('aria-label', 'Sign in');
+    expect(chip).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(chip).toHaveAttribute('aria-expanded', 'false');
     expect(chip).not.toHaveTextContent(/sign in/i);
 
+    chip.focus();
     fireEvent.click(chip);
-    const menu = screen.getByTestId('account-auth-menu');
-    expect(menu).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /sign in/i })).toHaveAttribute(
+    const dialog = screen.getByRole('dialog', { name: /join the run/i });
+    const layer = dialog.closest('[data-modal-layer="true"]');
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(layer?.parentElement).toBe(document.body);
+    expect(layer).toHaveClass('fixed', 'inset-0', 'z-[100]');
+    expect(screen.getByTestId('navigation-context')).not.toContainElement(dialog);
+    expect(chip).toHaveAttribute('aria-expanded', 'true');
+    expect(chip).toHaveAttribute('aria-controls', 'account-auth-dialog');
+    expect(screen.getByRole('link', { name: /^sign in$/i })).toHaveAttribute(
       'href',
       '/login'
     );
-    expect(
-      screen.getByRole('menuitem', { name: /create account/i })
-    ).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('link', { name: /create account/i })).toHaveAttribute(
+      'href',
+      '/signup'
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /join the run/i })).not.toBeInTheDocument();
+    expect(chip).toHaveFocus();
   });
 
   describe('guest (anonymous session)', () => {
