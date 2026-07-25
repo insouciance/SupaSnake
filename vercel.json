@@ -11,6 +11,10 @@
     {
       "path": "/api/user/delete-account/process",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/ops/session-sweep",
+      "schedule": "40 3 * * *"
     }
   ]
 }

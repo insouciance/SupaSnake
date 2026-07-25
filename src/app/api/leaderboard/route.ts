@@ -5,11 +5,20 @@
  * same fold over `game_sessions` with the same eligibility:
  *
  *   ended · validated · not Free Play · not an Anomaly run ·
+ *   settled (end_reason) · a public cohort ·
  *   compatible content version · inside the board's window
  *
  * and one best run per player. Rule 11: eligibility is a query predicate, not
  * a client concern - an in-progress or flagged run is structurally incapable
  * of appearing. Rule 6: this is entirely read-side; nothing is written.
+ *
+ * WP-0.06 added the two middle conditions and REPLACED NOTHING. `validated`
+ * is still the flag gate. `end_reason` answers a different question - a run
+ * the sweep expired, or the player abandoned, or the client forfeited, never
+ * settled, so it is not a result. `cohort` answers a third - the dev, QA and
+ * fixture accounts of GT §13 are not the audience, so a stranger is not shown
+ * them. Excluding an account is read-side: it keeps every run, reward and
+ * record it owns (Rule 6), and `total` below simply stops counting it.
  *
  * Rule 2: the ranked value is `game_sessions.score`, the server recompute of
  * the run's food events under its dynasty ruleset. No genome, generation,
@@ -59,6 +68,11 @@ import {
 } from '@/lib/leaderboard/board';
 import { getIdentitiesForPlayers } from '@/lib/server/identity';
 import type { PlayerIdentity } from '@/lib/identity/types';
+import { SETTLED_END_REASON } from '@/lib/session/lifecycle';
+import {
+  excludedCohortPlayerIds,
+  isMissingLifecycleInfra,
+} from '@/lib/server/sessionLifecycle';
 
 /**
  * Hard ceiling on the eligible-run scan. At the current population every
@@ -69,7 +83,28 @@ import type { PlayerIdentity } from '@/lib/identity/types';
 const BOARD_SCAN_LIMIT = 5000;
 const BOARD_SCAN_PAGE = 1000;
 
+/**
+ * How many flagged accounts fit in the query's exclusion list before it is
+ * dropped in favour of the pure gate alone.
+ *
+ * The dev/QA/fixture cohort is a fixed handful by construction — it does not
+ * grow with the audience — so this is a guard against a mistake (a mass
+ * flagging), not a design limit. Past it the predicate would make the request
+ * URL absurd; `buildBoard` still applies the exact same exclusion to every row
+ * it ranks, so the board stays correct either way, just less cheap.
+ */
+const COHORT_EXCLUSION_PUSHDOWN_MAX = 300;
+
 const SESSION_COLUMNS =
+  'id, player_id, score, dynasty, started_at, ended_at, validated, is_free_play, anomaly_id, end_reason';
+
+/**
+ * The same list without `end_reason`, for the window between a deploy and
+ * migration 045. Selecting a column that does not exist fails the whole read,
+ * so the scan retries with this and the pure gate degrades to "every ended run
+ * settled" - which is exactly what was true before 045 existed.
+ */
+const SESSION_COLUMNS_PRE_045 =
   'id, player_id, score, dynasty, started_at, ended_at, validated, is_free_play, anomaly_id';
 
 // Server-side Supabase client
@@ -130,34 +165,67 @@ async function resolveViewerPlayerId(
 async function scanEligibleRuns(
   client: SupabaseClient,
   windowStart: string,
-  dynasty: string | null
+  dynasty: string | null,
+  excludedPlayerIds: ReadonlySet<string>
 ): Promise<{ rows: RankableSessionRow[]; truncated: boolean } | { error: unknown }> {
   const rows: RankableSessionRow[] = [];
   let truncated = false;
+  // Set once the schema turns out to predate migration 045; from then on the
+  // scan asks for the legacy column list instead of failing every page.
+  let selectColumns = SESSION_COLUMNS;
+  let pushDownSettled = true;
+
+  const allExcluded = Array.from(excludedPlayerIds);
+  const excluded =
+    allExcluded.length > COHORT_EXCLUSION_PUSHDOWN_MAX ? [] : allExcluded;
 
   for (let offset = 0; offset < BOARD_SCAN_LIMIT; offset += BOARD_SCAN_PAGE) {
     const pageSize = Math.min(BOARD_SCAN_PAGE, BOARD_SCAN_LIMIT - offset);
 
-    let query = client
-      .from('game_sessions')
-      .select(SESSION_COLUMNS)
-      // Eligibility (Constitution §6.1, GT §9.3)
-      .not('ended_at', 'is', null) // the run ended
-      .eq('validated', true) // server validation passed
-      .eq('is_free_play', false) // practice never ranks (Design v2 §7.4)
-      .is('anomaly_id', null) // anomaly runs have their own board (§7.2)
-      .gte('started_at', windowStart) // window + content version
-      // Total order so paging is stable across requests
-      .order('score', { ascending: false })
-      .order('ended_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(offset, offset + pageSize - 1);
+    const build = () => {
+      let query = client
+        .from('game_sessions')
+        .select(selectColumns)
+        // Eligibility (Constitution §6.1, GT §9.3)
+        .not('ended_at', 'is', null) // the run ended
+        .eq('validated', true) // server validation passed
+        .eq('is_free_play', false) // practice never ranks (Design v2 §7.4)
+        .is('anomaly_id', null) // anomaly runs have their own board (§7.2)
+        .gte('started_at', windowStart); // window + content version
 
-    if (dynasty) {
-      query = query.eq('dynasty', dynasty);
+      // WP-0.06: only a run that ended by settling is a result. NULL is a
+      // pre-045 row, which had exactly one end path and always settled.
+      if (pushDownSettled) {
+        query = query.or(
+          `end_reason.is.null,end_reason.eq.${SETTLED_END_REASON}`
+        );
+      }
+      // WP-0.06: dev/QA/fixture accounts (GT §13). The flagged set is the
+      // small minority by construction, so it pushes down as one predicate.
+      if (excluded.length > 0) {
+        query = query.not('player_id', 'in', `(${excluded.join(',')})`);
+      }
+
+      return query
+        // Total order so paging is stable across requests
+        .order('score', { ascending: false })
+        .order('ended_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+    };
+
+    let query = dynasty ? build().eq('dynasty', dynasty) : build();
+    let { data, error } = await query;
+
+    // Pre-045 window: retry once without the column and its predicate. The
+    // pure gate below still applies every rule it can see.
+    if (error && selectColumns === SESSION_COLUMNS && isMissingLifecycleInfra(error)) {
+      selectColumns = SESSION_COLUMNS_PRE_045;
+      pushDownSettled = false;
+      query = dynasty ? build().eq('dynasty', dynasty) : build();
+      ({ data, error } = await query);
     }
 
-    const { data, error } = await query;
     if (error) return { error };
 
     const page = (data ?? []) as unknown as RankableSessionRow[];
@@ -265,14 +333,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid dynasty' }, { status: 400 });
     }
 
-    const window: EligibilityWindow = { windowStart: boardWindowStart(type) };
+    // WP-0.06 / GT §13: the accounts a stranger is not shown. Read once, used
+    // twice - pushed into the query, then re-applied by the pure gate.
+    const { ids: excludedPlayerIds } = await excludedCohortPlayerIds(supabase);
+
+    const window: EligibilityWindow = {
+      windowStart: boardWindowStart(type),
+      excludedPlayerIds,
+    };
 
     const viewerPlayerId = await resolveViewerPlayerId(
       supabase,
       request.headers.get('authorization')
     );
 
-    const scan = await scanEligibleRuns(supabase, window.windowStart, dynasty);
+    const scan = await scanEligibleRuns(
+      supabase,
+      window.windowStart,
+      dynasty,
+      excludedPlayerIds
+    );
     if ('error' in scan) {
       reportSupabaseError('session scan', scan.error, { type, dynasty });
       return NextResponse.json({ error: 'Failed to fetch leaderboard' }, { status: 500 });

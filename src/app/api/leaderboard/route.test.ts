@@ -8,6 +8,10 @@
  *   - myRank resolves for a real account (players.id, not auth.users.id)
  *   - the you-centered view returns the top 3 plus the viewer ±5
  *   - every Supabase error is checked and reported
+ *
+ * Acceptance (WP-0.06 / GT §9.6, §13):
+ *   - a run that did not settle (expired, abandoned, disconnected) cannot rank
+ *   - a flagged cohort appears on no public board and in no public count
  */
 
 import { NextRequest } from 'next/server';
@@ -24,12 +28,14 @@ interface MockRow {
   validated: boolean | null;
   is_free_play: boolean | null;
   anomaly_id: string | null;
+  end_reason?: string | null;
 }
 
 interface MockPlayer {
   id: string;
   user_id: string | null;
   username: string | null;
+  cohort?: string | null;
 }
 
 const mockState: {
@@ -40,6 +46,7 @@ const mockState: {
   sessionError: unknown;
   playerLookupError: unknown;
   usernameError: unknown;
+  cohortLookupError: unknown;
   queries: Array<{ table: string; calls: Array<[string, ...unknown[]]> }>;
 } = {
   sessions: [],
@@ -49,6 +56,7 @@ const mockState: {
   sessionError: null,
   playerLookupError: null,
   usernameError: null,
+  cohortLookupError: null,
   queries: [],
 };
 
@@ -70,9 +78,31 @@ jest.mock('@supabase/supabase-js', () => {
         out = out.filter((r) => value(r, args[0] as string) === args[1]);
       } else if (op === 'is') {
         out = out.filter((r) => value(r, args[0] as string) === args[1]);
+      } else if (op === 'not' && args[1] === 'in') {
+        // .not(column, 'in', '(id-1,id-2)') — the cohort exclusion
+        const list = String(args[2]).replace(/^\(|\)$/g, '').split(',').filter(Boolean);
+        out = out.filter((r) => !list.includes(String(value(r, args[0] as string))));
       } else if (op === 'not') {
         // .not(column, 'is', null)
         out = out.filter((r) => value(r, args[0] as string) !== args[2]);
+      } else if (op === 'neq') {
+        // SQL semantics: NULL <> 'x' is unknown, so a NULL never matches.
+        out = out.filter((r) => {
+          const cell = value(r, args[0] as string);
+          return cell !== null && cell !== args[1];
+        });
+      } else if (op === 'or') {
+        // .or('end_reason.is.null,end_reason.eq.completed')
+        const clauses = String(args[0]).split(',');
+        out = out.filter((r) =>
+          clauses.some((clause) => {
+            const [column, operator, operand] = clause.split('.');
+            const cell = value(r, column);
+            if (operator === 'is') return cell === (operand === 'null' ? null : operand);
+            if (operator === 'eq') return String(cell) === operand;
+            return false;
+          })
+        );
       } else if (op === 'gte') {
         out = out.filter(
           (r) => String(value(r, args[0] as string) ?? '') >= String(args[1])
@@ -127,10 +157,16 @@ jest.mock('@supabase/supabase-js', () => {
       const isViewerLookup = calls.some(
         ([op, column]) => op === 'eq' && column === 'user_id'
       );
+      const isCohortLookup = calls.some(
+        ([op, column]) => op === 'neq' && column === 'cohort'
+      );
+      if (isCohortLookup && mockState.cohortLookupError) {
+        return { data: null, error: mockState.cohortLookupError };
+      }
       if (isViewerLookup && mockState.playerLookupError) {
         return { data: null, error: mockState.playerLookupError };
       }
-      if (!isViewerLookup && mockState.usernameError) {
+      if (!isViewerLookup && !isCohortLookup && mockState.usernameError) {
         return { data: null, error: mockState.usernameError };
       }
       const rows = mockState.players as unknown as Record<string, unknown>[];
@@ -157,6 +193,8 @@ jest.mock('@supabase/supabase-js', () => {
       eq: push('eq'),
       is: push('is'),
       not: push('not'),
+      neq: push('neq'),
+      or: push('or'),
       gte: push('gte'),
       in: push('in'),
       order: push('order'),
@@ -222,6 +260,7 @@ beforeEach(() => {
   mockState.sessionError = null;
   mockState.playerLookupError = null;
   mockState.usernameError = null;
+  mockState.cohortLookupError = null;
   mockState.queries = [];
 });
 
@@ -523,5 +562,222 @@ describe('error handling (Rule 11)', () => {
     expect(data.entries[0].rank).toBe(1);
     expect(data.entries[0].playerName).toBe('Player a');
     expect(mockCaptureException).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WP-0.06 — session lifecycle and cohorts (GT §9.6, §13)
+// ---------------------------------------------------------------------------
+
+describe('a run that did not settle cannot rank', () => {
+  it.each(['expired', 'abandoned', 'disconnected'])(
+    'excludes an %s run even when it is ended and validated',
+    async (reason) => {
+      mockState.sessions = [
+        // The dangerous shape: the sweep set ended_at on a row whose
+        // settlement had already written score and validated (a reward-grant
+        // failure that was never replayed). It must not rank.
+        session({
+          id: 'ghost',
+          player_id: 'p-ghost',
+          score: 99999,
+          end_reason: reason,
+        }),
+        session({ id: 'real', player_id: 'p-real', score: 120, end_reason: 'completed' }),
+      ];
+
+      const data = await (await GET(request('?type=global'))).json();
+
+      expect(data.entries.map((e: { playerId: string }) => e.playerId)).toEqual([
+        'p-real',
+      ]);
+      expect(data.total).toBe(1);
+    }
+  );
+
+  it('still ranks a pre-045 row, which had only one end path', async () => {
+    mockState.sessions = [session({ id: 'legacy', player_id: 'p-legacy', score: 300 })];
+
+    const data = await (await GET(request('?type=global'))).json();
+
+    expect(data.entries).toHaveLength(1);
+    expect(data.entries[0].playerId).toBe('p-legacy');
+  });
+
+  it('pushes the settled predicate into the query', async () => {
+    await GET(request('?type=global'));
+
+    const sessionQuery = mockState.queries.find((q) => q.table === 'game_sessions');
+    const calls = sessionQuery!.calls.map((c) => JSON.stringify(c));
+    expect(calls).toContain(
+      JSON.stringify(['or', 'end_reason.is.null,end_reason.eq.completed'])
+    );
+  });
+});
+
+describe('a flagged cohort appears on no public surface', () => {
+  beforeEach(() => {
+    mockState.players = [
+      { id: 'p-dev', user_id: 'auth-dev', username: 'DevAccount', cohort: 'dev' },
+      { id: 'p-qa', user_id: 'auth-qa', username: 'QaAccount', cohort: 'qa' },
+      { id: 'p-fix', user_id: null, username: 'Fixture', cohort: 'fixture' },
+      { id: 'p-real', user_id: 'auth-real', username: 'RealPlayer', cohort: 'player' },
+    ];
+  });
+
+  it('keeps dev, QA and fixture runs off the board and out of the count', async () => {
+    mockState.sessions = [
+      session({ id: 'd', player_id: 'p-dev', score: 99999, end_reason: 'completed' }),
+      session({ id: 'q', player_id: 'p-qa', score: 88888, end_reason: 'completed' }),
+      session({ id: 'f', player_id: 'p-fix', score: 77777, end_reason: 'completed' }),
+      session({ id: 'r', player_id: 'p-real', score: 120, end_reason: 'completed' }),
+    ];
+
+    const data = await (await GET(request('?type=global'))).json();
+
+    expect(data.entries.map((e: { playerId: string }) => e.playerId)).toEqual(['p-real']);
+    // The public count is the board's own length, so it decays with it.
+    expect(data.total).toBe(1);
+    expect(data.entries[0].rank).toBe(1);
+  });
+
+  it('excludes them from every board type and from the you-centered view', async () => {
+    // Inside today's window as well as this week's, so the daily and weekly
+    // boards see the same two runs the global board does.
+    const justNow = new Date().toISOString();
+    mockState.sessions = [
+      session({
+        id: 'd',
+        player_id: 'p-dev',
+        score: 99999,
+        started_at: justNow,
+        ended_at: justNow,
+      }),
+      session({
+        id: 'r',
+        player_id: 'p-real',
+        score: 120,
+        started_at: justNow,
+        ended_at: justNow,
+      }),
+    ];
+
+    for (const type of ['global', 'weekly', 'daily']) {
+      const board = await (await GET(request(`?type=${type}`))).json();
+      expect(board.entries.map((e: { playerId: string }) => e.playerId)).toEqual([
+        'p-real',
+      ]);
+    }
+
+    const you = await (await GET(request('?type=global&view=you'))).json();
+    expect(you.top.map((e: { playerId: string }) => e.playerId)).toEqual(['p-real']);
+  });
+
+  it('pushes the cohort exclusion into the query rather than filtering after', async () => {
+    mockState.sessions = [session({ id: 'r', player_id: 'p-real', score: 120 })];
+
+    await GET(request('?type=global'));
+
+    const cohortQuery = mockState.queries.find((q) =>
+      q.calls.some(([op, column]) => op === 'neq' && column === 'cohort')
+    );
+    expect(cohortQuery?.table).toBe('players');
+
+    const sessionQuery = mockState.queries.find((q) => q.table === 'game_sessions');
+    const notIn = sessionQuery!.calls.find(
+      ([op, column, operator]) =>
+        op === 'not' && column === 'player_id' && operator === 'in'
+    );
+    expect(notIn).toBeDefined();
+    expect(String(notIn![3])).toContain('p-dev');
+    expect(String(notIn![3])).toContain('p-qa');
+    expect(String(notIn![3])).toContain('p-fix');
+    expect(String(notIn![3])).not.toContain('p-real');
+  });
+
+  it('unranks a flagged viewer without erroring — they still see the board', async () => {
+    mockState.authUser = { id: 'auth-dev' };
+    mockState.sessions = [
+      session({ id: 'd', player_id: 'p-dev', score: 99999 }),
+      session({ id: 'r', player_id: 'p-real', score: 120 }),
+    ];
+
+    const response = await GET(request('?type=global', 'Bearer dev-token'));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.viewer).toEqual({
+      playerId: 'p-dev',
+      ranked: false,
+      rank: null,
+      score: null,
+    });
+    expect(data.entries.map((e: { playerId: string }) => e.playerId)).toEqual(['p-real']);
+  });
+
+  it('writes nothing — flagging is read-side only (Rule 6)', async () => {
+    mockState.sessions = [session({ id: 'd', player_id: 'p-dev', score: 99999 })];
+
+    await GET(request('?type=global'));
+
+    for (const query of mockState.queries) {
+      const operations = query.calls.map(([op]) => op);
+      expect(operations).not.toContain('update');
+      expect(operations).not.toContain('delete');
+      expect(operations).not.toContain('insert');
+      expect(operations).not.toContain('upsert');
+    }
+  });
+
+  it('serves everyone when the cohort read fails, and reports it', async () => {
+    mockState.cohortLookupError = { code: '08006', message: 'connection failure' };
+    mockState.sessions = [session({ id: 'r', player_id: 'p-real', score: 120 })];
+
+    const response = await GET(request('?type=global'));
+
+    expect(response.status).toBe(200);
+    expect(mockCaptureException).toHaveBeenCalled();
+  });
+
+  it('serves everyone silently before migration 045', async () => {
+    mockState.cohortLookupError = { code: '42703', message: 'column players.cohort does not exist' };
+    mockState.sessions = [session({ id: 'r', player_id: 'p-real', score: 120 })];
+
+    const response = await GET(request('?type=global'));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.entries).toHaveLength(1);
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+});
+
+describe('a mass flagging degrades safely', () => {
+  it('drops the query predicate but still excludes every flagged account', async () => {
+    const flagged = Array.from({ length: 301 }, (_, i) => `p-flag-${i}`);
+    mockState.players = [
+      ...flagged.map((id) => ({ id, user_id: null, username: id, cohort: 'qa' })),
+      { id: 'p-real', user_id: null, username: 'RealPlayer', cohort: 'player' },
+    ];
+    mockState.sessions = [
+      ...flagged.map((id, i) =>
+        session({ id: `s-${i}`, player_id: id, score: 90000 + i })
+      ),
+      session({ id: 's-real', player_id: 'p-real', score: 120 }),
+    ];
+
+    const data = await (await GET(request('?type=global'))).json();
+
+    // The exclusion list is too long to push down…
+    const sessionQuery = mockState.queries.find((q) => q.table === 'game_sessions');
+    expect(
+      sessionQuery!.calls.some(
+        ([op, column, operator]) =>
+          op === 'not' && column === 'player_id' && operator === 'in'
+      )
+    ).toBe(false);
+    // …and the board is still correct, because the pure gate re-applies it.
+    expect(data.entries.map((e: { playerId: string }) => e.playerId)).toEqual(['p-real']);
+    expect(data.total).toBe(1);
   });
 });

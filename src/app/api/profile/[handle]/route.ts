@@ -18,6 +18,8 @@ import { createClient } from '@supabase/supabase-js';
 import { HANDLE_REGEX } from '@/lib/identity/handle';
 import { buildChronicle, type ChroniclePlayerRow } from '@/lib/server/chronicle';
 import { isMissingIdentityInfra } from '@/lib/server/identity';
+import { isMissingLifecycleInfra } from '@/lib/server/sessionLifecycle';
+import { isPublicCohort } from '@/lib/cohort/cohort';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,11 +45,22 @@ export async function GET(
     // Case-insensitive match on the claimed handle. ilike treats _ as a
     // single-char wildcard - escape it (handles allow no other
     // metacharacters by format).
-    const { data: player, error: playerError } = await supabase
+    // `cohort` (migration 045) rides along so a dev/QA/fixture account has no
+    // public profile. Selected with '*'-style tolerance below: pre-045 the
+    // column is missing and the read is retried without it.
+    let { data: player, error: playerError } = await supabase
       .from('players')
-      .select('id, user_id, created_at, handle')
+      .select('id, user_id, created_at, handle, cohort')
       .ilike('handle', handle.replace(/_/g, '\\_'))
       .maybeSingle();
+
+    if (playerError && isMissingLifecycleInfra(playerError)) {
+      ({ data: player, error: playerError } = await supabase
+        .from('players')
+        .select('id, user_id, created_at, handle')
+        .ilike('handle', handle.replace(/_/g, '\\_'))
+        .maybeSingle());
+    }
 
     if (playerError) {
       if (isMissingIdentityInfra(playerError)) {
@@ -58,6 +71,15 @@ export async function GET(
       return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
     if (!player) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+
+    // WP-0.06 / GT §13: dev, QA and fixture accounts are not part of the
+    // audience, so they are not addressable by strangers. Read-side only —
+    // the account keeps its handle, its runs, its records and every surface it
+    // sees while signed in (Rule 6). The 404 is the same one an unclaimed
+    // handle gets, so the response does not disclose that the account exists.
+    if (!isPublicCohort((player as { cohort?: string | null }).cohort)) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 

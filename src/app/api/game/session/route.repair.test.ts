@@ -45,10 +45,25 @@ function request() {
   });
 }
 
+/**
+ * WP-0.06 added one `game_sessions` write to the start path: the sweep that
+ * closes this player's own runs left open past the stale window. It runs after
+ * the repair and the rate check, so the ordering this suite exists to protect
+ * is unchanged — but it is a table access, so the fake has to answer for it.
+ */
 function playerLookupSequence(
   results: Array<{ data: typeof REPAIRED_PLAYER | null; error: { code: string } | null }>
 ) {
   return jest.fn((table: string) => {
+    if (table === 'game_sessions') {
+      const chain: Record<string, unknown> = {};
+      for (const op of ['update', 'eq', 'is', 'lt', 'select']) {
+        chain[op] = () => chain;
+      }
+      chain.then = (onFulfilled: (v: unknown) => unknown) =>
+        Promise.resolve({ data: [], error: null }).then(onFulfilled);
+      return chain;
+    }
     if (table !== 'players') throw new Error(`Unexpected table ${table}`);
     return {
       select: () => ({
@@ -59,6 +74,10 @@ function playerLookupSequence(
     };
   });
 }
+
+/** Calls to `players` only — the sweep's `game_sessions` write is separate. */
+const playerLookups = () =>
+  mockFrom.mock.calls.filter(([table]) => table === 'players').length;
 
 describe('POST /api/game/session start repair', () => {
   beforeEach(() => {
@@ -83,7 +102,7 @@ describe('POST /api/game/session start repair', () => {
     expect(mockRpc).toHaveBeenCalledWith('bootstrap_player', {
       p_user_id: 'user-1',
     });
-    expect(mockFrom).toHaveBeenCalledTimes(2);
+    expect(playerLookups()).toBe(2);
     expect(mockCheckRateLimit).toHaveBeenCalledWith(
       expect.any(Object),
       REPAIRED_PLAYER.id,
@@ -109,7 +128,7 @@ describe('POST /api/game/session start repair', () => {
     expect(body).toEqual({
       error: 'Player preparation failed — retry when you are ready',
     });
-    expect(mockFrom).toHaveBeenCalledTimes(1);
+    expect(playerLookups()).toBe(1);
     expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 });

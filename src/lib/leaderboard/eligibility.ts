@@ -8,6 +8,16 @@
  *   4. is not an Anomaly run - those score on their own weekly board (§7.2)
  *   5. was played on a compatible content version
  *   6. falls inside the board's time window (daily / weekly / all-time)
+ *   7. ended by SETTLING - `end_reason` is `completed` (WP-0.06). An expired,
+ *      abandoned or disconnected run settled to nothing; it is not a result,
+ *      so it is not a rank either.
+ *   8. belongs to an account a stranger may be shown - the dev/QA/fixture
+ *      cohorts are excluded (WP-0.06, GT §13).
+ *
+ * 7 and 8 COMPOSE with 1-6; they replace nothing. `validated` remains the
+ * flag gate WP-0.05 established - a run still has to pass server validation.
+ * The new conditions answer two different questions: did this run finish, and
+ * is this account part of the audience.
  *
  * These are READ-SIDE rules only. Making a run ineligible never writes to,
  * deletes, or downgrades any player-owned row (Rule 6) - the run, its DNA,
@@ -20,6 +30,8 @@
  * route applies to whatever the database returned, so a filter regression can
  * never leak a flagged or in-progress run onto a board.
  */
+
+import { endReasonSettles } from '@/lib/session/lifecycle';
 
 /**
  * Content version of the currently ranked score fold.
@@ -56,6 +68,12 @@ export interface RankableSessionRow {
   validated: boolean | null;
   is_free_play: boolean | null;
   anomaly_id: string | null;
+  /**
+   * How the run stopped being open (migration 045). `null` on rows written by
+   * the pre-045 code path, which had exactly one end route and always settled
+   * - `endReasonSettles` treats that as settled.
+   */
+  end_reason?: string | null;
 }
 
 export type IneligibleReason =
@@ -64,7 +82,9 @@ export type IneligibleReason =
   | 'not_validated'
   | 'free_play'
   | 'anomaly_board'
-  | 'before_window';
+  | 'before_window'
+  | 'did_not_settle'
+  | 'excluded_cohort';
 
 export interface EligibilityWindow {
   /**
@@ -72,6 +92,16 @@ export interface EligibilityWindow {
    * epoch - see `boardWindowStart`.
    */
   windowStart: string;
+  /**
+   * `players.id` of the accounts no public surface renders - the dev/QA/
+   * fixture cohorts (GT §13). Read-side only: excluding an account keeps every
+   * run, reward and record it owns intact (Rule 6).
+   *
+   * Optional because the pre-045 window has no cohort column, and because the
+   * pure fold is used in tests that do not care about cohorts. Absent means
+   * "exclude nobody", which is the previous release's behaviour.
+   */
+  excludedPlayerIds?: ReadonlySet<string>;
 }
 
 /**
@@ -124,6 +154,10 @@ export function ineligibleReason(
   if (row.validated !== true) return 'not_validated';
   if (row.is_free_play === true) return 'free_play';
   if (row.anomaly_id) return 'anomaly_board';
+  // WP-0.06: an expired, abandoned or disconnected run settled to nothing.
+  if (!endReasonSettles(row.end_reason)) return 'did_not_settle';
+  // WP-0.06: dev/QA/fixture accounts are not shown to strangers (GT §13).
+  if (window.excludedPlayerIds?.has(row.player_id)) return 'excluded_cohort';
   if (!row.started_at) return 'before_window';
   if (new Date(row.started_at).getTime() < new Date(window.windowStart).getTime()) {
     return 'before_window';
