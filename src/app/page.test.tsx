@@ -37,8 +37,16 @@ jest.mock('@/components/ftue/StarterSelection', () => ({
 }));
 
 const mockTrackEvent = jest.fn();
+// onAnalyticsReady runs its callback immediately here: capture is treated as
+// live so the funnel's Arrive/Reach path is exercised rather than skipped.
 jest.mock('@/lib/analytics/posthog', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+  setUserProperties: jest.fn(),
+  isAnalyticsInitialized: () => true,
+  onAnalyticsReady: (callback: () => void) => {
+    callback();
+    return () => {};
+  },
 }));
 
 const mockUseAuth = jest.fn();

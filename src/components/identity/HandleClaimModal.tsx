@@ -15,6 +15,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { HANDLE_REGEX } from '@/lib/identity/handle';
 import { IconCheck, IconEdit, IconX } from '@/components/ui/icons';
+import {
+  FunnelStages,
+  attachAttributionToPerson,
+  trackFunnelStageOnce,
+} from '@/lib/analytics/funnel';
 
 export interface HandleClaimModalProps {
   isOpen: boolean;
@@ -139,6 +144,13 @@ export function HandleClaimModal({
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.success) {
+        // Identify (§11.5, §11.7): claiming the free handle is the lead
+        // event — visitor becomes named. Once per browser, and never for a
+        // later handle *change*, which is not a new identification.
+        if (!currentHandle) {
+          attachAttributionToPerson();
+          trackFunnelStageOnce(FunnelStages.IDENTIFY, { method: 'handle_claim' });
+        }
         onClaimed?.(String(data.handle ?? value));
         onClose();
         return;
@@ -161,7 +173,7 @@ export function HandleClaimModal({
     } finally {
       setSubmitting(false);
     }
-  }, [value, submitting, getToken, onClaimed, onClose]);
+  }, [value, submitting, getToken, onClaimed, onClose, currentHandle]);
 
   if (!isOpen) return null;
 

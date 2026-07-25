@@ -10,6 +10,7 @@
  * - Monetization: Purchase and payment events
  * - Engagement: Streaks, rewards, achievements
  * - Social: Clans and multiplayer
+ * - Growth: Acquisition-funnel stages (Constitution §11.5)
  */
 
 export const EventCategories = {
@@ -20,6 +21,7 @@ export const EventCategories = {
   MONETIZATION: 'monetization',
   ENGAGEMENT: 'engagement',
   SOCIAL: 'social',
+  GROWTH: 'growth',
 } as const;
 
 export type EventCategory = typeof EventCategories[keyof typeof EventCategories];
@@ -98,6 +100,18 @@ export const AnalyticsEvents = {
   LEADERBOARD_VIEWED: 'leaderboard_viewed',
   FRIEND_ADDED: 'friend_added',
   SHARE_INITIATED: 'share_initiated',
+
+  // Growth Events - the Acquisition Engine's eight stages (§11.5).
+  // Emitted through trackFunnelStage() in ./funnel.ts, never directly.
+  FUNNEL_REACH_ENTERED: 'funnel_reach_entered',
+  FUNNEL_ARRIVE_ENTERED: 'funnel_arrive_entered',
+  FUNNEL_ACTIVATE_ENTERED: 'funnel_activate_entered',
+  FUNNEL_IDENTIFY_ENTERED: 'funnel_identify_entered',
+  FUNNEL_HABITUATE_ENTERED: 'funnel_habituate_entered',
+  FUNNEL_BELONG_ENTERED: 'funnel_belong_entered',
+  FUNNEL_ADVOCATE_ENTERED: 'funnel_advocate_entered',
+  FUNNEL_PATRONIZE_ENTERED: 'funnel_patronize_entered',
+  DISPATCH_WAITLIST_SUBMITTED: 'dispatch_waitlist_submitted',
 } as const;
 
 export type AnalyticsEvent = typeof AnalyticsEvents[keyof typeof AnalyticsEvents];
@@ -215,6 +229,22 @@ export function createSocialEvent(
     properties: {
       ...properties,
       category: EventCategories.SOCIAL,
+    },
+  };
+}
+
+/**
+ * Create a growth/acquisition-funnel event with standard properties
+ */
+export function createGrowthEvent(
+  eventName: string,
+  properties: Record<string, unknown> = {}
+): EventData {
+  return {
+    name: eventName,
+    properties: {
+      ...properties,
+      category: EventCategories.GROWTH,
     },
   };
 }
