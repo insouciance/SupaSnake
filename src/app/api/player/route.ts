@@ -5,15 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { readChargeStatus } from '@/lib/server/energyEnvelope';
 import { isChargeMeterVisible } from '@/shared/game/energyEnvelope';
 import { GAME_CONFIG } from '@/shared/config/game';
-import {
-  DEFAULT_AIM_SYSTEM,
-  isAimSystemId,
-  isAimSystemUnlocked,
-  type AimStats,
-} from '@/lib/game/aimSystems';
+import { DEFAULT_AIM_SYSTEM, isAimSystemId } from '@/lib/game/aimSystems';
 import { getGenomeRunFacts, deriveFtue } from '@/lib/server/genome';
 import { getMasteryXp } from '@/lib/server/mastery';
 import { levelForXp } from '@/shared/game/mastery';
@@ -29,27 +25,6 @@ function settingsRow(playerSettings: unknown): Record<string, unknown> | null {
     return (playerSettings[0] as Record<string, unknown>) ?? null;
   }
   return (playerSettings as Record<string, unknown>) ?? null;
-}
-
-/** Aim-system unlock stats from existing columns (no new tracking).
- *  maxGeneration is MAX(generation) over collected_snakes - a cheap
- *  aggregate over rows the query already fetched. */
-function buildAimStats(player: {
-  high_score?: number | null;
-  total_games_played?: number | null;
-  breeds_completed?: number | null;
-  collected_snakes?: Array<{ generation?: number | null }> | null;
-}): AimStats {
-  const maxGeneration = (player.collected_snakes ?? []).reduce(
-    (max, snake) => Math.max(max, snake.generation ?? 0),
-    0
-  );
-  return {
-    highScore: player.high_score ?? 0,
-    totalGames: player.total_games_played ?? 0,
-    breeds: player.breeds_completed ?? 0,
-    maxGeneration,
-  };
 }
 
 const supabase = createClient(
@@ -154,17 +129,15 @@ export async function GET(request: NextRequest) {
     // Calculate collection size for passive progress
     const collectionSize = player.collected_snakes?.length || 0;
 
-    // Aim system: stored selection + the stats that drive unlock chips.
-    // Stored-but-locked picks (v1->v2 migration edges, e.g. a breeds-only
-    // sequence player remapped to pathline) fall back to the default -
-    // GET never hands the client a system it couldn't select itself.
+    // Aim system: the stored selection, validated as an id and nothing more.
+    // Constitution §6.1 / §15 overturn 10: every system is a setting from run
+    // 1, so there is no unlock to re-check here and no progression stat to
+    // read - a fresh anonymous account is served the same four options as a
+    // veteran. An unrecognised stored value (a retired v1 id in a mixed
+    // deploy) falls back to the default.
     const settings = settingsRow(player.player_settings);
     const storedAim = settings?.aim_system;
-    const aimStats = buildAimStats(player);
-    const aimSystem =
-      isAimSystemId(storedAim) && isAimSystemUnlocked(storedAim, aimStats)
-        ? storedAim
-        : DEFAULT_AIM_SYSTEM;
+    const aimSystem = isAimSystemId(storedAim) ? storedAim : DEFAULT_AIM_SYSTEM;
 
     // Pre-run FTUE visibility comes from the same server facts used when a
     // session starts. This lets Build Seed remain hidden until its actual
@@ -203,9 +176,9 @@ export async function GET(request: NextRequest) {
       needsStarterSelection: FTUE_V2_ENABLED ? false : collectionSize === 0,
       hasCompletedFirstRun: (player.total_games_played ?? 0) > 0,
       ...(bootstrapState ? { onboarding: bootstrapState.onboarding } : {}),
-      // Aim telegraph meta-progression
+      // Aim telegraph: a control preference, not progression. No unlock
+      // stats accompany it — there is nothing left to unlock.
       aimSystem,
-      aimStats,
       ...(genomeFtue ? { genomeFtue } : {}),
       // Identity v1 I4 (section 9.2): weekly Analyst digest email
       // opt-in. false pre-025 (column absent from the row).
@@ -245,13 +218,25 @@ export async function PATCH(request: NextRequest) {
     // - Server-calculated regeneration
     const { selected_dynasty, aim_system, email_digest_opt_in } = body;
 
-    const { data: player } = await supabase
+    // Only the id: none of the writes below reads a progression stat, and the
+    // aim system deliberately no longer does either (§6.1).
+    const { data: player, error: playerError } = await supabase
       .from('players')
-      .select('id, high_score, total_games_played, breeds_completed, collected_snakes(generation)')
+      .select('id')
       .eq('user_id', user.id)
       .single();
 
-    if (!player) {
+    if (playerError || !player) {
+      if (playerError && playerError.code !== 'PGRST116') {
+        console.error('Failed to load player for PATCH:', {
+          userId: user.id,
+          error: playerError,
+        });
+        Sentry.captureException(
+          new Error(`Player PATCH lookup failed: ${playerError.message}`),
+          { extra: { userId: user.id, code: playerError.code } }
+        );
+      }
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
@@ -260,14 +245,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid dynasty' }, { status: 400 });
     }
 
-    // Aim system: validate the id AND the unlock server-side - selecting a
-    // locked system is rejected, so client tampering cannot equip it
+    // Aim system: validate the id, and only the id. There is no unlock to
+    // check (§6.1, §15 overturn 10) - every system is selectable by every
+    // player from run 1, so the only rejection left is a malformed value.
     if (aim_system !== undefined) {
       if (!isAimSystemId(aim_system)) {
         return NextResponse.json({ error: 'Invalid aim system' }, { status: 400 });
-      }
-      if (!isAimSystemUnlocked(aim_system, buildAimStats(player))) {
-        return NextResponse.json({ error: 'Aim system locked' }, { status: 403 });
       }
       const { error: aimUpdateError } = await supabase
         .from('player_settings')

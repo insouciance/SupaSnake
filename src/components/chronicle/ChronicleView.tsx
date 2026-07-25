@@ -4,8 +4,8 @@
  * ChronicleView (Player Identity v1 section 7): the career surface,
  * section order per section 7.1 - full Player Card header (Legacy Score
  * rides on the card), PB timeline, records cabinet, collection log,
- * season chapters, clan history, then any private extras the own page
- * injects (records refresh, Early Career achievements).
+ * season chapters, clan history, trivia, then any private extras the own
+ * page injects (records refresh, Early Career achievements).
  *
  * Empty states per section 7.2: forward-looking prompts, never empty
  * grids; the public <5-earning-runs payload (limited) renders header +
@@ -135,6 +135,29 @@ export function ChronicleView({
               </p>
             )}
           </Section>
+
+          {/* Trivia: footnotes from retired systems. No empty state - a
+              career with no footnotes simply has no section (WP-0.07). */}
+          {payload.trivia.length > 0 && (
+            <Section title="Trivia" testId="section-trivia">
+              <ul className="space-y-2">
+                {payload.trivia.map((entry) => (
+                  <li
+                    key={entry.id}
+                    data-testid={`trivia-${entry.id}`}
+                    className="rounded-arcade border border-scale-blue-light/40 bg-void/50 px-4 py-3"
+                  >
+                    <p className="font-body text-sm text-bone-white">
+                      {entry.label}
+                    </p>
+                    <p className="font-body text-xs text-beige/70 mt-0.5">
+                      {entry.detail}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
         </>
       )}
 
