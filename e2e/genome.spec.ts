@@ -354,7 +354,10 @@ test.describe('Genome capability UI', () => {
       'aria-pressed',
       'true'
     );
-    await page.getByTestId('mode-free').click({ force: true });
+    // Not forced: the ANOMALY chip shifts this button when /api/anomaly
+    // resolves, and a forced click skips the stability check that rides that
+    // out. See e2e/game.spec.ts for the measured shift.
+    await page.getByTestId('mode-free').click();
     const secondStart = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&

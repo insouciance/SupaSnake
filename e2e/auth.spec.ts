@@ -244,17 +244,22 @@ test.describe('Guest upgrade flow', () => {
   // Live-dependent: exercises real Supabase signUp/updateUser. Self-skips
   // when anonymous sign-ins are disabled or the signup rate limit is hit,
   // following the signInAsGuest() pattern.
-  test('guest upgrades to an email account and the shop unlocks real purchases', async ({
+  test('guest upgrades to an email account and the shop unlocks the subscribe path', async ({
     page,
   }) => {
     await seedConsent(page);
     await signInAsGuest(page);
 
-    // Anonymous gating: the shop shows create-account CTAs instead of Buy
+    // Anonymous gating. The one-time storefront this test used to walk is
+    // gone (WP-0.09: ALL_PRODUCTS is empty, so there is no `create-account-cta-
+    // <productId>` and no Buy button to gate). The subscription card is the
+    // shop's only commercial surface now, and it is what the gate applies to.
     await page.goto('/shop');
-    await expect(page.getByTestId(/create-account-cta/).first()).toBeVisible({
+    await expect(page.getByTestId('premium-create-account')).toBeVisible({
       timeout: 15000,
     });
+    await expect(page.getByTestId('premium-subscribe')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^buy/i })).toHaveCount(0);
 
     // Open the upgrade modal from the save-progress notice
     await page.getByRole('button', { name: /^create account$/i }).click();
@@ -301,10 +306,16 @@ test.describe('Guest upgrade flow', () => {
 
     await success.getByRole('button', { name: /^close$/i }).click();
 
-    // is_anonymous cleared after the session refresh: anonymous surfaces
-    // are gone and real Buy buttons render
-    await expect(page.getByTestId(/create-account-cta/)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /^buy/i }).first()).toBeVisible();
+    // is_anonymous cleared after the session refresh: every anonymous surface
+    // is gone and the real commercial action - Subscribe - renders in place of
+    // the account request.
+    await expect(page.getByTestId('premium-create-account')).toHaveCount(0);
+    await expect(page.getByText(/save your progress/i)).toHaveCount(0);
+    await expect(page.getByTestId('premium-subscribe')).toBeVisible();
+
+    // Upgrading unlocks the subscription, and nothing else: an account is not
+    // a key to a one-time catalogue, because there is not one (§10.2/§10.4).
+    await expect(page.getByRole('button', { name: /^buy/i })).toHaveCount(0);
   });
 });
 

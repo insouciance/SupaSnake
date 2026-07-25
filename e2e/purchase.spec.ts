@@ -47,8 +47,17 @@ test.describe('Shop page', () => {
   test('displays fair play notice', async ({ page }) => {
     await page.goto('/shop');
 
+    // The old notice ("purchases provide convenience, not power") described a
+    // storefront that sold Energy and DNA - convenience was exactly what it
+    // claimed to sell. With the one-time catalogue deleted the promise is
+    // stronger and the copy says so: nothing that is earned is for sale, and
+    // the one remaining product buys appearance only (Constitution §10.4, R3).
     await expect(
-      page.getByText(/purchases provide convenience, not power/i)
+      page.getByText(/every variant, gene and record is earned by playing/i)
+    ).toBeVisible();
+    await expect(page.getByText(/none of it is for sale/i)).toBeVisible();
+    await expect(
+      page.getByText(/never power, currency or progress/i)
     ).toBeVisible();
   });
 });
@@ -77,9 +86,15 @@ test.describe('Anonymous purchase gating', () => {
     await signInAsGuest(page);
     await page.goto('/shop');
 
-    const subscribe = page.getByTestId('premium-subscribe');
-    await subscribe.waitFor({ state: 'visible', timeout: 15000 });
-    await subscribe.click();
+    // A guest is never handed the Subscribe button and then bounced: the one
+    // commercial action on the page renders as an account request in the first
+    // place, so the demand is made before any billing intent is formed.
+    const createAccount = page.getByTestId('premium-create-account');
+    await createAccount.waitFor({ state: 'visible', timeout: 15000 });
+    await expect(page.getByTestId('premium-subscribe')).toHaveCount(0);
+    await expect(createAccount).toHaveText(/create an account to subscribe/i);
+
+    await createAccount.click();
 
     await expect(page.getByTestId('account-upgrade-modal')).toBeVisible({
       timeout: 10000,

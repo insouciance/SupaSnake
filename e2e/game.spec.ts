@@ -128,10 +128,15 @@ test.describe('Equipped-snake game flow', () => {
     await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
 
     // FREE PLAY remains a deliberate choice, never a demotion (§7.4).
-    // force: the live WebGL canvas behind the overlay starves Playwright's
-    // hit-target stability check in headless (software rendering); the
-    // aria-pressed / watermark expectations below verify the click landed.
-    await page.getByTestId('mode-free').click({ force: true });
+    //
+    // Deliberately NOT a forced click. The ANOMALY chip is inserted between
+    // EARN and FREE PLAY when /api/anomaly resolves, which moves this button
+    // 64px right and 59px down mid-test. `force: true` skips the stability
+    // check, so Playwright would resolve the box, dispatch at the old
+    // coordinates, and land the click on empty space - the reported flake.
+    // The default actionability wait rides the shift out, and additionally
+    // proves the chip is genuinely pressable rather than merely present.
+    await page.getByTestId('mode-free').click();
     await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
     await expect(page.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
