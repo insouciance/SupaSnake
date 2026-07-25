@@ -15,8 +15,10 @@ ever. Campus seeding, the Founding Keeper SKU, and anything Phase 3+ stay owner
 work. Where a runbook step cannot be executed as written, the exact remaining
 steps are queued here and flags are left off rather than improvised around.
 
-**Nothing has been released.** Phase 0 is not complete, so no gate has passed and
-no release condition exists yet.
+**Phase 0 is code-complete and its gate passes. Nothing has been released** — one
+runbook precondition (backup/PITR confirmation) cannot be performed from this
+environment, so the release is queued with exact steps rather than improvised. See
+"Phase 0 release" below.
 
 **Baseline tag:** `pre-constitution` → `e82719d` (local only; push requires the
 owner, see the to-do list). Migration baseline: **038**.
@@ -98,7 +100,7 @@ before merging anything.
 | 0.03 Faucet & dead-config purge | A | **merged** | `wp/0-03-faucet-purge` |
 | 0.04 Achievements → Records | A | **merged** | `wp/0-04-achievements-to-records` |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
-| 0.06 Session lifecycle & cohorts | A | in flight | `wp/0-06-session-lifecycle` |
+| 0.06 Session lifecycle & cohorts | A | **merged** | `wp/0-06-session-lifecycle` |
 | 0.07 Aim universalization | B | **merged** | `wp/0-07-aim-universalization` |
 | 0.08 Growth hygiene bundle | B | **merged** | `wp/0-08-growth-hygiene` |
 | 0.09 Commerce removal & premium truth | A | **merged** | `wp/0-09-commerce-removal` |
@@ -636,6 +638,83 @@ GT-refresh after the phase gate.
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
+
+## Phase 0 gate — **PASSED**, verified empirically on `constitution/build`
+
+| Gate check | Result |
+|---|---|
+| Economy settlement tests green post-subtraction | **PASS** — 100 tests across the energy envelope, multiplier removal and faucet purge suites |
+| A board query returns only real, ended, validated runs | **PASS** — 88 leaderboard/eligibility tests; eligibility enforced in the query *and* re-applied in the pure fold |
+| `verify:constitution` wired and failing on seeded violations | **PASS** — seeded a genome read in the score fold → `exit=1` on R2; seeded a `TODO` marker → `exit=1` on todo-fixme; reverted, back to PASS |
+
+Full pipeline on the integration branch: `tsc` clean · `lint` clean · **269 suites /
+3321 tests** · `npm run build` success · `verify:constitution` PASS over 691 files,
+**22** known findings (down from 41 at the start of the run).
+
+Migrations written, none applied: **039–045** (energy envelope, dispatch waitlist,
+multiplier stack removal, achievements→records, commerce removal, faucet purge,
+session lifecycle & cohorts).
+
+---
+
+## Phase 0 release — **QUEUED, NOT EXECUTED.** Owner action required
+
+The phase gate passed, so the owner's phase-scoped release authorization applies.
+**The release was not executed**, because a runbook precondition cannot be performed
+from here, and the envelope's instruction for that case is explicit: *"If production
+credentials are unavailable or a runbook step cannot be executed as written, do not
+improvise: queue the exact remaining steps in the build log, leave flags off, and
+continue building."*
+
+**The blocker:** `docs/ops/RELEASE_RUNBOOK.md` precondition 3 requires confirming
+Supabase backup/PITR before the release. That is a dashboard action, and the
+`supabase db dump` alternative needs `SUPABASE_ACCESS_TOKEN` / `SUPABASE_DB_PASSWORD`
+/ `SUPABASE_PROJECT_ID`, which exist only as GitHub Actions secrets (D-3). This
+release applies **seven** migrations that drop functions, drop columns, and drop one
+player-scoped table (`daily_logins`). Each has internal `RAISE EXCEPTION` guards and
+`daily_logins` is dropped only after proving receipt coverage — but a verified backup
+is the outer safety net those guards do not replace. Proceeding without it would be
+improvising against the one precondition that protects player data.
+
+**Nothing else blocks.** No `LAUNCH_CHECKLIST.md` no-go trigger is known to apply.
+Stripe stays in test mode and was never touched.
+
+### The exact remaining steps, in order
+
+1. **Confirm Supabase backup/PITR** for project `gmpwyzqafoyowndbvlma` in the
+   dashboard, or take a dump with credentials this environment does not hold.
+   *(This is the blocker. Everything below is unblocked by it.)*
+2. **Record the current Vercel production deployment id** as the rollback target
+   (runbook precondition 3).
+3. **Merge the integration PR** `constitution/build` → `main`. `main` is protected
+   and requires 4 green checks, so this is a PR merge, not a push — the PR also
+   carries three of the owner's own unpushed documentation commits (D-2).
+4. **Dispatch “Deploy to Production”** on `main`: type `DEPLOY`, `payments_mode=test`.
+   The workflow verifies, validates the Vercel environment, dry-runs the migrations,
+   builds and stages, smokes the staged app, promotes, **then applies migrations
+   039–045**, lints the database and re-smokes. Do not run `supabase db push`
+   independently — the runbook forbids it.
+   **Expected dry-run output: exactly migrations 039–045. Any extra migration is a
+   stop condition.**
+5. **Run the runbook's post-release smoke** (§Post-release smoke), paying particular
+   attention to: a run starting with **zero charges** (must play and settle lean,
+   never be blocked), the leaderboard resolving `myRank` for a real account, and the
+   shop showing **no** energy or bundle SKU.
+6. **Flip Phase 0's flag:** `NEXT_PUBLIC_GROWTH_SURFACES_V1=true` in the Vercel
+   production environment, then verify `/play`, `/dispatch` and the landing pitch
+   render, and that the sitemap lists `/play`. **Rollback is unsetting it** — that
+   path is explicitly tested, not inferred. This is the only Phase 0 flag.
+7. **Flag the dev/QA/fixture accounts** into `players.cohort` (WP-0.06 ships the
+   column and the two single-statement commands but flags **nothing**
+   automatically — no schema signal distinguishes a developer's account from a
+   player's, and a wrong guess would hide a real player). Until this is done the
+   boards are correct but still count the 415 rows of dev/QA noise.
+8. **Optional, unhurried:** remove `NEXT_PUBLIC_STRIPE_ENERGY_SMALL/_MEDIUM/_LARGE`,
+   `NEXT_PUBLIC_STRIPE_STARTER_BUNDLE`, `NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE` from the
+   Vercel production environment. The validator tolerates their presence *and* their
+   absence (D-4), so this can happen before or after the deploy, or never.
+
+Building continues on `constitution/build` meanwhile, per the envelope.
 
 ## Build incidents
 
