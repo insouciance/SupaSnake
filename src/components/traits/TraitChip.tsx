@@ -73,7 +73,7 @@ export interface EmptyTraitSlotProps {
   className?: string;
 }
 
-/** An unlocked but unfilled trait slot - breeding/rerolling can fill it. */
+/** An unlocked but unfilled trait slot - the breeding draft can fill it. */
 export function EmptyTraitSlot({
   size = 'sm',
   className = '',

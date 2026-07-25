@@ -4,42 +4,39 @@
  * Pure client-side mirrors of the breed_snakes RPC math so the UI can show
  * cost and offspring generation before the server call. The server remains
  * authoritative: the RPC recomputes and validates everything atomically
- * (ownership, the configured dynasty gate, DNA cost, generation cap).
+ * (ownership, the configured dynasty gate, DNA cost).
  *
- * RPC formulas (supabase/migrations/030_genome_lineage.sql):
- *   cost = 200 + floor((gen1 + gen2) / 2) * 100
- *   offspring generation = max(gen1, gen2) + 1, capped at 50
- *   offspring variant = 50/50 roll between the two parent variants
+ * RPC formulas (supabase/migrations/047_deterministic_lineage_draft.sql):
+ *   cost = (200 + floor((gen1 + gen2) / 2) * 100) * 1.25^max(0, childGen - 3)
+ *   offspring generation = max(gen1, gen2) + 1 — UNCAPPED (§8.2 Ascendance)
+ *   offspring variant = the parent line the player DRAFTS (no roll)
  */
 
-/** Maximum offspring generation allowed by the breed_snakes RPC. */
-export const MAX_GENERATION = 50;
+import {
+  BREEDING_BASE_COST,
+  BREEDING_COST_PER_GEN,
+  breedingCost,
+  offspringGeneration as ascendanceOffspringGeneration,
+} from '@/shared/game/ascendance';
 
-/** Base DNA cost of any breeding. */
-export const BREEDING_BASE_COST = 200;
-
-/** DNA added per averaged parent generation (integer division). */
-export const BREEDING_COST_PER_GEN = 100;
+export { BREEDING_BASE_COST, BREEDING_COST_PER_GEN };
 
 /**
- * DNA cost to breed two parents.
- * cost = 200 + floor((gen1 + gen2) / 2) * 100
+ * DNA cost to breed two parents. Delegates to the single definition of the
+ * curve in `@/shared/game/ascendance` so the steepening past Gen3 cannot
+ * drift between the preview and the settlement.
  */
 export function calculateBreedingCost(gen1: number, gen2: number): number {
-  return BREEDING_BASE_COST + Math.floor((gen1 + gen2) / 2) * BREEDING_COST_PER_GEN;
+  return breedingCost(gen1, gen2);
 }
 
 /**
  * Offspring generation: one above the highest parent generation.
- * The RPC rejects breeding when this would exceed MAX_GENERATION (50).
+ * There is no cap — Gen4+ is Ascendance (Constitution §8.2, v1.2 ruling
+ * reversing the Gen3 cap). The old MAX_GENERATION=50 refusal is deleted.
  */
 export function calculateOffspringGeneration(gen1: number, gen2: number): number {
-  return Math.max(gen1, gen2) + 1;
-}
-
-/** True when the offspring would exceed the generation cap (50). */
-export function isGenerationCapReached(gen1: number, gen2: number): boolean {
-  return calculateOffspringGeneration(gen1, gen2) > MAX_GENERATION;
+  return ascendanceOffspringGeneration(gen1, gen2);
 }
 
 // =============================================================================
@@ -56,7 +53,6 @@ export type BreedingBlockReason =
   | 'missing_parent'
   | 'same_snake'
   | 'different_dynasty'
-  | 'generation_cap'
   | 'insufficient_dna';
 
 export interface BreedingValidation {
@@ -99,10 +95,6 @@ export function validateBreedingPair(
     (!allowCrossDynasty && parent1.dynastyId !== parent2.dynastyId)
   ) {
     return { valid: false, reason: 'different_dynasty', cost, offspringGeneration };
-  }
-
-  if (isGenerationCapReached(parent1.generation, parent2.generation)) {
-    return { valid: false, reason: 'generation_cap', cost, offspringGeneration };
   }
 
   if (dnaBalance < cost) {

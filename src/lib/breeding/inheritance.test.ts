@@ -1,132 +1,128 @@
 /**
- * RPC-shaped trait inheritance tests (Design v2 Phase 3A, section 6.3).
- * These exercise the TS mirror of the breed_snakes / reroll_trait trait
- * rules (supabase/migrations/018_traits.sql) - inheritance, slot caps,
- * dedupe, empty pools, and reroll candidate exclusion.
+ * Trait draft tests (Constitution §8.2).
+ *
+ * WP-1.05 rewrote this file. The previous suite asserted `rollInheritedTraits`
+ * (one RNG draw per parent), `previewInheritance` (1/n odds per pool entry)
+ * and `rerollCandidates` (the token-spending redraw). All three described the
+ * random system §8.2 abolished, so those tests are DELETED rather than
+ * adapted: there are no odds left to preview and no reroll left to validate.
+ * What is asserted instead is the property the Constitution asks for - the
+ * board is a deterministic function of the two parents, and a draft is either
+ * legal or refused.
  */
 
 import { describe, it, expect } from '@jest/globals';
 import {
-  previewInheritance,
-  rerollCandidates,
-  rollInheritedTraits,
+  defaultTraitDraft,
+  isValidTraitDraft,
+  traitDraftPool,
+  variantDraftOptions,
 } from './inheritance';
-import { getTraitSlots, type TraitId } from '@/shared/game/traits';
+import type { TraitId } from '@/shared/game/traits';
 
-/** rng stub yielding a fixed sequence (then 0s). */
-function seq(values: number[]): () => number {
-  let i = 0;
-  return () => values[i++] ?? 0;
-}
+const A: TraitId = 'sprinter';
+const B: TraitId = 'hoarder';
+const C: TraitId = 'scavenger';
+const D: TraitId = 'gambler';
 
-describe('rollInheritedTraits (one trait from EACH parent pool)', () => {
-  it('slot 1 from parent A, slot 2 from parent B', () => {
-    const traits = rollInheritedTraits(
-      ['sprinter', 'hoarder'],
-      ['ascetic', 'patient'],
-      2,
-      seq([0, 0.9]) // A -> index 0 (sprinter), B -> index 1 (patient)
-    );
-    expect(traits).toEqual(['sprinter', 'patient']);
+describe('traitDraftPool', () => {
+  it('is the union of both parents, in first-appearance order', () => {
+    expect(traitDraftPool([A, B], [C])).toEqual([
+      { traitId: A, source: 'parent1' },
+      { traitId: B, source: 'parent1' },
+      { traitId: C, source: 'parent2' },
+    ]);
   });
 
-  it('empty-pool parents contribute nothing', () => {
-    expect(rollInheritedTraits([], [], 2)).toEqual([]);
-    expect(rollInheritedTraits(['gambler'], [], 2, seq([0]))).toEqual(['gambler']);
-    expect(rollInheritedTraits([], ['magnetism'], 2, seq([0]))).toEqual(['magnetism']);
+  it('marks a shared trait as coming from both parents, listed once', () => {
+    expect(traitDraftPool([A, B], [B, C])).toEqual([
+      { traitId: A, source: 'parent1' },
+      { traitId: B, source: 'both' },
+      { traitId: C, source: 'parent2' },
+    ]);
   });
 
-  it('duplicate rolls collapse to a single trait', () => {
-    const traits = rollInheritedTraits(
-      ['sprinter'],
-      ['sprinter', 'hoarder'],
-      2,
-      seq([0, 0]) // both roll sprinter
-    );
-    expect(traits).toEqual(['sprinter']);
-  });
-
-  it('respects the slot cap (1-slot offspring keeps parent A roll)', () => {
-    const traits = rollInheritedTraits(
-      ['sprinter'],
-      ['hoarder'],
-      1,
-      seq([0, 0])
-    );
-    expect(traits).toEqual(['sprinter']);
-  });
-
-  it('never returns more traits than slots or duplicates across 200 random rolls', () => {
-    const pool1: TraitId[] = ['sprinter', 'hoarder', 'ascetic'];
-    const pool2: TraitId[] = ['sprinter', 'patient'];
-    for (let i = 0; i < 200; i++) {
-      const traits = rollInheritedTraits(pool1, pool2, 2);
-      expect(traits.length).toBeLessThanOrEqual(2);
-      expect(new Set(traits).size).toBe(traits.length);
-      if (traits.length > 0) expect(pool1).toContain(traits[0]);
-      if (traits.length === 2) expect(pool2).toContain(traits[1]);
+  it('is deterministic: the same parents always give the same board', () => {
+    const first = traitDraftPool([A, B, C], [C, D]);
+    for (let i = 0; i < 25; i += 1) {
+      expect(traitDraftPool([A, B, C], [C, D])).toEqual(first);
     }
   });
-});
 
-describe('previewInheritance (odds for the breeding screen)', () => {
-  it('reports 1/n odds per parent-pool entry', () => {
-    const preview = previewInheritance(
-      ['sprinter', 'hoarder'],
-      ['ascetic'],
-      ['common', 'common'],
-      2
-    );
-    expect(preview.parent1.oddsPerTrait).toBeCloseTo(0.5, 10);
-    expect(preview.parent2.oddsPerTrait).toBe(1);
+  it('orders parent 1 ahead of parent 2', () => {
+    expect(traitDraftPool([A], [B]).map((e) => e.traitId)).toEqual([A, B]);
+    expect(traitDraftPool([B], [A]).map((e) => e.traitId)).toEqual([B, A]);
   });
 
-  it('sanitizes hostile pool input', () => {
-    const preview = previewInheritance(
-      ['sprinter', 'not_a_trait', 'sprinter'],
-      'garbage',
-      ['common'],
-      1
-    );
-    expect(preview.parent1.pool).toEqual(['sprinter']);
-    expect(preview.parent2.pool).toEqual([]);
-    expect(preview.parent2.oddsPerTrait).toBeNull();
+  it('ignores unknown ids and non-array input', () => {
+    expect(traitDraftPool(['not-a-trait', A], null)).toEqual([
+      { traitId: A, source: 'parent1' },
+    ]);
+    expect(traitDraftPool(undefined, undefined)).toEqual([]);
   });
 
-  it('uses the minimum guaranteed slot count over possible variants', () => {
-    // 50/50 between a common (1 slot) and a rare (2 slots) at Gen 2
-    const preview = previewInheritance([], [], ['common', 'rare'], 2);
-    expect(preview.slots).toBe(1);
-    // At Gen 3+ even the common outcome has 2 slots
-    const gen3 = previewInheritance([], [], ['common', 'rare'], 3);
-    expect(gen3.slots).toBe(2);
-  });
-
-  it('slot math mirrors get_trait_slots (SQL) via getTraitSlots', () => {
-    expect(getTraitSlots('common', 2)).toBe(1);
-    expect(getTraitSlots('rare', 2)).toBe(2);
-    expect(getTraitSlots('common', 3)).toBe(2);
+  it('two traitless parents offer nothing to draft', () => {
+    expect(traitDraftPool([], [])).toEqual([]);
   });
 });
 
-describe('rerollCandidates (redraw from the combined parent pool)', () => {
-  it('excludes every trait the snake currently holds', () => {
-    expect(
-      rerollCandidates(
-        ['sprinter', 'hoarder', 'ascetic', 'patient'],
-        ['sprinter', 'patient']
-      )
-    ).toEqual(['hoarder', 'ascetic']);
+describe('defaultTraitDraft', () => {
+  it('takes the first `slots` entries - a published, previewable default', () => {
+    const pool = traitDraftPool([A, B], [C]);
+    expect(defaultTraitDraft(pool, 2)).toEqual([A, B]);
+    expect(defaultTraitDraft(pool, 1)).toEqual([A]);
+    expect(defaultTraitDraft(pool, 0)).toEqual([]);
   });
 
-  it('dedupes the combined pool (both parents sharing a trait)', () => {
-    expect(
-      rerollCandidates(['sprinter', 'sprinter', 'hoarder'], [])
-    ).toEqual(['sprinter', 'hoarder']);
+  it('never returns more than the pool holds', () => {
+    expect(defaultTraitDraft(traitDraftPool([A], []), 2)).toEqual([A]);
+  });
+});
+
+describe('isValidTraitDraft', () => {
+  const pool = traitDraftPool([A, B], [C]);
+
+  it('accepts a distinct in-pool draft inside the slot count', () => {
+    expect(isValidTraitDraft([A, C], pool, 2)).toBe(true);
+    expect(isValidTraitDraft([], pool, 2)).toBe(true);
   });
 
-  it('empty result when the pool offers nothing new (RPC refuses, token kept)', () => {
-    expect(rerollCandidates(['sprinter'], ['sprinter'])).toEqual([]);
-    expect(rerollCandidates([], ['sprinter'])).toEqual([]);
+  it('refuses a trait neither parent offers', () => {
+    expect(isValidTraitDraft([D], pool, 2)).toBe(false);
+  });
+
+  it('refuses a duplicate', () => {
+    expect(isValidTraitDraft([A, A], pool, 2)).toBe(false);
+  });
+
+  it('refuses more traits than there are slots - the forced choice', () => {
+    expect(isValidTraitDraft([A, B, C], pool, 2)).toBe(false);
+    expect(isValidTraitDraft([A, B], pool, 1)).toBe(false);
+  });
+});
+
+describe('variantDraftOptions', () => {
+  const p1 = { variantId: 'v1', rarity: 'common' };
+  const p2 = { variantId: 'v2', rarity: 'legendary' };
+
+  it("offers both parents' lines, parent 1 first", () => {
+    expect(variantDraftOptions(p1, p2, 2).map((o) => o.variantId)).toEqual([
+      'v1',
+      'v2',
+    ]);
+  });
+
+  it('collapses identical parent variants to one option', () => {
+    expect(variantDraftOptions(p1, { ...p1 }, 2)).toHaveLength(1);
+  });
+
+  it('quotes the slot count that follows from each line', () => {
+    const options = variantDraftOptions(p1, p2, 2);
+    expect(options[0].slots).toBe(1); // common at Gen2
+    expect(options[1].slots).toBe(2); // legendary
+  });
+
+  it('gives Gen3+ two slots on either line', () => {
+    expect(variantDraftOptions(p1, p2, 3).map((o) => o.slots)).toEqual([2, 2]);
   });
 });

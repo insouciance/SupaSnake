@@ -183,11 +183,6 @@ export async function GET(request: NextRequest) {
       // Identity v1 I4 (section 9.2): weekly Analyst digest email
       // opt-in. false pre-025 (column absent from the row).
       emailDigestOptIn: settings?.email_digest_opt_in === true,
-      // Trait reroll tokens (Design v2 Phase 3A) - 0 pre-migration-018
-      rerollTokens:
-        typeof player.player_reroll_tokens === 'number'
-          ? player.player_reroll_tokens
-          : 0,
     });
   } catch (err) {
     console.error('Player GET error:', err);

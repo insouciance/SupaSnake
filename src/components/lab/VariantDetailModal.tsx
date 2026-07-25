@@ -14,11 +14,7 @@ import type { SnakeVariant, OwnedSnake, Dynasty } from '@/shared/types/snake-dat
 import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
 import { getTraitSlots } from '@/shared/game/traits';
 import { sanitizeTraits } from '@/shared/game/traits';
-import {
-  sanitizeLineage,
-  startingStrainPoints,
-  LINEAGE_REROLL_COST,
-} from '@/shared/game/lineage';
+import { sanitizeLineage, startingStrainPoints } from '@/shared/game/lineage';
 import { STRAIN_IDS, type StrainId } from '@/shared/game/strains';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
@@ -38,9 +34,7 @@ export interface VariantDetailModalProps {
   isEquipping: boolean;
   isLaunching?: boolean;
   isEquipped: boolean;
-  dnaBalance?: number;
   isUpdatingLineage?: boolean;
-  onRerollLineage?: () => Promise<void>;
   onSelectLineagePrimary?: (strain: StrainId) => Promise<void>;
 }
 
@@ -138,15 +132,12 @@ export function VariantDetailModal({
   isEquipping,
   isLaunching = false,
   isEquipped,
-  dnaBalance = 0,
   isUpdatingLineage = false,
-  onRerollLineage,
   onSelectLineagePrimary,
 }: VariantDetailModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
   const modalRef = useRef<HTMLDivElement>(null);
   const [isFavorited, setIsFavorited] = React.useState(owned.isFavorited);
-  const [confirmLineageReroll, setConfirmLineageReroll] = React.useState(false);
 
   const rarity = RARITY_STYLE[variant.rarity] ?? RARITY_STYLE.common;
   const lineage = sanitizeLineage(owned.lineage);
@@ -417,48 +408,6 @@ export function VariantDetailModal({
                     )}
                   </div>
                 </div>
-                {onRerollLineage && (
-                  <div className="mt-3">
-                    {!confirmLineageReroll ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmLineageReroll(true)}
-                        disabled={isUpdatingLineage || dnaBalance < LINEAGE_REROLL_COST}
-                        className="btn-neutral px-3 py-2 text-xs min-h-[36px] disabled:opacity-50"
-                        data-testid="lineage-reroll-button"
-                      >
-                        Reroll strain · {LINEAGE_REROLL_COST} DNA
-                      </button>
-                    ) : (
-                      <div className="panel px-3 py-2 space-y-2" data-testid="lineage-reroll-confirm">
-                        <p className="text-xs font-body text-beige/80">
-                          Spend {LINEAGE_REROLL_COST} DNA? Strength and dual-lineage status stay unchanged.
-                        </p>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onRerollLineage();
-                              setConfirmLineageReroll(false);
-                            }}
-                            disabled={isUpdatingLineage}
-                            className="btn-go px-3 py-1.5 text-xs min-h-[32px]"
-                          >
-                            {isUpdatingLineage ? 'Rerolling…' : 'Confirm'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmLineageReroll(false)}
-                            disabled={isUpdatingLineage}
-                            className="btn-neutral px-3 py-1.5 text-xs min-h-[32px]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 

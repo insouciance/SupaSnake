@@ -3,7 +3,7 @@
 /**
  * Season Track (Design v2 §7.2) - the seasonal reward track carried by
  * the battle pass structure: contract completions feed ~150 XP each
- * (§7.3), milestones grant cosmetics + trait-reroll tokens, the capstone
+ * (§7.3), milestones grant cosmetics and titles, the capstone
  * is a title. Seasons add and never wipe.
  *
  * SupaSnake Premium (migration 028): premium tiers (cosmetics only)
@@ -46,7 +46,6 @@ export interface SeasonTrackView {
   level: number;
   max_level: number;
   xp_per_level: number;
-  reroll_tokens: number;
   /** Absent pre-migration-028. */
   premium?: { is_premium: boolean; season_locked_in: boolean } | null;
   tiers: SeasonTierView[];
@@ -54,10 +53,6 @@ export interface SeasonTrackView {
 
 /** Human label for a tier reward. */
 export function tierRewardLabel(tier: SeasonTierView): string {
-  if (tier.reward_type === 'reroll_token') {
-    const n = tier.reward_amount ?? 1;
-    return n === 1 ? 'Trait Reroll Token' : `${n} Trait Reroll Tokens`;
-  }
   if (tier.reward_type === 'title') return 'Title';
   if (tier.reward_type === 'cosmetic') {
     // solstice_trail_1 -> "Solstice Trail 1"
@@ -166,10 +161,7 @@ export function SeasonTrack({
             />
           </div>
           <p className="text-beige/50 text-xs font-body">
-            Contracts pay the track — 150 XP each ·{' '}
-            <span className="text-beige/80">
-              {track.reroll_tokens} reroll token{track.reroll_tokens === 1 ? '' : 's'} held
-            </span>
+            Contracts pay the track — 150 XP each
           </p>
         </div>
 

@@ -492,10 +492,6 @@ export default function Home() {
               tiers: prev.track.tiers.map((t) =>
                 t.level === level ? { ...t, claimed: true } : t
               ),
-              reroll_tokens:
-                typeof data.reward?.reroll_tokens === 'number'
-                  ? data.reward.reroll_tokens
-                  : prev.track.reroll_tokens,
             },
           };
         });
@@ -907,7 +903,7 @@ export default function Home() {
         />
       )}
 
-      {/* Season track (§7.2): free milestones - cosmetics + reroll tokens.
+      {/* Season track (§7.2): free milestones - cosmetics and titles.
           Opened from the mission line; single-overlay policy respected
           (never rendered while the contracts board is up). */}
       {seasonState && !needsStarter && !showContractsBoard && (

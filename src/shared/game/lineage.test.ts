@@ -5,9 +5,10 @@
 
 import {
   DYNASTY_STRAINS,
-  LINEAGE_REROLL_COST,
+  REROLL_TOKEN_DNA_VALUE,
   clampLineageStrength,
-  combineLineages,
+  defaultLineageDraft,
+  lineageDraftOptions,
   lineageOfferBias,
   lineageStrengthCap,
   sanitizeLineage,
@@ -94,39 +95,106 @@ describe('startingStrainPoints', () => {
   });
 });
 
-describe('combineLineages (breeding preview mirror)', () => {
-  it('purebred: same strain -> strength max + 1', () => {
-    const outcomes = combineLineages(
+// WP-1.05: `combineLineages` (which returned weighted `chance` outcomes) is
+// DELETED along with the coin flip it described. These tests assert its
+// replacement: a deterministic, fully enumerated set of CHOICES whose
+// strength is already clamped, so the preview equals the outcome.
+describe('lineageDraftOptions (the deterministic draft)', () => {
+  it('purebred: the parents agree -> one option at strength max + 1', () => {
+    expect(
+      lineageDraftOptions(
+        { lineage: { strains: ['FERAL'], strength: 1 }, dynasty: 'PRIMAL' },
+        { lineage: { strains: ['FERAL'], strength: 0 }, dynasty: 'PRIMAL' },
+        'epic',
+        2
+      )
+    ).toEqual([{ kind: 'purebred', strains: ['FERAL'], strength: 2 }]);
+  });
+
+  it('same dynasty, different strains -> one option per parent line', () => {
+    const options = lineageDraftOptions(
       { lineage: { strains: ['FERAL'], strength: 1 }, dynasty: 'PRIMAL' },
-      { lineage: { strains: ['FERAL'], strength: 0 }, dynasty: 'PRIMAL' }
+      { lineage: { strains: ['AURUM'], strength: 2 }, dynasty: 'PRIMAL' },
+      'epic',
+      2
     );
-    expect(outcomes).toEqual([
-      { lineage: { strains: ['FERAL'], strength: 2 }, chance: 1 },
+    expect(options).toEqual([
+      { kind: 'parent1', strains: ['FERAL'], strength: 2 },
+      { kind: 'parent2', strains: ['AURUM'], strength: 2 },
     ]);
   });
 
-  it('same dynasty, different strains -> 50/50 at max strength', () => {
-    const outcomes = combineLineages(
-      { lineage: { strains: ['FERAL'], strength: 1 }, dynasty: 'PRIMAL' },
-      { lineage: { strains: ['AURUM'], strength: 2 }, dynasty: 'PRIMAL' }
-    );
-    expect(outcomes.length).toBe(2);
-    expect(outcomes[0].chance).toBe(0.5);
-    expect(outcomes.map((o) => o.lineage.strains[0]).sort()).toEqual([
-      'AURUM',
-      'FERAL',
-    ]);
-    expect(outcomes.every((o) => o.lineage.strength === 2)).toBe(true);
-  });
-
-  it('cross-dynasty -> dual lineage', () => {
-    const outcomes = combineLineages(
+  it('cross-dynasty -> the dual line first, then each pure line', () => {
+    const options = lineageDraftOptions(
       { lineage: { strains: ['VOLT'], strength: 1 }, dynasty: 'CYBER' },
-      { lineage: { strains: ['FERAL'], strength: 0 }, dynasty: 'PRIMAL' }
+      { lineage: { strains: ['FERAL'], strength: 0 }, dynasty: 'PRIMAL' },
+      'epic',
+      2
     );
-    expect(outcomes).toEqual([
-      { lineage: { strains: ['VOLT', 'FERAL'], strength: 1 }, chance: 1 },
-    ]);
+    expect(options.map((o) => o.kind)).toEqual(['dual', 'parent1', 'parent2']);
+    expect(options[0].strains).toEqual(['VOLT', 'FERAL']);
+  });
+
+  it('clamps strength by the CHILD rarity and generation, not by intent', () => {
+    // common caps strength at 0; Gen3 prestige adds 1 back.
+    expect(
+      lineageDraftOptions(
+        { lineage: { strains: ['FERAL'], strength: 2 }, dynasty: 'PRIMAL' },
+        { lineage: { strains: ['FERAL'], strength: 2 }, dynasty: 'PRIMAL' },
+        'common',
+        2
+      )[0].strength
+    ).toBe(0);
+    expect(
+      lineageDraftOptions(
+        { lineage: { strains: ['FERAL'], strength: 2 }, dynasty: 'PRIMAL' },
+        { lineage: { strains: ['FERAL'], strength: 2 }, dynasty: 'PRIMAL' },
+        'common',
+        3
+      )[0].strength
+    ).toBe(1);
+  });
+
+  it('a lineless parent contributes nothing; two of them offer no options', () => {
+    expect(
+      lineageDraftOptions(
+        { lineage: null, dynasty: 'PRIMAL' },
+        { lineage: { strains: ['AURUM'], strength: 1 }, dynasty: 'PRIMAL' },
+        'rare',
+        2
+      )
+    ).toEqual([{ kind: 'parent2', strains: ['AURUM'], strength: 1 }]);
+    expect(
+      lineageDraftOptions(
+        { lineage: null, dynasty: 'PRIMAL' },
+        { lineage: null, dynasty: 'PRIMAL' },
+        'rare',
+        2
+      )
+    ).toEqual([]);
+  });
+
+  it('is deterministic across repeated calls', () => {
+    const call = () =>
+      lineageDraftOptions(
+        { lineage: { strains: ['VOLT'], strength: 1 }, dynasty: 'CYBER' },
+        { lineage: { strains: ['FERAL'], strength: 2 }, dynasty: 'PRIMAL' },
+        'legendary',
+        4
+      );
+    const first = call();
+    for (let i = 0; i < 25; i += 1) expect(call()).toEqual(first);
+  });
+
+  it('the default is always the first option', () => {
+    const options = lineageDraftOptions(
+      { lineage: { strains: ['VOLT'], strength: 1 }, dynasty: 'CYBER' },
+      { lineage: { strains: ['FERAL'], strength: 0 }, dynasty: 'PRIMAL' },
+      'epic',
+      2
+    );
+    expect(defaultLineageDraft(options)).toBe(options[0]);
+    expect(defaultLineageDraft([])).toBeNull();
   });
 });
 
@@ -159,10 +227,15 @@ describe('sanitizeLineage', () => {
 });
 
 describe('constants', () => {
-  it('dynasty signature strains + reroll sink', () => {
+  it('dynasty signature strains', () => {
     expect(DYNASTY_STRAINS.PRIMAL).toBe('FERAL');
     expect(DYNASTY_STRAINS.CYBER).toBe('VOLT');
     expect(DYNASTY_STRAINS.COSMIC).toBe('FLUX');
-    expect(LINEAGE_REROLL_COST).toBe(150);
+  });
+
+  it('a retired reroll token converts at its old price of 150 DNA', () => {
+    // LINEAGE_REROLL_COST is deleted with the reroll it priced; the same
+    // number survives as the conversion rate migration 047 applies (§8.2).
+    expect(REROLL_TOKEN_DNA_VALUE).toBe(150);
   });
 });
