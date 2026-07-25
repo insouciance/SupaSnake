@@ -94,7 +94,7 @@ before merging anything.
 |---|---|---|---|
 | 0.00 Baseline & rails | A+B | **merged** | `wp/0-00-baseline-rails` |
 | 0.01 Energy envelope | A | **merged** | `wp/0-01-energy-envelope` |
-| 0.02 Multiplier stack removal | A | in flight | `wp/0-02-multiplier-removal` |
+| 0.02 Multiplier stack removal | A | **merged** | `wp/0-02-multiplier-removal` |
 | 0.03 Faucet & dead-config purge | A | queued (holds on 0.02 — shared `game.ts`) | |
 | 0.04 Achievements → Records | A | in flight | `wp/0-04-achievements-to-records` |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
@@ -189,6 +189,59 @@ verified (every Supabase `error` checked and reported to Sentry) · scope held.
 nothing from the module it named — it re-declared `getSkillBracket` and the
 bracket tables inline and asserted against its own copies. Its entire subject was
 deleted by this WP; 62 real tests replace it.
+
+#### WP-0.02 · Multiplier stack removal · **merged** (migration 041)
+
+**Settlement before:** `finalDna = floor(floor(rawFold × outcome) × streakTier ×
+setBonus × clanDuel) × harvestFactor`, with `streakTier ∈ {1, 1.05, 1.10, 1.20,
+1.35}`, `setBonus = 1 + 0.10 × completedDynasties`, `clanDuel ∈ {1, 1.05}`.
+
+**Settlement after:** `yieldDna = validation.adjustedDna` (the validator's exact
+recompute) then `finalDna = applyHarvestFactor(yieldDna, chargeState)`. **Raw fold
+× outcome multiplier, and nothing else. No account state reaches the number.**
+
+Deleted `dnaMultipliers.ts` and every caller: the session route's multiplier block,
+the `dnaMultiplier` response field, the `dna_multiplier` ledger metadata,
+`ENGAGEMENT_CONFIG.streaks.tiers`, the `/api/streaks` `multiplier`/`energyBonus`
+fields, and four UI surfaces that advertised a factor.
+
+**Migration 041** — one transaction, snapshot taken before any write, explicit
+down-note:
+- **`DROP FUNCTION clan_duel_bonus(UUID)` — this closes the live exploit the owner
+  asked about (F-6b).** It resolved a clan-wide ×1.05 DNA week from *current*
+  `clan_members`, so a player could leave and join whichever clan won last week and
+  harvest a bonus they never contributed to, repeatable weekly. R8 forbids
+  intra-clan reward mathematics outright.
+- `DROP TABLE streak_bonus_tiers` (a catalogue, not player data) and
+  `ALTER TABLE player_streaks DROP COLUMN streak_multiplier` (a derived cache) — so
+  no factor has a column to return through. The meaningful value is banked first.
+- Longest streak banked into the `unbroken` Legacy Record with `GREATEST()` on
+  value, tier **and** `legacy_score`, deliberately **not** delegating to
+  `refresh_player_records`, which still carries the F-6 downward-write defect.
+- **Preservation asserted inside the migration**: a pre-write temp snapshot, re-read
+  in a `DO` block that `RAISE EXCEPTION`s — aborting the transaction — if any record
+  moved downward, if a player with a streak lost their record, or if any banked
+  value fell below the streak it came from.
+- **`REVOKE EXECUTE ON record_daily_play FROM PUBLIC/anon/authenticated`** — migration
+  009 left a `SECURITY DEFINER` function callable by any authenticated session
+  through PostgREST. An R11 hole found and closed in passing.
+- Take-streak columns for WP-1.04, **schema only**, with constraints that make the
+  forbidden state unrepresentable rather than trusting the later WP to honour R5:
+  `CHECK ((take_last_claim_date IS NULL) = (take_streak_days = 0))` means a player
+  who has ever collected a Take can never hold zero days, so cooling can only walk
+  the ladder down one rung; `CHECK (take_streak_days >= (ARRAY[0,3,7,14,30])[take_tier+1])`
+  forbids an unearned tier; `CHECK (take_longest_streak >= take_streak_days)` keeps
+  the high-water mark permanent. Encoding R5 in the schema is better than the WP
+  asked for.
+
+*Deliberately not hidden:* `record_daily_play` was re-declared carrying F-10's
+reset-to-1 **unchanged**, because that is WP-1.04's fix and burying it inside this
+migration would have concealed it.
+
+**Orchestrator audit:** tsc clean · lint clean · **247 suites / 3007 tests** ·
+`verify:constitution` PASS. Migration renumbered **040 → 041** at merge (040 went
+to WP-0.08); the renumber required updating the shape test's filename reference and
+three `Migration 040` string assertions, which I caught and fixed before merging.
 
 #### WP-0.07 · Aim universalization · **merged** (no migration)
 
@@ -504,7 +557,7 @@ GT-refresh after the phase gate.
 
 | GT section | Made stale by | Now |
 |---|---|---|
-| §3.1 multiplier stack | WP-0.02 (in flight) | pending |
+| §3.1 multiplier stack | WP-0.02 | settled payout is raw fold × outcome multiplier only; `clan_duel_bonus` dropped |
 | §3.3, §9.1, §9.2 energy, dual clocks, destruction | WP-0.01 | Energy is a derived day-scoped allotment; one refill authority; no stock to destroy |
 | §7, §10 commerce and dead config | WP-0.09 (in flight) | pending |
 | §8 growth surfaces | WP-0.08 | share URL fixed; icons, OG, robots, sitemap, `/play`, waitlist and funnel events ship |
@@ -514,6 +567,25 @@ GT-refresh after the phase gate.
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
+
+## Build incidents
+
+**I-1 · Two subagents stalled on a watchdog timeout** (WP-0.04, WP-0.09), both
+during initial exploration, both leaving zero commits. Root cause was **resource
+contention**, not the work: three subagents were running while the orchestrator ran
+a full test suite, and that suite took **1447s instead of ~25s**. Both packages were
+relaunched with fresh agents per the retry protocol, and concurrency is now capped
+at **two** subagents with no full-suite run while they work.
+
+**I-2 · A cross-work-package test failure that neither WP could have caught.**
+WP-0.02 and WP-0.08 both edited `src/lib/share/genomeCardImage.test.ts`, on separate
+hunks, so git merged them without conflict and each branch was green on its own. But
+WP-0.08's Rule-14 assertion hard-coded `'2,526 DNA'` — a total computed while the
+streak/set/clan-duel factors still multiplied the payout — while WP-0.02 rewrote the
+shared fixture to `cascade.total = 1750`. The stale literal only failed once both
+were on the integration branch. Fixed by the orchestrator; the fixture is the source
+of truth and 1,750 is correct. **This is the case for verifying the integration
+branch after every merge, not just each branch in isolation.**
 
 ## Owner to-do list
 
