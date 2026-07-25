@@ -95,13 +95,13 @@ before merging anything.
 | 0.00 Baseline & rails | A+B | **merged** | `wp/0-00-baseline-rails` |
 | 0.01 Energy envelope | A | **merged** | `wp/0-01-energy-envelope` |
 | 0.02 Multiplier stack removal | A | in flight | `wp/0-02-multiplier-removal` |
-| 0.03 Faucet & dead-config purge | A | queued | |
-| 0.04 Achievements → Records | A | queued | |
+| 0.03 Faucet & dead-config purge | A | queued (holds on 0.02 — shared `game.ts`) | |
+| 0.04 Achievements → Records | A | in flight | `wp/0-04-achievements-to-records` |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
 | 0.06 Session lifecycle & cohorts | A | queued | |
-| 0.07 Aim universalization | B | in flight | `wp/0-07-aim-universalization` |
+| 0.07 Aim universalization | B | **merged** | `wp/0-07-aim-universalization` |
 | 0.08 Growth hygiene bundle | B | **merged** | `wp/0-08-growth-hygiene` |
-| 0.09 Commerce removal & premium truth | A | queued | |
+| 0.09 Commerce removal & premium truth | A | in flight | `wp/0-09-commerce-removal` |
 | 0.10 `verify:constitution` v1 | B | **merged** | `wp/0-10-verify-constitution` |
 
 Ordering follows the handoff's §3 constraints: migrations serialized, and no two
@@ -189,6 +189,41 @@ verified (every Supabase `error` checked and reported to Sentry) · scope held.
 nothing from the module it named — it re-declared `getSkillBracket` and the
 bracket tables inline and asserted against its own copies. Its entire subject was
 deleted by this WP; 62 real tests replace it.
+
+#### WP-0.07 · Aim universalization · **merged** (no migration)
+
+All four aim systems are settings from run 1. `src/lib/game/aimSystems.ts` no
+longer exports `isUnlocked`, `unlockHint`, `isAimSystemUnlocked` or
+`getUnlockedAimSystems`; `AimSystemDef` is now `{id, name, description}`, and a test
+scans the module's own source to keep progression tokens out of it. Server-side,
+`buildAimStats` is deleted and the `403 "Aim system locked"` branch is gone — the
+only rejection left is `400` on a malformed id.
+
+**Nothing was deleted to achieve this (R6).** There was never an "unlocked" table:
+unlock state was *derived* from `players.high_score / total_games_played /
+breeds_completed`, all still intact. The three retired predicates moved **verbatim**
+into `src/lib/chronicle/aimTrivia.ts` and now render as a Chronicle **Trivia**
+section listing only the milestones a player actually cleared — no tier, no points,
+no cosmetic, nothing claimable, and no section at all for a career with no
+footnotes. That is the right shape: a footnote, not a Record, earning no Legacy
+Score.
+
+**Orchestrator audit:** tsc clean · lint clean · **249 suites / 3025 tests** ·
+`verify:constitution` PASS · all three `verify:cockpit-*` suites pass (prototype
+8 viewports × 4 states, 4 WebGL profiles, 22 frozen-state/legal-surface checks) —
+the subagent started a dev server for these and shut it down.
+
+The acceptance tests are unusually good: one asserts a **fresh zero-progression
+account and a veteran render identically**, and another pins the component's prop
+surface to exactly `['selected', 'onSelect']`, so progression cannot be
+reintroduced through a prop later. The tap law is asserted structurally — flat
+always-visible `radiogroup`, exactly one preselected option, no expander or dialog
+trigger — so open → LAUNCH → START → board stays at three taps.
+
+*Local decision accepted:* trivia deliberately reads `players.high_score`, which
+WP-0.05 avoided for the leaderboard because flagged runs poison it (F-1). Justified
+here: trivia grants nothing, so the reason the board avoids that column does not
+apply, and reproducing the retired predicate exactly is the point.
 
 #### WP-0.08 · Growth hygiene bundle · **merged** (migration 040)
 
@@ -457,6 +492,25 @@ gate is a backstop, and R3/R4 remain reviewer reads on the checklist.
 | F-20 | Dead weight in the repo: `assets/OG_SNAKE_base.png` and `styleguide/assets/OG_SNAKE_base.png` are 2.9 MB each at 2048×2048 and referenced nowhere; `public/textures/minimalistic_background_texture_of_space_1.png` is 2.1 MB and will hurt any Lighthouse performance score. | owner |
 | F-21 | Waitlist rows are not account-linked, so `delete-account` cannot reach them. The privacy policy names the contact address as the erasure path, which is lawful but manual. A real erasure hook would be better. | owner |
 | F-22 | `CONSENT_KEY = 'cookie-consent'` is now duplicated across three modules (pre-existing in two). One shared constant would be better. | any WP touching consent |
+| F-23 | `src/app/api/player/route.ts` GET discards `error` on the create-path re-read (~line 132), and `createError`/`settingsInsertError` are console-logged without Sentry. A specific instance of F-17. | see F-17 |
+| F-24 | `AimSystemPanel` and `game/page.tsx` use bare `.then(res => res.json())` with no `res.ok` check, so a 500 silently yields `undefined` fields rather than an error. | WP-1.06 (owns those surfaces) |
+
+## GROUND_TRUTH deltas — sections made stale by this build
+
+`docs/GROUND_TRUTH.md` is a frozen baseline at the `pre-constitution` tag and is
+deliberately **not** edited as work packages land (CLAUDE.md: code outranks it).
+This is the running list of what it now describes wrongly, for the owner's
+GT-refresh after the phase gate.
+
+| GT section | Made stale by | Now |
+|---|---|---|
+| §3.1 multiplier stack | WP-0.02 (in flight) | pending |
+| §3.3, §9.1, §9.2 energy, dual clocks, destruction | WP-0.01 | Energy is a derived day-scoped allotment; one refill authority; no stock to destroy |
+| §7, §10 commerce and dead config | WP-0.09 (in flight) | pending |
+| §8 growth surfaces | WP-0.08 | share URL fixed; icons, OG, robots, sitemap, `/play`, waitlist and funnel events ship |
+| §9.3 leaderboard | WP-0.05 | eligibility enforced; brackets deleted; `myRank` join fixed |
+| §9.4 aim gating | WP-0.07 | all four aim systems are settings from run 1; unlock predicates are Chronicle trivia |
+| §9.5 achievements | WP-0.04 (in flight) | pending |
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
