@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { DYNASTY_STRAINS, LINEAGE_REROLL_COST } from '@/shared/game/lineage';
+import { DYNASTY_STRAINS, REROLL_TOKEN_DNA_VALUE } from '@/shared/game/lineage';
 import { STRAIN_IDS } from '@/shared/game/strains';
 
 const sql = fs.readFileSync(
@@ -52,11 +52,12 @@ describe('Migration 030: breeding and crafting', () => {
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION set_lineage_primary/);
   });
 
-  it('rerolls for the TS cost without duplicating a dual partner', () => {
-    expect(sql).toContain(`v_cost INTEGER := ${LINEAGE_REROLL_COST}`);
-    expect(sql).toMatch(/NOT \(\(v_lineage -> 'strains'\) \? s\)/);
-    expect(sql).toMatch(/ARRAY\['strains', v_target_index::TEXT\]/);
-    expect(sql).toMatch(/'from', v_old_lineage/);
+  it('priced the retired lineage reroll at the DNA a token now converts to', () => {
+    // Applied history is not editable, so 030 still contains the reroll.
+    // Migration 047 supersedes it with a tombstone; the only thing this
+    // assertion still guards is that the 150 the token converts to is the
+    // 150 the reroll used to cost (§8.2: "their old price").
+    expect(sql).toContain(`v_cost INTEGER := ${REROLL_TOKEN_DNA_VALUE}`);
   });
 
   it('carries forward unlock wild traits and variant-affinity fallback', () => {
@@ -67,9 +68,9 @@ describe('Migration 030: breeding and crafting', () => {
 
 describe('Migration 030: authority boundary', () => {
   for (const signature of [
-    'breed_snakes(UUID, UUID, UUID, BOOLEAN)',
+    // breed_snakes and reroll_lineage were superseded by migration 047;
+    // their 030 grants are asserted by 047's own migration test.
     'unlock_variant(UUID, UUID)',
-    'reroll_lineage(UUID, UUID)',
     'set_lineage_primary(UUID, UUID, TEXT)',
   ]) {
     it(`makes ${signature} service-role-only`, () => {

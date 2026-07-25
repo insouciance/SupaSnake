@@ -1,9 +1,115 @@
 /**
  * Breeding API utilities
- * Row mapping for GET /api/breeding (recent breeding history).
+ * Row mapping for GET /api/breeding (recent breeding history) and the
+ * shared draft-choice reader used by both breeding endpoints.
 */
 
 import { sanitizeLineage, type Lineage } from '@/shared/game/lineage';
+import { sanitizeTraits } from '@/shared/game/traits';
+
+// =============================================================================
+// DRAFT CHOICES (Constitution §8.2)
+// =============================================================================
+
+/** The lineage lines a client may name. Unnamed = the canonical first. */
+export const LINEAGE_DRAFT_KINDS = [
+  'purebred',
+  'dual',
+  'parent1',
+  'parent2',
+] as const;
+
+/** One trait offered on the draft board. */
+export interface BreedingDraftTrait {
+  trait_id: string;
+  source: 'parent1' | 'parent2' | 'both';
+}
+
+/** One selectable lineage line. */
+export interface BreedingDraftLineage {
+  kind: (typeof LINEAGE_DRAFT_KINDS)[number];
+  strains: string[];
+  strength: number;
+}
+
+/** One selectable variant line, with everything that follows from it. */
+export interface BreedingDraftVariant {
+  variant_id: string;
+  name: string | null;
+  rarity: string;
+  dynasty_id: string | null;
+  trait_slots: number;
+  lineage_options: BreedingDraftLineage[];
+}
+
+/**
+ * The resolved child: exactly what `breed_snakes` writes. Preview equals
+ * outcome because this object IS the outcome.
+ */
+export interface BreedingDraftPreview {
+  variant_id: string;
+  rarity: string;
+  generation: number;
+  trait_slots: number;
+  traits: string[];
+  lineage: { strains: string[]; strength: number } | null;
+  lineage_kind: string | null;
+  dna_cost: number;
+}
+
+/** The `breeding_draft` RPC payload. */
+export interface BreedingDraft {
+  parent1_id: string;
+  parent2_id: string;
+  cross_dynasty: boolean;
+  generation: number;
+  dna_cost: number;
+  ascendance: {
+    generation: number;
+    yield_bonus: number;
+    yield_multiplier: number;
+  };
+  trait_pool: BreedingDraftTrait[];
+  variant_options: BreedingDraftVariant[];
+  defaults: {
+    variant_id: string | null;
+    traits: string[];
+    lineage_kind: string | null;
+  };
+  preview: BreedingDraftPreview;
+}
+
+/** The choice arguments both `breeding_draft` and `breed_snakes` accept. */
+export interface BreedingChoiceArgs {
+  p_variant_choice: string | null;
+  p_trait_draft: string[] | null;
+  p_lineage_kind: string | null;
+}
+
+/**
+ * Normalize the optional choice fields of a breed/draft request.
+ *
+ * Shared deliberately: preview-equals-outcome only holds if the preview call
+ * and the commit call hand the RPC identical arguments, so there is exactly
+ * one function that turns a request body into those arguments.
+ */
+export function readBreedingChoices(
+  body: Record<string, unknown>
+): BreedingChoiceArgs {
+  const kindRaw = typeof body.lineage_kind === 'string' ? body.lineage_kind : null;
+  return {
+    p_variant_choice:
+      typeof body.variant_id === 'string' ? body.variant_id : null,
+    p_trait_draft: Array.isArray(body.traits)
+      ? sanitizeTraits(body.traits)
+      : null,
+    p_lineage_kind:
+      kindRaw !== null &&
+      (LINEAGE_DRAFT_KINDS as readonly string[]).includes(kindRaw)
+        ? kindRaw
+        : null,
+  };
+}
 
 // =============================================================================
 // TYPES
@@ -25,7 +131,7 @@ export interface BreedingHistoryEntry {
   parent1: BreedingHistorySnake | null;
   parent2: BreedingHistorySnake | null;
   child: BreedingHistorySnake | null;
-  /** The audited lineage rolled at birth (not a later reroll). */
+  /** The lineage the player drafted at birth (§8.2). */
   lineage: Lineage | null;
 }
 

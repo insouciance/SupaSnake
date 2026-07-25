@@ -142,7 +142,6 @@ export default function LabPage() {
   const isEquipping = useCollectionStore((state) => state.isEquipping);
   const unlockError = useCollectionStore((state) => state.unlockError);
   const updateOwnedSnake = useCollectionStore((state) => state.updateOwnedSnake);
-  const setDnaBalance = useCollectionStore((state) => state.setDnaBalance);
   const [isUpdatingLineage, setIsUpdatingLineage] = useState(false);
   const [isLaunchingSnake, setIsLaunchingSnake] = useState(false);
 
@@ -294,8 +293,13 @@ export default function LabPage() {
     router.push('/lab/breed');
   }, [router]);
 
-  const updateLineage = useCallback(
-    async (action: 'reroll' | 'select_primary', primary?: StrainId) => {
+  /**
+   * Choose which strain of a dual lineage receives its point. The lineage
+   * REROLL is retired (Constitution §8.2): breeding is a deterministic
+   * draft, so there is nothing random left to redraw.
+   */
+  const selectLineagePrimary = useCallback(
+    async (primary: StrainId) => {
       if (!selectedOwned || !session?.access_token || isUpdatingLineage) return;
       setIsUpdatingLineage(true);
       try {
@@ -306,9 +310,9 @@ export default function LabPage() {
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            action,
+            action: 'select_primary',
             snake_id: selectedOwned.id,
-            ...(primary ? { primary } : {}),
+            primary,
           }),
         });
         const data = await response.json();
@@ -317,13 +321,7 @@ export default function LabPage() {
           throw new Error(data.error ?? 'Lineage update failed');
         }
         updateOwnedSnake(selectedOwned.id, { lineage });
-        if (typeof data.remainingDna === 'number') {
-          setDnaBalance(data.remainingDna);
-        }
-        showToast(
-          action === 'reroll' ? 'Lineage strain rerolled' : `${primary} selected`,
-          'success'
-        );
+        showToast(`${primary} selected`, 'success');
       } catch (error) {
         showToast(
           error instanceof Error ? error.message : 'Lineage update failed',
@@ -338,7 +336,6 @@ export default function LabPage() {
       session?.access_token,
       isUpdatingLineage,
       updateOwnedSnake,
-      setDnaBalance,
       showToast,
     ]
   );
@@ -521,12 +518,8 @@ export default function LabPage() {
           isEquipping={isEquipping}
           isLaunching={isLaunchingSnake}
           isEquipped={equippedSnake?.id === selectedOwned.id}
-          dnaBalance={dnaBalance}
           isUpdatingLineage={isUpdatingLineage}
-          onRerollLineage={() => updateLineage('reroll')}
-          onSelectLineagePrimary={(strain) =>
-            updateLineage('select_primary', strain)
-          }
+          onSelectLineagePrimary={selectLineagePrimary}
         />
       )}
 

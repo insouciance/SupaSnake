@@ -84,7 +84,7 @@ export interface OwnedSnake {
   isEquipped: boolean;
   isFavorited: boolean;
 
-  // Traits (Design v2 Phase 3A) - slot order matters (reroll targets a slot)
+  // Traits drafted at breeding time (Constitution §8.2) - slot order is draft order
   traits?: string[]; // TraitId[] sanitized by the API mapper
   // Trait slot count derived from variant rarity + generation (section 6.1)
   traitSlots?: number;

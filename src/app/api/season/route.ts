@@ -3,11 +3,10 @@
  *
  * GET  /api/season - the live season (window, week index, playoff phase,
  *      seasonal mutations), the caller's FREE track (XP/level/tiers with
- *      claim state + reroll token balance), the playoff bracket, and the
+ *      claim state), the playoff bracket, and the
  *      champions banner history - one get_season RPC.
  * POST /api/season { action: 'claim', level } - claim a reached free
- *      milestone (claim_season_tier RPC: reroll tokens land on
- *      players.player_reroll_tokens; cosmetics/titles are owned via the
+ *      milestone (claim_season_tier RPC: cosmetics/titles are owned via the
  *      claim record).
  *
  * PRE-MIGRATION-021 SAFE: while the RPCs do not exist, GET returns

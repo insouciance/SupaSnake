@@ -145,7 +145,7 @@ export function getTraitSlots(rarity: string, generation: number): number {
 /**
  * Sanitize an untrusted trait list (DB row TEXT[], API payloads): unknown
  * ids are dropped, duplicates are dropped, and the result is capped at
- * MAX_TRAIT_SLOTS. Order is preserved (slot order matters for reroll).
+ * MAX_TRAIT_SLOTS. Order is preserved (slot order is the draft order).
  */
 export function sanitizeTraits(raw: unknown): TraitId[] {
   if (!Array.isArray(raw)) return [];

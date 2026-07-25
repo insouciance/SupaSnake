@@ -56,6 +56,7 @@ import {
   type ChargeExemptionFacts,
   type ChargeState,
 } from '@/shared/game/energyEnvelope';
+import { applyAscendanceYield } from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import {
@@ -772,7 +773,21 @@ export async function POST(request: NextRequest) {
       // fold times the extraction outcome multiplier and nothing else - the
       // validator's exact recompute already IS that number (§8.5, GT §3.1).
       // No account state, no calendar, no clan, no purchase may re-enter here.
-      const yieldDna = validation.adjustedDna;
+      //
+      // WP-1.05 / Ascendance (§8.2): the ONE thing that scales Yield is the
+      // equipped snake's generation - read from the snake ROW the session was
+      // started with, never from the request. Gen1-3 multiply by exactly 1.
+      // This is progression, not commerce: generation only rises by spending
+      // DNA on breeding, and DNA is never sold (Rule 3). Score never sees it
+      // (Rule 2); Depth does, because Depth is accumulated Yield (§6.2).
+      const ascendanceGeneration =
+        typeof usedSnakeRow?.generation === 'number'
+          ? usedSnakeRow.generation
+          : 1;
+      const yieldDna = applyAscendanceYield(
+        validation.adjustedDna,
+        ascendanceGeneration
+      );
       const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an

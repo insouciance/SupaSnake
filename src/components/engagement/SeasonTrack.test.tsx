@@ -44,11 +44,10 @@ function track(overrides: Partial<SeasonTrackView> = {}): SeasonTrackView {
     level: 6,
     max_level: 30,
     xp_per_level: 400,
-    reroll_tokens: 2,
     tiers: [
       tier({ level: 1 }),
-      tier({ level: 5, reward_type: 'reroll_token', reward_id: null, reward_amount: 1, claimed: true }),
-      tier({ level: 10, reward_type: 'reroll_token', reward_id: null, reward_amount: 1 }),
+      tier({ level: 5, reward_type: 'cosmetic', reward_id: 'solstice_board_accent', claimed: true }),
+      tier({ level: 10, reward_type: 'cosmetic', reward_id: 'solstice_trail_1' }),
       tier({ level: 30, reward_type: 'title', reward_id: 'solstice_sovereign' }),
     ],
     ...overrides,
@@ -77,7 +76,8 @@ describe('SeasonTrack', () => {
     expect(screen.getByTestId('season-genes')).toHaveTextContent('Solstice Engine');
     // 2200 XP at 400/level -> 200 into the current level
     expect(screen.getByText('200 / 400 XP')).toBeInTheDocument();
-    expect(screen.getByText(/2 reroll tokens held/)).toBeInTheDocument();
+    // WP-1.05: the held-token line is deleted with the tokens themselves.
+    expect(screen.queryByText(/reroll token/i)).not.toBeInTheDocument();
   });
 
   it('flags the playoff window on the week line', () => {
@@ -117,13 +117,9 @@ describe('SeasonTrack', () => {
 });
 
 describe('tierRewardLabel', () => {
-  it('labels tokens, titles, and prettified cosmetic ids', () => {
-    expect(
-      tierRewardLabel(tier({ reward_type: 'reroll_token', reward_amount: 1 }))
-    ).toBe('Trait Reroll Token');
-    expect(
-      tierRewardLabel(tier({ reward_type: 'reroll_token', reward_amount: 2 }))
-    ).toBe('2 Trait Reroll Tokens');
+  it('labels titles and prettified cosmetic ids', () => {
+    // WP-1.05: the 'reroll_token' label is deleted - migration 047 removes
+    // the unclaimed tiers that paid one, and nothing mints them again.
     expect(tierRewardLabel(tier({ reward_type: 'title' }))).toBe('Title');
     expect(
       tierRewardLabel(tier({ reward_type: 'cosmetic', reward_id: 'solstice_board_accent' }))

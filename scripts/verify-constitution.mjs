@@ -41,16 +41,18 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 /**
- * The breeding-`random()` gate ships DISARMED. WP-1.05 (Lineage rework) is the
- * work package that makes the draft deterministic; until it merges, the gate
- * reports its findings and does not fail the build.
+ * The breeding-`random()` gate is ARMED (WP-1.05, migration 047). It shipped
+ * disarmed while `breed_snakes()` and `reroll_lineage()` still rolled dice;
+ * migration 047 redefines both — the draft is deterministic and the rerolls
+ * are retired — so the gate reported zero findings and was armed in that PR.
  *
- * TO ARM IT: set this constant to `true`. That is the entire switch. Do it in
- * the WP-1.05 PR, once `--gate breeding-random` reports zero findings.
- * (`CONSTITUTION_ARM_BREEDING_RANDOM=1` arms it for a single run — used to
- * prove the gate can fail. It can never disarm an armed gate.)
+ * It now FAILS the build on any reintroduction. Do not set this back to
+ * `false`: a finding here means a breeding or lineage path started rolling
+ * again, which §8.2 forbids outright.
+ * (`CONSTITUTION_ARM_BREEDING_RANDOM=1` also arms it for a single run — used
+ * to prove the gate can fail. It can never disarm an armed gate.)
  */
-const GATE_BREEDING_RANDOM_ARMED = false;
+const GATE_BREEDING_RANDOM_ARMED = true;
 
 /**
  * Migrations 001–038 are the pre-Constitution schema (CLAUDE.md). Applied

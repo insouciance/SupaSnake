@@ -663,8 +663,18 @@ describe('Game Session Logic', () => {
       expect(source).not.toMatch(/streak_multiplier/);
       expect(source).not.toMatch(/clan_duel_bonus/);
       expect(source).not.toMatch(/setBonus|completedDynasties/);
-      // Yield is the recompute, verbatim.
-      expect(source).toMatch(/const yieldDna = validation\.adjustedDna;/);
+      // Yield is the recompute, scaled by exactly ONE thing: the equipped
+      // snake's Ascendance generation (WP-1.05, Constitution §8.2). This
+      // assertion replaced `yieldDna = validation.adjustedDna` verbatim when
+      // Ascendance landed - the multiplier STACK is still gone, and the one
+      // surviving factor is per-snake progression, not account state.
+      expect(source).toMatch(
+        /const yieldDna = applyAscendanceYield\(\s*validation\.adjustedDna,\s*ascendanceGeneration\s*\);/
+      );
+      // The generation comes from the SNAKE ROW, never from the request.
+      expect(source).toMatch(
+        /const ascendanceGeneration =\s*typeof usedSnakeRow\?\.generation === 'number'/
+      );
     });
 
     it('the multiplier module is gone from the tree entirely', () => {

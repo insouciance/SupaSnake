@@ -41,15 +41,14 @@ describe('POST /api/breeding/lineage', () => {
     expect(response.status).toBe(401);
   });
 
-  it('rerolls through the service RPC and returns the refreshed balance', async () => {
+  // WP-1.05: the previous test here asserted a successful 150-DNA reroll.
+  // §8.2 retires it, so the test is rewritten to assert the retirement -
+  // a named 410 and, crucially, NO RPC call and NO DNA spent.
+  it('refuses the retired reroll without touching the RPC or the balance', async () => {
     mockAuth.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
-    mockFrom
-      .mockReturnValueOnce(query({ data: { id: 'player-1', dna: 500 }, error: null }))
-      .mockReturnValueOnce(query({ data: { dna: 350 }, error: null }));
-    mockRpc.mockResolvedValue({
-      data: { strains: ['AURUM'], strength: 1 },
-      error: null,
-    });
+    mockFrom.mockReturnValue(
+      query({ data: { id: 'player-1', dna: 500 }, error: null })
+    );
 
     const response = await POST(
       new NextRequest('http://localhost/api/breeding/lineage', {
@@ -58,14 +57,10 @@ describe('POST /api/breeding/lineage', () => {
         body: JSON.stringify({ action: 'reroll', snake_id: 'snake-1' }),
       })
     );
-    expect(response.status).toBe(200);
-    expect(mockRpc).toHaveBeenCalledWith('reroll_lineage', {
-      p_player_id: 'player-1',
-      p_snake_id: 'snake-1',
-    });
+    expect(response.status).toBe(410);
+    expect(mockRpc).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      lineage: { strains: ['AURUM'], strength: 1 },
-      remainingDna: 350,
+      error: expect.stringContaining('retired'),
     });
   });
 
