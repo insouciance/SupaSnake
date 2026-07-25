@@ -53,9 +53,12 @@ e2e/                # Playwright specs
 - **Check the `error` result of every Supabase call**; report failures to Sentry. Several
   existing routes violate this; do not copy them.
 - Complete implementations only — no TODO/FIXME in committed code.
-- Score is deliberately independent of genes, traits, and anomalies
-  (`src/shared/game/rulesets.ts:261-267`). The leaderboard measures play, not build.
-  Keep it that way.
+- Score is deliberately independent of genes, traits, and anomalies. There are
+  **two** score folds, both in `src/shared/game/rulesets.ts`: `computeRunTotals`
+  (accumulator at :312) and `computeGenomeRunTotals` (:499). Both may only do
+  `score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n))`. The
+  leaderboard measures play, not build. `npm run verify:constitution` enforces this
+  mechanically; do not weaken it.
 
 ## Commands
 

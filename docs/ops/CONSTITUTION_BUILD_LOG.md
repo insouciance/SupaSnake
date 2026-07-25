@@ -102,7 +102,7 @@ before merging anything.
 | 0.07 Aim universalization | B | queued | |
 | 0.08 Growth hygiene bundle | B | in flight | `wp/0-08-growth-hygiene` |
 | 0.09 Commerce removal & premium truth | A | queued | |
-| 0.10 `verify:constitution` v1 | B | in flight | `wp/0-10-verify-constitution` |
+| 0.10 `verify:constitution` v1 | B | **merged** | `wp/0-10-verify-constitution` |
 
 Ordering follows the handoff's §3 constraints: migrations serialized, and no two
 work packages sharing a hot file (`session/route.ts`, `game.ts`, `page.tsx`,
@@ -190,6 +190,64 @@ nothing from the module it named — it re-declared `getSkillBracket` and the
 bracket tables inline and asserted against its own copies. Its entire subject was
 deleted by this WP; 62 real tests replace it.
 
+#### WP-0.10 · `verify:constitution` v1 · **merged**
+
+`scripts/verify-constitution.mjs` (Node ESM, no new dependencies), the
+`verify:constitution` npm task, and a four-line step in the Lint workflow. Five
+gates over 638 files.
+
+1. **`score-independence` (R2)** — static, four sub-checks: every write to the
+   score accumulator in both folds must be exactly
+   `score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n))`; the
+   `scoreMultiplier(n: number): number` signature must stay exact (a widened
+   signature is the realistic way build state would arrive); the engine mirror in
+   `SnakeGameLogic.ts` may only do `+= scoreValue`; and the runtime proofs in
+   `rulesets.genome.test.ts` / `rulesets.traits.test.ts` must still exist —
+   deleting them is itself a violation.
+2. **`owned-row-downward` (R6)** — deletes and decrementing updates against
+   player-owned tables, in both TypeScript and SQL, including
+   `ON CONFLICT DO UPDATE` on a monotonic column with no `GREATEST()`. Catalogue
+   tables (`*_definitions`, `*_tiers`, `training_presets`) are excluded.
+3. **`breeding-random` — ships DISARMED**, because WP-1.05 is what removes the RNG
+   it would flag (3 live findings today: `030_genome_lineage.sql:278,342` and
+   `:543`). It resolves each Postgres function's **live definition**, highest
+   migration wins, so WP-1.05 can retire the RNG with a new migration without
+   rewriting applied history. **Arming switch:** set
+   `GATE_BREEDING_RANDOM_ARMED = true` at the top of the script — do it in the
+   WP-1.05 PR once `--gate breeding-random` reports zero.
+4. **`energy-commerce` (§10.4)** — written against the *rule*, not the file layout:
+   an energy-shaped identifier taking a non-zero value within ±12 lines of a
+   commercial token. WP-0.01/0.09 deleting those files leaves the gate green
+   rather than broken.
+5. **`todo-fixme`** — scoped to source extensions under `src/ supabase/ scripts/
+   e2e/`, so the checklist and PR template that legitimately name the markers are
+   untouched. The marker literals are built by concatenation so the gate cannot
+   fire on its own source. *(This closes F-0 from WP-0.00.)*
+
+Exemptions are deliberately awkward: inline `// constitution-allow: <gate>
+<reason>` with a reason of at least 12 characters, plus a `BASELINE` array of
+today's real violations, each naming the WP that retires it and each carrying a
+`max` count — **debt may shrink, never grow.** Migrations 001–038 are
+pre-Constitution applied history: reported, non-fatal; 039+ is fully gated.
+
+Notably, the subagent's own seeding found three real defects in its gates and
+fixed them: a missing `\b` that let every snake_case commerce identifier escape,
+a false positive on TypeScript type annotations, and whole-file baseline entries
+that hid new violations.
+
+**Orchestrator audit:** scope clean (3 files, no seed artifacts left behind) ·
+tsc clean · lint clean · 245 suites / 2944 tests · gates pass on the merged
+integration branch (638 files). I re-seeded three violations independently rather
+than trusting the report — a genome read in the score fold (`rulesets.ts:294`), a
+`.from('player_cosmetics').delete()` in a new route, and a `TODO` marker — **all
+three failed the build**, and the tree returned to PASS on revert.
+
+*Orchestrator fixup applied (1 line, `CLAUDE.md`):* the project rule cited
+`rulesets.ts:261-267` as the score fold. That range is docblock prose, and there
+are **two** folds, not one — the real accumulators are at `:312`
+(`computeRunTotals`) and `:499` (`computeGenomeRunTotals`). Corrected, with a
+pointer to the gate that now enforces it.
+
 ---
 
 ## PROVISIONAL rulings queued for the owner
@@ -211,6 +269,26 @@ board never silently serves wrong ranks. Exact at any population this game has
 passes ~2,000 weekly-active ranked players. The pure functions in `board.ts`
 become the SQL's test oracle at that point.
 
+**P-2 · The R2 gate does not statically cover `gameValidator.ts`** (WP-0.10). The
+gate covers both folds in `rulesets.ts` and the engine mirror. But
+`sanitizeCosmicClaim` in `src/lib/server/gameValidator.ts` is the one server path
+that can raise a score *above* the fold (the clamped COSMIC combo), and it is
+covered by unit tests only, not by the static gate. *Recommendation:* extend the
+gate to assert the clamp's bound in WP-0.01, which already owns that file — I have
+briefed it. Accepting the test-only coverage in the meantime is defensible; the
+clamp is bounded-trust and server-side.
+
+**P-3 · Baseline entries protect by count, not identity** (WP-0.10). A whole-file
+baseline entry with `max: 6` blocks a seventh violation but would accept a
+*different* violation replacing one of the six. Every such file is slated for
+deletion by WP-0.01/0.09, so the window is short. *Recommendation:* accept, and
+delete the baseline entries as those WPs land rather than hardening the mechanism.
+
+**P-4 · The energy-commerce gate approximates reachability** (WP-0.10). A ±12-line
+proximity window stands in for a call graph, so a grant separated from its
+purchase caller by an indirection is not caught. *Recommendation:* accept — the
+gate is a backstop, and R3/R4 remain reviewer reads on the checklist.
+
 ---
 
 ## Found, not fixed — routed to the work package that owns it
@@ -222,6 +300,13 @@ become the SQL's test oracle at that point.
 | F-3 | GT §9.6 stale sessions: no expiry sweep exists, ~30% of session rows are open. Eligibility now makes them harmless to the board, but funnel and duration analytics stay unreliable. | WP-0.06 (its stated goal) |
 | F-4 | `src/lib/game/aimSystems.ts`: Pathline/Gridlock/Firefly are still progression-gated, one of them on *breeding*. Constitution §6.1 and §15 overturn 10 require them universal from run 1. | WP-0.07 (its stated goal) |
 | F-5 | The project has **no `@types/jest`**, so `npx tsc --noEmit` never typechecks any `*.test.ts`. Test files are verified only by running them. A type error in a test is invisible to the type gate. | WP-0.10 / owner |
+| **F-6** | **The strongest R6 defect in the repo.** `refresh_player_records` (`023_records_chronicle.sql:507`) does `ON CONFLICT DO UPDATE SET value = EXCLUDED.value, tier = EXCLUDED.tier` with **no `GREATEST()`**. It recomputes from aggregates, so any *shrinking* source aggregate writes `player_records.value`/`.tier` — and `players.legacy_score` — **downward**. Live shrink paths exist today: `crowned` reads *current* clan membership, so leaving a clan lowers a permanent record. Detected and baselined by the new R6 gate. | WP-0.04 (owns Records) |
+| F-7 | `clan/route.ts:476` hard-deletes `clan_members` on leave, destroying `joined_at` — i.e. clan tenure, which R6 names as permanent. | WP-1.02 |
+| F-8 | `009_dynasty_unification.sql:147` has an unguarded `DELETE FROM collected_snakes WHERE snake_variant_id IS NULL` inside a DDL migration. Applied history — recorded, not editable. | none (historical) |
+| F-9 | `EnergyRefillSchema` (`src/lib/validation/schemas.ts:157`) types energy bought by `'purchase'` **or `'ad'`**. Zero callers, but committed — §10.4 (never sold) and §10.6 (dark patterns) material. | WP-0.09 |
+| F-10 | `record_daily_play` (`009:347`) resets a broken streak **to 1**. Rule 5 allows the loss of exactly one tier, never a reset to zero. | WP-1.04 (owns Take streak) |
+| F-11 | Unchecked Supabase errors and missing energy audit rows in `src/app/api/achievements/route.ts:184-192` and `src/app/api/player/claim-offline/route.ts:107-121` (R11). WP-0.01 deletes the latter outright. | WP-0.04 / WP-0.01 |
+| F-12 | `SnakeGameLogic.ts:2210-2226` calls `Math.random()` directly, bypassing the injected `this.rng` — breaks replay determinism, which challenge links depend on. | WP-1.08 (challenge links) |
 
 ## Owner to-do list
 
