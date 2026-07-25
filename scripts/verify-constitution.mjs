@@ -83,11 +83,17 @@ const MIN_ALLOW_REASON = 12;
  * carrying the work package that removes it. `code` is matched against the
  * whitespace-collapsed offending line, so a *different* new violation in the
  * same file still fails.
+ *
+ * `max` is the number of findings the entry covered when it was written. Debt
+ * may shrink; it may not grow. Exceeding the count fails the build even though
+ * every individual line is baselined — otherwise "this file is known-bad" would
+ * be a licence to add more.
  */
 const BASELINE = [
   {
     gate: 'owned-row-downward',
     path: 'src/app/api/clan/route.ts',
+    max: 1,
     code: ".from('clan_members')",
     reason:
       'player-initiated leave. Hard-deleting the membership row destroys joined_at ' +
@@ -98,42 +104,67 @@ const BASELINE = [
   {
     gate: 'energy-commerce',
     path: 'src/lib/stripe/products.ts',
+    max: 6,
     code: null,
     reason: 'ENERGY_PRODUCTS and the energy-bearing bundles — deleted by WP-0.09.',
   },
   {
     gate: 'energy-commerce',
     path: 'src/app/api/webhook/stripe/route.ts',
+    max: 1,
     code: null,
     reason: 'grant_purchase_rewards is called with p_energy — WP-0.09.',
   },
   {
     gate: 'energy-commerce',
     path: 'src/shared/config/premium.ts',
+    max: 1,
     code: null,
     reason: 'stipendEnergyPerDay: a subscription perk that grants energy — WP-0.09.',
   },
   {
     gate: 'energy-commerce',
     path: 'src/app/api/premium/claim-stipend/route.ts',
+    max: 2,
     code: null,
     reason: 'the premium energy stipend endpoint — removed by WP-0.01/WP-0.09.',
   },
   {
     gate: 'energy-commerce',
     path: 'src/lib/stores/premiumStore.ts',
+    max: 1,
     code: null,
     reason: 'client mirror of the stipend claim — removed with it (WP-0.09).',
   },
   {
     gate: 'energy-commerce',
     path: 'src/components/engagement/OfflineProgressProvider.tsx',
+    max: 1,
     code: 'stipendEnergy',
     reason: 'surfaces the premium energy stipend in the Welcome Back modal — WP-0.01/WP-0.09.',
   },
   {
     gate: 'energy-commerce',
+    path: 'src/app/api/player/claim-offline/route.ts',
+    max: 2,
+    code: null,
+    reason:
+      'the offline energy restore, whose window is premium-gated (maxOfflineHoursPremium) — ' +
+      'a perk that reaches energy. Deleted by WP-0.01 (energy envelope).',
+  },
+  {
+    gate: 'energy-commerce',
+    path: 'src/lib/analytics/events.ts',
+    max: 3,
+    code: null,
+    reason:
+      'the ENERGY_PURCHASED analytics event name (and its two neighbours, caught by the ' +
+      'same window). Telemetry grants nothing, but the event dies with WP-0.09.',
+  },
+  {
+    gate: 'energy-commerce',
     path: 'src/lib/validation/schemas.ts',
+    max: 2,
     code: 'EnergyRefill',
     reason:
       'EnergyRefillSchema types energy bought by purchase or watched-ad. Dead — no ' +
@@ -304,7 +335,7 @@ function baselineEntryFor(gateId, file, text) {
 
 function makeReport(gateId, options = {}) {
   const findings = [];
-  const usedBaseline = new Set();
+  const usedBaseline = new Map();
   return {
     findings,
     usedBaseline,
@@ -317,7 +348,7 @@ function makeReport(gateId, options = {}) {
         const entry = baselineEntryFor(gateId, file, source);
         if (entry) {
           baseline = entry.reason;
-          usedBaseline.add(entry);
+          usedBaseline.set(entry, (usedBaseline.get(entry) ?? 0) + 1);
         } else if (file.preConstitution) {
           baseline = `pre-Constitution migration (≤${PRE_CONSTITUTION_MIGRATION_MAX}); ` +
             'applied history is superseded, never edited';
@@ -757,14 +788,20 @@ function gateBreedingRandom(files) {
  * constantly and grants nothing. Copy is Rule 7's business, not this gate's.
  */
 const ENERGY_GRANT =
-  /(?:^|[^\w$])([A-Za-z0-9_$]*(?:energy|charges?)[A-Za-z0-9_$]*)\s*(?::|\+=|=(?!=))\s*(?!(?:0|false|null|undefined)\b)['"`\d[{(A-Za-z_$]/i;
+  /(?:^|[^\w$])([A-Za-z0-9_$]*(?:energy|charges?)[A-Za-z0-9_$]*)\s*(?::|\+=|=(?!=))\s*(?!(?:0|false|null|undefined|number|string|boolean)\b)['"`\d[{(A-Za-z_$]/i;
 
 /** SQL: `SET energy = energy + …`, and the RPC parameters that feed it. */
 const ENERGY_GRANT_SQL =
   /\bset\s+[A-Za-z0-9_]*(?:energy|charges?)[A-Za-z0-9_]*\s*=|\bp_[A-Za-z0-9_]*(?:energy|charges?)[A-Za-z0-9_]*\b/i;
 
+/**
+ * Deliberately boundary-free at the start: `grant_patron_pack`, `p_sku`,
+ * `applyPurchaseRewards` and `premium_stipend_claims` are all commerce, and a
+ * leading `\b` would miss every snake_case and camelCase one of them.
+ * `product(?!ion)` keeps the build scripts' "production" out of it.
+ */
 const COMMERCE_SUBJECT =
-  /\b(?:stripe|checkout|purchase\w*|payment|paid|price_?id|priceId|sku|product\w*|bundle\w*|subscription|subscribe|entitlement|perk|premium|keeper|patron\w*|season_?pass|seasonPass|battle_?pass|webhook|invoice|receipt|order_?id|stipend\w*)\b/i;
+  /(?:stripe|checkout|purchas|payment|\bpaid\b|price_?id|\bskus?\b|product(?!ion)|bundle|subscri|entitlement|perk|premium|keeper|patron|season_?pass|battle_?pass|webhook|invoice|receipt|order_?id|stipend)/i;
 
 const ENERGY_WINDOW = 12;
 
@@ -924,7 +961,7 @@ function main() {
 
   let violations = 0;
   let reported = 0;
-  const baselineUsed = new Set();
+  const baselineUsed = new Map();
 
   // An allow marker nobody can read is not an allowlist entry.
   for (const file of files) {
@@ -940,7 +977,9 @@ function main() {
   for (const gate of selected) {
     const report = gate.run(files);
     const armed = gate.armed ?? true;
-    for (const entry of report.usedBaseline) baselineUsed.add(entry);
+    for (const [entry, count] of report.usedBaseline) {
+      baselineUsed.set(entry, (baselineUsed.get(entry) ?? 0) + count);
+    }
 
     const blocking = report.findings.filter((finding) => !finding.baseline);
     const tolerated = report.findings.filter((finding) => finding.baseline);
@@ -961,6 +1000,15 @@ function main() {
     if (armed) violations += blocking.length;
     else reported += blocking.length;
     reported += tolerated.length;
+  }
+
+  for (const [entry, count] of baselineUsed) {
+    if (typeof entry.max !== 'number' || count <= entry.max) continue;
+    console.error(
+      `FAIL   ${entry.path}  ${entry.gate}: baselined debt grew from ${entry.max} to ${count} ` +
+        'finding(s). The baseline records existing debt; it does not license more.'
+    );
+    violations += 1;
   }
 
   const stale = BASELINE.filter(
