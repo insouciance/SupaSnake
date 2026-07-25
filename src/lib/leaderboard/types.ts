@@ -1,11 +1,23 @@
 /**
- * Leaderboard Types
- * Per BA-001: Skill-based brackets for competitive fairness
+ * Leaderboard types - the wire contract of GET /api/leaderboard.
+ *
+ * Constitution §6.1: Score is the skill number. Generation-based "skill
+ * brackets" are DELETED - they bucketed players by bred generation, which is
+ * bought with DNA, and then called the result "skill" (GT §9.3). Bracketing
+ * returns only if population ever justifies score-percentile brackets, and
+ * never by anything purchasable. Do not reintroduce `SkillBracket`.
+ *
+ * Rule 2: a leaderboard entry carries no genome, generation, collection,
+ * account or purchase state. It is (player, score, when, dynasty).
  */
 
 export type LeaderboardType = 'global' | 'weekly' | 'daily';
 
-export type SkillBracket = 'beginner' | 'intermediate' | 'advanced' | 'master';
+/**
+ * `board` - the ranked page from `offset` (the browsable board).
+ * `you`   - the default view: top 3 plus your position ±5.
+ */
+export type LeaderboardView = 'board' | 'you';
 
 /**
  * Identity fields for a leaderboard row (Player Identity v1 section 4) -
@@ -30,53 +42,72 @@ export interface LeaderboardIdentity {
 }
 
 export interface LeaderboardEntry {
+  /** Competition rank: equal scores share a rank, the next rank skips. */
   rank: number;
+  /** `players.id` - NEVER `auth.users.id`. See `LeaderboardViewer`. */
   playerId: string;
   playerName: string;
   score: number;
-  highestGeneration: number;
-  collectionCount: number;
-  bracket: SkillBracket;
-  updatedAt: string;
+  /** Dynasty the ranked run was played in. */
+  dynasty: string | null;
+  /** ISO timestamp the ranked run ended. */
+  achievedAt: string;
   /** Player Card fields (migration 022+); rows without it render legacy. */
   identity?: LeaderboardIdentity;
 }
 
+/**
+ * The requesting player's position.
+ *
+ * `playerId` is in the `players.id` space - the same space as
+ * `LeaderboardEntry.playerId`. This is the fix for GT §9.3: the page used to
+ * compare `entry.playerId` (a `players.id`) with the Supabase auth user id,
+ * which is a different UUID, so "your rank" and the "(You)" highlight could
+ * never fire. Clients must compare against `viewer.playerId`, never against
+ * their auth user id.
+ *
+ * `null` on the response means the request carried no usable credentials.
+ * `ranked: false` means the player has no eligible run in this window.
+ */
+export interface LeaderboardViewer {
+  playerId: string;
+  ranked: boolean;
+  rank: number | null;
+  score: number | null;
+}
+
+export interface LeaderboardResponse {
+  type: LeaderboardType;
+  view: LeaderboardView;
+  /** `'all'` or a dynasty id. */
+  dynasty: string;
+  /** Content version the ranked runs are comparable under (§6.1). */
+  contentVersion: string;
+  /**
+   * The render list.
+   * `view=board`: the ranked page starting at `offset`.
+   * `view=you`:   `top` then `window`, de-duplicated, in rank order.
+   */
+  entries: LeaderboardEntry[];
+  /** The leading three entries. Always present. */
+  top: LeaderboardEntry[];
+  /** The viewer ±5. Empty when there is no viewer or the viewer is unranked. */
+  window: LeaderboardEntry[];
+  viewer: LeaderboardViewer | null;
+  /** Distinct players with an eligible run in this window. */
+  total: number;
+  /**
+   * True when the eligible-run scan hit its hard cap, so ranks below the cap
+   * may be incomplete. False on every board this population can produce; it
+   * exists so the condition is observable rather than silent.
+   */
+  truncated: boolean;
+}
+
 export interface LeaderboardFilter {
   type: LeaderboardType;
-  bracket?: SkillBracket;
-  region?: string;
+  view?: LeaderboardView;
+  dynasty?: string;
   limit?: number;
   offset?: number;
 }
-
-/**
- * Get skill bracket based on highest generation
- * Per BA-001: Brackets prevent pay-to-win perception
- */
-export function getSkillBracket(highestGeneration: number): SkillBracket {
-  if (highestGeneration <= 5) return 'beginner';
-  if (highestGeneration <= 10) return 'intermediate';
-  if (highestGeneration <= 20) return 'advanced';
-  return 'master';
-}
-
-/**
- * Bracket display names
- */
-export const BRACKET_NAMES: Record<SkillBracket, string> = {
-  beginner: 'Beginner (Gen 1-5)',
-  intermediate: 'Intermediate (Gen 6-10)',
-  advanced: 'Advanced (Gen 11-20)',
-  master: 'Master (Gen 21+)',
-};
-
-/**
- * Bracket colors for UI
- */
-export const BRACKET_COLORS: Record<SkillBracket, string> = {
-  beginner: '#4ADE80',    // Green
-  intermediate: '#60A5FA', // Blue
-  advanced: '#A78BFA',     // Purple
-  master: '#F59E0B',       // Gold
-};
