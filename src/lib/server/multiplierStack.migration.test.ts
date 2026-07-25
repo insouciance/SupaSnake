@@ -17,7 +17,7 @@ import * as path from 'path';
 
 const MIGRATION_040 = path.join(
   process.cwd(),
-  'supabase/migrations/040_multiplier_stack_removal.sql'
+  'supabase/migrations/041_multiplier_stack_removal.sql'
 );
 
 const sql = fs.readFileSync(MIGRATION_040, 'utf8');
