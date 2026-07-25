@@ -5,6 +5,11 @@ It defines the shared operating rules for concurrent feature development. A
 feature assignment may add stricter requirements, but it must not silently
 weaken these rules.
 
+**Design law outranks this file.** `docs/PRODUCT_CONSTITUTION.md` (v1.3) decides
+*what* may be built; this file and `docs/IMPLEMENTATION_HANDOFF.md` decide *how* it
+is built. Where the handoff's protocol and this file's defaults differ, the handoff
+wins for work-package branches — the differences are marked below.
+
 ## Clean-context assumption
 
 Assume you have no prior conversation context. Do not rely on phrases such as
@@ -33,8 +38,11 @@ Before editing code:
    cleaning the primary worktree.
 2. Read this file and `docs/README.md`, which routes to the current product and
    operations sources of truth.
-3. Read `README.md`, `PLATFORM_STATUS.md`, and only the authoritative product or
-   operations documents relevant to the assigned feature.
+3. For a work package, read in this order: `CLAUDE.md` → `docs/IMPLEMENTATION_HANDOFF.md`
+   §2–3 → your WP entry → only the Constitution and Ground Truth sections that entry
+   cites. Do not read the whole Constitution per task, and do not explore beyond the
+   WP's owned paths plus what imports them. For other work, read `README.md`,
+   `PLATFORM_STATUS.md`, and only the authoritative documents relevant to it.
 4. Fetch `origin/main`, derive a unique feature slug, and self-provision the
    clean branch and worktree described below unless the assignment supplies
    them explicitly.
@@ -54,6 +62,43 @@ current repository cannot be identified safely, the intended branch/worktree
 collides with another assignment, the base cannot be fetched, the worktree is
 dirty, or the feature depends on a material product decision that is absent.
 
+## Work packages (`wp/` branches)
+
+Constitution implementation is decomposed into numbered work packages in
+`docs/IMPLEMENTATION_HANDOFF.md` §5–7. A work-package assignment follows every rule
+in this file, with these additions:
+
+- **One WP = one branch = one PR.** Branch name `wp/<phase>-<nn>-<slug>`, e.g.
+  `wp/0-01-energy-envelope`. Worktree path
+  `/Volumes/Souci_WD/Dev/active/SupaSnake-worktrees/<phase>-<nn>-<slug>`. No shared
+  branches. `feat/<slug>` remains correct for work that is not a work package.
+- **Scope is the WP.** Nothing outside its stated Goal and owned paths, however
+  tempting. A bug found outside scope goes in the PR description under
+  "Found, not fixed" — not into the diff.
+- **Tracks.** Track A is server/data, Track B is surfaces/growth; the WP table
+  assigns each package a track. Migrations are Track A only.
+- **Hot files.** `src/app/api/game/session/route.ts`, `src/shared/config/game.ts`,
+  `src/app/page.tsx`, `src/app/game/page.tsx`, `src/lib/server/gameValidator.ts` are
+  merge-conflict magnets. Two work packages sharing a hot file are never in flight
+  at the same time — check the handoff's sequencing before provisioning the branch,
+  and stop and report if the collision is real.
+- **Contract-first parallelism.** A WP that exposes an API states its
+  request/response contract in the PR description before implementing it, so the
+  consuming track can build against a mock without waiting.
+- **Decision protocol.** Naming, copy, layout inside protected bounds, and internal
+  code structure are decided locally and logged in the PR description. Anything that
+  would bend an Inviolable Rule (§4), a cap (§12.2), the never-sold list (§10.4), a
+  `[H]` default (§17), or a protected §5 element is **not** decided in the branch:
+  write up the fork with two coherent options and a recommendation, escalate to the
+  owner in a batch, and keep working on the unblocked parts meanwhile.
+- **Every PR runs `docs/CONSTITUTION_CHECKLIST.md` in full.** It is pre-filled by
+  `.github/pull_request_template.md`; fill it out rather than deleting lines.
+- **Cross-review before the owner.** The other track's agent reviews each PR against
+  the checklist. Migration-bearing and economy-touching PRs additionally get the
+  owner's `/code-review ultra`.
+- **Report honestly.** If an acceptance clause is not met, the PR says so. A red test
+  is information, not an embarrassment.
+
 ## Self-provisioning a feature workspace
 
 For a normal implementation assignment, the agent owns setup of its feature
@@ -63,9 +108,10 @@ workspace. Unless the prompt explicitly provides different values:
    primary worktree.
 2. Derive a short lowercase kebab-case slug from the feature, for example
    `contract-tracker`.
-3. Use branch `feat/<slug>`.
+3. Use branch `feat/<slug>` — or, for a work package, `wp/<phase>-<nn>-<slug>`.
 4. Use the adjacent absolute worktree path
-   `/Volumes/Souci_WD/Dev/active/SupaSnake-worktrees/<slug>`.
+   `/Volumes/Souci_WD/Dev/active/SupaSnake-worktrees/<slug>`, where `<slug>` matches
+   the branch's slug portion.
 5. Record `origin/main` as the base and expected starting SHA.
 6. Verify that neither branch nor worktree path belongs to another active task.
 7. Create the shared parent directory `SupaSnake-worktrees` if it does not yet
@@ -88,8 +134,8 @@ integration changes. Its status does not block creation from clean
 
 ## Worktree and branch isolation
 
-- Work only in the dedicated absolute worktree and `feat/<feature>` branch
-  created for the assignment.
+- Work only in the dedicated absolute worktree and `feat/<feature>` or
+  `wp/<phase>-<nn>-<slug>` branch created for the assignment.
 - Never implement a feature directly on `main`, `develop`, a release branch, or
   the primary main worktree.
 - Do not switch the branch of a shared worktree.
@@ -145,8 +191,14 @@ record useful follow-up ideas in the handoff instead.
 
 ## Product and architecture boundaries
 
-- Current product contracts are indexed in `docs/README.md`. They override
-  historical research and aspirational roadmaps.
+- `docs/PRODUCT_CONSTITUTION.md` is the single design authority; its 14 Inviolable
+  Rules and §12.2 caps bind every change. Remaining contracts are indexed in
+  `docs/README.md`. Both override historical research and aspirational roadmaps.
+- `docs/game/MONETIZATION_DESIGN.md` is superseded by Constitution §10. Never
+  implement from it.
+- `docs/GROUND_TRUTH.md` is the code-verified baseline at the `pre-constitution`
+  tag. Cite it for what shipped; as work packages land it goes stale, and code
+  outranks it.
 - Protect immediate gameplay, player-pulled discovery, and the unobstructed
   game board unless the authoritative contract explicitly says otherwise.
 - Keep progress, economy, rewards, and session settlement server-authoritative.
@@ -165,10 +217,18 @@ must not allocate independently.
 
 - Verify the current migration set; do not rely only on a number quoted in a
   prompt or old document.
-- When a migration is required and none was reserved, finish all safe
-  non-migration work, report the proposed schema change, and request a migration
-  number before creating the migration file.
-- Never renumber, edit, or replace an existing/deployed migration.
+- On a `feat/` branch: when a migration is required and none was reserved, finish
+  all safe non-migration work, report the proposed schema change, and request a
+  migration number before creating the migration file.
+- On a `wp/` branch the handoff's serialization protocol replaces that request.
+  Write the migration at the next free number as seen from your base, then **claim
+  the real number at merge time, not branch time**: rebase on `main` immediately
+  before merging and renumber your own unmerged file to the next free slot. Two
+  migration-bearing PRs never merge on the same day without a rebase in between.
+  Migrations are Track A only.
+- Never renumber, edit, or replace a migration that is already merged or deployed.
+  Renumbering applies only to your own not-yet-merged file, immediately before
+  merge.
 - Migrations are forward-only, idempotent where appropriate, and must preserve
   existing player choices and data.
 - Use only the isolated local Supabase environment for feature development and
@@ -293,3 +353,18 @@ shared paths, dependencies, relevant tests, documentation changes, and default
 commit-and-push delivery. Supply an override only when a feature genuinely needs
 one, such as a pre-reserved migration number or a dependency on another
 unmerged branch.
+
+## Minimum work-package assignment
+
+A work package needs even less, because the handoff already carries its goal,
+owned paths, hot files, migration flag, and acceptance criteria. Paste the kickoff
+briefing from `docs/IMPLEMENTATION_HANDOFF.md` §4, then name the package:
+
+```text
+Your work package: WP-<phase>.<nn>
+```
+
+The agent derives the branch, worktree, track, owned paths, and validation plan
+from the handoff entry. Supply an override only for a genuine dependency, such as
+an unmerged branch this package builds on or a hot file still held by another
+package in flight.
