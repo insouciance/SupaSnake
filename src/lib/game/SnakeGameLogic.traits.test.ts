@@ -181,6 +181,14 @@ describe('Magnetism: radius-1 pull + portal interval tax', () => {
 
 describe('Iron Scales: survive one wall collision per run', () => {
   function marchIntoWall(game: SnakeGameLogic): void {
+    // `start()` spawns food at a random cell. On this 10x10 grid that cell
+    // sometimes lands in the head's marching row, the snake eats on the way to
+    // the wall, and the length-preservation assertions below fail (~1 run in
+    // 20). Park the food on a different row first: the march never changes z,
+    // so any other row is unreachable and the walk becomes deterministic.
+    const head = game.getState().snake[0];
+    game.placeFood({ x: 0, y: head.y, z: (head.z + 5) % 10 });
+
     // March RIGHT until the head reaches the wall column, then once more
     let guard = 0;
     while (
