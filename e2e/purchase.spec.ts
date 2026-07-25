@@ -15,26 +15,33 @@ test.describe('Shop page', () => {
     await seedConsent(page);
   });
 
-  test('displays shop heading and energy products', async ({ page }) => {
+  test('displays the shop heading', async ({ page }) => {
     await page.goto('/shop');
 
     await expect(page.getByRole('heading', { name: /^shop$/i })).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: /energy packs/i })
-    ).toBeVisible();
-
-    // All three energy products render
-    await expect(page.getByText('Energy Pack', { exact: true })).toBeVisible();
-    await expect(page.getByText('Energy Bundle', { exact: true })).toBeVisible();
-    await expect(page.getByText('Energy Vault', { exact: true })).toBeVisible();
   });
 
-  test('displays gross product prices in EUR (Austrian/EU storefront)', async ({ page }) => {
+  test('sells no Energy (Constitution §8.6, §10.4 never-sold list)', async ({ page }) => {
     await page.goto('/shop');
 
-    await expect(page.getByText('€0.99')).toBeVisible();
-    await expect(page.getByText('€2.49')).toBeVisible();
-    await expect(page.getByText('€4.99').first()).toBeVisible();
+    // Energy is a daily allotment with no balance to top up, so these SKUs
+    // could no longer deliver anything. The storefront section and every
+    // energy product are gone, and no bundle advertises an energy component.
+    await expect(
+      page.getByRole('heading', { name: /energy packs/i })
+    ).toHaveCount(0);
+    await expect(page.getByText('Energy Pack', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Energy Bundle', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Energy Vault', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/\d+ Energy/)).toHaveCount(0);
+  });
+
+  test('displays gross prices in EUR (Austrian/EU storefront)', async ({ page }) => {
+    await page.goto('/shop');
+
+    // The remaining priced surface is the premium subscription; the energy
+    // pack prices (€0.99 / €2.49 / €4.99) are gone with the products.
+    await expect(page.getByText('€9.99').first()).toBeVisible();
   });
 
   test('displays fair play notice', async ({ page }) => {
@@ -57,21 +64,22 @@ test.describe('Anonymous purchase gating', () => {
       timeout: 15000,
     });
 
-    // Every energy product shows the account CTA, no buy button
-    await expect(page.getByTestId('create-account-cta-energy_small')).toBeVisible();
-    await expect(page.getByTestId('create-account-cta-energy_medium')).toBeVisible();
-    await expect(page.getByTestId('create-account-cta-energy_large')).toBeVisible();
+    // No purchasable SKU is ever offered to a guest as a buy button. A
+    // fresh guest account is also below the Day-2 bundle threshold, so the
+    // product grid is empty; the premium subscribe path is the one
+    // commercial action, and it too must demand a real account.
     await expect(page.getByRole('button', { name: /^buy$/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^buy bundle$/i })).toHaveCount(0);
   });
 
-  test('clicking the CTA opens the account upgrade modal', async ({ page }) => {
+  test('the premium subscribe path demands a real account', async ({ page }) => {
     await seedConsent(page);
     await signInAsGuest(page);
     await page.goto('/shop');
 
-    const cta = page.getByTestId('create-account-cta-energy_small');
-    await cta.waitFor({ state: 'visible', timeout: 15000 });
-    await cta.click();
+    const subscribe = page.getByTestId('premium-subscribe');
+    await subscribe.waitFor({ state: 'visible', timeout: 15000 });
+    await subscribe.click();
 
     await expect(page.getByTestId('account-upgrade-modal')).toBeVisible({
       timeout: 10000,
@@ -99,7 +107,7 @@ test.describe('Anonymous purchase gating', () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ productId: 'energy_small' }),
+        body: JSON.stringify({ productId: 'starter_bundle' }),
       });
       const data = await res.json().catch(() => ({}));
       return { status: res.status, error: data.error };
@@ -138,7 +146,10 @@ test.describe('Stripe checkout @stripe', () => {
     await page.goto('/shop');
     // §18 FAGG immediate-delivery consent is required before checkout
     await page.locator('#withdrawal-consent').check();
-    await page.getByRole('button', { name: /^buy$/i }).first().click();
+    await page
+      .getByRole('button', { name: /^buy( bundle)?$/i })
+      .first()
+      .click();
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30000 });
   });
 });

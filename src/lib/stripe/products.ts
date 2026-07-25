@@ -62,12 +62,21 @@ export const ENERGY_PRODUCTS: StoreProduct[] = [
 /**
  * Starter bundles - appear Day 2-3 per BM-004
  * Per BM-001: Variants achievable through play
+ *
+ * The Energy components were removed from the DESCRIPTIONS by WP-0.01:
+ * Constitution §8.6 replaced the energy balance with a daily allotment that
+ * has nothing to top up, so a bundle could no longer deliver what its copy
+ * promised, and taking money against an undeliverable claim is not a thing
+ * to leave running until the next work package. The `rewards.energy` values
+ * are left in place for WP-0.09, which owns this file and deletes both
+ * ENERGY_PRODUCTS and these bundles outright; they now write only the
+ * deprecated `players.energy` column, which nothing reads.
  */
 export const BUNDLE_PRODUCTS: StoreProduct[] = [
   {
     id: 'starter_bundle',
     name: 'Starter Bundle',
-    description: '20 Energy + 1000 DNA + 1 Rare Variant',
+    description: '1000 DNA + 1 Rare Variant',
     price: 2.99,
     currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_BUNDLE || '',
@@ -81,7 +90,7 @@ export const BUNDLE_PRODUCTS: StoreProduct[] = [
   {
     id: 'dynasty_bundle',
     name: 'Dynasty Booster',
-    description: '50 Energy + 3000 DNA + 1 Epic Variant',
+    description: '3000 DNA + 1 Epic Variant',
     price: 9.99,
     currency: 'eur',
     stripePriceId: process.env.NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE || '',

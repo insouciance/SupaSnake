@@ -33,10 +33,6 @@ const PERKS: { title: string; detail: string }[] = [
     detail: 'The premium season track is unlocked while you are subscribed',
   },
   {
-    title: `Daily Lab Stipend`,
-    detail: `+${PREMIUM_CONFIG.stipendEnergyPerDay} energy every day, claimed with one tap`,
-  },
-  {
     title: 'Triple Contracts',
     detail: `Pick ${PREMIUM_CONFIG.contracts.picksPerDayPremium} of 3 daily contracts instead of ${PREMIUM_CONFIG.contracts.picksPerDayFree}`,
   },
@@ -70,11 +66,8 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
     billingInterval,
     currentPeriodEnd,
     cancelAtPeriodEnd,
-    stipendClaimedToday,
     currentDrop,
-    isClaimingStipend,
     fetchStatus,
-    claimStipend,
   } = usePremiumStore();
 
   const [plan, setPlan] = useState<PremiumPlan>(PREMIUM_PLANS[0]);
@@ -188,7 +181,7 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
         </ul>
 
         {isPremium ? (
-          /* Subscribed state: stipend + drop + billing summary + manage */
+          /* Subscribed state: drop + billing summary + manage */
           <div className="space-y-4" data-testid="premium-subscribed">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
@@ -217,29 +210,10 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
               </button>
             </div>
 
+            {/* The daily energy stipend is gone (Constitution §8.6/§10.4:
+                Energy is never sold, gifted or stipended, and no perk may
+                touch it). Premium's cosmetic drop remains. */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              {stipendClaimedToday ? (
-                <span
-                  data-testid="premium-stipend-claimed"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-arcade border border-scale-blue-light/50 bg-void/50 text-beige/70 text-sm font-body"
-                >
-                  <IconBolt size={14} className="text-amber-300" />
-                  Daily stipend claimed
-                </span>
-              ) : (
-                <button
-                  onClick={() =>
-                    session?.access_token && claimStipend(session.access_token)
-                  }
-                  disabled={isClaimingStipend}
-                  data-testid="premium-claim-stipend"
-                  className="btn-go min-h-[44px] px-4 py-2 text-sm"
-                >
-                  {isClaimingStipend
-                    ? '...'
-                    : `Claim daily +${PREMIUM_CONFIG.stipendEnergyPerDay} energy`}
-                </button>
-              )}
               {currentDrop && (
                 <span
                   data-testid="premium-current-drop"
@@ -247,7 +221,7 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
                 >
                   <IconMedal size={14} />
                   This month: {currentDrop.name}
-                  {currentDrop.claimed ? ' ✓' : ' — arrives with your next stipend'}
+                  {currentDrop.claimed ? ' ✓' : ''}
                 </span>
               )}
             </div>

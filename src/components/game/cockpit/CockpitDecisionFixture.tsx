@@ -33,8 +33,13 @@ const MODEL: RunCockpitModel = {
   isFirstMovementPrompt: false,
   score: 12840,
   dna: 186,
-  energy: 4,
-  maxEnergy: 5,
+  charge: {
+    remaining: 4,
+    perDay: 6,
+    usedToday: 2,
+    day: '2026-07-25',
+    refillsAt: '2026-07-26T00:00:00.000Z',
+  },
   bankDna: 168,
   crashDna: 52,
   comboMultiplier: 1.8,
@@ -63,7 +68,7 @@ function Decision({ kind }: { kind: CockpitDecisionFixtureKind }) {
       <AbandonRunDialog
         score={12840}
         dnaCollected={186}
-        costsEnergy
+        costsCharge
         onCancel={() => undefined}
         onConfirm={() => undefined}
       />

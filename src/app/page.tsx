@@ -5,7 +5,7 @@
  *
  * A premium game menu, not a web dashboard: the player's equipped snake
  * lives as a 3D character in a full-viewport chamber behind the UI. Over
- * it, a minimal hierarchy - small wordmark up top, ambient DNA/energy
+ * it, a minimal hierarchy - small wordmark up top, ambient DNA/charges
  * counters top-right, one rotating mission line, and a single obvious
  * primary action: LAUNCH.
  */
@@ -28,6 +28,7 @@ import type { DynastyId } from '@/shared/types/game';
 import { Navigation } from '@/components/ui/Navigation';
 import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
 import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
+import type { ChargeSnapshot } from '@/lib/store/gameStore';
 import {
   ContractsBoard,
   summarizeContracts,
@@ -71,8 +72,8 @@ const TOTAL_VARIANTS = MVP_DYNASTIES.length * 10;
 
 interface HomeStats {
   dna: number;
-  energy: number;
-  maxEnergy: number;
+  /** The day's harvest envelope (§8.6); null before sync or while the ramp hides it. */
+  charge: ChargeSnapshot | null;
   highScore: number;
   collectionSize: number;
   needsStarterSelection: boolean;
@@ -187,8 +188,7 @@ export default function Home() {
           if (!cancelled && data.player) {
             setStats({
               dna: data.player.dna ?? 0,
-              energy: data.player.energy ?? 0,
-              maxEnergy: data.player.max_energy ?? 5,
+              charge: (data.charge as ChargeSnapshot | undefined) ?? null,
               highScore: data.player.high_score ?? 0,
               collectionSize: data.collectionSize ?? 0,
               needsStarterSelection: data.needsStarterSelection ?? false,
@@ -570,7 +570,6 @@ export default function Home() {
             ? {
                 ...prev,
                 dna: prev.dna + outcome.dnaGranted,
-                energy: prev.energy + outcome.energyGranted,
               }
             : prev
         );
@@ -928,12 +927,16 @@ export default function Home() {
               {stats ? stats.dna.toLocaleString('en-US') : '—'}
             </span>
           </span>
-          <span className="flex items-center gap-1.5" title="Energy">
-            <IconBolt size={16} className="text-venom-orange" />
-            <span className="font-mono font-bold text-sm">
-              {stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
+          {/* Charges appear only once the §8.6 ramp says so - a new player
+              never meets scarcity before they have met the game. */}
+          {stats?.charge?.visible && (
+            <span className="flex items-center gap-1.5" title="Charges today">
+              <IconBolt size={16} className="text-venom-orange" />
+              <span className="font-mono font-bold text-sm">
+                {stats.charge.remaining}/{stats.charge.perDay}
+              </span>
             </span>
-          </span>
+          )}
         </div>
       )}
 

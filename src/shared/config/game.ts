@@ -47,11 +47,29 @@ export const GAME_CONFIG = deepFreeze({
       completionBonus: 50,           // Bonus for winning
       firstWinBonus: 100,            // First win of day
     },
+    /**
+     * Energy — the daily harvest envelope (Constitution §8.6).
+     *
+     * Energy never gates playing. Every run always starts, always Scores,
+     * always ranks, always counts. Energy paces the HARVEST only: a charged
+     * run harvests full DNA; an uncharged run plays identically and harvests
+     * the lean factor - lean, never zero.
+     *
+     * The day grants a fixed number of charges, reset to full at 00:00 UTC.
+     * There is no drip, no carry-over, no accumulation, and no grant path:
+     * charges are DERIVED from (charges_day, charges_used), so no purchase,
+     * perk, reward or stipend can add one (§10.4 never-sold list).
+     */
     energy: {
-      maxEnergy: 5,                  // Energy cap
-      costPerGame: 1,                // Energy consumed per game
-      regenRateMinutes: 20,          // Minutes per energy point
-      regenRateMs: 20 * 60 * 1000,   // Milliseconds
+      /** [H] Charges granted per UTC day. Reset, never accrual. */
+      chargesPerDay: 6,
+      /** [H] Harvest factor applied to an uncharged run's DNA. */
+      leanHarvestFactor: 0.25,
+      /**
+       * [H] Banked runs before the charge meter is shown at all - a new
+       * player never meets scarcity before they have met the game.
+       */
+      meterVisibleAtBankedRuns: 4,
     },
   },
 

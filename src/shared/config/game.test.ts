@@ -66,34 +66,35 @@ describe('Game Configuration', () => {
     });
   });
 
-  describe('Economy - Energy System', () => {
-    it('should have valid energy cap', () => {
-      expect(GAME_CONFIG.economy.energy.maxEnergy).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.energy.maxEnergy).toBeLessThanOrEqual(10);
+  describe('Economy - the daily harvest envelope (Constitution §8.6)', () => {
+    it('should grant a day\'s worth of charges, not a stock', () => {
+      const { chargesPerDay } = GAME_CONFIG.economy.energy;
+      expect(chargesPerDay).toBeGreaterThanOrEqual(4);
+      expect(chargesPerDay).toBeLessThanOrEqual(12);
     });
 
-    it('should cost energy per game', () => {
-      expect(GAME_CONFIG.economy.energy.costPerGame).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.energy.costPerGame).toBeLessThanOrEqual(
-        GAME_CONFIG.economy.energy.maxEnergy
-      );
+    it('should harvest lean, never zero, on an uncharged run', () => {
+      const { leanHarvestFactor } = GAME_CONFIG.economy.energy;
+      expect(leanHarvestFactor).toBeGreaterThan(0);
+      expect(leanHarvestFactor).toBeLessThan(1);
     });
 
-    it('should have reasonable regen rate', () => {
-      const { regenRateMinutes } = GAME_CONFIG.economy.energy;
-      expect(regenRateMinutes).toBeGreaterThanOrEqual(5);
-      expect(regenRateMinutes).toBeLessThanOrEqual(60);
+    it('should hide the meter until the player has met the game', () => {
+      const { meterVisibleAtBankedRuns, chargesPerDay } =
+        GAME_CONFIG.economy.energy;
+      expect(meterVisibleAtBankedRuns).toBeGreaterThan(0);
+      expect(meterVisibleAtBankedRuns).toBeLessThan(chargesPerDay * 2);
     });
 
-    it('should have matching millisecond conversion', () => {
-      const { regenRateMinutes, regenRateMs } = GAME_CONFIG.economy.energy;
-      expect(regenRateMs).toBe(regenRateMinutes * 60 * 1000);
-    });
-
-    it('should allow multiple games with full energy', () => {
-      const { maxEnergy, costPerGame } = GAME_CONFIG.economy.energy;
-      const gamesPerFullBar = Math.floor(maxEnergy / costPerGame);
-      expect(gamesPerFullBar).toBeGreaterThanOrEqual(3);
+    it('should expose no cap, cost-per-game or regen rate', () => {
+      // These three knobs defined the gate, the drip and the stock. Their
+      // absence is the mechanism, not an oversight - if one returns, the
+      // system the Constitution retired has returned with it.
+      const energy = GAME_CONFIG.economy.energy as Record<string, unknown>;
+      expect(energy.maxEnergy).toBeUndefined();
+      expect(energy.costPerGame).toBeUndefined();
+      expect(energy.regenRateMinutes).toBeUndefined();
+      expect(energy.regenRateMs).toBeUndefined();
     });
   });
 
@@ -193,11 +194,13 @@ describe('Game Configuration', () => {
       expect(gamesNeededToBreed).toBeLessThanOrEqual(10);
     });
 
-    it('should regenerate full energy bar in reasonable time', () => {
-      const { maxEnergy, regenRateMinutes } = GAME_CONFIG.economy.energy;
-      const minutesToFullBar = maxEnergy * regenRateMinutes;
-      expect(minutesToFullBar).toBeGreaterThanOrEqual(30);
-      expect(minutesToFullBar).toBeLessThanOrEqual(180);
+    it('should bound the day\'s rich harvest to a tunable envelope', () => {
+      // §8.6's stated purpose for the whole mechanism: a bounded daily
+      // economy envelope that makes collection and breeding pacing tunable.
+      // A day of full-harvest runs must be a finite, small number.
+      const { chargesPerDay } = GAME_CONFIG.economy.energy;
+      expect(Number.isInteger(chargesPerDay)).toBe(true);
+      expect(chargesPerDay).toBeLessThanOrEqual(12);
     });
 
     it('should have grid large enough for snake growth', () => {

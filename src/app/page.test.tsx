@@ -150,10 +150,19 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     player: {
       id: 'player-1',
       dna: 320,
-      energy: 4,
-      max_energy: 5,
       high_score: 777,
       total_games_played: 3,
+    },
+    // The day's harvest envelope (§8.6). `visible` carries the ramp: this
+    // fixture has 3 banked runs, below the 4-run threshold, so the meter is
+    // hidden - see the dedicated ramp tests below.
+    charge: {
+      remaining: 4,
+      perDay: 6,
+      usedToday: 2,
+      day: '2026-07-25',
+      refillsAt: '2026-07-26T00:00:00.000Z',
+      visible: true,
     },
     collectionSize: 3,
     needsStarterSelection: false,
@@ -174,8 +183,6 @@ function setupFetch(fixtures: FetchFixtures = {}) {
         player: {
           id: 'player-1',
           dna: 0,
-          energy: 5,
-          maxEnergy: 5,
           highScore: 0,
           totalGamesPlayed: 0,
         },
@@ -206,7 +213,7 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     if (u.includes('/api/game/session')) {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       return body.action === 'start'
-        ? jsonResponse({ sessionId: 'session-1', energy: 4, energyRegenAt: null })
+        ? jsonResponse({ sessionId: 'session-1' })
         : jsonResponse({ success: true });
     }
     return jsonResponse({});
@@ -238,10 +245,10 @@ function setUnauthed() {
   return { signInAnonymously };
 }
 
-/** Waits for authed stats to land (energy counter shows current/max) */
+/** Waits for authed stats to land (the charge counter shows left/perDay) */
 async function waitForStats() {
   await waitFor(() => {
-    expect(screen.getByText('4/5')).toBeInTheDocument();
+    expect(screen.getByText('4/6')).toBeInTheDocument();
   });
 }
 
@@ -267,15 +274,59 @@ describe('Home page', () => {
     });
   });
 
+  describe('the charge meter ramp (Constitution §8.6)', () => {
+    it('hides the meter until the player has met the game', async () => {
+      // "A new player never meets scarcity before they have met the game."
+      // The server sends visible:false below the banked-run threshold and
+      // Home must honour it rather than deciding for itself.
+      setAuthed();
+      setupFetch({
+        player: {
+          player: {
+            id: 'player-1',
+            dna: 320,
+            high_score: 10,
+            total_games_played: 1,
+          },
+          charge: {
+            remaining: 5,
+            perDay: 6,
+            usedToday: 1,
+            day: '2026-07-25',
+            refillsAt: '2026-07-26T00:00:00.000Z',
+            visible: false,
+          },
+          collectionSize: 1,
+          needsStarterSelection: false,
+          hasCompletedFirstRun: true,
+        },
+      });
+      render(<Home />);
+
+      await waitFor(() => {
+        expect(screen.getByText('320')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('5/6')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Charges today')).not.toBeInTheDocument();
+    });
+
+    it('shows the meter once the ramp opens it', async () => {
+      setAuthed();
+      render(<Home />);
+      await waitForStats();
+      expect(screen.getByTitle('Charges today')).toBeInTheDocument();
+    });
+  });
+
   describe('ambient counters (server authority)', () => {
-    it('fetches and shows DNA and energy', async () => {
+    it('fetches and shows DNA and the day\'s charges', async () => {
       setAuthed();
       render(<Home />);
 
       await waitForStats();
 
       expect(screen.getByText('320')).toBeInTheDocument(); // DNA
-      expect(screen.getByText('4/5')).toBeInTheDocument(); // Energy
+      expect(screen.getByText('4/6')).toBeInTheDocument(); // charges today
 
       await waitFor(() => {
         const calls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
@@ -400,8 +451,6 @@ describe('Home page', () => {
           player: {
             id: 'player-1',
             dna: 0,
-            energy: 5,
-            max_energy: 5,
             high_score: 0,
             total_games_played: 0,
           },

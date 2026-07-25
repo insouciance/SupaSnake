@@ -1,18 +1,20 @@
 /**
  * Offline Progress Calculation Tests
- * Tests for passive DNA and energy regeneration while offline
+ *
+ * Passive DNA only. The energy-restoration half of this module is gone
+ * (Constitution §8.6): time away restores nothing, because nothing was
+ * depleted - the day's charges refill on the UTC date, identically for a
+ * player who was here all day and one who was away for a month.
  */
 
 import {
   calculateOfflineProgress,
   calculatePassiveDna,
-  calculateEnergyRestored,
   formatOfflineDuration,
   type OfflineProgress,
   type OfflineProgressInput,
 } from './offlineProgress';
 import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
-import { GAME_CONFIG } from '@/shared/config/game';
 
 describe('calculatePassiveDna', () => {
   const config = ENGAGEMENT_CONFIG.passiveProgress;
@@ -45,34 +47,32 @@ describe('calculatePassiveDna', () => {
   });
 });
 
-describe('calculateEnergyRestored', () => {
-  const energyConfig = GAME_CONFIG.economy.energy;
-
-  it('calculates energy based on elapsed time', () => {
-    // 40 minutes elapsed, 20 min per energy = 2 energy restored
-    const elapsedMs = 40 * 60 * 1000;
-    expect(calculateEnergyRestored(0, 5, elapsedMs, energyConfig.regenRateMs)).toBe(2);
+describe('energy restoration is gone (GT §9.1, §9.2)', () => {
+  it('exports no energy-restore calculator', async () => {
+    // This module was a client-side mirror of the server drip. Keeping the
+    // export alive - even unused - invites a caller and re-creates the
+    // second clock that GT §9.2 recorded.
+    const mod = await import('./offlineProgress');
+    expect('calculateEnergyRestored' in mod).toBe(false);
   });
 
-  it('caps energy at maxEnergy', () => {
-    // 200 minutes elapsed = 10 energy, but current is 2, max is 5 = only 3 restored
-    const elapsedMs = 200 * 60 * 1000;
-    expect(calculateEnergyRestored(2, 5, elapsedMs, energyConfig.regenRateMs)).toBe(3);
+  it('reports no energyRestored on its result', () => {
+    const result = calculateOfflineProgress({
+      lastLoginAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      collectionSize: 10,
+    });
+    expect('energyRestored' in result).toBe(false);
   });
 
-  it('returns 0 if already at max energy', () => {
-    const elapsedMs = 60 * 60 * 1000;
-    expect(calculateEnergyRestored(5, 5, elapsedMs, energyConfig.regenRateMs)).toBe(0);
-  });
-
-  it('returns 0 for elapsed time less than regen rate', () => {
-    // 10 minutes elapsed, 20 min per energy = 0 energy
-    const elapsedMs = 10 * 60 * 1000;
-    expect(calculateEnergyRestored(0, 5, elapsedMs, energyConfig.regenRateMs)).toBe(0);
-  });
-
-  it('handles negative elapsed time', () => {
-    expect(calculateEnergyRestored(0, 5, -1000, energyConfig.regenRateMs)).toBe(0);
+  it('needs no energy state as input, so it cannot clamp one', () => {
+    // The GT §9.1 destruction bug required the caller to hand this module
+    // the player's current and maximum energy. It no longer accepts either.
+    const input = {
+      lastLoginAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      collectionSize: 10,
+    };
+    expect(Object.keys(input).sort()).toEqual(['collectionSize', 'lastLoginAt']);
+    expect(() => calculateOfflineProgress(input)).not.toThrow();
   });
 });
 
@@ -81,8 +81,6 @@ describe('calculateOfflineProgress', () => {
 
   const createInput = (overrides: Partial<OfflineProgressInput> = {}): OfflineProgressInput => ({
     lastLoginAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-    currentEnergy: 2,
-    maxEnergy: 5,
     collectionSize: 10,
     ...overrides,
   });
@@ -94,7 +92,6 @@ describe('calculateOfflineProgress', () => {
     expect(result.elapsedMs).toBeGreaterThan(0);
     expect(result.elapsedHours).toBeCloseTo(2, 0);
     expect(result.passiveDnaEarned).toBe(20); // 10 snakes * 1 DNA/hr * 2 hrs
-    expect(result.energyRestored).toBe(3); // From 2 to max 5 = 3 restored (2 hrs = 6 potential)
     expect(result.shouldShowModal).toBe(true);
     expect(result.hasRewards).toBe(true);
   });
@@ -110,14 +107,13 @@ describe('calculateOfflineProgress', () => {
 
   it('returns hasRewards false when no rewards earned', () => {
     const input = createInput({
-      currentEnergy: 5, // Already at max
       collectionSize: 0, // No snakes
       lastLoginAt: new Date(now - 10 * 60 * 1000).toISOString(), // 10 minutes ago
     });
     const result = calculateOfflineProgress(input);
 
+    // DNA is now the only reward, so hasRewards tracks it alone.
     expect(result.passiveDnaEarned).toBe(0);
-    expect(result.energyRestored).toBe(0);
     expect(result.hasRewards).toBe(false);
   });
 

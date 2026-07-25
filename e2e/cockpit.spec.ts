@@ -13,10 +13,15 @@ async function installReturningPlayerFixtures(page: Page): Promise<void> {
       json: {
         player: {
           id: 'cockpit-player',
-          energy: 5,
-          max_energy: 5,
-          energy_regen_at: null,
           total_games_played: 20,
+        },
+        charge: {
+          remaining: 4,
+          perDay: 6,
+          usedToday: 2,
+          day: '2026-07-25',
+          refillsAt: '2026-07-26T00:00:00.000Z',
+          visible: true,
         },
         needsStarterSelection: false,
         hasCompletedFirstRun: true,
@@ -62,8 +67,15 @@ async function installReturningPlayerFixtures(page: Page): Promise<void> {
       json: {
         sessionId: 'cockpit-session',
         freePlay: true,
-        energy: 5,
-        energyRegenAt: null,
+        charge: {
+          state: 'exempt',
+          remaining: 4,
+          perDay: 6,
+          usedToday: 2,
+          day: '2026-07-25',
+          refillsAt: '2026-07-26T00:00:00.000Z',
+          visible: true,
+        },
         traits: ['scavenger'],
         mutationPool: ['gold_trail', 'tithe', 'loan_shark', 'static_charge'],
         mastery: { dynasty: 'PRIMAL', xp: 0, level: 0 },

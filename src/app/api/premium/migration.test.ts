@@ -101,17 +101,27 @@ describe('Migration 028: apply_subscription_update lifecycle sync', () => {
   });
 });
 
-describe('Migration 028: daily stipend', () => {
+/**
+ * The stipend RPC these tests describe is DROPPED by migration 039
+ * (Constitution §8.6/§10.4: Energy is never sold, gifted or stipended).
+ * 028's file is unchanged and still contains the function text, so these
+ * assertions remain accurate as a description of that historical migration
+ * - they are kept so a future edit to 028 cannot silently rewrite history,
+ * and the retirement itself is asserted in the 039 shape tests.
+ *
+ * The +3 amount is pinned as a literal here because PREMIUM_CONFIG no
+ * longer carries `stipendEnergyPerDay`: the config value is gone precisely
+ * so nothing live can read it.
+ */
+describe('Migration 028 (historical): daily stipend, retired by 039', () => {
   it('is idempotent by (player_id, claim_date) PK', () => {
     expect(sql).toMatch(/PRIMARY KEY \(player_id, claim_date\)/);
     expect(sql).toMatch(/ON CONFLICT \(player_id, claim_date\) DO NOTHING;/);
     expect(sql).toMatch(/'already_claimed'/);
   });
 
-  it(`grants +${PREMIUM_CONFIG.stipendEnergyPerDay} energy UNCAPPED (purchased-energy rule) and logs the ledger`, () => {
-    expect(sql).toMatch(
-      new RegExp(`v_stipend INTEGER := ${PREMIUM_CONFIG.stipendEnergyPerDay};`)
-    );
+  it('granted +3 energy UNCAPPED (purchased-energy rule) and logged the ledger', () => {
+    expect(sql).toMatch(/v_stipend INTEGER := 3;/);
     expect(sql).toMatch(/SET energy = energy \+ v_stipend/);
     // No max_energy cap anywhere in the stipend body
     const start = sql.indexOf('CREATE OR REPLACE FUNCTION claim_premium_stipend');
@@ -136,6 +146,17 @@ describe('Migration 028: daily stipend', () => {
 
   it('is service-role only (mints energy)', () => {
     expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION claim_premium_stipend\(UUID\) FROM authenticated;/);
+  });
+
+  it('is dropped by migration 039, and unreachable from the app', () => {
+    const sql039 = fs.readFileSync(
+      path.join(process.cwd(), 'supabase/migrations/039_energy_envelope.sql'),
+      'utf8'
+    );
+    expect(sql039).toMatch(/DROP FUNCTION IF EXISTS claim_premium_stipend\(UUID\)/);
+    expect(PREMIUM_CONFIG as Record<string, unknown>).not.toHaveProperty(
+      'stipendEnergyPerDay'
+    );
   });
 });
 

@@ -108,8 +108,6 @@ describe('POST /api/player/claim-offline', () => {
         data: {
           id: 'player-123',
           dna: 100,
-          energy: 2,
-          max_energy: 5,
           last_login_at: twoHoursAgo,
         },
         error: null,
@@ -144,7 +142,12 @@ describe('POST /api/player/claim-offline', () => {
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.rewards.passiveDnaEarned).toBe(20); // 10 snakes * 1 DNA/hr * 2 hrs
-    expect(data.rewards.energyRestored).toBe(3); // From 2 to 5
+    // GT §9.1: this route no longer reports, writes or clamps energy. The
+    // €4-destroying `Math.min(energy + restored, max_energy)` is gone with
+    // the balance it clamped.
+    expect(data.rewards.energyRestored).toBeUndefined();
+    expect(data.newBalances.energy).toBeUndefined();
+    expect(Object.keys(data.newBalances)).toEqual(['dna']);
   });
 
   it('returns no rewards if already claimed recently', async () => {
@@ -165,8 +168,6 @@ describe('POST /api/player/claim-offline', () => {
         data: {
           id: 'player-123',
           dna: 100,
-          energy: 5,
-          max_energy: 5,
           last_login_at: oneMinuteAgo,
         },
         error: null,
@@ -189,7 +190,7 @@ describe('POST /api/player/claim-offline', () => {
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.rewards.passiveDnaEarned).toBe(0);
-    expect(data.rewards.energyRestored).toBe(0);
+    expect(data.rewards.energyRestored).toBeUndefined();
     expect(data.message).toContain('No rewards');
   });
 });
