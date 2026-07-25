@@ -10,7 +10,9 @@
  * IDENTICAL-signature settle_and_pair_duels re-declaration, the
  * legacy_score-appended identity view, the PB-timeline index, and the
  * records_refresh rate-limit action. Plus the project covenants:
- * gen_random_uuid only, zero economy faucets, achievements untouched.
+ * gen_random_uuid only, zero economy faucets, achievements untouched by
+ * THIS migration (they were retired later, by 042 - see
+ * src/lib/server/achievementsToRecords.migration.test.ts).
  */
 
 import { describe, it, expect } from '@jest/globals';
@@ -246,7 +248,11 @@ describe('Migration 023: project covenants', () => {
     expect(sql).not.toMatch(/SET energy/);
   });
 
-  it('never touches the achievements tables (section 6.6: display retires, faucet stays)', () => {
+  // 023 left the achievement tables alone; only their DISPLAY surface moved
+  // into the Chronicle. The mechanism itself was retired by migration 042
+  // (WP-0.04), which is where that change belongs and is asserted. This test
+  // pins 023's scope, not the current state of the world.
+  it('never touches the achievements tables (section 6.6: display retires here, mechanism dies in 042)', () => {
     expect(sql).not.toMatch(/achievement_definitions/);
     expect(sql).not.toMatch(/player_achievements/);
   });

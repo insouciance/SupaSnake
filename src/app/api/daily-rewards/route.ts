@@ -78,9 +78,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch reward tiers' }, { status: 500 });
     }
 
+    // WP-0.02: the streak is a count, not a factor - streak_multiplier is
+    // gone from player_streaks along with the rest of the stack (§8.5).
     const { data: streakRow } = await supabase
       .from('player_streaks')
-      .select('current_streak, streak_multiplier')
+      .select('current_streak')
       .eq('player_id', player.id)
       .maybeSingle();
 
@@ -92,7 +94,6 @@ export async function GET(request: NextRequest) {
       tiers: (tierRows || []).map(mapTierRow),
       streak: {
         current: streakRow?.current_streak ?? 0,
-        multiplier: Number(streakRow?.streak_multiplier ?? 1) || 1,
       },
     });
   } catch (err) {

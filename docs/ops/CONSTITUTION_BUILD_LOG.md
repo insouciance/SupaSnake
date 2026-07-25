@@ -94,14 +94,14 @@ before merging anything.
 |---|---|---|---|
 | 0.00 Baseline & rails | A+B | **merged** | `wp/0-00-baseline-rails` |
 | 0.01 Energy envelope | A | **merged** | `wp/0-01-energy-envelope` |
-| 0.02 Multiplier stack removal | A | in flight | `wp/0-02-multiplier-removal` |
-| 0.03 Faucet & dead-config purge | A | queued | |
-| 0.04 Achievements → Records | A | queued | |
+| 0.02 Multiplier stack removal | A | **merged** | `wp/0-02-multiplier-removal` |
+| 0.03 Faucet & dead-config purge | A | queued (holds on 0.02 — shared `game.ts`) | |
+| 0.04 Achievements → Records | A | in flight | `wp/0-04-achievements-to-records` |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
 | 0.06 Session lifecycle & cohorts | A | queued | |
-| 0.07 Aim universalization | B | in flight | `wp/0-07-aim-universalization` |
+| 0.07 Aim universalization | B | **merged** | `wp/0-07-aim-universalization` |
 | 0.08 Growth hygiene bundle | B | **merged** | `wp/0-08-growth-hygiene` |
-| 0.09 Commerce removal & premium truth | A | queued | |
+| 0.09 Commerce removal & premium truth | A | in flight | `wp/0-09-commerce-removal` |
 | 0.10 `verify:constitution` v1 | B | **merged** | `wp/0-10-verify-constitution` |
 
 Ordering follows the handoff's §3 constraints: migrations serialized, and no two
@@ -189,6 +189,94 @@ verified (every Supabase `error` checked and reported to Sentry) · scope held.
 nothing from the module it named — it re-declared `getSkillBracket` and the
 bracket tables inline and asserted against its own copies. Its entire subject was
 deleted by this WP; 62 real tests replace it.
+
+#### WP-0.02 · Multiplier stack removal · **merged** (migration 041)
+
+**Settlement before:** `finalDna = floor(floor(rawFold × outcome) × streakTier ×
+setBonus × clanDuel) × harvestFactor`, with `streakTier ∈ {1, 1.05, 1.10, 1.20,
+1.35}`, `setBonus = 1 + 0.10 × completedDynasties`, `clanDuel ∈ {1, 1.05}`.
+
+**Settlement after:** `yieldDna = validation.adjustedDna` (the validator's exact
+recompute) then `finalDna = applyHarvestFactor(yieldDna, chargeState)`. **Raw fold
+× outcome multiplier, and nothing else. No account state reaches the number.**
+
+Deleted `dnaMultipliers.ts` and every caller: the session route's multiplier block,
+the `dnaMultiplier` response field, the `dna_multiplier` ledger metadata,
+`ENGAGEMENT_CONFIG.streaks.tiers`, the `/api/streaks` `multiplier`/`energyBonus`
+fields, and four UI surfaces that advertised a factor.
+
+**Migration 041** — one transaction, snapshot taken before any write, explicit
+down-note:
+- **`DROP FUNCTION clan_duel_bonus(UUID)` — this closes the live exploit the owner
+  asked about (F-6b).** It resolved a clan-wide ×1.05 DNA week from *current*
+  `clan_members`, so a player could leave and join whichever clan won last week and
+  harvest a bonus they never contributed to, repeatable weekly. R8 forbids
+  intra-clan reward mathematics outright.
+- `DROP TABLE streak_bonus_tiers` (a catalogue, not player data) and
+  `ALTER TABLE player_streaks DROP COLUMN streak_multiplier` (a derived cache) — so
+  no factor has a column to return through. The meaningful value is banked first.
+- Longest streak banked into the `unbroken` Legacy Record with `GREATEST()` on
+  value, tier **and** `legacy_score`, deliberately **not** delegating to
+  `refresh_player_records`, which still carries the F-6 downward-write defect.
+- **Preservation asserted inside the migration**: a pre-write temp snapshot, re-read
+  in a `DO` block that `RAISE EXCEPTION`s — aborting the transaction — if any record
+  moved downward, if a player with a streak lost their record, or if any banked
+  value fell below the streak it came from.
+- **`REVOKE EXECUTE ON record_daily_play FROM PUBLIC/anon/authenticated`** — migration
+  009 left a `SECURITY DEFINER` function callable by any authenticated session
+  through PostgREST. An R11 hole found and closed in passing.
+- Take-streak columns for WP-1.04, **schema only**, with constraints that make the
+  forbidden state unrepresentable rather than trusting the later WP to honour R5:
+  `CHECK ((take_last_claim_date IS NULL) = (take_streak_days = 0))` means a player
+  who has ever collected a Take can never hold zero days, so cooling can only walk
+  the ladder down one rung; `CHECK (take_streak_days >= (ARRAY[0,3,7,14,30])[take_tier+1])`
+  forbids an unearned tier; `CHECK (take_longest_streak >= take_streak_days)` keeps
+  the high-water mark permanent. Encoding R5 in the schema is better than the WP
+  asked for.
+
+*Deliberately not hidden:* `record_daily_play` was re-declared carrying F-10's
+reset-to-1 **unchanged**, because that is WP-1.04's fix and burying it inside this
+migration would have concealed it.
+
+**Orchestrator audit:** tsc clean · lint clean · **247 suites / 3007 tests** ·
+`verify:constitution` PASS. Migration renumbered **040 → 041** at merge (040 went
+to WP-0.08); the renumber required updating the shape test's filename reference and
+three `Migration 040` string assertions, which I caught and fixed before merging.
+
+#### WP-0.07 · Aim universalization · **merged** (no migration)
+
+All four aim systems are settings from run 1. `src/lib/game/aimSystems.ts` no
+longer exports `isUnlocked`, `unlockHint`, `isAimSystemUnlocked` or
+`getUnlockedAimSystems`; `AimSystemDef` is now `{id, name, description}`, and a test
+scans the module's own source to keep progression tokens out of it. Server-side,
+`buildAimStats` is deleted and the `403 "Aim system locked"` branch is gone — the
+only rejection left is `400` on a malformed id.
+
+**Nothing was deleted to achieve this (R6).** There was never an "unlocked" table:
+unlock state was *derived* from `players.high_score / total_games_played /
+breeds_completed`, all still intact. The three retired predicates moved **verbatim**
+into `src/lib/chronicle/aimTrivia.ts` and now render as a Chronicle **Trivia**
+section listing only the milestones a player actually cleared — no tier, no points,
+no cosmetic, nothing claimable, and no section at all for a career with no
+footnotes. That is the right shape: a footnote, not a Record, earning no Legacy
+Score.
+
+**Orchestrator audit:** tsc clean · lint clean · **249 suites / 3025 tests** ·
+`verify:constitution` PASS · all three `verify:cockpit-*` suites pass (prototype
+8 viewports × 4 states, 4 WebGL profiles, 22 frozen-state/legal-surface checks) —
+the subagent started a dev server for these and shut it down.
+
+The acceptance tests are unusually good: one asserts a **fresh zero-progression
+account and a veteran render identically**, and another pins the component's prop
+surface to exactly `['selected', 'onSelect']`, so progression cannot be
+reintroduced through a prop later. The tap law is asserted structurally — flat
+always-visible `radiogroup`, exactly one preselected option, no expander or dialog
+trigger — so open → LAUNCH → START → board stays at three taps.
+
+*Local decision accepted:* trivia deliberately reads `players.high_score`, which
+WP-0.05 avoided for the leaderboard because flagged runs poison it (F-1). Justified
+here: trivia grants nothing, so the reason the board avoids that column does not
+apply, and reproducing the retired predicate exactly is the point.
 
 #### WP-0.08 · Growth hygiene bundle · **merged** (migration 040)
 
@@ -457,9 +545,58 @@ gate is a backstop, and R3/R4 remain reviewer reads on the checklist.
 | F-20 | Dead weight in the repo: `assets/OG_SNAKE_base.png` and `styleguide/assets/OG_SNAKE_base.png` are 2.9 MB each at 2048×2048 and referenced nowhere; `public/textures/minimalistic_background_texture_of_space_1.png` is 2.1 MB and will hurt any Lighthouse performance score. | owner |
 | F-21 | Waitlist rows are not account-linked, so `delete-account` cannot reach them. The privacy policy names the contact address as the erasure path, which is lawful but manual. A real erasure hook would be better. | owner |
 | F-22 | `CONSENT_KEY = 'cookie-consent'` is now duplicated across three modules (pre-existing in two). One shared constant would be better. | any WP touching consent |
+| F-23 | `src/app/api/player/route.ts` GET discards `error` on the create-path re-read (~line 132), and `createError`/`settingsInsertError` are console-logged without Sentry. A specific instance of F-17. | see F-17 |
+| F-24 | `AimSystemPanel` and `game/page.tsx` use bare `.then(res => res.json())` with no `res.ok` check, so a 500 silently yields `undefined` fields rather than an error. | WP-1.06 (owns those surfaces) |
+
+## GROUND_TRUTH deltas — sections made stale by this build
+
+`docs/GROUND_TRUTH.md` is a frozen baseline at the `pre-constitution` tag and is
+deliberately **not** edited as work packages land (CLAUDE.md: code outranks it).
+This is the running list of what it now describes wrongly, for the owner's
+GT-refresh after the phase gate.
+
+| GT section | Made stale by | Now |
+|---|---|---|
+| §3.1 multiplier stack | WP-0.02 | settled payout is raw fold × outcome multiplier only; `clan_duel_bonus` dropped |
+| §3.3, §9.1, §9.2 energy, dual clocks, destruction | WP-0.01 | Energy is a derived day-scoped allotment; one refill authority; no stock to destroy |
+| §7, §10 commerce and dead config | WP-0.09 (in flight) | pending |
+| §8 growth surfaces | WP-0.08 | share URL fixed; icons, OG, robots, sitemap, `/play`, waitlist and funnel events ship |
+| §9.3 leaderboard | WP-0.05 | eligibility enforced; brackets deleted; `myRank` join fixed |
+| §9.4 aim gating | WP-0.07 | all four aim systems are settings from run 1; unlock predicates are Chronicle trivia |
+| §9.5 achievements | WP-0.04 (in flight) | pending |
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
+
+## Build incidents
+
+**I-1 · Two subagents stalled on a watchdog timeout** (WP-0.04, WP-0.09), both
+during initial exploration, both leaving zero commits. Root cause was **resource
+contention**, not the work: three subagents were running while the orchestrator ran
+a full test suite, and that suite took **1447s instead of ~25s**. Both packages were
+relaunched with fresh agents per the retry protocol, and concurrency is now capped
+at **two** subagents with no full-suite run while they work.
+
+**I-1b · WP-0.09 failed a second time**, this run to an API connection error rather
+than a stall — but it left **real uncommitted work** on three files
+(`products.ts`, `checkout/route.ts`, `webhook/stripe/route.ts`: both SKU groups
+deleted, `StoreProductType` narrowed, `ALL_PRODUCTS` emptied), not compiling because
+its consumers had not been updated yet. Per the resume rule — never respawn a
+duplicate against a branch showing real progress — the orchestrator committed the
+work as an explicitly-labelled WIP checkpoint (`50ad44d`) so a third failure cannot
+lose it, and dispatched a fresh subagent to **finish** the branch rather than
+restart it. Two infrastructure failures on one WP; neither was a work-quality
+failure, so this is logged rather than escalated as a blocked package.
+
+**I-2 · A cross-work-package test failure that neither WP could have caught.**
+WP-0.02 and WP-0.08 both edited `src/lib/share/genomeCardImage.test.ts`, on separate
+hunks, so git merged them without conflict and each branch was green on its own. But
+WP-0.08's Rule-14 assertion hard-coded `'2,526 DNA'` — a total computed while the
+streak/set/clan-duel factors still multiplied the payout — while WP-0.02 rewrote the
+shared fixture to `cascade.total = 1750`. The stale literal only failed once both
+were on the integration branch. Fixed by the orchestrator; the fixture is the source
+of truth and 1,750 is correct. **This is the case for verifying the integration
+branch after every merge, not just each branch in isolation.**
 
 ## Owner to-do list
 

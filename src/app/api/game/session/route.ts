@@ -76,12 +76,10 @@ import {
   enqueueMasteryLevelup,
   refreshLinkedRolesForPlayer,
 } from '@/lib/server/discordSync';
-import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
-import {
-  getDnaMultiplier,
-  applyDnaMultiplier,
-  type DnaMultiplierBreakdown,
-} from '@/lib/server/dnaMultipliers';
+// Two now-deleted server modules used to be imported here: the account
+// multiplier stack (removed by WP-0.02) and the achievement checker (retired
+// into the Legacy Records by WP-0.04). Neither name is spelled out, because a
+// WP-0.02 test asserts this file's source cannot mention the former at all.
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 
@@ -724,20 +722,6 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // DNA multiplier stack: streak tier x set bonus x clan duel.
-      // (Design v2: the dynasty passive is gone - the ruleset already
-      // shaped the base payout.) Non-fatal: failures fall back to x1.
-      // Free sessions still compute it - it prices the hypothetical payout.
-      let dnaMultiplier = 1;
-      let dnaBreakdown: DnaMultiplierBreakdown | null = null;
-      try {
-        const multiplierResult = await getDnaMultiplier(supabase, player.id);
-        dnaMultiplier = multiplierResult.multiplier;
-        dnaBreakdown = multiplierResult.breakdown;
-      } catch (multiplierError) {
-        console.error('DNA multiplier error:', multiplierError);
-      }
-
       // ---------------------------------------------------------------
       // Settlement against the envelope (Constitution §6.2, §8.6)
       // ---------------------------------------------------------------
@@ -755,7 +739,12 @@ export async function POST(request: NextRequest) {
         ? rawChargeState
         : 'charged';
 
-      const yieldDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+      // WP-0.02: the account multiplier stack (streak tier x collection set
+      // bonus x clan-duel bonus) is DELETED. A settled run is worth its raw
+      // fold times the extraction outcome multiplier and nothing else - the
+      // validator's exact recompute already IS that number (§8.5, GT §3.1).
+      // No account state, no calendar, no clan, no purchase may re-enter here.
+      const yieldDna = validation.adjustedDna;
       const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
@@ -911,8 +900,8 @@ export async function POST(request: NextRequest) {
 
       // Free Play end: the run is recorded + validated above, but nothing
       // pays out - no DNA credit, no total_dna_earned, no streak
-      // (record_daily_play NOT called), no achievements, no economy
-      // transactions. The response carries what the run WOULD have earned
+      // (record_daily_play NOT called), no economy transactions and no
+      // records refresh. The response carries what the run WOULD have earned
       // so the player sees the stakes they practiced for.
       if (isFreeSession) {
         const { data: freePlayerState } = await supabase
@@ -939,9 +928,7 @@ export async function POST(request: NextRequest) {
             chargeState,
           },
           hypotheticalDna: finalDna,
-          newAchievements: [],
           ...(identityInfo ? { identity: identityInfo } : {}),
-          ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
           // Free Play still gets an authoritative recap card. Discoveries
           // and rewards remain disabled; this is validator output only.
           ...(validation.genome ? { genome: validation.genome } : {}),
@@ -1015,7 +1002,6 @@ export async function POST(request: NextRequest) {
               ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
               : {}),
             ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
-            ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
             ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
           },
         });
@@ -1052,8 +1038,9 @@ export async function POST(request: NextRequest) {
       // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
       // (free sessions returned above; deaths grant nothing). The XP is
       // floor(raw x 1.25) - the banked payout BEFORE Mirror Wager /
-      // Compound Interest outcome shaping and BEFORE the account
-      // multiplier stack, so streaks never inflate mastery. Non-fatal:
+      // Compound Interest outcome shaping, so nothing about the account
+      // can inflate mastery (the account multiplier stack that used to
+      // sit here was deleted outright by WP-0.02). Non-fatal:
       // pre-019 (missing table/RPC) or any grant failure just omits the
       // mastery block from the response.
       let mastery: {
@@ -1098,11 +1085,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Record daily play streak (non-fatal if it errors)
+      // Record daily play streak (non-fatal if it errors). The streak is a
+      // COUNT, never a payout factor: WP-0.02 deleted the tier multiplier,
+      // so nothing here re-enters settlement.
       let streak: {
         current: number;
         longest: number;
-        multiplier: number;
         graceConsumed: boolean;
       } | null = null;
       try {
@@ -1113,102 +1101,33 @@ export async function POST(request: NextRequest) {
 
         if (streakRpcError) {
           console.error('record_daily_play error:', streakRpcError);
+          Sentry.captureException(
+            new Error(`record_daily_play failed: ${streakRpcError.message}`),
+            { extra: { playerId: player.id, sessionId } }
+          );
         } else {
           const row = Array.isArray(streakRows) ? streakRows[0] : streakRows;
           if (row) {
             streak = {
               current: row.current_streak,
               longest: row.longest_streak,
-              multiplier: Number(row.streak_multiplier),
               graceConsumed: row.grace_consumed,
             };
           }
         }
       } catch (streakError) {
         console.error('record_daily_play error:', streakError);
+        Sentry.captureException(streakError, {
+          extra: { playerId: player.id, sessionId },
+        });
       }
 
-      // Check for newly completed achievements
-      let newAchievements: string[] = [];
-      try {
-        // Get collection count for achievement checking
-        const { count: collectionCount } = await supabase
-          .from('collected_snakes')
-          .select('*', { count: 'exact', head: true })
-          .eq('player_id', player.id);
-
-        // Get streak info (prefer the freshly recorded streak)
-        let currentStreak = streak?.current ?? 0;
-        if (!streak) {
-          const { data: streakData } = await supabase
-            .from('player_streaks')
-            .select('current_streak')
-            .eq('player_id', player.id)
-            .single();
-          currentStreak = streakData?.current_streak || 0;
-        }
-
-        // Build player stats for achievement checking
-        const playerStats: PlayerStats = {
-          total_games_played: updatedPlayer?.total_games_played || 0,
-          total_dna_earned: updatedPlayer?.total_dna_earned || 0,
-          high_score: updatedPlayer?.high_score || 0,
-          breeds_completed: updatedPlayer?.breeds_completed || 0,
-          collection_count: collectionCount || 0,
-          current_streak: currentStreak,
-        };
-
-        // Get achievement definitions
-        const { data: achievements } = await supabase
-          .from('achievement_definitions')
-          .select('*');
-
-        // Get existing progress
-        const { data: progress } = await supabase
-          .from('player_achievements')
-          .select('achievement_id, progress, completed')
-          .eq('player_id', player.id);
-
-        const existingProgress = new Map(
-          (progress || []).map(p => [p.achievement_id, { progress: p.progress, completed: p.completed }])
-        );
-
-        // Check achievements
-        const result = checkAchievements(
-          playerStats,
-          (achievements || []) as AchievementDefinition[],
-          existingProgress
-        );
-
-        // Update progress and mark newly completed
-        const progressEntries = Array.from(result.progressUpdates.entries());
-        for (const [achievementId, progressValue] of progressEntries) {
-          const isNewlyCompleted = result.newlyCompleted.some(a => a.id === achievementId);
-
-          const { error: achievementUpsertError } = await supabase
-            .from('player_achievements')
-            .upsert({
-              player_id: player.id,
-              achievement_id: achievementId,
-              progress: progressValue,
-              completed: isNewlyCompleted || existingProgress.get(achievementId)?.completed || false,
-              completed_at: isNewlyCompleted ? new Date().toISOString() : undefined,
-            }, { onConflict: 'player_id,achievement_id' });
-
-          if (achievementUpsertError) {
-            console.error('Failed to upsert achievement progress:', {
-              playerId: player.id,
-              achievementId,
-              error: achievementUpsertError,
-            });
-          }
-        }
-
-        newAchievements = result.newlyCompleted.map(a => a.name);
-      } catch (achievementError) {
-        console.error('Achievement check error:', achievementError);
-        // Don't fail the request if achievement checking fails
-      }
+      // WP-0.04: the achievement checker used to run here, writing an
+      // 18-row parallel progression table on every settled run. The
+      // mechanism is retired (migration 042) and every quantity it counted
+      // is measured by the Legacy Records, which the refresh below
+      // recomputes from the same aggregates -- monotonically, so a record
+      // it banks can never be written back down (Rule 6, finding F-6).
 
       // Records refresh (Identity v1 section 6.3): idempotent
       // recompute-from-aggregates after all rewards land - like mastery,
@@ -1249,9 +1168,7 @@ export async function POST(request: NextRequest) {
           yieldDna,
           chargeState,
         },
-        newAchievements,
         ...(identityInfo ? { identity: identityInfo } : {}),
-        ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),

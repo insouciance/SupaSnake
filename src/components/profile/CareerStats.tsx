@@ -11,7 +11,6 @@ import type { ReactElement } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import type { CareerStats as CareerStatsType } from '@/app/api/player/stats/route';
 import {
-  IconChart,
   IconDna,
   IconEgg,
   IconFlame,
@@ -102,7 +101,6 @@ export function CareerStats() {
   }
 
   const collectionPercent = Math.round((stats.collectionCount / stats.totalVariants) * 100);
-  const achievementPercent = Math.round((stats.achievementsCompleted / stats.totalAchievements) * 100);
 
   return (
     <div className="panel-elevated p-6 animate-fade-up">
@@ -140,13 +138,9 @@ export function CareerStats() {
           subValue={`Best: ${stats.longestStreak} days`}
           color="text-venom-orange"
         />
-        <StatCard
-          icon={<IconChart size={26} />}
-          label="Achievements"
-          value={`${stats.achievementsCompleted}/${stats.totalAchievements}`}
-          subValue={`${achievementPercent}% unlocked`}
-          color="text-rarity-epic"
-        />
+        {/* WP-0.04: the Achievements tile is gone with the mechanism it
+            counted. Banked progression is read from the Records cabinet on
+            the Chronicle, which is now the only place it is displayed. */}
       </div>
 
       {/* Breeding stats */}

@@ -63,7 +63,7 @@ function renderBoard(props: Partial<React.ComponentProps<typeof ContractsBoard>>
       isVisible
       contracts={buildBoard()}
       picksRemaining={2}
-      streak={{ current: 5, multiplier: 1.1 }}
+      streak={{ current: 5 }}
       onPick={noopPick}
       onClaim={noopClaim}
       onDismiss={jest.fn()}
@@ -142,7 +142,10 @@ describe('ContractsBoard', () => {
     expect(screen.getByText('Bank 3 extractions')).toBeInTheDocument();
     expect(screen.getByText('Pass 3 portals, bank the 4th - one run')).toBeInTheDocument();
     expect(screen.getByText('600')).toBeInTheDocument();
-    expect(screen.getByText(/5-day streak \(x1\.1\)/)).toBeInTheDocument();
+    // WP-0.02: the streak is a count. It advertises no DNA multiplier
+    // because there is no longer one to advertise (Constitution §8.5).
+    expect(screen.getByText(/5-day streak/)).toBeInTheDocument();
+    expect(screen.queryByText(/x1\.1/)).toBeNull();
     expect(screen.getByTestId('contract-card-banker')).toHaveAttribute('data-state', 'offer');
   });
 

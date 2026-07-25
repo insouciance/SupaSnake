@@ -102,7 +102,7 @@ class HapticsManager {
   }
 
   /**
-   * Success pattern - for breeding success, achievements
+   * Success pattern - for breeding success and run triumphs
    */
   success(): boolean {
     return this.vibrate('success');

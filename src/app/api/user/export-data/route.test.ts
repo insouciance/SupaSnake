@@ -108,7 +108,12 @@ const tableResults: Record<string, QueryResult> = {
     error: null,
   },
   player_achievements: {
-    data: [{ achievement_id: 'games_10', unlocked_at: '2026-01-05', progress: 10 }],
+    data: [{
+      achievement_id: 'games_10',
+      completed: true,
+      completed_at: '2026-01-05',
+      progress: 10,
+    }],
     error: null,
   },
 };
@@ -167,6 +172,32 @@ describe('Export Data API', () => {
       expect(builders[table].eq).toHaveBeenCalledWith('player_id', 'player-id');
       expect(builders[table].eq).not.toHaveBeenCalledWith('player_id', 'auth-user-id');
     }
+  });
+
+  // WP-0.04: player_achievements is a frozen ledger and the export is the
+  // reason it is retained, so the export has to actually work. It selected
+  // `unlocked_at`, a column this table has never had (003:108-121), and a
+  // failed category 500s the whole request - the entire GDPR data export
+  // was broken. The earned timestamp is `completed_at`.
+  it('exports the frozen achievement ledger with columns that exist', async () => {
+    const response = await GET(createMockRequest({ Authorization: 'Bearer valid-token' }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(builders.player_achievements.select).toHaveBeenCalledWith(
+      'achievement_id, completed, completed_at, progress'
+    );
+    expect(builders.player_achievements.select).not.toHaveBeenCalledWith(
+      expect.stringContaining('unlocked_at')
+    );
+    expect(data.achievements).toEqual([
+      {
+        achievementId: 'games_10',
+        completed: true,
+        completedAt: '2026-01-05',
+        progress: 10,
+      },
+    ]);
   });
 
   it('exports current schema fields without payment-provider identifiers', async () => {

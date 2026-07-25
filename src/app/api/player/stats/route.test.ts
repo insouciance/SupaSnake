@@ -19,8 +19,6 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 5,
           longestStreak: 10,
-          achievementsCompleted: 8,
-          totalAchievements: 18,
         };
 
         expect(stats.highScore).toBe(150);
@@ -36,8 +34,6 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         };
 
         expect(stats.totalGamesPlayed).toBe(100);
@@ -53,8 +49,6 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         };
 
         expect(stats.totalDnaEarned).toBe(50000);
@@ -70,8 +64,6 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         };
 
         expect(stats.collectionCount).toBe(20);
@@ -89,15 +81,17 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 7,
           longestStreak: 14,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         };
 
         expect(stats.currentStreak).toBe(7);
         expect(stats.longestStreak).toBe(14);
       });
 
-      it('should have correct shape for achievement stats', () => {
+      // WP-0.04: the achievement counters left this payload with the
+      // mechanism they counted (migration 042). The Records cabinet on the
+      // Chronicle is the one banked-progression surface now, so a second
+      // set of career counters must not creep back into this route.
+      it('no longer carries achievement counters', () => {
         const stats: CareerStats = {
           highScore: 0,
           totalGamesPlayed: 0,
@@ -107,12 +101,20 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 15,
-          totalAchievements: 18,
         };
 
-        expect(stats.achievementsCompleted).toBe(15);
-        expect(stats.totalAchievements).toBe(18);
+        expect(Object.keys(stats)).toEqual([
+          'highScore',
+          'totalGamesPlayed',
+          'totalDnaEarned',
+          'breedsCompleted',
+          'collectionCount',
+          'totalVariants',
+          'currentStreak',
+          'longestStreak',
+        ]);
+        expect(stats).not.toHaveProperty('achievementsCompleted');
+        expect(stats).not.toHaveProperty('totalAchievements');
       });
 
       it('should allow zero values for new players', () => {
@@ -125,8 +127,6 @@ describe('Player Stats API', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         };
 
         expect(newPlayerStats.highScore).toBe(0);
