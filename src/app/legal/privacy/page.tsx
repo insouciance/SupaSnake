@@ -253,6 +253,26 @@ export default function PrivacyPolicyPage() {
               </p>
             </Activity>
 
+            <Activity title="3.6a Attribution (where you came from) — only with your consent">
+              <p className="mb-2">
+                If (and only if) you enable the &quot;Marketing&quot; category
+                in the cookie banner, we record which channel brought you to
+                the Game: the campaign labels contained in the link you
+                followed (utm_source, utm_medium, utm_campaign, utm_content,
+                utm_term) and the host name of the referring site — never the
+                full referring address. It is stored in your browser&apos;s
+                session storage for the current tab only and attached, as a
+                channel label, to your analytics profile if you later create an
+                account. We operate no advertising network, buy no advertising,
+                and place no third-party advertising tags or advertising
+                identifiers. With the category off, nothing is stored and your
+                visit is counted as &quot;direct&quot;.
+              </p>
+              <p>
+                Legal basis: Art. 6(1)(a) GDPR and §165(3) TKG 2021 (consent).
+              </p>
+            </Activity>
+
             <Activity title="3.7 Error tracking (Sentry)">
               <p className="mb-2">
                 To keep the Game stable we send error reports (stack traces,
@@ -292,9 +312,26 @@ export default function PrivacyPolicyPage() {
                 digest&quot; (your game stats and narration) is strictly opt-in
                 in Settings and can be disabled there at any time.
               </p>
+              <p className="mb-2">
+                The &quot;Dispatch&quot; is a separate opt-in list for
+                occasional product news and the results of the weekly hunt. It
+                uses double opt-in: we store your address with a
+                &quot;pending&quot; status and send exactly one confirmation
+                e-mail. If you do not click the link in it, the address is
+                never used for anything else and never receives another
+                message. We store the address, its status, the timestamps, and
+                a coarse channel label (see 3.6a); we never store the
+                confirmation or unsubscribe token itself, only a hash of it.
+                Every Dispatch message carries a one-click unsubscribe link,
+                and the list is never used for advertising.
+              </p>
               <p>
                 Legal basis: Art. 6(1)(b) GDPR for transactional mail;
-                Art. 6(1)(a) (consent) for the digest.
+                Art. 6(1)(a) (consent) for the digest and the Dispatch.
+                Retention: until you unsubscribe. An entry that is never
+                confirmed stays permanently unusable — it can never receive a
+                Dispatch message — and any address can be erased on request via
+                the contact address above.
               </p>
             </Activity>
 

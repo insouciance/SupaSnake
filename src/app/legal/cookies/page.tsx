@@ -14,7 +14,7 @@ export const metadata = {
 
 type StorageEntry = {
   name: string;
-  kind: 'Cookie' | 'localStorage';
+  kind: 'Cookie' | 'localStorage' | 'sessionStorage';
   purpose: string;
   duration: string;
 };
@@ -81,6 +81,23 @@ const ANALYTICS: StorageEntry[] = [
     kind: 'localStorage',
     purpose: 'Analytics device/session identifiers (consent-gated)',
     duration: 'Until consent is revoked or storage cleared',
+  },
+  {
+    name: 'supasnake-funnel-*',
+    kind: 'localStorage',
+    purpose:
+      'Remembers that a one-off milestone (first banked run, handle claimed) has already been counted, so it is not reported twice. Written only while Analytics is enabled.',
+    duration: 'Until cleared',
+  },
+];
+
+const MARKETING: StorageEntry[] = [
+  {
+    name: 'supasnake-attribution',
+    kind: 'sessionStorage',
+    purpose:
+      'The campaign labels (utm_*) in the link you arrived on and the host that referred you — never the full referring address. Used to see which channels bring players. Written only after you enable the Marketing category.',
+    duration: 'Until you close the browser tab',
   },
 ];
 
@@ -198,6 +215,22 @@ export default function CookiePolicyPage() {
               .
             </p>
             <StorageTable entries={ANALYTICS} />
+          </section>
+
+          <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
+            <h2 className="text-xl font-display uppercase tracking-arcade text-venom-orange mb-4">
+              4a. Marketing (consent)
+            </h2>
+            <p className="mb-4">
+              Written only after you enable the Marketing category, and only to
+              answer one question: which channel brought you here. We keep the
+              campaign labels from your link and the referring site&apos;s host
+              name — never the full referring address, and never an advertising
+              identifier. We run no advertising network and place no third-party
+              advertising tags. If you leave this category off, nothing below is
+              stored and arrivals are simply counted as direct.
+            </p>
+            <StorageTable entries={MARKETING} />
           </section>
 
           <section className="bg-scale-blue border-[3px] border-scale-blue-light rounded-arcade p-6">
