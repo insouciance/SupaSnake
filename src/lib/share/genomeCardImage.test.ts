@@ -1,7 +1,10 @@
 import {
+  GENOME_CARD_SHARE_URL,
   buildGenomeCardModel,
   genomeCardCascadeRows,
   genomeCardFilename,
+  genomeCardShareText,
+  shareGenomeCard,
   type GenomeCardModel,
 } from './genomeCardImage';
 
@@ -58,5 +61,98 @@ describe('Genome Card export model', () => {
     expect(buildGenomeCardModel({ genome: {}, validation: {} }, {
       snakeName: 'x', dynasty: 'CYBER', generation: 1, score: 0, foods: 0,
     })).toBeNull();
+  });
+});
+
+/**
+ * GT §8 named this the highest-leverage one-line defect in the repository:
+ * the shipped card reached players as a polished 1200x630 PNG with no way
+ * back to the game. Constitution Rule 14 makes carrying the link law.
+ */
+/** A 2D context that accepts every call and property jsdom cannot provide. */
+function recordingContext(): Record<string, unknown> {
+  return new Proxy(
+    {},
+    {
+      get: (_target, property) => {
+        if (property === 'createLinearGradient' || property === 'createRadialGradient') {
+          return () => ({ addColorStop: () => {} });
+        }
+        if (property === 'measureText') return () => ({ width: 10 });
+        return () => undefined;
+      },
+      set: () => true,
+    }
+  ) as Record<string, unknown>;
+}
+
+describe('Genome Card share payload — Rule 14', () => {
+  const originalNavigator = global.navigator;
+  const share = jest.fn().mockResolvedValue(undefined);
+  const canShare = jest.fn().mockReturnValue(true);
+
+  beforeEach(() => {
+    share.mockClear();
+    canShare.mockClear().mockReturnValue(true);
+    Object.defineProperty(global, 'navigator', {
+      configurable: true,
+      value: { share, canShare },
+    });
+    // jsdom has no 2D canvas. The drawing itself is not the subject here, so
+    // the real draw runs against a permissive stub and the export yields a
+    // real Blob — the payload is what these tests are about.
+    jest
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(recordingContext() as unknown as CanvasRenderingContext2D);
+    jest
+      .spyOn(HTMLCanvasElement.prototype, 'toBlob')
+      .mockImplementation((callback) => callback(new Blob(['png'])));
+  });
+
+  afterEach(() => {
+    Object.defineProperty(global, 'navigator', {
+      configurable: true,
+      value: originalNavigator,
+    });
+    jest.restoreAllMocks();
+  });
+
+  it('points at the canonical origin, never a deployment origin', () => {
+    expect(GENOME_CARD_SHARE_URL).toBe('https://supasnake.com');
+  });
+
+  it('ends the share text with the URL on its own line', () => {
+    const text = genomeCardShareText(model);
+    expect(text.split('\n')).toEqual([
+      '2,526 DNA · 0 genes',
+      'https://supasnake.com',
+    ]);
+  });
+
+  it('passes a url to the share sheet', async () => {
+    await expect(shareGenomeCard(model)).resolves.toBe('shared');
+    expect(share).toHaveBeenCalledTimes(1);
+    const payload = share.mock.calls[0][0];
+    expect(payload.url).toBe(GENOME_CARD_SHARE_URL);
+  });
+
+  it('repeats the URL in the text, for platforms that drop url with files', async () => {
+    await shareGenomeCard(model);
+    const payload = share.mock.calls[0][0];
+    expect(payload.text).toContain(GENOME_CARD_SHARE_URL);
+    expect(payload.files).toHaveLength(1);
+  });
+
+  it('still exports the PNG when the share sheet is unavailable', async () => {
+    canShare.mockReturnValue(false);
+    const click = jest
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    URL.createObjectURL = jest.fn().mockReturnValue('blob:card');
+    URL.revokeObjectURL = jest.fn();
+
+    await expect(shareGenomeCard(model)).resolves.toBe('downloaded');
+    expect(share).not.toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
   });
 });
