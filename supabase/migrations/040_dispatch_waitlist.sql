@@ -1,4 +1,4 @@
--- Migration 039: the Dispatch waitlist (double opt-in)
+-- Migration 040: the Dispatch waitlist (double opt-in)
 --
 -- Constitution §11.6: "The Dispatch — the opt-in news and settlement list.
 -- On the landing page as a one-field waitlist from Phase 0, so spike traffic
