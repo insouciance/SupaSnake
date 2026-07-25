@@ -119,7 +119,7 @@ export default function LeaderboardPage() {
     redirect('/');
   }
 
-  const { session } = useAuth();
+  const { session, isLoading: isAuthLoading } = useAuth();
   const { showToast } = useToast();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,8 +189,18 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     if (anomalyTab) return; // the anomaly tab has its own fetch below
+    // Wait for the session to resolve before the first board request.
+    // `useAuth` starts with `session: null` while `getSession()` is in flight,
+    // so firing here unconditionally sent a request with no Authorization
+    // header - and the server can only resolve `viewer` from a token. The
+    // signed-in player was therefore served a viewer-less board first and a
+    // correct one a moment later: their rank flickered in, and the board was
+    // fetched twice on every visit. Deferring costs the logged-out visitor
+    // nothing over the network (`getSession()` reads local storage) and the
+    // board stays public - an unresolved session simply means no viewer.
+    if (isAuthLoading) return;
     fetchLeaderboard();
-  }, [fetchLeaderboard, anomalyTab]);
+  }, [fetchLeaderboard, anomalyTab, isAuthLoading]);
 
   // Weekly Anomaly board (§7.2): its own leaderboard, normal DNA rules
   useEffect(() => {

@@ -7,7 +7,8 @@
  *   - generation "skill brackets" are gone from the surface
  *   - the you-centered contract holds: top 3 plus the viewer ±5
  *   - a signed-in player gets a resolvable `viewer` in the players.id space -
- *     the join that made myRank permanently undefined
+ *     the join that made myRank permanently undefined - on the *first* board
+ *     they are served, with no viewer-less board in front of it
  *
  * The runs themselves are a WebGL canvas and are not simulated, so this spec
  * asserts the board's structure and contract rather than staging scores; the
@@ -123,18 +124,44 @@ test.describe('Leaderboard integrity', () => {
     await seedConsent(page);
     await signInAsGuest(page);
 
+    // The auth user id, straight out of the session the guest sign-in wrote.
+    // GT §9.3's defect was that this value was compared against a
+    // `players.id`; proving the two differ is what makes the assertions below
+    // meaningful rather than tautological.
+    const authUserId = await page.evaluate(() => {
+      const key = Object.keys(window.localStorage).find(
+        (k) => k.startsWith('sb-') && k.endsWith('-auth-token')
+      );
+      if (!key) return null;
+      const raw = window.localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return (parsed?.user?.id as string | undefined) ?? null;
+    });
+    expect(authUserId).toMatch(/^[0-9a-f-]{36}$/i);
+
     const boardResponse = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === '/api/leaderboard' && response.status() === 200,
       { timeout: 30000 }
     );
     await page.goto('/leaderboard', { waitUntil: 'domcontentloaded' });
-    const data = (await (await boardResponse).json()) as BoardResponse;
+    const firstBoard = await boardResponse;
+
+    // The *first* board a signed-in player receives already carries their
+    // session. The page waits for auth to resolve before fetching, so there is
+    // no viewer-less board in front of the correct one - which is the same
+    // "my rank is missing" symptom GT §9.3 describes, reached by a race
+    // instead of by the join.
+    expect(firstBoard.request().headers()['authorization']).toMatch(/^Bearer \S/);
+
+    const data = (await firstBoard.json()) as BoardResponse;
 
     // The account exists, so the server resolves a players.id for it. This is
-    // the GT §9.3 fix: the page no longer compares an auth user id to it.
+    // the GT §9.3 fix: the page no longer compares an auth user id to it, and
+    // the id the server returns is emphatically not the auth user id.
     expect(data.viewer).not.toBeNull();
     expect(data.viewer!.playerId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(data.viewer!.playerId).not.toBe(authUserId);
     assertBoardInvariants(data);
 
     // Whenever the viewer is ranked, exactly one visible row is "you"
