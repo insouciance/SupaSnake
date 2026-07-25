@@ -1,10 +1,17 @@
 /**
- * Checkout API - Creates Stripe checkout sessions
+ * Checkout API - Creates Stripe checkout sessions for one-time products.
  * Server-side only - client never sees Stripe secret key
+ *
+ * **The one-time catalogue is empty** (src/lib/stripe/products.ts): WP-0.09
+ * deleted every energy and bundle SKU under Constitution §10.4. Until an
+ * §10.2 archetype ships, every productId resolves to nothing and this route
+ * answers 400 `product_not_available` — including for the five retired ids,
+ * which is exactly the guarantee that a deleted SKU can never be sold again.
+ * The route itself stays because the archetypes will need it, and because the
+ * consumer-law gate below is hard-won and must not be re-derived.
  *
  * Server-side enforcement (client UI gating is cosmetic only):
  * - anonymous users cannot purchase (403 account_required)
- * - bundle products are Day 2+ only per BM-004 (403 bundle_not_available)
  * - consumers must expressly consent to immediate delivery of digital
  *   content and acknowledge loss of the 14-day withdrawal right before
  *   checkout (§18(1)(11) FAGG) — recorded in the session metadata
@@ -13,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { getProductById, shouldShowBundles } from '@/lib/stripe/products';
+import { getProductById } from '@/lib/stripe/products';
 
 // Stripe client is created lazily: instantiating at module scope makes the
 // production build itself require STRIPE_SECRET_KEY (Next.js page-data
@@ -88,10 +95,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get product
+    // Resolve the SKU against the server catalogue. Nothing is on sale today,
+    // so this is where every purchase attempt ends.
     const product = getProductById(productId);
     if (!product) {
-      return NextResponse.json({ error: 'Invalid product' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'product_not_available' },
+        { status: 400 }
+      );
     }
 
     // Check for Stripe price ID
@@ -102,28 +113,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve the player row (rewards are granted against players.id, and
-    // created_at drives the bundle availability window)
+    // Resolve the player row (grants are made against players.id)
     const { data: player, error: playerError } = await supabase
       .from('players')
-      .select('id, created_at')
+      .select('id')
       .eq('user_id', user.id)
       .single();
 
     if (playerError || !player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
-    }
-
-    // Server-side Day 2+ gating for bundles (BM-004). The shop UI hides
-    // bundles before Day 2, but the API must enforce it.
-    if (
-      product.type === 'bundle' &&
-      !shouldShowBundles(new Date(player.created_at))
-    ) {
-      return NextResponse.json(
-        { error: 'bundle_not_available' },
-        { status: 403 }
-      );
     }
 
     // Canonical app URL for redirect targets; request origin only as a
@@ -143,10 +141,12 @@ export async function POST(request: NextRequest) {
         },
       ],
       metadata: {
+        // Deliberately NOT the reward payload: the webhook resolves what a
+        // purchase delivers from the server catalogue by productId, so
+        // session metadata can never be the source of a grant.
         userId: user.id,
         playerId: player.id,
         productId: product.id,
-        rewards: JSON.stringify(product.rewards),
         // Evidence of the §18 FAGG consent given in the shop UI
         withdrawal_consent: 'immediate_delivery_acknowledged',
         withdrawal_consent_at: new Date().toISOString(),
