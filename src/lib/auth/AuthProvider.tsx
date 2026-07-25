@@ -10,6 +10,11 @@ import { User, Session, Provider } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { recordLastUser } from '@/lib/auth/lastUser';
 import { LEGAL_VERSIONS } from '@/shared/config/legal';
+import {
+  FunnelStages,
+  attachAttributionToPerson,
+  trackFunnelStageOnce,
+} from '@/lib/analytics/funnel';
 
 interface AuthContextType {
   user: User | null;
@@ -144,6 +149,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     setIsLoading(false);
+    if (!error) {
+      // Identify (§11.5, §11.7): the account becomes reachable. Attribution
+      // captured on the landing page is stamped onto the person here — the
+      // Constitution's "UTM and referrer capture at signup".
+      attachAttributionToPerson({ identify_method: 'email_signup' });
+      trackFunnelStageOnce(FunnelStages.IDENTIFY, { method: 'email_signup' });
+    }
     return {
       error: error ? new Error(error.message) : null,
       session: data?.session ?? null,
@@ -212,6 +224,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(signedIn.session);
       setUser(signedIn.session.user ?? signedIn.user ?? null);
     }
+
+    // Identify (§11.5): a guest just became reachable, on the same account.
+    attachAttributionToPerson({ identify_method: 'guest_upgrade' });
+    trackFunnelStageOnce(FunnelStages.IDENTIFY, { method: 'guest_upgrade' });
 
     // The admin upgrade confirms the email instantly - no pending link.
     return { error: null, pendingEmailConfirmation: false };

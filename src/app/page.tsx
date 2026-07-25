@@ -41,8 +41,12 @@ import {
   type SeasonTrackView,
 } from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
-import { trackEvent } from '@/lib/analytics/posthog';
+import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
+import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
+import { captureAttribution } from '@/lib/growth/attribution';
+import { GROWTH_SURFACES_V1_ENABLED } from '@/lib/features/growth';
+import { LandingPitch } from '@/components/growth/LandingPitch';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import {
   INITIAL_LAUNCH_STATE,
@@ -160,6 +164,20 @@ export default function Home() {
       setWelcomeBack(marker);
     }
   }, [isLoading, isAuthenticated]);
+
+  // Acquisition funnel (Constitution §11.5). Arrive fires on every landing;
+  // Reach fires additionally when the visit carries a channel. Both wait for
+  // capture to be live, because the provider that starts PostHog is this
+  // component's parent and its effect therefore runs second — sampling
+  // isAnalyticsInitialized() here directly would drop every first paint.
+  // Attribution storage is separately gated on marketing consent.
+  useEffect(() => {
+    return onAnalyticsReady(() => {
+      const attribution = captureAttribution();
+      if (attribution) trackFunnelStage(FunnelStages.REACH);
+      trackFunnelStage(FunnelStages.ARRIVE);
+    });
+  }, []);
 
   // Replay any queued game rewards that failed to send (tab closed at
   // death, network drop). Server dedupes by sessionId.
@@ -773,7 +791,15 @@ export default function Home() {
 
   const mission = missionItems[missionIndex % missionItems.length];
 
+  // The "what is this" section for scrollers and crawlers (§11.4). Rendered
+  // AFTER the 100dvh chamber, never inside it: the fold, the LAUNCH dock and
+  // the ≤3-tap law (§5) are untouched for a visitor who never scrolls. Shown
+  // to logged-out visitors only — a returning player wants the game, not the
+  // pitch — and server-rendered in that state, so crawlers always see it.
+  const showLandingPitch = GROWTH_SURFACES_V1_ENABLED && !isAuthenticated;
+
   return (
+    <>
     <main className="app-bg text-bone-white relative h-[100dvh] overflow-hidden">
       {/* The Specimen Chamber - full-viewport scene behind the UI. The
           placeholder holds the atmosphere until WebGL is live, then the
@@ -998,5 +1024,7 @@ export default function Home() {
         </div>
       </div>
     </main>
+    {showLandingPitch && <LandingPitch />}
+    </>
   );
 }

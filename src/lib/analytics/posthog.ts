@@ -27,6 +27,17 @@ export interface EventProperties {
   [key: string]: string | number | boolean | string[] | number[];
 }
 
+/**
+ * Broadcast on `window` the moment capture becomes possible.
+ *
+ * Surfaces that record a once-per-visit fact — the funnel's Arrive stage,
+ * for instance — mount as children of AnalyticsProvider, so their effects
+ * run *before* the provider's. Without this signal they would sample
+ * isAnalyticsInitialized() a tick too early and drop the event on every
+ * first paint. Use onAnalyticsReady(), which handles both orderings.
+ */
+export const ANALYTICS_READY_EVENT = 'analytics-ready';
+
 let initialized = false;
 
 /**
@@ -60,6 +71,25 @@ export function initAnalytics(config: AnalyticsConfig): void {
  */
 export function isAnalyticsInitialized(): boolean {
   return initialized;
+}
+
+/**
+ * Run `callback` once capture is live — immediately if it already is, or on
+ * the next ANALYTICS_READY_EVENT. Returns an unsubscribe function; calling
+ * it after the callback ran is harmless.
+ */
+export function onAnalyticsReady(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  if (initialized) {
+    callback();
+    return () => {};
+  }
+  const handler = () => {
+    window.removeEventListener(ANALYTICS_READY_EVENT, handler);
+    callback();
+  };
+  window.addEventListener(ANALYTICS_READY_EVENT, handler);
+  return () => window.removeEventListener(ANALYTICS_READY_EVENT, handler);
 }
 
 /**

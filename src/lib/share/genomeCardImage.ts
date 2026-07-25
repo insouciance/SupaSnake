@@ -1,6 +1,7 @@
 import { GENES, isGeneId } from '@/shared/game/genes';
 import { SPLICES, isSpliceId } from '@/shared/game/splices';
 import { STRAINS, isStrainId, STRAIN_TIER_NAMES, type StrainId } from '@/shared/game/strains';
+import { canonicalUrl } from '@/shared/config/site';
 
 export interface GenomeCardGene {
   id: string;
@@ -337,6 +338,28 @@ export async function createGenomeCardBlob(model: GenomeCardModel): Promise<Blob
   });
 }
 
+/**
+ * Where a shared Genome Card points. Constitution Rule 14 — every artifact
+ * "is linkable, and the link carries an image and a way in" — and §11.4:
+ * every shared URL is a playable ad, because the root lands playing.
+ *
+ * Always the canonical origin, never the deployment origin: a card shared
+ * from a preview build must not hand a stranger a preview link.
+ */
+export const GENOME_CARD_SHARE_URL = canonicalUrl('/');
+
+/**
+ * The share sheet's text. Ends with the URL on its own line so the link
+ * survives the platforms that silently drop `url` when `files` is present
+ * (the reason the shipped card reached players with no way back in).
+ */
+export function genomeCardShareText(model: GenomeCardModel): string {
+  return [
+    `${model.cascade.total.toLocaleString()} DNA · ${model.genes.length} genes`,
+    GENOME_CARD_SHARE_URL,
+  ].join('\n');
+}
+
 export async function shareGenomeCard(
   model: GenomeCardModel
 ): Promise<'shared' | 'downloaded'> {
@@ -351,7 +374,8 @@ export async function shareGenomeCard(
     await navigator.share({
       files: [file],
       title: `${model.snakeName}'s SupaSnake Genome`,
-      text: `${model.cascade.total.toLocaleString()} DNA · ${model.genes.length} genes`,
+      text: genomeCardShareText(model),
+      url: GENOME_CARD_SHARE_URL,
     });
     return 'shared';
   }

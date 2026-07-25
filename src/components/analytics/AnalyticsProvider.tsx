@@ -11,6 +11,7 @@
 
 import { useEffect } from 'react';
 import {
+  ANALYTICS_READY_EVENT,
   initAnalytics,
   enableAnalytics,
   disableAnalytics,
@@ -29,6 +30,9 @@ function applyConsent(analyticsGranted: boolean) {
         apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY || '',
         host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
       });
+    }
+    if (isAnalyticsInitialized()) {
+      window.dispatchEvent(new CustomEvent(ANALYTICS_READY_EVENT));
     }
   } else {
     disableAnalytics();

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="SupaSnake">
+  <rect width="64" height="64" rx="12" fill="#06090d"/>
+  <rect x="2" y="2" width="60" height="60" rx="10" fill="none" stroke="#22d3ee" stroke-opacity="0.28" stroke-width="2"/>
+  <path
+    d="M46 18 H24 V32 H40 V46 H18"
+    fill="none"
+    stroke="#22d3ee"
+    stroke-width="9"
+    stroke-linecap="square"
+    stroke-linejoin="miter"
+  />
+  <rect x="41.5" y="13.5" width="9" height="9" fill="#67e8f9"/>
+</svg>
