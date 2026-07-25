@@ -6,10 +6,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { describe, it, expect } from '@jest/globals';
 import { GAME_CONFIG } from '@/shared/config/game';
-import {
-  applyDnaMultiplier,
-  combineDnaMultipliers,
-} from '@/lib/server/dnaMultipliers';
 import { validateGameResult } from '@/lib/server/gameValidator';
 import {
   applyOutcome,
@@ -171,12 +167,13 @@ describe('Game Session Logic', () => {
     });
 
     it('should map record_daily_play RPC row to streak response', () => {
-      // RPC returns a table row (array from supabase.rpc)
+      // RPC returns a table row (array from supabase.rpc). WP-0.02: the row
+      // carries a COUNT only - streak_multiplier is gone from the RPC's
+      // return type and from player_streaks (migration 040).
       const rpcRows = [
         {
           current_streak: 3,
           longest_streak: 7,
-          streak_multiplier: '1.10',
           grace_consumed: false,
         },
       ];
@@ -185,16 +182,15 @@ describe('Game Session Logic', () => {
       const streak = {
         current: row.current_streak,
         longest: row.longest_streak,
-        multiplier: Number(row.streak_multiplier),
         graceConsumed: row.grace_consumed,
       };
 
       expect(streak).toEqual({
         current: 3,
         longest: 7,
-        multiplier: 1.1,
         graceConsumed: false,
       });
+      expect('multiplier' in streak).toBe(false);
     });
 
     it('should omit streak from response when RPC fails (non-fatal)', () => {
@@ -273,7 +269,7 @@ describe('Game Session Logic', () => {
       expect(validation.valid).toBe(true);
 
       const isFreeSession = true;
-      const finalDna = applyDnaMultiplier(validation.adjustedDna, 1);
+      const finalDna = validation.adjustedDna;
       const sessionUpdate = {
         score: validation.adjustedScore,
         dna_earned: isFreeSession ? 0 : finalDna,
@@ -286,7 +282,7 @@ describe('Game Session Logic', () => {
       expect(sessionUpdate.extracted).toBe(true);
     });
 
-    it('end computes hypotheticalDna from the recompute + multiplier stack', () => {
+    it('end computes hypotheticalDna from the recompute alone (no stack)', () => {
       const { rawDna, score } = computeRunTotals('PRIMAL', 30);
       const validation = validateGameResult(
         {
@@ -302,12 +298,13 @@ describe('Game Session Logic', () => {
         'PRIMAL'
       );
 
-      // 7-day streak (x1.10) + 1 completed dynasty (x1.10) = x1.21
-      const { multiplier } = combineDnaMultipliers(1.1, 1);
-      const hypotheticalDna = applyDnaMultiplier(validation.adjustedDna, multiplier);
+      // WP-0.02: what the run WOULD have paid is the validator's exact
+      // recompute - raw fold x outcome multiplier. No streak, no set bonus,
+      // no clan duel, and nothing else the account could contribute.
+      const hypotheticalDna = validation.adjustedDna;
 
       expect(validation.adjustedDna).toBe(applyOutcome(rawDna, true)); // 483
-      expect(hypotheticalDna).toBe(Math.floor(483 * 1.21)); // 584
+      expect(hypotheticalDna).toBe(483);
     });
 
     it('free end response pays nothing and grants no achievements or streak', () => {
@@ -317,7 +314,7 @@ describe('Game Session Logic', () => {
         success: true,
         freePlay: isFreeSession,
         validation: { adjustedDna: 0, baseDna: 483 },
-        hypotheticalDna: 584,
+        hypotheticalDna: 483,
         newAchievements: [] as string[],
         ...(streak ? { streak } : {}),
       };
@@ -571,34 +568,116 @@ describe('Game Session Logic', () => {
     });
   });
 
-  describe('DNA Multiplier Integration', () => {
-    it('multiplies the banked payout by the streak x set stack and rounds down', () => {
-      // 7-day streak (x1.10, Design v2 retune), 1 completed dynasty (x1.10)
-      const { multiplier, breakdown } = combineDnaMultipliers(1.1, 1);
-      const adjustedDna = 47;
+  describe('Settlement: raw fold x outcome multiplier, and nothing else (WP-0.02)', () => {
+    const routeSource = () => fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+    const startedAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
 
-      const finalDna = applyDnaMultiplier(adjustedDna, multiplier);
+    it('settles a banked run at exactly the validator recompute', () => {
+      const { rawDna, score } = computeRunTotals('PRIMAL', 30);
+      const validation = validateGameResult(
+        {
+          food_count: 30,
+          extracted: true,
+          score,
+          dna_earned: rawDna,
+          duration_seconds: 120,
+          died: false,
+          victory: false,
+        },
+        startedAgo(125),
+        'PRIMAL'
+      );
 
-      // 47 * 1.21 = 56.87 -> 56
-      expect(multiplier).toBeCloseTo(1.21, 4);
-      expect(finalDna).toBe(56);
-      expect(breakdown.total).toBe(multiplier);
+      // Yield IS the recompute. The route no longer multiplies it by
+      // anything: `const yieldDna = validation.adjustedDna`.
+      const yieldDna = validation.adjustedDna;
+
+      expect(yieldDna).toBe(applyOutcome(rawDna, true));
+      expect(yieldDna).toBe(Math.floor(rawDna * 1.25));
     });
 
-    it('grants base DNA unchanged when no bonuses apply', () => {
-      const { multiplier } = combineDnaMultipliers(1, 0);
-      expect(applyDnaMultiplier(50, multiplier)).toBe(50);
+    it('settles a died run at the salvage multiplier and nothing else', () => {
+      const { rawDna, score } = computeRunTotals('CYBER', 24);
+      const validation = validateGameResult(
+        {
+          food_count: 24,
+          extracted: false,
+          score,
+          dna_earned: rawDna,
+          duration_seconds: 100,
+          died: true,
+          victory: false,
+        },
+        startedAgo(105),
+        'CYBER'
+      );
+
+      const yieldDna = validation.adjustedDna;
+      expect(yieldDna).toBe(applyOutcome(rawDna, false));
+      expect(yieldDna).toBe(Math.floor(rawDna * 0.6));
     });
 
-    it('falls back to base DNA when multiplier lookup fails (x1)', () => {
-      // Route catches multiplier errors and keeps dnaMultiplier = 1
-      const dnaMultiplier = 1;
-      const adjustedDna = 33;
-      expect(applyDnaMultiplier(adjustedDna, dnaMultiplier)).toBe(33);
+    it('a 30-day streak, a full collection and a duel win change nothing', () => {
+      // The whole point of the WP: two players with identical runs and
+      // wildly different account state settle at the same number. There is
+      // no parameter left to express the difference with.
+      const { rawDna, score } = computeRunTotals('COSMIC', 40);
+      const settle = () => {
+        const validation = validateGameResult(
+          {
+            food_count: 40,
+            extracted: true,
+            score,
+            dna_earned: rawDna,
+            duration_seconds: 150,
+            died: false,
+            victory: false,
+          },
+          startedAgo(155),
+          'COSMIC'
+        );
+        return validation.adjustedDna;
+      };
+
+      const veteranWithEverything = settle();
+      const dayOnePlayerWithNothing = settle();
+
+      expect(veteranWithEverything).toBe(dayOnePlayerWithNothing);
+      expect(veteranWithEverything).toBe(applyOutcome(rawDna, true));
     });
 
-    it('logs the breakdown into economy transaction metadata', () => {
-      const { breakdown } = combineDnaMultipliers(1.1, 2);
+    it('route source: the multiplier stack has no way back into settlement', () => {
+      const source = routeSource();
+
+      // The module is deleted; the route must not import or call it.
+      expect(source).not.toMatch(/dnaMultipliers/);
+      expect(source).not.toMatch(/getDnaMultiplier|applyDnaMultiplier|combineDnaMultipliers/);
+      // No breakdown leaks into the response or the economy ledger.
+      expect(source).not.toMatch(/dnaBreakdown/);
+      expect(source).not.toMatch(/dna_multiplier/);
+      // No streak / set-bonus / clan-duel factor is read anywhere.
+      expect(source).not.toMatch(/streak_multiplier/);
+      expect(source).not.toMatch(/clan_duel_bonus/);
+      expect(source).not.toMatch(/setBonus|completedDynasties/);
+      // Yield is the recompute, verbatim.
+      expect(source).toMatch(/const yieldDna = validation\.adjustedDna;/);
+    });
+
+    it('the multiplier module is gone from the tree entirely', () => {
+      const modulePath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        'lib',
+        'server',
+        'dnaMultipliers.ts'
+      );
+      expect(fs.existsSync(modulePath)).toBe(false);
+    });
+
+    it('economy transaction metadata records the base payout, no breakdown', () => {
       const metadata = {
         score: 10,
         food_count: 10,
@@ -606,30 +685,18 @@ describe('Game Session Logic', () => {
         original_dna_claimed: 100,
         validated: true,
         base_dna: 100,
-        ...(breakdown ? { dna_multiplier: breakdown } : {}),
       };
 
       expect(metadata.base_dna).toBe(100);
-      expect(metadata.dna_multiplier).toEqual(breakdown);
-      expect(metadata.dna_multiplier.completedDynasties).toBe(2);
-      expect(metadata.extracted).toBe(false);
+      expect('dna_multiplier' in metadata).toBe(false);
     });
 
-    it('omits dnaMultiplier from response when breakdown is unavailable', () => {
-      const dnaBreakdown = null;
-      const response = {
-        success: true,
-        ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
-      };
-
-      expect('dnaMultiplier' in response).toBe(false);
-    });
-
-    it('credits player totals with the multiplied DNA', () => {
+    it('credits player totals with the settled DNA', () => {
       const playerDna = 100;
       const previousTotalEarned = 500;
-      const finalDna = applyDnaMultiplier(40, 1.25); // 50
+      const finalDna = applyOutcome(40, true); // 50
 
+      expect(finalDna).toBe(50);
       expect(playerDna + finalDna).toBe(150);
       expect(previousTotalEarned + finalDna).toBe(550);
     });

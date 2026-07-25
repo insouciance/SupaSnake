@@ -66,7 +66,6 @@ const activeDuelPayload = {
     opponent_name: 'Old Rivals',
     my_score: 5000,
     their_score: 4000,
-    bonus_active: true,
   },
 };
 
@@ -139,7 +138,6 @@ describe('GET /api/clan/duel', () => {
         opponentName: 'Old Rivals',
         myScore: 5000,
         theirScore: 4000,
-        bonusActive: true,
       },
     });
   });
@@ -242,11 +240,12 @@ describe('mapDuelPayload', () => {
         opponent_name: 'Dragon Lords',
         my_score: 100,
         their_score: 300,
+        // WP-0.02: get_clan_duel still emits this key; the mapper drops it.
         bonus_active: false,
       },
     });
 
     expect(mapped.lastWeek?.ratingDelta).toBe(-16);
-    expect(mapped.lastWeek?.bonusActive).toBe(false);
+    expect(mapped.lastWeek).not.toHaveProperty('bonusActive');
   });
 });

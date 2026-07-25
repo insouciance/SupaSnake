@@ -77,11 +77,6 @@ import {
   refreshLinkedRolesForPlayer,
 } from '@/lib/server/discordSync';
 import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
-import {
-  getDnaMultiplier,
-  applyDnaMultiplier,
-  type DnaMultiplierBreakdown,
-} from '@/lib/server/dnaMultipliers';
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 
@@ -724,20 +719,6 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // DNA multiplier stack: streak tier x set bonus x clan duel.
-      // (Design v2: the dynasty passive is gone - the ruleset already
-      // shaped the base payout.) Non-fatal: failures fall back to x1.
-      // Free sessions still compute it - it prices the hypothetical payout.
-      let dnaMultiplier = 1;
-      let dnaBreakdown: DnaMultiplierBreakdown | null = null;
-      try {
-        const multiplierResult = await getDnaMultiplier(supabase, player.id);
-        dnaMultiplier = multiplierResult.multiplier;
-        dnaBreakdown = multiplierResult.breakdown;
-      } catch (multiplierError) {
-        console.error('DNA multiplier error:', multiplierError);
-      }
-
       // ---------------------------------------------------------------
       // Settlement against the envelope (Constitution §6.2, §8.6)
       // ---------------------------------------------------------------
@@ -755,7 +736,12 @@ export async function POST(request: NextRequest) {
         ? rawChargeState
         : 'charged';
 
-      const yieldDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+      // WP-0.02: the account multiplier stack (streak tier x collection set
+      // bonus x clan-duel bonus) is DELETED. A settled run is worth its raw
+      // fold times the extraction outcome multiplier and nothing else - the
+      // validator's exact recompute already IS that number (§8.5, GT §3.1).
+      // No account state, no calendar, no clan, no purchase may re-enter here.
+      const yieldDna = validation.adjustedDna;
       const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
@@ -941,7 +927,6 @@ export async function POST(request: NextRequest) {
           hypotheticalDna: finalDna,
           newAchievements: [],
           ...(identityInfo ? { identity: identityInfo } : {}),
-          ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
           // Free Play still gets an authoritative recap card. Discoveries
           // and rewards remain disabled; this is validator output only.
           ...(validation.genome ? { genome: validation.genome } : {}),
@@ -1015,7 +1000,6 @@ export async function POST(request: NextRequest) {
               ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
               : {}),
             ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
-            ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
             ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
           },
         });
@@ -1052,8 +1036,9 @@ export async function POST(request: NextRequest) {
       // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
       // (free sessions returned above; deaths grant nothing). The XP is
       // floor(raw x 1.25) - the banked payout BEFORE Mirror Wager /
-      // Compound Interest outcome shaping and BEFORE the account
-      // multiplier stack, so streaks never inflate mastery. Non-fatal:
+      // Compound Interest outcome shaping, so nothing about the account
+      // can inflate mastery (the account multiplier stack that used to
+      // sit here was deleted outright by WP-0.02). Non-fatal:
       // pre-019 (missing table/RPC) or any grant failure just omits the
       // mastery block from the response.
       let mastery: {
@@ -1098,11 +1083,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Record daily play streak (non-fatal if it errors)
+      // Record daily play streak (non-fatal if it errors). The streak is a
+      // COUNT, never a payout factor: WP-0.02 deleted the tier multiplier,
+      // so nothing here re-enters settlement.
       let streak: {
         current: number;
         longest: number;
-        multiplier: number;
         graceConsumed: boolean;
       } | null = null;
       try {
@@ -1113,19 +1099,25 @@ export async function POST(request: NextRequest) {
 
         if (streakRpcError) {
           console.error('record_daily_play error:', streakRpcError);
+          Sentry.captureException(
+            new Error(`record_daily_play failed: ${streakRpcError.message}`),
+            { extra: { playerId: player.id, sessionId } }
+          );
         } else {
           const row = Array.isArray(streakRows) ? streakRows[0] : streakRows;
           if (row) {
             streak = {
               current: row.current_streak,
               longest: row.longest_streak,
-              multiplier: Number(row.streak_multiplier),
               graceConsumed: row.grace_consumed,
             };
           }
         }
       } catch (streakError) {
         console.error('record_daily_play error:', streakError);
+        Sentry.captureException(streakError, {
+          extra: { playerId: player.id, sessionId },
+        });
       }
 
       // Check for newly completed achievements
@@ -1251,7 +1243,6 @@ export async function POST(request: NextRequest) {
         },
         newAchievements,
         ...(identityInfo ? { identity: identityInfo } : {}),
-        ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),

@@ -112,24 +112,29 @@ describe('Daily Rewards API logic', () => {
       expect(canClaimToday).toBe(true);
     });
 
-    it('normalizes DECIMAL streak multiplier strings', () => {
-      const streakRow = { current_streak: 7, streak_multiplier: '1.25' };
-      const streak = {
-        current: streakRow?.current_streak ?? 0,
-        multiplier: Number(streakRow?.streak_multiplier ?? 1) || 1,
-      };
+    it('reports the streak as a count, with no multiplier (WP-0.02)', () => {
+      // migration 040 drops player_streaks.streak_multiplier: the calendar
+      // has no factor left to read and none to report.
+      const streakRow = { current_streak: 7 };
+      const streak = { current: streakRow?.current_streak ?? 0 };
 
-      expect(streak).toEqual({ current: 7, multiplier: 1.25 });
+      expect(streak).toEqual({ current: 7 });
+      expect('multiplier' in streak).toBe(false);
     });
 
-    it('defaults streak to 0 / x1 when no row exists', () => {
-      const streakRow: { current_streak: number; streak_multiplier: string } | null = null;
-      const streak = {
-        current: streakRow?.current_streak ?? 0,
-        multiplier: Number(streakRow?.streak_multiplier ?? 1) || 1,
-      };
+    it('defaults the streak to 0 when no row exists', () => {
+      const streakRow: { current_streak: number } | null = null;
+      const streak = { current: streakRow?.current_streak ?? 0 };
 
-      expect(streak).toEqual({ current: 0, multiplier: 1 });
+      expect(streak).toEqual({ current: 0 });
+    });
+
+    it('the route source selects no multiplier column', () => {
+      const fs = require('fs');
+      const path = require('path');
+      const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+      expect(source).toMatch(/\.select\('current_streak'\)/);
+      expect(source).not.toMatch(/select\([^)]*streak_multiplier/);
     });
   });
 

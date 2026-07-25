@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 
 describe('Streaks API Logic', () => {
@@ -41,35 +43,20 @@ describe('Streaks API Logic', () => {
     });
   });
 
-  describe('Streak Multiplier', () => {
-    it('should return 1.0x for streaks under 3 days', () => {
-      const streakDays = 2;
-      const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.0);
+  describe('Streak pays no multiplier (WP-0.02, Constitution §8.5)', () => {
+    it('the config carries no tier ladder to multiply anything with', () => {
+      const streaks = ENGAGEMENT_CONFIG.streaks as Record<string, unknown>;
+      expect('tiers' in streaks).toBe(false);
+      expect('maxMultiplier' in streaks).toBe(false);
     });
 
-    it('should return 1.05x for 3-6 day streaks', () => {
-      const streakDays = 5;
-      const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.05);
-    });
-
-    it('should return 1.1x for 7-13 day streaks', () => {
-      const streakDays = 10;
-      const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.1);
-    });
-
-    it('should return 1.2x for 14-29 day streaks', () => {
-      const streakDays = 20;
-      const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.2);
-    });
-
-    it('should return 1.35x for 30+ day streaks (Design v2 cap)', () => {
-      const streakDays = 30;
-      const multiplier = getStreakMultiplier(streakDays);
-      expect(multiplier).toBe(1.35);
+    it('the route source computes no multiplier and no energy bonus', () => {
+      const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+      expect(source).not.toMatch(/getStreakMultiplier|getStreakEnergyBonus/);
+      expect(source).not.toMatch(/multiplier\s*:/);
+      expect(source).not.toMatch(/energyBonus/);
+      // Nothing to read a tier ladder out of any more.
+      expect(source).not.toMatch(/ENGAGEMENT_CONFIG/);
     });
   });
 
@@ -111,61 +98,11 @@ describe('Streaks API Logic', () => {
   });
 });
 
-function getStreakMultiplier(streakDays: number): number {
-  const tiers = ENGAGEMENT_CONFIG.streaks.tiers;
-  let multiplier = 1.0;
-
-  for (const tier of tiers) {
-    if (streakDays >= tier.days) {
-      multiplier = tier.multiplier;
-    }
-  }
-
-  return multiplier;
-}
-
-function getStreakEnergyBonus(streakDays: number): number {
-  const tiers = ENGAGEMENT_CONFIG.streaks.tiers;
-  let bonus = 0;
-
-  for (const tier of tiers) {
-    if (streakDays >= tier.days) {
-      bonus = tier.energyBonus;
-    }
-  }
-
-  return bonus;
-}
-
-describe('Streak Energy Bonus', () => {
-  it('should return 0 for streaks under 7 days', () => {
-    const bonus = getStreakEnergyBonus(5);
-    expect(bonus).toBe(0);
-  });
-
-  it('should return 1 for 7-13 day streaks', () => {
-    const bonus = getStreakEnergyBonus(10);
-    expect(bonus).toBe(1);
-  });
-
-  it('should return 2 for 14-29 day streaks', () => {
-    const bonus = getStreakEnergyBonus(20);
-    expect(bonus).toBe(2);
-  });
-
-  it('should return 3 for 30+ day streaks', () => {
-    const bonus = getStreakEnergyBonus(35);
-    expect(bonus).toBe(3);
-  });
-});
-
 describe('GET /api/streaks', () => {
   it('should return streak data structure', () => {
     const mockResponse = {
       currentStreak: 5,
       longestStreak: 10,
-      multiplier: 1.1,
-      energyBonus: 0,
       graceAvailable: true,
       streakAtRisk: false,
       lastPlayDate: '2025-12-08',
@@ -173,7 +110,9 @@ describe('GET /api/streaks', () => {
 
     expect(mockResponse.currentStreak).toBeDefined();
     expect(mockResponse.longestStreak).toBeDefined();
-    expect(mockResponse.multiplier).toBeDefined();
+    // The streak reports counts. It no longer prices anything.
+    expect('multiplier' in mockResponse).toBe(false);
+    expect('energyBonus' in mockResponse).toBe(false);
   });
 
   it('should return 401 for missing auth', () => {

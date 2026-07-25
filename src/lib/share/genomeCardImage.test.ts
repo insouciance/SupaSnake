@@ -12,18 +12,37 @@ const model: GenomeCardModel = {
   snakeName: 'Void Dancer!', dynasty: 'COSMIC', generation: 3,
   score: 4200, foods: 80, extracted: true,
   genes: [], splices: [], milestones: [], allIn: false,
-  cascade: { raw: 1000, genome: 1250, outcome: 1750, streak: 1.25, setBonus: 1.1, duel: 1.05, total: 2526 },
+  cascade: { raw: 1000, genome: 1250, outcome: 1750, total: 1750 },
 };
 
 describe('Genome Card export model', () => {
-  it('builds the documented payout cascade in order', () => {
+  it('builds the settled payout cascade in order, and stops at the outcome', () => {
+    // WP-0.02: raw -> genome -> outcome multiplier. The STREAK / SET / DUEL
+    // rows are gone because the factors they displayed are gone.
     const rows = genomeCardCascadeRows(model);
     expect(rows.map((row) => row.label)).toEqual([
-      'RAW', 'GENOME', 'BANK + INFUSES', 'STREAK', 'SET', 'DUEL',
+      'RAW', 'GENOME', 'BANK + INFUSES',
     ]);
     expect(rows[1].factor).toBe(1.25);
     expect(rows[2].factor).toBe(1.4);
-    expect(rows[5].value).toBe(2526);
+    expect(rows[2].value).toBe(1750);
+  });
+
+  it('shows the harvest factor only when a lean run paid less than it was worth', () => {
+    const lean = { ...model, cascade: { ...model.cascade, total: 875 } };
+    const rows = genomeCardCascadeRows(lean);
+    expect(rows.map((row) => row.label)).toEqual([
+      'RAW', 'GENOME', 'BANK + INFUSES', 'HARVEST',
+    ]);
+    expect(rows[3].value).toBe(875);
+    expect(rows[3].factor).toBe(0.5);
+  });
+
+  it('never renders a streak, set-bonus or clan-duel factor again', () => {
+    const labels = genomeCardCascadeRows(model).map((row) => row.label);
+    expect(labels).not.toContain('STREAK');
+    expect(labels).not.toContain('SET');
+    expect(labels).not.toContain('DUEL');
   });
 
   it('creates a stable safe PNG filename', () => {
@@ -46,6 +65,7 @@ describe('Genome Card export model', () => {
         adjustedDna: 254,
         extracted: true,
       },
+      // A stale client may still send the old breakdown. It must be inert.
       dnaMultiplier: { streak: 1.1, setBonus: 1.05, clanDuel: 1.05 },
     }, {
       snakeName: 'Spark', dynasty: 'CYBER', generation: 2, score: 900, foods: 44,

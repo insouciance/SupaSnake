@@ -106,8 +106,8 @@ interface ContractsBoardProps {
   contracts: ContractView[];
   /** Picks left today (2 per day, cumulative) */
   picksRemaining: number;
-  /** Current login streak (kept from the calendar era) */
-  streak?: { current: number; multiplier: number } | null;
+  /** Current login streak - a count, never a payout factor (WP-0.02) */
+  streak?: { current: number } | null;
   /** Persists picks (POST pick); resolves false on failure */
   onPick: (contractIds: string[]) => Promise<boolean>;
   /** Claims one completed contract (POST claim) */
@@ -305,7 +305,7 @@ export function ContractsBoard({
                 {' '}
                 &middot;{' '}
                 <span className="text-venom-orange">
-                  {streak.current}-day streak (x{streak.multiplier})
+                  {streak.current}-day streak
                 </span>
               </>
             )}

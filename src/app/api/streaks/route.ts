@@ -1,42 +1,19 @@
 /**
  * Streaks API - Track consecutive play days
  * Server authority: Streak state in database
+ *
+ * WP-0.02: the streak reports a COUNT and nothing else. The tier DNA
+ * multiplier and the tier energy bonus were deleted with the rest of the
+ * account multiplier stack (Constitution §8.5) - a streak buys no number.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
-function getStreakMultiplier(streakDays: number): number {
-  const tiers = ENGAGEMENT_CONFIG.streaks.tiers;
-  let multiplier = 1.0;
-
-  for (const tier of tiers) {
-    if (streakDays >= tier.days) {
-      multiplier = tier.multiplier;
-    }
-  }
-
-  return multiplier;
-}
-
-function getStreakEnergyBonus(streakDays: number): number {
-  const tiers = ENGAGEMENT_CONFIG.streaks.tiers;
-  let bonus = 0;
-
-  for (const tier of tiers) {
-    if (streakDays >= tier.days) {
-      bonus = tier.energyBonus;
-    }
-  }
-
-  return bonus;
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,8 +60,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       currentStreak: streak?.current_streak || 0,
       longestStreak: streak?.longest_streak || 0,
-      multiplier: getStreakMultiplier(streak?.current_streak || 0),
-      energyBonus: getStreakEnergyBonus(streak?.current_streak || 0),
       graceAvailable: streak?.grace_period_available ?? true,
       streakAtRisk,
       lastPlayDate: streak?.last_play_date,
