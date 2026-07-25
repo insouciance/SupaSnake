@@ -7,15 +7,28 @@ documents remain useful context but do not override the files listed here.
 
 | Need | Document |
 |---|---|
-| **The verified state of the game as built** | [Ground Truth](GROUND_TRUTH.md) |
-| Strategic assessment and open decisions | [Product, Gameplay & Metagame Audit](game/SUPASNAKE_PRODUCT_GAMEPLAY_METAGAME_AUDIT.md) |
+| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.3) |
+| What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
+| The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
+| The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |
+| Amendments awaiting the owner | [Proposed Amendments](CONSTITUTION_AMENDMENTS_PROPOSED.md) |
+| Strategic assessment behind the Constitution | [Product, Gameplay & Metagame Audit](game/SUPASNAKE_PRODUCT_GAMEPLAY_METAGAME_AUDIT.md) |
+
+The Constitution decides *what* may exist: its 14 Inviolable Rules and §12.2 caps
+bind every change, and a change that cannot be reconciled with them needs an
+amendment, not an exception. Work is decomposed into numbered work packages in the
+Implementation Handoff; `AGENTS.md` carries the branch, worktree, and migration
+protocol that executes them.
 
 `GROUND_TRUTH.md` is generated from code and migrations, with a citation for every
-claim. Where a design document and the code disagree, `GROUND_TRUTH.md` records what
-is actually true; the design document records what was intended. Both matter, but
-only one of them ships.
+claim, as of the `pre-constitution` tag. Where a design document and the code
+disagree, `GROUND_TRUTH.md` records what is actually true; the design document
+records what was intended. As work packages land it goes stale — code outranks it.
 
 ## Product contracts
+
+These remain authoritative **within** the Constitution. Where one of them conflicts
+with the Constitution, the Constitution wins and the contract is the stale document.
 
 | Area | Authoritative document |
 |---|---|
@@ -24,8 +37,11 @@ only one of them ships.
 | Genome/buildcraft | [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
 | Deliberate practice | [Training Lab](game/TRAINING_LAB_DESIGN.md) |
-| Monetization behavior | [Monetization Design](game/MONETIZATION_DESIGN.md) |
 | Player identity | [Player Identity v1](game/PLAYER_IDENTITY_V1.md) |
+
+**Superseded:** `game/MONETIZATION_DESIGN.md` — replaced by Constitution §10, with
+the ruling recorded in its §15 Overturn Record. It is kept as the historical v1.0
+position. Do not implement from it.
 
 If an older document conflicts with one of these contracts, the newer dated
 contract and its explicit supersession language win.
