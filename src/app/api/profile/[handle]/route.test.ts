@@ -167,3 +167,70 @@ describe('GET /api/profile/[handle]', () => {
     expect(response.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// WP-0.06 — cohort exclusion (GT §13)
+// ---------------------------------------------------------------------------
+
+describe('a flagged cohort has no public profile', () => {
+  it.each(['dev', 'qa', 'fixture'])('404s a %s account', async (cohort) => {
+    wirePlayers({ id: 'player-1', user_id: null, created_at: null, handle: 'Souci', cohort });
+    const [request, context] = requestFor('Souci');
+
+    const response = await GET(request, context);
+
+    expect(response.status).toBe(404);
+    // The Chronicle is never even built, so nothing about the account leaks.
+    expect(mockBuildChronicle).not.toHaveBeenCalled();
+  });
+
+  it('serves a player-cohort account normally', async () => {
+    wirePlayers({
+      id: 'player-1',
+      user_id: null,
+      created_at: null,
+      handle: 'Souci',
+      cohort: 'player',
+    });
+    const [request, context] = requestFor('Souci');
+
+    const response = await GET(request, context);
+
+    expect(response.status).toBe(200);
+    expect(mockBuildChronicle).toHaveBeenCalled();
+  });
+
+  it('serves normally before migration 045, when there is no cohort column', async () => {
+    // The first read names `cohort` and fails; the retry drops it.
+    let attempt = 0;
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'players') throw new Error(`Unexpected table: ${table}`);
+      return {
+        select: (columns: string) => ({
+          ilike: () => ({
+            maybeSingle: async () => {
+              attempt += 1;
+              if (columns.includes('cohort')) {
+                return {
+                  data: null,
+                  error: { code: '42703', message: 'column players.cohort does not exist' },
+                };
+              }
+              return {
+                data: { id: 'player-1', user_id: null, created_at: null, handle: 'Souci' },
+                error: null,
+              };
+            },
+          }),
+        }),
+      };
+    });
+
+    const [request, context] = requestFor('Souci');
+    const response = await GET(request, context);
+
+    expect(attempt).toBe(2);
+    expect(response.status).toBe(200);
+    expect(mockBuildChronicle).toHaveBeenCalled();
+  });
+});

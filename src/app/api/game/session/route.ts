@@ -58,6 +58,14 @@ import {
 } from '@/shared/game/energyEnvelope';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
+import {
+  abandonStalePlayerSessions,
+  isMissingLifecycleInfra,
+} from '@/lib/server/sessionLifecycle';
+import {
+  isClientForfeitReason,
+  SETTLED_END_REASON,
+} from '@/lib/session/lifecycle';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
 import {
   composeGenePool,
@@ -187,6 +195,18 @@ export async function POST(request: NextRequest) {
           { status: 429 }
         );
       }
+
+      // WP-0.06 (GT §9.6): before opening a new run, close this player's own
+      // runs that have been open past the stale window. Starting another run
+      // is the evidence - those were left behind, so they close as
+      // `abandoned`. This is about the player, not about the request, so it
+      // runs before the request is validated.
+      //
+      // The sweep writes `ended_at` and `end_reason` only; it cannot grant
+      // DNA, Yield or a record, and it never touches a row that settled and is
+      // waiting for an outbox replay (Rule 6). Non-fatal: a failed sweep
+      // leaves the row open, which is exactly the status quo it fixes.
+      await abandonStalePlayerSessions(supabase, player.id);
 
       // NOTE: there is deliberately NO energy check here. Constitution §8.6:
       // "Energy never gates playing. Every run always starts, always Scores,
@@ -526,6 +546,12 @@ export async function POST(request: NextRequest) {
       // Idempotency guard: a session can only be ended once. Duplicate
       // 'end' calls (offline outbox replay, double-fire at death) must not
       // grant DNA again - return 409 with the current authoritative state.
+      //
+      // WP-0.06: this is also the wall an EXPIRED run hits. The sweep sets
+      // `ended_at`, so a run it closed can never re-enter settlement - not
+      // through a replay, not through a retry, not through a crafted request.
+      // The reason travels in the response so the client can tell "you
+      // already banked this" from "that run timed out and paid nothing".
       if (session.ended_at) {
         const { data: currentPlayer } = await supabase
           .from('players')
@@ -533,10 +559,12 @@ export async function POST(request: NextRequest) {
           .eq('id', player.id)
           .single();
 
+        const priorReason = (session as Record<string, unknown>).end_reason;
         return NextResponse.json(
           {
             error: 'Session already ended',
             alreadyEnded: true,
+            ...(typeof priorReason === 'string' ? { endReason: priorReason } : {}),
             player: currentPlayer ?? null,
           },
           { status: 409 }
@@ -775,26 +803,41 @@ export async function POST(request: NextRequest) {
       // Mark the session ended BEFORE granting rewards - this is the
       // idempotency anchor. Guard on ended_at IS NULL so two concurrent
       // 'end' calls can't both pass the check above and double-grant.
-      const { data: endedRows, error: endSessionError } = await supabase
-        .from('game_sessions')
-        .update({
-          score: validation.adjustedScore,
-          // Free sessions never earn - the row records a zero payout
-          dna_earned: isFreeSession ? 0 : finalDna,
-          duration_seconds: duration_seconds || 0,
-          died: died ?? true,
-          victory: victory ?? false,
-          extracted: validation.extracted,
-          ended_at: new Date().toISOString(),
-          validated: validation.valid,
-          validation_errors: validation.errors.length > 0 ? validation.errors : null,
-          foods_collected: validation.foodCount,
-          mutations: mutationsRecord,
-        })
-        .eq('id', sessionId)
-        .eq('player_id', player.id)
-        .is('ended_at', null)
-        .select('id');
+      const settlementUpdate: Record<string, unknown> = {
+        score: validation.adjustedScore,
+        // Free sessions never earn - the row records a zero payout
+        dna_earned: isFreeSession ? 0 : finalDna,
+        duration_seconds: duration_seconds || 0,
+        died: died ?? true,
+        victory: victory ?? false,
+        extracted: validation.extracted,
+        ended_at: new Date().toISOString(),
+        validated: validation.valid,
+        validation_errors: validation.errors.length > 0 ? validation.errors : null,
+        foods_collected: validation.foodCount,
+        mutations: mutationsRecord,
+        end_reason: SETTLED_END_REASON,
+      };
+
+      const endSession = () =>
+        supabase
+          .from('game_sessions')
+          .update(settlementUpdate)
+          .eq('id', sessionId)
+          .eq('player_id', player.id)
+          .is('ended_at', null)
+          .select('id');
+
+      // WP-0.06: this is the ONE path that may stamp `completed` - the reason
+      // that marks a run as settled everywhere else (boards, Anomaly board,
+      // Yield). Pre-045 the column is missing, so the settlement retries
+      // without it rather than failing a run the player actually finished;
+      // a NULL reason reads as settled, which is what it was.
+      let { data: endedRows, error: endSessionError } = await endSession();
+      if (endSessionError && isMissingLifecycleInfra(endSessionError)) {
+        delete settlementUpdate.end_reason;
+        ({ data: endedRows, error: endSessionError } = await endSession());
+      }
 
       if (endSessionError) {
         console.error('Failed to mark game session ended:', {
@@ -942,7 +985,21 @@ export async function POST(request: NextRequest) {
         .eq('id', player.id)
         .single();
 
-      const newHighScore = Math.max(currentPlayer?.high_score || 0, validation.adjustedScore);
+      // FINDING F-1 (WP-0.06): this write had no `validation.valid` gate, so a
+      // run that FAILED server validation still set a permanent personal
+      // record. WP-0.05 made the leaderboard immune by filtering at read time,
+      // but `players.high_score` is read by other surfaces and stayed poisoned
+      // for good.
+      //
+      // The fix stops an invalid run writing UP. It never writes DOWN: the
+      // rejected branch re-writes the value that is already there, so an
+      // existing record - however it was set - is preserved exactly (Rule 6:
+      // what a player has is permanent, and this route is not the place to
+      // decide a past record was undeserved).
+      const priorHighScore = currentPlayer?.high_score || 0;
+      const newHighScore = validation.valid
+        ? Math.max(priorHighScore, validation.adjustedScore)
+        : priorHighScore;
       const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
       const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + finalDna;
 
@@ -960,6 +1017,13 @@ export async function POST(request: NextRequest) {
         // Primary state write failed - the player would silently lose the
         // run's DNA. Re-open the session (best effort) so a client replay
         // can retry, then fail the request.
+        //
+        // WP-0.06: `end_reason` is deliberately LEFT at 'completed' here. The
+        // pair (ended_at IS NULL, end_reason = 'completed') is the marker for
+        // "this run settled, the reward write failed, an outbox replay still
+        // owes the player DNA" - and it is what buys the row the long sweep
+        // window instead of the 3-hour one, so expiry cannot destroy a payout
+        // the player earned (Rule 6).
         console.error('Failed to grant game rewards:', {
           playerId: player.id,
           sessionId,
@@ -1175,6 +1239,113 @@ export async function POST(request: NextRequest) {
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
       });
+    }
+
+    // -----------------------------------------------------------------
+    // WP-0.06: forfeit an open run (GT §9.6)
+    // -----------------------------------------------------------------
+    // POST { action: 'abandon', sessionId, reason?: 'abandoned' | 'disconnected' }
+    //   -> 200 { success: true, endReason }
+    //   -> 404 the session is not this player's
+    //   -> 409 { alreadyEnded: true, endReason } it is already closed
+    //
+    // The client uses this to surrender a run it cannot finish - a quit, a
+    // lost connection, a reload mid-run. It CANNOT be used to end a run for
+    // value: the handler writes `ended_at` and `end_reason` on `game_sessions`
+    // and has no other statement in it. No validator runs, no payout is
+    // computed, `players` is not read or written, no economy transaction is
+    // logged, no record is refreshed. And because it sets `ended_at`, the
+    // forfeited run can never afterwards re-enter settlement (the 'end'
+    // idempotency guard above rejects it), so surrendering is strictly a loss.
+    //
+    // `reason` is bounded to the two forfeit values. A client asking for
+    // 'completed' or 'expired' - the two the server writes for itself - is
+    // silently given 'abandoned'; there is no request that lets a client
+    // claim its run settled.
+    if (action === 'abandon') {
+      if (!sessionId) {
+        return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
+      }
+
+      const forfeitReason = isClientForfeitReason(body.reason)
+        ? body.reason
+        : 'abandoned';
+
+      const { data: openSession, error: openSessionError } = await supabase
+        .from('game_sessions')
+        .select('id, ended_at')
+        .eq('id', sessionId)
+        .eq('player_id', player.id)
+        .maybeSingle();
+
+      if (openSessionError) {
+        console.error('Session forfeit lookup failed:', {
+          playerId: player.id,
+          sessionId,
+          error: openSessionError,
+        });
+        Sentry.captureException(
+          new Error(`Session forfeit lookup failed: ${openSessionError.message}`),
+          { extra: { playerId: player.id, sessionId } }
+        );
+        return NextResponse.json({ error: 'Failed to forfeit session' }, { status: 500 });
+      }
+
+      if (!openSession) {
+        return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      }
+
+      if (openSession.ended_at) {
+        return NextResponse.json(
+          { error: 'Session already ended', alreadyEnded: true },
+          { status: 409 }
+        );
+      }
+
+      const { data: forfeited, error: forfeitError } = await supabase
+        .from('game_sessions')
+        .update({
+          ended_at: new Date().toISOString(),
+          end_reason: forfeitReason,
+        })
+        .eq('id', sessionId)
+        .eq('player_id', player.id)
+        // Lost-race guard, identical in spirit to the settlement path: a
+        // concurrent 'end' that got there first keeps its result.
+        .is('ended_at', null)
+        .select('id');
+
+      if (forfeitError) {
+        if (isMissingLifecycleInfra(forfeitError)) {
+          // Pre-045: there is nowhere to record the reason, so there is no
+          // forfeit. The run stays open and the sweep will close it once the
+          // migration lands. Nothing was granted either way.
+          return NextResponse.json(
+            { error: 'Run forfeit is not available yet' },
+            { status: 503 }
+          );
+        }
+        console.error('Session forfeit failed:', {
+          playerId: player.id,
+          sessionId,
+          reason: forfeitReason,
+          error: forfeitError,
+        });
+        Sentry.captureException(
+          new Error(`Session forfeit failed: ${forfeitError.message}`),
+          { extra: { playerId: player.id, sessionId, reason: forfeitReason } }
+        );
+        return NextResponse.json({ error: 'Failed to forfeit session' }, { status: 500 });
+      }
+
+      if (!forfeited || forfeited.length === 0) {
+        return NextResponse.json(
+          { error: 'Session already ended', alreadyEnded: true },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json({ success: true, endReason: forfeitReason });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

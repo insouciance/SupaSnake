@@ -143,3 +143,58 @@ describe('board windows', () => {
     expect(boardWindowStart('weekly', justAfterEpoch)).toBe(LEADERBOARD_CONTENT_EPOCH);
   });
 });
+
+// ---------------------------------------------------------------------------
+// WP-0.06 — the two conditions added on top of WP-0.05's five (GT §9.6, §13)
+// ---------------------------------------------------------------------------
+
+describe('a run that did not settle cannot rank (WP-0.06)', () => {
+  it.each(['expired', 'abandoned', 'disconnected'])(
+    'rejects an %s run even when every WP-0.05 condition passes',
+    (reason) => {
+      const ghost = run({ end_reason: reason, score: 99999 });
+      expect(ineligibleReason(ghost, WINDOW)).toBe('did_not_settle');
+      expect(isEligibleRun(ghost, WINDOW)).toBe(false);
+    }
+  );
+
+  it('ranks a completed run', () => {
+    expect(ineligibleReason(run({ end_reason: 'completed' }), WINDOW)).toBeNull();
+  });
+
+  it('ranks a pre-045 run, whose reason is null', () => {
+    expect(ineligibleReason(run({ end_reason: null }), WINDOW)).toBeNull();
+    expect(ineligibleReason(run({ end_reason: undefined }), WINDOW)).toBeNull();
+  });
+
+  it('rejects a reason it does not recognise rather than assuming it settled', () => {
+    expect(ineligibleReason(run({ end_reason: 'finished' }), WINDOW)).toBe(
+      'did_not_settle'
+    );
+  });
+});
+
+describe('a flagged cohort cannot rank (WP-0.06)', () => {
+  const excluded = { ...WINDOW, excludedPlayerIds: new Set(['player-1']) };
+
+  it('rejects a run belonging to an excluded account', () => {
+    expect(ineligibleReason(run(), excluded)).toBe('excluded_cohort');
+    expect(isEligibleRun(run(), excluded)).toBe(false);
+  });
+
+  it('leaves every other account alone', () => {
+    expect(ineligibleReason(run({ player_id: 'player-2' }), excluded)).toBeNull();
+  });
+
+  it('excludes nobody when the set is absent (pre-045)', () => {
+    expect(ineligibleReason(run(), WINDOW)).toBeNull();
+  });
+
+  it('composes with WP-0.05 rather than replacing it', () => {
+    // Still validated-gated: a flagged run from a public account is refused
+    // for the reason WP-0.05 gave it, not for its cohort.
+    expect(ineligibleReason(run({ validated: false }), WINDOW)).toBe('not_validated');
+    // And an excluded account's unvalidated run fails the first check it hits.
+    expect(ineligibleReason(run({ validated: false }), excluded)).toBe('not_validated');
+  });
+});

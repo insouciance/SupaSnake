@@ -5,7 +5,8 @@
  * A static, dependency-free scan of the committed source tree. Each gate maps to
  * a ⚙ line of the checklist and, through it, to docs/PRODUCT_CONSTITUTION.md v1.3:
  *
- *   score-independence   R2      §4.2   the score fold reads food events + ruleset only
+ *   score-independence   R2      §4.2   the score fold reads food events + ruleset only,
+ *                                       and the one server-side claim is clamped to it
  *   owned-row-downward   R6      §4.6   no path writes a player-owned row downward
  *   breeding-random      §8.2           no random() in a live breeding/lineage path
  *   energy-commerce      §10.4          energy is never sold, gifted, or stipended
@@ -373,6 +374,87 @@ const BUILD_STATE_TOKENS =
 /** Widening this signature is how build state would reach the fold. */
 const SCORE_MULTIPLIER_SIGNATURE = 'scoreMultiplier(n: number): number;';
 
+/**
+ * P-2 (raised by WP-0.05, closed by WP-0.06): the server clamp.
+ *
+ * `sanitizeCosmicClaim` in the validator is the ONE server path that can raise
+ * a score above the fold — the COSMIC combo is bounded trust, not a recompute,
+ * so a claim arrives from the client and is clamped rather than derived. Until
+ * now that clamp was covered by unit tests only; this gate pins its shape
+ * statically, so deleting or widening it fails the build rather than a test
+ * someone can rewrite.
+ *
+ * Four things are asserted, and together they bound the claim:
+ *
+ *   1. the ceiling is computed from the FOLD (`baseScore`) times a ratio —
+ *      not from the claim, and not from anything the account owns;
+ *   2. a claim above the ceiling is assigned the ceiling;
+ *   3. the recomputed score grows by the clamped bonus and by nothing else;
+ *   4. the ratio at every call site is one of exactly two named constants.
+ *
+ * (4) is what keeps the sanctioned carve-out sanctioned. The Constellation
+ * Crown legitimately raises the ceiling at COSMIC M10 (GT §2.2), so build
+ * state does select between two ratios here; pinning the call sites to the two
+ * named constants means it can never select a third, or a computed one.
+ */
+const SCORE_CLAMP_AUTHORITY = 'src/lib/server/gameValidator.ts';
+
+/** The clamp, statement by statement. Every one of these must be present. */
+const SCORE_CLAMP_STATEMENTS = [
+  {
+    pattern: /^const maxScoreBonus = Math\.floor\(baseScore \* trustRatio\);$/,
+    what: 'the score ceiling `Math.floor(baseScore * trustRatio)` — the bound is the fold times the ruleset ratio',
+  },
+  {
+    pattern: /^scoreBonus = maxScoreBonus;$/,
+    what: 'the clamp `scoreBonus = maxScoreBonus` — a claim over the ceiling must be reduced to it',
+  },
+  {
+    pattern: /\bcomboScoreBonus: scoreBonus\b/,
+    what: 'the accepted claim returning the CLAMPED `scoreBonus`',
+  },
+];
+
+/** Writes into the validator's recomputed score. */
+const VALIDATOR_SCORE_WRITE =
+  /\bexpectedScore\s*(?:\+=|-=|\*=|\/=|\|\|=|\?\?=|=(?!=))/;
+
+/** The fold, plus the one clamped bonus. Nothing else may enter it. */
+const VALIDATOR_SCORE_WRITE_ALLOWED = [
+  /^let expectedScore = baseScore;$/,
+  /^let expectedScore = totals\.score;$/,
+  /^expectedScore \+= cosmic\.comboScoreBonus;$/,
+];
+
+/** Every `sanitizeCosmicClaim` call site, so the ratio argument can be read. */
+const COSMIC_CLAIM_CALL = /sanitizeCosmicClaim\s*\(/;
+
+/**
+ * The only ratio expressions a call site may pass, matched whole. Omitting the
+ * argument takes the default, which is the first of these — also bounded.
+ *
+ * A whitelist rather than a search: `crownHeld ? crownTrustMaxBonusRatio : 99`
+ * mentions an allowed constant and is still a way to smuggle an unbounded
+ * ceiling past the clamp.
+ */
+const COSMIC_TRUST_RATIOS_ALLOWED = [
+  'COSMIC_TRUST_MAX_BONUS_RATIO',
+  'crownHeld ? GENE_ECONOMICS.crownTrustMaxBonusRatio : COSMIC_TRUST_MAX_BONUS_RATIO',
+];
+
+/**
+ * The ratio's own definition: derived from the COSMIC ruleset's combo cap, so
+ * the ceiling moves only when the dynasty's own rules do.
+ */
+const COSMIC_RATIO_DEFINITION = {
+  path: 'src/shared/game/rulesets.ts',
+  pattern:
+    /^export const COSMIC_TRUST_MAX_BONUS_RATIO = COSMIC_CONSTELLATION\.comboCap - 1;$/,
+  what:
+    'COSMIC_TRUST_MAX_BONUS_RATIO derived from COSMIC_CONSTELLATION.comboCap — ' +
+    'the clamp ratio must come from the dynasty ruleset, never from account state',
+};
+
 /** The runtime proof of the same rule; deleting it is itself a violation. */
 const SCORE_PROOF_TESTS = [
   {
@@ -464,6 +546,95 @@ function gateScoreIndependence(files) {
         line
       );
     });
+  }
+
+  // P-2: the server clamp on the one claimed score component.
+  const clampAuthority = files.find((file) => file.path === SCORE_CLAMP_AUTHORITY);
+  if (!clampAuthority) {
+    report.flagFile(
+      SCORE_CLAMP_AUTHORITY,
+      'the server validator is missing — the COSMIC combo clamp is the one path ' +
+        'that can raise a score above the fold and it is now unverifiable; ' +
+        'point this gate at its replacement'
+    );
+  } else {
+    const statements = clampAuthority.code
+      .split(/\r?\n/)
+      .map((line) => collapse(line));
+
+    for (const { pattern, what } of SCORE_CLAMP_STATEMENTS) {
+      if (!statements.some((statement) => pattern.test(statement))) {
+        report.flagFile(
+          SCORE_CLAMP_AUTHORITY,
+          `the COSMIC combo clamp lost ${what} — without it a claimed score is ` +
+            'no longer bounded by the fold'
+        );
+      }
+    }
+
+    let validatorWrites = 0;
+    for (const { line, code } of codeMatches(clampAuthority, VALIDATOR_SCORE_WRITE)) {
+      validatorWrites += 1;
+      const statement = collapse(code);
+      if (!VALIDATOR_SCORE_WRITE_ALLOWED.some((allowed) => allowed.test(statement))) {
+        report.flag(
+          clampAuthority,
+          line,
+          'the validator writes its recomputed score outside the fold plus the ' +
+            'clamped COSMIC bonus — R2: a claim may only ever be clamped into it'
+        );
+      }
+    }
+    if (validatorWrites === 0) {
+      report.flagFile(
+        SCORE_CLAMP_AUTHORITY,
+        'no recomputed-score accumulator found — this half of the gate is pointed ' +
+          'at the wrong file and proves nothing'
+      );
+    }
+
+    const clampLines = clampAuthority.code.split(/\r?\n/);
+    for (const { line, code } of codeMatches(clampAuthority, COSMIC_CLAIM_CALL)) {
+      // The ratio is the last argument; read a window so a wrapped call is
+      // still one string. The function declaration itself is not a call.
+      if (/function sanitizeCosmicClaim\s*\(/.test(collapse(code))) continue;
+
+      const window = collapse(clampLines.slice(line - 1, line + 12).join(' '));
+      const call = window.slice(window.indexOf('sanitizeCosmicClaim'));
+      const closing = call.indexOf(')');
+      const args = closing === -1 ? call : call.slice(0, closing);
+
+      // `errors` is the last mandatory argument; anything after it is the
+      // ratio. A call that omits it takes the bounded default.
+      const after = args.split(/\berrors\s*,/)[1];
+      if (after === undefined) continue;
+      const ratio = after.trim().replace(/,$/, '').trim();
+      if (ratio === '') continue;
+
+      if (!COSMIC_TRUST_RATIOS_ALLOWED.includes(ratio)) {
+        report.flag(
+          clampAuthority,
+          line,
+          `the COSMIC combo clamp is given the trust ratio \`${ratio}\` — the ` +
+            'ceiling on a claimed score may only be ' +
+            COSMIC_TRUST_RATIOS_ALLOWED.map((allowed) => `\`${allowed}\``).join(' or '),
+          collapse(code)
+        );
+      }
+    }
+  }
+
+  const ratioAbs = join(ROOT, COSMIC_RATIO_DEFINITION.path);
+  const ratioDefined =
+    existsSync(ratioAbs) &&
+    readFileSync(ratioAbs, 'utf8')
+      .split(/\r?\n/)
+      .some((line) => COSMIC_RATIO_DEFINITION.pattern.test(collapse(line)));
+  if (!ratioDefined) {
+    report.flagFile(
+      COSMIC_RATIO_DEFINITION.path,
+      `${COSMIC_RATIO_DEFINITION.what} — restore it, or replace it in this gate`
+    );
   }
 
   for (const proof of SCORE_PROOF_TESTS) {
