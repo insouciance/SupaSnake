@@ -1,0 +1,79 @@
+/**
+ * Serpent settlement — GET /api/ops/serpent-settlement (Constitution §7.3).
+ *
+ * "Sunday midnight UTC it submerges, the hunt settles, and Monday's Signal
+ * carries the result." This is the cron that settles it.
+ *
+ * Auth: exact `CRON_SECRET` bearer, the same contract as
+ * `/api/ops/session-sweep`, `/api/discord/dispatch` and `/api/analyst/cron`.
+ * There is no unauthenticated path and no player-facing path — settlement is a
+ * server act, and no client may trigger, influence or replay it (Rule 11).
+ *
+ * WHY RUNNING THIS TWICE IS SAFE
+ *
+ * Nothing on this path increments anything:
+ *
+ *   - weekly Depth is an EXACT RECOMPUTE from the week's session rows, under
+ *     the same eligibility predicates the query and the pure fold both apply;
+ *   - it lands through `GREATEST`, so a second pass writes the same value;
+ *   - clan Depth is `SUM(member depth)` computed from the rows just written;
+ *   - lifetime Depth is `SUM(depth)` over the player's settled weeks, clamped
+ *     upward — never `lifetime + this week`;
+ *   - Chronicle entries are uniquely indexed per (week, subject, kind) and
+ *     inserted `ON CONFLICT DO NOTHING`.
+ *
+ * So a double fire, a retry, or a re-run after a partial failure converges on
+ * the same Depth. The route settles EVERY submerged unsettled week, not just
+ * last week's, so a missed run catches up instead of stranding a week.
+ *
+ * WHY THIS CANNOT PAY ANYTHING
+ *
+ * Settlement pays records (§7.3: "No DNA settlement bonus — Depth is measured,
+ * not farmed"). Neither this route, `settleDueSerpentWeeks`, nor
+ * `apply_serpent_week_settlement` writes `players.dna`, `total_dna_earned`,
+ * `economy_transactions`, a cosmetic, an entitlement or a charge. The one
+ * claim endpoint this game has is the Daily Take's, and it is not this.
+ *
+ * Response: `{ ok, settled: [...], skipped }`. `skipped` is true in the window
+ * before migration 046 is applied — expected, not an error. A week that failed
+ * to settle returns 500 so a silently broken cron is visible in the platform
+ * log; the next run retries it.
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { isAuthorizedCron } from '@/lib/server/cronAuth';
+import { settleDueSerpentWeeks } from '@/lib/server/serpent';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
+export async function GET(request: NextRequest) {
+  if (!isAuthorizedCron(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const result = await settleDueSerpentWeeks(supabase);
+
+  const body = {
+    ok: !result.failed,
+    settled: result.settled.map((week) => ({
+      weekStart: week.weekStart,
+      players: week.players,
+      clans: week.clans,
+      chronicleEntries: week.chronicleEntries,
+      failed: week.failed,
+    })),
+    skipped: result.skipped,
+  };
+
+  if (result.failed) {
+    // The helper already reported it to Sentry; the cron needs a non-200 so a
+    // permanently failing settlement is visible on the platform.
+    return NextResponse.json({ ...body, error: 'Settlement failed' }, { status: 500 });
+  }
+
+  return NextResponse.json(body);
+}
