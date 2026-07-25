@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     // WP-0.04: the achievement counters that used to sit here are gone.
     // The achievement mechanism retired into the Legacy Records (migration
-    // 043), and the Records cabinet on the Chronicle is where banked
+    // 042), and the Records cabinet on the Chronicle is where banked
     // progression is read now.
 
     const stats: CareerStats = {
