@@ -15,10 +15,10 @@ ever. Campus seeding, the Founding Keeper SKU, and anything Phase 3+ stay owner
 work. Where a runbook step cannot be executed as written, the exact remaining
 steps are queued here and flags are left off rather than improvised around.
 
-**Phase 0 is code-complete and its gate passes. Nothing has been released** — one
-runbook precondition (backup/PITR confirmation) cannot be performed from this
-environment, so the release is queued with exact steps rather than improvised. See
-"Phase 0 release" below.
+**Phase 0 shipped to production on 25 July 2026** (`fd040af` + `be33b4b`, deploy run
+`30172084085`, migrations 039–045 applied, `/api/health` healthy). Two owner-only
+steps remain: flipping `NEXT_PUBLIC_GROWTH_SURFACES_V1` and flagging the dev/QA
+cohorts. Phase 1 is in progress. See "Phase 0 release" below.
 
 **Baseline tag:** `pre-constitution` → `e82719d` (local only; push requires the
 owner, see the to-do list). Migration baseline: **038**.
@@ -657,7 +657,78 @@ session lifecycle & cohorts).
 
 ---
 
-## Phase 0 release — **QUEUED, NOT EXECUTED.** Owner action required
+## Phase 0 release — **SHIPPED to production, 25 July 2026**
+
+Owner confirmed Supabase backup/PITR, which cleared the one blocker. Released via
+`docs/ops/RELEASE_RUNBOOK.md`.
+
+| Step | Result |
+|---|---|
+| PR #6 `constitution/build` → `main` | 4/4 checks green, **squash-merged** as `fd040af` |
+| PR #7 dependency fix + gate split | 4/4 green, merged as `be33b4b` |
+| **Deploy to Production** (`payments_mode=test`) | run `30172084085` — **success**, both jobs |
+| Migration dry-run | **exactly 039–045**, no extras (the stop condition did not trigger) |
+| Migrations applied | 039, 040, 041, 042, 043, 044, 045 — all seven |
+| `/api/health` | `status: healthy`, `database: healthy` (375 ms) |
+
+**Squash, not merge or rebase.** `main` requires linear history, so a merge commit
+was refused. Squash was chosen over rebase deliberately: rebasing would have
+replayed WP-0.09's WIP checkpoints — which explicitly do not compile — onto `main`,
+leaving `git bisect` walking through broken commits. Full commit-by-commit history,
+including every per-package audit note, is preserved on `origin/constitution/build`.
+
+### Post-release smoke, run against production
+
+| Check | Result |
+|---|---|
+| `/`, `/leaderboard`, `/shop`, `/lab`, `/legal/privacy` | all 200 |
+| `/play`, `/dispatch/confirm` (flag off) | **404** — correct; the flag is not flipped |
+| `/robots.txt`, `/sitemap.xml` (unflagged hygiene) | 200; sitemap omits `/play` |
+| Shop copy: Energy, energy pack, Starter Bundle, Dynasty Bundle, "Season Pass included" | **all absent** (R3/R4) |
+| `/api/leaderboard?view=you` | 200 public, `contentVersion v2-designv2-2026-07-18`, top 3 returned, **13 ranked players**, `truncated: false`, `viewer: null` for anonymous |
+
+That last row is the eligibility rule working in production: 415 player rows, and
+only **13** with a run that ended, validated, and fell inside the content window.
+Before WP-0.05 the board read a denormalized `players.high_score` scalar that could
+not express any of those conditions.
+
+### The audit-gate incident, and its ruling
+
+The first deploy attempt **failed at the `verify` job and the deploy job was
+skipped — production was untouched.** Cause: `npm audit --audit-level=high` reported
+27 high-severity findings. Verified **not** caused by this build — Phase 0 changed
+`package.json` by exactly one line (the `verify:constitution` script) and did not
+touch `package-lock.json` at all; a new advisory had landed since the last release.
+
+**Exactly one of the 27 was reachable from the production dependency tree:**
+`brace-expansion <=5.0.7` (GHSA-mh99-v99m-4gvg, DoS via unbounded expansion). It was
+**patched**, not exempted — `npm audit fix` → 5.0.8, lockfile diff that package only,
+production-only high/critical **1 → 0**.
+
+**Owner ruling (25 July): split the gate.** Blocking =
+`npm audit --audit-level=high --omit=dev` (the shipped tree); non-blocking = the full
+audit, reported every release so toolchain debt stays visible. The remaining 26 are
+jest/eslint/babel and their glob/minimatch chain, never bundled, and clearing them
+needs breaking major upgrades — a deliberate maintenance decision, not something to
+do between a merge and a deploy. **The gate was not weakened to pass:** the reachable
+finding was fixed first, because narrowing the gate alone would have hidden it.
+
+### Still owner-only (needs Vercel/dashboard access this environment lacks)
+
+1. **Flip `NEXT_PUBLIC_GROWTH_SURFACES_V1=true`** in the Vercel production
+   environment to light up the landing pitch, `/play` and the Dispatch waitlist.
+   They are deployed and currently 404 by design. Rollback is unsetting it; that path
+   is explicitly tested, not inferred.
+2. **Flag the dev/QA/fixture accounts** into `players.cohort`. WP-0.06 ships the
+   column and the two single-statement commands but flags **nothing** automatically —
+   no schema signal distinguishes a developer's account from a player's, and a wrong
+   guess would hide a real player. Until this is done the boards are correct but the
+   population counts still include dev/QA noise.
+3. **Optional, unhurried:** remove the five retired `NEXT_PUBLIC_STRIPE_*` price
+   variables from Vercel. The validator tolerates their presence *and* absence (D-4),
+   so there is no deadline and no ordering constraint.
+
+## Phase 0 release — original queue (superseded by the record above)
 
 The phase gate passed, so the owner's phase-scoped release authorization applies.
 **The release was not executed**, because a runbook precondition cannot be performed
