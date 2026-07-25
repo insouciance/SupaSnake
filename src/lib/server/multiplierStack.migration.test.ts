@@ -1,5 +1,5 @@
 /**
- * Migration 040 shape tests — the account multiplier stack, deleted
+ * Migration 041 shape tests — the account multiplier stack, deleted
  * (Constitution §8.5, Rule 8, Rule 5, Rule 6; GROUND_TRUTH §3.1 faucets
  * #4-#6; build-log findings F-6b and F-10).
  *
@@ -29,7 +29,7 @@ const sql = fs.readFileSync(MIGRATION_040, 'utf8');
  */
 const code = sql.replace(/--[^\n]*/g, '');
 
-describe('Migration 040: the clan-duel bonus (Rule 8, finding F-6b)', () => {
+describe('Migration 041: the clan-duel bonus (Rule 8, finding F-6b)', () => {
   it('drops the RPC itself, not just its call site', () => {
     expect(sql).toMatch(/DROP FUNCTION IF EXISTS clan_duel_bonus\(UUID\);/);
   });
@@ -47,7 +47,7 @@ describe('Migration 040: the clan-duel bonus (Rule 8, finding F-6b)', () => {
   });
 });
 
-describe('Migration 040: the streak DNA multiplier', () => {
+describe('Migration 041: the streak DNA multiplier', () => {
   it('drops the tier catalogue that priced it', () => {
     expect(sql).toMatch(/DROP TABLE IF EXISTS streak_bonus_tiers;/);
   });
@@ -84,7 +84,7 @@ describe('Migration 040: the streak DNA multiplier', () => {
   });
 });
 
-describe('Migration 040: the longest streak becomes a Legacy Record (Rule 6)', () => {
+describe('Migration 041: the longest streak becomes a Legacy Record (Rule 6)', () => {
   it('banks player_streaks.longest_streak into the `unbroken` record', () => {
     expect(sql).toMatch(/INSERT INTO player_records \(player_id, record_id, value, tier, updated_at\)/);
     expect(sql).toMatch(/rd\.id = 'unbroken'/);
@@ -131,7 +131,7 @@ describe('Migration 040: the longest streak becomes a Legacy Record (Rule 6)', (
   });
 });
 
-describe('Migration 040: the Take-streak columns (§7.2, Rule 5)', () => {
+describe('Migration 041: the Take-streak columns (§7.2, Rule 5)', () => {
   it('adds the four columns additively', () => {
     expect(sql).toMatch(
       /ADD COLUMN IF NOT EXISTS take_streak_days\s+INTEGER\s+NOT NULL DEFAULT 0/
@@ -180,9 +180,9 @@ describe('Migration 040: the Take-streak columns (§7.2, Rule 5)', () => {
   });
 });
 
-describe('Migration 040: hygiene', () => {
+describe('Migration 041: hygiene', () => {
   it('runs as one transaction so a failed assertion reverts everything', () => {
-    expect(sql.trimStart().startsWith('-- Migration 040')).toBe(true);
+    expect(sql.trimStart().startsWith('-- Migration 041')).toBe(true);
     expect(sql).toMatch(/^BEGIN;$/m);
     expect(sql).toMatch(/^COMMIT;$/m);
   });
