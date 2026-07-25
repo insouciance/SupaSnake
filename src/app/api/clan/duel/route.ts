@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import {
   drainDiscordOutbox,
   refreshLinkedRolesForPlayer,
@@ -20,6 +21,20 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
+/**
+ * Rule 11: every Supabase error is checked AND reported. A read that fails is
+ * not the same answer as a read that came back empty — the route said "you are
+ * not in a clan" when the connection dropped, which is a lie the player cannot
+ * distinguish from the truth and which Sentry never heard about.
+ */
+function reportError(scope: string, error: unknown, extra: Record<string, unknown> = {}) {
+  console.error(`Clan duel ${scope} error:`, { ...extra, error });
+  Sentry.captureException(
+    error instanceof Error ? error : new Error(`Clan duel ${scope} error`),
+    { extra: { scope, ...extra, error } }
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,11 +74,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Player must be in a clan to have a duel
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from('clan_members')
       .select('clan_id')
       .eq('player_id', user.id)
       .maybeSingle();
+
+    if (membershipError) {
+      reportError('membership read', membershipError, { userId: user.id });
+      return NextResponse.json({ error: 'Failed to load duel' }, { status: 500 });
+    }
 
     if (!membership) {
       return NextResponse.json({ error: 'Not in a clan' }, { status: 404 });
