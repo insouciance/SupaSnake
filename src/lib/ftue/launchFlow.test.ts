@@ -97,7 +97,7 @@ describe('FTUE v2 launch flow', () => {
 
   it('starts an earning run with the authoritative equipped snake', async () => {
     const fetcher = jest.fn().mockResolvedValue(
-      jsonResponse({ sessionId: 'session-1', energy: 4, energyRegenAt: null })
+      jsonResponse({ sessionId: 'session-1' })
     );
 
     const handoff = await prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher);
@@ -110,24 +110,46 @@ describe('FTUE v2 launch flow', () => {
     });
   });
 
-  it('recovers an energy race by preparing a free run', async () => {
-    const fetcher = jest
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: 'Not enough energy' }, 400))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          sessionId: 'session-free',
-          energy: 0,
-          energyRegenAt: null,
-          freePlay: true,
-        })
-      );
+  it('always launches an earning run, whatever the day\'s charges (§8.6)', async () => {
+    // There is no energy race left to recover from: the server cannot
+    // reject a start for lack of charges, so Launch never silently demotes
+    // the player to practice. A spent day yields a lean earning run.
+    const fetcher = jest.fn().mockResolvedValueOnce(
+      jsonResponse({
+        sessionId: 'session-lean',
+        charge: {
+          state: 'lean',
+          remaining: 0,
+          perDay: 6,
+          usedToday: 6,
+          day: '2026-07-25',
+          refillsAt: '2026-07-26T00:00:00.000Z',
+          visible: true,
+        },
+      })
+    );
 
     const handoff = await prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher);
 
-    expect(handoff.mode).toBe('free');
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).mode).toBe('free');
+    expect(handoff.mode).toBe('earn');
+    expect(handoff.run.charge?.state).toBe('lean');
+    // One request only - no probe, no retry-as-free.
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).mode).toBe('earn');
+  });
+
+  it('does not retry as free when a start genuinely fails', async () => {
+    // The old retry-as-free branch masked exactly one 400. With the gate
+    // gone, every failure must surface for Retry rather than be papered
+    // over with a rewardless run the player did not ask for.
+    const fetcher = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: 'Snake not found or not owned' }, 400));
+
+    await expect(
+      prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher)
+    ).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('stores transient initialization and consumes it exactly once', () => {
@@ -137,7 +159,7 @@ describe('FTUE v2 launch flow', () => {
       userId: 'user-1',
       mode: 'earn',
       bootstrap,
-      run: { sessionId: 'session-1', energy: 4, energyRegenAt: null },
+      run: { sessionId: 'session-1' },
     };
 
     expect(storeLaunchHandoff(handoff, sessionStorage)).toBe(true);
@@ -167,7 +189,7 @@ describe('FTUE v2 launch flow', () => {
       userId: 'user-1',
       mode: 'earn',
       bootstrap,
-      run: { sessionId: 'session-1', energy: 4, energyRegenAt: null },
+      run: { sessionId: 'session-1' },
     };
     sessionStorage.setItem(LAUNCH_HANDOFF_KEY, JSON.stringify(handoff));
     expect(consumeLaunchHandoff('user-2', sessionStorage, 2_000)).toBeNull();

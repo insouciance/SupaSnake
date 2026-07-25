@@ -16,13 +16,24 @@ import type { SpliceId } from '@/shared/game/splices';
 import type { StrainId, StrainPoints } from '@/shared/game/strains';
 import type { GenomeRevive } from '@/shared/game/genome';
 import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
-import { GAME_CONFIG } from '@/shared/config/game';
+import type { ChargeState, ChargeStatus } from '@/shared/game/energyEnvelope';
 
 /**
- * Run mode (Design v2 §7.4 + §7.2): 'earn' spends energy and pays DNA;
- * 'free' is unlimited, energy-free practice that pays nothing; 'anomaly'
- * is an earning run under the week's anomaly modifier that also scores on
- * the weekly anomaly board.
+ * The day's charge status as the server reported it, plus the §8.6 ramp
+ * flag telling the UI whether the meter should be shown at all.
+ */
+export interface ChargeSnapshot extends ChargeStatus {
+  visible: boolean;
+  /** How the run just started settles; absent outside a run. */
+  state?: ChargeState;
+}
+
+/**
+ * Run mode (Design v2 §7.4 + §7.2): 'earn' pays DNA; 'free' is unlimited
+ * rewardless practice that pays nothing; 'anomaly' is an earning run under
+ * the week's anomaly modifier that also scores on the weekly anomaly board.
+ *
+ * No mode is gated by charges (§8.6): 'earn' is always available.
  */
 export type GameMode = 'earn' | 'free' | 'anomaly';
 
@@ -48,13 +59,17 @@ export interface GameStore {
   /** How the last run ended: 'extracted' (banked) or 'died' (salvage). */
   endReason: EndReason | null;
 
-  // Energy system (synced from server)
-  energy: number;
-  maxEnergy: number;
-  energyRegenAt: string | null; // ISO timestamp from server when next energy regenerates
+  /**
+   * The day's harvest envelope (Constitution §8.6), synced from the server.
+   * Display only - the client never decides charge state and never blocks a
+   * run on it. Null until the first sync.
+   */
+  charge: ChargeSnapshot | null;
 
-  // Run mode: earning (energy-gated, rewarded) vs free play (unlimited,
-  // rewardless practice). Survives resetGame so Play Again keeps the mode.
+  // Run mode: earning (rewarded) vs free play (rewardless practice).
+  // Survives resetGame so Play Again keeps the mode. NOTE: mode is never
+  // chosen for the player by charge state - an empty allotment demotes
+  // nothing (§8.6: there is no second-class run).
   gameMode: GameMode;
 
   // Dynasty
@@ -144,8 +159,7 @@ export interface GameStore {
   setAnomalyRun: (anomalyRun: AnomalyRunInfo | null) => void;
   setSelectedDynasty: (dynasty: DynastyId) => void;
   setAimSystem: (aimSystem: AimSystemId) => void;
-  setEnergy: (energy: number) => void;
-  syncEnergyFromServer: (energy: number, energyRegenAt: string | null) => void;
+  syncChargeFromServer: (charge: ChargeSnapshot | null) => void;
   setGameMode: (gameMode: GameMode) => void;
   setSnake: (snake: Position[]) => void;
   setFood: (food: Position | null) => void;
@@ -199,9 +213,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   dnaCollected: 0,
   foodEaten: 0,
   endReason: null,
-  energy: GAME_CONFIG.economy.energy.maxEnergy,
-  maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
-  energyRegenAt: null, // Synced from server
+  charge: null, // Synced from server; never assumed locally
   gameMode: 'earn',
   selectedDynasty: 'PRIMAL',
   aimSystem: DEFAULT_AIM_SYSTEM,
@@ -414,17 +426,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ aimSystem });
   },
 
-  setEnergy: (energy: number) => {
-    // Allow bonus energy above maxEnergy (from purchases)
-    set({ energy: Math.max(0, energy) });
-  },
-
-  syncEnergyFromServer: (energy: number, energyRegenAt: string | null) => {
-    // Allow bonus energy above maxEnergy (from purchases)
-    set({
-      energy: Math.max(0, energy),
-      energyRegenAt,
-    });
+  syncChargeFromServer: (charge: ChargeSnapshot | null) => {
+    // Straight mirror of server authority (Rule 11). The client never
+    // computes, decrements or refills charges - a stale snapshot simply
+    // renders stale until the next sync, and nothing gameplay-facing
+    // depends on it.
+    set({ charge });
   },
 
   setGameMode: (gameMode: GameMode) => {

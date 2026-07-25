@@ -67,66 +67,27 @@ describe('premiumStore', () => {
     });
   });
 
-  describe('claimStipend', () => {
-    it('marks today claimed and flags the drop on success', async () => {
-      usePremiumStore.setState({
-        isPremium: true,
-        currentDrop: {
-          id: 'premium_trail_ion_wake',
-          name: 'Ion Wake',
-          slot: 'trail',
-          rarity: 'epic',
-          claimed: false,
-        },
-      });
-      mockFetch.mockReturnValue(
-        jsonResponse(200, {
-          success: true,
-          energy: 8,
-          grantedEnergy: 3,
-          dropGranted: 'premium_trail_ion_wake',
-        })
-      );
-
-      const result = await usePremiumStore.getState().claimStipend('token-1');
-      const state = usePremiumStore.getState();
-
-      expect(result).toEqual({
-        success: true,
-        energy: 8,
-        dropGranted: 'premium_trail_ion_wake',
-      });
-      expect(state.stipendClaimedToday).toBe(true);
-      expect(state.currentDrop?.claimed).toBe(true);
+  describe('the energy stipend is retired (Constitution §8.6, §10.4)', () => {
+    it('exposes no claimStipend action', () => {
+      // Energy is never sold, gifted or stipended. The store must not be
+      // able to ask for one, so that no future component can wire a button
+      // back up to a route that no longer exists.
+      const state = usePremiumStore.getState() as unknown as Record<string, unknown>;
+      expect(state.claimStipend).toBeUndefined();
+      expect(state.stipendClaimedToday).toBeUndefined();
+      expect(state.isClaimingStipend).toBeUndefined();
     });
 
-    it('treats already_claimed as a quiet no-op (another tab won)', async () => {
-      mockFetch.mockReturnValue(jsonResponse(409, { error: 'already_claimed' }));
-
-      const result = await usePremiumStore.getState().claimStipend('token-1');
+    it('keeps the cosmetic drop, which is identity and therefore allowed', () => {
       const state = usePremiumStore.getState();
-
-      expect(result.success).toBe(false);
-      expect(state.stipendClaimedToday).toBe(true);
-      expect(state.error).toBeNull();
-    });
-
-    it('surfaces other failures without marking the day claimed', async () => {
-      mockFetch.mockReturnValue(jsonResponse(403, { error: 'premium_required' }));
-
-      const result = await usePremiumStore.getState().claimStipend('token-1');
-      const state = usePremiumStore.getState();
-
-      expect(result.success).toBe(false);
-      expect(state.stipendClaimedToday).toBe(false);
-      expect(state.error).toBe('premium_required');
+      expect('currentDrop' in state).toBe(true);
     });
   });
 
   it('reset returns to the initial state', () => {
-    usePremiumStore.setState({ isPremium: true, stipendClaimedToday: true });
+    usePremiumStore.setState({ isPremium: true, isLoading: true });
     usePremiumStore.getState().reset();
     expect(usePremiumStore.getState().isPremium).toBe(false);
-    expect(usePremiumStore.getState().stipendClaimedToday).toBe(false);
+    expect(usePremiumStore.getState().isLoading).toBe(false);
   });
 });

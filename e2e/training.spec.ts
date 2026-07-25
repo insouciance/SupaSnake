@@ -54,7 +54,7 @@ test.describe('Training Lab', () => {
     await expect(page.getByRole('heading', { name: 'Training Lab' })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText(/never spend Energy or grant DNA/i)).toBeVisible();
+    await expect(page.getByText(/never spend a charge or grant DNA/i)).toBeVisible();
     for (const exercise of ['trace', 'route', 'tempo', 'escape']) {
       await expect(page.getByTestId(`training-card-${exercise}`)).toBeVisible();
     }

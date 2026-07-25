@@ -3,7 +3,8 @@
 /**
  * useWalletSync - Unified wallet synchronization hook
  *
- * Combines DNA balance (collectionStore) + energy (gameStore)
+ * Combines DNA balance (collectionStore) + the day's charge status
+ * (gameStore, Constitution §8.6)
  * Single source of truth: /api/player endpoint
  *
  * Constraints:
@@ -15,13 +16,12 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
-import { useGameStore } from '@/lib/store/gameStore';
+import { useGameStore, type ChargeSnapshot } from '@/lib/store/gameStore';
 
 interface WalletState {
   dnaBalance: number;
-  energy: number;
-  maxEnergy: number;
-  energyRegenAt: string | null;
+  /** The day's harvest envelope; null until the first sync. */
+  charge: ChargeSnapshot | null;
   isLoading: boolean;
   error: string | null;
   syncWallet: () => Promise<void>;
@@ -36,10 +36,8 @@ export function useWalletSync(): WalletState {
   // Read from stores
   const dnaBalance = useCollectionStore((state) => state.dnaBalance);
   const setDnaBalance = useCollectionStore((state) => state.setDnaBalance);
-  const energy = useGameStore((state) => state.energy);
-  const maxEnergy = useGameStore((state) => state.maxEnergy);
-  const energyRegenAt = useGameStore((state) => state.energyRegenAt);
-  const syncEnergyFromServer = useGameStore((state) => state.syncEnergyFromServer);
+  const charge = useGameStore((state) => state.charge);
+  const syncChargeFromServer = useGameStore((state) => state.syncChargeFromServer);
 
   const syncWallet = useCallback(async () => {
     if (!session?.access_token) return;
@@ -63,20 +61,18 @@ export function useWalletSync(): WalletState {
         if (data.player.dna !== undefined) {
           setDnaBalance(data.player.dna);
         }
-
-        // Sync energy to gameStore
-        syncEnergyFromServer(
-          data.player.energy,
-          data.player.energy_regen_at
-        );
       }
+
+      // The charge block is top-level on the response, not on `player` -
+      // it is derived state, not a stored balance (§8.6).
+      syncChargeFromServer((data.charge as ChargeSnapshot | undefined) ?? null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Wallet sync failed';
       setError(message);
     } finally {
       setIsLoading(false);
     }
-  }, [session?.access_token, setDnaBalance, syncEnergyFromServer]);
+  }, [session?.access_token, setDnaBalance, syncChargeFromServer]);
 
   // Sync on mount when authenticated (once)
   useEffect(() => {
@@ -102,9 +98,7 @@ export function useWalletSync(): WalletState {
 
   return {
     dnaBalance,
-    energy,
-    maxEnergy,
-    energyRegenAt,
+    charge,
     isLoading,
     error,
     syncWallet,

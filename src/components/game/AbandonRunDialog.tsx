@@ -6,7 +6,8 @@ import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 interface AbandonRunDialogProps {
   score: number;
   dnaCollected: number;
-  costsEnergy: boolean;
+  /** Whether this run consumed one of the day's charges (§8.6). */
+  costsCharge: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -15,7 +16,7 @@ interface AbandonRunDialogProps {
 export function AbandonRunDialog({
   score,
   dnaCollected,
-  costsEnergy,
+  costsCharge,
   onCancel,
   onConfirm,
 }: AbandonRunDialogProps) {
@@ -59,9 +60,9 @@ export function AbandonRunDialog({
             This ends the run now. Score {score.toLocaleString('en-US')} and{' '}
             {dnaCollected.toLocaleString('en-US')} run DNA will not be recorded.
           </p>
-          {costsEnergy && (
+          {costsCharge && (
             <p className="text-strike-red/85">
-              The Energy spent to launch this run is not returned.
+              The charge this run consumed is not returned.
             </p>
           )}
         </div>

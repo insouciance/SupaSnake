@@ -93,12 +93,12 @@ test.describe('Equipped-snake game flow', () => {
     await seedConsent(page);
     await signInAsGuest(page);
 
-    // Pre-game screen: ready state with the equipped snake and energy cost
+    // Pre-game screen: ready state with the equipped snake
     await expect(
       page.getByRole('heading', { name: /ready to play/i })
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/gen \d+/i).first()).toBeVisible();
-    // /^play\b/ matches the Play button ("Play (1 ⚡)" / "Play Again") but
+    // /^play\b/ matches the Play button ("Play" / "Play Again") but
     // not the AccountChip's "Playing as guest - save progress" label, which
     // made a bare /play/i a strict-mode violation
     await expect(
@@ -117,18 +117,17 @@ test.describe('Equipped-snake game flow', () => {
     ).toBeVisible();
   });
 
-  test('mode toggle offers EARN and FREE PLAY; free play starts without spending energy', async ({ page }) => {
+  test('mode toggle offers EARN and FREE PLAY; free play consumes no charge', async ({ page }) => {
     await seedConsent(page);
     await signInAsGuest(page);
 
-    // Pre-game overlay: both mode chips present; a fresh guest has energy,
-    // so EARN is the default selection
+    // Pre-game overlay: both mode chips present. EARN is always the default
+    // and is never disabled (§8.6: the envelope gates no mode).
     await expect(page.getByTestId('mode-earn')).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId('mode-free')).toBeVisible();
     await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
 
-    // A guest WITH energy can still choose FREE PLAY (§7.4: practice is
-    // always available, energy meters earning runs only).
+    // FREE PLAY remains a deliberate choice, never a demotion (§7.4).
     // force: the live WebGL canvas behind the overlay starves Playwright's
     // hit-target stability check in headless (software rendering); the
     // aria-pressed / watermark expectations below verify the click landed.
@@ -137,7 +136,7 @@ test.describe('Equipped-snake game flow', () => {
     await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
     await expect(page.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
 
-    // The primary CTA becomes Free Play with no energy cost attached
+    // The primary CTA becomes Free Play, which consumes no charge
     const freeStart = page.getByTestId('free-play-start');
     await expect(freeStart).toBeVisible();
     await expect(freeStart).toHaveText(/free play/i);

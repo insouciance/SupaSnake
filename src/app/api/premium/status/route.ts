@@ -2,9 +2,9 @@
  * Premium Status API
  *
  * GET /api/premium/status - the caller's premium entitlement + billing
- * summary (status, period end, cancel-at-period-end), today's stipend
+ * summary (status, period end, cancel-at-period-end)
  * claim state and this month's exclusive drop - one get_premium_status
- * RPC. Powers the shop premium section, settings and the stipend button.
+ * RPC. Powers the shop premium section and settings.
  *
  * PRE-MIGRATION-028 SAFE: while the RPC does not exist this returns
  * { isPremium: false, live: false } - nothing errors.
@@ -66,7 +66,6 @@ export async function GET(request: NextRequest) {
       billingInterval: payload.billing_interval ?? null,
       currentPeriodEnd: payload.current_period_end ?? null,
       cancelAtPeriodEnd: payload.cancel_at_period_end === true,
-      stipendClaimedToday: payload.stipend_claimed_today === true,
       currentDrop: payload.current_drop ?? null,
     });
   } catch (error) {

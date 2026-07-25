@@ -99,7 +99,7 @@ export function TrainingHub({
             </h1>
             <p className="max-w-2xl font-body text-lg text-beige">
               Isolate one skill, review exact feedback, then prove it on an unseen Circuit.
-              Attempts never spend Energy or grant DNA, mastery, contracts, or leaderboard score.
+              Attempts never spend a charge or grant DNA, mastery, contracts, or leaderboard score.
             </p>
           </div>
           <div className="flex gap-2">

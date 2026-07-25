@@ -12,8 +12,13 @@ const MODEL: RunCockpitModel = {
   isFirstMovementPrompt: true,
   score: 12840,
   dna: 186,
-  energy: 4,
-  maxEnergy: 5,
+  charge: {
+    remaining: 4,
+    perDay: 6,
+    usedToday: 2,
+    day: '2026-07-25',
+    refillsAt: '2026-07-26T00:00:00.000Z',
+  },
   bankDna: 168,
   crashDna: 52,
   comboMultiplier: 1.8,
@@ -41,7 +46,7 @@ describe('RunCockpit', () => {
 
     expect(screen.getByLabelText(/score 12,840, combo 1.8/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/run dna 186/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/energy 4 of 5/i)).toHaveTextContent('4/5');
+    expect(screen.getByLabelText(/charges 4 of 6/i)).toHaveTextContent('4/6');
     expect(screen.getByLabelText('Gold Trail')).toBeInTheDocument();
     expect(screen.getByLabelText(/Umbra 2 of 4, tier 1, suppressed/i)).toBeInTheDocument();
     expect(screen.getByTestId('first-movement-prompt')).toHaveTextContent(

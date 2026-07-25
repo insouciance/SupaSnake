@@ -13,16 +13,17 @@ import {
 
 describe('Player API Logic', () => {
   describe('New Player Creation', () => {
-    it('should have correct default resources', () => {
-      const newPlayerDefaults = {
-        dna: 0,
-        energy: 5,
-        max_energy: 5,
-      };
+    it('should start with no DNA and no seeded charge state', () => {
+      // A new player row carries no energy fields at all (§8.6): there is
+      // no starting balance to seed, because charges are derived from
+      // (charges_day, charges_used) and an untouched ledger already reads
+      // as a full day.
+      const newPlayerDefaults: Record<string, unknown> = { dna: 0 };
 
       expect(newPlayerDefaults.dna).toBe(0);
-      expect(newPlayerDefaults.energy).toBe(GAME_CONFIG.economy.energy.maxEnergy);
-      expect(newPlayerDefaults.max_energy).toBe(GAME_CONFIG.economy.energy.maxEnergy);
+      expect(newPlayerDefaults.energy).toBeUndefined();
+      expect(newPlayerDefaults.max_energy).toBeUndefined();
+      expect(newPlayerDefaults.charges_used).toBeUndefined();
     });
 
     it('should bootstrap a starter without requiring Lab selection', () => {
@@ -71,12 +72,13 @@ describe('Player API Logic', () => {
   });
 
   describe('Resource Management', () => {
-    it('should not exceed max energy', () => {
-      const energy = 10;
-      const maxEnergy = GAME_CONFIG.economy.energy.maxEnergy;
-      const clampedEnergy = Math.min(energy, maxEnergy);
-
-      expect(clampedEnergy).toBe(5);
+    it('should have no energy cap to clamp against (GT §9.1)', () => {
+      // The clamp this test used to assert is precisely the shape of the
+      // bug that destroyed purchased energy: Math.min(balance, cap). With
+      // no balance and no cap, that expression cannot be written.
+      const energy = GAME_CONFIG.economy.energy as Record<string, unknown>;
+      expect(energy.maxEnergy).toBeUndefined();
+      expect(GAME_CONFIG.economy.energy.chargesPerDay).toBeGreaterThan(0);
     });
 
     it('should not go below 0 DNA', () => {

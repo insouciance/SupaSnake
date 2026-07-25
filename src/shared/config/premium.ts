@@ -26,8 +26,9 @@ export const PREMIUM_CONFIG = deepFreeze({
     yearlyEur: 89.99,                // ~2 months free vs monthly
   },
 
-  /** Daily Lab Stipend: +3 energy once per UTC day (028 claim_premium_stipend) */
-  stipendEnergyPerDay: 3,
+  /* NOTE: the Daily Lab Stipend (+3 energy/day) is deliberately absent.
+     Constitution §8.6 and §10.4: Energy is never sold, gifted, stipended,
+     or touched by any SKU or perk. Migration 039 drops the RPC. */
 
   /** Contracts: premium picks 3 of 3 daily contracts (028 pick_contracts) */
   contracts: {

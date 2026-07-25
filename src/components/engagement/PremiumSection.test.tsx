@@ -139,24 +139,26 @@ describe('PremiumSection', () => {
       });
     });
 
-    it('shows billing summary, manage button and the stipend claim', () => {
+    it('shows billing summary, manage button and the cosmetic drop', () => {
       setAuth({ isAnonymous: false });
       render(<PremiumSection onRequireAccount={jest.fn()} />);
 
       expect(screen.getByTestId('premium-subscribed')).toBeInTheDocument();
       expect(screen.getByTestId('premium-manage')).toBeInTheDocument();
-      expect(screen.getByTestId('premium-claim-stipend')).toBeInTheDocument();
       expect(screen.getByTestId('premium-current-drop')).toHaveTextContent('Ion Wake');
       expect(screen.queryByTestId('premium-subscribe')).not.toBeInTheDocument();
     });
 
-    it('shows the claimed marker once the stipend is taken', () => {
-      usePremiumStore.setState({ stipendClaimedToday: true });
+    it('offers no energy stipend anywhere (Constitution §8.6, §10.4)', () => {
+      // Energy is on the never-sold list. A subscription may not reach the
+      // pacing layer - not as a purchase, and not as a perk.
       setAuth({ isAnonymous: false });
       render(<PremiumSection onRequireAccount={jest.fn()} />);
 
-      expect(screen.getByTestId('premium-stipend-claimed')).toBeInTheDocument();
       expect(screen.queryByTestId('premium-claim-stipend')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('premium-stipend-claimed')).not.toBeInTheDocument();
+      expect(screen.queryByText(/stipend/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/energy/i)).not.toBeInTheDocument();
     });
   });
 });

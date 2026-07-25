@@ -152,28 +152,44 @@ describe('Game Store', () => {
     });
   });
 
-  describe('Energy System', () => {
-    it('should set energy', () => {
-      useGameStore.getState().setEnergy(3);
-      expect(useGameStore.getState().energy).toBe(3);
+  describe('Harvest envelope (Constitution §8.6)', () => {
+    const snapshot = {
+      state: 'charged' as const,
+      remaining: 4,
+      perDay: 6,
+      usedToday: 2,
+      day: '2026-07-25',
+      refillsAt: '2026-07-26T00:00:00.000Z',
+      visible: true,
+    };
+
+    it('starts with no assumed charge state', () => {
+      // The old store seeded a full energy bar from config, so the client
+      // rendered "5/5" before the server had said anything. Charges are
+      // server-derived; the client must not invent them.
+      expect(useGameStore.getState().charge).toBeNull();
     });
 
-    it('should allow bonus energy above max (purchases)', () => {
-      // setEnergy documents: "Allow bonus energy above maxEnergy (from purchases)"
-      useGameStore.getState().setEnergy(10);
-      expect(useGameStore.getState().energy).toBe(10);
+    it('mirrors the server snapshot verbatim', () => {
+      useGameStore.getState().syncChargeFromServer(snapshot);
+      expect(useGameStore.getState().charge).toEqual(snapshot);
     });
 
-    it('should not go below 0', () => {
-      useGameStore.getState().setEnergy(-5);
-      expect(useGameStore.getState().energy).toBeGreaterThanOrEqual(0);
+    it('clears back to null when the server reports nothing', () => {
+      useGameStore.getState().syncChargeFromServer(snapshot);
+      useGameStore.getState().syncChargeFromServer(null);
+      expect(useGameStore.getState().charge).toBeNull();
     });
 
-    it('should sync energy from server', () => {
-      const regenAt = new Date(Date.now() + 60000).toISOString();
-      useGameStore.getState().syncEnergyFromServer(4, regenAt);
-      expect(useGameStore.getState().energy).toBe(4);
-      expect(useGameStore.getState().energyRegenAt).toBe(regenAt);
+    it('exposes no local mutator that could grant or spend a charge', () => {
+      // Rule 11: the client never writes balances. There is exactly one
+      // charge action and it is a mirror of the server.
+      const state = useGameStore.getState() as unknown as Record<string, unknown>;
+      expect(typeof state.syncChargeFromServer).toBe('function');
+      expect(state.setEnergy).toBeUndefined();
+      expect(state.setCharge).toBeUndefined();
+      expect(state.spendCharge).toBeUndefined();
+      expect(state.syncEnergyFromServer).toBeUndefined();
     });
   });
 

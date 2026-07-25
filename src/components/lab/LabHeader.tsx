@@ -2,18 +2,17 @@
 
 /**
  * LabHeader - Top header for Lab screen
- * Displays title, energy status, and DNA balance
+ * Displays title, the day's charge status, and DNA balance
  * Mobile-first with sticky positioning (sits below the fixed global nav)
  */
 
 import Link from 'next/link';
 import { IconBolt, IconDna, IconHome } from '@/components/ui/icons';
+import type { ChargeStatus } from '@/shared/game/energyEnvelope';
 
 interface LabHeaderProps {
-  /** Current energy amount */
-  energy: number;
-  /** Maximum energy capacity */
-  maxEnergy: number;
+  /** The day's harvest envelope (§8.6); null hides the readout. */
+  charge: ChargeStatus | null;
   /** Current DNA balance */
   dna: number;
   /** Server-derived FTUE gate; the Codex stays invisible before 15 banks. */
@@ -29,9 +28,7 @@ function formatWithCommas(num: number): string {
   return num.toLocaleString('en-US');
 }
 
-export function LabHeader({ energy, maxEnergy, dna, codexUnlocked = false }: LabHeaderProps) {
-  // Calculate energy percentage for potential visual indicator
-  const energyPercent = Math.round((energy / maxEnergy) * 100);
+export function LabHeader({ charge, dna, codexUnlocked = false }: LabHeaderProps) {
 
   return (
     <header
@@ -64,20 +61,22 @@ export function LabHeader({ energy, maxEnergy, dna, codexUnlocked = false }: Lab
 
         {/* Resources - Right side */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Energy Display */}
-          <div
-            className="panel flex items-center gap-1.5 px-2.5 py-1.5"
-            aria-label={`Energy: ${energy} of ${maxEnergy}`}
-            title={`Energy: ${energy}/${maxEnergy} (${energyPercent}%)`}
-          >
-            <IconBolt
-              size={16}
-              className={energyPercent > 20 ? 'text-venom-orange' : 'text-venom-orange/50'}
-            />
-            <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
-              {energy}
-            </span>
-          </div>
+          {/* The day's charges (§8.6). Absent until the server syncs. */}
+          {charge && (
+            <div
+              className="panel flex items-center gap-1.5 px-2.5 py-1.5"
+              aria-label={`Charges: ${charge.remaining} of ${charge.perDay}`}
+              title={`Charges: ${charge.remaining}/${charge.perDay} today`}
+            >
+              <IconBolt
+                size={16}
+                className={charge.remaining > 0 ? 'text-venom-orange' : 'text-venom-orange/50'}
+              />
+              <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
+                {charge.remaining}
+              </span>
+            </div>
+          )}
 
           {/* DNA Display */}
           <div

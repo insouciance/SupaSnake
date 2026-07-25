@@ -1,18 +1,29 @@
 /**
  * Claim Offline Progress API
- * Server-authoritative endpoint to claim passive rewards
+ * Server-authoritative endpoint to claim passive DNA.
  *
  * Flow:
  * 1. Get player's last_login_at and collection size
  * 2. Calculate rewards server-side (source of truth)
  * 3. Update DNA balance and last_login_at
  * 4. Log transaction for audit trail
+ *
+ * THIS ROUTE NO LONGER TOUCHES ENERGY (Constitution §8.6).
+ *
+ * It used to restore energy from its own `last_login_at` clock, clamped to
+ * `max_energy` - which destroyed purchased over-cap energy outright
+ * (GROUND_TRUTH §9.1: buy the 25-energy Vault, be away an hour, come back
+ * with 5) and disagreed indefinitely with the `energy_regen_at` clock in
+ * /api/player (§9.2). Both defects are structurally impossible now: there is
+ * no energy balance for this route to clamp and no clock for it to compete
+ * with. The daily allotment refills only when the UTC date changes, and only
+ * `consume_run_charge` ever writes the ledger.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { calculateOfflineProgress } from '@/lib/progression/offlineProgress';
-import { GAME_CONFIG } from '@/shared/config/game';
 import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 import { PREMIUM_CONFIG } from '@/shared/config/premium';
 import { hasPremium } from '@/lib/server/premium';
@@ -40,7 +51,7 @@ export async function POST(request: NextRequest) {
     // Get player with current state
     const { data: player, error: playerError } = await supabase
       .from('players')
-      .select('id, dna, energy, max_energy, last_login_at')
+      .select('id, dna, last_login_at')
       .eq('user_id', user.id)
       .single();
 
@@ -70,8 +81,6 @@ export async function POST(request: NextRequest) {
     const progress = calculateOfflineProgress(
       {
         lastLoginAt: player.last_login_at || new Date().toISOString(),
-        currentEnergy: player.energy,
-        maxEnergy: player.max_energy || GAME_CONFIG.economy.energy.maxEnergy,
         collectionSize,
       },
       passiveConfig
@@ -96,30 +105,32 @@ export async function POST(request: NextRequest) {
         message: 'No rewards to claim',
         rewards: {
           passiveDnaEarned: 0,
-          energyRestored: 0,
           elapsedHours: progress.elapsedHours,
         },
       });
     }
 
-    // Apply rewards
+    // Apply rewards. DNA only - this route writes no energy of any kind
+    // (see the header note: GT §9.1/§9.2).
     const newDna = player.dna + progress.passiveDnaEarned;
-    const newEnergy = Math.min(
-      player.energy + progress.energyRestored,
-      player.max_energy || GAME_CONFIG.economy.energy.maxEnergy
-    );
 
-    // Update player with new values and last_login_at
     const { error: updateError } = await supabase
       .from('players')
       .update({
         dna: newDna,
-        energy: newEnergy,
         last_login_at: new Date().toISOString(),
       })
       .eq('id', player.id);
 
     if (updateError) {
+      console.error('Failed to apply offline progress:', {
+        playerId: player.id,
+        error: updateError,
+      });
+      Sentry.captureException(
+        new Error(`claim-offline player update failed: ${updateError.message}`),
+        { extra: { playerId: player.id } }
+      );
       return NextResponse.json({ error: 'Failed to update player' }, { status: 500 });
     }
 
@@ -150,12 +161,10 @@ export async function POST(request: NextRequest) {
       success: true,
       rewards: {
         passiveDnaEarned: progress.passiveDnaEarned,
-        energyRestored: progress.energyRestored,
         elapsedHours: progress.elapsedHours,
       },
       newBalances: {
         dna: newDna,
-        energy: newEnergy,
       },
     });
   } catch (err) {

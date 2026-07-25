@@ -10,7 +10,6 @@ describe('WelcomeBackModal', () => {
   const defaultProgress: OfflineProgress = {
     elapsedMs: 2 * 60 * 60 * 1000, // 2 hours
     elapsedHours: 2,
-    energyRestored: 3,
     passiveDnaEarned: 20,
     shouldShowModal: true,
     hasRewards: true,
@@ -44,10 +43,14 @@ describe('WelcomeBackModal', () => {
       expect(screen.getByText(/2 hours/)).toBeInTheDocument();
     });
 
-    it('displays energy restored', () => {
+    it('restores no energy and offers no stipend (Constitution §8.6)', () => {
+      // Time away restores nothing, because nothing was depleted: the day's
+      // charges refill on the UTC date for everyone. Advertising a "+N
+      // Energy" reward for being absent would also contradict Rule 5's
+      // symmetry - absence neither punishes nor pays.
       render(<WelcomeBackModal {...defaultProps} />);
-      expect(screen.getByText('+3')).toBeInTheDocument();
-      expect(screen.getByText('Energy Restored')).toBeInTheDocument();
+      expect(screen.queryByText('Energy Restored')).not.toBeInTheDocument();
+      expect(screen.queryByText(/stipend/i)).not.toBeInTheDocument();
     });
 
     it('displays DNA earned', () => {
@@ -103,11 +106,13 @@ describe('WelcomeBackModal', () => {
   });
 
   describe('edge cases', () => {
-    it('handles zero energy restored', () => {
-      const progress = { ...defaultProgress, energyRestored: 0 };
+    it('renders DNA as the only reward row', () => {
+      const progress = { ...defaultProgress, passiveDnaEarned: 0 };
       render(<WelcomeBackModal {...defaultProps} progress={progress} />);
 
       expect(screen.getByText('+0')).toBeInTheDocument();
+      expect(screen.getByText('DNA Gathered')).toBeInTheDocument();
+      expect(screen.queryByText(/energy/i)).not.toBeInTheDocument();
     });
 
     it('handles zero DNA earned', () => {

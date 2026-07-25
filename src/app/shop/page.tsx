@@ -10,22 +10,21 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useWalletSync } from '@/hooks/useWalletSync';
 import {
-  ENERGY_PRODUCTS,
   BUNDLE_PRODUCTS,
   shouldShowBundles,
   StoreProduct,
 } from '@/lib/stripe/products';
-import { EnergyTimer } from '@/components/ui/EnergyTimer';
+import { ChargeMeter } from '@/components/ui/ChargeMeter';
 import { NavBar } from '@/components/ui/NavBar';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import { PremiumSection } from '@/components/engagement/PremiumSection';
 import { GAME_CONFIG } from '@/shared/config/game';
 import Link from 'next/link';
-import { IconBolt, IconCart, IconDna, IconSnake } from '@/components/ui/icons';
+import { IconCart, IconDna, IconSnake } from '@/components/ui/icons';
 
 export default function ShopPage() {
   const { user, session, isAuthenticated, isAnonymous } = useAuth();
-  const { dnaBalance, energy, maxEnergy, energyRegenAt } = useWalletSync();
+  const { dnaBalance, charge } = useWalletSync();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showBundles, setShowBundles] = useState(false);
@@ -155,13 +154,11 @@ export default function ShopPage() {
             <IconDna size={18} className="text-venom-orange" />
             <span className="text-bone-white font-display">{dnaBalance.toLocaleString()}</span>
           </div>
-          <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/60 bg-void/70">
-            <EnergyTimer
-              energy={energy}
-              maxEnergy={maxEnergy}
-              energyRegenAt={energyRegenAt}
-            />
-          </div>
+          {charge && (
+            <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/60 bg-void/70">
+              <ChargeMeter charge={charge} />
+            </div>
+          )}
           <Link
             href="/"
             className="btn-neutral px-4 py-2 min-h-[44px] inline-flex items-center"
@@ -228,35 +225,13 @@ export default function ShopPage() {
         <PremiumSection onRequireAccount={() => setShowUpgrade(true)} />
       )}
 
-      {/* Energy Section */}
-      <section className="mb-10 animate-fade-up">
-        <h2 className="heading-display text-2xl text-bone-white mb-2">Energy Packs</h2>
-        <p className="text-beige font-body mb-6">Get more energy to keep playing</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {ENERGY_PRODUCTS.map((product) => (
-            <div
-              key={product.id}
-              className="panel-elevated p-6 hover:border-venom-orange/70 transition-colors"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <IconBolt size={32} className="text-venom-orange shrink-0" />
-                <div>
-                  <h3 className="heading-display text-bone-white">{product.name}</h3>
-                  <p className="text-beige text-sm font-body">{product.description}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-2xl font-display text-venom-orange">
-                  €{product.price.toFixed(2)}
-                </span>
-                {renderPurchaseButton(product, 'Buy')}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* The Energy Packs storefront is gone (Constitution §8.6/§10.4:
+          Energy is never sold). Charges are a daily allotment with no
+          balance to top up, so these SKUs could no longer deliver anything
+          - and a listing that takes money for a good that does not exist is
+          worse than a dead code path. ENERGY_PRODUCTS itself, and the
+          bundles that still name energy, are deleted by WP-0.09 which owns
+          src/lib/stripe/products.ts. */}
 
       {/* Bundles Section - Only show after Day 2 per BM-004 */}
       {showBundles && (
@@ -284,12 +259,6 @@ export default function ShopPage() {
 
                 {/* Rewards Preview */}
                 <div className="flex flex-wrap gap-3 mb-4">
-                  {product.rewards.energy && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-venom-orange/15 rounded-arcade border border-venom-orange/60 text-venom-orange text-sm font-body">
-                      <IconBolt size={14} />
-                      {product.rewards.energy} Energy
-                    </span>
-                  )}
                   {product.rewards.dna && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-void/50 rounded-arcade border border-scale-blue-light/60 text-bone-white text-sm font-body">
                       <IconDna size={14} className="text-venom-orange" />

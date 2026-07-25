@@ -34,7 +34,6 @@ interface UseOfflineProgressReturn {
   /** Server-confirmed rewards after claiming */
   confirmedRewards: {
     passiveDnaEarned: number;
-    energyRestored: number;
   } | null;
 }
 
@@ -48,7 +47,6 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
   const [claimed, setClaimed] = useState(false);
   const [confirmedRewards, setConfirmedRewards] = useState<{
     passiveDnaEarned: number;
-    energyRestored: number;
   } | null>(null);
 
   // Fetch player data and calculate progress on mount
@@ -78,8 +76,6 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
         // Calculate preview (same logic server will use)
         const offlineProgress = calculateOfflineProgress({
           lastLoginAt: lastLoginAt || new Date().toISOString(),
-          currentEnergy: player.energy,
-          maxEnergy: player.max_energy,
           collectionSize: collectionSize || 0,
         });
 
@@ -126,7 +122,6 @@ export function useOfflineProgress(): UseOfflineProgressReturn {
       // Store server-confirmed rewards
       setConfirmedRewards({
         passiveDnaEarned: data.rewards.passiveDnaEarned,
-        energyRestored: data.rewards.energyRestored,
       });
 
       setClaimed(true);

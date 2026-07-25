@@ -7,21 +7,35 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ModeToggle } from './ModeToggle';
 import { GAME_CONFIG } from '@/shared/config/game';
 
+const PER_DAY = GAME_CONFIG.economy.energy.chargesPerDay;
+
+/** A day with charges left. */
+const charged = {
+  remaining: 3,
+  perDay: PER_DAY,
+  usedToday: PER_DAY - 3,
+  day: '2026-07-25',
+  refillsAt: '2026-07-26T00:00:00.000Z',
+};
+
+/** A day whose rich harvest is spent. */
+const spent = {
+  ...charged,
+  remaining: 0,
+  usedToday: PER_DAY,
+};
+
 describe('ModeToggle', () => {
   const baseProps = {
     mode: 'earn' as const,
-    energy: 3,
-    maxEnergy: GAME_CONFIG.economy.energy.maxEnergy,
-    energyRegenAt: null,
+    charge: charged,
     onSelect: jest.fn(),
   };
 
-  it('renders EARN with the energy cost and FREE PLAY chips', () => {
+  it('renders EARN and FREE PLAY chips', () => {
     render(<ModeToggle {...baseProps} />);
 
-    expect(screen.getByTestId('mode-earn')).toHaveTextContent(
-      `EARN (${GAME_CONFIG.economy.energy.costPerGame}`
-    );
+    expect(screen.getByTestId('mode-earn')).toHaveTextContent('EARN');
     expect(screen.getByTestId('mode-free')).toHaveTextContent('FREE PLAY');
   });
 
@@ -54,27 +68,48 @@ describe('ModeToggle', () => {
     expect(screen.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
   });
 
-  it('disables EARN at zero energy and keeps FREE PLAY available', () => {
-    render(<ModeToggle {...baseProps} mode="free" energy={0} />);
+  // --- The envelope never gates a mode (Constitution §8.6) -----------------
 
-    expect(screen.getByTestId('mode-earn')).toBeDisabled();
-    expect(screen.getByTestId('mode-free')).not.toBeDisabled();
+  it('keeps EARN enabled and selectable when the day is spent', () => {
+    // This is the rule the old build broke: EARN and ANOMALY were disabled
+    // at zero energy and Free Play was offered as the consolation. §8.6
+    // abolishes the second-class run - every mode stays available.
+    const onSelect = jest.fn();
+    render(<ModeToggle {...baseProps} charge={spent} onSelect={onSelect} />);
+
+    const earn = screen.getByTestId('mode-earn');
+    expect(earn).not.toBeDisabled();
+    fireEvent.click(earn);
+    expect(onSelect).toHaveBeenCalledWith('earn');
   });
 
-  it('shows the regen countdown on the zero-energy message', () => {
-    const in90s = new Date(Date.now() + 90_000).toISOString();
-    render(
-      <ModeToggle {...baseProps} mode="free" energy={0} energyRegenAt={in90s} />
-    );
+  it('explains the lean harvest without implying the run is blocked', () => {
+    render(<ModeToggle {...baseProps} charge={spent} />);
 
-    const message = screen.getByTestId('mode-out-of-energy');
-    expect(message).toHaveTextContent(/out of energy — keep practicing in free play/i);
-    expect(message).toHaveTextContent(/or wait 1:[0-3][0-9]/i); // ~1:30 MM:SS
+    const message = screen.getByTestId('mode-lean-harvest');
+    expect(message).toHaveTextContent(/this run still counts everywhere/i);
+    expect(message).toHaveTextContent(/lean harvest/i);
+    expect(message).toHaveTextContent(/00:00 UTC/);
+    // No language of permission, waiting, or exhaustion.
+    expect(message).not.toHaveTextContent(/out of energy/i);
+    expect(message).not.toHaveTextContent(/wait/i);
+    expect(message).not.toHaveTextContent(/cannot|can't|unavailable/i);
   });
 
-  it('omits the zero-energy message when energy is available', () => {
-    render(<ModeToggle {...baseProps} energy={2} />);
-    expect(screen.queryByTestId('mode-out-of-energy')).toBeNull();
+  it('omits the lean notice while charges remain', () => {
+    render(<ModeToggle {...baseProps} />);
+    expect(screen.queryByTestId('mode-lean-harvest')).toBeNull();
+  });
+
+  it('omits the lean notice in free mode, which is exempt anyway', () => {
+    render(<ModeToggle {...baseProps} mode="free" charge={spent} />);
+    expect(screen.queryByTestId('mode-lean-harvest')).toBeNull();
+  });
+
+  it('shows no envelope copy at all before the server has synced', () => {
+    render(<ModeToggle {...baseProps} charge={null} />);
+    expect(screen.queryByTestId('mode-lean-harvest')).toBeNull();
+    expect(screen.getByTestId('mode-earn')).not.toBeDisabled();
   });
 
   // --- Weekly Anomaly board (Design v2 §7.2) -------------------------------
@@ -106,11 +141,19 @@ describe('ModeToggle', () => {
     expect(hint).toHaveTextContent(/normal DNA, own leaderboard/);
   });
 
-  it('disables ANOMALY at zero energy (anomaly runs are earning runs)', () => {
+  it('keeps ANOMALY enabled when the day is spent', () => {
+    const onSelect = jest.fn();
     render(
-      <ModeToggle {...baseProps} mode="free" energy={0} anomalyName="Twin Exits" />
+      <ModeToggle
+        {...baseProps}
+        charge={spent}
+        onSelect={onSelect}
+        anomalyName="Twin Exits"
+      />
     );
-    expect(screen.getByTestId('mode-anomaly')).toBeDisabled();
-    expect(screen.getByTestId('mode-free')).not.toBeDisabled();
+    const chip = screen.getByTestId('mode-anomaly');
+    expect(chip).not.toBeDisabled();
+    fireEvent.click(chip);
+    expect(onSelect).toHaveBeenCalledWith('anomaly');
   });
 });

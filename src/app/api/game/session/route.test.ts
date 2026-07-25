@@ -2,6 +2,8 @@
  * Tests for Game Session API - Unit tests for business logic
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, it, expect } from '@jest/globals';
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
@@ -17,26 +19,42 @@ import {
 
 describe('Game Session Logic', () => {
   describe('Session Start', () => {
-    it('should require minimum energy to start', () => {
-      const playerEnergy = 1;
-      const requiredEnergy = GAME_CONFIG.economy.energy.costPerGame;
-
-      expect(playerEnergy >= requiredEnergy).toBe(true);
+    it('has no energy gate at all — every run starts (Constitution §8.6)', () => {
+      // Structural, not arithmetic: the route must contain no start check
+      // and no cost constant. "Energy never gates playing. Every run always
+      // starts, always Scores, always ranks, always counts."
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      expect(source).not.toMatch(/Not enough energy/);
+      expect(source).not.toMatch(/costPerGame/);
+      expect(source).not.toMatch(/player\.energy/);
+      expect(source).not.toMatch(/energy_regen_at/);
     });
 
-    it('should fail if no energy', () => {
-      const playerEnergy = 0;
-      const requiredEnergy = GAME_CONFIG.economy.energy.costPerGame;
-
-      expect(playerEnergy < requiredEnergy).toBe(true);
+    it('consumes a charge instead of deducting a balance', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      // One call, to the atomic server RPC wrapper - never an arithmetic
+      // read-modify-write on a column in this route.
+      expect(source).toMatch(/consumeRunCharge\(/);
+      expect(source).not.toMatch(/energy: newEnergy/);
     });
 
-    it('should deduct energy cost', () => {
-      const startEnergy = 5;
-      const cost = GAME_CONFIG.economy.energy.costPerGame;
-      const remainingEnergy = startEnergy - cost;
-
-      expect(remainingEnergy).toBe(4);
+    it('stamps how the run settles on the session row, at start', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      expect(source).toMatch(/charge_state: charge\.state/);
+      // The stamp is written after the session insert, so a failed insert
+      // can never burn a charge for a run that did not happen.
+      expect(source.indexOf('charge_state: charge.state')).toBeGreaterThan(
+        source.indexOf('.from(\'game_sessions\')')
+      );
     });
 
     it('should create session from the equipped snake', () => {
@@ -193,21 +211,24 @@ describe('Game Session Logic', () => {
 
   describe('Free Play (mode: free, Design v2 §7.4)', () => {
     const startedAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
-    // Mirrors the route's gate: free mode bypasses the energy check entirely
-    const canStart = (mode: string | undefined, energy: number) =>
-      mode === 'free' || energy >= GAME_CONFIG.economy.energy.costPerGame;
 
-    it('start bypasses the energy gate at zero energy', () => {
-      expect(canStart('free', 0)).toBe(true);
-      // Earning runs (no mode / any other mode) still require energy
-      expect(canStart(undefined, 0)).toBe(false);
-      expect(canStart('earn', 0)).toBe(false);
-      expect(canStart(undefined, 1)).toBe(true);
+    it('every mode starts — free play is no longer the zero-charge fallback', () => {
+      // The old gate made 'free' the only startable mode at zero energy.
+      // Free Play is now a deliberate choice, never a demotion.
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      const startAction = source.slice(
+        source.indexOf("if (action === 'start')"),
+        source.indexOf("if (action === 'end')")
+      );
+      expect(startAction).not.toMatch(/status: 400 \}[\s\S]{0,80}energy/i);
+      expect(startAction).not.toMatch(/isFreePlay &&[\s\S]{0,60}energy/i);
     });
 
-    it('start writes the session row with the free marker and skips deduction', () => {
+    it('start marks the free session and exempts it from the envelope', () => {
       const isFreePlay = true;
-      const player = { energy: 3, energy_regen_at: '2026-07-18T10:00:00.000Z' };
 
       const insertRow = {
         player_id: 'uuid-123',
@@ -216,16 +237,13 @@ describe('Game Session Logic', () => {
       };
       expect(insertRow.is_free_play).toBe(true);
 
-      // Free start returns the player's energy untouched (no deduction, no
-      // regen-timer change, no economy transaction)
-      const response = {
-        sessionId: 'session-1',
-        freePlay: true,
-        energy: player.energy,
-        energyRegenAt: player.energy_regen_at,
-      };
-      expect(response.energy).toBe(3);
-      expect(response.freePlay).toBe(true);
+      // Rewardless practice pays nothing, so it takes nothing: it consumes
+      // no charge and is stamped 'exempt'.
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      expect(source).toMatch(/rewardless: isFreePlay/);
     });
 
     it('earning start omits the free marker from the insert', () => {
@@ -372,10 +390,11 @@ describe('Game Session Logic', () => {
       expect(source.indexOf('total_dna_earned: newTotalDnaEarned')).toBeGreaterThan(freeReturn);
       expect(source.indexOf("source_type: 'game_reward'")).toBeGreaterThan(freeReturn);
       expect(source.indexOf('checkAchievements(')).toBeGreaterThan(freeReturn);
-      // And the free start skips the energy deduction + game_start transaction
-      const freeStartReturn = source.indexOf('if (isFreePlay) {');
-      expect(freeStartReturn).toBeGreaterThan(-1);
-      expect(source.indexOf("source_type: 'game_start'")).toBeGreaterThan(freeStartReturn);
+      // The free start writes no economy transaction at all. A charge is
+      // not a currency (§8.6), so nothing is logged to the ledger for it -
+      // the session row's charge_state IS the audit record.
+      expect(source).not.toMatch(/source_type: 'game_start'/);
+      expect(source).not.toMatch(/resource_type: 'energy'/);
     });
   });
 

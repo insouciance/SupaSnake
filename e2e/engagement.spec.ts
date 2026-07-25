@@ -65,16 +65,16 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await expect(page.getByRole('heading', { name: /choose your snake/i })).not.toBeVisible();
   });
 
-  test('game page shows the equipped snake name and energy', async () => {
+  test('game page shows the equipped snake name and the day\'s charges', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
-    // The cockpit exposes an accessible energy reading; the rollback layout
-    // retains its numeric EnergyTimer. Select the visible signal so a hidden
+    // The cockpit exposes an accessible charge reading; the rollback layout
+    // retains its numeric ChargeMeter. Select the visible signal so a hidden
     // responsive duplicate cannot mask the one the player actually sees.
-    const energyReadout = page.getByLabel(/^Energy \d+ of \d+$/i)
+    const chargeReadout = page.getByLabel(/^Charges \d+ of \d+$/i)
       .or(page.getByText(/^\d+\/\d+$/))
       .filter({ visible: true })
       .first();
-    await expect(energyReadout).toBeVisible();
+    await expect(chargeReadout).toBeVisible();
 
     // The one-click route has no second Play screen and remains held until
     // the player's deliberate first direction.

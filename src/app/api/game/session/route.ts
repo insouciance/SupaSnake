@@ -1,6 +1,13 @@
 /**
  * Game Session API - Start/End game sessions
- * Server authority: Energy deducted server-side, results validated
+ *
+ * Server authority: results validated and recomputed server-side; the daily
+ * charge is consumed and stamped server-side (Constitution §8.6).
+ *
+ * Energy never gates a run. There is no start check: every run starts,
+ * Scores, ranks and counts. The charge decides only the HARVEST - a charged
+ * or exempt run pays full Yield, a run that finds the day's allotment empty
+ * pays the lean factor.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -36,7 +43,19 @@ import {
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
-import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
+import * as Sentry from '@sentry/nextjs';
+import {
+  consumeRunCharge,
+  isMissingEnvelopeInfra,
+} from '@/lib/server/energyEnvelope';
+import {
+  applyHarvestFactor,
+  isChargeMeterVisible,
+  isChargeState,
+  NO_EXEMPTION,
+  type ChargeExemptionFacts,
+  type ChargeState,
+} from '@/shared/game/energyEnvelope';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
@@ -108,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     let { data: player, error: playerError } = await supabase
       .from('players')
-      .select('id, energy, dna, max_energy, energy_regen_at')
+      .select('id, dna, total_games_played')
       .eq('user_id', user.id)
       .single();
 
@@ -134,7 +153,7 @@ export async function POST(request: NextRequest) {
 
       ({ data: player, error: playerError } = await supabase
         .from('players')
-        .select('id, energy, dna, max_energy, energy_regen_at')
+        .select('id, dna, total_games_played')
         .eq('user_id', user.id)
         .single());
     }
@@ -149,14 +168,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Design v2 §7.4 Free Play: unlimited practice runs - no energy cost on
-    // start, no rewards of any kind on end. The session row is still written
-    // and validated (server authority unchanged) but marked is_free_play so
-    // contracts/leaderboards/economy reads exclude it.
+    // Design v2 §7.4 Free Play: unlimited rewardless practice runs. The
+    // session row is still written and validated (server authority
+    // unchanged) but marked is_free_play so contracts/leaderboards/economy
+    // reads exclude it. It pays nothing, so it takes nothing: exempt.
     const isFreePlay = mode === 'free';
 
     // Design v2 §7.2 Weekly Anomaly board: an anomaly run is an EARNING
-    // run (energy, DNA, contracts, streak) under the week's modifier
+    // run (charge, DNA, contracts, streak) under the week's modifier
     // ruleset that additionally scores on the anomaly leaderboard. The
     // anomaly itself is SERVER-DERIVED from the calendar (deterministic
     // rotation) and stamped on the session row - never client-asserted.
@@ -171,10 +190,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Free Play bypasses the energy gate - energy meters earning runs only
-      if (!isFreePlay && player.energy < GAME_CONFIG.economy.energy.costPerGame) {
-        return NextResponse.json({ error: 'Not enough energy' }, { status: 400 });
-      }
+      // NOTE: there is deliberately NO energy check here. Constitution §8.6:
+      // "Energy never gates playing. Every run always starts, always Scores,
+      // always ranks, always counts." A run with no charge left is not a
+      // second-class run - it is a full run with a lean harvest. Re-adding a
+      // start gate here is a constitutional violation, not a tuning change.
 
       if (!snake_id) {
         return NextResponse.json({ error: 'snake_id is required' }, { status: 400 });
@@ -402,14 +422,71 @@ export async function POST(request: NextRequest) {
             }
           : null;
 
-      // Free Play: no energy deduction, no regen-timer change, no economy
-      // transaction - the run costs nothing and pays nothing
+      // ---------------------------------------------------------------
+      // The daily harvest envelope (Constitution §8.6)
+      // ---------------------------------------------------------------
+      // Resolved AFTER the session row exists, so a failed insert can never
+      // burn a charge for a run that did not happen.
+      //
+      // Exemption is decided from SERVER facts only - the client's `mode`
+      // is a request, never a grant. Free Play is rewardless, so charging
+      // it would be a pure penalty for practising. The Signal objective run
+      // (§7.2, WP-1.03) and Serpent attempts (§7.3, WP-1.01) are exempt by
+      // §8.6 "the rituals are always full-fat"; neither system exists yet,
+      // so the server has no row to point at and grants no exemption for
+      // them - a client asking for mode 'signal' or 'serpent' today gets an
+      // ordinary charged run, not a free one.
+      const exemptionFacts: ChargeExemptionFacts = {
+        ...NO_EXEMPTION,
+        rewardless: isFreePlay,
+      };
+      const charge = await consumeRunCharge(
+        supabase,
+        player.id,
+        exemptionFacts
+      );
+
+      // Stamp how this run settles onto the session row. Separate,
+      // best-effort write in the established pattern of run_events/genome
+      // below: pre-migration-039 the column is missing and this fails
+      // non-fatally, leaving charge_state NULL - which settles the run at
+      // FULL strength. Every failure mode here favours the player.
+      const { error: chargeStampError } = await supabase
+        .from('game_sessions')
+        .update({ charge_state: charge.state })
+        .eq('id', session.id)
+        .eq('player_id', player.id);
+      if (chargeStampError && !isMissingEnvelopeInfra(chargeStampError)) {
+        console.error('Failed to stamp charge state on session:', {
+          playerId: player.id,
+          sessionId: session.id,
+          chargeState: charge.state,
+          error: chargeStampError,
+        });
+        Sentry.captureException(
+          new Error(`charge_state stamp failed: ${chargeStampError.message}`),
+          { extra: { playerId: player.id, sessionId: session.id } }
+        );
+      }
+
+      // No economy_transactions row: a charge is NOT a currency (§8.6, and
+      // §12.2's cap of one currency). The session row's charge_state is the
+      // audit record of what the envelope did.
+
+      // `visible` carries the §8.6 ramp so the HUD hides the meter for a
+      // player who has not met the game yet - the same rule /api/player
+      // applies, so the two never disagree mid-session.
+      const chargeBlock = {
+        state: charge.state,
+        ...charge.status,
+        visible: isChargeMeterVisible(player.total_games_played ?? 0),
+      };
+
       if (isFreePlay) {
         return NextResponse.json({
           sessionId: session.id,
           freePlay: true,
-          energy: player.energy,
-          energyRegenAt: player.energy_regen_at,
+          charge: chargeBlock,
           traits: snakeTraits,
           mutationPool,
           mastery: masteryInfo,
@@ -417,55 +494,9 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const newEnergy = player.energy - GAME_CONFIG.economy.energy.costPerGame;
-      const maxEnergy = player.max_energy || GAME_CONFIG.economy.energy.maxEnergy;
-
-      // Calculate the regen timer - start or preserve existing future timer
-      const newRegenAt = calculateNextRegenAfterConsume(
-        newEnergy,
-        maxEnergy,
-        player.energy_regen_at
-      );
-
-      const { error: energyUpdateError } = await supabase
-        .from('players')
-        .update({
-          energy: newEnergy,
-          energy_regen_at: newRegenAt,
-        })
-        .eq('id', player.id);
-
-      if (energyUpdateError) {
-        console.error('Failed to deduct energy on game start:', {
-          playerId: player.id,
-          sessionId: session.id,
-          error: energyUpdateError,
-        });
-        return NextResponse.json({ error: 'Failed to start game' }, { status: 500 });
-      }
-
-      const { error: startTxError } = await supabase.from('economy_transactions').insert({
-        player_id: player.id,
-        resource_type: 'energy',
-        amount: -GAME_CONFIG.economy.energy.costPerGame,
-        balance_after: newEnergy,
-        source_type: 'game_start',
-        source_id: session.id,
-      });
-
-      if (startTxError) {
-        // Audit log only - the energy deduction itself succeeded
-        console.error('Failed to log game_start energy transaction:', {
-          playerId: player.id,
-          sessionId: session.id,
-          error: startTxError,
-        });
-      }
-
       return NextResponse.json({
         sessionId: session.id,
-        energy: newEnergy,
-        energyRegenAt: newRegenAt,
+        charge: chargeBlock,
         traits: snakeTraits,
         mutationPool,
         mastery: masteryInfo,
@@ -500,7 +531,7 @@ export async function POST(request: NextRequest) {
       if (session.ended_at) {
         const { data: currentPlayer } = await supabase
           .from('players')
-          .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+          .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
           .eq('id', player.id)
           .single();
 
@@ -707,7 +738,25 @@ export async function POST(request: NextRequest) {
         console.error('DNA multiplier error:', multiplierError);
       }
 
-      const finalDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+      // ---------------------------------------------------------------
+      // Settlement against the envelope (Constitution §6.2, §8.6)
+      // ---------------------------------------------------------------
+      // Yield is the run's full-strength settled economic total and is
+      // CHARGE-INDEPENDENT by law (§6.2): Depth, Mastery and every record
+      // read this number. Only the DNA actually credited is scaled.
+      //
+      // The charge state comes from the SESSION ROW, stamped at start - not
+      // from the current ledger and never from the request. A run therefore
+      // settles exactly as it was launched, and a replayed 'end' cannot
+      // re-decide it. NULL (a run started before migration 039) settles at
+      // full strength: a deploy boundary must not cut a player's harvest.
+      const rawChargeState = (session as Record<string, unknown>).charge_state;
+      const chargeState: ChargeState = isChargeState(rawChargeState)
+        ? rawChargeState
+        : 'charged';
+
+      const yieldDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+      const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
       // input to rewards.
@@ -824,6 +873,30 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Yield (§6.2), recorded separately from what the run paid, and always
+      // at full strength. On a lean run dna_earned above is the fraction
+      // while this stays whole - which is what lets Depth (WP-1.01) and the
+      // records read the run's real worth without ever seeing the charge
+      // state. Best-effort in the migration-029 pattern: pre-039 the column
+      // is missing and this fails non-fatally, never touching the payout.
+      const { error: yieldCaptureError } = await supabase
+        .from('game_sessions')
+        .update({ yield_dna: yieldDna })
+        .eq('id', sessionId)
+        .eq('player_id', player.id);
+      if (yieldCaptureError && !isMissingEnvelopeInfra(yieldCaptureError)) {
+        console.error('Failed to record run yield:', {
+          playerId: player.id,
+          sessionId,
+          yieldDna,
+          error: yieldCaptureError,
+        });
+        Sentry.captureException(
+          new Error(`yield_dna capture failed: ${yieldCaptureError.message}`),
+          { extra: { playerId: player.id, sessionId } }
+        );
+      }
+
       // Identity (section 3.3): the game-over screen prompts a handle
       // claim without an extra fetch. Pre-022 the view is missing and
       // the field is simply omitted - current behavior, zero 500s.
@@ -844,7 +917,7 @@ export async function POST(request: NextRequest) {
       if (isFreeSession) {
         const { data: freePlayerState } = await supabase
           .from('players')
-          .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+          .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
           .eq('id', player.id)
           .single();
 
@@ -860,6 +933,10 @@ export async function POST(request: NextRequest) {
             genelessRawDna,
             score: validation.adjustedScore,
             extracted: validation.extracted,
+            // Yield is charge-independent (§6.2). Practice is exempt, so
+            // this is what the same run would have been worth.
+            yieldDna,
+            chargeState,
           },
           hypotheticalDna: finalDna,
           newAchievements: [],
@@ -968,7 +1045,7 @@ export async function POST(request: NextRequest) {
 
       const { data: updatedPlayer } = await supabase
         .from('players')
-        .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+        .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
         .eq('id', player.id)
         .single();
 
@@ -1166,6 +1243,11 @@ export async function POST(request: NextRequest) {
           genelessRawDna,
           score: validation.adjustedScore,
           extracted: validation.extracted,
+          // Yield (§6.2): full-strength, charge-independent. Equals
+          // adjustedDna on a charged/exempt run; on a lean run adjustedDna
+          // is the fraction actually credited and this is the run's worth.
+          yieldDna,
+          chargeState,
         },
         newAchievements,
         ...(identityInfo ? { identity: identityInfo } : {}),

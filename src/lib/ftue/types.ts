@@ -4,8 +4,6 @@ import type { Lineage } from '@/shared/game/lineage';
 export interface FtueBootstrapPlayer {
   id: string;
   dna: number;
-  energy: number;
-  maxEnergy: number;
   highScore: number;
   totalGamesPlayed: number;
 }

@@ -38,7 +38,7 @@ global.fetch = mockFetch;
 
 describe('useWalletSync', () => {
   const mockSetDnaBalance = jest.fn();
-  const mockSyncEnergyFromServer = jest.fn();
+  const mockSyncChargeFromServer = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -58,10 +58,8 @@ describe('useWalletSync', () => {
 
     mockUseGameStore.mockImplementation((selector: (state: unknown) => unknown) => {
       const state = {
-        energy: 5,
-        maxEnergy: 5,
-        energyRegenAt: null,
-        syncEnergyFromServer: mockSyncEnergyFromServer,
+        charge: null,
+        syncChargeFromServer: mockSyncChargeFromServer,
       };
       return selector(state);
     });
@@ -75,16 +73,14 @@ describe('useWalletSync', () => {
     // Mock fetch to resolve immediately for this test
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ player: { dna: 1000, energy: 5, energy_regen_at: null } }),
+      json: () => Promise.resolve({ player: { dna: 1000 }, charge: null }),
     });
 
     const { result } = renderHook(() => useWalletSync());
 
     // Check store values are accessible
     expect(result.current.dnaBalance).toBe(1000);
-    expect(result.current.energy).toBe(5);
-    expect(result.current.maxEnergy).toBe(5);
-    expect(result.current.energyRegenAt).toBeNull();
+    expect(result.current.charge).toBeNull();
     expect(result.current.error).toBeNull();
 
     // Wait for loading to complete
@@ -94,12 +90,17 @@ describe('useWalletSync', () => {
   });
 
   it('should fetch wallet data on mount when authenticated', async () => {
+    const charge = {
+      remaining: 3,
+      perDay: 6,
+      usedToday: 3,
+      day: '2026-07-25',
+      refillsAt: '2026-07-26T00:00:00.000Z',
+      visible: true,
+    };
     const mockResponse = {
-      player: {
-        dna: 1500,
-        energy: 3,
-        energy_regen_at: '2026-01-28T12:00:00Z',
-      },
+      player: { dna: 1500 },
+      charge,
     };
 
     mockFetch.mockResolvedValueOnce({
@@ -117,7 +118,9 @@ describe('useWalletSync', () => {
 
     await waitFor(() => {
       expect(mockSetDnaBalance).toHaveBeenCalledWith(1500);
-      expect(mockSyncEnergyFromServer).toHaveBeenCalledWith(3, '2026-01-28T12:00:00Z');
+      // The charge block is read from the TOP LEVEL of the response, not
+      // from `player` - it is derived state, not a stored balance.
+      expect(mockSyncChargeFromServer).toHaveBeenCalledWith(charge);
     });
   });
 
@@ -155,11 +158,8 @@ describe('useWalletSync', () => {
 
   it('should provide syncWallet function for manual sync', async () => {
     const mockResponse = {
-      player: {
-        dna: 2000,
-        energy: 4,
-        energy_regen_at: null,
-      },
+      player: { dna: 2000 },
+      charge: null,
     };
 
     mockFetch.mockResolvedValue({
@@ -195,21 +195,32 @@ describe('useWalletSync', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // Should not call setters if player is missing
+    // Should not set DNA if player is missing.
     expect(mockSetDnaBalance).not.toHaveBeenCalled();
-    expect(mockSyncEnergyFromServer).not.toHaveBeenCalled();
+    // The charge block is synced unconditionally: a response WITHOUT one
+    // means "no charge status", and the store must be cleared to null
+    // rather than left showing a stale allotment from a previous day.
+    expect(mockSyncChargeFromServer).toHaveBeenCalledWith(null);
   });
 
   it('should handle undefined dna in response', async () => {
+    const charge = {
+      remaining: 3,
+      perDay: 6,
+      usedToday: 3,
+      day: '2026-07-25',
+      refillsAt: '2026-07-26T00:00:00.000Z',
+      visible: true,
+    };
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ player: { energy: 3, energy_regen_at: null } }),
+      json: () => Promise.resolve({ player: {}, charge }),
     });
 
     renderHook(() => useWalletSync());
 
     await waitFor(() => {
-      expect(mockSyncEnergyFromServer).toHaveBeenCalledWith(3, null);
+      expect(mockSyncChargeFromServer).toHaveBeenCalledWith(charge);
     });
 
     // DNA setter should not be called if undefined
@@ -219,7 +230,7 @@ describe('useWalletSync', () => {
   describe('visibility change handling (handleVisibilityChange)', () => {
     it('should sync wallet when tab becomes visible', async () => {
       const mockResponse = {
-        player: { dna: 1500, energy: 3, energy_regen_at: null },
+        player: { dna: 1500 },
       };
 
       mockFetch.mockResolvedValue({
@@ -252,7 +263,7 @@ describe('useWalletSync', () => {
 
     it('should not sync when tab becomes hidden', async () => {
       const mockResponse = {
-        player: { dna: 1500, energy: 3, energy_regen_at: null },
+        player: { dna: 1500 },
       };
 
       mockFetch.mockResolvedValue({

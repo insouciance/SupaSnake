@@ -3,7 +3,7 @@
 /**
  * Snake Lab - Collection Browser
  * Integrates all Collection UI components for the complete Lab experience.
- * Uses useCollection hook for state management + gameStore for energy.
+ * Uses useCollection hook for state management + gameStore for charges.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -146,9 +146,8 @@ export default function LabPage() {
   const [isUpdatingLineage, setIsUpdatingLineage] = useState(false);
   const [isLaunchingSnake, setIsLaunchingSnake] = useState(false);
 
-  // Get energy from game store
-  const energy = useGameStore((state) => state.energy);
-  const maxEnergy = useGameStore((state) => state.maxEnergy);
+  // The day's charge status from the game store (server-synced, §8.6)
+  const charge = useGameStore((state) => state.charge);
 
   // Get active dynasty object for modals
   const activeDynasty = dynasties.find((d) => d.id === activeDynastyId);
@@ -419,11 +418,10 @@ export default function LabPage() {
       {/* Global navigation rail (right edge desktop / bottom mobile) */}
       <Navigation />
 
-      {/* Header with energy and DNA */}
+      {/* Header with charges and DNA */}
       <div className="pt-4 animate-fade-up">
         <LabHeader
-          energy={energy}
-          maxEnergy={maxEnergy}
+          charge={charge}
           dna={dnaBalance}
           codexUnlocked={codexUnlocked}
         />

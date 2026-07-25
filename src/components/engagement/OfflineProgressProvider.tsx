@@ -6,16 +6,13 @@
  * Wraps the app to publish offline progress into the player-pulled inbox.
  * Uses useOfflineProgress hook internally.
  *
- * SupaSnake Premium: the daily +3 energy stipend rides the Welcome Back
- * claim - one tap collects offline rewards AND today's stipend (each
- * server-idempotent on its own).
+ * The premium energy stipend that used to ride this claim is gone
+ * (Constitution §8.6: Energy is never sold, gifted or stipended). This
+ * provider now publishes and claims passive DNA only.
  */
 
 import { ReactNode, useEffect, useState } from 'react';
 import { useOfflineProgress } from '@/hooks/useOfflineProgress';
-import { useAuth } from '@/lib/auth/AuthProvider';
-import { usePremiumStore } from '@/lib/stores/premiumStore';
-import { PREMIUM_CONFIG } from '@/shared/config/premium';
 import { WelcomeBackModal } from './WelcomeBackModal';
 import {
   NOTIFICATION_TARGETS,
@@ -37,9 +34,6 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
     dismissModal,
   } = useOfflineProgress();
 
-  const { session, isAuthenticated } = useAuth();
-  const { isPremium, stipendClaimedToday, fetchStatus, claimStipend } =
-    usePremiumStore();
   const publish = useNotificationStore((state) => state.publish);
   const clear = useNotificationStore((state) => state.clear);
   const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
@@ -67,7 +61,6 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
     }
     const rewardParts = [
       progress.passiveDnaEarned > 0 ? `${progress.passiveDnaEarned} DNA` : null,
-      progress.energyRestored > 0 ? `${progress.energyRestored} energy` : null,
     ].filter(Boolean);
     publish({
       id: 'offline-rewards',
@@ -90,13 +83,6 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
     publish,
   ]);
 
-  useEffect(() => {
-    if (isAuthenticated && session?.access_token) {
-      fetchStatus(session.access_token);
-    }
-  }, [isAuthenticated, session?.access_token, fetchStatus]);
-
-  const stipendAvailable = isPremium && !stipendClaimedToday;
 
   const clearHash = () => {
     if (window.location.hash === '#offline-rewards') {
@@ -108,10 +94,6 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
   const handleClaim = async () => {
     const claimed = await claimRewards();
     if (!claimed) return;
-    if (stipendAvailable && session?.access_token) {
-      // Fire-and-forget: the RPC is idempotent per UTC day
-      void claimStipend(session.access_token);
-    }
     clear('offline-rewards');
     clearHash();
   };
@@ -131,7 +113,6 @@ export function OfflineProgressProvider({ children }: OfflineProgressProviderPro
         onClaim={handleClaim}
         onDismiss={handleDismiss}
         isLoading={isLoading}
-        stipendEnergy={stipendAvailable ? PREMIUM_CONFIG.stipendEnergyPerDay : null}
       />
     </>
   );

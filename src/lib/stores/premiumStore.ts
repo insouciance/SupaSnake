@@ -24,19 +24,14 @@ interface PremiumState {
   billingInterval: 'month' | 'year' | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
-  stipendClaimedToday: boolean;
   currentDrop: PremiumDrop | null;
 
   // UI state
   isLoading: boolean;
-  isClaimingStipend: boolean;
   error: string | null;
 
   // Actions
   fetchStatus: (accessToken: string) => Promise<void>;
-  claimStipend: (
-    accessToken: string
-  ) => Promise<{ success: boolean; energy?: number; dropGranted?: string | null }>;
   reset: () => void;
 }
 
@@ -47,10 +42,8 @@ export const initialState = {
   billingInterval: null as 'month' | 'year' | null,
   currentPeriodEnd: null as string | null,
   cancelAtPeriodEnd: false,
-  stipendClaimedToday: false,
   currentDrop: null as PremiumDrop | null,
   isLoading: false,
-  isClaimingStipend: false,
   error: null as string | null,
 };
 
@@ -74,7 +67,6 @@ export const usePremiumStore = create<PremiumState>((set) => ({
         billingInterval: data.billingInterval ?? null,
         currentPeriodEnd: data.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: data.cancelAtPeriodEnd === true,
-        stipendClaimedToday: data.stipendClaimedToday === true,
         currentDrop: data.currentDrop ?? null,
         isLoading: false,
       });
@@ -83,44 +75,6 @@ export const usePremiumStore = create<PremiumState>((set) => ({
         isLoading: false,
         error: err instanceof Error ? err.message : 'Failed to load premium status',
       });
-    }
-  },
-
-  claimStipend: async (accessToken) => {
-    set({ isClaimingStipend: true, error: null });
-    try {
-      const response = await fetch('/api/premium/claim-stipend', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        // already_claimed just means another tab/session got there first
-        if (data.error === 'already_claimed') {
-          set({ stipendClaimedToday: true, isClaimingStipend: false });
-          return { success: false };
-        }
-        throw new Error(data.error || 'Failed to claim stipend');
-      }
-      set((state) => ({
-        stipendClaimedToday: true,
-        isClaimingStipend: false,
-        currentDrop:
-          data.dropGranted && state.currentDrop
-            ? { ...state.currentDrop, claimed: true }
-            : state.currentDrop,
-      }));
-      return {
-        success: true,
-        energy: typeof data.energy === 'number' ? data.energy : undefined,
-        dropGranted: data.dropGranted ?? null,
-      };
-    } catch (err) {
-      set({
-        isClaimingStipend: false,
-        error: err instanceof Error ? err.message : 'Failed to claim stipend',
-      });
-      return { success: false };
     }
   },
 

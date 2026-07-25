@@ -10,7 +10,7 @@
 
 import Image from 'next/image';
 import { formatOfflineDuration, type OfflineProgress } from '@/lib/progression/offlineProgress';
-import { IconBolt, IconDna } from '@/components/ui/icons';
+import { IconDna } from '@/components/ui/icons';
 
 interface WelcomeBackModalProps {
   /** Whether to show the modal */
@@ -23,11 +23,6 @@ interface WelcomeBackModalProps {
   onDismiss: () => void;
   /** Whether claim is in progress */
   isLoading?: boolean;
-  /**
-   * SupaSnake Premium daily stipend rides the claim (migration 028):
-   * when set, an extra reward row renders and onClaim also claims it.
-   */
-  stipendEnergy?: number | null;
 }
 
 interface RewardRowProps {
@@ -54,7 +49,6 @@ export function WelcomeBackModal({
   onClaim,
   onDismiss,
   isLoading = false,
-  stipendEnergy = null,
 }: WelcomeBackModalProps) {
   // Don't render if not visible or no progress data
   if (!isVisible || !progress) {
@@ -96,23 +90,15 @@ export function WelcomeBackModal({
 
         {/* Rewards list */}
         <div className="space-y-3 mb-6">
-          <RewardRow
-            icon={<IconBolt size={22} className="text-cyber" />}
-            label="Energy Restored"
-            value={`+${progress.energyRestored}`}
-          />
+          {/* Energy is not restored by time away and is not stipended
+              (Constitution §8.6): the day's charges refill at 00:00 UTC for
+              everyone, so there is nothing here to award. Passive DNA is
+              the whole of the offline claim now. */}
           <RewardRow
             icon={<IconDna size={22} className="text-rarity-uncommon" />}
             label="DNA Gathered"
             value={`+${progress.passiveDnaEarned}`}
           />
-          {stipendEnergy != null && stipendEnergy > 0 && (
-            <RewardRow
-              icon={<IconBolt size={22} className="text-amber-300" />}
-              label="Premium Daily Stipend"
-              value={`+${stipendEnergy}`}
-            />
-          )}
         </div>
 
         {/* Action buttons */}

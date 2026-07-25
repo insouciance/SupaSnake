@@ -689,8 +689,9 @@ export default function TrainingPage() {
     isFirstMovementPrompt: false,
     score: snapshot.progress,
     dna: 0,
-    energy: 0,
-    maxEnergy: 0,
+    // Training never touches the envelope (§5: its rewardless contract),
+    // so it reports no charge status and the readout does not render.
+    charge: null,
     bankDna: 0,
     crashDna: 0,
     comboMultiplier: 1,
