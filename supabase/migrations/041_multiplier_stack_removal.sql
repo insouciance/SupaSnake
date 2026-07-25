@@ -1,4 +1,4 @@
--- Migration 040: The account multiplier stack, deleted
+-- Migration 041: The account multiplier stack, deleted
 --
 -- Constitution §8.5 ("Deleted jobs: passive attendance income, set bonuses,
 -- global streak multipliers, clan-duel multipliers"), Rule 8 (clans never
