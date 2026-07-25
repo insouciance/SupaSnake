@@ -93,13 +93,13 @@ before merging anything.
 | WP | Track | Status | Branch |
 |---|---|---|---|
 | 0.00 Baseline & rails | A+B | **merged** | `wp/0-00-baseline-rails` |
-| 0.01 Energy envelope | A | in flight | `wp/0-01-energy-envelope` |
-| 0.02 Multiplier stack removal | A | queued | |
+| 0.01 Energy envelope | A | **merged** | `wp/0-01-energy-envelope` |
+| 0.02 Multiplier stack removal | A | in flight | `wp/0-02-multiplier-removal` |
 | 0.03 Faucet & dead-config purge | A | queued | |
 | 0.04 Achievements → Records | A | queued | |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
 | 0.06 Session lifecycle & cohorts | A | queued | |
-| 0.07 Aim universalization | B | queued | |
+| 0.07 Aim universalization | B | in flight | `wp/0-07-aim-universalization` |
 | 0.08 Growth hygiene bundle | B | in flight | `wp/0-08-growth-hygiene` |
 | 0.09 Commerce removal & premium truth | A | queued | |
 | 0.10 `verify:constitution` v1 | B | **merged** | `wp/0-10-verify-constitution` |
@@ -190,6 +190,69 @@ nothing from the module it named — it re-declared `getSkillBracket` and the
 bracket tables inline and asserted against its own copies. Its entire subject was
 deleted by this WP; 62 real tests replace it.
 
+#### WP-0.01 · Energy envelope · **merged** (migration 039)
+
+Energy stops being a **stock** and becomes a **derived day-scoped allotment**. Two
+columns — `players.charges_day` (a UTC date) and `players.charges_used` (a counter)
+— and one rule: `remaining = chargesPerDay − (charges_day == today ? charges_used :
+0)`. **A stale date *is* the refill.** No cron, no timer, no drip, nothing that can
+fail to run and leave a player short.
+
+That shape is why the acceptance criterion is structurally true rather than
+audited: **there is no balance to credit, so "grant a charge" is not an operation
+the schema supports.** §10.4 is enforced by the data model, not by reviewing eight
+faucets. The old model had eight faucets and two independent clocks writing one
+integer (GT §9.1–9.2); both defects die with the system rather than being patched.
+
+- **No run-start gate anywhere** — the server 400, both divergent client gates, the
+  `ModeToggle` disabling of EARN/ANOMALY, the silent auto-demotion to Free Play, and
+  the launch `retry-as-free` path are all gone. An empty day changes what a run
+  *harvests*, never what a player may do.
+- **Lean settlement.** `Yield = adjustedDna × accountMultiplier` is recorded
+  full-strength on `game_sessions.yield_dna`; credited DNA is `Yield ×
+  chargeFactor`. Charge state is stamped on the session row **at start** from server
+  facts, so a replayed `end` cannot re-decide it, and a pre-migration row settles
+  full-strength. Mastery XP already ran off the full fold — untouched, per §8.6.
+- **"Lean, never zero" is enforced in code:** `applyHarvestFactor` floors to a
+  minimum of 1 on any positive Yield. Naive flooring pays 0 for any Yield under 4.
+- **Exemptions are closed by default.** They require a server-resolved id
+  (`signalObjectiveRunId` / `serpentWeekId`), so a client sending `mode: 'serpent'`
+  gets an ordinary charged run. WP-1.01/1.03 populate the facts.
+- **Failure directions favour the player:** if the ledger RPC errors or migration
+  039 has not been applied, the run settles **charged** (full), never lean. A server
+  fault must not quietly cut a harvest to a quarter.
+- Dials match §8.6 exactly: 6 charges/day, 0.25 lean factor, meter hidden until 4
+  banked runs — all marked `[H]` in `GAME_CONFIG`.
+- **Deleted:** `energyRegen.ts`, the `claim-stipend` route, the offline energy
+  restore, `stipendEnergyPerDay`, `claimStipend`, and `claim_premium_stipend`.
+
+**Orchestrator audit:** tsc clean · lint clean · **246 suites / 2992 tests** ·
+`verify:constitution` PASS, with known findings dropping **41 → 34** as a
+cross-check between this WP and WP-0.10's gates. Migration 039 adds columns only
+and writes no player row; `consume_run_charge` is `SECURITY DEFINER` with pinned
+`search_path`, revoked from `PUBLIC`/`anon`/`authenticated`, granted only to
+`service_role`; explicit down-note present. R11 verified. I independently confirmed
+no commerce or premium module can reach the charge ledger — `charges_used` /
+`consume_run_charge` appear in exactly one module plus its tests and the migration.
+
+*On the rewritten tests:* 18 suites asserted the behaviour this WP removes. I
+spot-checked the largest rewrite (`ModeToggle.test.tsx`) and the new assertions are
+**stricter** than the ones they replace — they assert the copy must *not* say "out
+of energy", "wait", or "cannot", which the old tests never checked. Not a weakening.
+
+*Retained deliberately:* `players.energy`/`max_energy`/`energy_regen_at` are marked
+deprecated but neither dropped nor zeroed — they record something players paid for
+(R6), and dropping them would force rewriting five RPCs owned by WP-0.03/0.09.
+`premium_stipend_claims` is kept for the same reason; only the function is dropped.
+
+**Cross-boundary edit, accepted:** this WP removed the **Energy Packs storefront
+section** and the energy line from two bundle descriptions in `src/lib/stripe/products.ts`,
+which is WP-0.09's file. Its change made those SKUs undeliverable, and a listing
+charging €4.99 for a good that no longer exists is a false claim. I agree with the
+call — a work-package boundary is not worth shipping a false price. Stripe is in
+test mode and nothing settled. **WP-0.09 has been briefed that `products.ts` is
+already partly cleared and `rewards.energy` data is left for it to delete.**
+
 #### WP-0.10 · `verify:constitution` v1 · **merged**
 
 `scripts/verify-constitution.mjs` (Node ESM, no new dependencies), the
@@ -274,9 +337,31 @@ gate covers both folds in `rulesets.ts` and the engine mirror. But
 `sanitizeCosmicClaim` in `src/lib/server/gameValidator.ts` is the one server path
 that can raise a score *above* the fold (the clamped COSMIC combo), and it is
 covered by unit tests only, not by the static gate. *Recommendation:* extend the
-gate to assert the clamp's bound in WP-0.01, which already owns that file — I have
-briefed it. Accepting the test-only coverage in the meantime is defensible; the
-clamp is bounded-trust and server-side.
+gate to assert the clamp's bound. **Still open** — WP-0.01 was already in flight
+when this was raised, so it did not pick it up; re-routed to WP-0.06, the next
+Track A package that touches server validation. Accepting test-only coverage in the
+meantime is defensible; the clamp is bounded-trust and server-side.
+
+**P-5 · Free Play still exists, and §8.6 says it should not** (WP-0.01). §8.6 lists
+"Free Play as a second-class mode" among what stays dead, because the whole point of
+the envelope is that there is no second-class run. But §12.2 caps game modes at
+**4** and names them Run, Signal, Serpent, **Training** — and the shipped product has
+*both* Free Play and the Training Lab. After WP-0.01, Free Play consumes no charge
+and is stamped `exempt`, so it is no longer a scarcity escape hatch; it is now
+simply a second rewardless practice mode sitting next to Training.
+
+- *Option A:* collapse Free Play into the Training Lab. One rewardless practice
+  mode, matching §12.2's named four exactly, and §8.6's "Free Play stays dead" is
+  satisfied literally.
+- *Option B:* keep Free Play as the zero-friction "just play" entry and treat
+  Training as the structured-drills surface, accepting that §12.2's mode list names
+  Training but not Free Play.
+
+*Recommendation: Option A*, collapsing Free Play into Training — it is the only
+reading under which the mode cap and §8.6 are both literally true, and the Training
+Lab's rewardless contract (§5, protected) already covers the use case. **This needs
+an owner ruling**; it is a §12.2 cap question, so it was not decided in a branch.
+Nothing is blocked meanwhile — Free Play is exempt and harmless as it stands.
 
 **P-3 · Baseline entries protect by count, not identity** (WP-0.10). A whole-file
 baseline entry with `max: 6` blocks a seventh violation but would accept a
@@ -309,6 +394,10 @@ gate is a backstop, and R3/R4 remain reviewer reads on the checklist.
 | F-10 | `record_daily_play` (`009:347`) resets a broken streak **to 1**. Rule 5 allows the loss of exactly one tier, never a reset to zero. | WP-1.04 (owns Take streak) |
 | F-11 | Unchecked Supabase errors and missing energy audit rows in `src/app/api/achievements/route.ts:184-192` and `src/app/api/player/claim-offline/route.ts:107-121` (R11). WP-0.01 deletes the latter outright. | WP-0.04 / WP-0.01 |
 | F-12 | `SnakeGameLogic.ts:2210-2226` calls `Math.random()` directly, bypassing the injected `this.rng` — breaks replay determinism, which challenge links depend on. | WP-1.08 (challenge links) |
+| F-13 | **Flaky test:** `SnakeGameLogic.traits.test.ts` "Iron Scales" fails roughly 1 run in 20. `marchIntoWall` never places food, so the random spawn sometimes lands in the snake's path and the length assertion fails. Measured 1/20 on the WP-0.01 tree vs 0/20 on the clean base — statistically indistinguishable, and the mechanism is plainly `Math.random`. Fix: place food off-path in the helper. Same root cause as F-12. | WP-1.08 / owner |
+| F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
+| F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
+| F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
 
 ## Owner to-do list
 
