@@ -577,6 +577,17 @@ a full test suite, and that suite took **1447s instead of ~25s**. Both packages 
 relaunched with fresh agents per the retry protocol, and concurrency is now capped
 at **two** subagents with no full-suite run while they work.
 
+**I-1b · WP-0.09 failed a second time**, this run to an API connection error rather
+than a stall — but it left **real uncommitted work** on three files
+(`products.ts`, `checkout/route.ts`, `webhook/stripe/route.ts`: both SKU groups
+deleted, `StoreProductType` narrowed, `ALL_PRODUCTS` emptied), not compiling because
+its consumers had not been updated yet. Per the resume rule — never respawn a
+duplicate against a branch showing real progress — the orchestrator committed the
+work as an explicitly-labelled WIP checkpoint (`50ad44d`) so a third failure cannot
+lose it, and dispatched a fresh subagent to **finish** the branch rather than
+restart it. Two infrastructure failures on one WP; neither was a work-quality
+failure, so this is logged rather than escalated as a blocked package.
+
 **I-2 · A cross-work-package test failure that neither WP could have caught.**
 WP-0.02 and WP-0.08 both edited `src/lib/share/genomeCardImage.test.ts`, on separate
 hunks, so git merged them without conflict and each branch was green on its own. But
