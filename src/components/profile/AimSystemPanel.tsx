@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * AimSystemPanel - Settings mirror of the in-game aim system picker.
- * Fetches the stored selection + unlock stats from /api/player and PATCHes
- * on change (optimistic with rollback; the server re-validates unlocks).
+ * AimSystemPanel - Settings mirror of the Run Setup aim system picker.
+ * Fetches the stored selection from /api/player and PATCHes on change
+ * (optimistic with rollback). No unlock state is fetched or checked: all
+ * four systems are settings from run 1 (Constitution §6.1).
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -12,14 +13,12 @@ import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import {
   DEFAULT_AIM_SYSTEM,
   isAimSystemId,
-  type AimStats,
   type AimSystemId,
 } from '@/lib/game/aimSystems';
 
 export function AimSystemPanel() {
   const { session } = useAuth();
   const [selected, setSelected] = useState<AimSystemId>(DEFAULT_AIM_SYSTEM);
-  const [stats, setStats] = useState<AimStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,7 +32,6 @@ export function AimSystemPanel() {
       .then((data) => {
         if (cancelled) return;
         if (isAimSystemId(data.aimSystem)) setSelected(data.aimSystem);
-        if (data.aimStats) setStats(data.aimStats);
       })
       .catch((err) => console.error('Failed to load aim system:', err));
 
@@ -72,12 +70,11 @@ export function AimSystemPanel() {
     <div className="panel-elevated p-6 animate-fade-up">
       <h2 className="heading-display text-xl text-bone-white mb-1">Aim System</h2>
       <p className="text-beige text-sm font-body mb-4">
-        Choose how the game telegraphs your snake&apos;s path. New systems
-        unlock as you play.
+        Choose how the game telegraphs your snake&apos;s path. All four are
+        available from your first run — pick whichever you read fastest.
       </p>
       <AimSystemSelector
         selected={selected}
-        stats={stats}
         onSelect={handleSelect}
         layout="list"
       />

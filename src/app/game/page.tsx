@@ -131,7 +131,7 @@ import {
   buildGenomeCardModel,
   type GenomeCardModel,
 } from '@/lib/share/genomeCardImage';
-import { isAimSystemId, type AimStats, type AimSystemId } from '@/lib/game/aimSystems';
+import { isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import {
   IconBolt,
   IconDna,
@@ -316,7 +316,6 @@ export default function GamePage() {
   const [equippedSnake, setEquippedSnake] = useState<EquippedSnakeView | null>(null);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
-  const [aimStats, setAimStats] = useState<AimStats | null>(null);
   const [streakInfo, setStreakInfo] = useState<{
     current: number;
     longest: number;
@@ -602,12 +601,10 @@ export default function GamePage() {
           );
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
-        // Aim system meta-progression: server-stored selection + unlock stats
+        // Aim system: the server-stored preference. No unlock stats - all
+        // four systems are settings from run 1 (Constitution §6.1).
         if (isAimSystemId(data.aimSystem)) {
           setAimSystem(data.aimSystem);
-        }
-        if (data.aimStats) {
-          setAimStats(data.aimStats);
         }
         if (data.genomeFtue) {
           setGenomeFtue(sanitizeGenomeFtue(data.genomeFtue));
@@ -1682,8 +1679,8 @@ export default function GamePage() {
     return result;
   }, [awaitingResumeInput, releaseResumeGate, setReady, startGameLoop]);
 
-  // Select an aim system - optimistic with rollback; the server re-checks
-  // the unlock predicate (403 on a locked pick)
+  // Select an aim system - optimistic with rollback. Nothing to authorize:
+  // the server validates the id only (§6.1, §15 overturn 10).
   const handleSelectAimSystem = useCallback(async (id: AimSystemId) => {
     const previous = useGameStore.getState().aimSystem;
     if (id === previous) return;
@@ -2640,13 +2637,13 @@ export default function GamePage() {
               gameMode === 'anomaly' &&
               anomalyBoard?.live && <AnomalyPanel board={anomalyBoard} />}
 
-            {/* Aim system picker - locked chips show their unlock path */}
+            {/* Aim system picker - all four selectable from run 1 (§6.1).
+                One control on the setup page; it adds no required tap. */}
             {!noSnakeAvailable && (
               <div className="space-y-2">
                 <p className="label-arcade">Aim System</p>
                 <AimSystemSelector
                   selected={aimSystem}
-                  stats={aimStats}
                   onSelect={handleSelectAimSystem}
                 />
               </div>
