@@ -95,7 +95,7 @@ before merging anything.
 | 0.00 Baseline & rails | A+B | **merged** | `wp/0-00-baseline-rails` |
 | 0.01 Energy envelope | A | **merged** | `wp/0-01-energy-envelope` |
 | 0.02 Multiplier stack removal | A | **merged** | `wp/0-02-multiplier-removal` |
-| 0.03 Faucet & dead-config purge | A | in flight | `wp/0-03-faucet-purge` |
+| 0.03 Faucet & dead-config purge | A | **merged** | `wp/0-03-faucet-purge` |
 | 0.04 Achievements → Records | A | **merged** | `wp/0-04-achievements-to-records` |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
 | 0.06 Session lifecycle & cohorts | A | in flight | `wp/0-06-session-lifecycle` |
@@ -189,6 +189,53 @@ verified (every Supabase `error` checked and reported to Sentry) · scope held.
 nothing from the module it named — it re-declared `getSkillBracket` and the
 bracket tables inline and asserted against its own copies. Its entire subject was
 deleted by this WP; 62 real tests replace it.
+
+#### WP-0.03 · Faucet & dead-config purge · **merged** (migration 044)
+
+One migration stating one rule and applying it everywhere: **delete mechanisms and
+pure configuration; preserve player-owned rows unless a row is provably redundant
+with a surviving audit record.** One transaction, two `ON COMMIT DROP` snapshots
+taken before anything is destroyed, and **eight `RAISE EXCEPTION` preservation
+guards** — no DNA moved, frozen stock unwritten, no player row lost, audit grown
+only by the backfill, contract and season claim history intact, no orphaned board
+row, and two refusals to treat a *live* purse as dead config.
+
+Removed: `/api/daily-rewards` and `claim_daily_reward`; `claim_clan_energy_bonus`
+(F-14, an orphan energy faucet with no caller); the clan bonus panel, its dead
+Claim button and both copy lines promising "+1 energy every 6 hours"; six inactive
+contract rows; contract `reward_energy` (with the three contract RPCs re-declared
+without it); the battle-pass DNA/energy reward types; `CLAN_LIMITS.minMembers: 20`;
+and the entire GT §10 dead-config table, walked item by item in the PR.
+
+**`daily_logins` is the one player-scoped table dropped**, and only after the
+migration *proves* every claim has an `economy_transactions` receipt — backfilling
+the missing ones first, labelled `reconstructed: true` rather than passed off as
+historical. It aborts rather than drop a table that is the only record of a grant.
+That is also the retroactive F-15 fix.
+
+**Ruling on `players.energy` / `max_energy` / `energy_regen_at`: they stay**,
+re-commented from *DEPRECATED* to *FROZEN* — "deprecated invites removal, frozen
+states a decision." The reasoning is sound and I accept it: `DROP COLUMN` is
+exactly the irreversible confiscation R6 forbids, against the only per-player
+record of a resource that was purchasable while the SKUs existed. Dropping them
+would additionally have required rewriting five `SECURITY DEFINER` functions
+including `handle_new_user`, the **signup trigger**, with no database available to
+test against — a signup outage wagered against tidiness. The *mechanism* is
+entirely gone: all five faucets migration 039 named are removed, and
+`bootstrap_player`/`handle_new_user` no longer seed the columns. Zero writers, zero
+readers. `player_daily_state` and `clan_members.last_clan_bonus_at` kept on the
+same rule. F-16 closed: `bootstrap_player` no longer returns `energy`/`maxEnergy`.
+
+Also deleted `src/shared/config/game.ts.template`, an unreferenced sibling carrying
+a *staler* copy of four GT §10 entries — removing only the live file would have
+left the dead numbers one directory listing away. Good instinct.
+
+**Orchestrator audit:** tsc clean · lint clean · **3207 tests** ·
+`verify:constitution` PASS. The subagent honestly reported one failure it could not
+reproduce on a loaded machine and declined to omit it; I ran the full suite **three
+times** and got 3207/3207 each time, so it is recorded as load-induced and
+unconfirmed rather than dismissed. *Orchestrator fixup:* three stale "migration 042"
+comments in `contracts/route.ts` corrected to 043 after the renumber.
 
 #### WP-0.02 · Multiplier stack removal · **merged** (migration 041)
 
@@ -513,6 +560,27 @@ baseline entry with `max: 6` blocks a seventh violation but would accept a
 deletion by WP-0.01/0.09, so the window is short. *Recommendation:* accept, and
 delete the baseline entries as those WPs land rather than hardening the mechanism.
 
+**P-6 · `/api/player/claim-offline` is still a live DNA faucet, and no work package
+owns it** (found by WP-0.03). WP-0.01 stripped its energy restore, but the passive
+DNA grant survives: **1 DNA per snake per hour, capped at 24h, claimed on a
+wall-clock timer.** §12.2 says the Daily Take's collect (WP-1.04) is to be the
+game's **only** claim, and §8.6's whole argument is that the day's shape comes from
+charges, not from a second timer running while the player is away. This is the last
+faucet standing.
+
+- *Option A:* delete it in Phase 1 alongside WP-1.04, so the Daily Take is
+  literally the only claim, exactly as §12.2 says.
+- *Option B:* keep it as a deliberate returning-player courtesy, and amend §12.2 to
+  name two claims.
+
+*Recommendation: Option A.* The Daily Take already does this job better — it is the
+designed return ritual, it has a streak with one-tier cooling, and it pays on a run
+rather than on absence. Paying a player for being away is the shape §8.6 was written
+to remove. **Not decided in a branch** — it is a §12.2 cap question and needs the
+owner. Meanwhile WP-0.03 pinned it into the "no second claim endpoint" test as the
+single named exception, so **the list can only shrink**: nothing new can join it
+while it waits for a ruling. Nothing is blocked.
+
 **P-4 · The energy-commerce gate approximates reachability** (WP-0.10). A ±12-line
 proximity window stands in for a call graph, so a grant separated from its
 purchase caller by an indirection is not caught. *Recommendation:* accept — the
@@ -559,11 +627,12 @@ GT-refresh after the phase gate.
 |---|---|---|
 | §3.1 multiplier stack | WP-0.02 | settled payout is raw fold × outcome multiplier only; `clan_duel_bonus` dropped |
 | §3.3, §9.1, §9.2 energy, dual clocks, destruction | WP-0.01 | Energy is a derived day-scoped allotment; one refill authority; no stock to destroy |
-| §7, §10 commerce and dead config | WP-0.09 (SKUs) + WP-0.03 (in flight) | catalogue empty; `grant_purchase_rewards` dropped; premium is billing plumbing only |
+| §7, §10 commerce and dead config | WP-0.09 + WP-0.03 | catalogue empty; `grant_purchase_rewards` dropped; premium is billing plumbing only; the GT §10 dead-config table is grep-clean |
 | §8 growth surfaces | WP-0.08 | share URL fixed; icons, OG, robots, sitemap, `/play`, waitlist and funnel events ship |
 | §9.3 leaderboard | WP-0.05 | eligibility enforced; brackets deleted; `myRank` join fixed |
 | §9.4 aim gating | WP-0.07 | all four aim systems are settings from run 1; unlock predicates are Chronicle trivia |
 | §9.5 achievements | WP-0.04 | mechanism retired into Legacy Records; `refresh_player_records` now monotonic |
+| §9.7, §9.8 clan bonus, faucets | WP-0.03 | clan energy bonus and its dead button gone; `daily_logins` dropped after receipt proof |
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |

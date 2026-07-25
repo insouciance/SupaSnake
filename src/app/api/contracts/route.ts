@@ -3,7 +3,7 @@
  *
  * The pick allowance is the SAME FOR EVERYONE. Premium used to buy a third
  * pick; WP-0.09 removed it (Constitution §10.4 - progression rates are never
- * sold) from this route, from PREMIUM_CONFIG and, in migration 042, from the
+ * sold) from this route, from PREMIUM_CONFIG and, in migration 043, from the
  * pick_contracts RPC that enforced it. Nothing here reads the entitlement.
  *
  * GET  /api/contracts - today's board: offers/picks/progress/claimable.
@@ -38,7 +38,7 @@ import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 
 /**
  * Picks per UTC day, for every player alike (mirrors the flat `v_max` that
- * migration 042 restores in pick_contracts). The RPC remains the authority;
+ * migration 043 restores in pick_contracts). The RPC remains the authority;
  * this constant only shapes the response and the request validation.
  */
 const PICKS_PER_DAY = ENGAGEMENT_CONFIG.contracts.picksPerDay;
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     if (action === 'pick') {
       const contractIds = body.contractIds;
       // Shape validation only: the real per-day limit is enforced by the
-      // pick_contracts RPC (migration 042 - flat, no entitlement branch)
+      // pick_contracts RPC (migration 043 - flat, no entitlement branch)
       if (
         !Array.isArray(contractIds) ||
         contractIds.length < 1 ||
