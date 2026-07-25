@@ -1128,7 +1128,7 @@ export async function POST(request: NextRequest) {
 
       // WP-0.04: the achievement checker used to run here, writing an
       // 18-row parallel progression table on every settled run. The
-      // mechanism is retired (migration 043) and every quantity it counted
+      // mechanism is retired (migration 042) and every quantity it counted
       // is measured by the Legacy Records, which the refresh below
       // recomputes from the same aggregates -- monotonically, so a record
       // it banks can never be written back down (Rule 6, finding F-6).

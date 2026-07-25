@@ -1,7 +1,7 @@
 /**
  * WP-0.04 - Achievements retire into the Legacy Records.
  *
- * Migration 043 shape tests plus the surface guards the work package's
+ * Migration 042 shape tests plus the surface guards the work package's
  * acceptance names:
  *
  *   - the conversion (completed achievements -> Legacy Record floors),
@@ -24,9 +24,9 @@ import * as path from 'path';
 
 const ROOT = process.cwd();
 const MIGRATIONS_DIR = path.join(ROOT, 'supabase/migrations');
-const MIGRATION_043 = path.join(MIGRATIONS_DIR, '043_achievements_to_records.sql');
+const MIGRATION_042 = path.join(MIGRATIONS_DIR, '042_achievements_to_records.sql');
 
-const sql = fs.readFileSync(MIGRATION_043, 'utf8');
+const sql = fs.readFileSync(MIGRATION_042, 'utf8');
 
 /**
  * The body Postgres actually runs: the LAST `CREATE [OR REPLACE] FUNCTION
@@ -69,7 +69,7 @@ function liveFunctionBody(name: string): { body: string; migration: string } {
 // Atomicity and the settlement of outstanding claims
 // ---------------------------------------------------------------------------
 
-describe('Migration 043: one atomic migration', () => {
+describe('Migration 042: one atomic migration', () => {
   it('wraps everything in a single transaction', () => {
     expect(sql).toMatch(/^\s*BEGIN;/m);
     expect(sql.trimEnd()).toMatch(/COMMIT;$/);
@@ -101,7 +101,7 @@ describe('Migration 043: one atomic migration', () => {
   it('writes the economy_transactions audit row the claim route never did (F-15)', () => {
     expect(sql).toMatch(/INSERT INTO economy_transactions/);
     expect(sql).toMatch(/'achievement_reward'/);
-    expect(sql).toMatch(/'migration', '043_achievements_to_records'/);
+    expect(sql).toMatch(/'migration', '042_achievements_to_records'/);
   });
 
   it('pays no energy: the stock was deleted by migration 039 (§8.6, §10.4)', () => {
@@ -117,7 +117,7 @@ describe('Migration 043: one atomic migration', () => {
 // The acceptance criterion: the sum of granted rewards is preserved
 // ---------------------------------------------------------------------------
 
-describe('Migration 043: value preservation, asserted in the SQL', () => {
+describe('Migration 042: value preservation, asserted in the SQL', () => {
   it('aborts the transaction rather than losing or minting value', () => {
     // A DO block that RAISEs - not a NOTICE, not a comment.
     expect(sql).toMatch(/RAISE EXCEPTION\s*\n?\s*'WP-0\.04 aborted:/);
@@ -156,7 +156,7 @@ describe('Migration 043: value preservation, asserted in the SQL', () => {
 // The conversion itself
 // ---------------------------------------------------------------------------
 
-describe('Migration 043: earned achievements become Legacy Records (Rule 6)', () => {
+describe('Migration 042: earned achievements become Legacy Records (Rule 6)', () => {
   it('maps the five measurable categories onto their records', () => {
     for (const [category, record] of [
       ['games', 'mileage'],
@@ -233,7 +233,7 @@ describe('F-6: refresh_player_records is monotonic (Rule 6)', () => {
   const live = liveFunctionBody('refresh_player_records');
 
   it('the live definition is the one this work package ships', () => {
-    expect(live.migration).toBe('043_achievements_to_records.sql');
+    expect(live.migration).toBe('042_achievements_to_records.sql');
   });
 
   it('guards both value and tier with GREATEST on the upsert', () => {

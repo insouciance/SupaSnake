@@ -7,7 +7,7 @@
  *
  * WP-0.04: the Early Career collapsible and its achievements panel are
  * gone. The achievement mechanism was retired into the Legacy Records
- * (migration 043), so the Records cabinet below IS the career surface -
+ * (migration 042), so the Records cabinet below IS the career surface -
  * there is no second progression display to keep in step with it.
  */
 

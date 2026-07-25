@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
         .eq('player_id', player.id)
         .order('purchased_at', { ascending: false }),
       // WP-0.04: player_achievements is a frozen ledger now (migration
-      // 043) - the mechanism is retired but the rows are retained
+      // 042) - the mechanism is retired but the rows are retained
       // permanently, so portability and erasure still reach them.
       // `unlocked_at` was selected here and has never existed on this
       // table (003:108-121), so this query errored and, because a failed

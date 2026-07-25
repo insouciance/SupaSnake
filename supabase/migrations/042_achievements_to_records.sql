@@ -1,4 +1,4 @@
--- Migration 043: Achievements retire into the Legacy Records
+-- Migration 042: Achievements retire into the Legacy Records
 --
 -- WP-0.04 (Track A). GROUND_TRUTH §9.5 (non-atomic achievement claim, kill
 -- #11); Constitution Rule 6 ("everything earned is permanent"), Rule 11
@@ -307,7 +307,7 @@ SELECT
   p.dna,
   'achievement_reward',
   jsonb_build_object(
-    'migration', '043_achievements_to_records',
+    'migration', '042_achievements_to_records',
     'reason', 'final settlement of outstanding achievement rewards before the mechanism was removed',
     'achievements', (
       SELECT jsonb_agg(jsonb_build_object('id', pa.achievement_id, 'dna', ad.reward_dna)
@@ -790,7 +790,7 @@ BEGIN
   SELECT COALESCE(SUM(et.amount), 0) INTO v_paid_total
   FROM economy_transactions et
   WHERE et.source_type = 'achievement_reward'
-    AND et.metadata ->> 'migration' = '043_achievements_to_records';
+    AND et.metadata ->> 'migration' = '042_achievements_to_records';
   IF v_paid_total <> v_owed_total THEN
     RAISE EXCEPTION
       'WP-0.04 aborted: settlement ledger records % DNA but % DNA was owed', v_paid_total, v_owed_total;
@@ -888,7 +888,7 @@ ALTER TABLE achievement_definitions
   DROP COLUMN IF EXISTS reward_energy;
 
 COMMENT ON TABLE achievement_definitions IS
-  'Catalogue of the 18 retired Early Career achievements (WP-0.04). Kept so the frozen player_achievements ledger reads meaningfully and the GDPR export can name what a row refers to. It pays nothing: the reward columns were dropped when the mechanism was removed, and what players earned by it was banked into the Legacy Records (migration 043).';
+  'Catalogue of the 18 retired Early Career achievements (WP-0.04). Kept so the frozen player_achievements ledger reads meaningfully and the GDPR export can name what a row refers to. It pays nothing: the reward columns were dropped when the mechanism was removed, and what players earned by it was banked into the Legacy Records (migration 042).';
 
 -- The claim. Every completed row was settled in section 2 and asserted
 -- settled in section 6(c), so these columns now carry one value for every row
