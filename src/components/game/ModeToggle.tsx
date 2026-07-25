@@ -1,34 +1,31 @@
 'use client';
 
 /**
- * Run-mode toggle (Design v2 §7.4 + §7.2): EARN (energy-gated, rewarded)
- * vs ANOMALY (this week's modifier board - an earning run with its own
- * leaderboard) vs FREE PLAY (unlimited, rewardless practice). Rendered on
- * the pre-game overlay using the same chip pattern as the control-mode
- * toggle.
+ * Run-mode toggle (Design v2 §7.4 + §7.2): EARN (rewarded) vs ANOMALY (this
+ * week's modifier board - an earning run with its own leaderboard) vs FREE
+ * PLAY (unlimited, rewardless practice). Rendered on the pre-game overlay
+ * using the same chip pattern as the control-mode toggle.
  *
- * EARN and ANOMALY are disabled at zero energy and show the server-driven
- * regen countdown instead of a dead wall - Free Play is the way to keep
- * playing. The ANOMALY chip only renders while the board is live
- * (pre-migration-021 the server reports { live: false }).
+ * NO MODE IS EVER DISABLED BY THE ENVELOPE (Constitution §8.6). EARN and
+ * ANOMALY used to be greyed out at zero energy, with Free Play offered as
+ * the consolation - the "second-class run" the Constitution abolished. An
+ * empty allotment now changes one thing only: the run harvests lean. It is
+ * still an earning run, it still Scores, it still ranks.
+ *
+ * The ANOMALY chip only renders while the board is live (pre-migration-021
+ * the server reports { live: false }).
  */
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { GAME_CONFIG } from '@/shared/config/game';
 import type { GameMode } from '@/lib/store/gameStore';
-import {
-  calculateTimeUntilNextEnergy,
-  formatTimeRemaining,
-} from '@/components/ui/EnergyTimer';
+import type { ChargeStatus } from '@/shared/game/energyEnvelope';
 import { IconBolt } from '@/components/ui/icons';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 
 interface ModeToggleProps {
   mode: GameMode;
-  energy: number;
-  maxEnergy: number;
-  energyRegenAt: string | null;
+  /** The day's charge status; null hides all envelope copy (ramp/pre-sync). */
+  charge: ChargeStatus | null;
   onSelect: (mode: GameMode) => void;
   /** This week's anomaly name; null hides the ANOMALY chip (board not live). */
   anomalyName?: string | null;
@@ -38,26 +35,12 @@ interface ModeToggleProps {
 
 export function ModeToggle({
   mode,
-  energy,
-  maxEnergy,
-  energyRegenAt,
+  charge,
   onSelect,
   anomalyName = null,
   anomalyStrain = null,
 }: ModeToggleProps) {
-  const outOfEnergy = energy < GAME_CONFIG.economy.energy.costPerGame;
-
-  // Display-only regen countdown (server authority: the timestamp comes
-  // from the server; this just renders the remaining time)
-  const [regenMs, setRegenMs] = useState(0);
-  useEffect(() => {
-    if (!outOfEnergy) return;
-    const update = () =>
-      setRegenMs(calculateTimeUntilNextEnergy(energyRegenAt, energy, maxEnergy));
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [outOfEnergy, energyRegenAt, energy, maxEnergy]);
+  const leanNext = charge !== null && charge.remaining <= 0;
 
   const chipClass = (selected: boolean, disabled: boolean) =>
     `px-4 py-2 min-h-[44px] rounded-arcade border font-body text-sm transition-all ${
@@ -74,23 +57,21 @@ export function ModeToggle({
       <div className="flex gap-2 justify-center">
         <button
           onClick={() => onSelect('earn')}
-          disabled={outOfEnergy}
           data-testid="mode-earn"
           aria-pressed={mode === 'earn'}
-          className={chipClass(mode === 'earn', outOfEnergy)}
+          className={chipClass(mode === 'earn', false)}
         >
           <span className="inline-flex items-center gap-1">
-            EARN ({GAME_CONFIG.economy.energy.costPerGame}
-            <IconBolt size={14} />)
+            EARN
+            {charge !== null && !leanNext && <IconBolt size={14} />}
           </span>
         </button>
         {anomalyName !== null && (
           <button
             onClick={() => onSelect('anomaly')}
-            disabled={outOfEnergy}
             data-testid="mode-anomaly"
             aria-pressed={mode === 'anomaly'}
-            className={chipClass(mode === 'anomaly', outOfEnergy)}
+            className={chipClass(mode === 'anomaly', false)}
           >
             <span className="inline-flex items-center gap-1.5">
               {anomalyStrain && (
@@ -134,16 +115,16 @@ export function ModeToggle({
         </p>
       ) : (
         <p className="text-beige/60 text-xs font-body" data-testid="mode-earn-hint">
-          Energy run — DNA, contracts, and streaks count
+          DNA, contracts, and streaks count
         </p>
       )}
-      {outOfEnergy && (
+      {leanNext && mode !== 'free' && (
         <p
-          className="text-venom-orange/90 text-xs font-body"
-          data-testid="mode-out-of-energy"
+          className="text-beige/70 text-xs font-body"
+          data-testid="mode-lean-harvest"
         >
-          Out of energy — keep practicing in Free Play
-          {regenMs > 0 ? ` or wait ${formatTimeRemaining(regenMs)}` : ''}
+          Today&apos;s rich harvest is spent — this run still counts
+          everywhere, at a lean harvest. Refills at 00:00 UTC.
         </p>
       )}
     </div>

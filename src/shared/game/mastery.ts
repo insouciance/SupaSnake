@@ -3,8 +3,9 @@
  *
  * Horizontal, permanent, per-dynasty tracks fed exclusively by banked DNA:
  * extracted runs grant mastery XP equal to floor(raw x 1.25) - the banked
- * payout BEFORE the account multiplier stack (streak x set x clanDuel), so
- * streaks never inflate mastery. Deaths and Free Play grant nothing.
+ * payout and nothing else. The account multiplier stack (streak x set x
+ * clanDuel) that this once had to be defended against was deleted outright
+ * by WP-0.02 (Constitution §8.5). Deaths and Free Play grant nothing.
  *
  * This module is the single source of truth for:
  * - the level curve (M1..M10, 175,000 XP cumulative) - mirrored by the

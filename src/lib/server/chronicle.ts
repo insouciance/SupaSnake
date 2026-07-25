@@ -12,6 +12,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import {
   fallbackIdentity,
   getLiveIdentityForPlayer,
@@ -33,7 +34,9 @@ import {
   type RecordCategory,
   type RecordsCabinetData,
   type SeasonChapter,
+  type TriviaEntry,
 } from '@/lib/chronicle/types';
+import { buildAimTrivia } from '@/lib/chronicle/aimTrivia';
 
 /** The section 7.2 public empty-state threshold. */
 export const PUBLIC_MIN_EARNING_RUNS = 5;
@@ -395,6 +398,48 @@ async function buildSeasonChapters(
   });
 }
 
+/**
+ * Career footnotes from retired systems (WP-0.07). Today that is exactly the
+ * aim-system unlocks retired by §15 overturn 10: the gate is gone, the record
+ * of having passed it is not (R6).
+ *
+ * Deliberately reads `players.high_score / total_games_played /
+ * breeds_completed` — the very columns the retired predicates read — because
+ * the point is to reproduce what the player was told they had earned. Trivia
+ * carries no tier, no points and no cosmetic, so the leaderboard's reason for
+ * avoiding `players.high_score` (a flagged run leaving a permanent record)
+ * does not apply here: nothing in this section is a record or a reward.
+ *
+ * Never fails the caller: a read error yields no footnotes.
+ */
+async function buildTriviaSection(
+  supabase: SupabaseClient,
+  playerId: string
+): Promise<TriviaEntry[]> {
+  const { data, error } = await supabase
+    .from('players')
+    .select('high_score, total_games_played, breeds_completed')
+    .eq('id', playerId)
+    .single();
+
+  if (error || !data) {
+    logUnlessMissing('players trivia stats', error);
+    if (error && !isMissingRecordsInfra(error) && !isMissingIdentityInfra(error)) {
+      Sentry.captureException(
+        new Error(`Chronicle trivia stats read failed: ${error.message}`),
+        { extra: { playerId, code: error.code } }
+      );
+    }
+    return [];
+  }
+
+  return buildAimTrivia({
+    highScore: Number(data.high_score ?? 0),
+    totalGames: Number(data.total_games_played ?? 0),
+    breeds: Number(data.breeds_completed ?? 0),
+  });
+}
+
 /** Current clan + rating history + rivalry records; null when clanless. */
 async function buildClanSection(
   supabase: SupabaseClient,
@@ -535,13 +580,15 @@ export async function buildChronicle(
   let pbTimeline: ChroniclePayload['pbTimeline'] = null;
   let seasons: SeasonChapter[] | null = null;
   let clanSection: ClanSection | null = null;
+  let trivia: TriviaEntry[] = [];
 
   if (!limited) {
-    [records, pbTimeline, seasons, clanSection] = await Promise.all([
+    [records, pbTimeline, seasons, clanSection, trivia] = await Promise.all([
       buildRecordsSection(supabase, player.id),
       buildPbSection(supabase, player.id),
       buildSeasonChapters(supabase, player),
       buildClanSection(supabase, player.user_id),
+      buildTriviaSection(supabase, player.id),
     ]);
   }
 
@@ -560,5 +607,6 @@ export async function buildChronicle(
     collectionLog,
     seasons,
     clan: clanSection,
+    trivia,
   };
 }

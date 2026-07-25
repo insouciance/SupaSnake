@@ -1,8 +1,9 @@
 /**
  * Stripe Webhook Handler
  * Verifies signatures, then processes payment events:
- * - checkout.session.completed (mode=payment) -> atomic idempotent grant
- *   via grant_purchase_rewards RPC (migration 010)
+ * - checkout.session.completed (mode=payment) -> RECORDED AND REFUSED. The
+ *   one-time catalogue is empty (WP-0.09, Constitution §10.4), so there is
+ *   nothing a one-time payment could deliver. See handleOneTimeCheckout.
  * - checkout.session.completed (mode=subscription) and
  *   customer.subscription.created/updated/deleted -> premium lifecycle
  *   sync via apply_subscription_update RPC (migration 028): idempotent by
@@ -42,89 +43,65 @@ const supabase = createClient(
 );
 
 /**
- * checkout.session.completed: grant purchase rewards atomically.
- * All state changes happen inside the grant_purchase_rewards RPC keyed by
- * the Stripe event id, so Stripe retries can never double-grant.
+ * checkout.session.completed with mode=payment: RECORD AND REFUSE.
+ *
+ * WP-0.09 deleted every one-time SKU (Constitution §10.4: Energy, DNA and
+ * variants are never sold), leaving `ALL_PRODUCTS` empty. There is therefore
+ * nothing a one-time payment can deliver, and this handler grants nothing —
+ * it never calls grant_purchase_rewards, and it never reads a reward payload
+ * out of session metadata, so a forged or stale `rewards` field cannot mint
+ * anything. The event is recorded for audit and escalated to Sentry, because
+ * a completed one-time payment against an empty catalogue means money moved
+ * that the game did not offer, and a human has to look at it.
+ *
+ * Acknowledged with 200: retrying cannot make a deleted SKU deliverable.
+ *
+ * When an §10.2 archetype ships (Atelier / Chronicle Season / Patronage) it
+ * brings its own fulfilment path, resolved from the server catalogue by
+ * productId — never from metadata.
  */
-async function handleCheckoutCompleted(
+async function handleOneTimeCheckout(
   event: Stripe.Event,
   session: Stripe.Checkout.Session
 ): Promise<NextResponse> {
-  const userId = session.metadata?.userId;
-  const productId = session.metadata?.productId;
-  const rewardsJson = session.metadata?.rewards;
+  const productId = session.metadata?.productId ?? null;
+  const product = productId ? getProductById(productId) : undefined;
 
-  if (!userId || !productId || !rewardsJson) {
-    console.error('Missing metadata in session:', session.id);
-    Sentry.captureMessage('Stripe session missing metadata', {
-      level: 'error',
-      extra: { sessionId: session.id, eventId: event.id },
-    });
-    return NextResponse.json({ error: 'Invalid metadata' }, { status: 400 });
-  }
-
-  const rewards: { energy?: number; dna?: number; variants?: string[] } =
-    JSON.parse(rewardsJson);
-
-  // Resolve the player row. Checkout embeds playerId (players.id); fall back
-  // to a lookup by auth user id for sessions created before that change.
-  let playerId = session.metadata?.playerId;
-  if (!playerId) {
-    const { data: player, error: playerError } = await supabase
-      .from('players')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
-
-    if (playerError || !player) {
-      console.error('Player not found for user:', userId);
-      Sentry.captureMessage('Stripe webhook: player not found', {
-        level: 'error',
-        extra: { userId, sessionId: session.id, eventId: event.id },
-      });
-      // Non-2xx so Stripe retries (player row creation may lag signup)
-      return NextResponse.json({ error: 'Player not found' }, { status: 500 });
-    }
-    playerId = player.id;
-  }
-
-  const product = getProductById(productId);
-
-  const { data: result, error: rpcError } = await supabase.rpc(
-    'grant_purchase_rewards',
+  const { error: insertError } = await supabase.from('stripe_events').upsert(
     {
-      p_event_id: event.id,
-      p_player_id: playerId,
-      p_product_id: productId,
-      p_energy: rewards.energy ?? 0,
-      p_dna: rewards.dna ?? 0,
-      p_variant_names: rewards.variants ?? [],
-      p_session_id: session.id,
-      p_product_name: product?.name ?? productId,
-      p_price_cents: session.amount_total ?? 0,
-      p_currency: session.currency ?? 'usd',
+      id: event.id,
+      type: event.type,
+      processed_at: new Date().toISOString(),
+      payload_summary: {
+        object_id: session.id,
+        product_id: productId,
+        in_catalogue: product !== undefined,
+        amount: session.amount_total ?? null,
+        currency: session.currency ?? null,
+      },
+    },
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+
+  if (insertError) {
+    console.error('Failed to record stripe event:', insertError);
+    Sentry.captureException(
+      new Error(`Failed to record stripe event: ${insertError.message}`),
+      { extra: { eventId: event.id, eventType: event.type } }
+    );
+    // Non-2xx so Stripe retries and the event is not lost
+    return NextResponse.json({ error: 'Record failed' }, { status: 500 });
+  }
+
+  Sentry.captureMessage(
+    'Stripe one-time checkout completed with no sellable product — nothing granted',
+    {
+      level: 'error',
+      extra: { eventId: event.id, sessionId: session.id, productId },
     }
   );
 
-  if (rpcError) {
-    console.error('grant_purchase_rewards failed:', rpcError);
-    Sentry.captureException(
-      new Error(`grant_purchase_rewards failed: ${rpcError.message}`),
-      {
-        extra: { eventId: event.id, sessionId: session.id, productId, playerId },
-      }
-    );
-    // Non-2xx so Stripe retries; the RPC is idempotent by event id
-    return NextResponse.json({ error: 'Grant failed' }, { status: 500 });
-  }
-
-  if (result === 'already_processed') {
-    // Idempotent success: Stripe retried an event we already handled
-    return NextResponse.json({ received: true, status: 'already_processed' });
-  }
-
-  console.log(`Purchase completed: ${productId} for player ${playerId}`);
-  return NextResponse.json({ received: true, status: 'processed' });
+  return NextResponse.json({ received: true, status: 'not_fulfillable' });
 }
 
 /**
@@ -352,14 +329,14 @@ export async function POST(request: NextRequest) {
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        // mode=payment carries a rewards grant; mode=subscription is a
-        // premium lifecycle event (its metadata has no rewards - it must
-        // never reach the one-time grant path)
+        // mode=subscription is a premium lifecycle event; mode=payment is a
+        // one-time purchase, and the one-time catalogue is empty, so it is
+        // recorded and refused rather than fulfilled.
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.mode === 'subscription') {
           return await handleSubscriptionCheckout(event, session, stripe);
         }
-        return await handleCheckoutCompleted(event, session);
+        return await handleOneTimeCheckout(event, session);
       }
 
       case 'customer.subscription.created':

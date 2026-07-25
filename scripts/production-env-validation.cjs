@@ -1,13 +1,34 @@
 'use strict';
 
+/**
+ * Stripe Price IDs the build REQUIRES. Only the two subscription prices are
+ * left: WP-0.09 deleted every one-time SKU (Constitution §10.4), so no other
+ * price is read by any code path.
+ */
 const PRICE_VARIABLES = [
+  'NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY',
+  'NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY',
+];
+
+/**
+ * Price IDs for the deleted energy and bundle SKUs.
+ *
+ * These are NOT required and NOT format-checked — but they are also not
+ * rejected. Production still defines all five, and the deploy that ships
+ * WP-0.09 must succeed against the environment as it exists on that day;
+ * removing them from Vercel is a separate, unhurried cleanup. Requiring them
+ * would break the deploy after the cleanup; rejecting them breaks the deploy
+ * before it. Tolerating them, and saying so once per build, is the only
+ * ordering-independent behaviour.
+ *
+ * Nothing reads these values. A leftover is inert, not dangerous.
+ */
+const RETIRED_PRICE_VARIABLES = [
   'NEXT_PUBLIC_STRIPE_ENERGY_SMALL',
   'NEXT_PUBLIC_STRIPE_ENERGY_MEDIUM',
   'NEXT_PUBLIC_STRIPE_ENERGY_LARGE',
   'NEXT_PUBLIC_STRIPE_STARTER_BUNDLE',
   'NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE',
-  'NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY',
-  'NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY',
 ];
 
 const REQUIRED_VARIABLES = [
@@ -163,11 +184,23 @@ function validateProductionEnvironment(
     );
   }
 
+  // Retired SKU prices: never an error in either direction. Present is fine
+  // (inert leftover, flagged for cleanup); absent is fine (cleanup done).
+  const leftoverPrices = RETIRED_PRICE_VARIABLES.filter((name) => value(name));
+  if (leftoverPrices.length > 0) {
+    warnings.push(
+      `${leftoverPrices.join(', ')}: Stripe Price ID(s) for SKUs deleted by ` +
+        'WP-0.09 (Constitution §10.4). Nothing reads them; remove them from ' +
+        'Vercel at your convenience — the build passes with or without them.'
+    );
+  }
+
   return { errors, warnings, sealed };
 }
 
 module.exports = {
   PRICE_VARIABLES,
+  RETIRED_PRICE_VARIABLES,
   REQUIRED_VARIABLES,
   validateProductionEnvironment,
 };

@@ -250,16 +250,16 @@ export function RunCockpit({
               <span className={styles.energyReadout} aria-label={training.comparison} title={training.comparison}>
                 <strong>{training.comparison}</strong>
               </span>
-            ) : (
+            ) : model.charge ? (
               <span
                 className={styles.energyReadout}
-                aria-label={`Energy ${model.energy} of ${model.maxEnergy}`}
-                title={`Energy ${model.energy} of ${model.maxEnergy}`}
+                aria-label={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
+                title={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
               >
                 <span aria-hidden="true"><EnergyGlyph /></span>
-                <strong>{model.energy}/{model.maxEnergy}</strong>
+                <strong>{model.charge.remaining}/{model.charge.perDay}</strong>
               </span>
-            )}
+            ) : null}
           </Instrument>
 
           {eventCallout ? (

@@ -36,3 +36,7 @@ jobs:
 
       - name: Run TypeScript check
         run: npx tsc --noEmit
+
+      # docs/CONSTITUTION_CHECKLIST.md, mechanical gates
+      - name: Run Constitution gates
+        run: npm run verify:constitution

@@ -8,6 +8,9 @@ import {
   type GenomeCardModel,
 } from '@/lib/share/genomeCardImage';
 import { STRAINS } from '@/shared/game/strains';
+import { trackEvent } from '@/lib/analytics/posthog';
+import { AnalyticsEvents, EventCategories } from '@/lib/analytics/events';
+import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
 
 export function GenomeCard({ model }: { model: GenomeCardModel }) {
   const [exporting, setExporting] = useState(false);
@@ -21,6 +24,18 @@ export function GenomeCard({ model }: { model: GenomeCardModel }) {
     try {
       const result = await shareGenomeCard(model);
       setExported(result === 'shared' ? 'Shared' : 'PNG downloaded');
+      // Advocate (§11.5): the artifact left the building. `outcome`
+      // separates a real share sheet from the download fallback, which is
+      // the difference between a link in the world and a file on a disk.
+      trackEvent(AnalyticsEvents.SHARE_INITIATED, {
+        artifact: 'genome_card',
+        outcome: result,
+        category: EventCategories.SOCIAL,
+      });
+      trackFunnelStage(FunnelStages.ADVOCATE, {
+        artifact: 'genome_card',
+        outcome: result,
+      });
     } catch (error) {
       if ((error as DOMException)?.name !== 'AbortError') setExported('Export failed');
     } finally {

@@ -1,3 +1,4 @@
+import type { ChargeStatus } from '@/shared/game/energyEnvelope';
 import type { GeneId } from '@/shared/game/genes';
 import type { StrainId, StrainTier } from '@/shared/game/strains';
 import type { DynastyId } from '@/shared/types/game';
@@ -36,8 +37,12 @@ export interface RunCockpitModel {
   isFirstMovementPrompt: boolean;
   score: number;
   dna: number;
-  energy: number;
-  maxEnergy: number;
+  /**
+   * The day's harvest envelope (Constitution §8.6). Null hides the readout
+   * entirely - which is what the §8.6 ramp wants before the meter surfaces,
+   * and what Training wants always (it never touches the envelope).
+   */
+  charge: ChargeStatus | null;
   bankDna: number;
   crashDna: number;
   comboMultiplier: number;

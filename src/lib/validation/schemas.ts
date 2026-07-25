@@ -150,16 +150,14 @@ export const LeaderboardQuerySchema = z.object({
 
 export type LeaderboardQueryInput = z.infer<typeof LeaderboardQuerySchema>;
 
-/**
- * Energy refill schema
- * POST /api/player/energy
+/*
+ * EnergyRefillSchema is deleted (WP-0.09). It typed a request that bought
+ * energy with money or with a watched ad — the first is Constitution §10.4
+ * (energy is never sold), the second is §10.6, which forbids ads by name.
+ * It had no caller and no route (`/api/player/energy` does not exist), but a
+ * committed schema is a design statement, and this one contradicted two
+ * locked rules. Nothing replaces it: there is no energy balance to refill.
  */
-export const EnergyRefillSchema = z.object({
-  type: z.enum(['ad', 'purchase', 'daily_bonus']),
-  amount: z.number().int().min(1).optional(),
-});
-
-export type EnergyRefillInput = z.infer<typeof EnergyRefillSchema>;
 
 /**
  * Streak claim schema

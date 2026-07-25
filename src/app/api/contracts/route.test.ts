@@ -51,7 +51,6 @@ function rpcRow(overrides: Partial<ContractRpcRow> = {}): ContractRpcRow {
     description: 'Bank 3 extractions',
     params: { count: 3 },
     reward_dna: 400,
-    reward_energy: 0,
     reward_xp: 150,
     offered_slot: 1,
     picked: false,
@@ -218,7 +217,7 @@ describe('Contracts API route', () => {
       authedUser();
       mockRpc.mockResolvedValue({
         data: [
-          { contract_id: 'banker', dna_granted: 400, energy_granted: 0, xp_granted: 150 },
+          { contract_id: 'banker', dna_granted: 400, xp_granted: 150 },
         ],
         error: null,
       });

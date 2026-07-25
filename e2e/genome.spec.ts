@@ -19,10 +19,15 @@ test.describe('Genome capability UI', () => {
         json: {
           player: {
             id: 'playwright-player',
-            energy: 5,
-            max_energy: 5,
-            energy_regen_at: null,
             total_games_played: 20,
+          },
+          charge: {
+            remaining: 4,
+            perDay: 6,
+            usedToday: 2,
+            day: '2026-07-25',
+            refillsAt: '2026-07-26T00:00:00.000Z',
+            visible: true,
           },
           needsStarterSelection: false,
           hasCompletedFirstRun: true,
@@ -71,8 +76,15 @@ test.describe('Genome capability UI', () => {
         json: {
           sessionId: 'playwright-genome-session',
           freePlay: true,
-          energy: 5,
-          energyRegenAt: null,
+          charge: {
+            state: 'exempt',
+            remaining: 4,
+            perDay: 6,
+            usedToday: 2,
+            day: '2026-07-25',
+            refillsAt: '2026-07-26T00:00:00.000Z',
+            visible: true,
+          },
           traits: ['scavenger'],
           mutationPool: ['gold_trail', 'tithe', 'loan_shark', 'static_charge'],
           mastery: { dynasty: 'PRIMAL', xp: 0, level: 0 },
@@ -342,7 +354,10 @@ test.describe('Genome capability UI', () => {
       'aria-pressed',
       'true'
     );
-    await page.getByTestId('mode-free').click({ force: true });
+    // Not forced: the ANOMALY chip shifts this button when /api/anomaly
+    // resolves, and a forced click skips the stability check that rides that
+    // out. See e2e/game.spec.ts for the measured shift.
+    await page.getByTestId('mode-free').click();
     const secondStart = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&

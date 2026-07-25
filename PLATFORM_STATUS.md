@@ -81,5 +81,6 @@ These do not invalidate the operator production release:
 - Deployment procedure: `docs/ops/RELEASE_RUNBOOK.md`
 - Commercial gates: `docs/ops/LAUNCH_CHECKLIST.md`
 
-Historical ZTE/platform research under `docs/platform/` is retained for
-reference and is not the current product status.
+The verified state of the game as built — every claim cited to code or a
+migration — is `docs/GROUND_TRUTH.md`. Read it before designing or changing any
+game system.

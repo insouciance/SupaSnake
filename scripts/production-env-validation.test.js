@@ -1,8 +1,17 @@
 const {
+  PRICE_VARIABLES,
   REQUIRED_VARIABLES,
+  RETIRED_PRICE_VARIABLES,
   validateProductionEnvironment,
 } = require('./production-env-validation.cjs');
 
+/**
+ * The fixture deliberately still carries the five retired energy/bundle
+ * Price IDs, because that is exactly what Vercel production defines on the
+ * day WP-0.09 deploys. If validation ever starts rejecting them, the first
+ * production build after this work package fails — so the base case IS the
+ * regression test.
+ */
 function validEnvironment() {
   const environment = Object.fromEntries(
     REQUIRED_VARIABLES.map((name) => [name, `configured-${name.toLowerCase()}`])
@@ -71,6 +80,62 @@ describe('production environment validation', () => {
     });
     expect(presenceOnly.errors).toEqual([]);
     expect(presenceOnly.sealed).toHaveLength(REQUIRED_VARIABLES.length);
+  });
+
+  it('does not require the retired energy/bundle Price IDs', () => {
+    // The cleanup direction: the owner deletes them from Vercel later, and
+    // the build must keep passing when they are gone.
+    const environment = validEnvironment();
+    for (const name of RETIRED_PRICE_VARIABLES) delete environment[name];
+
+    const result = validateProductionEnvironment(environment, 'test');
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.join('\n')).not.toContain('WP-0.09');
+  });
+
+  it('tolerates retired Price IDs that are still defined, and says so once', () => {
+    // The deploy direction: they are present today and must not fail a build.
+    const result = validateProductionEnvironment(validEnvironment(), 'test');
+    expect(result.errors).toEqual([]);
+    const warning = result.warnings.find((w) => w.includes('WP-0.09'));
+    expect(warning).toBeDefined();
+    for (const name of RETIRED_PRICE_VARIABLES) {
+      expect(warning).toContain(name);
+    }
+  });
+
+  it('does not format-check a retired Price ID (a leftover is inert)', () => {
+    const environment = validEnvironment();
+    environment.NEXT_PUBLIC_STRIPE_ENERGY_SMALL = 'not-a-price-id-at-all';
+
+    const result = validateProductionEnvironment(environment, 'test');
+    expect(result.errors).toEqual([]);
+  });
+
+  it('still requires and format-checks the two subscription Price IDs', () => {
+    expect(PRICE_VARIABLES).toEqual([
+      'NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY',
+      'NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY',
+    ]);
+    for (const name of RETIRED_PRICE_VARIABLES) {
+      expect(REQUIRED_VARIABLES).not.toContain(name);
+    }
+
+    const missing = validEnvironment();
+    delete missing.NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY;
+    expect(validateProductionEnvironment(missing, 'test').errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY'),
+      ])
+    );
+
+    const malformed = validEnvironment();
+    malformed.NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY = 'sub_notAPrice';
+    expect(validateProductionEnvironment(malformed, 'test').errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY'),
+      ])
+    );
   });
 
   it('reports variable names without including configured values', () => {

@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { IconDna, IconFlame, IconTrophy, IconShield } from '@/components/ui/icons';
+import { IconDna, IconTrophy, IconShield } from '@/components/ui/icons';
 import { projectedRatingChange } from '@/lib/clan/elo';
 import {
   GAUNTLET_MODIFIERS,
@@ -96,7 +96,6 @@ export interface LastWeekResult {
   opponentName: string | null;
   myScore: number;
   theirScore: number;
-  bonusActive: boolean;
 }
 
 export interface DuelData {
@@ -206,15 +205,6 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
               )}
               {lastWeek.result === 'tie' && <>Last week ended in a tie. No rating change.</>}
             </p>
-            {lastWeek.bonusActive && (
-              <span
-                data-testid="duel-bonus-badge"
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-venom-orange/20 border border-venom-orange/70 rounded-arcade text-sm font-display text-venom-orange self-start"
-              >
-                <IconFlame size={14} />
-                +5% DNA this week
-              </span>
-            )}
           </div>
         </div>
       )}

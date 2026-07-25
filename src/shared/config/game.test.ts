@@ -51,14 +51,19 @@ describe('Game Configuration', () => {
   describe('Economy - DNA System', () => {
     it('should have positive DNA rewards', () => {
       expect(GAME_CONFIG.economy.dna.foodValue).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.dna.scoreMultiplier).toBeGreaterThanOrEqual(0);
       expect(GAME_CONFIG.economy.dna.completionBonus).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.dna.firstWinBonus).toBeGreaterThan(0);
     });
 
-    it('should reward first win more than completion', () => {
-      const { completionBonus, firstWinBonus } = GAME_CONFIG.economy.dna;
-      expect(firstWinBonus).toBeGreaterThan(completionBonus);
+    it('should declare only knobs the settlement fold actually reads', () => {
+      // WP-0.03 (GROUND_TRUTH §10): `scoreMultiplier` and `firstWinBonus`
+      // were config nothing read. `firstWinBonus` in particular described a
+      // first-run-of-day bonus the product does not have - the Daily Take
+      // (Constitution §7.2) is that idea, and it owns its own numbers. Their
+      // absence is the assertion: a config value that no code path reads is
+      // a false fact to the next person who opens this file.
+      const dna = GAME_CONFIG.economy.dna as Record<string, unknown>;
+      expect(dna.scoreMultiplier).toBeUndefined();
+      expect(dna.firstWinBonus).toBeUndefined();
     });
 
     it('should provide meaningful DNA per food', () => {
@@ -66,51 +71,49 @@ describe('Game Configuration', () => {
     });
   });
 
-  describe('Economy - Energy System', () => {
-    it('should have valid energy cap', () => {
-      expect(GAME_CONFIG.economy.energy.maxEnergy).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.energy.maxEnergy).toBeLessThanOrEqual(10);
+  describe('Economy - the daily harvest envelope (Constitution §8.6)', () => {
+    it('should grant a day\'s worth of charges, not a stock', () => {
+      const { chargesPerDay } = GAME_CONFIG.economy.energy;
+      expect(chargesPerDay).toBeGreaterThanOrEqual(4);
+      expect(chargesPerDay).toBeLessThanOrEqual(12);
     });
 
-    it('should cost energy per game', () => {
-      expect(GAME_CONFIG.economy.energy.costPerGame).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.energy.costPerGame).toBeLessThanOrEqual(
-        GAME_CONFIG.economy.energy.maxEnergy
-      );
+    it('should harvest lean, never zero, on an uncharged run', () => {
+      const { leanHarvestFactor } = GAME_CONFIG.economy.energy;
+      expect(leanHarvestFactor).toBeGreaterThan(0);
+      expect(leanHarvestFactor).toBeLessThan(1);
     });
 
-    it('should have reasonable regen rate', () => {
-      const { regenRateMinutes } = GAME_CONFIG.economy.energy;
-      expect(regenRateMinutes).toBeGreaterThanOrEqual(5);
-      expect(regenRateMinutes).toBeLessThanOrEqual(60);
+    it('should hide the meter until the player has met the game', () => {
+      const { meterVisibleAtBankedRuns, chargesPerDay } =
+        GAME_CONFIG.economy.energy;
+      expect(meterVisibleAtBankedRuns).toBeGreaterThan(0);
+      expect(meterVisibleAtBankedRuns).toBeLessThan(chargesPerDay * 2);
     });
 
-    it('should have matching millisecond conversion', () => {
-      const { regenRateMinutes, regenRateMs } = GAME_CONFIG.economy.energy;
-      expect(regenRateMs).toBe(regenRateMinutes * 60 * 1000);
-    });
-
-    it('should allow multiple games with full energy', () => {
-      const { maxEnergy, costPerGame } = GAME_CONFIG.economy.energy;
-      const gamesPerFullBar = Math.floor(maxEnergy / costPerGame);
-      expect(gamesPerFullBar).toBeGreaterThanOrEqual(3);
+    it('should expose no cap, cost-per-game or regen rate', () => {
+      // These three knobs defined the gate, the drip and the stock. Their
+      // absence is the mechanism, not an oversight - if one returns, the
+      // system the Constitution retired has returned with it.
+      const energy = GAME_CONFIG.economy.energy as Record<string, unknown>;
+      expect(energy.maxEnergy).toBeUndefined();
+      expect(energy.costPerGame).toBeUndefined();
+      expect(energy.regenRateMinutes).toBeUndefined();
+      expect(energy.regenRateMs).toBeUndefined();
     });
   });
 
   describe('Breeding System', () => {
-    it('should have DNA costs', () => {
-      expect(GAME_CONFIG.breeding.baseCost).toBeGreaterThan(0);
-      expect(GAME_CONFIG.breeding.crossDynastyCost).toBeGreaterThan(0);
-    });
-
-    it('should charge more for cross-dynasty breeding', () => {
-      const { baseCost, crossDynastyCost } = GAME_CONFIG.breeding;
-      expect(crossDynastyCost).toBeGreaterThan(baseCost);
-    });
-
-    it('should be affordable after several games', () => {
-      const gamesNeeded = GAME_CONFIG.breeding.baseCost / GAME_CONFIG.economy.dna.foodValue;
-      expect(gamesNeeded).toBeLessThan(20);
+    it('should price a breed in the RPC, never in this file', () => {
+      // WP-0.03 (GROUND_TRUTH §10): `baseCost: 50` / `crossDynastyCost: 100`
+      // were read by nothing and understated the live price by 4x - the
+      // server computes `200 + avg(generation) x 100` in the breeding RPC
+      // (migration 018), and Ascendance (WP-1.05) changes that curve there
+      // too. A second, cheaper price living in a client-importable config is
+      // exactly the drift GROUND_TRUTH §10 records.
+      const breeding = GAME_CONFIG.breeding as Record<string, unknown>;
+      expect(breeding.baseCost).toBeUndefined();
+      expect(breeding.crossDynastyCost).toBeUndefined();
     });
 
     it('should have valid max active breeds', () => {
@@ -186,18 +189,26 @@ describe('Game Configuration', () => {
   });
 
   describe('Balance Validation', () => {
-    it('should earn enough DNA in one game to breed', () => {
+    it('should reach the real breeding floor in a handful of games', () => {
+      // Restated against the price the server actually charges (migration
+      // 018: `200 + avg(generation) x 100`, so 300 DNA for a Gen-1 pair)
+      // instead of the dead `breeding.baseCost: 50` this test used to read.
+      // The assertion is the same product statement - a breed is a few
+      // sessions away, not a grind - measured against a number that exists.
+      const GEN1_BREED_COST = 300;
       const avgFoodPerGame = 10;
       const dnaPerGame = avgFoodPerGame * GAME_CONFIG.economy.dna.foodValue;
-      const gamesNeededToBreed = Math.ceil(GAME_CONFIG.breeding.baseCost / dnaPerGame);
+      const gamesNeededToBreed = Math.ceil(GEN1_BREED_COST / dnaPerGame);
       expect(gamesNeededToBreed).toBeLessThanOrEqual(10);
     });
 
-    it('should regenerate full energy bar in reasonable time', () => {
-      const { maxEnergy, regenRateMinutes } = GAME_CONFIG.economy.energy;
-      const minutesToFullBar = maxEnergy * regenRateMinutes;
-      expect(minutesToFullBar).toBeGreaterThanOrEqual(30);
-      expect(minutesToFullBar).toBeLessThanOrEqual(180);
+    it('should bound the day\'s rich harvest to a tunable envelope', () => {
+      // §8.6's stated purpose for the whole mechanism: a bounded daily
+      // economy envelope that makes collection and breeding pacing tunable.
+      // A day of full-harvest runs must be a finite, small number.
+      const { chargesPerDay } = GAME_CONFIG.economy.energy;
+      expect(Number.isInteger(chargesPerDay)).toBe(true);
+      expect(chargesPerDay).toBeLessThanOrEqual(12);
     });
 
     it('should have grid large enough for snake growth', () => {

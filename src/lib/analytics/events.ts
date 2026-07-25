@@ -8,8 +8,9 @@
  * - Economy: Virtual currency and resource events
  * - Collection: Snake variants and breeding
  * - Monetization: Purchase and payment events
- * - Engagement: Streaks, rewards, achievements
+ * - Engagement: Streaks and rewards
  * - Social: Clans and multiplayer
+ * - Growth: Acquisition-funnel stages (Constitution §11.5)
  */
 
 export const EventCategories = {
@@ -20,6 +21,7 @@ export const EventCategories = {
   MONETIZATION: 'monetization',
   ENGAGEMENT: 'engagement',
   SOCIAL: 'social',
+  GROWTH: 'growth',
 } as const;
 
 export type EventCategory = typeof EventCategories[keyof typeof EventCategories];
@@ -55,9 +57,11 @@ export const AnalyticsEvents = {
   DNA_SPENT: 'dna_spent',
   ENERGY_USED: 'energy_used',
   ENERGY_REGEN: 'energy_regen',
-  ENERGY_PURCHASED: 'energy_purchased',
-  COINS_EARNED: 'coins_earned',
-  COINS_SPENT: 'coins_spent',
+  // ENERGY_PURCHASED is deleted (WP-0.09): energy is never sold
+  // (Constitution §10.4), so the event can never fire.
+  // COINS_EARNED / COINS_SPENT are deleted with it: SupaSnake has exactly
+  // one currency (DNA, §8.5) and a second currency name in the taxonomy is
+  // how a two-currency dark pattern gets measured into existence.
 
   // Collection Events
   VARIANT_UNLOCKED: 'variant_unlocked',
@@ -75,15 +79,15 @@ export const AnalyticsEvents = {
   PURCHASE_COMPLETE: 'purchase_complete',
   PURCHASE_FAILED: 'purchase_failed',
   REFUND: 'refund',
-  AD_WATCHED: 'ad_watched',
-  AD_SKIPPED: 'ad_skipped',
+  // AD_WATCHED / AD_SKIPPED are deleted (WP-0.09). Advertising is a named
+  // dark pattern (Constitution §10.6); there is no ad to watch or skip, and
+  // a telemetry slot for one is a plan nobody approved.
 
   // Engagement Events
   DAILY_LOGIN: 'daily_login',
   STREAK_CLAIMED: 'streak_claimed',
   STREAK_LOST: 'streak_lost',
   DAILY_REWARD_CLAIMED: 'daily_reward_claimed',
-  ACHIEVEMENT_UNLOCKED: 'achievement_unlocked',
   CHALLENGE_STARTED: 'challenge_started',
   CHALLENGE_COMPLETED: 'challenge_completed',
   NOTIFICATION_OPENED: 'notification_opened',
@@ -98,6 +102,18 @@ export const AnalyticsEvents = {
   LEADERBOARD_VIEWED: 'leaderboard_viewed',
   FRIEND_ADDED: 'friend_added',
   SHARE_INITIATED: 'share_initiated',
+
+  // Growth Events - the Acquisition Engine's eight stages (§11.5).
+  // Emitted through trackFunnelStage() in ./funnel.ts, never directly.
+  FUNNEL_REACH_ENTERED: 'funnel_reach_entered',
+  FUNNEL_ARRIVE_ENTERED: 'funnel_arrive_entered',
+  FUNNEL_ACTIVATE_ENTERED: 'funnel_activate_entered',
+  FUNNEL_IDENTIFY_ENTERED: 'funnel_identify_entered',
+  FUNNEL_HABITUATE_ENTERED: 'funnel_habituate_entered',
+  FUNNEL_BELONG_ENTERED: 'funnel_belong_entered',
+  FUNNEL_ADVOCATE_ENTERED: 'funnel_advocate_entered',
+  FUNNEL_PATRONIZE_ENTERED: 'funnel_patronize_entered',
+  DISPATCH_WAITLIST_SUBMITTED: 'dispatch_waitlist_submitted',
 } as const;
 
 export type AnalyticsEvent = typeof AnalyticsEvents[keyof typeof AnalyticsEvents];
@@ -215,6 +231,22 @@ export function createSocialEvent(
     properties: {
       ...properties,
       category: EventCategories.SOCIAL,
+    },
+  };
+}
+
+/**
+ * Create a growth/acquisition-funnel event with standard properties
+ */
+export function createGrowthEvent(
+  eventName: string,
+  properties: Record<string, unknown> = {}
+): EventData {
+  return {
+    name: eventName,
+    properties: {
+      ...properties,
+      category: EventCategories.GROWTH,
     },
   };
 }

@@ -1,4 +1,3 @@
-import { GAME_CONFIG } from '@/shared/config/game';
 import type { FtueBootstrapResponse } from './types';
 
 export type LaunchPhase =
@@ -72,8 +71,16 @@ export const LAUNCH_PHASE_LABEL: Record<LaunchPhase, string> = {
 
 export interface GameSessionStartPayload {
   sessionId: string;
-  energy: number;
-  energyRegenAt: string | null;
+  /** The day's charge status plus how this run settles (§8.6). */
+  charge?: {
+    state: 'charged' | 'lean' | 'exempt';
+    remaining: number;
+    perDay: number;
+    usedToday: number;
+    day: string;
+    refillsAt: string;
+    visible: boolean;
+  };
   freePlay?: boolean;
   traits?: unknown;
   mutationPool?: unknown;
@@ -179,39 +186,21 @@ export async function prepareLaunchHandoff(
   bootstrap: FtueBootstrapResponse,
   fetcher: Fetcher = fetch
 ): Promise<LaunchHandoff> {
-  const preferredMode: 'earn' | 'free' =
-    bootstrap.player.energy >= GAME_CONFIG.economy.energy.costPerGame ? 'earn' : 'free';
+  // One-click Launch is always an EARNING run (Constitution §8.6). It used
+  // to inspect the player's energy and silently hand them a practice run
+  // instead when the bar was empty, plus a retry-as-free recovery for the
+  // "Not enough energy" 400. Both are gone with the gate that produced
+  // them: the server no longer rejects a start for lack of charges, so
+  // there is no race to recover from and no reason to demote the player's
+  // run without asking.
+  const mode: 'earn' | 'free' = 'earn';
 
-  let mode = preferredMode;
-  let run: GameSessionStartPayload;
-  try {
-    run = await startSession(
-      accessToken,
-      bootstrap.equippedSnake.id,
-      mode,
-      fetcher
-    );
-  } catch (error) {
-    // Energy can change between bootstrap and session start (another tab).
-    // Practice remains a valid one-click path, so recover only this precise
-    // server-authoritative race and preserve every other failure for Retry.
-    if (
-      mode === 'earn' &&
-      error instanceof LaunchFlowError &&
-      error.status === 400 &&
-      /not enough energy/i.test(error.message)
-    ) {
-      mode = 'free';
-      run = await startSession(
-        accessToken,
-        bootstrap.equippedSnake.id,
-        mode,
-        fetcher
-      );
-    } else {
-      throw error;
-    }
-  }
+  const run: GameSessionStartPayload = await startSession(
+    accessToken,
+    bootstrap.equippedSnake.id,
+    mode,
+    fetcher
+  );
 
   return {
     version: 1,

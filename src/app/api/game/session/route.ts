@@ -1,6 +1,13 @@
 /**
  * Game Session API - Start/End game sessions
- * Server authority: Energy deducted server-side, results validated
+ *
+ * Server authority: results validated and recomputed server-side; the daily
+ * charge is consumed and stamped server-side (Constitution §8.6).
+ *
+ * Energy never gates a run. There is no start check: every run starts,
+ * Scores, ranks and counts. The charge decides only the HARVEST - a charged
+ * or exempt run pays full Yield, a run that finds the day's allotment empty
+ * pays the lean factor.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -36,9 +43,29 @@ import {
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
-import { calculateNextRegenAfterConsume } from '@/lib/server/energyRegen';
+import * as Sentry from '@sentry/nextjs';
+import {
+  consumeRunCharge,
+  isMissingEnvelopeInfra,
+} from '@/lib/server/energyEnvelope';
+import {
+  applyHarvestFactor,
+  isChargeMeterVisible,
+  isChargeState,
+  NO_EXEMPTION,
+  type ChargeExemptionFacts,
+  type ChargeState,
+} from '@/shared/game/energyEnvelope';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
+import {
+  abandonStalePlayerSessions,
+  isMissingLifecycleInfra,
+} from '@/lib/server/sessionLifecycle';
+import {
+  isClientForfeitReason,
+  SETTLED_END_REASON,
+} from '@/lib/session/lifecycle';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
 import {
   composeGenePool,
@@ -57,12 +84,10 @@ import {
   enqueueMasteryLevelup,
   refreshLinkedRolesForPlayer,
 } from '@/lib/server/discordSync';
-import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
-import {
-  getDnaMultiplier,
-  applyDnaMultiplier,
-  type DnaMultiplierBreakdown,
-} from '@/lib/server/dnaMultipliers';
+// Two now-deleted server modules used to be imported here: the account
+// multiplier stack (removed by WP-0.02) and the achievement checker (retired
+// into the Legacy Records by WP-0.04). Neither name is spelled out, because a
+// WP-0.02 test asserts this file's source cannot mention the former at all.
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 
@@ -108,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     let { data: player, error: playerError } = await supabase
       .from('players')
-      .select('id, energy, dna, max_energy, energy_regen_at')
+      .select('id, dna, total_games_played')
       .eq('user_id', user.id)
       .single();
 
@@ -134,7 +159,7 @@ export async function POST(request: NextRequest) {
 
       ({ data: player, error: playerError } = await supabase
         .from('players')
-        .select('id, energy, dna, max_energy, energy_regen_at')
+        .select('id, dna, total_games_played')
         .eq('user_id', user.id)
         .single());
     }
@@ -149,14 +174,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Design v2 §7.4 Free Play: unlimited practice runs - no energy cost on
-    // start, no rewards of any kind on end. The session row is still written
-    // and validated (server authority unchanged) but marked is_free_play so
-    // contracts/leaderboards/economy reads exclude it.
+    // Design v2 §7.4 Free Play: unlimited rewardless practice runs. The
+    // session row is still written and validated (server authority
+    // unchanged) but marked is_free_play so contracts/leaderboards/economy
+    // reads exclude it. It pays nothing, so it takes nothing: exempt.
     const isFreePlay = mode === 'free';
 
     // Design v2 §7.2 Weekly Anomaly board: an anomaly run is an EARNING
-    // run (energy, DNA, contracts, streak) under the week's modifier
+    // run (charge, DNA, contracts, streak) under the week's modifier
     // ruleset that additionally scores on the anomaly leaderboard. The
     // anomaly itself is SERVER-DERIVED from the calendar (deterministic
     // rotation) and stamped on the session row - never client-asserted.
@@ -171,10 +196,23 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Free Play bypasses the energy gate - energy meters earning runs only
-      if (!isFreePlay && player.energy < GAME_CONFIG.economy.energy.costPerGame) {
-        return NextResponse.json({ error: 'Not enough energy' }, { status: 400 });
-      }
+      // WP-0.06 (GT §9.6): before opening a new run, close this player's own
+      // runs that have been open past the stale window. Starting another run
+      // is the evidence - those were left behind, so they close as
+      // `abandoned`. This is about the player, not about the request, so it
+      // runs before the request is validated.
+      //
+      // The sweep writes `ended_at` and `end_reason` only; it cannot grant
+      // DNA, Yield or a record, and it never touches a row that settled and is
+      // waiting for an outbox replay (Rule 6). Non-fatal: a failed sweep
+      // leaves the row open, which is exactly the status quo it fixes.
+      await abandonStalePlayerSessions(supabase, player.id);
+
+      // NOTE: there is deliberately NO energy check here. Constitution §8.6:
+      // "Energy never gates playing. Every run always starts, always Scores,
+      // always ranks, always counts." A run with no charge left is not a
+      // second-class run - it is a full run with a lean harvest. Re-adding a
+      // start gate here is a constitutional violation, not a tuning change.
 
       if (!snake_id) {
         return NextResponse.json({ error: 'snake_id is required' }, { status: 400 });
@@ -402,14 +440,71 @@ export async function POST(request: NextRequest) {
             }
           : null;
 
-      // Free Play: no energy deduction, no regen-timer change, no economy
-      // transaction - the run costs nothing and pays nothing
+      // ---------------------------------------------------------------
+      // The daily harvest envelope (Constitution §8.6)
+      // ---------------------------------------------------------------
+      // Resolved AFTER the session row exists, so a failed insert can never
+      // burn a charge for a run that did not happen.
+      //
+      // Exemption is decided from SERVER facts only - the client's `mode`
+      // is a request, never a grant. Free Play is rewardless, so charging
+      // it would be a pure penalty for practising. The Signal objective run
+      // (§7.2, WP-1.03) and Serpent attempts (§7.3, WP-1.01) are exempt by
+      // §8.6 "the rituals are always full-fat"; neither system exists yet,
+      // so the server has no row to point at and grants no exemption for
+      // them - a client asking for mode 'signal' or 'serpent' today gets an
+      // ordinary charged run, not a free one.
+      const exemptionFacts: ChargeExemptionFacts = {
+        ...NO_EXEMPTION,
+        rewardless: isFreePlay,
+      };
+      const charge = await consumeRunCharge(
+        supabase,
+        player.id,
+        exemptionFacts
+      );
+
+      // Stamp how this run settles onto the session row. Separate,
+      // best-effort write in the established pattern of run_events/genome
+      // below: pre-migration-039 the column is missing and this fails
+      // non-fatally, leaving charge_state NULL - which settles the run at
+      // FULL strength. Every failure mode here favours the player.
+      const { error: chargeStampError } = await supabase
+        .from('game_sessions')
+        .update({ charge_state: charge.state })
+        .eq('id', session.id)
+        .eq('player_id', player.id);
+      if (chargeStampError && !isMissingEnvelopeInfra(chargeStampError)) {
+        console.error('Failed to stamp charge state on session:', {
+          playerId: player.id,
+          sessionId: session.id,
+          chargeState: charge.state,
+          error: chargeStampError,
+        });
+        Sentry.captureException(
+          new Error(`charge_state stamp failed: ${chargeStampError.message}`),
+          { extra: { playerId: player.id, sessionId: session.id } }
+        );
+      }
+
+      // No economy_transactions row: a charge is NOT a currency (§8.6, and
+      // §12.2's cap of one currency). The session row's charge_state is the
+      // audit record of what the envelope did.
+
+      // `visible` carries the §8.6 ramp so the HUD hides the meter for a
+      // player who has not met the game yet - the same rule /api/player
+      // applies, so the two never disagree mid-session.
+      const chargeBlock = {
+        state: charge.state,
+        ...charge.status,
+        visible: isChargeMeterVisible(player.total_games_played ?? 0),
+      };
+
       if (isFreePlay) {
         return NextResponse.json({
           sessionId: session.id,
           freePlay: true,
-          energy: player.energy,
-          energyRegenAt: player.energy_regen_at,
+          charge: chargeBlock,
           traits: snakeTraits,
           mutationPool,
           mastery: masteryInfo,
@@ -417,55 +512,9 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const newEnergy = player.energy - GAME_CONFIG.economy.energy.costPerGame;
-      const maxEnergy = player.max_energy || GAME_CONFIG.economy.energy.maxEnergy;
-
-      // Calculate the regen timer - start or preserve existing future timer
-      const newRegenAt = calculateNextRegenAfterConsume(
-        newEnergy,
-        maxEnergy,
-        player.energy_regen_at
-      );
-
-      const { error: energyUpdateError } = await supabase
-        .from('players')
-        .update({
-          energy: newEnergy,
-          energy_regen_at: newRegenAt,
-        })
-        .eq('id', player.id);
-
-      if (energyUpdateError) {
-        console.error('Failed to deduct energy on game start:', {
-          playerId: player.id,
-          sessionId: session.id,
-          error: energyUpdateError,
-        });
-        return NextResponse.json({ error: 'Failed to start game' }, { status: 500 });
-      }
-
-      const { error: startTxError } = await supabase.from('economy_transactions').insert({
-        player_id: player.id,
-        resource_type: 'energy',
-        amount: -GAME_CONFIG.economy.energy.costPerGame,
-        balance_after: newEnergy,
-        source_type: 'game_start',
-        source_id: session.id,
-      });
-
-      if (startTxError) {
-        // Audit log only - the energy deduction itself succeeded
-        console.error('Failed to log game_start energy transaction:', {
-          playerId: player.id,
-          sessionId: session.id,
-          error: startTxError,
-        });
-      }
-
       return NextResponse.json({
         sessionId: session.id,
-        energy: newEnergy,
-        energyRegenAt: newRegenAt,
+        charge: chargeBlock,
         traits: snakeTraits,
         mutationPool,
         mastery: masteryInfo,
@@ -497,17 +546,25 @@ export async function POST(request: NextRequest) {
       // Idempotency guard: a session can only be ended once. Duplicate
       // 'end' calls (offline outbox replay, double-fire at death) must not
       // grant DNA again - return 409 with the current authoritative state.
+      //
+      // WP-0.06: this is also the wall an EXPIRED run hits. The sweep sets
+      // `ended_at`, so a run it closed can never re-enter settlement - not
+      // through a replay, not through a retry, not through a crafted request.
+      // The reason travels in the response so the client can tell "you
+      // already banked this" from "that run timed out and paid nothing".
       if (session.ended_at) {
         const { data: currentPlayer } = await supabase
           .from('players')
-          .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+          .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
           .eq('id', player.id)
           .single();
 
+        const priorReason = (session as Record<string, unknown>).end_reason;
         return NextResponse.json(
           {
             error: 'Session already ended',
             alreadyEnded: true,
+            ...(typeof priorReason === 'string' ? { endReason: priorReason } : {}),
             player: currentPlayer ?? null,
           },
           { status: 409 }
@@ -693,21 +750,30 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // DNA multiplier stack: streak tier x set bonus x clan duel.
-      // (Design v2: the dynasty passive is gone - the ruleset already
-      // shaped the base payout.) Non-fatal: failures fall back to x1.
-      // Free sessions still compute it - it prices the hypothetical payout.
-      let dnaMultiplier = 1;
-      let dnaBreakdown: DnaMultiplierBreakdown | null = null;
-      try {
-        const multiplierResult = await getDnaMultiplier(supabase, player.id);
-        dnaMultiplier = multiplierResult.multiplier;
-        dnaBreakdown = multiplierResult.breakdown;
-      } catch (multiplierError) {
-        console.error('DNA multiplier error:', multiplierError);
-      }
+      // ---------------------------------------------------------------
+      // Settlement against the envelope (Constitution §6.2, §8.6)
+      // ---------------------------------------------------------------
+      // Yield is the run's full-strength settled economic total and is
+      // CHARGE-INDEPENDENT by law (§6.2): Depth, Mastery and every record
+      // read this number. Only the DNA actually credited is scaled.
+      //
+      // The charge state comes from the SESSION ROW, stamped at start - not
+      // from the current ledger and never from the request. A run therefore
+      // settles exactly as it was launched, and a replayed 'end' cannot
+      // re-decide it. NULL (a run started before migration 039) settles at
+      // full strength: a deploy boundary must not cut a player's harvest.
+      const rawChargeState = (session as Record<string, unknown>).charge_state;
+      const chargeState: ChargeState = isChargeState(rawChargeState)
+        ? rawChargeState
+        : 'charged';
 
-      const finalDna = applyDnaMultiplier(validation.adjustedDna, dnaMultiplier);
+      // WP-0.02: the account multiplier stack (streak tier x collection set
+      // bonus x clan-duel bonus) is DELETED. A settled run is worth its raw
+      // fold times the extraction outcome multiplier and nothing else - the
+      // validator's exact recompute already IS that number (§8.5, GT §3.1).
+      // No account state, no calendar, no clan, no purchase may re-enter here.
+      const yieldDna = validation.adjustedDna;
+      const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
       // input to rewards.
@@ -737,26 +803,41 @@ export async function POST(request: NextRequest) {
       // Mark the session ended BEFORE granting rewards - this is the
       // idempotency anchor. Guard on ended_at IS NULL so two concurrent
       // 'end' calls can't both pass the check above and double-grant.
-      const { data: endedRows, error: endSessionError } = await supabase
-        .from('game_sessions')
-        .update({
-          score: validation.adjustedScore,
-          // Free sessions never earn - the row records a zero payout
-          dna_earned: isFreeSession ? 0 : finalDna,
-          duration_seconds: duration_seconds || 0,
-          died: died ?? true,
-          victory: victory ?? false,
-          extracted: validation.extracted,
-          ended_at: new Date().toISOString(),
-          validated: validation.valid,
-          validation_errors: validation.errors.length > 0 ? validation.errors : null,
-          foods_collected: validation.foodCount,
-          mutations: mutationsRecord,
-        })
-        .eq('id', sessionId)
-        .eq('player_id', player.id)
-        .is('ended_at', null)
-        .select('id');
+      const settlementUpdate: Record<string, unknown> = {
+        score: validation.adjustedScore,
+        // Free sessions never earn - the row records a zero payout
+        dna_earned: isFreeSession ? 0 : finalDna,
+        duration_seconds: duration_seconds || 0,
+        died: died ?? true,
+        victory: victory ?? false,
+        extracted: validation.extracted,
+        ended_at: new Date().toISOString(),
+        validated: validation.valid,
+        validation_errors: validation.errors.length > 0 ? validation.errors : null,
+        foods_collected: validation.foodCount,
+        mutations: mutationsRecord,
+        end_reason: SETTLED_END_REASON,
+      };
+
+      const endSession = () =>
+        supabase
+          .from('game_sessions')
+          .update(settlementUpdate)
+          .eq('id', sessionId)
+          .eq('player_id', player.id)
+          .is('ended_at', null)
+          .select('id');
+
+      // WP-0.06: this is the ONE path that may stamp `completed` - the reason
+      // that marks a run as settled everywhere else (boards, Anomaly board,
+      // Yield). Pre-045 the column is missing, so the settlement retries
+      // without it rather than failing a run the player actually finished;
+      // a NULL reason reads as settled, which is what it was.
+      let { data: endedRows, error: endSessionError } = await endSession();
+      if (endSessionError && isMissingLifecycleInfra(endSessionError)) {
+        delete settlementUpdate.end_reason;
+        ({ data: endedRows, error: endSessionError } = await endSession());
+      }
 
       if (endSessionError) {
         console.error('Failed to mark game session ended:', {
@@ -824,6 +905,30 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Yield (§6.2), recorded separately from what the run paid, and always
+      // at full strength. On a lean run dna_earned above is the fraction
+      // while this stays whole - which is what lets Depth (WP-1.01) and the
+      // records read the run's real worth without ever seeing the charge
+      // state. Best-effort in the migration-029 pattern: pre-039 the column
+      // is missing and this fails non-fatally, never touching the payout.
+      const { error: yieldCaptureError } = await supabase
+        .from('game_sessions')
+        .update({ yield_dna: yieldDna })
+        .eq('id', sessionId)
+        .eq('player_id', player.id);
+      if (yieldCaptureError && !isMissingEnvelopeInfra(yieldCaptureError)) {
+        console.error('Failed to record run yield:', {
+          playerId: player.id,
+          sessionId,
+          yieldDna,
+          error: yieldCaptureError,
+        });
+        Sentry.captureException(
+          new Error(`yield_dna capture failed: ${yieldCaptureError.message}`),
+          { extra: { playerId: player.id, sessionId } }
+        );
+      }
+
       // Identity (section 3.3): the game-over screen prompts a handle
       // claim without an extra fetch. Pre-022 the view is missing and
       // the field is simply omitted - current behavior, zero 500s.
@@ -838,13 +943,13 @@ export async function POST(request: NextRequest) {
 
       // Free Play end: the run is recorded + validated above, but nothing
       // pays out - no DNA credit, no total_dna_earned, no streak
-      // (record_daily_play NOT called), no achievements, no economy
-      // transactions. The response carries what the run WOULD have earned
+      // (record_daily_play NOT called), no economy transactions and no
+      // records refresh. The response carries what the run WOULD have earned
       // so the player sees the stakes they practiced for.
       if (isFreeSession) {
         const { data: freePlayerState } = await supabase
           .from('players')
-          .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+          .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
           .eq('id', player.id)
           .single();
 
@@ -860,11 +965,13 @@ export async function POST(request: NextRequest) {
             genelessRawDna,
             score: validation.adjustedScore,
             extracted: validation.extracted,
+            // Yield is charge-independent (§6.2). Practice is exempt, so
+            // this is what the same run would have been worth.
+            yieldDna,
+            chargeState,
           },
           hypotheticalDna: finalDna,
-          newAchievements: [],
           ...(identityInfo ? { identity: identityInfo } : {}),
-          ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
           // Free Play still gets an authoritative recap card. Discoveries
           // and rewards remain disabled; this is validator output only.
           ...(validation.genome ? { genome: validation.genome } : {}),
@@ -878,7 +985,21 @@ export async function POST(request: NextRequest) {
         .eq('id', player.id)
         .single();
 
-      const newHighScore = Math.max(currentPlayer?.high_score || 0, validation.adjustedScore);
+      // FINDING F-1 (WP-0.06): this write had no `validation.valid` gate, so a
+      // run that FAILED server validation still set a permanent personal
+      // record. WP-0.05 made the leaderboard immune by filtering at read time,
+      // but `players.high_score` is read by other surfaces and stayed poisoned
+      // for good.
+      //
+      // The fix stops an invalid run writing UP. It never writes DOWN: the
+      // rejected branch re-writes the value that is already there, so an
+      // existing record - however it was set - is preserved exactly (Rule 6:
+      // what a player has is permanent, and this route is not the place to
+      // decide a past record was undeserved).
+      const priorHighScore = currentPlayer?.high_score || 0;
+      const newHighScore = validation.valid
+        ? Math.max(priorHighScore, validation.adjustedScore)
+        : priorHighScore;
       const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
       const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + finalDna;
 
@@ -896,6 +1017,13 @@ export async function POST(request: NextRequest) {
         // Primary state write failed - the player would silently lose the
         // run's DNA. Re-open the session (best effort) so a client replay
         // can retry, then fail the request.
+        //
+        // WP-0.06: `end_reason` is deliberately LEFT at 'completed' here. The
+        // pair (ended_at IS NULL, end_reason = 'completed') is the marker for
+        // "this run settled, the reward write failed, an outbox replay still
+        // owes the player DNA" - and it is what buys the row the long sweep
+        // window instead of the 3-hour one, so expiry cannot destroy a payout
+        // the player earned (Rule 6).
         console.error('Failed to grant game rewards:', {
           playerId: player.id,
           sessionId,
@@ -938,7 +1066,6 @@ export async function POST(request: NextRequest) {
               ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
               : {}),
             ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
-            ...(dnaBreakdown ? { dna_multiplier: dnaBreakdown } : {}),
             ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
           },
         });
@@ -968,15 +1095,16 @@ export async function POST(request: NextRequest) {
 
       const { data: updatedPlayer } = await supabase
         .from('players')
-        .select('dna, energy, energy_regen_at, total_games_played, high_score, total_dna_earned, breeds_completed')
+        .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
         .eq('id', player.id)
         .single();
 
       // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
       // (free sessions returned above; deaths grant nothing). The XP is
       // floor(raw x 1.25) - the banked payout BEFORE Mirror Wager /
-      // Compound Interest outcome shaping and BEFORE the account
-      // multiplier stack, so streaks never inflate mastery. Non-fatal:
+      // Compound Interest outcome shaping, so nothing about the account
+      // can inflate mastery (the account multiplier stack that used to
+      // sit here was deleted outright by WP-0.02). Non-fatal:
       // pre-019 (missing table/RPC) or any grant failure just omits the
       // mastery block from the response.
       let mastery: {
@@ -1021,11 +1149,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Record daily play streak (non-fatal if it errors)
+      // Record daily play streak (non-fatal if it errors). The streak is a
+      // COUNT, never a payout factor: WP-0.02 deleted the tier multiplier,
+      // so nothing here re-enters settlement.
       let streak: {
         current: number;
         longest: number;
-        multiplier: number;
         graceConsumed: boolean;
       } | null = null;
       try {
@@ -1036,102 +1165,33 @@ export async function POST(request: NextRequest) {
 
         if (streakRpcError) {
           console.error('record_daily_play error:', streakRpcError);
+          Sentry.captureException(
+            new Error(`record_daily_play failed: ${streakRpcError.message}`),
+            { extra: { playerId: player.id, sessionId } }
+          );
         } else {
           const row = Array.isArray(streakRows) ? streakRows[0] : streakRows;
           if (row) {
             streak = {
               current: row.current_streak,
               longest: row.longest_streak,
-              multiplier: Number(row.streak_multiplier),
               graceConsumed: row.grace_consumed,
             };
           }
         }
       } catch (streakError) {
         console.error('record_daily_play error:', streakError);
+        Sentry.captureException(streakError, {
+          extra: { playerId: player.id, sessionId },
+        });
       }
 
-      // Check for newly completed achievements
-      let newAchievements: string[] = [];
-      try {
-        // Get collection count for achievement checking
-        const { count: collectionCount } = await supabase
-          .from('collected_snakes')
-          .select('*', { count: 'exact', head: true })
-          .eq('player_id', player.id);
-
-        // Get streak info (prefer the freshly recorded streak)
-        let currentStreak = streak?.current ?? 0;
-        if (!streak) {
-          const { data: streakData } = await supabase
-            .from('player_streaks')
-            .select('current_streak')
-            .eq('player_id', player.id)
-            .single();
-          currentStreak = streakData?.current_streak || 0;
-        }
-
-        // Build player stats for achievement checking
-        const playerStats: PlayerStats = {
-          total_games_played: updatedPlayer?.total_games_played || 0,
-          total_dna_earned: updatedPlayer?.total_dna_earned || 0,
-          high_score: updatedPlayer?.high_score || 0,
-          breeds_completed: updatedPlayer?.breeds_completed || 0,
-          collection_count: collectionCount || 0,
-          current_streak: currentStreak,
-        };
-
-        // Get achievement definitions
-        const { data: achievements } = await supabase
-          .from('achievement_definitions')
-          .select('*');
-
-        // Get existing progress
-        const { data: progress } = await supabase
-          .from('player_achievements')
-          .select('achievement_id, progress, completed')
-          .eq('player_id', player.id);
-
-        const existingProgress = new Map(
-          (progress || []).map(p => [p.achievement_id, { progress: p.progress, completed: p.completed }])
-        );
-
-        // Check achievements
-        const result = checkAchievements(
-          playerStats,
-          (achievements || []) as AchievementDefinition[],
-          existingProgress
-        );
-
-        // Update progress and mark newly completed
-        const progressEntries = Array.from(result.progressUpdates.entries());
-        for (const [achievementId, progressValue] of progressEntries) {
-          const isNewlyCompleted = result.newlyCompleted.some(a => a.id === achievementId);
-
-          const { error: achievementUpsertError } = await supabase
-            .from('player_achievements')
-            .upsert({
-              player_id: player.id,
-              achievement_id: achievementId,
-              progress: progressValue,
-              completed: isNewlyCompleted || existingProgress.get(achievementId)?.completed || false,
-              completed_at: isNewlyCompleted ? new Date().toISOString() : undefined,
-            }, { onConflict: 'player_id,achievement_id' });
-
-          if (achievementUpsertError) {
-            console.error('Failed to upsert achievement progress:', {
-              playerId: player.id,
-              achievementId,
-              error: achievementUpsertError,
-            });
-          }
-        }
-
-        newAchievements = result.newlyCompleted.map(a => a.name);
-      } catch (achievementError) {
-        console.error('Achievement check error:', achievementError);
-        // Don't fail the request if achievement checking fails
-      }
+      // WP-0.04: the achievement checker used to run here, writing an
+      // 18-row parallel progression table on every settled run. The
+      // mechanism is retired (migration 042) and every quantity it counted
+      // is measured by the Legacy Records, which the refresh below
+      // recomputes from the same aggregates -- monotonically, so a record
+      // it banks can never be written back down (Rule 6, finding F-6).
 
       // Records refresh (Identity v1 section 6.3): idempotent
       // recompute-from-aggregates after all rewards land - like mastery,
@@ -1166,16 +1226,126 @@ export async function POST(request: NextRequest) {
           genelessRawDna,
           score: validation.adjustedScore,
           extracted: validation.extracted,
+          // Yield (§6.2): full-strength, charge-independent. Equals
+          // adjustedDna on a charged/exempt run; on a lean run adjustedDna
+          // is the fraction actually credited and this is the run's worth.
+          yieldDna,
+          chargeState,
         },
-        newAchievements,
         ...(identityInfo ? { identity: identityInfo } : {}),
-        ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
       });
+    }
+
+    // -----------------------------------------------------------------
+    // WP-0.06: forfeit an open run (GT §9.6)
+    // -----------------------------------------------------------------
+    // POST { action: 'abandon', sessionId, reason?: 'abandoned' | 'disconnected' }
+    //   -> 200 { success: true, endReason }
+    //   -> 404 the session is not this player's
+    //   -> 409 { alreadyEnded: true, endReason } it is already closed
+    //
+    // The client uses this to surrender a run it cannot finish - a quit, a
+    // lost connection, a reload mid-run. It CANNOT be used to end a run for
+    // value: the handler writes `ended_at` and `end_reason` on `game_sessions`
+    // and has no other statement in it. No validator runs, no payout is
+    // computed, `players` is not read or written, no economy transaction is
+    // logged, no record is refreshed. And because it sets `ended_at`, the
+    // forfeited run can never afterwards re-enter settlement (the 'end'
+    // idempotency guard above rejects it), so surrendering is strictly a loss.
+    //
+    // `reason` is bounded to the two forfeit values. A client asking for
+    // 'completed' or 'expired' - the two the server writes for itself - is
+    // silently given 'abandoned'; there is no request that lets a client
+    // claim its run settled.
+    if (action === 'abandon') {
+      if (!sessionId) {
+        return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
+      }
+
+      const forfeitReason = isClientForfeitReason(body.reason)
+        ? body.reason
+        : 'abandoned';
+
+      const { data: openSession, error: openSessionError } = await supabase
+        .from('game_sessions')
+        .select('id, ended_at')
+        .eq('id', sessionId)
+        .eq('player_id', player.id)
+        .maybeSingle();
+
+      if (openSessionError) {
+        console.error('Session forfeit lookup failed:', {
+          playerId: player.id,
+          sessionId,
+          error: openSessionError,
+        });
+        Sentry.captureException(
+          new Error(`Session forfeit lookup failed: ${openSessionError.message}`),
+          { extra: { playerId: player.id, sessionId } }
+        );
+        return NextResponse.json({ error: 'Failed to forfeit session' }, { status: 500 });
+      }
+
+      if (!openSession) {
+        return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      }
+
+      if (openSession.ended_at) {
+        return NextResponse.json(
+          { error: 'Session already ended', alreadyEnded: true },
+          { status: 409 }
+        );
+      }
+
+      const { data: forfeited, error: forfeitError } = await supabase
+        .from('game_sessions')
+        .update({
+          ended_at: new Date().toISOString(),
+          end_reason: forfeitReason,
+        })
+        .eq('id', sessionId)
+        .eq('player_id', player.id)
+        // Lost-race guard, identical in spirit to the settlement path: a
+        // concurrent 'end' that got there first keeps its result.
+        .is('ended_at', null)
+        .select('id');
+
+      if (forfeitError) {
+        if (isMissingLifecycleInfra(forfeitError)) {
+          // Pre-045: there is nowhere to record the reason, so there is no
+          // forfeit. The run stays open and the sweep will close it once the
+          // migration lands. Nothing was granted either way.
+          return NextResponse.json(
+            { error: 'Run forfeit is not available yet' },
+            { status: 503 }
+          );
+        }
+        console.error('Session forfeit failed:', {
+          playerId: player.id,
+          sessionId,
+          reason: forfeitReason,
+          error: forfeitError,
+        });
+        Sentry.captureException(
+          new Error(`Session forfeit failed: ${forfeitError.message}`),
+          { extra: { playerId: player.id, sessionId, reason: forfeitReason } }
+        );
+        return NextResponse.json({ error: 'Failed to forfeit session' }, { status: 500 });
+      }
+
+      if (!forfeited || forfeited.length === 0) {
+        return NextResponse.json(
+          { error: 'Session already ended', alreadyEnded: true },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json({ success: true, endReason: forfeitReason });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

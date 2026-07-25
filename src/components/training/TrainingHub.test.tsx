@@ -43,7 +43,7 @@ describe('TrainingHub', () => {
       />
     );
     expect(screen.getByRole('heading', { name: 'Training Lab' })).toBeInTheDocument();
-    expect(screen.getByText(/never spend Energy or grant DNA/i)).toBeInTheDocument();
+    expect(screen.getByText(/never spend a charge or grant DNA/i)).toBeInTheDocument();
     expect(screen.getByTestId('training-card-trace')).toHaveTextContent('88 · gold');
     expect(screen.getByRole('img', { name: /custom training path/i })).toBeInTheDocument();
   });

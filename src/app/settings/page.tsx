@@ -2,8 +2,9 @@
 
 /**
  * Settings/Profile Page
- * Identity (Player Identity v1: card, handle, equip), career stats, and
- * achievements
+ * Identity (Player Identity v1: card, handle, equip) and career stats.
+ * Banked progression lives on the Chronicle's Records cabinet, linked
+ * from here - WP-0.04 retired the separate achievements surface.
  */
 
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -53,7 +54,7 @@ export default function SettingsPage() {
               <IconUser size={34} />
               Handler Profile
             </h1>
-            <p className="text-beige font-body mt-1">Your identity, stats and achievements</p>
+            <p className="text-beige font-body mt-1">Your identity, stats and records</p>
           </div>
           <Link
             href="/game"
@@ -105,8 +106,8 @@ export default function SettingsPage() {
           <DigestEmailPanel />
         </div>
 
-        {/* The Chronicle (Identity v1 section 7): achievements + records
-            live on the career surface now - settings links to it. */}
+        {/* The Chronicle (Identity v1 section 7): the Records cabinet is
+            the career surface - settings links to it. */}
         <Link
           href="/profile"
           className="panel-elevated p-6 mb-6 animate-fade-up flex items-center gap-4 hover:border-venom-orange/70 transition-colors group block"
@@ -118,7 +119,7 @@ export default function SettingsPage() {
               The Chronicle
             </h2>
             <p className="text-beige text-sm font-body">
-              Your records, personal bests, collection log and achievements
+              Your records, personal bests and collection log
             </p>
           </div>
         </Link>

@@ -1,11 +1,21 @@
 'use client';
 
 /**
- * PremiumSection - the SupaSnake Premium subscription card in the shop.
- * Design doc: docs/game/MONETIZATION_DESIGN.md (LOCKED).
+ * PremiumSection - the SupaSnake Premium subscription card in the shop, and
+ * the only commercial surface this screen is allowed (Rule 7).
+ * Authority: docs/PRODUCT_CONSTITUTION.md §10.2/§10.4.
+ * docs/game/MONETIZATION_DESIGN.md is SUPERSEDED.
  *
- * Never pay-to-win, no paid RNG: the perk list is convenience, cosmetics
- * and prestige. Subscribing requires two active consents (not persisted -
+ * **The perk list below is the advertisement, so it may only contain things
+ * that exist.** WP-0.09 removed three entries that did not survive that test:
+ * "Season Pass included" (Season 1 seeds no premium tiers - the perk had no
+ * content behind it at all), "Triple Contracts" and "Extended Lab Uptime"
+ * (both were paid progression rates, §10.4, and are deleted from the server).
+ * What remains is expressive: a monthly cosmetic drop, supporter marks, and
+ * the stats dashboard. Adding a line here without shipped content behind it
+ * is a false advertisement, not a copy change.
+ *
+ * Subscribing requires two active consents (not persisted -
  * an active choice per visit):
  *   1. §10 FAGG service-start consent (digital service, pro-rata refund
  *      on withdrawal per §16 FAGG)
@@ -19,31 +29,14 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { usePremiumStore } from '@/lib/stores/premiumStore';
 import { PREMIUM_PLANS, type PremiumPlan } from '@/lib/stripe/premium';
-import { PREMIUM_CONFIG } from '@/shared/config/premium';
-import {
-  IconBolt,
-  IconCrown,
-  IconDna,
-  IconMedal,
-} from '@/components/ui/icons';
+import { IconCrown, IconMedal } from '@/components/ui/icons';
 
+/**
+ * Every line here is shipped and appearance-only. None of them changes a
+ * number the game computes (Rule 3), which is why none of them reads a
+ * config value: there is no quantity to read.
+ */
 const PERKS: { title: string; detail: string }[] = [
-  {
-    title: 'Season Pass included',
-    detail: 'The premium season track is unlocked while you are subscribed',
-  },
-  {
-    title: `Daily Lab Stipend`,
-    detail: `+${PREMIUM_CONFIG.stipendEnergyPerDay} energy every day, claimed with one tap`,
-  },
-  {
-    title: 'Triple Contracts',
-    detail: `Pick ${PREMIUM_CONFIG.contracts.picksPerDayPremium} of 3 daily contracts instead of ${PREMIUM_CONFIG.contracts.picksPerDayFree}`,
-  },
-  {
-    title: 'Extended Lab Uptime',
-    detail: `Offline DNA accrues for ${PREMIUM_CONFIG.passiveProgress.maxOfflineHoursPremium}h instead of 24h`,
-  },
   {
     title: 'Monthly exclusive cosmetic',
     detail: 'A new supporter-only trail, emblem or banner every month',
@@ -70,11 +63,8 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
     billingInterval,
     currentPeriodEnd,
     cancelAtPeriodEnd,
-    stipendClaimedToday,
     currentDrop,
-    isClaimingStipend,
     fetchStatus,
-    claimStipend,
   } = usePremiumStore();
 
   const [plan, setPlan] = useState<PremiumPlan>(PREMIUM_PLANS[0]);
@@ -164,7 +154,8 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
         SupaSnake Premium
       </h2>
       <p className="text-beige font-body mb-6">
-        Support the game, get the smoothest Lab experience. Never pay-to-win.
+        Support the game and wear it. Appearance and recognition only — never
+        pay-to-win, and nothing here touches a number the game computes.
       </p>
 
       <div className="panel-glow [--glow:#fbbf24] p-6">
@@ -172,13 +163,7 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
           {PERKS.map((perk) => (
             <li key={perk.title} className="flex items-start gap-2.5">
-              {perk.title.includes('Stipend') ? (
-                <IconBolt size={18} className="text-amber-300 shrink-0 mt-0.5" />
-              ) : perk.title.includes('Contracts') || perk.title.includes('Uptime') ? (
-                <IconDna size={18} className="text-amber-300 shrink-0 mt-0.5" />
-              ) : (
-                <IconMedal size={18} className="text-amber-300 shrink-0 mt-0.5" />
-              )}
+              <IconMedal size={18} className="text-amber-300 shrink-0 mt-0.5" />
               <span className="font-body text-sm">
                 <span className="text-bone-white">{perk.title}</span>{' '}
                 <span className="text-beige/70">— {perk.detail}</span>
@@ -188,7 +173,7 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
         </ul>
 
         {isPremium ? (
-          /* Subscribed state: stipend + drop + billing summary + manage */
+          /* Subscribed state: drop + billing summary + manage */
           <div className="space-y-4" data-testid="premium-subscribed">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
@@ -217,29 +202,10 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
               </button>
             </div>
 
+            {/* The daily energy stipend is gone (Constitution §8.6/§10.4:
+                Energy is never sold, gifted or stipended, and no perk may
+                touch it). Premium's cosmetic drop remains. */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              {stipendClaimedToday ? (
-                <span
-                  data-testid="premium-stipend-claimed"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-arcade border border-scale-blue-light/50 bg-void/50 text-beige/70 text-sm font-body"
-                >
-                  <IconBolt size={14} className="text-amber-300" />
-                  Daily stipend claimed
-                </span>
-              ) : (
-                <button
-                  onClick={() =>
-                    session?.access_token && claimStipend(session.access_token)
-                  }
-                  disabled={isClaimingStipend}
-                  data-testid="premium-claim-stipend"
-                  className="btn-go min-h-[44px] px-4 py-2 text-sm"
-                >
-                  {isClaimingStipend
-                    ? '...'
-                    : `Claim daily +${PREMIUM_CONFIG.stipendEnergyPerDay} energy`}
-                </button>
-              )}
               {currentDrop && (
                 <span
                   data-testid="premium-current-drop"
@@ -247,7 +213,7 @@ export function PremiumSection({ onRequireAccount }: PremiumSectionProps) {
                 >
                   <IconMedal size={14} />
                   This month: {currentDrop.name}
-                  {currentDrop.claimed ? ' ✓' : ' — arrives with your next stipend'}
+                  {currentDrop.claimed ? ' ✓' : ''}
                 </span>
               )}
             </div>

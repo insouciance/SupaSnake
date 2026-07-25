@@ -5,8 +5,8 @@
  *
  * Provides toast notifications for game events like:
  * - New high scores on leaderboard
- * - Achievement unlocks
- * - Reward claims
+ * - Run triumphs (portal infusions, splice fusions, codex discoveries)
+ * - Identity moments
  *
  * Styled as dynasty-glow panels sliding in over the void.
  */
@@ -20,7 +20,7 @@ import {
   type IconProps,
 } from '@/components/ui/icons';
 
-export type ToastType = 'info' | 'success' | 'error' | 'achievement';
+export type ToastType = 'info' | 'success' | 'error' | 'triumph';
 
 export interface ToastData {
   id: string;
@@ -42,21 +42,21 @@ const TYPE_STYLES: Record<ToastType, string> = {
   info: '[--glow:#00FFFF]',
   success: '[--glow:#4ade80]',
   error: '[--glow:#f43f5e]',
-  achievement: '[--glow:#fbbf24]',
+  triumph: '[--glow:#fbbf24]',
 };
 
 const TYPE_ICON_COLOR: Record<ToastType, string> = {
   info: 'text-cyber',
   success: 'text-rarity-uncommon',
   error: 'text-strike-red',
-  achievement: 'text-rarity-legendary',
+  triumph: 'text-rarity-legendary',
 };
 
 const TYPE_ICONS: Record<ToastType, (p: IconProps) => React.JSX.Element> = {
   info: IconBolt,
   success: IconCheck,
   error: IconX,
-  achievement: IconTrophy,
+  triumph: IconTrophy,
 };
 
 interface ToastProps {

@@ -113,6 +113,9 @@ function payload(overrides: Partial<ChroniclePayload> = {}): ChroniclePayload {
         { opponentName: 'Void Reavers', opponentTag: 'VOID', wins: 2, losses: 1, ties: 0 },
       ],
     },
+    // Career footnotes from retired systems (WP-0.07). Most careers have
+    // none, so the default fixture has none.
+    trivia: [],
     ...overrides,
   };
 }
@@ -205,6 +208,50 @@ describe('ChronicleView', () => {
     expect(screen.getByTestId('pb-timeline-empty')).toHaveTextContent(
       'Your first banked run starts your timeline.'
     );
+  });
+
+  it('renders retired-unlock trivia when the career has footnotes (WP-0.07)', () => {
+    render(
+      <ChronicleView
+        payload={payload({
+          trivia: [
+            {
+              id: 'aim-unlock-gridlock',
+              label: 'Gridlock, earned the old way',
+              detail:
+                'You cleared the retired Gridlock unlock — a high score of 15.',
+            },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByTestId('section-trivia')).toBeInTheDocument();
+    expect(screen.getByTestId('trivia-aim-unlock-gridlock')).toHaveTextContent(
+      'Gridlock, earned the old way'
+    );
+  });
+
+  it('omits the trivia section entirely for a career with no footnotes', () => {
+    render(<ChronicleView payload={payload()} />);
+    expect(screen.queryByTestId('section-trivia')).not.toBeInTheDocument();
+  });
+
+  it('hides trivia from a limited public payload (section 7.2)', () => {
+    render(
+      <ChronicleView
+        payload={payload({
+          limited: true,
+          records: null,
+          pbTimeline: null,
+          seasons: null,
+          clan: null,
+          trivia: [
+            { id: 'aim-unlock-firefly', label: 'Firefly, earned the old way', detail: '.' },
+          ],
+        })}
+      />
+    );
+    expect(screen.queryByTestId('section-trivia')).not.toBeInTheDocument();
   });
 
   it('renders private extras when provided (own page)', () => {

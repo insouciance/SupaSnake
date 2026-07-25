@@ -8,7 +8,7 @@ describe('AbandonRunDialog', () => {
       <AbandonRunDialog
         score={12840}
         dnaCollected={186}
-        costsEnergy
+        costsCharge
         onCancel={onCancel}
         onConfirm={jest.fn()}
       />
@@ -17,7 +17,7 @@ describe('AbandonRunDialog', () => {
     const dialog = screen.getByRole('alertdialog', { name: 'Abandon run?' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog).toHaveTextContent('Score 12,840 and 186 run DNA will not be recorded');
-    expect(dialog).toHaveTextContent('Energy spent to launch this run is not returned');
+    expect(dialog).toHaveTextContent('The charge this run consumed is not returned.');
     expect(screen.getByRole('button', { name: 'Keep planning' })).toHaveFocus();
 
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -30,7 +30,7 @@ describe('AbandonRunDialog', () => {
       <AbandonRunDialog
         score={50}
         dnaCollected={0}
-        costsEnergy={false}
+        costsCharge={false}
         onCancel={jest.fn()}
         onConfirm={onConfirm}
       />

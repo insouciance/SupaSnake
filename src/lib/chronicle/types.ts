@@ -144,6 +144,18 @@ export interface ClanSection {
 }
 
 /**
+ * A career footnote: something a player once did that no longer changes what
+ * they can do. Retired systems land here rather than being deleted (R6) - the
+ * first inhabitants are the aim-system unlocks retired by WP-0.07 (§15
+ * overturn 10). Trivia is never a reward, a gate, or a claimable.
+ */
+export interface TriviaEntry {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+/**
  * The Chronicle payload. Sections are null when their infrastructure is
  * not live yet (pre-021/023) or when the public empty-state rules hide
  * them (section 7.2: <5 earning runs = header + collection log only).
@@ -161,4 +173,6 @@ export interface ChroniclePayload {
   collectionLog: CollectionLogEntry[];
   seasons: SeasonChapter[] | null;
   clan: ClanSection | null;
+  /** Career footnotes (retired systems). Empty = no section rendered. */
+  trivia: TriviaEntry[];
 }

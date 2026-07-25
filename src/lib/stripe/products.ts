@@ -1,122 +1,59 @@
 /**
- * Stripe Products Configuration
- * Defines purchasable items in the game
- * Per BM-001: Pay for convenience, not power
+ * One-time Stripe products — the catalogue of things SupaSnake sells outright.
+ *
+ * Authority: docs/PRODUCT_CONSTITUTION.md §10 (§10.2 the four SKU archetypes,
+ * §10.4 the never-sold list) and Rules R3/R4. docs/game/MONETIZATION_DESIGN.md
+ * is SUPERSEDED — nothing here is implemented from it.
+ *
+ * **The catalogue is empty, and that is the shipped state.** WP-0.09 deleted
+ * ENERGY_PRODUCTS (3 SKUs) and BUNDLE_PRODUCTS (2 SKUs): every one of them
+ * granted Energy, DNA or a variant, all three of which §10.4 puts on the
+ * never-sold list. Nothing replaces them in Phase 0. The Atelier, the
+ * Chronicle Season and Patronage (§10.2) are the archetypes that will fill
+ * this file, each arriving with its own server-side grant path.
+ *
+ * The `rewards` shape is the enforcement, not a convention: it can express
+ * cosmetics and nothing else, so `tsc` rejects a SKU that grants energy, DNA,
+ * XP, variants or days before a reviewer ever sees it. Widening it is a change
+ * to the never-sold list and needs a constitutional amendment (§10.4), not a
+ * pull request.
  */
+
+/** The only SKU archetypes §10.2 permits. Nothing sold is consumable. */
+export type StoreProductType = 'cosmetic' | 'season' | 'patronage';
 
 export interface StoreProduct {
   id: string;
   name: string;
+  /** Fully specified pre-payment (R4) — no surprise contents, no randomness. */
   description: string;
   /** Gross price incl. VAT (PAngG display rule; Stripe Tax inclusive) */
   price: number;
   /** ISO currency - EUR storefront for the Austrian/EU launch */
   currency: 'eur';
   stripePriceId: string; // Set from environment variables
-  type: 'energy' | 'bundle' | 'battlepass';
+  type: StoreProductType;
+  /**
+   * What the purchase delivers. Permanent and appearance-only by
+   * construction: `cosmetic_definitions.code` values, resolved to rows
+   * server-side. No numeric grant of any kind may be added here (R3: money
+   * touches no computed number).
+   */
   rewards: {
-    energy?: number;
-    dna?: number;
-    variants?: string[]; // snake_variants.name values (resolved to UUIDs server-side)
-    days?: number; // For battlepass
+    cosmetics?: string[];
   };
 }
 
 /**
- * Energy products - instant energy refills
- * Per BM-001: Pay for convenience (energy = time saving)
+ * Every one-time SKU on sale. Empty until an §10.2 archetype ships.
  */
-export const ENERGY_PRODUCTS: StoreProduct[] = [
-  {
-    id: 'energy_small',
-    name: 'Energy Pack',
-    description: '3 Energy - Play more today',
-    price: 0.99,
-    currency: 'eur',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_ENERGY_SMALL || '',
-    type: 'energy',
-    rewards: { energy: 3 },
-  },
-  {
-    id: 'energy_medium',
-    name: 'Energy Bundle',
-    description: '10 Energy - Best value',
-    price: 2.49,
-    currency: 'eur',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_ENERGY_MEDIUM || '',
-    type: 'energy',
-    rewards: { energy: 10 },
-  },
-  {
-    id: 'energy_large',
-    name: 'Energy Vault',
-    description: '25 Energy - For dedicated players',
-    price: 4.99,
-    currency: 'eur',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_ENERGY_LARGE || '',
-    type: 'energy',
-    rewards: { energy: 25 },
-  },
-];
+export const ALL_PRODUCTS: readonly StoreProduct[] = [];
 
 /**
- * Starter bundles - appear Day 2-3 per BM-004
- * Per BM-001: Variants achievable through play
- */
-export const BUNDLE_PRODUCTS: StoreProduct[] = [
-  {
-    id: 'starter_bundle',
-    name: 'Starter Bundle',
-    description: '20 Energy + 1000 DNA + 1 Rare Variant',
-    price: 2.99,
-    currency: 'eur',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_BUNDLE || '',
-    type: 'bundle',
-    rewards: {
-      energy: 20,
-      dna: 1000,
-      variants: ['CYBER VORTEX'], // Rare variant
-    },
-  },
-  {
-    id: 'dynasty_bundle',
-    name: 'Dynasty Booster',
-    description: '50 Energy + 3000 DNA + 1 Epic Variant',
-    price: 9.99,
-    currency: 'eur',
-    stripePriceId: process.env.NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE || '',
-    type: 'bundle',
-    rewards: {
-      energy: 50,
-      dna: 3000,
-      variants: ['COSMIC SUPERNOVA'], // Epic variant
-    },
-  },
-];
-
-/**
- * All products combined
- */
-export const ALL_PRODUCTS: StoreProduct[] = [
-  ...ENERGY_PRODUCTS,
-  ...BUNDLE_PRODUCTS,
-];
-
-/**
- * Get product by ID
+ * Get product by ID. Returns undefined for every id today — including the
+ * five retired ones — which is what stops the checkout and webhook paths
+ * from fulfilling a deleted SKU.
  */
 export function getProductById(id: string): StoreProduct | undefined {
-  return ALL_PRODUCTS.find(p => p.id === id);
-}
-
-/**
- * Check if bundles should be shown (Day 2-3 per BM-004)
- */
-export function shouldShowBundles(accountCreatedAt: Date): boolean {
-  const now = new Date();
-  const diffMs = now.getTime() - accountCreatedAt.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-  // Show bundles starting Day 2 (48 hours)
-  return diffDays >= 2;
+  return ALL_PRODUCTS.find((product) => product.id === id);
 }

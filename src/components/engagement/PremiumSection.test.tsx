@@ -1,7 +1,8 @@
 /**
  * PremiumSection tests - the shop subscription card.
- * Consent gating (both boxes required), anonymous CTA, plan toggle, and
- * the subscribed state (stipend claim + manage button).
+ * Consent gating (both boxes required), anonymous CTA, plan toggle, the
+ * truthfulness of the advertised perk list (§10.2/§10.4), and the subscribed
+ * state (cosmetic drop + manage button; there is no stipend to claim).
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -39,7 +40,30 @@ describe('PremiumSection', () => {
     expect(screen.getByTestId('premium-section')).toBeInTheDocument();
     expect(screen.getByText('€9.99')).toBeInTheDocument();
     expect(screen.getByText(/incl\. VAT/)).toBeInTheDocument();
-    expect(screen.getByText('Season Pass included')).toBeInTheDocument();
+
+    // The advertised perks are exactly the three that ship, and all three
+    // are expressive (Constitution §10.2).
+    expect(screen.getByText('Monthly exclusive cosmetic')).toBeInTheDocument();
+    expect(screen.getByText('Supporter prestige')).toBeInTheDocument();
+    expect(screen.getByText('Lab Analytics')).toBeInTheDocument();
+  });
+
+  it('advertises no perk that WP-0.09 removed (§10.4)', () => {
+    // "Season Pass included" had no content behind it (Season 1 seeds no
+    // premium tiers); "Triple Contracts" and "Extended Lab Uptime" were paid
+    // progression rates and are deleted from the server by migration 042.
+    // An advertisement is a claim, so an unshipped line here is a false one.
+    setAuth({ isAnonymous: false });
+    render(<PremiumSection onRequireAccount={jest.fn()} />);
+
+    expect(screen.queryByText(/season pass/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/contracts/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/lab uptime/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/offline/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/breeding/i)).not.toBeInTheDocument();
+    // Nothing a subscription delivers is a quantity of energy or DNA.
+    expect(screen.queryByText(/energy/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bDNA\b/)).not.toBeInTheDocument();
   });
 
   it('switches to the yearly price via the plan toggle', () => {
@@ -139,24 +163,26 @@ describe('PremiumSection', () => {
       });
     });
 
-    it('shows billing summary, manage button and the stipend claim', () => {
+    it('shows billing summary, manage button and the cosmetic drop', () => {
       setAuth({ isAnonymous: false });
       render(<PremiumSection onRequireAccount={jest.fn()} />);
 
       expect(screen.getByTestId('premium-subscribed')).toBeInTheDocument();
       expect(screen.getByTestId('premium-manage')).toBeInTheDocument();
-      expect(screen.getByTestId('premium-claim-stipend')).toBeInTheDocument();
       expect(screen.getByTestId('premium-current-drop')).toHaveTextContent('Ion Wake');
       expect(screen.queryByTestId('premium-subscribe')).not.toBeInTheDocument();
     });
 
-    it('shows the claimed marker once the stipend is taken', () => {
-      usePremiumStore.setState({ stipendClaimedToday: true });
+    it('offers no energy stipend anywhere (Constitution §8.6, §10.4)', () => {
+      // Energy is on the never-sold list. A subscription may not reach the
+      // pacing layer - not as a purchase, and not as a perk.
       setAuth({ isAnonymous: false });
       render(<PremiumSection onRequireAccount={jest.fn()} />);
 
-      expect(screen.getByTestId('premium-stipend-claimed')).toBeInTheDocument();
       expect(screen.queryByTestId('premium-claim-stipend')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('premium-stipend-claimed')).not.toBeInTheDocument();
+      expect(screen.queryByText(/stipend/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/energy/i)).not.toBeInTheDocument();
     });
   });
 });

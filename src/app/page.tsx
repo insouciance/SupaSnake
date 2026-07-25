@@ -5,7 +5,7 @@
  *
  * A premium game menu, not a web dashboard: the player's equipped snake
  * lives as a 3D character in a full-viewport chamber behind the UI. Over
- * it, a minimal hierarchy - small wordmark up top, ambient DNA/energy
+ * it, a minimal hierarchy - small wordmark up top, ambient DNA/charges
  * counters top-right, one rotating mission line, and a single obvious
  * primary action: LAUNCH.
  */
@@ -28,6 +28,7 @@ import type { DynastyId } from '@/shared/types/game';
 import { Navigation } from '@/components/ui/Navigation';
 import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
 import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
+import type { ChargeSnapshot } from '@/lib/store/gameStore';
 import {
   ContractsBoard,
   summarizeContracts,
@@ -40,8 +41,12 @@ import {
   type SeasonTrackView,
 } from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
-import { trackEvent } from '@/lib/analytics/posthog';
+import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
+import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
+import { captureAttribution } from '@/lib/growth/attribution';
+import { GROWTH_SURFACES_V1_ENABLED } from '@/lib/features/growth';
+import { LandingPitch } from '@/components/growth/LandingPitch';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import {
   INITIAL_LAUNCH_STATE,
@@ -71,8 +76,8 @@ const TOTAL_VARIANTS = MVP_DYNASTIES.length * 10;
 
 interface HomeStats {
   dna: number;
-  energy: number;
-  maxEnergy: number;
+  /** The day's harvest envelope (§8.6); null before sync or while the ramp hides it. */
+  charge: ChargeSnapshot | null;
   highScore: number;
   collectionSize: number;
   needsStarterSelection: boolean;
@@ -103,7 +108,7 @@ export default function Home() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [stats, setStats] = useState<HomeStats | null>(null);
-  const [streak, setStreak] = useState<{ current: number; multiplier: number } | null>(null);
+  const [streak, setStreak] = useState<{ current: number } | null>(null);
   const [contractsState, setContractsState] = useState<ContractsState | null>(null);
   const [showContractsBoard, setShowContractsBoard] = useState(false);
   // Season track (Design v2 §7.2): the free seasonal reward track. Null
@@ -160,6 +165,20 @@ export default function Home() {
     }
   }, [isLoading, isAuthenticated]);
 
+  // Acquisition funnel (Constitution §11.5). Arrive fires on every landing;
+  // Reach fires additionally when the visit carries a channel. Both wait for
+  // capture to be live, because the provider that starts PostHog is this
+  // component's parent and its effect therefore runs second — sampling
+  // isAnalyticsInitialized() here directly would drop every first paint.
+  // Attribution storage is separately gated on marketing consent.
+  useEffect(() => {
+    return onAnalyticsReady(() => {
+      const attribution = captureAttribution();
+      if (attribution) trackFunnelStage(FunnelStages.REACH);
+      trackFunnelStage(FunnelStages.ARRIVE);
+    });
+  }, []);
+
   // Replay any queued game rewards that failed to send (tab closed at
   // death, network drop). Server dedupes by sessionId.
   useEffect(() => {
@@ -187,8 +206,7 @@ export default function Home() {
           if (!cancelled && data.player) {
             setStats({
               dna: data.player.dna ?? 0,
-              energy: data.player.energy ?? 0,
-              maxEnergy: data.player.max_energy ?? 5,
+              charge: (data.charge as ChargeSnapshot | undefined) ?? null,
               highScore: data.player.high_score ?? 0,
               collectionSize: data.collectionSize ?? 0,
               needsStarterSelection: data.needsStarterSelection ?? false,
@@ -202,13 +220,9 @@ export default function Home() {
         if (streaksRes.ok) {
           const data = await streaksRes.json();
           if (!cancelled) {
-            setStreak({
-              current: data.currentStreak ?? 0,
-              multiplier: Number(data.multiplier ?? 1) || 1,
-            });
+            setStreak({ current: data.currentStreak ?? 0 });
             trackEvent(AnalyticsEvents.DAILY_LOGIN, {
               current_streak: data.currentStreak ?? 0,
-              streak_multiplier: data.multiplier ?? 1,
               category: 'engagement',
             });
           }
@@ -542,14 +556,12 @@ export default function Home() {
         const outcome: ContractClaimOutcome = {
           contractId: data.contractId,
           dnaGranted: data.dnaGranted,
-          energyGranted: data.energyGranted,
           xpGranted: data.xpGranted,
         };
 
         trackEvent(AnalyticsEvents.CHALLENGE_COMPLETED, {
           contract: outcome.contractId,
           dna_granted: outcome.dnaGranted,
-          energy_granted: outcome.energyGranted,
           xp_granted: outcome.xpGranted,
           category: 'engagement',
         });
@@ -570,7 +582,6 @@ export default function Home() {
             ? {
                 ...prev,
                 dna: prev.dna + outcome.dnaGranted,
-                energy: prev.energy + outcome.energyGranted,
               }
             : prev
         );
@@ -774,7 +785,15 @@ export default function Home() {
 
   const mission = missionItems[missionIndex % missionItems.length];
 
+  // The "what is this" section for scrollers and crawlers (§11.4). Rendered
+  // AFTER the 100dvh chamber, never inside it: the fold, the LAUNCH dock and
+  // the ≤3-tap law (§5) are untouched for a visitor who never scrolls. Shown
+  // to logged-out visitors only — a returning player wants the game, not the
+  // pitch — and server-rendered in that state, so crawlers always see it.
+  const showLandingPitch = GROWTH_SURFACES_V1_ENABLED && !isAuthenticated;
+
   return (
+    <>
     <main className="app-bg text-bone-white relative h-[100dvh] overflow-hidden">
       {/* The Specimen Chamber - full-viewport scene behind the UI. The
           placeholder holds the atmosphere until WebGL is live, then the
@@ -928,12 +947,16 @@ export default function Home() {
               {stats ? stats.dna.toLocaleString('en-US') : '—'}
             </span>
           </span>
-          <span className="flex items-center gap-1.5" title="Energy">
-            <IconBolt size={16} className="text-venom-orange" />
-            <span className="font-mono font-bold text-sm">
-              {stats ? `${stats.energy}/${stats.maxEnergy}` : '—'}
+          {/* Charges appear only once the §8.6 ramp says so - a new player
+              never meets scarcity before they have met the game. */}
+          {stats?.charge?.visible && (
+            <span className="flex items-center gap-1.5" title="Charges today">
+              <IconBolt size={16} className="text-venom-orange" />
+              <span className="font-mono font-bold text-sm">
+                {stats.charge.remaining}/{stats.charge.perDay}
+              </span>
             </span>
-          </span>
+          )}
         </div>
       )}
 
@@ -995,5 +1018,7 @@ export default function Home() {
         </div>
       </div>
     </main>
+    {showLandingPitch && <LandingPitch />}
+    </>
   );
 }

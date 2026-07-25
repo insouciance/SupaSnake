@@ -2,8 +2,12 @@
 
 /**
  * Leaderboard Page
- * Per BA-001: Skill-based brackets for fair competition
  * Per SO-004: Social discovery by Day 2-3
+ *
+ * Constitution §6.1: Score is the skill number. Generation "skill brackets"
+ * are deleted, and "your rank" comes from the server's `viewer` block - the
+ * page must never compare a leaderboard `playerId` (players.id) against the
+ * auth user id, which is what made myRank permanently undefined (GT §9.3).
  */
 
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
@@ -13,9 +17,7 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import {
   type LeaderboardEntry,
   type LeaderboardType,
-  type SkillBracket,
-  BRACKET_NAMES,
-  BRACKET_COLORS,
+  type LeaderboardViewer,
 } from '@/lib/leaderboard/types';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import type { PlayerIdentity } from '@/lib/identity/types';
@@ -117,14 +119,15 @@ export default function LeaderboardPage() {
     redirect('/');
   }
 
-  const { user, session } = useAuth();
+  const { session, isLoading: isAuthLoading } = useAuth();
   const { showToast } = useToast();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<BoardTab>('global');
-  const [bracket, setBracket] = useState<SkillBracket | 'all'>('all');
   const [dynasty, setDynasty] = useState<DynastyId | 'all'>('all');
   const [total, setTotal] = useState(0);
+  // The server's identity join (players.id space) - never the auth user id
+  const [viewer, setViewer] = useState<LeaderboardViewer | null>(null);
   // Weekly Anomaly board (§7.2): fetched when its tab is selected
   const [anomalyBoard, setAnomalyBoard] = useState<AnomalyBoardView | null>(null);
 
@@ -134,33 +137,39 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ type, limit: '50' });
-      if (bracket !== 'all') {
-        params.set('bracket', bracket);
-      }
+      const params = new URLSearchParams({ type, view: 'board', limit: '50' });
       // Dynasty filter only applies to weekly/daily
       if (dynasty !== 'all' && type !== 'global') {
         params.set('dynasty', dynasty);
       }
 
-      const response = await fetch(`/api/leaderboard?${params}`);
+      // Credentials are optional (the board is public) but they are what
+      // lets the server resolve "you" - see LeaderboardViewer.
+      const response = await fetch(`/api/leaderboard?${params}`, {
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : undefined,
+      });
       const data = await response.json();
 
       if (response.ok) {
         setEntries(data.entries);
         setTotal(data.total);
+        setViewer(data.viewer ?? null);
       }
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
     } finally {
       setLoading(false);
     }
-  }, [type, bracket, dynasty]);
+  }, [type, dynasty, session?.access_token]);
 
   // Handle real-time high score events
   const handleNewHighScore = useCallback((event: HighScoreEvent) => {
-    // Don't show notification for own scores
-    if (event.playerId === user?.id) return;
+    // Don't show notification for own scores. The realtime payload carries
+    // game_sessions.player_id (players.id), so it is compared against the
+    // server-resolved viewer id - never the auth user id (GT §9.3).
+    if (viewer?.playerId && event.playerId === viewer.playerId) return;
 
     showToast(
       `New high score: ${event.score} points (${event.dynasty})!`,
@@ -170,7 +179,7 @@ export default function LeaderboardPage() {
 
     // Refresh leaderboard to show new entry
     fetchLeaderboard();
-  }, [user?.id, showToast, fetchLeaderboard]);
+  }, [viewer?.playerId, showToast, fetchLeaderboard]);
 
   // Subscribe to real-time updates
   const { isConnected } = useLeaderboardRealtime({
@@ -180,8 +189,18 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     if (anomalyTab) return; // the anomaly tab has its own fetch below
+    // Wait for the session to resolve before the first board request.
+    // `useAuth` starts with `session: null` while `getSession()` is in flight,
+    // so firing here unconditionally sent a request with no Authorization
+    // header - and the server can only resolve `viewer` from a token. The
+    // signed-in player was therefore served a viewer-less board first and a
+    // correct one a moment later: their rank flickered in, and the board was
+    // fetched twice on every visit. Deferring costs the logged-out visitor
+    // nothing over the network (`getSession()` reads local storage) and the
+    // board stays public - an unresolved session simply means no viewer.
+    if (isAuthLoading) return;
     fetchLeaderboard();
-  }, [fetchLeaderboard, anomalyTab]);
+  }, [fetchLeaderboard, anomalyTab, isAuthLoading]);
 
   // Weekly Anomaly board (§7.2): its own leaderboard, normal DNA rules
   useEffect(() => {
@@ -202,7 +221,10 @@ export default function LeaderboardPage() {
     };
   }, [anomalyTab, session?.access_token]);
 
-  const myRank = entries.find(e => e.playerId === user?.id)?.rank;
+  // GT §9.3 fix: the rank comes from the server's players.id join, not from
+  // matching an auth user id against a players.id.
+  const myRank = viewer?.ranked ? viewer.rank : undefined;
+  const myPlayerId = viewer?.playerId ?? null;
   const podiumEntries = entries.filter(e => e.rank >= 1 && e.rank <= 3);
 
   return (
@@ -256,39 +278,8 @@ export default function LeaderboardPage() {
             ))}
           </div>
 
-          {/* Bracket Filter (score boards only) */}
-          {!anomalyTab && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setBracket('all')}
-              className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-body text-sm transition-all ${
-                bracket === 'all'
-                  ? 'bg-scale-blue-light border-scale-blue-light text-bone-white'
-                  : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange'
-              }`}
-            >
-              All Brackets
-            </button>
-            {(Object.keys(BRACKET_NAMES) as SkillBracket[]).map((b) => (
-              <button
-                key={b}
-                onClick={() => setBracket(b)}
-                className={`px-4 py-2 min-h-[44px] rounded-arcade border-2 font-body text-sm transition-all ${
-                  bracket === b
-                    ? 'text-bone-white border-transparent'
-                    : 'bg-void/50 border-scale-blue-light/60 text-beige hover:border-venom-orange'
-                }`}
-                style={{
-                  backgroundColor: bracket === b ? BRACKET_COLORS[b] : undefined,
-                  borderColor: bracket === b ? BRACKET_COLORS[b] : undefined,
-                  boxShadow: bracket === b ? `0 0 10px -3px ${BRACKET_COLORS[b]}` : undefined,
-                }}
-              >
-                {b.charAt(0).toUpperCase() + b.slice(1)}
-              </button>
-            ))}
-          </div>
-          )}
+          {/* Generation "skill brackets" deleted per Constitution §6.1 -
+              they bucketed players by a DNA purchase and called it skill. */}
 
           {/* Dynasty Filter (only for weekly/daily) */}
           {!anomalyTab && type !== 'global' && (
@@ -352,7 +343,11 @@ export default function LeaderboardPage() {
 
         {/* My Position */}
         {!anomalyTab && myRank && (
-          <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 animate-fade-up">
+          <div
+            data-testid="leaderboard-my-rank"
+            data-rank={myRank}
+            className="panel-glow [--glow:#22d3ee] p-4 mb-6 animate-fade-up"
+          >
             <p className="text-venom-orange font-body">
               Your Rank: <span className="font-display text-2xl text-glow-orange">#{myRank}</span>
             </p>
@@ -398,11 +393,9 @@ export default function LeaderboardPage() {
         <div className="panel-elevated overflow-hidden animate-fade-up">
           {/* Header */}
           <div className="grid grid-cols-12 gap-4 p-4 bg-void/60 border-b border-scale-blue-light/60 label-arcade">
-            <div className="col-span-1">Rank</div>
-            <div className="col-span-4">Player</div>
-            <div className="col-span-2 text-right">Score</div>
-            <div className="col-span-2 text-right">Gen</div>
-            <div className="col-span-3">Bracket</div>
+            <div className="col-span-2">Rank</div>
+            <div className="col-span-6">Player</div>
+            <div className="col-span-4 text-right">Score</div>
           </div>
 
           {/* Entries */}
@@ -417,11 +410,15 @@ export default function LeaderboardPage() {
               <p className="text-beige/60 font-body text-sm mt-2">Be the first on the leaderboard!</p>
             </div>
           ) : (
-            entries.map((entry, idx) => (
+            entries.map((entry) => {
+              const isMe = myPlayerId !== null && entry.playerId === myPlayerId;
+              return (
               <div
                 key={entry.playerId}
+                data-testid="leaderboard-row"
+                data-you={isMe ? 'true' : undefined}
                 className={`grid grid-cols-12 gap-4 p-4 border-t border-scale-blue-light/40 items-center transition-all hover:bg-scale-blue-light/20 ${
-                  entry.playerId === user?.id ? 'bg-venom-orange/10' : ''
+                  isMe ? 'bg-venom-orange/10' : ''
                 } ${
                   entry.rank === 1 ? 'bg-gradient-to-r from-rarity-legendary/10 to-transparent' :
                   entry.rank === 2 ? 'bg-gradient-to-r from-gray-300/10 to-transparent' :
@@ -429,18 +426,18 @@ export default function LeaderboardPage() {
                 }`}
               >
                 {/* Rank */}
-                <div className="col-span-1">
+                <div className="col-span-2">
                   <RankBadge rank={entry.rank} />
                 </div>
 
                 {/* Player - Identity v1: the Player Card row variant */}
-                <div className="col-span-4 font-body min-w-0">
+                <div className="col-span-6 font-body min-w-0">
                   {(() => {
                     const identity = entryIdentity(entry);
                     return identity ? (
                       <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
                         <PlayerCard identity={identity} variant="row" />
-                        {entry.playerId === user?.id && (
+                        {isMe && (
                           <span className="text-xs text-venom-orange shrink-0">(You)</span>
                         )}
                       </span>
@@ -449,7 +446,7 @@ export default function LeaderboardPage() {
                         <span className={entry.rank <= 3 ? 'text-bone-white font-bold' : 'text-beige'}>
                           {entry.playerName}
                         </span>
-                        {entry.playerId === user?.id && (
+                        {isMe && (
                           <span className="ml-2 text-xs text-venom-orange">(You)</span>
                         )}
                       </span>
@@ -458,7 +455,7 @@ export default function LeaderboardPage() {
                 </div>
 
                 {/* Score */}
-                <div className={`col-span-2 text-right font-display ${
+                <div className={`col-span-4 text-right font-display ${
                   entry.rank === 1 ? 'text-rarity-legendary text-lg [--glow:#fbbf24] text-glow' :
                   entry.rank === 2 ? 'text-gray-300' :
                   entry.rank === 3 ? 'text-amber-500' :
@@ -466,27 +463,9 @@ export default function LeaderboardPage() {
                 }`}>
                   {entry.score.toLocaleString()}
                 </div>
-
-                {/* Generation */}
-                <div className="col-span-2 text-right text-beige font-body">
-                  Gen {entry.highestGeneration}
-                </div>
-
-                {/* Bracket */}
-                <div className="col-span-3">
-                  <span
-                    className="px-3 py-1 rounded-arcade text-xs font-body border"
-                    style={{
-                      backgroundColor: BRACKET_COLORS[entry.bracket] + '20',
-                      borderColor: BRACKET_COLORS[entry.bracket],
-                      color: BRACKET_COLORS[entry.bracket],
-                    }}
-                  >
-                    {entry.bracket.charAt(0).toUpperCase() + entry.bracket.slice(1)}
-                  </span>
-                </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
         )}
@@ -494,15 +473,15 @@ export default function LeaderboardPage() {
         {/* Total Count */}
         {!anomalyTab && (
         <div className="text-center text-beige/60 mt-6 text-sm font-body">
-          {total.toLocaleString()} total players
+          {total.toLocaleString()} ranked players
         </div>
         )}
 
-        {/* Fair Play Notice */}
+        {/* Fair Play Notice (Constitution §6.1) */}
         {!anomalyTab && (
         <div className="text-center text-beige/40 mt-8 text-xs font-body space-y-1">
-          <p>Players compete within their skill bracket for fair competition.</p>
-          <p>Brackets are based on highest snake generation.</p>
+          <p>Score measures the pilot: it never reads your genes, traits or lineage.</p>
+          <p>Only completed, validated runs rank, and every player holds one entry — their best.</p>
         </div>
         )}
       </div>

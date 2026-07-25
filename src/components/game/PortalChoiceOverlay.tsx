@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CHOICE_INPUT_LOCK_MS } from '@/components/game/MutationChoiceOverlay';
 import { StrainChip } from '@/components/traits/StrainChip';
 import type { StrainId } from '@/shared/game/strains';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
+import { FunnelStages, trackFunnelStageOnce } from '@/lib/analytics/funnel';
 
 interface PortalChoiceOverlayProps {
   canInfuse: boolean;
@@ -39,11 +40,19 @@ export function PortalChoiceOverlay({
     return () => window.clearTimeout(timer);
   }, []);
 
+  // Activate (§11.5): the aha is the first BANKED extraction — the moment
+  // the game's thesis lands. Recorded once per browser and strictly as a
+  // side effect: the run's own decision runs first and is never gated on it.
+  const bank = useCallback(() => {
+    onBank();
+    trackFunnelStageOnce(FunnelStages.ACTIVATE, { bank_dna: bankDna });
+  }, [bankDna, onBank]);
+
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (lockedRef.current) return;
       const key = event.key.toLowerCase();
-      if (key === '1' || key === 'b') onBank();
+      if (key === '1' || key === 'b') bank();
       else if (key === '2' || key === 'p') onPass();
       else if ((key === '3' || key === 'i') && canInfuse) onInfuse();
       else return;
@@ -52,7 +61,7 @@ export function PortalChoiceOverlay({
     };
     window.addEventListener('keydown', keydown, true);
     return () => window.removeEventListener('keydown', keydown, true);
-  }, [canInfuse, onBank, onInfuse, onPass]);
+  }, [bank, canInfuse, onInfuse, onPass]);
 
   const option = 'rounded-arcade border p-4 text-left transition-all min-h-[44px]';
   return (
@@ -61,7 +70,7 @@ export function PortalChoiceOverlay({
         <h2 id="portal-choice-title" className="heading-display text-center text-2xl text-[#7df9ff] text-glow">Exit Portal</h2>
         <p className="mb-5 text-center text-sm font-body text-beige/70">Cash out, keep growing, or turn body into build power.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <button type="button" disabled={locked} onClick={onBank} aria-keyshortcuts="1 B" data-testid="portal-bank" className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
+          <button type="button" disabled={locked} onClick={bank} aria-keyshortcuts="1 B" data-testid="portal-bank" className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
             <span className="heading-display text-rarity-uncommon">1 · BANK</span>
             <p className="mt-1 text-sm font-body text-beige">End the run for <b>{bankDna} DNA</b></p>
           </button>

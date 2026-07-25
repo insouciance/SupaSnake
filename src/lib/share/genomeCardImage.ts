@@ -1,6 +1,7 @@
 import { GENES, isGeneId } from '@/shared/game/genes';
 import { SPLICES, isSpliceId } from '@/shared/game/splices';
 import { STRAINS, isStrainId, STRAIN_TIER_NAMES, type StrainId } from '@/shared/game/strains';
+import { canonicalUrl } from '@/shared/config/site';
 
 export interface GenomeCardGene {
   id: string;
@@ -19,13 +20,17 @@ export interface GenomeCardMilestone {
   name: string;
 }
 
+/**
+ * The settled payout cascade, as it actually settles after WP-0.02:
+ * raw fold -> genome -> outcome multiplier (BANK x1.25 / SALVAGE x0.60),
+ * and then only the day's harvest factor (§8.6) on a lean run. The account
+ * multiplier stack (streak / collection set / clan duel) is deleted - the
+ * card must never show a factor the settlement does not apply.
+ */
 export interface GenomeCardCascade {
   raw: number;
   genome: number;
   outcome: number;
-  streak: number;
-  setBonus: number;
-  duel: number;
   total: number;
 }
 
@@ -139,15 +144,6 @@ export function buildGenomeCardModel(
     }
   }
 
-  const breakdown =
-    typeof response.dnaMultiplier === 'object' &&
-    response.dnaMultiplier !== null &&
-    !Array.isArray(response.dnaMultiplier)
-      ? response.dnaMultiplier as Record<string, unknown>
-      : {};
-  const streak = finiteNonNegative(breakdown.streak) ?? 1;
-  const setBonus = finiteNonNegative(breakdown.setBonus) ?? 1;
-  const duel = finiteNonNegative(breakdown.clanDuel) ?? 1;
   const total = hypothetical ?? earningTotal;
 
   let thirdInfuseAt: number | null = null;
@@ -171,9 +167,6 @@ export function buildGenomeCardModel(
       raw: Math.floor(raw),
       genome: Math.floor(genomeRaw),
       outcome: Math.floor(outcome),
-      streak,
-      setBonus,
-      duel,
       total: Math.floor(total),
     },
     allIn:
@@ -190,14 +183,21 @@ function safeFactor(before: number, after: number): number {
 
 export function genomeCardCascadeRows(model: GenomeCardModel): GenomeCardCascadeRow[] {
   const c = model.cascade;
-  return [
+  const rows: GenomeCardCascadeRow[] = [
     { label: 'RAW', value: c.raw, factor: null },
     { label: 'GENOME', value: c.genome, factor: safeFactor(c.raw, c.genome) },
-    { label: model.extracted ? 'BANK + INFUSES' : 'SALVAGE', value: c.outcome, factor: safeFactor(c.genome, c.outcome) },
-    { label: 'STREAK', value: Math.floor(c.outcome * c.streak), factor: c.streak },
-    { label: 'SET', value: Math.floor(c.outcome * c.streak * c.setBonus), factor: c.setBonus },
-    { label: 'DUEL', value: c.total, factor: c.duel },
+    {
+      label: model.extracted ? 'BANK + INFUSES' : 'SALVAGE',
+      value: c.outcome,
+      factor: safeFactor(c.genome, c.outcome),
+    },
   ];
+  // The outcome IS the settled payout unless the day's allotment ran out,
+  // in which case the harvest factor (§8.6) is the one honest last step.
+  if (c.total !== c.outcome) {
+    rows.push({ label: 'HARVEST', value: c.total, factor: safeFactor(c.outcome, c.total) });
+  }
+  return rows;
 }
 
 export function genomeCardFilename(model: GenomeCardModel): string {
@@ -337,6 +337,28 @@ export async function createGenomeCardBlob(model: GenomeCardModel): Promise<Blob
   });
 }
 
+/**
+ * Where a shared Genome Card points. Constitution Rule 14 — every artifact
+ * "is linkable, and the link carries an image and a way in" — and §11.4:
+ * every shared URL is a playable ad, because the root lands playing.
+ *
+ * Always the canonical origin, never the deployment origin: a card shared
+ * from a preview build must not hand a stranger a preview link.
+ */
+export const GENOME_CARD_SHARE_URL = canonicalUrl('/');
+
+/**
+ * The share sheet's text. Ends with the URL on its own line so the link
+ * survives the platforms that silently drop `url` when `files` is present
+ * (the reason the shipped card reached players with no way back in).
+ */
+export function genomeCardShareText(model: GenomeCardModel): string {
+  return [
+    `${model.cascade.total.toLocaleString()} DNA · ${model.genes.length} genes`,
+    GENOME_CARD_SHARE_URL,
+  ].join('\n');
+}
+
 export async function shareGenomeCard(
   model: GenomeCardModel
 ): Promise<'shared' | 'downloaded'> {
@@ -351,7 +373,8 @@ export async function shareGenomeCard(
     await navigator.share({
       files: [file],
       title: `${model.snakeName}'s SupaSnake Genome`,
-      text: `${model.cascade.total.toLocaleString()} DNA · ${model.genes.length} genes`,
+      text: genomeCardShareText(model),
+      url: GENOME_CARD_SHARE_URL,
     });
     return 'shared';
   }

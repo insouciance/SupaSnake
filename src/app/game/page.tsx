@@ -131,7 +131,7 @@ import {
   buildGenomeCardModel,
   type GenomeCardModel,
 } from '@/lib/share/genomeCardImage';
-import { isAimSystemId, type AimStats, type AimSystemId } from '@/lib/game/aimSystems';
+import { isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import {
   IconBolt,
   IconDna,
@@ -312,15 +312,12 @@ export default function GamePage() {
   // Post-run save-progress prompt for guests (never shown on the way INTO
   // a game - account nudges belong after a run, not before it)
   const [showSaveProgress, setShowSaveProgress] = useState(false);
-  const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const [equippedSnake, setEquippedSnake] = useState<EquippedSnakeView | null>(null);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
-  const [aimStats, setAimStats] = useState<AimStats | null>(null);
   const [streakInfo, setStreakInfo] = useState<{
     current: number;
     longest: number;
-    multiplier: number;
     graceConsumed: boolean;
   } | null>(null);
   const gameStartTime = useRef<number>(0);
@@ -397,9 +394,7 @@ export default function GamePage() {
     exitTile2,
     exitTicksRemaining,
     anomalyRun,
-    energy,
-    maxEnergy,
-    energyRegenAt,
+    charge,
     selectedDynasty,
     snake,
     food,
@@ -463,7 +458,7 @@ export default function GamePage() {
     setPaused,
     setDeathSequence,
     setReady,
-    syncEnergyFromServer,
+    syncChargeFromServer,
   } = useGameStore();
 
   /**
@@ -597,26 +592,24 @@ export default function GamePage() {
       .then(res => res.json())
       .then(data => {
         if (data.player) {
-          syncEnergyFromServer(data.player.energy, data.player.energy_regen_at);
+          syncChargeFromServer(data.charge ?? null);
           setHasCompletedFirstRun(
             data.hasCompletedFirstRun === true ||
               Number(data.player.total_games_played ?? 0) > 0
           );
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
-        // Aim system meta-progression: server-stored selection + unlock stats
+        // Aim system: the server-stored preference. No unlock stats - all
+        // four systems are settings from run 1 (Constitution §6.1).
         if (isAimSystemId(data.aimSystem)) {
           setAimSystem(data.aimSystem);
-        }
-        if (data.aimStats) {
-          setAimStats(data.aimStats);
         }
         if (data.genomeFtue) {
           setGenomeFtue(sanitizeGenomeFtue(data.genomeFtue));
         }
       })
       .catch(err => console.error('Failed to fetch player data:', err));
-  }, [session?.access_token, isPlaying, syncEnergyFromServer, setAimSystem]);
+  }, [session?.access_token, isPlaying, syncChargeFromServer, setAimSystem]);
 
   // Weekly Anomaly board (§7.2): fetched between runs so the pre-game
   // entry shows the live modifier + leaderboard. Refreshes after every
@@ -947,7 +940,7 @@ export default function GamePage() {
     gameRef.current.on('infused', () => {
       setPortalChoicePending(false);
       mirrorGenomeState();
-      showToast('Portal infused — body became build power', 'achievement', 2600);
+      showToast('Portal infused — body became build power', 'triumph', 2600);
     });
 
     gameRef.current.on('surgeChoice', () => {
@@ -964,7 +957,7 @@ export default function GamePage() {
       mirrorGenomeState();
       const spliceId: unknown = data?.id;
       if (isSpliceId(spliceId)) {
-        showToast(`Splice fused: ${SPLICES[spliceId].name}`, 'achievement', 3500);
+        showToast(`Splice fused: ${SPLICES[spliceId].name}`, 'triumph', 3500);
       }
     });
 
@@ -985,7 +978,7 @@ export default function GamePage() {
       audioManager.play('death');
       haptics.death();
       screenShake.heavy();
-      showToast('Phoenix — one death absorbed', 'achievement', 3000);
+      showToast('Phoenix — one death absorbed', 'triumph', 3000);
     });
 
     // COSMIC Flux: audio cues for the wall-phase telegraph + flip (the
@@ -1113,12 +1106,12 @@ export default function GamePage() {
                   : '';
                 showToast(
                   `Codex: ${codexEntryName(discovery.type, discovery.entryId)}${reward}${worldFirst}`,
-                  'achievement',
+                  'triumph',
                   5000
                 );
               }
               if (discoveryResult.genomeWeaverUnlocked) {
-                showToast('Genome Weaver unlocked', 'achievement', 5000);
+                showToast('Genome Weaver unlocked', 'triumph', 5000);
               }
               if (
                 discoveryResult.discoveries.length > 0 ||
@@ -1143,14 +1136,6 @@ export default function GamePage() {
                 ...prev,
                 [result.mastery.dynasty]: result.mastery.level,
               }));
-            }
-
-            // Show toast for each newly unlocked achievement
-            if (result.newAchievements && result.newAchievements.length > 0) {
-              setUnlockedAchievements(result.newAchievements);
-              result.newAchievements.forEach((name: string) => {
-                showToast(`Achievement Unlocked: ${name}`, 'achievement', 5000);
-              });
             }
 
             // Identity discovery is persistent and player-pulled. The result
@@ -1346,19 +1331,12 @@ export default function GamePage() {
     intervalRef.current = setInterval(tick, gameRef.current?.getSpeed() || 200);
   }, [syncState]);
 
-  // Default mode: EARN when energy is available, FREE when it runs out -
-  // the zero-energy screen offers practice instead of a wall. (EARN and
-  // ANOMALY are disabled in the toggle at 0 energy, so this can't fight
-  // the player - anomaly runs are earning runs and cost energy too.)
-  useEffect(() => {
-    if (
-      !isPlaying &&
-      (gameMode === 'earn' || gameMode === 'anomaly') &&
-      energy < GAME_CONFIG.economy.energy.costPerGame
-    ) {
-      setGameMode('free');
-    }
-  }, [energy, isPlaying, gameMode, setGameMode]);
+  // NOTE: the effect that used to demote EARN/ANOMALY to FREE at zero
+  // energy is deliberately gone (Constitution §8.6). Running out of the
+  // day's charges no longer changes what the player may do - it changes
+  // only what the run harvests. Silently switching their mode would be the
+  // "second-class run" the Constitution abolished, and would also take a
+  // choice away from them without asking.
 
   /**
    * Apply the server-authoritative start response to the local engine. Both
@@ -1378,8 +1356,9 @@ export default function GamePage() {
     setSelectedDynasty(dynasty);
     setGameMode(mode);
 
-    // Sync server state to local (free starts echo energy unchanged).
-    syncEnergyFromServer(data.energy, data.energyRegenAt);
+    // Sync server state to local. The server has already decided and
+    // stamped how this run settles; the client only mirrors it.
+    syncChargeFromServer(data.charge ?? null);
     setCurrentSessionId(data.sessionId);
     gameStartTime.current = Date.now();
     freeRunRef.current = mode === 'free';
@@ -1462,7 +1441,7 @@ export default function GamePage() {
     setSelectedDynasty,
     setSurgeChoicePending,
     storeStartGame,
-    syncEnergyFromServer,
+    syncChargeFromServer,
     syncState,
   ]);
 
@@ -1478,8 +1457,8 @@ export default function GamePage() {
       setStartError('No snake is equipped. Return Home and Retry setup.');
       return;
     }
-    // Free Play bypasses the energy gate (server enforces the same rule)
-    if (mode !== 'free' && energy < GAME_CONFIG.economy.energy.costPerGame) return;
+    // NO ENERGY GATE (Constitution §8.6). Every run starts. The server
+    // decides whether it harvests full or lean; neither answer stops it.
     if (isStarting) return;
 
     setIsStarting(true);
@@ -1494,7 +1473,7 @@ export default function GamePage() {
         },
         body: JSON.stringify({
           action: 'start',
-          mode, // 'free' = practice run: no energy, no rewards (§7.4)
+          mode, // 'free' = rewardless practice run (§7.4)
           snake_id: equippedSnake.id, // Server validates ownership + equipped
         }),
       });
@@ -1523,7 +1502,6 @@ export default function GamePage() {
     }
   }, [
     applyStartedRun,
-    energy,
     equippedSnake,
     gameMode,
     hasCompletedFirstRun,
@@ -1691,8 +1669,8 @@ export default function GamePage() {
     return result;
   }, [awaitingResumeInput, releaseResumeGate, setReady, startGameLoop]);
 
-  // Select an aim system - optimistic with rollback; the server re-checks
-  // the unlock predicate (403 on a locked pick)
+  // Select an aim system - optimistic with rollback. Nothing to authorize:
+  // the server validates the id only (§6.1, §15 overturn 10).
   const handleSelectAimSystem = useCallback(async (id: AimSystemId) => {
     const previous = useGameStore.getState().aimSystem;
     if (id === previous) return;
@@ -1747,7 +1725,6 @@ export default function GamePage() {
   const handleRestart = useCallback(() => {
     resetGame();
     setCurrentSessionId(null);
-    setUnlockedAchievements([]);
     setStreakInfo(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
@@ -1849,8 +1826,7 @@ export default function GamePage() {
     isFirstMovementPrompt: minimalFirstRunPrompt && isReady,
     score,
     dna: dnaCollected,
-    energy,
-    maxEnergy,
+    charge,
     bankDna: previewOutcome(true, activeAnomalyId),
     crashDna: previewOutcome(false, activeAnomalyId),
     comboMultiplier,
@@ -1880,7 +1856,7 @@ export default function GamePage() {
           <AbandonRunDialog
             score={score}
             dnaCollected={dnaCollected}
-            costsEnergy={!lastRunFree}
+            costsCharge={!lastRunFree}
             onCancel={() => setShowAbandonConfirm(false)}
             onConfirm={handleQuit}
           />
@@ -2016,9 +1992,9 @@ export default function GamePage() {
               <IconBolt size={13} className="shrink-0 text-venom-orange" />
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">
                 <span className="lg:hidden">NRG</span>
-                <span className="hidden lg:inline">Energy</span>
+                <span className="hidden lg:inline">Charges</span>
               </span>
-              <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{energy}/{maxEnergy}</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{charge ? `${charge.remaining}/${charge.perDay}` : '—'}</span>
             </div>
           </div>
 
@@ -2417,9 +2393,6 @@ export default function GamePage() {
                     <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                       <IconFlame size={18} className="text-venom-orange" />
                       Day <span className="font-bold text-venom-orange">{streakInfo.current}</span> streak
-                      {streakInfo.multiplier > 1 && (
-                        <span className="text-beige/70"> ({streakInfo.multiplier}x DNA)</span>
-                      )}
                     </p>
                   )}
                   {/* Mastery XP (Design v2 §7.1) - banked XP from this
@@ -2519,24 +2492,6 @@ export default function GamePage() {
                     accessToken={session.access_token}
                   />
                 )}
-
-                {/* Unlocked Achievements */}
-                {unlockedAchievements.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-scale-blue-light/60">
-                    <p className="label-arcade">Achievements Unlocked!</p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {unlockedAchievements.map((name, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-rarity-legendary/15 border border-rarity-legendary/60 rounded-arcade text-rarity-legendary text-sm font-body shadow-glow-sm shadow-rarity-legendary/30"
-                        >
-                          <IconTrophy size={14} />
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </>
             ) : (
               <>
@@ -2628,14 +2583,12 @@ export default function GamePage() {
               </>
             )}
 
-            {/* Run mode: EARN (energy, rewards) vs ANOMALY (weekly board,
+            {/* Run mode: EARN (rewards) vs ANOMALY (weekly board,
                 §7.2) vs FREE PLAY (unlimited practice, no rewards - §7.4) */}
             {!noSnakeAvailable && (
               <ModeToggle
                 mode={gameMode}
-                energy={energy}
-                maxEnergy={maxEnergy}
-                energyRegenAt={energyRegenAt}
+                charge={charge}
                 onSelect={setGameMode}
                 anomalyName={
                   anomalyBoard?.live ? anomalyBoard.anomaly.name : null
@@ -2652,13 +2605,13 @@ export default function GamePage() {
               gameMode === 'anomaly' &&
               anomalyBoard?.live && <AnomalyPanel board={anomalyBoard} />}
 
-            {/* Aim system picker - locked chips show their unlock path */}
+            {/* Aim system picker - all four selectable from run 1 (§6.1).
+                One control on the setup page; it adds no required tap. */}
             {!noSnakeAvailable && (
               <div className="space-y-2">
                 <p className="label-arcade">Aim System</p>
                 <AimSystemSelector
                   selected={aimSystem}
-                  stats={aimStats}
                   onSelect={handleSelectAimSystem}
                 />
               </div>
@@ -2727,7 +2680,13 @@ export default function GamePage() {
                       ? 'Play Again — Free'
                       : 'Free Play'}
                 </button>
-              ) : energy > 0 ? (
+              ) : (
+                /* The earning start button. There is no longer a
+                   zero-energy branch beside it: an empty allotment does not
+                   remove this button, disable it, or replace it with an
+                   invitation to practice (Constitution §8.6). The run
+                   starts either way; only the harvest differs, and the
+                   ModeToggle says so above. */
                 <button
                   onClick={() => handleStart(gameMode === 'anomaly' ? 'anomaly' : 'earn')}
                   disabled={isStarting || !equippedSnake}
@@ -2747,53 +2706,27 @@ export default function GamePage() {
                         : isGameOver
                           ? 'Play Again'
                           : 'Play'}
-                      <span className="inline-flex items-center gap-0.5 text-base">
-                        ({GAME_CONFIG.economy.energy.costPerGame}
-                        <IconBolt size={16} />)
-                      </span>
+                      {charge !== null && charge.remaining > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-base">
+                          <IconBolt size={16} />
+                        </span>
+                      )}
                     </>
                   )}
                 </button>
-              ) : (
-                // Fallback (the effect above normally flips to free first):
-                // out of energy is an invitation to practice, not a wall
-                <div className="space-y-2 font-body">
-                  <p className="text-sm text-beige">
-                    Out of energy — keep practicing in Free Play or wait for
-                    your next <IconBolt size={14} className="inline" />
-                  </p>
-                  <button
-                    onClick={() => {
-                      setGameMode('free');
-                      handleStart('free');
-                    }}
-                    disabled={isStarting || !equippedSnake}
-                    data-testid="zero-energy-free-play"
-                    className="btn-go inline-flex items-center gap-2 px-8 py-3 text-lg min-h-[44px]"
-                  >
-                    Free Play
-                  </button>
-                </div>
               )}
 
-              {/* After a practice run, offer the earning path when the
-                  player has the energy for it */}
-              {isGameOver &&
-                lastRunFree &&
-                gameMode === 'free' &&
-                energy >= GAME_CONFIG.economy.energy.costPerGame && (
-                  <button
-                    onClick={() => setGameMode('earn')}
-                    data-testid="switch-to-earning"
-                    className="btn-neutral inline-flex items-center gap-1.5 px-6 py-3 min-h-[44px]"
-                  >
-                    Switch to Earning
-                    <span className="inline-flex items-center gap-0.5 text-sm">
-                      ({GAME_CONFIG.economy.energy.costPerGame}
-                      <IconBolt size={14} />)
-                    </span>
-                  </button>
-                )}
+              {/* After a practice run, the earning path is always offered -
+                  it is never conditioned on the day's charges. */}
+              {isGameOver && lastRunFree && gameMode === 'free' && (
+                <button
+                  onClick={() => setGameMode('earn')}
+                  data-testid="switch-to-earning"
+                  className="btn-neutral inline-flex items-center gap-1.5 px-6 py-3 min-h-[44px]"
+                >
+                  Switch to Earning
+                </button>
+              )}
 
               {isGameOver && (
                 <>
@@ -2855,7 +2788,7 @@ export default function GamePage() {
           setOwnIdentity((prev) =>
             prev ? { ...prev, handle, displayHandle: handle, isGenerated: false } : prev
           );
-          showToast(`You are ${handle} now`, 'achievement', 4000);
+          showToast(`You are ${handle} now`, 'triumph', 4000);
         }}
         prompt="That run deserves a name on it."
       />
