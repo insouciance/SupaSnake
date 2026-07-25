@@ -24,7 +24,8 @@ sql_paths = []
 [studio]
 enabled = false
 
-# TEMP-LOCAL (reverted before commit): CLI 2.65.5 has no local_smtp key
+[local_smtp]
+enabled = false
 
 [storage]
 enabled = false
