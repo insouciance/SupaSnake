@@ -12,14 +12,17 @@ settled, so the economy can still change freely.
 
 ## Documentation authority
 
-**IMPORTANT — read `docs/GROUND_TRUTH.md` before designing or changing any game system.**
-It is the verified state of the game, generated from code and migrations with a
-citation for every claim. Design docs describe intent; it describes what ships.
+**IMPORTANT — `docs/PRODUCT_CONSTITUTION.md` (v1.3, 2026-07-25) is the single design
+authority.** Every system change is designed from it and checked against its 14
+Inviolable Rules; every PR runs `docs/CONSTITUTION_CHECKLIST.md`. Implementation work
+is decomposed in `docs/IMPLEMENTATION_HANDOFF.md` — take work packages from there,
+follow its branch/migration protocol, and never invent scope outside a WP.
 
-Current contracts are listed in `docs/README.md`. `docs/game/MONETIZATION_DESIGN.md` is
-LOCKED — changing its §1 principles needs explicit sign-off. Twenty stale design
-documents were deleted on 2026-07-25; if you need that history it is in git, but it
-describes an abandoned design and should not be implemented from.
+`docs/GROUND_TRUTH.md` is the code-verified **baseline of 2026-07-25, pre-Constitution**.
+Cite it for what shipped; as work packages land it goes stale — trust code over it.
+`docs/game/MONETIZATION_DESIGN.md` is **superseded** by Constitution §10 (overturn
+recorded in Constitution §15). Twenty stale design documents were deleted on
+2026-07-25; git has the history; do not implement from any of it.
 
 ## Stack
 

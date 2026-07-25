@@ -1,9 +1,14 @@
-# SupaSnake Monetization Design — LOCKED
+# SupaSnake Monetization Design — SUPERSEDED
 
-**Status:** LOCKED (v1.0, 2026-07-19). Changes to the three principles in
-§1 require explicit sign-off; everything else evolves through normal spec
-review. Implementation: migration 028 + `src/shared/config/premium.ts`
-(keep in lockstep).
+> **SUPERSEDED 2026-07-25** by `docs/PRODUCT_CONSTITUTION.md` §10, with the ruling
+> and its costs recorded in the Constitution's §15 Overturn Record (row 1) and the
+> owner's sign-off given via the Constitution brief. **Do not implement from this
+> document.** It is preserved unedited below as the historical record of the v1.0
+> position (progression perks, energy SKUs, ~1.7× DNA guardrail) that the
+> Constitution overturned.
+
+**Status:** ~~LOCKED (v1.0, 2026-07-19)~~ — superseded as above. Historical text
+follows.
 
 ---
 
