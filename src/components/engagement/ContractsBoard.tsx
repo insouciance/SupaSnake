@@ -40,7 +40,6 @@ export interface ContractView {
   description: string;
   params: Record<string, unknown>;
   rewardDna: number;
-  rewardEnergy: number;
   rewardXp: number;
   offeredSlot: number;
   picked: boolean;
@@ -52,7 +51,6 @@ export interface ContractView {
 export interface ContractClaimOutcome {
   contractId: string;
   dnaGranted: number;
-  energyGranted: number;
   xpGranted: number;
 }
 

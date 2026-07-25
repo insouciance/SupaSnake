@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import { CLAN_LIMITS } from '@/lib/clan/types';
 
 describe('Clan API', () => {
   describe('GET Handler', () => {
@@ -134,11 +135,12 @@ describe('Clan Constraints', () => {
   });
 
   describe('Member Limits', () => {
-    it('should enforce 20-50 member range', () => {
-      const minMembers = 20;
-      const maxMembers = 50;
-      expect(minMembers).toBe(20);
-      expect(maxMembers).toBe(50);
+    it('should enforce a cap and no floor', () => {
+      // WP-0.03 (GROUND_TRUTH §10): the 20-member floor was asserted only
+      // here and in lib/clan/types.test.ts and enforced nowhere. A clan of
+      // one is the founding case (Constitution §9.2).
+      expect(CLAN_LIMITS.maxMembers).toBe(50);
+      expect((CLAN_LIMITS as Record<string, unknown>).minMembers).toBeUndefined();
     });
   });
 });

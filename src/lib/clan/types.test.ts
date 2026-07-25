@@ -3,6 +3,8 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import * as clanTypes from './types';
+import { CLAN_LIMITS } from './types';
 
 describe('Clan Types', () => {
   describe('Clan Data', () => {
@@ -24,11 +26,23 @@ describe('Clan Types', () => {
       expect(clan.ownerId).toBeDefined();
     });
 
-    it('should enforce member limits per SO-001', () => {
-      const minMembers = 20;
-      const maxMembers = 50;
-      expect(minMembers).toBeGreaterThanOrEqual(20);
-      expect(maxMembers).toBeLessThanOrEqual(50);
+    it('should cap membership and impose no floor', () => {
+      // WP-0.03 (GROUND_TRUTH §10): `minMembers: 20` was never enforced by
+      // any code path - duel matchmaking accepts `member_count >= 1` - and
+      // it contradicts Constitution §9.2, where a clan of one is a
+      // first-class citizen that founds and hunts alone. Only the cap is
+      // real, and only because the join path checks it.
+      expect(CLAN_LIMITS.maxMembers).toBe(50);
+      expect((CLAN_LIMITS as Record<string, unknown>).minMembers).toBeUndefined();
+    });
+
+    it('should offer no clan bonus to claim', () => {
+      // The "+1 energy every 6 hours" promise and its `canClaimClanBonus`
+      // helper are gone with the orphan RPC behind them (migration 044).
+      // Rule 8: a clan never pays.
+      const surface = clanTypes as Record<string, unknown>;
+      expect(surface.CLAN_BONUS_CONFIG).toBeUndefined();
+      expect(surface.canClaimClanBonus).toBeUndefined();
     });
   });
 

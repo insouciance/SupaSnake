@@ -31,7 +31,6 @@ function buildRow(overrides: Partial<ContractRpcRow> = {}): ContractRpcRow {
     description: 'Bank 3 extractions',
     params: { count: 3 },
     reward_dna: 400,
-    reward_energy: 0,
     reward_xp: 150,
     offered_slot: 1,
     picked: false,
@@ -52,7 +51,6 @@ describe('Contracts API logic', () => {
         description: 'Bank 3 extractions',
         params: { count: 3 },
         rewardDna: 400,
-        rewardEnergy: 0,
         rewardXp: 150,
         offeredSlot: 1,
         picked: false,
@@ -112,13 +110,11 @@ describe('Contracts API logic', () => {
         mapClaimRow({
           contract_id: 'nerve',
           dna_granted: 600,
-          energy_granted: 0,
           xp_granted: 150,
         })
       ).toEqual({
         contractId: 'nerve',
         dnaGranted: 600,
-        energyGranted: 0,
         xpGranted: 150,
       });
     });

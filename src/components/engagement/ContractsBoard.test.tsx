@@ -19,7 +19,6 @@ function buildContract(overrides: Partial<ContractView> = {}): ContractView {
     description: 'Bank 3 extractions',
     params: { count: 3 },
     rewardDna: 400,
-    rewardEnergy: 0,
     rewardXp: 150,
     offeredSlot: 1,
     picked: false,
@@ -251,7 +250,6 @@ describe('ContractsBoard', () => {
       const onClaim = jest.fn(async () => ({
         contractId: 'sprinter',
         dnaGranted: 400,
-        energyGranted: 0,
         xpGranted: 150,
       }));
       renderBoard({ contracts: pickedBoard(), picksRemaining: 0, onClaim });

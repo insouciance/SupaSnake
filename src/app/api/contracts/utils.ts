@@ -22,7 +22,6 @@ export interface ContractView {
   description: string;
   params: Record<string, unknown>;
   rewardDna: number;
-  rewardEnergy: number;
   rewardXp: number;
   offeredSlot: number;
   picked: boolean;
@@ -34,7 +33,6 @@ export interface ContractView {
 export interface ContractClaimResult {
   contractId: string;
   dnaGranted: number;
-  energyGranted: number;
   xpGranted: number;
 }
 
@@ -46,7 +44,6 @@ export interface ContractRpcRow {
   description: string;
   params: Record<string, unknown> | null;
   reward_dna: number;
-  reward_energy: number;
   reward_xp: number;
   offered_slot: number;
   picked: boolean;
@@ -64,7 +61,6 @@ export function mapContractRow(row: ContractRpcRow): ContractView {
     description: row.description,
     params: row.params ?? {},
     rewardDna: row.reward_dna,
-    rewardEnergy: row.reward_energy,
     rewardXp: row.reward_xp,
     offeredSlot: row.offered_slot,
     picked: row.picked,
@@ -93,13 +89,11 @@ export function computePicksRemaining(
 export function mapClaimRow(row: {
   contract_id: string;
   dna_granted: number;
-  energy_granted: number;
   xp_granted: number;
 }): ContractClaimResult {
   return {
     contractId: row.contract_id,
     dnaGranted: row.dna_granted,
-    energyGranted: row.energy_granted,
     xpGranted: row.xp_granted,
   };
 }
