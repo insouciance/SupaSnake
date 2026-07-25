@@ -15,8 +15,13 @@
  *
  * Server authority: all state transitions go through the migration 015
  * RPCs (row-locked, idempotent claims, economy_transactions-logged grants).
- * Replaces the flat 28-day calendar as the daily faucet; /api/daily-rewards
- * remains for streak display and future milestone gifts.
+ *
+ * WP-0.03 deleted /api/daily-rewards and the 28-day calendar behind it, so
+ * a contract claim is the only daily grant left standing. It grants DNA and
+ * season XP and nothing else: the `reward_energy` column, its RPC output
+ * and the `rewardEnergy`/`energyGranted` fields of this response are gone
+ * (migration 044). Contracts themselves are retired by WP-1.03 in favour of
+ * the Signal; nothing new should be built on this route.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

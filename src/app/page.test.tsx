@@ -78,7 +78,6 @@ function buildContract(overrides: Record<string, unknown> = {}) {
     description: 'Bank 3 extractions',
     params: { count: 3 },
     rewardDna: 400,
-    rewardEnergy: 0,
     rewardXp: 150,
     offeredSlot: 1,
     picked: false,
@@ -600,7 +599,6 @@ describe('Home page', () => {
           return jsonResponse({
             contractId: 'banker',
             dnaGranted: 400,
-            energyGranted: 0,
             xpGranted: 150,
           });
         }

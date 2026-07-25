@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { type Clan, CLAN_LIMITS, CLAN_BONUS_CONFIG } from '@/lib/clan/types';
+import { type Clan, CLAN_LIMITS } from '@/lib/clan/types';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import { DuelPanel } from '@/components/clan/DuelPanel';
@@ -20,7 +20,7 @@ import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
 import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
 import { useClanFull } from '@/components/clan/useClanFull';
 import Link from 'next/link';
-import { IconBolt, IconShield, IconUser } from '@/components/ui/icons';
+import { IconShield, IconUser } from '@/components/ui/icons';
 
 interface MyClan extends Clan {
   role: string;
@@ -286,23 +286,13 @@ export default function ClanPage() {
                 </div>
               </div>
 
-              {/* Clan Bonus */}
-              <div className="panel-glow [--glow:#22d3ee] p-4 mb-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <p className="text-venom-orange font-display uppercase flex items-center gap-1.5">
-                      <IconBolt size={16} />
-                      Clan Energy Bonus
-                    </p>
-                    <p className="text-sm text-beige font-body">
-                      +{CLAN_BONUS_CONFIG.energyBonusAmount} energy every {CLAN_BONUS_CONFIG.energyBonusIntervalHours} hours
-                    </p>
-                  </div>
-                  <button className="btn-go px-6 py-2 min-h-[44px]">
-                    Claim
-                  </button>
-                </div>
-              </div>
+              {/* The "Clan Energy Bonus" panel stood here: a promise of
+                  +1 energy every 6 hours next to a Claim button that had
+                  no onClick and never had one. WP-0.03 removed the whole
+                  panel with the faucet behind it. A clan pays nobody
+                  (Rule 8), and there is no energy balance to pay into
+                  (§8.6). What a clan gives is the Serpent hunt, which
+                  WP-1.07 renders in this space. */}
 
               {myClan.role !== 'owner' && (
                 <button
@@ -475,7 +465,6 @@ export default function ClanPage() {
 
         {/* Info */}
         <div className="text-center text-beige/40 text-xs font-body mt-10 space-y-1">
-          <p>Clan members receive +{CLAN_BONUS_CONFIG.energyBonusAmount} energy every {CLAN_BONUS_CONFIG.energyBonusIntervalHours} hours.</p>
           <p>No daily requirements - contribute when convenient!</p>
         </div>
       </div>

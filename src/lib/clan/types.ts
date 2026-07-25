@@ -40,20 +40,29 @@ export interface ClanInvite {
 }
 
 /**
- * Clan energy bonus configuration
- * Per SO-001: +1 energy every 6 hours if in active clan
+ * `CLAN_BONUS_CONFIG` ("+1 energy every 6 hours in an active clan") used
+ * to live here, next to a `canClaimClanBonus()` helper. Both are gone.
+ *
+ * There is no energy balance to credit any more (Constitution §8.6: the
+ * day's charges are DERIVED, never granted), the RPC behind the promise
+ * -- `claim_clan_energy_bonus`, migration 007 -- had no caller in `src/`
+ * and wrote to the wrong key besides, and Rule 8 forbids a clan number
+ * that pays. The clan page advertised the bonus in two places and
+ * rendered a Claim button with no `onClick`; WP-0.03 removed the copy,
+ * the button, the config and the RPC together, so nothing survives to
+ * make the promise again.
  */
-export const CLAN_BONUS_CONFIG = {
-  energyBonusAmount: 1,
-  energyBonusIntervalHours: 6,
-  energyBonusIntervalMs: 6 * 60 * 60 * 1000,
-};
 
 /**
  * Clan limits
+ *
+ * `minMembers: 20` is deliberately absent. It was never enforced
+ * anywhere (GROUND_TRUTH §10) and it contradicts the product: a clan of
+ * one is a first-class citizen (Constitution §9.2), founded solo and
+ * able to hunt solo. WP-1.02 lowers `maxMembers` to 12; until it lands,
+ * 50 is what the join path actually enforces.
  */
 export const CLAN_LIMITS = {
-  minMembers: 20,
   maxMembers: 50,
   minNameLength: 3,
   maxNameLength: 20,
@@ -78,15 +87,4 @@ export function isValidClanTag(tag: string): boolean {
   return (
     new RegExp(`^[A-Z0-9]{${CLAN_LIMITS.minTagLength},${CLAN_LIMITS.maxTagLength}}$`).test(tag)
   );
-}
-
-/**
- * Calculate if clan energy bonus is available
- */
-export function canClaimClanBonus(lastClaimTime: number | null): boolean {
-  if (!lastClaimTime) return true;
-
-  const now = Date.now();
-  const timeSinceClaim = now - lastClaimTime;
-  return timeSinceClaim >= CLAN_BONUS_CONFIG.energyBonusIntervalMs;
 }

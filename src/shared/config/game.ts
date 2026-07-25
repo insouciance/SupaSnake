@@ -41,11 +41,17 @@ export const GAME_CONFIG = deepFreeze({
    * Economy - DNA & Resources
    */
   economy: {
+    /**
+     * `scoreMultiplier: 0.1` and `firstWinBonus: 100` used to sit in this
+     * block. Neither was ever read (GROUND_TRUTH §10) - the settlement
+     * fold takes none of them - and `firstWinBonus` in particular
+     * described a first-run-of-day bonus the product does not have. The
+     * Daily Take (Constitution §7.2, WP-1.04) is that idea done properly,
+     * and it will carry its own numbers. WP-0.03 deleted both.
+     */
     dna: {
       foodValue: 10,                 // DNA per food collected
-      scoreMultiplier: 0.1,          // Bonus DNA from score
       completionBonus: 50,           // Bonus for winning
-      firstWinBonus: 100,            // First win of day
     },
     /**
      * Energy — the daily harvest envelope (Constitution §8.6).
@@ -75,10 +81,16 @@ export const GAME_CONFIG = deepFreeze({
 
   /**
    * Breeding System
+   *
+   * The DNA price of a breed is NOT here and must never come back here.
+   * The live cost is `200 + avg(generation) x 100`, computed inside the
+   * breeding RPC (migration 018) where the server is the authority. The
+   * `baseCost: 50` / `crossDynastyCost: 100` pair that used to sit in
+   * this block was read by nothing and understated the real price by 4x
+   * (GROUND_TRUTH §10); WP-0.03 deleted it. Ascendance (WP-1.05) changes
+   * that curve again - in the RPC.
    */
   breeding: {
-    baseCost: 50,                    // DNA cost (same dynasty)
-    crossDynastyCost: 100,           // DNA cost (different dynasties)
     cooldownMinutes: 0,              // No cooldown for MVP
     maxActive: 3,                    // Future: concurrent breeds
   },

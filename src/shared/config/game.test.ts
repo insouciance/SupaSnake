@@ -51,14 +51,19 @@ describe('Game Configuration', () => {
   describe('Economy - DNA System', () => {
     it('should have positive DNA rewards', () => {
       expect(GAME_CONFIG.economy.dna.foodValue).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.dna.scoreMultiplier).toBeGreaterThanOrEqual(0);
       expect(GAME_CONFIG.economy.dna.completionBonus).toBeGreaterThan(0);
-      expect(GAME_CONFIG.economy.dna.firstWinBonus).toBeGreaterThan(0);
     });
 
-    it('should reward first win more than completion', () => {
-      const { completionBonus, firstWinBonus } = GAME_CONFIG.economy.dna;
-      expect(firstWinBonus).toBeGreaterThan(completionBonus);
+    it('should declare only knobs the settlement fold actually reads', () => {
+      // WP-0.03 (GROUND_TRUTH §10): `scoreMultiplier` and `firstWinBonus`
+      // were config nothing read. `firstWinBonus` in particular described a
+      // first-run-of-day bonus the product does not have - the Daily Take
+      // (Constitution §7.2) is that idea, and it owns its own numbers. Their
+      // absence is the assertion: a config value that no code path reads is
+      // a false fact to the next person who opens this file.
+      const dna = GAME_CONFIG.economy.dna as Record<string, unknown>;
+      expect(dna.scoreMultiplier).toBeUndefined();
+      expect(dna.firstWinBonus).toBeUndefined();
     });
 
     it('should provide meaningful DNA per food', () => {
@@ -99,19 +104,16 @@ describe('Game Configuration', () => {
   });
 
   describe('Breeding System', () => {
-    it('should have DNA costs', () => {
-      expect(GAME_CONFIG.breeding.baseCost).toBeGreaterThan(0);
-      expect(GAME_CONFIG.breeding.crossDynastyCost).toBeGreaterThan(0);
-    });
-
-    it('should charge more for cross-dynasty breeding', () => {
-      const { baseCost, crossDynastyCost } = GAME_CONFIG.breeding;
-      expect(crossDynastyCost).toBeGreaterThan(baseCost);
-    });
-
-    it('should be affordable after several games', () => {
-      const gamesNeeded = GAME_CONFIG.breeding.baseCost / GAME_CONFIG.economy.dna.foodValue;
-      expect(gamesNeeded).toBeLessThan(20);
+    it('should price a breed in the RPC, never in this file', () => {
+      // WP-0.03 (GROUND_TRUTH §10): `baseCost: 50` / `crossDynastyCost: 100`
+      // were read by nothing and understated the live price by 4x - the
+      // server computes `200 + avg(generation) x 100` in the breeding RPC
+      // (migration 018), and Ascendance (WP-1.05) changes that curve there
+      // too. A second, cheaper price living in a client-importable config is
+      // exactly the drift GROUND_TRUTH §10 records.
+      const breeding = GAME_CONFIG.breeding as Record<string, unknown>;
+      expect(breeding.baseCost).toBeUndefined();
+      expect(breeding.crossDynastyCost).toBeUndefined();
     });
 
     it('should have valid max active breeds', () => {
@@ -187,10 +189,16 @@ describe('Game Configuration', () => {
   });
 
   describe('Balance Validation', () => {
-    it('should earn enough DNA in one game to breed', () => {
+    it('should reach the real breeding floor in a handful of games', () => {
+      // Restated against the price the server actually charges (migration
+      // 018: `200 + avg(generation) x 100`, so 300 DNA for a Gen-1 pair)
+      // instead of the dead `breeding.baseCost: 50` this test used to read.
+      // The assertion is the same product statement - a breed is a few
+      // sessions away, not a grind - measured against a number that exists.
+      const GEN1_BREED_COST = 300;
       const avgFoodPerGame = 10;
       const dnaPerGame = avgFoodPerGame * GAME_CONFIG.economy.dna.foodValue;
-      const gamesNeededToBreed = Math.ceil(GAME_CONFIG.breeding.baseCost / dnaPerGame);
+      const gamesNeededToBreed = Math.ceil(GEN1_BREED_COST / dnaPerGame);
       expect(gamesNeededToBreed).toBeLessThanOrEqual(10);
     });
 

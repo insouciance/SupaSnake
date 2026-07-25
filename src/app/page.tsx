@@ -556,14 +556,12 @@ export default function Home() {
         const outcome: ContractClaimOutcome = {
           contractId: data.contractId,
           dnaGranted: data.dnaGranted,
-          energyGranted: data.energyGranted,
           xpGranted: data.xpGranted,
         };
 
         trackEvent(AnalyticsEvents.CHALLENGE_COMPLETED, {
           contract: outcome.contractId,
           dna_granted: outcome.dnaGranted,
-          energy_granted: outcome.energyGranted,
           xp_granted: outcome.xpGranted,
           category: 'engagement',
         });
