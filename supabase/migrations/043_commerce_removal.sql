@@ -1,6 +1,6 @@
 -- ############################################################################
 -- ##                                                                        ##
--- ##  MIGRATION 042 — NOT APPLIED TO ANY DATABASE BY THIS WORK PACKAGE.     ##
+-- ##  MIGRATION 043 — NOT APPLIED TO ANY DATABASE BY THIS WORK PACKAGE.     ##
 -- ##                                                                        ##
 -- ##  WP-0.09 wrote and reviewed this file and deliberately did NOT run     ##
 -- ##  `supabase db push`, `db reset`, `link` or `start`. It is committed    ##
@@ -10,7 +10,7 @@
 -- ##                                                                        ##
 -- ############################################################################
 --
--- Migration 042: Commerce removal — the server side
+-- Migration 043: Commerce removal — the server side
 --
 -- Authority: docs/PRODUCT_CONSTITUTION.md §10.2 (what SupaSnake sells),
 -- §10.4 (the never-sold list) and Rule 3 (money touches no computed number).
@@ -28,11 +28,11 @@
 --      recorded, escalated to Sentry and refused.
 --
 --   2. `pick_contracts` loses its entitlement branch. Migration 028 raised
---      the daily pick limit from 2 to 3 while `has_premium()`; §10.4 puts
+--      the daily pick limit from 2 to 3 while the premium entitlement check passed; §10.4 puts
 --      progression rates on the never-sold list, so the limit is flat 2 for
 --      everyone. The body below is migration 028's, byte-for-byte, with
 --      exactly one line changed (`v_max`) — every lock, guard, exception
---      string and RETURN QUERY is a carryover. 042 is now the owner.
+--      string and RETURN QUERY is a carryover. 043 is now the owner.
 --
 -- WHAT IS DELIBERATELY *NOT* DONE HERE
 --
@@ -81,7 +81,7 @@ DROP FUNCTION IF EXISTS grant_purchase_rewards(
 );
 
 COMMENT ON TABLE purchase_history IS
-  'HISTORICAL as of migration 042. One-time SKUs were deleted under '
+  'HISTORICAL as of migration 043. One-time SKUs were deleted under '
   'Constitution §10.4 and grant_purchase_rewards, the RPC that wrote this '
   'table, was dropped. Retained in full as the record of what each player '
   'bought and received (Rule 6); nothing writes it today. The Atelier '
@@ -92,8 +92,13 @@ COMMENT ON TABLE purchase_history IS
 -- ---------------------------------------------------------------------------
 --
 -- Re-created FROM THE 028 BODY (identical signature) with the single change
--- `v_max`: CASE WHEN has_premium(...) THEN 3 ELSE 2 END -> 2. Keep in
--- lockstep with ENGAGEMENT_CONFIG.contracts.picksPerDay.
+-- to `v_max`: 028 branched on the premium entitlement check, giving 3 picks to
+-- subscribers and 2 to everyone else. It is now a flat 2, kept in lockstep with
+-- ENGAGEMENT_CONFIG.contracts.picksPerDay.
+--
+-- The entitlement function is not named anywhere in this file: a shape test
+-- asserts the token cannot appear here at all, so that no future edit can
+-- reintroduce the branch.
 
 CREATE OR REPLACE FUNCTION pick_contracts(p_player_id UUID, p_contract_ids TEXT[])
 RETURNS TABLE (
@@ -117,9 +122,9 @@ DECLARE
   v_count INTEGER := COALESCE(array_length(p_contract_ids, 1), 0);
   v_already INTEGER;
   v_pickable INTEGER;
-  -- Flat for every player. There is no entitlement branch here and no
-  -- call to has_premium(): Constitution §10.4 puts progression rates on
-  -- the never-sold list. Keep in lockstep with
+  -- Flat for every player: no entitlement branch, and no call to the premium
+  -- entitlement check. Constitution §10.4 puts progression rates on the
+  -- never-sold list. Keep in lockstep with
   -- ENGAGEMENT_CONFIG.contracts.picksPerDay.
   v_max INTEGER := 2;
 BEGIN

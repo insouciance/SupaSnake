@@ -16,6 +16,7 @@ import { describe, it, expect } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PREMIUM_CONFIG } from '@/shared/config/premium';
+import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 
 const MIGRATION_028 = path.join(
   process.cwd(),
@@ -23,6 +24,15 @@ const MIGRATION_028 = path.join(
 );
 
 const sql = fs.readFileSync(MIGRATION_028, 'utf8');
+
+// WP-0.09's own migration. 028 is unchanged history; the live rule is asserted
+// against this file.
+const MIGRATION_043 = path.join(
+  process.cwd(),
+  'supabase/migrations/043_commerce_removal.sql'
+);
+
+const sql042 = fs.readFileSync(MIGRATION_043, 'utf8');
 
 describe('Migration 028: subscription state', () => {
   it('adds a durable Stripe customer mapping on players', () => {
@@ -182,9 +192,9 @@ describe('Migration 028: economy_transactions CHECK (owner: 020 -> 028)', () => 
 /**
  * 028 sold a progression rate: 3 daily contract picks while entitled, 2
  * without. Constitution §10.4 puts progression rates on the never-sold list,
- * so migration 042 re-declares `pick_contracts` flat for everyone and
+ * so migration 043 re-declares `pick_contracts` flat for everyone and
  * PREMIUM_CONFIG no longer carries the quantity. 028's file is unchanged
- * history and is asserted as such; the live rule is asserted against 042.
+ * history and is asserted as such; the live rule is asserted against 043.
  */
 describe('Migration 028 (historical): paid pick limit, flattened by 043', () => {
   it('declared 3 premium / 2 free picks — the paid progression rate', () => {
