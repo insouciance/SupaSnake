@@ -95,13 +95,13 @@ before merging anything.
 | 0.00 Baseline & rails | A+B | **merged** | `wp/0-00-baseline-rails` |
 | 0.01 Energy envelope | A | **merged** | `wp/0-01-energy-envelope` |
 | 0.02 Multiplier stack removal | A | **merged** | `wp/0-02-multiplier-removal` |
-| 0.03 Faucet & dead-config purge | A | queued (holds on 0.02 — shared `game.ts`) | |
-| 0.04 Achievements → Records | A | in flight | `wp/0-04-achievements-to-records` |
+| 0.03 Faucet & dead-config purge | A | in flight | `wp/0-03-faucet-purge` |
+| 0.04 Achievements → Records | A | **merged** | `wp/0-04-achievements-to-records` |
 | 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
-| 0.06 Session lifecycle & cohorts | A | queued | |
+| 0.06 Session lifecycle & cohorts | A | in flight | `wp/0-06-session-lifecycle` |
 | 0.07 Aim universalization | B | **merged** | `wp/0-07-aim-universalization` |
 | 0.08 Growth hygiene bundle | B | **merged** | `wp/0-08-growth-hygiene` |
-| 0.09 Commerce removal & premium truth | A | in flight | `wp/0-09-commerce-removal` |
+| 0.09 Commerce removal & premium truth | A | **merged** | `wp/0-09-commerce-removal` |
 | 0.10 `verify:constitution` v1 | B | **merged** | `wp/0-10-verify-constitution` |
 
 Ordering follows the handoff's §3 constraints: migrations serialized, and no two
@@ -559,11 +559,11 @@ GT-refresh after the phase gate.
 |---|---|---|
 | §3.1 multiplier stack | WP-0.02 | settled payout is raw fold × outcome multiplier only; `clan_duel_bonus` dropped |
 | §3.3, §9.1, §9.2 energy, dual clocks, destruction | WP-0.01 | Energy is a derived day-scoped allotment; one refill authority; no stock to destroy |
-| §7, §10 commerce and dead config | WP-0.09 (in flight) | pending |
+| §7, §10 commerce and dead config | WP-0.09 (SKUs) + WP-0.03 (in flight) | catalogue empty; `grant_purchase_rewards` dropped; premium is billing plumbing only |
 | §8 growth surfaces | WP-0.08 | share URL fixed; icons, OG, robots, sitemap, `/play`, waitlist and funnel events ship |
 | §9.3 leaderboard | WP-0.05 | eligibility enforced; brackets deleted; `myRank` join fixed |
 | §9.4 aim gating | WP-0.07 | all four aim systems are settings from run 1; unlock predicates are Chronicle trivia |
-| §9.5 achievements | WP-0.04 (in flight) | pending |
+| §9.5 achievements | WP-0.04 | mechanism retired into Legacy Records; `refresh_player_records` now monotonic |
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
