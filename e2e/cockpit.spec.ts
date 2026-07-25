@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedConsent, signInAsGuest } from './helpers';
+import { openRunSetupControls, seedConsent, signInAsGuest } from './helpers';
 
 const COCKPIT_ENABLED = process.env.NEXT_PUBLIC_HUD_COCKPIT_V1 === 'true';
 const CAPTURE_VISUALS = process.env.COCKPIT_CAPTURE_VISUALS === 'true';
@@ -164,6 +164,7 @@ test.describe('Run Cockpit v1', () => {
     await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
       timeout: 60_000,
     });
+    await openRunSetupControls(page);
     const freeMode = page.getByTestId('mode-free');
     // Not forced: the canvas repaints behind this screen but never covers the
     // chip. What does move it is the ANOMALY chip, inserted to its left once

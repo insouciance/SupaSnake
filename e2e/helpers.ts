@@ -7,7 +7,7 @@
  * exercise the banner itself.
  */
 
-import { test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 export interface ConsentSeed {
   essential: boolean;
@@ -47,6 +47,23 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
   if (await reject.isVisible({ timeout: 2000 }).catch(() => false)) {
     await reject.click();
   }
+}
+
+/**
+ * Reveal the Run Setup page's adjustable controls.
+ *
+ * WP-1.06 (Constitution §5) folds the mode toggle, the aim system, the
+ * control scheme and the Build Seed into a single closed disclosure so that a
+ * first-time player sees START as the only emphasised action. Specs that
+ * exercise those controls call this first; it is a no-op with
+ * NEXT_PUBLIC_RUN_FLOW_V1 off, where the controls are already laid out flat.
+ */
+export async function openRunSetupControls(page: Page): Promise<void> {
+  const adjust = page.getByTestId('run-setup-adjust');
+  if ((await adjust.count()) === 0) return;
+  if (await adjust.evaluate((node) => (node as HTMLDetailsElement).open)) return;
+  await adjust.getByText(/adjust this run/i).click();
+  await expect(adjust).toHaveJSProperty('open', true);
 }
 
 /**

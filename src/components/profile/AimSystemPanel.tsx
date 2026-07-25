@@ -28,7 +28,14 @@ export function AimSystemPanel() {
     fetch('/api/player', {
       headers: { 'Authorization': `Bearer ${session.access_token}` },
     })
-      .then((res) => res.json())
+      // FINDING F-24 (WP-1.06): this was a bare `res.json()`. A 401 or a 500
+      // parses to a body with no `aimSystem`, so the panel silently showed
+      // the default instead of the player's stored preference - and the
+      // failure was invisible.
+      .then((res) => {
+        if (!res.ok) throw new Error(`/api/player responded ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         if (cancelled) return;
         if (isAimSystemId(data.aimSystem)) setSelected(data.aimSystem);
