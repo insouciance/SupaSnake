@@ -97,7 +97,7 @@ before merging anything.
 | 0.02 Multiplier stack removal | A | queued | |
 | 0.03 Faucet & dead-config purge | A | queued | |
 | 0.04 Achievements → Records | A | queued | |
-| 0.05 Leaderboard integrity | A | in flight | `wp/0-05-leaderboard-integrity` |
+| 0.05 Leaderboard integrity | A | **merged** | `wp/0-05-leaderboard-integrity` |
 | 0.06 Session lifecycle & cohorts | A | queued | |
 | 0.07 Aim universalization | B | queued | |
 | 0.08 Growth hygiene bundle | B | in flight | `wp/0-08-growth-hygiene` |
@@ -144,11 +144,84 @@ above carry. CI proves the acceptance criterion on the final PR.
 
 ---
 
-## PROVISIONAL rulings queued for the owner
+#### WP-0.05 · Leaderboard integrity · **merged**
 
-None yet.
+All three boards (`global`, `weekly`, `daily`) now fold over `game_sessions` with
+one shared eligibility rule, differing only in the time window. The global board
+previously read the denormalized `players.high_score` scalar, which cannot express
+eligibility, per-player dedup, or a content version — that is the R12 subtraction.
+
+Eligibility, enforced in the query and re-applied to the returned rows:
+`ended_at IS NOT NULL` · `validated = true` · `is_free_play = false` ·
+`anomaly_id IS NULL` · `started_at >= max(content epoch, period start)`. One best
+per player; competition ranking (1, 2, 2, 4) ordered `score desc → achievedAt asc
+→ runId asc` so paging is stable.
+
+**Generation brackets deleted** — ranking a build-independent Score into
+generation tiers implied the build mattered (R2).
+
+**The `myRank` defect is real and GT §9.3 was accurate.** `route.ts` returned
+`players.id`; `page.tsx` compared it against `auth.users.id` from `useAuth`.
+Different UUID spaces, so `myRank` and the "(You)" highlight could never fire. The
+same comparison bug in `handleNewHighScore` was fixed alongside it.
+
+*Vocabulary note for later WPs:* there is no `flagged` column. `validated BOOLEAN
+DEFAULT FALSE` (migration 002) is the gate; tests assert both `false` and `null`
+are rejected.
+
+**No migration** — every eligibility column already existed, and content version
+is a config epoch (`LEADERBOARD_CONTENT_VERSION`), not schema. This also kept the
+WP out of `session/route.ts`, a hot file owned by other packages.
+
+**You-centered board API contract** (published for Track B):
+`GET /api/leaderboard?type=global|weekly|daily&view=board|you&dynasty=…&limit=&offset=`,
+Bearer auth optional (the board is public; a token only resolves `viewer`).
+Returns `{type, view, dynasty, contentVersion, entries, top[3], window[±5], viewer,
+total, truncated}`. `viewer.playerId` and `entry.playerId` are **both
+`players.id`** — clients must never compare against an auth user id.
+
+Orchestrator audit: tsc clean · lint clean · **246 suites / 2968 tests passed**
+under CI env · R2 verified (`rulesets.ts` and `src/shared/game/` untouched; no
+build-state column selected) · R6 verified (zero writes on the path) · R11
+verified (every Supabase `error` checked and reported to Sentry) · scope held.
+
+*Deleted test file, justified:* `src/lib/leaderboard/types.test.ts` imported
+nothing from the module it named — it re-declared `getSkillBracket` and the
+bracket tables inline and asserted against its own copies. Its entire subject was
+deleted by this WP; 62 real tests replace it.
 
 ---
+
+## PROVISIONAL rulings queued for the owner
+
+**P-1 · Leaderboard ranking is computed in TypeScript over a capped scan**
+(WP-0.05). Ranking folds over an eligible-run scan capped at 5000 rows, paged
+1000 at a time; `truncated: true` is returned the moment the cap is hit, so the
+board never silently serves wrong ranks. Exact at any population this game has
+(415 player rows, 15 with a completed run) and far beyond.
+
+- *Option A (implemented):* pure-TypeScript fold. No migration, no RPC, fully
+  unit-testable without a database, no migration-serialization cost.
+- *Option B:* a `SECURITY DEFINER` SQL function (`DISTINCT ON (player_id)`,
+  `rank()`, you-centered window). Exact at any scale, one round trip; costs a
+  migration slot and moves the integrity rules into SQL where jest cannot reach
+  them.
+
+*Recommendation:* keep A; promote to B when `truncated` first fires or population
+passes ~2,000 weekly-active ranked players. The pure functions in `board.ts`
+become the SQL's test oracle at that point.
+
+---
+
+## Found, not fixed — routed to the work package that owns it
+
+| # | Finding | Routed to |
+|---|---|---|
+| F-1 | `session/route.ts` writes `high_score: Math.max(current, adjustedScore)` with **no `validation.valid` gate**, so a flagged run permanently poisons `players.high_score`. Harmless to the board after WP-0.05, but that column is still read by other surfaces. | WP-0.06 (owns session lifecycle) |
+| F-2 | `useLeaderboardRealtime` broadcasts every session insert over a score threshold with no eligibility filter — a free-play or flagged run can still fire a "New high score!" toast for a run that will never rank. | WP-1.06 (Results/toast consolidation) |
+| F-3 | GT §9.6 stale sessions: no expiry sweep exists, ~30% of session rows are open. Eligibility now makes them harmless to the board, but funnel and duration analytics stay unreliable. | WP-0.06 (its stated goal) |
+| F-4 | `src/lib/game/aimSystems.ts`: Pathline/Gridlock/Firefly are still progression-gated, one of them on *breeding*. Constitution §6.1 and §15 overturn 10 require them universal from run 1. | WP-0.07 (its stated goal) |
+| F-5 | The project has **no `@types/jest`**, so `npx tsc --noEmit` never typechecks any `*.test.ts`. Test files are verified only by running them. A type error in a test is invisible to the type gate. | WP-0.10 / owner |
 
 ## Owner to-do list
 
