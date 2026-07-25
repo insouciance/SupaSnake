@@ -186,7 +186,7 @@ describe('Migration 028: economy_transactions CHECK (owner: 020 -> 028)', () => 
  * PREMIUM_CONFIG no longer carries the quantity. 028's file is unchanged
  * history and is asserted as such; the live rule is asserted against 042.
  */
-describe('Migration 028 (historical): paid pick limit, flattened by 042', () => {
+describe('Migration 028 (historical): paid pick limit, flattened by 043', () => {
   it('declared 3 premium / 2 free picks — the paid progression rate', () => {
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION pick_contracts\(p_player_id UUID, p_contract_ids TEXT\[\]\)/);
     expect(sql).toMatch(/CASE WHEN has_premium\(p_player_id\) THEN 3 ELSE 2 END/);
@@ -197,7 +197,7 @@ describe('Migration 028 (historical): paid pick limit, flattened by 042', () => 
     expect(sql).toMatch(/PERFORM refresh_contract_progress\(p_player_id, v_date\);/);
   });
 
-  it('is re-declared by 042 with no entitlement branch at all', () => {
+  it('is re-declared by 043 with no entitlement branch at all', () => {
     expect(sql042).toMatch(/CREATE OR REPLACE FUNCTION pick_contracts\(p_player_id UUID, p_contract_ids TEXT\[\]\)/);
     expect(sql042).toMatch(
       new RegExp(`v_max INTEGER := ${ENGAGEMENT_CONFIG.contracts.picksPerDay};`)
@@ -220,7 +220,7 @@ describe('Migration 028 (historical): paid pick limit, flattened by 042', () => 
  * Migration 042 is the server half of WP-0.09's commerce removal. It is
  * committed but deliberately NOT applied by this work package.
  */
-describe('Migration 042: commerce removal', () => {
+describe('Migration 043: commerce removal', () => {
   it('drops grant_purchase_rewards, the faucet a purchase reached DNA/energy through', () => {
     expect(sql042).toMatch(
       /DROP FUNCTION IF EXISTS grant_purchase_rewards\(\s*TEXT, UUID, TEXT, INT, INT, TEXT\[\], TEXT, TEXT, INT, TEXT\s*\);/
