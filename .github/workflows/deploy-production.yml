@@ -46,6 +46,35 @@ jobs:
           npm test -- --coverage --runInBand
           npx tsc --noEmit
           npm run lint
+
+      # The dependency gate is split (owner ruling, 25 July 2026).
+      #
+      # BLOCKING: the dependency tree that actually ships. `--omit=dev` scopes
+      # the audit to runtime dependencies, which are the only ones that can
+      # reach supasnake.com. A high or critical finding here stops the release.
+      #
+      # This split was made because the combined audit was failing on 27 high
+      # findings of which 26 were jest/eslint/babel and their transitive
+      # glob/minimatch chain - build tooling that is never bundled. Clearing
+      # those needs breaking major upgrades (`npm audit fix --force`), and a
+      # gate that can only be satisfied by an unrelated breaking upgrade stops
+      # being a security control and starts being a reason to bypass security
+      # controls. The 27th finding was real and reachable
+      # (brace-expansion GHSA-mh99-v99m-4gvg) and is patched.
+      #
+      # Do not widen this back without also fixing the dev tree - and do not
+      # narrow it further.
+      - name: Dependency gate — production tree (blocking)
+        run: npm audit --audit-level=high --omit=dev
+
+      # NON-BLOCKING: the build toolchain. Reported on every release so the
+      # debt stays visible and is consciously carried rather than forgotten.
+      # If this output ever contains something reachable at runtime, it belongs
+      # in the blocking gate above.
+      - name: Dependency audit — dev toolchain (reported, non-blocking)
+        continue-on-error: true
+        run: |
+          echo "Dev-dependency audit. Findings here do not ship, but do not ignore them either."
           npm audit --audit-level=high
 
   deploy:
