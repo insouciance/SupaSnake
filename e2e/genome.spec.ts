@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedConsent, signInAsGuest } from './helpers';
+import { openRunSetupControls, seedConsent, signInAsGuest } from './helpers';
 
 const COCKPIT_ENABLED = process.env.NEXT_PUBLIC_HUD_COCKPIT_V1 === 'true';
 
@@ -118,6 +118,7 @@ test.describe('Genome capability UI', () => {
     await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
       timeout: 60_000,
     });
+    await openRunSetupControls(page);
     await expect(page.getByTestId('build-seed')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('build-seed')).toContainText(/heirlooms/i);
     await expect(page.getByRole('link', { name: /open codex/i })).toBeVisible();
@@ -349,6 +350,7 @@ test.describe('Genome capability UI', () => {
     const finalAbandonDialog = page.getByTestId('abandon-run-dialog');
     await finalAbandonDialog.getByRole('button', { name: /^abandon run$/i }).click();
     await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible();
+    await openRunSetupControls(page);
     await page.getByTestId('control-mode-dpad').click();
     await expect(page.getByTestId('control-mode-dpad')).toHaveAttribute(
       'aria-pressed',

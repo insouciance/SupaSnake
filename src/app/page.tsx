@@ -46,6 +46,7 @@ import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
 import { captureAttribution } from '@/lib/growth/attribution';
 import { GROWTH_SURFACES_V1_ENABLED } from '@/lib/features/growth';
+import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { LandingPitch } from '@/components/growth/LandingPitch';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import {
@@ -632,6 +633,51 @@ export default function Home() {
       return;
     }
 
+    // Constitution §5 (owner ruling, 25 July 2026): LAUNCH opens the Run
+    // Setup page, it does not start a run. The prepared-run handoff below
+    // exists to put the board on screen in one tap; the ruling replaces that
+    // with "open → LAUNCH → START → board, ≤3 taps, and the setup page adds
+    // exactly one of them". So under Run Flow v1 LAUNCH still signs the
+    // player in and bootstraps their snake — that is what makes the setup
+    // page *fully preset* for a first-time player — and then simply
+    // navigates. No session is started here, so no run is ever created and
+    // abandoned by a player who opens setup and walks away.
+    if (RUN_FLOW_V1_ENABLED) {
+      launchInFlightRef.current = true;
+      dispatchLaunch({ type: 'BEGIN', alreadyAuthenticated: isAuthenticated });
+      try {
+        let launchSession = session;
+        if (!launchSession?.access_token) {
+          if (isAuthenticated) {
+            throw new LaunchFlowError('Your session is still loading. Please Retry.');
+          }
+          const result = await signInAnonymously();
+          if (result?.error || !result?.session) {
+            throw new LaunchFlowError(
+              result?.error?.message ?? 'Anonymous authentication did not complete'
+            );
+          }
+          launchSession = result.session;
+          dispatchLaunch({ type: 'AUTHENTICATED' });
+        }
+
+        const bootstrap = await bootstrapForLaunch(launchSession.access_token);
+        setDynasty(bootstrap.equippedSnake.dynasty);
+        dispatchLaunch({ type: 'BOOTSTRAPPED' });
+        dispatchLaunch({ type: 'RUN_LOADED' });
+        router.push('/game');
+      } catch (error) {
+        dispatchLaunch({
+          type: 'FAIL',
+          error:
+            error instanceof Error ? error.message : 'Could not open the run setup',
+        });
+      } finally {
+        launchInFlightRef.current = false;
+      }
+      return;
+    }
+
     if (!launchHandoffStorageAvailable()) {
       dispatchLaunch({
         type: 'FAIL',
@@ -998,6 +1044,7 @@ export default function Home() {
             className="btn-go px-16 sm:px-20 py-5 text-2xl min-h-[64px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70 disabled:cursor-wait disabled:opacity-70"
             aria-describedby={launchState.error ? 'launch-error' : undefined}
             data-launch-phase={launchState.phase}
+            data-testid="launch-cta"
           >
             <IconPlay size={26} />
             <span>{LAUNCH_PHASE_LABEL[launchState.phase]}</span>

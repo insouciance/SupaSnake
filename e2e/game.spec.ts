@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { seedConsent, signInAsGuest } from './helpers';
+import { openRunSetupControls, seedConsent, signInAsGuest } from './helpers';
 
 test.describe('Home page', () => {
   test.beforeEach(async ({ page }) => {
@@ -123,6 +123,9 @@ test.describe('Equipped-snake game flow', () => {
 
     // Pre-game overlay: both mode chips present. EARN is always the default
     // and is never disabled (§8.6: the envelope gates no mode).
+    // WP-1.06 moves the chips behind the Run Setup disclosure; flag-off this
+    // is a no-op.
+    await openRunSetupControls(page);
     await expect(page.getByTestId('mode-earn')).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId('mode-free')).toBeVisible();
     await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
