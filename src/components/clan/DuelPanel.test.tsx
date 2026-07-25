@@ -151,7 +151,6 @@ describe('DuelPanel', () => {
           opponentName: 'Old Rivals',
           myScore: 5000,
           theirScore: 4000,
-          bonusActive: true,
         },
       })
     );
@@ -160,10 +159,14 @@ describe('DuelPanel', () => {
     await screen.findByTestId('last-week-banner');
     expect(screen.getByText(/Victory over Old Rivals/i)).toBeInTheDocument();
     expect(screen.getByText(/\+16 rating/i)).toBeInTheDocument();
-    expect(screen.getByTestId('duel-bonus-badge')).toHaveTextContent('+5% DNA this week');
+    // WP-0.02 / Rule 8: winning a duel pays no DNA bonus and the badge that
+    // advertised one is deleted. A win is a rating and a story, never a
+    // multiplier on anybody's payout.
+    expect(screen.queryByTestId('duel-bonus-badge')).toBeNull();
+    expect(screen.queryByText(/\+5% DNA/i)).toBeNull();
   });
 
-  it('renders last week loss banner without the bonus badge', async () => {
+  it('renders last week loss banner without any DNA bonus claim', async () => {
     mockFetchResponse(
       200,
       activeDuelData({
@@ -173,7 +176,6 @@ describe('DuelPanel', () => {
           opponentName: 'Dragon Lords',
           myScore: 1000,
           theirScore: 3000,
-          bonusActive: false,
         },
       })
     );

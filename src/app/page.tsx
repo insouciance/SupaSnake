@@ -104,7 +104,7 @@ export default function Home() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [stats, setStats] = useState<HomeStats | null>(null);
-  const [streak, setStreak] = useState<{ current: number; multiplier: number } | null>(null);
+  const [streak, setStreak] = useState<{ current: number } | null>(null);
   const [contractsState, setContractsState] = useState<ContractsState | null>(null);
   const [showContractsBoard, setShowContractsBoard] = useState(false);
   // Season track (Design v2 §7.2): the free seasonal reward track. Null
@@ -202,13 +202,9 @@ export default function Home() {
         if (streaksRes.ok) {
           const data = await streaksRes.json();
           if (!cancelled) {
-            setStreak({
-              current: data.currentStreak ?? 0,
-              multiplier: Number(data.multiplier ?? 1) || 1,
-            });
+            setStreak({ current: data.currentStreak ?? 0 });
             trackEvent(AnalyticsEvents.DAILY_LOGIN, {
               current_streak: data.currentStreak ?? 0,
-              streak_multiplier: data.multiplier ?? 1,
               category: 'engagement',
             });
           }

@@ -331,8 +331,10 @@ export function applyOutcome(rawDna: number, extracted: boolean): number {
  * - A Phoenix trigger voids the economic BENEFITS (Wager's x1.50 reverts
  *   to x1.25, Compound Interest is lost) while the Wager's x0.30 salvage
  *   cost persists - so reporting a trigger never raises a payout.
- * Mutation effects modify the outcome multiplier only - never the account
- * stack (streak x set x clanDuel), which stays a hard auditable constant.
+ * Mutation effects modify the outcome multiplier only. There is no account
+ * stack left to reach: WP-0.02 deleted the streak / collection-set /
+ * clan-duel multipliers, so a settled payout is the raw fold times this
+ * outcome multiplier and nothing else (Constitution §8.5).
  *
  * Trait outcome effects (section 6.2: Gambler / Patient / Hoarder) stack
  * ADDITIVELY on top of the mutation-shaped multipliers - Gambler+Patient

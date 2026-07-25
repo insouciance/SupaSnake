@@ -4,12 +4,12 @@
  * - EXTRACTED earning runs only (deaths grant nothing, Free Play pays
  *   nothing and grants nothing)
  * - XP = floor(raw x 1.25): the banked payout at the BASE bank
- *   multiplier, before mutation outcome shaping and before the account
- *   multiplier stack (streak/set/clanDuel) - streaks never inflate mastery
+ *   multiplier, before mutation outcome shaping. WP-0.02 deleted the
+ *   account multiplier stack (streak/set/clanDuel) outright, so there is
+ *   no longer anything about the account that could reach the XP either.
  */
 
 import { describe, expect, it } from '@jest/globals';
-import { applyDnaMultiplier } from '@/lib/server/dnaMultipliers';
 import { validateGameResult } from '@/lib/server/gameValidator';
 import {
   levelForXp,
@@ -76,13 +76,12 @@ describe('mastery XP grant rules (section 7.1)', () => {
     expect(masteryXpForRun(result.rawDna, result.extracted)).toBe(0);
   });
 
-  it('account multipliers change the payout but never the XP', () => {
+  it('XP is anchored to the raw recompute, which is now also the payout', () => {
     const result = validate(40, true);
     const xp = masteryXpForRun(result.rawDna, true);
-    // A x2.0 streak/set/duel stack doubles the paid DNA...
-    const boosted = applyDnaMultiplier(result.adjustedDna, 2.0);
-    expect(boosted).toBe(result.adjustedDna * 2);
-    // ...while the mastery XP stays anchored to the raw recompute
+    // Post WP-0.02 the settled payout IS the recompute - there is no
+    // account factor left that could move one without the other.
+    expect(result.adjustedDna).toBe(Math.floor(result.rawDna * 1.25));
     expect(xp).toBe(Math.floor(result.rawDna * 1.25));
   });
 

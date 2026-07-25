@@ -168,7 +168,7 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     needsStarterSelection: false,
     hasCompletedFirstRun: true,
   };
-  const streaksBody = fixtures.streaks ?? { currentStreak: 5, multiplier: 1.1 };
+  const streaksBody = fixtures.streaks ?? { currentStreak: 5, longestStreak: 12 };
   const contractsBody = fixtures.contracts ?? buildOffersBoard();
   const collectionBody = fixtures.collection ?? {
     snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'PRIMAL' }],
@@ -376,6 +376,11 @@ describe('Home page', () => {
           expect.objectContaining({ current_streak: 5 })
         );
       });
+      // WP-0.02: the streak has no multiplier left to report.
+      const dailyLogin = mockTrackEvent.mock.calls.find(
+        (call: unknown[]) => call[0] === 'daily_login'
+      );
+      expect(dailyLogin?.[1]).not.toHaveProperty('streak_multiplier');
     });
   });
 

@@ -18,7 +18,8 @@ export const ENGAGEMENT_CONFIG = {
    * Contracts (Design v2 section 7.3 - the daily loop)
    * Offered 3, pick 2; rewards defined in contract_definitions
    * (migration 015). Replaces the flat 28-day calendar DNA faucet;
-   * the calendar's streak multiplier and milestone days survive.
+   * the calendar's milestone days survive (its streak multiplier does
+   * not - WP-0.02 deleted the whole stack).
    */
   contracts: {
     offersPerDay: 3,
@@ -31,20 +32,16 @@ export const ENGAGEMENT_CONFIG = {
 
   /**
    * Streak System
+   *
+   * WP-0.02 deleted the streak DNA multiplier and its tier energy bonus
+   * (Constitution §8.5): a play streak is a count and a record, never a
+   * factor on a payout. What survives is the grace window. The Daily Take
+   * streak (§7.2) is a separate, Take-only multiplier owned by WP-1.04 -
+   * it must never be reintroduced here as a global run multiplier.
    */
   streaks: {
     gracePeriodDays: 1,
     graceResetDays: 7,
-    // Design v2 retune: compressed so the extraction bank bonus (x1.25)
-    // stacked on the top streak tier stays near today's economy ceiling.
-    // Keep in sync with streak_bonus_tiers (migration 013).
-    maxMultiplier: 1.35,
-    tiers: [
-      { days: 3, multiplier: 1.05, energyBonus: 0 },
-      { days: 7, multiplier: 1.1, energyBonus: 1 },
-      { days: 14, multiplier: 1.2, energyBonus: 2 },
-      { days: 30, multiplier: 1.35, energyBonus: 3 },
-    ] as const,
   },
 
   /**
@@ -99,4 +96,3 @@ export const ENGAGEMENT_CONFIG = {
  */
 export type EngagementConfig = typeof ENGAGEMENT_CONFIG;
 export type AchievementCategory = (typeof ENGAGEMENT_CONFIG.achievements.categories)[number];
-export type StreakTier = (typeof ENGAGEMENT_CONFIG.streaks.tiers)[number];

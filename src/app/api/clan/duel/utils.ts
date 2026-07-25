@@ -75,7 +75,12 @@ export interface RpcLastWeek {
   opponent_name: string | null;
   my_score: number;
   their_score: number;
-  bonus_active: boolean;
+  /**
+   * Vestigial. The clan-duel DNA bonus this flagged was DELETED by WP-0.02
+   * (Rule 8: no intra-clan reward mathematics). get_clan_duel still emits
+   * the key; nothing reads it, and nothing may start reading it again.
+   */
+  bonus_active?: boolean;
 }
 
 export interface RpcDuelPayload {
@@ -174,7 +179,6 @@ export function mapDuelPayload(payload: RpcDuelPayload) {
           opponentName: payload.last_week.opponent_name,
           myScore: payload.last_week.my_score ?? 0,
           theirScore: payload.last_week.their_score ?? 0,
-          bonusActive: payload.last_week.bonus_active,
         }
       : null,
   };

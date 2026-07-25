@@ -320,7 +320,6 @@ export default function GamePage() {
   const [streakInfo, setStreakInfo] = useState<{
     current: number;
     longest: number;
-    multiplier: number;
     graceConsumed: boolean;
   } | null>(null);
   const gameStartTime = useRef<number>(0);
@@ -2407,9 +2406,6 @@ export default function GamePage() {
                     <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                       <IconFlame size={18} className="text-venom-orange" />
                       Day <span className="font-bold text-venom-orange">{streakInfo.current}</span> streak
-                      {streakInfo.multiplier > 1 && (
-                        <span className="text-beige/70"> ({streakInfo.multiplier}x DNA)</span>
-                      )}
                     </p>
                   )}
                   {/* Mastery XP (Design v2 §7.1) - banked XP from this
