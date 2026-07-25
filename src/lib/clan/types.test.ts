@@ -1,189 +1,174 @@
 /**
- * Tests for Clan Types
+ * Clan types (WP-1.02; Constitution §9.2, §12.2, Rule 8).
+ *
+ * The suite this replaces asserted local literals — `const validRoles =
+ * ['owner', 'officer', 'member']; expect(validRoles).toContain('officer')` —
+ * which passes whatever the module does. These assertions read the module.
  */
 
 import { describe, it, expect } from '@jest/globals';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import * as clanTypes from './types';
-import { CLAN_LIMITS } from './types';
+import {
+  CLAN_LIMITS,
+  isValidClanName,
+  isValidClanTag,
+  suggestClanTag,
+} from './types';
+import { isValidClanInviteCode, clanInviteUrl } from './config';
 
-describe('Clan Types', () => {
-  describe('Clan Data', () => {
-    it('should have required fields', () => {
-      const clan = {
-        id: 'uuid-clan-1',
-        name: 'Elite Snakes',
-        tag: 'ELIT',
-        description: 'Top players clan',
-        ownerId: 'uuid-owner',
-        memberCount: 15,
-        maxMembers: 50,
-        createdAt: new Date().toISOString(),
-      };
-
-      expect(clan.id).toBeDefined();
-      expect(clan.name).toBeDefined();
-      expect(clan.tag).toBeDefined();
-      expect(clan.ownerId).toBeDefined();
-    });
-
-    it('should cap membership and impose no floor', () => {
-      // WP-0.03 (GROUND_TRUTH §10): `minMembers: 20` was never enforced by
-      // any code path - duel matchmaking accepts `member_count >= 1` - and
-      // it contradicts Constitution §9.2, where a clan of one is a
-      // first-class citizen that founds and hunts alone. Only the cap is
-      // real, and only because the join path checks it.
-      expect(CLAN_LIMITS.maxMembers).toBe(50);
+describe('Clan types', () => {
+  describe('the caps (§9.2, §12.2)', () => {
+    it('caps membership at 12 and imposes no floor', () => {
+      // "Clan size: 1–12, soft-full at 6" [H]. The 50 that shipped and the
+      // never-enforced minMembers:20 are both gone; migration 048 moves the
+      // CHECK constraint so the cap is schema, not just route code.
+      expect(CLAN_LIMITS.maxMembers).toBe(12);
       expect((CLAN_LIMITS as Record<string, unknown>).minMembers).toBeUndefined();
     });
 
-    it('should offer no clan bonus to claim', () => {
-      // The "+1 energy every 6 hours" promise and its `canClaimClanBonus`
-      // helper are gone with the orphan RPC behind them (migration 044).
-      // Rule 8: a clan never pays.
+    it('treats soft-full as presentation, never as a mechanic', () => {
+      expect(CLAN_LIMITS.softFullMembers).toBe(6);
+      expect(CLAN_LIMITS.softFullMembers).toBeLessThan(CLAN_LIMITS.maxMembers);
+    });
+  });
+
+  describe('Rule 8 — nothing here grades or bills', () => {
+    it('exposes no officer role', () => {
+      const source = readFileSync(join(__dirname, 'types.ts'), 'utf8');
+      // The word appears in the file only inside the comment explaining its
+      // absence; the type alias itself must be exactly two members.
+      expect(source).toMatch(/export type ClanRole = 'owner' \| 'member';/);
+    });
+
+    it('offers no clan bonus to claim', () => {
       const surface = clanTypes as Record<string, unknown>;
       expect(surface.CLAN_BONUS_CONFIG).toBeUndefined();
       expect(surface.canClaimClanBonus).toBeUndefined();
     });
-  });
 
-  describe('Clan Member', () => {
-    it('should have role', () => {
-      const member = {
-        playerId: 'uuid-player-1',
-        clanId: 'uuid-clan-1',
+    it('has no contribution field on a member', () => {
+      const member: clanTypes.ClanMember = {
+        playerId: 'p1',
+        clanId: 'c1',
         role: 'member',
         joinedAt: new Date().toISOString(),
       };
-
-      expect(member.role).toBeDefined();
+      expect(Object.keys(member).sort()).toEqual([
+        'clanId',
+        'joinedAt',
+        'playerId',
+        'role',
+      ]);
+      expect((member as Record<string, unknown>).weeklyContribution).toBeUndefined();
+      expect((member as Record<string, unknown>).totalContribution).toBeUndefined();
     });
 
-    it('should support valid roles', () => {
-      const validRoles = ['owner', 'officer', 'member'];
-      expect(validRoles).toContain('owner');
-      expect(validRoles).toContain('officer');
-      expect(validRoles).toContain('member');
-    });
-  });
-
-  describe('Energy Bonus', () => {
-    it('should provide clan energy bonus per SO-001', () => {
-      // +1 energy every 6 hours for active clan members
-      const bonusIntervalHours = 6;
-      const bonusAmount = 1;
-
-      expect(bonusIntervalHours).toBe(6);
-      expect(bonusAmount).toBe(1);
-    });
-  });
-
-  describe('SO-002 Compliance', () => {
-    it('should NOT require daily play', () => {
-      // No daily requirements per SO-002
-      const dailyRequirement = false;
-      expect(dailyRequirement).toBe(false);
-    });
-
-    it('should allow contribution when convenient', () => {
-      // Weekly aggregate, not daily check-ins
-      const contributionWindow = 'weekly';
-      expect(contributionWindow).toBe('weekly');
-    });
-
-    it('should not punish missing days', () => {
-      // Missing days doesn't hurt clan
-      const penaltyForMissing = 0;
-      expect(penaltyForMissing).toBe(0);
-    });
-  });
-
-  describe('Clan Validation', () => {
-    it('should validate clan name length', () => {
-      const isValidName = (name: string) => name.length >= 3 && name.length <= 20;
-      expect(isValidName('Elites')).toBe(true);
-      expect(isValidName('AB')).toBe(false);
-      expect(isValidName('A'.repeat(25))).toBe(false);
-    });
-
-    it('should validate clan tag', () => {
-      const isValidTag = (tag: string) => /^[A-Z0-9]{2,6}$/.test(tag);
-      expect(isValidTag('ELIT')).toBe(true);
-      expect(isValidTag('elite')).toBe(false);
-      expect(isValidTag('ABCDEFG')).toBe(false);
-    });
-  });
-
-  describe('Target Metrics', () => {
-    it('should target 40% of DAU in clans per SO-001', () => {
-      const targetParticipation = 0.40;
-      expect(targetParticipation).toBe(0.40);
+    it('has no clan score — §12.2 caps public numbers at Score and Depth', () => {
+      const clan: clanTypes.Clan = {
+        id: 'c1',
+        name: 'Elite Snakes',
+        tag: 'ELIT',
+        description: '',
+        ownerId: 'u1',
+        memberCount: 1,
+        maxMembers: 12,
+        createdAt: '',
+        updatedAt: '',
+      };
+      expect((clan as Record<string, unknown>).weeklyScore).toBeUndefined();
+      expect((clan as Record<string, unknown>).totalScore).toBeUndefined();
     });
   });
 
   describe('isValidClanName', () => {
-    const isValidClanName = (name: string) => name.length >= 3 && name.length <= 20;
-
-    it('should accept valid names', () => {
+    it('accepts ordinary names', () => {
       expect(isValidClanName('Elite Snakes')).toBe(true);
       expect(isValidClanName('ABC')).toBe(true);
+      expect(isValidClanName("O'Hara Coil")).toBe(true);
+      expect(isValidClanName('Fang-9')).toBe(true);
     });
 
-    it('should reject short names', () => {
+    it('rejects lengths outside 3-20', () => {
       expect(isValidClanName('AB')).toBe(false);
       expect(isValidClanName('')).toBe(false);
+      expect(isValidClanName('A'.repeat(21))).toBe(false);
     });
 
-    it('should reject long names', () => {
-      expect(isValidClanName('A'.repeat(25))).toBe(false);
+    it('rejects the moderation surface §9.2 refuses to open', () => {
+      // Names are filtered and there are no free-text descriptions at launch.
+      expect(isValidClanName('<script>x</script>')).toBe(false);
+      expect(isValidClanName('go to evil.example')).toBe(false);
+      expect(isValidClanName('  padded  ')).toBe(false);
+      expect(isValidClanName('double  space')).toBe(false);
     });
   });
 
   describe('isValidClanTag', () => {
-    const isValidClanTag = (tag: string) => /^[A-Z0-9]{2,6}$/.test(tag);
-
-    it('should accept valid tags', () => {
+    it('accepts 2-6 uppercase alphanumerics', () => {
       expect(isValidClanTag('ELIT')).toBe(true);
       expect(isValidClanTag('AB')).toBe(true);
       expect(isValidClanTag('ABC123')).toBe(true);
     });
 
-    it('should reject lowercase', () => {
+    it('rejects lowercase, wrong length and punctuation', () => {
       expect(isValidClanTag('elite')).toBe(false);
-      expect(isValidClanTag('Elit')).toBe(false);
-    });
-
-    it('should reject wrong length', () => {
       expect(isValidClanTag('A')).toBe(false);
       expect(isValidClanTag('ABCDEFG')).toBe(false);
-    });
-
-    it('should reject special characters', () => {
       expect(isValidClanTag('AB-C')).toBe(false);
-      expect(isValidClanTag('AB C')).toBe(false);
     });
   });
 
-  describe('canClaimClanBonus', () => {
-    const BONUS_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
-
-    const canClaimClanBonus = (lastClaimTime: number | null): boolean => {
-      if (!lastClaimTime) return true;
-      const now = Date.now();
-      return (now - lastClaimTime) >= BONUS_INTERVAL;
-    };
-
-    it('should allow claim if never claimed', () => {
-      expect(canClaimClanBonus(null)).toBe(true);
+  describe('suggestClanTag — founding is one tap plus a name', () => {
+    it('derives initials from a multi-word name', () => {
+      expect(suggestClanTag('Elite Snakes')).toBe('ES');
+      expect(suggestClanTag('The Deep Coil Crew')).toBe('TDCC');
     });
 
-    it('should allow claim after 6 hours', () => {
-      const sevenHoursAgo = Date.now() - (7 * 60 * 60 * 1000);
-      expect(canClaimClanBonus(sevenHoursAgo)).toBe(true);
+    it('falls back to the first word when there are no initials to take', () => {
+      expect(suggestClanTag('Vipers')).toBe('VIPERS');
+      expect(suggestClanTag('Constrictors')).toBe('CONSTR');
     });
 
-    it('should reject claim before 6 hours', () => {
-      const oneHourAgo = Date.now() - (1 * 60 * 60 * 1000);
-      expect(canClaimClanBonus(oneHourAgo)).toBe(false);
+    it('always returns something a tag constraint accepts', () => {
+      for (const name of ['A B', 'Vipers', 'Elite Snakes', '123']) {
+        expect(isValidClanTag(suggestClanTag(name))).toBe(true);
+      }
+    });
+  });
+
+  describe('invite codes (§9.2, §11.3, Rule 14)', () => {
+    it('accepts the eight-character unambiguous alphabet', () => {
+      expect(isValidClanInviteCode('ABCDEFGH')).toBe(true);
+      expect(isValidClanInviteCode('23456789')).toBe(true);
+    });
+
+    it('rejects the characters that get misread aloud', () => {
+      // I, O, 0 and 1 are deliberately not in the alphabet: these codes
+      // travel through Discord voice, not through a clipboard.
+      expect(isValidClanInviteCode('ABCDEFGO')).toBe(false);
+      expect(isValidClanInviteCode('ABCDEFG0')).toBe(false);
+      expect(isValidClanInviteCode('ABCDEFGI')).toBe(false);
+      expect(isValidClanInviteCode('ABCDEFG1')).toBe(false);
+      // L stays in: with 1 removed there is nothing left for it to be
+      // confused with, and dropping it too would cost a fifth of the alphabet.
+      expect(isValidClanInviteCode('ABCDEFGL')).toBe(true);
+    });
+
+    it('rejects the wrong length and the wrong type', () => {
+      expect(isValidClanInviteCode('ABCDEFG')).toBe(false);
+      expect(isValidClanInviteCode('ABCDEFGHJ')).toBe(false);
+      expect(isValidClanInviteCode('abcdefgh')).toBe(false);
+      expect(isValidClanInviteCode(null)).toBe(false);
+      expect(isValidClanInviteCode(12345678)).toBe(false);
+    });
+
+    it('has a URL — Rule 14', () => {
+      expect(clanInviteUrl('ABCDEFGH')).toBe('/clan/join/ABCDEFGH');
+      expect(clanInviteUrl('ABCDEFGH', 'https://supasnake.com')).toBe(
+        'https://supasnake.com/clan/join/ABCDEFGH'
+      );
     });
   });
 });

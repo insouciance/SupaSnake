@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { CLAN_GAUNTLET_ENABLED } from '@/lib/clan/config';
 import { isMissingGauntletInfra } from '@/lib/server/gauntlet';
 import {
   generateScoutNarration,
@@ -33,6 +34,27 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
+/**
+ * The population gate (Constitution §9.3, §12.1 slot 7).
+ *
+ * The Gauntlet is BUILT and HIDDEN, not deleted: "All four subsystems are
+ * already built — hiding them costs a flag, and their state is preserved for
+ * the day the gates open." Until `NEXT_PUBLIC_CLAN_GAUNTLET` is the exact
+ * string "true", this route answers `{ available: false }` and touches no row.
+ *
+ * Answering rather than 404-ing matters for one specific reason: the closed
+ * answer must not reach `get_gauntlet` or `get_clan_duel`, whose LAZY IN-SQL
+ * SETTLEMENT is the only writer on these paths. A hidden layer that kept
+ * settling would keep grading clans behind the curtain, which is exactly what
+ * Rule 8 forbids happening at all.
+ *
+ * The criteria for opening it are public and live in `CLAN_POPULATION_GATES`:
+ * ≥25 clans with ≥3 weekly-active members, sustained four weeks.
+ */
+function gateClosed(): NextResponse {
+  return NextResponse.json({ available: false, live: false, gate: 'clan_gauntlet' });
+}
 
 async function authAndMembership(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -62,6 +84,7 @@ async function authAndMembership(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!CLAN_GAUNTLET_ENABLED) return gateClosed();
     const auth = await authAndMembership(request);
     if ('error' in auth) return auth.error;
 
@@ -147,6 +170,7 @@ async function attachScoutNarration(
 
 export async function POST(request: NextRequest) {
   try {
+    if (!CLAN_GAUNTLET_ENABLED) return gateClosed();
     const auth = await authAndMembership(request);
     if ('error' in auth) return auth.error;
 

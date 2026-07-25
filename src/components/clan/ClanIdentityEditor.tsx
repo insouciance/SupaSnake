@@ -1,19 +1,22 @@
 'use client';
 
 /**
- * Clan identity editor (Identity v1 section 8.1) - banner, emblem and
- * color pickers gated by the clan's Heraldry research:
+ * Clan heraldry — preset banner, emblem and colors (Constitution §9.2).
  *
- * - heraldry_1 unlocks editing (banner/emblem/colors); locked state
- *   shows WHAT could be customized and what it costs to get there.
- * - heraldry_3 / heraldry_4 render as locked hints for their
- *   render-time perks (board frame, animated title).
+ * WP-1.02 removed the research gate this editor used to sit behind. It
+ * required the `heraldry_1` node, which lives in the Gauntlet tree, and the
+ * Gauntlet is hidden behind a population gate that will not open for a long
+ * time (§9.3) — so a clan founded today would have had a permanently locked
+ * identity. §9.2 makes preset heraldry part of FOUNDING, and identity is
+ * never a reward for reaching a population threshold.
  *
- * Only owners/officers may save (the server RPC enforces it again).
+ * Only the owner may save (`set_clan_heraldry` enforces it again in SQL).
+ * There is no officer to also allow: Rule 8, and this work package's
+ * acceptance criterion, leave exactly two roles.
  */
 
 import { useState } from 'react';
-import { IconLock, IconShield } from '@/components/ui/icons';
+import { IconShield } from '@/components/ui/icons';
 import {
   CLAN_BANNERS,
   CLAN_COLORS,
@@ -32,9 +35,7 @@ interface ClanIdentityEditorProps {
 export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityEditorProps) {
   const identity = view.identity;
   const role = view.membership?.role ?? 'member';
-  const canEdit = role === 'owner' || role === 'officer';
-  const heraldry = identity?.heraldry ?? [];
-  const unlocked = heraldry.includes('heraldry_1');
+  const canEdit = role === 'owner';
 
   const [bannerId, setBannerId] = useState<string | null>(identity?.bannerId ?? null);
   const [emblemId, setEmblemId] = useState<string | null>(identity?.emblemId ?? null);
@@ -84,22 +85,6 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
           </div>
         </div>
 
-        {!unlocked ? (
-          <div className="flex items-start gap-3 bg-void/60 border border-scale-blue-light/50 rounded-arcade p-4">
-            <IconLock size={20} className="text-beige/70 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-bone-white font-body">
-                Research <span className="text-venom-orange font-display">Heraldry I</span> in
-                the Gauntlet tree to unlock banner, emblem and clan colors.
-              </p>
-              <p className="text-beige/60 text-sm font-body mt-1">
-                Deeper Heraldry adds a victory fanfare (II), a board frame in counted runs
-                (III) and an animated clan title (IV).
-              </p>
-            </div>
-          </div>
-        ) : (
-          <>
             <div className="mb-4">
               <p className="label-arcade mb-2">Banner</p>
               <div className="flex flex-wrap gap-2">
@@ -172,28 +157,6 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
               ))}
             </div>
 
-            {/* Deeper-tier hints */}
-            <div className="flex flex-wrap gap-2 mb-5 text-xs font-body">
-              {(
-                [
-                  ['heraldry_2', 'Victory fanfare'],
-                  ['heraldry_3', 'Board frame in counted runs'],
-                  ['heraldry_4', 'Animated clan title'],
-                ] as const
-              ).map(([node, label]) => (
-                <span
-                  key={node}
-                  className={`px-2 py-1 rounded-arcade border ${
-                    heraldry.includes(node)
-                      ? 'border-rarity-uncommon/70 text-rarity-uncommon'
-                      : 'border-scale-blue-light/40 text-beige/50'
-                  }`}
-                >
-                  {heraldry.includes(node) ? '✓' : '🔒'} {label}
-                </span>
-              ))}
-            </div>
-
             {canEdit ? (
               <button
                 onClick={handleSave}
@@ -205,12 +168,10 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
               </button>
             ) : (
               <p className="text-beige/60 text-sm font-body">
-                Officers and the owner set the clan&apos;s heraldry.
+                The clan&apos;s owner sets its heraldry.
               </p>
             )}
             {message && <p className="text-beige text-sm font-body mt-2">{message}</p>}
-          </>
-        )}
       </div>
     </section>
   );

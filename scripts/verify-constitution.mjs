@@ -93,15 +93,19 @@ const MIN_ALLOW_REASON = 12;
  * be a licence to add more.
  */
 const BASELINE = [
-  {
-    gate: 'owned-row-downward',
-    path: 'src/app/api/clan/route.ts',
-    max: 1,
-    code: ".from('clan_members')",
-    reason:
-      'player-initiated leave. Hard-deleting the membership row destroys joined_at ' +
-      '(clan tenure); R6 tension is real and is filed for the WP-1.02 clan rework.',
-  },
+  // ── R6 (owned-row-downward): EMPTY.
+  //
+  // One entry stood here on 2026-07-25: `src/app/api/clan/route.ts` hard-deleted
+  // the `clan_members` row on leave, destroying `joined_at` — clan tenure, which
+  // Rule 6 names as permanent (finding F-7). WP-1.02 closed it: the route no
+  // longer deletes anything, and `leave_clan` / `remove_clan_member` (migration
+  // 048) archive the membership span into `clan_membership_history` BEFORE
+  // ending the membership, inside one transaction. Those two DELETEs carry
+  // inline allow markers explaining exactly that.
+  //
+  // Do not re-add an entry here to land a change. Debt may shrink; it may not
+  // grow.
+  //
   // ── §10.4 (energy-commerce): EMPTY, and that is the point.
   //
   // Nine entries stood here on 2026-07-25. WP-0.01 (energy envelope) retired

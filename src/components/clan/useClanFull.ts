@@ -1,10 +1,27 @@
 'use client';
 
 /**
- * The full clan surface read (Identity v1 I3): one authed fetch of
- * /api/clan?view=full shared by the identity editor, roster, Discord
- * panel and invite inbox. Pre-024 the payload simply lacks the new
- * sections and every consumer renders its degraded state.
+ * The full clan surface read: one authed fetch of `/api/clan?view=full`,
+ * shared by the heraldry editor, the roster, the Discord panel and the invite
+ * inbox.
+ *
+ * WHAT WP-1.02 REMOVED FROM THIS SHAPE (Rule 8, and the acceptance criterion
+ * "no officer lever exists")
+ *
+ *   `ClanRosterEntry.weeklyContribution` / `.totalContribution` — the graded
+ *   pair. Gone from the payload because they are gone from the schema
+ *   (migration 048). A roster entry now carries a handle, a role of two
+ *   values, and when the member joined. There is no number on it a surface
+ *   could sort by and then draw a line under.
+ *
+ *   `role: 'officer'` — there is no officer.
+ *
+ *   `pendingInvites` — the officer's invite console. Recruitment is the
+ *   invite code (§9.2: "invite links are the only recruitment surface"), and
+ *   every member can share it.
+ *
+ * `myInvites` stays: an invite issued before the rework can still be
+ * answered, because Rule 5 says a change never destroys something pending.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -12,10 +29,10 @@ import type { PlayerIdentity } from '@/lib/identity/types';
 
 export interface ClanRosterEntry {
   userId: string;
-  role: 'owner' | 'officer' | 'member';
-  weeklyContribution: number;
-  totalContribution: number;
+  role: 'owner' | 'member';
   joinedAt: string;
+  /** Earliest membership start ever, across leave/rejoin (Rule 6: tenure). */
+  tenureSince: string;
   identity: PlayerIdentity | null;
 }
 
@@ -24,7 +41,6 @@ export interface ClanInviteSummary {
   clanId?: string;
   clanName?: string | null;
   clanTag?: string | null;
-  handle?: string | null;
   expiresAt: string;
 }
 
@@ -38,16 +54,22 @@ export interface ClanDiscordSummary {
 
 export interface ClanFullView {
   clan: Record<string, unknown> | null;
-  membership?: { clanId: string; role: string; joinedAt: string };
+  membership?: {
+    clanId: string;
+    role: string;
+    joinedAt: string;
+    tenureSince?: string;
+  };
   identity?: {
     bannerId: string | null;
     emblemId: string | null;
     colorPrimary: string | null;
     colorSecondary: string | null;
-    heraldry: string[];
   };
+  /** The acquisition artifact (§11.3, Rule 14): a code and the URL for it. */
+  invite?: { code: string | null; url: string | null };
+  limits?: { maxMembers: number; softFullMembers: number };
   roster?: ClanRosterEntry[];
-  pendingInvites?: ClanInviteSummary[];
   myInvites?: ClanInviteSummary[];
   discord?: ClanDiscordSummary;
 }
@@ -86,7 +108,7 @@ export function useClanFull(accessToken: string | undefined) {
 export async function clanAction(
   accessToken: string | undefined,
   body: Record<string, unknown>
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; result?: Record<string, unknown> }> {
   if (!accessToken) return { ok: false, error: 'Not signed in' };
   try {
     const response = await fetch('/api/clan', {
@@ -101,7 +123,7 @@ export async function clanAction(
     if (!response.ok) {
       return { ok: false, error: (data as { error?: string }).error ?? 'Request failed' };
     }
-    return { ok: true };
+    return { ok: true, result: data as Record<string, unknown> };
   } catch {
     return { ok: false, error: 'Request failed' };
   }

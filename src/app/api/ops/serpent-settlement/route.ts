@@ -44,6 +44,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isAuthorizedCron } from '@/lib/server/cronAuth';
 import { settleDueSerpentWeeks } from '@/lib/server/serpent';
+import { settleDueClanWeeks } from '@/lib/server/clanHunt';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -57,8 +58,22 @@ export async function GET(request: NextRequest) {
 
   const result = await settleDueSerpentWeeks(supabase);
 
+  /**
+   * Paired weeks settle SECOND, and that order is load-bearing (WP-1.02,
+   * §9.4). `settle_clan_week_pairings` compares the clan Depths that
+   * `apply_serpent_week_settlement` has just written, so running it first
+   * would resolve every pairing against last week's numbers.
+   *
+   * It is idempotent on the same construction: depths are read, outcomes are
+   * a comparison, laurels and Chronicle entries are `ON CONFLICT DO NOTHING`,
+   * and rivalry memory is a full recompute over settled pairings. A double
+   * fire converges. It pays no DNA — Rule 8 forbids a clan number that pays,
+   * and there is no statement in that RPC through which it could.
+   */
+  const pairings = await settleDueClanWeeks(supabase);
+
   const body = {
-    ok: !result.failed,
+    ok: !result.failed && !pairings.failed,
     settled: result.settled.map((week) => ({
       weekStart: week.weekStart,
       players: week.players,
@@ -66,10 +81,17 @@ export async function GET(request: NextRequest) {
       chronicleEntries: week.chronicleEntries,
       failed: week.failed,
     })),
+    pairings: pairings.settled.map((week) => ({
+      weekStart: week.weekStart,
+      settled: week.settled,
+      laurels: week.laurels,
+      chronicleEntries: week.chronicleEntries,
+      failed: week.failed,
+    })),
     skipped: result.skipped,
   };
 
-  if (result.failed) {
+  if (result.failed || pairings.failed) {
     // The helper already reported it to Sentry; the cron needs a non-200 so a
     // permanently failing settlement is visible on the platform.
     return NextResponse.json({ ...body, error: 'Settlement failed' }, { status: 500 });
