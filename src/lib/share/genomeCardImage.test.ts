@@ -143,8 +143,11 @@ describe('Genome Card share payload — Rule 14', () => {
 
   it('ends the share text with the URL on its own line', () => {
     const text = genomeCardShareText(model);
+    // The total is the shared fixture's `cascade.total` (1750 = raw x genome x
+    // outcome). It read 2,526 while the streak/set/clan-duel stack still
+    // multiplied the payout; WP-0.02 deleted those factors.
     expect(text.split('\n')).toEqual([
-      '2,526 DNA · 0 genes',
+      '1,750 DNA · 0 genes',
       'https://supasnake.com',
     ]);
   });
