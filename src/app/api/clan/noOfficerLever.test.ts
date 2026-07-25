@@ -229,18 +229,67 @@ describe('5. the gated layers are hidden, not deleted (§9.3, §12.1 slot 7)', (
 });
 
 describe('and nothing in this migration pays a clan (Rule 8, §9.4)', () => {
-  it('writes no currency, entitlement or commerce table', () => {
+  /**
+   * Rule 8's other half: clans never bill and never pay. The claim is about
+   * WRITES, so it is checked as one.
+   *
+   * An earlier draft of this file banned the mere STRING `total_dna_earned`
+   * from the migration, which is the wrong test in a way worth recording: it
+   * failed on section 14's tripwire, the read-only guard that snapshots every
+   * player's DNA before the migration and aborts the transaction if any of it
+   * moved. That guard is the strongest evidence the rule holds — a test that
+   * forbids naming currency would have forced its deletion and left the rule
+   * merely asserted in prose. So: commerce TABLES may not appear at all, and
+   * the currency COLUMNS may appear only in statements that read them.
+   */
+
+  it('names no commerce, entitlement or purchase surface at all', () => {
     for (const forbidden of [
       'economy_transactions',
-      'players.dna',
-      'total_dna_earned',
       'player_cosmetics',
       'entitlement',
       'subscription',
       'stripe',
+      'checkout',
+      'purchase',
       'premium',
+      'energy',
     ]) {
       expect(MIGRATION_CODE.toLowerCase()).not.toContain(forbidden.toLowerCase());
     }
+  });
+
+  it('writes no player-owned currency: no statement touches players at all', () => {
+    expect(MIGRATION_CODE).not.toMatch(/UPDATE\s+players\b/i);
+    expect(MIGRATION_CODE).not.toMatch(/INSERT\s+INTO\s+players\b/i);
+    expect(MIGRATION_CODE).not.toMatch(/ALTER\s+TABLE\s+players\b/i);
+    expect(MIGRATION_CODE).not.toMatch(/\bdna\s*=/i);
+    expect(MIGRATION_CODE).not.toMatch(/total_dna_earned\s*=/i);
+    // Nor does it hand anyone the ability to: no grant is issued on players.
+    expect(MIGRATION_CODE).not.toMatch(/GRANT[^;]*\bON\s+players\b/i);
+  });
+
+  it('every mention of currency is inside the read-only tripwire', () => {
+    const currencyLines = MIGRATION_CODE.split('\n').filter((line) =>
+      /\bdna\b|total_dna_earned/i.test(line)
+    );
+    expect(currencyLines.length).toBeGreaterThan(0);
+    for (const line of currencyLines) {
+      // A snapshot column, a comparison against the snapshot, or the abort
+      // message that names what the comparison caught. Nothing else.
+      expect(line).toMatch(/COALESCE\(|pre\.dna|pre\.total_dna_earned|RAISE\s+EXCEPTION/);
+    }
+  });
+
+  it('the tripwire aborts on ANY movement of DNA, up as well as down', () => {
+    // Downward-only would have let a clan migration pay somebody. Rule 8 bans
+    // both directions, so the guard is exact equality.
+    expect(MIGRATION_CODE).toMatch(
+      /COALESCE\(now_p\.dna, 0\)\s*IS DISTINCT FROM\s*pre\.dna/i
+    );
+    expect(MIGRATION_CODE).toMatch(
+      /COALESCE\(now_p\.total_dna_earned, 0\)\s*IS DISTINCT FROM\s*pre\.total_dna_earned/i
+    );
+    expect(MIGRATION_SQL).toMatch(/neither bills nor pays/i);
   });
 });

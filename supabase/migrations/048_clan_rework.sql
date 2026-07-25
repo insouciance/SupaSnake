@@ -1416,7 +1416,11 @@ GRANT SELECT, INSERT         ON clan_laurels            TO service_role;
 --
 --   1. every membership that existed still exists, with the same start;
 --   2. no clan's carried Depth moved down, and no clan row vanished;
---   3. no player's DNA or Depth moved down;
+--   3. no player's Depth moved down, and no player's DNA moved AT ALL — not
+--      down and not up. Rule 8 says clans never bill and never pay, so a clan
+--      migration that hands anybody currency is as wrong as one that takes it.
+--      `IS DISTINCT FROM` is the check that makes "this migration pays nobody"
+--      a thing the database refuses to let through rather than a promise;
 --   4. the gated layers' state is intact — `clan_duels` still holds every row
 --      it held, which is what "hidden, not deleted" has to mean.
 
@@ -1450,12 +1454,12 @@ BEGIN
   FROM clan_pre_migration_players pre
   LEFT JOIN players now_p ON now_p.id = pre.id
   WHERE now_p.id IS NULL
-     OR COALESCE(now_p.dna, 0)              < pre.dna
-     OR COALESCE(now_p.total_dna_earned, 0) < pre.total_dna_earned
+     OR COALESCE(now_p.dna, 0)              IS DISTINCT FROM pre.dna
+     OR COALESCE(now_p.total_dna_earned, 0) IS DISTINCT FROM pre.total_dna_earned
      OR COALESCE(now_p.lifetime_depth, 0)   < pre.lifetime_depth
      OR COALESCE(now_p.best_week_depth, 0)  < pre.best_week_depth;
   IF v_bad > 0 THEN
-    RAISE EXCEPTION 'Migration 048 aborted: % player row(s) vanished or moved downward (Rule 6)', v_bad;
+    RAISE EXCEPTION 'Migration 048 aborted: % player row(s) vanished, lost Depth, or had DNA moved — a clan migration neither bills nor pays (Rules 6, 8)', v_bad;
   END IF;
 
   SELECT COUNT(*) INTO v_bad

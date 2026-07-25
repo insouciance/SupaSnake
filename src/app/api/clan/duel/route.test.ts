@@ -3,7 +3,29 @@
  */
 
 /**
- * Clan Duel API tests - GET handler with mocked supabase client
+ * Clan Duel API tests — the FOLD and the GATE (§9.4, §12.1 slot 7).
+ *
+ * WP-1.02 folded head-to-head into the Serpent week. The paired-week surface
+ * is `GET /api/clan/hunt`: it carries the self-referential primary, the
+ * optional rival layer and the rivalry memory on the one weekly surface §12.2
+ * allows. This endpoint is the OLD duel — its own weekly calendar, its own Elo
+ * rating and the Gauntlet's blind picks riding on top of it — so it now rides
+ * the Gauntlet's population gate.
+ *
+ * These tests assert both halves of "hidden, not deleted":
+ *
+ *   HIDDEN — with the flag off (the default, and what CI must never infer from
+ *   an omitted variable) the route answers 200 `{ available: false }` and
+ *   touches NO row. That last part is the point rather than a nicety:
+ *   `get_clan_duel` settles finished weeks and pairs new ones lazily, in SQL,
+ *   on every read. Leaving the read open would keep the superseded duel
+ *   machinery rating and grading clans behind a surface no player can see,
+ *   which is precisely what Rule 8 forbids happening at all.
+ *
+ *   NOT DELETED — with the flag on, every behaviour the standalone duel had
+ *   still answers exactly as it did, byes and unpaired clans included. The
+ *   day §9.3's gate opens, the layer is the layer it was, and migration 048's
+ *   tripwire has kept its rows (see `noOfficerLever.test.ts`).
  */
 
 // Mock Supabase - must be before imports due to jest.mock hoisting
@@ -22,9 +44,36 @@ jest.mock('@supabase/supabase-js', () => ({
   }),
 }));
 
-import { GET } from './route';
 import { mapDuelPayload } from './utils';
 import { NextRequest } from 'next/server';
+
+type DuelRoute = typeof import('./route');
+
+const ORIGINAL_FLAG = process.env.NEXT_PUBLIC_CLAN_GAUNTLET;
+
+/**
+ * Load the route with the gate in a chosen state. The flag is read once, at
+ * module scope, on the server as on the client — so switching it means
+ * reloading the module, exactly as a deployment would.
+ */
+function loadRoute(flag?: string): DuelRoute {
+  if (flag === undefined) {
+    delete process.env.NEXT_PUBLIC_CLAN_GAUNTLET;
+  } else {
+    process.env.NEXT_PUBLIC_CLAN_GAUNTLET = flag;
+  }
+  jest.resetModules();
+  return require('./route') as DuelRoute;
+}
+
+afterAll(() => {
+  if (ORIGINAL_FLAG === undefined) {
+    delete process.env.NEXT_PUBLIC_CLAN_GAUNTLET;
+  } else {
+    process.env.NEXT_PUBLIC_CLAN_GAUNTLET = ORIGINAL_FLAG;
+  }
+  jest.resetModules();
+});
 
 function makeRequest(token?: string) {
   return new NextRequest('http://localhost/api/clan/duel', {
@@ -77,7 +126,57 @@ beforeEach(() => {
   mockMembership('clan-1');
 });
 
-describe('GET /api/clan/duel', () => {
+describe('GET /api/clan/duel — gated, because the duel is folded into the week', () => {
+  it('answers 200 { available: false } with the flag absent, not an error', async () => {
+    // Absent, not "false": CI must never infer the rollback path from an
+    // omitted variable, so the omitted case is tested on its own.
+    const { GET } = loadRoute(undefined);
+    const response = await GET(makeRequest('token'));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ available: false, gate: 'clan_gauntlet' });
+  });
+
+  it('touches no row: the lazy settler in get_clan_duel is never reached', async () => {
+    const { GET } = loadRoute(undefined);
+    await GET(makeRequest('token'));
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  it('leaks no duel state through the closed answer', async () => {
+    const { GET } = loadRoute(undefined);
+    const body = await (await GET(makeRequest('token'))).json();
+    expect(body).not.toHaveProperty('duel');
+    expect(body).not.toHaveProperty('rating');
+    expect(body).not.toHaveProperty('record');
+  });
+
+  it('closes for an unauthenticated caller too — a hidden layer is not a 401', async () => {
+    const { GET } = loadRoute(undefined);
+    const response = await GET(makeRequest());
+    expect(response.status).toBe(200);
+    expect((await response.json()).available).toBe(false);
+  });
+
+  it('opens only for the exact string "true"', async () => {
+    for (const flag of ['false', 'TRUE', '1', '']) {
+      const { GET } = loadRoute(flag);
+      const body = await (await GET(makeRequest('token'))).json();
+      expect(body).toEqual({ available: false, gate: 'clan_gauntlet' });
+    }
+    const { GET } = loadRoute('true');
+    expect((await (await GET(makeRequest('token'))).json()).available).toBeUndefined();
+  });
+});
+
+describe('GET /api/clan/duel — behind an open gate, the preserved surface is intact', () => {
+  let GET: DuelRoute['GET'];
+
+  beforeEach(() => {
+    ({ GET } = loadRoute('true'));
+  });
+
   it('returns 401 without an Authorization header', async () => {
     const response = await GET(makeRequest());
     expect(response.status).toBe(401);
@@ -191,7 +290,7 @@ describe('GET /api/clan/duel', () => {
     expect(body.rating).toBe(1000);
   });
 
-  it('returns 500 when the RPC fails', async () => {
+  it('returns 500 when the RPC fails, and reports it (Rule 11)', async () => {
     mockRpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
 
     const response = await GET(makeRequest('token'));
@@ -203,6 +302,22 @@ describe('GET /api/clan/duel', () => {
 
     const response = await GET(makeRequest('token'));
     expect(response.status).toBe(404);
+  });
+
+  it('fails loudly rather than silently when the membership read errors (Rule 11)', async () => {
+    mockFrom = jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          maybeSingle: jest
+            .fn()
+            .mockResolvedValue({ data: null, error: { message: 'connection reset' } }),
+        }),
+      }),
+    });
+
+    const response = await GET(makeRequest('token'));
+    expect(response.status).toBe(500);
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 });
 
