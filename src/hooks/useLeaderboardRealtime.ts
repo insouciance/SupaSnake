@@ -80,7 +80,7 @@ export function useLeaderboardRealtime(
 
     // WP-0.04: the player_achievements subscription that used to sit here
     // is gone with the mechanism. player_achievements is a frozen ledger
-    // (migration 043) - nothing writes it, so nothing can broadcast it.
+    // (migration 042) - nothing writes it, so nothing can broadcast it.
 
     // Subscribe and handle connection state
     channel.subscribe((status) => {

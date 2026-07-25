@@ -7,7 +7,7 @@
  * season chapters, clan history, trivia, then any private extras the own
  * page injects. The records cabinet is the ONE progression display: the
  * separate achievements panel that used to ride in `extras` was retired
- * into the Records by WP-0.04 (migration 043).
+ * into the Records by WP-0.04 (migration 042).
  *
  * Empty states per section 7.2: forward-looking prompts, never empty
  * grids; the public <5-earning-runs payload (limited) renders header +

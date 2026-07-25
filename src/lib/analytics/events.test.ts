@@ -125,7 +125,7 @@ describe('Event Taxonomy', () => {
       });
 
       // WP-0.04: the achievement mechanism was retired into the Legacy
-      // Records (migration 043). The taxonomy must not keep an event for a
+      // Records (migration 042). The taxonomy must not keep an event for a
       // system that can no longer fire - a dead event name reads as a fact
       // to the next person who opens this file.
       it('no longer declares an achievement event', () => {

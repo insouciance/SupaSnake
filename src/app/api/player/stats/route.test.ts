@@ -88,7 +88,7 @@ describe('Player Stats API', () => {
       });
 
       // WP-0.04: the achievement counters left this payload with the
-      // mechanism they counted (migration 043). The Records cabinet on the
+      // mechanism they counted (migration 042). The Records cabinet on the
       // Chronicle is the one banked-progression surface now, so a second
       // set of career counters must not creep back into this route.
       it('no longer carries achievement counters', () => {
