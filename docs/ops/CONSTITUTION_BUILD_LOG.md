@@ -17,8 +17,9 @@ steps are queued here and flags are left off rather than improvised around.
 
 **Phase 0 shipped to production on 25 July 2026** (`fd040af` + `be33b4b`, deploy run
 `30172084085`, migrations 039–045 applied, `/api/health` healthy). Two owner-only
-steps remain: flipping `NEXT_PUBLIC_GROWTH_SURFACES_V1` and flagging the dev/QA
-cohorts. Phase 1 is in progress. See "Phase 0 release" below.
+steps are done: `NEXT_PUBLIC_GROWTH_SURFACES_V1` is flipped and verified in
+production, and cohort flagging is deliberately partial until launch (see below).
+Phase 1 is in progress. See "Phase 0 release" below.
 
 **Baseline tag:** `pre-constitution` → `e82719d` (local only; push requires the
 owner, see the to-do list). Migration baseline: **038**.
@@ -719,11 +720,22 @@ finding was fixed first, because narrowing the gate alone would have hidden it.
    environment to light up the landing pitch, `/play` and the Dispatch waitlist.
    They are deployed and currently 404 by design. Rollback is unsetting it; that path
    is explicitly tested, not inferred.
-2. **Flag the dev/QA/fixture accounts** into `players.cohort`. WP-0.06 ships the
-   column and the two single-statement commands but flags **nothing** automatically —
-   no schema signal distinguishes a developer's account from a player's, and a wrong
-   guess would hide a real player. Until this is done the boards are correct but the
-   population counts still include dev/QA noise.
+2. **Cohort flagging — deliberately partial until launch (owner ruling, 25 July).**
+   `players.cohort` excludes flagged accounts from every public surface. The owner is
+   flagging the dev/QA noise but **keeping `savoir` and `Sans_Souci` visible on
+   purpose**: with no public audience yet, a visible account is the only way to verify
+   the board, `myRank`, the "(You)" highlight and Depth actually work end to end. An
+   empty board proves nothing.
+
+   **PRE-PROMOTION STEP — do this before any acquisition push:**
+   ```sql
+   UPDATE players SET cohort = 'dev'
+   WHERE cohort = 'player'
+     AND lower(coalesce(handle, username, '')) IN ('savoir', 'sans_souci');
+   ```
+   Verified working: flagging one account moved the public board from 13 ranked
+   players to 12, with nothing deleted — it is a read-side label and `SET cohort =
+   'player'` restores an account instantly with every run and record intact (R6).
 3. **Optional, unhurried:** remove the five retired `NEXT_PUBLIC_STRIPE_*` price
    variables from Vercel. The validator tolerates their presence *and* absence (D-4),
    so there is no deadline and no ordering constraint.
