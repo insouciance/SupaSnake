@@ -43,8 +43,6 @@ describe('CareerStats', () => {
           totalVariants: 30,
           currentStreak: 5,
           longestStreak: 10,
-          achievementsCompleted: 8,
-          totalAchievements: 18,
         }),
       });
 
@@ -58,7 +56,9 @@ describe('CareerStats', () => {
       expect(screen.getByText('5,000')).toBeInTheDocument();
       expect(screen.getByText('15/30')).toBeInTheDocument();
       expect(screen.getByText('5 days')).toBeInTheDocument();
-      expect(screen.getByText('8/18')).toBeInTheDocument();
+      // WP-0.04: the Achievements tile is gone with its mechanism. Banked
+      // progression is read from the Records cabinet on the Chronicle.
+      expect(screen.queryByText('Achievements')).not.toBeInTheDocument();
     });
 
     it('shows error message on fetch failure', async () => {
@@ -86,8 +86,6 @@ describe('CareerStats', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         }),
       });
 
@@ -99,8 +97,8 @@ describe('CareerStats', () => {
         expect(screen.getByText('DNA Earned')).toBeInTheDocument();
         expect(screen.getByText('Collection')).toBeInTheDocument();
         expect(screen.getByText('Current Streak')).toBeInTheDocument();
-        expect(screen.getByText('Achievements')).toBeInTheDocument();
       });
+      expect(screen.queryByText('Achievements')).not.toBeInTheDocument();
     });
   });
 
@@ -117,8 +115,6 @@ describe('CareerStats', () => {
           totalVariants: 30,
           currentStreak: 0,
           longestStreak: 0,
-          achievementsCompleted: 0,
-          totalAchievements: 18,
         }),
       });
 

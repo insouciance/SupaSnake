@@ -312,7 +312,6 @@ export default function GamePage() {
   // Post-run save-progress prompt for guests (never shown on the way INTO
   // a game - account nudges belong after a run, not before it)
   const [showSaveProgress, setShowSaveProgress] = useState(false);
-  const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const [equippedSnake, setEquippedSnake] = useState<EquippedSnakeView | null>(null);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
@@ -942,7 +941,7 @@ export default function GamePage() {
     gameRef.current.on('infused', () => {
       setPortalChoicePending(false);
       mirrorGenomeState();
-      showToast('Portal infused — body became build power', 'achievement', 2600);
+      showToast('Portal infused — body became build power', 'triumph', 2600);
     });
 
     gameRef.current.on('surgeChoice', () => {
@@ -959,7 +958,7 @@ export default function GamePage() {
       mirrorGenomeState();
       const spliceId: unknown = data?.id;
       if (isSpliceId(spliceId)) {
-        showToast(`Splice fused: ${SPLICES[spliceId].name}`, 'achievement', 3500);
+        showToast(`Splice fused: ${SPLICES[spliceId].name}`, 'triumph', 3500);
       }
     });
 
@@ -980,7 +979,7 @@ export default function GamePage() {
       audioManager.play('death');
       haptics.death();
       screenShake.heavy();
-      showToast('Phoenix — one death absorbed', 'achievement', 3000);
+      showToast('Phoenix — one death absorbed', 'triumph', 3000);
     });
 
     // COSMIC Flux: audio cues for the wall-phase telegraph + flip (the
@@ -1108,12 +1107,12 @@ export default function GamePage() {
                   : '';
                 showToast(
                   `Codex: ${codexEntryName(discovery.type, discovery.entryId)}${reward}${worldFirst}`,
-                  'achievement',
+                  'triumph',
                   5000
                 );
               }
               if (discoveryResult.genomeWeaverUnlocked) {
-                showToast('Genome Weaver unlocked', 'achievement', 5000);
+                showToast('Genome Weaver unlocked', 'triumph', 5000);
               }
               if (
                 discoveryResult.discoveries.length > 0 ||
@@ -1138,14 +1137,6 @@ export default function GamePage() {
                 ...prev,
                 [result.mastery.dynasty]: result.mastery.level,
               }));
-            }
-
-            // Show toast for each newly unlocked achievement
-            if (result.newAchievements && result.newAchievements.length > 0) {
-              setUnlockedAchievements(result.newAchievements);
-              result.newAchievements.forEach((name: string) => {
-                showToast(`Achievement Unlocked: ${name}`, 'achievement', 5000);
-              });
             }
 
             // Identity discovery is persistent and player-pulled. The result
@@ -1735,7 +1726,6 @@ export default function GamePage() {
   const handleRestart = useCallback(() => {
     resetGame();
     setCurrentSessionId(null);
-    setUnlockedAchievements([]);
     setStreakInfo(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
@@ -2506,24 +2496,6 @@ export default function GamePage() {
                     accessToken={session.access_token}
                   />
                 )}
-
-                {/* Unlocked Achievements */}
-                {unlockedAchievements.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-scale-blue-light/60">
-                    <p className="label-arcade">Achievements Unlocked!</p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {unlockedAchievements.map((name, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-rarity-legendary/15 border border-rarity-legendary/60 rounded-arcade text-rarity-legendary text-sm font-body shadow-glow-sm shadow-rarity-legendary/30"
-                        >
-                          <IconTrophy size={14} />
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </>
             ) : (
               <>
@@ -2820,7 +2792,7 @@ export default function GamePage() {
           setOwnIdentity((prev) =>
             prev ? { ...prev, handle, displayHandle: handle, isGenerated: false } : prev
           );
-          showToast(`You are ${handle} now`, 'achievement', 4000);
+          showToast(`You are ${handle} now`, 'triumph', 4000);
         }}
         prompt="That run deserves a name on it."
       />

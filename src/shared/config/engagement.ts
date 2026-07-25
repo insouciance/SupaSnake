@@ -48,18 +48,6 @@ export const ENGAGEMENT_CONFIG = {
   },
 
   /**
-   * Achievements System
-   */
-  achievements: {
-    categories: ['games', 'dna', 'breeding', 'collection', 'score', 'streak'] as const,
-    tiers: {
-      1: { name: 'Bronze', color: '#CD7F32' },
-      2: { name: 'Silver', color: '#C0C0C0' },
-      3: { name: 'Gold', color: '#FFD700' },
-    } as const,
-  },
-
-  /**
    * Battle Pass System
    */
   battlePass: {
@@ -73,9 +61,6 @@ export const ENGAGEMENT_CONFIG = {
       gameVictory: 100,
       dailyLogin: 25,
       breeding: 75,
-      achievementBronze: 50,
-      achievementSilver: 100,
-      achievementGold: 200,
     } as const,
   },
 
@@ -98,5 +83,4 @@ export const ENGAGEMENT_CONFIG = {
  * Type exports
  */
 export type EngagementConfig = typeof ENGAGEMENT_CONFIG;
-export type AchievementCategory = (typeof ENGAGEMENT_CONFIG.achievements.categories)[number];
 export type StreakTier = (typeof ENGAGEMENT_CONFIG.streaks.tiers)[number];

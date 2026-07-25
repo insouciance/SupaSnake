@@ -76,7 +76,6 @@ import {
   enqueueMasteryLevelup,
   refreshLinkedRolesForPlayer,
 } from '@/lib/server/discordSync';
-import { checkAchievements, type AchievementDefinition, type PlayerStats } from '@/lib/server/achievementChecker';
 import {
   getDnaMultiplier,
   applyDnaMultiplier,
@@ -911,8 +910,8 @@ export async function POST(request: NextRequest) {
 
       // Free Play end: the run is recorded + validated above, but nothing
       // pays out - no DNA credit, no total_dna_earned, no streak
-      // (record_daily_play NOT called), no achievements, no economy
-      // transactions. The response carries what the run WOULD have earned
+      // (record_daily_play NOT called), no economy transactions and no
+      // records refresh. The response carries what the run WOULD have earned
       // so the player sees the stakes they practiced for.
       if (isFreeSession) {
         const { data: freePlayerState } = await supabase
@@ -939,7 +938,6 @@ export async function POST(request: NextRequest) {
             chargeState,
           },
           hypotheticalDna: finalDna,
-          newAchievements: [],
           ...(identityInfo ? { identity: identityInfo } : {}),
           ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
           // Free Play still gets an authoritative recap card. Discoveries
@@ -1128,87 +1126,12 @@ export async function POST(request: NextRequest) {
         console.error('record_daily_play error:', streakError);
       }
 
-      // Check for newly completed achievements
-      let newAchievements: string[] = [];
-      try {
-        // Get collection count for achievement checking
-        const { count: collectionCount } = await supabase
-          .from('collected_snakes')
-          .select('*', { count: 'exact', head: true })
-          .eq('player_id', player.id);
-
-        // Get streak info (prefer the freshly recorded streak)
-        let currentStreak = streak?.current ?? 0;
-        if (!streak) {
-          const { data: streakData } = await supabase
-            .from('player_streaks')
-            .select('current_streak')
-            .eq('player_id', player.id)
-            .single();
-          currentStreak = streakData?.current_streak || 0;
-        }
-
-        // Build player stats for achievement checking
-        const playerStats: PlayerStats = {
-          total_games_played: updatedPlayer?.total_games_played || 0,
-          total_dna_earned: updatedPlayer?.total_dna_earned || 0,
-          high_score: updatedPlayer?.high_score || 0,
-          breeds_completed: updatedPlayer?.breeds_completed || 0,
-          collection_count: collectionCount || 0,
-          current_streak: currentStreak,
-        };
-
-        // Get achievement definitions
-        const { data: achievements } = await supabase
-          .from('achievement_definitions')
-          .select('*');
-
-        // Get existing progress
-        const { data: progress } = await supabase
-          .from('player_achievements')
-          .select('achievement_id, progress, completed')
-          .eq('player_id', player.id);
-
-        const existingProgress = new Map(
-          (progress || []).map(p => [p.achievement_id, { progress: p.progress, completed: p.completed }])
-        );
-
-        // Check achievements
-        const result = checkAchievements(
-          playerStats,
-          (achievements || []) as AchievementDefinition[],
-          existingProgress
-        );
-
-        // Update progress and mark newly completed
-        const progressEntries = Array.from(result.progressUpdates.entries());
-        for (const [achievementId, progressValue] of progressEntries) {
-          const isNewlyCompleted = result.newlyCompleted.some(a => a.id === achievementId);
-
-          const { error: achievementUpsertError } = await supabase
-            .from('player_achievements')
-            .upsert({
-              player_id: player.id,
-              achievement_id: achievementId,
-              progress: progressValue,
-              completed: isNewlyCompleted || existingProgress.get(achievementId)?.completed || false,
-              completed_at: isNewlyCompleted ? new Date().toISOString() : undefined,
-            }, { onConflict: 'player_id,achievement_id' });
-
-          if (achievementUpsertError) {
-            console.error('Failed to upsert achievement progress:', {
-              playerId: player.id,
-              achievementId,
-              error: achievementUpsertError,
-            });
-          }
-        }
-
-        newAchievements = result.newlyCompleted.map(a => a.name);
-      } catch (achievementError) {
-        console.error('Achievement check error:', achievementError);
-        // Don't fail the request if achievement checking fails
-      }
+      // WP-0.04: the achievement checker used to run here, writing an
+      // 18-row parallel progression table on every settled run. The
+      // mechanism is retired (migration 043) and every quantity it counted
+      // is measured by the Legacy Records, which the refresh below
+      // recomputes from the same aggregates -- monotonically, so a record
+      // it banks can never be written back down (Rule 6, finding F-6).
 
       // Records refresh (Identity v1 section 6.3): idempotent
       // recompute-from-aggregates after all rewards land - like mastery,
@@ -1249,7 +1172,6 @@ export async function POST(request: NextRequest) {
           yieldDna,
           chargeState,
         },
-        newAchievements,
         ...(identityInfo ? { identity: identityInfo } : {}),
         ...(dnaBreakdown ? { dnaMultiplier: dnaBreakdown } : {}),
         ...(streak ? { streak } : {}),

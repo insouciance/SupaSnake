@@ -310,7 +310,7 @@ describe('Game Session Logic', () => {
       expect(hypotheticalDna).toBe(Math.floor(483 * 1.21)); // 584
     });
 
-    it('free end response pays nothing and grants no achievements or streak', () => {
+    it('free end response pays nothing and grants no streak', () => {
       const isFreeSession = true;
       const streak = null; // record_daily_play NOT called for free sessions
       const response = {
@@ -318,15 +318,16 @@ describe('Game Session Logic', () => {
         freePlay: isFreeSession,
         validation: { adjustedDna: 0, baseDna: 483 },
         hypotheticalDna: 584,
-        newAchievements: [] as string[],
         ...(streak ? { streak } : {}),
       };
 
       expect(response.freePlay).toBe(true);
       expect(response.validation.adjustedDna).toBe(0);
       expect(response.hypotheticalDna).toBeGreaterThan(0);
-      expect(response.newAchievements).toHaveLength(0);
       expect('streak' in response).toBe(false);
+      // WP-0.04: newAchievements is gone from every end response - free or
+      // earning. The mechanism it reported was retired into the Records.
+      expect('newAchievements' in response).toBe(false);
     });
 
     it('free end leaves player totals untouched (no DNA, no total_dna_earned)', () => {
@@ -389,7 +390,7 @@ describe('Game Session Logic', () => {
       expect(source.indexOf("'record_daily_play'")).toBeGreaterThan(freeReturn);
       expect(source.indexOf('total_dna_earned: newTotalDnaEarned')).toBeGreaterThan(freeReturn);
       expect(source.indexOf("source_type: 'game_reward'")).toBeGreaterThan(freeReturn);
-      expect(source.indexOf('checkAchievements(')).toBeGreaterThan(freeReturn);
+      expect(source.indexOf('refreshPlayerRecords(')).toBeGreaterThan(freeReturn);
       // The free start writes no economy transaction at all. A charge is
       // not a currency (§8.6), so nothing is logged to the ledger for it -
       // the session row's charge_state IS the audit record.

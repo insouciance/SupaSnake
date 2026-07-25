@@ -154,6 +154,20 @@ const BASELINE = [
   },
   {
     gate: 'energy-commerce',
+    path: 'src/shared/config/engagement.ts',
+    max: 3,
+    code: 'energyBonus:',
+    reason:
+      'the login-streak energy bonus tiers, read by GET /api/streaks. Pre-existing §10.4 ' +
+      'debt, not new: migration 039 deleted the energy stock these topped up, so the route ' +
+      'now REPORTS a number nothing can grant. It became visible to this gate when WP-0.04 ' +
+      'deleted the dead ENGAGEMENT_CONFIG.achievements block that had been holding the tiers ' +
+      'more than ENERGY_WINDOW lines away from the battlePass block the gate matches as ' +
+      'commerce — the co-occurrence is adjacency, the underlying debt is real. Owned by ' +
+      'WP-0.02 (the streak tier table) and WP-0.03 (dead-config purge).',
+  },
+  {
+    gate: 'energy-commerce',
     path: 'src/lib/analytics/events.ts',
     max: 3,
     code: null,

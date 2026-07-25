@@ -8,7 +8,7 @@
  * - Economy: Virtual currency and resource events
  * - Collection: Snake variants and breeding
  * - Monetization: Purchase and payment events
- * - Engagement: Streaks, rewards, achievements
+ * - Engagement: Streaks and rewards
  * - Social: Clans and multiplayer
  * - Growth: Acquisition-funnel stages (Constitution §11.5)
  */
@@ -85,7 +85,6 @@ export const AnalyticsEvents = {
   STREAK_CLAIMED: 'streak_claimed',
   STREAK_LOST: 'streak_lost',
   DAILY_REWARD_CLAIMED: 'daily_reward_claimed',
-  ACHIEVEMENT_UNLOCKED: 'achievement_unlocked',
   CHALLENGE_STARTED: 'challenge_started',
   CHALLENGE_COMPLETED: 'challenge_completed',
   NOTIFICATION_OPENED: 'notification_opened',

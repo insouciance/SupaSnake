@@ -5,7 +5,9 @@
  * section order per section 7.1 - full Player Card header (Legacy Score
  * rides on the card), PB timeline, records cabinet, collection log,
  * season chapters, clan history, trivia, then any private extras the own
- * page injects (records refresh, Early Career achievements).
+ * page injects. The records cabinet is the ONE progression display: the
+ * separate achievements panel that used to ride in `extras` was retired
+ * into the Records by WP-0.04 (migration 043).
  *
  * Empty states per section 7.2: forward-looking prompts, never empty
  * grids; the public <5-earning-runs payload (limited) renders header +
@@ -43,7 +45,7 @@ function Section({
 export interface ChronicleViewProps {
   payload: ChroniclePayload;
   isSelf?: boolean;
-  /** Private extras (refresh button, Early Career) - own page only. */
+  /** Private extras - own page only. */
   extras?: React.ReactNode;
   /** Analyst artifacts (Identity v1 I4) - own page only, all optional. */
   archetypeSlot?: React.ReactNode;
