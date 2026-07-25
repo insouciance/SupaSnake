@@ -11,6 +11,7 @@
     "verify:cockpit-webgl": "node scripts/verify-cockpit-webgl.mjs",
     "verify:cockpit-decisions": "node scripts/verify-cockpit-decisions.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
+    "verify:constitution": "node scripts/verify-constitution.mjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
