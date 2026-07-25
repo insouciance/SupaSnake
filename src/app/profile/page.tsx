@@ -3,10 +3,12 @@
 /**
  * Own Chronicle /profile (Player Identity v1 section 7): the career
  * surface - same sections as the public /p/[handle] plus the private
- * extras: the records refresh button (rate-limited server-side) and the
- * Early Career collapsible hosting the legacy achievements panel with
- * its claim flow (section 6.6 - the display surface retired from
- * settings lives here now).
+ * extra: the records refresh button (rate-limited server-side).
+ *
+ * WP-0.04: the Early Career collapsible and its achievements panel are
+ * gone. The achievement mechanism was retired into the Legacy Records
+ * (migration 042), so the Records cabinet below IS the career surface -
+ * there is no second progression display to keep in step with it.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -14,7 +16,6 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
 import { ChronicleView } from '@/components/chronicle/ChronicleView';
-import { AchievementBadges } from '@/components/profile/AchievementBadges';
 import {
   ArchetypeSection,
   DigestCard,
@@ -42,7 +43,6 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [earlyCareerOpen, setEarlyCareerOpen] = useState(false);
   const [analyst, setAnalyst] = useState<AnalystState | null>(null);
 
   // Reaching the Chronicle is the intentional discovery action represented
@@ -258,27 +258,6 @@ export default function ProfilePage() {
                   }
                 />
               ) : undefined
-            }
-            extras={
-              <section
-                className="space-y-3 animate-fade-up"
-                data-testid="section-early-career"
-              >
-                <button
-                  onClick={() => setEarlyCareerOpen((open) => !open)}
-                  className="heading-display text-xl text-venom-orange text-glow-orange flex items-center gap-2"
-                  aria-expanded={earlyCareerOpen}
-                  data-testid="early-career-toggle"
-                >
-                  Early Career
-                  <span className="font-body text-xs text-beige/50">
-                    {earlyCareerOpen ? '(hide)' : '(the first 18 achievements)'}
-                  </span>
-                </button>
-                {earlyCareerOpen && (
-                  <AchievementBadges showAll={true} maxDisplay={18} />
-                )}
-              </section>
             }
           />
         ) : null}

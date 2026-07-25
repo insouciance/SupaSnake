@@ -45,18 +45,6 @@ export const ENGAGEMENT_CONFIG = {
   },
 
   /**
-   * Achievements System
-   */
-  achievements: {
-    categories: ['games', 'dna', 'breeding', 'collection', 'score', 'streak'] as const,
-    tiers: {
-      1: { name: 'Bronze', color: '#CD7F32' },
-      2: { name: 'Silver', color: '#C0C0C0' },
-      3: { name: 'Gold', color: '#FFD700' },
-    } as const,
-  },
-
-  /**
    * Battle Pass System
    */
   battlePass: {
@@ -70,9 +58,6 @@ export const ENGAGEMENT_CONFIG = {
       gameVictory: 100,
       dailyLogin: 25,
       breeding: 75,
-      achievementBronze: 50,
-      achievementSilver: 100,
-      achievementGold: 200,
     } as const,
   },
 
@@ -95,4 +80,7 @@ export const ENGAGEMENT_CONFIG = {
  * Type exports
  */
 export type EngagementConfig = typeof ENGAGEMENT_CONFIG;
-export type AchievementCategory = (typeof ENGAGEMENT_CONFIG.achievements.categories)[number];
+// `StreakTier` and `AchievementCategory` both lived here. WP-0.02 deleted the
+// streak tier ladder with the rest of the DNA multiplier stack, and WP-0.04
+// retired achievements into the Legacy Records. Each branch removed the other's
+// type, so the merge conflicted on the survivor; neither config exists now.

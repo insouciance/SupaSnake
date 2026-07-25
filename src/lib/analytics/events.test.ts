@@ -124,8 +124,13 @@ describe('Event Taxonomy', () => {
         expect(AnalyticsEvents.DAILY_REWARD_CLAIMED).toBe('daily_reward_claimed');
       });
 
-      it('should have achievement_unlocked event', () => {
-        expect(AnalyticsEvents.ACHIEVEMENT_UNLOCKED).toBe('achievement_unlocked');
+      // WP-0.04: the achievement mechanism was retired into the Legacy
+      // Records (migration 042). The taxonomy must not keep an event for a
+      // system that can no longer fire - a dead event name reads as a fact
+      // to the next person who opens this file.
+      it('no longer declares an achievement event', () => {
+        expect(AnalyticsEvents).not.toHaveProperty('ACHIEVEMENT_UNLOCKED');
+        expect(Object.values(AnalyticsEvents)).not.toContain('achievement_unlocked');
       });
     });
 

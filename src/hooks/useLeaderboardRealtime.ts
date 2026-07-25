@@ -22,8 +22,6 @@ export interface HighScoreEvent {
 interface UseLeaderboardRealtimeOptions {
   /** Called when a new high score is recorded */
   onNewHighScore?: (event: HighScoreEvent) => void;
-  /** Called when a new achievement is unlocked */
-  onAchievementUnlocked?: (event: { playerId: string; achievementName: string }) => void;
   /** Minimum score to trigger notification (prevents spam) */
   minScoreThreshold?: number;
 }
@@ -38,7 +36,7 @@ interface UseLeaderboardRealtimeReturn {
 export function useLeaderboardRealtime(
   options: UseLeaderboardRealtimeOptions
 ): UseLeaderboardRealtimeReturn {
-  const { onNewHighScore, onAchievementUnlocked, minScoreThreshold = 50 } = options;
+  const { onNewHighScore, minScoreThreshold = 50 } = options;
 
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,24 +63,6 @@ export function useLeaderboardRealtime(
     [onNewHighScore, minScoreThreshold]
   );
 
-  // Handle incoming achievement unlock
-  const handleAchievement = useCallback(
-    (payload: { new: Record<string, unknown> }) => {
-      const achievement = payload.new;
-
-      // Only notify for newly completed achievements
-      if (!achievement.completed) return;
-
-      if (onAchievementUnlocked) {
-        onAchievementUnlocked({
-          playerId: achievement.player_id as string,
-          achievementName: achievement.achievement_id as string,
-        });
-      }
-    },
-    [onAchievementUnlocked]
-  );
-
   useEffect(() => {
     // Create channel subscription
     const channel = supabase.channel('leaderboard-updates');
@@ -98,19 +78,9 @@ export function useLeaderboardRealtime(
       handleGameSession
     );
 
-    // Subscribe to player_achievements updates for achievement unlocks
-    if (onAchievementUnlocked) {
-      channel.on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'player_achievements',
-          filter: 'completed=eq.true',
-        },
-        handleAchievement
-      );
-    }
+    // WP-0.04: the player_achievements subscription that used to sit here
+    // is gone with the mechanism. player_achievements is a frozen ledger
+    // (migration 042) - nothing writes it, so nothing can broadcast it.
 
     // Subscribe and handle connection state
     channel.subscribe((status) => {
@@ -135,7 +105,7 @@ export function useLeaderboardRealtime(
         channelRef.current = null;
       }
     };
-  }, [handleGameSession, handleAchievement, onAchievementUnlocked]);
+  }, [handleGameSession]);
 
   return { isConnected, error };
 }

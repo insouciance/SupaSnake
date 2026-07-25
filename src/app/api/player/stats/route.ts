@@ -20,8 +20,6 @@ export interface CareerStats {
   totalVariants: number;
   currentStreak: number;
   longestStreak: number;
-  achievementsCompleted: number;
-  totalAchievements: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -101,16 +99,10 @@ export async function GET(request: NextRequest) {
       .eq('player_id', player.id)
       .single();
 
-    // Count achievements
-    const { count: achievementsCompleted } = await supabase
-      .from('player_achievements')
-      .select('*', { count: 'exact', head: true })
-      .eq('player_id', player.id)
-      .eq('completed', true);
-
-    const { count: totalAchievements } = await supabase
-      .from('achievement_definitions')
-      .select('*', { count: 'exact', head: true });
+    // WP-0.04: the achievement counters that used to sit here are gone.
+    // The achievement mechanism retired into the Legacy Records (migration
+    // 042), and the Records cabinet on the Chronicle is where banked
+    // progression is read now.
 
     const stats: CareerStats = {
       highScore: highScoreData?.score || 0,
@@ -121,8 +113,6 @@ export async function GET(request: NextRequest) {
       totalVariants: totalVariants || 30,
       currentStreak: streakData?.current_streak || 0,
       longestStreak: streakData?.longest_streak || 0,
-      achievementsCompleted: achievementsCompleted || 0,
-      totalAchievements: totalAchievements || 18,
     };
 
     return NextResponse.json(stats);

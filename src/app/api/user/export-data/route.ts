@@ -102,9 +102,16 @@ export async function GET(request: NextRequest) {
         )
         .eq('player_id', player.id)
         .order('purchased_at', { ascending: false }),
+      // WP-0.04: player_achievements is a frozen ledger now (migration
+      // 042) - the mechanism is retired but the rows are retained
+      // permanently, so portability and erasure still reach them.
+      // `unlocked_at` was selected here and has never existed on this
+      // table (003:108-121), so this query errored and, because a failed
+      // category 500s the whole request, the ENTIRE data export was
+      // broken. The earned timestamp is `completed_at`.
       supabase
         .from('player_achievements')
-        .select('achievement_id, unlocked_at, progress')
+        .select('achievement_id, completed, completed_at, progress')
         .eq('player_id', player.id),
     ]);
 
@@ -204,7 +211,8 @@ export async function GET(request: NextRequest) {
 
       achievements: achievementsResult.data?.map(achievement => ({
         achievementId: achievement.achievement_id,
-        unlockedAt: achievement.unlocked_at,
+        completed: achievement.completed,
+        completedAt: achievement.completed_at,
         progress: achievement.progress,
       })) || [],
 
