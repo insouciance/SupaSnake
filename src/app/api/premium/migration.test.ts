@@ -16,6 +16,7 @@ import { describe, it, expect } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PREMIUM_CONFIG } from '@/shared/config/premium';
+import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
 
 const MIGRATION_028 = path.join(
   process.cwd(),
@@ -23,6 +24,15 @@ const MIGRATION_028 = path.join(
 );
 
 const sql = fs.readFileSync(MIGRATION_028, 'utf8');
+
+// WP-0.09's own migration. 028 is unchanged history; the live rule is asserted
+// against this file.
+const MIGRATION_043 = path.join(
+  process.cwd(),
+  'supabase/migrations/043_commerce_removal.sql'
+);
+
+const sql042 = fs.readFileSync(MIGRATION_043, 'utf8');
 
 describe('Migration 028: subscription state', () => {
   it('adds a durable Stripe customer mapping on players', () => {
@@ -179,19 +189,89 @@ describe('Migration 028: economy_transactions CHECK (owner: 020 -> 028)', () => 
   });
 });
 
-describe('Migration 028: contracts pick limit (owner: 017 -> 028)', () => {
-  it(`re-declares pick_contracts with ${PREMIUM_CONFIG.contracts.picksPerDayFree} free / ${PREMIUM_CONFIG.contracts.picksPerDayPremium} premium picks`, () => {
+/**
+ * 028 sold a progression rate: 3 daily contract picks while entitled, 2
+ * without. Constitution §10.4 puts progression rates on the never-sold list,
+ * so migration 043 re-declares `pick_contracts` flat for everyone and
+ * PREMIUM_CONFIG no longer carries the quantity. 028's file is unchanged
+ * history and is asserted as such; the live rule is asserted against 043.
+ */
+describe('Migration 028 (historical): paid pick limit, flattened by 043', () => {
+  it('declared 3 premium / 2 free picks — the paid progression rate', () => {
     expect(sql).toMatch(/CREATE OR REPLACE FUNCTION pick_contracts\(p_player_id UUID, p_contract_ids TEXT\[\]\)/);
-    expect(sql).toMatch(
-      new RegExp(
-        `CASE WHEN has_premium\\(p_player_id\\) THEN ${PREMIUM_CONFIG.contracts.picksPerDayPremium} ELSE ${PREMIUM_CONFIG.contracts.picksPerDayFree} END`
-      )
-    );
+    expect(sql).toMatch(/CASE WHEN has_premium\(p_player_id\) THEN 3 ELSE 2 END/);
     expect(sql).toMatch(/IF v_already \+ v_count > v_max THEN/);
     // 017 carryovers survive
     expect(sql).toMatch(/#variable_conflict use_column/);
     expect(sql).toMatch(/FOR UPDATE;/);
     expect(sql).toMatch(/PERFORM refresh_contract_progress\(p_player_id, v_date\);/);
+  });
+
+  it('is re-declared by 043 with no entitlement branch at all', () => {
+    expect(sql042).toMatch(/CREATE OR REPLACE FUNCTION pick_contracts\(p_player_id UUID, p_contract_ids TEXT\[\]\)/);
+    expect(sql042).toMatch(
+      new RegExp(`v_max INTEGER := ${ENGAGEMENT_CONFIG.contracts.picksPerDay};`)
+    );
+    // Not "has_premium returns the same number" — the call is gone.
+    expect(sql042).not.toMatch(/has_premium/);
+    // ...and every 017/028 guard is carried over verbatim, so flattening the
+    // limit did not quietly drop a lock or a validation.
+    expect(sql042).toMatch(/#variable_conflict use_column/);
+    expect(sql042).toMatch(/FOR UPDATE;/);
+    expect(sql042).toMatch(/IF v_already \+ v_count > v_max THEN/);
+    expect(sql042).toMatch(/Duplicate contract ids/);
+    expect(sql042).toMatch(/Contract not offered today/);
+    expect(sql042).toMatch(/PERFORM refresh_contract_progress\(p_player_id, v_date\);/);
+    expect(sql042).toMatch(/REVOKE EXECUTE ON FUNCTION pick_contracts\(UUID, TEXT\[\]\) FROM PUBLIC, anon, authenticated;/);
+  });
+});
+
+/**
+ * Migration 042 is the server half of WP-0.09's commerce removal. It is
+ * committed but deliberately NOT applied by this work package.
+ */
+describe('Migration 043: commerce removal', () => {
+  it('drops grant_purchase_rewards, the faucet a purchase reached DNA/energy through', () => {
+    expect(sql042).toMatch(
+      /DROP FUNCTION IF EXISTS grant_purchase_rewards\(\s*TEXT, UUID, TEXT, INT, INT, TEXT\[\], TEXT, TEXT, INT, TEXT\s*\);/
+    );
+  });
+
+  it('confiscates nothing a player already received (Rule 6)', () => {
+    expect(sql042).not.toMatch(/\bDROP TABLE\b/);
+    expect(sql042).not.toMatch(/\bTRUNCATE\b/);
+    expect(sql042).not.toMatch(/\bDELETE FROM\b/);
+    expect(sql042).not.toMatch(/\bUPDATE players\b/);
+    // purchase_history survives as the record of what was sold, re-labelled.
+    expect(sql042).toMatch(/COMMENT ON TABLE purchase_history IS/);
+  });
+
+  it('runs as one transaction', () => {
+    expect(sql042).toMatch(/^BEGIN;$/m);
+    expect(sql042).toMatch(/^COMMIT;$/m);
+  });
+});
+
+describe('PREMIUM_CONFIG declares no quantity a subscription delivers (§10.4)', () => {
+  it('carries billing plumbing and nothing else', () => {
+    expect(Object.keys(PREMIUM_CONFIG).sort()).toEqual([
+      'enabled',
+      'graceDaysPastDue',
+      'plans',
+    ]);
+  });
+
+  it('has no progression, energy or offline perk left to read', () => {
+    for (const removed of [
+      'contracts',
+      'passiveProgress',
+      'breeding',
+      'stipendEnergyPerDay',
+      'energy',
+      'dnaMultiplier',
+    ]) {
+      expect(PREMIUM_CONFIG as Record<string, unknown>).not.toHaveProperty(removed);
+    }
   });
 });
 

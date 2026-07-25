@@ -99,91 +99,17 @@ const BASELINE = [
       'player-initiated leave. Hard-deleting the membership row destroys joined_at ' +
       '(clan tenure); R6 tension is real and is filed for the WP-1.02 clan rework.',
   },
-  // ── §10.4: energy is sold today. WP-0.09 deletes the SKUs, WP-0.01 rewrites
-  // the grant paths. Every entry below dies with one of those two work packages.
-  {
-    gate: 'energy-commerce',
-    path: 'src/lib/stripe/products.ts',
-    max: 6,
-    code: null,
-    reason: 'ENERGY_PRODUCTS and the energy-bearing bundles — deleted by WP-0.09.',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/app/api/webhook/stripe/route.ts',
-    max: 1,
-    code: null,
-    reason: 'grant_purchase_rewards is called with p_energy — WP-0.09.',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/shared/config/premium.ts',
-    max: 1,
-    code: null,
-    reason: 'stipendEnergyPerDay: a subscription perk that grants energy — WP-0.09.',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/app/api/premium/claim-stipend/route.ts',
-    max: 2,
-    code: null,
-    reason: 'the premium energy stipend endpoint — removed by WP-0.01/WP-0.09.',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/lib/stores/premiumStore.ts',
-    max: 1,
-    code: null,
-    reason: 'client mirror of the stipend claim — removed with it (WP-0.09).',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/components/engagement/OfflineProgressProvider.tsx',
-    max: 1,
-    code: 'stipendEnergy',
-    reason: 'surfaces the premium energy stipend in the Welcome Back modal — WP-0.01/WP-0.09.',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/app/api/player/claim-offline/route.ts',
-    max: 2,
-    code: null,
-    reason:
-      'the offline energy restore, whose window is premium-gated (maxOfflineHoursPremium) — ' +
-      'a perk that reaches energy. Deleted by WP-0.01 (energy envelope).',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/shared/config/engagement.ts',
-    max: 3,
-    code: 'energyBonus:',
-    reason:
-      'the login-streak energy bonus tiers, read by GET /api/streaks. Pre-existing §10.4 ' +
-      'debt, not new: migration 039 deleted the energy stock these topped up, so the route ' +
-      'now REPORTS a number nothing can grant. It became visible to this gate when WP-0.04 ' +
-      'deleted the dead ENGAGEMENT_CONFIG.achievements block that had been holding the tiers ' +
-      'more than ENERGY_WINDOW lines away from the battlePass block the gate matches as ' +
-      'commerce — the co-occurrence is adjacency, the underlying debt is real. Owned by ' +
-      'WP-0.02 (the streak tier table) and WP-0.03 (dead-config purge).',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/lib/analytics/events.ts',
-    max: 3,
-    code: null,
-    reason:
-      'the ENERGY_PURCHASED analytics event name (and its two neighbours, caught by the ' +
-      'same window). Telemetry grants nothing, but the event dies with WP-0.09.',
-  },
-  {
-    gate: 'energy-commerce',
-    path: 'src/lib/validation/schemas.ts',
-    max: 2,
-    code: 'EnergyRefill',
-    reason:
-      'EnergyRefillSchema types energy bought by purchase or watched-ad. Dead — no ' +
-      'caller anywhere in src/ — but committed; purged by WP-0.03/WP-0.09.',
-  },
+  // ── §10.4 (energy-commerce): EMPTY, and that is the point.
+  //
+  // Nine entries stood here on 2026-07-25. WP-0.01 (energy envelope) retired
+  // five of them and WP-0.09 (commerce removal) the other four: the SKU
+  // catalogue, the webhook's grant call, the premium perk config and the two
+  // dead declarations (EnergyRefillSchema, the ENERGY_PURCHASED telemetry
+  // window). Nothing in src/ or supabase/ 039+ trips this gate any more.
+  //
+  // Do not add an entry here to land a change. Debt may shrink; it may not
+  // grow. A new §10.4 finding is a design decision, and it belongs in the
+  // Constitution's Overturn Record before it belongs in this array.
 ];
 
 // ---------------------------------------------------------------------------

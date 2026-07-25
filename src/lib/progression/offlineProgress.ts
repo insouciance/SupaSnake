@@ -60,8 +60,11 @@ export function calculatePassiveDna(
 /**
  * Calculate complete offline progress
  * Main entry point for both client preview and server validation.
- * The optional config override raises the DNA cap for SupaSnake Premium
- * (48h instead of 24h - PREMIUM_CONFIG.passiveProgress).
+ *
+ * The config parameter exists so tests can pin a window; it is NOT a
+ * per-player override. Premium used to pass a 48h cap here instead of 24h -
+ * WP-0.09 removed that perk (Constitution §10.4: offline anything is on the
+ * never-sold list). Every caller now passes the one shared config.
  */
 export function calculateOfflineProgress(
   input: OfflineProgressInput,

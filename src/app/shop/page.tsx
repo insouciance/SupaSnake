@@ -1,138 +1,56 @@
 'use client';
 
 /**
- * Shop Page - Energy refills and bundles
- * Per BM-001: Pay for convenience, not power
- * Per BM-004: Bundles appear after engagement (Day 2+)
+ * Shop — the subscription card, and nothing else.
+ *
+ * Authority: docs/PRODUCT_CONSTITUTION.md §10 and Rule 7 (at most one
+ * commercial surface per screen, none in-run or on Results).
+ *
+ * WP-0.09 removed the one-time storefront entirely. The Energy Packs section
+ * went with §8.6/§10.4 — energy is a daily allotment with no balance to top
+ * up, so those SKUs could not have delivered anything even if selling them
+ * were permitted. The Bundles section went with them: both bundles sold
+ * energy, DNA and a variant, all three on the never-sold list.
+ *
+ * The §18(1)(11) FAGG immediate-delivery consent checkbox went with the last
+ * one-time product. It gated `POST /api/checkout`, which still enforces the
+ * consent server-side and today refuses every productId; the checkbox returns
+ * with the Atelier (§10.2), which is the next thing that can be bought
+ * outright. A consent control for a purchase that cannot happen is noise, not
+ * protection.
+ *
+ * The commercial surface on this screen is `PremiumSection`. There is exactly
+ * one, and nothing may be added beside it.
  */
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useWalletSync } from '@/hooks/useWalletSync';
-import {
-  BUNDLE_PRODUCTS,
-  shouldShowBundles,
-  StoreProduct,
-} from '@/lib/stripe/products';
 import { ChargeMeter } from '@/components/ui/ChargeMeter';
 import { NavBar } from '@/components/ui/NavBar';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import { PremiumSection } from '@/components/engagement/PremiumSection';
 import { GAME_CONFIG } from '@/shared/config/game';
 import Link from 'next/link';
-import { IconCart, IconDna, IconSnake } from '@/components/ui/icons';
+import { IconCart, IconDna } from '@/components/ui/icons';
 
 export default function ShopPage() {
-  const { user, session, isAuthenticated, isAnonymous } = useAuth();
+  const { isAnonymous } = useAuth();
   const { dnaBalance, charge } = useWalletSync();
-  const [loading, setLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showBundles, setShowBundles] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
   const [premiumSuccess, setPremiumSuccess] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  // §18(1)(11) FAGG: express consent to immediate delivery + loss of the
-  // 14-day withdrawal right, required before any purchase. Deliberately
-  // not persisted — it must be an active choice per shop visit.
-  const [withdrawalConsent, setWithdrawalConsent] = useState(false);
-  const [consentError, setConsentError] = useState(false);
 
   // Check URL params for success/cancel
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'true') {
-      setSuccess(true);
-    }
-    if (params.get('canceled') === 'true') {
-      setCanceled(true);
-    }
     if (params.get('premium') === 'success') {
       setPremiumSuccess(true);
     }
-    if (params.get('premium') === 'canceled') {
+    if (params.get('premium') === 'canceled' || params.get('canceled') === 'true') {
       setCanceled(true);
     }
   }, []);
-
-  // Check if bundles should be shown (Day 2+ per BM-004)
-  useEffect(() => {
-    if (user?.created_at) {
-      setShowBundles(shouldShowBundles(new Date(user.created_at)));
-    }
-  }, [user?.created_at]);
-
-  const handlePurchase = async (product: StoreProduct) => {
-    if (!isAuthenticated || !session?.access_token) {
-      setError('Please sign in to make purchases');
-      return;
-    }
-
-    if (!withdrawalConsent) {
-      setConsentError(true);
-      setError(
-        'Please confirm the immediate-delivery consent (below the products) first.'
-      );
-      return;
-    }
-
-    setLoading(product.id);
-    setError(null);
-    setConsentError(false);
-
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ productId: product.id, withdrawalConsent }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Purchase failed');
-      }
-
-      // Redirect to Stripe checkout
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Purchase failed');
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  // Anonymous accounts are ephemeral - purchases must land on a real
-  // account, so the buy button is replaced by an account-creation CTA.
-  const renderPurchaseButton = (product: StoreProduct, buyLabel: string) => {
-    if (isAnonymous) {
-      return (
-        <button
-          onClick={() => setShowUpgrade(true)}
-          data-testid={`create-account-cta-${product.id}`}
-          className="btn-arcade min-h-[44px] px-4 py-2 text-xs bg-void/40 border-venom-orange text-venom-orange hover:bg-venom-orange hover:text-void-deep transition-all"
-        >
-          Create an account to purchase
-        </button>
-      );
-    }
-    return (
-      <button
-        onClick={() => handlePurchase(product)}
-        disabled={loading !== null}
-        className={`btn-go min-h-[44px] px-6 py-2 ${
-          loading === product.id ? 'cursor-wait' : ''
-        }`}
-      >
-        {loading === product.id ? '...' : buyLabel}
-      </button>
-    );
-  };
 
   return (
     <div className="app-bg text-bone-white px-4 sm:px-6 pt-8 pb-28 sm:pb-6 sm:pr-16">
@@ -146,7 +64,7 @@ export default function ShopPage() {
             <IconCart size={32} />
             Shop
           </h1>
-          <p className="text-beige font-body">Power up your snake empire</p>
+          <p className="text-beige font-body">Support the game. Wear the colours.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:gap-6">
           {/* DNA Balance */}
@@ -168,21 +86,13 @@ export default function ShopPage() {
         </div>
       </div>
 
-      {/* Success Message */}
-      {success && (
-        <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 animate-pop-in">
-          <p className="text-venom-orange font-display uppercase">Purchase successful!</p>
-          <p className="text-beige text-sm font-body">Your rewards have been added to your account.</p>
-        </div>
-      )}
-
       {/* Premium Success Message */}
       {premiumSuccess && (
         <div className="panel-glow [--glow:#fbbf24] p-4 mb-6 animate-pop-in">
           <p className="text-amber-300 font-display uppercase">Welcome to Premium!</p>
           <p className="text-beige text-sm font-body">
-            Thank you for supporting SupaSnake. Your perks are active — claim
-            your first daily stipend from the Lab.
+            Thank you for supporting SupaSnake. Your supporter marks are active,
+            and this month&apos;s cosmetic drop is waiting below.
           </p>
         </div>
       )}
@@ -192,13 +102,6 @@ export default function ShopPage() {
         <div className="panel p-4 mb-6 animate-fade-up">
           <p className="text-beige font-display uppercase">Checkout canceled</p>
           <p className="text-beige/70 text-sm font-body">No charge was made. Come back anytime.</p>
-        </div>
-      )}
-
-      {/* Error Message */}
-      {error && (
-        <div className="bg-strike-red/15 border border-strike-red/70 rounded-arcade p-4 mb-6 animate-fade-up">
-          <p className="text-strike-red font-body">{error}</p>
         </div>
       )}
 
@@ -220,118 +123,16 @@ export default function ShopPage() {
         </div>
       )}
 
-      {/* SupaSnake Premium subscription */}
+      {/* SupaSnake Premium subscription — the one commercial surface (R7) */}
       {GAME_CONFIG.features.premium && (
         <PremiumSection onRequireAccount={() => setShowUpgrade(true)} />
-      )}
-
-      {/* The Energy Packs storefront is gone (Constitution §8.6/§10.4:
-          Energy is never sold). Charges are a daily allotment with no
-          balance to top up, so these SKUs could no longer deliver anything
-          - and a listing that takes money for a good that does not exist is
-          worse than a dead code path. ENERGY_PRODUCTS itself, and the
-          bundles that still name energy, are deleted by WP-0.09 which owns
-          src/lib/stripe/products.ts. */}
-
-      {/* Bundles Section - Only show after Day 2 per BM-004 */}
-      {showBundles && (
-        <section className="mb-10 animate-fade-up">
-          <h2 className="heading-display text-2xl text-bone-white mb-2">Bundles</h2>
-          <p className="text-beige font-body mb-6">Best value packages</p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {BUNDLE_PRODUCTS.map((product) => (
-              <div
-                key={product.id}
-                className="panel-glow [--glow:#22d3ee] p-6"
-              >
-                <div className="flex items-center justify-between gap-2 mb-4">
-                  <div>
-                    <h3 className="heading-display text-xl text-bone-white">{product.name}</h3>
-                    <p className="text-beige text-sm font-body">{product.description}</p>
-                  </div>
-                  {product.id === 'starter_bundle' && (
-                    <span className="shrink-0 px-2 py-1 bg-danger-gradient border border-strike-red rounded-arcade text-xs font-display uppercase text-bone-white shadow-glow-sm shadow-strike-red/50">
-                      80% OFF
-                    </span>
-                  )}
-                </div>
-
-                {/* Rewards Preview */}
-                <div className="flex flex-wrap gap-3 mb-4">
-                  {product.rewards.dna && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-void/50 rounded-arcade border border-scale-blue-light/60 text-bone-white text-sm font-body">
-                      <IconDna size={14} className="text-venom-orange" />
-                      {product.rewards.dna} DNA
-                    </span>
-                  )}
-                  {product.rewards.variants && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-void/50 rounded-arcade border border-scale-blue-light/60 text-bone-white text-sm font-body">
-                      <IconSnake size={14} className="text-venom-orange" />
-                      {product.rewards.variants.length} Exclusive Variant
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-2xl font-display text-venom-orange text-glow-orange">
-                    €{product.price.toFixed(2)}
-                  </span>
-                  {renderPurchaseButton(product, 'Buy Bundle')}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Consumer-law consent (§18 FAGG) — required before checkout */}
-      {!isAnonymous && (
-        <section
-          className={`panel p-4 mb-8 animate-fade-up ${
-            consentError ? 'border-2 border-strike-red' : ''
-          }`}
-        >
-          <label
-            htmlFor="withdrawal-consent"
-            className="flex items-start gap-3 cursor-pointer text-sm text-beige font-body"
-          >
-            <input
-              id="withdrawal-consent"
-              type="checkbox"
-              checked={withdrawalConsent}
-              onChange={(e) => {
-                setWithdrawalConsent(e.target.checked);
-                if (e.target.checked) {
-                  setConsentError(false);
-                  setError(null);
-                }
-              }}
-              className="mt-0.5 h-5 w-5 shrink-0 accent-venom-orange"
-            />
-            <span>
-              I expressly request that digital content be delivered to my
-              account immediately after purchase, and I acknowledge that I
-              thereby lose my 14-day right of withdrawal (§18 FAGG). My
-              statutory warranty rights are unaffected —{' '}
-              <Link
-                href="/legal/withdrawal"
-                target="_blank"
-                className="text-venom-orange hover:underline"
-              >
-                withdrawal notice
-              </Link>
-              .
-            </span>
-          </label>
-        </section>
       )}
 
       {/* Fair Play Notice */}
       <section className="text-center text-beige/60 text-sm font-body">
         <div className="divider-glow max-w-md mx-auto mb-4" />
-        <p>All variants can be unlocked through gameplay.</p>
-        <p>Purchases provide convenience, not power advantages.</p>
+        <p>Every variant, gene and record is earned by playing. None of it is for sale.</p>
+        <p>A subscription buys appearance and recognition — never power, currency or progress.</p>
         <p className="mt-2">
           All prices include VAT where applicable. Payment is processed by
           Stripe. See our{' '}
