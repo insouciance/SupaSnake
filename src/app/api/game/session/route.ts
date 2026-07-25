@@ -90,6 +90,7 @@ import {
 // WP-0.02 test asserts this file's source cannot mention the former at all.
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
+import { ensureCurrentSerpentWeek } from '@/lib/server/serpent';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -186,6 +187,13 @@ export async function POST(request: NextRequest) {
     // anomaly itself is SERVER-DERIVED from the calendar (deterministic
     // rotation) and stamped on the session row - never client-asserted.
     const isAnomalyRun = mode === 'anomaly';
+
+    // Constitution §7.3 The World Serpent: a Serpent attempt is a full,
+    // ordinary run — any dynasty, the player's own snake, full build active —
+    // whose Yield feeds the week's Depth. `mode: 'serpent'` is a REQUEST. It
+    // becomes a fact only if the server can resolve the week from its own
+    // calendar (below); if it cannot, the run is an ordinary charged run.
+    const isSerpentRun = mode === 'serpent';
 
     if (action === 'start') {
       const rateCheck = await checkRateLimit(supabase, player.id, 'game_start');
@@ -364,6 +372,20 @@ export async function POST(request: NextRequest) {
         genomeBlock.anomalyStrain = ANOMALY_STRAINS[startAnomalyId] ?? null;
       }
 
+      // ---------------------------------------------------------------
+      // The World Serpent (Constitution §7.3, §8.6)
+      // ---------------------------------------------------------------
+      // The week, its seed and its modifier set are DERIVED FROM THE UTC
+      // CALENDAR by `ensureCurrentSerpentWeek` — the request contributes
+      // nothing (Rule 11). Three things have to be true for a run to become a
+      // Serpent attempt: the client asked, the flag is on, and the server
+      // resolved a week row. Miss any one and this stays null, which means an
+      // ordinary charged run — exactly the closed-by-default posture WP-0.01
+      // built the exemption hook around.
+      const serpentWeek = isSerpentRun
+        ? await ensureCurrentSerpentWeek(supabase, startedAtDate)
+        : null;
+
       const sessionInsert: Record<string, unknown> = {
         player_id: player.id,
         snake_used_id: snake.id,
@@ -378,6 +400,10 @@ export async function POST(request: NextRequest) {
         ...(isAnomalyRun
           ? { anomaly_id: startAnomalyId, anomaly_week: startAnomalyWeek }
           : {}),
+        // Serpent run flagging (migration 046) - only sent when the server
+        // resolved a week, so the insert stays compatible with the pre-046
+        // schema for every other run in the game.
+        ...(serpentWeek ? { serpent_week_id: serpentWeek.id } : {}),
       };
       // Genome seed (migration 029): stamped only when the capability is
       // on. Pre-029 window: the insert fails on the unknown column, so
@@ -425,6 +451,15 @@ export async function POST(request: NextRequest) {
             { status: 503 }
           );
         }
+        // Pre-migration-046 window: the serpent column doesn't exist yet.
+        // Only a Serpent attempt can reach this - every other run omits the
+        // marker - so ordinary play is unaffected.
+        if (serpentWeek && /serpent_week_id/i.test(sessionError.message || '')) {
+          return NextResponse.json(
+            { error: 'The World Serpent has not surfaced yet — try a ranked run' },
+            { status: 503 }
+          );
+        }
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
 
@@ -449,14 +484,19 @@ export async function POST(request: NextRequest) {
       // Exemption is decided from SERVER facts only - the client's `mode`
       // is a request, never a grant. Free Play is rewardless, so charging
       // it would be a pure penalty for practising. The Signal objective run
-      // (§7.2, WP-1.03) and Serpent attempts (§7.3, WP-1.01) are exempt by
-      // §8.6 "the rituals are always full-fat"; neither system exists yet,
-      // so the server has no row to point at and grants no exemption for
-      // them - a client asking for mode 'signal' or 'serpent' today gets an
-      // ordinary charged run, not a free one.
+      // (§7.2, WP-1.03) and Serpent attempts (§7.3, §8.6 "the rituals are
+      // always full-fat") are exempt.
+      //
+      // WP-1.01 fills in the Serpent half: `serpentWeek` is the week row the
+      // SERVER resolved from its own calendar a few lines above, so the id
+      // below is a fact the server can point at - never a claim the client
+      // made. A client sending `mode: 'serpent'` with the flag off, or before
+      // migration 046, resolves no week and gets an ordinary charged run.
+      // The Signal half stays null until WP-1.03 builds it.
       const exemptionFacts: ChargeExemptionFacts = {
         ...NO_EXEMPTION,
         rewardless: isFreePlay,
+        serpentWeekId: serpentWeek?.id ?? null,
       };
       const charge = await consumeRunCharge(
         supabase,
@@ -520,6 +560,21 @@ export async function POST(request: NextRequest) {
         mastery: masteryInfo,
         ...(gauntletBan ? { gauntletBan } : {}),
         ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
+        // Serpent context for the HUD (§7.3): the week's conditions and when
+        // it submerges. Present only on a run the server accepted as an
+        // attempt - its presence IS the confirmation that the exemption was
+        // granted, so the client never has to infer it.
+        ...(serpentWeek
+          ? {
+              serpent: {
+                weekId: serpentWeek.id,
+                weekStart: serpentWeek.weekStart,
+                endsAt: serpentWeek.endsAt,
+                seed: serpentWeek.seed,
+                modifiers: serpentWeek.modifiers,
+              },
+            }
+          : {}),
         ...(genomeBlock ? { genome: genomeBlock } : {}),
       });
     }
