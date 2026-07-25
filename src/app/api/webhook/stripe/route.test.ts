@@ -1,6 +1,13 @@
 /**
  * Tests for Stripe Webhook API - exercises the real POST handler with
  * mocked Stripe signature verification and Supabase client.
+ *
+ * Two fulfilment shapes live here and they must never be confused:
+ *   - mode=subscription (and customer.subscription.*) is the live path,
+ *     synced through apply_subscription_update (migration 028);
+ *   - mode=payment is recorded, escalated and REFUSED — WP-0.09 emptied the
+ *     one-time catalogue and migration 042 drops grant_purchase_rewards, so
+ *     no one-time payment can deliver anything (Constitution §10.4).
  */
 
 import { NextRequest } from 'next/server';
@@ -56,6 +63,12 @@ function createWebhookRequest(
   });
 }
 
+/**
+ * A one-time (mode=payment) checkout. The default metadata is deliberately a
+ * *retired* SKU carrying a reward payload: that is the shape a stale Checkout
+ * Session or a forged metadata field would arrive in, and none of it may
+ * deliver anything.
+ */
 function checkoutCompletedEvent(overrides: {
   eventId?: string;
   metadata?: Record<string, string> | null;
@@ -67,6 +80,7 @@ function checkoutCompletedEvent(overrides: {
     data: {
       object: {
         id: 'cs_test_1',
+        mode: 'payment',
         amount_total: overrides.amountTotal ?? 99,
         currency: 'usd',
         metadata:
@@ -120,59 +134,86 @@ describe('Stripe Webhook POST', () => {
     });
   });
 
-  describe('checkout.session.completed', () => {
-    it('grants rewards through the atomic RPC', async () => {
+  /**
+   * mode=payment: RECORDED AND REFUSED.
+   *
+   * WP-0.09 emptied the one-time catalogue (Constitution §10.4), and migration
+   * 042 drops `grant_purchase_rewards` outright, so there is no fulfilment path
+   * left for a one-time payment to take. These tests replace the old grant
+   * tests: where they asserted "the RPC receives energy/dna/variants", they now
+   * assert that **nothing is granted, ever, whatever the metadata claims** —
+   * which is the property that actually protects the never-sold list. The
+   * surviving valuable behaviour (idempotent event recording, the retryable
+   * 500, the Sentry escalation) is kept and asserted here; the player-lookup
+   * fallback and the 400-on-missing-payload now live only on the subscription
+   * path and are covered in the premium lifecycle block below.
+   */
+  describe('checkout.session.completed (mode=payment): recorded and refused', () => {
+    it('grants nothing — no RPC is called and the response says so', async () => {
       mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
 
       const response = await POST(createWebhookRequest());
       const data = await response.json();
 
+      // 200: retrying cannot make a deleted SKU deliverable, so Stripe must
+      // stop rather than hammer an endpoint that will never fulfil.
       expect(response.status).toBe(200);
-      expect(data.status).toBe('processed');
-      expect(mockRpc).toHaveBeenCalledTimes(1);
-      expect(mockRpc).toHaveBeenCalledWith('grant_purchase_rewards', {
-        p_event_id: 'evt_test_1',
-        p_player_id: 'player-uuid-1',
-        p_product_id: 'energy_small',
-        p_energy: 3,
-        p_dna: 0,
-        p_variant_names: [],
-        p_session_id: 'cs_test_1',
-        p_product_name: 'Energy Pack',
-        p_price_cents: 99,
-        p_currency: 'usd',
-      });
+      expect(data.status).toBe('not_fulfillable');
+      expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it('is idempotent: the same event id twice grants only once', async () => {
+    it('records the event for audit and escalates it to Sentry', async () => {
       mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
-      mockRpc
-        .mockResolvedValueOnce({ data: 'processed', error: null })
-        .mockResolvedValueOnce({ data: 'already_processed', error: null });
+
+      await POST(createWebhookRequest());
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'evt_test_1',
+          type: 'checkout.session.completed',
+          payload_summary: expect.objectContaining({
+            object_id: 'cs_test_1',
+            product_id: 'energy_small',
+            in_catalogue: false,
+            amount: 99,
+            currency: 'usd',
+          }),
+        }),
+        expect.objectContaining({ onConflict: 'id', ignoreDuplicates: true })
+      );
+      // Money moved for something the game does not offer: a human must look.
+      expect(mockCaptureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('nothing granted'),
+        expect.objectContaining({ level: 'error' })
+      );
+    });
+
+    it('is idempotent: the same event id twice records once and grants never', async () => {
+      mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
 
       const first = await POST(createWebhookRequest());
       const second = await POST(createWebhookRequest());
 
       expect(first.status).toBe(200);
-      expect((await first.json()).status).toBe('processed');
-      // Retry is acknowledged with 200 so Stripe stops retrying...
+      expect((await first.json()).status).toBe('not_fulfillable');
       expect(second.status).toBe(200);
-      expect((await second.json()).status).toBe('already_processed');
-      // ...and the grant is keyed by event id, so both calls hit the same
-      // idempotency guard (single effective grant)
-      expect(mockRpc).toHaveBeenNthCalledWith(
-        1,
-        'grant_purchase_rewards',
-        expect.objectContaining({ p_event_id: 'evt_test_1' })
-      );
-      expect(mockRpc).toHaveBeenNthCalledWith(
-        2,
-        'grant_purchase_rewards',
-        expect.objectContaining({ p_event_id: 'evt_test_1' })
-      );
+      expect((await second.json()).status).toBe('not_fulfillable');
+      // Both writes are the same insert-first claim on the event id, so the
+      // second is a no-op at the database (010 idempotency pattern).
+      expect(mockUpsert).toHaveBeenCalledTimes(2);
+      for (const call of mockUpsert.mock.calls) {
+        expect(call[0]).toEqual(expect.objectContaining({ id: 'evt_test_1' }));
+        expect(call[1]).toEqual(
+          expect.objectContaining({ onConflict: 'id', ignoreDuplicates: true })
+        );
+      }
+      expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it('passes bundle rewards (dna + variants) to the RPC', async () => {
+    it('never reads a reward payload out of session metadata', async () => {
+      // The old bundle SKU shape: energy + DNA + a variant, all three on the
+      // never-sold list. Metadata is attacker-influenced and stale-session
+      // data; the handler must not so much as parse it into a grant.
       mockConstructEvent.mockReturnValue(
         checkoutCompletedEvent({
           metadata: {
@@ -191,72 +232,65 @@ describe('Stripe Webhook POST', () => {
       const response = await POST(createWebhookRequest());
 
       expect(response.status).toBe(200);
-      expect(mockRpc).toHaveBeenCalledWith(
-        'grant_purchase_rewards',
-        expect.objectContaining({
-          p_energy: 20,
-          p_dna: 1000,
-          p_variant_names: ['CYBER VORTEX'],
-        })
-      );
-    });
-
-    it('falls back to player lookup when metadata has no playerId', async () => {
-      mockConstructEvent.mockReturnValue(
-        checkoutCompletedEvent({
-          metadata: {
-            userId: 'user-uuid-1',
-            productId: 'energy_small',
-            rewards: JSON.stringify({ energy: 3 }),
-          },
-        })
-      );
-
-      const response = await POST(createWebhookRequest());
-
-      expect(response.status).toBe(200);
-      expect(mockPlayerSingle).toHaveBeenCalled();
-      expect(mockRpc).toHaveBeenCalledWith(
-        'grant_purchase_rewards',
-        expect.objectContaining({ p_player_id: 'player-uuid-1' })
-      );
-    });
-
-    it('returns 500 (retryable) when the player cannot be resolved', async () => {
-      mockConstructEvent.mockReturnValue(
-        checkoutCompletedEvent({
-          metadata: {
-            userId: 'user-uuid-unknown',
-            productId: 'energy_small',
-            rewards: JSON.stringify({ energy: 3 }),
-          },
-        })
-      );
-      mockPlayerSingle.mockResolvedValue({ data: null, error: { message: 'not found' } });
-
-      const response = await POST(createWebhookRequest());
-
-      expect(response.status).toBe(500);
+      expect((await response.json()).status).toBe('not_fulfillable');
       expect(mockRpc).not.toHaveBeenCalled();
+      // Nothing from the payload is even carried into the audit summary.
+      const summary = mockUpsert.mock.calls[0][0].payload_summary;
+      expect(summary).not.toHaveProperty('rewards');
+      expect(summary.in_catalogue).toBe(false);
+      expect(JSON.stringify(summary)).not.toMatch(/CYBER VORTEX/);
     });
 
-    it('returns 400 when session metadata is missing', async () => {
+    it('resolves no retired SKU: every deleted productId is out of catalogue', async () => {
+      for (const productId of [
+        'energy_small',
+        'energy_medium',
+        'energy_large',
+        'starter_bundle',
+        'dynasty_bundle',
+      ]) {
+        jest.clearAllMocks();
+        mockUpsert.mockResolvedValue({ error: null });
+        mockConstructEvent.mockReturnValue(
+          checkoutCompletedEvent({
+            metadata: { userId: 'user-uuid-1', playerId: 'player-uuid-1', productId },
+          })
+        );
+
+        const response = await POST(createWebhookRequest());
+
+        expect(response.status).toBe(200);
+        expect(mockUpsert.mock.calls[0][0].payload_summary).toEqual(
+          expect.objectContaining({ product_id: productId, in_catalogue: false })
+        );
+        expect(mockRpc).not.toHaveBeenCalled();
+      }
+    });
+
+    it('refuses a session with no metadata at all, without erroring', async () => {
       mockConstructEvent.mockReturnValue(checkoutCompletedEvent({ metadata: {} }));
 
       const response = await POST(createWebhookRequest());
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
+      expect((await response.json()).status).toBe('not_fulfillable');
+      expect(mockUpsert.mock.calls[0][0].payload_summary).toEqual(
+        expect.objectContaining({ product_id: null, in_catalogue: false })
+      );
       expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it('returns 500 (retryable) and reports to Sentry when the RPC fails', async () => {
+    it('returns 500 (retryable) and reports to Sentry when recording fails', async () => {
+      // The event must not be lost: it is the only record that money moved
+      // against an empty catalogue.
       mockConstructEvent.mockReturnValue(checkoutCompletedEvent());
-      mockRpc.mockResolvedValue({ data: null, error: { message: 'db down' } });
+      mockUpsert.mockResolvedValue({ error: { message: 'db down' } });
 
       const response = await POST(createWebhookRequest());
 
       expect(response.status).toBe(500);
       expect(mockCaptureException).toHaveBeenCalled();
+      expect(mockRpc).not.toHaveBeenCalled();
     });
   });
 
@@ -504,6 +538,34 @@ describe('Stripe Webhook POST', () => {
       expect(mockRpc).toHaveBeenCalledWith(
         'apply_subscription_update',
         expect.objectContaining({ p_subscription_id: 'sub_test_1' })
+      );
+    });
+
+    it('returns 400 when a subscription checkout carries no subscription', async () => {
+      // The one payload field the surviving fulfilment path cannot do
+      // without. 400 (not 500): a retry cannot add a missing subscription.
+      mockConstructEvent.mockReturnValue({
+        id: 'evt_sub_checkout_bad',
+        type: 'checkout.session.completed',
+        created: 1_780_000_050,
+        data: {
+          object: {
+            id: 'cs_sub_2',
+            mode: 'subscription',
+            subscription: null,
+            metadata: { userId: 'user-uuid-1', playerId: 'player-uuid-1' },
+          },
+        },
+      });
+
+      const response = await POST(createWebhookRequest());
+
+      expect(response.status).toBe(400);
+      expect(mockRpc).not.toHaveBeenCalled();
+      expect(mockSubscriptionsRetrieve).not.toHaveBeenCalled();
+      expect(mockCaptureMessage).toHaveBeenCalledWith(
+        'Stripe subscription checkout missing subscription',
+        expect.objectContaining({ level: 'error' })
       );
     });
 
