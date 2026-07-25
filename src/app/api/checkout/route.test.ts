@@ -1,9 +1,13 @@
 /**
- * Tests for Checkout API - exercises the real POST handler with mocked
- * Stripe and Supabase clients.
+ * Checkout API — exercises the real POST handler with mocked Stripe and
+ * Supabase clients.
  *
- * The route module is imported dynamically after the Stripe price env vars
- * are set, because products.ts reads them at module evaluation time.
+ * The one-time catalogue is empty (WP-0.09, Constitution §10.4). These tests
+ * assert the rule that replaced the old fulfilment tests: **no productId
+ * reaches Stripe** — least of all one of the five deleted SKUs. The
+ * authentication, anonymous and §18 FAGG consent gates are still exercised,
+ * because they must keep working for the archetypes that will fill the
+ * catalogue (§10.2).
  */
 
 import { NextRequest } from 'next/server';
@@ -31,14 +35,21 @@ jest.mock('@supabase/supabase-js', () => ({
   })),
 }));
 
+/** The SKUs WP-0.09 deleted. Every one must be unsellable forever. */
+const RETIRED_SKU_IDS = [
+  'energy_small',
+  'energy_medium',
+  'energy_large',
+  'starter_bundle',
+  'dynasty_bundle',
+];
+
 let POST: (request: NextRequest) => Promise<Response>;
 
 beforeAll(async () => {
-  process.env.NEXT_PUBLIC_STRIPE_ENERGY_SMALL = 'price_energy_small';
-  process.env.NEXT_PUBLIC_STRIPE_ENERGY_MEDIUM = 'price_energy_medium';
-  process.env.NEXT_PUBLIC_STRIPE_ENERGY_LARGE = 'price_energy_large';
-  process.env.NEXT_PUBLIC_STRIPE_STARTER_BUNDLE = 'price_starter_bundle';
-  process.env.NEXT_PUBLIC_STRIPE_DYNASTY_BUNDLE = 'price_dynasty_bundle';
+  // Deliberately no NEXT_PUBLIC_STRIPE_* price ids are set: the catalogue no
+  // longer reads any, and a test that supplied them would hide a regression
+  // where a SKU came back reading one.
   ({ POST } = await import('./route'));
 });
 
@@ -76,21 +87,16 @@ function registeredUser(overrides: object = {}) {
   };
 }
 
-function playerCreatedDaysAgo(days: number) {
-  const createdAt = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  return {
-    data: { id: 'player-uuid-1', created_at: createdAt.toISOString() },
-    error: null,
-  };
-}
-
 describe('Checkout POST', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
     delete process.env.NEXT_PUBLIC_APP_URL;
     mockGetUser.mockResolvedValue(registeredUser());
-    mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(0));
+    mockPlayerSingle.mockResolvedValue({
+      data: { id: 'player-uuid-1' },
+      error: null,
+    });
     mockSessionsCreate.mockResolvedValue({
       id: 'cs_test_1',
       url: 'https://checkout.stripe.com/pay/cs_test_1',
@@ -147,15 +153,58 @@ describe('Checkout POST', () => {
     });
   });
 
-  describe('Product validation', () => {
+  describe('A deleted SKU can never be sold again (§10.4)', () => {
+    it.each(RETIRED_SKU_IDS)(
+      'refuses %s with 400 product_not_available and creates no session',
+      async (productId) => {
+        const response = await POST(createCheckoutRequest({ productId }));
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error).toBe('product_not_available');
+        expect(mockSessionsCreate).not.toHaveBeenCalled();
+      }
+    );
+
+    it('refuses an id that was never in the catalogue the same way', async () => {
+      const response = await POST(createCheckoutRequest({ productId: 'not_a_product' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('product_not_available');
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+
+    it('cannot be talked into a sale by a forged reward payload', async () => {
+      // The body is not the catalogue. Rewards travel from the server-side
+      // SKU or not at all — so extra fields change nothing.
+      const response = await POST(
+        createCheckoutRequest({
+          productId: 'starter_bundle',
+          rewards: { energy: 999, dna: 999999 },
+          price: 0,
+        })
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('product_not_available');
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+
+    it('never reaches Stripe for any productId at all', async () => {
+      for (const productId of [...RETIRED_SKU_IDS, 'cosmetic_trail_x', 'season_1']) {
+        await POST(createCheckoutRequest({ productId }));
+      }
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Request validation still gates ahead of the catalogue', () => {
     it('returns 400 when productId is missing', async () => {
       const response = await POST(createCheckoutRequest({}));
       expect(response.status).toBe(400);
-    });
-
-    it('returns 400 for an unknown product', async () => {
-      const response = await POST(createCheckoutRequest({ productId: 'not_a_product' }));
-      expect(response.status).toBe(400);
+      expect(mockSessionsCreate).not.toHaveBeenCalled();
     });
 
     it('returns 400 without §18 FAGG withdrawal consent', async () => {
@@ -168,108 +217,14 @@ describe('Checkout POST', () => {
       expect(mockSessionsCreate).not.toHaveBeenCalled();
     });
 
-    it('returns 404 when the player row does not exist', async () => {
-      mockPlayerSingle.mockResolvedValue({ data: null, error: { message: 'not found' } });
-      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
-      expect(response.status).toBe(404);
-      expect(mockSessionsCreate).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Bundle Day-2+ gating (BM-004, server-side)', () => {
-    it('rejects a bundle purchase on Day 1', async () => {
-      mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(0.5));
-
-      const response = await POST(createCheckoutRequest({ productId: 'starter_bundle' }));
+    it('refuses the consent gate before it refuses the product', async () => {
+      // Ordering matters for the archetypes that will fill the catalogue:
+      // consent is a precondition of checkout, not of a particular SKU.
+      const response = await POST(
+        createCheckoutRequest({ productId: 'not_a_product', withdrawalConsent: false })
+      );
       const data = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(data.error).toBe('bundle_not_available');
-      expect(mockSessionsCreate).not.toHaveBeenCalled();
-    });
-
-    it('allows a bundle purchase from Day 2 on', async () => {
-      mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(2.1));
-
-      const response = await POST(createCheckoutRequest({ productId: 'starter_bundle' }));
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.sessionId).toBe('cs_test_1');
-      expect(mockSessionsCreate).toHaveBeenCalledTimes(1);
-    });
-
-    it('allows energy purchases on Day 1', async () => {
-      mockPlayerSingle.mockResolvedValue(playerCreatedDaysAgo(0.1));
-
-      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.sessionId).toBe('cs_test_1');
-      expect(data.url).toContain('checkout.stripe.com');
-    });
-  });
-
-  describe('Session construction', () => {
-    it('builds redirect URLs from NEXT_PUBLIC_APP_URL when set', async () => {
-      process.env.NEXT_PUBLIC_APP_URL = 'https://supasnake.com';
-
-      await POST(
-        createCheckoutRequest(
-          { productId: 'energy_small' },
-          { origin: 'https://evil.example.com' }
-        )
-      );
-
-      expect(mockSessionsCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success_url:
-            'https://supasnake.com/shop?success=true&session_id={CHECKOUT_SESSION_ID}',
-          cancel_url: 'https://supasnake.com/shop?canceled=true',
-        })
-      );
-    });
-
-    it('falls back to the request origin only when NEXT_PUBLIC_APP_URL is unset', async () => {
-      await POST(
-        createCheckoutRequest(
-          { productId: 'energy_small' },
-          { origin: 'http://localhost:3000' }
-        )
-      );
-
-      expect(mockSessionsCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success_url:
-            'http://localhost:3000/shop?success=true&session_id={CHECKOUT_SESSION_ID}',
-        })
-      );
-    });
-
-    it('embeds userId, playerId, productId and rewards in metadata', async () => {
-      await POST(createCheckoutRequest({ productId: 'energy_small' }));
-
-      expect(mockSessionsCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          mode: 'payment',
-          line_items: [{ price: 'price_energy_small', quantity: 1 }],
-          automatic_tax: { enabled: true },
-          metadata: expect.objectContaining({
-            userId: 'user-uuid-1',
-            playerId: 'player-uuid-1',
-            productId: 'energy_small',
-            rewards: JSON.stringify({ energy: 3 }),
-            withdrawal_consent: 'immediate_delivery_acknowledged',
-          }),
-        })
-      );
-    });
-
-    it('returns 500 when Stripe session creation fails', async () => {
-      mockSessionsCreate.mockRejectedValue(new Error('stripe down'));
-      const response = await POST(createCheckoutRequest({ productId: 'energy_small' }));
-      expect(response.status).toBe(500);
+      expect(data.error).toBe('withdrawal_consent_required');
     });
   });
 });

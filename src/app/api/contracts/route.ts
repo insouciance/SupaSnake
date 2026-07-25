@@ -1,7 +1,10 @@
 /**
  * Contracts API - daily pick-2-of-3 contracts (Design v2 section 7.3).
- * SupaSnake Premium picks 3 of 3 (migration 028 pick_contracts enforces
- * the real limit; picksAllowed in the response drives the UI).
+ *
+ * The pick allowance is the SAME FOR EVERYONE. Premium used to buy a third
+ * pick; WP-0.09 removed it (Constitution §10.4 - progression rates are never
+ * sold) from this route, from PREMIUM_CONFIG and, in migration 042, from the
+ * pick_contracts RPC that enforced it. Nothing here reads the entitlement.
  *
  * GET  /api/contracts - today's board: offers/picks/progress/claimable.
  *      Generation is lazy: the first GET of a UTC day creates the day's 3
@@ -26,8 +29,14 @@ import {
   computePicksRemaining,
   type ContractRpcRow,
 } from './utils';
-import { hasPremium } from '@/lib/server/premium';
-import { PREMIUM_CONFIG } from '@/shared/config/premium';
+import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
+
+/**
+ * Picks per UTC day, for every player alike (mirrors the flat `v_max` that
+ * migration 042 restores in pick_contracts). The RPC remains the authority;
+ * this constant only shapes the response and the request validation.
+ */
+const PICKS_PER_DAY = ENGAGEMENT_CONFIG.contracts.picksPerDay;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,21 +72,14 @@ async function getAuthedPlayer(request: NextRequest) {
   return { player };
 }
 
-function boardResponse(rows: ContractRpcRow[] | null | undefined, picksAllowed: number) {
+function boardResponse(rows: ContractRpcRow[] | null | undefined) {
   const contracts = (rows || []).map(mapContractRow);
   return {
     contracts,
-    picksAllowed,
-    picksRemaining: computePicksRemaining(contracts, picksAllowed),
+    picksAllowed: PICKS_PER_DAY,
+    picksRemaining: computePicksRemaining(contracts, PICKS_PER_DAY),
     claimable: contracts.some((c) => c.picked && c.completed && !c.claimed),
   };
-}
-
-/** 2 picks/day free, 3 while premium (mirrors pick_contracts in 028) */
-async function getPicksAllowed(playerId: string): Promise<number> {
-  return (await hasPremium(supabase, playerId))
-    ? PREMIUM_CONFIG.contracts.picksPerDayPremium
-    : PREMIUM_CONFIG.contracts.picksPerDayFree;
 }
 
 export async function GET(request: NextRequest) {
@@ -94,8 +96,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load contracts' }, { status: 500 });
     }
 
-    const picksAllowed = await getPicksAllowed(player.id);
-    return NextResponse.json(boardResponse(rows as ContractRpcRow[], picksAllowed));
+    return NextResponse.json(boardResponse(rows as ContractRpcRow[]));
   } catch (err) {
     console.error('Contracts GET error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -112,16 +113,16 @@ export async function POST(request: NextRequest) {
 
     if (action === 'pick') {
       const contractIds = body.contractIds;
-      // Shape validation only: the real per-day limit (2 free / 3 premium)
-      // is enforced by the pick_contracts RPC (migration 028)
+      // Shape validation only: the real per-day limit is enforced by the
+      // pick_contracts RPC (migration 042 - flat, no entitlement branch)
       if (
         !Array.isArray(contractIds) ||
         contractIds.length < 1 ||
-        contractIds.length > PREMIUM_CONFIG.contracts.picksPerDayPremium ||
+        contractIds.length > PICKS_PER_DAY ||
         !contractIds.every((id) => typeof id === 'string')
       ) {
         return NextResponse.json(
-          { error: 'contractIds must be 1 to 3 contract ids' },
+          { error: `contractIds must be 1 to ${PICKS_PER_DAY} contract ids` },
           { status: 400 }
         );
       }
@@ -140,10 +141,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const picksAllowed = await getPicksAllowed(player.id);
       return NextResponse.json({
         success: true,
-        ...boardResponse(rows as ContractRpcRow[], picksAllowed),
+        ...boardResponse(rows as ContractRpcRow[]),
       });
     }
 

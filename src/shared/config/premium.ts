@@ -1,10 +1,39 @@
 /**
- * SupaSnake Premium - Subscription Configuration
- * Design doc: docs/game/MONETIZATION_DESIGN.md (LOCKED)
+ * SupaSnake Premium — subscription configuration.
  *
- * Never pay-to-win, no paid RNG: every perk is convenience, cosmetic or
- * collection progression - never competitive power. All perks are enforced
- * server-side; these constants mirror migration 028 - keep in lockstep.
+ * Authority: docs/PRODUCT_CONSTITUTION.md §10 (§10.2 the Keeper archetype,
+ * §10.4 the never-sold list) and Rules R3/R4. docs/game/MONETIZATION_DESIGN.md
+ * is SUPERSEDED — nothing here is implemented from it.
+ *
+ * **What is in this file, stated exactly: billing plumbing and nothing else.**
+ * A feature flag, two plan prices, and the grace window that keeps a lapsing
+ * subscriber whole. There is no perk here, because there is no longer a perk
+ * that is a number.
+ *
+ * WP-0.09 removed the three that were:
+ *   - the daily energy stipend (+3/day) had already gone with migration 039
+ *     (§8.6/§10.4: energy is never sold, gifted or stipended);
+ *   - `contracts.picksPerDay{Free,Premium}` (3 picks instead of 2) — a paid
+ *     progression rate, §10.4;
+ *   - `passiveProgress.maxOfflineHoursPremium` (48h of offline DNA instead of
+ *     24h) — paid offline anything, §10.4;
+ *   - `breeding.maxActivePremium`, which was inert: it described a breeding
+ *     queue that does not exist, and an advertised perk with no code behind it
+ *     is a false claim whether or not it works.
+ * WP-0.02 deleted the DNA multiplier stack outright, so there is no factor for
+ * a perk to reintroduce even if one tried.
+ *
+ * What a subscription actually delivers today lives elsewhere, on purpose,
+ * because none of it is a configurable quantity: the monthly cosmetic drop
+ * (`premium_cosmetic_drops`, migration 028), the supporter badge and aurora
+ * frame granted on activation (028), and the stats dashboard. All three are
+ * expressive or presentational; none is claimed here.
+ *
+ * **Adding a key to this object that resolves to something a player receives
+ * is a change to the never-sold list (§10.4) and needs a constitutional
+ * amendment, not a pull request.** Phase 3 renames this to Keeper and reprices
+ * it (§10.2: €3.99/month, €34.99/year); the prices below are what Stripe
+ * charges today and may not drift from it.
  */
 
 function deepFreeze<T extends object>(obj: T): T {
@@ -26,29 +55,10 @@ export const PREMIUM_CONFIG = deepFreeze({
     yearlyEur: 89.99,                // ~2 months free vs monthly
   },
 
-  /* NOTE: the Daily Lab Stipend (+3 energy/day) is deliberately absent.
-     Constitution §8.6 and §10.4: Energy is never sold, gifted, stipended,
-     or touched by any SKU or perk. Migration 039 drops the RPC. */
-
-  /** Contracts: premium picks 3 of 3 daily contracts (028 pick_contracts) */
-  contracts: {
-    picksPerDayFree: 2,
-    picksPerDayPremium: 3,
-  },
-
-  /** Offline DNA cap: 24h free -> 48h premium (API-side override) */
-  passiveProgress: {
-    maxOfflineHoursPremium: 48,
-  },
-
-  /** Breeding queue slots - INERT until the breeding queue feature ships
-   *  (breeding is instant today; see GAME_CONFIG.breeding.maxActive) */
-  breeding: {
-    maxActivePremium: 5,
-  },
-
-  /** past_due keeps perks this many days past the paid period while Stripe
-   *  Smart Retries run - keep in lockstep with has_premium() in 028 */
+  /** past_due keeps the subscription alive this many days past the paid
+   *  period while Stripe Smart Retries run — keep in lockstep with
+   *  has_premium() in migration 028. Grace protects the subscriber from a
+   *  failed card; it grants nothing. */
   graceDaysPastDue: 7,
 } as const);
 

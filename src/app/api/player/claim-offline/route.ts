@@ -8,7 +8,8 @@
  * 3. Update DNA balance and last_login_at
  * 4. Log transaction for audit trail
  *
- * THIS ROUTE NO LONGER TOUCHES ENERGY (Constitution §8.6).
+ * THIS ROUTE NO LONGER TOUCHES ENERGY (Constitution §8.6), AND IT NO LONGER
+ * READS THE PREMIUM ENTITLEMENT (Constitution §10.4, WP-0.09).
  *
  * It used to restore energy from its own `last_login_at` clock, clamped to
  * `max_energy` - which destroyed purchased over-cap energy outright
@@ -25,8 +26,6 @@ import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { calculateOfflineProgress } from '@/lib/progression/offlineProgress';
 import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';
-import { PREMIUM_CONFIG } from '@/shared/config/premium';
-import { hasPremium } from '@/lib/server/premium';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,22 +67,16 @@ export async function POST(request: NextRequest) {
 
     const collectionSize = collectionCount || 0;
 
-    // SupaSnake Premium: offline DNA accrues up to 48h instead of 24h
-    const isPremium = await hasPremium(supabase, player.id);
-    const passiveConfig = isPremium
-      ? {
-          ...ENGAGEMENT_CONFIG.passiveProgress,
-          maxOfflineHours: PREMIUM_CONFIG.passiveProgress.maxOfflineHoursPremium,
-        }
-      : ENGAGEMENT_CONFIG.passiveProgress;
-
-    // Calculate rewards server-side (authoritative)
+    // ONE offline window for everyone. Premium used to extend it to 48h;
+    // WP-0.09 removed that perk (Constitution §10.4 - "offline anything" is
+    // on the never-sold list), so nothing here reads the entitlement and
+    // there is no branch for a subscription to take.
     const progress = calculateOfflineProgress(
       {
         lastLoginAt: player.last_login_at || new Date().toISOString(),
         collectionSize,
       },
-      passiveConfig
+      ENGAGEMENT_CONFIG.passiveProgress
     );
 
     // If no rewards to claim, just update last_login_at

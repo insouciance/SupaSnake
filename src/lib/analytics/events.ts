@@ -57,9 +57,11 @@ export const AnalyticsEvents = {
   DNA_SPENT: 'dna_spent',
   ENERGY_USED: 'energy_used',
   ENERGY_REGEN: 'energy_regen',
-  ENERGY_PURCHASED: 'energy_purchased',
-  COINS_EARNED: 'coins_earned',
-  COINS_SPENT: 'coins_spent',
+  // ENERGY_PURCHASED is deleted (WP-0.09): energy is never sold
+  // (Constitution §10.4), so the event can never fire.
+  // COINS_EARNED / COINS_SPENT are deleted with it: SupaSnake has exactly
+  // one currency (DNA, §8.5) and a second currency name in the taxonomy is
+  // how a two-currency dark pattern gets measured into existence.
 
   // Collection Events
   VARIANT_UNLOCKED: 'variant_unlocked',
@@ -77,8 +79,9 @@ export const AnalyticsEvents = {
   PURCHASE_COMPLETE: 'purchase_complete',
   PURCHASE_FAILED: 'purchase_failed',
   REFUND: 'refund',
-  AD_WATCHED: 'ad_watched',
-  AD_SKIPPED: 'ad_skipped',
+  // AD_WATCHED / AD_SKIPPED are deleted (WP-0.09). Advertising is a named
+  // dark pattern (Constitution §10.6); there is no ad to watch or skip, and
+  // a telemetry slot for one is a plan nobody approved.
 
   // Engagement Events
   DAILY_LOGIN: 'daily_login',
