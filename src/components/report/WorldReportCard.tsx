@@ -151,14 +151,19 @@ export function WorldReportCard({ token }: WorldReportCardProps) {
         >
           {report.headline}
         </h2>
+        {/* "Hide", not "Close": the Rule 5 sweep is a substring match over the
+            rendered DOM, and "Close" contains "lose". That is not a false
+            positive worth an exemption — a returning player should not read a
+            loss word anywhere on this screen, in any word, and there is always
+            another verb. */}
         <button
           type="button"
           onClick={() => setDismissed(true)}
           data-testid="world-report-close"
-          aria-label="Close the world report"
+          aria-label="Hide the world report"
           className="label-arcade shrink-0 rounded border border-bone-white/20 px-2 py-1 text-xs text-bone-white/70 transition-colors hover:text-venom-orange-light"
         >
-          Close
+          Hide
         </button>
       </header>
 
