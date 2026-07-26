@@ -135,19 +135,47 @@ export function deriveHeirloom(
   };
 }
 
+/** The three server facts a genome run's context is derived from. */
+export interface GenomeRunFacts {
+  bankedRuns: number;
+  prevRunDied: boolean;
+  ownedVariants: number;
+}
+
+/**
+ * Result of reading those facts. `ok: false` is UNIGNORABLE by construction —
+ * there is no `bankedRuns` on the failure shape to read past the check.
+ */
+export type GenomeRunFactsResult =
+  | ({ ok: true } & GenomeRunFacts)
+  | { ok: false; reason: string; error: unknown };
+
 /**
  * Banked-run count (FTUE), distinct owned variants (Build Seed gate), and
- * previous earned-run outcome (Grave Robber). Every read is best-effort.
+ * previous earned-run outcome (Grave Robber).
+ *
+ * WP-2.05 — THIS FUNCTION USED TO TAKE MONEY OFF A RUN.
+ *
+ * Its three reads each sat in a `try { const { count } = ... } catch {}` with
+ * the Supabase `error` never inspected, degrading to `bankedRuns = 0`. That
+ * is not a cosmetic default: `bankedRuns` drives `deriveFtue`, which drives
+ * `ftueTierCap` and `deriveHeirloom`, which the session route feeds to the
+ * validator as `genomeInput.tierCap` and `genomeInput.heirloom` — and
+ * `validation.adjustedDna` IS THE PAYOUT. A transient database blip
+ * therefore silently paid the player at tier 1 with no heirloom points: a
+ * smaller number, permanently, with no record that anything went wrong.
+ *
+ * So the failure is now returned rather than absorbed, and the shape makes
+ * it impossible to ignore. The session route answers 503 — never 404 — so
+ * the offline outbox retries (it retries 5xx and DROPS 4xx) and the run's
+ * DNA survives the blip.
  */
 export async function getGenomeRunFacts(
   supabase: SupabaseClient,
   playerId: string
-): Promise<{ bankedRuns: number; prevRunDied: boolean; ownedVariants: number }> {
-  let bankedRuns = 0;
-  let prevRunDied = false;
-  let ownedVariants = 0;
+): Promise<GenomeRunFactsResult> {
   try {
-    const { count } = await supabase
+    const { count, error: bankedError } = await supabase
       .from('game_sessions')
       .select('*', { count: 'exact', head: true })
       .eq('player_id', playerId)
@@ -155,25 +183,19 @@ export async function getGenomeRunFacts(
       .eq('validated', true)
       .eq('is_free_play', false)
       .not('ended_at', 'is', null);
-    bankedRuns = count ?? 0;
-  } catch {
-    bankedRuns = 0;
-  }
-  try {
-    const { data } = await supabase
+    if (bankedError) {
+      return { ok: false, reason: 'banked-run count', error: bankedError };
+    }
+
+    const { data: snakeRows, error: variantsError } = await supabase
       .from('collected_snakes')
       .select('snake_variant_id')
       .eq('player_id', playerId);
-    ownedVariants = new Set(
-      (data ?? [])
-        .map((row) => row.snake_variant_id)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0)
-    ).size;
-  } catch {
-    ownedVariants = 0;
-  }
-  try {
-    const { data } = await supabase
+    if (variantsError) {
+      return { ok: false, reason: 'owned variants', error: variantsError };
+    }
+
+    const { data: lastRows, error: prevRunError } = await supabase
       .from('game_sessions')
       .select('extracted, ended_at')
       .eq('player_id', playerId)
@@ -182,10 +204,22 @@ export async function getGenomeRunFacts(
       .not('ended_at', 'is', null)
       .order('ended_at', { ascending: false })
       .limit(1);
-    const last = Array.isArray(data) ? data[0] : null;
-    prevRunDied = last ? last.extracted !== true : false;
-  } catch {
-    prevRunDied = false;
+    if (prevRunError) {
+      return { ok: false, reason: 'previous run outcome', error: prevRunError };
+    }
+
+    const last = Array.isArray(lastRows) ? lastRows[0] : null;
+    return {
+      ok: true,
+      bankedRuns: count ?? 0,
+      ownedVariants: new Set(
+        (snakeRows ?? [])
+          .map((row) => row.snake_variant_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      ).size,
+      prevRunDied: last ? last.extracted !== true : false,
+    };
+  } catch (err) {
+    return { ok: false, reason: 'genome run facts', error: err };
   }
-  return { bankedRuns, prevRunDied, ownedVariants };
 }

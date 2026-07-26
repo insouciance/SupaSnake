@@ -25,6 +25,10 @@ jest.mock('@/lib/server/rateLimit', () => ({
 }));
 jest.mock('@/lib/server/mastery', () => ({
   getMasteryXp: jest.fn().mockResolvedValue(0),
+  // WP-2.05: settlement reads mastery XP through the STRICT variant, which
+  // reports a read failure instead of returning 0 - because 0 XP narrows the
+  // unlocked pool, which drops legal picks, which shrinks the payout.
+  getMasteryXpStrict: jest.fn().mockResolvedValue({ ok: true, xp: 0 }),
   grantMasteryXp: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/server/gauntlet', () => ({
@@ -396,7 +400,24 @@ describe('the start path records `abandoned` for a superseded run', () => {
 // FINDING F-1
 // ---------------------------------------------------------------------------
 
-describe('an invalid run cannot write players.high_score (F-1)', () => {
+describe('players.high_score is written from the recompute (F-1, WP-2.05)', () => {
+  // WHAT CHANGED, AND WHY THE FINDING IS STILL CLOSED
+  //
+  // F-1 (WP-0.06) was: a run that failed validation still set a permanent
+  // personal record. The fix at the time was to gate the write on
+  // `validation.valid`.
+  //
+  // WP-2.05 reclassifies what `valid` means, so that gate now lets through a
+  // run whose only finding was a claim mismatch. That is CORRECT, and the
+  // finding stays closed, because the gate was never the real protection:
+  // the route writes `validation.adjustedScore` - THE SERVER'S OWN RECOMPUTE
+  // - and has no path that can write a claimed number. An inflated claim
+  // therefore cannot inflate the record whether the run is eligible or not,
+  // which is what the tests below assert directly rather than by proxy.
+  //
+  // The gate still does one job, and only one: a run the server could not
+  // BOUND (a fatal code) writes no record at all.
+
   it('a VALID run still sets the record', async () => {
     const response = await POST(post(endBody()));
 
@@ -406,19 +427,42 @@ describe('an invalid run cannot write players.high_score (F-1)', () => {
     expect(EXPECTED.score).toBeGreaterThan(10);
   });
 
-  it('an INVALID run leaves the record exactly where it was', async () => {
-    // A claim the server refuses: the recompute stands, the run is flagged.
+  it('an INFLATED CLAIM cannot inflate the record — the recompute is written', async () => {
+    // This is the real F-1 protection, and it is stronger than the flag was:
+    // 999,999 never reaches `players`, because the only number the route can
+    // write is the one it computed itself.
     const response = await POST(post(endBody({ score: 999_999 })));
 
     expect(response.status).toBe(200);
+    // ADVISORY under WP-2.05: a claim that disagrees with the server's own
+    // arithmetic loses the argument about the payout, not the run.
+    expect(session().validated).toBe(true);
+    expect(session().validation_errors).toEqual(
+      expect.arrayContaining([expect.stringContaining('SCORE_MISMATCH')])
+    );
+    expect(player().high_score).toBe(EXPECTED.score);
+    expect(player().high_score).not.toBe(999_999);
+  });
+
+  it('a run the server cannot BOUND writes no record at all', async () => {
+    // INVALID_DURATION is one of the two surviving fatal codes: the
+    // food-rate bound is derived from duration, so an unbounded duration is
+    // an unbounded run. `server_started_at` is 120s ago; the claim is an
+    // hour.
+    const response = await POST(post(endBody({ duration_seconds: 3_600 })));
+
+    expect(response.status).toBe(200);
     expect(session().validated).toBe(false);
+    expect(session().validation_errors).toEqual(
+      expect.arrayContaining([expect.stringContaining('INVALID_DURATION')])
+    );
     expect(player().high_score).toBe(10);
   });
 
-  it('never writes the record downward — an existing record survives a flagged run', async () => {
+  it('never writes the record downward — an existing record survives a fatal run', async () => {
     seedPlayer({ high_score: 50_000 });
 
-    await POST(post(endBody({ score: 999_999 })));
+    await POST(post(endBody({ duration_seconds: 3_600 })));
 
     expect(session().validated).toBe(false);
     expect(player().high_score).toBe(50_000);
@@ -433,13 +477,22 @@ describe('an invalid run cannot write players.high_score (F-1)', () => {
     expect(player().high_score).toBe(50_000);
   });
 
-  it('still records and pays the flagged run — only the record is withheld', async () => {
-    await POST(post(endBody({ score: 999_999 })));
+  it('still records and pays a run the server could not bound', async () => {
+    await POST(post(endBody({ duration_seconds: 3_600 })));
 
     // Rule 6 in the other direction: a flagged run is not confiscated. It is
     // stored, it settles, and the leaderboard refuses it at read time.
     expect(session().ended_at).not.toBeNull();
     expect(session().end_reason).toBe('completed');
     expect(player().total_games_played).toBe(1);
+  });
+
+  it('stores the duration clamped to the time that actually passed', async () => {
+    // The row is read directly by Signal's `endure` objective, so a crafted
+    // hour must not become an hour of objective progress.
+    await POST(post(endBody({ duration_seconds: 3_600 })));
+
+    expect(session().duration_seconds).toBeLessThanOrEqual(125);
+    expect(session().duration_seconds).toBeGreaterThanOrEqual(115);
   });
 });

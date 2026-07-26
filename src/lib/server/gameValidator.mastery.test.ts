@@ -49,7 +49,14 @@ describe('pool gating (MUTATION_LOCKED)', () => {
       MUTATION_POOL // level 0 pool - no mastery unlocks
     );
     expect(result.mutations).toEqual([]);
-    expect(result.valid).toBe(false);
+    // WP-2.05: ADVISORY. The locked pick is dropped and the payout is
+    // recomputed from what survived, so the run keeps its progression.
+    expect(result.valid).toBe(true);
+    expect(
+      result.advisoryErrors.some((e) =>
+        e.startsWith('MUTATION_LOCKED: ancient_grove')
+      )
+    ).toBe(true);
     expect(
       result.errors.some((e) => e.startsWith('MUTATION_LOCKED: ancient_grove'))
     ).toBe(true);

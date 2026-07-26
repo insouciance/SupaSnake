@@ -14,7 +14,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { checkRateLimit } from '@/lib/server/rateLimit';
-import { validateGameResult } from '@/lib/server/gameValidator';
+import {
+  appendAdvisory,
+  validateGameResult,
+  validationCodeOf,
+} from '@/lib/server/gameValidator';
 import { computeRunTotals, normalizeDynastyName } from '@/shared/game/rulesets';
 import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import {
@@ -25,7 +29,7 @@ import {
   masteryXpForRun,
   unlockedMutationPool,
 } from '@/shared/game/mastery';
-import { getMasteryXp, grantMasteryXp } from '@/lib/server/mastery';
+import { getMasteryXpStrict, grantMasteryXp } from '@/lib/server/mastery';
 import { getGauntletBan } from '@/lib/server/gauntlet';
 import {
   getSeasonalGeneIds,
@@ -76,7 +80,15 @@ import {
   getGenomeRunFacts,
   lineageFromRows,
 } from '@/lib/server/genome';
+import {
+  parseRunStartContext,
+  serializeRunStartContext,
+  RUN_CONTEXT_VERSION,
+  type RunStartContext,
+  type RunStartGenomeContext,
+} from '@/lib/server/runContext';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
+import type { LineageBias } from '@/shared/game/offerGravity';
 import { ANOMALY_STRAINS } from '@/shared/game/anomalies';
 import type { GenomeValidationContext } from '@/lib/server/gameValidator';
 import { randomUUID } from 'crypto';
@@ -106,6 +118,92 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+// ---------------------------------------------------------------------------
+// WP-2.05: 503, NEVER 404 — and the run keeps its long window
+// ---------------------------------------------------------------------------
+//
+// `src/lib/outbox/rewardOutbox.ts` retries a 5xx and DROPS a 4xx. That single
+// fact fixes the direction of every error-handling change in this package: a
+// transient read failure that answered 404 ("Session not found") deleted the
+// outbox entry, and with it a settled run's DNA, permanently. A 503 is
+// retried, so the run survives the blip.
+//
+// The second half matters just as much. An unsettled row whose `end_reason` is
+// NULL is swept `abandoned` after STALE_OPEN_MINUTES (3 hours). Writing
+// `end_reason = 'completed'` while leaving `ended_at` NULL is the marker
+// WP-0.06 already uses for "this run is owed a settlement" — the opportunistic
+// sweep skips it (`.is('end_reason', null)`) and the cron's
+// STALE_PENDING_SETTLEMENT_MINUTES window (8 days) owns it instead. So a
+// player who is offline for a day still gets paid.
+//
+// This does NOT settle anything: it writes one column. No payout, no record,
+// no `ended_at`, so the settlement path's own idempotency guard is untouched
+// and the replay that follows runs the whole settlement normally.
+async function reserveSettlementRetry(
+  sessionId: string,
+  playerId: string,
+  /**
+   * True when this request had already stamped `ended_at` (the settlement
+   * write is the idempotency anchor and runs before the rewards). Re-opening
+   * is then mandatory: leaving `ended_at` set would make the retry hit the
+   * "already ended" 409 and the player would never be paid for a run the
+   * server never actually settled.
+   */
+  reopen: boolean
+): Promise<void> {
+  const marker = reopen
+    ? { ended_at: null, end_reason: SETTLED_END_REASON }
+    : { end_reason: SETTLED_END_REASON };
+  const query = supabase
+    .from('game_sessions')
+    .update(marker)
+    .eq('id', sessionId)
+    .eq('player_id', playerId);
+  const { error } = reopen ? await query : await query.is('ended_at', null);
+  if (error && !isMissingLifecycleInfra(error)) {
+    console.error('Failed to reserve the pending-settlement window:', {
+      playerId,
+      sessionId,
+      error,
+    });
+    Sentry.captureException(
+      new Error(`pending-settlement marker failed: ${error.message}`),
+      { extra: { playerId, sessionId } }
+    );
+  }
+}
+
+/**
+ * Report a settlement-blocking read failure and answer 503.
+ *
+ * Every caller has already established that the run happened; the server just
+ * cannot currently read something it needs in order to pay for it correctly.
+ * Paying anyway would be the DNA-loss bug this package exists to remove.
+ */
+async function settlementUnavailable(
+  scope: string,
+  error: unknown,
+  context: { playerId: string; sessionId: string; alreadyStampedEnd?: boolean }
+): Promise<NextResponse> {
+  console.error(`Settlement read failed (${scope}):`, { ...context, error });
+  Sentry.captureException(
+    error instanceof Error ? error : new Error(`Settlement read failed: ${scope}`),
+    { extra: { scope, ...context, error }, tags: { wp: 'wp-2.05', scope } }
+  );
+  await reserveSettlementRetry(
+    context.sessionId,
+    context.playerId,
+    context.alreadyStampedEnd === true
+  );
+  return NextResponse.json(
+    {
+      error: 'Settlement is temporarily unavailable — your run is saved, retry shortly',
+      retryable: true,
+    },
+    { status: 503 }
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -254,12 +352,34 @@ export async function POST(request: NextRequest) {
       // rides along when it exists without erroring pre-018.
       // snake_variants(*) so genome lineage columns (migration 030) ride
       // along when they exist without erroring pre-030.
-      const { data: snake } = await supabase
+      //
+      // WP-2.05: the error is checked. A discarded one used to produce
+      // `!snake` and a 400 "Snake not found or not owned" — telling the
+      // player their own snake is not theirs because a read blipped. A read
+      // failure is now a 503 the client can retry; genuine non-ownership
+      // keeps the 400 it deserves.
+      const { data: snake, error: snakeReadError } = await supabase
         .from('collected_snakes')
         .select('*, snake_variants(*, dynasties(name))')
         .eq('id', snake_id)
         .eq('player_id', player.id)
-        .single();
+        .maybeSingle();
+
+      if (snakeReadError) {
+        console.error('Session-start snake lookup failed:', {
+          playerId: player.id,
+          snakeId: snake_id,
+          error: snakeReadError,
+        });
+        Sentry.captureException(
+          new Error(`Session-start snake lookup failed: ${snakeReadError.message}`),
+          { extra: { playerId: player.id, snakeId: snake_id } }
+        );
+        return NextResponse.json(
+          { error: 'Could not prepare the run — retry when you are ready', retryable: true },
+          { status: 503 }
+        );
+      }
 
       if (!snake) {
         const { count } = await supabase
@@ -301,8 +421,37 @@ export async function POST(request: NextRequest) {
       // dynasty's M3/M6/M9 unlocks, recomputed from player_mastery -
       // pre-019 this reads as 0 XP => base pool). Free Play gets the
       // entire pool (section 7.4: practice is also a showroom).
+      //
+      // WP-2.05: strict at START too. A run that begins under a silently
+      // narrowed pool is a run whose offers, FTUE gates and tier cap all
+      // disagree with what settlement will recompute — and the run-start
+      // context persisted below would then freeze that wrong answer in for
+      // the whole run. No session row exists yet at this point, so refusing
+      // costs nothing but a retry.
       const startDynasty = normalizeDynastyName(dynastyName);
-      const masteryXp = await getMasteryXp(supabase, player.id, startDynasty);
+      const startMasteryRead = await getMasteryXpStrict(
+        supabase,
+        player.id,
+        startDynasty
+      );
+      if (!startMasteryRead.ok) {
+        console.error('Session-start mastery read failed:', {
+          playerId: player.id,
+          dynasty: startDynasty,
+          error: startMasteryRead.error,
+        });
+        Sentry.captureException(
+          startMasteryRead.error instanceof Error
+            ? startMasteryRead.error
+            : new Error('Session-start mastery read failed'),
+          { extra: { playerId: player.id, dynasty: startDynasty } }
+        );
+        return NextResponse.json(
+          { error: 'Could not prepare the run — retry when you are ready', retryable: true },
+          { status: 503 }
+        );
+      }
+      const masteryXp = startMasteryRead.xp;
       const masteryLevel = levelForXp(masteryXp);
 
       // Clan Gauntlet (section 8.2 item 3): the mutation banned by this
@@ -338,12 +487,33 @@ export async function POST(request: NextRequest) {
       // flag. Everything here is server-derived.
       let genomeBlock: Record<string, unknown> | null = null;
       let genomeSeed: string | null = null;
+      let startRunContext: RunStartContext | null = null;
+      let startGenomeContext: RunStartGenomeContext | null = null;
       if (GAME_CONFIG.features.genome) {
         genomeSeed = randomUUID();
-        const { bankedRuns, prevRunDied, ownedVariants } = await getGenomeRunFacts(
-          supabase,
-          player.id
-        );
+        // WP-2.05: refused rather than absorbed. `bankedRuns = 0` from a
+        // swallowed error hands the engine tier cap 1 and an empty heirloom,
+        // and the context persisted below would then make that wrong answer
+        // authoritative for the whole run.
+        const runFacts = await getGenomeRunFacts(supabase, player.id);
+        if (!runFacts.ok) {
+          console.error('Session-start genome facts read failed:', {
+            playerId: player.id,
+            reason: runFacts.reason,
+            error: runFacts.error,
+          });
+          Sentry.captureException(
+            runFacts.error instanceof Error
+              ? runFacts.error
+              : new Error(`Session-start genome facts read failed: ${runFacts.reason}`),
+            { extra: { playerId: player.id, reason: runFacts.reason } }
+          );
+          return NextResponse.json(
+            { error: 'Could not prepare the run — retry when you are ready', retryable: true },
+            { status: 503 }
+          );
+        }
+        const { bankedRuns, prevRunDied, ownedVariants } = runFacts;
         const ftue = deriveFtue(bankedRuns, masteryLevel, ownedVariants);
         const lineage = lineageFromRows(
           snake as Record<string, unknown>,
@@ -381,7 +551,37 @@ export async function POST(request: NextRequest) {
             apexesUnlocked: ftue.apexesUnlocked,
           },
         };
+        startGenomeContext = {
+          genePool,
+          heirloom,
+          lineage: lineageBias,
+          tierCap: ftueTierCap(ftue),
+          suppressedStrains: [...gauntletSuppressedStrains(gauntletBan)],
+          splicesUnlocked: ftue.splicesUnlocked,
+          prevRunDied,
+          crownAllowed: isFreePlay || masteryLevel >= 10,
+        };
       }
+
+      // WP-2.05: the run-start context. Everything above that shapes the
+      // recompute, frozen at the moment the engine was handed it, so
+      // settlement can read it instead of re-deriving it from six live
+      // queries that may each answer differently. The run's world condition
+      // is NOT here: `resolveSessionWorldCondition` owns that fact.
+      startRunContext = {
+        v: RUN_CONTEXT_VERSION,
+        snake: {
+          id: snake.id,
+          generation:
+            typeof (snake as Record<string, unknown>).generation === 'number'
+              ? ((snake as Record<string, unknown>).generation as number)
+              : 1,
+          traits: snakeTraits,
+        },
+        mutationPool,
+        freePlay: isFreePlay,
+        genome: startGenomeContext,
+      };
 
       const serverStartedAt = new Date().toISOString();
 
@@ -426,17 +626,50 @@ export async function POST(request: NextRequest) {
         // schema for every other run in the game.
         ...(serpentWeek ? { serpent_week_id: serpentWeek.id } : {}),
       };
-      // Genome seed (migration 029): stamped only when the capability is
-      // on. Pre-029 window: the insert fails on the unknown column, so
-      // retry WITHOUT the seed and start the run as legacy - the engine
-      // only goes genome when the response carries the block.
+      // THE PRE-MIGRATION RETRY LADDER (extended by WP-2.05).
+      //
+      // The app must be deployable BEFORE its migrations apply — the runbook
+      // requires it, and the release order is deploy → 054 → 055. So the
+      // insert asks for everything it wants and steps down one rung per
+      // missing column, newest column first:
+      //
+      //   run_context + run_seed   (post-054)
+      //     -> run_seed only       (029..053: no context, settlement
+      //                             re-derives exactly as it does today)
+      //     -> neither             (pre-029: the run starts as legacy, since
+      //                             the engine only goes genome when the
+      //                             response carries the block)
+      //
+      // Losing `run_context` costs a convenience, never a payout. Losing
+      // `run_seed` costs the genome capability, which is what it has always
+      // cost.
+      const contextInsert = startRunContext
+        ? { run_context: serializeRunStartContext(startRunContext) }
+        : {};
       let { data: session, error: sessionError } = await supabase
         .from('game_sessions')
-        .insert(
-          genomeSeed ? { ...sessionInsert, run_seed: genomeSeed } : sessionInsert
-        )
+        .insert({
+          ...sessionInsert,
+          ...(genomeSeed ? { run_seed: genomeSeed } : {}),
+          ...contextInsert,
+        })
         .select()
         .single();
+      if (
+        sessionError &&
+        startRunContext &&
+        /run_context/i.test(sessionError.message || '')
+      ) {
+        startRunContext = null;
+        ({ data: session, error: sessionError } = await supabase
+          .from('game_sessions')
+          .insert({
+            ...sessionInsert,
+            ...(genomeSeed ? { run_seed: genomeSeed } : {}),
+          })
+          .select()
+          .single());
+      }
       if (
         sessionError &&
         genomeSeed &&
@@ -444,6 +677,7 @@ export async function POST(request: NextRequest) {
       ) {
         genomeSeed = null;
         genomeBlock = null;
+        startRunContext = null;
         ({ data: session, error: sessionError } = await supabase
           .from('game_sessions')
           .insert(sessionInsert)
@@ -700,12 +934,31 @@ export async function POST(request: NextRequest) {
       // select('*') on purpose: naming is_free_play here would error the
       // whole read during the pre-migration-016 window. With '*' pre-016
       // rows simply lack the field (=> earning path, which they all are).
-      const { data: session } = await supabase
+      //
+      // WP-2.05 — PRIORITY 2: this read used to DESTROY THE RUN.
+      //
+      // The error was discarded, so a transient failure produced `!session`
+      // and a 404 — and `rewardOutbox.ts` retries 5xx while DROPPING 4xx. A
+      // database blip therefore deleted the queued entry and the run's DNA
+      // was gone permanently, with the player told only "Session not found".
+      //
+      // The two cases are now separated. A genuinely absent row is still a
+      // 404 (there is nothing to settle and retrying forever would be worse).
+      // A READ FAILURE is a 503 that also reserves the 8-day
+      // pending-settlement window, so the replay finds the run still waiting.
+      const { data: session, error: sessionReadError } = await supabase
         .from('game_sessions')
         .select('*')
         .eq('id', sessionId)
         .eq('player_id', player.id)
-        .single();
+        .maybeSingle();
+
+      if (sessionReadError) {
+        return await settlementUnavailable('session row', sessionReadError, {
+          playerId: player.id,
+          sessionId,
+        });
+      }
 
       if (!session) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 });
@@ -721,11 +974,26 @@ export async function POST(request: NextRequest) {
       // The reason travels in the response so the client can tell "you
       // already banked this" from "that run timed out and paid nothing".
       if (session.ended_at) {
-        const { data: currentPlayer } = await supabase
+        // WP-2.05: reported, but deliberately NOT fatal. This is the 409
+        // "you already banked this" response; the run settled long ago and
+        // the player block is a convenience echo, so a read failure costs
+        // nothing that a refresh does not fix.
+        const { data: currentPlayer, error: currentPlayerError } = await supabase
           .from('players')
           .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
           .eq('id', player.id)
-          .single();
+          .maybeSingle();
+        if (currentPlayerError) {
+          console.error('Already-ended player echo read failed:', {
+            playerId: player.id,
+            sessionId,
+            error: currentPlayerError,
+          });
+          Sentry.captureException(
+            new Error(`Already-ended player echo failed: ${currentPlayerError.message}`),
+            { extra: { playerId: player.id, sessionId } }
+          );
+        }
 
         const priorReason = (session as Record<string, unknown>).end_reason;
         return NextResponse.json(
@@ -739,20 +1007,66 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // ---------------------------------------------------------------
+      // The run-start context (WP-2.05, migration 054)
+      // ---------------------------------------------------------------
+      // The rules the run STARTED under, frozen at start. When it is present
+      // every re-derivation below is skipped, which is what makes a
+      // transient read failure at settlement unable to change what a run
+      // pays — and what stops a mid-run equip or breed from re-deciding it.
+      //
+      // A NULL column is expected (any run started before this deploy, or
+      // before migration 054) and takes the re-derive path silently. A
+      // MALFORMED blob takes the same path but is an `error`-level alert,
+      // because it means the writer and the reader disagree about a shape
+      // this file owns both ends of.
+      const runContextParse = parseRunStartContext(
+        (session as Record<string, unknown>).run_context
+      );
+      if (!runContextParse.ok && runContextParse.malformed) {
+        console.error('Malformed run_context on settlement:', {
+          playerId: player.id,
+          sessionId,
+          reason: runContextParse.reason,
+        });
+        Sentry.captureException(
+          new Error(`Malformed run_context: ${runContextParse.reason}`),
+          {
+            level: 'error',
+            extra: { playerId: player.id, sessionId },
+            tags: { wp: 'wp-2.05' },
+          }
+        );
+      }
+      const runContext = runContextParse.ok ? runContextParse.context : null;
+
       // Design v2 Phase 3A: traits are read from the SNAKE ROW referenced
       // by the session (snake_used_id, server-trusted, stored at start) -
       // the client payload never carries them. select('*') keeps the read
       // deployable before migration 018 (rows simply lack the column).
-      let snakeTraits: TraitId[] = [];
+      //
+      // WP-2.05: with a context this read does not happen at all. Without
+      // one, its error is checked, because losing it is losing money —
+      // `snakeTraits = []` silently deletes every [E] trait modifier from
+      // the recompute AND every heirloom strain point `deriveHeirloom`
+      // derives from the traits, both of which feed `validation.adjustedDna`,
+      // and a missing `generation` pays Ascendance Yield at gen 1.
+      let snakeTraits: TraitId[] = runContext?.snake.traits ?? [];
       let usedSnakeRow: Record<string, unknown> | null = null;
-      if (session.snake_used_id) {
+      if (!runContext && session.snake_used_id) {
         // snake_variants(*) so genome lineage columns (migration 030)
         // ride along when they exist without erroring pre-030.
-        const { data: usedSnake } = await supabase
+        const { data: usedSnake, error: usedSnakeError } = await supabase
           .from('collected_snakes')
           .select('*, snake_variants(*)')
           .eq('id', session.snake_used_id)
-          .single();
+          .maybeSingle();
+        if (usedSnakeError) {
+          return await settlementUnavailable('equipped snake', usedSnakeError, {
+            playerId: player.id,
+            sessionId,
+          });
+        }
         usedSnakeRow = usedSnake as Record<string, unknown> | null;
         snakeTraits = sanitizeTraits(usedSnakeRow?.traits);
       }
@@ -766,37 +1080,65 @@ export async function POST(request: NextRequest) {
       // (and whatever the engine offered) is never trusted. Free sessions
       // validate against the full pool (section 7.4: everything unlocked
       // in practice). Pre-019 the XP read is 0 => base pool.
+      //
+      // WP-2.05: the STRICT reader. A swallowed error here reads as 0 XP,
+      // which narrows the unlocked pool, which makes the validator drop
+      // picks the client legally offered, which shrinks the recompute — and
+      // the recompute is the payout.
       const endDynasty = normalizeDynastyName(session.dynasty);
-      const masteryXpBefore = isFreeSession
-        ? 0
-        : await getMasteryXp(supabase, player.id, endDynasty);
+      let masteryXpBefore = 0;
+      if (!isFreeSession) {
+        const masteryRead = await getMasteryXpStrict(
+          supabase,
+          player.id,
+          endDynasty
+        );
+        if (!masteryRead.ok) {
+          return await settlementUnavailable('mastery xp', masteryRead.error, {
+            playerId: player.id,
+            sessionId,
+          });
+        }
+        masteryXpBefore = masteryRead.xp;
+      }
 
       // Gauntlet ban mirror (section 8.2 item 3): the validator must see
       // the SAME pool the run was offered - recomputed at the session's
       // server start time, so a run straddling the Wed->Thu boundary
       // validates against what it actually saw. Free sessions are never
       // banned; pre-020 the lookup returns null (no-op).
-      const endGauntletBan = isFreeSession
-        ? null
-        : await getGauntletBan(
-            supabase,
-            player.id,
-            endDynasty,
-            session.server_started_at || undefined
-          );
-      // Seasonal mutations join the validation pool exactly as they join
-      // the offer pool (pre-021: empty, byte-identical behavior)
-      const endSeasonalIds = await getSeasonalMutationIds(supabase);
-      const endSeasonalGeneIds = await getSeasonalGeneIds(supabase);
-      const unlockedPool = applyGauntletBan(
-        [
-          ...(isFreeSession
-            ? fullMutationPool(endDynasty)
-            : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore))),
-          ...endSeasonalIds,
-        ],
-        endGauntletBan
-      );
+      //
+      // WP-2.05: all three of these lookups are the re-derive path only. A
+      // run with a context already carries the exact pool the engine was
+      // handed, so the "same pool the run was offered" is a stored fact
+      // rather than a reconstruction that has to get the week boundary
+      // right.
+      let endGauntletBan: Awaited<ReturnType<typeof getGauntletBan>> = null;
+      let endSeasonalGeneIds: Awaited<ReturnType<typeof getSeasonalGeneIds>> = [];
+      let unlockedPool = runContext?.mutationPool ?? null;
+      if (!runContext) {
+        endGauntletBan = isFreeSession
+          ? null
+          : await getGauntletBan(
+              supabase,
+              player.id,
+              endDynasty,
+              session.server_started_at || undefined
+            );
+        // Seasonal mutations join the validation pool exactly as they join
+        // the offer pool (pre-021: empty, byte-identical behavior)
+        const endSeasonalIds = await getSeasonalMutationIds(supabase);
+        endSeasonalGeneIds = await getSeasonalGeneIds(supabase);
+        unlockedPool = applyGauntletBan(
+          [
+            ...(isFreeSession
+              ? fullMutationPool(endDynasty)
+              : unlockedMutationPool(endDynasty, levelForXp(masteryXpBefore))),
+            ...endSeasonalIds,
+          ],
+          endGauntletBan
+        );
+      }
 
       // The run's world condition (§7.2, §7.3 - WP-2.10a): the SESSION ROW is
       // authoritative - the server stamped it at start, through whichever of
@@ -821,42 +1163,69 @@ export async function POST(request: NextRequest) {
       // is re-derived server-side (never the claim).
       const sessionRunSeed = (session as Record<string, unknown>).run_seed;
       let genomeCtx: GenomeValidationContext | null = null;
-      let endLineageBias: ReturnType<typeof deriveHeirloom>['lineageBias'] = null;
+      let endLineageBias: LineageBias | null = null;
       if (typeof sessionRunSeed === 'string' && sessionRunSeed.length > 0) {
-        const { bankedRuns, prevRunDied, ownedVariants } = await getGenomeRunFacts(
-          supabase,
-          player.id
-        );
-        const endMasteryLevel = levelForXp(masteryXpBefore);
-        const endFtue = deriveFtue(bankedRuns, endMasteryLevel, ownedVariants);
-        const endLineage = usedSnakeRow
-          ? lineageFromRows(
-              usedSnakeRow,
-              (usedSnakeRow.snake_variants as Record<string, unknown> | null) ??
-                null
-            )
-          : null;
-        const { heirloom: endHeirloom, lineageBias } = deriveHeirloom(
-          endLineage,
-          snakeTraits,
-          endFtue
-        );
-        endLineageBias = lineageBias;
-        genomeCtx = {
-          heirloom: endHeirloom,
-          genePool: composeGenePool(
-            endDynasty,
-            isFreeSession ? 10 : endMasteryLevel,
-            endSeasonalGeneIds,
-            isFreeSession ? null : endGauntletBan,
-            isFreeSession
-          ),
-          prevRunDied,
-          crownAllowed: isFreeSession || endMasteryLevel >= 10,
-          tierCap: ftueTierCap(endFtue),
-          suppressedStrains: gauntletSuppressedStrains(endGauntletBan),
-          splicesUnlocked: endFtue.splicesUnlocked,
-        };
+        if (runContext?.genome) {
+          // THE FAST, HONEST PATH: the exact context the engine received.
+          // Three round trips and every failure mode they carried are gone,
+          // and `verifyOfferTrace` below now replays against the pool,
+          // heirloom, lineage bias and tier cap the offer stream was
+          // actually drawn from rather than a reconstruction of them.
+          endLineageBias = runContext.genome.lineage;
+          genomeCtx = {
+            heirloom: runContext.genome.heirloom,
+            genePool: runContext.genome.genePool,
+            prevRunDied: runContext.genome.prevRunDied,
+            crownAllowed: runContext.genome.crownAllowed,
+            tierCap: runContext.genome.tierCap,
+            suppressedStrains: runContext.genome.suppressedStrains,
+            splicesUnlocked: runContext.genome.splicesUnlocked,
+          };
+        } else {
+          // WP-2.05: `ok: false` is unignorable by construction, and it is a
+          // 503 rather than a shrug. This is the headline DNA-loss path — a
+          // swallowed error here produced `bankedRuns = 0`, hence tierCap 1
+          // and an empty heirloom, hence a smaller `adjustedDna`.
+          const runFacts = await getGenomeRunFacts(supabase, player.id);
+          if (!runFacts.ok) {
+            return await settlementUnavailable(
+              `genome run facts (${runFacts.reason})`,
+              runFacts.error,
+              { playerId: player.id, sessionId }
+            );
+          }
+          const { bankedRuns, prevRunDied, ownedVariants } = runFacts;
+          const endMasteryLevel = levelForXp(masteryXpBefore);
+          const endFtue = deriveFtue(bankedRuns, endMasteryLevel, ownedVariants);
+          const endLineage = usedSnakeRow
+            ? lineageFromRows(
+                usedSnakeRow,
+                (usedSnakeRow.snake_variants as Record<string, unknown> | null) ??
+                  null
+              )
+            : null;
+          const { heirloom: endHeirloom, lineageBias } = deriveHeirloom(
+            endLineage,
+            snakeTraits,
+            endFtue
+          );
+          endLineageBias = lineageBias;
+          genomeCtx = {
+            heirloom: endHeirloom,
+            genePool: composeGenePool(
+              endDynasty,
+              isFreeSession ? 10 : endMasteryLevel,
+              endSeasonalGeneIds,
+              isFreeSession ? null : endGauntletBan,
+              isFreeSession
+            ),
+            prevRunDied,
+            crownAllowed: isFreeSession || endMasteryLevel >= 10,
+            tierCap: ftueTierCap(endFtue),
+            suppressedStrains: gauntletSuppressedStrains(endGauntletBan),
+            splicesUnlocked: endFtue.splicesUnlocked,
+          };
+        }
       }
 
       // Design v2: the client sends the raw food count + how the run ended;
@@ -910,15 +1279,67 @@ export async function POST(request: NextRequest) {
             tierCap: genomeCtx.tierCap,
           });
           if (!offerCheck.ok) {
-            validation.errors.push(
+            // WP-2.05: `appendAdvisory` replaces the hand-set
+            // `validation.valid = false`. This check's own source comment
+            // has called itself ADVISORY since it shipped while the line
+            // below it took the player's eligibility away; now the two
+            // agree, and the helper throws if anyone ever passes a fatal
+            // code through this door.
+            appendAdvisory(
+              validation,
               `OFFER_SEED_MISMATCH: ${offerCheck.mismatches.slice(0, 3).join('; ')}`
             );
-            validation.valid = false;
           }
         }
       }
 
-      if (!validation.valid) {
+      // ---------------------------------------------------------------
+      // The forensic alert (WP-2.05)
+      // ---------------------------------------------------------------
+      // This was a `console.warn` — invisible in production, and the only
+      // trace of a divergence beyond the boolean that was wrongly costing
+      // players their progression. It is now a FINGERPRINTED Sentry issue:
+      // 500 runs diverging the same way group into one issue carrying
+      // claimed-vs-recomputed, the traits, the tier cap, the heirloom and
+      // the picks — which is the forensic job the boolean was doing badly.
+      //
+      // It fires on ANY finding, not just a fatal one. An advisory finding
+      // no longer costs the player anything, so the alert is now the whole
+      // of the response to it, and silence would mean the divergences the
+      // playtest surfaced went back to being invisible.
+      if (validation.errors.length > 0) {
+        const codes = Array.from(
+          new Set(validation.errors.map((error) => validationCodeOf(error)))
+        ).sort();
+        Sentry.captureMessage(
+          `Run validation: ${codes.join(',')} (${session.dynasty})`,
+          {
+            level: validation.valid ? 'warning' : 'error',
+            fingerprint: ['run-validation', String(session.dynasty), ...codes],
+            tags: { wp: 'wp-2.05', dynasty: String(session.dynasty) },
+            extra: {
+              playerId: player.id,
+              sessionId,
+              errors: validation.errors,
+              fatalErrors: validation.fatalErrors,
+              advisoryErrors: validation.advisoryErrors,
+              claimedDna: dna_earned ?? 0,
+              recomputedDna: validation.rawDna,
+              claimedScore: score ?? 0,
+              recomputedScore: validation.adjustedScore,
+              claimedFoodCount: food_count ?? 0,
+              acceptedFoodCount: validation.foodCount,
+              claimedDurationSeconds: duration_seconds ?? 0,
+              storedDurationSeconds: validation.durationSeconds,
+              traits: snakeTraits,
+              tierCap: genomeCtx?.tierCap ?? null,
+              heirloom: genomeCtx?.heirloom ?? null,
+              picks: validation.genome?.picks ?? validation.mutations,
+              claimClamps: validation.claimClamps,
+              runContext: runContextParse.ok ? 'stored' : runContextParse.reason,
+            },
+          }
+        );
         console.warn('Game result validation flags:', {
           playerId: player.id,
           sessionId,
@@ -956,10 +1377,16 @@ export async function POST(request: NextRequest) {
       // This is progression, not commerce: generation only rises by spending
       // DNA on breeding, and DNA is never sold (Rule 3). Score never sees it
       // (Rule 2); Depth does, because Depth is accumulated Yield (§6.2).
+      //
+      // WP-2.05: taken from the run-start context when there is one, so the
+      // generation that pays is the generation the run was STARTED with. A
+      // breed that completes mid-run can no longer change what the run in
+      // flight is worth, in either direction.
       const ascendanceGeneration =
-        typeof usedSnakeRow?.generation === 'number'
+        runContext?.snake.generation ??
+        (typeof usedSnakeRow?.generation === 'number'
           ? usedSnakeRow.generation
-          : 1;
+          : 1);
       const yieldDna = applyAscendanceYield(
         validation.adjustedDna,
         ascendanceGeneration
@@ -998,7 +1425,12 @@ export async function POST(request: NextRequest) {
         score: validation.adjustedScore,
         // Free sessions never earn - the row records a zero payout
         dna_earned: isFreeSession ? 0 : finalDna,
-        duration_seconds: duration_seconds || 0,
+        // WP-2.05: the CLAMPED duration, `min(claim, serverElapsed)`. The
+        // row is read directly by Signal's `endure` objective, so storing a
+        // client claim of 999999 would complete an objective nobody played.
+        // Storing serverElapsed + 10 would hand every run ten free seconds
+        // of it: the skew tolerance governs rejection, not the record.
+        duration_seconds: validation.durationSeconds,
         died: died ?? true,
         victory: victory ?? false,
         extracted: validation.extracted,
@@ -1060,7 +1492,9 @@ export async function POST(request: NextRequest) {
           ? death_cause
           : null;
       const runEventEnvelope = validateRunEvents(run_events, {
-        durationSeconds: duration_seconds || 0,
+        // WP-2.05: the same clamped number the row stores, so a run-event
+        // envelope cannot be bounds-checked against time that did not pass.
+        durationSeconds: validation.durationSeconds,
         foodCount: validation.foodCount,
         died: (died ?? true) === true && !validation.extracted,
         extracted: validation.extracted,
@@ -1138,11 +1572,25 @@ export async function POST(request: NextRequest) {
       // records refresh. The response carries what the run WOULD have earned
       // so the player sees the stakes they practiced for.
       if (isFreeSession) {
-        const { data: freePlayerState } = await supabase
+        // WP-2.05: reported, not fatal. Free Play pays nothing, so this echo
+        // risks nothing - failing the request would refuse a practice run
+        // its recap card for no gain.
+        const { data: freePlayerState, error: freePlayerError } = await supabase
           .from('players')
           .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
           .eq('id', player.id)
-          .single();
+          .maybeSingle();
+        if (freePlayerError) {
+          console.error('Free Play player echo read failed:', {
+            playerId: player.id,
+            sessionId,
+            error: freePlayerError,
+          });
+          Sentry.captureException(
+            new Error(`Free Play player echo failed: ${freePlayerError.message}`),
+            { extra: { playerId: player.id, sessionId } }
+          );
+        }
 
         return NextResponse.json({
           success: true,
@@ -1170,11 +1618,34 @@ export async function POST(request: NextRequest) {
       }
 
       const newDna = player.dna + finalDna;
-      const { data: currentPlayer } = await supabase
+      // WP-2.05 — PRIORITY 1: this read is the Rule 6 violation the CI gate
+      // cannot see.
+      //
+      // It was `const { data: currentPlayer } = await ...` with no error
+      // check. On a transient failure `currentPlayer` is null, and the three
+      // expressions below then evaluate to `total_games_played: 1`,
+      // `total_dna_earned: finalDna` and `high_score: max(0, thisRunScore)` —
+      // a player with 300 runs, 90k lifetime DNA and a 12,000 record is
+      // written back to 1 run, one run's DNA, and this run's score. Three
+      // player-owned scalars, all written DOWNWARD, permanently.
+      //
+      // `verify:constitution`'s owned-row-downward gate cannot catch it
+      // because no payload field is literally decremented: every one of them
+      // is an addition or a `Math.max` over a value that silently became
+      // zero. The only defence is checking the error, so the error is
+      // checked, and the run is retried rather than settled from a blank.
+      const { data: currentPlayer, error: currentPlayerError } = await supabase
         .from('players')
         .select('total_games_played, high_score, total_dna_earned')
         .eq('id', player.id)
         .single();
+      if (currentPlayerError || !currentPlayer) {
+        return await settlementUnavailable(
+          'player scalars',
+          currentPlayerError ?? new Error('player row missing at settlement'),
+          { playerId: player.id, sessionId, alreadyStampedEnd: true }
+        );
+      }
 
       // FINDING F-1 (WP-0.06): this write had no `validation.valid` gate, so a
       // run that FAILED server validation still set a permanent personal
@@ -1187,12 +1658,23 @@ export async function POST(request: NextRequest) {
       // existing record - however it was set - is preserved exactly (Rule 6:
       // what a player has is permanent, and this route is not the place to
       // decide a past record was undeserved).
-      const priorHighScore = currentPlayer?.high_score || 0;
+      //
+      // WP-2.05 changes what "invalid" means here, and this is the whole
+      // point of the package. `validation.valid` now means NO FATAL ERROR —
+      // the server could bound the run's physics — rather than "no finding at
+      // all". A run that merely diverged from its own claim, or had a claim
+      // clamped, or offered a pick the client legally showed, keeps its
+      // record. Only a run the server cannot bound is refused one.
+      //
+      // The reads below are no longer `?.` fallbacks: the 503 above
+      // guarantees `currentPlayer`, so none of these three can silently
+      // evaluate from zero.
+      const priorHighScore = currentPlayer.high_score || 0;
       const newHighScore = validation.valid
         ? Math.max(priorHighScore, validation.adjustedScore)
         : priorHighScore;
-      const gamesPlayedCount = (currentPlayer?.total_games_played || 0) + 1;
-      const newTotalDnaEarned = (currentPlayer?.total_dna_earned || 0) + finalDna;
+      const gamesPlayedCount = (currentPlayer.total_games_played || 0) + 1;
+      const newTotalDnaEarned = (currentPlayer.total_dna_earned || 0) + finalDna;
 
       const { error: rewardUpdateError } = await supabase
         .from('players')
@@ -1284,11 +1766,26 @@ export async function POST(request: NextRequest) {
           )
         : null;
 
-      const { data: updatedPlayer } = await supabase
+      // WP-2.05: reported, not fatal, and this one is load-bearing that it
+      // stays that way. The rewards have ALREADY been granted above, so
+      // answering 5xx here would make the outbox replay a settled run into
+      // the 409 wall and show the player an error for a payout that landed.
+      const { data: updatedPlayer, error: updatedPlayerError } = await supabase
         .from('players')
         .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
         .eq('id', player.id)
-        .single();
+        .maybeSingle();
+      if (updatedPlayerError) {
+        console.error('Post-settlement player echo read failed:', {
+          playerId: player.id,
+          sessionId,
+          error: updatedPlayerError,
+        });
+        Sentry.captureException(
+          new Error(`Post-settlement player echo failed: ${updatedPlayerError.message}`),
+          { extra: { playerId: player.id, sessionId } }
+        );
+      }
 
       // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
       // (free sessions returned above; deaths grant nothing). The XP is

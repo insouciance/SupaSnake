@@ -98,9 +98,15 @@ export const GAME_CONFIG = deepFreeze({
   /**
    * Game Session
    */
+  // WP-2.05 deleted `maxDuration: 600`. A flat ten-minute wall marked every
+  // long, careful run invalid — the tactical-hold play the extraction
+  // mechanic exists to reward — and it bounded nothing that the validator's
+  // comparison against the session's own `server_started_at` does not bound
+  // better. Owner ruling, 2026-07-26: a long run is a good run. Do not
+  // reintroduce a duration ceiling here; the bound belongs in the validator,
+  // against observed server time.
   session: {
     victoryScore: 100,               // Score to "win"
-    maxDuration: 600,                // 10 minutes max (seconds)
     saveInterval: 5000,              // Autosave every 5s (ms)
   },
 
