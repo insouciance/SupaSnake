@@ -85,7 +85,7 @@ export function isMissingClanRework(
   ) {
     return true;
   }
-  return /clan_week_pairings|clan_rivalries|clan_laurels|clan_membership_history|invite_code|disbanded_at|found_clan|join_clan_by_code|leave_clan|remove_clan_member|transfer_clan_ownership|rotate_clan_invite_code|set_clan_heraldry|apply_clan_week_pairings|settle_clan_week_pairings|clan_tenure_since/i.test(
+  return /clan_week_pairings|clan_rivalry_memory|clan_laurels|clan_membership_history|invite_code|disbanded_at|found_clan|join_clan_by_code|leave_clan|remove_clan_member|transfer_clan_ownership|rotate_clan_invite_code|set_clan_heraldry|apply_clan_week_pairings|settle_clan_week_pairings|clan_tenure_since/i.test(
     error.message || ''
   );
 }
@@ -353,7 +353,7 @@ export async function loadPairingCandidates(
   // season boundary (§9.4 — silently, no forfeit recorded).
   const standingRival = new Map<string, string>();
   const { data: rivalries, error: rivalryError } = await supabase
-    .from('clan_rivalries')
+    .from('clan_rivalry_memory')
     .select('clan_low_id, clan_high_id, last_paired_at, declined_at')
     .is('declined_at', null);
   if (rivalryError) {
@@ -764,7 +764,7 @@ async function loadRivalryMemory(
   rivalClanId: string | null
 ): Promise<ClanHuntRivalry | null> {
   const query = supabase
-    .from('clan_rivalries')
+    .from('clan_rivalry_memory')
     .select(
       'clan_low_id, clan_high_id, meetings, wins_low, wins_high, draws, streak_clan_id, streak_length, closest_margin, largest_margin, first_paired_at, last_paired_at'
     );

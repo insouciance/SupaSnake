@@ -57,7 +57,7 @@
 --      cap in SQL rather than in a route that could be bypassed.
 --
 --   6. PAIRED WEEKS REPLACE DUELS (§9.4). `clan_week_pairings`,
---      `clan_rivalries` and `clan_laurels` ride the Serpent week WP-1.01
+--      `clan_rivalry_memory` and `clan_laurels` ride the Serpent week WP-1.01
 --      already settles. The primary weekly outcome stays self-referential;
 --      pairing is a layer that happens only when a symmetric rival exists.
 --      Outcomes pay laurels and Chronicle entries. They pay NOTHING ELSE, and
@@ -118,7 +118,7 @@
 --     DROP FUNCTION IF EXISTS clan_tenure_since(UUID, UUID);
 --     DROP FUNCTION IF EXISTS generate_clan_invite_code();
 --     DROP TABLE IF EXISTS clan_laurels;
---     DROP TABLE IF EXISTS clan_rivalries;
+--     DROP TABLE IF EXISTS clan_rivalry_memory;
 --     DROP TABLE IF EXISTS clan_week_pairings;
 --     DROP TABLE IF EXISTS clan_membership_history;
 --     ALTER TABLE clans DROP COLUMN IF EXISTS invite_code,
@@ -1020,12 +1020,25 @@ COMMENT ON TABLE clan_week_pairings IS
   'Constitution §9.4: the rival LAYER on a Serpent week. A clan with no symmetric rival simply has no row, which is not a failure state — the primary weekly outcome is self-referential and resolves either way.';
 
 /**
- * Rivalry memory (§9.4). Every column here is a RECOMPUTE over the settled
+ * Rivalry memory (§9.4).
+ *
+ * NAME NOTE (gate finding, 2026-07-26). This table was originally written as
+ * `clan_rivalries`, which collides with the duel-derived VIEW of that name
+ * created by migration 020 (`CREATE OR REPLACE VIEW clan_rivalries`). Because
+ * a relation of that name already exists, `CREATE TABLE IF NOT EXISTS` was a
+ * silent no-op and the very next statement — `CREATE INDEX ... ON
+ * clan_rivalries` — aborted the whole migration with SQLSTATE 42809, "cannot
+ * create index on relation ... this operation is not supported for views".
+ * The failure was invisible to the shape tests, which read this file as text
+ * and never read 020. Renaming the new table is the fix that honours point 7
+ * of this header: the gated Gauntlet's view keeps its name and its state.
+ *
+ * Every column here is a RECOMPUTE over the settled
  * rows of `clan_week_pairings`, never an accumulator, so re-settling a week
  * converges instead of compounding — the same argument that makes WP-1.01's
  * Serpent settlement idempotent.
  */
-CREATE TABLE IF NOT EXISTS clan_rivalries (
+CREATE TABLE IF NOT EXISTS clan_rivalry_memory (
   clan_low_id     UUID NOT NULL REFERENCES clans(id) ON DELETE CASCADE,
   clan_high_id    UUID NOT NULL REFERENCES clans(id) ON DELETE CASCADE,
   meetings        INT  NOT NULL DEFAULT 0 CHECK (meetings >= 0),
@@ -1049,8 +1062,8 @@ CREATE TABLE IF NOT EXISTS clan_rivalries (
   CONSTRAINT clan_rivalry_ordered CHECK (clan_low_id < clan_high_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_clan_rivalries_low  ON clan_rivalries (clan_low_id);
-CREATE INDEX IF NOT EXISTS idx_clan_rivalries_high ON clan_rivalries (clan_high_id);
+CREATE INDEX IF NOT EXISTS idx_clan_rivalry_memory_low  ON clan_rivalry_memory (clan_low_id);
+CREATE INDEX IF NOT EXISTS idx_clan_rivalry_memory_high ON clan_rivalry_memory (clan_high_id);
 
 /**
  * Laurels (§9.4: "Paired outcomes pay heraldic laurels and Chronicle
@@ -1318,7 +1331,7 @@ BEGIN
   SELECT COUNT(*) INTO v_chronicle FROM entries;
 
   -- ---- rivalry memory: a recompute, never an increment --------------------
-  INSERT INTO clan_rivalries AS r (
+  INSERT INTO clan_rivalry_memory AS r (
     clan_low_id, clan_high_id, meetings, wins_low, wins_high, draws,
     streak_clan_id, streak_length, closest_margin, largest_margin,
     first_paired_at, last_week_id, last_paired_at
@@ -1395,17 +1408,17 @@ GRANT EXECUTE ON FUNCTION settle_clan_week_pairings(UUID) TO service_role;
 
 ALTER TABLE clan_membership_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clan_week_pairings      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clan_rivalries          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clan_rivalry_memory          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clan_laurels            ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON clan_membership_history FROM anon, authenticated;
 REVOKE ALL ON clan_week_pairings      FROM anon, authenticated;
-REVOKE ALL ON clan_rivalries          FROM anon, authenticated;
+REVOKE ALL ON clan_rivalry_memory          FROM anon, authenticated;
 REVOKE ALL ON clan_laurels            FROM anon, authenticated;
 
 GRANT SELECT, INSERT         ON clan_membership_history TO service_role;
 GRANT SELECT, INSERT, UPDATE ON clan_week_pairings      TO service_role;
-GRANT SELECT, INSERT, UPDATE ON clan_rivalries          TO service_role;
+GRANT SELECT, INSERT, UPDATE ON clan_rivalry_memory          TO service_role;
 GRANT SELECT, INSERT         ON clan_laurels            TO service_role;
 
 -- ===========================================================================
