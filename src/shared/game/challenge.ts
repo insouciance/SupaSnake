@@ -37,66 +37,61 @@
  */
 
 import { fnv1a, mulberry32 } from '@/shared/game/offerGravity';
+import {
+  SIGNAL_EPOCH_UTC,
+  signalDayIndex,
+  signalDayKey,
+  signalDaySeed,
+} from '@/shared/game/signal';
 
 // ---------------------------------------------------------------------------
-// The Signal calendar
+// The Signal calendar — BORROWED, NEVER REDEFINED
 // ---------------------------------------------------------------------------
+
+/**
+ * There is exactly ONE Signal calendar, and it is `signal.ts`.
+ *
+ * This module used to carry its own epoch, day key, day index and day seed,
+ * written before WP-1.03 landed. Two implementations of "which day is it"
+ * disagreed the moment they met: the index was off by one and the seed was
+ * FNV-1a over a bare `YYYY-MM-DD` rather than over the domain-separated
+ * `signal:<day>` that `signal.ts`, the server resolver and
+ * `049_world_signal.sql` all hash. A challenge link therefore advertised a
+ * seed the engine would never play — the exact failure §11.3 forbids ("drops
+ * the visitor onto the *same seed*").
+ *
+ * So nothing about the calendar is defined here any more. The day boundary,
+ * the day index and the day seed are imported from `signal.ts` and used
+ * verbatim; the only functions below are the two INVERSES a URL needs
+ * (`/s/<n>` → day → seed), and both are expressed in terms of the imported
+ * derivation. `signal.calendar.test.ts` sweeps both modules over DST
+ * boundaries, month ends and year ends and fails if they ever part company
+ * again.
+ */
 
 const DAY_MS = 86_400_000;
 
 /**
- * Signal day epoch: Monday 2024-01-01 00:00 UTC — the same instant as
- * `SERPENT_EPOCH_UTC` in `serpent.ts`.
+ * The inverse of `signalDayIndex`: Signal #N → the UTC date key it names.
  *
- * Sharing the epoch is not decorative. §7.1's cadence stack has the daily
- * Signal and the weekly Serpent running on one calendar, and Signal day
- * `7 * n` is then always the Monday that opens Serpent week `n`. Anything
- * else and "Signal #214" and "week of 2024-08-05" would drift apart in the
- * two places a player ever sees them side by side.
- *
- * Day 1 is the epoch itself: a "Signal #0" reads as a bug, not a day.
+ * The numbering is `signal.ts`'s, unshifted — day 0 IS the epoch,
+ * 2024-01-01. WP-1.08 originally displayed a 1-based number, on the argument
+ * that "Signal #0 reads as a bug". Carrying a presentation offset would have
+ * meant the number in a URL was not the number `signalDayIndex()` returns,
+ * which is precisely the trap that produced this defect: anyone writing
+ * `/s/${signalDayIndex()}` would have linked yesterday's board. One number,
+ * no offset, nothing to keep in sync.
  */
-export const SIGNAL_EPOCH_UTC = Date.UTC(2024, 0, 1);
-
-/** The day's stable key: its UTC date as `YYYY-MM-DD`. */
-export function signalDayKey(at: Date | number = Date.now()): string {
-  const d = new Date(at);
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-  )
-    .toISOString()
-    .slice(0, 10);
-}
-
-/** `YYYY-MM-DD` → the Date it names at 00:00 UTC. */
-export function signalDayKeyToDate(dayKey: string): Date {
-  return new Date(`${dayKey}T00:00:00.000Z`);
-}
-
-/** The day's public number — the `214` in `supasnake.com/s/214` (§11.3). */
-export function signalDayIndex(at: Date | number = Date.now()): number {
-  const midnight = signalDayKeyToDate(signalDayKey(at)).getTime();
-  return Math.round((midnight - SIGNAL_EPOCH_UTC) / DAY_MS) + 1;
-}
-
-/** The inverse: Signal #N → the UTC date key it names. */
 export function signalIndexToDayKey(index: number): string {
-  return signalDayKey(SIGNAL_EPOCH_UTC + (Math.floor(index) - 1) * DAY_MS);
-}
-
-/**
- * The day's seed, as it is displayed and as the engine consumes it:
- * `D` + 8 hex digits of FNV-1a over the day key. Identical shape and
- * derivation to `serpentWeekSeed`, which uses `S`.
- */
-export function signalDaySeed(dayKey: string): string {
-  return `D${(fnv1a(dayKey) >>> 0).toString(16).padStart(8, '0')}`;
+  return signalDayKey(SIGNAL_EPOCH_UTC + Math.floor(index) * DAY_MS);
 }
 
 /** Signal #N → the seed every player in the world plays that day on. */
 export function signalSeedForIndex(index: number): string {
   return signalDaySeed(signalIndexToDayKey(index));
 }
+
+export { SIGNAL_EPOCH_UTC, signalDayIndex, signalDayKey, signalDaySeed };
 
 // ---------------------------------------------------------------------------
 // The seeded run
@@ -252,13 +247,20 @@ export function parseHandle(raw: unknown): string | null {
   return typeof raw === 'string' && HANDLE_PATTERN.test(raw) ? raw : null;
 }
 
-/** A Signal day number that a URL segment may legally name. */
+/**
+ * A Signal day number that a URL segment may legally name.
+ *
+ * Zero is legal: with the authoritative numbering (`signalDayIndex`) day 0 is
+ * the epoch, 2024-01-01, a real archive day whose card and seed derive
+ * exactly like any other. Negative days are not — the epoch is where the
+ * public calendar starts, and `-3` in a path is a probe, not a day.
+ */
 export function parseSignalDay(raw: unknown): number | null {
   if (typeof raw !== 'string' && typeof raw !== 'number') return null;
   const text = String(raw);
   if (!/^\d{1,7}$/.test(text)) return null;
   const day = Number(text);
-  return day >= 1 ? day : null;
+  return day >= 0 ? day : null;
 }
 
 export interface ChallengeQuery {
