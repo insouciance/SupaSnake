@@ -43,6 +43,12 @@ export interface RunSetupPanelProps {
   /** Label of the primary action, e.g. "Start run". */
   startLabel: string;
   /**
+   * The dare, when this run was opened from a challenge link (§11.3). One
+   * line, above START, so the visitor knows what they are playing before
+   * they play it. Display only — it reaches no payout and no leaderboard.
+   */
+  challengeNote?: string | null;
+  /**
    * Test id of the primary action. Mode-dependent (`earn-start`,
    * `anomaly-start`, `free-play-start`) so the shipped e2e journeys address
    * the same button under either side of the flag.
@@ -67,6 +73,7 @@ export function RunSetupPanel({
   modeLabel,
   aimLabel,
   startLabel,
+  challengeNote,
   startTestId,
   isStarting,
   onStart,
@@ -128,6 +135,15 @@ export function RunSetupPanel({
         </p>
       ) : (
         <p className="font-body text-beige/70">Loading your snake...</p>
+      )}
+
+      {challengeNote && (
+        <p
+          className="panel inline-flex px-4 py-2 font-body text-sm text-cosmic"
+          data-testid="challenge-note"
+        >
+          {challengeNote}
+        </p>
       )}
 
       {startError && (

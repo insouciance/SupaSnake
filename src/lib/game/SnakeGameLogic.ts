@@ -19,10 +19,19 @@
  *   chaining, and wrap phases where the arena edges cycle between wrapping
  *   (open) and killing (closed) with a telegraph before each transition.
  *
- * RNG discipline: the injectable rng drives everything that tests need to
- * be deterministic (exit/mutation cadence rolls, mutation offers, mutation
- * tile placement, constellation glyphs). Food cell placement stays on
- * Math.random - placement affects where things are, never what they pay.
+ * RNG discipline: the injectable rng drives EVERY stochastic decision the
+ * engine makes - exit/mutation cadence rolls, mutation offers, exit,
+ * mutation AND food tile placement, constellation glyphs. There is no
+ * `Math.random()` call in this file; `this.rng` defaults to it, and that
+ * default is the only place the global source is reached.
+ *
+ * Food placement used to be the one exception, on the argument that
+ * "placement affects where things are, never what they pay" (finding F-12).
+ * That argument is wrong for replay: where the food is decides where the
+ * player must steer, so two runs on one seed diverged on the first wave and
+ * a challenge link could not put two players on the same board
+ * (Constitution §11.3 - "drops the visitor onto the *same seed*"). Seed a
+ * run via `options.rng` and the whole run is reproducible.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -2194,7 +2203,11 @@ export class SnakeGameLogic {
         : 0;
   }
 
-  /** Rejection-sample one food cell (optionally clustered near an anchor). */
+  /**
+   * Rejection-sample one food cell (optionally clustered near an anchor).
+   * Injectable rng, like every other placement sampler here (F-12): a
+   * seeded run must lay out identical food waves on every replay.
+   */
   private sampleFoodCell(placed: Position[], anchor: Position | null): Position {
     const radius = this.ruleset.constellation?.groupRadius ?? 4;
     let position: Position = { x: 0, y: 0, z: 0 };
@@ -2207,9 +2220,9 @@ export class SnakeGameLogic {
         // Cluster around the anchor; fall back to anywhere if the
         // neighborhood is too crowded
         position = {
-          x: anchor.x + Math.floor(Math.random() * (2 * radius + 1)) - radius,
+          x: anchor.x + Math.floor(this.rng() * (2 * radius + 1)) - radius,
           y: 0,
-          z: anchor.z + Math.floor(Math.random() * (2 * radius + 1)) - radius,
+          z: anchor.z + Math.floor(this.rng() * (2 * radius + 1)) - radius,
         };
         if (
           position.x < 0 ||
@@ -2221,9 +2234,9 @@ export class SnakeGameLogic {
         }
       } else {
         position = {
-          x: Math.floor(Math.random() * this.gridSize),
+          x: Math.floor(this.rng() * this.gridSize),
           y: 0,
-          z: Math.floor(Math.random() * this.gridSize),
+          z: Math.floor(this.rng() * this.gridSize),
         };
       }
 
