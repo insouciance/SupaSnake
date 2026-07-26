@@ -292,8 +292,18 @@ CREATE INDEX IF NOT EXISTS idx_signal_milestones_player
 -- This function's job is to make that derivation a ROW, exactly once, and then
 -- to defend it:
 --
---   * ON CONFLICT DO NOTHING — the first writer wins. Two players starting a
---     run at 00:00:00 UTC cannot produce two days or two seeds.
+--   * ON CONFLICT DO UPDATE (a no-op self-assignment) — the first writer
+--     wins. Two players starting a run at 00:00:00 UTC cannot produce two
+--     days or two seeds.
+--
+--     Why a no-op UPDATE rather than DO NOTHING: DO NOTHING does not wait for
+--     the conflicting transaction, so the loser of a 00:00 UTC race would
+--     fall through to a SELECT that cannot yet see the winner's uncommitted
+--     row and would raise "could not resolve day". A no-op DO UPDATE takes
+--     the row lock, blocks until the winner commits, and then RETURNS the
+--     winning row — which is the answer both callers need. The day rolls over
+--     for the whole world at once, so this race is the common case at the
+--     boundary, not a rare one.
 --   * If a day already exists with a DIFFERENT seed, modifier or objective
 --     set, the function RAISEs. That can only mean the derivation changed
 --     under a live day, which would silently re-write the conditions players
@@ -339,9 +349,14 @@ BEGIN
     p_day, p_starts_at, p_ends_at, p_seed, p_modifier,
     COALESCE(p_strain_tilt, ''), COALESCE(p_objectives, '[]'::JSONB)
   )
-  ON CONFLICT (day) DO NOTHING;
-
-  SELECT * INTO v_row FROM signal_days d WHERE d.day = p_day;
+  -- A NO-OP self-assignment, not DO NOTHING. It changes no column, so the
+  -- stored day is still immutable; what it buys is the row lock, so a
+  -- concurrent caller at the 00:00 UTC boundary WAITS for the winner and then
+  -- reads the winning row instead of reading nothing. RETURNING then gives the
+  -- row as STORED (never EXCLUDED), which is exactly what the drift tripwire
+  -- below has to compare the caller's derivation against.
+  ON CONFLICT (day) DO UPDATE SET day = signal_days.day
+  RETURNING * INTO v_row;
 
   IF v_row.id IS NULL THEN
     RAISE EXCEPTION 'ensure_signal_day could not resolve day %', p_day;
@@ -434,10 +449,15 @@ BEGIN
 
   INSERT INTO signal_objective_runs (day_id, player_id, objective_id, target, session_id)
   VALUES (p_day_id, p_player_id, p_objective_id, p_target, p_session_id)
-  ON CONFLICT (day_id, player_id) DO NOTHING;
-
-  SELECT * INTO v_row FROM signal_objective_runs r
-  WHERE r.day_id = p_day_id AND r.player_id = p_player_id;
+  -- A NO-OP self-assignment for the same reason `ensure_signal_day` uses one:
+  -- DO NOTHING would not wait for a concurrent claim of the SAME day by the
+  -- same player (a double-tapped Launch), and the loser would then read
+  -- nothing and raise. This blocks, then returns the winner's row — whose
+  -- `session_id` is the FIRST session, so `owns_attempt` is false for the
+  -- loser and the second run is an ordinary charged run. Nothing is
+  -- overwritten: the objective and target the player first chose stand.
+  ON CONFLICT (day_id, player_id) DO UPDATE SET day_id = signal_objective_runs.day_id
+  RETURNING * INTO v_row;
 
   IF v_row.id IS NULL THEN
     RAISE EXCEPTION 'begin_signal_objective_run could not resolve the attempt for day %', p_day_id;
