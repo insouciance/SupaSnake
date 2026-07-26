@@ -15,7 +15,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "gate:phase1": "jest --runInBand --testMatch \"**/src/gate/**/*.gate.test.ts\""
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
