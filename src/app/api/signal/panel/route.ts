@@ -72,7 +72,11 @@ const supabase = createClient(
 );
 
 /** The published shape, built from the engine's state and nothing else. */
-export function toSignalPanel(state: SignalObjectiveState) {
+// Not exported: a Next.js App Router route file may only export HTTP method
+// handlers and a small set of known config fields. Exporting a helper here
+// fails the production build with "is not a valid Route export field" - which
+// `tsc --noEmit` does not catch, only `next build` does.
+function toSignalPanel(state: SignalObjectiveState) {
   const reached = state.milestonesReached;
   const next =
     SIGNAL_MILESTONES.find((milestone) => !reached.includes(milestone)) ?? null;
