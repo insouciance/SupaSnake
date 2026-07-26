@@ -1,6 +1,6 @@
 /**
  * Push subscriptions — consent in, consent out (Constitution Rule 5, Rule 7,
- * Rule 11; migration 053).
+ * Rule 11; migration 052).
  *
  * WP-0.08 set the consent standard for this codebase with the Dispatch's
  * double opt-in: an address is mailable only when it carries an affirmative,
@@ -50,7 +50,7 @@ interface SupabaseErrorLike {
 }
 
 /**
- * Is this failure just "migration 053 has not been applied here yet"?
+ * Is this failure just "migration 052 has not been applied here yet"?
  * Same test the Signal and Serpent modules use, against this feature's names.
  */
 export function isMissingPushInfra(error: SupabaseErrorLike | null | undefined): boolean {

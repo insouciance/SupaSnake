@@ -22,7 +22,7 @@
  *   6. THE CLAIM. One `push_dispatch_log` row per (trigger, occurrence,
  *      subscription), inserted `ON CONFLICT DO NOTHING RETURNING id` BEFORE
  *      the POST. A retried cron, a double fire or a hand-replay claims
- *      nothing and sends nothing. Migration 053's CHECK on `trigger_id` makes
+ *      nothing and sends nothing. Migration 052's CHECK on `trigger_id` makes
  *      this the fourth and final place a third trigger is refused: an id the
  *      constraint rejects cannot be claimed, and an unclaimed notification is
  *      never delivered.

@@ -1,4 +1,4 @@
--- Migration 053: push subscriptions and the push dispatch ledger (WP-2.04)
+-- Migration 052: push subscriptions and the push dispatch ledger (WP-2.04)
 --
 -- ############################################################################
 -- ##  NOT APPLIED. This file was written by WP-2.04 and has never been run   ##

@@ -29,7 +29,7 @@
  *   anything arriving from outside the module (a cron query parameter, a
  *   stored row), so an unknown id is rejected before it can reach a send.
  *
- * Layer 4 — THE DATABASE. Migration 053's `push_dispatch_log.trigger_id`
+ * Layer 4 — THE DATABASE. Migration 052's `push_dispatch_log.trigger_id`
  *   carries a CHECK constraint enumerating these same two strings, and the
  *   send path claims a log row BEFORE it delivers. A third trigger therefore
  *   cannot even be recorded, and since it cannot be recorded it cannot be
