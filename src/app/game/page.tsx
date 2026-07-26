@@ -309,6 +309,13 @@ export default function GamePage() {
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
+  // The run's tactical-hold budget, mirrored from the engine (which owns it).
+  // Two plain numbers rather than an object so the per-tick sync bails out on
+  // an unchanged value instead of re-rendering the HUD every frame.
+  const [holdsUsed, setHoldsUsed] = useState(0);
+  const [holdsTotal, setHoldsTotal] = useState<number>(
+    GAME_CONFIG.session.holds.base
+  );
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile control scheme: flick-anywhere is the default, D-pad the
@@ -848,6 +855,11 @@ export default function GamePage() {
     void fetchCodex(session.access_token);
   }, [session?.access_token, isPlaying, genomeFtue?.splicesUnlocked, fetchCodex]);
 
+  const holdBudget = useMemo(
+    () => ({ remaining: Math.max(0, holdsTotal - holdsUsed), total: holdsTotal }),
+    [holdsUsed, holdsTotal]
+  );
+
   const discoveredSplices = useMemo<SpliceId[]>(
     () => codexData?.splices.filter((splice) => splice.discovered).map((splice) => splice.id) ?? [],
     [codexData]
@@ -946,7 +958,10 @@ export default function GamePage() {
     ) {
       return;
     }
-    game.pause();
+    // 'decision': the board is being re-armed around the run's OWN choice
+    // (gene / portal / surge). Rule 1 protects those, so they never spend a
+    // tactical hold - and this hold is not refusable either.
+    game.pause('decision');
     setAwaitingResumeInput(true);
   }, []);
 
@@ -1449,6 +1464,8 @@ export default function GamePage() {
       setDirection(state.direction);
       setQueuedDirections(queued);
       setFoodEaten(state.foodEaten);
+      setHoldsUsed(state.holdsUsed);
+      setHoldsTotal(state.holdBudget);
       setExitTile(state.exitTile, state.exitTicksRemaining);
       // Twin Exits (anomaly): the second portal of the pair
       setExitTile2(state.exitTile2);
@@ -1815,8 +1832,9 @@ export default function GamePage() {
         e.preventDefault();
         if (HUD_COCKPIT_V1_ENABLED) {
           if (!isPaused && !pauseRearmingRef.current) {
-            gameRef.current?.pause();
-            setAwaitingResumeInput(true);
+            // The engine refuses the hold when the budget is spent; only
+            // arm the resume gate if the board actually stopped.
+            if (gameRef.current?.pause()) setAwaitingResumeInput(true);
           }
         } else if (isPaused) {
           setAwaitingResumeInput((armed) => !armed);
@@ -1907,8 +1925,8 @@ export default function GamePage() {
       return;
     }
     if (pauseRearmingRef.current) return;
-    gameRef.current?.pause();
-    if (HUD_COCKPIT_V1_ENABLED) setAwaitingResumeInput(true);
+    const held = gameRef.current?.pause() ?? false;
+    if (HUD_COCKPIT_V1_ENABLED && held) setAwaitingResumeInput(true);
   }, [awaitingResumeInput]);
 
   const handleResume = useCallback(() => {
@@ -2088,6 +2106,7 @@ export default function GamePage() {
     score,
     dna: dnaCollected,
     charge,
+    holds: isPlaying ? holdBudget : null,
     bankDna: previewOutcome(true, activeAnomalyId),
     crashDna: previewOutcome(false, activeAnomalyId),
     comboMultiplier,
@@ -2395,6 +2414,24 @@ export default function GamePage() {
               earning the first food never moves or resizes the board. */}
           {isPlaying && (
             <div className="game-hud-ticker flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
+          {/* Tactical holds. Always present while a run is live, never only
+              once it is spent - a budget you discover by hitting it is a
+              trap, and the whole point of the cost being stated. */}
+          <div
+            data-testid="hold-budget"
+            data-spent={holdBudget.remaining === 0 ? 'true' : 'false'}
+            aria-label={`Tactical holds ${holdBudget.remaining} of ${holdBudget.total}`}
+            className={`flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border bg-void/80 backdrop-blur-md ${
+              holdBudget.remaining === 0
+                ? 'border-strike-red/60 text-strike-red'
+                : 'border-scale-blue-light/50 text-beige/70'
+            }`}
+          >
+            <span className="uppercase tracking-wider">Holds</span>
+            <span className="font-mono font-bold tabular-nums">
+              {holdBudget.remaining}/{holdBudget.total}
+            </span>
+          </div>
           {/* Extraction bank preview: what this run pays banked vs crashed
               (mutation-aware: Mirror Wager / Compound Interest / Phoenix
               reshape the outcome multipliers live). Subtle by default;

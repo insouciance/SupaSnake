@@ -268,10 +268,25 @@ export interface GameState {
   isPlaying: boolean;
   isGameOver: boolean;
   isPaused: boolean;
+  /** Tactical holds spent this run (choice holds never count - Rule 1). */
+  holdsUsed: number;
+  /** Tactical holds this run has earned, including its length bonuses. */
+  holdBudget: number;
   isDeathSequence: boolean;
   startTime: number | null;
   deathPosition: Position | null;
 }
+
+/**
+ * Why the board is being held.
+ *
+ * `'tactical'` is the player choosing to stop and think - a real resource,
+ * metered against the run's hold budget. `'decision'` is the board being
+ * held around one of the run's OWN decisions (a gene offer, a portal, a
+ * surge, or the re-arm immediately after one resolves); Inviolable Rule 1
+ * protects those, so they are always free.
+ */
+export type HoldKind = 'tactical' | 'decision';
 
 /** Payload of the 'gameOver' event - one event for both endings. */
 export interface GameOverData {
@@ -507,6 +522,13 @@ export class SnakeGameLogic {
    * Cleared by `applyShedVisuals`; never read anywhere else.
    */
   private shedRemovedCells = new Map<ShedEvent, Position[]>();
+
+  /**
+   * True while the run was opened from an authored board (Training). Such
+   * runs are scripted teaching, not scored play, so they are exempt from
+   * the tactical-hold budget.
+   */
+  private drivenRun = false;
   /** Offer stream counter (cadence + infuse offers share it). */
   private offerIndex = 0;
   /** Offer trace shipped in the genome payload (advisory verification). */
@@ -766,6 +788,8 @@ export class SnakeGameLogic {
       isPlaying: false,
       isGameOver: false,
       isPaused: false,
+      holdsUsed: 0,
+      holdBudget: GAME_CONFIG.session.holds.base,
       isDeathSequence: false,
       startTime: null,
       deathPosition: null,
@@ -780,6 +804,7 @@ export class SnakeGameLogic {
   }
 
   private beginRun(opening: DrivenStartState | null): void {
+    this.drivenRun = opening !== null;
     const centerX = Math.floor(this.gridSize / 2);
     const centerZ = Math.floor(this.gridSize / 2);
 
@@ -830,6 +855,7 @@ export class SnakeGameLogic {
     // (heirloom points alone reach the minor tier) did nothing until the
     // first food re-derived the speed through this same helper.
     this.speed = this.effectiveSpeedForFood(0);
+    this.refreshHoldBudget();
     this.spawnFoods();
     if (opening) {
       this.state.snake = opening.snake.map((cell) => ({ ...cell, y: 0 }));
@@ -1115,8 +1141,26 @@ export class SnakeGameLogic {
    * overlay owns the freeze, and allowing pause underneath would let the
    * pause menu fight the choice UI. Buffered turns are cleared so resuming
    * can never execute an old command before the player's newly planned move.
+   *
+   * A `'tactical'` hold - the player deliberately stopping the board to
+   * think - spends one of the run's holds and is REFUSED once the budget is
+   * gone; that refusal is the bound that replaced `session.maxDuration`.
+   *
+   * A `'decision'` hold is free, always. It is how the page re-arms the
+   * resume gate after a gene, portal or surge decision resolves: the run's
+   * own decisions are protected by Inviolable Rule 1 and must never cost
+   * the player a resource. The engine cannot infer which is which - the
+   * choice flags are already cleared by the time the re-arm runs - so the
+   * caller states it, and `'tactical'` is the default so a new call site
+   * has to opt OUT of paying rather than remember to opt in.
+   *
+   * Driven runs (Training) are never metered: a tutorial that runs out of
+   * holds teaches nothing, and no Training pause reaches a leaderboard.
+   *
+   * Returns whether the board is now held, so a caller can keep its resume
+   * UI in step with an outcome it does not control.
    */
-  pause(): void {
+  pause(kind: HoldKind = 'tactical'): boolean {
     if (
       !this.state.isPlaying ||
       this.state.isGameOver ||
@@ -1125,11 +1169,31 @@ export class SnakeGameLogic {
       this.state.pendingPortalChoice !== null ||
       this.state.pendingSurgeChoice
     ) {
-      return;
+      return false;
+    }
+    if (kind === 'tactical' && !this.drivenRun) {
+      this.refreshHoldBudget();
+      if (this.state.holdsUsed >= this.state.holdBudget) return false;
+      this.state.holdsUsed += 1;
     }
     this.directionQueue = [];
     this.state.isPaused = true;
     this.emit('pause');
+    return true;
+  }
+
+  /**
+   * Grow the hold budget as the body reaches the lengths that make it hard
+   * to steer. Earned holds are never taken back - a body that sheds past a
+   * threshold keeps what reaching it paid for, which also keeps the budget
+   * from ever dropping below what the player has already spent.
+   */
+  private refreshHoldBudget(): void {
+    let budget: number = GAME_CONFIG.session.holds.base;
+    for (const threshold of GAME_CONFIG.session.holds.bonusAtLengths) {
+      if (this.state.snake.length >= threshold) budget += 1;
+    }
+    this.state.holdBudget = Math.max(this.state.holdBudget, budget);
   }
 
   /**
@@ -1427,6 +1491,9 @@ export class SnakeGameLogic {
       }
 
       this.speed = this.effectiveSpeedForFood(n);
+      // The body only ever grows on an eat, so this is the one place a
+      // length threshold can newly grant a hold.
+      this.refreshHoldBudget();
 
       // Remove the eaten food, then VOLT Arc Lightning may auto-collect
       // up to 2 more foods within 3 cells (full value, +1 segment each);
@@ -2142,6 +2209,7 @@ export class SnakeGameLogic {
       this.state.score += scoreValue;
       this.applyShedVisuals(arcSheds);
       this.speed = this.effectiveSpeedForFood(n);
+      this.refreshHoldBudget();
       this.emit('arcCollected', {
         position: { x: food.x, y: 0, z: food.z },
         foodEaten: n,

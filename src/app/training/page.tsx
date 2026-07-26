@@ -687,6 +687,8 @@ export default function TrainingPage() {
     modeDetail: circuit ? `Circuit ${circuit.index + 1}/4` : scenario.kind === 'sandbox' ? 'Open sandbox' : scenario.difficulty,
     statusText: status,
     isFirstMovementPrompt: false,
+    // Training is a driven run: never metered, so never shown a budget.
+    holds: null,
     score: snapshot.progress,
     dna: 0,
     // Training never touches the envelope (§5: its rewardless contract),

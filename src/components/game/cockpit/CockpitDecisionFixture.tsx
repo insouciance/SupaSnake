@@ -31,6 +31,7 @@ const MODEL: RunCockpitModel = {
   modeDetail: 'Genome run',
   statusText: 'Run held for your decision',
   isFirstMovementPrompt: false,
+  holds: { remaining: 2, total: 4 },
   score: 12840,
   dna: 186,
   charge: {

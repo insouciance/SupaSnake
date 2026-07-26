@@ -536,6 +536,29 @@
   font-size: 14px;
 }
 
+/**
+ * Right-hand readout group of the mode instrument. One flex-none box so the
+ * charge meter and the tactical-hold budget sit together and `.modeCopy`
+ * (min-width: 0) absorbs every pixel of the squeeze instead of overflowing.
+ */
+.modeReadouts {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/** The hold budget reads as a cost, so it goes red the moment it empties. */
+.holdReadout {
+  color: var(--secure-gold);
+}
+
+.holdReadout[data-spent='true'],
+.holdReadout[data-spent='true'] strong {
+  color: var(--danger-rose);
+}
+
 .energyReadout {
   display: flex;
   flex: 0 0 auto;
