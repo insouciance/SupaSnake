@@ -40,6 +40,7 @@ import {
   STRAIN_PHYSICS,
   STRAIN_THRESHOLDS,
   capSpawnPoints,
+  moltResetLengthFor,
   strainTier,
   type StrainId,
   type StrainPoints,
@@ -299,12 +300,19 @@ export function computeLengthTrace(
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
     len += growth;
     // Shed cycles (fused view replaces the loose Shed cycle post-fusion).
-    const cycles: { every: number; anchor: number; reset: number; source: ShedEvent['source'] }[] = [];
+    // `resetFor` takes the length the body has RIGHT NOW because Molt's
+    // shed is proportional; the absolute cycles simply ignore the argument.
+    const cycles: {
+      every: number;
+      anchor: number;
+      resetFor: (current: number) => number;
+      source: ShedEvent['source'];
+    }[] = [];
     if (shed) {
       cycles.push({
         every: MUTATION_PHYSICS.shedEveryFoods,
         anchor: shed.atFood,
-        reset: MUTATION_PHYSICS.shedResetLength,
+        resetFor: () => MUTATION_PHYSICS.shedResetLength,
         source: 'shed',
       });
     }
@@ -312,7 +320,7 @@ export function computeLengthTrace(
       cycles.push({
         every: SPLICE_ECONOMICS.regenesisShedEveryFoods,
         anchor: regenesis.atFood,
-        reset: SPLICE_ECONOMICS.regenesisResetLength,
+        resetFor: () => SPLICE_ECONOMICS.regenesisResetLength,
         source: 'regenesis',
       });
     }
@@ -320,7 +328,7 @@ export function computeLengthTrace(
       cycles.push({
         every: SPLICE_PHYSICS.moltedRebirthShedEveryFoods,
         anchor: moltedRebirth.atFood,
-        reset: SPLICE_PHYSICS.moltedRebirthResetLength,
+        resetFor: () => SPLICE_PHYSICS.moltedRebirthResetLength,
         source: 'molted_rebirth',
       });
     }
@@ -328,21 +336,23 @@ export function computeLengthTrace(
       cycles.push({
         every: STRAIN_PHYSICS.moltEveryFoods,
         anchor: molt,
-        reset: STRAIN_PHYSICS.moltResetLength,
+        resetFor: moltResetLengthFor,
         source: 'molt',
       });
     }
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
-      if (since > 0 && since % cycle.every === 0 && len > cycle.reset) {
-        shedEvents.push({ atFood: n, segmentsShed: len - cycle.reset, source: cycle.source });
-        len = cycle.reset;
+      if (since <= 0 || since % cycle.every !== 0) continue;
+      const reset = cycle.resetFor(len);
+      if (len > reset) {
+        shedEvents.push({ atFood: n, segmentsShed: len - reset, source: cycle.source });
+        len = reset;
       }
     }
     // Molt's growth floor is part of resolving this food, before any
     // later portal/collision/revive event stamped with the same food count.
     if (molt !== null && n > molt) {
-      len = Math.max(STRAIN_PHYSICS.moltResetLength, len);
+      len = Math.max(STRAIN_PHYSICS.moltMinLength, len);
     }
     // Reported losses at this food happen after the food resolves (Thick
     // Hide, Ouroboros, infuse cost), so they can take the body below the

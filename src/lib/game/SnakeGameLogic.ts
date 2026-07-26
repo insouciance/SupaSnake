@@ -92,6 +92,7 @@ import {
 import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
+  moltResetLengthFor,
   type StrainId,
   type StrainPoints,
 } from '@/shared/game/strains';
@@ -798,7 +799,6 @@ export class SnakeGameLogic {
       this.state.fluxTicksRemaining = this.ruleset.flux.openTicks;
     }
 
-    this.speed = this.ruleset.speedForFood(0);
     this.directionQueue = [];
     this.lastEatGlyph = null;
     this.ticksSinceLastEat = 0;
@@ -824,6 +824,12 @@ export class SnakeGameLogic {
       this.state.pocketRiftCharged = true;
       this.refreshGenomeDerived();
     }
+    // Opening tick interval AFTER the genome derived state exists. This
+    // used to be a raw `ruleset.speedForFood(0)` above, which silently
+    // dropped any modifier already live at food 0 - a spawned VOLT Tempo
+    // (heirloom points alone reach the minor tier) did nothing until the
+    // first food re-derived the speed through this same helper.
+    this.speed = this.effectiveSpeedForFood(0);
     this.spawnFoods();
     if (opening) {
       this.state.snake = opening.snake.map((cell) => ({ ...cell, y: 0 }));
@@ -1377,9 +1383,9 @@ export class SnakeGameLogic {
       }
 
       // Shed cycles, PURE HALF: loose Shed (25 -> 8), Regenesis (20 -> 8),
-      // Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12) and the Molt growth
-      // floor. Length moves and trace records only - mirrors
-      // computeLengthTrace's cycle model exactly.
+      // Molted Rebirth (25 -> 8), FERAL Molt (every 20, proportional) and
+      // the Molt growth floor. Length moves and trace records only -
+      // mirrors computeLengthTrace's cycle model exactly.
       const sheds = this.applyShedMoves(n);
 
       const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
@@ -1967,8 +1973,9 @@ export class SnakeGameLogic {
 
   /**
    * Shed cycles, PURE HALF (WP-2.05): loose Shed 25->8, Regenesis 20->8,
-   * Molted Rebirth 25->8, FERAL Molt 20->12, and the Molt growth floor.
-   * Mirrors `computeLengthTrace`'s cycle model.
+   * Molted Rebirth 25->8, FERAL Molt every 20 foods down to
+   * `moltResetLengthFor(len)`, and the Molt growth floor. Mirrors
+   * `computeLengthTrace`'s cycle model.
    *
    * This half moves length and records shed events, and does NOTHING else -
    * no DNA, no board objects, no emits. That is what lets it run BEFORE the
@@ -1987,7 +1994,13 @@ export class SnakeGameLogic {
     type Cycle = {
       every: number;
       anchor: number;
-      reset: number;
+      /**
+       * The length this cycle resets a body of `current` to. Molt's shed is
+       * proportional, so it MUST be evaluated per firing against the live
+       * length - `computeLengthTrace` calls the identical `resetFor` at the
+       * identical point, which is what keeps the two in parity.
+       */
+      resetFor: (current: number) => number;
       source: ShedEvent['source'];
     };
     const cycles: Cycle[] = [];
@@ -1996,7 +2009,7 @@ export class SnakeGameLogic {
       cycles.push({
         every: MUTATION_PHYSICS.shedEveryFoods,
         anchor: shedPick.atFood,
-        reset: MUTATION_PHYSICS.shedResetLength,
+        resetFor: () => MUTATION_PHYSICS.shedResetLength,
         source: 'shed',
       });
     }
@@ -2006,7 +2019,7 @@ export class SnakeGameLogic {
           cycles.push({
             every: SPLICE_ECONOMICS.regenesisShedEveryFoods,
             anchor: splice.atFood,
-            reset: SPLICE_ECONOMICS.regenesisResetLength,
+            resetFor: () => SPLICE_ECONOMICS.regenesisResetLength,
             source: 'regenesis',
           });
         }
@@ -2014,7 +2027,7 @@ export class SnakeGameLogic {
           cycles.push({
             every: SPLICE_PHYSICS.moltedRebirthShedEveryFoods,
             anchor: splice.atFood,
-            reset: SPLICE_PHYSICS.moltedRebirthResetLength,
+            resetFor: () => SPLICE_PHYSICS.moltedRebirthResetLength,
             source: 'molted_rebirth',
           });
         }
@@ -2024,7 +2037,7 @@ export class SnakeGameLogic {
         cycles.push({
           every: STRAIN_PHYSICS.moltEveryFoods,
           anchor: moltAt,
-          reset: STRAIN_PHYSICS.moltResetLength,
+          resetFor: moltResetLengthFor,
           source: 'molt',
         });
       }
@@ -2032,16 +2045,12 @@ export class SnakeGameLogic {
     const fired: ShedEvent[] = [];
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
-      if (
-        since <= 0 ||
-        since % cycle.every !== 0 ||
-        this.state.snake.length <= cycle.reset
-      ) {
-        continue;
-      }
-      const removed = this.state.snake.slice(cycle.reset);
+      if (since <= 0 || since % cycle.every !== 0) continue;
+      const reset = cycle.resetFor(this.state.snake.length);
+      if (this.state.snake.length <= reset) continue;
+      const removed = this.state.snake.slice(reset);
       const segmentsShed = removed.length;
-      this.state.snake.length = cycle.reset;
+      this.state.snake.length = reset;
       const event: ShedEvent = { atFood: n, segmentsShed, source: cycle.source };
       fired.push(event);
       if (this.genomeActive()) {
@@ -2051,14 +2060,14 @@ export class SnakeGameLogic {
     }
     // FERAL Molt growth floor while the expression is active. A length move,
     // so it belongs to this half; `computeLengthTrace` applies the same
-    // `max(moltResetLength, len)` at the same point in the food.
+    // `max(moltMinLength, len)` at the same point in the food.
     if (
       this.genomeActive() &&
       this.strainTierNow('FERAL') >= 2 &&
-      this.state.snake.length < STRAIN_PHYSICS.moltResetLength
+      this.state.snake.length < STRAIN_PHYSICS.moltMinLength
     ) {
       const tail = this.state.snake[this.state.snake.length - 1];
-      while (this.state.snake.length < STRAIN_PHYSICS.moltResetLength) {
+      while (this.state.snake.length < STRAIN_PHYSICS.moltMinLength) {
         this.state.snake.push({ ...tail });
       }
     }
@@ -2851,11 +2860,36 @@ export class SnakeGameLogic {
     // VOLT Apex "Overclocked Reality": the world runs 25% faster.
     if (this.genomeActive() && this.strainTierNow('VOLT') >= 3) {
       speed = Math.max(
-        25,
+        STRAIN_PHYSICS.tickFloorMs,
         Math.floor(speed * STRAIN_PHYSICS.overclockedRealityTickFactor)
       );
     }
+    // FERAL Molt: each molt makes the world permanently faster, compounding.
+    // Molt's proportional shed keeps the body long enough to stay dangerous
+    // but no longer lets length alone end the run, so the price of shedding
+    // is tempo. The loop re-arms from getSpeed() every tick, so this applies
+    // the moment a molt fires.
+    const molts = this.moltsFired();
+    if (molts > 0) {
+      speed = Math.max(
+        STRAIN_PHYSICS.tickFloorMs,
+        Math.floor(speed * Math.pow(STRAIN_PHYSICS.moltTickFactor, molts))
+      );
+    }
     return speed;
+  }
+
+  /**
+   * Molts fired so far this run - the exponent of the compounding speed
+   * step. Derived from the live length trace rather than a second counter,
+   * so it can never drift from the shed events the server recomputes.
+   */
+  private moltsFired(): number {
+    let count = 0;
+    for (const event of this.lengthTrace.shedEvents) {
+      if (event.source === 'molt') count += 1;
+    }
+    return count;
   }
 
   /**

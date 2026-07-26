@@ -217,8 +217,8 @@ const STRAIN_TIER_COPY: Record<StrainId, Record<1 | 2 | 3, TierCopy>> = {
       cost: `It costs ${STRAIN_PHYSICS.thickHideSegmentLoss} tail segments, and only once.`,
     },
     2: {
-      effect: `Every ${STRAIN_PHYSICS.moltEveryFoods} foods the tail resets to ${STRAIN_PHYSICS.moltResetLength} and drops ${STRAIN_ECONOMICS.moltFoodsPerEvent} molt foods worth ${STRAIN_ECONOMICS.moltFoodFlat} DNA each.`,
-      cost: `You can never be shorter than ${STRAIN_PHYSICS.moltResetLength} again — a weaker reset than Shed's, and permanent.`,
+      effect: `Every ${STRAIN_PHYSICS.moltEveryFoods} foods the tail sheds to ${share(STRAIN_PHYSICS.moltShedFraction)} of its length, never below ${STRAIN_PHYSICS.moltMinLength}, and drops ${STRAIN_ECONOMICS.moltFoodsPerEvent} molt foods worth ${STRAIN_ECONOMICS.moltFoodFlat} DNA each.`,
+      cost: `Each molt speeds the world to ×${STRAIN_PHYSICS.moltTickFactor} tick interval, compounding for the rest of the run — and you can never be shorter than ${STRAIN_PHYSICS.moltMinLength} again.`,
     },
     3: {
       effect: `Bite your own tail tip for ${STRAIN_ECONOMICS.ouroborosBiteFlat} flat DNA, once per ${STRAIN_ECONOMICS.ouroborosFoodsPerBite} foods eaten since the Apex.`,

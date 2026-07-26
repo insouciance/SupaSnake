@@ -202,7 +202,7 @@ describe('strain physics on the board', () => {
     expect(state.foodEaten).toBe(2); // main + arced
   });
 
-  it('FERAL Expression (Molt): every 20th food resets the tail to 12 and drops molt-food', () => {
+  it('FERAL Expression (Molt): every 20th food sheds the tail and drops molt-food', () => {
     const game = makeGenomeGame({}, 160);
     game.grantMutation('overgrowth', 0);
     game.grantMutation('deep_roots', 0);
@@ -215,7 +215,7 @@ describe('strain physics on the board', () => {
     const state = game.getState();
     expect(molts.length).toBe(1);
     expect(state.snake.length).toBeGreaterThanOrEqual(
-      STRAIN_PHYSICS.moltResetLength
+      STRAIN_PHYSICS.moltMinLength
     );
     expect(state.bonusFoods.some((f) => f.kind === 'molt')).toBe(true);
   });
