@@ -370,7 +370,11 @@ describe('the session route wires the Signal, tightly', () => {
     expect(code).not.toMatch(/sessionInsert[\s\S]{0,400}signal_objective_run_id/);
   });
 
-  it('carries no TODO or FIXME', () => {
-    expect(routeSource).not.toMatch(/\bTODO\b|\bFIXME\b/);
+  it('carries no incomplete-work markers', () => {
+    // Literals assembled, not written out, so this assertion does not itself
+    // trip verify:constitution's todo-fixme gate - the gate's own scanner does
+    // the same for the same reason.
+    const markers = new RegExp(`\\b${'TO' + 'DO'}\\b|\\b${'FIX' + 'ME'}\\b`);
+    expect(routeSource).not.toMatch(markers);
   });
 });

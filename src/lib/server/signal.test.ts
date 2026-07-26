@@ -709,8 +709,12 @@ describe('the module', () => {
   const source = fs.readFileSync(path.join(__dirname, 'signal.ts'), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
-  it('carries no TODO or FIXME', () => {
-    expect(source).not.toMatch(/\bTODO\b|\bFIXME\b/);
+  it('carries no incomplete-work markers', () => {
+    // The marker literals are assembled here rather than written out, so this
+    // assertion does not itself trip `verify:constitution`'s todo-fixme gate -
+    // the gate's own scanner does the same for the same reason.
+    const markers = new RegExp(`\\b${'TO' + 'DO'}\\b|\\b${'FIX' + 'ME'}\\b`);
+    expect(source).not.toMatch(markers);
   });
 
   it('increments nothing that is stored — settlement is a recompute', () => {
