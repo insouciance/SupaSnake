@@ -111,7 +111,6 @@ function at(weekStartIso: string, days: number, hour: number): Date {
 // Modules under test, loaded after the flags are set
 // ---------------------------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 let serpentLib: any;
 let signalLib: any;
 let takeLib: any;
@@ -123,7 +122,6 @@ let sharedSerpent: any;
 let sharedEnvelope: any;
 let rulesets: any;
 let cards: any;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 let supabase: SupabaseClient;
 
