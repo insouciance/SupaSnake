@@ -29,3 +29,17 @@
  * never split the Serpent's existence between the two halves.
  */
 export const SERPENT_V1_ENABLED = process.env.NEXT_PUBLIC_SERPENT_V1 === 'true';
+
+/**
+ * The ramp beat the Serpent and the clan-founding prompt surface on
+ * (§7.3 "Surfaces at 8 banked runs", §9.2 "at Serpent unlock (8 banks)").
+ *
+ * THIS IS NOT A CUT LINE, AND NO SURFACE MAY RENDER IT AS ONE.
+ *
+ * It decides only whether a first-time prompt has appeared yet. Nothing is
+ * withheld from a player below it, nothing is awarded at it, and it never
+ * appears in copy: a player at 3 banked runs is shown no counter, no progress
+ * bar and no "N more to go". The prompt is simply not there yet, and then one
+ * day it is. Rule 8 forbids a bar; a silent ramp is not one.
+ */
+export const SERPENT_UNLOCK_BANKED_RUNS = 8;
