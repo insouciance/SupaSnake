@@ -26,11 +26,23 @@ export interface SitemapEntry {
  *   which carry single-use codes in the query string.
  * - the account and in-app surfaces — they render a loading shell to a
  *   logged-out crawler, which is the worst possible search result.
+ * - `/r/` and `/x/` — the two share-artifact classes whose whole content
+ *   comes out of the URL (a run seed, a lineage code). Their address space
+ *   is unbounded and every page in it is one player's claim, so indexing
+ *   them is a pure crawl-budget leak. They stay fully shareable: a link
+ *   unfurls, the OG image renders and the page opens — a crawler is simply
+ *   told not to enumerate them.
+ *
+ * NOT disallowed: `/s/` (one page per calendar day), `/w/` (one per week),
+ * `/c/` (one per clan) and `/p/` (one per player). Those are finite, real
+ * and exactly the stranger-facing pages §11.6 wants indexed.
  */
 export const DISALLOWED_PREFIXES: readonly string[] = [
   '/api/',
   '/dev/',
   '/auth/',
+  '/r/',
+  '/x/',
   '/settings',
   '/profile',
   '/game',

@@ -30,22 +30,18 @@ import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
 import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
 import type { ChargeSnapshot } from '@/lib/store/gameStore';
 import {
-  ContractsBoard,
-  summarizeContracts,
-  type ContractView,
-  type ContractClaimOutcome,
-} from '@/components/engagement/ContractsBoard';
-import {
   SeasonTrack,
   type SeasonView,
   type SeasonTrackView,
 } from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
+import { SignalSurface } from '@/components/signal/SignalSurface';
 import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
 import { captureAttribution } from '@/lib/growth/attribution';
 import { GROWTH_SURFACES_V1_ENABLED } from '@/lib/features/growth';
+import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { LandingPitch } from '@/components/growth/LandingPitch';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import {
@@ -84,24 +80,13 @@ interface HomeStats {
   hasCompletedFirstRun: boolean;
 }
 
-interface ContractsState {
-  contracts: ContractView[];
-  picksRemaining: number;
-  claimable: boolean;
-}
-
 interface MissionItem {
   id: string;
   text: string;
-  /** Glowing beacon dot (contract action ready) */
+  /** Glowing beacon dot (an action is ready) */
   beacon?: boolean;
-  /** Tapping the line performs this action (e.g. open the contracts board) */
+  /** Tapping the line performs this action (e.g. open the season track) */
   onSelect?: () => void;
-}
-
-/** Same once-per-day dismissal slot the calendar used - the board replaced it */
-function dailyDismissKey(today: string): string {
-  return `daily-reward-dismissed-${today}`;
 }
 
 export default function Home() {
@@ -109,8 +94,6 @@ export default function Home() {
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [streak, setStreak] = useState<{ current: number } | null>(null);
-  const [contractsState, setContractsState] = useState<ContractsState | null>(null);
-  const [showContractsBoard, setShowContractsBoard] = useState(false);
   // Season track (Design v2 §7.2): the free seasonal reward track. Null
   // until fetched or while no season is live / pre-migration-021.
   const [seasonState, setSeasonState] = useState<{
@@ -128,6 +111,11 @@ export default function Home() {
     INITIAL_LAUNCH_STATE
   );
   const launchInFlightRef = useRef(false);
+  // The Signal's own take state (§7.2). Separate from `launchState` so a
+  // failed take never puts the LAUNCH button into a Retry phase — the ordinary
+  // run must stay one tap away whatever the Signal did (§5, Rule 10).
+  const [signalTaking, setSignalTaking] = useState(false);
+  const [signalTakeError, setSignalTakeError] = useState<string | null>(null);
   const publishNotification = useNotificationStore((state) => state.publish);
   const clearNotification = useNotificationStore((state) => state.clear);
   const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
@@ -139,7 +127,6 @@ export default function Home() {
   useEffect(() => {
     if (!FTUE_V2_ENABLED || !notificationsHydrated || isLoading) return;
     if (!isAuthenticated || stats?.hasCompletedFirstRun === false) {
-      clearNotification('contracts');
       clearNotification('season');
     }
   }, [
@@ -271,52 +258,19 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  // Daily contracts are generated only after the first completed run. Under
-  // FTUE v2 they publish a persistent mission/badge and never auto-open.
+  // Contracts were retired by WP-1.03 (Constitution §7.2, §12.2, §13): the
+  // World Signal is the one daily surface, `/api/contracts` is gone and the
+  // RPCs behind it are tombstones. Nothing here fetches a contract board.
+  //
+  // What remains is cleanup for players who still carry a persisted
+  // "Daily Contracts ready" entry in local notification state: it points at
+  // `/#contracts`, which no longer opens anything. Clear it once, on mount,
+  // so nobody is left tapping a dead link. Claimed contract HISTORY is
+  // untouched — it lives server-side in `player_contracts` (Rule 6).
   useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !token ||
-      !notificationsHydrated ||
-      (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
-    ) return;
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const res = await fetch('/api/contracts', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-
-        const data: ContractsState = await res.json();
-        if (cancelled) return;
-        setContractsState(data);
-
-        const canPick =
-          data.picksRemaining > 0 && data.contracts.some((c) => !c.picked);
-        if (!FTUE_V2_ENABLED) {
-          const today = new Date().toISOString().split('T')[0];
-          let dismissedToday = false;
-          try {
-            dismissedToday = window.localStorage.getItem(dailyDismissKey(today)) === '1';
-          } catch {
-            // localStorage unavailable - treat as not dismissed
-          }
-          if ((canPick || data.claimable) && !dismissedToday) {
-            setShowContractsBoard(true);
-          }
-        }
-      } catch {
-        // Contracts UI simply stays closed on failure
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, notificationsHydrated, token, stats?.hasCompletedFirstRun]);
+    if (!notificationsHydrated) return;
+    clearNotification('contracts');
+  }, [clearNotification, notificationsHydrated]);
 
   // Season track (§7.2): fetch the live season + the player's free track.
   // { live: false } (pre-migration-021) or no live season simply keeps the
@@ -361,51 +315,6 @@ export default function Home() {
     stats?.hasCompletedFirstRun,
   ]);
 
-  // One notification source drives the contracts badge, mission indicator,
-  // and inbox. No parallel automatic modal exists.
-  useEffect(() => {
-    if (
-      !FTUE_V2_ENABLED ||
-      !notificationsHydrated ||
-      !contractsState ||
-      !stats?.hasCompletedFirstRun
-    ) return;
-    const summary = summarizeContracts(contractsState.contracts);
-    const claimableCount = contractsState.contracts.filter(
-      (contract) => contract.completed && !contract.claimed
-    ).length;
-    const canPick =
-      contractsState.picksRemaining > 0 &&
-      contractsState.contracts.some((contract) => !contract.picked);
-
-    if (!canPick && claimableCount === 0) {
-      clearNotification('contracts');
-      return;
-    }
-
-    publishNotification({
-      id: 'contracts',
-      title: claimableCount > 0 ? 'Contract reward ready' : 'Daily Contracts ready',
-      description:
-        claimableCount > 0
-          ? `${summary.completedCount}/${summary.pickedCount} selected contracts complete.`
-          : `Choose ${contractsState.picksRemaining} contract${contractsState.picksRemaining === 1 ? '' : 's'} when you’re ready.`,
-      ...NOTIFICATION_TARGETS.contracts,
-      badgeKind: claimableCount > 0 ? 'numeric' : 'exclamation',
-      attentionReason: claimableCount > 0 ? 'reward-available' : 'action-required',
-      count: claimableCount || undefined,
-      actionLabel:
-        claimableCount > 0
-          ? `Claim ${claimableCount === 1 ? 'reward' : 'rewards'}`
-          : 'Choose Contracts',
-    });
-  }, [
-    clearNotification,
-    contractsState,
-    notificationsHydrated,
-    stats?.hasCompletedFirstRun,
-    publishNotification,
-  ]);
 
   useEffect(() => {
     if (
@@ -448,13 +357,8 @@ export default function Home() {
   // loading Home never opens these overlays.
   useEffect(() => {
     const syncExplicitDestination = () => {
-      if (window.location.hash === '#contracts') setShowContractsBoard(true);
       if (window.location.hash === '#season') setShowSeasonTrack(true);
     };
-    const unsubscribeContracts = subscribeNotificationAction(
-      'open-contracts',
-      () => setShowContractsBoard(true)
-    );
     const unsubscribeSeason = subscribeNotificationAction(
       'open-season',
       () => setShowSeasonTrack(true)
@@ -462,7 +366,6 @@ export default function Home() {
     syncExplicitDestination();
     window.addEventListener('hashchange', syncExplicitDestination);
     return () => {
-      unsubscribeContracts();
       unsubscribeSeason();
       window.removeEventListener('hashchange', syncExplicitDestination);
     };
@@ -492,10 +395,6 @@ export default function Home() {
               tiers: prev.track.tiers.map((t) =>
                 t.level === level ? { ...t, claimed: true } : t
               ),
-              reroll_tokens:
-                typeof data.reward?.reroll_tokens === 'number'
-                  ? data.reward.reroll_tokens
-                  : prev.track.reroll_tokens,
             },
           };
         });
@@ -507,120 +406,28 @@ export default function Home() {
     [token]
   );
 
-  const handleContractsPick = useCallback(
-    async (contractIds: string[]): Promise<boolean> => {
-      if (!token) return false;
-      try {
-        const res = await fetch('/api/contracts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ action: 'pick', contractIds }),
-        });
-
-        if (!res.ok) return false;
-
-        const data: ContractsState = await res.json();
-        setContractsState(data);
-
-        trackEvent(AnalyticsEvents.CHALLENGE_STARTED, {
-          contracts: contractIds,
-          category: 'engagement',
-        });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [token]
-  );
-
-  const handleContractClaim = useCallback(
-    async (contractId: string): Promise<ContractClaimOutcome | null> => {
-      if (!token) return null;
-      try {
-        const res = await fetch('/api/contracts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ action: 'claim', contractId }),
-        });
-
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        const outcome: ContractClaimOutcome = {
-          contractId: data.contractId,
-          dnaGranted: data.dnaGranted,
-          xpGranted: data.xpGranted,
-        };
-
-        trackEvent(AnalyticsEvents.CHALLENGE_COMPLETED, {
-          contract: outcome.contractId,
-          dna_granted: outcome.dnaGranted,
-          xp_granted: outcome.xpGranted,
-          category: 'engagement',
-        });
-
-        setContractsState((prev) => {
-          if (!prev) return prev;
-          const contracts = prev.contracts.map((c) =>
-            c.contractId === contractId ? { ...c, claimed: true } : c
-          );
-          return {
-            ...prev,
-            contracts,
-            claimable: summarizeContracts(contracts).claimable,
-          };
-        });
-        setStats((prev) =>
-          prev
-            ? {
-                ...prev,
-                dna: prev.dna + outcome.dnaGranted,
-              }
-            : prev
-        );
-
-        return outcome;
-      } catch {
-        return null;
-      }
-    },
-    [token]
-  );
-
-  const handleContractsDismiss = useCallback(() => {
-    if (!FTUE_V2_ENABLED) {
-      const today = new Date().toISOString().split('T')[0];
-      try {
-        window.localStorage.setItem(dailyDismissKey(today), '1');
-      } catch {
-        // Ignore storage failures
-      }
-    }
-    if (window.location.hash === '#contracts') {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-    }
-    setShowContractsBoard(false);
-  }, []);
-
-  const runLaunch = useCallback(async (skipIdentityGate = false) => {
-    if (launchInFlightRef.current) return;
+  const runLaunch = useCallback(async (
+    skipIdentityGate = false,
+    /**
+     * Constitution §7.2: the Signal objective the player took, if this launch
+     * came from the Signal surface rather than the LAUNCH button. It is a
+     * lookup key among the day's server-derived three and travels on the START
+     * request, because migration 049 binds the day's attempt to an open run
+     * and §8.6 decides the charge in that same request.
+     */
+    signalObjectiveId?: string
+  ): Promise<boolean> => {
+    if (launchInFlightRef.current) return false;
 
     if (!skipIdentityGate && !isAuthenticated) {
       const gate = evaluateAnonymousSignInGate(readLastUser());
       if (gate === 'welcome-back') {
         setWelcomeBack(readLastUser());
-        return;
+        return false;
       }
       if (gate === 'warn-progress-loss') {
         setShowLossNotice(true);
-        return;
+        return false;
       }
     }
 
@@ -629,11 +436,63 @@ export default function Home() {
         const result = await signInAnonymously();
         if (result?.error) {
           dispatchLaunch({ type: 'FAIL', error: result.error.message });
-          return;
+          return false;
         }
       }
       router.push('/game');
-      return;
+      return true;
+    }
+
+    // Constitution §5 (owner ruling, 25 July 2026): LAUNCH opens the Run
+    // Setup page, it does not start a run. The prepared-run handoff below
+    // exists to put the board on screen in one tap; the ruling replaces that
+    // with "open → LAUNCH → START → board, ≤3 taps, and the setup page adds
+    // exactly one of them". So under Run Flow v1 LAUNCH still signs the
+    // player in and bootstraps their snake — that is what makes the setup
+    // page *fully preset* for a first-time player — and then simply
+    // navigates. No session is started here, so no run is ever created and
+    // abandoned by a player who opens setup and walks away.
+    // Run Setup (WP-1.06) does not carry a taken Signal objective onto its
+    // START request, and the objective has to ride the START that opens the
+    // run (§8.6). So a launch that came from the Signal surface prepares the
+    // run here, exactly as the pre-Run-Flow path does, whatever this flag
+    // says. The LAUNCH button is untouched by this branch: with no objective
+    // it still opens Run Setup and adds no tap.
+    if (RUN_FLOW_V1_ENABLED && !signalObjectiveId) {
+      launchInFlightRef.current = true;
+      dispatchLaunch({ type: 'BEGIN', alreadyAuthenticated: isAuthenticated });
+      try {
+        let launchSession = session;
+        if (!launchSession?.access_token) {
+          if (isAuthenticated) {
+            throw new LaunchFlowError('Your session is still loading. Please Retry.');
+          }
+          const result = await signInAnonymously();
+          if (result?.error || !result?.session) {
+            throw new LaunchFlowError(
+              result?.error?.message ?? 'Anonymous authentication did not complete'
+            );
+          }
+          launchSession = result.session;
+          dispatchLaunch({ type: 'AUTHENTICATED' });
+        }
+
+        const bootstrap = await bootstrapForLaunch(launchSession.access_token);
+        setDynasty(bootstrap.equippedSnake.dynasty);
+        dispatchLaunch({ type: 'BOOTSTRAPPED' });
+        dispatchLaunch({ type: 'RUN_LOADED' });
+        router.push('/game');
+        return true;
+      } catch (error) {
+        dispatchLaunch({
+          type: 'FAIL',
+          error:
+            error instanceof Error ? error.message : 'Could not open the run setup',
+        });
+        return false;
+      } finally {
+        launchInFlightRef.current = false;
+      }
     }
 
     if (!launchHandoffStorageAvailable()) {
@@ -641,7 +500,7 @@ export default function Home() {
         type: 'FAIL',
         error: 'This browser cannot safely prepare a run. Enable session storage and Retry.',
       });
-      return;
+      return false;
     }
 
     launchInFlightRef.current = true;
@@ -669,7 +528,9 @@ export default function Home() {
       const handoff = await prepareLaunchHandoff(
         launchSession.access_token,
         launchSession.user.id,
-        bootstrap
+        bootstrap,
+        fetch,
+        signalObjectiveId
       );
       if (!storeLaunchHandoff(handoff)) {
         throw new LaunchFlowError('Could not transfer the prepared run. Please Retry.');
@@ -677,6 +538,7 @@ export default function Home() {
 
       dispatchLaunch({ type: 'RUN_LOADED' });
       router.push('/game?launch=ftue-v2');
+      return true;
     } catch (error) {
       const message =
         error instanceof LaunchFlowError && error.retryAfterMs
@@ -685,10 +547,39 @@ export default function Home() {
             ? error.message
             : 'Could not launch the run';
       dispatchLaunch({ type: 'FAIL', error: message });
+      return false;
     } finally {
       launchInFlightRef.current = false;
     }
   }, [isAuthenticated, router, session, signInAnonymously]);
+
+  /**
+   * Take one of the day's three (§7.2). The take and the run are one act — the
+   * server binds the day's attempt to an OPEN run — so this launches, and the
+   * surface says so before the player taps.
+   *
+   * A failure here is reported on the Signal card and nowhere else: the day's
+   * opportunity is the only thing at stake (Rule 5), and LAUNCH stays exactly
+   * as available as it was.
+   */
+  const handleSignalTake = useCallback(
+    async (objectiveId: string): Promise<boolean> => {
+      setSignalTaking(true);
+      setSignalTakeError(null);
+      try {
+        const launched = await runLaunch(false, objectiveId);
+        if (!launched) {
+          setSignalTakeError(
+            'The Signal run did not start. Try again, or just LAUNCH — an ordinary run is unaffected.'
+          );
+        }
+        return launched;
+      } finally {
+        setSignalTaking(false);
+      }
+    },
+    [runLaunch]
+  );
 
   const handleContinueAfterLossNotice = useCallback(async () => {
     markProgressLossNoticed();
@@ -718,27 +609,6 @@ export default function Home() {
       return [{ id: 'first-run', text: 'Your first run is ready' }];
     }
     const items: MissionItem[] = [];
-    if (contractsState) {
-      const summary = summarizeContracts(contractsState.contracts);
-      const canPick =
-        contractsState.picksRemaining > 0 &&
-        contractsState.contracts.some((c) => !c.picked);
-      if (canPick) {
-        items.push({
-          id: 'contracts',
-          text: 'New contracts available',
-          beacon: true,
-          onSelect: () => setShowContractsBoard(true),
-        });
-      } else if (summary.pickedCount > 0) {
-        items.push({
-          id: 'contracts',
-          text: `Contracts: ${summary.completedCount}/${summary.pickedCount} complete`,
-          beacon: summary.claimable,
-          onSelect: () => setShowContractsBoard(true),
-        });
-      }
-    }
     if (seasonState) {
       const claimable = seasonState.track.tiers.some(
         (t) => !t.claimed && seasonState.track.level >= t.level
@@ -768,7 +638,7 @@ export default function Home() {
       items.push({ id: 'tagline', text: 'Where Skill Creates Legacy' });
     }
     return items;
-  }, [isAuthenticated, contractsState, seasonState, stats, streak]);
+  }, [isAuthenticated, seasonState, stats, streak]);
 
   useEffect(() => {
     setMissionIndex(0);
@@ -894,23 +764,10 @@ export default function Home() {
       {/* Rollback-only legacy path. FTUE v2 never exposes starter selection. */}
       {needsStarter && <StarterSelection />}
 
-      {/* Daily contracts board opens only after a mission/inbox action. */}
-      {contractsState && !needsStarter && (
-        <ContractsBoard
-          isVisible={showContractsBoard}
-          contracts={contractsState.contracts}
-          picksRemaining={contractsState.picksRemaining}
-          streak={streak}
-          onPick={handleContractsPick}
-          onClaim={handleContractClaim}
-          onDismiss={handleContractsDismiss}
-        />
-      )}
-
-      {/* Season track (§7.2): free milestones - cosmetics + reroll tokens.
-          Opened from the mission line; single-overlay policy respected
-          (never rendered while the contracts board is up). */}
-      {seasonState && !needsStarter && !showContractsBoard && (
+      {/* Season track (§7.2): free milestones - cosmetics and titles.
+          Opened from the mission line. The contracts board that used to
+          contend for this slot was retired with the mechanism (§12.2). */}
+      {seasonState && !needsStarter && (
         <SeasonTrack
           isVisible={showSeasonTrack}
           season={seasonState.season}
@@ -962,6 +819,26 @@ export default function Home() {
 
       {/* Mission line + LAUNCH - the one obvious primary action */}
       <div className="home-launch-dock absolute inset-x-0 z-10 flex flex-col items-center gap-4 px-4">
+        {/* The World Signal (§7.2) — the ONE daily surface, standing in the
+            slot the retired Contracts board occupied (§12.2, §13). The dock is
+            bottom-anchored, so this grows UPWARD: LAUNCH does not move and
+            open → LAUNCH → START is the same three taps it always was (§5,
+            Rule 10). Nothing here is required to start a run.
+
+            Withheld until the player has completed a run under FTUE v2, the
+            same threshold every other meta surface on this page uses — a first
+            run is never made to compete with a daily. */}
+        {isAuthenticated &&
+          !needsStarter &&
+          (!FTUE_V2_ENABLED || stats?.hasCompletedFirstRun === true) && (
+            <SignalSurface
+              token={token}
+              onTake={handleSignalTake}
+              taking={signalTaking}
+              takeError={signalTakeError}
+            />
+          )}
+
         <div
           className="h-6 flex items-center justify-center animate-fade-up"
           style={{ animationDelay: '360ms' }}
@@ -1002,6 +879,7 @@ export default function Home() {
             className="btn-go px-16 sm:px-20 py-5 text-2xl min-h-[64px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70 disabled:cursor-wait disabled:opacity-70"
             aria-describedby={launchState.error ? 'launch-error' : undefined}
             data-launch-phase={launchState.phase}
+            data-testid="launch-cta"
           >
             <IconPlay size={26} />
             <span>{LAUNCH_PHASE_LABEL[launchState.phase]}</span>

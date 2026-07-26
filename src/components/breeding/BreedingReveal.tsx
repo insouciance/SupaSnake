@@ -9,32 +9,19 @@
  * Staged over the void backdrop, glowing in the offspring's dynasty color.
  */
 
-import React, { useCallback, useState } from 'react';
+import React from 'react';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { IconDna } from '@/components/ui/icons';
 import { dynastyThemes } from '@/hooks/useDynastyTheme';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { TraitChip, EmptyTraitSlot } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
-import { TRAITS, type TraitId } from '@/shared/game/traits';
+import type { TraitId } from '@/shared/game/traits';
 import type { BredOffspring } from '@/lib/stores/breedingStore';
-
-/** Result of a confirmed reroll (null = failed, keep current state). */
-export interface RerollResult {
-  traits: string[];
-  rerollTokens: number;
-}
 
 export interface BreedingRevealProps {
   offspring: BredOffspring;
   onClose: () => void;
-  /** Reroll tokens available (Design v2 section 6.3 crafting loop). */
-  rerollTokens?: number;
-  /**
-   * Reroll one trait slot (1-based) via POST /api/breeding/reroll.
-   * Omitted = the reroll flow is hidden (e.g. tokenless sessions).
-   */
-  onReroll?: (slot: number) => Promise<RerollResult | null>;
 }
 
 function hexToRgba(hex: string, opacity: number): string {
@@ -48,42 +35,14 @@ function hexToRgba(hex: string, opacity: number): string {
 export function BreedingReveal({
   offspring,
   onClose,
-  rerollTokens = 0,
-  onReroll,
 }: BreedingRevealProps): React.ReactElement<any> {
   const theme = dynastyThemes[offspring.dynastyName ?? ''] ?? dynastyThemes.PRIMAL;
   const rarity = RARITY_STYLE[offspring.rarity ?? 'common'] ?? RARITY_STYLE.common;
 
-  // Trait state is local so a reroll updates the reveal in place
-  const [traits, setTraits] = useState<string[]>(offspring.traits ?? []);
-  const [tokens, setTokens] = useState(rerollTokens);
-  const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
-  const [isRerolling, setIsRerolling] = useState(false);
-  const [rerolledSlot, setRerolledSlot] = useState<number | null>(null);
-  const [rerollError, setRerollError] = useState<string | null>(null);
-
+  // The traits the player DRAFTED (Constitution §8.2). Nothing changes them
+  // after birth — the reroll flow that used to live here is retired.
+  const traits: string[] = offspring.traits ?? [];
   const slotCount = Math.max(offspring.traitSlots ?? traits.length, traits.length);
-
-  const handleConfirmReroll = useCallback(async () => {
-    if (confirmSlot === null || !onReroll || isRerolling) return;
-    setIsRerolling(true);
-    setRerollError(null);
-    try {
-      const result = await onReroll(confirmSlot);
-      if (result) {
-        setTraits(result.traits);
-        setTokens(result.rerollTokens);
-        setRerolledSlot(confirmSlot);
-      } else {
-        setRerollError('Reroll failed — token not spent');
-      }
-    } catch {
-      setRerollError('Reroll failed — token not spent');
-    } finally {
-      setIsRerolling(false);
-      setConfirmSlot(null);
-    }
-  }, [confirmSlot, onReroll, isRerolling]);
 
   return (
     <div
@@ -219,99 +178,34 @@ export function BreedingReveal({
           </div>
         )}
 
-        {/* Inherited traits (Design v2 section 6.3): one roll from each
-            parent's pool. Each rolled chip pops in on its own beat; the
-            reroll flow (token count, confirm, result) lives right here -
-            "breed toward the pair you want, token the miss". */}
+        {/* Drafted traits (Constitution §8.2): the child's traits are the
+            ones the player chose on the draft board before paying, so this
+            panel is a confirmation, not a reveal. Nothing was rolled and
+            nothing can be re-rolled. */}
         {slotCount > 0 && (
           <div
             className="w-full max-w-xs text-center space-y-2"
             data-testid="reveal-traits"
           >
-            <p className="label-arcade">Inherited Traits</p>
+            <p className="label-arcade">Drafted Traits</p>
             <div className="flex justify-center items-center gap-2 flex-wrap">
-              {traits.map((traitId, i) => {
-                const slot = i + 1;
-                const def = TRAITS[traitId as TraitId];
-                return (
-                  <span
-                    key={`${traitId}-${slot}`}
-                    className="inline-flex flex-col items-center gap-1 animate-pop-in"
-                    style={{ animationDelay: `${1.1 + i * 0.15}s`, animationFillMode: 'backwards' }}
-                  >
-                    <TraitChip
-                      traitId={traitId as TraitId}
-                      size="md"
-                      emphasis={rerolledSlot === slot}
-                    />
-                    {onReroll && tokens > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmSlot(slot)}
-                        disabled={isRerolling}
-                        className="text-[10px] font-mono underline text-beige/60 hover:text-bone-white transition-colors disabled:opacity-50"
-                        aria-label={`Reroll ${def?.name ?? traitId}`}
-                        data-testid={`reroll-slot-${slot}`}
-                      >
-                        Reroll
-                      </button>
-                    )}
-                  </span>
-                );
-              })}
+              {traits.map((traitId, i) => (
+                <span
+                  key={`${traitId}-${i + 1}`}
+                  className="inline-flex flex-col items-center gap-1 animate-pop-in"
+                  style={{ animationDelay: `${1.1 + i * 0.15}s`, animationFillMode: 'backwards' }}
+                >
+                  <TraitChip traitId={traitId as TraitId} size="md" />
+                </span>
+              ))}
               {Array.from({ length: slotCount - traits.length }).map((_, i) => (
                 <EmptyTraitSlot key={`empty-${i}`} size="md" />
               ))}
             </div>
             {traits.length === 0 && (
               <p className="text-xs font-body text-beige/60" data-testid="reveal-no-traits">
-                No traits inherited — traitless parents pass nothing on.
+                No traits drafted — traitless parents offer nothing to take.
               </p>
-            )}
-            {onReroll && (
-              <p className="text-xs font-mono text-beige/60" data-testid="reroll-token-count">
-                Reroll tokens: {tokens}
-              </p>
-            )}
-            {rerollError && (
-              <p className="text-xs font-body text-strike-red" data-testid="reroll-error">
-                {rerollError}
-              </p>
-            )}
-            {confirmSlot !== null && (
-              <div
-                className="panel px-3 py-2 space-y-2"
-                data-testid="reroll-confirm"
-              >
-                <p className="text-xs font-body text-beige/80">
-                  Spend 1 token to reroll{' '}
-                  <span style={{ color: theme.glow }}>
-                    {TRAITS[traits[confirmSlot - 1] as TraitId]?.name ??
-                      traits[confirmSlot - 1]}
-                  </span>
-                  ? Redraws from the combined parent pool.
-                </p>
-                <div className="flex justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleConfirmReroll}
-                    disabled={isRerolling}
-                    className="btn-go px-4 py-1.5 text-xs min-h-[32px]"
-                    data-testid="reroll-confirm-yes"
-                  >
-                    {isRerolling ? 'Rerolling…' : 'Confirm'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmSlot(null)}
-                    disabled={isRerolling}
-                    className="btn-neutral px-4 py-1.5 text-xs min-h-[32px]"
-                    data-testid="reroll-confirm-no"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         )}

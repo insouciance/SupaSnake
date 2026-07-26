@@ -219,8 +219,13 @@ describe('WP-0.03: the GROUND_TRUTH §10 dead-configuration table stays purged',
     expect(purgeSql).toMatch(
       /ALTER TABLE contract_definitions DROP COLUMN IF EXISTS reward_energy;/
     );
-    const contractsDir = path.join(API, 'contracts');
-    for (const f of walk(contractsDir, (x) => /\.tsx?$/.test(x))) {
+    // This used to walk `src/app/api/contracts` asserting no energy field
+    // leaked into the route. WP-1.03 deleted that route with the rest of the
+    // contracts cutover (§7.2, §12.2, §13), so the walk had nothing to read.
+    // Rewritten to the stronger claim the deletion earns: the route is gone,
+    // and no API file anywhere carries the purged energy fields.
+    expect(fs.existsSync(path.join(API, 'contracts'))).toBe(false);
+    for (const f of walk(API, (x) => /\.tsx?$/.test(x))) {
       expect(stripComments(fs.readFileSync(f, 'utf8'))).not.toMatch(
         /reward_energy|rewardEnergy|energy_granted|energyGranted/
       );

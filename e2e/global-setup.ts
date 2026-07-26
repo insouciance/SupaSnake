@@ -22,6 +22,20 @@ const ROUTES = [
   '/legal/privacy',
   '/legal/terms',
   '/legal/cookies',
+  // WP-1.08 artifact surfaces. The image routes compile separately from
+  // their pages, so both are warmed.
+  '/s/214',
+  '/s/214/opengraph-image',
+  '/r/D0badf00d',
+  '/r/D0badf00d/opengraph-image',
+  '/w/2026-07-20',
+  '/w/2026-07-20/opengraph-image',
+  '/c/FANG',
+  '/c/FANG/opengraph-image',
+  '/x/Vyper~CYBER~4~slipstream',
+  '/x/Vyper~CYBER~4~slipstream/opengraph-image',
+  '/p/Sans_Souci/opengraph-image',
+  '/og/challenge?kind=signal&day=214&t=1240',
 ];
 
 export default async function globalSetup(config: FullConfig) {

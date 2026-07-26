@@ -1,11 +1,13 @@
 'use client';
 
 /**
- * Breeding Lab - Combine two snakes into a new offspring and lineage.
+ * Breeding Lab - draft two snakes into an offspring (Constitution §8.2).
  *
- * Two parent slots + offspring preview (cost, generation, 50/50 variant
- * hint), server-authoritative breeding via POST /api/breeding, recent
- * breedings from GET /api/breeding, and a CSS reveal animation on success.
+ * Two parent slots, then the DRAFT BOARD: the variant line, the traits, and
+ * the lineage strain are all chosen, never rolled. The board is computed by
+ * POST /api/breeding/draft - the same server function that decides what
+ * POST /api/breeding writes - so the offspring shown here is the offspring
+ * received. Recent breedings come from GET /api/breeding.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -18,21 +20,25 @@ import { useBreedingStore, type BredOffspring } from '@/lib/stores/breedingStore
 import { useDynastyTheme, dynastyThemes } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
 import { validateBreedingPair, type BreedingBlockReason } from '@/lib/breeding/preview';
-import { previewInheritance } from '@/lib/breeding/inheritance';
-import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
-import { combineLineages, sanitizeLineage } from '@/shared/game/lineage';
+import { getTraitSlots, sanitizeTraits, type TraitId } from '@/shared/game/traits';
+import { sanitizeLineage } from '@/shared/game/lineage';
+import type { StrainId } from '@/shared/game/strains';
 import { GAME_CONFIG } from '@/shared/config/game';
 
 import { Navigation } from '@/components/ui/Navigation';
 import { IconArrowRight, IconDna } from '@/components/ui/icons';
 import { ParentSlot } from '@/components/breeding/ParentSlot';
 import { SnakePicker, type SnakePickerEntry } from '@/components/breeding/SnakePicker';
-import { BreedingReveal, type RerollResult } from '@/components/breeding/BreedingReveal';
+import { BreedingReveal } from '@/components/breeding/BreedingReveal';
 import { TraitChip } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 
 import type { OwnedSnake, SnakeVariant, Rarity } from '@/shared/types/snake-data-model';
-import type { BreedingHistoryEntry, BreedingHistoryResponse } from '@/app/api/breeding/utils';
+import type {
+  BreedingDraft,
+  BreedingHistoryEntry,
+  BreedingHistoryResponse,
+} from '@/app/api/breeding/utils';
 
 // =============================================================================
 // HELPERS
@@ -42,8 +48,14 @@ const BLOCK_REASON_TEXT: Record<BreedingBlockReason, string> = {
   missing_parent: 'Select two parents',
   same_snake: 'Parents must be different snakes',
   different_dynasty: 'Parents must share a dynasty',
-  generation_cap: 'Generation cap (50) reached',
   insufficient_dna: 'Not enough DNA',
+};
+
+const LINEAGE_KIND_LABEL: Record<string, string> = {
+  purebred: 'Purebred line',
+  dual: 'Dual line',
+  parent1: 'Parent 1 line',
+  parent2: 'Parent 2 line',
 };
 
 interface ResolvedParent {
@@ -83,8 +95,13 @@ export default function BreedPage() {
   // Recent breedings
   const [history, setHistory] = useState<BreedingHistoryEntry[]>([]);
 
-  // Reroll tokens (Design v2 section 6.3) - refreshed by the breed POST
-  const [rerollTokens, setRerollTokens] = useState(0);
+  // The draft board, computed server-side. `null` until two parents are
+  // chosen; every choice below re-resolves it, so what is rendered is
+  // always the server's answer rather than a client guess.
+  const [draft, setDraft] = useState<BreedingDraft | null>(null);
+  const [variantChoice, setVariantChoice] = useState<string | null>(null);
+  const [traitDraft, setTraitDraft] = useState<TraitId[] | null>(null);
+  const [lineageKind, setLineageKind] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // DERIVED DATA
@@ -190,6 +207,88 @@ export default function BreedPage() {
   }, [fetchHistory]);
 
   // ---------------------------------------------------------------------------
+  // THE DRAFT BOARD (Constitution §8.2)
+  // ---------------------------------------------------------------------------
+  //
+  // Server authority, even for a preview: the board is whatever
+  // breeding_draft() says it is. Choices are sent back on every change so
+  // the resolved `preview` on screen is literally the row breed_snakes will
+  // insert - there is no client-side outcome to drift from it.
+
+  useEffect(() => {
+    if (!parent1 || !parent2 || !session?.access_token) {
+      setDraft(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch('/api/breeding/draft', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            parent1_id: parent1.snake.id,
+            parent2_id: parent2.snake.id,
+            ...(variantChoice ? { variant_id: variantChoice } : {}),
+            ...(traitDraft ? { traits: traitDraft } : {}),
+            ...(lineageKind ? { lineage_kind: lineageKind } : {}),
+          }),
+        });
+        const data = await response.json();
+        if (cancelled) return;
+        if (!response.ok || !data.success) {
+          setDraft(null);
+          return;
+        }
+        setDraft(data.draft as BreedingDraft);
+      } catch {
+        if (!cancelled) setDraft(null);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [parent1, parent2, session?.access_token, variantChoice, traitDraft, lineageKind]);
+
+  // A new pairing clears the previous pairing's choices.
+  useEffect(() => {
+    setVariantChoice(null);
+    setTraitDraft(null);
+    setLineageKind(null);
+  }, [parent1Id, parent2Id]);
+
+  const activeVariant = useMemo(() => {
+    if (!draft) return null;
+    const chosen = draft.preview.variant_id;
+    return (
+      draft.variant_options.find((option) => option.variant_id === chosen) ??
+      draft.variant_options[0] ??
+      null
+    );
+  }, [draft]);
+
+  const draftedTraits = useMemo(
+    () => (draft ? (draft.preview.traits as TraitId[]) : []),
+    [draft]
+  );
+
+  const toggleTrait = useCallback(
+    (traitId: TraitId) => {
+      if (!draft || !activeVariant) return;
+      const current = draft.preview.traits as TraitId[];
+      const next = current.includes(traitId)
+        ? current.filter((id) => id !== traitId)
+        : [...current, traitId].slice(-activeVariant.trait_slots);
+      setTraitDraft(next);
+    },
+    [draft, activeVariant]
+  );
+
+  // ---------------------------------------------------------------------------
   // BREED ACTION
   // ---------------------------------------------------------------------------
 
@@ -208,9 +307,16 @@ export default function BreedPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
+        // The SAME choices the draft above was resolved with. Sending them
+        // is what makes the offspring the one that was previewed.
         body: JSON.stringify({
           parent1_id: parent1.snake.id,
           parent2_id: parent2.snake.id,
+          ...(draft ? { variant_id: draft.preview.variant_id } : {}),
+          ...(draft ? { traits: draft.preview.traits } : {}),
+          ...(draft?.preview.lineage_kind
+            ? { lineage_kind: draft.preview.lineage_kind }
+            : {}),
         }),
       });
 
@@ -247,11 +353,6 @@ export default function BreedPage() {
         lineage: childLineage,
       };
       setLastOffspring(offspring);
-
-      // Reroll tokens ride the breed response (server authority)
-      if (typeof data.rerollTokens === 'number') {
-        setRerollTokens(data.rerollTokens);
-      }
 
       // Add offspring to the collection store
       addOwnedSnake({
@@ -291,6 +392,7 @@ export default function BreedPage() {
     validation.valid,
     parent1,
     parent2,
+    draft,
     session?.access_token,
     setBreeding,
     setBreedError,
@@ -310,64 +412,6 @@ export default function BreedPage() {
     },
     [pickerSlot, setParent, closePicker]
   );
-
-  // ---------------------------------------------------------------------------
-  // TRAIT REROLL (Design v2 section 6.3 crafting loop)
-  // ---------------------------------------------------------------------------
-
-  const handleReroll = useCallback(
-    async (slot: number): Promise<RerollResult | null> => {
-      const offspring = lastOffspring;
-      if (!offspring || !session?.access_token) return null;
-      try {
-        const response = await fetch('/api/breeding/reroll', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ snake_id: offspring.id, slot }),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-          showToast(data.error ?? 'Reroll failed', 'error');
-          return null;
-        }
-        const traits = sanitizeTraits(data.traits);
-        const tokens = typeof data.rerollTokens === 'number' ? data.rerollTokens : 0;
-        // Server authority: sync the offspring's traits into the stores
-        setRerollTokens(tokens);
-        setLastOffspring({ ...offspring, traits });
-        updateOwnedSnake(offspring.id, { traits });
-        return { traits, rerollTokens: tokens };
-      } catch {
-        showToast('Reroll failed', 'error');
-        return null;
-      }
-    },
-    [lastOffspring, session?.access_token, setLastOffspring, updateOwnedSnake, showToast]
-  );
-
-  // Inheritance preview (section 6.3): one roll from each parent's pool
-  const inheritance = useMemo(() => {
-    if (!parent1 || !parent2 || validation.offspringGeneration === null) {
-      return null;
-    }
-    return previewInheritance(
-      parent1.snake.traits,
-      parent2.snake.traits,
-      [parent1.variant.rarity, parent2.variant.rarity],
-      validation.offspringGeneration
-    );
-  }, [parent1, parent2, validation.offspringGeneration]);
-
-  const lineageOutcomes = useMemo(() => {
-    if (!parent1 || !parent2) return [];
-    return combineLineages(
-      { lineage: sanitizeLineage(parent1.snake.lineage), dynasty: parent1.dynastyName },
-      { lineage: sanitizeLineage(parent2.snake.lineage), dynasty: parent2.dynastyName }
-    );
-  }, [parent1, parent2]);
 
   // ---------------------------------------------------------------------------
   // LOADING / AUTH STATES
@@ -493,9 +537,9 @@ export default function BreedPage() {
                 className="text-sm font-mono font-semibold text-bone-white inline-flex items-center gap-1"
                 data-testid="breeding-cost"
               >
-                {validation.cost !== null ? (
+                {draft || validation.cost !== null ? (
                   <>
-                    {validation.cost.toLocaleString('en-US')}
+                    {(draft?.preview.dna_cost ?? validation.cost ?? 0).toLocaleString('en-US')}
                     <IconDna size={14} className="text-cyber" aria-label="DNA" aria-hidden={false} role="img" />
                   </>
                 ) : (
@@ -507,92 +551,147 @@ export default function BreedPage() {
             <div className="flex justify-between items-center">
               <span className="text-sm font-body text-beige/70">Generation:</span>
               <span className="text-sm font-mono font-semibold text-bone-white" data-testid="offspring-generation">
-                {validation.offspringGeneration !== null ? `Gen ${validation.offspringGeneration}` : '—'}
+                {draft
+                  ? `Gen ${draft.preview.generation}`
+                  : validation.offspringGeneration !== null
+                    ? `Gen ${validation.offspringGeneration}`
+                    : '—'}
               </span>
             </div>
 
-            <p className="text-xs pt-1 font-body text-beige/60">
-              The offspring has a 50/50 chance of taking either parent&apos;s variant.
-            </p>
+            {draft && (
+              <p
+                className="text-xs pt-1 font-body text-beige/60"
+                data-testid="ascendance-note"
+              >
+                {draft.ascendance.yield_bonus > 0
+                  ? `Ascendance: +${(draft.ascendance.yield_bonus * 100).toFixed(2)}% Yield, permanently.`
+                  : 'Gen 4 begins Ascendance — every generation after it permanently raises this snake\u2019s Yield.'}
+              </p>
+            )}
 
-            {/* Trait inheritance odds (Design v2 section 6.3) */}
-            {inheritance && (
+            {/* Variant line (§8.2): a CHOICE between the parents' lines. */}
+            {draft && draft.variant_options.length > 0 && (
               <div
                 className="pt-2 space-y-2 border-t border-scale-blue-light/20"
-                data-testid="inheritance-preview"
+                data-testid="variant-draft"
               >
-                <p className="text-xs font-body text-beige/70">
-                  Inherits <span className="text-bone-white font-semibold">1 trait from each parent</span>
-                  {inheritance.slots < 2 && inheritance.parent2.pool.length > 0
-                    ? ' — 1 trait slot: the first roll takes it'
-                    : ''}
-                  .
-                </p>
-                {([
-                  ['Parent 1', inheritance.parent1],
-                  ['Parent 2', inheritance.parent2],
-                ] as const).map(([label, odds]) => (
-                  <div
-                    key={label}
-                    className="flex items-center gap-2 flex-wrap"
-                    data-testid={`inheritance-${label === 'Parent 1' ? 'parent1' : 'parent2'}`}
-                  >
-                    <span className="text-xs font-mono text-beige/60 shrink-0">
-                      {label}:
-                    </span>
-                    {odds.pool.length === 0 ? (
-                      <span className="text-xs font-body text-beige/50">
-                        traitless — contributes nothing
-                      </span>
-                    ) : (
-                      odds.pool.map((traitId) => (
-                        <span key={traitId} className="inline-flex items-center gap-1">
-                          <TraitChip traitId={traitId} size="sm" />
-                          <span className="text-[10px] font-mono text-beige/60">
-                            {Math.round((odds.oddsPerTrait ?? 0) * 100)}%
-                          </span>
-                        </span>
-                      ))
-                    )}
-                  </div>
-                ))}
+                <p className="text-xs font-body text-beige/70">Variant line</p>
+                <div className="flex gap-2 flex-wrap">
+                  {draft.variant_options.map((option) => {
+                    const selected = option.variant_id === draft.preview.variant_id;
+                    return (
+                      <button
+                        key={option.variant_id}
+                        type="button"
+                        onClick={() => setVariantChoice(option.variant_id)}
+                        aria-pressed={selected}
+                        className={`rounded-arcade border px-2 py-1 text-xs font-body transition-colors ${
+                          selected
+                            ? 'border-venom-orange text-bone-white bg-void-deep/80'
+                            : 'border-scale-blue-light/25 text-beige/70 bg-void-deep/40'
+                        }`}
+                        data-testid={`variant-option-${option.variant_id}`}
+                      >
+                        {option.name ?? option.rarity} · {option.trait_slots} slot
+                        {option.trait_slots === 1 ? '' : 's'}
+                      </button>
+                    );
+                  })}
+                </div>
+                {draft.variant_options.length === 1 && (
+                  <p className="text-[10px] font-body text-beige/60">
+                    Both parents share this line — nothing to choose.
+                  </p>
+                )}
               </div>
             )}
 
-            {lineageOutcomes.length > 0 && (
+            {/* Trait draft (§8.2): taking one is not taking another. */}
+            {draft && draft.trait_pool.length > 0 && activeVariant && (
               <div
                 className="pt-2 space-y-2 border-t border-scale-blue-light/20"
-                data-testid="lineage-preview"
+                data-testid="trait-draft"
               >
                 <p className="text-xs font-body text-beige/70">
-                  Lineage outcome{lineageOutcomes.length > 1 ? 's' : ''}
+                  Draft{' '}
+                  <span className="text-bone-white font-semibold">
+                    {draftedTraits.length}/{activeVariant.trait_slots}
+                  </span>{' '}
+                  trait{activeVariant.trait_slots === 1 ? '' : 's'} — taking one is
+                  not taking another.
                 </p>
                 <div className="flex gap-2 flex-wrap">
-                  {lineageOutcomes.map((outcome) => (
-                    <div
-                      key={outcome.lineage.strains.join('-')}
-                      className="inline-flex items-center gap-1.5 rounded-arcade border border-scale-blue-light/25 bg-void-deep/60 px-2 py-1"
-                    >
-                      {outcome.lineage.strains.map((strain) => (
-                        <StrainChip
-                          key={strain}
-                          strain={strain}
-                          points={outcome.lineage.strength}
-                        />
-                      ))}
-                      {outcome.chance < 1 && (
+                  {draft.trait_pool.map((entry) => {
+                    const traitId = entry.trait_id as TraitId;
+                    const selected = draftedTraits.includes(traitId);
+                    return (
+                      <button
+                        key={traitId}
+                        type="button"
+                        onClick={() => toggleTrait(traitId)}
+                        aria-pressed={selected}
+                        className={`inline-flex items-center gap-1 rounded-arcade border px-1.5 py-1 transition-colors ${
+                          selected
+                            ? 'border-venom-orange bg-void-deep/80'
+                            : 'border-scale-blue-light/25 bg-void-deep/40 opacity-70'
+                        }`}
+                        data-testid={`trait-option-${traitId}`}
+                      >
+                        <TraitChip traitId={traitId} size="sm" />
                         <span className="text-[10px] font-mono text-beige/60">
-                          {Math.round(outcome.chance * 100)}%
+                          {entry.source === 'both' ? 'both' : entry.source === 'parent1' ? 'P1' : 'P2'}
                         </span>
-                      )}
-                    </div>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
-                {lineageOutcomes.some((outcome) => outcome.lineage.strains.length === 2) && (
-                  <p className="text-[10px] font-body text-beige/60">
-                    Dual lineage biases both strains; choose its primary before a run.
-                  </p>
-                )}
+              </div>
+            )}
+
+            {/* Lineage line (§8.2): chosen from the parents' strains. */}
+            {draft && activeVariant && activeVariant.lineage_options.length > 0 && (
+              <div
+                className="pt-2 space-y-2 border-t border-scale-blue-light/20"
+                data-testid="lineage-draft"
+              >
+                <p className="text-xs font-body text-beige/70">Lineage</p>
+                <div className="flex gap-2 flex-wrap">
+                  {activeVariant.lineage_options.map((option) => {
+                    const selected = option.kind === draft.preview.lineage_kind;
+                    return (
+                      <button
+                        key={option.kind}
+                        type="button"
+                        onClick={() => setLineageKind(option.kind)}
+                        aria-pressed={selected}
+                        className={`inline-flex items-center gap-1.5 rounded-arcade border px-2 py-1 transition-colors ${
+                          selected
+                            ? 'border-venom-orange bg-void-deep/80'
+                            : 'border-scale-blue-light/25 bg-void-deep/40 opacity-70'
+                        }`}
+                        data-testid={`lineage-option-${option.kind}`}
+                      >
+                        {option.strains.map((strain) => (
+                          <StrainChip
+                            key={strain}
+                            strain={strain as StrainId}
+                            points={option.strength}
+                          />
+                        ))}
+                        <span className="text-[10px] font-mono text-beige/60">
+                          {LINEAGE_KIND_LABEL[option.kind] ?? option.kind}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {draft.preview.lineage &&
+                  draft.preview.lineage.strains.length === 2 && (
+                    <p className="text-[10px] font-body text-beige/60">
+                      Dual lineage biases both strains; choose its primary before a run.
+                    </p>
+                  )}
               </div>
             )}
           </div>
@@ -681,12 +780,10 @@ export default function BreedPage() {
         onClose={closePicker}
       />
 
-      {/* Offspring reveal (traits pop in; reroll flow lives on the reveal) */}
+      {/* Offspring reveal: a confirmation of the draft, not a reveal of a roll */}
       {lastOffspring && (
         <BreedingReveal
           offspring={lastOffspring}
-          rerollTokens={rerollTokens}
-          onReroll={handleReroll}
           onClose={() => setLastOffspring(null)}
         />
       )}

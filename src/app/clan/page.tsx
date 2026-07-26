@@ -1,15 +1,38 @@
 'use client';
 
 /**
- * Clan Page
- * Per SO-001: 40% DAU target in clans
- * Per SO-002: No daily requirements
+ * The clan page (Constitution §9.1–9.4).
+ *
+ * "A clan is a witness, not an institution." Three states:
+ *
+ *   no clan   — found one (name + preset heraldry, one tap plus a name), or
+ *               paste an invite code. Below them, the directory of clans that
+ *               hunted this week or last: short and alive, never long and
+ *               dead, and never showing how many clans exist in total (§9.2).
+ *   in a clan — the hunt (self-referential primary, optional rival layer),
+ *               heraldry, the roster, the invite link.
+ *   gated     — the Gauntlet, the duel surface and the playoff bracket render
+ *               only when their population flags are on (§9.3, §12.1 slot 7).
+ *               Off is the default and hides them without deleting a row.
+ *
+ * WHAT IS NOT ON THIS PAGE ANY MORE
+ *
+ *   The "Weekly Score" and "Total Score" tiles. §12.2 caps public numbers at
+ *   two — Score and Depth — and a third clan number that ranked clans against
+ *   each other was over the cap; the columns behind the tiles are dropped in
+ *   migration 048. What stands in their place is the clan's Depth: its best
+ *   week, and this week against it.
+ *
+ *   The promote/demote controls and the officer invite console. Rule 8, and
+ *   this work package's acceptance criterion.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { type Clan, CLAN_LIMITS } from '@/lib/clan/types';
+import { CLAN_GAUNTLET_ENABLED, CLAN_PLAYOFFS_ENABLED } from '@/lib/clan/config';
+import { CLAN_BANNERS, CLAN_EMBLEMS } from '@/lib/clan/heraldry';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import { DuelPanel } from '@/components/clan/DuelPanel';
@@ -18,7 +41,10 @@ import { PlayoffBracket } from '@/components/clan/PlayoffBracket';
 import { ClanIdentityEditor } from '@/components/clan/ClanIdentityEditor';
 import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
 import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
-import { useClanFull } from '@/components/clan/useClanFull';
+import { ClanHuntPanel } from '@/components/clan/ClanHuntPanel';
+import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
+import { ClanDirectory, type ClanDirectoryRow } from '@/components/clan/ClanDirectory';
+import { useClanFull, clanAction } from '@/components/clan/useClanFull';
 import Link from 'next/link';
 import { IconShield, IconUser } from '@/components/ui/icons';
 
@@ -34,19 +60,20 @@ export default function ClanPage() {
 
   const { user, session, isAuthenticated } = useAuth();
   const [myClan, setMyClan] = useState<MyClan | null>(null);
-  const [clans, setClans] = useState<Clan[]>([]);
+  const [directory, setDirectory] = useState<ClanDirectoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showFound, setShowFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  // Form state
+  // Founding: a name, and a preset heraldry pick. Nothing else is required.
   const [name, setName] = useState('');
-  const [tag, setTag] = useState('');
-  const [description, setDescription] = useState('');
+  const [bannerId, setBannerId] = useState<string>(CLAN_BANNERS[0].id);
+  const [emblemId, setEmblemId] = useState<string>(CLAN_EMBLEMS[0].id);
+  const [joinCode, setJoinCode] = useState('');
+  const joinCodeInput = useRef<HTMLInputElement | null>(null);
 
-  // Identity v1 I3: the full clan surface (identity, roster, invites,
-  // discord) in one authed read - shared by the new panels below
   const { view: fullView, refresh: refreshFullView } = useClanFull(
     session?.access_token
   );
@@ -54,7 +81,6 @@ export default function ClanPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch my clan
       if (user) {
         const myResponse = await fetch(`/api/clan?playerId=${user.id}`);
         const myData = await myResponse.json();
@@ -64,13 +90,15 @@ export default function ClanPage() {
             role: myData.membership.role,
             joinedAt: myData.membership.joinedAt,
           });
+        } else {
+          setMyClan(null);
         }
       }
 
-      // Fetch all clans
-      const response = await fetch('/api/clan');
+      // The directory: alive clans only, and no total (§9.2).
+      const response = await fetch('/api/clan?view=directory');
       const data = await response.json();
-      setClans(data.clans || []);
+      setDirectory(data.clans || []);
     } catch (error) {
       console.error('Failed to fetch clan data:', error);
     } finally {
@@ -84,98 +112,60 @@ export default function ClanPage() {
     }
   }, [isAuthenticated, user, fetchData]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleFound = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    try {
-      const response = await fetch('/api/clan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({
-          action: 'create',
-          name,
-          tag,
-          description,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error);
-        return;
-      }
-
-      setSuccess('Clan created!');
-      setShowCreate(false);
-      fetchData();
-    } catch (err) {
-      setError('Failed to create clan');
+    setBusy(true);
+    const result = await clanAction(session?.access_token, {
+      action: 'found',
+      name,
+      bannerId,
+      emblemId,
+    });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? 'Failed to found clan');
+      return;
     }
+    setSuccess('Your clan stands.');
+    setShowFound(false);
+    fetchData();
+    refreshFullView();
   };
 
-  const handleJoin = async (clanId: string) => {
+  const handleJoinByCode = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
-
-    try {
-      const response = await fetch('/api/clan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({
-          action: 'join',
-          clanId,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error);
-        return;
-      }
-
-      setSuccess('Joined clan!');
-      fetchData();
-    } catch (err) {
-      setError('Failed to join clan');
+    setBusy(true);
+    const result = await clanAction(session?.access_token, {
+      action: 'join_by_code',
+      code: joinCode.trim().toUpperCase(),
+    });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? 'Failed to join');
+      return;
     }
+    setSuccess('Joined clan!');
+    setJoinCode('');
+    fetchData();
+    refreshFullView();
   };
 
   const handleLeave = async () => {
     if (!confirm('Are you sure you want to leave your clan?')) return;
-
     setError(null);
-
-    try {
-      const response = await fetch('/api/clan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({ action: 'leave' }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error);
-        return;
-      }
-
-      setSuccess('Left clan');
-      setMyClan(null);
-      fetchData();
-    } catch (err) {
-      setError('Failed to leave clan');
+    setBusy(true);
+    const result = await clanAction(session?.access_token, { action: 'leave' });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? 'Failed to leave clan');
+      return;
     }
+    setSuccess('Left clan');
+    setMyClan(null);
+    fetchData();
+    refreshFullView();
   };
 
   if (!isAuthenticated) {
@@ -211,7 +201,7 @@ export default function ClanPage() {
               <IconShield size={34} />
               Clans
             </h1>
-            <p className="text-beige font-body mt-1">Join forces with other players</p>
+            <p className="text-beige font-body mt-1">Someone specific sees your week</p>
           </div>
           <Link
             href="/game"
@@ -236,17 +226,19 @@ export default function ClanPage() {
         {/* My Clan Section */}
         {myClan ? (
           <>
-          {/* This Week's Duel - weekly head-to-head clan competition */}
-          <DuelPanel accessToken={session?.access_token} />
-
-          {/* Clan Gauntlet - picks, scouting + research (hidden pre-020) */}
-          <GauntletPanel accessToken={session?.access_token} />
-
-          {/* Season playoffs (§8.4): top-8 bracket in the final 2 weeks +
-              champions banner history (hidden pre-021 / off-season) */}
-          <div className="mb-10 animate-fade-up">
-            <PlayoffBracket accessToken={session?.access_token} />
-          </div>
+          {/* §12.1 slot 7: pre-built, population-gated, hidden by default.
+              Hiding is a flag; every row behind these panels is preserved. */}
+          {CLAN_GAUNTLET_ENABLED && (
+            <>
+              <DuelPanel accessToken={session?.access_token} />
+              <GauntletPanel accessToken={session?.access_token} />
+            </>
+          )}
+          {CLAN_PLAYOFFS_ENABLED && (
+            <div className="mb-10 animate-fade-up">
+              <PlayoffBracket accessToken={session?.access_token} />
+            </div>
+          )}
 
           <section className="mb-10 animate-fade-up">
             <h2 className="heading-display text-2xl text-bone-white mb-4">My Clan</h2>
@@ -260,7 +252,6 @@ export default function ClanPage() {
                       [{myClan.tag}]
                     </span>
                   </div>
-                  <p className="text-beige text-sm font-body mt-1">{myClan.description}</p>
                 </div>
                 <div className="text-left sm:text-right">
                   <p className="label-arcade">Role</p>
@@ -274,15 +265,21 @@ export default function ClanPage() {
                     <IconUser size={12} />
                     Members
                   </p>
-                  <p className="text-xl font-display text-bone-white">{myClan.memberCount}/{myClan.maxMembers}</p>
+                  <p className="text-xl font-display text-bone-white">
+                    {myClan.memberCount}/{myClan.maxMembers ?? CLAN_LIMITS.maxMembers}
+                  </p>
                 </div>
                 <div className="bg-void/60 border border-scale-blue-light/50 rounded-arcade p-3 text-center">
-                  <p className="label-arcade">Weekly Score</p>
-                  <p className="text-xl font-display text-bone-white">{myClan.weeklyScore?.toLocaleString() || 0}</p>
+                  <p className="label-arcade">Best Week</p>
+                  <p className="text-xl font-display text-bone-white">
+                    {(myClan.bestWeekDepth ?? 0).toLocaleString()}
+                  </p>
                 </div>
                 <div className="bg-void/60 border border-scale-blue-light/50 rounded-arcade p-3 text-center">
-                  <p className="label-arcade">Total Score</p>
-                  <p className="text-xl font-display text-bone-white">{myClan.totalScore?.toLocaleString() || 0}</p>
+                  <p className="label-arcade">Lifetime Depth</p>
+                  <p className="text-xl font-display text-bone-white">
+                    {(myClan.lifetimeDepth ?? 0).toLocaleString()}
+                  </p>
                 </div>
               </div>
 
@@ -291,22 +288,26 @@ export default function ClanPage() {
                   no onClick and never had one. WP-0.03 removed the whole
                   panel with the faucet behind it. A clan pays nobody
                   (Rule 8), and there is no energy balance to pay into
-                  (§8.6). What a clan gives is the Serpent hunt, which
-                  WP-1.07 renders in this space. */}
+                  (§8.6). What a clan gives is the Serpent hunt, and
+                  WP-1.07 renders it here off GET /api/clan/hunt. */}
 
-              {myClan.role !== 'owner' && (
-                <button
-                  onClick={handleLeave}
-                  className="text-strike-red hover:text-bone-white text-sm font-body transition-colors min-h-[44px]"
-                >
-                  Leave Clan
-                </button>
-              )}
+              <button
+                onClick={handleLeave}
+                disabled={busy}
+                className="text-strike-red hover:text-bone-white text-sm font-body transition-colors min-h-[44px]"
+              >
+                Leave Clan
+              </button>
             </div>
           </section>
 
-          {/* Identity v1 I3 (section 8): heraldry editor, roster of
-              PlayerCards, Discord home - all off the one full-view read */}
+          {/* The hunt (§7.3, §9.2–9.4): the clan against its own best week
+              first, the additive contribution list second, and the rival only
+              on the weeks a symmetric one exists. Complete at a clan of one. */}
+          <div className="animate-fade-up">
+            <ClanHuntPanel accessToken={session?.access_token} />
+          </div>
+
           {fullView?.clan && (
             <>
               <ClanIdentityEditor
@@ -322,14 +323,17 @@ export default function ClanPage() {
               <ClanRoster
                 accessToken={session?.access_token}
                 view={fullView}
-                onChanged={refreshFullView}
+                onChanged={() => {
+                  refreshFullView();
+                  fetchData();
+                }}
               />
             </>
           )}
           </>
         ) : (
           <>
-            {/* Invite inbox (section 8.2): pending invites, accept/decline */}
+            {/* Invites issued before the rework can still be answered */}
             {fullView && (
               <InviteInbox
                 accessToken={session?.access_token}
@@ -341,12 +345,30 @@ export default function ClanPage() {
               />
             )}
 
-            {/* Create Clan Section */}
+            {/* The founding prompt (§9.2). On this page the two buttons open
+                the forms that are already below it, so the prompt is the
+                reason rather than a second route: it says what a clan is FOR
+                (the Serpent hunts every week) before asking for a name.
+                Below the ramp beat it renders nothing at all — no counter and
+                no locked card, because being shown a number you have not
+                reached is what turns a ramp into a cut line (Rule 8). */}
+            <ClanFoundingPrompt
+              accessToken={session?.access_token}
+              inClan={false}
+              onFound={() => setShowFound(true)}
+              onJoin={() => joinCodeInput.current?.focus()}
+            />
+
+            {/* Found a clan — one tap plus a name (§9.2) */}
             <section className="mb-10 animate-fade-up">
-              {showCreate ? (
-                <div className="panel-elevated p-6 animate-pop-in">
-                  <h2 className="heading-display text-2xl text-bone-white mb-4">Create Clan</h2>
-                  <form onSubmit={handleCreate} className="space-y-4">
+              {showFound ? (
+                <div className="panel-elevated p-6 animate-pop-in" data-testid="found-clan">
+                  <h2 className="heading-display text-2xl text-bone-white mb-1">Found a Clan</h2>
+                  <p className="text-beige/70 text-sm font-body mb-4">
+                    A clan of one is a clan. It hunts, it holds records, and it gets a
+                    rival the week a matching one exists.
+                  </p>
+                  <form onSubmit={handleFound} className="space-y-4">
                     <div>
                       <label className="block text-sm text-beige font-body mb-1">Clan Name</label>
                       <input
@@ -361,39 +383,57 @@ export default function ClanPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-beige font-body mb-1">Tag (2-6 characters)</label>
-                      <input
-                        type="text"
-                        value={tag}
-                        onChange={(e) => setTag(e.target.value.toUpperCase())}
-                        placeholder="ELIT"
-                        className="w-full px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-display uppercase placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
-                        minLength={CLAN_LIMITS.minTagLength}
-                        maxLength={CLAN_LIMITS.maxTagLength}
-                        pattern="[A-Z0-9]+"
-                        required
-                      />
+                      <p className="label-arcade mb-2">Banner</p>
+                      <div className="flex flex-wrap gap-2">
+                        {CLAN_BANNERS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setBannerId(option.id)}
+                            aria-label={`Banner ${option.name}`}
+                            className={`w-14 h-9 rounded-arcade border transition-all ${
+                              bannerId === option.id
+                                ? 'border-venom-orange scale-105'
+                                : 'border-scale-blue-light/50 hover:border-bone-white/60'
+                            }`}
+                            style={{
+                              background: `linear-gradient(120deg, ${option.from}, ${option.to})`,
+                            }}
+                          />
+                        ))}
+                      </div>
                     </div>
                     <div>
-                      <label className="block text-sm text-beige font-body mb-1">Description</label>
-                      <textarea
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Tell others about your clan..."
-                        className="w-full px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-body placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
-                        rows={3}
-                      />
+                      <p className="label-arcade mb-2">Emblem</p>
+                      <div className="flex flex-wrap gap-2">
+                        {CLAN_EMBLEMS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setEmblemId(option.id)}
+                            aria-label={`Emblem ${option.name}`}
+                            className={`w-11 h-11 rounded-arcade border bg-void/60 text-xl text-bone-white transition-all ${
+                              emblemId === option.id
+                                ? 'border-venom-orange scale-105'
+                                : 'border-scale-blue-light/50 hover:border-bone-white/60'
+                            }`}
+                          >
+                            {option.glyph}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex gap-4">
                       <button
                         type="submit"
+                        disabled={busy}
                         className="btn-go px-6 py-2 min-h-[44px]"
                       >
-                        Create Clan
+                        Found Clan
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowCreate(false)}
+                        onClick={() => setShowFound(false)}
                         className="btn-neutral px-6 py-2 min-h-[44px]"
                       >
                         Cancel
@@ -403,70 +443,45 @@ export default function ClanPage() {
                 </div>
               ) : (
                 <button
-                  onClick={() => setShowCreate(true)}
+                  onClick={() => setShowFound(true)}
                   className="btn-go inline-flex items-center gap-2 px-8 py-3 min-h-[44px]"
+                  data-testid="found-clan-open"
                 >
                   <IconShield size={18} />
-                  Create New Clan
+                  Found a Clan
                 </button>
               )}
             </section>
 
-            {/* Browse Clans */}
-            <section className="animate-fade-up">
-              <h2 className="heading-display text-2xl text-bone-white mb-4">Browse Clans</h2>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                  <p className="text-beige font-body">Loading clans...</p>
-                </div>
-              ) : clans.length === 0 ? (
-                <div className="panel p-8 text-center">
-                  <p className="text-beige font-body">No clans yet. Be the first to create one!</p>
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  {clans.map((clan) => (
-                    <div
-                      key={clan.id}
-                      className="panel p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-venom-orange/70 transition-all"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <IconShield size={16} className="text-beige/70" />
-                          <span className="font-display uppercase text-lg text-bone-white">{clan.name}</span>
-                          <span className="px-2 py-0.5 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-xs font-display">
-                            [{clan.tag}]
-                          </span>
-                        </div>
-                        <p className="text-sm text-beige font-body">{clan.description}</p>
-                        <p className="text-xs text-beige/60 font-body mt-1">
-                          {clan.memberCount}/{clan.maxMembers} members
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleJoin(clan.id)}
-                        disabled={clan.memberCount >= clan.maxMembers}
-                        className={`px-6 py-2 min-h-[44px] self-start sm:self-center ${
-                          clan.memberCount >= clan.maxMembers
-                            ? 'btn-neutral opacity-50 cursor-not-allowed'
-                            : 'btn-go'
-                        }`}
-                      >
-                        {clan.memberCount >= clan.maxMembers ? 'Full' : 'Join'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Join by invite code — the only way into someone else's clan */}
+            <section className="mb-10 animate-fade-up">
+              <h2 className="heading-display text-2xl text-bone-white mb-2">Have an invite?</h2>
+              <form className="flex gap-2" onSubmit={handleJoinByCode} data-testid="join-by-code">
+                <input
+                  ref={joinCodeInput}
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="INVITE CODE"
+                  maxLength={8}
+                  className="flex-1 px-4 py-2 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-bone-white font-display tracking-widest placeholder:text-beige/50 focus:border-venom-orange focus:outline-none transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || joinCode.trim().length !== 8}
+                  className="btn-go px-5 py-2 min-h-[44px]"
+                >
+                  Join
+                </button>
+              </form>
             </section>
+
+            {/* The directory — alive clans only, and never a total (§9.2).
+                Extracted so its N=1 and empty readings can be asserted
+                without mounting the whole authed page. */}
+            <ClanDirectory clans={directory} loading={loading} />
           </>
         )}
-
-        {/* Info */}
-        <div className="text-center text-beige/40 text-xs font-body mt-10 space-y-1">
-          <p>No daily requirements - contribute when convenient!</p>
-        </div>
       </div>
     </div>
   );

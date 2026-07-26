@@ -41,16 +41,18 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 /**
- * The breeding-`random()` gate ships DISARMED. WP-1.05 (Lineage rework) is the
- * work package that makes the draft deterministic; until it merges, the gate
- * reports its findings and does not fail the build.
+ * The breeding-`random()` gate is ARMED (WP-1.05, migration 047). It shipped
+ * disarmed while `breed_snakes()` and `reroll_lineage()` still rolled dice;
+ * migration 047 redefines both — the draft is deterministic and the rerolls
+ * are retired — so the gate reported zero findings and was armed in that PR.
  *
- * TO ARM IT: set this constant to `true`. That is the entire switch. Do it in
- * the WP-1.05 PR, once `--gate breeding-random` reports zero findings.
- * (`CONSTITUTION_ARM_BREEDING_RANDOM=1` arms it for a single run — used to
- * prove the gate can fail. It can never disarm an armed gate.)
+ * It now FAILS the build on any reintroduction. Do not set this back to
+ * `false`: a finding here means a breeding or lineage path started rolling
+ * again, which §8.2 forbids outright.
+ * (`CONSTITUTION_ARM_BREEDING_RANDOM=1` also arms it for a single run — used
+ * to prove the gate can fail. It can never disarm an armed gate.)
  */
-const GATE_BREEDING_RANDOM_ARMED = false;
+const GATE_BREEDING_RANDOM_ARMED = true;
 
 /**
  * Migrations 001–038 are the pre-Constitution schema (CLAUDE.md). Applied
@@ -91,15 +93,19 @@ const MIN_ALLOW_REASON = 12;
  * be a licence to add more.
  */
 const BASELINE = [
-  {
-    gate: 'owned-row-downward',
-    path: 'src/app/api/clan/route.ts',
-    max: 1,
-    code: ".from('clan_members')",
-    reason:
-      'player-initiated leave. Hard-deleting the membership row destroys joined_at ' +
-      '(clan tenure); R6 tension is real and is filed for the WP-1.02 clan rework.',
-  },
+  // ── R6 (owned-row-downward): EMPTY.
+  //
+  // One entry stood here on 2026-07-25: `src/app/api/clan/route.ts` hard-deleted
+  // the `clan_members` row on leave, destroying `joined_at` — clan tenure, which
+  // Rule 6 names as permanent (finding F-7). WP-1.02 closed it: the route no
+  // longer deletes anything, and `leave_clan` / `remove_clan_member` (migration
+  // 048) archive the membership span into `clan_membership_history` BEFORE
+  // ending the membership, inside one transaction. Those two DELETEs carry
+  // inline allow markers explaining exactly that.
+  //
+  // Do not re-add an entry here to land a change. Debt may shrink; it may not
+  // grow.
+  //
   // ── §10.4 (energy-commerce): EMPTY, and that is the point.
   //
   // Nine entries stood here on 2026-07-25. WP-0.01 (energy envelope) retired

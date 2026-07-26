@@ -3,10 +3,18 @@
  */
 
 /**
- * Tests for Breeding API - Unit tests for business logic + GET history route
- * Breeding is executed by the breed_snakes RPC:
- *   cost = 200 + floor((gen1 + gen2) / 2) * 100
- *   parents must share a dynasty; offspring variant is 50/50 from parents
+ * Tests for Breeding API - business logic + GET history + POST draft commit.
+ *
+ * Breeding is executed by the breed_snakes RPC (migration 047):
+ *   cost = (200 + floor((gen1+gen2)/2) * 100) * 1.25^max(0, childGen - 3)
+ *   parents must share a dynasty; the offspring variant, traits and lineage
+ *   are DRAFTED by the player - nothing is rolled (Constitution §8.2).
+ *
+ * WP-1.05 rewrote three groups here: the cost mirror (steepening), the
+ * "50/50 variant" and "cap generation at 50" assertions (both described
+ * behaviour §8.2 deleted), and the rolling-deploy retry tests for the old
+ * three-argument RPC (that signature is dropped, deliberately, so no caller
+ * can fall back into the coin flip).
  */
 
 // Mock Supabase - must be before imports due to jest.mock hoisting
@@ -28,12 +36,9 @@ jest.mock('@supabase/supabase-js', () => ({
 import { describe, it, expect } from '@jest/globals';
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
-import { mapBreedingHistoryRow } from './utils';
-
-/** Mirrors the breed_snakes RPC cost formula (integer division) */
-function breedingCost(parent1Gen: number, parent2Gen: number): number {
-  return 200 + Math.floor((parent1Gen + parent2Gen) / 2) * 100;
-}
+import { POST as DRAFT_POST } from './draft/route';
+import { mapBreedingHistoryRow, readBreedingChoices } from './utils';
+import { breedingCost } from '@/shared/game/ascendance';
 
 describe('Breeding Logic', () => {
   describe('Cost Calculation', () => {
@@ -41,9 +46,11 @@ describe('Breeding Logic', () => {
       expect(breedingCost(1, 1)).toBe(300);
     });
 
-    it('should scale cost with parent generations', () => {
-      expect(breedingCost(2, 5)).toBe(500); // floor(7/2) = 3
-      expect(breedingCost(4, 4)).toBe(600);
+    it('should scale cost with parent generations, steepened past Gen3', () => {
+      // child Gen6: base 500 (floor(7/2)=3), 1.25^3
+      expect(breedingCost(2, 5)).toBe(Math.ceil(500 * 1.25 ** 3));
+      // child Gen5: base 600, 1.25^2
+      expect(breedingCost(4, 4)).toBe(Math.ceil(600 * 1.25 ** 2));
     });
 
     it('should reject cross-dynasty parents', () => {
@@ -78,6 +85,11 @@ describe('Breeding Logic', () => {
 
       expect(remaining).toBe(200);
     });
+
+    it('leaves a Gen1-3 child at exactly the shipped price', () => {
+      expect(breedingCost(1, 1)).toBe(300);
+      expect(breedingCost(2, 2)).toBe(400);
+    });
   });
 
   describe('Parent Validation', () => {
@@ -104,15 +116,16 @@ describe('Breeding Logic', () => {
   });
 
   describe('Child Generation', () => {
-    it('should produce offspring from one of the parent variants', () => {
+    it('takes the variant line the player DRAFTED, not a coin flip', () => {
+      // The old assertion here described `random() < 0.5`. Under §8.2 the
+      // request names one of the two parent lines and the RPC writes it.
       const parent1VariantId = 'variant-uuid-a';
       const parent2VariantId = 'variant-uuid-b';
-
-      // RPC: random() < 0.5 -> parent1 variant, else parent2 variant
-      const offspring = [parent1VariantId, parent2VariantId];
-      expect(offspring).toContain(parent1VariantId);
-      expect(offspring).toContain(parent2VariantId);
-      expect(offspring).toHaveLength(2);
+      expect(
+        readBreedingChoices({ variant_id: parent2VariantId }).p_variant_choice
+      ).toBe(parent2VariantId);
+      expect(readBreedingChoices({}).p_variant_choice).toBeNull();
+      expect([parent1VariantId, parent2VariantId]).toHaveLength(2);
     });
 
     it('should calculate child generation correctly', () => {
@@ -123,13 +136,12 @@ describe('Breeding Logic', () => {
       expect(childGen).toBe(6);
     });
 
-    it('should cap generation at 50', () => {
-      const parent1Gen = 50;
-      const parent2Gen = 49;
-      const childGen = Math.max(parent1Gen, parent2Gen) + 1;
-
-      // RPC raises 'Maximum generation (50) reached'
-      expect(childGen > 50).toBe(true);
+    it('does not cap generation - Gen4+ is Ascendance (§8.2)', () => {
+      // The RPC used to raise 'Maximum generation (50) reached'. That
+      // refusal is deleted; the cost curve is what paces the lane now.
+      const childGen = Math.max(50, 49) + 1;
+      expect(childGen).toBe(51);
+      expect(breedingCost(50, 49)).toBeGreaterThan(breedingCost(49, 48));
     });
   });
 
@@ -421,10 +433,35 @@ describe('GET /api/breeding', () => {
 });
 
 // =============================================================================
-// POST /api/breeding rolling migration compatibility
+// POST /api/breeding + POST /api/breeding/draft — PREVIEW EQUALS OUTCOME
 // =============================================================================
 
+/**
+ * The guarantee, asserted mechanically rather than by inspection: the draft
+ * endpoint and the commit endpoint hand `breeding_draft` / `breed_snakes`
+ * IDENTICAL arguments for the same request body. Since `breed_snakes` calls
+ * `breeding_draft` and persists its `preview` verbatim (migration 047), equal
+ * arguments mean the previewed child IS the written child.
+ */
 describe('POST /api/breeding', () => {
+  const CHOICES = {
+    parent1_id: 'snake-1',
+    parent2_id: 'snake-2',
+    variant_id: 'variant-b',
+    traits: ['sprinter', 'hoarder'],
+    lineage_kind: 'parent2',
+  };
+
+  const post = (body: Record<string, unknown>) =>
+    new NextRequest('http://localhost:3000/api/breeding', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer valid-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuth = jest.fn().mockResolvedValue({
@@ -442,58 +479,107 @@ describe('POST /api/breeding', () => {
     mockRpc = jest.fn();
   });
 
-  it('retries migration 018 RPC arguments on a migration 030 signature miss', async () => {
-    mockRpc
-      .mockResolvedValueOnce({
-        data: null,
-        error: {
-          code: 'PGRST202',
-          message: 'Could not find breed_snakes with p_allow_cross_dynasty',
-        },
-      })
-      .mockResolvedValueOnce({
-        data: null,
-        error: { code: 'P0001', message: 'Parents must be same dynasty' },
-      });
-
-    const response = await POST(new NextRequest('http://localhost:3000/api/breeding', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer valid-token',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ parent1_id: 'snake-1', parent2_id: 'snake-2' }),
-    }));
-
-    expect(response.status).toBe(400);
-    expect(mockRpc).toHaveBeenCalledTimes(2);
-    expect(mockRpc).toHaveBeenNthCalledWith(1, 'breed_snakes', {
-      p_player_id: 'player-123',
-      p_parent1_id: 'snake-1',
-      p_parent2_id: 'snake-2',
-      p_allow_cross_dynasty: true,
-    });
-    expect(mockRpc).toHaveBeenNthCalledWith(2, 'breed_snakes', {
-      p_player_id: 'player-123',
-      p_parent1_id: 'snake-1',
-      p_parent2_id: 'snake-2',
-    });
-  });
-
-  it('does not retry a genuine breeding rejection', async () => {
+  it('sends the RPC exactly the choices the request named', async () => {
     mockRpc.mockResolvedValueOnce({
       data: null,
       error: { code: 'P0001', message: 'Insufficient DNA: need 300, have 100' },
     });
 
-    const response = await POST(new NextRequest('http://localhost:3000/api/breeding', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer valid-token',
-        'content-type': 'application/json',
+    const response = await POST(post(CHOICES));
+
+    expect(response.status).toBe(400);
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith('breed_snakes', {
+      p_player_id: 'player-123',
+      p_parent1_id: 'snake-1',
+      p_parent2_id: 'snake-2',
+      p_allow_cross_dynasty: expect.any(Boolean),
+      p_variant_choice: 'variant-b',
+      p_trait_draft: ['sprinter', 'hoarder'],
+      p_lineage_kind: 'parent2',
+    });
+  });
+
+  it('preview and commit resolve the SAME draft arguments', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: 'P0001', message: 'Insufficient DNA' },
+    });
+
+    await DRAFT_POST(
+      new NextRequest('http://localhost:3000/api/breeding/draft', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer valid-token',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(CHOICES),
+      })
+    );
+    const previewCall = mockRpc.mock.calls.at(-1) as [string, Record<string, unknown>];
+
+    await POST(post(CHOICES));
+    const commitCall = mockRpc.mock.calls.at(-1) as [string, Record<string, unknown>];
+
+    expect(previewCall[0]).toBe('breeding_draft');
+    expect(commitCall[0]).toBe('breed_snakes');
+    // Same player, same parents, same three choices — nothing between the
+    // preview and the payment can change what is produced.
+    expect(commitCall[1]).toEqual(previewCall[1]);
+  });
+
+  it('omitted choices become nulls the RPC resolves to its published defaults', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'Parents must be same dynasty' },
+    });
+
+    await POST(post({ parent1_id: 'snake-1', parent2_id: 'snake-2' }));
+
+    expect(mockRpc).toHaveBeenCalledWith(
+      'breed_snakes',
+      expect.objectContaining({
+        p_variant_choice: null,
+        p_trait_draft: null,
+        p_lineage_kind: null,
+      })
+    );
+  });
+
+  it('drops an unknown lineage kind and unknown trait ids before the RPC', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'nope' },
+    });
+
+    await POST(
+      post({
+        parent1_id: 'snake-1',
+        parent2_id: 'snake-2',
+        lineage_kind: 'whatever',
+        traits: ['sprinter', 'not-a-trait'],
+      })
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith(
+      'breed_snakes',
+      expect.objectContaining({
+        p_lineage_kind: null,
+        p_trait_draft: ['sprinter'],
+      })
+    );
+  });
+
+  it('never retries a legacy signature — the coin-flip RPC is gone', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'Could not find breed_snakes with p_allow_cross_dynasty',
       },
-      body: JSON.stringify({ parent1_id: 'snake-1', parent2_id: 'snake-2' }),
-    }));
+    });
+
+    const response = await POST(post(CHOICES));
 
     expect(response.status).toBe(400);
     expect(mockRpc).toHaveBeenCalledTimes(1);

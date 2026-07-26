@@ -1,7 +1,11 @@
 /**
- * Breeding API - Combine snakes to create new variants
+ * Breeding API - draft two parents into an offspring (Constitution §8.2).
+ *
  * Server authority: the breed_snakes RPC atomically validates ownership,
- * deducts DNA, rolls the offspring variant, and logs breeding_history.
+ * deducts DNA, and writes the child. Nothing is rolled — the RPC resolves
+ * the same `breeding_draft` the preview endpoint returns and persists its
+ * `preview` object verbatim, so the child a player receives is the child
+ * they were shown before paying.
  *
  * NOTE: breeding is instant today (no queue). When the breeding queue
  * ships (GAME_CONFIG.breeding.maxActive), the slot count must read
@@ -11,10 +15,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
 import { lineageFromAffinity, sanitizeLineage } from '@/shared/game/lineage';
+import { ascendanceYieldBonus } from '@/shared/game/ascendance';
 import { GAME_CONFIG } from '@/shared/config/game';
-import { mapBreedingHistoryRow } from './utils';
+import { mapBreedingHistoryRow, readBreedingChoices } from './utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -115,50 +121,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Atomic server-side breeding (validates ownership, same dynasty,
-    // DNA cost, generation cap; creates offspring + history entry)
-    // Cross-dynasty breeding (Genome §7): dual-lineage offspring - only
-    // when the config allows it (the RPC default keeps it refused, so the
-    // pre-030 deploy window behaves exactly like today).
-    const rpcArgs: Record<string, unknown> = {
-      p_player_id: player.id,
-      p_parent1_id: parent1_id,
-      p_parent2_id: parent2_id,
-    };
-    if (GAME_CONFIG.genome.crossDynastyBreeding) {
-      rpcArgs.p_allow_cross_dynasty = true;
-    }
-    let { data: childId, error: breedError } = await supabase.rpc(
+    // Atomic server-side breeding (validates ownership, the dynasty gate,
+    // every drafted choice, and the DNA cost; creates offspring + history).
+    // Generations are uncapped (§8.2 Ascendance) - there is no cap check.
+    //
+    // The choices are read by the SAME helper the draft endpoint uses, so a
+    // client that previewed and then bred sends the RPC identical arguments
+    // and receives identical output. Omitted choices resolve to the first
+    // option in canonical order, which the draft publishes as `defaults`.
+    const { data: childId, error: breedError } = await supabase.rpc(
       'breed_snakes',
-      rpcArgs
+      {
+        p_player_id: player.id,
+        p_parent1_id: parent1_id,
+        p_parent2_id: parent2_id,
+        p_allow_cross_dynasty: GAME_CONFIG.genome.crossDynastyBreeding,
+        ...readBreedingChoices(body),
+      }
     );
-
-    // Rolling-deploy compatibility: before migration 030, PostgREST only
-    // knows the three-argument RPC. Retry that signature solely when schema
-    // resolution failed; its existing same-dynasty gate remains authoritative.
-    if (
-      GAME_CONFIG.genome.crossDynastyBreeding &&
-      breedError &&
-      (
-        breedError.code === 'PGRST202' ||
-        breedError.code === '42883' ||
-        /breed_snakes.*p_allow_cross_dynasty|p_allow_cross_dynasty.*breed_snakes/i.test(
-          breedError.message ?? ''
-        )
-      )
-    ) {
-      ({ data: childId, error: breedError } = await supabase.rpc(
-        'breed_snakes',
-        {
-          p_player_id: player.id,
-          p_parent1_id: parent1_id,
-          p_parent2_id: parent2_id,
-        }
-      ));
-    }
 
     if (breedError || !childId) {
       console.error('breed_snakes RPC error:', breedError);
+      if (breedError) {
+        Sentry.captureException(
+          new Error(`breed_snakes RPC failed: ${breedError.message}`),
+          { extra: { playerId: player.id, parent1_id, parent2_id } }
+        );
+      }
       return NextResponse.json(
         { error: breedError?.message || 'Breeding failed' },
         { status: 400 }
@@ -181,20 +170,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Actual DNA cost is computed server-side; read it from the history
-    // entry. select('*) so trait_rolls (migration 018) rides along without
-    // erroring during the pre-018 deploy window.
-    const { data: historyEntry } = await supabase
+    // entry, which also carries the draft board the child was chosen from.
+    const { data: historyEntry, error: historyError } = await supabase
       .from('breeding_history')
       .select('*')
       .eq('child_id', childId)
       .single();
+    if (historyError) {
+      console.error('Failed to read breeding history entry:', historyError);
+      Sentry.captureException(
+        new Error(`breeding history read failed: ${historyError.message}`),
+        { extra: { playerId: player.id, childId } }
+      );
+    }
 
-    // select('*') for the same reason: player_reroll_tokens is post-018
-    const { data: updatedPlayer } = await supabase
+    const { data: updatedPlayer, error: balanceError } = await supabase
       .from('players')
-      .select('*')
+      .select('dna')
       .eq('id', player.id)
       .single();
+    if (balanceError) {
+      console.error('Failed to refresh DNA after breeding:', balanceError);
+      Sentry.captureException(
+        new Error(`post-breed balance read failed: ${balanceError.message}`),
+        { extra: { playerId: player.id } }
+      );
+    }
 
     // Inherited traits (Design v2 Phase 3A): rolled server-side by the
     // RPC and read back from the offspring ROW - never client-asserted
@@ -238,14 +239,15 @@ export async function POST(request: NextRequest) {
           variantJoin?.rarity ?? 'common',
           childSnake.generation ?? 1
         ),
+        // Ascendance (§8.2): the permanent Yield bonus this generation
+        // carries. Display only - the settlement recomputes it server-side.
+        ascendance_yield_bonus: ascendanceYieldBonus(childSnake.generation ?? 1),
       },
       cost: historyEntry?.dna_cost ?? null,
-      traitRolls: historyEntry?.trait_rolls ?? null,
+      // The audited draft: the board the player saw and the choices they
+      // made. Column name is historical; nothing in it was rolled (§8.2).
+      draft: historyEntry?.trait_rolls ?? null,
       remainingDna: updatedPlayer?.dna ?? player.dna,
-      rerollTokens:
-        typeof updatedPlayer?.player_reroll_tokens === 'number'
-          ? updatedPlayer.player_reroll_tokens
-          : 0,
     });
   } catch (err) {
     console.error('Breeding API error:', err);

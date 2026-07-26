@@ -56,6 +56,7 @@ import {
   type ChargeExemptionFacts,
   type ChargeState,
 } from '@/shared/game/energyEnvelope';
+import { applyAscendanceYield } from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import {
@@ -90,6 +91,12 @@ import {
 // WP-0.02 test asserts this file's source cannot mention the former at all.
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
+import { ensureCurrentSerpentWeek } from '@/lib/server/serpent';
+import {
+  claimSignalObjectiveRun,
+  settleSignalAttemptForSession,
+} from '@/lib/server/signal';
+import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -115,6 +122,10 @@ export async function POST(request: NextRequest) {
       action,
       mode,
       sessionId,
+      // Constitution §7.2: the objective the player took, as a LOOKUP KEY
+      // among the day's server-derived three. Never a definition — there is
+      // deliberately no day, target, seed or condition field beside it.
+      signalObjectiveId,
       snake_id,
       score,
       dna_earned,
@@ -186,6 +197,22 @@ export async function POST(request: NextRequest) {
     // anomaly itself is SERVER-DERIVED from the calendar (deterministic
     // rotation) and stamped on the session row - never client-asserted.
     const isAnomalyRun = mode === 'anomaly';
+
+    // Constitution §7.3 The World Serpent: a Serpent attempt is a full,
+    // ordinary run — any dynasty, the player's own snake, full build active —
+    // whose Yield feeds the week's Depth. `mode: 'serpent'` is a REQUEST. It
+    // becomes a fact only if the server can resolve the week from its own
+    // calendar (below); if it cannot, the run is an ordinary charged run.
+    const isSerpentRun = mode === 'serpent';
+
+    // Constitution §7.2 The World Signal: the day names a condition and three
+    // objectives, and the player takes one. `mode: 'signal'` is a REQUEST, in
+    // exactly the sense `mode: 'serpent'` is. It becomes a fact only if the
+    // server derives the day from its own calendar, resolves the named
+    // objective among that day's three, and the database confirms this run
+    // owns the day's one attempt; miss any of those and it is an ordinary
+    // charged run.
+    const isSignalRun = mode === 'signal';
 
     if (action === 'start') {
       const rateCheck = await checkRateLimit(supabase, player.id, 'game_start');
@@ -364,6 +391,20 @@ export async function POST(request: NextRequest) {
         genomeBlock.anomalyStrain = ANOMALY_STRAINS[startAnomalyId] ?? null;
       }
 
+      // ---------------------------------------------------------------
+      // The World Serpent (Constitution §7.3, §8.6)
+      // ---------------------------------------------------------------
+      // The week, its seed and its modifier set are DERIVED FROM THE UTC
+      // CALENDAR by `ensureCurrentSerpentWeek` — the request contributes
+      // nothing (Rule 11). Three things have to be true for a run to become a
+      // Serpent attempt: the client asked, the flag is on, and the server
+      // resolved a week row. Miss any one and this stays null, which means an
+      // ordinary charged run — exactly the closed-by-default posture WP-0.01
+      // built the exemption hook around.
+      const serpentWeek = isSerpentRun
+        ? await ensureCurrentSerpentWeek(supabase, startedAtDate)
+        : null;
+
       const sessionInsert: Record<string, unknown> = {
         player_id: player.id,
         snake_used_id: snake.id,
@@ -378,6 +419,10 @@ export async function POST(request: NextRequest) {
         ...(isAnomalyRun
           ? { anomaly_id: startAnomalyId, anomaly_week: startAnomalyWeek }
           : {}),
+        // Serpent run flagging (migration 046) - only sent when the server
+        // resolved a week, so the insert stays compatible with the pre-046
+        // schema for every other run in the game.
+        ...(serpentWeek ? { serpent_week_id: serpentWeek.id } : {}),
       };
       // Genome seed (migration 029): stamped only when the capability is
       // on. Pre-029 window: the insert fails on the unknown column, so
@@ -425,6 +470,15 @@ export async function POST(request: NextRequest) {
             { status: 503 }
           );
         }
+        // Pre-migration-046 window: the serpent column doesn't exist yet.
+        // Only a Serpent attempt can reach this - every other run omits the
+        // marker - so ordinary play is unaffected.
+        if (serpentWeek && /serpent_week_id/i.test(sessionError.message || '')) {
+          return NextResponse.json(
+            { error: 'The World Serpent has not surfaced yet — try a ranked run' },
+            { status: 503 }
+          );
+        }
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
 
@@ -441,6 +495,31 @@ export async function POST(request: NextRequest) {
           : null;
 
       // ---------------------------------------------------------------
+      // The World Signal (Constitution §7.2, §8.6)
+      // ---------------------------------------------------------------
+      // Resolved AFTER the session row exists, because the claim attaches the
+      // day's attempt to THIS open run — `begin_signal_objective_run` refuses
+      // any session that is not this player's open run, so a failed insert can
+      // never claim a player's Signal for a run that did not happen.
+      //
+      // The day, the objective and its target are all server-derived inside
+      // `claimSignalObjectiveRun`; the request contributes `signalObjectiveId`
+      // as a lookup key and nothing else (Rule 11). No new column goes into
+      // the session insert above — the RPC mirrors the id onto the session row
+      // in the same transaction that claims the attempt — so the pre-migration
+      // -049 window needs no special case here: with no RPC there is no day,
+      // no attempt and no exemption, and the run is an ordinary charged run.
+      const signalClaim = isSignalRun
+        ? await claimSignalObjectiveRun(
+            supabase,
+            player.id,
+            session.id,
+            signalObjectiveId,
+            startedAtDate
+          )
+        : null;
+
+      // ---------------------------------------------------------------
       // The daily harvest envelope (Constitution §8.6)
       // ---------------------------------------------------------------
       // Resolved AFTER the session row exists, so a failed insert can never
@@ -449,14 +528,29 @@ export async function POST(request: NextRequest) {
       // Exemption is decided from SERVER facts only - the client's `mode`
       // is a request, never a grant. Free Play is rewardless, so charging
       // it would be a pure penalty for practising. The Signal objective run
-      // (§7.2, WP-1.03) and Serpent attempts (§7.3, WP-1.01) are exempt by
-      // §8.6 "the rituals are always full-fat"; neither system exists yet,
-      // so the server has no row to point at and grants no exemption for
-      // them - a client asking for mode 'signal' or 'serpent' today gets an
-      // ordinary charged run, not a free one.
+      // (§7.2, WP-1.03) and Serpent attempts (§7.3, §8.6 "the rituals are
+      // always full-fat") are exempt.
+      //
+      // WP-1.01 fills in the Serpent half: `serpentWeek` is the week row the
+      // SERVER resolved from its own calendar a few lines above, so the id
+      // below is a fact the server can point at - never a claim the client
+      // made. A client sending `mode: 'serpent'` with the flag off, or before
+      // migration 046, resolves no week and gets an ordinary charged run.
+      //
+      // WP-1.03 fills in the Signal half the same way. `exemptRunId` is
+      // non-null on exactly one condition: the SERVER derived today, resolved
+      // the objective among that day's three, and the database answered that
+      // this session owns the day's attempt. A client that sends
+      // `mode: 'signal'` with the flag off, before migration 049, with an
+      // objective the day did not derive, or on its second run of the day gets
+      // null here — an ordinary CHARGED run. There is no field on this request
+      // through which a run id could be supplied, so the exemption cannot be
+      // claimed, only granted.
       const exemptionFacts: ChargeExemptionFacts = {
         ...NO_EXEMPTION,
         rewardless: isFreePlay,
+        signalObjectiveRunId: signalClaim?.exemptRunId ?? null,
+        serpentWeekId: serpentWeek?.id ?? null,
       };
       const charge = await consumeRunCharge(
         supabase,
@@ -520,6 +614,37 @@ export async function POST(request: NextRequest) {
         mastery: masteryInfo,
         ...(gauntletBan ? { gauntletBan } : {}),
         ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
+        // Serpent context for the HUD (§7.3): the week's conditions and when
+        // it submerges. Present only on a run the server accepted as an
+        // attempt - its presence IS the confirmation that the exemption was
+        // granted, so the client never has to infer it.
+        // Signal context for the HUD (§7.2): the day's condition and the
+        // objective this run is playing for. Present only on a run the server
+        // accepted as the day's attempt - its presence IS the confirmation
+        // that the exemption was granted, so the client never has to infer it.
+        ...(signalClaim?.exemptRunId && signalClaim.day && signalClaim.objective
+          ? {
+              signal: {
+                runId: signalClaim.exemptRunId,
+                dayId: signalClaim.day.id,
+                day: signalClaim.day.day,
+                endsAt: signalClaim.day.endsAt,
+                condition: signalClaim.day.condition,
+                objective: signalClaim.objective,
+              },
+            }
+          : {}),
+        ...(serpentWeek
+          ? {
+              serpent: {
+                weekId: serpentWeek.id,
+                weekStart: serpentWeek.weekStart,
+                endsAt: serpentWeek.endsAt,
+                seed: serpentWeek.seed,
+                modifiers: serpentWeek.modifiers,
+              },
+            }
+          : {}),
         ...(genomeBlock ? { genome: genomeBlock } : {}),
       });
     }
@@ -772,7 +897,21 @@ export async function POST(request: NextRequest) {
       // fold times the extraction outcome multiplier and nothing else - the
       // validator's exact recompute already IS that number (§8.5, GT §3.1).
       // No account state, no calendar, no clan, no purchase may re-enter here.
-      const yieldDna = validation.adjustedDna;
+      //
+      // WP-1.05 / Ascendance (§8.2): the ONE thing that scales Yield is the
+      // equipped snake's generation - read from the snake ROW the session was
+      // started with, never from the request. Gen1-3 multiply by exactly 1.
+      // This is progression, not commerce: generation only rises by spending
+      // DNA on breeding, and DNA is never sold (Rule 3). Score never sees it
+      // (Rule 2); Depth does, because Depth is accumulated Yield (§6.2).
+      const ascendanceGeneration =
+        typeof usedSnakeRow?.generation === 'number'
+          ? usedSnakeRow.generation
+          : 1;
+      const yieldDna = applyAscendanceYield(
+        validation.adjustedDna,
+        ascendanceGeneration
+      );
       const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
@@ -1199,6 +1338,37 @@ export async function POST(request: NextRequest) {
       // helper never throws).
       await refreshPlayerRecords(supabase, player.id);
 
+      // The World Signal settles itself (§7.2: "rewards settle automatically -
+      // no claim cascades, ever"). Called after the run's own rewards land, so
+      // the session row it recomputes from is complete. Null on every run that
+      // is not the day's Signal attempt, which is nearly all of them, and a
+      // no-op before migration 049.
+      //
+      // Safe to reach twice: settlement is a RECOMPUTE clamped with GREATEST
+      // and a compare-and-set, so an outbox replay of this same session
+      // converges instead of paying the flat bonus again. A failure is
+      // reported by the helper and picked up by the next sweep - it can never
+      // strand a Signal the player completed (Rule 6).
+      const signalSettlement = await settleSignalAttemptForSession(
+        supabase,
+        sessionId,
+        player.id
+      );
+      const signal =
+        signalSettlement && !signalSettlement.skipped
+          ? {
+              runId: signalSettlement.runId,
+              completed: signalSettlement.completed,
+              progress: signalSettlement.progress,
+              target: signalSettlement.target,
+              // What THIS settlement paid: the flat first-completion bonus on
+              // the first pass, and 0 on every pass after it.
+              bonusDna: signalSettlement.bonusDna,
+              signalsCompleted: signalSettlement.signalsCompleted,
+              newMilestones: signalSettlement.newMilestones,
+            }
+          : null;
+
       // Discord feed + Linked Roles (Identity v1 section 8.4) - both
       // strictly non-fatal, both no-ops pre-024 / without a link:
       // - mastery_levelup enqueue at M5+ (M1-4 are too chatty), linked
@@ -1214,6 +1384,30 @@ export async function POST(request: NextRequest) {
         );
       }
       await refreshLinkedRolesForPlayer(supabase, player.id);
+
+      // ---------------------------------------------------------------
+      // The Daily Take (Constitution §7.2, WP-1.04)
+      // ---------------------------------------------------------------
+      // A PREVIEW, and only a preview. `describeDailyTakeSlot` has no write in
+      // it: it reads the player's Take chain and reports what one tap would
+      // pay. The Take is collected by `POST /api/daily-take/collect` — §7.2
+      // attaches it to a tap, never to a run ending, so settlement must not be
+      // able to grant it as a side effect of finishing a run.
+      //
+      // NOTHING ABOVE THIS LINE CAN SEE IT. `finalDna`, `yieldDna`,
+      // `validation.adjustedScore` and every write they fed — the session row,
+      // the DNA credit, `total_dna_earned`, the records refresh, mastery, the
+      // Signal settlement — are all computed and committed before this call is
+      // made, and the value it returns is used in exactly one place: the
+      // response field below. The Take's tier multiplier therefore cannot
+      // reach the fold; WP-0.02 deleted the account multiplier stack so that
+      // no factor could, and this is deliberately not a new one.
+      //
+      // Null on every path that is not an armed, migrated, uncollected day —
+      // flag off, migration 050 unapplied, a read failure, or a Take already
+      // collected today. `parseDailyTake` renders null as "no slot", so the
+      // Results layer's default is simply that the Take is not offered.
+      const takeSlot = await describeDailyTakeSlot(supabase, player.id);
 
       return NextResponse.json({
         success: true,
@@ -1236,6 +1430,10 @@ export async function POST(request: NextRequest) {
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
+        ...(signal ? { signal } : {}),
+        // The Take slot (§7.2). Present only when the server has a Take to
+        // offer; `parseDailyTake` refuses anything without `firstRunOfDay`.
+        ...(takeSlot?.firstRunOfDay ? { dailyTake: takeSlot } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
       });

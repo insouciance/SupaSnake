@@ -1,12 +1,14 @@
 /**
  * Navigation Rail Tests
  * Verifies rail nodes, feature-flagged social links (Leaderboard, Clan),
- * the contextual Home node and the You node (AccountChip).
+ * the flag-gated Serpent node (off by default), the contextual Home node and
+ * the You node (AccountChip).
  */
 
 import { render, screen } from '@testing-library/react';
 import { Navigation } from './Navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
 import {
   NOTIFICATION_TARGETS,
   useNotificationStore,
@@ -75,6 +77,18 @@ describe('Navigation', () => {
     render(<Navigation />);
 
     expect(screen.getByRole('link', { name: 'Clan' })).toHaveAttribute('href', '/clan');
+  });
+
+  it('omits the Serpent node while NEXT_PUBLIC_SERPENT_V1 is off (the default)', () => {
+    // The rollback path is tested, never inferred from an omitted flag. With
+    // the flag down the rail must not signpost the hunt — while /serpent
+    // itself still resolves, because Rule 14 makes a Serpent week a linkable
+    // artifact and a link that dies on a flag flip is not one.
+    expect(SERPENT_V1_ENABLED).toBe(false);
+
+    render(<Navigation />);
+
+    expect(screen.queryByRole('link', { name: 'Serpent' })).not.toBeInTheDocument();
   });
 
   it('marks the active node with aria-current', () => {

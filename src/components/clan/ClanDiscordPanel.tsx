@@ -3,7 +3,7 @@
 /**
  * Clan Discord panel (Identity v1 sections 8.3/8.4).
  *
- * Not linked (officer/owner): the two-model choice -
+ * Not linked (owner): the two-model choice -
  *   Model A "official server" (one click, per-clan private channel +
  *   role in the SupaSnake guild) and Model B "your own server" (invite
  *   the bot, paste the server id).
@@ -30,7 +30,9 @@ interface ClanDiscordPanelProps {
 export function ClanDiscordPanel({ accessToken, view, onChanged }: ClanDiscordPanelProps) {
   const discord = view.discord ?? { linked: false };
   const role = view.membership?.role ?? 'member';
-  const isOfficer = role === 'owner' || role === 'officer';
+  // Rule 8 / §9.2: there is no officer rank. Linking a Discord home is an
+  // owner act, like heraldry and the invite code.
+  const isOwner = role === 'owner';
   const clanId = view.membership?.clanId;
 
   const [presence, setPresence] = useState<WidgetPresence | null>(null);
@@ -169,7 +171,7 @@ export function ClanDiscordPanel({ accessToken, view, onChanged }: ClanDiscordPa
               </p>
             )}
 
-            {isOfficer && (
+            {isOwner && (
               <button
                 onClick={() => link({ action: 'unlink' }, 'Discord unlinked')}
                 disabled={busy}
@@ -180,7 +182,7 @@ export function ClanDiscordPanel({ accessToken, view, onChanged }: ClanDiscordPa
               </button>
             )}
           </>
-        ) : isOfficer ? (
+        ) : isOwner ? (
           <>
             <p className="text-bone-white font-body mb-1">
               Give your clan a home. Discord <em>is</em> the clan&apos;s social layer — duel
@@ -249,7 +251,7 @@ export function ClanDiscordPanel({ accessToken, view, onChanged }: ClanDiscordPa
           </>
         ) : (
           <p className="text-beige font-body">
-            Your clan hasn&apos;t linked a Discord home yet — ask an officer.
+            Your clan hasn&apos;t linked a Discord home yet — ask the clan&apos;s owner.
           </p>
         )}
         {message && <p className="text-beige text-sm font-body mt-3">{message}</p>}

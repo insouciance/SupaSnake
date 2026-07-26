@@ -148,11 +148,14 @@ describe('BreedPage - rendering', () => {
     });
   });
 
-  it('shows the DNA balance and the 50/50 variant hint', () => {
+  it('shows the DNA balance and no coin-flip language (§8.2)', () => {
     render(<BreedPage />);
 
     expect(screen.getByTestId('breed-dna-balance')).toHaveTextContent('1,000');
-    expect(screen.getByText(/50\/50 chance/i)).toBeInTheDocument();
+    // The old "50/50 chance of taking either parent's variant" hint is
+    // deleted: the variant line is drafted, not rolled.
+    expect(screen.queryByText(/50\/50/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/chance/i)).not.toBeInTheDocument();
   });
 
   it('shows sign-in prompt when not authenticated', () => {
@@ -342,48 +345,242 @@ describe('BreedPage - breeding', () => {
 });
 
 // =============================================================================
-// TRAITS (Design v2 Phase 3A, section 6.3)
+// THE DRAFT BOARD (Constitution §8.2)
 // =============================================================================
+//
+// WP-1.05 replaced two suites here. The "trait inheritance preview" suite
+// asserted 1/n odds per parent pool; the "offspring traits and reroll" suite
+// walked the token-spending redraw. Both described the random system §8.2
+// abolished, so they are deleted rather than adapted. What replaces them
+// asserts the draft: the board comes from the server, choices are sent back,
+// and the choices that were previewed are the choices that are paid for.
 
-describe('BreedPage - trait inheritance preview', () => {
-  it('shows each parent pool with 1/n odds when parents have traits', () => {
-    mockCollection.ownedSnakes = [
-      { ...snakeA, traits: ['sprinter', 'hoarder'], traitSlots: 2 },
-      { ...snakeB, traits: ['ascetic'], traitSlots: 1 },
-      snakeC,
-    ];
-    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+const DRAFT_FIXTURE = {
+  parent1_id: 'snake-a',
+  parent2_id: 'snake-b',
+  cross_dynasty: false,
+  generation: 2,
+  dna_cost: 300,
+  ascendance: { generation: 2, yield_bonus: 0, yield_multiplier: 1 },
+  trait_pool: [
+    { trait_id: 'sprinter', source: 'parent1' },
+    { trait_id: 'hoarder', source: 'parent1' },
+    { trait_id: 'ascetic', source: 'parent2' },
+  ],
+  variant_options: [
+    {
+      variant_id: 'variant-a',
+      name: 'CYBER SPARK',
+      rarity: 'common',
+      dynasty_id: 'dyn-cyber',
+      trait_slots: 1,
+      lineage_options: [
+        { kind: 'parent1', strains: ['VOLT'], strength: 1 },
+        { kind: 'parent2', strains: ['AURUM'], strength: 1 },
+      ],
+    },
+    {
+      variant_id: 'variant-b',
+      name: 'CYBER PULSE',
+      rarity: 'legendary',
+      dynasty_id: 'dyn-cyber',
+      trait_slots: 2,
+      lineage_options: [
+        { kind: 'parent1', strains: ['VOLT'], strength: 2 },
+        { kind: 'parent2', strains: ['AURUM'], strength: 2 },
+      ],
+    },
+  ],
+  defaults: {
+    variant_id: 'variant-a',
+    traits: ['sprinter'],
+    lineage_kind: 'parent1',
+  },
+  preview: {
+    variant_id: 'variant-a',
+    rarity: 'common',
+    generation: 2,
+    trait_slots: 1,
+    traits: ['sprinter'],
+    lineage: { strains: ['VOLT'], strength: 1 },
+    lineage_kind: 'parent1',
+    dna_cost: 300,
+  },
+};
 
-    render(<BreedPage />);
+/** Serve the draft board, plus an optional breed response. */
+function mockDraftFetch(
+  draft: Record<string, unknown> = DRAFT_FIXTURE,
+  breed?: Record<string, unknown>
+): void {
+  (global.fetch as jest.Mock).mockImplementation(
+    async (url: string, options?: RequestInit) => {
+      if (url === '/api/breeding/draft') {
+        return { ok: true, json: async () => ({ success: true, draft }) };
+      }
+      if (url === '/api/breeding' && options?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => breed ?? { success: false, error: 'no breed mock' },
+        };
+      }
+      return emptyHistoryResponse;
+    }
+  );
+}
 
-    const preview = within(screen.getByTestId('inheritance-preview'));
-    expect(preview.getByText(/1 trait from each parent/)).toBeInTheDocument();
-
-    const parent1Row = within(screen.getByTestId('inheritance-parent1'));
-    expect(parent1Row.getByTestId('trait-chip-sprinter')).toBeInTheDocument();
-    expect(parent1Row.getByTestId('trait-chip-hoarder')).toBeInTheDocument();
-    expect(parent1Row.getAllByText('50%')).toHaveLength(2);
-
-    const parent2Row = within(screen.getByTestId('inheritance-parent2'));
-    expect(parent2Row.getByTestId('trait-chip-ascetic')).toBeInTheDocument();
-    expect(parent2Row.getByText('100%')).toBeInTheDocument();
-  });
-
-  it('marks traitless parents as contributing nothing', () => {
-    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
-
-    render(<BreedPage />);
-
-    const preview = within(screen.getByTestId('inheritance-preview'));
-    expect(preview.getAllByText(/traitless — contributes nothing/)).toHaveLength(2);
-  });
-
-  it('renders no preview until both parents are chosen', () => {
+describe('BreedPage - the draft board', () => {
+  it('renders no board until both parents are chosen', () => {
+    mockDraftFetch();
     useBreedingStore.setState({ parent1Id: 'snake-a' });
     render(<BreedPage />);
-    expect(screen.queryByTestId('inheritance-preview')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trait-draft')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lineage-draft')).not.toBeInTheDocument();
   });
 
+  it("offers both parents' variant lines, their traits, and their strains", async () => {
+    mockDraftFetch();
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    render(<BreedPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trait-draft')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('variant-option-variant-a')).toBeInTheDocument();
+    expect(screen.getByTestId('variant-option-variant-b')).toBeInTheDocument();
+    expect(screen.getByTestId('trait-option-sprinter')).toBeInTheDocument();
+    expect(screen.getByTestId('trait-option-ascetic')).toBeInTheDocument();
+    expect(screen.getByTestId('lineage-option-parent1')).toBeInTheDocument();
+    expect(screen.getByTestId('lineage-option-parent2')).toBeInTheDocument();
+
+    // The server's resolved preview drives the panel, not a client guess.
+    expect(screen.getByTestId('breeding-cost')).toHaveTextContent('300');
+    expect(screen.getByTestId('offspring-generation')).toHaveTextContent('Gen 2');
+    // Selection state comes from preview.*, so it is always the server's.
+    expect(screen.getByTestId('variant-option-variant-a')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByTestId('trait-option-sprinter')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByTestId('trait-option-ascetic')).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  it('sends a variant choice back to the draft endpoint', async () => {
+    mockDraftFetch();
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    render(<BreedPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('variant-option-variant-b')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('variant-option-variant-b'));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/breeding/draft',
+        expect.objectContaining({
+          body: expect.stringContaining('"variant_id":"variant-b"'),
+        })
+      );
+    });
+  });
+
+  it('sends a trait draft back to the draft endpoint', async () => {
+    mockDraftFetch();
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    render(<BreedPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trait-option-ascetic')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('trait-option-ascetic'));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/breeding/draft',
+        expect.objectContaining({
+          body: expect.stringContaining('"traits":["ascetic"]'),
+        })
+      );
+    });
+  });
+
+  it('PAYS FOR EXACTLY WHAT WAS PREVIEWED', async () => {
+    mockDraftFetch(DRAFT_FIXTURE, {
+      success: true,
+      child: {
+        id: 'child-1',
+        snake_variant_id: 'variant-a',
+        variant: {
+          id: 'variant-a',
+          name: 'CYBER SPARK',
+          rarity: 'common',
+          dynasty_id: 'dyn-cyber',
+          dynasties: { name: 'CYBER' },
+        },
+        generation: 2,
+        traits: ['sprinter'],
+        trait_slots: 1,
+      },
+      cost: 300,
+      remainingDna: 700,
+    });
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    render(<BreedPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trait-draft')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('breed-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('breeding-reveal')).toBeInTheDocument();
+    });
+
+    // The breed POST carries the previewed choices verbatim.
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/breeding',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          parent1_id: 'snake-a',
+          parent2_id: 'snake-b',
+          variant_id: DRAFT_FIXTURE.preview.variant_id,
+          traits: DRAFT_FIXTURE.preview.traits,
+          lineage_kind: DRAFT_FIXTURE.preview.lineage_kind,
+        }),
+      })
+    );
+
+    // And the child the server returned is the child that was previewed.
+    const child = useCollectionStore
+      .getState()
+      .ownedSnakes.find((s) => s.id === 'child-1');
+    expect(child?.traits).toEqual(DRAFT_FIXTURE.preview.traits);
+    expect(child?.snakeVariantId).toBe(DRAFT_FIXTURE.preview.variant_id);
+    expect(child?.generation).toBe(DRAFT_FIXTURE.preview.generation);
+  });
+
+  it('offers no reroll anywhere on the page', async () => {
+    mockDraftFetch();
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    render(<BreedPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trait-draft')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/reroll/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('reroll-token-count')).not.toBeInTheDocument();
+  });
+});
+
+describe('BreedPage - parent slot chips', () => {
   it('shows parent trait chips on the filled parent slots', () => {
     mockCollection.ownedSnakes = [
       { ...snakeA, traits: ['magnetism'], traitSlots: 1 },
@@ -396,114 +593,5 @@ describe('BreedPage - trait inheritance preview', () => {
 
     const slot = within(screen.getByTestId('parent-slot-1-traits'));
     expect(slot.getByTestId('trait-chip-magnetism')).toBeInTheDocument();
-  });
-});
-
-describe('BreedPage - offspring traits and reroll', () => {
-  function mockBreedFetch(childTraits: string[], rerollTokens: number): void {
-    (global.fetch as jest.Mock).mockImplementation(
-      async (url: string, options?: RequestInit) => {
-        if (url === '/api/breeding' && options?.method === 'POST') {
-          return {
-            ok: true,
-            json: async () => ({
-              success: true,
-              child: {
-                id: 'child-1',
-                snake_variant_id: 'variant-b',
-                variant: {
-                  id: 'variant-b',
-                  name: 'CYBER PULSE',
-                  rarity: 'common',
-                  dynasty_id: 'dyn-cyber',
-                  dynasties: { name: 'CYBER' },
-                },
-                generation: 2,
-                traits: childTraits,
-                trait_slots: 1,
-              },
-              cost: 300,
-              remainingDna: 700,
-              rerollTokens,
-            }),
-          };
-        }
-        if (url === '/api/breeding/reroll' && options?.method === 'POST') {
-          return {
-            ok: true,
-            json: async () => ({
-              success: true,
-              traits: ['ascetic'],
-              rerollTokens: rerollTokens - 1,
-            }),
-          };
-        }
-        return { ok: true, json: async () => ({ history: [] }) };
-      }
-    );
-  }
-
-  it('reveal shows rolled traits and the offspring lands traited in the store', async () => {
-    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
-    mockBreedFetch(['sprinter'], 2);
-
-    render(<BreedPage />);
-    fireEvent.click(screen.getByTestId('breed-button'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('breeding-reveal')).toBeInTheDocument();
-    });
-    const reveal = within(screen.getByTestId('breeding-reveal'));
-    expect(reveal.getByTestId('trait-chip-sprinter')).toBeInTheDocument();
-    expect(reveal.getByTestId('reroll-token-count')).toHaveTextContent(
-      'Reroll tokens: 2'
-    );
-
-    const child = useCollectionStore
-      .getState()
-      .ownedSnakes.find((s) => s.id === 'child-1');
-    expect(child?.traits).toEqual(['sprinter']);
-    expect(child?.traitSlots).toBe(1);
-  });
-
-  it('reroll flow: confirm posts to /api/breeding/reroll and updates the store', async () => {
-    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
-    mockBreedFetch(['sprinter'], 2);
-
-    render(<BreedPage />);
-    fireEvent.click(screen.getByTestId('breed-button'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('breeding-reveal')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByTestId('reroll-slot-1'));
-    fireEvent.click(screen.getByTestId('reroll-confirm-yes'));
-
-    await waitFor(() => {
-      expect(
-        within(screen.getByTestId('breeding-reveal')).getByTestId(
-          'trait-chip-ascetic'
-        )
-      ).toBeInTheDocument();
-    });
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/breeding/reroll',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ snake_id: 'child-1', slot: 1 }),
-      })
-    );
-    expect(
-      within(screen.getByTestId('breeding-reveal')).getByTestId(
-        'reroll-token-count'
-      )
-    ).toHaveTextContent('Reroll tokens: 1');
-
-    const child = useCollectionStore
-      .getState()
-      .ownedSnakes.find((s) => s.id === 'child-1');
-    expect(child?.traits).toEqual(['ascetic']);
   });
 });

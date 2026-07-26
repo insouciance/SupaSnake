@@ -126,12 +126,28 @@ import {
   type GameSessionStartPayload,
 } from '@/lib/ftue/launchFlow';
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
+import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
+import {
+  challengeRunNote,
+  challengeRunRng,
+  readChallengeRun,
+  type ChallengeRun,
+} from '@/lib/game/challengeRun';
+import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
+import { RunResults, type RunResultsSerpent } from '@/components/game/RunResults';
+import { RunSetupPanel } from '@/components/game/RunSetupPanel';
+import {
+  collectDailyTake,
+  parseDailyTake,
+  type DailyTakeSlot,
+} from '@/lib/game/dailyTake';
+import { chooseNextAction } from '@/lib/game/resultsNextAction';
 import type { FtueBootstrapSnake } from '@/lib/ftue/types';
 import {
   buildGenomeCardModel,
   type GenomeCardModel,
 } from '@/lib/share/genomeCardImage';
-import { isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
+import { getAimSystem, isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import {
   IconBolt,
   IconDna,
@@ -263,6 +279,19 @@ function recordHandlePromptDismissal(claimed: boolean): void {
 export default function GamePage() {
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
+  /**
+   * A challenge link (§11.3) arrives as `/game?seed=…&target=…`. It is read
+   * from `window.location` rather than `useSearchParams` deliberately: this
+   * page must not opt the whole route into the search-params Suspense
+   * bailout for a feature that is off by default, and the value is needed
+   * once, at mount, before the engine is constructed.
+   *
+   * Its only mechanical effect is the engine's rng seed. The target is
+   * display-only and is never sent anywhere (see `challengeRun.ts`).
+   */
+  const [challengeRun] = useState<ChallengeRun | null>(() =>
+    typeof window === 'undefined' ? null : readChallengeRun(window.location.search)
+  );
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [particlePos, setParticlePos] = useState<[number, number, number] | null>(null);
@@ -359,6 +388,32 @@ export default function GamePage() {
   const [lastGenomeCard, setLastGenomeCard] = useState<GenomeCardModel | null>(null);
   const [codexDiscoveries, setCodexDiscoveries] = useState<CodexDiscovery[]>([]);
   const { data: codexData, fetchCodex } = useCodexStore();
+
+  // ---------------------------------------------------------------------
+  // WP-1.06 / Constitution §5: Results state. All of it is inert with
+  // RUN_FLOW_V1 off - the shipped game-over screen reads none of it.
+  // ---------------------------------------------------------------------
+  // Layer 1: personal-best status. Computed against the high score the
+  // account held BEFORE this run, which is why the prior value is kept in a
+  // ref rather than re-read from the settlement (the settlement has already
+  // written the new one).
+  const priorHighScoreRef = useRef(0);
+  const [personalBest, setPersonalBest] = useState(false);
+  // Layer 1: the Daily Take slot. `null` until WP-1.04's settlement says
+  // this was the day's first run (see lib/game/dailyTake.ts).
+  const [dailyTake, setDailyTake] = useState<DailyTakeSlot | null>(null);
+  const [takeState, setTakeState] = useState<
+    'idle' | 'collecting' | 'collected' | 'unavailable' | 'error'
+  >('idle');
+  // Layer 2: the two numbers, as the server settled them.
+  const [settledYield, setSettledYield] = useState<number | null>(null);
+  const [settledCredited, setSettledCredited] = useState<number | null>(null);
+  // Layer 2: the Serpent week's Depth (WP-1.01). `null` whenever the Serpent
+  // flag is off, the week is not live, or the panel could not be read.
+  const [serpentDepth, setSerpentDepth] = useState<RunResultsSerpent | null>(null);
+  // Results → SETUP reopens the setup page over a finished run (§5). REPLAY
+  // skips it entirely.
+  const [setupReopened, setSetupReopened] = useState(false);
 
   // Refs to hold current values for use in event handlers (avoids stale closure)
   const sessionRef = useRef(session);
@@ -589,13 +644,24 @@ export default function GamePage() {
     fetch('/api/player', {
       headers: { 'Authorization': `Bearer ${session.access_token}` }
     })
-      .then(res => res.json())
+      // FINDING F-24 (WP-1.06): this was a bare `res.json()`. A 401 or a 500
+      // returns a body that parses to something without `player`, so the
+      // screen silently kept its defaults instead of reporting a failure.
+      .then(res => {
+        if (!res.ok) throw new Error(`/api/player responded ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (data.player) {
           syncChargeFromServer(data.charge ?? null);
           setHasCompletedFirstRun(
             data.hasCompletedFirstRun === true ||
               Number(data.player.total_games_played ?? 0) > 0
+          );
+          // The record to beat, captured BEFORE the next run settles it.
+          priorHighScoreRef.current = Math.max(
+            priorHighScoreRef.current,
+            Number(data.player.high_score ?? 0) || 0
           );
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
@@ -670,6 +736,47 @@ export default function GamePage() {
       .catch(err => console.error('Failed to fetch mastery:', err));
   }, [session?.access_token]);
 
+  // Results Layer 2 (§6.2): the Serpent week's Depth, read once the run has
+  // settled. WP-1.01 publishes the panel; with NEXT_PUBLIC_SERPENT_V1 off it
+  // answers `live: false`, so this degrades to "Score and Yield only" without
+  // a special case. Non-fatal in every direction: a failed read shows no
+  // Depth rather than an error.
+  useEffect(() => {
+    if (!RUN_FLOW_V1_ENABLED || !SERPENT_V1_ENABLED) return;
+    if (!session?.access_token || !isGameOver || isPlaying) return;
+    let cancelled = false;
+    fetch('/api/serpent/panel', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data || data.live !== true) {
+          if (!cancelled) setSerpentDepth(null);
+          return;
+        }
+        const you = data.you ?? {};
+        const counted: number[] = Array.isArray(you.countedYields)
+          ? you.countedYields.filter((v: unknown) => typeof v === 'number')
+          : [];
+        setSerpentDepth({
+          live: true,
+          weekDepth: Number(you.depth ?? 0) || 0,
+          deltaVsBestWeek: Number(you.deltaVsBestWeek ?? 0) || 0,
+          // The panel's counted set IS the week's best three after
+          // settlement, so membership is an exact answer to "did this run
+          // count", not an estimate.
+          runCounts: settledYield !== null && counted.includes(settledYield),
+        });
+      })
+      .catch((err) => {
+        console.error('Failed to fetch Serpent panel:', err);
+        if (!cancelled) setSerpentDepth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, isGameOver, isPlaying, settledYield]);
+
   // Fetch collection to find the equipped snake (game always uses it)
   useEffect(() => {
     if (!session?.access_token) return;
@@ -677,7 +784,12 @@ export default function GamePage() {
     fetch('/api/collection', {
       headers: { 'Authorization': `Bearer ${session.access_token}` }
     })
-      .then(res => res.json())
+      // FINDING F-24 (WP-1.06): unguarded `res.json()` turned a 500 into an
+      // empty collection, which reads on screen as "no snake available".
+      .then(res => {
+        if (!res.ok) throw new Error(`/api/collection responded ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         const snakes: Array<{
           id: string;
@@ -860,7 +972,13 @@ export default function GamePage() {
 
   // Initialize game logic
   useEffect(() => {
-    gameRef.current = new SnakeGameLogic({ gridSize: GAME_CONFIG.board.gridSize });
+    // A challenge link seeds the engine so the visitor plays the exact board
+    // the sharer played (§11.3). Without one the engine keeps its default
+    // rng, which is `Math.random` — an ordinary run is still random.
+    gameRef.current = new SnakeGameLogic({
+      gridSize: GAME_CONFIG.board.gridSize,
+      ...(challengeRun ? { rng: challengeRunRng(challengeRun) } : {}),
+    });
 
     const mirrorGenomeState = () => {
       const state = gameRef.current?.getState();
@@ -1085,6 +1203,41 @@ export default function GamePage() {
               setHypotheticalDna(result.hypotheticalDna);
             }
 
+            // ----- Results Layers 1 & 2 (Constitution §5, §6) -----
+            // Yield is the run's full-strength worth; adjustedDna is what it
+            // actually paid. Free Play settles adjustedDna = 0 and reports
+            // the worth as hypotheticalDna, so Layer 2 reads Yield in both.
+            const validation = result.validation ?? {};
+            setSettledYield(
+              typeof validation.yieldDna === 'number' ? validation.yieldDna : null
+            );
+            setSettledCredited(
+              typeof validation.adjustedDna === 'number'
+                ? validation.adjustedDna
+                : null
+            );
+            const settledScore =
+              typeof validation.score === 'number' ? validation.score : data.score;
+            // A record only counts if the server accepted the run and it was
+            // not rewardless practice - the same gate `players.high_score`
+            // uses, so the badge can never disagree with the record.
+            const beatsRecord =
+              !freeRunRef.current &&
+              validation.valid === true &&
+              settledScore > priorHighScoreRef.current;
+            setPersonalBest(beatsRecord);
+            if (!freeRunRef.current && validation.valid === true) {
+              priorHighScoreRef.current = Math.max(
+                priorHighScoreRef.current,
+                settledScore
+              );
+            }
+            // The Take slot: present only when the server says this was the
+            // day's first run. WP-1.04 owns that answer; until it ships the
+            // field is absent and the slot never renders.
+            setDailyTake(parseDailyTake(result));
+            setTakeState('idle');
+
             const snakeMeta = equippedSnakeRef.current;
             if (snakeMeta) {
               setLastGenomeCard(buildGenomeCardModel(result, {
@@ -1099,19 +1252,24 @@ export default function GamePage() {
             if (result.codex) {
               const discoveryResult = sanitizeCodexDiscoveryResult(result.codex);
               setCodexDiscoveries(discoveryResult.discoveries);
-              for (const discovery of discoveryResult.discoveries) {
-                const worldFirst = discovery.worldFirst ? ' · WORLD FIRST' : '';
-                const reward = discovery.rewardDna > 0
-                  ? ` · +${discovery.rewardDna} DNA`
-                  : '';
-                showToast(
-                  `Codex: ${codexEntryName(discovery.type, discovery.entryId)}${reward}${worldFirst}`,
-                  'triumph',
-                  5000
-                );
-              }
-              if (discoveryResult.genomeWeaverUnlocked) {
-                showToast('Genome Weaver unlocked', 'triumph', 5000);
+              // §5 toast consolidation: with Run Flow v1 the discoveries are
+              // reported inside the Results Layer 3 digest, so the run end
+              // fires no toast at all. One codex-heavy run used to raise five.
+              if (!RUN_FLOW_V1_ENABLED) {
+                for (const discovery of discoveryResult.discoveries) {
+                  const worldFirst = discovery.worldFirst ? ' · WORLD FIRST' : '';
+                  const reward = discovery.rewardDna > 0
+                    ? ` · +${discovery.rewardDna} DNA`
+                    : '';
+                  showToast(
+                    `Codex: ${codexEntryName(discovery.type, discovery.entryId)}${reward}${worldFirst}`,
+                    'triumph',
+                    5000
+                  );
+                }
+                if (discoveryResult.genomeWeaverUnlocked) {
+                  showToast('Genome Weaver unlocked', 'triumph', 5000);
+                }
               }
               if (
                 discoveryResult.discoveries.length > 0 ||
@@ -1141,7 +1299,11 @@ export default function GamePage() {
             // Identity discovery is persistent and player-pulled. The result
             // still exposes the PlayerCard claim action, while the global
             // notification replaces the former automatic ceremony modal.
+            // §5 notification consolidation: with Run Flow v1 the claim is
+            // Results Layer 3's recommended next action when it is the most
+            // useful one, so the global notification is not also published.
             if (
+              !RUN_FLOW_V1_ENABLED &&
               result.identity?.isGenerated &&
               result.validation?.extracted
             ) {
@@ -1169,26 +1331,31 @@ export default function GamePage() {
         firstRunAtStartRef.current = false;
         setHasCompletedFirstRun(true);
         setShowFirstResultDiscovery(true);
-        const notifications = useNotificationStore.getState();
-        notifications.publish({
-          id: 'lab-discovery',
-          title: 'The Lab is ready',
-          description: 'Discover more snakes when you feel like changing your run.',
-          ...NOTIFICATION_TARGETS.lab,
-          badgeKind: 'exclamation',
-          attentionReason: 'progression-opportunity',
-          actionLabel: 'Visit the Lab',
-        });
-        if (currentSession?.user?.is_anonymous === true) {
+        // §5 notification consolidation: Run Flow v1 folds both of these into
+        // Results Layer 3's single recommended next action. Two publishes and
+        // a discovery panel become one invitation.
+        if (!RUN_FLOW_V1_ENABLED) {
+          const notifications = useNotificationStore.getState();
           notifications.publish({
-            id: 'save-progress',
-            title: 'Keep your progress',
-            description: 'Add an email whenever you want to play on another device.',
-            ...NOTIFICATION_TARGETS.saveProgress,
+            id: 'lab-discovery',
+            title: 'The Lab is ready',
+            description: 'Discover more snakes when you feel like changing your run.',
+            ...NOTIFICATION_TARGETS.lab,
             badgeKind: 'exclamation',
-            attentionReason: 'action-required',
-            actionLabel: 'Save progress',
+            attentionReason: 'progression-opportunity',
+            actionLabel: 'Visit the Lab',
           });
+          if (currentSession?.user?.is_anonymous === true) {
+            notifications.publish({
+              id: 'save-progress',
+              title: 'Keep your progress',
+              description: 'Add an email whenever you want to play on another device.',
+              ...NOTIFICATION_TARGETS.saveProgress,
+              badgeKind: 'exclamation',
+              attentionReason: 'action-required',
+              actionLabel: 'Save progress',
+            });
+          }
         }
       }
 
@@ -1240,6 +1407,9 @@ export default function GamePage() {
     fetchCodex,
     armResumeAfterDecision,
     showToast,
+    // Read once at mount and never reassigned; listed so the dependency
+    // rule stays honest rather than suppressed.
+    challengeRun,
   ]);
 
   // Sync game state to store
@@ -1372,6 +1542,16 @@ export default function GamePage() {
     setPortalChoicePending(false);
     setSurgeChoicePending(false);
     setShowFirstResultDiscovery(false);
+    // WP-1.06: Results state belongs to the run that just ended. A new run
+    // clears all of it before the board appears (Rule 1 - nothing from the
+    // last run renders over this one).
+    setPersonalBest(false);
+    setDailyTake(null);
+    setTakeState('idle');
+    setSettledYield(null);
+    setSettledCredited(null);
+    setSerpentDepth(null);
+    setSetupReopened(false);
 
     // Trait config comes from the server-owned equipped snake row.
     game.setTraits(sanitizeTraits(data.traits));
@@ -1739,6 +1919,61 @@ export default function GamePage() {
     }
   }, [cancelPauseRearm, resetGame]);
 
+  // ---------------------------------------------------------------------
+  // Results actions (Constitution §5)
+  // ---------------------------------------------------------------------
+  // REPLAY: re-enter the run with the SAME configuration, skipping setup.
+  // One tap here plus the deliberate first direction is the whole ≤2.
+  const handleReplay = useCallback(() => {
+    void handleStart(gameMode);
+  }, [gameMode, handleStart]);
+
+  // SETUP: reopen the setup page over the finished run. The run's numbers
+  // stay settled; only the surface changes.
+  const handleOpenSetup = useCallback(() => {
+    setSetupReopened(true);
+  }, []);
+
+  // The game's ONE sanctioned collect (§7.2). WP-1.04 owns the endpoint; its
+  // absence resolves to a quiet `unavailable`, never an error state.
+  const handleCollectTake = useCallback(async () => {
+    const token = sessionRef.current?.access_token;
+    if (!token || !dailyTake || dailyTake.collected) return;
+    setTakeState('collecting');
+    const outcome = await collectDailyTake(token);
+    setTakeState(outcome.status === 'collected' ? 'collected' : outcome.status);
+    if (outcome.status === 'collected') {
+      setDailyTake((prev) => (prev ? { ...prev, collected: true } : prev));
+    }
+  }, [dailyTake]);
+
+  // Layer 3's single recommended next action, when it opens a modal rather
+  // than navigating.
+  const resultsNextAction = useMemo(
+    () =>
+      chooseNextAction({
+        isAnonymous,
+        extracted: endReason === 'extracted',
+        handleIsGenerated: ownIdentity?.isGenerated === true,
+        isFirstCompletedRun: showFirstResultDiscovery,
+        codexDiscoveries: codexDiscoveries.length,
+        practice: lastRunFree,
+      }),
+    [
+      codexDiscoveries.length,
+      endReason,
+      isAnonymous,
+      lastRunFree,
+      ownIdentity?.isGenerated,
+      showFirstResultDiscovery,
+    ]
+  );
+
+  const handleResultsNextAction = useCallback(() => {
+    if (resultsNextAction.id === 'save-progress') setShowSaveProgress(true);
+    if (resultsNextAction.id === 'claim-handle') setShowHandleClaim(true);
+  }, [resultsNextAction.id]);
+
   // Resolve authentication and any consume-once launch handoff before a
   // second Play action can appear.
   if (authLoading || routeInitializing) {
@@ -1917,11 +2152,132 @@ export default function GamePage() {
       )
     : undefined;
 
+  // ---------------------------------------------------------------------
+  // Run Setup controls (Constitution §5). Hoisted so the one consolidated
+  // setup surface and the shipped rollback screen render exactly the same
+  // controls - Run Flow v1 changes where they sit, never what they are.
+  // ---------------------------------------------------------------------
+  /* Run mode: EARN (rewards) vs ANOMALY (weekly board, §7.2) vs FREE PLAY
+     (unlimited practice, no rewards - §7.4) */
+  const modeToggleNode = !noSnakeAvailable ? (
+    <ModeToggle
+      mode={gameMode}
+      charge={charge}
+      onSelect={setGameMode}
+      anomalyName={anomalyBoard?.live ? anomalyBoard.anomaly.name : null}
+      anomalyStrain={anomalyBoard?.live ? anomalyBoard.anomaly.strainBias : null}
+    />
+  ) : null;
+
+  /* Weekly Anomaly board entry: modifier, timer, your best, top 10 */
+  const anomalyPanelNode =
+    !noSnakeAvailable && gameMode === 'anomaly' && anomalyBoard?.live ? (
+      <AnomalyPanel board={anomalyBoard} />
+    ) : null;
+
+  /* Aim system picker - all four selectable from run 1 (§6.1). */
+  const aimSelectorNode = !noSnakeAvailable ? (
+    <div className="space-y-2">
+      <p className="label-arcade">Aim System</p>
+      <AimSystemSelector selected={aimSystem} onSelect={handleSelectAimSystem} />
+    </div>
+  ) : null;
+
+  /* Control scheme (touch devices): flick-anywhere default, D-pad fallback. */
+  const controlSchemeNode =
+    isMobile && !noSnakeAvailable ? (
+      <div className="space-y-2">
+        <p className="label-arcade">Controls</p>
+        <div className="flex gap-2 justify-center">
+          {(['flick', 'dpad'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => handleControlModeChange(mode)}
+              data-testid={`control-mode-${mode}`}
+              aria-pressed={controlMode === mode}
+              className={`px-4 py-2 min-h-[44px] rounded-arcade border font-body text-sm transition-all ${
+                controlMode === mode
+                  ? 'border-venom-orange/70 bg-venom-orange/15 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
+                  : 'border-scale-blue-light/50 bg-void/50 text-beige hover:text-bone-white'
+              }`}
+            >
+              {mode === 'flick' ? 'FLICK' : 'D-PAD'}
+            </button>
+          ))}
+        </div>
+        {controlMode === 'flick' && (
+          <p className="text-beige/60 text-xs font-body">
+            Flick anywhere on screen to steer
+          </p>
+        )}
+      </div>
+    ) : null;
+
+  /* The inherited build: strains, heirlooms, lineage. */
+  const buildSeedNode =
+    equippedSnake &&
+    GAME_CONFIG.features.genome &&
+    genomeFtue?.spawnPointsUnlocked ? (
+      <div className="panel mx-auto max-w-lg space-y-2 p-3 text-left" data-testid="build-seed">
+        <div className="flex items-center justify-between gap-3">
+          <p className="label-arcade text-cosmic">Build Seed</p>
+          {genomeFtue.splicesUnlocked && (
+            <Link href="/codex" className="text-xs font-body text-cosmic underline">
+              Open Codex
+            </Link>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {buildSeedStrains.length > 0 ? (
+            buildSeedStrains.map((strain) => (
+              <StrainChip
+                key={strain}
+                strain={strain}
+                points={buildSeedPoints[strain]}
+                size="md"
+              />
+            ))
+          ) : (
+            <span className="text-xs font-body text-beige/55">
+              No inherited strain affinity
+            </span>
+          )}
+        </div>
+        {equippedSnake.traits.length > 0 && (
+          <p className="text-xs font-body text-beige/60">
+            Heirlooms: {equippedSnake.traits.map((trait) => TRAITS[trait].name).join(' · ')}
+          </p>
+        )}
+        {equippedSnake.lineage && (
+          <p className="text-xs font-body text-beige/60">
+            Lineage strength {equippedSnake.lineage.strength}
+            {equippedSnake.lineage.primary
+              ? ` · ${equippedSnake.lineage.primary} primary`
+              : ''}
+          </p>
+        )}
+      </div>
+    ) : null;
+
+  const startTestId =
+    gameMode === 'free'
+      ? 'free-play-start'
+      : gameMode === 'anomaly'
+        ? 'anomaly-start'
+        : 'earn-start';
+
+  // Run Flow v1 shows Results until the player asks for SETUP.
+  const showResultsLayers = RUN_FLOW_V1_ENABLED && isGameOver && !setupReopened;
+
   return (
     <div
       className={`consent-safe-viewport w-screen h-dvh flex flex-col overflow-hidden app-bg ${
         HUD_COCKPIT_V1_ENABLED ? 'cockpit-game-viewport' : 'relative'
       }`}
+      /* The run's provenance, when it came from a challenge link: the seed
+         the engine's rng was actually constructed with (§11.3). Absent on an
+         ordinary run, which has no seed to report. */
+      data-run-seed={challengeRun?.seed}
     >
       {HUD_COCKPIT_V1_ENABLED && isPlaying ? (
         <GameEnvironment dynasty={selectedDynasty} />
@@ -2292,6 +2648,122 @@ export default function GamePage() {
                 : '[--glow:#22d3ee]'
             }`}
           >
+            {/* Constitution §5 / WP-1.06: one consolidated Run Setup page and
+                a three-layer Results screen. The shipped screen below is the
+                rollback path and is reached with NEXT_PUBLIC_RUN_FLOW_V1 off. */}
+            {RUN_FLOW_V1_ENABLED ? (
+              showResultsLayers ? (
+                <RunResults
+                  outcome={endReason === 'extracted' ? 'extracted' : 'crashed'}
+                  practice={lastRunFree}
+                  personalBest={personalBest}
+                  score={score}
+                  dnaCredited={settledCredited}
+                  yieldDna={settledYield ?? hypotheticalDna}
+                  serpent={serpentDepth}
+                  take={dailyTake}
+                  takeState={takeState}
+                  onCollectTake={() => {
+                    void handleCollectTake();
+                  }}
+                  digest={{
+                    mastery: masteryResult,
+                    codex: codexDiscoveries.map((discovery) => ({
+                      key: `${discovery.type}:${discovery.entryId}`,
+                      label: `${codexEntryName(discovery.type, discovery.entryId)}${
+                        discovery.worldFirst ? ' · WORLD FIRST' : ''
+                      }${discovery.rewardDna > 0 ? ` · +${discovery.rewardDna} DNA` : ''}`,
+                    })),
+                    streakDays: streakInfo?.current ?? null,
+                    genes: heldMutations.map(
+                      (pick) =>
+                        `${GENES[pick.id].name}${
+                          pick.id === 'phoenix' && phoenixTriggered ? ' (spent)' : ''
+                        }`
+                    ),
+                  }}
+                  nextAction={resultsNextAction}
+                  onNextAction={handleResultsNextAction}
+                  onReplay={handleReplay}
+                  onSetup={handleOpenSetup}
+                  replayPending={isStarting}
+                  replayDisabled={isStarting || !equippedSnake}
+                  shareArtifact={
+                    lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
+                  }
+                  analyst={
+                    currentSessionId && session?.access_token && !lastRunFree ? (
+                      <RunInsightCard
+                        sessionId={currentSessionId}
+                        accessToken={session.access_token}
+                      />
+                    ) : null
+                  }
+                  playerCard={
+                    ownIdentity ? (
+                      <PlayerCard
+                        identity={ownIdentity}
+                        variant="card"
+                        isSelf
+                        onClaim={() => setShowHandleClaim(true)}
+                        className="text-left"
+                      />
+                    ) : null
+                  }
+                />
+              ) : (
+                <RunSetupPanel
+                  snake={
+                    equippedSnake
+                      ? {
+                          name: equippedSnake.name,
+                          generation: equippedSnake.generation,
+                          dynasty: normalizeDynastyName(equippedSnake.dynasty),
+                        }
+                      : null
+                  }
+                  noSnakeAvailable={noSnakeAvailable}
+                  rulesetExplainer={
+                    equippedSnake
+                      ? rulesetExplainer[normalizeDynastyName(equippedSnake.dynasty)]
+                      : ''
+                  }
+                  masteryLevel={
+                    equippedSnake
+                      ? masteryLevels[normalizeDynastyName(equippedSnake.dynasty)] ?? null
+                      : null
+                  }
+                  modeLabel={
+                    gameMode === 'free'
+                      ? 'Free Play'
+                      : gameMode === 'anomaly'
+                        ? 'Anomaly run'
+                        : 'Earning run'
+                  }
+                  aimLabel={getAimSystem(aimSystem).name}
+                  challengeNote={challengeRun ? challengeRunNote(challengeRun) : null}
+                  startLabel={
+                    gameMode === 'free'
+                      ? 'Free Play'
+                      : gameMode === 'anomaly'
+                        ? 'Run the Anomaly'
+                        : 'Play'
+                  }
+                  startTestId={startTestId}
+                  isStarting={isStarting}
+                  onStart={() => {
+                    void handleStart(gameMode);
+                  }}
+                  startError={startError}
+                  modeToggle={modeToggleNode}
+                  anomalyPanel={anomalyPanelNode}
+                  aimSelector={aimSelectorNode}
+                  controlScheme={controlSchemeNode}
+                  buildSeed={buildSeedNode}
+                />
+              )
+            ) : (
+              <>
             {isGameOver ? (
               <>
                 {lastRunFree ? (
@@ -2531,44 +3003,7 @@ export default function GamePage() {
                         </span>
                       </p>
                     )}
-                    {GAME_CONFIG.features.genome && genomeFtue?.spawnPointsUnlocked && (
-                      <div
-                        className="panel mx-auto max-w-lg space-y-2 p-3 text-left"
-                        data-testid="build-seed"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="label-arcade text-cosmic">Build Seed</p>
-                          {genomeFtue.splicesUnlocked && (
-                            <Link href="/codex" className="text-xs font-body text-cosmic underline">
-                              Open Codex
-                            </Link>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {buildSeedStrains.length > 0 ? buildSeedStrains.map((strain) => (
-                            <StrainChip
-                              key={strain}
-                              strain={strain}
-                              points={buildSeedPoints[strain]}
-                              size="md"
-                            />
-                          )) : (
-                            <span className="text-xs font-body text-beige/55">No inherited strain affinity</span>
-                          )}
-                        </div>
-                        {equippedSnake.traits.length > 0 && (
-                          <p className="text-xs font-body text-beige/60">
-                            Heirlooms: {equippedSnake.traits.map((trait) => TRAITS[trait].name).join(' · ')}
-                          </p>
-                        )}
-                        {equippedSnake.lineage && (
-                          <p className="text-xs font-body text-beige/60">
-                            Lineage strength {equippedSnake.lineage.strength}
-                            {equippedSnake.lineage.primary ? ` · ${equippedSnake.lineage.primary} primary` : ''}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    {buildSeedNode}
                     <p className="text-beige/50 font-body text-xs">
                       Exit portal banks +25% — crashing salvages 60%
                     </p>
@@ -2583,69 +3018,10 @@ export default function GamePage() {
               </>
             )}
 
-            {/* Run mode: EARN (rewards) vs ANOMALY (weekly board,
-                §7.2) vs FREE PLAY (unlimited practice, no rewards - §7.4) */}
-            {!noSnakeAvailable && (
-              <ModeToggle
-                mode={gameMode}
-                charge={charge}
-                onSelect={setGameMode}
-                anomalyName={
-                  anomalyBoard?.live ? anomalyBoard.anomaly.name : null
-                }
-                anomalyStrain={
-                  anomalyBoard?.live ? anomalyBoard.anomaly.strainBias : null
-                }
-              />
-            )}
-
-            {/* Weekly Anomaly board entry: modifier, timer, your best,
-                top 10 - shown while the ANOMALY mode is selected */}
-            {!noSnakeAvailable &&
-              gameMode === 'anomaly' &&
-              anomalyBoard?.live && <AnomalyPanel board={anomalyBoard} />}
-
-            {/* Aim system picker - all four selectable from run 1 (§6.1).
-                One control on the setup page; it adds no required tap. */}
-            {!noSnakeAvailable && (
-              <div className="space-y-2">
-                <p className="label-arcade">Aim System</p>
-                <AimSystemSelector
-                  selected={aimSystem}
-                  onSelect={handleSelectAimSystem}
-                />
-              </div>
-            )}
-
-            {/* Control scheme (touch devices): flick-anywhere default,
-                D-pad fallback. Persisted client preference. */}
-            {isMobile && !noSnakeAvailable && (
-              <div className="space-y-2">
-                <p className="label-arcade">Controls</p>
-                <div className="flex gap-2 justify-center">
-                  {(['flick', 'dpad'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => handleControlModeChange(mode)}
-                      data-testid={`control-mode-${mode}`}
-                      aria-pressed={controlMode === mode}
-                      className={`px-4 py-2 min-h-[44px] rounded-arcade border font-body text-sm transition-all ${
-                        controlMode === mode
-                          ? 'border-venom-orange/70 bg-venom-orange/15 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
-                          : 'border-scale-blue-light/50 bg-void/50 text-beige hover:text-bone-white'
-                      }`}
-                    >
-                      {mode === 'flick' ? 'FLICK' : 'D-PAD'}
-                    </button>
-                  ))}
-                </div>
-                {controlMode === 'flick' && (
-                  <p className="text-beige/60 text-xs font-body">
-                    Flick anywhere on screen to steer
-                  </p>
-                )}
-              </div>
-            )}
+            {modeToggleNode}
+            {anomalyPanelNode}
+            {aimSelectorNode}
+            {controlSchemeNode}
 
             {/* Error Message */}
             {startError && (
@@ -2764,6 +3140,8 @@ export default function GamePage() {
               >
                 Playing as guest - save this progress with a free account
               </button>
+            )}
+              </>
             )}
           </div>
         </div>

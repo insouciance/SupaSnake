@@ -153,21 +153,34 @@ export function lineageOfferBias(lineage: Lineage | null): LineageBias | null {
 }
 
 // =============================================================================
-// BREEDING INHERITANCE (TS mirror of migration 030 - keep in lockstep)
+// THE LINEAGE DRAFT (TS mirror of migration 047 - keep in lockstep)
 // =============================================================================
+//
+// Constitution §8.2: breeding is a DETERMINISTIC DRAFT. The player chooses
+// the child's lineage strain from the parents' strains; nothing is rolled.
+// Every option below is enumerated before payment and the chosen one is what
+// the child is born with - the preview IS the outcome.
 
 export interface LineageParent {
   lineage: Lineage | null;
   dynasty: string;
 }
 
-export interface LineageOutcome {
-  lineage: Lineage;
-  /** Probability of this outcome (for the breeding preview UI). */
-  chance: number;
+/**
+ * Which parent's line an option descends from. `purebred` is the two parents
+ * agreeing; `dual` is the cross-dynasty double line (both strains kept).
+ */
+export type LineageDraftKind = 'purebred' | 'dual' | 'parent1' | 'parent2';
+
+export interface LineageDraftOption {
+  /** Stable key the client sends back with the breed request. */
+  kind: LineageDraftKind;
+  strains: LineageStrains;
+  /** Final strength, already clamped by the child's rarity and generation. */
+  strength: LineageStrength;
 }
 
-/** The strain a parent passes into a new inheritance roll. */
+/** The strain a parent passes into the draft. */
 export function inheritableLineageStrain(lineage: Lineage | null): StrainId | null {
   if (!lineage) return null;
   return lineage.strains.length === 2
@@ -176,61 +189,67 @@ export function inheritableLineageStrain(lineage: Lineage | null): StrainId | nu
 }
 
 /**
- * Enumerate the possible offspring lineages for the breeding preview -
- * the TS mirror of the breed_snakes lineage roll (§7):
- * - Same dynasty, same strain (Purebred): strength max(parents) + 1.
- * - Same dynasty, different strains: one parent's strain (50/50),
- *   strength max(parents).
- * - Cross-dynasty: dual lineage (both strains) at bias strength.
- * Rarity caps + Gen3 prestige apply at roll time (clampLineageStrength) -
- * the preview shows uncapped intent, the reveal shows the capped roll.
+ * Enumerate the child's selectable lineages, in canonical order - the TS
+ * mirror of `lineage_draft_options` in migration 047.
+ *
+ * - Both parents on the same strain: one option, the purebred line, at
+ *   strength max(parents) + 1. There is nothing to choose and nothing to
+ *   roll (the shipped Purebred rule, unchanged).
+ * - Different strains, same dynasty: one option per parent line, at
+ *   strength max(parents). Taking one is not taking the other - that
+ *   forced choice IS the sacrifice §8.2 asks for.
+ * - Different strains, cross-dynasty: the dual line first (both strains,
+ *   the shipped behaviour and the default), then each parent's pure line.
+ * - One parent lineless: that parent contributes nothing; the other's line
+ *   is the only option.
+ *
+ * Strength is clamped here by the CHILD's rarity and generation, so the
+ * strength shown in the preview is the strength written to the row.
  */
-export function combineLineages(
+export function lineageDraftOptions(
   parent1: LineageParent,
-  parent2: LineageParent
-): LineageOutcome[] {
+  parent2: LineageParent,
+  offspringRarity: string,
+  offspringGeneration: number
+): LineageDraftOption[] {
   const s1 = inheritableLineageStrain(parent1.lineage);
   const s2 = inheritableLineageStrain(parent2.lineage);
-  const str1 = parent1.lineage?.strength ?? 0;
-  const str2 = parent2.lineage?.strength ?? 0;
-  const maxStrength = Math.max(str1, str2);
+  const maxStrength = Math.max(
+    parent1.lineage?.strength ?? 0,
+    parent2.lineage?.strength ?? 0
+  );
   const crossDynasty = parent1.dynasty !== parent2.dynasty;
+  const clamp = (raw: number): LineageStrength =>
+    clampLineageStrength(raw, offspringRarity, offspringGeneration);
 
   if (s1 === null && s2 === null) return [];
-  if (crossDynasty && s1 !== null && s2 !== null && s1 !== s2) {
-    return [
-      {
-        lineage: { strains: [s1, s2], strength: Math.min(2, maxStrength) as LineageStrength },
-        chance: 1,
-      },
-    ];
+
+  if (s1 !== null && s1 === s2) {
+    return [{ kind: 'purebred', strains: [s1], strength: clamp(maxStrength + 1) }];
   }
-  if (s1 !== null && s2 !== null && s1 === s2) {
-    return [
-      {
-        lineage: {
-          strains: [s1],
-          strength: Math.min(2, maxStrength + 1) as LineageStrength,
-        },
-        chance: 1,
-      },
-    ];
+
+  const options: LineageDraftOption[] = [];
+  if (crossDynasty && s1 !== null && s2 !== null) {
+    options.push({ kind: 'dual', strains: [s1, s2], strength: clamp(maxStrength) });
   }
-  const outcomes: LineageOutcome[] = [];
   if (s1 !== null) {
-    outcomes.push({
-      lineage: { strains: [s1], strength: Math.min(2, maxStrength) as LineageStrength },
-      chance: s2 === null ? 1 : 0.5,
-    });
+    options.push({ kind: 'parent1', strains: [s1], strength: clamp(maxStrength) });
   }
-  if (s2 !== null && s2 !== s1) {
-    outcomes.push({
-      lineage: { strains: [s2], strength: Math.min(2, maxStrength) as LineageStrength },
-      chance: s1 === null ? 1 : 0.5,
-    });
+  if (s2 !== null) {
+    options.push({ kind: 'parent2', strains: [s2], strength: clamp(maxStrength) });
   }
-  return outcomes;
+  return options;
 }
 
-/** DNA cost of rerolling a snake's lineage strain (§7 - new sink). */
-export const LINEAGE_REROLL_COST = 150;
+/** The option applied when the request names none. Always the first. */
+export function defaultLineageDraft(
+  options: LineageDraftOption[]
+): LineageDraftOption | null {
+  return options[0] ?? null;
+}
+
+/**
+ * DNA a retired trait-reroll token converts to (§8.2: "their old price").
+ * Migration 047 performs the conversion once; nothing mints tokens after it.
+ */
+export const REROLL_TOKEN_DNA_VALUE = 150;
