@@ -184,7 +184,11 @@ export interface SharePayload {
  * Every builder below goes through here, so the WP-0.08 defect cannot be
  * reintroduced one payload at a time.
  */
-function payload(title: string, lines: readonly string[], url: string): SharePayload {
+export function payload(
+  title: string,
+  lines: readonly string[],
+  url: string
+): SharePayload {
   const body = lines.filter((line) => line.trim().length > 0);
   return { title, text: [...body, url].join('\n'), url };
 }

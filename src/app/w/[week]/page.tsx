@@ -17,8 +17,8 @@ import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { ArtifactLanding } from '@/components/share/ArtifactLanding';
 import { SHARE_ARTIFACTS_V1_ENABLED } from '@/lib/features/shareArtifacts';
-import { settlementCardModel } from '@/lib/share/artifactCards';
-import { serpentWeekArtifactPath } from '@/lib/share/artifactUrls';
+import { cardShare, settlementCardModel } from '@/lib/share/artifactCards';
+import { serpentWeekArtifactPath, serpentWeekArtifactUrl } from '@/lib/share/artifactUrls';
 import {
   CLAN_TAG_PATTERN,
   derivedSerpentWeek,
@@ -68,19 +68,22 @@ export default async function SerpentWeekArtifactPage({ params, searchParams }: 
   const artifact = await load(week, clanTag);
   if (!artifact) notFound();
 
+  const card = settlementCardModel({
+    weekKey: artifact.weekKey,
+    weekIndex: artifact.weekIndex,
+    seed: artifact.seed,
+    modifierNames: artifact.modifierNames,
+    clan: artifact.clan,
+  });
+
   return (
     <ArtifactLanding
-      card={settlementCardModel({
-        weekKey: artifact.weekKey,
-        weekIndex: artifact.weekIndex,
-        seed: artifact.seed,
-        modifierNames: artifact.modifierNames,
-        clan: artifact.clan,
-      })}
+      card={card}
       actionHref="/game"
       actionLabel="Hunt this week"
       blurb="One Serpent per week, worldwide. Your three best runs make your Depth, and every member’s Depth adds to the clan’s — no thresholds, no bars, no minimum."
       secondary={{ href: '/leaderboard', label: 'See the board' }}
+      share={cardShare(card, serpentWeekArtifactUrl(artifact.weekKey, artifact.clan?.tag ?? null))}
     />
   );
 }

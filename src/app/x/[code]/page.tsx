@@ -15,9 +15,9 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ArtifactLanding } from '@/components/share/ArtifactLanding';
 import { SHARE_ARTIFACTS_V1_ENABLED } from '@/lib/features/shareArtifacts';
-import { lineageCardModelFor } from '@/lib/share/artifactCards';
-import { lineageArtifactPath } from '@/lib/share/artifactUrls';
-import { decodeLineageCode } from '@/lib/share/lineageCode';
+import { cardShare, lineageCardModelFor } from '@/lib/share/artifactCards';
+import { lineageArtifactPath, lineageArtifactUrl } from '@/lib/share/artifactUrls';
+import { decodeLineageCode, encodeLineageCode } from '@/lib/share/lineageCode';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,13 +41,16 @@ export default async function LineageArtifactPage({ params }: PageProps) {
   const model = decodeLineageCode((await params).code);
   if (!model) notFound();
 
+  const card = lineageCardModelFor(model);
+
   return (
     <ArtifactLanding
-      card={lineageCardModelFor(model)}
+      card={card}
       actionHref="/game"
       actionLabel="Play SupaSnake"
       blurb="Every snake is bred, not bought. Genes come out of runs, and what you keep compounds into a lineage."
       secondary={{ href: '/lab', label: 'Open the Snake Lab' }}
+      share={cardShare(card, lineageArtifactUrl(encodeLineageCode(model)))}
     />
   );
 }

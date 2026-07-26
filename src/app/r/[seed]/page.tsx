@@ -15,12 +15,13 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ArtifactLanding } from '@/components/share/ArtifactLanding';
 import { SHARE_ARTIFACTS_V1_ENABLED } from '@/lib/features/shareArtifacts';
-import { runCardModel } from '@/lib/share/artifactCards';
+import { cardShare, runCardModel } from '@/lib/share/artifactCards';
 import {
   challengeImagePath,
   challengeNeedsOwnImage,
   challengePlayPath,
   runArtifactPath,
+  runArtifactUrl,
 } from '@/lib/share/artifactUrls';
 import { challengeFromRun, challengeHeadline } from '@/shared/game/challenge';
 
@@ -85,13 +86,16 @@ export default async function RunArtifactPage({ params, searchParams }: PageProp
   });
   if (!challenge) notFound();
 
+  const card = runCardModel({ challenge, dynasty: dynastyOf(first(query.dy)) });
+
   return (
     <ArtifactLanding
-      card={runCardModel({ challenge, dynasty: dynastyOf(first(query.dy)) })}
+      card={card}
       actionHref={challengePlayPath(challenge)}
       actionLabel={challenge.target !== null ? 'Take the challenge' : 'Play this seed'}
       blurb="Same seed, same board. Every run ends with a deal: bank it, push your luck, or feed the snake."
       secondary={{ href: '/leaderboard', label: 'See the board' }}
+      share={cardShare(card, runArtifactUrl(challenge.seed, challenge))}
     />
   );
 }

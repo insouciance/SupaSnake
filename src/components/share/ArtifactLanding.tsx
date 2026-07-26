@@ -19,6 +19,8 @@
 import Link from 'next/link';
 import type { ArtifactCardModel } from '@/lib/og/artifactCard';
 import { ARTIFACT_FOOTNOTES } from '@/lib/og/artifactCard';
+import { ShareArtifactButton } from '@/components/share/ShareArtifactButton';
+import type { SharePayload } from '@/lib/share/artifactUrls';
 
 export interface ArtifactLandingProps {
   card: ArtifactCardModel;
@@ -29,6 +31,12 @@ export interface ArtifactLandingProps {
   blurb?: string;
   /** A second, quiet link (never commercial). */
   secondary?: { href: string; label: string };
+  /**
+   * The payload for passing this artifact on. Built by
+   * `@/lib/share/artifactUrls`, which is the only place a share text is
+   * assembled — see `ShareArtifactButton` for why that matters.
+   */
+  share?: SharePayload;
 }
 
 export function ArtifactLanding({
@@ -37,6 +45,7 @@ export function ArtifactLanding({
   actionLabel,
   blurb,
   secondary,
+  share,
 }: ArtifactLandingProps) {
   return (
     <main
@@ -104,6 +113,7 @@ export function ArtifactLanding({
               {secondary.label}
             </Link>
           )}
+          {share && <ShareArtifactButton payload={share} label="Share this" />}
         </div>
 
         <p className="font-body text-sm text-beige/60" data-testid="artifact-provenance">

@@ -15,8 +15,8 @@ import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { ArtifactLanding } from '@/components/share/ArtifactLanding';
 import { SHARE_ARTIFACTS_V1_ENABLED } from '@/lib/features/shareArtifacts';
-import { clanCardModel } from '@/lib/share/artifactCards';
-import { clanArtifactPath } from '@/lib/share/artifactUrls';
+import { cardShare, clanCardModel } from '@/lib/share/artifactCards';
+import { clanArtifactPath, clanArtifactUrl } from '@/lib/share/artifactUrls';
 import { CLAN_TAG_PATTERN, loadClanArtifact } from '@/lib/server/artifacts';
 
 export const dynamic = 'force-dynamic';
@@ -58,13 +58,16 @@ export default async function ClanArtifactPage({ params }: PageProps) {
   const clan = await load(tag);
   if (!clan) notFound();
 
+  const card = clanCardModel(clan);
+
   return (
     <ArtifactLanding
-      card={clanCardModel(clan)}
+      card={card}
       actionHref="/game"
       actionLabel="Play SupaSnake"
       blurb="Clans hunt the World Serpent together. Participation adds, proportionally: a clan of one reads as meaningfully as a clan of twelve."
       secondary={{ href: '/clan', label: 'Find a clan' }}
+      share={cardShare(card, clanArtifactUrl(clan.tag))}
     />
   );
 }

@@ -127,6 +127,12 @@ import {
 } from '@/lib/ftue/launchFlow';
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
+import {
+  challengeRunNote,
+  challengeRunRng,
+  readChallengeRun,
+  type ChallengeRun,
+} from '@/lib/game/challengeRun';
 import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
 import { RunResults, type RunResultsSerpent } from '@/components/game/RunResults';
 import { RunSetupPanel } from '@/components/game/RunSetupPanel';
@@ -273,6 +279,19 @@ function recordHandlePromptDismissal(claimed: boolean): void {
 export default function GamePage() {
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
+  /**
+   * A challenge link (§11.3) arrives as `/game?seed=…&target=…`. It is read
+   * from `window.location` rather than `useSearchParams` deliberately: this
+   * page must not opt the whole route into the search-params Suspense
+   * bailout for a feature that is off by default, and the value is needed
+   * once, at mount, before the engine is constructed.
+   *
+   * Its only mechanical effect is the engine's rng seed. The target is
+   * display-only and is never sent anywhere (see `challengeRun.ts`).
+   */
+  const [challengeRun] = useState<ChallengeRun | null>(() =>
+    typeof window === 'undefined' ? null : readChallengeRun(window.location.search)
+  );
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [particlePos, setParticlePos] = useState<[number, number, number] | null>(null);
@@ -953,7 +972,13 @@ export default function GamePage() {
 
   // Initialize game logic
   useEffect(() => {
-    gameRef.current = new SnakeGameLogic({ gridSize: GAME_CONFIG.board.gridSize });
+    // A challenge link seeds the engine so the visitor plays the exact board
+    // the sharer played (§11.3). Without one the engine keeps its default
+    // rng, which is `Math.random` — an ordinary run is still random.
+    gameRef.current = new SnakeGameLogic({
+      gridSize: GAME_CONFIG.board.gridSize,
+      ...(challengeRun ? { rng: challengeRunRng(challengeRun) } : {}),
+    });
 
     const mirrorGenomeState = () => {
       const state = gameRef.current?.getState();
@@ -1382,6 +1407,9 @@ export default function GamePage() {
     fetchCodex,
     armResumeAfterDecision,
     showToast,
+    // Read once at mount and never reassigned; listed so the dependency
+    // rule stays honest rather than suppressed.
+    challengeRun,
   ]);
 
   // Sync game state to store
@@ -2246,6 +2274,10 @@ export default function GamePage() {
       className={`consent-safe-viewport w-screen h-dvh flex flex-col overflow-hidden app-bg ${
         HUD_COCKPIT_V1_ENABLED ? 'cockpit-game-viewport' : 'relative'
       }`}
+      /* The run's provenance, when it came from a challenge link: the seed
+         the engine's rng was actually constructed with (§11.3). Absent on an
+         ordinary run, which has no seed to report. */
+      data-run-seed={challengeRun?.seed}
     >
       {HUD_COCKPIT_V1_ENABLED && isPlaying ? (
         <GameEnvironment dynasty={selectedDynasty} />
@@ -2709,6 +2741,7 @@ export default function GamePage() {
                         : 'Earning run'
                   }
                   aimLabel={getAimSystem(aimSystem).name}
+                  challengeNote={challengeRun ? challengeRunNote(challengeRun) : null}
                   startLabel={
                     gameMode === 'free'
                       ? 'Free Play'

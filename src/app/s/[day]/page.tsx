@@ -20,12 +20,13 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ArtifactLanding } from '@/components/share/ArtifactLanding';
 import { SHARE_ARTIFACTS_V1_ENABLED } from '@/lib/features/shareArtifacts';
-import { signalCardModel } from '@/lib/share/artifactCards';
+import { cardShare, signalCardModel } from '@/lib/share/artifactCards';
 import {
   challengeImagePath,
   challengeNeedsOwnImage,
   challengePlayPath,
   signalArtifactPath,
+  signalArtifactUrl,
 } from '@/lib/share/artifactUrls';
 import {
   challengeFromSignal,
@@ -107,6 +108,8 @@ export default async function SignalArtifactPage({ params, searchParams }: PageP
           : 'One Signal per day, the same for everyone in the world. Three minutes, in your browser, no install.'
       }
       secondary={{ href: '/leaderboard', label: 'See the board' }}
+      // Passing it on preserves the dare exactly as it arrived.
+      share={cardShare(card, signalArtifactUrl(day, challenge))}
     />
   );
 }

@@ -9,6 +9,7 @@
  */
 
 import type { ArtifactCardModel, ArtifactStat } from '@/lib/og/artifactCard';
+import { payload, type SharePayload } from '@/lib/share/artifactUrls';
 import {
   decisionGlyphs,
   decisionWords,
@@ -19,6 +20,23 @@ import { lineageGeneNames } from '@/lib/share/lineageCode';
 
 function count(value: number): string {
   return Math.max(0, Math.floor(value)).toLocaleString('en-US');
+}
+
+/**
+ * Pass an artifact on, exactly as it arrived.
+ *
+ * A landing page already holds the card model and the URL that produced it,
+ * so a re-share is those two things and nothing invented: it cannot claim a
+ * dynasty, a score or a Depth the page was never told. Assembled through
+ * `payload`, which appends the URL as the last line of `text` (the WP-0.08
+ * lesson) — no share text is ever built anywhere else.
+ */
+export function cardShare(card: ArtifactCardModel, url: string): SharePayload {
+  return payload(
+    `SupaSnake — ${card.title}`,
+    [card.kicker, card.glyphs ?? '', card.title, card.subtitle ?? ''],
+    url
+  );
 }
 
 /**
