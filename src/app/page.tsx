@@ -36,6 +36,7 @@ import {
 } from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
 import { SignalSurface } from '@/components/signal/SignalSurface';
+import { WorldReportCard } from '@/components/report/WorldReportCard';
 import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
@@ -828,6 +829,24 @@ export default function Home() {
             Withheld until the player has completed a run under FTUE v2, the
             same threshold every other meta surface on this page uses — a first
             run is never made to compete with a daily. */}
+        {/* The World Report (§7.5) — what the world did while they were away,
+            read before today's Signal because that is the order the two make
+            sense in: the weeks that submerged, then the day that is up. It
+            renders only for a player the server judges to be returning, and
+            renders nothing at all for everybody else, so this slot is empty on
+            almost every visit.
+
+            It is in the dock rather than over it on purpose: the dock is
+            bottom-anchored and grows upward, so the card cannot move LAUNCH and
+            cannot stand in front of it (§7.5's "never blocking Launch", Rule
+            10). Same authentication gate as the Signal below — a first run is
+            never made to compete with a meta surface. */}
+        {isAuthenticated &&
+          !needsStarter &&
+          (!FTUE_V2_ENABLED || stats?.hasCompletedFirstRun === true) && (
+            <WorldReportCard token={token} />
+          )}
+
         {isAuthenticated &&
           !needsStarter &&
           (!FTUE_V2_ENABLED || stats?.hasCompletedFirstRun === true) && (
