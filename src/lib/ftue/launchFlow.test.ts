@@ -110,6 +110,49 @@ describe('FTUE v2 launch flow', () => {
     });
   });
 
+  it('sends a taken Signal objective on the START request (§7.2, §8.6)', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      jsonResponse({ sessionId: 'session-signal' })
+    );
+
+    const handoff = await prepareLaunchHandoff(
+      'token',
+      'user-1',
+      bootstrap,
+      fetcher,
+      'signal_extract'
+    );
+
+    // The take and the START are ONE request: migration 049 binds the day's
+    // attempt to an OPEN run, and §8.6 decides the charge in the same call.
+    // Taking the objective separately after an ordinary start would burn a
+    // charge on the run the Constitution makes exempt.
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      action: 'start',
+      mode: 'signal',
+      signalObjectiveId: 'signal_extract',
+      snake_id: 'snake-1',
+    });
+    // Client-side a Signal run is an ordinary EARNING run; only the server
+    // knows it is the day's attempt, and only because it derived the day.
+    expect(handoff.mode).toBe('earn');
+  });
+
+  it('sends no Signal field when the player did not take one', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      jsonResponse({ sessionId: 'session-1' })
+    );
+
+    await prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher, '');
+
+    // An empty id is not a choice. `mode: 'signal'` with an objective the day
+    // did not derive would be refused by the server anyway, but an ordinary
+    // LAUNCH must not even ask.
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toEqual({ action: 'start', mode: 'earn', snake_id: 'snake-1' });
+    expect(body).not.toHaveProperty('signalObjectiveId');
+  });
+
   it('always launches an earning run, whatever the day\'s charges (§8.6)', async () => {
     // There is no energy race left to recover from: the server cannot
     // reject a start for lack of charges, so Launch never silently demotes
