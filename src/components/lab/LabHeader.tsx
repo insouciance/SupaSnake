@@ -15,8 +15,6 @@ interface LabHeaderProps {
   charge: ChargeStatus | null;
   /** Current DNA balance */
   dna: number;
-  /** Server-derived FTUE gate; the Codex stays invisible before 15 banks. */
-  codexUnlocked?: boolean;
 }
 
 /**
@@ -28,7 +26,14 @@ function formatWithCommas(num: number): string {
   return num.toLocaleString('en-US');
 }
 
-export function LabHeader({ charge, dna, codexUnlocked = false }: LabHeaderProps) {
+/**
+ * WP-2.07a removed the `codexUnlocked` prop. The Codex is a lexicon now —
+ * it explains the game's own vocabulary — so hiding the way to it until 15
+ * banked runs hid the explanations from exactly the players who needed
+ * them. The discovery archive inside it is still progressive; the door is
+ * not.
+ */
+export function LabHeader({ charge, dna }: LabHeaderProps) {
 
   return (
     <header
@@ -49,14 +54,12 @@ export function LabHeader({ charge, dna, codexUnlocked = false }: LabHeaderProps
           <h1 className="heading-display text-glow-orange text-bone-white text-lg sm:text-xl">
             Supasnake <span className="text-venom-orange">Lab</span>
           </h1>
-          {codexUnlocked && (
-            <Link
-              href="/codex"
-              className="hidden sm:inline-flex text-xs font-display uppercase tracking-wide text-cyber hover:text-bone-white"
-            >
-              Genome Codex
-            </Link>
-          )}
+          <Link
+            href="/codex"
+            className="hidden sm:inline-flex text-xs font-display uppercase tracking-wide text-cyber hover:text-bone-white"
+          >
+            Genome Codex
+          </Link>
         </div>
 
         {/* Resources - Right side */}

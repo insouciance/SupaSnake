@@ -50,7 +50,6 @@ export default function LabPage() {
   const router = useRouter();
   const { user, session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
-  const [codexUnlocked, setCodexUnlocked] = useState(false);
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
   const publishNotification = useNotificationStore((state) => state.publish);
   const clearNotification = useNotificationStore((state) => state.clear);
@@ -70,7 +69,6 @@ export default function LabPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled) {
-          setCodexUnlocked(data?.genomeFtue?.splicesUnlocked === true);
           setHasCompletedFirstRun(data?.hasCompletedFirstRun === true);
         }
       })
@@ -465,11 +463,7 @@ export default function LabPage() {
 
       {/* Header with charges and DNA */}
       <div className="pt-4 animate-fade-up">
-        <LabHeader
-          charge={charge}
-          dna={dnaBalance}
-          codexUnlocked={codexUnlocked}
-        />
+        <LabHeader charge={charge} dna={dnaBalance} />
       </div>
 
       {/* Dynasty tabs - glowing segmented control */}

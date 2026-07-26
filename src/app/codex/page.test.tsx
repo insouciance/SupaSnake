@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { render, screen } from '@testing-library/react';
 import CodexPage from './page';
+import { lexiconSection } from '@/shared/game/lexicon';
 
 const mockUseAuth = jest.fn();
 const mockFetchCodex = jest.fn();
@@ -15,6 +16,19 @@ jest.mock('@/lib/stores/codexStore', () => ({
 }));
 jest.mock('@/components/ui/NavBar', () => ({ NavBar: () => <nav /> }));
 
+const EMPTY_DATA = {
+  genes: [],
+  splices: [],
+  strains: [],
+  progress: {
+    discovered: 0,
+    total: 54,
+    percent: 0,
+    genomeWeaverUnlocked: false,
+  },
+  sampleSize: 0,
+};
+
 describe('Genome Codex page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -27,18 +41,7 @@ describe('Genome Codex page', () => {
       unlocked: true,
       bankedRuns: 20,
       unlockAt: 15,
-      data: {
-        genes: [],
-        splices: [],
-        strains: [],
-        progress: {
-          discovered: 0,
-          total: 54,
-          percent: 0,
-          genomeWeaverUnlocked: false,
-        },
-        sampleSize: 0,
-      },
+      data: EMPTY_DATA,
       isLoading: false,
       error: null,
       fetchCodex: mockFetchCodex,
@@ -54,21 +57,128 @@ describe('Genome Codex page', () => {
     expect(source).not.toMatch(/premium_required|isPremium|hasPremium/);
   });
 
-  it('does not reveal the catalog before the banked-run unlock', () => {
+  /**
+   * REWRITTEN, not deleted (WP-2.07a). The old assertion — that a player
+   * below the banked-run unlock sees `codex-locked` and NO catalog — was the
+   * only guard on the discovery gate, and that gate is being kept. What
+   * changed is its scope: it gates *discoveries*, never *rules*. The
+   * narrower promise is asserted here instead.
+   */
+  it('reads the rules before the banked-run unlock, and says the archive is still waiting', () => {
     mockUseCodexStore.mockReturnValue({
       live: true,
       unlocked: false,
       bankedRuns: 14,
       unlockAt: 15,
-      data: null,
+      data: EMPTY_DATA,
       isLoading: false,
       error: null,
       fetchCodex: mockFetchCodex,
     });
     render(<CodexPage />);
-    expect(screen.getByTestId('codex-locked')).toHaveTextContent(
-      'Bank 15 runs'
-    );
+
+    // The rules are there at 14 banked runs.
+    expect(screen.getByTestId('codex-rules')).toBeInTheDocument();
+    expect(screen.getByTestId('lexicon-mechanic-extraction_bank')).toBeInTheDocument();
+
+    // The gate is still stated, and still states the same two numbers.
+    const pending = screen.getByTestId('codex-discovery-pending');
+    expect(pending).toHaveTextContent('15 banked runs');
+    expect(pending).toHaveTextContent('You have banked 14');
+  });
+
+  it('renders every documented section for a signed-out visitor, with no fetch', () => {
+    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
+    render(<CodexPage />);
+
+    // The contradiction this resolves: /codex sits in the public sitemap and
+    // the public footer. A visitor who follows either must be able to read it.
+    expect(screen.getByTestId('codex-rules')).toBeInTheDocument();
+    for (const testId of [
+      'lexicon-mechanics',
+      'lexicon-dynasties',
+      'lexicon-traits',
+      'lexicon-strains',
+      'lexicon-anomalies',
+    ]) {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+    }
+    // The three extraction verbs, documented nowhere before this WP.
+    expect(screen.getByText('BANK')).toBeInTheDocument();
+    expect(screen.getByText('PASS')).toBeInTheDocument();
+    expect(screen.getByText('INFUSE')).toBeInTheDocument();
+
+    // The discovery layer, and only it, asks for an account.
+    expect(screen.getByTestId('codex-signed-out')).toBeInTheDocument();
     expect(screen.queryByText('Archive completion')).toBeNull();
+    expect(mockFetchCodex).not.toHaveBeenCalled();
+  });
+
+  it('lays out all fifteen strain tiers', () => {
+    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
+    render(<CodexPage />);
+    const tiers = lexiconSection('strainTier');
+    expect(tiers).toHaveLength(15);
+    for (const entry of tiers) {
+      const [strain, tier] = entry.id.split(':');
+      expect(screen.getByTestId(`lexicon-tier-${strain}-${tier}`)).toBeInTheDocument();
+    }
+  });
+
+  it('shows a discovered splice its recipe and an undiscovered one none', () => {
+    mockUseCodexStore.mockReturnValue({
+      live: true,
+      unlocked: true,
+      bankedRuns: 20,
+      unlockAt: 15,
+      data: {
+        ...EMPTY_DATA,
+        splices: [
+          {
+            id: 'splice_dragon_hoard',
+            name: 'Dragon Hoard',
+            parents: ['gold_trail', 'compound_interest'],
+            strains: [],
+            effect: 'dragon hoard effect',
+            cost: 'dragon hoard cost',
+            discoveries: 2,
+            banks: 1,
+            discovered: true,
+            firstDiscoveredAt: null,
+            worldFirstAt: null,
+            rewardDna: 250,
+          },
+          {
+            id: 'splice_all_in',
+            name: 'All In',
+            parents: null,
+            strains: [],
+            effect: 'all in effect',
+            cost: 'all in cost',
+            discoveries: 0,
+            banks: 0,
+            discovered: false,
+            firstDiscoveredAt: null,
+            worldFirstAt: null,
+            rewardDna: 250,
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      fetchCodex: mockFetchCodex,
+    });
+    render(<CodexPage />);
+
+    expect(screen.getByTestId('codex-recipe-splice_dragon_hoard')).toHaveTextContent(
+      'Gold Trail + Compound Interest'
+    );
+    expect(screen.getByTestId('codex-recipe-splice_all_in')).toHaveTextContent(
+      'Recipe hidden'
+    );
+    // The rules of an undiscovered splice are not hidden — only its recipe.
+    expect(screen.getByText('All In')).toBeInTheDocument();
+    expect(screen.getByText('all in effect')).toBeInTheDocument();
+    expect(screen.getByText('all in cost')).toBeInTheDocument();
   });
 });

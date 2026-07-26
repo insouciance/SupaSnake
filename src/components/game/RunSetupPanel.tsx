@@ -57,6 +57,13 @@ export interface RunSetupPanelProps {
   isStarting: boolean;
   onStart: () => void;
   startError: string | null;
+  /**
+   * What the equipped snake brings to this run (WP-2.07a). Always visible,
+   * OUTSIDE the disclosure: a trait that removes a whole system from the run
+   * is not an adjustable setting, it is something the player has to know
+   * before pressing START. Carries no `btn-go`.
+   */
+  heirloom?: ReactNode;
   /** The adjustable controls, all inside the one collapsed disclosure. */
   modeToggle?: ReactNode;
   anomalyPanel?: ReactNode;
@@ -78,6 +85,7 @@ export function RunSetupPanel({
   isStarting,
   onStart,
   startError,
+  heirloom,
   modeToggle,
   anomalyPanel,
   aimSelector,
@@ -136,6 +144,8 @@ export function RunSetupPanel({
       ) : (
         <p className="font-body text-beige/70">Loading your snake...</p>
       )}
+
+      {snake && heirloom}
 
       {challengeNote && (
         <p

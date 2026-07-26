@@ -43,6 +43,14 @@ export interface AnomalyDef {
   kind: AnomalyKind;
   /** One-line modifier description - readable on the board entry. */
   effect: string;
+  /**
+   * The other half of the deal, split out of `effect` by WP-2.07a so every
+   * anomaly reads like every sibling def (traits, genes, splices all carry
+   * both halves). An empty string means the anomaly is genuinely costless:
+   * Meteor Shower and Blackout change the board without touching the
+   * payout in either direction. The Lexicon documents that list.
+   */
+  cost: string;
   /** Genome offer tilt for this week (+100 weight). */
   strainBias: 'AURUM' | 'VOLT' | 'FERAL' | 'FLUX' | 'UMBRA';
 }
@@ -53,13 +61,15 @@ export const ANOMALIES: Record<AnomalyId, AnomalyDef> = {
     name: 'Meteor Shower',
     kind: 'P',
     effect: 'Food despawns after 60 ticks — eat it before it burns up',
+    cost: '',
     strainBias: 'VOLT',
   },
   gold_rush: {
     id: 'gold_rush',
     name: 'Gold Rush',
     kind: 'EP',
-    effect: 'All food ×1.5 DNA — exit portals spawn 6 foods later',
+    effect: 'All food ×1.5 DNA',
+    cost: 'Exit portals spawn 6 foods later',
     strainBias: 'AURUM',
   },
   blackout: {
@@ -67,20 +77,23 @@ export const ANOMALIES: Record<AnomalyId, AnomalyDef> = {
     name: 'Blackout',
     kind: 'P',
     effect: 'Visibility radius 6 cells around your head',
+    cost: '',
     strainBias: 'UMBRA',
   },
   twin_exits: {
     id: 'twin_exits',
     name: 'Twin Exits',
     kind: 'EP',
-    effect: 'Two portals live at once — bank ×1.15 only',
+    effect: 'Two portals live at once',
+    cost: 'Banking pays ×1.15 instead of ×1.25',
     strainBias: 'FLUX',
   },
   overgrown: {
     id: 'overgrown',
     name: 'Overgrown',
     kind: 'P',
-    effect: 'Every food grows one extra segment — Molt food pays 10 DNA',
+    effect: 'Molt food pays 10 DNA',
+    cost: 'Every food grows one extra segment',
     strainBias: 'FERAL',
   },
 };
@@ -99,6 +112,17 @@ export const ANOMALY_ROTATION: readonly AnomalyId[] = [
 
 export function isAnomalyId(value: unknown): value is AnomalyId {
   return typeof value === 'string' && value in ANOMALIES;
+}
+
+/**
+ * The one-line board form: both halves of the deal, joined. The single
+ * authority for that join, so the split above cannot quietly shorten any
+ * surface that used to render the combined sentence. A costless anomaly
+ * returns its effect unchanged.
+ */
+export function anomalySummary(id: AnomalyId): string {
+  const def = ANOMALIES[id];
+  return def.cost ? `${def.effect} — ${def.cost}` : def.effect;
 }
 
 /**
