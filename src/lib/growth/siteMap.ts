@@ -70,10 +70,18 @@ const STATIC_ENTRIES: readonly SitemapEntry[] = [
 ];
 
 /**
- * The sitemap's entries. `/play` only exists while the growth-surfaces flag
- * is on, so listing it unconditionally would advertise a 404.
+ * The sitemap's entries. `/play` and `/contract` only exist while their
+ * flags are on, so listing either unconditionally would advertise a 404.
+ *
+ * `/contract` is `yearly`: the manifesto changing often would itself be a
+ * broken promise (§3 clauses change only by recorded amendment). Its
+ * priority sits above the legal pages and below the boards — it is the
+ * page §11.6 aims the spike channels at, but it is not the game.
  */
-export function sitemapEntries(growthSurfacesEnabled: boolean): SitemapEntry[] {
+export function sitemapEntries(
+  growthSurfacesEnabled: boolean,
+  playerContractEnabled = false
+): SitemapEntry[] {
   const entries = [...STATIC_ENTRIES];
   if (growthSurfacesEnabled) {
     entries.splice(1, 0, {
@@ -81,6 +89,9 @@ export function sitemapEntries(growthSurfacesEnabled: boolean): SitemapEntry[] {
       changeFrequency: 'weekly',
       priority: 0.9,
     });
+  }
+  if (playerContractEnabled) {
+    entries.push({ path: '/contract', changeFrequency: 'yearly', priority: 0.6 });
   }
   return entries;
 }
