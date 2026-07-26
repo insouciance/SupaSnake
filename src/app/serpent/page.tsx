@@ -29,10 +29,19 @@
  *
  * WHAT THIS PAGE FETCHES
  *
- *   `GET /api/serpent/panel` for the week and the player, and — only to fill
- *   §7.3's third block — `GET /api/clan/hunt` for the paired rival. The rival
- *   read is allowed to fail silently: §9.4 makes rivalry a layer, never
- *   load-bearing, so a page missing it is still a complete page.
+ *   `GET /api/serpent/panel` for the week and the player, — only to fill
+ *   §7.3's third block — `GET /api/clan/hunt` for the paired rival, and
+ *   `GET /api/player` for two things the panel contract does not carry: the
+ *   banked-run count the founding prompt keys off, and the player's own
+ *   `players.id` so their row in the contribution list can be named as theirs.
+ *   That last read is done once here and passed down, rather than by each
+ *   component separately.
+ *
+ *   The rival read is allowed to fail silently: §9.4 makes rivalry a layer,
+ *   never load-bearing, so a page missing it is still a complete page. The
+ *   player read is allowed to fail silently too — without it the founding
+ *   prompt simply does not appear and the contribution rows are named by
+ *   handle alone. Neither absence turns into an error the player has to read.
  */
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
@@ -44,14 +53,23 @@ import { SerpentWeekPanel } from '@/components/serpent/SerpentWeekPanel';
 import { MondayBriefing } from '@/components/serpent/MondayBriefing';
 import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
 import { defaultBriefingWeek } from '@/lib/serpent/briefing';
-import type { SerpentPanel } from '@/lib/server/serpent';
+import { emptySerpentPanel, type SerpentPanel } from '@/lib/server/serpent';
 import type { ClanHuntPanel } from '@/lib/server/clanHunt';
+
+interface PlayerIdentity {
+  playerId: string | null;
+  bankedRuns: number | null;
+}
 
 function SerpentContent() {
   const searchParams = useSearchParams();
   const { session, isAuthenticated, isLoading } = useAuth();
   const [panel, setPanel] = useState<SerpentPanel | null>(null);
   const [hunt, setHunt] = useState<ClanHuntPanel | null>(null);
+  const [identity, setIdentity] = useState<PlayerIdentity>({
+    playerId: null,
+    bankedRuns: null,
+  });
   const [loading, setLoading] = useState(true);
 
   const accessToken = session?.access_token;
@@ -73,6 +91,24 @@ function SerpentContent() {
       if (response.ok) setHunt((await response.json()) as ClanHuntPanel);
     } catch {
       // The rival is a layer (§9.4). Its absence is never an error state.
+    }
+    try {
+      const response = await fetch('/api/player', { headers });
+      if (response.ok) {
+        const json = (await response.json()) as {
+          player?: { id?: string } | null;
+          genomeFtue?: { bankedRuns?: number } | null;
+        };
+        setIdentity({
+          playerId: typeof json.player?.id === 'string' ? json.player.id : null,
+          bankedRuns:
+            typeof json.genomeFtue?.bankedRuns === 'number'
+              ? json.genomeFtue.bankedRuns
+              : null,
+        });
+      }
+    } catch {
+      // Without it the prompt stays away and rows are named by handle alone.
     }
     setLoading(false);
   }, [accessToken]);
@@ -117,24 +153,10 @@ function SerpentContent() {
     );
   }
 
-  const emptyPanel: SerpentPanel = {
-    live: false,
-    week: null,
-    you: {
-      depth: 0,
-      attempts: 0,
-      bestYield: 0,
-      countedYields: [],
-      countedRuns: 3,
-      bestWeekDepth: 0,
-      lifetimeDepth: 0,
-      deltaVsBestWeek: 0,
-    },
-    clan: null,
-    history: [],
-    chronicle: [],
-  };
-  const view = panel ?? emptyPanel;
+  // A failed or absent read renders the same off state the API itself returns
+  // when the flag is down, rather than a second hand-written zero shape that
+  // could drift from the contract.
+  const view = panel ?? emptySerpentPanel();
 
   return (
     <div className="app-bg min-h-screen">
@@ -145,10 +167,11 @@ function SerpentContent() {
         <ClanFoundingPrompt
           accessToken={accessToken}
           inClan={Boolean(view.clan)}
+          bankedRuns={identity.bankedRuns}
         />
 
         <div className="mb-8">
-          <SerpentWeekPanel panel={view} />
+          <SerpentWeekPanel panel={view} youPlayerId={identity.playerId} />
         </div>
 
         <MondayBriefing

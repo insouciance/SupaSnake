@@ -8,13 +8,23 @@
  * rail on the bottom edge, icon-only.
  *
  * Nodes: Home (non-home screens only - on home the wordmark is the identity),
- * Lab, Leaderboard + Clan (feature-flagged), Shop, Settings, and the You node
- * hosting the AccountChip (guest save-progress / account menu).
+ * Lab, Leaderboard + Clan (feature-flagged), Serpent (flag-gated), Shop,
+ * Settings, and the You node hosting the AccountChip (guest save-progress /
+ * account menu).
+ *
+ * THE SERPENT NODE IS THE ONLY THING THE SERPENT FLAG HIDES
+ *
+ *   `/serpent` itself always resolves — with the flag off it renders an honest
+ *   "not surfacing yet" state, because a URL that 404s intermittently is worse
+ *   than one that always answers (Rule 14: a Serpent week is linkable, and a
+ *   link that dies on a flag flip is not). What the flag gates is this rail
+ *   entry, so nobody is led to the hunt before there is one.
  */
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
 import { AccountChip } from '@/components/ui/AccountChip';
 import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import { NotificationCenter } from '@/components/ui/NotificationCenter';
@@ -31,6 +41,7 @@ import {
   IconCart,
   IconMedal,
   IconGear,
+  IconSnake,
   type IconProps,
 } from '@/components/ui/icons';
 
@@ -55,6 +66,9 @@ export function Navigation() {
       : []),
     ...(GAME_CONFIG.features.clans
       ? [{ href: '/clan', label: 'Clan', Icon: IconShield }]
+      : []),
+    ...(SERPENT_V1_ENABLED
+      ? [{ href: '/serpent', label: 'Serpent', Icon: IconSnake }]
       : []),
     { href: '/shop', label: 'Shop', Icon: IconCart },
     { href: '/profile', label: 'Chronicle', Icon: IconMedal, notificationDestination: 'identity' },

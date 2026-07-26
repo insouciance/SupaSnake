@@ -27,7 +27,7 @@
  *   this work package's acceptance criterion.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { type Clan, CLAN_LIMITS } from '@/lib/clan/types';
@@ -81,6 +81,7 @@ export default function ClanPage() {
   const [bannerId, setBannerId] = useState<string>(CLAN_BANNERS[0].id);
   const [emblemId, setEmblemId] = useState<string>(CLAN_EMBLEMS[0].id);
   const [joinCode, setJoinCode] = useState('');
+  const joinCodeInput = useRef<HTMLInputElement | null>(null);
 
   const { view: fullView, refresh: refreshFullView } = useClanFull(
     session?.access_token
@@ -353,6 +354,20 @@ export default function ClanPage() {
               />
             )}
 
+            {/* The founding prompt (§9.2). On this page the two buttons open
+                the forms that are already below it, so the prompt is the
+                reason rather than a second route: it says what a clan is FOR
+                (the Serpent hunts every week) before asking for a name.
+                Below the ramp beat it renders nothing at all — no counter and
+                no locked card, because being shown a number you have not
+                reached is what turns a ramp into a cut line (Rule 8). */}
+            <ClanFoundingPrompt
+              accessToken={session?.access_token}
+              inClan={false}
+              onFound={() => setShowFound(true)}
+              onJoin={() => joinCodeInput.current?.focus()}
+            />
+
             {/* Found a clan — one tap plus a name (§9.2) */}
             <section className="mb-10 animate-fade-up">
               {showFound ? (
@@ -452,6 +467,7 @@ export default function ClanPage() {
               <h2 className="heading-display text-2xl text-bone-white mb-2">Have an invite?</h2>
               <form className="flex gap-2" onSubmit={handleJoinByCode} data-testid="join-by-code">
                 <input
+                  ref={joinCodeInput}
                   type="text"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}

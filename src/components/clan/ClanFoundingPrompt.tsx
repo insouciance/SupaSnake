@@ -42,7 +42,12 @@ export interface ClanFoundingPromptProps {
   accessToken?: string | null;
   /** The player already belongs to a clan; there is nothing to prompt. */
   inClan: boolean;
-  /** Injected by tests and by callers holding the value; else read from the API. */
+  /**
+   * The banked-run count, when the caller already has it. `undefined` means
+   * "nobody has looked" and the component reads `/api/player` itself; `null`
+   * means "the caller looked and there is no count", which is a no-prompt
+   * state and not a reason to look again.
+   */
   bankedRuns?: number | null;
   /** Opens the founding form in place. Falls back to a link to /clan. */
   onFound?: () => void;
@@ -90,11 +95,11 @@ export function ClanFoundingPrompt({
   }, [accessToken]);
 
   useEffect(() => {
-    if (typeof bankedRuns === 'number') return;
+    if (bankedRuns !== undefined) return;
     void load();
   }, [bankedRuns, load]);
 
-  const banked = typeof bankedRuns === 'number' ? bankedRuns : fetchedBankedRuns;
+  const banked = bankedRuns !== undefined ? bankedRuns : fetchedBankedRuns;
 
   const dismiss = () => {
     setDismissed(true);
