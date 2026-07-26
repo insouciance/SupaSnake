@@ -9,10 +9,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import {
   drainDiscordOutbox,
   refreshLinkedRolesForPlayer,
 } from '@/lib/server/discordSync';
+import { CLAN_GAUNTLET_ENABLED } from '@/lib/clan/config';
 import { mapDuelPayload, type RpcDuelPayload } from './utils';
 
 const supabase = createClient(
@@ -20,8 +22,44 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
+/**
+ * Rule 11: every Supabase error is checked AND reported. A read that fails is
+ * not the same answer as a read that came back empty — the route said "you are
+ * not in a clan" when the connection dropped, which is a lie the player cannot
+ * distinguish from the truth and which Sentry never heard about.
+ */
+function reportError(scope: string, error: unknown, extra: Record<string, unknown> = {}) {
+  console.error(`Clan duel ${scope} error:`, { ...extra, error });
+  Sentry.captureException(
+    error instanceof Error ? error : new Error(`Clan duel ${scope} error`),
+    { extra: { scope, ...extra, error } }
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
+    /**
+     * SUPERSEDED BY PAIRED WEEKS, AND GATED WITH THE GAUNTLET (§9.4, §12.1
+     * slot 7).
+     *
+     * WP-1.02 folded head-to-head into the Serpent week: `GET /api/clan/hunt`
+     * carries the self-referential primary, the optional rival layer and the
+     * rivalry memory, on the one weekly surface §12.2 allows. This endpoint is
+     * the OLD duel — its own weekly calendar, its own Elo rating, and the
+     * Gauntlet's blind picks riding on top of it — so it rides the Gauntlet's
+     * flag.
+     *
+     * The guard is not cosmetic. `get_clan_duel` settles and pairs LAZILY in
+     * SQL on every read: leaving this open would keep the superseded duel
+     * machinery running, writing ratings and duel rows nobody can see, behind
+     * a surface that no longer exists. Nothing is deleted — `clan_duels` and
+     * every row it holds are preserved by migration 048 and asserted by its
+     * tripwire — it simply stops being read and stops being written.
+     */
+    if (!CLAN_GAUNTLET_ENABLED) {
+      return NextResponse.json({ available: false, gate: 'clan_gauntlet' });
+    }
+
     // Bearer auth (same pattern as /api/clan POST)
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
@@ -36,11 +74,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Player must be in a clan to have a duel
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from('clan_members')
       .select('clan_id')
       .eq('player_id', user.id)
       .maybeSingle();
+
+    if (membershipError) {
+      reportError('membership read', membershipError, { userId: user.id });
+      return NextResponse.json({ error: 'Failed to load duel' }, { status: 500 });
+    }
 
     if (!membership) {
       return NextResponse.json({ error: 'Not in a clan' }, { status: 404 });
