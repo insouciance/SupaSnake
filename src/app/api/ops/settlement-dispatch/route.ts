@@ -40,6 +40,13 @@
  * can bypass that, because nothing on this route composes a message itself.
  *
  * Rule 11: every Supabase `error` is checked and reported to Sentry.
+ *
+ * WHERE THE WEEK IS READ
+ *
+ * The world-scale read is `readWorldRollup` in `@/lib/server/worldRollup`, not
+ * a query in this file. WP-2.02's World Report (§7.5) reads the same weeks for
+ * a returning player, and one aggregator means the operator's post and the
+ * player's report cannot describe the same week differently.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -57,12 +64,10 @@ import {
   settlementEmailEnabled,
   type PlayerRecipient,
 } from '@/lib/growth/settlementEmail';
-import {
-  composeWorldSettlementPost,
-  type WorldSettlementClan,
-} from '@/lib/growth/settlementPost';
+import { composeWorldSettlementPost } from '@/lib/growth/settlementPost';
 import { defaultBriefingWeek } from '@/lib/serpent/briefing';
-import { buildSerpentPanel, isMissingSerpentInfra } from '@/lib/server/serpent';
+import { buildSerpentPanel } from '@/lib/server/serpent';
+import { readWorldRollup } from '@/lib/server/worldRollup';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -73,8 +78,6 @@ export const maxDuration = 60;
 
 /** Bounded per run, like every other batch cron in this codebase. */
 const RECIPIENT_BATCH_MAX = 200;
-/** How many clans the operator's post names. Not a cut line — a post length. */
-const POST_CLAN_LIMIT = 5;
 
 const SENDS_TABLE = 'settlement_dispatch_sends';
 
@@ -94,76 +97,6 @@ function isMissingLedger(error: { code?: string; message?: string } | null): boo
     error.code === 'PGRST205' ||
     /settlement_dispatch_sends/i.test(error.message || '')
   );
-}
-
-interface WorldRollup {
-  clans: WorldSettlementClan[];
-  personalRecords: number;
-  clanRecords: number;
-  clanFirsts: number;
-}
-
-/**
- * Read the settled week at world scale. Returns null when the Serpent tables
- * are not there yet (pre-046) — the route then composes nothing rather than
- * inventing a week.
- */
-async function readWorldRollup(weekStart: string): Promise<WorldRollup | null> {
-  const { data: week, error: weekError } = await supabase
-    .from('serpent_weeks')
-    .select('id')
-    .eq('week_start', weekStart)
-    .maybeSingle();
-  if (weekError) {
-    if (!isMissingSerpentInfra(weekError)) report('week read', weekError, { weekStart });
-    return null;
-  }
-  if (!week?.id) return { clans: [], personalRecords: 0, clanRecords: 0, clanFirsts: 0 };
-
-  const { data: clanRows, error: clanError } = await supabase
-    .from('serpent_week_clans')
-    .select('depth, contributing_members, clans(name, tag)')
-    .eq('week_id', week.id)
-    .gt('depth', 0)
-    .order('depth', { ascending: false })
-    .limit(POST_CLAN_LIMIT);
-  if (clanError) {
-    if (!isMissingSerpentInfra(clanError)) report('clan read', clanError, { weekStart });
-    return null;
-  }
-
-  const clans: WorldSettlementClan[] = (clanRows ?? []).map((row) => {
-    const clan = row.clans as unknown as { name?: string; tag?: string | null } | null;
-    return {
-      name: clan?.name ?? 'A clan',
-      tag: clan?.tag ?? null,
-      depth: Number(row.depth ?? 0),
-      contributingMembers: Number(row.contributing_members ?? 0),
-    };
-  });
-
-  const { data: records, error: recordError } = await supabase
-    .from('serpent_chronicle_entries')
-    .select('kind, previous_depth')
-    .eq('week_id', week.id);
-  if (recordError) {
-    if (!isMissingSerpentInfra(recordError)) {
-      report('chronicle read', recordError, { weekStart });
-    }
-    return { clans, personalRecords: 0, clanRecords: 0, clanFirsts: 0 };
-  }
-
-  let personalRecords = 0;
-  let clanRecords = 0;
-  let clanFirsts = 0;
-  for (const row of records ?? []) {
-    if (row.kind === 'personal_best_week') personalRecords += 1;
-    else if (row.kind === 'clan_best_week') {
-      clanRecords += 1;
-      if (Number(row.previous_depth ?? 0) === 0) clanFirsts += 1;
-    }
-  }
-  return { clans, personalRecords, clanRecords, clanFirsts };
 }
 
 /**
@@ -224,7 +157,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // ---- 1. The operator's post. Composed, returned, never published. ----
-    const rollup = await readWorldRollup(weekStart);
+    const rollup = await readWorldRollup(supabase, weekStart);
     let post = null;
     if (rollup) {
       try {
