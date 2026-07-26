@@ -8,6 +8,10 @@
  *   `ensureCurrentSignalDay`   derive TODAY from the UTC calendar and make it
  *                              a row. The server-resolved id WP-0.01's charge
  *                              exemption has been waiting for.
+ *   `claimSignalObjectiveRun`  take one of the day's three objectives for one
+ *                              open run. The ONLY producer of the exemption
+ *                              id, and it refuses an objective the day did not
+ *                              derive.
  *   `readSignalObjectiveState` a player's standing in today's Signal: the
  *                              objective they chose, how far it got, whether
  *                              it completed, and the cumulative §7.2 marks.
@@ -266,6 +270,157 @@ export async function loadSignalAttempt(
   }
 
   return toAttemptRow((data ?? null) as Record<string, unknown> | null);
+}
+
+// ---------------------------------------------------------------------------
+// The claim — the only path to an exemption id (§7.2, §8.6)
+// ---------------------------------------------------------------------------
+
+/** The outcome of a player taking one of the day's three objectives. */
+export interface SignalClaimResult {
+  /** False when the flag is off or migration 049 is not applied. */
+  live: boolean;
+  day: SignalDayRow | null;
+  /** The objective as the DAY defines it, or null if the choice was refused. */
+  objective: SignalObjective | null;
+  /** The day's attempt id, whoever owns it. */
+  runId: string | null;
+  /** True when THIS session is the run that owns the day's attempt. */
+  ownsAttempt: boolean;
+  /**
+   * The `ChargeExemptionFacts.signalObjectiveRunId` this claim earns — and
+   * NOTHING else may be put in that field (§8.6).
+   *
+   * Non-null on exactly one condition: the server resolved today from its own
+   * calendar, resolved the named objective against that day's derived three,
+   * and the database confirmed that this session owns the attempt. A client
+   * that names a day, invents an objective or asks a second time gets null
+   * here, which is an ordinary charged run — the same closed-by-default shape
+   * `mode: 'serpent'` already has.
+   */
+  exemptRunId: string | null;
+  progress: number;
+  completed: boolean;
+  /** The named objective is not one of the day's three. A refusal, not a fault. */
+  unknownObjective: boolean;
+  /** The claim could not be recorded; the run continues as an ordinary run. */
+  failed: boolean;
+}
+
+function emptyClaim(): SignalClaimResult {
+  return {
+    live: false,
+    day: null,
+    objective: null,
+    runId: null,
+    ownsAttempt: false,
+    exemptRunId: null,
+    progress: 0,
+    completed: false,
+    unknownObjective: false,
+    failed: false,
+  };
+}
+
+/**
+ * A raise from inside `begin_signal_objective_run` — a refusal, not absence.
+ *
+ * The RPC raises when the session is not this player's open run. `RAISE
+ * EXCEPTION` reports `P0001`, and its message names the function, so it would
+ * otherwise be swallowed by `isMissingSignalInfra`'s name test and read as
+ * "migration 049 is not applied". Checked FIRST so the two can never be
+ * confused: a refusal is reported (Rule 11), absence is not.
+ */
+function isSignalClaimRefusal(error: SupabaseErrorLike | null | undefined): boolean {
+  return error?.code === 'P0001';
+}
+
+/**
+ * Take one of today's three objectives for one open run.
+ *
+ * Everything the database is told is derived here: the day comes from the UTC
+ * calendar, and the objective and its target come from that day's derivation.
+ * `objectiveId` is the ONLY thing the caller contributes and it is a *lookup
+ * key*, not a definition — `resolveSignalObjective` either finds it among the
+ * day's three or the claim is refused (Rule 11). There is no parameter through
+ * which a client could name a day, a target or an objective of its own.
+ *
+ * Called AFTER the session row exists (the RPC checks the session is this
+ * player's open run), so a failed insert can never claim a player's Signal for
+ * a run that did not happen. Idempotent by the schema's one-attempt-per-day
+ * unique constraint: a second call the same day returns the FIRST attempt
+ * unchanged, with `ownsAttempt` false and no exemption.
+ */
+export async function claimSignalObjectiveRun(
+  supabase: SupabaseClient,
+  playerId: string,
+  sessionId: string,
+  objectiveId: unknown,
+  now: Date | number = Date.now(),
+  options: { enabled?: boolean } = {}
+): Promise<SignalClaimResult> {
+  const day = await ensureCurrentSignalDay(supabase, now, options);
+  if (!day) return emptyClaim();
+
+  const claim = emptyClaim();
+  claim.live = true;
+  claim.day = day;
+
+  const objective = resolveSignalObjective(day, objectiveId);
+  if (!objective) {
+    // Not one of the day's three. Refused, and the run stays ordinary.
+    return { ...claim, unknownObjective: true };
+  }
+  claim.objective = objective;
+
+  const { data, error } = await supabase.rpc('begin_signal_objective_run', {
+    p_player_id: playerId,
+    p_day_id: day.id,
+    p_objective_id: objective.id,
+    p_target: objective.target,
+    p_session_id: sessionId,
+  });
+
+  if (error) {
+    if (isSignalClaimRefusal(error)) {
+      report('objective claim refused', error, {
+        playerId,
+        sessionId,
+        dayId: day.id,
+        objectiveId: objective.id,
+      });
+      return { ...claim, failed: true };
+    }
+    // Migration 049 half-applied: the day resolved but the claim RPC is not
+    // there. Not live, therefore no exemption — the closed direction.
+    if (isMissingSignalInfra(error)) return emptyClaim();
+    report('objective claim', error, { playerId, sessionId, dayId: day.id });
+    return { ...claim, failed: true };
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (!row || typeof row.id !== 'string') {
+    report('objective claim', new Error('claim returned no attempt'), {
+      playerId,
+      sessionId,
+      dayId: day.id,
+    });
+    return { ...claim, failed: true };
+  }
+
+  const ownsAttempt = row.owns_attempt === true;
+  return {
+    ...claim,
+    runId: row.id,
+    ownsAttempt,
+    // The exemption is granted by the DATABASE's answer, never by the request.
+    exemptRunId: ownsAttempt ? row.id : null,
+    progress: Math.max(0, Number(row.progress ?? 0)),
+    completed: (row.completed_at ?? null) !== null,
+    // The stored objective wins: a second run of the day joins the attempt the
+    // player already opened, whatever it names now.
+    objective: resolveSignalObjective(day, row.objective_id) ?? objective,
+  };
 }
 
 // ---------------------------------------------------------------------------
