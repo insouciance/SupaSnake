@@ -13,9 +13,9 @@
  *
  * Request:  POST /api/daily-take/collect
  *           Authorization: Bearer <supabase access token>   (required)
- *           {}                                              (body ignored)
+ *           {}                                              (never read)
  *
- *           THE BODY IS READ AND DISCARDED. There is deliberately no field
+ *           THE REQUEST BODY IS NEVER READ. There is deliberately no field
  *           here for a day, an amount, a tier, a multiplier, a streak length
  *           or a session id — a client cannot ask for a bigger Take, cannot
  *           name the day it is collecting, and cannot back-collect a day it
