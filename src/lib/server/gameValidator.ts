@@ -41,6 +41,10 @@ import {
   type DynastyName,
 } from '@/shared/game/rulesets';
 import {
+  conditionAnomaly,
+  type ConditionInput,
+} from '@/shared/game/worldCondition';
+import {
   MUTATION_SPAWN,
   isMutationId,
   type MutationId,
@@ -604,12 +608,19 @@ export function validateGameResult(
    */
   unlockedPool: MutationId[] | null = null,
   /**
-   * The session's weekly anomaly (Design v2 Phase 4B, section 7.2) -
-   * read from the SESSION ROW (server-stamped at start), never from the
-   * claim. Its [E] effects (Gold Rush food x1.5, Twin Exits bank x1.15)
-   * join the exact recompute; [P] anomalies change nothing here.
+   * The session's world condition - read from the SESSION ROW (server-stamped
+   * at start), never from the claim. Its [E] effects (Gold Rush food x1.5,
+   * Twin Exits bank x1.15) join the exact recompute; [P] effects change
+   * nothing here.
+   *
+   * WIDENED to ConditionInput by WP-2.10b. A bare AnomalyId still works, so
+   * every existing caller and test compiles unchanged. The widening is
+   * load-bearing rather than cosmetic: the engine plays under the week's
+   * clauses, so if this stayed AnomalyId the server would recompute WITHOUT
+   * them and disagree with the engine on every clause week - manufacturing
+   * exactly the DNA_MISMATCH this wave exists to eliminate.
    */
-  anomaly: AnomalyId | null = null,
+  anomaly: ConditionInput = null,
   /**
    * Genome context (Buildcraft: The Genome) - non-null only when the
    * session carries a run_seed (server capability). Switches steps 4-8
@@ -745,13 +756,18 @@ export function validateGameResult(
 
   // 6. Exact recompute of the mutation- and trait-aware base - the payout
   //    authority (traits come from the snake row, never the claim)
+  // conditionAnomaly(), not the whole condition: this is the LEGACY
+  // (pre-genome) fold, which has no strain machinery for a clause to act on.
+  // Narrowing to the anomaly here is the honest reduction - a clause that can
+  // only express itself through strains has nothing to say about a run with
+  // no strains.
   const { rawDna: baseDna, score: baseScore } = computeRunTotals(
     dynasty,
     foodCount,
     mutations,
     phoenixTriggeredAtFood,
     traits,
-    anomaly
+    conditionAnomaly(anomaly)
   );
 
   // 7. COSMIC bounded trust: accept the combo claim only up to the caps
@@ -775,7 +791,7 @@ export function validateGameResult(
     mutations,
     phoenixTriggeredAtFood !== null,
     traits,
-    anomaly
+    conditionAnomaly(anomaly)
   );
   if (input.victory) {
     expectedPayout += GAME_CONFIG.economy.dna.completionBonus;
@@ -997,7 +1013,7 @@ function validateGenomeBranch(
   input: GameResultInput,
   dynasty: DynastyName,
   traits: TraitId[],
-  anomaly: AnomalyId | null,
+  anomaly: ConditionInput,
   ctx: GenomeValidationContext,
   extracted: boolean,
   foodCount: number,

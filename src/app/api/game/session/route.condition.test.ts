@@ -497,10 +497,14 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
     // could drift from the one the Signal surface renders.
     expect(body.condition).toBe(body.signal.condition.id);
     expect(body.condition).toBe(describeSignalDay(body.signal.day).condition.id);
-    // The tilt `SignalSurface` promises the player, now on the channel the
-    // engine's offer draw actually reads.
+    // The tilt `SignalSurface` promises the player IS the tilt the engine's
+    // offer draw reads. Asserted against the day's advertised `strainTilt`
+    // rather than against ANOMALY_STRAINS directly: since WP-2.10b a clause
+    // can outweigh the anomaly and move the tilt, and the whole point is that
+    // the sentence on screen and the stream in the engine move together. A
+    // regression that let them diverge would fail here.
     expect(body.genome.anomalyStrain).toBe(
-      ANOMALY_STRAINS[body.condition as AnomalyId]
+      describeSignalDay(body.signal.day).condition.strainTilt
     );
     // The stamp the end path re-derives it from — mirrored by the RPC, not by
     // the session insert.

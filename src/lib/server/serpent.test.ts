@@ -35,7 +35,10 @@ import {
 } from './serpent';
 import { consumeRunCharge } from './energyEnvelope';
 import { NO_EXEMPTION } from '@/shared/game/energyEnvelope';
-import { describeSerpentWeek } from '@/shared/game/serpent';
+import {
+  describeSerpentWeek,
+  serpentStoredModifiers,
+} from '@/shared/game/serpent';
 
 const NOW = Date.UTC(2026, 6, 27, 0, 30); // Monday 00:30 UTC — cron time
 const LAST_WEEK = describeSerpentWeek(Date.UTC(2026, 6, 22));
@@ -197,7 +200,12 @@ describe('the week is derived from the UTC calendar', () => {
       p_starts_at: expected.startsAt,
       p_ends_at: expected.endsAt,
       p_seed: expected.seed,
-      p_modifiers: expected.modifiers,
+      // serpentStoredModifiers, not expected.modifiers: the column holds
+      // [...anomalies, ...clauses] (WP-2.10b), and asserting through the same
+      // composition the implementation uses keeps this test honest — if the
+      // composition changes, both sides move together, and a clause that
+      // silently stopped being persisted still fails here.
+      p_modifiers: serpentStoredModifiers(expected),
     });
     expect(week?.id).toBe('week-a');
     expect(week?.modifiers.map((m) => m.id)).toEqual(expected.modifiers);

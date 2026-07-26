@@ -66,6 +66,8 @@ import {
   CONDITION_CLAUSES_PER_DAY,
   CONDITION_CLAUSE_DOMAINS,
   conditionClausesForKey,
+  conditionFromAnomaly,
+  conditionOfferTilt,
   type ConditionClauseId,
 } from '@/shared/game/worldCondition';
 import { endReasonSettles } from '@/lib/session/lifecycle';
@@ -394,13 +396,29 @@ export function describeSignalDay(
   at: Date | number = Date.now()
 ): SignalDayDefinition {
   const start = signalDayStart(at);
+  const anomaly = signalConditionForDay(start);
+  const clauses = signalClausesForDay(start);
+
+  // The displayed tilt is the COMPOSED tilt, not the anomaly's alone.
+  //
+  // `SignalSurface` promises the player "Gene pool tilts X today", and the
+  // engine draws offers under `conditionOfferTilt`, which collapses the
+  // anomaly's bias together with any clause weights. Before clauses existed
+  // those were always the same strain. A clause that outweighs the anomaly
+  // makes them differ - and a surface that advertises one strain while the
+  // draw favours another is exactly the defect WP-2.10a was written to
+  // remove. Composing here means the sentence and the stream cannot disagree.
+  const composed = conditionFromAnomaly(anomaly, clauses);
+  const condition = describeSignalCondition(anomaly);
+  const tilt = conditionOfferTilt(composed);
+
   return {
     day: start.toISOString().slice(0, 10),
     startsAt: start.toISOString(),
     endsAt: signalDayEnd(start).toISOString(),
     seed: signalDaySeed(start.toISOString().slice(0, 10)),
-    condition: describeSignalCondition(signalConditionForDay(start)),
-    clauses: signalClausesForDay(start),
+    condition: tilt === null ? condition : { ...condition, strainTilt: tilt },
+    clauses,
     objectives: signalObjectivesForDay(start),
   };
 }

@@ -112,6 +112,15 @@ import {
   resolveSessionWorldCondition,
   serpentWeekCondition,
 } from '@/lib/server/worldCondition';
+import {
+  conditionFromAnomaly,
+  conditionOfferTilt,
+  conditionStrainThresholdDelta,
+  conditionSuppressedStrains,
+  NEUTRAL_CONDITION,
+  type WorldCondition,
+} from '@/shared/game/worldCondition';
+import type { StrainId } from '@/shared/game/strains';
 import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
 
 const supabase = createClient(
@@ -807,9 +816,16 @@ export async function POST(request: NextRequest) {
       //                   clause. Two independent suppressions both bind.
       if (genomeBlock) {
         genomeBlock.anomalyStrain = conditionOfferTilt(runCondition);
+        // genomeBlock is a Record<string, unknown>, so the Gauntlet's existing
+        // ban arrives untyped. Check it at runtime rather than asserting: a
+        // malformed value must read as "no existing suppression" and let the
+        // clause's own suppression stand, never crash the run start.
+        const existingSuppressed = Array.isArray(genomeBlock.suppressedStrains)
+          ? (genomeBlock.suppressedStrains as StrainId[])
+          : [];
         genomeBlock.suppressedStrains = conditionSuppressedStrains(
           runCondition,
-          genomeBlock.suppressedStrains ?? []
+          existingSuppressed
         );
         genomeBlock.strainThresholdDelta =
           conditionStrainThresholdDelta(runCondition);

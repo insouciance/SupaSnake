@@ -34,6 +34,10 @@ describe('sanitizeGenomeCapability', () => {
       },
       anomalyStrain: 'FERAL',
       suppressedStrains: ['UMBRA'],
+      // Present and empty, not absent: the sanitizer always emits the clause
+      // threshold map (WP-2.10b) so the engine never has to distinguish "no
+      // clause this week" from "an older server that did not send one".
+      strainThresholdDelta: {},
       prevRunDied: true,
       ftue: {
         bankedRuns: 15,

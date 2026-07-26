@@ -263,6 +263,10 @@ describe('the day is server-derived from the UTC calendar', () => {
       p_seed: TODAY.seed,
       p_modifier: TODAY.condition.id,
       p_strain_tilt: TODAY.condition.strainTilt,
+      // The day's clauses ride their own column (migration 056), unlike the
+      // Serpent's, which share `modifiers`. Asserted from the derivation so a
+      // clause that stopped being persisted still fails this test.
+      p_clauses: TODAY.clauses,
       p_objectives: TODAY.objectives,
     });
     expect(day).toEqual({
@@ -272,6 +276,7 @@ describe('the day is server-derived from the UTC calendar', () => {
       endsAt: TODAY.endsAt,
       seed: TODAY.seed,
       condition: TODAY.condition,
+      clauses: TODAY.clauses,
       objectives: TODAY.objectives,
     });
   });

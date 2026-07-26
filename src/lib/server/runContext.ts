@@ -56,6 +56,13 @@ export interface RunStartGenomeContext {
   tierCap: 1 | 2 | 3;
   /** Gauntlet strain ban; Expressions/Apexes disabled for these. */
   suppressedStrains: StrainId[];
+  /**
+   * Per-strain tier-threshold deltas contributed by the week's condition
+   * clauses (WP-2.10b). Frozen at start for the same reason as tierCap: a
+   * clause that made an Expression cheaper must keep doing so at settlement,
+   * even if the week's draw is later re-derived differently.
+   */
+  strainThresholdDelta?: Partial<Record<StrainId, number>>;
   /** FTUE gate: parent genes stay loose and Splice effects are off when false. */
   splicesUnlocked: boolean;
   /** Server fact at start: the previous earned run ended in death. */
