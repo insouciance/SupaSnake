@@ -129,17 +129,21 @@ export function anomalySummary(id: AnomalyId): string {
  * Genome strain weeks (BUILDCRAFT_GENOME_DESIGN.md §9): each anomaly
  * week tilts gene offers toward one strain (+100 offer weight). The
  * mechanics of the anomalies themselves are unchanged.
+ *
+ * DERIVED from `ANOMALIES[id].strainBias`, not re-declared beside it
+ * (WP-2.10b). Until then this table and that field were the same mapping
+ * written out twice, in two places, with nothing keeping them equal: adding a
+ * sixth anomaly, or re-tuning one anomaly's tilt, could move one and leave the
+ * other, and the two readers - the offer draw and the board UI - would then be
+ * looking at different weeks. There is now one authored mapping and this is a
+ * projection of it.
  */
 export const ANOMALY_STRAINS: Record<
   AnomalyId,
   'AURUM' | 'VOLT' | 'FERAL' | 'FLUX' | 'UMBRA'
-> = {
-  gold_rush: 'AURUM',
-  meteor_shower: 'VOLT',
-  blackout: 'UMBRA',
-  twin_exits: 'FLUX',
-  overgrown: 'FERAL',
-};
+> = Object.fromEntries(
+  ANOMALY_ROTATION.map((id) => [id, ANOMALIES[id].strainBias])
+) as Record<AnomalyId, 'AURUM' | 'VOLT' | 'FERAL' | 'FLUX' | 'UMBRA'>;
 
 /** Economic tuning ([E] - exact server recompute), exported for tests + UI. */
 export const ANOMALY_ECONOMICS = {
