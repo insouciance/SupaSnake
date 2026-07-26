@@ -451,8 +451,10 @@ a *sentence* lives only on the def that owns it, else lexicon.ts — and
 lexicon.ts **never retypes a number, it interpolates** (`` `Reach
 ${STRAIN_THRESHOLDS.minor} points…` ``, never a literal 2), with a test
 asserting the copy contains `String(dial)` so retuning reveals which sentence
-lied. Reads **`GENES`, never `MUTATIONS`** (15 of 34 genes are absent there and
-every strain tag would be lost). Absorbs `StrainMeterHUD`'s private tier-name
+lied. Reads **`GENES`, never `MUTATIONS`** (12 of 34 genes are absent there —
+corrected from 15 during WP-2.07a, which counted `NEW_GENES` as 9 base plus 3
+signature; the reasoning is unaffected, since reading MUTATIONS would still drop
+a dozen genes and every strain tag). Absorbs `StrainMeterHUD`'s private tier-name
 copy, promoting its invented `'Dormant'` into a documented tier-0 label.
 
 **Popover `src/components/ui/InfoPopover.tsx`** — AccountChip's dismissal

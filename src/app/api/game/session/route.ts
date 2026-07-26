@@ -38,6 +38,7 @@ import {
 import {
   ANOMALIES,
   anomalyForWeek,
+  anomalySummary,
   anomalyWeekEnd,
   anomalyWeekStart,
   type AnomalyId,
@@ -489,7 +490,13 @@ export async function POST(request: NextRequest) {
           ? {
               id: startAnomalyId,
               name: ANOMALIES[startAnomalyId].name,
-              effect: ANOMALIES[startAnomalyId].effect,
+              // anomalySummary, not `.effect`: WP-2.07a split the anomaly prose
+              // into effect + cost so the Lexicon could render the halves
+              // separately. The in-run HUD wants the whole sentence, and
+              // reading `.effect` alone would quietly show players the benefit
+              // while hiding the price ("All food x1.5 DNA" with no mention
+              // that portals arrive 6 foods later).
+              effect: anomalySummary(startAnomalyId),
               weekStart: startAnomalyWeek,
               endsAt: anomalyWeekEnd(anomalyWeekStart(startedAtDate)).toISOString(),
             }
