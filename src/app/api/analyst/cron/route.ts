@@ -8,9 +8,17 @@
  *  - UTC MONDAY: weekly digests for players with ≥3 earning runs in the
  *    just-completed week (batch, cache-first, budget-respecting — the
  *    loop stops when the daily token budget is spent; stragglers get
- *    generate-on-miss from GET /api/analyst/digest). Opt-in Resend
- *    email for registered players, sent only for freshly generated
- *    digests (idempotent across reruns).
+ *    generate-on-miss from GET /api/analyst/digest). These are IN-APP
+ *    insight cards only.
+ *
+ *    THE EMAIL LEG IS RETIRED (WP-1.09, Constitution §7.6). This cron used
+ *    to mail the LLM-narrated digest through Resend. §7.6 names the weekly
+ *    email deterministic — "built on the shipped Resend path with LLM
+ *    narration retired" — so the send moved to
+ *    GET /api/ops/settlement-dispatch, which composes from a settled Serpent
+ *    week and calls no model. The consent this cron read
+ *    (player_settings.email_digest_opt_in) is unchanged and is now read
+ *    there. This route sends no email at all.
  *  - POST-SEASON WEEK (the 7 days after a season's ends_on): archetype
  *    detection + badge grant + season Recall for ≥3-run players.
  *
@@ -29,8 +37,6 @@ import {
   latestEndedSeason,
 } from '@/lib/analyst/insights';
 import { budgetRemaining } from '@/lib/analyst/narrate';
-import { digestEmailEnabled, sendDigestEmail } from '@/lib/analyst/email';
-import type { DigestFacts } from '@/lib/analyst/facts';
 import { isAuthorizedCron } from '@/lib/server/cronAuth';
 
 const supabase = createClient(
@@ -112,7 +118,6 @@ export async function GET(request: NextRequest) {
         generated: 0,
         cached: 0,
         skipped: 0,
-        emailed: 0,
         budgetStopped: false,
       };
       const counts = await earningRunCounts(weekStart, addDays(weekStart, 7));
@@ -122,41 +127,6 @@ export async function GET(request: NextRequest) {
           .map(([playerId]) => playerId)
           .slice(0, DIGEST_BATCH_MAX);
         digests.eligible = eligible.length;
-
-        // Opt-in set + auth uids for the email pass (pre-025 → no emails)
-        const optedIn = new Set<string>();
-        const userIds = new Map<string, string>();
-        if (eligible.length > 0) {
-          const { data: settings, error: settingsError } = await supabase
-            .from('player_settings')
-            .select('player_id, email_digest_opt_in')
-            .in('player_id', eligible)
-            .eq('email_digest_opt_in', true);
-          if (settingsError) {
-            if (!isMissingAnalystInfra(settingsError)) {
-              console.error(
-                'Analyst cron settings read failed:',
-                settingsError.message
-              );
-            }
-          } else {
-            for (const row of settings ?? []) optedIn.add(row.player_id);
-          }
-          const { data: playerRows, error: playersError } = await supabase
-            .from('players')
-            .select('id, user_id')
-            .in('id', eligible);
-          if (playersError) {
-            console.error(
-              'Analyst cron players read failed:',
-              playersError.message
-            );
-          } else {
-            for (const row of playerRows ?? []) {
-              if (row.user_id) userIds.set(row.id, row.user_id);
-            }
-          }
-        }
 
         for (const playerId of eligible) {
           if ((await budgetRemaining(supabase, now)) <= 0) {
@@ -174,39 +144,6 @@ export async function GET(request: NextRequest) {
           if (result.insight && !result.cached) digests.generated += 1;
           else if (result.cached) digests.cached += 1;
           else digests.skipped += 1;
-
-          // Email: freshly generated + opted in + registered email only
-          if (
-            result.insight &&
-            !result.cached &&
-            optedIn.has(playerId) &&
-            digestEmailEnabled()
-          ) {
-            const userId = userIds.get(playerId);
-            if (userId) {
-              const { data: userData, error: userError } =
-                await supabase.auth.admin.getUserById(userId);
-              if (userError) {
-                console.error(
-                  'Analyst cron user lookup failed:',
-                  userError.message
-                );
-              } else if (
-                userData?.user?.email &&
-                !userData.user.is_anonymous
-              ) {
-                const content = result.insight.content;
-                const sent = await sendDigestEmail({
-                  to: userData.user.email,
-                  handle: '',
-                  weekStart,
-                  content,
-                  facts: (content.facts as DigestFacts | undefined) ?? null,
-                });
-                if (sent) digests.emailed += 1;
-              }
-            }
-          }
         }
       }
       report.digests = digests;

@@ -44,13 +44,6 @@ jest.mock('@/lib/analyst/narrate', () => ({
   budgetRemaining: (...args: unknown[]) => mockBudgetRemaining(...args),
 }));
 
-const mockSendDigestEmail = jest.fn();
-const mockDigestEmailEnabled = jest.fn();
-jest.mock('@/lib/analyst/email', () => ({
-  sendDigestEmail: (...args: unknown[]) => mockSendDigestEmail(...args),
-  digestEmailEnabled: (...args: unknown[]) => mockDigestEmailEnabled(...args),
-}));
-
 import { GET } from './route';
 import { NextRequest } from 'next/server';
 
@@ -126,8 +119,6 @@ beforeEach(() => {
   });
   mockLatestEndedSeason.mockReset().mockResolvedValue(null);
   mockBudgetRemaining.mockReset().mockResolvedValue(1_000_000);
-  mockSendDigestEmail.mockReset().mockResolvedValue(true);
-  mockDigestEmailEnabled.mockReset().mockReturnValue(true);
   process.env.CRON_SECRET = 'cron-secret-test';
 });
 
@@ -203,22 +194,24 @@ describe('GET /api/analyst/cron — fan-out gating', () => {
     expect(body.digests.generated).toBe(1);
   });
 
-  it('Monday: emails only opted-in registered players, fresh digests only', async () => {
+  /**
+   * WP-1.09 retired the LLM-narrated digest email (Constitution §7.6). This
+   * cron writes in-app insight cards and nothing else: it reads no opt-in
+   * column, resolves no address, and reports no `emailed` count. The
+   * deterministic replacement lives at GET /api/ops/settlement-dispatch.
+   */
+  it('Monday: writes digests and sends no email at all', async () => {
     jest.setSystemTime(MONDAY);
     wireTables({ optedIn: ['p1'] });
     const body = await (await GET(cronRequest())).json();
-    expect(mockSendDigestEmail).toHaveBeenCalledTimes(1);
-    expect(mockSendDigestEmail.mock.calls[0][0].to).toBe('p1@example.com');
-    expect(body.digests.emailed).toBe(1);
 
-    // Cached (re-run) digests are never re-emailed
-    mockSendDigestEmail.mockClear();
-    mockGenerateWeeklyDigest.mockResolvedValue({
-      live: true, cached: true, source: 'cache',
-      insight: { content: { headline: 'h', body: 'b', tips: [] } },
-    });
-    await GET(cronRequest());
-    expect(mockSendDigestEmail).not.toHaveBeenCalled();
+    expect(body.digests.generated).toBe(1);
+    expect(body.digests.emailed).toBeUndefined();
+    // No address is ever resolved, so no address can ever be mailed here.
+    expect(mockGetUserById).not.toHaveBeenCalled();
+    // The opt-in column is not this route's business any more.
+    const tablesRead = mockFrom.mock.calls.map((call) => call[0]);
+    expect(tablesRead).not.toContain('player_settings');
   });
 
   it('Monday: the budget breaker stops the batch', async () => {
