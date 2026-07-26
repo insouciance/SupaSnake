@@ -490,8 +490,8 @@ export default function LabPage() {
       )}
 
       {/* Collection grid */}
-      <div className="flex-1 overflow-hidden animate-fade-up" style={{ animationDelay: '180ms' }}>
-        <div className="h-full max-w-6xl mx-auto">
+      <div className="flex-1 animate-fade-up" style={{ animationDelay: '180ms' }}>
+        <div className="max-w-6xl mx-auto">
           <CollectionGrid
             variants={currentDynastyVariants}
             ownedSnakes={currentDynastyOwned}

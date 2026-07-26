@@ -15,7 +15,9 @@ ever. Campus seeding, the Founding Keeper SKU, and anything Phase 3+ stay owner
 work. Where a runbook step cannot be executed as written, the exact remaining
 steps are queued here and flags are left off rather than improvised around.
 
-**Phase 1 shipped to production on 26 July 2026** (`2dbddd7`, deploy run
+**Phase 2 code artifacts shipped to production on 26 July 2026** (`c6dc9e2`, deploy
+run `30204056845`, migration 052 applied, health green, all surfaces behind flags
+defaulted off). **Phase 1 shipped 26 July 2026** (`2dbddd7`, deploy run
 `30194424181`, migrations 046–051 applied, health green, all surfaces behind flags
 defaulted off). **Phase 0 shipped 25 July 2026** (`fd040af` + `be33b4b`, deploy run
 `30172084085`, migrations 039–045 applied, `/api/health` healthy). Two owner-only
@@ -641,6 +643,43 @@ GT-refresh after the phase gate.
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
+
+## Phase 2 code artifacts — **SHIPPED to production, 26 July 2026**
+
+| Step | Result |
+|---|---|
+| PR #9 `constitution/build` → `main` | 4/4 green (e2e 8m24s against a real stack), squash-merged as `c6dc9e2` |
+| **Deploy to Production** (`payments_mode=test`) | run `30204056845` — **success**, both jobs |
+| Migration applied | **052_push_subscriptions** |
+| `/api/health` | `healthy`, database `healthy` (356 ms) |
+| `/`, `/game`, `/leaderboard`, `/clan`, `/serpent`, `/play` | all 200 |
+| `/contract`, `/manifest.webmanifest` | **404 — correct**, their flags are off |
+
+**Shipped:** Ascension (§6.1, the Signal's monthly aggregation *view*), the World
+Report (§7.5, "return without debt"), PWA manifest + install offer + push plumbing
+(migration 052), and the `/contract` manifesto page + handle-claim lead ladder
+(§3, §11.7).
+
+**Flags, all default off:** `NEXT_PUBLIC_ASCENSION_V1`,
+`NEXT_PUBLIC_WORLD_REPORT_V1`, `NEXT_PUBLIC_PWA_V1`,
+`NEXT_PUBLIC_PLAYER_CONTRACT_V1`, `NEXT_PUBLIC_LEAD_LADDER_V1`.
+
+**Excluded because they need a human:** campus seeding (§9.6) and the Founding
+Keeper SKU (§10.2) — the latter is Stripe work, untouchable per the envelope.
+
+### Two design decisions worth keeping
+
+**The push two-trigger cap is enforced by the type system**, not by review:
+`PushTriggerId` is `keyof typeof PUSH_TRIGGERS`, so adding a third trigger is a
+compile error. §12.4 names push volume as a forbidden retention response; this makes
+that structural.
+
+**The service worker's notification text lives in TypeScript, not `public/`** —
+deliberately, because `public/` is invisible to jest and lint, and the worker is the
+last place a badge or commercial string could be added without anything failing. As a
+string, the R5 and R7 sweeps can read it.
+
+---
 
 ## Phase 1 release — **SHIPPED to production, 26 July 2026**
 

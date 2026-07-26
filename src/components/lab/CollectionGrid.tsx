@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * CollectionGrid - Scrollable grid container for snake variants
+ * CollectionGrid - grid of snake variants; the page scrolls, not the grid
  * Panini sticker book style layout with 3-column grid
  * Displays variant cards for each snake in the current dynasty
  */
@@ -97,7 +97,13 @@ function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.Rea
  *
  * Displays a Panini sticker book style grid of snake variants.
  * Supports owned/locked states, loading skeleton, and empty slots.
- * Optimized for 60fps scrolling with overflow-y-auto.
+ * The grid does NOT scroll internally. It used to carry
+ * `overflow-y-auto overscroll-contain` inside a `flex-1 overflow-hidden`
+ * parent on a `min-h-screen` (not `h-screen`) page - so its height was
+ * content-driven, it never actually became scrollable, and `overscroll-contain`
+ * stopped the gesture chaining to the page. Swiping or scrolling over the cards
+ * did nothing while the gutters beside them scrolled normally. The page scrolls;
+ * the grid just flows.
  */
 export function CollectionGrid({
   variants,
@@ -148,10 +154,7 @@ export function CollectionGrid({
   if (isLoading) {
     return (
       <div
-        className="w-full overflow-y-auto overscroll-contain"
-        style={{
-          WebkitOverflowScrolling: 'touch',
-        }}
+        className="w-full"
         aria-busy="true"
         aria-label="Loading collection"
       >
@@ -171,10 +174,7 @@ export function CollectionGrid({
 
   return (
     <div
-      className="w-full h-full overflow-y-auto overscroll-contain"
-      style={{
-        WebkitOverflowScrolling: 'touch',
-      }}
+      className="w-full"
       role="grid"
       aria-label="Snake variant collection"
     >
