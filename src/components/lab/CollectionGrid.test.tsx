@@ -158,6 +158,30 @@ describe('CollectionGrid', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('folds trait and lineage names into the card name (WP-2.07b)', () => {
+    // The card is ONE button end to end, so its chips can never become
+    // tap-to-explain triggers — a button inside a button is invalid and
+    // unreachable. The names travel in the accessible name instead; the
+    // effect and cost are one tap away in the detail sheet.
+    renderGrid({
+      ownedSnakes: [
+        snake({
+          id: 'v0-gen4',
+          generation: 4,
+          traits: ['scavenger'],
+          lineage: { strains: ['AURUM'], strength: 1 },
+        }),
+      ],
+    });
+
+    const card = screen.getByTestId('variant-card-variant-0');
+    expect(card).toHaveAttribute(
+      'aria-label',
+      'PRIMAL 0, Generation 4, Aurum lineage, traits Scavenger'
+    );
+    expect(within(card).queryAllByRole('button')).toHaveLength(0);
+  });
+
   it('hands the whole roster to onSelectVariant, every sibling included', () => {
     const { onSelectVariant } = renderGrid();
 

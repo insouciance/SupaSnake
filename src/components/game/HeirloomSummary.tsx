@@ -22,16 +22,18 @@
  *   and it is the silence the owner's playtest hit: Ascetic removes every
  *   mutation food from a run and nothing on the setup screen said so.
  *
- * So the traits are ungated here and each one is tappable: `InfoPopover`
- * puts the effect and the cost one tap away on a touch device, which is the
- * defect this work package exists to fix.
+ * So the traits are ungated here and each one is tappable: `TraitChip
+ * interactive` puts the effect and the cost one tap away on a touch device,
+ * which is the defect this work package exists to fix. (WP-2.07a wrapped
+ * each chip in an `InfoPopover` by hand because it was not allowed to touch
+ * `TraitChip`; WP-2.07b moved that wrapping into the chip itself, so every
+ * chip site explains itself the same way.)
  *
  * There is deliberately **no `btn-go`** anywhere in this component. Run
  * Setup has exactly one emphasised action (§5), and its test pins that.
  */
 
 import { TraitChip, EmptyTraitSlot } from '@/components/traits/TraitChip';
-import { InfoPopover } from '@/components/ui/InfoPopover';
 import {
   describe as describeEntry,
   type LexiconNoticeTone,
@@ -71,23 +73,9 @@ export function HeirloomSummary({
       <p className="label-arcade text-cosmic">Heirlooms</p>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {traits.map((id) => {
-          const entry = describeEntry('trait', id);
-          if (!entry) return null;
-          return (
-            <InfoPopover
-              key={id}
-              testId={`trait-${id}`}
-              title={entry.name}
-              effect={entry.effect}
-              cost={entry.cost}
-              notice={entry.runNotice?.text}
-              label={`${entry.name}: what it does`}
-            >
-              <TraitChip traitId={id} size="md" />
-            </InfoPopover>
-          );
-        })}
+        {traits.map((id) => (
+          <TraitChip key={id} traitId={id} size="md" interactive />
+        ))}
         {Array.from({ length: empties }).map((_, index) => (
           <EmptyTraitSlot key={`empty-${index}`} size="md" />
         ))}

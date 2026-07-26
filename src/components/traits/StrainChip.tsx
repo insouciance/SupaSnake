@@ -5,10 +5,23 @@
  *
  * Strain-colored pip chip: name + optional pip count (lineage strength /
  * live strain points). Used by the lab lineage surfaces, the breeding
- * preview/reveal, and the pre-run "Build Seed" row. Pure display.
+ * preview/reveal, and the pre-run "Build Seed" row.
+ *
+ * ── Two fixes from WP-2.07b ──────────────────────────────────────────────
+ *
+ * 1. The chip now carries an **unconditional `aria-label`**. It had none:
+ *    the strain's identity line lived only in a `title`, which touch never
+ *    shows and which a screen reader is not obliged to announce, so the
+ *    sentence explaining what AURUM *is* reached neither.
+ * 2. `interactive` wraps the chip in an `InfoPopover`, the same opt-in
+ *    `TraitChip` has and for the same reason — it renders a `<button>`, so
+ *    hosts that are themselves buttons (the lineage-primary selects, the
+ *    breeding draft's lineage toggles) must not ask for it.
  */
 
 import React from 'react';
+import { InfoPopover } from '@/components/ui/InfoPopover';
+import { describe as describeEntry } from '@/shared/game/lexicon';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 
 function hexToRgba(hex: string, opacity: number): string {
@@ -27,6 +40,12 @@ export interface StrainChipProps {
   size?: 'sm' | 'md';
   /** Extra emphasis (breeding reveal pop-in). */
   emphasis?: boolean;
+  /**
+   * Wrap the chip in a tap-to-explain popover. Default false: the chip
+   * renders no `<button>` unless a host that is not itself a button asks
+   * for one.
+   */
+  interactive?: boolean;
   className?: string;
 }
 
@@ -35,17 +54,21 @@ export function StrainChip({
   points,
   size = 'sm',
   emphasis = false,
+  interactive = false,
   className = '',
 }: StrainChipProps): React.ReactElement | null {
   const def = STRAINS[strain];
   if (!def) return null;
 
   const tooltip = `${def.name} — ${def.identity}`;
+  const pips = typeof points === 'number' && points > 0 ? points : 0;
+  const pipPhrase = pips > 0 ? `, ${pips} point${pips === 1 ? '' : 's'}` : '';
 
-  return (
+  const chip = (
     <span
       data-testid={`strain-chip-${strain}`}
       title={tooltip}
+      aria-label={`${tooltip}${pipPhrase}`}
       className={`inline-flex items-center gap-1 rounded-arcade border font-mono font-semibold whitespace-nowrap uppercase tracking-wide ${
         size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-1'
       } ${emphasis ? 'animate-pop-in' : ''} ${className}`}
@@ -59,12 +82,31 @@ export function StrainChip({
       }}
     >
       {def.name}
-      {typeof points === 'number' && points > 0 && (
-        <span aria-label={`${points} point${points === 1 ? '' : 's'}`}>
-          {'•'.repeat(Math.min(4, points))}
+      {pips > 0 && (
+        <span aria-label={`${pips} point${pips === 1 ? '' : 's'}`}>
+          {'•'.repeat(Math.min(4, pips))}
         </span>
       )}
     </span>
+  );
+
+  if (!interactive) return chip;
+
+  // The strain's identity is the Lexicon's `effect` for a strain family; a
+  // family is a taxonomy rather than a deal, so it is documented costless.
+  const entry = describeEntry('strain', strain);
+  if (!entry) return chip;
+
+  return (
+    <InfoPopover
+      testId={`strain-${strain}`}
+      title={entry.name}
+      effect={entry.effect}
+      cost={entry.cost}
+      label={`${entry.name}${pipPhrase}: what it does`}
+    >
+      {chip}
+    </InfoPopover>
   );
 }
 

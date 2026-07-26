@@ -7,9 +7,26 @@
  * its tooltip: "effect — tradeoff". Taxonomy-tinted border: [E]conomic
  * cyan, [P]hysical orange, mixed violet. A dashed EmptyTraitSlot marks an
  * unlocked-but-unfilled slot, and TraitChipRow lays out a snake's slots.
+ *
+ * ── `interactive`, and why it defaults to false (WP-2.07b) ───────────────
+ *
+ * An HTML `title` is invisible on touch, so on a phone this chip named a
+ * trait and explained nothing. `interactive` wraps the identical chip in an
+ * `InfoPopover`, putting effect and cost one tap away.
+ *
+ * It defaults to **false** because several hosts render this chip inside a
+ * `<button>` — `VariantCard` is one button end to end, the breeding draft
+ * board's toggles are buttons, and `VariantDetailModal`'s lineage chips sit
+ * in the primary-select buttons. A button inside a button is invalid HTML
+ * and unreachable by keyboard, so at those sites the chip stays display-only
+ * and the words reach the player another way (the card folds them into its
+ * own `aria-label`; the draft board prints them inline). Opting in is the
+ * caller's decision precisely because only the caller knows its markup.
  */
 
 import React from 'react';
+import { InfoPopover } from '@/components/ui/InfoPopover';
+import { describe as describeEntry } from '@/shared/game/lexicon';
 import { TRAITS, type TraitId, type TraitKind } from '@/shared/game/traits';
 
 /** Taxonomy tint - matches the E/P color language of the mutation cards. */
@@ -33,6 +50,12 @@ export interface TraitChipProps {
   size?: 'sm' | 'md';
   /** Extra emphasis (breeding reveal pop-in). */
   emphasis?: boolean;
+  /**
+   * Wrap the chip in a tap-to-explain popover. Default false: the chip
+   * renders no `<button>` unless a host that is not itself a button asks
+   * for one.
+   */
+  interactive?: boolean;
   className?: string;
 }
 
@@ -40,6 +63,7 @@ export function TraitChip({
   traitId,
   size = 'sm',
   emphasis = false,
+  interactive = false,
   className = '',
 }: TraitChipProps): React.ReactElement<any> | null {
   const def = TRAITS[traitId];
@@ -48,7 +72,7 @@ export function TraitChip({
   const color = KIND_COLOR[def.kind];
   const tooltip = `${def.name}: ${def.effect} — ${def.cost}`;
 
-  return (
+  const chip = (
     <span
       className={`inline-flex items-center gap-1 rounded-arcade border font-mono font-semibold whitespace-nowrap ${
         size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-1'
@@ -65,6 +89,28 @@ export function TraitChip({
     >
       {def.name}
     </span>
+  );
+
+  if (!interactive) return chip;
+
+  // The Lexicon owns the sentences; the chip only owns its paint. An
+  // unknown id cannot reach here (`TRAITS[traitId]` already answered), so a
+  // missing entry would mean the registry disagrees with the def table —
+  // in which case the chip still renders, silently display-only.
+  const entry = describeEntry('trait', def.id);
+  if (!entry) return chip;
+
+  return (
+    <InfoPopover
+      testId={`trait-${def.id}`}
+      title={entry.name}
+      effect={entry.effect}
+      cost={entry.cost}
+      notice={entry.runNotice?.text}
+      label={`${entry.name}: what it does`}
+    >
+      {chip}
+    </InfoPopover>
   );
 }
 
@@ -100,6 +146,8 @@ export interface TraitChipRowProps {
   size?: 'sm' | 'md';
   /** Pop-in emphasis for freshly rolled traits (breeding reveal). */
   emphasis?: boolean;
+  /** Forwarded to every filled chip; see `TraitChipProps.interactive`. */
+  interactive?: boolean;
   className?: string;
 }
 
@@ -109,6 +157,7 @@ export function TraitChipRow({
   slots,
   size = 'sm',
   emphasis = false,
+  interactive = false,
   className = '',
 }: TraitChipRowProps): React.ReactElement<any> | null {
   const filled = (traits ?? []).filter((t): t is TraitId => t in TRAITS);
@@ -121,7 +170,13 @@ export function TraitChipRow({
       data-testid="trait-chip-row"
     >
       {filled.map((traitId) => (
-        <TraitChip key={traitId} traitId={traitId} size={size} emphasis={emphasis} />
+        <TraitChip
+          key={traitId}
+          traitId={traitId}
+          size={size}
+          emphasis={emphasis}
+          interactive={interactive}
+        />
       ))}
       {Array.from({ length: slotCount - filled.length }).map((_, i) => (
         <EmptyTraitSlot key={`empty-${i}`} size={size} />
