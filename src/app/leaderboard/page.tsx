@@ -27,6 +27,7 @@ import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 import { IconTrophy } from '@/components/ui/icons';
 import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
+import { AscensionMonth } from '@/components/signal/AscensionMonth';
 
 type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
 
@@ -476,6 +477,14 @@ export default function LeaderboardPage() {
           {total.toLocaleString()} ranked players
         </div>
         )}
+
+        {/* Ascension — Score, this month (Constitution §6.1, §12.2).
+            Mounted here because §6.1 presents it "everywhere as 'Score, this
+            month'", and Score's district is this page. It is a READING, not a
+            tab: it adds no board, no cadence, no claim and no navigation entry,
+            which is what §12.2 means by "its monthly aggregation view, not a
+            surface". Flag-gated off; it renders nothing when the flag is down. */}
+        {!anomalyTab && <AscensionMonth token={session?.access_token} />}
 
         {/* Fair Play Notice (Constitution §6.1) */}
         {!anomalyTab && (
