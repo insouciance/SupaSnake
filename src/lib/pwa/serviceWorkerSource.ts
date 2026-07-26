@@ -13,8 +13,9 @@
  *      that actually DISPLAYS a notification, so it is the last place a badge
  *      or a commercial string could be added without anything failing. Here it
  *      is a string the Rule 5 and Rule 7 sweeps can read.
- *   3. A file in `public/` is invisible to `npm run lint` and to
- *      `verify:constitution`'s TODO scan.
+ *   3. A file in `public/` is invisible to `npm run lint` and to the
+ *      incomplete-work marker scan `verify:constitution` runs. (Spelling that
+ *      marker out here would trip the very gate this sentence describes.)
  *
  * WHAT THIS WORKER DELIBERATELY DOES NOT DO
  *
