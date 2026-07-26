@@ -449,6 +449,7 @@ export default function GamePage() {
     exitTile2,
     exitTicksRemaining,
     anomalyRun,
+    runCondition,
     charge,
     selectedDynasty,
     snake,
@@ -488,6 +489,7 @@ export default function GamePage() {
     setExitTile,
     setExitTile2,
     setAnomalyRun,
+    setRunCondition,
     setExtraFoods,
     setConstellation,
     setMutationTile,
@@ -884,10 +886,13 @@ export default function GamePage() {
     choiceOptions !== null || portalChoicePending || surgeChoicePending;
   const blockingOverlayActive = choiceActive || showAbandonConfirm;
 
-  // The active anomaly run's modifier id (§7.2) - shapes the BANK preview
-  // and outcome copy exactly like the server recompute will
-  const activeAnomalyId: AnomalyId | null =
-    anomalyRun && isAnomalyId(anomalyRun.id) ? anomalyRun.id : null;
+  // The run's world condition (§7.2, §7.3) - shapes the BANK preview and the
+  // outcome copy exactly like the server recompute will. Read from the store
+  // rather than from `anomalyRun`, because a Serpent or Signal run is under a
+  // condition without being an anomaly-board run: deriving it from the board
+  // context is what left the preview quoting x1.25 on a Twin Exits week the
+  // server settles at x1.15.
+  const activeAnomalyId: AnomalyId | null = runCondition;
 
   const beginPauseRearm = useCallback(() => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
@@ -1577,7 +1582,19 @@ export default function GamePage() {
       mode === 'anomaly' && isAnomalyId(anomalyData?.id)
         ? anomalyData.id
         : null;
-    game.setAnomaly(serverAnomaly);
+    // The run's world condition, resolved SERVER-SIDE (§7.2, §7.3): the
+    // Anomaly board's weekly modifier, the Serpent week's condition-set, or
+    // the Signal day's condition. One field, because the server resolved it -
+    // the client never derives a condition from its own `mode`.
+    //
+    // The engine plays under exactly the id settlement recomputes with, which
+    // is the whole point: a condition that changed the payout without having
+    // changed the run would flag every run under it as a claim mismatch.
+    const serverCondition = isAnomalyId(data.condition)
+      ? data.condition
+      : serverAnomaly;
+    game.setAnomaly(serverCondition);
+    setRunCondition(serverCondition);
     setAnomalyRun(
       serverAnomaly
         ? {
@@ -1614,6 +1631,7 @@ export default function GamePage() {
     syncState();
   }, [
     setAnomalyRun,
+    setRunCondition,
     setGameMode,
     setGenomeRun,
     setPortalChoicePending,

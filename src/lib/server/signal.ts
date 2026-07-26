@@ -808,18 +808,22 @@ export async function autoSettleSignalAttempts(
 }
 
 /**
- * Auto-settle the attempt one finished run owns, if it owns one.
+ * The attempt one run owns, if it owns one.
  *
- * The end-of-run entry point: a route that has just settled a session calls
- * this and the day's Signal settles with it, in the same request, with no
- * claim step anywhere. Null means the run was not the day's Signal objective
- * run — the ordinary case, and not a failure.
+ * Keyed on the session, because that is the direction every end-of-run caller
+ * asks from: it has a finished run and wants to know what the Signal made of
+ * it. Null means the run was not the day's Signal objective run — the ordinary
+ * case, and not a failure.
+ *
+ * The `player_id` predicate rides along for the same reason it does in
+ * `loadSignalRunFacts`: one player's run must never be able to reach another
+ * player's attempt, whatever the join does.
  */
-export async function settleSignalAttemptForSession(
+export async function loadSignalAttemptForSession(
   supabase: SupabaseClient,
   sessionId: string,
   playerId: string
-): Promise<SignalSettlementResult | null> {
+): Promise<SignalAttemptRow | null> {
   const { data, error } = await supabase
     .from('signal_objective_runs')
     .select(ATTEMPT_COLUMNS)
@@ -834,7 +838,23 @@ export async function settleSignalAttemptForSession(
     return null;
   }
 
-  const attempt = toAttemptRow((data ?? null) as Record<string, unknown> | null);
+  return toAttemptRow((data ?? null) as Record<string, unknown> | null);
+}
+
+/**
+ * Auto-settle the attempt one finished run owns, if it owns one.
+ *
+ * The end-of-run entry point: a route that has just settled a session calls
+ * this and the day's Signal settles with it, in the same request, with no
+ * claim step anywhere. Null means the run was not the day's Signal objective
+ * run — the ordinary case, and not a failure.
+ */
+export async function settleSignalAttemptForSession(
+  supabase: SupabaseClient,
+  sessionId: string,
+  playerId: string
+): Promise<SignalSettlementResult | null> {
+  const attempt = await loadSignalAttemptForSession(supabase, sessionId, playerId);
   if (!attempt) return null;
   return settleSignalObjectiveRun(supabase, attempt);
 }

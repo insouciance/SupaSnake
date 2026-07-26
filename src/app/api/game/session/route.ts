@@ -40,7 +40,6 @@ import {
   anomalyForWeek,
   anomalyWeekEnd,
   anomalyWeekStart,
-  isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import * as Sentry from '@sentry/nextjs';
@@ -96,6 +95,10 @@ import {
   claimSignalObjectiveRun,
   settleSignalAttemptForSession,
 } from '@/lib/server/signal';
+import {
+  resolveSessionWorldCondition,
+  serpentWeekCondition,
+} from '@/lib/server/worldCondition';
 import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
 
 const supabase = createClient(
@@ -362,7 +365,9 @@ export async function POST(request: NextRequest) {
           heirloom,
           genePool,
           lineage: lineageBias,
-          anomalyStrain: null, // set below once the week's anomaly is derived
+          // Set below, once the run's world condition is resolved - which
+          // cannot happen until the Signal claim has answered.
+          anomalyStrain: null,
           suppressedStrains: gauntletSuppressedStrains(gauntletBan),
           prevRunDied,
           ftue: {
@@ -386,10 +391,6 @@ export async function POST(request: NextRequest) {
       const startAnomalyWeek = isAnomalyRun
         ? anomalyWeekStart(startedAtDate).toISOString().slice(0, 10)
         : null;
-      // Genome strain week (§9): the anomaly tilts gene offers
-      if (genomeBlock && startAnomalyId) {
-        genomeBlock.anomalyStrain = ANOMALY_STRAINS[startAnomalyId] ?? null;
-      }
 
       // ---------------------------------------------------------------
       // The World Serpent (Constitution §7.3, §8.6)
@@ -520,6 +521,35 @@ export async function POST(request: NextRequest) {
         : null;
 
       // ---------------------------------------------------------------
+      // The run's world condition (§7.2, §7.3 - WP-2.10a)
+      // ---------------------------------------------------------------
+      // One modifier owns the run, whichever ritual named it: the Anomaly
+      // board's weekly rotation, the Serpent week's condition-set, or the
+      // Signal day's condition. All three are SERVER-DERIVED from the calendar
+      // above, and all three are stamped on the session row, so settlement
+      // re-derives this exact id from the row alone
+      // (`resolveSessionWorldCondition`) and recomputes the run under the rules
+      // it was actually played under. The client asserts nothing.
+      //
+      // Resolved AFTER the Signal claim because the Signal half is gated on
+      // `exemptRunId`: `begin_signal_objective_run` mirrors
+      // `signal_objective_run_id` onto the session row ONLY when this session
+      // owns the day's attempt, so any looser test here would set a condition
+      // at start that the end path could not find.
+      const runCondition: AnomalyId | null =
+        startAnomalyId ??
+        serpentWeekCondition(serpentWeek) ??
+        (signalClaim?.exemptRunId ? signalClaim.day?.condition.id ?? null : null);
+
+      // Genome strain week (§9): the condition tilts gene offers by
+      // ANOMALY_STRAIN_WEIGHT. The engine draws under this weight and
+      // `verifyOfferTrace` replays the stream under the same one at
+      // settlement, so the two cannot disagree.
+      if (genomeBlock && runCondition) {
+        genomeBlock.anomalyStrain = ANOMALY_STRAINS[runCondition] ?? null;
+      }
+
+      // ---------------------------------------------------------------
       // The daily harvest envelope (Constitution §8.6)
       // ---------------------------------------------------------------
       // Resolved AFTER the session row exists, so a failed insert can never
@@ -613,6 +643,12 @@ export async function POST(request: NextRequest) {
         mutationPool,
         mastery: masteryInfo,
         ...(gauntletBan ? { gauntletBan } : {}),
+        // The run's world condition (§7.2, §7.3): the ONE id the engine plays
+        // under and settlement recomputes with. Present on every run the
+        // server resolved one for, whichever ritual named it, so the client
+        // never has to infer a condition from three differently-shaped blocks
+        // - or, worse, from its own `mode`.
+        ...(runCondition ? { condition: runCondition } : {}),
         ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
         // Serpent context for the HUD (§7.3): the week's conditions and when
         // it submerges. Present only on a run the server accepted as an
@@ -755,13 +791,22 @@ export async function POST(request: NextRequest) {
         endGauntletBan
       );
 
-      // Anomaly (section 7.2): the SESSION ROW is authoritative - the
-      // server stamped it at start; select('*') keeps this read deployable
-      // pre-021 (rows simply lack the column => null => normal recompute)
-      const rawSessionAnomaly = (session as Record<string, unknown>).anomaly_id;
-      const sessionAnomaly: AnomalyId | null = isAnomalyId(rawSessionAnomaly)
-        ? rawSessionAnomaly
-        : null;
+      // The run's world condition (§7.2, §7.3 - WP-2.10a): the SESSION ROW is
+      // authoritative - the server stamped it at start, through whichever of
+      // the three columns the ritual owns (`anomaly_id`, `serpent_week_id`,
+      // `signal_objective_run_id`). Re-derived here from those stamps alone,
+      // so the run settles under EXACTLY the condition it was launched under
+      // and a replayed 'end' cannot re-decide it.
+      //
+      // select('*') keeps the read deployable pre-021/046/049: rows simply
+      // lack the columns => null => the condition-free recompute.
+      const sessionCondition: AnomalyId | null =
+        await resolveSessionWorldCondition(
+          supabase,
+          session as Record<string, unknown>,
+          player.id,
+          sessionId
+        );
 
       // GENOME (Buildcraft: The Genome): the SESSION ROW's run_seed is the
       // capability authority - a stamped session validates under the
@@ -834,7 +879,7 @@ export async function POST(request: NextRequest) {
         endDynasty,
         snakeTraits,
         unlockedPool,
-        sessionAnomaly,
+        sessionCondition,
         genomeCtx
       );
 
@@ -852,8 +897,8 @@ export async function POST(request: NextRequest) {
             // Mirror the engine's start-time lineage bias exactly - a
             // bias-free replay would false-flag every lineage player.
             lineage: endLineageBias,
-            anomalyStrain: sessionAnomaly
-              ? ANOMALY_STRAINS[sessionAnomaly] ?? null
+            anomalyStrain: sessionCondition
+              ? ANOMALY_STRAINS[sessionCondition] ?? null
               : null,
             tierCap: genomeCtx.tierCap,
           });
@@ -922,7 +967,7 @@ export async function POST(request: NextRequest) {
         [],
         null,
         snakeTraits,
-        sessionAnomaly
+        sessionCondition
       ).rawDna;
 
       // Sanitized mutation record for the session row (migration 014).
@@ -1205,7 +1250,7 @@ export async function POST(request: NextRequest) {
               ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
               : {}),
             ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
-            ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
+            ...(sessionCondition ? { anomaly: sessionCondition } : {}),
           },
         });
 
@@ -1429,7 +1474,7 @@ export async function POST(request: NextRequest) {
         ...(identityInfo ? { identity: identityInfo } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
-        ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
+        ...(sessionCondition ? { anomaly: sessionCondition } : {}),
         ...(signal ? { signal } : {}),
         // The Take slot (§7.2). Present only when the server has a Take to
         // offer; `parseDailyTake` refuses anything without `firstRunOfDay`.
