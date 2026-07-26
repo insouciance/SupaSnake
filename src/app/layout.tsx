@@ -22,6 +22,8 @@ import { AnalyticsProvider } from '@/components/analytics/AnalyticsProvider';
 import { ConsentBanner } from '@/components/legal/ConsentBanner';
 import { Footer } from '@/components/ui/Footer';
 import { NotificationProvider } from '@/components/ui/NotificationProvider';
+import { PwaSurface } from '@/components/pwa/PwaSurface';
+import { PWA_V1_ENABLED } from '@/lib/pwa/config';
 import {
   CANONICAL_ORIGIN,
   SITE_DESCRIPTION,
@@ -58,6 +60,13 @@ export const metadata: Metadata = {
     'no download',
   ],
   alternates: { canonical: CANONICAL_ORIGIN },
+  /**
+   * WP-2.04 (§11.4). The `<link rel="manifest">` exists only when
+   * `NEXT_PUBLIC_PWA_V1` is armed — flag off means the browser is never told
+   * there is anything to install, and `/manifest.webmanifest` 404s to match.
+   * Spread rather than set-to-undefined so the key is genuinely absent.
+   */
+  ...(PWA_V1_ENABLED ? { manifest: '/manifest.webmanifest' } : {}),
   openGraph: {
     type: 'website',
     siteName: SITE_NAME,
@@ -104,6 +113,7 @@ export default function RootLayout({
                   {children}
                   <Footer />
                   <ConsentBanner />
+                  <PwaSurface />
                 </AnalyticsProvider>
               </OfflineProgressProvider>
             </NotificationProvider>

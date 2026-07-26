@@ -46,6 +46,24 @@ describe('sitemapEntries', () => {
     expect(paths.filter((path) => path === '/play')).toHaveLength(1);
   });
 
+  it('omits /contract while the contract flag is off — never advertise a 404', () => {
+    expect(sitemapEntries(true).map((entry) => entry.path)).not.toContain(
+      '/contract'
+    );
+    expect(
+      sitemapEntries(true, false).map((entry) => entry.path)
+    ).not.toContain('/contract');
+  });
+
+  it('lists /contract once the contract flag is on', () => {
+    const paths = sitemapEntries(false, true).map((entry) => entry.path);
+    expect(paths).toContain('/contract');
+    expect(paths.filter((path) => path === '/contract')).toHaveLength(1);
+    // The manifesto is indexable without the growth surfaces: the two flags
+    // roll independently, and neither implies the other.
+    expect(paths).not.toContain('/play');
+  });
+
   it('lists no path twice', () => {
     const paths = sitemapEntries(true).map((entry) => entry.path);
     expect(new Set(paths).size).toBe(paths.length);

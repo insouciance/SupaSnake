@@ -27,6 +27,9 @@ import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
 import { IconTrophy } from '@/components/ui/icons';
 import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
+import { LeadLadder } from '@/components/growth/LeadLadder';
+import type { LadderState } from '@/lib/growth/leadLadder';
+import { AscensionMonth } from '@/components/signal/AscensionMonth';
 
 type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
 
@@ -227,6 +230,23 @@ export default function LeaderboardPage() {
   const myPlayerId = viewer?.playerId ?? null;
   const podiumEntries = entries.filter(e => e.rank >= 1 && e.rank <= 3);
 
+  // The lead ladder (§11.7). Its whole argument is that you are ALREADY on
+  // this list under a name that is not yours, so it reads the viewer's own
+  // row rather than fetching anything: `identity.isGenerated` is migration
+  // 022's own answer to "is this a claimed handle or the handler-NNNN
+  // fallback". When the row is not on the page the state stays UNKNOWN
+  // (undefined, not false) and the ladder declines to claim a rung — see
+  // LadderState. Email and clan are not visible from here at all, which is
+  // why they are simply absent.
+  const myEntry = myPlayerId
+    ? entries.find((entry) => entry.playerId === myPlayerId)
+    : undefined;
+  const myIdentity = myEntry?.identity;
+  const ladderState: LadderState = {
+    hasPlayed: viewer ? true : undefined,
+    hasHandle: myIdentity ? myIdentity.isGenerated === false : undefined,
+  };
+
   return (
     <div className="app-bg text-bone-white">
       <NavBar />
@@ -257,6 +277,16 @@ export default function LeaderboardPage() {
             Play
           </Link>
         </div>
+
+        {/* The lead ladder (§11.7) — public identity as the conversion
+            mechanism. Behind NEXT_PUBLIC_LEAD_LADDER_V1; renders null while
+            the flag is off, and never renders during a run (Rule 1: this is
+            a board screen). */}
+        <LeadLadder
+          state={ladderState}
+          displayHandle={myIdentity?.handle ?? null}
+          onClaimed={fetchLeaderboard}
+        />
 
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-8 animate-fade-up">
@@ -476,6 +506,14 @@ export default function LeaderboardPage() {
           {total.toLocaleString()} ranked players
         </div>
         )}
+
+        {/* Ascension — Score, this month (Constitution §6.1, §12.2).
+            Mounted here because §6.1 presents it "everywhere as 'Score, this
+            month'", and Score's district is this page. It is a READING, not a
+            tab: it adds no board, no cadence, no claim and no navigation entry,
+            which is what §12.2 means by "its monthly aggregation view, not a
+            surface". Flag-gated off; it renders nothing when the flag is down. */}
+        {!anomalyTab && <AscensionMonth token={session?.access_token} />}
 
         {/* Fair Play Notice (Constitution §6.1) */}
         {!anomalyTab && (
