@@ -169,6 +169,37 @@ export async function ensureCurrentSerpentWeek(
 }
 
 /**
+ * One week, by the id a session row already carries.
+ *
+ * The read half of `ensureCurrentSerpentWeek`: it resolves nothing, creates
+ * nothing and takes no clock — the caller has a `serpent_week_id` the server
+ * stamped at start, and this returns the week that id names. Settlement uses
+ * it to recover the condition-set a finished run was played under, which the
+ * calendar alone could no longer answer once a week has passed.
+ *
+ * Null when the id names nothing, when migration 046 is not applied, or when
+ * the read failed. Null is the CLOSED direction here too: no week means no
+ * condition, which is the condition-free recompute the game had before.
+ */
+export async function loadSerpentWeekById(
+  supabase: SupabaseClient,
+  weekId: string
+): Promise<SerpentWeekRow | null> {
+  const { data, error } = await supabase
+    .from('serpent_weeks')
+    .select('id, week_start, starts_at, ends_at, seed, modifiers, settled_at')
+    .eq('id', weekId)
+    .maybeSingle();
+
+  if (error) {
+    if (!isMissingSerpentInfra(error)) report('week lookup', error, { weekId });
+    return null;
+  }
+
+  return toWeekRow((data ?? null) as Record<string, unknown> | null);
+}
+
+/**
  * How long after a week submerges it stays settleable.
  *
  * A run that settled but whose reward write failed is replayed by the offline

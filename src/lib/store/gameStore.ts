@@ -16,6 +16,7 @@ import type { SpliceId } from '@/shared/game/splices';
 import type { StrainId, StrainPoints } from '@/shared/game/strains';
 import type { GenomeRevive } from '@/shared/game/genome';
 import { DEFAULT_AIM_SYSTEM, type AimSystemId } from '@/lib/game/aimSystems';
+import type { AnomalyId } from '@/shared/game/anomalies';
 import type { ChargeState, ChargeStatus } from '@/shared/game/energyEnvelope';
 
 /**
@@ -93,6 +94,18 @@ export interface GameStore {
   exitTicksRemaining: number;
   /** The active anomaly run's context (Design v2 §7.2), null off-board. */
   anomalyRun: AnomalyRunInfo | null;
+  /**
+   * The run's world condition, as the SERVER resolved it (§7.2, §7.3).
+   *
+   * The Anomaly board's weekly modifier, the Serpent week's condition or the
+   * Signal day's — one id, whichever ritual named it. Distinct from
+   * `anomalyRun`, which is the anomaly BOARD's context and still governs the
+   * board chip and the cockpit's mode label: a Serpent run has a condition and
+   * is not an anomaly run. Null on an ordinary run, and never set by the
+   * client — it arrives on the session-start response and is the same id
+   * settlement recomputes the payout with.
+   */
+  runCondition: AnomalyId | null;
 
   // Design v2 Phase 2: mutation food + COSMIC Flux (mirrored from engine)
   /** Food cells beyond the primary one (Splitter pairs, COSMIC groups). */
@@ -157,6 +170,7 @@ export interface GameStore {
   setExitTile: (exitTile: Position | null, ticksRemaining?: number) => void;
   setExitTile2: (exitTile2: Position | null) => void;
   setAnomalyRun: (anomalyRun: AnomalyRunInfo | null) => void;
+  setRunCondition: (runCondition: AnomalyId | null) => void;
   setSelectedDynasty: (dynasty: DynastyId) => void;
   setAimSystem: (aimSystem: AimSystemId) => void;
   syncChargeFromServer: (charge: ChargeSnapshot | null) => void;
@@ -226,6 +240,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   exitTile2: null,
   exitTicksRemaining: 0,
   anomalyRun: null,
+  runCondition: null,
   extraFoods: [],
   constellationGlyph: null,
   chainLength: 0,
@@ -340,6 +355,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       exitTile2: null,
       exitTicksRemaining: 0,
       anomalyRun: null,
+      runCondition: null,
       extraFoods: [],
       constellationGlyph: null,
       chainLength: 0,
@@ -416,6 +432,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setAnomalyRun: (anomalyRun: AnomalyRunInfo | null) => {
     set({ anomalyRun });
+  },
+
+  setRunCondition: (runCondition: AnomalyId | null) => {
+    set({ runCondition });
   },
 
   setSelectedDynasty: (dynasty: DynastyId) => {
