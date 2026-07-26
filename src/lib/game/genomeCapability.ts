@@ -42,6 +42,31 @@ function sanitizePoints(raw: unknown): StrainPoints {
   return points;
 }
 
+/**
+ * The world condition's per-strain threshold shift (WP-2.10b).
+ *
+ * Bounded to +/-`MAX_STRAIN_THRESHOLD_SHIFT` on the way in. Not a trust
+ * boundary - the server recomputes the run under the condition it stamped on
+ * the session row - but a malformed or absurd block must degrade to ordinary
+ * thresholds rather than hand the engine a tier ladder the payout will never
+ * agree with.
+ */
+const MAX_STRAIN_THRESHOLD_SHIFT = 2;
+
+function sanitizeThresholdDelta(raw: unknown): Partial<Record<StrainId, number>> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  const delta: Partial<Record<StrainId, number>> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isStrainId(key) || typeof value !== 'number' || !Number.isFinite(value)) continue;
+    const normalized = Math.max(
+      -MAX_STRAIN_THRESHOLD_SHIFT,
+      Math.min(MAX_STRAIN_THRESHOLD_SHIFT, Math.trunc(value))
+    );
+    if (normalized !== 0) delta[key] = normalized;
+  }
+  return delta;
+}
+
 function sanitizeLineageBias(raw: unknown): LineageBias | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const value = raw as Record<string, unknown>;
@@ -100,6 +125,7 @@ export function sanitizeGenomeCapability(
     lineage: sanitizeLineageBias(value.lineage),
     anomalyStrain: isStrainId(value.anomalyStrain) ? value.anomalyStrain : null,
     suppressedStrains: sanitizeStrainList(value.suppressedStrains),
+    strainThresholdDelta: sanitizeThresholdDelta(value.strainThresholdDelta),
     prevRunDied: value.prevRunDied === true,
     ftue: sanitizeGenomeFtue(value.ftue),
   };

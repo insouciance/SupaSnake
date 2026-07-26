@@ -777,17 +777,50 @@ export async function POST(request: NextRequest) {
       // `signal_objective_run_id` onto the session row ONLY when this session
       // owns the day's attempt, so any looser test here would set a condition
       // at start that the end path could not find.
-      const runCondition: AnomalyId | null =
-        startAnomalyId ??
-        serpentWeekCondition(serpentWeek) ??
-        (signalClaim?.exemptRunId ? signalClaim.day?.condition.id ?? null : null);
+      // WP-2.10b: the resolved value is now a whole `WorldCondition` — the
+      // anomaly AND the ritual's clauses, composed into one interaction block.
+      // The three arms are unchanged; each just answers with more.
+      const runCondition: WorldCondition = startAnomalyId
+        ? conditionFromAnomaly(startAnomalyId)
+        : serpentWeek
+          ? serpentWeekCondition(serpentWeek)
+          : signalClaim?.exemptRunId && signalClaim.day
+            ? conditionFromAnomaly(
+                signalClaim.day.condition.id,
+                signalClaim.day.clauses
+              )
+            : NEUTRAL_CONDITION;
 
-      // Genome strain week (§9): the condition tilts gene offers by
-      // ANOMALY_STRAIN_WEIGHT. The engine draws under this weight and
-      // `verifyOfferTrace` replays the stream under the same one at
-      // settlement, so the two cannot disagree.
-      if (genomeBlock && runCondition) {
-        genomeBlock.anomalyStrain = ANOMALY_STRAINS[runCondition] ?? null;
+      // The condition's reach into the run, composed HERE and only here.
+      //
+      // Both of these travel to the engine in the genome block AND into
+      // `run_start_context`, which is what the validator recomputes from — so
+      // the engine draws and the server verifies under one derivation rather
+      // than two that agree. Nothing below re-derives either of them.
+      //
+      //   offer tilt      generalises `ANOMALY_STRAIN_WEIGHT`: the anomaly
+      //                   contributes its board's strain, an "ascendant" clause
+      //                   can out-weigh it, and `conditionOfferTilt` collapses
+      //                   the composed map to the one strain the offer stream
+      //                   carries.
+      //   suppression     the Gauntlet's strain ban UNIONED with a "dampened"
+      //                   clause. Two independent suppressions both bind.
+      if (genomeBlock) {
+        genomeBlock.anomalyStrain = conditionOfferTilt(runCondition);
+        genomeBlock.suppressedStrains = conditionSuppressedStrains(
+          runCondition,
+          genomeBlock.suppressedStrains ?? []
+        );
+        genomeBlock.strainThresholdDelta =
+          conditionStrainThresholdDelta(runCondition);
+      }
+      if (startGenomeContext) {
+        startGenomeContext.suppressedStrains = conditionSuppressedStrains(
+          runCondition,
+          startGenomeContext.suppressedStrains
+        );
+        startGenomeContext.strainThresholdDelta =
+          conditionStrainThresholdDelta(runCondition);
       }
 
       // ---------------------------------------------------------------
@@ -889,7 +922,7 @@ export async function POST(request: NextRequest) {
         // server resolved one for, whichever ritual named it, so the client
         // never has to infer a condition from three differently-shaped blocks
         // - or, worse, from its own `mode`.
-        ...(runCondition ? { condition: runCondition } : {}),
+        ...(runCondition.anomaly ? { condition: runCondition.anomaly } : {}),
         ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
         // Serpent context for the HUD (§7.3): the week's conditions and when
         // it submerges. Present only on a run the server accepted as an
@@ -1149,7 +1182,7 @@ export async function POST(request: NextRequest) {
       //
       // select('*') keeps the read deployable pre-021/046/049: rows simply
       // lack the columns => null => the condition-free recompute.
-      const sessionCondition: AnomalyId | null =
+      const sessionCondition: WorldCondition =
         await resolveSessionWorldCondition(
           supabase,
           session as Record<string, unknown>,
@@ -1273,9 +1306,12 @@ export async function POST(request: NextRequest) {
             // Mirror the engine's start-time lineage bias exactly - a
             // bias-free replay would false-flag every lineage player.
             lineage: endLineageBias,
-            anomalyStrain: sessionCondition
-              ? ANOMALY_STRAINS[sessionCondition] ?? null
-              : null,
+            // ONE derivation of the tilt, shared with run start: the engine
+            // drew under `conditionOfferTilt` of the condition the row names,
+            // and this replay resolves it from the same row through the same
+            // function. A second mapping here is exactly how an honest player
+            // gets flagged.
+            anomalyStrain: conditionOfferTilt(sessionCondition),
             tierCap: genomeCtx.tierCap,
           });
           if (!offerCheck.ok) {
@@ -1401,7 +1437,7 @@ export async function POST(request: NextRequest) {
         [],
         null,
         snakeTraits,
-        sessionCondition
+        sessionCondition.anomaly
       ).rawDna;
 
       // Sanitized mutation record for the session row (migration 014).
@@ -1739,7 +1775,7 @@ export async function POST(request: NextRequest) {
               ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
               : {}),
             ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
-            ...(sessionCondition ? { anomaly: sessionCondition } : {}),
+            ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
           },
         });
 
@@ -1978,7 +2014,7 @@ export async function POST(request: NextRequest) {
         ...(identityInfo ? { identity: identityInfo } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
-        ...(sessionCondition ? { anomaly: sessionCondition } : {}),
+        ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
         ...(signal ? { signal } : {}),
         // The Take slot (§7.2). Present only when the server has a Take to
         // offer; `parseDailyTake` refuses anything without `firstRunOfDay`.

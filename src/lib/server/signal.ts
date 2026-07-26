@@ -74,6 +74,7 @@ import {
   type SignalObjective,
   type SignalRunFacts,
 } from '@/shared/game/signal';
+import type { ConditionClauseId } from '@/shared/game/worldCondition';
 import { SIGNAL_V1_ENABLED } from '@/lib/signal/config';
 
 interface SupabaseErrorLike {
@@ -127,6 +128,8 @@ export interface SignalDayRow {
   endsAt: string;
   seed: string;
   condition: SignalCondition;
+  /** The day's clauses (WP-2.10b), derived — never read back from the row. */
+  clauses: ConditionClauseId[];
   objectives: SignalObjective[];
 }
 
@@ -152,6 +155,7 @@ function toDayRow(
     endsAt: derived.endsAt,
     seed: derived.seed,
     condition: derived.condition,
+    clauses: derived.clauses,
     objectives: derived.objectives,
   };
 }
@@ -184,6 +188,12 @@ export async function ensureCurrentSignalDay(
     p_seed: derived.seed,
     p_modifier: derived.condition.id,
     p_strain_tilt: derived.condition.strainTilt,
+    // Migration 056. Where 056 has NOT been applied the argument names a
+    // parameter the stored function does not have, PostgREST answers PGRST202,
+    // `isMissingSignalInfra` recognises it, and the day resolves to null — the
+    // Signal goes dark rather than writing a day whose stored clause set is
+    // silently empty. Null is the closed direction here as everywhere else.
+    p_clauses: derived.clauses,
     p_objectives: derived.objectives,
   });
 

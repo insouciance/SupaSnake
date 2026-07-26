@@ -31,6 +31,14 @@ import {
   anomalyFoodValueModifier,
   type AnomalyId,
 } from '@/shared/game/anomalies';
+// The clause math lives in `worldCondition.ts` and is imported here beside
+// `anomalyFoodValueModifier` - the fold composes conditions, it never defines
+// them (WP-2.10b).
+import {
+  conditionStrainThresholdDelta,
+  normalizeCondition,
+  type ConditionInput,
+} from '@/shared/game/worldCondition';
 import {
   computeLengthTrace,
   fusePicks,
@@ -445,8 +453,15 @@ export function computeGenomeRunTotals(
   foodCount: number,
   genome: GenomeRunInput,
   traits: TraitId[] = [],
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): GenomeRunTotals {
+  // The widened union, normalised once. A bare `AnomalyId` is still a whole
+  // condition, so every pre-WP-2.10b call site keeps its exact meaning - and
+  // because the parameter WIDENED rather than growing an optional sibling,
+  // there is no sixth argument a caller could forget and thereby recompute a
+  // run under different rules than the engine played it under.
+  const world = normalizeCondition(condition);
+  const anomaly = world.anomaly;
   const ruleset = RULESETS[dynasty];
   const count = Number.isFinite(foodCount) ? Math.max(0, Math.floor(foodCount)) : 0;
   const view = genome.splicesEnabled === false
@@ -457,9 +472,10 @@ export function computeGenomeRunTotals(
     genome.heirloom,
     genome.surges,
     genome.tierCap ?? 3,
-    genome.suppressedStrains ?? []
+    genome.suppressedStrains ?? [],
+    conditionStrainThresholdDelta(world)
   );
-  const lengthTrace = computeLengthTrace(view, count, activations, genome, anomaly);
+  const lengthTrace = computeLengthTrace(view, count, activations, genome, world);
   const lengthAt = (n: number) => lengthTrace.lengthAtEat[n] ?? 0;
 
   let rawDna = 0;
@@ -501,7 +517,7 @@ export function computeGenomeRunTotals(
     score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n));
   }
   const capsBasis: GenomeCapsBasis = { cumulativeDna, genelessRaw, foodCount: count };
-  const caps = genomeClaimCaps(genome, capsBasis, lengthTrace, anomaly);
+  const caps = genomeClaimCaps(genome, capsBasis, lengthTrace, world);
   return { rawDna, score, capsBasis, caps, activations, lengthTrace };
 }
 
@@ -517,10 +533,10 @@ export function applyGenomeOutcome(
   extracted: boolean,
   genome: GenomeRunInput,
   traits: TraitId[] = [],
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): number {
   const raw = Number.isFinite(rawDna) ? Math.max(0, rawDna) : 0;
-  const { bank, death } = genomeOutcomeMultipliers(genome, traits, anomaly);
+  const { bank, death } = genomeOutcomeMultipliers(genome, traits, condition);
   return Math.floor(raw * (extracted ? bank : death));
 }
 

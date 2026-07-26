@@ -62,6 +62,12 @@ import {
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
+import {
+  CONDITION_CLAUSES_PER_DAY,
+  CONDITION_CLAUSE_DOMAINS,
+  conditionClausesForKey,
+  type ConditionClauseId,
+} from '@/shared/game/worldCondition';
 import { endReasonSettles } from '@/lib/session/lifecycle';
 
 const DAY_MS = 86_400_000;
@@ -200,6 +206,27 @@ export function signalConditionForDay(at: Date | number = Date.now()): AnomalyId
   const pool = SIGNAL_CONDITION_POOL;
   const state = xorshift32(signalSeedNumber(signalDayKey(at)));
   return pool[state % pool.length];
+}
+
+/**
+ * The day's CLAUSES (WP-2.10b) — the second half of its condition.
+ *
+ * Drawn under the DAY domain, never the bare day key. `SIGNAL_SEED_DOMAIN`
+ * above records why the Signal domain-separates its own seed; the clause draw
+ * has the identical hazard and a sharper edge, because a clause changes the
+ * payout while the seed only changes the board. On a Monday this key and the
+ * Serpent's week key are the same string, so without the domain every Monday's
+ * daily clause would be that week's weekly clause.
+ */
+export function signalClausesForDay(
+  at: Date | number = Date.now(),
+  count: number = CONDITION_CLAUSES_PER_DAY
+): ConditionClauseId[] {
+  return conditionClausesForKey(
+    CONDITION_CLAUSE_DOMAINS.day,
+    signalDayKey(at),
+    count
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +375,13 @@ export interface SignalDayDefinition {
   endsAt: string;
   seed: string;
   condition: SignalCondition;
+  /**
+   * The day's clauses — the interactive half of its condition (WP-2.10b).
+   * Stored in `signal_days.clauses TEXT[]` (migration 056) so the drift
+   * tripwire has something to compare the derivation against, and re-derived
+   * here on every read so the stored row can never become the authority.
+   */
+  clauses: ConditionClauseId[];
   objectives: SignalObjective[];
 }
 
@@ -366,6 +400,7 @@ export function describeSignalDay(
     endsAt: signalDayEnd(start).toISOString(),
     seed: signalDaySeed(start.toISOString().slice(0, 10)),
     condition: describeSignalCondition(signalConditionForDay(start)),
+    clauses: signalClausesForDay(start),
     objectives: signalObjectivesForDay(start),
   };
 }
