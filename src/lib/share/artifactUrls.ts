@@ -92,6 +92,22 @@ export function profileArtifactPath(handle: string): string {
   return `/p/${encodeURIComponent(handle)}`;
 }
 
+/**
+ * An Ascension month — and deliberately NOT a seventh artifact class.
+ *
+ * Rule 14 names six things that get a short path of their own. §12.2 names
+ * Ascension as "the Signal's monthly aggregation view, not a surface", so it
+ * gets no `/a/<month>` and no district: a month is addressed as a QUERY on the
+ * Score ladder it is a reading of. `supasnake.com/leaderboard?month=2026-07`
+ * is linkable, which is all Rule 14 asks, and it says what the thing is —
+ * Score, this month — in the address bar itself (§6.1).
+ *
+ * `month` is `YYYY-MM` (see `ascensionMonthKey`).
+ */
+export function ascensionMonthPath(month: string): string {
+  return withQuery('/leaderboard', [['month', month]]);
+}
+
 export const signalArtifactUrl = (
   day: number,
   challenge?: Pick<Challenge, 'target' | 'by' | 'decisions'>
@@ -112,6 +128,9 @@ export const lineageArtifactUrl = (code: string) =>
 
 export const profileArtifactUrl = (handle: string) =>
   canonicalUrl(profileArtifactPath(handle));
+
+export const ascensionMonthUrl = (month: string) =>
+  canonicalUrl(ascensionMonthPath(month));
 
 // ---------------------------------------------------------------------------
 // The way in
