@@ -57,7 +57,6 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 interface FetchFixtures {
   player?: Record<string, unknown>;
   streaks?: Record<string, unknown>;
-  contracts?: Record<string, unknown>;
   collection?: Record<string, unknown>;
   season?: Record<string, unknown>;
 }
@@ -70,55 +69,13 @@ function jsonResponse(body: unknown): Response {
   } as unknown as Response;
 }
 
-function buildContract(overrides: Record<string, unknown> = {}) {
-  return {
-    contractId: 'banker',
-    contractType: 'extract_n',
-    name: 'Banker',
-    description: 'Bank 3 extractions',
-    params: { count: 3 },
-    rewardDna: 400,
-    rewardXp: 150,
-    offeredSlot: 1,
-    picked: false,
-    progress: { current: 0, target: 3 },
-    completed: false,
-    claimed: false,
-    ...overrides,
-  };
-}
-
-/** Fresh board: 3 unpicked offers, both picks available (auto-opens) */
-function buildOffersBoard() {
-  return {
-    contracts: [
-      buildContract(),
-      buildContract({ contractId: 'sprinter', name: 'Sprinter', offeredSlot: 2 }),
-      buildContract({ contractId: 'nerve', name: 'Nerve', offeredSlot: 3 }),
-    ],
-    picksRemaining: 2,
-    claimable: false,
-  };
-}
-
-/** Quiet board: both picks made, nothing complete yet (no auto-open) */
-function buildQuietBoard() {
-  return {
-    contracts: [
-      buildContract({ picked: true, progress: { current: 1, target: 3 } }),
-      buildContract({
-        contractId: 'sprinter',
-        name: 'Sprinter',
-        offeredSlot: 2,
-        picked: true,
-        progress: { current: 0, target: 1 },
-      }),
-      buildContract({ contractId: 'nerve', name: 'Nerve', offeredSlot: 3 }),
-    ],
-    picksRemaining: 0,
-    claimable: false,
-  };
-}
+/**
+ * Every URL the page asked for that looked like the retired contracts API.
+ * WP-1.03 cut contracts over to the World Signal (§7.2, §12.2, §13): the
+ * route is deleted and the RPCs behind it are tombstones, so a request here
+ * is a regression, not a fallback. Asserted empty by the cutover tests.
+ */
+let contractRequests: string[] = [];
 
 function buildSeason({ premiumTier = false }: { premiumTier?: boolean } = {}) {
   return {
@@ -153,6 +110,7 @@ function buildSeason({ premiumTier = false }: { premiumTier?: boolean } = {}) {
 }
 
 function setupFetch(fixtures: FetchFixtures = {}) {
+  contractRequests = [];
   const playerBody = fixtures.player ?? {
     player: {
       id: 'player-1',
@@ -176,7 +134,6 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     hasCompletedFirstRun: true,
   };
   const streaksBody = fixtures.streaks ?? { currentStreak: 5, longestStreak: 12 };
-  const contractsBody = fixtures.contracts ?? buildOffersBoard();
   const collectionBody = fixtures.collection ?? {
     snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'PRIMAL' }],
     dnaBalance: 320,
@@ -214,7 +171,13 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     }
     if (u.includes('/api/player')) return jsonResponse(playerBody);
     if (u.includes('/api/streaks')) return jsonResponse(streaksBody);
-    if (u.includes('/api/contracts')) return jsonResponse(contractsBody);
+    // The cutover deleted this route. Record any request and answer the way
+    // a deployment without the route answers, so a test can never pass by
+    // being served a board the server no longer has.
+    if (u.includes('/api/contracts')) {
+      contractRequests.push(u);
+      return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
+    }
     if (u.includes('/api/season')) return jsonResponse(fixtures.season ?? {});
     if (u.includes('/api/collection')) return jsonResponse(collectionBody);
     if (u.includes('/api/game/session')) {
@@ -338,13 +301,10 @@ describe('Home page', () => {
       await waitFor(() => {
         const calls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
         expect(calls).toEqual(
-          expect.arrayContaining([
-            '/api/player',
-            '/api/streaks',
-            '/api/contracts',
-            '/api/collection',
-          ])
+          expect.arrayContaining(['/api/player', '/api/streaks', '/api/collection'])
         );
+        // `/api/contracts` was in this list until WP-1.03 retired it (§12.2).
+        expect(calls).not.toContain('/api/contracts');
       });
     });
 
@@ -392,62 +352,8 @@ describe('Home page', () => {
   });
 
   describe('mission line', () => {
-    it('surfaces new contracts with a tappable beacon line when picks are open', async () => {
+    it('shows the next-goal progress line (no retired contract line)', async () => {
       setAuthed();
-      // Pre-dismiss so the board does not auto-open
-      const today = new Date().toISOString().split('T')[0];
-      window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
-      render(<Home />);
-
-      await waitFor(() => {
-        expect(screen.getByText('New contracts available')).toBeInTheDocument();
-      });
-      expect(screen.queryByText('Daily Contracts')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByText('New contracts available'));
-
-      expect(screen.getByText('Daily Contracts')).toBeInTheDocument();
-    });
-
-    it('shows contract completion progress once both picks are made', async () => {
-      setAuthed();
-      setupFetch({
-        contracts: {
-          contracts: [
-            buildContract({
-              picked: true,
-              completed: true,
-              progress: { current: 3, target: 3 },
-            }),
-            buildContract({
-              contractId: 'sprinter',
-              name: 'Sprinter',
-              offeredSlot: 2,
-              picked: true,
-              progress: { current: 0, target: 1 },
-            }),
-            buildContract({ contractId: 'nerve', name: 'Nerve', offeredSlot: 3 }),
-          ],
-          picksRemaining: 0,
-          claimable: true,
-        },
-      });
-      const today = new Date().toISOString().split('T')[0];
-      window.localStorage.setItem(`daily-reward-dismissed-${today}`, '1');
-      render(<Home />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Contracts: 1/2 complete')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('Contracts: 1/2 complete'));
-      expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
-    });
-
-    it('falls back to the next-goal progress line without contract activity', async () => {
-      setAuthed();
-      // No offers on the board (e.g. server has no active pool)
-      setupFetch({ contracts: { contracts: [], picksRemaining: 2, claimable: false } });
       render(<Home />);
 
       await waitForStats();
@@ -484,134 +390,99 @@ describe('Home page', () => {
     });
   });
 
-  describe('notification-first contracts', () => {
-    it('publishes a badge but never auto-opens when picks are available', async () => {
+  // WP-1.03 contracts cutover (Constitution §7.2, §12.2, §13).
+  //
+  // These replace the former 'notification-first contracts' suite, which
+  // asserted the behaviour this work package retires: a published contracts
+  // badge, a board opened by mission line / inbox hash / semantic action, and
+  // a pick-then-claim flow. That behaviour is gone, so the tests that pinned
+  // it are gone with it and these pin its ABSENCE instead. Nothing here is a
+  // weakened version of an old assertion — each is a stronger one.
+  describe('contracts cutover (§12.2: one daily surface)', () => {
+    it('never requests the retired contracts API', async () => {
       setAuthed();
       render(<Home />);
 
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
-          badgeKind: 'exclamation',
-          href: '/#contracts',
-        });
+      await waitForStats();
+      // Give any straggling effect a chance to fire before asserting silence.
+      await act(async () => {
+        await Promise.resolve();
       });
+
+      expect(contractRequests).toEqual([]);
+      const urls = (global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]));
+      expect(urls.some((u) => u.includes('/api/contracts'))).toBe(false);
+    });
+
+    it('renders no contracts board and no contract mission line', async () => {
+      setAuthed();
+      render(<Home />);
+
+      await waitForStats();
+
       expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
+      expect(screen.queryByText('Daily Contracts')).not.toBeInTheDocument();
+      expect(screen.queryByText('New contracts available')).not.toBeInTheDocument();
     });
 
-    it('publishes a numeric badge without auto-opening a claimable reward', async () => {
-      setAuthed();
-      const board = buildQuietBoard();
-      (board.contracts[0] as Record<string, unknown>).completed = true;
-      board.claimable = true;
-      setupFetch({ contracts: board });
-      render(<Home />);
-
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
-          badgeKind: 'numeric',
-          count: 1,
-        });
-      });
-      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByText('Contracts: 1/2 complete'));
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-      expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
-        badgeKind: 'numeric',
-        count: 1,
-      });
-    });
-
-    it('opens after an explicit mission action', async () => {
-      setAuthed();
-      render(<Home />);
-
-      const mission = await screen.findByText('New contracts available');
-      fireEvent.click(mission);
-      expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
-    });
-
-    it('opens when the player follows the inbox hash', async () => {
+    it('opens nothing when the player follows a stale /#contracts inbox link', async () => {
       setAuthed();
       window.history.replaceState(null, '', '/#contracts');
       render(<Home />);
 
-      expect(await screen.findByTestId('contracts-board')).toBeInTheDocument();
+      await waitForStats();
+
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
+      expect(contractRequests).toEqual([]);
     });
 
-    it('opens the existing contracts board for the semantic notification action', async () => {
+    it('ignores the retired open-contracts notification action', async () => {
       setAuthed();
       render(<Home />);
 
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.contracts).toBeDefined();
-      });
+      await waitForStats();
       act(() => dispatchNotificationAction('open-contracts'));
 
-      expect(screen.getByTestId('contracts-board')).toBeInTheDocument();
+      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
     });
 
-    it('keeps an unresolved contract-choice badge after the board is closed', async () => {
+    it('clears a contracts badge left in persisted notification state', async () => {
       setAuthed();
-      render(<Home />);
-
-      const mission = await screen.findByText('New contracts available');
-      fireEvent.click(mission);
-      fireEvent.click(screen.getByRole('button', { name: 'Maybe Later' }));
-
-      expect(useNotificationStore.getState().notifications.contracts).toMatchObject({
-        badgeKind: 'exclamation',
-        actionLabel: 'Choose Contracts',
+      // A player who was mid-loop when the cutover shipped still carries this
+      // in local storage. It points at /#contracts, which now opens nothing.
+      useNotificationStore.setState({
+        notifications: {
+          contracts: {
+            id: 'contracts',
+            title: 'Daily Contracts ready',
+            description: 'Choose 2 contracts when you\u2019re ready.',
+            destination: 'contracts',
+            href: '/#contracts',
+            action: 'open-contracts',
+            badgeKind: 'exclamation',
+            attentionReason: 'action-required',
+            actionLabel: 'Choose Contracts',
+          },
+        },
+        hasHydrated: true,
       });
-    });
-
-    it('clears the choice badge immediately after the contracts are selected', async () => {
-      setAuthed();
-      const pickedBoard = buildQuietBoard();
-      const fallbackFetch = global.fetch;
-      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-        if (String(url).includes('/api/contracts') && init?.method === 'POST') {
-          return jsonResponse(pickedBoard);
-        }
-        return fallbackFetch(url, init);
-      }) as jest.Mock;
       render(<Home />);
-
-      fireEvent.click(await screen.findByText('New contracts available'));
-      fireEvent.click(screen.getByTestId('contract-card-banker'));
-      fireEvent.click(screen.getByTestId('contract-card-sprinter'));
-      fireEvent.click(screen.getByTestId('contracts-confirm'));
 
       await waitFor(() => {
         expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
       });
     });
 
-    it('clears a numeric reward badge immediately after the final claim', async () => {
+    it('never publishes a contracts notification of its own', async () => {
       setAuthed();
-      const board = buildQuietBoard();
-      (board.contracts[0] as Record<string, unknown>).completed = true;
-      board.claimable = true;
-      setupFetch({ contracts: board });
-      const fallbackFetch = global.fetch;
-      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-        if (String(url).includes('/api/contracts') && init?.method === 'POST') {
-          return jsonResponse({
-            contractId: 'banker',
-            dnaGranted: 400,
-            xpGranted: 150,
-          });
-        }
-        return fallbackFetch(url, init);
-      }) as jest.Mock;
       render(<Home />);
 
-      fireEvent.click(await screen.findByText('Contracts: 1/2 complete'));
-      fireEvent.click(screen.getByTestId('contract-claim-banker'));
-
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
+      await waitForStats();
+      await act(async () => {
+        await Promise.resolve();
       });
+
+      expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
     });
   });
 

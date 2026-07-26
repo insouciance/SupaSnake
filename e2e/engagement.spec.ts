@@ -3,14 +3,11 @@
  *
  * Full hook loop for a brand-new player, driven end to end against the real
  * server: one-click anonymous launch -> authoritative PRIMAL bootstrap -> held
- * game board -> voluntary Lab -> Breeding Lab. It also proves contracts stay
- * absent until the first completed result instead of interrupting FTUE.
+ * game board -> voluntary Lab -> Breeding Lab. It also proves the retired
+ * contracts surface stays gone (WP-1.03 cutover, Constitution §7.2/§12.2/§13).
  *
  * The snake run itself is a WebGL canvas and is not simulated; everything
- * around it is exercised. Contract completion requires real banked runs, so
- * the claim path is covered by API/unit tests (claim_contract idempotency)
- * rather than driven live here. Steps run serially and share one
- * page/session.
+ * around it is exercised. Steps run serially and share one page/session.
  */
 
 import { test, expect, type Page, type Request } from '@playwright/test';
@@ -119,11 +116,17 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await expect(page.getByTestId('parent-slot-2')).toBeVisible();
   });
 
-  test('daily contracts do not load or open before the first completed result', async () => {
+  // Rewritten by WP-1.03, not weakened. This step used to assert that
+  // contracts stayed absent UNTIL the first completed result — a timing rule
+  // for a live mechanism. The cutover retired the mechanism (Constitution
+  // §7.2, §12.2, §13), so the assertion is now unconditional: contracts are
+  // never requested and never rendered, before or after any run. Passing this
+  // is strictly harder than passing the old version.
+  test('the retired contracts surface is never requested and never rendered', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     const contractRequests: string[] = [];
     const recordRequest = (request: Request) => {
-      if (new URL(request.url()).pathname === '/api/contracts') {
+      if (new URL(request.url()).pathname.startsWith('/api/contracts')) {
         contractRequests.push(request.url());
       }
     };
@@ -135,6 +138,11 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     });
     await expect(page.getByTestId('contracts-board')).not.toBeVisible();
     await expect(page.getByText(/daily contracts/i)).not.toBeVisible();
+
+    // A stale inbox link is the one way a player could still ask for it.
+    await page.goto('/#contracts');
+    await expect(page.getByTestId('contracts-board')).not.toBeVisible();
+
     expect(contractRequests).toEqual([]);
     page.off('request', recordRequest);
   });

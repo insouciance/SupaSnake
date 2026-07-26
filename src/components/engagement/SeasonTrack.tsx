@@ -11,7 +11,8 @@
  * season was locked in while subscribed), locked with a shop hint
  * otherwise. Entitlement is enforced server-side by claim_season_tier.
  *
- * Rendered as a modal in the ContractsBoard visual pattern; data comes
+ * Rendered as a modal in the shared overlay pattern (previously shared with
+ * the contracts board, retired by WP-1.03 §12.2); data comes
  * from GET /api/season (fetched by the host page), claims go back through
  * the onClaim callback (POST /api/season { action: 'claim', level }).
  */

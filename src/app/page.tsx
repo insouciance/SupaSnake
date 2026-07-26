@@ -30,12 +30,6 @@ import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
 import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
 import type { ChargeSnapshot } from '@/lib/store/gameStore';
 import {
-  ContractsBoard,
-  summarizeContracts,
-  type ContractView,
-  type ContractClaimOutcome,
-} from '@/components/engagement/ContractsBoard';
-import {
   SeasonTrack,
   type SeasonView,
   type SeasonTrackView,
@@ -85,24 +79,13 @@ interface HomeStats {
   hasCompletedFirstRun: boolean;
 }
 
-interface ContractsState {
-  contracts: ContractView[];
-  picksRemaining: number;
-  claimable: boolean;
-}
-
 interface MissionItem {
   id: string;
   text: string;
-  /** Glowing beacon dot (contract action ready) */
+  /** Glowing beacon dot (an action is ready) */
   beacon?: boolean;
-  /** Tapping the line performs this action (e.g. open the contracts board) */
+  /** Tapping the line performs this action (e.g. open the season track) */
   onSelect?: () => void;
-}
-
-/** Same once-per-day dismissal slot the calendar used - the board replaced it */
-function dailyDismissKey(today: string): string {
-  return `daily-reward-dismissed-${today}`;
 }
 
 export default function Home() {
@@ -110,8 +93,6 @@ export default function Home() {
   const { isAuthenticated, isLoading, signInAnonymously, session } = useAuth();
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [streak, setStreak] = useState<{ current: number } | null>(null);
-  const [contractsState, setContractsState] = useState<ContractsState | null>(null);
-  const [showContractsBoard, setShowContractsBoard] = useState(false);
   // Season track (Design v2 §7.2): the free seasonal reward track. Null
   // until fetched or while no season is live / pre-migration-021.
   const [seasonState, setSeasonState] = useState<{
@@ -140,7 +121,6 @@ export default function Home() {
   useEffect(() => {
     if (!FTUE_V2_ENABLED || !notificationsHydrated || isLoading) return;
     if (!isAuthenticated || stats?.hasCompletedFirstRun === false) {
-      clearNotification('contracts');
       clearNotification('season');
     }
   }, [
@@ -272,52 +252,19 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  // Daily contracts are generated only after the first completed run. Under
-  // FTUE v2 they publish a persistent mission/badge and never auto-open.
+  // Contracts were retired by WP-1.03 (Constitution §7.2, §12.2, §13): the
+  // World Signal is the one daily surface, `/api/contracts` is gone and the
+  // RPCs behind it are tombstones. Nothing here fetches a contract board.
+  //
+  // What remains is cleanup for players who still carry a persisted
+  // "Daily Contracts ready" entry in local notification state: it points at
+  // `/#contracts`, which no longer opens anything. Clear it once, on mount,
+  // so nobody is left tapping a dead link. Claimed contract HISTORY is
+  // untouched — it lives server-side in `player_contracts` (Rule 6).
   useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !token ||
-      !notificationsHydrated ||
-      (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
-    ) return;
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const res = await fetch('/api/contracts', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-
-        const data: ContractsState = await res.json();
-        if (cancelled) return;
-        setContractsState(data);
-
-        const canPick =
-          data.picksRemaining > 0 && data.contracts.some((c) => !c.picked);
-        if (!FTUE_V2_ENABLED) {
-          const today = new Date().toISOString().split('T')[0];
-          let dismissedToday = false;
-          try {
-            dismissedToday = window.localStorage.getItem(dailyDismissKey(today)) === '1';
-          } catch {
-            // localStorage unavailable - treat as not dismissed
-          }
-          if ((canPick || data.claimable) && !dismissedToday) {
-            setShowContractsBoard(true);
-          }
-        }
-      } catch {
-        // Contracts UI simply stays closed on failure
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, notificationsHydrated, token, stats?.hasCompletedFirstRun]);
+    if (!notificationsHydrated) return;
+    clearNotification('contracts');
+  }, [clearNotification, notificationsHydrated]);
 
   // Season track (§7.2): fetch the live season + the player's free track.
   // { live: false } (pre-migration-021) or no live season simply keeps the
@@ -362,51 +309,6 @@ export default function Home() {
     stats?.hasCompletedFirstRun,
   ]);
 
-  // One notification source drives the contracts badge, mission indicator,
-  // and inbox. No parallel automatic modal exists.
-  useEffect(() => {
-    if (
-      !FTUE_V2_ENABLED ||
-      !notificationsHydrated ||
-      !contractsState ||
-      !stats?.hasCompletedFirstRun
-    ) return;
-    const summary = summarizeContracts(contractsState.contracts);
-    const claimableCount = contractsState.contracts.filter(
-      (contract) => contract.completed && !contract.claimed
-    ).length;
-    const canPick =
-      contractsState.picksRemaining > 0 &&
-      contractsState.contracts.some((contract) => !contract.picked);
-
-    if (!canPick && claimableCount === 0) {
-      clearNotification('contracts');
-      return;
-    }
-
-    publishNotification({
-      id: 'contracts',
-      title: claimableCount > 0 ? 'Contract reward ready' : 'Daily Contracts ready',
-      description:
-        claimableCount > 0
-          ? `${summary.completedCount}/${summary.pickedCount} selected contracts complete.`
-          : `Choose ${contractsState.picksRemaining} contract${contractsState.picksRemaining === 1 ? '' : 's'} when you’re ready.`,
-      ...NOTIFICATION_TARGETS.contracts,
-      badgeKind: claimableCount > 0 ? 'numeric' : 'exclamation',
-      attentionReason: claimableCount > 0 ? 'reward-available' : 'action-required',
-      count: claimableCount || undefined,
-      actionLabel:
-        claimableCount > 0
-          ? `Claim ${claimableCount === 1 ? 'reward' : 'rewards'}`
-          : 'Choose Contracts',
-    });
-  }, [
-    clearNotification,
-    contractsState,
-    notificationsHydrated,
-    stats?.hasCompletedFirstRun,
-    publishNotification,
-  ]);
 
   useEffect(() => {
     if (
@@ -449,13 +351,8 @@ export default function Home() {
   // loading Home never opens these overlays.
   useEffect(() => {
     const syncExplicitDestination = () => {
-      if (window.location.hash === '#contracts') setShowContractsBoard(true);
       if (window.location.hash === '#season') setShowSeasonTrack(true);
     };
-    const unsubscribeContracts = subscribeNotificationAction(
-      'open-contracts',
-      () => setShowContractsBoard(true)
-    );
     const unsubscribeSeason = subscribeNotificationAction(
       'open-season',
       () => setShowSeasonTrack(true)
@@ -463,7 +360,6 @@ export default function Home() {
     syncExplicitDestination();
     window.addEventListener('hashchange', syncExplicitDestination);
     return () => {
-      unsubscribeContracts();
       unsubscribeSeason();
       window.removeEventListener('hashchange', syncExplicitDestination);
     };
@@ -503,108 +399,6 @@ export default function Home() {
     },
     [token]
   );
-
-  const handleContractsPick = useCallback(
-    async (contractIds: string[]): Promise<boolean> => {
-      if (!token) return false;
-      try {
-        const res = await fetch('/api/contracts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ action: 'pick', contractIds }),
-        });
-
-        if (!res.ok) return false;
-
-        const data: ContractsState = await res.json();
-        setContractsState(data);
-
-        trackEvent(AnalyticsEvents.CHALLENGE_STARTED, {
-          contracts: contractIds,
-          category: 'engagement',
-        });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [token]
-  );
-
-  const handleContractClaim = useCallback(
-    async (contractId: string): Promise<ContractClaimOutcome | null> => {
-      if (!token) return null;
-      try {
-        const res = await fetch('/api/contracts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ action: 'claim', contractId }),
-        });
-
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        const outcome: ContractClaimOutcome = {
-          contractId: data.contractId,
-          dnaGranted: data.dnaGranted,
-          xpGranted: data.xpGranted,
-        };
-
-        trackEvent(AnalyticsEvents.CHALLENGE_COMPLETED, {
-          contract: outcome.contractId,
-          dna_granted: outcome.dnaGranted,
-          xp_granted: outcome.xpGranted,
-          category: 'engagement',
-        });
-
-        setContractsState((prev) => {
-          if (!prev) return prev;
-          const contracts = prev.contracts.map((c) =>
-            c.contractId === contractId ? { ...c, claimed: true } : c
-          );
-          return {
-            ...prev,
-            contracts,
-            claimable: summarizeContracts(contracts).claimable,
-          };
-        });
-        setStats((prev) =>
-          prev
-            ? {
-                ...prev,
-                dna: prev.dna + outcome.dnaGranted,
-              }
-            : prev
-        );
-
-        return outcome;
-      } catch {
-        return null;
-      }
-    },
-    [token]
-  );
-
-  const handleContractsDismiss = useCallback(() => {
-    if (!FTUE_V2_ENABLED) {
-      const today = new Date().toISOString().split('T')[0];
-      try {
-        window.localStorage.setItem(dailyDismissKey(today), '1');
-      } catch {
-        // Ignore storage failures
-      }
-    }
-    if (window.location.hash === '#contracts') {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-    }
-    setShowContractsBoard(false);
-  }, []);
 
   const runLaunch = useCallback(async (skipIdentityGate = false) => {
     if (launchInFlightRef.current) return;
@@ -760,27 +554,6 @@ export default function Home() {
       return [{ id: 'first-run', text: 'Your first run is ready' }];
     }
     const items: MissionItem[] = [];
-    if (contractsState) {
-      const summary = summarizeContracts(contractsState.contracts);
-      const canPick =
-        contractsState.picksRemaining > 0 &&
-        contractsState.contracts.some((c) => !c.picked);
-      if (canPick) {
-        items.push({
-          id: 'contracts',
-          text: 'New contracts available',
-          beacon: true,
-          onSelect: () => setShowContractsBoard(true),
-        });
-      } else if (summary.pickedCount > 0) {
-        items.push({
-          id: 'contracts',
-          text: `Contracts: ${summary.completedCount}/${summary.pickedCount} complete`,
-          beacon: summary.claimable,
-          onSelect: () => setShowContractsBoard(true),
-        });
-      }
-    }
     if (seasonState) {
       const claimable = seasonState.track.tiers.some(
         (t) => !t.claimed && seasonState.track.level >= t.level
@@ -810,7 +583,7 @@ export default function Home() {
       items.push({ id: 'tagline', text: 'Where Skill Creates Legacy' });
     }
     return items;
-  }, [isAuthenticated, contractsState, seasonState, stats, streak]);
+  }, [isAuthenticated, seasonState, stats, streak]);
 
   useEffect(() => {
     setMissionIndex(0);
@@ -936,23 +709,10 @@ export default function Home() {
       {/* Rollback-only legacy path. FTUE v2 never exposes starter selection. */}
       {needsStarter && <StarterSelection />}
 
-      {/* Daily contracts board opens only after a mission/inbox action. */}
-      {contractsState && !needsStarter && (
-        <ContractsBoard
-          isVisible={showContractsBoard}
-          contracts={contractsState.contracts}
-          picksRemaining={contractsState.picksRemaining}
-          streak={streak}
-          onPick={handleContractsPick}
-          onClaim={handleContractClaim}
-          onDismiss={handleContractsDismiss}
-        />
-      )}
-
       {/* Season track (§7.2): free milestones - cosmetics and titles.
-          Opened from the mission line; single-overlay policy respected
-          (never rendered while the contracts board is up). */}
-      {seasonState && !needsStarter && !showContractsBoard && (
+          Opened from the mission line. The contracts board that used to
+          contend for this slot was retired with the mechanism (§12.2). */}
+      {seasonState && !needsStarter && (
         <SeasonTrack
           isVisible={showSeasonTrack}
           season={seasonState.season}

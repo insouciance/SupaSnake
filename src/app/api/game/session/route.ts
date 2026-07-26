@@ -92,6 +92,10 @@ import {
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import { ensureCurrentSerpentWeek } from '@/lib/server/serpent';
+import {
+  claimSignalObjectiveRun,
+  settleSignalAttemptForSession,
+} from '@/lib/server/signal';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -117,6 +121,10 @@ export async function POST(request: NextRequest) {
       action,
       mode,
       sessionId,
+      // Constitution §7.2: the objective the player took, as a LOOKUP KEY
+      // among the day's server-derived three. Never a definition — there is
+      // deliberately no day, target, seed or condition field beside it.
+      signalObjectiveId,
       snake_id,
       score,
       dna_earned,
@@ -195,6 +203,15 @@ export async function POST(request: NextRequest) {
     // becomes a fact only if the server can resolve the week from its own
     // calendar (below); if it cannot, the run is an ordinary charged run.
     const isSerpentRun = mode === 'serpent';
+
+    // Constitution §7.2 The World Signal: the day names a condition and three
+    // objectives, and the player takes one. `mode: 'signal'` is a REQUEST, in
+    // exactly the sense `mode: 'serpent'` is. It becomes a fact only if the
+    // server derives the day from its own calendar, resolves the named
+    // objective among that day's three, and the database confirms this run
+    // owns the day's one attempt; miss any of those and it is an ordinary
+    // charged run.
+    const isSignalRun = mode === 'signal';
 
     if (action === 'start') {
       const rateCheck = await checkRateLimit(supabase, player.id, 'game_start');
@@ -477,6 +494,31 @@ export async function POST(request: NextRequest) {
           : null;
 
       // ---------------------------------------------------------------
+      // The World Signal (Constitution §7.2, §8.6)
+      // ---------------------------------------------------------------
+      // Resolved AFTER the session row exists, because the claim attaches the
+      // day's attempt to THIS open run — `begin_signal_objective_run` refuses
+      // any session that is not this player's open run, so a failed insert can
+      // never claim a player's Signal for a run that did not happen.
+      //
+      // The day, the objective and its target are all server-derived inside
+      // `claimSignalObjectiveRun`; the request contributes `signalObjectiveId`
+      // as a lookup key and nothing else (Rule 11). No new column goes into
+      // the session insert above — the RPC mirrors the id onto the session row
+      // in the same transaction that claims the attempt — so the pre-migration
+      // -049 window needs no special case here: with no RPC there is no day,
+      // no attempt and no exemption, and the run is an ordinary charged run.
+      const signalClaim = isSignalRun
+        ? await claimSignalObjectiveRun(
+            supabase,
+            player.id,
+            session.id,
+            signalObjectiveId,
+            startedAtDate
+          )
+        : null;
+
+      // ---------------------------------------------------------------
       // The daily harvest envelope (Constitution §8.6)
       // ---------------------------------------------------------------
       // Resolved AFTER the session row exists, so a failed insert can never
@@ -493,10 +535,20 @@ export async function POST(request: NextRequest) {
       // below is a fact the server can point at - never a claim the client
       // made. A client sending `mode: 'serpent'` with the flag off, or before
       // migration 046, resolves no week and gets an ordinary charged run.
-      // The Signal half stays null until WP-1.03 builds it.
+      //
+      // WP-1.03 fills in the Signal half the same way. `exemptRunId` is
+      // non-null on exactly one condition: the SERVER derived today, resolved
+      // the objective among that day's three, and the database answered that
+      // this session owns the day's attempt. A client that sends
+      // `mode: 'signal'` with the flag off, before migration 049, with an
+      // objective the day did not derive, or on its second run of the day gets
+      // null here — an ordinary CHARGED run. There is no field on this request
+      // through which a run id could be supplied, so the exemption cannot be
+      // claimed, only granted.
       const exemptionFacts: ChargeExemptionFacts = {
         ...NO_EXEMPTION,
         rewardless: isFreePlay,
+        signalObjectiveRunId: signalClaim?.exemptRunId ?? null,
         serpentWeekId: serpentWeek?.id ?? null,
       };
       const charge = await consumeRunCharge(
@@ -565,6 +617,22 @@ export async function POST(request: NextRequest) {
         // it submerges. Present only on a run the server accepted as an
         // attempt - its presence IS the confirmation that the exemption was
         // granted, so the client never has to infer it.
+        // Signal context for the HUD (§7.2): the day's condition and the
+        // objective this run is playing for. Present only on a run the server
+        // accepted as the day's attempt - its presence IS the confirmation
+        // that the exemption was granted, so the client never has to infer it.
+        ...(signalClaim?.exemptRunId && signalClaim.day && signalClaim.objective
+          ? {
+              signal: {
+                runId: signalClaim.exemptRunId,
+                dayId: signalClaim.day.id,
+                day: signalClaim.day.day,
+                endsAt: signalClaim.day.endsAt,
+                condition: signalClaim.day.condition,
+                objective: signalClaim.objective,
+              },
+            }
+          : {}),
         ...(serpentWeek
           ? {
               serpent: {
@@ -1269,6 +1337,37 @@ export async function POST(request: NextRequest) {
       // helper never throws).
       await refreshPlayerRecords(supabase, player.id);
 
+      // The World Signal settles itself (§7.2: "rewards settle automatically -
+      // no claim cascades, ever"). Called after the run's own rewards land, so
+      // the session row it recomputes from is complete. Null on every run that
+      // is not the day's Signal attempt, which is nearly all of them, and a
+      // no-op before migration 049.
+      //
+      // Safe to reach twice: settlement is a RECOMPUTE clamped with GREATEST
+      // and a compare-and-set, so an outbox replay of this same session
+      // converges instead of paying the flat bonus again. A failure is
+      // reported by the helper and picked up by the next sweep - it can never
+      // strand a Signal the player completed (Rule 6).
+      const signalSettlement = await settleSignalAttemptForSession(
+        supabase,
+        sessionId,
+        player.id
+      );
+      const signal =
+        signalSettlement && !signalSettlement.skipped
+          ? {
+              runId: signalSettlement.runId,
+              completed: signalSettlement.completed,
+              progress: signalSettlement.progress,
+              target: signalSettlement.target,
+              // What THIS settlement paid: the flat first-completion bonus on
+              // the first pass, and 0 on every pass after it.
+              bonusDna: signalSettlement.bonusDna,
+              signalsCompleted: signalSettlement.signalsCompleted,
+              newMilestones: signalSettlement.newMilestones,
+            }
+          : null;
+
       // Discord feed + Linked Roles (Identity v1 section 8.4) - both
       // strictly non-fatal, both no-ops pre-024 / without a link:
       // - mastery_levelup enqueue at M5+ (M1-4 are too chatty), linked
@@ -1306,6 +1405,7 @@ export async function POST(request: NextRequest) {
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
+        ...(signal ? { signal } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
       });
