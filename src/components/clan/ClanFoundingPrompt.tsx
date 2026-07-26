@@ -1,0 +1,186 @@
+'use client';
+
+/**
+ * The founding prompt (Constitution §9.2, §7.3).
+ *
+ * "at Serpent unlock (8 banks), one skippable prompt: found your clan (name it,
+ * pick preset heraldry) or join by invite code/link."
+ *
+ * ONE PROMPT. SKIPPABLE. AND SILENT BEFORE IT.
+ *
+ *   The eight banked runs are a ramp beat, not a gate, and this component is
+ *   written so that nothing can read them as one. Below the beat it renders
+ *   `null` — no counter, no progress bar, no "N more runs to go", no locked
+ *   card with a padlock. A player at three banked runs has never been told
+ *   there is something they have not reached, because being told is exactly
+ *   what would turn a ramp into a cut line (Rule 8).
+ *
+ *   Above it, the prompt appears once. "Not now" dismisses it permanently and
+ *   the clan page is still reachable from navigation forever after, with the
+ *   same founding form on it. Dismissal is a UI preference and lives in
+ *   `localStorage`; it is not progress, nothing depends on it, and losing it
+ *   costs the player one prompt they can dismiss again.
+ *
+ * WHY IT IS NOT ON RESULTS
+ *
+ *   §12.2 caps Results at three layers with exactly one recommended action, and
+ *   WP-1.06 spends all three. A prompt for a different system landing there
+ *   would be a fourth thing competing with that one action. It lives on the two
+ *   surfaces it is about — the clan page and the Serpent week — where a player
+ *   arrives by navigation and Rule 7's "never by interruption" is satisfied by
+ *   construction.
+ */
+
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { SERPENT_UNLOCK_BANKED_RUNS } from '@/lib/serpent/config';
+import { IconShield } from '@/components/ui/icons';
+
+export const FOUNDING_PROMPT_DISMISSED_KEY = 'supasnake.clanFoundingPrompt.dismissed';
+
+export interface ClanFoundingPromptProps {
+  accessToken?: string | null;
+  /** The player already belongs to a clan; there is nothing to prompt. */
+  inClan: boolean;
+  /** Injected by tests and by callers holding the value; else read from the API. */
+  bankedRuns?: number | null;
+  /** Opens the founding form in place. Falls back to a link to /clan. */
+  onFound?: () => void;
+  /** Opens the invite-code form in place. Falls back to a link to /clan. */
+  onJoin?: () => void;
+}
+
+function readDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(FOUNDING_PROMPT_DISMISSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function ClanFoundingPrompt({
+  accessToken,
+  inClan,
+  bankedRuns,
+  onFound,
+  onJoin,
+}: ClanFoundingPromptProps) {
+  const [fetchedBankedRuns, setFetchedBankedRuns] = useState<number | null>(null);
+  const [dismissed, setDismissed] = useState(true);
+
+  useEffect(() => {
+    setDismissed(readDismissed());
+  }, []);
+
+  const load = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const response = await fetch('/api/player', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) return;
+      const json = (await response.json()) as {
+        genomeFtue?: { bankedRuns?: number } | null;
+      };
+      const banked = json.genomeFtue?.bankedRuns;
+      if (typeof banked === 'number') setFetchedBankedRuns(banked);
+    } catch {
+      // A prompt that cannot confirm the ramp beat simply does not appear.
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (typeof bankedRuns === 'number') return;
+    void load();
+  }, [bankedRuns, load]);
+
+  const banked = typeof bankedRuns === 'number' ? bankedRuns : fetchedBankedRuns;
+
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      window.localStorage.setItem(FOUNDING_PROMPT_DISMISSED_KEY, 'true');
+    } catch {
+      // A browser refusing storage costs the player one repeat of one prompt.
+    }
+  };
+
+  if (inClan || dismissed) return null;
+  if (banked === null || banked < SERPENT_UNLOCK_BANKED_RUNS) return null;
+
+  return (
+    <section
+      className="panel-glow [--glow:#a855f7] p-6 mb-8 animate-pop-in"
+      data-testid="clan-founding-prompt"
+    >
+      <h2 className="heading-display text-2xl text-bone-white flex items-center gap-2 mb-1">
+        <IconShield size={22} className="text-cosmic" />
+        The World Serpent is hunting
+      </h2>
+      <p className="text-beige/80 font-body text-sm">
+        Every week a Serpent surfaces and clans hunt it — your best three runs of the week
+        feed it, and the week is read against your own deepest one. You can hunt it with a
+        clan of your own from today.
+      </p>
+      <p className="text-beige/70 font-body text-sm mt-2">
+        A clan of one is a clan. It hunts every week, it holds its own records, and it is
+        paired with a rival on the weeks a matching clan is hunting too.
+      </p>
+
+      <div className="flex flex-wrap gap-3 mt-4">
+        {onFound ? (
+          <button
+            type="button"
+            onClick={onFound}
+            data-testid="founding-prompt-found"
+            className="btn-go px-6 py-2 min-h-[44px]"
+          >
+            Found your clan
+          </button>
+        ) : (
+          <Link
+            href="/clan"
+            data-testid="founding-prompt-found"
+            className="btn-go px-6 py-2 min-h-[44px] inline-flex items-center"
+          >
+            Found your clan
+          </Link>
+        )}
+
+        {onJoin ? (
+          <button
+            type="button"
+            onClick={onJoin}
+            data-testid="founding-prompt-join"
+            className="btn-neutral px-6 py-2 min-h-[44px]"
+          >
+            I have an invite
+          </button>
+        ) : (
+          <Link
+            href="/clan"
+            data-testid="founding-prompt-join"
+            className="btn-neutral px-6 py-2 min-h-[44px] inline-flex items-center"
+          >
+            I have an invite
+          </Link>
+        )}
+
+        <button
+          type="button"
+          onClick={dismiss}
+          data-testid="founding-prompt-dismiss"
+          className="text-beige/70 hover:text-bone-white font-body text-sm min-h-[44px] px-2 transition-colors"
+        >
+          Not now
+        </button>
+      </div>
+      <p className="text-beige/50 font-body text-xs mt-3">
+        Skipping costs nothing. The clan page stays in your navigation and this is the same
+        form you will find there.
+      </p>
+    </section>
+  );
+}
+
+export default ClanFoundingPrompt;

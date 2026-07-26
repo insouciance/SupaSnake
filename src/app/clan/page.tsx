@@ -41,6 +41,8 @@ import { PlayoffBracket } from '@/components/clan/PlayoffBracket';
 import { ClanIdentityEditor } from '@/components/clan/ClanIdentityEditor';
 import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
 import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
+import { ClanHuntPanel } from '@/components/clan/ClanHuntPanel';
+import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
 import { useClanFull, clanAction } from '@/components/clan/useClanFull';
 import Link from 'next/link';
 import { IconShield, IconUser } from '@/components/ui/icons';
@@ -294,8 +296,8 @@ export default function ClanPage() {
                   no onClick and never had one. WP-0.03 removed the whole
                   panel with the faucet behind it. A clan pays nobody
                   (Rule 8), and there is no energy balance to pay into
-                  (§8.6). What a clan gives is the Serpent hunt, which
-                  WP-1.07 renders in this space off GET /api/clan/hunt. */}
+                  (§8.6). What a clan gives is the Serpent hunt, and
+                  WP-1.07 renders it here off GET /api/clan/hunt. */}
 
               <button
                 onClick={handleLeave}
@@ -306,6 +308,13 @@ export default function ClanPage() {
               </button>
             </div>
           </section>
+
+          {/* The hunt (§7.3, §9.2–9.4): the clan against its own best week
+              first, the additive contribution list second, and the rival only
+              on the weeks a symmetric one exists. Complete at a clan of one. */}
+          <div className="animate-fade-up">
+            <ClanHuntPanel accessToken={session?.access_token} />
+          </div>
 
           {fullView?.clan && (
             <>
