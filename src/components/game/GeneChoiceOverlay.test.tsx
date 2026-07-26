@@ -66,4 +66,51 @@ describe('GeneChoiceOverlay', () => {
     expect(screen.queryByTestId('strain-chip-AURUM')).toBeNull();
     expect(screen.queryByText(/Fuses:/)).toBeNull();
   });
+
+  describe('PASS', () => {
+    const base = {
+      options: ['compound_interest', 'tithe'] as ['compound_interest', 'tithe'],
+      held: [{ id: 'gold_trail' as const, atFood: 20 }],
+      strainCounts: { AURUM: 2 },
+      showStrains: true,
+      splicesUnlocked: true,
+    };
+
+    it('is a third card carrying the Escape shortcut and the shipped testid', () => {
+      const onDecline = jest.fn();
+      render(<GeneChoiceOverlay {...base} onChoose={jest.fn()} onDecline={onDecline} />);
+      const pass = screen.getByTestId('gene-decline');
+      // e2e depends on both of these; the promotion to a card must not move
+      // either one.
+      expect(pass).toHaveAttribute('aria-keyshortcuts', 'Escape');
+      expect(pass).toBeDisabled();
+
+      act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(onDecline).toHaveBeenCalledTimes(1);
+      fireEvent.click(pass);
+      expect(onDecline).toHaveBeenCalledTimes(2);
+    });
+
+    it('names the strain when passing will force the next slot 1', () => {
+      render(
+        <GeneChoiceOverlay
+          {...base}
+          pityStrain="FERAL"
+          onChoose={jest.fn()}
+          onDecline={jest.fn()}
+        />
+      );
+      expect(screen.getByTestId('gene-decline-consequence')).toHaveTextContent(
+        "Pass. Your next offer's first slot is forced to FERAL."
+      );
+    });
+
+    it('falls back to the generic line when the pity rule will not fire', () => {
+      render(<GeneChoiceOverlay {...base} onChoose={jest.fn()} onDecline={jest.fn()} />);
+      expect(screen.getByTestId('gene-decline-consequence')).toHaveTextContent(
+        'Pass. Keeps your six slots for the combo you want.'
+      );
+    });
+  });
 });

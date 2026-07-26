@@ -316,6 +316,9 @@ export default function GamePage() {
   const [holdsTotal, setHoldsTotal] = useState<number>(
     GAME_CONFIG.session.holds.base
   );
+  // What passing the live gene offer buys, derived by the engine from the
+  // offer stream. Null means the generic consequence line applies.
+  const [choicePityStrain, setChoicePityStrain] = useState<StrainId | null>(null);
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile control scheme: flick-anywhere is the default, D-pad the
@@ -1057,6 +1060,9 @@ export default function GamePage() {
     gameRef.current.on('mutationChoice', (data: any) => {
       setAwaitingResumeInput(false);
       setChoiceOptions(data.options, data.source ?? 'gene_food');
+      // Alongside the options, not on the next tick: the overlay must never
+      // render its consequence line from a stale forecast.
+      setChoicePityStrain(gameRef.current?.getState().pendingChoicePity ?? null);
       audioManager.play('pause');
       haptics.medium();
     });
@@ -1466,6 +1472,7 @@ export default function GamePage() {
       setFoodEaten(state.foodEaten);
       setHoldsUsed(state.holdsUsed);
       setHoldsTotal(state.holdBudget);
+      setChoicePityStrain(state.pendingChoicePity);
       setExitTile(state.exitTile, state.exitTicksRemaining);
       // Twin Exits (anomaly): the second portal of the pair
       setExitTile2(state.exitTile2);
@@ -2151,6 +2158,7 @@ export default function GamePage() {
               showStrains={genomeFtue?.strainTagsUnlocked === true}
               splicesUnlocked={genomeFtue?.splicesUnlocked === true}
               discoveredSplices={discoveredSplices}
+              pityStrain={choicePityStrain}
               onChoose={handleChooseMutation}
               onDecline={handleDeclineMutation}
             />
@@ -2669,6 +2677,7 @@ export default function GamePage() {
           showStrains={genomeFtue?.strainTagsUnlocked === true}
           splicesUnlocked={genomeFtue?.splicesUnlocked === true}
           discoveredSplices={discoveredSplices}
+          pityStrain={choicePityStrain}
           onChoose={handleChooseMutation}
           onDecline={handleDeclineMutation}
         />

@@ -113,6 +113,7 @@ import {
   type StrainSurge,
 } from '@/shared/game/genome';
 import {
+  pityForecast,
   rollGeneOffer,
   type LineageBias,
   type OfferTraceEntry,
@@ -221,6 +222,13 @@ export interface GameState {
   surges: StrainSurge[];
   /** Where the live choice offer came from. */
   choiceSource: 'gene_food' | 'infuse' | null;
+  /**
+   * The strain the pity rule would force into slot 1 of the next offer if
+   * the live offer is PASSED, or null. Presentation only - it lets the PASS
+   * affordance state what passing actually buys instead of promising
+   * something generic. Recomputed on every roll; null outside a hold.
+   */
+  pendingChoicePity: StrainId | null;
   /**
    * Portal-choice hold (genome runs): stepping onto the exit portal
    * freezes the engine (like the gene choice hold) until the player
@@ -531,8 +539,21 @@ export class SnakeGameLogic {
   private drivenRun = false;
   /** Offer stream counter (cadence + infuse offers share it). */
   private offerIndex = 0;
-  /** Offer trace shipped in the genome payload (advisory verification). */
-  private offerTrace: OfferTraceEntry[] = [];
+  /**
+   * Offer trace shipped in the genome payload (advisory verification).
+   *
+   * `resolved` is engine-internal and never leaves this class. The wire
+   * shape is exactly `OfferTraceEntry`, where `picked: null` means "the
+   * player took neither" - the shipped contract `sanitizeOfferTrace`, the
+   * server's `verifyOfferTrace` replay and the e2e all depend on.
+   *
+   * The flag exists because an OPEN offer also has `picked: null`, so dying
+   * mid-decision is indistinguishable from a pass on the wire. Both sides
+   * agree either way, so pity replay is unaffected and the wire needs no
+   * change - but the engine should not have to guess, and any future
+   * counter that tries to count passes would otherwise be quietly wrong.
+   */
+  private offerTrace: (OfferTraceEntry & { resolved: boolean })[] = [];
   /** The last two offers (pity window input). */
   private recentOffers: GeneId[][] = [];
   /** Ticks since ANY eat (Midas window / Static Charge fasting). */
@@ -764,6 +785,7 @@ export class SnakeGameLogic {
       infuses: [],
       surges: [],
       choiceSource: null,
+      pendingChoicePity: null,
       pendingPortalChoice: null,
       pendingSurgeChoice: false,
       revive: null,
@@ -1677,6 +1699,7 @@ export class SnakeGameLogic {
     const pick: GenePick = { id, atFood: this.state.foodEaten };
     this.state.pendingChoice = null;
     this.state.choiceSource = null;
+    this.state.pendingChoicePity = null;
     if (this.genomeActive()) {
       this.resolveOfferTrace(id);
     }
@@ -1741,6 +1764,7 @@ export class SnakeGameLogic {
     if (!this.state.pendingChoice) return;
     this.state.pendingChoice = null;
     this.state.choiceSource = null;
+    this.state.pendingChoicePity = null;
     if (this.genomeActive()) {
       this.resolveOfferTrace(null);
     }
@@ -1754,8 +1778,9 @@ export class SnakeGameLogic {
   /** Record the resolution of the pending offer into the trace. */
   private resolveOfferTrace(picked: GeneId | null): void {
     const entry = this.offerTrace[this.offerTrace.length - 1];
-    if (entry && entry.picked === undefined) {
+    if (entry && !entry.resolved) {
       entry.picked = picked;
+      entry.resolved = true;
     }
   }
 
@@ -1778,11 +1803,21 @@ export class SnakeGameLogic {
     this.offerTrace.push({
       k: this.offerIndex,
       atFood: this.state.foodEaten,
-      picked: undefined as unknown as GeneId | null,
+      picked: null,
+      resolved: false,
     });
     this.offerIndex += 1;
     this.recentOffers.push([...offer]);
     if (this.recentOffers.length > 4) this.recentOffers.shift();
+    // The pity window counts OFFERS, not picks, so the offer just pushed is
+    // already inside the window the next roll will measure. Passing changes
+    // neither points nor picks, which is what makes this forecast exact.
+    this.state.pendingChoicePity = pityForecast({
+      picks: this.state.heldMutations,
+      pool: this.effectiveGenePool(),
+      points,
+      recentOffers: this.recentOffers.slice(-2),
+    });
     this.state.pendingChoice = offer;
     this.state.choiceSource = source;
     this.emit('mutationChoice', { options: [...offer], source });
@@ -3149,7 +3184,14 @@ export class SnakeGameLogic {
             revive: this.state.revive ? { ...this.state.revive } : null,
             claims: { ...this.state.genomeClaims },
             lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
-            offerTrace: this.offerTrace.map((o) => ({ ...o })),
+            // `resolved` is engine-internal - the wire shape stays exactly
+            // OfferTraceEntry, so an unresolved offer still ships as
+            // `picked: null` and replays identically on the server.
+            offerTrace: this.offerTrace.map(({ k, atFood, picked }) => ({
+              k,
+              atFood,
+              picked,
+            })),
             fusedSplices: this.state.fusedSplices.map((s) => ({ ...s })),
             strainCounts: { ...this.state.strainCounts },
             strainTiers: { ...this.state.strainTiers },
