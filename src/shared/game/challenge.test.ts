@@ -34,8 +34,11 @@ describe('the Signal calendar', () => {
     expect(SIGNAL_EPOCH_UTC).toBe(SERPENT_EPOCH_UTC);
   });
 
-  it('numbers the epoch day 1, not 0', () => {
-    expect(signalDayIndex(SIGNAL_EPOCH_UTC)).toBe(1);
+  // WAS: "numbers the epoch day 1, not 0" — WP-1.08 shifted the public number
+  // by one against `signal.ts`, which the server and 049_world_signal.sql
+  // both mirror. The pin was a value nobody chose; it recorded the off-by-one.
+  it('numbers the epoch day 0, exactly as `signal.ts` numbers it', () => {
+    expect(signalDayIndex(SIGNAL_EPOCH_UTC)).toBe(0);
     expect(signalDayKey(SIGNAL_EPOCH_UTC)).toBe('2024-01-01');
   });
 
@@ -46,15 +49,17 @@ describe('the Signal calendar', () => {
   });
 
   it('round-trips index -> day key -> index across two years', () => {
-    for (let index = 1; index <= 730; index += 1) {
+    for (let index = 0; index <= 730; index += 1) {
       const key = signalIndexToDayKey(index);
       expect(signalDayIndex(new Date(`${key}T12:00:00.000Z`))).toBe(index);
     }
   });
 
-  it('puts Signal day 7n+1 on the Monday that opens a Serpent week', () => {
+  // WAS "7n+1": the same assertion under the old 1-based numbering. The epoch
+  // is a Monday, so with `signal.ts`'s 0-based index it is day 7n.
+  it('puts Signal day 7n on the Monday that opens a Serpent week', () => {
     for (let week = 0; week < 60; week += 1) {
-      const key = signalIndexToDayKey(week * 7 + 1);
+      const key = signalIndexToDayKey(week * 7);
       expect(serpentWeekKey(new Date(`${key}T00:00:00.000Z`))).toBe(key);
     }
   });
@@ -160,7 +165,9 @@ describe('parsing an untrusted challenge query', () => {
 
   it('accepts only a plausible Signal day number', () => {
     expect(parseSignalDay('214')).toBe(214);
-    expect(parseSignalDay('0')).toBeNull();
+    // WAS: `toBeNull()`. Under the authoritative 0-based numbering day 0 is
+    // the epoch, 2024-01-01 — a real archive day, so `/s/0` is a real URL.
+    expect(parseSignalDay('0')).toBe(0);
     expect(parseSignalDay('-3')).toBeNull();
     expect(parseSignalDay('12345678')).toBeNull();
     expect(parseSignalDay('1e3')).toBeNull();
