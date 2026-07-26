@@ -120,6 +120,34 @@
 --
 --   After a Signal has settled, the correct rollback is the flag, not the DDL.
 
+--
+-- HOW CONCURRENT SETTLEMENTS ARE SERIALIZED (the fix, recorded)
+--
+--   `settle_signal_objective_run` takes TWO row locks, in this order:
+--
+--     1. `players` (the settling player), then
+--     2. `signal_objective_runs` (the attempt being settled).
+--
+--   Lock 2 alone is what an earlier draft of this file had, and it is not
+--   enough. It serializes two settlements of the SAME attempt, but the
+--   player's cumulative `signals_completed` and the §7.2 marks are computed
+--   from a COUNT over ALL of that player's attempts — so two settlements of
+--   DIFFERENT attempts by the same player (the end-of-run settle of today's
+--   Signal racing the cron's re-settle of an older one) each counted their own
+--   completion and neither saw the other's uncommitted one. Both then wrote
+--   the same number through GREATEST, the higher of the two was lost, and a
+--   30/100/365 mark that the recount would have crossed was never inserted.
+--   GREATEST cannot repair that: it never writes downward, but it also never
+--   discovers the count it was never shown. A later completion happens to heal
+--   it; a player whose last Signal that was keeps the wrong number forever,
+--   which Rule 6 does not permit.
+--
+--   Locking the PLAYER row first makes every settlement that touches a
+--   player's cumulative state run one after the other, so each COUNT is taken
+--   against a snapshot that already includes every earlier settlement's
+--   committed completion. The order is fixed (player, then attempt) in the one
+--   function that takes both, so it cannot deadlock against itself.
+
 BEGIN;
 
 -- ===========================================================================
@@ -292,18 +320,29 @@ CREATE INDEX IF NOT EXISTS idx_signal_milestones_player
 -- This function's job is to make that derivation a ROW, exactly once, and then
 -- to defend it:
 --
---   * ON CONFLICT DO UPDATE (a no-op self-assignment) — the first writer
---     wins. Two players starting a run at 00:00:00 UTC cannot produce two
---     days or two seeds.
+--   * ON CONFLICT DO NOTHING — the first writer wins, exactly as
+--     `ensure_serpent_week` (migration 046) does one cadence up. Two players
+--     starting a run at 00:00:00 UTC cannot produce two days or two seeds.
 --
---     Why a no-op UPDATE rather than DO NOTHING: DO NOTHING does not wait for
---     the conflicting transaction, so the loser of a 00:00 UTC race would
---     fall through to a SELECT that cannot yet see the winner's uncommitted
---     row and would raise "could not resolve day". A no-op DO UPDATE takes
---     the row lock, blocks until the winner commits, and then RETURNS the
---     winning row — which is the answer both callers need. The day rolls over
---     for the whole world at once, so this race is the common case at the
---     boundary, not a rare one.
+--     Why DO NOTHING and not a no-op DO UPDATE: an earlier draft of this file
+--     used `ON CONFLICT (day) DO UPDATE SET day = signal_days.day` on the
+--     stated grounds that "DO NOTHING does not wait for the conflicting
+--     transaction". That premise is false. Any ON CONFLICT insert detects the
+--     conflict through a DIRTY-snapshot index probe, and when the conflicting
+--     tuple belongs to an in-flight transaction the probe takes the xact lock
+--     and WAITS for it — for DO NOTHING and DO UPDATE alike. Once the winner
+--     commits, the loser's next statement takes a fresh READ COMMITTED
+--     snapshot and reads the winning row. The fallback SELECT below is that
+--     read, and it cannot come up empty for the race it exists to handle.
+--
+--     What the no-op DO UPDATE cost instead was real: it turned the ONE row
+--     per UTC day into a write on every resolve. Every run start and every
+--     panel load, for the whole world, would have taken an exclusive row lock
+--     on the same tuple and written a new version of it — a global
+--     serialization point and steady bloat on the hottest read in the
+--     feature — and it made a row this file calls immutable into a row the
+--     file itself updates. Resolving the day is a READ once the day exists,
+--     and only the first caller of the day writes.
 --   * If a day already exists with a DIFFERENT seed, modifier or objective
 --     set, the function RAISEs. That can only mean the derivation changed
 --     under a live day, which would silently re-write the conditions players
@@ -349,14 +388,21 @@ BEGIN
     p_day, p_starts_at, p_ends_at, p_seed, p_modifier,
     COALESCE(p_strain_tilt, ''), COALESCE(p_objectives, '[]'::JSONB)
   )
-  -- A NO-OP self-assignment, not DO NOTHING. It changes no column, so the
-  -- stored day is still immutable; what it buys is the row lock, so a
-  -- concurrent caller at the 00:00 UTC boundary WAITS for the winner and then
-  -- reads the winning row instead of reading nothing. RETURNING then gives the
-  -- row as STORED (never EXCLUDED), which is exactly what the drift tripwire
-  -- below has to compare the caller's derivation against.
-  ON CONFLICT (day) DO UPDATE SET day = signal_days.day
+  -- The day is written ONCE and never rewritten. A caller that loses the
+  -- 00:00 UTC race inserts nothing and RETURNING gives it no row.
+  ON CONFLICT (day) DO NOTHING
   RETURNING * INTO v_row;
+
+  IF v_row.id IS NULL THEN
+    -- Either the day already existed, or we just lost the boundary race. In
+    -- both cases the winning row is committed and visible by now: the INSERT
+    -- above waited on the in-flight inserter's xact lock before deciding it
+    -- had a conflict, and this is a new statement, so READ COMMITTED gives it
+    -- a fresh snapshot. Reading the STORED row (never EXCLUDED) is also
+    -- exactly what the drift tripwire below has to compare the caller's
+    -- derivation against.
+    SELECT * INTO v_row FROM signal_days d WHERE d.day = p_day;
+  END IF;
 
   IF v_row.id IS NULL THEN
     RAISE EXCEPTION 'ensure_signal_day could not resolve day %', p_day;
@@ -449,15 +495,22 @@ BEGIN
 
   INSERT INTO signal_objective_runs (day_id, player_id, objective_id, target, session_id)
   VALUES (p_day_id, p_player_id, p_objective_id, p_target, p_session_id)
-  -- A NO-OP self-assignment for the same reason `ensure_signal_day` uses one:
-  -- DO NOTHING would not wait for a concurrent claim of the SAME day by the
-  -- same player (a double-tapped Launch), and the loser would then read
-  -- nothing and raise. This blocks, then returns the winner's row — whose
-  -- `session_id` is the FIRST session, so `owns_attempt` is false for the
-  -- loser and the second run is an ordinary charged run. Nothing is
-  -- overwritten: the objective and target the player first chose stand.
-  ON CONFLICT (day_id, player_id) DO UPDATE SET day_id = signal_objective_runs.day_id
+  -- DO NOTHING, for the same reason `ensure_signal_day` uses it. A
+  -- double-tapped Launch races two sessions at the SAME (day, player): the
+  -- loser's insert waits on the winner's xact lock, finds the conflict, and
+  -- writes nothing. Nothing is overwritten — the objective and target the
+  -- player first chose stand.
+  ON CONFLICT (day_id, player_id) DO NOTHING
   RETURNING * INTO v_row;
+
+  IF v_row.id IS NULL THEN
+    -- The attempt already existed, or we just lost the double-tap race. Either
+    -- way the winner is committed and this fresh statement snapshot sees it.
+    -- The row we read carries the FIRST session's id, so `owns_attempt` below
+    -- is false for the loser and its run is an ordinary charged run.
+    SELECT * INTO v_row FROM signal_objective_runs r
+    WHERE r.day_id = p_day_id AND r.player_id = p_player_id;
+  END IF;
 
   IF v_row.id IS NULL THEN
     RAISE EXCEPTION 'begin_signal_objective_run could not resolve the attempt for day %', p_day_id;
@@ -524,7 +577,29 @@ DECLARE
   v_new_dna    INTEGER;
   v_completed  INTEGER;
   v_milestones INTEGER := 0;
+  v_player_id  UUID;
 BEGIN
+  -- ---- LOCK 1: the player ----------------------------------------------
+  --
+  -- Taken FIRST, and taken even though nothing is read from it yet, because
+  -- §8c recomputes `signals_completed` as a COUNT over ALL of this player's
+  -- attempts and §8d derives the §7.2 marks from that count. Without this
+  -- lock, two settlements of DIFFERENT attempts by the SAME player run
+  -- concurrently, each counts its own uncommitted completion and not the
+  -- other's, and the lower of the two identical answers wins through
+  -- GREATEST — losing a completion from the cumulative count and, with it, a
+  -- mark the recount would have crossed. Serializing here means every COUNT
+  -- below is taken after every earlier settlement of this player committed.
+  --
+  -- The lock ORDER (player, then attempt) is fixed and this is the only
+  -- function that takes both, so it cannot deadlock against itself.
+  SELECT pl.id INTO v_player_id FROM players pl WHERE pl.id = p_player_id FOR UPDATE;
+  IF v_player_id IS NULL THEN
+    RAISE EXCEPTION 'settle_signal_objective_run: unknown player %', p_player_id;
+  END IF;
+
+  -- ---- LOCK 2: the attempt ---------------------------------------------
+  --
   -- Serialize concurrent settlements of the SAME attempt. Two settlers then
   -- run one after the other, and because everything below is a recompute or a
   -- compare-and-set, the second produces the same answer and pays nothing.
@@ -547,7 +622,7 @@ BEGIN
                        CASE WHEN COALESCE(p_completed, FALSE) THEN NOW() ELSE NULL END
                      ),
       settled_at   = NOW()
-  WHERE r.id = p_run_id
+  WHERE r.id = p_run_id AND r.player_id = p_player_id
   RETURNING * INTO v_run;
 
   -- ---- 8b. The flat first-completion bonus, paid at most once ----------
@@ -563,7 +638,7 @@ BEGIN
       UPDATE signal_objective_runs r
       SET bonus_dna     = v_bonus,
           bonus_paid_at = NOW()
-      WHERE r.id = p_run_id AND r.bonus_paid_at IS NULL;
+      WHERE r.id = p_run_id AND r.player_id = p_player_id AND r.bonus_paid_at IS NULL;
       GET DIAGNOSTICS v_paid = ROW_COUNT;
     END IF;
 
