@@ -32,14 +32,20 @@ const collectBody = (() => {
 })();
 
 describe('migration 050: the file itself', () => {
-  it('is numbered 050 and is the only new migration in this work package', () => {
+  it('is numbered 050 and is this work package\'s only migration', () => {
     const added = fs
       .readdirSync(MIGRATIONS)
       .filter((f) => /^0(4[0-9]|5[0-9])_.*\.sql$/.test(f))
       .sort();
     expect(added).toContain(FILE);
-    // 039-049 belong to earlier work packages; nothing above 050 exists yet.
-    expect(added.filter((f) => f > FILE)).toEqual([]);
+    // WAS: `expect(added.filter((f) => f > FILE)).toEqual([])` - "nothing above
+    // 050 exists yet". True on this WP's branch, false the moment any later
+    // work package lands its own migration (WP-1.09 added 051), so it asserted
+    // a property of the branch rather than of this work package. The claim
+    // worth keeping is that WP-1.04 contributed exactly one migration file,
+    // which is what this asserts.
+    const takeMigrations = added.filter((f) => /daily_take/.test(f));
+    expect(takeMigrations).toEqual([FILE]);
   });
 
   it('is transactional and forward-only, with an explicit down-note', () => {

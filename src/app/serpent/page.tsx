@@ -51,6 +51,7 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
 import { SerpentWeekPanel } from '@/components/serpent/SerpentWeekPanel';
 import { MondayBriefing } from '@/components/serpent/MondayBriefing';
+import { SettlementPostCard } from '@/components/serpent/SettlementPostCard';
 import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
 import { defaultBriefingWeek } from '@/lib/serpent/briefing';
 import { emptySerpentPanel, type SerpentPanel } from '@/lib/server/serpent';
@@ -180,6 +181,10 @@ function SerpentContent() {
           rival={hunt?.rival ?? null}
           rivalWeekStart={hunt?.week?.weekStart ?? null}
         />
+
+        {/* §11.6: the week auto-composes into a post; publishing is a tap.
+            Flag-gated off, and it renders nothing when it is down. */}
+        <SettlementPostCard panel={view} weekKey={weekKey} />
       </main>
     </div>
   );
