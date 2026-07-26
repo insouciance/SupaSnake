@@ -20,7 +20,12 @@ import {
   strainTierAtFood,
   type GenomeRunInput,
 } from '@/shared/game/genome';
-import { STRAIN_ECONOMICS, STRAIN_PHYSICS, capSpawnPoints } from '@/shared/game/strains';
+import {
+  STRAIN_ECONOMICS,
+  STRAIN_PHYSICS,
+  capSpawnPoints,
+  moltResetLengthFor,
+} from '@/shared/game/strains';
 
 const genome = (partial: Partial<GenomeRunInput>): GenomeRunInput => ({
   picks: [],
@@ -129,7 +134,7 @@ describe('deterministic length model', () => {
     expect(trace.lengthAtEat[16]).toBe(9);
   });
 
-  it('Molt (FERAL expression) resets to 12 and floors at 12', () => {
+  it('Molt (FERAL expression) sheds proportionally and floors at the minimum', () => {
     const picks: GenePick[] = [
       { id: 'overgrowth', atFood: 0 },
       { id: 'deep_roots', atFood: 5 },
@@ -141,7 +146,33 @@ describe('deterministic length model', () => {
     const trace = computeLengthTrace(view, 40, acts, genome({ picks }));
     const molt = trace.shedEvents.find((e) => e.source === 'molt');
     expect(molt?.atFood).toBe(30); // every 20 after activation at 10
-    expect(trace.lengthAtEat[31]).toBe(STRAIN_PHYSICS.moltResetLength);
+    // The shed is a fraction of the body it grew, not an absolute reset:
+    // reconstruct the pre-shed length from the event and check the formula.
+    const preShed = trace.lengthAtEat[31] + molt!.segmentsShed;
+    expect(trace.lengthAtEat[31]).toBe(moltResetLengthFor(preShed));
+    expect(trace.lengthAtEat[31]).toBeGreaterThanOrEqual(
+      STRAIN_PHYSICS.moltMinLength
+    );
+  });
+
+  it('keeps a Molt run bounded - length plateaus instead of growing forever', () => {
+    // The reason the shed became proportional: with an absolute reset the
+    // body oscillated between a fixed floor and floor+cycle forever, so the
+    // board never filled and the run had no natural end. Proportionally,
+    // length converges on a fixed point: L = fraction x (L + cycle growth).
+    const picks: GenePick[] = [
+      { id: 'overgrowth', atFood: 0 },
+      { id: 'deep_roots', atFood: 5 },
+      { id: 'glacial_reserve', atFood: 10 },
+    ];
+    const acts = strainActivations(picks, {});
+    const trace = computeLengthTrace(fusePicks(picks), 400, acts, genome({ picks }));
+    const late = trace.lengthAtEat.slice(200);
+    // A cycle's worth of growth above the converged post-shed length is the
+    // whole envelope; nothing accumulates run over run.
+    expect(Math.max(...late)).toBeLessThan(200);
+    const molts = trace.shedEvents.filter((e) => e.source === 'molt');
+    expect(molts.length).toBe(19); // every 20 foods from activation at 10
   });
 
   it('applies a same-index infuse after the Molt food floor', () => {
@@ -151,16 +182,18 @@ describe('deterministic length model', () => {
       { id: 'glacial_reserve', atFood: 10 },
     ];
     const acts = strainActivations(picks, {});
-    const trace = computeLengthTrace(
+    const base = computeLengthTrace(fusePicks(picks), 31, acts, genome({ picks }));
+    const infused = computeLengthTrace(
       fusePicks(picks),
       31,
       acts,
       genome({ picks, infuses: [{ atFood: 30 }] })
     );
-    // Food 30 resolves the Molt cycle at 12; the later portal infuse pays
-    // four segments, so food 31 sees length 8 just like the engine.
-    expect(trace.lengthAtEat[31]).toBe(
-      STRAIN_PHYSICS.moltResetLength - STRAIN_PHYSICS.infuseSegmentCost
+    // Food 30 resolves the Molt cycle and its growth floor first; only then
+    // does the portal infuse pay four segments, so it can take the body
+    // below what the floor would otherwise guarantee - just like the engine.
+    expect(infused.lengthAtEat[31]).toBe(
+      base.lengthAtEat[31] - STRAIN_PHYSICS.infuseSegmentCost
     );
   });
 });

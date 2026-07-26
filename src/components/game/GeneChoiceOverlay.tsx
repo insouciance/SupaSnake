@@ -6,6 +6,7 @@ import { SPLICES, spliceForPair, type SpliceId } from '@/shared/game/splices';
 import {
   STRAINS,
   STRAIN_TIER_NAMES,
+  type StrainId,
   type StrainPoints,
 } from '@/shared/game/strains';
 import { StrainChip } from '@/components/traits/StrainChip';
@@ -20,8 +21,29 @@ interface GeneChoiceOverlayProps {
   showStrains: boolean;
   splicesUnlocked: boolean;
   discoveredSplices?: readonly SpliceId[];
+  /**
+   * The strain the pity rule will force into slot 1 of the next offer if
+   * this one is passed, or null. The engine computes it from the live offer
+   * stream at roll time; the overlay only renders it.
+   */
+  pityStrain?: StrainId | null;
   onChoose: (index: 0 | 1) => void;
   onDecline: () => void;
+}
+
+/**
+ * What passing this offer actually buys, in the run's own terms.
+ *
+ * The pity window counts offers rather than picks, so a pass feeds it just
+ * like a pick does. When that means the next slot 1 is already determined,
+ * say which strain - that is a real, checkable promise. Otherwise fall back
+ * to the honest generic: the slots stay yours.
+ */
+function declineLine(pityStrain: StrainId | null): string {
+  if (pityStrain) {
+    return `Pass. Your next offer's first slot is forced to ${STRAINS[pityStrain].name.toUpperCase()}.`;
+  }
+  return 'Pass. Keeps your six slots for the combo you want.';
 }
 
 function spliceHint(
@@ -60,9 +82,11 @@ export function GeneChoiceOverlay({
   showStrains,
   splicesUnlocked,
   discoveredSplices = [],
+  pityStrain = null,
   onChoose,
   onDecline,
 }: GeneChoiceOverlayProps) {
+  const declineConsequence = declineLine(pityStrain);
   const [locked, setLocked] = useState(true);
   const lockedRef = useRef(true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -114,7 +138,7 @@ export function GeneChoiceOverlay({
           {source === 'infuse' ? 'Infused Gene' : 'Gene Offer'}
         </h2>
         <p className="mb-5 text-center text-sm font-body text-beige/70">
-          Choose one — your Genome remembers the route
+          Take one or take neither — your Genome remembers the route
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -167,15 +191,37 @@ export function GeneChoiceOverlay({
           })}
         </div>
 
+        {/* PASS is a third choice, not a way out of the other two, so it
+            wears the same effect/cost grammar as the gene cards. The
+            consequence line is computed from the live offer stream - a
+            constant here would be a promise the run might not keep. */}
         <button
           type="button"
           onClick={() => !locked && onDecline()}
           disabled={locked}
           aria-keyshortcuts="Escape"
           data-testid="gene-decline"
-          className="mx-auto mt-4 block min-h-[44px] text-sm font-body text-beige/60 underline transition-colors hover:text-bone-white disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]"
+          className={`mt-3 block w-full min-h-[44px] rounded-arcade border bg-void/60 p-4 text-left transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff] ${
+            locked
+              ? 'cursor-wait border-scale-blue-light/40 opacity-70'
+              : 'border-scale-blue-light/60 hover:border-[#a855f7] hover:bg-[#a855f7]/10'
+          }`}
         >
-          Take neither (Esc)
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="heading-display text-lg text-bone-white">Take neither</span>
+            <kbd className="rounded-arcade border border-scale-blue-light/60 bg-scale-blue px-1.5 py-0.5 text-[10px] text-bone-white">
+              Esc
+            </kbd>
+          </div>
+          <p
+            className="text-sm leading-snug text-rarity-uncommon font-body"
+            data-testid="gene-decline-consequence"
+          >
+            {declineConsequence}
+          </p>
+          <p className="mt-1 text-sm leading-snug text-strike-red/90 font-body">
+            This offer is spent — the next one arrives on the normal cadence.
+          </p>
         </button>
       </div>
     </div>

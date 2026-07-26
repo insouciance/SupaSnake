@@ -252,19 +252,42 @@ export const STRAIN_PHYSICS = {
   arcMaxPerEat: 2,
   /** Overclocked Reality: tick interval x this factor (faster world). */
   overclockedRealityTickFactor: 0.75,
+  /**
+   * The floor every physical speed multiplier clamps to. Below this the
+   * world outruns input latency and the board stops being readable, so a
+   * run that reaches it is already over on skill terms - the clamp exists
+   * so it ends honestly rather than at a random frame.
+   */
+  tickFloorMs: 25,
   /** Overclocked Reality cost: portal windows this many ticks shorter. */
   overclockedPortalTicksPenalty: 20,
   // --- FERAL ---------------------------------------------------------------
   /** Thick Hide (minor): tail segments lost instead of dying, once per run. */
   thickHideSegmentLoss: 5,
-  /** Molt: every this many foods after activation, tail resets... */
+  /** Molt: every this many foods after activation, the tail sheds... */
   moltEveryFoods: 20,
   /**
-   * ...to this length - which is ALSO the minimum body length while Molt
-   * is active. A weaker reset than Shed's 8 is Molt's cost: the shed
+   * ...down to this FRACTION of the body it had grown to. A proportional
+   * shed, not an absolute reset: the longer you get the more you drop, but
+   * you never get the whole board back. The absolute reset it replaced made
+   * length stop being a difficulty curve at all, which made a Molt run
+   * unbounded - the board never filled and Score became an endurance test.
+   */
+  moltShedFraction: 0.6,
+  /**
+   * The floor of that shed, and ALSO the minimum body length while Molt is
+   * active. A weaker floor than Shed's 8 is part of Molt's cost: the shed
    * segments pay flat DNA, but the snake can never get truly short again.
    */
-  moltResetLength: 12,
+  moltMinLength: 12,
+  /**
+   * Molt's compounding price: every molt multiplies the tick interval by
+   * this factor for the REST OF THE RUN, clamped at `tickFloorMs`. This is
+   * what ends a Molt run. The proportional shed keeps the body dangerous;
+   * the speed step guarantees the world eventually outruns the pilot, so a
+   * run finishes on skill rather than on patience.
+   */
+  moltTickFactor: 0.92,
   /** Ouroboros: segments consumed per tail-tip bite. */
   ouroborosSegmentsPerBite: 3,
   // --- FLUX ----------------------------------------------------------------
@@ -291,3 +314,20 @@ export const STRAIN_PHYSICS = {
   /** Infuse: next portal interval +2 foods per infuse. */
   infusePortalIntervalPenalty: 2,
 } as const;
+
+/**
+ * FERAL Molt's proportional shed: the length a body of `len` resets to.
+ *
+ * This lives here, beside the dials and above every consumer, because the
+ * client engine (`SnakeGameLogic.applyShedMoves`) and the server's
+ * deterministic length model (`computeLengthTrace`) must produce the SAME
+ * number at the same point in the same food. Two matching expressions in
+ * two files would be a divergence waiting to happen; one function called
+ * twice is parity by construction, and the fold-parity suite proves it.
+ */
+export function moltResetLengthFor(len: number): number {
+  return Math.max(
+    STRAIN_PHYSICS.moltMinLength,
+    Math.floor(len * STRAIN_PHYSICS.moltShedFraction)
+  );
+}

@@ -92,6 +92,7 @@ import {
 import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
+  moltResetLengthFor,
   type StrainId,
   type StrainPoints,
 } from '@/shared/game/strains';
@@ -112,6 +113,7 @@ import {
   type StrainSurge,
 } from '@/shared/game/genome';
 import {
+  pityForecast,
   rollGeneOffer,
   type LineageBias,
   type OfferTraceEntry,
@@ -221,6 +223,13 @@ export interface GameState {
   /** Where the live choice offer came from. */
   choiceSource: 'gene_food' | 'infuse' | null;
   /**
+   * The strain the pity rule would force into slot 1 of the next offer if
+   * the live offer is PASSED, or null. Presentation only - it lets the PASS
+   * affordance state what passing actually buys instead of promising
+   * something generic. Recomputed on every roll; null outside a hold.
+   */
+  pendingChoicePity: StrainId | null;
+  /**
    * Portal-choice hold (genome runs): stepping onto the exit portal
    * freezes the engine (like the gene choice hold) until the player
    * resolves BANK or INFUSE. Null when no portal decision is pending.
@@ -267,10 +276,25 @@ export interface GameState {
   isPlaying: boolean;
   isGameOver: boolean;
   isPaused: boolean;
+  /** Tactical holds spent this run (choice holds never count - Rule 1). */
+  holdsUsed: number;
+  /** Tactical holds this run has earned, including its length bonuses. */
+  holdBudget: number;
   isDeathSequence: boolean;
   startTime: number | null;
   deathPosition: Position | null;
 }
+
+/**
+ * Why the board is being held.
+ *
+ * `'tactical'` is the player choosing to stop and think - a real resource,
+ * metered against the run's hold budget. `'decision'` is the board being
+ * held around one of the run's OWN decisions (a gene offer, a portal, a
+ * surge, or the re-arm immediately after one resolves); Inviolable Rule 1
+ * protects those, so they are always free.
+ */
+export type HoldKind = 'tactical' | 'decision';
 
 /** Payload of the 'gameOver' event - one event for both endings. */
 export interface GameOverData {
@@ -520,10 +544,30 @@ export class SnakeGameLogic {
    * Cleared by `applyShedVisuals`; never read anywhere else.
    */
   private shedRemovedCells = new Map<ShedEvent, Position[]>();
+
+  /**
+   * True while the run was opened from an authored board (Training). Such
+   * runs are scripted teaching, not scored play, so they are exempt from
+   * the tactical-hold budget.
+   */
+  private drivenRun = false;
   /** Offer stream counter (cadence + infuse offers share it). */
   private offerIndex = 0;
-  /** Offer trace shipped in the genome payload (advisory verification). */
-  private offerTrace: OfferTraceEntry[] = [];
+  /**
+   * Offer trace shipped in the genome payload (advisory verification).
+   *
+   * `resolved` is engine-internal and never leaves this class. The wire
+   * shape is exactly `OfferTraceEntry`, where `picked: null` means "the
+   * player took neither" - the shipped contract `sanitizeOfferTrace`, the
+   * server's `verifyOfferTrace` replay and the e2e all depend on.
+   *
+   * The flag exists because an OPEN offer also has `picked: null`, so dying
+   * mid-decision is indistinguishable from a pass on the wire. Both sides
+   * agree either way, so pity replay is unaffected and the wire needs no
+   * change - but the engine should not have to guess, and any future
+   * counter that tries to count passes would otherwise be quietly wrong.
+   */
+  private offerTrace: (OfferTraceEntry & { resolved: boolean })[] = [];
   /** The last two offers (pity window input). */
   private recentOffers: GeneId[][] = [];
   /** Ticks since ANY eat (Midas window / Static Charge fasting). */
@@ -756,6 +800,7 @@ export class SnakeGameLogic {
       infuses: [],
       surges: [],
       choiceSource: null,
+      pendingChoicePity: null,
       pendingPortalChoice: null,
       pendingSurgeChoice: false,
       revive: null,
@@ -780,6 +825,8 @@ export class SnakeGameLogic {
       isPlaying: false,
       isGameOver: false,
       isPaused: false,
+      holdsUsed: 0,
+      holdBudget: GAME_CONFIG.session.holds.base,
       isDeathSequence: false,
       startTime: null,
       deathPosition: null,
@@ -794,6 +841,7 @@ export class SnakeGameLogic {
   }
 
   private beginRun(opening: DrivenStartState | null): void {
+    this.drivenRun = opening !== null;
     const centerX = Math.floor(this.gridSize / 2);
     const centerZ = Math.floor(this.gridSize / 2);
 
@@ -813,7 +861,6 @@ export class SnakeGameLogic {
       this.state.fluxTicksRemaining = this.ruleset.flux.openTicks;
     }
 
-    this.speed = this.ruleset.speedForFood(0);
     this.directionQueue = [];
     this.lastEatGlyph = null;
     this.ticksSinceLastEat = 0;
@@ -839,6 +886,13 @@ export class SnakeGameLogic {
       this.state.pocketRiftCharged = true;
       this.refreshGenomeDerived();
     }
+    // Opening tick interval AFTER the genome derived state exists. This
+    // used to be a raw `ruleset.speedForFood(0)` above, which silently
+    // dropped any modifier already live at food 0 - a spawned VOLT Tempo
+    // (heirloom points alone reach the minor tier) did nothing until the
+    // first food re-derived the speed through this same helper.
+    this.speed = this.effectiveSpeedForFood(0);
+    this.refreshHoldBudget();
     this.spawnFoods();
     if (opening) {
       this.state.snake = opening.snake.map((cell) => ({ ...cell, y: 0 }));
@@ -1124,8 +1178,26 @@ export class SnakeGameLogic {
    * overlay owns the freeze, and allowing pause underneath would let the
    * pause menu fight the choice UI. Buffered turns are cleared so resuming
    * can never execute an old command before the player's newly planned move.
+   *
+   * A `'tactical'` hold - the player deliberately stopping the board to
+   * think - spends one of the run's holds and is REFUSED once the budget is
+   * gone; that refusal is the bound that replaced `session.maxDuration`.
+   *
+   * A `'decision'` hold is free, always. It is how the page re-arms the
+   * resume gate after a gene, portal or surge decision resolves: the run's
+   * own decisions are protected by Inviolable Rule 1 and must never cost
+   * the player a resource. The engine cannot infer which is which - the
+   * choice flags are already cleared by the time the re-arm runs - so the
+   * caller states it, and `'tactical'` is the default so a new call site
+   * has to opt OUT of paying rather than remember to opt in.
+   *
+   * Driven runs (Training) are never metered: a tutorial that runs out of
+   * holds teaches nothing, and no Training pause reaches a leaderboard.
+   *
+   * Returns whether the board is now held, so a caller can keep its resume
+   * UI in step with an outcome it does not control.
    */
-  pause(): void {
+  pause(kind: HoldKind = 'tactical'): boolean {
     if (
       !this.state.isPlaying ||
       this.state.isGameOver ||
@@ -1134,11 +1206,31 @@ export class SnakeGameLogic {
       this.state.pendingPortalChoice !== null ||
       this.state.pendingSurgeChoice
     ) {
-      return;
+      return false;
+    }
+    if (kind === 'tactical' && !this.drivenRun) {
+      this.refreshHoldBudget();
+      if (this.state.holdsUsed >= this.state.holdBudget) return false;
+      this.state.holdsUsed += 1;
     }
     this.directionQueue = [];
     this.state.isPaused = true;
     this.emit('pause');
+    return true;
+  }
+
+  /**
+   * Grow the hold budget as the body reaches the lengths that make it hard
+   * to steer. Earned holds are never taken back - a body that sheds past a
+   * threshold keeps what reaching it paid for, which also keeps the budget
+   * from ever dropping below what the player has already spent.
+   */
+  private refreshHoldBudget(): void {
+    let budget: number = GAME_CONFIG.session.holds.base;
+    for (const threshold of GAME_CONFIG.session.holds.bonusAtLengths) {
+      if (this.state.snake.length >= threshold) budget += 1;
+    }
+    this.state.holdBudget = Math.max(this.state.holdBudget, budget);
   }
 
   /**
@@ -1392,9 +1484,9 @@ export class SnakeGameLogic {
       }
 
       // Shed cycles, PURE HALF: loose Shed (25 -> 8), Regenesis (20 -> 8),
-      // Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12) and the Molt growth
-      // floor. Length moves and trace records only - mirrors
-      // computeLengthTrace's cycle model exactly.
+      // Molted Rebirth (25 -> 8), FERAL Molt (every 20, proportional) and
+      // the Molt growth floor. Length moves and trace records only -
+      // mirrors computeLengthTrace's cycle model exactly.
       const sheds = this.applyShedMoves(n);
 
       const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
@@ -1436,6 +1528,9 @@ export class SnakeGameLogic {
       }
 
       this.speed = this.effectiveSpeedForFood(n);
+      // The body only ever grows on an eat, so this is the one place a
+      // length threshold can newly grant a hold.
+      this.refreshHoldBudget();
 
       // Remove the eaten food, then VOLT Arc Lightning may auto-collect
       // up to 2 more foods within 3 cells (full value, +1 segment each);
@@ -1619,6 +1714,7 @@ export class SnakeGameLogic {
     const pick: GenePick = { id, atFood: this.state.foodEaten };
     this.state.pendingChoice = null;
     this.state.choiceSource = null;
+    this.state.pendingChoicePity = null;
     if (this.genomeActive()) {
       this.resolveOfferTrace(id);
     }
@@ -1683,6 +1779,7 @@ export class SnakeGameLogic {
     if (!this.state.pendingChoice) return;
     this.state.pendingChoice = null;
     this.state.choiceSource = null;
+    this.state.pendingChoicePity = null;
     if (this.genomeActive()) {
       this.resolveOfferTrace(null);
     }
@@ -1696,8 +1793,9 @@ export class SnakeGameLogic {
   /** Record the resolution of the pending offer into the trace. */
   private resolveOfferTrace(picked: GeneId | null): void {
     const entry = this.offerTrace[this.offerTrace.length - 1];
-    if (entry && entry.picked === undefined) {
+    if (entry && !entry.resolved) {
       entry.picked = picked;
+      entry.resolved = true;
     }
   }
 
@@ -1720,11 +1818,21 @@ export class SnakeGameLogic {
     this.offerTrace.push({
       k: this.offerIndex,
       atFood: this.state.foodEaten,
-      picked: undefined as unknown as GeneId | null,
+      picked: null,
+      resolved: false,
     });
     this.offerIndex += 1;
     this.recentOffers.push([...offer]);
     if (this.recentOffers.length > 4) this.recentOffers.shift();
+    // The pity window counts OFFERS, not picks, so the offer just pushed is
+    // already inside the window the next roll will measure. Passing changes
+    // neither points nor picks, which is what makes this forecast exact.
+    this.state.pendingChoicePity = pityForecast({
+      picks: this.state.heldMutations,
+      pool: this.effectiveGenePool(),
+      points,
+      recentOffers: this.recentOffers.slice(-2),
+    });
     this.state.pendingChoice = offer;
     this.state.choiceSource = source;
     this.emit('mutationChoice', { options: [...offer], source });
@@ -1982,8 +2090,9 @@ export class SnakeGameLogic {
 
   /**
    * Shed cycles, PURE HALF (WP-2.05): loose Shed 25->8, Regenesis 20->8,
-   * Molted Rebirth 25->8, FERAL Molt 20->12, and the Molt growth floor.
-   * Mirrors `computeLengthTrace`'s cycle model.
+   * Molted Rebirth 25->8, FERAL Molt every 20 foods down to
+   * `moltResetLengthFor(len)`, and the Molt growth floor. Mirrors
+   * `computeLengthTrace`'s cycle model.
    *
    * This half moves length and records shed events, and does NOTHING else -
    * no DNA, no board objects, no emits. That is what lets it run BEFORE the
@@ -2002,7 +2111,13 @@ export class SnakeGameLogic {
     type Cycle = {
       every: number;
       anchor: number;
-      reset: number;
+      /**
+       * The length this cycle resets a body of `current` to. Molt's shed is
+       * proportional, so it MUST be evaluated per firing against the live
+       * length - `computeLengthTrace` calls the identical `resetFor` at the
+       * identical point, which is what keeps the two in parity.
+       */
+      resetFor: (current: number) => number;
       source: ShedEvent['source'];
     };
     const cycles: Cycle[] = [];
@@ -2011,7 +2126,7 @@ export class SnakeGameLogic {
       cycles.push({
         every: MUTATION_PHYSICS.shedEveryFoods,
         anchor: shedPick.atFood,
-        reset: MUTATION_PHYSICS.shedResetLength,
+        resetFor: () => MUTATION_PHYSICS.shedResetLength,
         source: 'shed',
       });
     }
@@ -2021,7 +2136,7 @@ export class SnakeGameLogic {
           cycles.push({
             every: SPLICE_ECONOMICS.regenesisShedEveryFoods,
             anchor: splice.atFood,
-            reset: SPLICE_ECONOMICS.regenesisResetLength,
+            resetFor: () => SPLICE_ECONOMICS.regenesisResetLength,
             source: 'regenesis',
           });
         }
@@ -2029,7 +2144,7 @@ export class SnakeGameLogic {
           cycles.push({
             every: SPLICE_PHYSICS.moltedRebirthShedEveryFoods,
             anchor: splice.atFood,
-            reset: SPLICE_PHYSICS.moltedRebirthResetLength,
+            resetFor: () => SPLICE_PHYSICS.moltedRebirthResetLength,
             source: 'molted_rebirth',
           });
         }
@@ -2039,7 +2154,7 @@ export class SnakeGameLogic {
         cycles.push({
           every: STRAIN_PHYSICS.moltEveryFoods,
           anchor: moltAt,
-          reset: STRAIN_PHYSICS.moltResetLength,
+          resetFor: moltResetLengthFor,
           source: 'molt',
         });
       }
@@ -2047,16 +2162,12 @@ export class SnakeGameLogic {
     const fired: ShedEvent[] = [];
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
-      if (
-        since <= 0 ||
-        since % cycle.every !== 0 ||
-        this.state.snake.length <= cycle.reset
-      ) {
-        continue;
-      }
-      const removed = this.state.snake.slice(cycle.reset);
+      if (since <= 0 || since % cycle.every !== 0) continue;
+      const reset = cycle.resetFor(this.state.snake.length);
+      if (this.state.snake.length <= reset) continue;
+      const removed = this.state.snake.slice(reset);
       const segmentsShed = removed.length;
-      this.state.snake.length = cycle.reset;
+      this.state.snake.length = reset;
       const event: ShedEvent = { atFood: n, segmentsShed, source: cycle.source };
       fired.push(event);
       if (this.genomeActive()) {
@@ -2066,14 +2177,14 @@ export class SnakeGameLogic {
     }
     // FERAL Molt growth floor while the expression is active. A length move,
     // so it belongs to this half; `computeLengthTrace` applies the same
-    // `max(moltResetLength, len)` at the same point in the food.
+    // `max(moltMinLength, len)` at the same point in the food.
     if (
       this.genomeActive() &&
       this.strainTierNow('FERAL') >= 2 &&
-      this.state.snake.length < STRAIN_PHYSICS.moltResetLength
+      this.state.snake.length < STRAIN_PHYSICS.moltMinLength
     ) {
       const tail = this.state.snake[this.state.snake.length - 1];
-      while (this.state.snake.length < STRAIN_PHYSICS.moltResetLength) {
+      while (this.state.snake.length < STRAIN_PHYSICS.moltMinLength) {
         this.state.snake.push({ ...tail });
       }
     }
@@ -2148,6 +2259,7 @@ export class SnakeGameLogic {
       this.state.score += scoreValue;
       this.applyShedVisuals(arcSheds);
       this.speed = this.effectiveSpeedForFood(n);
+      this.refreshHoldBudget();
       this.emit('arcCollected', {
         position: { x: food.x, y: 0, z: food.z },
         foodEaten: n,
@@ -2866,11 +2978,36 @@ export class SnakeGameLogic {
     // VOLT Apex "Overclocked Reality": the world runs 25% faster.
     if (this.genomeActive() && this.strainTierNow('VOLT') >= 3) {
       speed = Math.max(
-        25,
+        STRAIN_PHYSICS.tickFloorMs,
         Math.floor(speed * STRAIN_PHYSICS.overclockedRealityTickFactor)
       );
     }
+    // FERAL Molt: each molt makes the world permanently faster, compounding.
+    // Molt's proportional shed keeps the body long enough to stay dangerous
+    // but no longer lets length alone end the run, so the price of shedding
+    // is tempo. The loop re-arms from getSpeed() every tick, so this applies
+    // the moment a molt fires.
+    const molts = this.moltsFired();
+    if (molts > 0) {
+      speed = Math.max(
+        STRAIN_PHYSICS.tickFloorMs,
+        Math.floor(speed * Math.pow(STRAIN_PHYSICS.moltTickFactor, molts))
+      );
+    }
     return speed;
+  }
+
+  /**
+   * Molts fired so far this run - the exponent of the compounding speed
+   * step. Derived from the live length trace rather than a second counter,
+   * so it can never drift from the shed events the server recomputes.
+   */
+  private moltsFired(): number {
+    let count = 0;
+    for (const event of this.lengthTrace.shedEvents) {
+      if (event.source === 'molt') count += 1;
+    }
+    return count;
   }
 
   /**
@@ -3062,7 +3199,14 @@ export class SnakeGameLogic {
             revive: this.state.revive ? { ...this.state.revive } : null,
             claims: { ...this.state.genomeClaims },
             lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
-            offerTrace: this.offerTrace.map((o) => ({ ...o })),
+            // `resolved` is engine-internal - the wire shape stays exactly
+            // OfferTraceEntry, so an unresolved offer still ships as
+            // `picked: null` and replays identically on the server.
+            offerTrace: this.offerTrace.map(({ k, atFood, picked }) => ({
+              k,
+              atFood,
+              picked,
+            })),
             fusedSplices: this.state.fusedSplices.map((s) => ({ ...s })),
             strainCounts: { ...this.state.strainCounts },
             strainTiers: { ...this.state.strainTiers },

@@ -171,6 +171,42 @@ export function topStrain(points: StrainPoints): StrainId | null {
 }
 
 /**
+ * The strain the pity rule will force into slot 1 of the NEXT offer, or
+ * null when it will not fire.
+ *
+ * Pure, and reads exactly the inputs `rollGeneOffer` reads, so a PASS
+ * affordance can state the real consequence of passing instead of a
+ * generic promise. It is honest ONLY for the pass branch: declining leaves
+ * `points` and `picks` untouched, which is precisely why the next offer's
+ * slot 1 is knowable before it is rolled. Taking a gene can move the top
+ * strain and the candidate set, so this must never describe a pick.
+ *
+ * Call it with the offer stream's state AFTER the current offer has been
+ * pushed to `recentOffers` - the pity window counts offers, not picks, so
+ * the offer on screen is already part of the window it is being measured
+ * against.
+ */
+export function pityForecast(
+  ctx: Pick<OfferContext, 'picks' | 'pool' | 'points' | 'recentOffers'>
+): StrainId | null {
+  const top = topStrain(ctx.points);
+  if (top === null) return null;
+  const recent = ctx.recentOffers ?? [];
+  if (recent.length < OFFER_GRAVITY.pityOfferWindow) return null;
+  const starved = recent
+    .slice(-OFFER_GRAVITY.pityOfferWindow)
+    .every((offer) => !offer.some((id) => geneStrains(id).includes(top)));
+  if (!starved) return null;
+  const held = new Set(ctx.picks.map((p) => p.id));
+  const candidates = ctx.pool.filter((id) => !held.has(id) && id in GENES);
+  // Under two candidates there is no next offer at all, and a forced slot 1
+  // still needs a candidate carrying the strain - `rollGeneOffer` falls back
+  // to the unforced roll when `bestOfStrain` finds none.
+  if (candidates.length < 2) return null;
+  return candidates.some((id) => geneStrains(id).includes(top)) ? top : null;
+}
+
+/**
  * Roll the choice-of-2 offer for offer index k - deterministic in
  * (runSeed, k, picks, pool, points, recentOffers, lineage, anomaly).
  *

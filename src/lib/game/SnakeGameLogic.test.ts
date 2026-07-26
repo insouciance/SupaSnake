@@ -16,6 +16,7 @@ import {
   computeRunTotals,
   type DynastyName,
 } from '@/shared/game/rulesets';
+import { GAME_CONFIG } from '@/shared/config/game';
 
 /**
  * Eat `count` foods deterministically: place the food directly in the
@@ -765,6 +766,71 @@ describe('SnakeGameLogic', () => {
       expect(game.getState().isDeathSequence).toBe(true);
       game.pause();
       expect(game.isPaused).toBe(false);
+    });
+  });
+
+  describe('Tactical hold budget', () => {
+    const BASE = GAME_CONFIG.session.holds.base;
+
+    beforeEach(() => {
+      game.start();
+    });
+
+    it('opens with the base budget and nothing spent', () => {
+      const state = game.getState();
+      expect(state.holdBudget).toBe(BASE);
+      expect(state.holdsUsed).toBe(0);
+    });
+
+    it('spends one hold per tactical pause and reports success', () => {
+      expect(game.pause()).toBe(true);
+      expect(game.getState().holdsUsed).toBe(1);
+      game.resume();
+      expect(game.getState().holdsUsed).toBe(1); // resuming refunds nothing
+    });
+
+    it('refuses a tactical hold once the budget is spent', () => {
+      for (let i = 0; i < BASE; i++) {
+        expect(game.pause()).toBe(true);
+        game.resume();
+      }
+      expect(game.pause()).toBe(false);
+      expect(game.isPaused).toBe(false);
+      expect(game.getState().holdsUsed).toBe(BASE);
+    });
+
+    it('never charges a decision hold, even with the budget exhausted', () => {
+      for (let i = 0; i < BASE; i++) {
+        game.pause();
+        game.resume();
+      }
+      // The run's own decisions are Rule 1 territory: always free, always
+      // granted. This is the re-arm the page performs after a gene, portal
+      // or surge choice resolves.
+      expect(game.pause('decision')).toBe(true);
+      expect(game.isPaused).toBe(true);
+      expect(game.getState().holdsUsed).toBe(BASE);
+    });
+
+    it('grants a hold at each length threshold and never takes one back', () => {
+      const thresholds = GAME_CONFIG.session.holds.bonusAtLengths;
+      const target = Math.max(...thresholds);
+      // A board wide enough to eat in a straight line past the last threshold.
+      const roomy = new SnakeGameLogic({ gridSize: 120, ruleset: RULESETS.PRIMAL });
+      roomy.start();
+      const seen: number[] = [];
+      while (roomy.getState().snake.length < target && !roomy.getState().isGameOver) {
+        const head = roomy.getState().snake[0];
+        roomy.placeFood({ x: head.x + 1, y: 0, z: head.z });
+        roomy.tick();
+        if (roomy.getState().pendingChoice) roomy.declineMutation();
+        seen.push(roomy.getState().holdBudget);
+      }
+      expect(roomy.getState().snake.length).toBeGreaterThanOrEqual(target);
+      expect(roomy.getState().holdBudget).toBe(BASE + thresholds.length);
+      // Monotonic: the budget only ever grows, so a shed can never strand a
+      // player having already spent more holds than they are allowed.
+      expect(seen).toEqual([...seen].sort((a, b) => a - b));
     });
   });
 

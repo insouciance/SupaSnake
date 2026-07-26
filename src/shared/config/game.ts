@@ -108,6 +108,25 @@ export const GAME_CONFIG = deepFreeze({
   session: {
     victoryScore: 100,               // Score to "win"
     saveInterval: 5000,              // Autosave every 5s (ms)
+    /**
+     * Tactical holds — the bound that replaced the deleted `maxDuration`.
+     *
+     * A hold is a real tactical resource: it buys thinking time, so an
+     * unlimited supply turns a precision game into a turn-based one. Three
+     * to open, and the run earns more as the body gets genuinely hard to
+     * steer. Choice holds (gene / portal / surge) are NEVER charged — those
+     * are the run's own decisions, protected by Inviolable Rule 1.
+     *
+     * Purely physical and purely client-side: a hold carries no economy, so
+     * there is nothing here for the server to enforce. Duration is bounded
+     * server-side (WP-2.05).
+     */
+    holds: {
+      /** Holds every run opens with. */
+      base: 3,
+      /** Body lengths that each grant one more hold, once, when reached. */
+      bonusAtLengths: [25, 40] as readonly number[],
+    },
   },
 
   /**

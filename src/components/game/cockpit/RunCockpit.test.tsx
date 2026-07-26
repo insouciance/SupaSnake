@@ -31,6 +31,7 @@ const MODEL: RunCockpitModel = {
     { id: 'FLUX', name: 'Flux', color: '#a642f5', points: 1, tier: 0, suppressed: false },
     { id: 'UMBRA', name: 'Umbra', color: '#f54263', points: 2, tier: 1, suppressed: true },
   ],
+  holds: { remaining: 2, total: 4 },
   showGenome: true,
   portalLive: true,
   portalTicksRemaining: 14,
@@ -47,6 +48,9 @@ describe('RunCockpit', () => {
     expect(screen.getByLabelText(/score 12,840, combo 1.8/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/run dna 186/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/charges 4 of 6/i)).toHaveTextContent('4/6');
+    // The hold budget is stated from tick zero, not discovered by running out.
+    expect(screen.getByTestId('hold-budget')).toHaveTextContent('2/4');
+    expect(screen.getByTestId('hold-budget')).toHaveAttribute('data-spent', 'false');
     expect(screen.getByLabelText('Gold Trail')).toBeInTheDocument();
     expect(screen.getByLabelText(/Umbra 2 of 4, tier 1, suppressed/i)).toBeInTheDocument();
     expect(screen.getByTestId('first-movement-prompt')).toHaveTextContent(
