@@ -27,7 +27,7 @@
  *   this work package's acceptance criterion.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { redirect } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { type Clan, CLAN_LIMITS } from '@/lib/clan/types';
@@ -41,6 +41,9 @@ import { PlayoffBracket } from '@/components/clan/PlayoffBracket';
 import { ClanIdentityEditor } from '@/components/clan/ClanIdentityEditor';
 import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
 import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
+import { ClanHuntPanel } from '@/components/clan/ClanHuntPanel';
+import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
+import { ClanDirectory, type ClanDirectoryRow } from '@/components/clan/ClanDirectory';
 import { useClanFull, clanAction } from '@/components/clan/useClanFull';
 import Link from 'next/link';
 import { IconShield, IconUser } from '@/components/ui/icons';
@@ -50,16 +53,6 @@ interface MyClan extends Clan {
   joinedAt: string;
 }
 
-interface DirectoryClan {
-  id: string;
-  name: string;
-  tag: string | null;
-  memberCount: number;
-  maxMembers: number;
-  bestWeekDepth: number;
-  lastHuntedWeek: string | null;
-}
-
 export default function ClanPage() {
   if (!GAME_CONFIG.features.clans) {
     redirect('/');
@@ -67,7 +60,7 @@ export default function ClanPage() {
 
   const { user, session, isAuthenticated } = useAuth();
   const [myClan, setMyClan] = useState<MyClan | null>(null);
-  const [directory, setDirectory] = useState<DirectoryClan[]>([]);
+  const [directory, setDirectory] = useState<ClanDirectoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFound, setShowFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +72,7 @@ export default function ClanPage() {
   const [bannerId, setBannerId] = useState<string>(CLAN_BANNERS[0].id);
   const [emblemId, setEmblemId] = useState<string>(CLAN_EMBLEMS[0].id);
   const [joinCode, setJoinCode] = useState('');
+  const joinCodeInput = useRef<HTMLInputElement | null>(null);
 
   const { view: fullView, refresh: refreshFullView } = useClanFull(
     session?.access_token
@@ -294,8 +288,8 @@ export default function ClanPage() {
                   no onClick and never had one. WP-0.03 removed the whole
                   panel with the faucet behind it. A clan pays nobody
                   (Rule 8), and there is no energy balance to pay into
-                  (§8.6). What a clan gives is the Serpent hunt, which
-                  WP-1.07 renders in this space off GET /api/clan/hunt. */}
+                  (§8.6). What a clan gives is the Serpent hunt, and
+                  WP-1.07 renders it here off GET /api/clan/hunt. */}
 
               <button
                 onClick={handleLeave}
@@ -306,6 +300,13 @@ export default function ClanPage() {
               </button>
             </div>
           </section>
+
+          {/* The hunt (§7.3, §9.2–9.4): the clan against its own best week
+              first, the additive contribution list second, and the rival only
+              on the weeks a symmetric one exists. Complete at a clan of one. */}
+          <div className="animate-fade-up">
+            <ClanHuntPanel accessToken={session?.access_token} />
+          </div>
 
           {fullView?.clan && (
             <>
@@ -343,6 +344,20 @@ export default function ClanPage() {
                 }}
               />
             )}
+
+            {/* The founding prompt (§9.2). On this page the two buttons open
+                the forms that are already below it, so the prompt is the
+                reason rather than a second route: it says what a clan is FOR
+                (the Serpent hunts every week) before asking for a name.
+                Below the ramp beat it renders nothing at all — no counter and
+                no locked card, because being shown a number you have not
+                reached is what turns a ramp into a cut line (Rule 8). */}
+            <ClanFoundingPrompt
+              accessToken={session?.access_token}
+              inClan={false}
+              onFound={() => setShowFound(true)}
+              onJoin={() => joinCodeInput.current?.focus()}
+            />
 
             {/* Found a clan — one tap plus a name (§9.2) */}
             <section className="mb-10 animate-fade-up">
@@ -443,6 +458,7 @@ export default function ClanPage() {
               <h2 className="heading-display text-2xl text-bone-white mb-2">Have an invite?</h2>
               <form className="flex gap-2" onSubmit={handleJoinByCode} data-testid="join-by-code">
                 <input
+                  ref={joinCodeInput}
                   type="text"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
@@ -460,56 +476,10 @@ export default function ClanPage() {
               </form>
             </section>
 
-            {/* The directory — alive clans only, and never a total (§9.2) */}
-            <section className="animate-fade-up">
-              <h2 className="heading-display text-2xl text-bone-white mb-1">Hunting this week</h2>
-              <p className="text-beige/60 text-sm font-body mb-4">
-                Clans that hunted the Serpent this week or last.
-              </p>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                  <p className="text-beige font-body">Loading clans...</p>
-                </div>
-              ) : directory.length === 0 ? (
-                <div className="panel p-8 text-center">
-                  <p className="text-beige font-body">
-                    No clan has settled a hunt yet. Found yours and be the first name here.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  {directory.map((clan) => (
-                    <div
-                      key={clan.id}
-                      className="panel p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                      data-testid="directory-row"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <IconShield size={16} className="text-beige/70" />
-                          <span className="font-display uppercase text-lg text-bone-white">
-                            {clan.name}
-                          </span>
-                          {clan.tag && (
-                            <span className="px-2 py-0.5 bg-void/60 border border-scale-blue-light/60 rounded-arcade text-xs font-display">
-                              [{clan.tag}]
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-beige/60 font-body mt-1">
-                          {clan.memberCount}/{clan.maxMembers} members · best week{' '}
-                          {clan.bestWeekDepth.toLocaleString()}
-                        </p>
-                      </div>
-                      {/* No Join button: recruitment is the invite link (§9.2).
-                          The directory exists so a newcomer sees a living world,
-                          not so clans can be walked into uninvited. */}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+            {/* The directory — alive clans only, and never a total (§9.2).
+                Extracted so its N=1 and empty readings can be asserted
+                without mounting the whole authed page. */}
+            <ClanDirectory clans={directory} loading={loading} />
           </>
         )}
       </div>
