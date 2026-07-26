@@ -52,10 +52,16 @@
 --      anything.
 --
 --   6. CONTRACTS CUTOVER. `offer_daily_contracts`, `pick_contracts`,
---      `claim_contract` and `refresh_contract_progress` are DROPPED. The
---      tables `contract_definitions` and `player_contracts` and every row in
---      them are KEPT, untouched (Rule 6 — a claimed contract is history a
---      player earned, and §13 retires the mechanism, not the record).
+--      `claim_contract` and `refresh_contract_progress` become TOMBSTONES:
+--      each keeps its signature, raises `CONTRACTS_RETIRED`, and has every
+--      EXECUTE grant revoked (service_role included). Tombstones rather than
+--      DROPs, for the reason spelled out in section 10 — a DROP leaves an
+--      older migration's `CREATE FUNCTION` as the newest definition of the
+--      name, and a replay can resurrect it. The tables `contract_definitions`
+--      and `player_contracts` and every row in them are KEPT, untouched
+--      (Rule 6 — a claimed contract is history a player earned, and §13
+--      retires the mechanism, not the record). No new claim RPC replaces
+--      them (§12.2): the Signal's bonus is paid by settlement.
 --
 -- HOW IDEMPOTENCY IS GUARANTEED (an acceptance criterion, in the schema)
 --
@@ -99,7 +105,7 @@
 -- DOWN-NOTE (forward-only)
 --
 --   This migration is forward-only. It is additive except for the four
---   contract functions it drops. To roll the FEATURE back, unset
+--   contract functions it tombstones. To roll the FEATURE back, unset
 --   `NEXT_PUBLIC_SIGNAL_V1` — the flag is the rollback path and it is tested.
 --   To roll the SCHEMA back (only ever correct before any Signal has settled,
 --   since a completed Signal is an earned thing and Rule 6 forbids destroying
@@ -114,9 +120,17 @@
 --     DROP TABLE IF EXISTS signal_days;
 --     ALTER TABLE players DROP COLUMN IF EXISTS signals_completed;
 --
---   The dropped contract functions are NOT restored by that block, and must
---   not be: §13 retires them. Their bodies remain in git (migrations 032, 044)
---   if history ever has to be read.
+--   The contract tombstones are NOT lifted by that block, and must not be:
+--   §13 retires them. Their last working bodies remain in git (migrations 032,
+--   043, 044) if history ever has to be read. Restoring one means a NEW
+--   migration that re-creates the body and re-grants EXECUTE — a deliberate,
+--   reviewable act that the Constitution forbids, not an accident of replay.
+--
+--   Note what the tombstones do NOT do: no contract row is deleted, no grant
+--   on `player_contracts` or `contract_definitions` changes, and
+--   `economy_transactions` is not touched at all. Rolling this migration's
+--   schema back would therefore never need to restore contract history —
+--   there is none to restore, because none was destroyed.
 --
 --   After a Signal has settled, the correct rollback is the flag, not the DDL.
 
@@ -768,11 +782,37 @@ GRANT SELECT, INSERT         ON signal_milestones     TO service_role;
 -- slot, claim ceremony — all retired, §13)." §12.2 permits ONE daily surface,
 -- so the two cannot coexist for a single deploy.
 --
--- The four functions go. They are the only way a contract could be offered,
--- picked, progressed or claimed, and `src/app/api/contracts` is deleted in the
--- same commit — so after this migration there is no route to call and no
--- function to call from it. `signal.migration.test.ts` and
--- `contractsCutover.test.ts` both pin that.
+-- The four functions are TOMBSTONED, not dropped — the pattern WP-1.05 used
+-- for `reroll_lineage` (migration 047 §6). Each keeps its name, argument list
+-- and return type, and each body is replaced by a single named RAISE.
+--
+-- WHY A TOMBSTONE AND NOT A DROP. `DROP FUNCTION` removes the live definition
+-- but leaves migration 044's `CREATE FUNCTION offer_daily_contracts` (and
+-- 043's `pick_contracts`, 032's `refresh_contract_progress`) standing as the
+-- newest *definition* of those names in the migration history. Anything that
+-- replays, repairs or cherry-picks history forward — a `db reset` against a
+-- squashed baseline, a hand-run repair, a branch that reorders files — can
+-- therefore resurrect a working contract RPC without anyone editing a line.
+-- A tombstone cannot be resurrected that way: 049 IS the newest definition,
+-- so replaying history in any order that ends here ends with a function that
+-- raises. It also gives a stale client or a stale PostgREST schema cache a
+-- named refusal instead of a confusing 404.
+--
+-- After this section there is no path to a contract write of any kind:
+--
+--   * these four SECURITY DEFINER functions were the only writers, and they
+--     now raise before touching a row;
+--   * every EXECUTE grant is revoked below, service_role included, so even
+--     the API layer's own role cannot call them;
+--   * `src/app/api/contracts` is deleted in the same commit, so no route
+--     reaches PostgREST with these names;
+--   * the tables' RLS (migration 015, lines 516-528) carries SELECT-only
+--     policies — `player_contracts_select_own` and
+--     `contract_definitions_public_read` — and no INSERT/UPDATE/DELETE policy
+--     exists for anon or authenticated. With the definers retired, contract
+--     history is READ-ONLY by construction, for everyone.
+--
+-- `signal.migration.test.ts` and `contractsCutover.test.ts` both pin that.
 --
 -- The TABLES stay, with every row (Rule 6, and §13 retires mechanisms rather
 -- than records):
@@ -784,26 +824,131 @@ GRANT SELECT, INSERT         ON signal_milestones     TO service_role;
 --     turn the history into orphaned ids. (WP-0.03 already deleted the six
 --     definitions no player row referenced; the rest are load-bearing.)
 --
--- Section 11 aborts this migration if a single row of either disappeared.
+-- Nothing in this section is a DELETE, a TRUNCATE or an ALTER of either
+-- table. Section 11 aborts this migration if a single row of either moved.
 
-DROP FUNCTION IF EXISTS offer_daily_contracts(UUID);
-DROP FUNCTION IF EXISTS pick_contracts(UUID, TEXT[]);
-DROP FUNCTION IF EXISTS claim_contract(UUID, TEXT);
-DROP FUNCTION IF EXISTS refresh_contract_progress(UUID, DATE);
+-- Signature note: each RETURNS clause below is a verbatim copy of the live
+-- definition (offer/pick/claim from 044, refresh from 032). CREATE OR REPLACE
+-- refuses to change a return type or an output column name, so if any of them
+-- ever drifts, THIS MIGRATION FAILS LOUDLY rather than quietly creating a
+-- second overload and leaving the working one callable.
+--
+-- Each also loses SECURITY DEFINER: an unspecified attribute reverts to its
+-- default on replace, so the tombstones run as INVOKER. A retired function
+-- keeps no elevated rights.
+
+CREATE OR REPLACE FUNCTION offer_daily_contracts(p_player_id UUID)
+RETURNS TABLE (
+  contract_id TEXT,
+  contract_type TEXT,
+  name TEXT,
+  description TEXT,
+  params JSONB,
+  reward_dna INTEGER,
+  reward_xp INTEGER,
+  offered_slot INTEGER,
+  picked BOOLEAN,
+  progress JSONB,
+  completed_at TIMESTAMPTZ,
+  claimed_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RAISE EXCEPTION
+    'CONTRACTS_RETIRED: the World Signal is the one daily surface '
+    '(Constitution §7.2, §12.2); contracts were retired by migration 049. '
+    'Claimed contract history is preserved in player_contracts.';
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+REVOKE EXECUTE ON FUNCTION offer_daily_contracts(UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION offer_daily_contracts(UUID) FROM anon;
+REVOKE EXECUTE ON FUNCTION offer_daily_contracts(UUID) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION offer_daily_contracts(UUID) FROM service_role;
+
+CREATE OR REPLACE FUNCTION pick_contracts(p_player_id UUID, p_contract_ids TEXT[])
+RETURNS TABLE (
+  contract_id TEXT,
+  contract_type TEXT,
+  name TEXT,
+  description TEXT,
+  params JSONB,
+  reward_dna INTEGER,
+  reward_xp INTEGER,
+  offered_slot INTEGER,
+  picked BOOLEAN,
+  progress JSONB,
+  completed_at TIMESTAMPTZ,
+  claimed_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RAISE EXCEPTION
+    'CONTRACTS_RETIRED: the World Signal is the one daily surface '
+    '(Constitution §7.2, §12.2); contracts were retired by migration 049. '
+    'Claimed contract history is preserved in player_contracts.';
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+REVOKE EXECUTE ON FUNCTION pick_contracts(UUID, TEXT[]) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pick_contracts(UUID, TEXT[]) FROM anon;
+REVOKE EXECUTE ON FUNCTION pick_contracts(UUID, TEXT[]) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION pick_contracts(UUID, TEXT[]) FROM service_role;
+
+-- §12.2 in one statement: the claim ceremony has no implementation left. This
+-- is a retirement, not a replacement — WP-1.03 adds NO new claim RPC, and the
+-- Signal's bonus is paid by settlement, never collected by a player call.
+CREATE OR REPLACE FUNCTION claim_contract(p_player_id UUID, p_contract_id TEXT)
+RETURNS TABLE (
+  contract_id TEXT,
+  dna_granted INTEGER,
+  xp_granted INTEGER
+) AS $$
+BEGIN
+  RAISE EXCEPTION
+    'CONTRACTS_RETIRED: the World Signal is the one daily surface '
+    '(Constitution §7.2, §12.2); contracts were retired by migration 049. '
+    'Claimed contract history is preserved in player_contracts.';
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+REVOKE EXECUTE ON FUNCTION claim_contract(UUID, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION claim_contract(UUID, TEXT) FROM anon;
+REVOKE EXECUTE ON FUNCTION claim_contract(UUID, TEXT) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION claim_contract(UUID, TEXT) FROM service_role;
+
+CREATE OR REPLACE FUNCTION refresh_contract_progress(p_player_id UUID, p_date DATE)
+RETURNS VOID AS $$
+BEGIN
+  RAISE EXCEPTION
+    'CONTRACTS_RETIRED: the World Signal is the one daily surface '
+    '(Constitution §7.2, §12.2); contracts were retired by migration 049. '
+    'Claimed contract history is preserved in player_contracts.';
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+REVOKE EXECUTE ON FUNCTION refresh_contract_progress(UUID, DATE) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION refresh_contract_progress(UUID, DATE) FROM anon;
+REVOKE EXECUTE ON FUNCTION refresh_contract_progress(UUID, DATE) FROM authenticated;
+REVOKE EXECUTE ON FUNCTION refresh_contract_progress(UUID, DATE) FROM service_role;
 
 -- ===========================================================================
 -- 11. THE TRIPWIRE — abort if anything a player owns moved (Rule 6)
 -- ===========================================================================
 --
--- Everything above is additive except four dropped functions, so the expected
--- count is zero on every check. If it is not, something had a side effect
--- nobody intended, and the correct outcome is that production never sees it.
+-- Everything above is additive except four tombstoned functions, so the
+-- expected count is zero on every check. If it is not, something had a side
+-- effect nobody intended, and the correct outcome is that production never
+-- sees it.
 
 DO $$
 DECLARE
   v_bad INT;
   v_pre RECORD;
   v_now BIGINT;
+  v_name TEXT;
+  v_raised BOOLEAN;
+  -- A player id that cannot exist. The tombstones raise before reading it;
+  -- if one ever does read it, it finds nothing and still writes nothing.
+  v_probe UUID := '00000000-0000-0000-0000-000000000000'::UUID;
 BEGIN
   SELECT COUNT(*) INTO v_bad
   FROM signal_pre_migration_players pre
@@ -861,8 +1006,13 @@ BEGIN
   END IF;
 
   -- The cutover is only real if nothing can offer, pick, progress or claim a
-  -- contract afterwards. Assert the functions are gone rather than trusting
-  -- the DROPs above to have matched the right signatures.
+  -- contract afterwards. Three independent checks, because a tombstone that
+  -- is merely PRESENT proves nothing on its own.
+
+  -- (a) Exactly the four names exist, and no extra overload was forked. If a
+  --     signature had drifted, CREATE OR REPLACE would have made a second
+  --     function with the same name — and the old, working one would still
+  --     be callable.
   SELECT COUNT(*) INTO v_bad
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -871,10 +1021,87 @@ BEGIN
       'offer_daily_contracts', 'pick_contracts', 'claim_contract',
       'refresh_contract_progress'
     );
+  IF v_bad <> 4 THEN
+    RAISE EXCEPTION
+      'Migration 049 aborted: expected exactly 4 contract tombstones, found % — an overload was forked or a tombstone is missing',
+      v_bad;
+  END IF;
+
+  -- (b) No role can execute them. `proacl IS NULL` means DEFAULT privileges,
+  --     which for a function is EXECUTE TO PUBLIC — so a NULL acl here is a
+  --     failure, not an absence. Otherwise: no EXECUTE for PUBLIC (grantee 0)
+  --     and none for anon/authenticated/service_role.
+  SELECT COUNT(*) INTO v_bad
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname IN (
+      'offer_daily_contracts', 'pick_contracts', 'claim_contract',
+      'refresh_contract_progress'
+    )
+    AND (
+      p.proacl IS NULL
+      OR EXISTS (
+        SELECT 1 FROM aclexplode(p.proacl) a
+        WHERE a.privilege_type = 'EXECUTE'
+          AND (
+            a.grantee = 0
+            OR pg_get_userbyid(a.grantee) IN ('anon', 'authenticated', 'service_role')
+          )
+      )
+    );
   IF v_bad > 0 THEN
     RAISE EXCEPTION
-      'Migration 049 aborted: % contract function(s) survived the cutover — the daily-surface cap (§12.2) would be breached',
+      'Migration 049 aborted: % contract function(s) are still executable — the daily-surface cap (§12.2) would be breached',
       v_bad;
+  END IF;
+
+  -- (c) The live BODY is the tombstone. Grants can be re-added by a later
+  --     migration or a nervous operator; this asserts that even a caller who
+  --     restores EXECUTE gets a refusal instead of a working contract. Each
+  --     call runs as the migration's own (owning) role, which is the one role
+  --     that never lost EXECUTE.
+  FOR v_name IN
+    SELECT unnest(ARRAY[
+      'offer_daily_contracts', 'pick_contracts', 'claim_contract',
+      'refresh_contract_progress'
+    ])
+  LOOP
+    v_raised := FALSE;
+    BEGIN
+      CASE v_name
+        WHEN 'offer_daily_contracts' THEN
+          PERFORM * FROM offer_daily_contracts(v_probe);
+        WHEN 'pick_contracts' THEN
+          PERFORM * FROM pick_contracts(v_probe, ARRAY['probe']::TEXT[]);
+        WHEN 'claim_contract' THEN
+          PERFORM * FROM claim_contract(v_probe, 'probe');
+        WHEN 'refresh_contract_progress' THEN
+          PERFORM refresh_contract_progress(v_probe, CURRENT_DATE);
+      END CASE;
+    EXCEPTION WHEN OTHERS THEN
+      v_raised := TRUE;
+      IF POSITION('CONTRACTS_RETIRED' IN SQLERRM) = 0 THEN
+        RAISE EXCEPTION
+          'Migration 049 aborted: %() raised "%" instead of the CONTRACTS_RETIRED tombstone — the live body is not the tombstone',
+          v_name, SQLERRM;
+      END IF;
+    END;
+
+    IF NOT v_raised THEN
+      RAISE EXCEPTION
+        'Migration 049 aborted: %() RETURNED for a probe player — the retired body is still live (§12.2)',
+        v_name;
+    END IF;
+  END LOOP;
+
+  -- The probe ran four contract calls. Prove they were inert: a tombstone
+  -- that raises cannot have written, but the cheapest way to know is to look.
+  SELECT COUNT(*) INTO v_now FROM player_contracts;
+  IF v_now <> v_pre.player_contract_rows THEN
+    RAISE EXCEPTION
+      'Migration 049 aborted: the tombstone probe changed player_contracts from % to % rows',
+      v_pre.player_contract_rows, v_now;
   END IF;
 
   RAISE NOTICE 'Migration 049: World Signal schema added, contracts retired; no player-owned value moved.';

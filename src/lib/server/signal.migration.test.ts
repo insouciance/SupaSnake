@@ -298,17 +298,33 @@ describe('the client cannot reach any of it', () => {
 // §12.2 — the Signal is the ONE daily surface
 // ---------------------------------------------------------------------------
 
+// The cutover is pinned in depth by `contractsCutover.test.ts`, which owns the
+// tombstone/grant/history assertions. These two are the summary a reader of
+// the Signal migration needs.
+//
+// They previously asserted `DROP FUNCTION IF EXISTS <fn>(` for each of the
+// four RPCs. That assertion was rewritten, not weakened: the cutover switched
+// from DROP to the WP-1.05 tombstone pattern, so a passing DROP assertion
+// would now mean the retirement had regressed to a form a migration replay
+// can undo. The new assertions are strictly stronger — a DROP proves only
+// that the function is absent from one database, while these prove the newest
+// definition in migration history refuses to run at all.
 describe('the contracts cutover', () => {
-  it('drops the four contract functions and asserts they are gone', () => {
+  it('tombstones the four contract functions rather than dropping them', () => {
     for (const fn of [
       'offer_daily_contracts',
       'pick_contracts',
       'claim_contract',
       'refresh_contract_progress',
     ]) {
-      expect(code).toMatch(new RegExp(`DROP FUNCTION IF EXISTS ${fn}\\(`));
+      expect(code).toMatch(new RegExp(`CREATE OR REPLACE FUNCTION ${fn}\\(`));
+      expect(code).not.toMatch(new RegExp(`DROP FUNCTION IF EXISTS ${fn}\\(`));
+      expect(code).toMatch(
+        new RegExp(`REVOKE EXECUTE ON FUNCTION ${fn}\\([^)]*\\) FROM service_role`)
+      );
     }
-    expect(code).toMatch(/contract function\(s\) survived the cutover/);
+    expect(code).toMatch(/CONTRACTS_RETIRED/);
+    expect(code).toMatch(/contract function\(s\) are still executable/);
   });
 
   it('keeps every row of contract history (Rule 6)', () => {
