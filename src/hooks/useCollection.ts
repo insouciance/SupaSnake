@@ -13,17 +13,30 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { distinctVariantCount } from '@/lib/collection/roster';
 import type {
   Dynasty,
   SnakeVariant,
   OwnedSnake,
   UnlockResponse,
   EquipResponse,
+  FavoriteResponse,
 } from '@/shared/types/snake-data-model';
 
 // =============================================================================
 // TYPES
 // =============================================================================
+
+/**
+ * Per-dynasty completion. `owned` counts DISTINCT VARIANTS, because that is
+ * what the sticker book has slots for; `snakes` counts rows. Counting rows in
+ * `owned` is what rendered "Collection: 43/11 (391%)".
+ */
+export interface DynastyCompletion {
+  owned: number;
+  total: number;
+  snakes: number;
+}
 
 export interface UseCollectionReturn {
   // Data from store
@@ -36,7 +49,7 @@ export interface UseCollectionReturn {
   activeDynastyId: string | null;
   currentDynastyVariants: SnakeVariant[];
   currentDynastyOwned: OwnedSnake[];
-  completionByDynasty: Record<string, { owned: number; total: number }>;
+  completionByDynasty: Record<string, DynastyCompletion>;
   equippedSnake: OwnedSnake | null;
 
   // UI State
@@ -46,10 +59,12 @@ export interface UseCollectionReturn {
   isUnlockModalOpen: boolean;
   isLoading: boolean;
   error: string | null;
+  equipError: string | null;
 
   // Actions
   setActiveDynasty: (id: string) => void;
   openDetailModal: (variant: SnakeVariant, owned: OwnedSnake) => void;
+  selectOwnedSnake: (owned: OwnedSnake) => void;
   closeDetailModal: () => void;
   openUnlockModal: (variant: SnakeVariant) => void;
   closeUnlockModal: () => void;
@@ -58,6 +73,7 @@ export interface UseCollectionReturn {
     options?: { equip?: boolean }
   ) => Promise<OwnedSnake | null>;
   equipSnake: (snakeId: string) => Promise<boolean>;
+  toggleFavorite: (snakeId: string, favorited: boolean) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
 
@@ -125,6 +141,7 @@ export function useCollection(): UseCollectionReturn {
     isUnlockModalOpen,
     isLoading,
     error,
+    equipError,
     setDynasties,
     setVariants,
     setOwnedSnakes,
@@ -133,12 +150,14 @@ export function useCollection(): UseCollectionReturn {
     setError,
     setActiveDynasty,
     openDetailModal,
+    selectOwnedSnake,
     closeDetailModal,
     openUnlockModal,
     closeUnlockModal,
     setUnlocking,
     setEquipping,
     setUnlockError,
+    setEquipError,
   } = useCollectionStore();
 
   // DNA balance from store (proper typed access)
@@ -252,20 +271,24 @@ export function useCollection(): UseCollectionReturn {
     );
   }, [ownedSnakes, variants, activeDynastyId]);
 
-  // Calculate completion stats per dynasty
+  // Calculate completion stats per dynasty. `owned` is the number of
+  // DISTINCT variants collected - the sticker book has one slot per variant,
+  // so counting rows made a player with 43 snakes across 11 variants read
+  // "43/11 (391%)". `snakes` carries the row count for surfaces that want it.
   const completionByDynasty = useMemo(() => {
-    const completion: Record<string, { owned: number; total: number }> = {};
+    const completion: Record<string, DynastyCompletion> = {};
 
     for (const dynasty of dynasties) {
       const dynastyVariants = variants.filter((v) => v.dynastyId === dynasty.id);
       const dynastyVariantIds = new Set(dynastyVariants.map((v) => v.id));
-      const ownedCount = ownedSnakes.filter(
+      const dynastySnakes = ownedSnakes.filter(
         (s) => s.snakeVariantId && dynastyVariantIds.has(s.snakeVariantId)
-      ).length;
+      );
 
       completion[dynasty.id] = {
-        owned: ownedCount,
+        owned: distinctVariantCount(dynastySnakes),
         total: dynastyVariants.length,
+        snakes: dynastySnakes.length,
       };
     }
 
@@ -394,6 +417,7 @@ export function useCollection(): UseCollectionReturn {
   const equipSnake = useCallback(
     async (snakeId: string): Promise<boolean> => {
       setEquipping(true);
+      setEquipError(null);
 
       // Store previous state for rollback
       const previousEquippedId = equippedSnakeId;
@@ -424,8 +448,25 @@ export function useCollection(): UseCollectionReturn {
           throw new Error(data.error ?? 'Failed to equip snake');
         }
 
-        // Close detail modal after successful equip
-        closeDetailModal();
+        // Adopt the server's row. It carries the wide variant join, so
+        // traitSlots and lineage arrive correct rather than staying whatever
+        // the optimistic copy happened to hold. Absent only when the equip
+        // committed but the re-read failed, in which case the optimistic
+        // projection above is already right.
+        const serverRow = data.equippedSnake;
+        if (serverRow) {
+          setOwnedSnakes(
+            previousOwnedSnakes.map((snake) =>
+              snake.id === serverRow.id
+                ? serverRow
+                : { ...snake, isEquipped: false }
+            )
+          );
+          setEquippedSnakeId(serverRow.id);
+        }
+
+        // The sheet stays open: the player wants to see "Equipped" flip and
+        // to keep comparing this variant's siblings.
         return true;
       } catch (err) {
         // Rollback optimistic update
@@ -433,7 +474,7 @@ export function useCollection(): UseCollectionReturn {
         setOwnedSnakes(previousOwnedSnakes);
 
         const message = err instanceof Error ? err.message : 'Failed to equip snake';
-        setError(message);
+        setEquipError(message);
         return false;
       } finally {
         setEquipping(false);
@@ -446,9 +487,46 @@ export function useCollection(): UseCollectionReturn {
       setEquippedSnakeId,
       setOwnedSnakes,
       setEquipping,
-      setError,
-      closeDetailModal,
+      setEquipError,
     ]
+  );
+
+  /**
+   * Favoriting is a display preference, but not a cosmetic one: the roster
+   * rule ranks favorited snakes second, so the heart decides which snake
+   * represents its variant on the collection card. It persists.
+   */
+  const toggleFavorite = useCallback(
+    async (snakeId: string, favorited: boolean): Promise<boolean> => {
+      const previousOwnedSnakes = [...ownedSnakes];
+
+      setOwnedSnakes(
+        ownedSnakes.map((snake) =>
+          snake.id === snakeId ? { ...snake, isFavorited: favorited } : snake
+        )
+      );
+
+      try {
+        const response = await fetch('/api/collection/favorite', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ snakeId, favorited }),
+        });
+
+        const data: FavoriteResponse = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error ?? 'Failed to update favorite');
+        }
+        return true;
+      } catch {
+        setOwnedSnakes(previousOwnedSnakes);
+        return false;
+      }
+    },
+    [session?.access_token, ownedSnakes, setOwnedSnakes]
   );
 
   // ===========================================================================
@@ -476,15 +554,18 @@ export function useCollection(): UseCollectionReturn {
     isUnlockModalOpen,
     isLoading,
     error,
+    equipError,
 
     // Actions
     setActiveDynasty,
     openDetailModal,
+    selectOwnedSnake,
     closeDetailModal,
     openUnlockModal,
     closeUnlockModal,
     unlockVariant,
     equipSnake,
+    toggleFavorite,
     refresh,
   };
 }

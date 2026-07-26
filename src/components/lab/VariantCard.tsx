@@ -20,7 +20,13 @@ import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
 
 export interface VariantCardProps {
   variant: SnakeVariant;
+  /** The roster's representative — the snake this card shows */
   owned: OwnedSnake | null;
+  /**
+   * How many snakes of this variant the player owns. The card is one sticker
+   * per variant, so anything above 1 is announced as well as badged.
+   */
+  ownedCount?: number;
   dynastyTheme: DynastyTheme;
   onTap: () => void;
   isEquipped?: boolean;
@@ -65,6 +71,7 @@ export const RARITY_STYLE: Record<
 export function VariantCard({
   variant,
   owned,
+  ownedCount,
   dynastyTheme,
   onTap,
   isEquipped = false,
@@ -73,6 +80,8 @@ export function VariantCard({
   const [isPressed, setIsPressed] = useState(false);
 
   const isOwned = owned !== null;
+  const rosterCount = Math.max(ownedCount ?? (isOwned ? 1 : 0), isOwned ? 1 : 0);
+  const hasSiblings = isOwned && rosterCount > 1;
   const primaryColor = dynastyTheme.primary;
   const secondaryColor = dynastyTheme.secondary;
   const rarity = RARITY_STYLE[variant.rarity] ?? RARITY_STYLE.common;
@@ -144,7 +153,11 @@ export function VariantCard({
       onKeyDown={handleKeyDown}
       aria-label={
         isOwned
-          ? `${variant.name}, Generation ${owned.generation}${isEquipped ? ', Equipped' : ''}`
+          ? `${variant.name}, Generation ${owned.generation}` +
+            // The xN badge is decoration; the count has to be in the name or
+            // a screen-reader user never learns the other snakes exist.
+            (hasSiblings ? `, ${rosterCount} snakes owned` : '') +
+            (isEquipped ? ', Equipped' : '')
           : `${variant.name}, Locked, ${variant.unlockCostDna} DNA to unlock`
       }
       data-testid={`variant-card-${variant.id}`}
@@ -189,6 +202,18 @@ export function VariantCard({
           >
             <IconLock size={26} />
           </div>
+        </div>
+      )}
+
+      {/* Roster size (top-left corner) - this card stands for N snakes */}
+      {hasSiblings && (
+        <div
+          className="absolute top-2 left-2 flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full border bg-void-deep/85 font-mono text-xs font-semibold"
+          style={{ borderColor: hexToRgba(dynastyTheme.glow, 0.55), color: dynastyTheme.glow }}
+          aria-hidden="true"
+          data-testid="variant-card-roster-count"
+        >
+          &times;{rosterCount}
         </div>
       )}
 

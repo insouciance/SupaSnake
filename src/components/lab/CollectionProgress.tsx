@@ -10,10 +10,17 @@ import React from 'react';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 
 export interface CollectionProgressProps {
-  /** Number of variants owned in this dynasty */
+  /** Number of DISTINCT variants owned in this dynasty */
   owned: number;
   /** Total variants available in this dynasty */
   total: number;
+  /**
+   * How many snakes the player actually holds in this dynasty. Shown beside
+   * the set count when it exceeds it - a set of 11 held as 43 snakes is a
+   * true and interesting thing to say, and saying it here is what stops
+   * anyone reading the completion number as a row count again.
+   */
+  snakes?: number;
   /** Dynasty theme for styling */
   dynastyTheme: DynastyTheme;
 }
@@ -39,31 +46,50 @@ function hexToRgba(hex: string, opacity: number): string {
 export function CollectionProgress({
   owned,
   total,
+  snakes,
   dynastyTheme,
 }: CollectionProgressProps): React.ReactElement<any> {
+  // A set can be complete; it cannot be more than complete. Clamped at the
+  // display too, so no upstream miscount can ever paint 391% again or push
+  // the fill past its track.
+  const safeOwned = Math.max(0, Math.min(owned, total));
+
   // Calculate percentage, handling edge case of total === 0
-  const percentage = total === 0 ? 0 : Math.round((owned / total) * 100);
+  const percentage = total === 0 ? 0 : Math.round((safeOwned / total) * 100);
 
   // Calculate progress bar fill width
-  const fillWidth = total === 0 ? 0 : (owned / total) * 100;
+  const fillWidth = total === 0 ? 0 : (safeOwned / total) * 100;
 
   const glowColor = dynastyTheme.glow;
-  const isComplete = total > 0 && owned >= total;
+  const isComplete = total > 0 && safeOwned >= total;
+  const snakeCount = snakes ?? 0;
+  const showSnakeCount = snakeCount > safeOwned;
 
   return (
     <div
       className="flex flex-col gap-1.5 min-w-0"
       role="progressbar"
-      aria-valuenow={owned}
+      aria-valuenow={safeOwned}
       aria-valuemin={0}
       aria-valuemax={total}
-      aria-label={`Collection progress: ${owned} of ${total} variants owned, ${percentage}% complete`}
+      aria-label={
+        `Collection progress: ${safeOwned} of ${total} variants owned, ${percentage}% complete` +
+        (showSnakeCount ? `, ${snakeCount} snakes` : '')
+      }
     >
       {/* Text label */}
       <div className="flex items-baseline justify-between gap-3">
         <span className="label-arcade whitespace-nowrap">
-          Collection: {owned}/{total} ({percentage}%)
+          Collection: {safeOwned}/{total} ({percentage}%)
         </span>
+        {showSnakeCount && (
+          <span
+            className="text-[11px] font-mono whitespace-nowrap text-beige/60"
+            data-testid="collection-snake-count"
+          >
+            {snakeCount} snakes
+          </span>
+        )}
       </div>
 
       {/* Progress bar track */}

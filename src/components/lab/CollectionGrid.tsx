@@ -9,6 +9,7 @@
 import React, { useMemo } from 'react';
 import { VariantCard } from './VariantCard';
 import { EmptySlot } from './EmptySlot';
+import { rostersByVariant } from '@/lib/collection/roster';
 import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 
@@ -19,8 +20,12 @@ export interface CollectionGridProps {
   ownedSnakes: OwnedSnake[];
   /** Dynasty theme for styling */
   dynastyTheme: DynastyTheme;
-  /** Callback when a variant is selected */
-  onSelectVariant: (variant: SnakeVariant, owned: OwnedSnake | null) => void;
+  /**
+   * Callback when a variant is selected. Receives the player's WHOLE roster
+   * for that variant, ordered by `src/lib/collection/roster.ts` - empty when
+   * the variant is locked.
+   */
+  onSelectVariant: (variant: SnakeVariant, roster: OwnedSnake[]) => void;
   /** Loading state */
   isLoading: boolean;
   /** ID of currently equipped snake */
@@ -97,6 +102,13 @@ function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.Rea
  *
  * Displays a Panini sticker book style grid of snake variants.
  * Supports owned/locked states, loading skeleton, and empty slots.
+ *
+ * ONE CARD PER VARIANT, always: the sticker book is the point, and
+ * `EmptySlot`, `CollectionProgress` and `DynastyTabs` all count slots. A
+ * player holding several snakes of a variant gets one card showing the
+ * roster's representative plus an `xN` chip, and tapping it hands the whole
+ * roster to the detail sheet, where the siblings are selectable.
+ *
  * The grid does NOT scroll internally. It used to carry
  * `overflow-y-auto overscroll-contain` inside a `flex-1 overflow-hidden`
  * parent on a `min-h-screen` (not `h-screen`) page - so its height was
@@ -130,24 +142,22 @@ export function CollectionGrid({
   }, [variants]);
 
   /**
-   * Create a map of owned snakes by snakeVariantId for O(1) lookup
+   * Every owned snake, grouped by variant and ordered. Keyed lookup is O(1)
+   * and nothing is discarded - the previous `Map<variantId, OwnedSnake>`
+   * overwrote on every `set()`, so a collection of 43 snakes across 11
+   * variants was reduced to 11 reachable snakes, and because the collection
+   * API returns rows newest-first the survivor was always the OLDEST.
    */
-  const ownedByVariantId = useMemo(() => {
-    const map = new Map<string, OwnedSnake>();
-    for (const owned of ownedSnakes) {
-      if (owned.snakeVariantId) {
-        map.set(owned.snakeVariantId, owned);
-      }
-    }
-    return map;
-  }, [ownedSnakes]);
+  const rosters = useMemo(
+    () => rostersByVariant(ownedSnakes, equippedSnakeId ?? null),
+    [ownedSnakes, equippedSnakeId]
+  );
 
   /**
-   * Handle variant card tap
+   * Handle variant card tap - the caller receives the whole roster
    */
   const handleVariantSelect = (variant: SnakeVariant): void => {
-    const owned = ownedByVariantId.get(variant.id) ?? null;
-    onSelectVariant(variant, owned);
+    onSelectVariant(variant, rosters.get(variant.id)?.snakes ?? []);
   };
 
   // Loading state - show skeleton grid
@@ -173,19 +183,23 @@ export function CollectionGrid({
   }
 
   return (
-    <div
-      className="w-full"
-      role="grid"
-      aria-label="Snake variant collection"
-    >
-      <div className="grid grid-cols-3 gap-3 p-4">
+    <div className="w-full">
+      {/*
+        List semantics, not `role="grid"`: a grid is only valid with row and
+        gridcell descendants, which this never had. It is a list of cards.
+      */}
+      <ul
+        className="grid grid-cols-3 gap-3 p-4 list-none"
+        aria-label="Snake variant collection"
+      >
         {/* Render variant cards - staggered fade-up entrance */}
         {sortedVariants.map((variant, index) => {
-          const owned = ownedByVariantId.get(variant.id) ?? null;
+          const roster = rosters.get(variant.id) ?? null;
+          const owned = roster?.representative ?? null;
           const isEquipped = owned !== null && owned.id === equippedSnakeId;
 
           return (
-            <div
+            <li
               key={variant.id}
               className="animate-fade-up"
               style={{ animationDelay: `${Math.min(index, 11) * 40}ms` }}
@@ -193,23 +207,23 @@ export function CollectionGrid({
               <VariantCard
                 variant={variant}
                 owned={owned}
+                ownedCount={roster?.count ?? 0}
                 dynastyTheme={dynastyTheme}
                 onTap={() => handleVariantSelect(variant)}
                 isEquipped={isEquipped}
                 justUnlocked={justUnlockedVariantId === variant.id}
               />
-            </div>
+            </li>
           );
         })}
 
         {/* Render empty slots */}
         {Array.from({ length: emptySlotCount }).map((_, index) => (
-          <EmptySlot
-            key={`empty-${index}`}
-            dynastyTheme={dynastyTheme}
-          />
+          <li key={`empty-${index}`}>
+            <EmptySlot dynastyTheme={dynastyTheme} />
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
