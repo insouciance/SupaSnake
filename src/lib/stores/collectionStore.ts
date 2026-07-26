@@ -32,6 +32,13 @@ interface CollectionUIState {
 
   // Error state
   unlockError: string | null;
+  /**
+   * Equip failures live here, NOT in the page-wide `error`. That banner
+   * offers a "Retry" that refetches the whole collection — the wrong
+   * affordance for "this one snake would not equip", and the reason a single
+   * failure used to surface twice.
+   */
+  equipError: string | null;
 }
 
 interface CollectionState extends CollectionUIState {
@@ -58,12 +65,15 @@ interface CollectionState extends CollectionUIState {
   // UI Actions
   setActiveDynasty: (dynastyId: string) => void;
   openDetailModal: (variant: SnakeVariant, owned: OwnedSnake) => void;
+  /** Switch the open detail sheet to a sibling of the same variant. */
+  selectOwnedSnake: (owned: OwnedSnake) => void;
   closeDetailModal: () => void;
   openUnlockModal: (variant: SnakeVariant) => void;
   closeUnlockModal: () => void;
   setUnlocking: (loading: boolean) => void;
   setEquipping: (loading: boolean) => void;
   setUnlockError: (error: string | null) => void;
+  setEquipError: (error: string | null) => void;
 
   // Mutations
   addOwnedSnake: (snake: OwnedSnake) => void;
@@ -103,6 +113,7 @@ export const initialState = {
   isUnlocking: false,
   isEquipping: false,
   unlockError: null as string | null,
+  equipError: null as string | null,
 };
 
 // =============================================================================
@@ -130,13 +141,17 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       selectedVariant: variant,
       selectedOwned: owned,
       isDetailModalOpen: true,
+      equipError: null,
     }),
+
+  selectOwnedSnake: (owned) => set({ selectedOwned: owned, equipError: null }),
 
   closeDetailModal: () =>
     set({
       isDetailModalOpen: false,
       selectedVariant: null,
       selectedOwned: null,
+      equipError: null,
     }),
 
   openUnlockModal: (variant) =>
@@ -156,6 +171,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   setUnlocking: (isUnlocking) => set({ isUnlocking }),
   setEquipping: (isEquipping) => set({ isEquipping }),
   setUnlockError: (unlockError) => set({ unlockError }),
+  setEquipError: (equipError) => set({ equipError }),
 
   // Mutations
   addOwnedSnake: (snake) =>

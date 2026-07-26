@@ -158,6 +158,7 @@ interface MockStore {
   isUnlockModalOpen: boolean;
   isLoading: boolean;
   error: string | null;
+  equipError: string | null;
   setDynasties: jest.Mock;
   setVariants: jest.Mock;
   setOwnedSnakes: jest.Mock;
@@ -173,6 +174,8 @@ interface MockStore {
   setUnlocking: jest.Mock;
   setEquipping: jest.Mock;
   setUnlockError: jest.Mock;
+  setEquipError: jest.Mock;
+  selectOwnedSnake: jest.Mock;
   addOwnedSnake: jest.Mock;
   updateOwnedSnake: jest.Mock;
 }
@@ -194,6 +197,7 @@ function createMockStore(overrides: Partial<MockStore> = {}): MockStore {
     isUnlockModalOpen: false,
     isLoading: false,
     error: null,
+    equipError: null,
 
     // Setters
     setDynasties: jest.fn(),
@@ -213,6 +217,8 @@ function createMockStore(overrides: Partial<MockStore> = {}): MockStore {
     setUnlocking: jest.fn(),
     setEquipping: jest.fn(),
     setUnlockError: jest.fn(),
+    setEquipError: jest.fn(),
+    selectOwnedSnake: jest.fn(),
 
     // Mutations
     addOwnedSnake: jest.fn(),
@@ -540,9 +546,58 @@ describe('useCollection', () => {
       const { result } = renderHook(() => useCollection());
 
       expect(result.current.completionByDynasty).toEqual({
-        'dynasty-1': { owned: 1, total: 2 },
-        'dynasty-2': { owned: 1, total: 1 },
+        'dynasty-1': { owned: 1, total: 2, snakes: 1 },
+        'dynasty-2': { owned: 1, total: 1, snakes: 1 },
       });
+    });
+
+    it('counts DISTINCT VARIANTS owned, not snake rows', () => {
+      // The Lab's sticker book has one slot per variant. Counting rows is
+      // what rendered "Collection: 43/11 (391%)" for a player with a deep
+      // breeding line: four snakes of one variant is 1/2 collected, not 4/2.
+      const fourOfOneVariant: OwnedSnake[] = [1, 2, 3, 4].map((generation) => ({
+        id: `owned-cyber-${generation}`,
+        playerId: 'player-1',
+        variantId: 'CYBER SPARK',
+        snakeVariantId: 'variant-1',
+        generation,
+        parent1Id: null,
+        parent2Id: null,
+        acquiredAt: `2024-01-0${generation}T00:00:00Z`,
+        acquiredMethod: 'bred',
+        isEquipped: false,
+        isFavorited: false,
+      }));
+
+      const storeWithData = createMockStore({
+        dynasties: mockDynasties,
+        variants: mockVariants,
+        ownedSnakes: fourOfOneVariant,
+      });
+
+      (useCollectionStore as jest.Mock).mockImplementation((selector?: unknown) => {
+        if (typeof selector === 'function') {
+          return (selector as (state: MockStore) => unknown)(storeWithData);
+        }
+        return storeWithData;
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ dynasties: [], variants: [], snakes: [] }),
+      });
+
+      const { result } = renderHook(() => useCollection());
+
+      expect(result.current.completionByDynasty['dynasty-1']).toEqual({
+        owned: 1,
+        total: 2,
+        snakes: 4,
+      });
+      // Never above 100% at the source, so the bar cannot overflow.
+      expect(
+        result.current.completionByDynasty['dynasty-1'].owned
+      ).toBeLessThanOrEqual(result.current.completionByDynasty['dynasty-1'].total);
     });
 
     it('should return equippedSnake when equippedSnakeId is set', () => {
@@ -1005,7 +1060,209 @@ describe('useCollection', () => {
       expect(storeWithData.setEquippedSnakeId).toHaveBeenLastCalledWith(
         'owned-1'
       );
-      expect(storeWithData.setError).toHaveBeenCalledWith('Snake not owned');
+      // Equip failures go to their own channel. `setError` drives a banner
+      // whose "Retry" refetches the whole collection - the wrong affordance,
+      // and the reason a single failure used to surface twice.
+      expect(storeWithData.setEquipError).toHaveBeenCalledWith('Snake not owned');
+      expect(storeWithData.setError).not.toHaveBeenCalledWith('Snake not owned');
+    });
+
+    it('adopts the server row and leaves the detail sheet open', async () => {
+      const storeWithData = createMockStore({
+        ownedSnakes: mockOwnedSnakes,
+        equippedSnakeId: 'owned-1',
+      });
+
+      (useCollectionStore as jest.Mock).mockImplementation((selector?: unknown) => {
+        if (typeof selector === 'function') {
+          return (selector as (state: MockStore) => unknown)(storeWithData);
+        }
+        return storeWithData;
+      });
+
+      // The wide join gives lineage and traitSlots the optimistic copy lacks.
+      const serverRow: OwnedSnake = {
+        ...mockOwnedSnakes[1],
+        isEquipped: true,
+        traitSlots: 3,
+        variantRarity: 'rare',
+      };
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ dynasties: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ variants: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ snakes: mockOwnedSnakes, dnaBalance: 500 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ success: true, equippedSnake: serverRow }),
+        });
+
+      const { result } = renderHook(() => useCollection());
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      await act(async () => {
+        await result.current.equipSnake('owned-2');
+      });
+
+      // EquipResponse declares `equippedSnake` now, so the row can be applied
+      // rather than discarded.
+      expect(storeWithData.setOwnedSnakes).toHaveBeenLastCalledWith([
+        { ...mockOwnedSnakes[0], isEquipped: false },
+        serverRow,
+      ]);
+      expect(storeWithData.setEquippedSnakeId).toHaveBeenLastCalledWith('owned-2');
+      // The sheet stays open so the player sees "Equipped" flip and can keep
+      // comparing this variant's siblings.
+      expect(storeWithData.closeDetailModal).not.toHaveBeenCalled();
+    });
+
+    it('keeps the optimistic projection when the equip committed but the re-read did not', async () => {
+      const storeWithData = createMockStore({
+        ownedSnakes: mockOwnedSnakes,
+        equippedSnakeId: 'owned-1',
+      });
+
+      (useCollectionStore as jest.Mock).mockImplementation((selector?: unknown) => {
+        if (typeof selector === 'function') {
+          return (selector as (state: MockStore) => unknown)(storeWithData);
+        }
+        return storeWithData;
+      });
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ dynasties: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ variants: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ snakes: mockOwnedSnakes, dnaBalance: 500 }),
+        })
+        // The route answers 200 with no row: the equip really happened.
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true }),
+        });
+
+      const { result } = renderHook(() => useCollection());
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      let succeeded = false;
+      await act(async () => {
+        succeeded = await result.current.equipSnake('owned-2');
+      });
+
+      expect(succeeded).toBe(true);
+      expect(storeWithData.setEquippedSnakeId).toHaveBeenLastCalledWith('owned-2');
+      expect(storeWithData.setEquipError).not.toHaveBeenCalledWith(
+        expect.any(String)
+      );
+    });
+  });
+
+  describe('toggleFavorite', () => {
+    function primeFavoriteHook(storeWithData: MockStore) {
+      (useCollectionStore as jest.Mock).mockImplementation((selector?: unknown) => {
+        if (typeof selector === 'function') {
+          return (selector as (state: MockStore) => unknown)(storeWithData);
+        }
+        return storeWithData;
+      });
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ dynasties: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ variants: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ snakes: mockOwnedSnakes, dnaBalance: 500 }),
+        });
+    }
+
+    it('persists the flag through the favorite endpoint', async () => {
+      const storeWithData = createMockStore({ ownedSnakes: mockOwnedSnakes });
+      primeFavoriteHook(storeWithData);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ success: true, snakeId: 'owned-1', favorited: true }),
+      });
+
+      const { result } = renderHook(() => useCollection());
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      let succeeded = false;
+      await act(async () => {
+        succeeded = await result.current.toggleFavorite('owned-1', true);
+      });
+
+      expect(succeeded).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith('/api/collection/favorite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TEST_TOKEN}`,
+        },
+        body: JSON.stringify({ snakeId: 'owned-1', favorited: true }),
+      });
+      // Optimistic: the roster rule reads isFavorited, so the card reorders
+      // before the round trip.
+      expect(storeWithData.setOwnedSnakes).toHaveBeenLastCalledWith([
+        { ...mockOwnedSnakes[0], isFavorited: true },
+        mockOwnedSnakes[1],
+      ]);
+    });
+
+    it('rolls the optimistic flag back when the write fails', async () => {
+      const storeWithData = createMockStore({ ownedSnakes: mockOwnedSnakes });
+      primeFavoriteHook(storeWithData);
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: () => Promise.resolve({ success: false, error: 'nope' }),
+      });
+
+      const { result } = renderHook(() => useCollection());
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      let succeeded = true;
+      await act(async () => {
+        succeeded = await result.current.toggleFavorite('owned-1', true);
+      });
+
+      expect(succeeded).toBe(false);
+      expect(storeWithData.setOwnedSnakes).toHaveBeenLastCalledWith(
+        mockOwnedSnakes
+      );
     });
   });
 
