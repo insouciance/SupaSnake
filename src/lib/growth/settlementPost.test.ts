@@ -8,6 +8,7 @@
 
 import {
   composeSettlementPost,
+  composeWorldSettlementPost,
   recordLines,
   type SettlementPost,
 } from './settlementPost';
@@ -294,6 +295,74 @@ describe('composeSettlementPost — Rule 7, structurally', () => {
     const composed = post(panelWithClan());
     expect(composed.share.text).not.toMatch(/[$€£]/);
     expect(composed.share.text).not.toMatch(/\/shop|\/store|\/pricing|checkout/i);
+  });
+});
+
+describe('composeWorldSettlementPost — the operator’s post (§11.6)', () => {
+  const world = {
+    weekKey: WEEK,
+    clans: [
+      { name: 'Hollow Fang', tag: 'HFG', depth: 48210, contributingMembers: 6 },
+      { name: 'Lone Coil', tag: 'LNC', depth: 1240, contributingMembers: 1 },
+    ],
+    personalRecords: 3,
+    clanRecords: 2,
+    clanFirsts: 1,
+  };
+
+  it('names the week’s clans, its records and its conditions', () => {
+    const composed = composeWorldSettlementPost(world, NOW)!;
+    expect(composed.lines[0]).toBe(`SUPASNAKE · World Serpent · week of ${WEEK}`);
+    expect(composed.lines[1]).toBe(`Conditions: ${composed.conditions}`);
+    expect(composed.lines).toContain('HOLLOW FANG — Depth 48,210 · 6 members hunted');
+    expect(composed.lines).toContain('LONE COIL — Depth 1,240 · 1 member hunted');
+    expect(composed.lines).toContain('3 hunters went deeper than they ever had.');
+    expect(composed.lines).toContain(
+      '2 clans set a deepest week, 1 of them for the first time.'
+    );
+  });
+
+  it('names clans without numbering them — no positions, no cut line (Rule 8)', () => {
+    const composed = composeWorldSettlementPost(world, NOW)!;
+    expect(composed.share.text).not.toMatch(/#1|1st|2nd|rank|place|top \d|qualified|cut/i);
+  });
+
+  it('composes an honest post for a week nobody settled', () => {
+    const quiet = composeWorldSettlementPost(
+      { weekKey: WEEK, clans: [], personalRecords: 0, clanRecords: 0, clanFirsts: 0 },
+      NOW
+    )!;
+    expect(quiet.lines).toContain('No clan settled a Depth this week.');
+    expect(quiet.share.text.split('\n').pop()).toBe(quiet.share.url);
+    expect(quiet.share.text).not.toMatch(/sorry|unfortunately|sadly|nobody cares/i);
+  });
+
+  it('keeps the URL on the last line and carries no commercial vocabulary', () => {
+    const composed = composeWorldSettlementPost(world, NOW)!;
+    expect(composed.share.text.split('\n').pop()).toBe(composed.share.url);
+    expect(composed.share.url).toBe(serpentWeekArtifactUrl(WEEK, null));
+    expect(commercialTerms(composed.share.text)).toEqual([]);
+    expect(commercialTerms(composed.share.title)).toEqual([]);
+  });
+
+  it('refuses a key that is not a Serpent week, and a week that has not started', () => {
+    expect(composeWorldSettlementPost({ ...world, weekKey: '2026-07-14' }, NOW)).toBeNull();
+    expect(composeWorldSettlementPost({ ...world, weekKey: 'nonsense' }, NOW)).toBeNull();
+    expect(composeWorldSettlementPost({ ...world, weekKey: '2027-01-04' }, NOW)).toBeNull();
+  });
+
+  it('throws rather than publishing a post that breaks Rule 7', () => {
+    expect(() =>
+      composeWorldSettlementPost(
+        {
+          ...world,
+          clans: [
+            { name: 'Premium Upgrade', tag: 'PRM', depth: 10, contributingMembers: 1 },
+          ],
+        },
+        NOW
+      )
+    ).toThrow(/Rule 7/);
   });
 });
 

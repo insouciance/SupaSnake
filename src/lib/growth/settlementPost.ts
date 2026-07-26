@@ -214,6 +214,116 @@ export function composeSettlementPost(
   return post;
 }
 
+// ---------------------------------------------------------------------------
+// The world-scale post — what §11.6 actually asks the operator to publish
+// ---------------------------------------------------------------------------
+
+/** One clan's settled week, as the world roll-up reads it. */
+export interface WorldSettlementClan {
+  name: string;
+  tag: string | null;
+  depth: number;
+  contributingMembers: number;
+}
+
+/**
+ * The whole game's week, read from the settled rows.
+ *
+ * §11.6: "top clans, record Depths, world-firsts, the week's named
+ * conditions." All four, and nothing else — no arrivals, no revenue, no
+ * conversion, no "join now".
+ */
+export interface WorldSettlement {
+  weekKey: string;
+  /** The week's deepest clans. Named, never numbered (Rule 8: no positions). */
+  clans: readonly WorldSettlementClan[];
+  /** How many players set their deepest week. A count of records, not a rank. */
+  personalRecords: number;
+  /** How many clans set their deepest week. */
+  clanRecords: number;
+  /** How many of those clans had never settled a week before — world-firsts. */
+  clanFirsts: number;
+}
+
+/**
+ * Compose the operator's post for the whole week.
+ *
+ * The same refusals and the same Rule 7 guard as the player-scoped composer,
+ * and the same `payload` assembly, so the URL is the last line here too.
+ */
+export function composeWorldSettlementPost(
+  world: WorldSettlement,
+  now: Date | number = Date.now()
+): SettlementPost | null {
+  const { weekKey } = world;
+  const date = serpentWeekKeyToDate(weekKey);
+  if (Number.isNaN(date.getTime())) return null;
+  const definition = describeSerpentWeek(date);
+  if (definition.weekStart !== weekKey) return null;
+  if (new Date(definition.startsAt).getTime() > new Date(now).getTime()) return null;
+
+  const weekIndex = serpentWeekIndex(date);
+  const modifierNames = definition.modifiers.map((id) => describeSerpentModifier(id).name);
+  const conditions = modifierNames.length > 0 ? modifierNames.join(' · ') : 'No modifier';
+
+  const lines = [
+    `SUPASNAKE · World Serpent · week of ${weekKey}`,
+    `Conditions: ${conditions}`,
+  ];
+
+  if (world.clans.length === 0) {
+    // A week nobody settled still gets an honest post. It says so.
+    lines.push('No clan settled a Depth this week.');
+  } else {
+    for (const clan of world.clans) {
+      lines.push(
+        `${clan.name.toUpperCase()} — Depth ${clan.depth.toLocaleString('en-US')} · ${
+          clan.contributingMembers
+        } ${clan.contributingMembers === 1 ? 'member hunted' : 'members hunted'}`
+      );
+    }
+  }
+
+  if (world.personalRecords > 0) {
+    lines.push(
+      `${world.personalRecords} ${
+        world.personalRecords === 1 ? 'hunter' : 'hunters'
+      } went deeper than they ever had.`
+    );
+  }
+  if (world.clanRecords > 0) {
+    lines.push(
+      `${world.clanRecords} ${
+        world.clanRecords === 1 ? 'clan' : 'clans'
+      } set a deepest week${
+        world.clanFirsts > 0
+          ? `, ${world.clanFirsts} of them for the first time`
+          : ''
+      }.`
+    );
+  }
+
+  const share = payload(
+    `SupaSnake — Serpent week ${weekKey}`,
+    lines,
+    serpentWeekArtifactUrl(weekKey, null)
+  );
+
+  const hits = sweepMessage({ title: share.title, text: share.text });
+  if (hits.length > 0) {
+    throw new Error(`Settlement post violates Rule 7: ${hits.join('; ')}`);
+  }
+
+  return {
+    weekKey,
+    weekIndex,
+    headline: lines[2] ?? lines[1],
+    lines,
+    conditions,
+    share,
+  };
+}
+
 /**
  * The no-clan reading — a hunter of one. Same two-line shape as
  * `settlementLines` so the post's structure does not change with population,
