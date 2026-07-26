@@ -13,6 +13,7 @@ import { DiscordConnectCard } from '@/components/identity/DiscordConnectCard';
 import { CareerStats } from '@/components/profile/CareerStats';
 import { AimSystemPanel } from '@/components/profile/AimSystemPanel';
 import { DigestEmailPanel } from '@/components/profile/DigestEmailPanel';
+import { PushOptInPanel } from '@/components/pwa/PushOptInPanel';
 import { SubscriptionPanel } from '@/components/profile/SubscriptionPanel';
 import { NavBar } from '@/components/ui/NavBar';
 import Link from 'next/link';
@@ -104,6 +105,13 @@ export default function SettingsPage() {
         {/* Weekly Analyst digest email (Identity v1 I4, opt-in) */}
         <div className="mb-6">
           <DigestEmailPanel />
+        </div>
+
+        {/* Push notifications (WP-2.04, opt-in). The ONLY surface in the
+            product where a push subscription can be created; the panel
+            renders nothing at all when NEXT_PUBLIC_PWA_V1 is off. */}
+        <div className="mb-6">
+          <PushOptInPanel />
         </div>
 
         {/* The Chronicle (Identity v1 section 7): the Records cabinet is
