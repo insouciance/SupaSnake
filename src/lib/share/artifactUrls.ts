@@ -139,6 +139,35 @@ export function challengePlayPath(challenge: Challenge): string {
   return withQuery('/game', params);
 }
 
+/**
+ * The Open Graph image for a challenge link.
+ *
+ * Next's `opengraph-image.tsx` convention receives only route params, never
+ * the query string, so a card that has to show "beat 1,240" cannot be built
+ * by the file convention. A page whose URL carries challenge parameters
+ * points `openGraph.images` here instead; a bare artifact link keeps the
+ * file-convention image. Both render the same card.
+ */
+export function challengeImagePath(
+  challenge: Challenge,
+  dynasty?: string | null
+): string {
+  const params: Array<[string, string]> = [['kind', challenge.kind]];
+  if (challenge.kind === 'signal' && challenge.day !== null) {
+    params.push(['day', String(challenge.day)]);
+  } else {
+    params.push(['seed', challenge.seed]);
+  }
+  params.push(...challengeQueryParams(challenge));
+  if (dynasty) params.push(['dy', dynasty.toUpperCase()]);
+  return withQuery('/og/challenge', params);
+}
+
+/** True when a challenge carries anything the file-convention card can't show. */
+export function challengeNeedsOwnImage(challenge: Challenge): boolean {
+  return challenge.target !== null || challenge.decisions.length > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Share payloads
 // ---------------------------------------------------------------------------
