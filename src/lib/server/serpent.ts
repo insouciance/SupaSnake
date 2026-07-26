@@ -55,7 +55,12 @@ import {
   type SerpentModifier,
   type SerpentPlayerDepth,
   type SerpentRunRow,
+  serpentStoredModifiers,
 } from '@/shared/game/serpent';
+import {
+  parseConditionClause,
+  type ConditionClauseDef,
+} from '@/shared/game/worldCondition';
 import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
 import { isPublicCohort } from '@/lib/cohort/cohort';
 
@@ -109,9 +114,24 @@ export interface SerpentWeekRow {
   endsAt: string;
   seed: string;
   modifiers: SerpentModifier[];
+  /**
+   * The week's clauses (WP-2.10b), parsed out of the SAME `modifiers TEXT[]`
+   * column. No migration: the column is untyped text and the two vocabularies
+   * are namespaced (`clause:` prefixed ids versus bare anomaly words), so the
+   * partition below is total and lossless in both directions.
+   */
+  clauses: ConditionClauseDef[];
   settledAt: string | null;
 }
 
+/**
+ * Partition a stored condition-set by id NAMESPACE.
+ *
+ * `serpent_weeks.modifiers` holds `[...anomalies, ...clauses]`. An id that is
+ * neither is dropped by both filters — a row written by a newer build, or a
+ * modifier retired by an older one, degrades to the part this build
+ * understands rather than throwing on a read path that settles money.
+ */
 function toWeekRow(row: Record<string, unknown> | null): SerpentWeekRow | null {
   if (!row || typeof row.id !== 'string') return null;
   const rawModifiers = Array.isArray(row.modifiers) ? row.modifiers : [];
@@ -124,6 +144,9 @@ function toWeekRow(row: Record<string, unknown> | null): SerpentWeekRow | null {
     modifiers: rawModifiers
       .filter(isAnomalyId)
       .map((id) => describeSerpentModifier(id)),
+    clauses: rawModifiers
+      .map(parseConditionClause)
+      .filter((clause): clause is ConditionClauseDef => clause !== null),
     settledAt: (row.settled_at as string | null) ?? null,
   };
 }
@@ -154,7 +177,11 @@ export async function ensureCurrentSerpentWeek(
     p_starts_at: week.startsAt,
     p_ends_at: week.endsAt,
     p_seed: week.seed,
-    p_modifiers: week.modifiers,
+    // `[...modifiers, ...clauses]` — ONE composition, shared with the drift
+    // tripwire inside the RPC, which compares the whole array. A week whose
+    // clause draw changed under it therefore RAISEs exactly as a week whose
+    // anomaly changed does; the tripwire got stronger without a line of SQL.
+    p_modifiers: serpentStoredModifiers(week),
   });
 
   if (error) {

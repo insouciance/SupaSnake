@@ -53,6 +53,13 @@ import {
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
+import {
+  conditionBankDelta,
+  conditionStrainThresholdDelta,
+  normalizeCondition,
+  strainTierUnderCondition,
+  type ConditionInput,
+} from '@/shared/game/worldCondition';
 
 // =============================================================================
 // INPUT TYPES - the cross-workstream contract (engine payload, validator,
@@ -184,16 +191,28 @@ export function strainActivations(
   surges: StrainSurge[] = [],
   /** FTUE ceiling: tiers above the cap never activate (economy-binding). */
   tierCap: StrainTier = 3,
-  suppressedStrains: readonly StrainId[] = []
+  suppressedStrains: readonly StrainId[] = [],
+  /**
+   * The world condition's per-strain THRESHOLD shift, in points (WP-2.10b).
+   * Empty under no condition, which is every run the game had before it.
+   *
+   * A plain map rather than the condition object, because this is the one
+   * signature the ENGINE calls directly and it must not have to know what a
+   * `WorldCondition` is. Both sides derive the map from the same condition
+   * through `conditionStrainThresholdDelta`, so the activations the engine
+   * displays and the activations the payout recomputes are one calculation.
+   */
+  strainThresholdDelta: Readonly<Partial<Record<StrainId, number>>> = {}
 ): StrainActivations {
   const spawn = capSpawnPoints(heirloom);
   const result = {} as StrainActivations;
   for (const strain of STRAIN_IDS) {
     const points = spawn[strain] ?? 0;
+    const delta = strainThresholdDelta[strain] ?? 0;
     result[strain] = {
       points,
       genes: 0,
-      minorAt: points >= STRAIN_THRESHOLDS.minor ? 0 : null,
+      minorAt: points - delta >= STRAIN_THRESHOLDS.minor ? 0 : null,
       expressionAt: null,
       apexAt: null,
     };
@@ -213,7 +232,14 @@ export function strainActivations(
       s.points += 1;
       if (event.isGene) s.genes += 1;
       const strainCap = suppressedStrains.includes(strain) ? 1 : tierCap;
-      const tier = Math.min(strainCap, strainTier(s.points, s.genes));
+      const tier = Math.min(
+        strainCap,
+        strainTierUnderCondition(
+          s.points,
+          s.genes,
+          strainThresholdDelta[strain] ?? 0
+        )
+      );
       if (tier >= 1 && s.minorAt === null) s.minorAt = event.atFood;
       if (tier >= 2 && s.expressionAt === null) s.expressionAt = event.atFood;
       if (tier >= 3 && s.apexAt === null) s.apexAt = event.atFood;
@@ -265,8 +291,9 @@ export function computeLengthTrace(
   foodCount: number,
   activations: StrainActivations,
   input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>,
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): LengthTrace {
+  const anomaly = normalizeCondition(condition).anomaly;
   const lengthAtEat: number[] = [0];
   const shedEvents: ShedEvent[] = [];
   const loosePick = (id: GeneId) => view.loose.find((p) => p.id === id);
@@ -569,8 +596,10 @@ function round4(value: number): number {
 export function genomeOutcomeMultipliers(
   input: GenomeRunInput,
   traits: TraitId[] = [],
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): { bank: number; death: number } {
+  const world = normalizeCondition(condition);
+  const anomaly = world.anomaly;
   const view = input.splicesEnabled === false
     ? { loose: [...input.picks], splices: [] }
     : fusePicks(input.picks);
@@ -579,7 +608,8 @@ export function genomeOutcomeMultipliers(
     input.heirloom,
     input.surges,
     input.tierCap ?? 3,
-    input.suppressedStrains ?? []
+    input.suppressedStrains ?? [],
+    conditionStrainThresholdDelta(world)
   );
   const benefitsVoided = reviveVoidsBenefits(input.revive);
   const heldGenes = input.picks.length;
@@ -649,6 +679,14 @@ export function genomeOutcomeMultipliers(
     bank = round4(bank + deltas.bank);
     death = round4(death + deltas.death);
   }
+  // The world condition's bank clause (WP-2.10b). Additive on the base the
+  // anomaly may already have replaced, exactly as the infuse and trait deltas
+  // are, and NEVER voided by a revive: a clause is a fact about the week the
+  // run was played in, not a benefit the run earned - the same reasoning that
+  // keeps trait deltas alive through a Phoenix. The §10 clamps below still
+  // bind, so no clause can lift the bank past 1.75.
+  const bankClause = conditionBankDelta(world);
+  if (bankClause !== 0) bank = round4(bank + bankClause);
   // Hard clamps (section 10).
   bank = Math.min(STRAIN_ECONOMICS.bankClamp, bank);
   death = Math.min(STRAIN_ECONOMICS.salvageClamp, death);
@@ -698,8 +736,10 @@ export function genomeClaimCaps(
   input: GenomeRunInput,
   basis: GenomeCapsBasis,
   lengthTrace: LengthTrace,
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): GenomeClaimCaps {
+  const world = normalizeCondition(condition);
+  const anomaly = world.anomaly;
   const view = input.splicesEnabled === false
     ? { loose: [...input.picks], splices: [] }
     : fusePicks(input.picks);
@@ -708,7 +748,8 @@ export function genomeClaimCaps(
     input.heirloom,
     input.surges,
     input.tierCap ?? 3,
-    input.suppressedStrains ?? []
+    input.suppressedStrains ?? [],
+    conditionStrainThresholdDelta(world)
   );
   const find = (id: GeneId) => view.loose.find((p) => p.id === id);
   const fusedRicochet = view.splices.find((s) => s.spliceId === 'splice_ricochet');

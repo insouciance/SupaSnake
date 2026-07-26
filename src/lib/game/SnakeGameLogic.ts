@@ -424,8 +424,22 @@ export interface GenomeEngineConfig {
   lineage?: LineageBias | null;
   /** Anomaly strain week: +weight on this strain's genes in offers. */
   anomalyStrain?: StrainId | null;
-  /** Gauntlet strain ban: Expressions/Apexes are disabled; minor remains. */
+  /**
+   * Suppressed strains: Expressions/Apexes are disabled; the minor remains.
+   * Server-composed - the Gauntlet's strain ban UNIONED with the world
+   * condition's dampening clause (WP-2.10b), so the engine sees one list and
+   * the validator recomputes from the same one.
+   */
   suppressedStrains?: StrainId[];
+  /**
+   * The world condition's per-strain strain-threshold shift (WP-2.10b).
+   *
+   * Server-derived from the run's condition and handed over at start, exactly
+   * like `suppressedStrains` and `anomalyStrain`. The engine never derives it:
+   * if it did, the tiers it displays and the tiers the payout recomputes would
+   * be two calculations that merely agree today.
+   */
+  strainThresholdDelta?: Readonly<Partial<Record<StrainId, number>>>;
   /** Server fact: the previous earned run ended in death (Grave Robber). */
   prevRunDied?: boolean;
   /** FTUE gating (server-derived from banked-run count). */
@@ -643,7 +657,8 @@ export class SnakeGameLogic {
       this.spawnStrainPoints(),
       this.state.surges,
       this.ftueTierCap() as 0 | 1 | 2 | 3,
-      this.genome?.suppressedStrains ?? []
+      this.genome?.suppressedStrains ?? [],
+      this.genome?.strainThresholdDelta ?? {}
     );
     const counts: StrainPoints = {};
     const tiers: Partial<Record<StrainId, number>> = {};
