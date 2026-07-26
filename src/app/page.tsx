@@ -35,6 +35,7 @@ import {
   type SeasonTrackView,
 } from '@/components/engagement/SeasonTrack';
 import { StarterSelection } from '@/components/ftue/StarterSelection';
+import { SignalSurface } from '@/components/signal/SignalSurface';
 import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
@@ -110,6 +111,11 @@ export default function Home() {
     INITIAL_LAUNCH_STATE
   );
   const launchInFlightRef = useRef(false);
+  // The Signal's own take state (§7.2). Separate from `launchState` so a
+  // failed take never puts the LAUNCH button into a Retry phase — the ordinary
+  // run must stay one tap away whatever the Signal did (§5, Rule 10).
+  const [signalTaking, setSignalTaking] = useState(false);
+  const [signalTakeError, setSignalTakeError] = useState<string | null>(null);
   const publishNotification = useNotificationStore((state) => state.publish);
   const clearNotification = useNotificationStore((state) => state.clear);
   const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
@@ -400,18 +406,28 @@ export default function Home() {
     [token]
   );
 
-  const runLaunch = useCallback(async (skipIdentityGate = false) => {
-    if (launchInFlightRef.current) return;
+  const runLaunch = useCallback(async (
+    skipIdentityGate = false,
+    /**
+     * Constitution §7.2: the Signal objective the player took, if this launch
+     * came from the Signal surface rather than the LAUNCH button. It is a
+     * lookup key among the day's server-derived three and travels on the START
+     * request, because migration 049 binds the day's attempt to an open run
+     * and §8.6 decides the charge in that same request.
+     */
+    signalObjectiveId?: string
+  ): Promise<boolean> => {
+    if (launchInFlightRef.current) return false;
 
     if (!skipIdentityGate && !isAuthenticated) {
       const gate = evaluateAnonymousSignInGate(readLastUser());
       if (gate === 'welcome-back') {
         setWelcomeBack(readLastUser());
-        return;
+        return false;
       }
       if (gate === 'warn-progress-loss') {
         setShowLossNotice(true);
-        return;
+        return false;
       }
     }
 
@@ -420,11 +436,11 @@ export default function Home() {
         const result = await signInAnonymously();
         if (result?.error) {
           dispatchLaunch({ type: 'FAIL', error: result.error.message });
-          return;
+          return false;
         }
       }
       router.push('/game');
-      return;
+      return true;
     }
 
     // Constitution §5 (owner ruling, 25 July 2026): LAUNCH opens the Run
@@ -436,7 +452,13 @@ export default function Home() {
     // page *fully preset* for a first-time player — and then simply
     // navigates. No session is started here, so no run is ever created and
     // abandoned by a player who opens setup and walks away.
-    if (RUN_FLOW_V1_ENABLED) {
+    // Run Setup (WP-1.06) does not carry a taken Signal objective onto its
+    // START request, and the objective has to ride the START that opens the
+    // run (§8.6). So a launch that came from the Signal surface prepares the
+    // run here, exactly as the pre-Run-Flow path does, whatever this flag
+    // says. The LAUNCH button is untouched by this branch: with no objective
+    // it still opens Run Setup and adds no tap.
+    if (RUN_FLOW_V1_ENABLED && !signalObjectiveId) {
       launchInFlightRef.current = true;
       dispatchLaunch({ type: 'BEGIN', alreadyAuthenticated: isAuthenticated });
       try {
@@ -460,16 +482,17 @@ export default function Home() {
         dispatchLaunch({ type: 'BOOTSTRAPPED' });
         dispatchLaunch({ type: 'RUN_LOADED' });
         router.push('/game');
+        return true;
       } catch (error) {
         dispatchLaunch({
           type: 'FAIL',
           error:
             error instanceof Error ? error.message : 'Could not open the run setup',
         });
+        return false;
       } finally {
         launchInFlightRef.current = false;
       }
-      return;
     }
 
     if (!launchHandoffStorageAvailable()) {
@@ -477,7 +500,7 @@ export default function Home() {
         type: 'FAIL',
         error: 'This browser cannot safely prepare a run. Enable session storage and Retry.',
       });
-      return;
+      return false;
     }
 
     launchInFlightRef.current = true;
@@ -505,7 +528,9 @@ export default function Home() {
       const handoff = await prepareLaunchHandoff(
         launchSession.access_token,
         launchSession.user.id,
-        bootstrap
+        bootstrap,
+        fetch,
+        signalObjectiveId
       );
       if (!storeLaunchHandoff(handoff)) {
         throw new LaunchFlowError('Could not transfer the prepared run. Please Retry.');
@@ -513,6 +538,7 @@ export default function Home() {
 
       dispatchLaunch({ type: 'RUN_LOADED' });
       router.push('/game?launch=ftue-v2');
+      return true;
     } catch (error) {
       const message =
         error instanceof LaunchFlowError && error.retryAfterMs
@@ -521,10 +547,39 @@ export default function Home() {
             ? error.message
             : 'Could not launch the run';
       dispatchLaunch({ type: 'FAIL', error: message });
+      return false;
     } finally {
       launchInFlightRef.current = false;
     }
   }, [isAuthenticated, router, session, signInAnonymously]);
+
+  /**
+   * Take one of the day's three (§7.2). The take and the run are one act — the
+   * server binds the day's attempt to an OPEN run — so this launches, and the
+   * surface says so before the player taps.
+   *
+   * A failure here is reported on the Signal card and nowhere else: the day's
+   * opportunity is the only thing at stake (Rule 5), and LAUNCH stays exactly
+   * as available as it was.
+   */
+  const handleSignalTake = useCallback(
+    async (objectiveId: string): Promise<boolean> => {
+      setSignalTaking(true);
+      setSignalTakeError(null);
+      try {
+        const launched = await runLaunch(false, objectiveId);
+        if (!launched) {
+          setSignalTakeError(
+            'The Signal run did not start. Try again, or just LAUNCH — an ordinary run is unaffected.'
+          );
+        }
+        return launched;
+      } finally {
+        setSignalTaking(false);
+      }
+    },
+    [runLaunch]
+  );
 
   const handleContinueAfterLossNotice = useCallback(async () => {
     markProgressLossNoticed();
@@ -764,6 +819,26 @@ export default function Home() {
 
       {/* Mission line + LAUNCH - the one obvious primary action */}
       <div className="home-launch-dock absolute inset-x-0 z-10 flex flex-col items-center gap-4 px-4">
+        {/* The World Signal (§7.2) — the ONE daily surface, standing in the
+            slot the retired Contracts board occupied (§12.2, §13). The dock is
+            bottom-anchored, so this grows UPWARD: LAUNCH does not move and
+            open → LAUNCH → START is the same three taps it always was (§5,
+            Rule 10). Nothing here is required to start a run.
+
+            Withheld until the player has completed a run under FTUE v2, the
+            same threshold every other meta surface on this page uses — a first
+            run is never made to compete with a daily. */}
+        {isAuthenticated &&
+          !needsStarter &&
+          (!FTUE_V2_ENABLED || stats?.hasCompletedFirstRun === true) && (
+            <SignalSurface
+              token={token}
+              onTake={handleSignalTake}
+              taking={signalTaking}
+              takeError={signalTakeError}
+            />
+          )}
+
         <div
           className="h-6 flex items-center justify-center animate-fade-up"
           style={{ animationDelay: '360ms' }}

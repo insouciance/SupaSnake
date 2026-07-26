@@ -96,6 +96,7 @@ import {
   claimSignalObjectiveRun,
   settleSignalAttemptForSession,
 } from '@/lib/server/signal';
+import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1384,6 +1385,30 @@ export async function POST(request: NextRequest) {
       }
       await refreshLinkedRolesForPlayer(supabase, player.id);
 
+      // ---------------------------------------------------------------
+      // The Daily Take (Constitution §7.2, WP-1.04)
+      // ---------------------------------------------------------------
+      // A PREVIEW, and only a preview. `describeDailyTakeSlot` has no write in
+      // it: it reads the player's Take chain and reports what one tap would
+      // pay. The Take is collected by `POST /api/daily-take/collect` — §7.2
+      // attaches it to a tap, never to a run ending, so settlement must not be
+      // able to grant it as a side effect of finishing a run.
+      //
+      // NOTHING ABOVE THIS LINE CAN SEE IT. `finalDna`, `yieldDna`,
+      // `validation.adjustedScore` and every write they fed — the session row,
+      // the DNA credit, `total_dna_earned`, the records refresh, mastery, the
+      // Signal settlement — are all computed and committed before this call is
+      // made, and the value it returns is used in exactly one place: the
+      // response field below. The Take's tier multiplier therefore cannot
+      // reach the fold; WP-0.02 deleted the account multiplier stack so that
+      // no factor could, and this is deliberately not a new one.
+      //
+      // Null on every path that is not an armed, migrated, uncollected day —
+      // flag off, migration 050 unapplied, a read failure, or a Take already
+      // collected today. `parseDailyTake` renders null as "no slot", so the
+      // Results layer's default is simply that the Take is not offered.
+      const takeSlot = await describeDailyTakeSlot(supabase, player.id);
+
       return NextResponse.json({
         success: true,
         player: updatedPlayer,
@@ -1406,6 +1431,9 @@ export async function POST(request: NextRequest) {
         ...(mastery ? { mastery } : {}),
         ...(sessionAnomaly ? { anomaly: sessionAnomaly } : {}),
         ...(signal ? { signal } : {}),
+        // The Take slot (§7.2). Present only when the server has a Take to
+        // offer; `parseDailyTake` refuses anything without `firstRunOfDay`.
+        ...(takeSlot?.firstRunOfDay ? { dailyTake: takeSlot } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
       });
