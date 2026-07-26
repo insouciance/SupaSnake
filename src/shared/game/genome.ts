@@ -780,28 +780,87 @@ export function genomeClaimCaps(
   };
 }
 
+/** The DNA-bearing claim fields, in report order. */
+export const GENOME_CLAIM_DNA_FIELDS = [
+  'aurumWakeDna',
+  'midasDna',
+  'moltFoodDna',
+  'ouroborosDna',
+  'staticChargeDna',
+  'ricochetDna',
+  'heartwoodDna',
+] as const;
+
+export type GenomeClaimDnaField = (typeof GENOME_CLAIM_DNA_FIELDS)[number];
+
+/** One clamp the server applied, with the DNA it cost the claim. */
+export interface GenomeClaimClamp {
+  /** The claim field, or 'total' for the aggregate backstop. */
+  field: GenomeClaimDnaField | 'secondSunTriggered' | 'total';
+  /** What the client claimed, normalized to a non-negative integer. */
+  claimed: number;
+  /** The server-computed ceiling. */
+  cap: number;
+  /** `claimed - accepted`: exactly the DNA this clamp removed. */
+  delta: number;
+}
+
+export interface GenomeClaimClampResult {
+  accepted: GenomeClaims;
+  bonusDna: number;
+  /** True when the aggregate backstop bound while every individual cap passed. */
+  globalClampHit: boolean;
+  /**
+   * Every clamp applied, individually. WP-2.05: this is what makes a
+   * `DNA_MISMATCH` explainable — the invariant the validator's tests pin is
+   * that `claimed - recomputed` is fully accounted for by these deltas, so
+   * no divergence is ever unattributed again.
+   */
+  clamps: GenomeClaimClamp[];
+}
+
 /**
- * Clamp untrusted claims against the caps. Returns the accepted claims
- * plus the total accepted bonus DNA and whether the GLOBAL clamp bound
- * while individual caps passed (the cheat signal - flag, never hide).
+ * Clamp untrusted claims against the caps. Returns the accepted claims,
+ * the total accepted bonus DNA, whether the GLOBAL clamp bound while
+ * individual caps passed (the cheat signal - flag, never hide), and the
+ * individual clamps that were applied.
  */
 export function clampGenomeClaims(
   raw: GenomeClaims,
   caps: GenomeClaimCaps
-): { accepted: GenomeClaims; bonusDna: number; globalClampHit: boolean } {
-  const clampInt = (value: unknown, cap: number): number => {
+): GenomeClaimClampResult {
+  const clamps: GenomeClaimClamp[] = [];
+  const normalize = (value: unknown): number => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(cap, Math.floor(value)));
+    return Math.max(0, Math.floor(value));
   };
+  const clampInt = (field: GenomeClaimDnaField, cap: number): number => {
+    const claimed = normalize(raw[field]);
+    const acceptedValue = Math.min(cap, claimed);
+    if (claimed > acceptedValue) {
+      clamps.push({ field, claimed, cap, delta: claimed - acceptedValue });
+    }
+    return acceptedValue;
+  };
+  const secondSunClaimed = raw.secondSunTriggered === true;
+  const secondSunAccepted = secondSunClaimed && caps.secondSunFlat > 0;
+  if (secondSunClaimed && !secondSunAccepted) {
+    clamps.push({
+      field: 'secondSunTriggered',
+      claimed: 1,
+      cap: 0,
+      delta: 1,
+    });
+  }
   const accepted: GenomeClaims = {
-    aurumWakeDna: clampInt(raw.aurumWakeDna, caps.aurumWakeDna),
-    midasDna: clampInt(raw.midasDna, caps.midasDna),
-    moltFoodDna: clampInt(raw.moltFoodDna, caps.moltFoodDna),
-    ouroborosDna: clampInt(raw.ouroborosDna, caps.ouroborosDna),
-    staticChargeDna: clampInt(raw.staticChargeDna, caps.staticChargeDna),
-    ricochetDna: clampInt(raw.ricochetDna, caps.ricochetDna),
-    heartwoodDna: clampInt(raw.heartwoodDna, caps.heartwoodDna),
-    secondSunTriggered: raw.secondSunTriggered === true && caps.secondSunFlat > 0,
+    aurumWakeDna: clampInt('aurumWakeDna', caps.aurumWakeDna),
+    midasDna: clampInt('midasDna', caps.midasDna),
+    moltFoodDna: clampInt('moltFoodDna', caps.moltFoodDna),
+    ouroborosDna: clampInt('ouroborosDna', caps.ouroborosDna),
+    staticChargeDna: clampInt('staticChargeDna', caps.staticChargeDna),
+    ricochetDna: clampInt('ricochetDna', caps.ricochetDna),
+    heartwoodDna: clampInt('heartwoodDna', caps.heartwoodDna),
+    secondSunTriggered: secondSunAccepted,
   };
   let bonusDna =
     (accepted.aurumWakeDna ?? 0) +
@@ -815,9 +874,15 @@ export function clampGenomeClaims(
   let globalClampHit = false;
   if (bonusDna > caps.globalClaimsCap) {
     globalClampHit = true;
+    clamps.push({
+      field: 'total',
+      claimed: bonusDna,
+      cap: caps.globalClaimsCap,
+      delta: bonusDna - caps.globalClaimsCap,
+    });
     bonusDna = caps.globalClaimsCap;
   }
-  return { accepted, bonusDna, globalClampHit };
+  return { accepted, bonusDna, globalClampHit, clamps };
 }
 
 // =============================================================================

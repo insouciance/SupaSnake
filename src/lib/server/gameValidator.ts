@@ -63,11 +63,13 @@ import {
 } from '@/shared/game/strains';
 import {
   clampGenomeClaims,
+  genePoolBlockedByTraits,
   sanitizeInfuses,
   sanitizeLossEvents,
   sanitizeRevive,
   sanitizeSurges,
   strainActivations,
+  type GenomeClaimClamp,
   type GenomeClaims,
   type GenomeRevive,
   type GenomeRunInput,
@@ -147,7 +149,194 @@ export interface CosmicClaim {
   maxChain: number;
 }
 
+// =============================================================================
+// VALIDATION SEVERITY (WP-2.05 — Player Truth)
+// =============================================================================
+
+/**
+ * THE CLASSIFICATION PRINCIPLE.
+ *
+ * The server can RECOMPUTE every economic quantity of a run from the run's
+ * own inputs. The only two quantities it cannot recompute — only BOUND —
+ * are `duration_seconds` and `food_count`, because they are facts about
+ * time and physics rather than about arithmetic.
+ *
+ *   FATAL  <=>  after repair, the server still cannot bound the run's
+ *               physics within the session it observed.
+ *
+ * Everything else is repaired, PAID, COUNTED and ALERTED. A validator
+ * finding is forensic information; it is not a fine. Rule 6 and the owner's
+ * ruling of 2026-07-26 ("in no way can that score be taken away") make the
+ * recompute authoritative — a claim that disagrees with it loses the
+ * argument about the payout, not the run.
+ *
+ * Plus one deliberately narrow second axis — FORGERY: a claim no engine
+ * could ever emit. Exactly one code qualifies (`SPLICE_CLAIMED_DIRECTLY`:
+ * splices are DERIVED by `fusePicks` and are never claimable), and it is
+ * fatal because a forged input means the claim block as a whole describes a
+ * run the server did not observe.
+ */
+export type ValidationSeverity = 'fatal' | 'advisory';
+
+/**
+ * The FATAL set, and it is exactly these two.
+ *
+ * - `INVALID_DURATION` — the client-vs-serverElapsed bound. Load-bearing
+ *   because the food-rate bound is DERIVED from duration: unbounded time
+ *   means an unbounded food count means an unbounded run. It is also read
+ *   straight off the row by the Signal `endure` objective, so a crafted
+ *   `duration_seconds` would complete an objective no one played.
+ * - `SPLICE_CLAIMED_DIRECTLY` — forgery (see above).
+ *
+ * Adding a third entry here takes progression away from players and needs
+ * the same argument these two carry: name the physical bound that repair
+ * cannot restore.
+ */
+export const FATAL_VALIDATION_CODES = [
+  'INVALID_DURATION',
+  'SPLICE_CLAIMED_DIRECTLY',
+] as const;
+
+export type FatalValidationCode = (typeof FATAL_VALIDATION_CODES)[number];
+
+/**
+ * Every code this validator (and the session route's offer-trace check) can
+ * push, with its severity. Pinned by a source scan in
+ * `gameValidator.severity.test.ts`, so a new `errors.push('NEW_CODE: …')`
+ * that is not listed here fails the build rather than silently inheriting a
+ * default.
+ *
+ * ONE table, deliberately: a per-push severity argument would mean touching
+ * 45 push sites in a money-adjacent file and would create a second source
+ * of truth that migration 055's SQL backfill could not read.
+ */
+export const VALIDATION_CODE_SEVERITY: Readonly<
+  Record<string, ValidationSeverity>
+> = Object.freeze({
+  // --- FATAL: the physics bound, and forgery -------------------------------
+  INVALID_DURATION: 'fatal',
+  SPLICE_CLAIMED_DIRECTLY: 'fatal',
+
+  // --- ADVISORY: repaired, paid, counted, alerted --------------------------
+  // The divergence signal itself. It says the claim and the recompute
+  // disagree; the recompute is what gets paid, so the disagreement is
+  // forensic. Making it fatal is what cost ~10 honest extractions their
+  // progression.
+  DNA_MISMATCH: 'advisory',
+  SCORE_MISMATCH: 'advisory',
+  // Claims that were clamped to a server-computed cap. The clamp already
+  // did the whole job; the code reports what it cost.
+  CLAIM_CLAMPED: 'advisory',
+  GENOME_GLOBAL_CLAMP: 'advisory',
+  COSMIC_COMBO: 'advisory',
+  // Shape/legality repairs: the offending entry is dropped and the payout
+  // is recomputed from what survived.
+  INVALID_MUTATIONS: 'advisory',
+  INVALID_GENES: 'advisory',
+  MUTATION_LOCKED: 'advisory',
+  GENE_LOCKED: 'advisory',
+  MUTATION_BOUND: 'advisory',
+  GENE_BOUND: 'advisory',
+  INFUSE_BOUND: 'advisory',
+  SURGE_INVALID: 'advisory',
+  REVIVE_INVALID: 'advisory',
+  PHOENIX_INVALID: 'advisory',
+  TRAIT_CONFLICT: 'advisory',
+  // Outcome/food-count repairs. `INVALID_FOOD_RATE` clamps the food count
+  // to the duration-derived bound — and the duration bound above is the
+  // fatal one, so the physics are still bounded after this repair.
+  INVALID_OUTCOME: 'advisory',
+  INVALID_FOOD_COUNT: 'advisory',
+  INVALID_FOOD_RATE: 'advisory',
+  // Pushed by the session route, not here. Its own source comment has
+  // called it advisory since it shipped, while the code set valid = false.
+  OFFER_SEED_MISMATCH: 'advisory',
+});
+
+/** The code of a validator error string: everything before the first ':'. */
+export function validationCodeOf(error: string): string {
+  const colon = error.indexOf(':');
+  return (colon === -1 ? error : error.slice(0, colon)).trim();
+}
+
+/**
+ * Severity of a code. FAIL-SAFE DEFAULT: an unrecognised code is ADVISORY.
+ *
+ * The asymmetry with migration 055 is deliberate and is the whole design.
+ * At RUNTIME an author who adds a code and forgets the table must never
+ * cost a live player their progression, so the default pays. In the
+ * BACKFILL an unrecognised code SKIPS the row, because a code whose
+ * semantics nobody has read must never put a row onto a public board. The
+ * source scan makes the runtime default a safety net rather than a
+ * loophole.
+ */
+export function severityOfValidationCode(code: string): ValidationSeverity {
+  return VALIDATION_CODE_SEVERITY[code] ?? 'advisory';
+}
+
+/** True when this error string carries a fatal code. */
+export function isFatalValidationError(error: string): boolean {
+  return severityOfValidationCode(validationCodeOf(error)) === 'fatal';
+}
+
+/** Split a flat error list into its fatal and advisory halves. */
+export function partitionValidationErrors(errors: readonly string[]): {
+  fatalErrors: string[];
+  advisoryErrors: string[];
+} {
+  const fatalErrors: string[] = [];
+  const advisoryErrors: string[] = [];
+  for (const error of errors) {
+    if (isFatalValidationError(error)) fatalErrors.push(error);
+    else advisoryErrors.push(error);
+  }
+  return { fatalErrors, advisoryErrors };
+}
+
+/**
+ * Append an ADVISORY finding to an already-computed result, keeping
+ * `errors`, `advisoryErrors` and `valid` consistent.
+ *
+ * This replaces the session route's hand-set `validation.valid = false`,
+ * which was the one place outside this module that could decide a run had
+ * failed. It THROWS on a fatal code: a caller outside the validator has no
+ * business asserting that the server could not bound a run's physics, and a
+ * silent no-op would hide the mistake.
+ */
+export function appendAdvisory(
+  result: ValidationResult,
+  error: string
+): ValidationResult {
+  if (isFatalValidationError(error)) {
+    throw new Error(
+      `appendAdvisory refuses the fatal code ${validationCodeOf(error)}: ` +
+        'fatality is decided inside validateGameResult, from the physics bound'
+    );
+  }
+  result.errors.push(error);
+  result.advisoryErrors.push(error);
+  result.valid = result.fatalErrors.length === 0;
+  return result;
+}
+
+/** Build the severity view of a finished error list. */
+function severityView(errors: string[]): {
+  valid: boolean;
+  fatalErrors: string[];
+  advisoryErrors: string[];
+} {
+  const { fatalErrors, advisoryErrors } = partitionValidationErrors(errors);
+  return { valid: fatalErrors.length === 0, fatalErrors, advisoryErrors };
+}
+
 export interface ValidationResult {
+  /**
+   * WP-2.05: `valid` now means NO FATAL ERROR — the server could bound the
+   * run's physics — not "no finding at all". It is what the route stamps
+   * into `game_sessions.validated`, whose COMMENT ON COLUMN (migration 054)
+   * states the same semantics for the next author writing a
+   * `validated IS TRUE` predicate.
+   */
   valid: boolean;
   /** Authoritative payout: outcome(recomputed raw) [+ victory bonus]. */
   adjustedDna: number;
@@ -177,11 +366,69 @@ export interface ValidationResult {
   masteryRawDna: number;
   /** Accepted genome record (game_sessions.genome), null on legacy runs. */
   genome: AcceptedGenome | null;
+  /**
+   * The duration the row should STORE: `min(claim, serverElapsedSeconds)`.
+   *
+   * Clamped to serverElapsed and not serverElapsed + 10 on purpose — the
+   * +10 above is a clock-skew tolerance for REJECTING a claim, never a
+   * licence to record time that did not pass. Signal's `endure` objective
+   * reads this number straight off the row.
+   */
+  durationSeconds: number;
+  /**
+   * Every bounded-trust clamp the server applied, with the DNA each cost.
+   * Empty on legacy (non-genome) runs. This is what makes a `DNA_MISMATCH`
+   * explainable rather than merely reported.
+   */
+  claimClamps: GenomeClaimClamp[];
+  /**
+   * Every finding, in push order — unchanged in shape and content, so the
+   * stored `validation_errors` blob and every existing consumer stay
+   * wire-identical.
+   */
   errors: string[];
+  /** The subset of `errors` whose codes are fatal (see FATAL_VALIDATION_CODES). */
+  fatalErrors: string[];
+  /** The subset of `errors` whose codes are advisory. */
+  advisoryErrors: string[];
 }
 
-/** Claims within +/- this many DNA/score of the recompute are treated as rounding noise. */
+/**
+ * Absolute floor of the claim-drift ALERT threshold.
+ *
+ * WP-2.05: this stopped being an eligibility threshold. A drift never
+ * changes the payout (the recompute is authoritative either way) and never
+ * changes eligibility (DNA_MISMATCH / SCORE_MISMATCH are advisory), so the
+ * only thing it decides now is whether a finding is worth an operator's
+ * attention.
+ */
 export const CLAIM_EPSILON = 1;
+
+/**
+ * Relative half of the same threshold. A whole-run ABSOLUTE epsilon of 1
+ * fires on a 400-food run that is 3 DNA apart — which is what flagged the
+ * owner's honest `scavenger` runs — while missing a 1-DNA-per-food drift on
+ * a short one. The alert threshold is therefore
+ * `max(CLAIM_EPSILON, |recomputed| * CLAIM_EPSILON_RATIO)`.
+ *
+ * This tolerance is for ALERTING ONLY. The fold-parity property test
+ * asserts EXACT equality between the engine and `computeGenomeRunTotals`
+ * and does not consult it — a drift this hides from an operator would still
+ * fail the build.
+ */
+export const CLAIM_EPSILON_RATIO = 0.005;
+
+/** True when a claim is far enough from the recompute to be worth an alert. */
+export function claimDriftIsAlertable(
+  claimed: number,
+  recomputed: number
+): boolean {
+  const tolerance = Math.max(
+    CLAIM_EPSILON,
+    Math.abs(recomputed) * CLAIM_EPSILON_RATIO
+  );
+  return Math.abs(claimed - recomputed) > tolerance;
+}
 
 /** Minimum food gap the spawn cadence allows before the k-th mutation pick. */
 const MIN_FOODS_PER_PICK = 15;
@@ -376,13 +623,29 @@ export function validateGameResult(
   const now = Date.now();
   const serverElapsed = Math.floor((now - serverStartedAt.getTime()) / 1000);
 
-  // 1. Duration bounds (unchanged from v1)
-  if (input.duration_seconds > serverElapsed + 10) {
+  // 1. Duration bound — THE fatal bound, and now the only one.
+  //
+  // WP-2.05: the flat `GAME_CONFIG.session.maxDuration` ceiling is DELETED
+  // (owner ruling, 2026-07-26: "a long run is a good run"). A ten-minute
+  // wall invalidated exactly the careful, tactical-hold play the game is
+  // for, and it bounded nothing the serverElapsed comparison below does not
+  // already bound better.
+  //
+  // What remains is the comparison against the session's own observed
+  // elapsed time, with a 10-second clock-skew tolerance. It stays FATAL:
+  // the food-rate bound is derived from duration, so an unbounded duration
+  // is an unbounded run.
+  const claimedDuration = Number.isFinite(input.duration_seconds)
+    ? Math.max(0, input.duration_seconds)
+    : 0;
+  if (claimedDuration > serverElapsed + 10) {
     errors.push('INVALID_DURATION: Client duration exceeds server elapsed time');
   }
-  if (input.duration_seconds > GAME_CONFIG.session.maxDuration) {
-    errors.push('INVALID_DURATION: Duration exceeds maximum');
-  }
+  // ...and what the row STORES is the claim clamped to the time that
+  // actually passed. The +10 skew tolerance governs rejection only; storing
+  // serverElapsed + 10 would hand a crafted claim ten free seconds of
+  // Signal `endure` progress on every run.
+  const durationSeconds = Math.min(claimedDuration, Math.max(0, serverElapsed));
 
   // 2. Outcome consistency: an extracted run cannot also be a death.
   //    Conflicting claims void the bank bonus (pay the salvage rate).
@@ -401,19 +664,23 @@ export function validateGameResult(
     foodCount = Math.max(0, foodCount);
   }
 
-  // ...bounded by the per-dynasty food rate (replaces score <= duration/2)
-  const maxFood = Math.ceil(
-    Math.max(0, input.duration_seconds) * ruleset.validation.maxFoodPerSecond
-  );
+  // ...bounded by the per-dynasty food rate (replaces score <= duration/2).
+  // The bound is derived from the CLAMPED duration: a claim of time that
+  // did not pass must not buy food headroom either.
+  const maxFood = Math.ceil(durationSeconds * ruleset.validation.maxFoodPerSecond);
+  const claimedFoodCount = foodCount;
   if (foodCount > maxFood) {
-    errors.push(
-      `INVALID_FOOD_RATE: ${foodCount} foods exceeds max ${maxFood} for ${input.duration_seconds}s (${dynasty})`
-    );
     foodCount = maxFood;
   }
 
   // GENOME BRANCH (Buildcraft: The Genome): sessions stamped with a
   // run_seed validate steps 4-8 under the genome pipeline.
+  //
+  // The INVALID_FOOD_RATE push is DEFERRED into the branch that knows the
+  // FINAL bound. VOLT's Arc Lightning legitimately widens the rate bound
+  // (g8), and pushing the error here meant a run whose foods were restored
+  // still carried the error that had rejected them - an error outliving its
+  // own retraction, and, before WP-2.05, costing the run its eligibility.
   if (genomeCtx !== null) {
     return validateGenomeBranch(
       input,
@@ -423,8 +690,18 @@ export function validateGameResult(
       genomeCtx,
       extracted,
       foodCount,
+      claimedFoodCount,
       maxFood,
+      durationSeconds,
       errors
+    );
+  }
+
+  // Legacy path: no expression can widen the bound, so the final bound is
+  // known here and the finding is pushed immediately.
+  if (claimedFoodCount > foodCount) {
+    errors.push(
+      `INVALID_FOOD_RATE: ${claimedFoodCount} foods exceeds max ${maxFood} for ${durationSeconds}s (${dynasty})`
     );
   }
 
@@ -504,20 +781,20 @@ export function validateGameResult(
     expectedPayout += GAME_CONFIG.economy.dna.completionBonus;
   }
 
-  // 9. Claim mismatches only flag - the payout stays the recomputed value
-  if (Math.abs(input.dna_earned - rawDna) > CLAIM_EPSILON) {
+  // 9. Claim mismatches only ALERT - the payout stays the recomputed value.
+  if (claimDriftIsAlertable(input.dna_earned, rawDna)) {
     errors.push(
       `DNA_MISMATCH: claimed ${input.dna_earned}, recomputed ${rawDna} (${dynasty}, ${foodCount} foods)`
     );
   }
-  if (Math.abs(input.score - expectedScore) > CLAIM_EPSILON) {
+  if (claimDriftIsAlertable(input.score, expectedScore)) {
     errors.push(
       `SCORE_MISMATCH: claimed ${input.score}, recomputed ${expectedScore} (${dynasty}, ${foodCount} foods)`
     );
   }
 
   return {
-    valid: errors.length === 0,
+    ...severityView(errors),
     adjustedDna: expectedPayout,
     rawDna,
     adjustedScore: expectedScore,
@@ -528,6 +805,8 @@ export function validateGameResult(
     cosmic,
     masteryRawDna: rawDna,
     genome: null,
+    durationSeconds,
+    claimClamps: [],
     errors,
   };
 }
@@ -537,11 +816,19 @@ export function validateGameResult(
 // =============================================================================
 
 /**
- * VOLT Arc Lightning auto-collects up to 2 extra foods per eat, raising
- * the honest eat rate. The food-rate bound WIDENS (a still-hard cap) by
- * this factor only when the accepted picks make the expression reachable.
+ * VOLT Arc Lightning auto-collects up to `arcMaxPerEat` EXTRA foods per
+ * eat, so one honest eat can register up to `1 + arcMaxPerEat` foods. The
+ * food-rate bound WIDENS (a still-hard cap) by exactly that factor, and
+ * only when the accepted picks make the expression reachable.
+ *
+ * WP-2.05: this was a hardcoded 1.5, which is a PAYOUT BUG rather than a
+ * loose flag. On PRIMAL (`maxFoodPerSecond: 1.0`) a VOLT snake at the
+ * expression physically eats up to 3 foods per second of play, so 1.5
+ * clamped away up to half of an honest run's foods - and every clamped food
+ * is DNA the server then refused to pay. Deriving the factor from the arc
+ * physics is the fix: the bound now says what the engine can actually do.
  */
-export const VOLT_RATE_ALLOWANCE_FACTOR = 1.5;
+export const VOLT_RATE_ALLOWANCE_FACTOR = 1 + STRAIN_PHYSICS.arcMaxPerEat;
 
 /** Minimum food index of any gene pick (first gene food / first portal). */
 const MIN_FIRST_GENE_FOOD = 15;
@@ -714,7 +1001,9 @@ function validateGenomeBranch(
   ctx: GenomeValidationContext,
   extracted: boolean,
   foodCount: number,
+  claimedFoodCount: number,
   baseMaxFood: number,
+  durationSeconds: number,
   errors: string[]
 ): ValidationResult {
   const claim = (input.genome ?? {}) as Record<string, unknown>;
@@ -754,11 +1043,48 @@ function validateGenomeBranch(
     ctx.genePool,
     ctx.splicesUnlocked !== false
   );
-  if (traits.includes('ascetic') && picks.length > 0) {
-    errors.push(
-      `TRAIT_CONFLICT: ${picks.length} gene pick(s) claimed on an Ascetic snake (gene food never spawns)`
-    );
-    picks = [];
+  // g5b. Ascetic — NARROWED (WP-2.05).
+  //
+  // The trait's stated cost is "mutation foods never spawn", and the
+  // spawner is correctly gated (`genePoolBlockedByTraits` is now the single
+  // authority the engine consults). A PORTAL IS NOT FOOD: an Ascetic snake
+  // can still reach an extraction portal and still choose INFUSE, and an
+  // infuse's own gene offer owes nothing to the food spawner. Stripping
+  // every pick therefore punished a legal play — it is the unwired
+  // suppression that cost the owner's runs their eligibility.
+  //
+  // So: a pick that rides an ACCEPTED infuse's food index is honest and is
+  // paid. A pick with no infuse to explain it has no legal source on this
+  // snake and is dropped (advisory — the payout is simply recomputed from
+  // what survived). Each infuse explains at most one pick, in food order.
+  //
+  // NOTE FOR THE OWNER (flagged at PR time, deliberately not decided here):
+  // this makes the trait's TEXT ("no builds, pure snake") narrower than its
+  // BEHAVIOUR (builds via portals only, at most `infuseMaxPerRun` genes).
+  // Either the copy changes or the trait does; that is a design question
+  // for a design WP, not something a settlement-hardening package settles.
+  if (genePoolBlockedByTraits(traits) && picks.length > 0) {
+    const infuseBudget = new Map<number, number>();
+    for (const infuse of infuses) {
+      infuseBudget.set(infuse.atFood, (infuseBudget.get(infuse.atFood) ?? 0) + 1);
+    }
+    const explained: GenePick[] = [];
+    const unexplained: GenePick[] = [];
+    for (const pick of picks) {
+      const remaining = infuseBudget.get(pick.atFood) ?? 0;
+      if (remaining > 0) {
+        infuseBudget.set(pick.atFood, remaining - 1);
+        explained.push(pick);
+      } else {
+        unexplained.push(pick);
+      }
+    }
+    if (unexplained.length > 0) {
+      errors.push(
+        `TRAIT_CONFLICT: ${unexplained.length} gene pick(s) on an Ascetic snake ride no infuse (gene food never spawns) - dropped; ${explained.length} infuse-sourced pick(s) kept`
+      );
+    }
+    picks = explained;
   }
 
   // g6. Surges: only granted by infusing AT the gene cap - every surge
@@ -857,15 +1183,23 @@ function validateGenomeBranch(
     anomaly
   );
   const voltReachable = totalsProbe.activations.VOLT.expressionAt !== null;
-  const claimedFood = Number.isFinite(input.food_count)
-    ? Math.max(0, Math.floor(input.food_count))
-    : 0;
-  if (voltReachable && claimedFood > foodCount) {
-    const widenedMax = Math.ceil(baseMaxFood * VOLT_RATE_ALLOWANCE_FACTOR);
-    const restored = Math.min(claimedFood, widenedMax);
+  let effectiveMaxFood = baseMaxFood;
+  if (voltReachable && claimedFoodCount > foodCount) {
+    effectiveMaxFood = Math.ceil(baseMaxFood * VOLT_RATE_ALLOWANCE_FACTOR);
+    const restored = Math.min(claimedFoodCount, effectiveMaxFood);
     if (restored > foodCount) {
       foodCount = restored;
     }
+  }
+
+  // ...and only NOW is the final bound known, so this is where the
+  // deferred rate finding is pushed. A run whose foods the arc allowance
+  // restored carries no error at all: the error may not outlive its own
+  // retraction.
+  if (claimedFoodCount > foodCount) {
+    errors.push(
+      `INVALID_FOOD_RATE: ${claimedFoodCount} foods exceeds max ${effectiveMaxFood} for ${durationSeconds}s (${dynasty})`
+    );
   }
 
   // g9. Exact deterministic recompute (the payout authority) + claim caps.
@@ -874,13 +1208,28 @@ function validateGenomeBranch(
       ? totalsProbe
       : computeGenomeRunTotals(dynasty, foodCount, genomeInput, traits, anomaly);
   const rawClaims = (claim.claims ?? {}) as GenomeClaims;
-  const { accepted, bonusDna, globalClampHit } = clampGenomeClaims(
+  const { accepted, bonusDna, globalClampHit, clamps } = clampGenomeClaims(
     rawClaims,
     totals.caps
   );
-  if (globalClampHit) {
+  // CLAMPS EXPLAIN THEMSELVES (WP-2.05). Every individual clamp reports the
+  // field, the claim and the ceiling, so the DNA a clamp removed is a named
+  // number rather than an unattributed slice of a DNA_MISMATCH. The
+  // aggregate backstop keeps its own distinct code, because "every
+  // individual cap passed and the total still bound" is a different signal.
+  for (const clamp of clamps) {
+    if (clamp.field === 'total') continue;
     errors.push(
-      'GENOME_GLOBAL_CLAMP: claims bound by the aggregate claims cap while individual caps passed'
+      `CLAIM_CLAMPED: ${clamp.field} claimed ${clamp.claimed}, cap ${clamp.cap} (-${clamp.delta} DNA)`
+    );
+  }
+  if (globalClampHit) {
+    const globalClamp = clamps.find((c) => c.field === 'total');
+    errors.push(
+      'GENOME_GLOBAL_CLAMP: claims bound by the aggregate claims cap while ' +
+        `individual caps passed (claimed ${globalClamp?.claimed ?? 0}, cap ${
+          globalClamp?.cap ?? totals.caps.globalClaimsCap
+        }, -${globalClamp?.delta ?? 0} DNA)`
     );
   }
   let rawDna = totals.rawDna + bonusDna;
@@ -920,14 +1269,14 @@ function validateGenomeBranch(
     expectedPayout += GAME_CONFIG.economy.dna.completionBonus;
   }
 
-  // g12. Claim mismatches flag only - the payout stays the recompute.
+  // g12. Claim mismatches ALERT only - the payout stays the recompute.
   // (The engine's display adds live claims, so compare against raw+claims.)
-  if (Math.abs(input.dna_earned - rawDna) > CLAIM_EPSILON) {
+  if (claimDriftIsAlertable(input.dna_earned, rawDna)) {
     errors.push(
       `DNA_MISMATCH: claimed ${input.dna_earned}, recomputed ${rawDna} (genome, ${dynasty}, ${foodCount} foods)`
     );
   }
-  if (Math.abs(input.score - expectedScore) > CLAIM_EPSILON) {
+  if (claimDriftIsAlertable(input.score, expectedScore)) {
     errors.push(
       `SCORE_MISMATCH: claimed ${input.score}, recomputed ${expectedScore} (genome, ${dynasty}, ${foodCount} foods)`
     );
@@ -964,7 +1313,7 @@ function validateGenomeBranch(
   };
 
   return {
-    valid: errors.length === 0,
+    ...severityView(errors),
     adjustedDna: expectedPayout,
     rawDna,
     adjustedScore: expectedScore,
@@ -979,6 +1328,8 @@ function validateGenomeBranch(
     // Mastery XP base: deterministic only - claims never feed mastery.
     masteryRawDna: totals.rawDna,
     genome: acceptedGenome,
+    durationSeconds,
+    claimClamps: clamps,
     errors,
   };
 }

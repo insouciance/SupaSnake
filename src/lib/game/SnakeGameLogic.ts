@@ -101,10 +101,13 @@ import {
   genomeFoodValueModifier,
   strainActivations,
   strainTierAtFood,
+  tithePerFoodFloor,
   type FusedView,
   type GenomeClaims,
   type GenomeRevive,
   type LengthLossEvent,
+  type LengthTrace,
+  type ShedEvent,
   type StrainActivations,
   type StrainSurge,
 } from '@/shared/game/genome';
@@ -471,6 +474,38 @@ export class SnakeGameLogic {
   private fusedView: FusedView = { loose: [], splices: [] };
   /** Derived strain activations - recomputed on pick/surge. */
   private activations: StrainActivations | null = null;
+  /**
+   * THE LIVE LENGTH TRACE (WP-2.05).
+   *
+   * The same structure `computeLengthTrace` produces server-side, but built
+   * as the run happens: `lengthAtEat[n]` is snapshotted BEFORE food n's
+   * growth, and every shed records its event as it fires. The engine feeds
+   * the shared per-food functions from THIS, so the arguments it passes are
+   * the arguments the server will pass when it recomputes the same run.
+   *
+   * Before this existed the engine passed the live array length (one longer
+   * than the model, because the head is unshifted before pricing) and an
+   * EMPTY shed-event list - the two argument bugs behind the divergences the
+   * first playtest surfaced.
+   */
+  private lengthTrace: LengthTrace = { lengthAtEat: [0], shedEvents: [] };
+  /**
+   * Ouroboros bites taken this run.
+   *
+   * Counted explicitly rather than inferred from `lossEvents` by segment
+   * size. WP-2.05 normalizes Thick Hide to report the segments it ACTUALLY
+   * removed, and a clamped Thick Hide can legitimately report 3 - the same
+   * number as a bite - so the old `filter(e => e.segments === 3).length`
+   * would have started miscounting the bite cadence cap.
+   */
+  private ouroborosBites = 0;
+  /**
+   * The segments each shed event removed, kept only between the pure and
+   * visible halves of a single food so the visible half can place the molt
+   * drops and the Heartwood golden on the cells that were actually shed.
+   * Cleared by `applyShedVisuals`; never read anywhere else.
+   */
+  private shedRemovedCells = new Map<ShedEvent, Position[]>();
   /** Offer stream counter (cadence + infuse offers share it). */
   private offerIndex = 0;
   /** Offer trace shipped in the genome payload (advisory verification). */
@@ -775,6 +810,9 @@ export class SnakeGameLogic {
     // Genome derived state
     this.fusedView = { loose: [], splices: [] };
     this.activations = null;
+    this.lengthTrace = { lengthAtEat: [0], shedEvents: [] };
+    this.ouroborosBites = 0;
+    this.shedRemovedCells = new Map();
     this.offerIndex = 0;
     this.offerTrace = [];
     this.recentOffers = [];
@@ -1269,12 +1307,19 @@ export class SnakeGameLogic {
     const foodIndex = this.findFoodIndex(newHead);
     const ateFood = foodIndex >= 0;
 
+    // The body length BEFORE this move resolves. `computeLengthTrace`
+    // records exactly this as `lengthAtEat[n]` - before the food's growth -
+    // so it is captured before the head goes on rather than read back off
+    // the array afterwards, when it is one segment too long.
+    const lengthBeforeMove = this.state.snake.length;
+
     this.state.snake.unshift(newHead);
 
     if (ateFood) {
       const collectedPosition = { ...newHead }; // Position where food was eaten
       this.state.foodEaten += 1;
       const n = this.state.foodEaten;
+      this.lengthTrace.lengthAtEat[n] = lengthBeforeMove;
       this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
 
       // COSMIC constellation chain: same glyph as the previous eat within
@@ -1310,19 +1355,11 @@ export class SnakeGameLogic {
       // genome math (mirroring computeGenomeRunTotals); in legacy mode
       // geneFoodValueModifier delegates byte-identically to the mutation
       // math (proven by tests).
-      const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
-        this.resolveFoodEconomy(n, combo);
-      this.state.dnaCollected += dnaValue;
-      this.state.score += scoreValue;
-      this.state.comboDnaBonus += dnaValue - dnaNoCombo;
-      this.state.comboScoreBonus += scoreValue - baseScore;
-
-      // Genome bonus layers (Midas / Static Charge / Ricochet / Gilded
-      // Wake drop) - display + bounded-trust claim accumulators only.
-      if (this.genomeActive()) {
-        this.applyGenomeEatExtras(n, dnaValue, collectedPosition);
-      }
-      this.ticksSinceAnyEat = 0;
+      // THE ORDER IS GROWTH -> SHED -> PRICE (WP-2.05), because that is
+      // the order `computeGenomeRunTotals` folds in. Food n's own shed
+      // events are INPUTS to food n's flat bonus (Regenesis pays per shed
+      // segment), so pricing first made that branch unreachable in the
+      // engine and forced an out-of-fold payment to stand in for it.
 
       // Growth beyond the normal +1 (head unshift, tail not popped):
       // Overgrowth +2, Bulk Up +3 - fused parents keep their growth.
@@ -1339,10 +1376,31 @@ export class SnakeGameLogic {
         }
       }
 
-      // Shed cycles: loose Shed (25 -> 8), Regenesis (20 -> 8, pays
-      // 1/segment), Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12,
-      // drops molt-food). Mirrors computeLengthTrace's cycle model.
-      this.applyShedCycles(n);
+      // Shed cycles, PURE HALF: loose Shed (25 -> 8), Regenesis (20 -> 8),
+      // Molted Rebirth (25 -> 8), FERAL Molt (20 -> 12) and the Molt growth
+      // floor. Length moves and trace records only - mirrors
+      // computeLengthTrace's cycle model exactly.
+      const sheds = this.applyShedMoves(n);
+
+      const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
+        this.resolveFoodEconomy(n, combo);
+      this.state.dnaCollected += dnaValue;
+      this.state.score += scoreValue;
+      this.state.comboDnaBonus += dnaValue - dnaNoCombo;
+      this.state.comboScoreBonus += scoreValue - baseScore;
+
+      // Shed cycles, VISIBLE HALF: molt-food drops, Heartwood goldens and
+      // the `moltShed` emit. These are board objects and events, not
+      // pricing inputs, so they stay after the food resolves - exactly
+      // where they were.
+      this.applyShedVisuals(sheds);
+
+      // Genome bonus layers (Midas / Static Charge / Ricochet / Gilded
+      // Wake drop) - display + bounded-trust claim accumulators only.
+      if (this.genomeActive()) {
+        this.applyGenomeEatExtras(n, dnaValue, collectedPosition);
+      }
+      this.ticksSinceAnyEat = 0;
 
       // Warp Skin / Pocket Rift recharges (food-count cadence).
       if (this.genomeActive()) {
@@ -1763,7 +1821,22 @@ export class SnakeGameLogic {
     let mod: number;
     let flat: number;
     if (this.genomeActive() && this.activations) {
-      const lengthAt = () => this.state.snake.length;
+      // WP-2.05 - THE ARGUMENTS ARE THE WHOLE FIX.
+      //
+      // `lengthAt` was `() => this.state.snake.length`: the LIVE array,
+      // read after the head was unshifted, so one segment longer than the
+      // model on every main-path eat and correct on every arc eat. It now
+      // reads the trace, which records the same pre-growth length
+      // `computeLengthTrace` does. `last_gasp` compares against a length
+      // THRESHOLD and `bulk_up` divides into a length BUCKET, so one
+      // segment is the difference between two payouts.
+      //
+      // The flat bonus was handed `{ lengthAtEat: [], shedEvents: [] }` -
+      // an empty trace - so its Regenesis branch could never fire and the
+      // engine paid that DNA outside the fold instead. It now receives the
+      // live trace, and the out-of-fold payment in `applyShedMoves` is
+      // gone. Those two edits are one change.
+      const lengthAt = (at: number) => this.lengthAtEat(at);
       mod = genomeFoodValueModifier(this.fusedView, this.activations, n, this.state.revive, {
         lengthAt,
         prevRunDied: this.genome?.prevRunDied,
@@ -1773,7 +1846,7 @@ export class SnakeGameLogic {
         this.activations,
         n,
         this.state.revive,
-        { lengthAtEat: [], shedEvents: [] },
+        this.lengthTrace,
         { lengthAt }
       );
     } else {
@@ -1795,7 +1868,13 @@ export class SnakeGameLogic {
     const baseScore = Math.round(
       FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
     );
-    const floor = this.hasGene('tithe') ? 1 : 0;
+    // The per-food floor, from the SAME function the server's fold calls.
+    // `hasGene('tithe')` stood here, and it differs in two ways that both
+    // reach the payout: it is true on tithe's own food (the shared helper
+    // requires `n > tithe.atFood`), and it stays true once tithe is
+    // consumed by a fusion (the helper reads the LOOSE view only).
+    const floor =
+      this.genomeActive() ? tithePerFoodFloor(this.fusedView, n) : 0;
     const dnaNoCombo = Math.max(floor, Math.round(baseDna * mod) + flat);
     const dnaValue = Math.max(floor, Math.round(baseDna * combo * mod) + flat);
     const scoreValue = Math.round(
@@ -1851,6 +1930,35 @@ export class SnakeGameLogic {
     }
   }
 
+  /**
+   * The modelled body length when food `at` was eaten - `lengthAtEat[at]`
+   * in `computeLengthTrace`'s terms, which is the length BEFORE that food's
+   * growth.
+   *
+   * A food the trace has not recorded falls back to the live array length.
+   * That happens only for a lookup outside the run's own food indices,
+   * where the shared functions ask about a food that has not been eaten;
+   * the fallback keeps the old behaviour rather than answering 0, which
+   * would silently deny `last_gasp` its benefit.
+   */
+  private lengthAtEat(at: number): number {
+    const recorded = this.lengthTrace.lengthAtEat[at];
+    return typeof recorded === 'number' ? recorded : this.state.snake.length;
+  }
+
+  /**
+   * The run's live length trace - the same structure the server derives
+   * with `computeLengthTrace`. Exposed so the fold-parity suite can assert
+   * the two are identical food by food, which is the property that keeps
+   * the engine's DNA counter and the server's recompute in agreement.
+   */
+  getLengthTrace(): LengthTrace {
+    return {
+      lengthAtEat: [...this.lengthTrace.lengthAtEat],
+      shedEvents: this.lengthTrace.shedEvents.map((e) => ({ ...e })),
+    };
+  }
+
   /** atFood of a held gene, or null. */
   private pickAtFoodOf(id: GeneId): number | null {
     const pick = this.state.heldMutations.find((m) => m.id === id);
@@ -1858,17 +1966,29 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Shed cycles under genome rules (mirrors computeLengthTrace): loose
-   * Shed 25->8, Regenesis 20->8 (pays 1 flat per shed segment), Molted
-   * Rebirth 25->8, FERAL Molt 20->12 (drops 6 molt-foods). Heartwood
-   * adds one golden drop per event. Legacy mode: loose Shed only.
+   * Shed cycles, PURE HALF (WP-2.05): loose Shed 25->8, Regenesis 20->8,
+   * Molted Rebirth 25->8, FERAL Molt 20->12, and the Molt growth floor.
+   * Mirrors `computeLengthTrace`'s cycle model.
+   *
+   * This half moves length and records shed events, and does NOTHING else -
+   * no DNA, no board objects, no emits. That is what lets it run BEFORE the
+   * food is priced, which is what the fold requires: `genomeFoodValueFlat-
+   * Bonus` pays Regenesis `regenesisFlatPerSegment` per segment shed AT
+   * THIS FOOD, reading the shed events out of the length trace.
+   *
+   * THE PAYMENT IS NOT HERE ANY MORE. It used to be - `dnaCollected +=
+   * regenesisFlatPerSegment * segmentsShed` - because the engine passed an
+   * EMPTY shed-event list into the fold and the in-fold branch could never
+   * fire. Now the fold is fed the live trace and pays it, so paying it here
+   * as well would pay it twice. Do not restore that line without also
+   * removing the trace the fold reads.
    */
-  private applyShedCycles(n: number): void {
+  private applyShedMoves(n: number): ShedEvent[] {
     type Cycle = {
       every: number;
       anchor: number;
       reset: number;
-      source: 'shed' | 'regenesis' | 'molted_rebirth' | 'molt';
+      source: ShedEvent['source'];
     };
     const cycles: Cycle[] = [];
     const shedPick = this.fusedLoosePick('shed');
@@ -1909,6 +2029,7 @@ export class SnakeGameLogic {
         });
       }
     }
+    const fired: ShedEvent[] = [];
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
       if (
@@ -1921,24 +2042,16 @@ export class SnakeGameLogic {
       const removed = this.state.snake.slice(cycle.reset);
       const segmentsShed = removed.length;
       this.state.snake.length = cycle.reset;
-      if (!this.genomeActive()) continue;
-      if (cycle.source === 'regenesis') {
-        const pay = SPLICE_ECONOMICS.regenesisFlatPerSegment * segmentsShed;
-        this.state.dnaCollected += pay;
-      }
-      if (cycle.source === 'molt') {
-        const drops = removed.slice(0, STRAIN_ECONOMICS.moltFoodsPerEvent);
-        for (const cell of drops) {
-          this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'molt' });
-        }
-        this.emit('moltShed', { atFood: n, drops: drops.length });
-      }
-      if (this.hasGene('heartwood') && removed.length > 0) {
-        const cell = removed[removed.length - 1];
-        this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'heartwood' });
+      const event: ShedEvent = { atFood: n, segmentsShed, source: cycle.source };
+      fired.push(event);
+      if (this.genomeActive()) {
+        this.lengthTrace.shedEvents.push(event);
+        this.shedRemovedCells.set(event, removed);
       }
     }
-    // FERAL Molt growth floor while the expression is active.
+    // FERAL Molt growth floor while the expression is active. A length move,
+    // so it belongs to this half; `computeLengthTrace` applies the same
+    // `max(moltResetLength, len)` at the same point in the food.
     if (
       this.genomeActive() &&
       this.strainTierNow('FERAL') >= 2 &&
@@ -1949,6 +2062,35 @@ export class SnakeGameLogic {
         this.state.snake.push({ ...tail });
       }
     }
+    return fired;
+  }
+
+  /**
+   * Shed cycles, VISIBLE HALF (WP-2.05): the molt-food drops, the Heartwood
+   * golden and the `moltShed` emit. Board objects and events only - nothing
+   * here can change a number the server recomputes, which is precisely why
+   * it is safe to leave it after the food has been priced.
+   */
+  private applyShedVisuals(events: ShedEvent[]): void {
+    if (!this.genomeActive()) {
+      this.shedRemovedCells = new Map();
+      return;
+    }
+    for (const event of events) {
+      const removed = this.shedRemovedCells.get(event) ?? [];
+      if (event.source === 'molt') {
+        const drops = removed.slice(0, STRAIN_ECONOMICS.moltFoodsPerEvent);
+        for (const cell of drops) {
+          this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'molt' });
+        }
+        this.emit('moltShed', { atFood: event.atFood, drops: drops.length });
+      }
+      if (this.hasGene('heartwood') && removed.length > 0) {
+        const cell = removed[removed.length - 1];
+        this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'heartwood' });
+      }
+    }
+    this.shedRemovedCells = new Map();
   }
 
   /** A pick that is NOT consumed by a fusion (its own cycle still runs). */
@@ -1974,15 +2116,22 @@ export class SnakeGameLogic {
       arcs += 1;
       this.state.foodEaten += 1;
       const n = this.state.foodEaten;
+      // An arc eat has no head unshift, so the live length IS the
+      // pre-growth length the model records for this food.
+      this.lengthTrace.lengthAtEat[n] = this.state.snake.length;
       this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
-      // Full per-food pipeline at combo 1 (arcs never extend chains).
-      const { dnaValue, scoreValue } = this.resolveFoodEconomy(n, 1);
-      this.state.dnaCollected += dnaValue;
-      this.state.score += scoreValue;
+      // Growth -> shed -> price, the order `computeGenomeRunTotals` folds
+      // in: the shed events of food n are inputs to food n's own flat
+      // bonus (Regenesis pays per shed segment), so they have to have
+      // happened before the food is priced.
       // +1 segment each (board pressure is the arc's physical price).
       const tail = this.state.snake[this.state.snake.length - 1];
       this.state.snake.push({ ...tail });
-      this.applyShedCycles(n);
+      const arcSheds = this.applyShedMoves(n);
+      const { dnaValue, scoreValue } = this.resolveFoodEconomy(n, 1);
+      this.state.dnaCollected += dnaValue;
+      this.state.score += scoreValue;
+      this.applyShedVisuals(arcSheds);
       this.speed = this.effectiveSpeedForFood(n);
       this.emit('arcCollected', {
         position: { x: food.x, y: 0, z: food.z },
@@ -2054,9 +2203,11 @@ export class SnakeGameLogic {
       return false;
     }
     const apexAt = this.activations?.FERAL.apexAt ?? 0;
-    const bitesSoFar = (this.state.lossEvents ?? []).filter(
-      (e) => e.segments === STRAIN_PHYSICS.ouroborosSegmentsPerBite
-    ).length;
+    // WP-2.05: counted, not inferred from the loss list by segment size.
+    // Thick Hide now reports the segments it actually removed, which can
+    // legitimately be `ouroborosSegmentsPerBite`, and the old filter would
+    // then have read a Thick Hide as a bite and closed the cadence early.
+    const bitesSoFar = this.ouroborosBites;
     const biteCap = Math.floor(
       Math.max(0, this.state.foodEaten - apexAt) /
         STRAIN_ECONOMICS.ouroborosFoodsPerBite
@@ -2064,6 +2215,7 @@ export class SnakeGameLogic {
     if (bitesSoFar >= biteCap) return false;
     this.state.snake.length =
       this.state.snake.length - STRAIN_PHYSICS.ouroborosSegmentsPerBite;
+    this.ouroborosBites += 1;
     this.state.lossEvents.push({
       atFood: this.state.foodEaten,
       segments: STRAIN_PHYSICS.ouroborosSegmentsPerBite,
@@ -2087,9 +2239,14 @@ export class SnakeGameLogic {
       Math.max(0, this.state.snake.length - this.initialLength)
     );
     if (loss > 0) this.state.snake.length = this.state.snake.length - loss;
+    // WP-2.05: report the segments ACTUALLY removed, not the nominal 5.
+    // This changes no payout - the model's `max(initialLength, len - 5)`
+    // and this clamp are the same number, which is why (F) was not a
+    // divergence - but a run report should not claim a loss that did not
+    // happen.
     this.state.lossEvents.push({
       atFood: this.state.foodEaten,
-      segments: STRAIN_PHYSICS.thickHideSegmentLoss,
+      segments: loss,
     });
     this.emit('thickHideTriggered', {
       position: { ...this.state.snake[0] },

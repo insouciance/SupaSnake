@@ -40,6 +40,10 @@ jest.mock('@/lib/server/rateLimit', () => ({
 }));
 jest.mock('@/lib/server/mastery', () => ({
   getMasteryXp: jest.fn().mockResolvedValue(0),
+  // WP-2.05: settlement reads mastery XP through the STRICT variant, which
+  // reports a read failure instead of returning 0 - because 0 XP narrows the
+  // unlocked pool, which drops legal picks, which shrinks the payout.
+  getMasteryXpStrict: jest.fn().mockResolvedValue({ ok: true, xp: 0 }),
   grantMasteryXp: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/server/gauntlet', () => ({

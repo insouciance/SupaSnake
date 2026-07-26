@@ -75,7 +75,12 @@ describe('traits come from the snake row, never the payload', () => {
     const input = baseInput(); // claims the traitless total
     const result = validateGameResult(input, startedAt(), 'PRIMAL', traits);
     const { rawDna } = computeRunTotals('PRIMAL', 60, [], null, traits);
-    expect(result.valid).toBe(false);
+    // WP-2.05: ADVISORY. The claim was computed without the trait and lost
+    // the argument; the run itself was never in doubt.
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors.some((e) => e.startsWith('DNA_MISMATCH'))).toBe(
+      true
+    );
     expect(result.errors.some((e) => e.startsWith('DNA_MISMATCH'))).toBe(true);
     expect(result.adjustedDna).toBe(
       applyOutcomeWithMutations(rawDna, true, [], false, traits)

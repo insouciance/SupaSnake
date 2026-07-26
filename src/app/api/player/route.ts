@@ -144,20 +144,44 @@ export async function GET(request: NextRequest) {
     // gameplay benefit is unlocked; failures degrade to the locked state.
     let genomeFtue = null;
     if (GAME_CONFIG.features.genome) {
-      const [{ bankedRuns, ownedVariants }, ...masteryXp] = await Promise.all([
+      const [runFacts, ...masteryXp] = await Promise.all([
         getGenomeRunFacts(supabase, player.id),
         getMasteryXp(supabase, player.id, 'CYBER'),
         getMasteryXp(supabase, player.id, 'PRIMAL'),
         getMasteryXp(supabase, player.id, 'COSMIC'),
       ]);
-      const maxMasteryLevel = masteryXp.reduce(
-        (max, xp) => Math.max(max, levelForXp(xp)),
-        0
-      );
-      genomeFtue = {
-        bankedRuns,
-        ...deriveFtue(bankedRuns, maxMasteryLevel, ownedVariants),
-      };
+      // WP-2.05 made `getGenomeRunFacts` report its read failures instead of
+      // absorbing them. HERE that failure stays non-fatal on purpose: this is
+      // the profile GET, `genomeFtue` is visibility only, and the documented
+      // behaviour is to degrade to the locked state. Nothing on this path
+      // pays anything, which is the whole difference from the session route,
+      // where the same failure is a 503 because it would otherwise cost DNA.
+      if (!runFacts.ok) {
+        console.error('Profile genome facts read failed:', {
+          playerId: player.id,
+          reason: runFacts.reason,
+          error: runFacts.error,
+        });
+        Sentry.captureException(
+          runFacts.error instanceof Error
+            ? runFacts.error
+            : new Error(`Profile genome facts read failed: ${runFacts.reason}`),
+          { extra: { playerId: player.id, reason: runFacts.reason } }
+        );
+      } else {
+        const maxMasteryLevel = masteryXp.reduce(
+          (max, xp) => Math.max(max, levelForXp(xp)),
+          0
+        );
+        genomeFtue = {
+          bankedRuns: runFacts.bankedRuns,
+          ...deriveFtue(
+            runFacts.bankedRuns,
+            maxMasteryLevel,
+            runFacts.ownedVariants
+          ),
+        };
+      }
     }
 
     return NextResponse.json({

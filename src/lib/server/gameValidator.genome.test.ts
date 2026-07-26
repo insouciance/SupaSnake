@@ -4,6 +4,19 @@
  * claims clamp against caps; the mastery XP base stays deterministic.
  */
 
+/**
+ * WP-2.05 NOTE for this whole file.
+ *
+ * `valid` now means "the server could BOUND this run's physics", not "no
+ * finding at all" - see gameValidator.ts's severity table. Genome sanitizer
+ * findings are REPAIRS: the illegal pick, infuse or surge is dropped and
+ * the payout is recomputed from what survived, so the run stays eligible.
+ *
+ * The one exception in this file is SPLICE_CLAIMED_DIRECTLY, which is
+ * FATAL: splices are derived by `fusePicks` and can never be claimed, so a
+ * direct claim is forgery rather than a repairable mistake.
+ */
+
 import { describe, it, expect } from '@jest/globals';
 import {
   validateGameResult,
@@ -119,7 +132,16 @@ describe('gene pick validation', () => {
       null,
       ctx()
     );
+    // FATAL, and the only forgery code in the model: a splice id in the
+    // claim describes a run no engine could have produced.
     expect(result.valid).toBe(false);
+    expect(result.fatalErrors).toContainEqual(
+      expect.stringContaining('SPLICE_CLAIMED_DIRECTLY')
+    );
+    // GENE_LOCKED rides along as an advisory repair on the same run.
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('GENE_LOCKED')
+    );
     expect(result.genome!.picks.map((p) => p.id)).toEqual(['tithe']);
     expect(result.errors.join(' ')).toMatch(/SPLICE_CLAIMED_DIRECTLY/);
     expect(result.errors.join(' ')).toMatch(/GENE_LOCKED: heartwood/);
@@ -144,7 +166,10 @@ describe('gene pick validation', () => {
       null,
       ctx()
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('GENE_BOUND')
+    );
     // Cap 6, then offer-source bound floor(60/15)+0 infuses = 4.
     expect(result.genome!.picks.length).toBe(4);
   });
@@ -213,7 +238,10 @@ describe('gene pick validation', () => {
       null,
       ctx({ splicesUnlocked: false })
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('GENE_BOUND')
+    );
     expect(result.genome!.picks).toEqual(accepted);
     expect(result.genome!.splices).toEqual([]);
     expect(result.errors.join(' ')).toMatch(/would occupy 7 slots/);
@@ -279,7 +307,10 @@ describe('infuse validation + outcome', () => {
       null,
       ctx()
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('INFUSE_BOUND')
+    );
     expect(result.genome!.infuses.length).toBe(0);
     expect(result.errors.join(' ')).toMatch(/INFUSE_BOUND/);
   });
@@ -354,7 +385,10 @@ describe('infuse validation + outcome', () => {
       null,
       ctx()
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('SURGE_INVALID')
+    );
     expect(result.genome!.surges).toEqual([
       { strain: 'AURUM', atFood: 95 },
     ]);
@@ -391,7 +425,10 @@ describe('infuse validation + outcome', () => {
       null,
       ctx()
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('SURGE_INVALID')
+    );
     expect(result.genome!.surges).toEqual([
       { strain: 'AURUM', atFood: 95 },
     ]);
@@ -432,7 +469,10 @@ describe('infuse validation + outcome', () => {
       null,
       ctx()
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('SURGE_INVALID')
+    );
     expect(result.genome!.picks).toHaveLength(7);
     expect(result.genome!.surges).toEqual([]);
     expect(result.errors.join(' ')).toMatch(/infuse-sourced gene picks/);
@@ -547,7 +587,10 @@ describe('revive validation', () => {
       null,
       ctx()
     );
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors).toContainEqual(
+      expect.stringContaining('REVIVE_INVALID')
+    );
     expect(result.genome!.revive).toBeNull();
     expect(result.genome!.claims.secondSunTriggered).toBe(false);
   });

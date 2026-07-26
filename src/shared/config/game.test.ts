@@ -127,10 +127,14 @@ describe('Game Configuration', () => {
       expect(GAME_CONFIG.session.victoryScore).toBeLessThan(500);
     });
 
-    it('should have reasonable max duration', () => {
-      const { maxDuration } = GAME_CONFIG.session;
-      expect(maxDuration).toBeGreaterThanOrEqual(60);
-      expect(maxDuration).toBeLessThanOrEqual(1800);
+    // WP-2.05: there is no session duration ceiling any more, and this test
+    // asserts its absence rather than its range. A run's length is bounded
+    // by the validator against the session's own observed server time, not
+    // by a constant — a long run is a good run (owner ruling, 2026-07-26).
+    it('has no duration ceiling, so a long careful run stays valid', () => {
+      expect(
+        (GAME_CONFIG.session as Record<string, unknown>).maxDuration
+      ).toBeUndefined();
     });
 
     it('should autosave frequently', () => {

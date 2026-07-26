@@ -58,7 +58,12 @@ describe('exact recompute under Gold Rush (food x1.5)', () => {
       null,
       'gold_rush'
     );
-    expect(result.valid).toBe(false);
+    // WP-2.05: ADVISORY. A stale client that did not know about the week's
+    // condition still gets paid the server's condition-aware recompute.
+    expect(result.valid).toBe(true);
+    expect(result.advisoryErrors.some((e) => e.includes('DNA_MISMATCH'))).toBe(
+      true
+    );
     expect(result.errors.some((e) => e.includes('DNA_MISMATCH'))).toBe(true);
     // The payout is the server's own anomaly recompute - never the claim
     expect(result.rawDna).toBe(rush.rawDna);
