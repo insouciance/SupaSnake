@@ -227,7 +227,10 @@ async function endSession(
     .from('game_sessions')
     .update({
       ended_at: fields.endedAt.toISOString(),
-      end_reason: 'banked',
+      // `game_sessions_end_reason_valid` (migration 045) allows exactly
+      // completed | abandoned | disconnected | expired. Only a settling
+      // reason makes a run Depth-eligible.
+      end_reason: 'completed',
       extracted: true,
       validated: true,
       yield_dna: fields.yieldDna,
@@ -334,32 +337,77 @@ afterAll(async () => {
 
 describe('step 0 — migrations 046-051 are live in Postgres', () => {
   /**
-   * PostgREST answers `PGRST202` for a function it cannot find. Calling each
-   * RPC with a deliberately empty argument set and asserting the error is
-   * ANYTHING BUT `PGRST202` proves the function exists and is executable by
-   * `service_role` — which is exactly what a shape test cannot prove.
+   * PostgREST resolves an RPC by its ARGUMENT NAMES, and answers `PGRST202`
+   * when no function matches. So each RPC is called with its real parameter
+   * names and null values: a `PGRST202` means the function is absent or its
+   * signature is not what the client believes, and anything else — including
+   * a raised refusal — means it is there and executable by `service_role`.
+   *
+   * This is the check a shape test structurally cannot make. It also pins the
+   * signature the TypeScript callers actually send.
    */
-  const PHASE_1_RPCS = [
-    'ensure_serpent_week',
-    'apply_serpent_week_settlement',
-    'ensure_signal_day',
-    'begin_signal_objective_run',
-    'settle_signal_objective_run',
-    'collect_daily_take',
-    'found_clan',
-    'join_clan_by_code',
-    'leave_clan',
-    'clan_tenure_since',
-    'apply_clan_week_pairings',
-    'settle_clan_week_pairings',
-    'consume_run_charge',
+  const PHASE_1_RPCS: Array<[string, Record<string, unknown>]> = [
+    [
+      'ensure_serpent_week',
+      { p_week_start: null, p_starts_at: null, p_ends_at: null, p_seed: null, p_modifiers: null },
+    ],
+    ['apply_serpent_week_settlement', { p_week_id: null, p_players: null }],
+    [
+      'ensure_signal_day',
+      {
+        p_day: null,
+        p_starts_at: null,
+        p_ends_at: null,
+        p_seed: null,
+        p_modifier: null,
+        p_strain_tilt: null,
+        p_objectives: null,
+      },
+    ],
+    [
+      'begin_signal_objective_run',
+      {
+        p_player_id: null,
+        p_day_id: null,
+        p_objective_id: null,
+        p_target: null,
+        p_session_id: null,
+      },
+    ],
+    [
+      'settle_signal_objective_run',
+      {
+        p_run_id: null,
+        p_player_id: null,
+        p_completed: null,
+        p_progress: null,
+        p_bonus_dna: null,
+      },
+    ],
+    ['collect_daily_take', { p_player_id: null }],
+    [
+      'found_clan',
+      {
+        p_user_id: null,
+        p_name: null,
+        p_tag: null,
+        p_banner_id: null,
+        p_emblem_id: null,
+        p_color_primary: null,
+        p_color_secondary: null,
+      },
+    ],
+    ['join_clan_by_code', { p_user_id: null, p_code: null }],
+    ['leave_clan', { p_user_id: null }],
+    ['clan_tenure_since', { p_clan_id: null, p_player_id: null }],
+    ['apply_clan_week_pairings', { p_week_id: null, p_pairs: null }],
+    ['settle_clan_week_pairings', { p_week_id: null }],
+    ['consume_run_charge', { p_player_id: null, p_charges_per_day: null }],
   ];
 
-  it.each(PHASE_1_RPCS)('%s exists and is callable by service_role', async (fn) => {
-    const { error } = await supabase.rpc(fn, {});
-    // It will fail — no arguments were given. It must not fail as "not found".
-    expect(error).not.toBeNull();
-    expect(error!.code).not.toBe('PGRST202');
+  it.each(PHASE_1_RPCS)('%s exists with the signature its caller sends', async (fn, args) => {
+    const { error } = await supabase.rpc(fn as string, args as Record<string, unknown>);
+    expect(error?.code).not.toBe('PGRST202');
   });
 
   it('kept the 020 Gauntlet view AND the 048 rivalry table side by side', async () => {
@@ -917,16 +965,22 @@ describe('step 7 — Monday briefing', () => {
     expect(player.dna).toBeGreaterThanOrEqual(0);
   });
 
-  it('offers every week as a URL, and refuses a week that has not happened', () => {
-    const weeks = briefingLib.listBriefingWeeks(monday().getTime());
+  it('offers every week as a URL, and refuses a week that has not happened', async () => {
+    const panel = await serpentLib.buildSerpentPanel(
+      supabase,
+      solo.playerId,
+      monday().getTime()
+    );
+    const weeks = briefingLib.listBriefingWeeks(panel, monday().getTime());
     expect(weeks.length).toBeGreaterThan(0);
+    // Rule 14: the week that just submerged is always offered, as a URL.
     expect(weeks).toContain(weekStart);
     for (const key of weeks) expect(briefingLib.isSerpentWeekKey(key)).toBe(true);
 
-    // A future week is not a briefing.
+    // A week that has not started is not a briefing — a wrong URL says so.
     const future = at(weekStart, 21, 0).toISOString().slice(0, 10);
-    const panel = serpentLib.emptySerpentPanel();
     expect(briefingLib.readWeekBriefing(panel, future, monday().getTime())).toBeNull();
+    expect(briefingLib.readWeekBriefing(panel, 'not-a-week', monday().getTime())).toBeNull();
   });
 
   it('says "1 segment" and not "1 segments" — N=1 is a real case', () => {
