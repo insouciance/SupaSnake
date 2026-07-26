@@ -14,10 +14,15 @@
  * PRE-MIGRATION-020 SAFE: while the RPCs don't exist, GET returns
  * { live: false } and POST returns 503 - nothing errors, nothing breaks
  * the live duel surfaces.
+ *
+ * POPULATION-GATED (WP-1.02): every method answers `{ available: false }` at
+ * 200 while `NEXT_PUBLIC_CLAN_GAUNTLET` is off. See `gateClosed` below for why
+ * that is a 200 and not a 404, a 403 or a 503.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { CLAN_GAUNTLET_ENABLED } from '@/lib/clan/config';
 import { isMissingGauntletInfra } from '@/lib/server/gauntlet';
 import {
@@ -49,11 +54,41 @@ const supabase = createClient(
  * settling would keep grading clans behind the curtain, which is exactly what
  * Rule 8 forbids happening at all.
  *
+ * WHY 200 AND NOT 404, 403 OR 503 — for POST as much as for GET
+ *
+ * A closed gate is a deliberate configuration, not a fault. 503 says "this
+ * broke, retry"; 403 says "you personally are not allowed"; 404 says "you
+ * mistyped". All three would page an on-call engineer for a decision the
+ * developer made on purpose, and all three describe the caller's situation
+ * wrongly. 200 `{ available: false }` describes it exactly: the layer exists,
+ * it is not open, here is the gate it is behind.
+ *
+ * The body carries NO `success` key, which is what keeps the POST honest: a
+ * caller that checks `success` sees the write did not happen, and a caller
+ * that only checks the status code cannot mistake the answer for a completed
+ * mutation, because there is no result to read either. `live: false` rides
+ * along so `GauntletPanel` — which renders nothing unless `live` — degrades to
+ * its off state through the path it already has.
+ *
  * The criteria for opening it are public and live in `CLAN_POPULATION_GATES`:
  * ≥25 clans with ≥3 weekly-active members, sustained four weeks.
  */
 function gateClosed(): NextResponse {
   return NextResponse.json({ available: false, live: false, gate: 'clan_gauntlet' });
+}
+
+/**
+ * Rule 11: every Supabase error is checked AND reported. A read that failed is
+ * not the same answer as a read that came back empty — answering "Not in a
+ * clan" when the connection dropped is a lie the player cannot distinguish
+ * from the truth, and one Sentry never hears about.
+ */
+function reportError(scope: string, error: unknown, extra: Record<string, unknown> = {}) {
+  console.error(`Clan gauntlet ${scope} error:`, { ...extra, error });
+  Sentry.captureException(
+    error instanceof Error ? error : new Error(`Clan gauntlet ${scope} error`),
+    { extra: { scope, ...extra, error } }
+  );
 }
 
 async function authAndMembership(request: NextRequest) {
@@ -69,11 +104,18 @@ async function authAndMembership(request: NextRequest) {
     return { error: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
   }
 
-  const { data: membership } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from('clan_members')
     .select('clan_id')
     .eq('player_id', user.id)
     .maybeSingle();
+
+  if (membershipError) {
+    reportError('membership read', membershipError, { userId: user.id });
+    return {
+      error: NextResponse.json({ error: 'Failed to load gauntlet' }, { status: 500 }),
+    };
+  }
 
   if (!membership) {
     return { error: NextResponse.json({ error: 'Not in a clan' }, { status: 404 }) };
@@ -98,7 +140,7 @@ export async function GET(request: NextRequest) {
       if (isMissingGauntletInfra(error)) {
         return NextResponse.json({ live: false, research: null, gauntlet: null });
       }
-      console.error('get_gauntlet RPC error:', error);
+      reportError('get_gauntlet RPC', error, { clanId: auth.clanId });
       return NextResponse.json({ error: 'Failed to load gauntlet' }, { status: 500 });
     }
 
@@ -106,7 +148,7 @@ export async function GET(request: NextRequest) {
     await attachScoutNarration(payload, auth.clanId);
     return NextResponse.json(payload);
   } catch (error) {
-    console.error('Clan gauntlet GET error:', error);
+    reportError('GET', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -231,13 +273,13 @@ export async function POST(request: NextRequest) {
           { status: mapped.status }
         );
       }
-      console.error(`${rpcName} RPC error:`, error);
+      reportError(`${rpcName} RPC`, error, { userId: auth.user.id, action });
       return NextResponse.json({ error: 'Request failed' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, result: data ?? null });
   } catch (error) {
-    console.error('Clan gauntlet POST error:', error);
+    reportError('POST', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
