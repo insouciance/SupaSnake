@@ -35,8 +35,15 @@ jest.mock('next/link', () => ({
   ),
 }));
 
+// `getToken` is hoisted so the mock returns a STABLE identity. The real
+// `useAuth` returns a context value that changes only when AuthProvider
+// re-renders; a fresh function per call makes HandleClaimModal's
+// `checkAvailability` useCallback invalidate on every render, so its effect
+// re-runs, setState re-renders, and the test loops until the heap dies. That
+// is the mock diverging from the real hook, not a defect in the component.
+const mockGetToken = async () => 'test-token';
 jest.mock('@/lib/auth/AuthProvider', () => ({
-  useAuth: () => ({ getToken: async () => 'test-token' }),
+  useAuth: () => ({ getToken: mockGetToken }),
 }));
 
 const ladderPrompts: Array<{ rung: string; engaged: boolean }> = [];
