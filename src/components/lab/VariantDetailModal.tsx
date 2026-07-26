@@ -430,8 +430,9 @@ export function VariantDetailModal({
             </div>
 
             {/* Traits (Design v2 Phase 3A): permanent snake-bound
-                sidegrades. Filled chips carry effect + tradeoff tooltips;
-                dashed slots show unlocked-but-unfilled potential. */}
+                sidegrades. Each filled chip is tappable — this section is
+                plain layout, so a chip may safely be a button here, unlike
+                the lineage row below where the chip sits inside a select. */}
             <div className="mb-4" data-testid="variant-traits-section">
               <span className="label-arcade block mb-2">Traits</span>
               <TraitChipRow
@@ -441,6 +442,7 @@ export function VariantDetailModal({
                   getTraitSlots(variant.rarity, owned.generation)
                 }
                 size="md"
+                interactive
               />
               {(owned.traits?.length ?? 0) === 0 && (
                 <p className="text-xs mt-2 font-body text-beige/60">
@@ -453,6 +455,13 @@ export function VariantDetailModal({
             {lineage && (
               <div className="mb-4" data-testid="variant-lineage-section">
                 <span className="label-arcade block mb-2">Lineage</span>
+                {/*
+                  These chips stay display-only: each one is the label of a
+                  select button, and a popover trigger inside it would be a
+                  button inside a button — invalid, and unreachable by
+                  keyboard. The strain's identity travels in the chip's
+                  `aria-label` and in full in the Codex.
+                */}
                 <div className="flex items-center gap-2 flex-wrap">
                   {lineage.strains.map((strain) => (
                     <button
@@ -496,12 +505,15 @@ export function VariantDetailModal({
                     Starts runs with
                   </span>
                   <div className="flex gap-1.5 flex-wrap mt-1">
+                    {/* Tappable: these chips stand alone, so unlike the
+                        lineage-primary chips above they can be buttons. */}
                     {STRAIN_IDS.filter((strain) => (startingPoints[strain] ?? 0) > 0).map(
                       (strain) => (
                         <StrainChip
                           key={strain}
                           strain={strain}
                           points={startingPoints[strain]}
+                          interactive
                         />
                       )
                     )}

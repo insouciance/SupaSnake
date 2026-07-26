@@ -164,6 +164,7 @@ export function BreedingReveal({
                     size="md"
                     emphasis
                     points={offspring.lineage?.strength}
+                    interactive
                   />
                 </span>
               ))}
@@ -181,7 +182,9 @@ export function BreedingReveal({
         {/* Drafted traits (Constitution §8.2): the child's traits are the
             ones the player chose on the draft board before paying, so this
             panel is a confirmation, not a reveal. Nothing was rolled and
-            nothing can be re-rolled. */}
+            nothing can be re-rolled. The chips are tappable — this is the
+            first time the player meets the snake they just paid for, and
+            nothing here is a button already. */}
         {slotCount > 0 && (
           <div
             className="w-full max-w-xs text-center space-y-2"
@@ -195,7 +198,7 @@ export function BreedingReveal({
                   className="inline-flex flex-col items-center gap-1 animate-pop-in"
                   style={{ animationDelay: `${1.1 + i * 0.15}s`, animationFillMode: 'backwards' }}
                 >
-                  <TraitChip traitId={traitId as TraitId} size="md" />
+                  <TraitChip traitId={traitId as TraitId} size="md" interactive />
                 </span>
               ))}
               {Array.from({ length: slotCount - traits.length }).map((_, i) => (

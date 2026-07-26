@@ -17,6 +17,7 @@ import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
+import { describe as describeEntry } from '@/shared/game/lexicon';
 
 export interface VariantCardProps {
   variant: SnakeVariant;
@@ -100,6 +101,22 @@ export function VariantCard({
 
   const pulseLegendary = isOwned && rarity.pulse;
 
+  /*
+   * The chips below stay DISPLAY-ONLY: this whole card is one `<button>`,
+   * so a tap-to-explain trigger inside it would be a button inside a button
+   * — invalid HTML, and unreachable by keyboard. The names are folded into
+   * the card's own accessible name instead, so a screen-reader user learns
+   * this snake carries Scavenger without opening the sheet; the full effect
+   * and cost are one tap away in the detail modal, where the chips ARE
+   * interactive.
+   */
+  const traitNames = (owned?.traits ?? [])
+    .map((traitId) => describeEntry('trait', traitId)?.name)
+    .filter((name): name is string => Boolean(name));
+  const lineageNames = (owned?.lineage?.strains ?? [])
+    .map((strain) => describeEntry('strain', strain)?.name)
+    .filter((name): name is string => Boolean(name));
+
   const handlePointerDown = useCallback(() => {
     setIsPressed(true);
   }, []);
@@ -157,7 +174,11 @@ export function VariantCard({
             // The xN badge is decoration; the count has to be in the name or
             // a screen-reader user never learns the other snakes exist.
             (hasSiblings ? `, ${rosterCount} snakes owned` : '') +
-            (isEquipped ? ', Equipped' : '')
+            (isEquipped ? ', Equipped' : '') +
+            (lineageNames.length > 0
+              ? `, ${lineageNames.join(' and ')} lineage`
+              : '') +
+            (traitNames.length > 0 ? `, traits ${traitNames.join(', ')}` : '')
           : `${variant.name}, Locked, ${variant.unlockCostDna} DNA to unlock`
       }
       data-testid={`variant-card-${variant.id}`}
