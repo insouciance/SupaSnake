@@ -32,6 +32,7 @@ import {
   channelOf,
   readAttribution,
 } from '@/lib/growth/attribution';
+import type { LadderRung } from '@/lib/growth/leadLadder';
 
 export const FunnelStages = {
   REACH: 'reach',
@@ -130,4 +131,67 @@ export function trackFunnelStageOnce(
 
   trackFunnelStage(stage, properties);
   return true;
+}
+
+/**
+ * THE LEAD LADDER (§11.7), AND THE STAGE EVENT IT DELIBERATELY DOES NOT FIRE
+ *
+ * The ladder is not a second funnel. Its rungs are the identity slice of the
+ * eight stages above, and each rung's stage event is ALREADY fired by the
+ * mechanism that crosses it:
+ *
+ *   named      → HandleClaimModal fires IDENTIFY once per browser on a
+ *                successful first claim.
+ *   reachable  → the settings email opt-in.
+ *   belonging  → clan founding / joining fires BELONG.
+ *   advocate   → the share artifacts fire ADVOCATE.
+ *
+ * So the ladder adds a DIMENSION, not events: `setLadderRung` stamps the
+ * person with the rung they have reached, which is what lets the weekly
+ * review (§11.8) read D7 or conversion "by rung" without a second event
+ * family and without inflating the stage counts. A `trackLadderRung` that
+ * re-fired IDENTIFY after the claim modal had already fired it would make
+ * "Activation → identity" wrong by exactly the number of people the ladder
+ * succeeded with, which is the worst possible instrumentation bug: the
+ * better the surface works, the more it lies.
+ *
+ * The two LADDER_PROMPT_* events measure the invitation itself — the ask and
+ * the take-up — which nothing else measures.
+ *
+ * The `LadderRung` import at the top of this file is type-only on purpose:
+ * leadLadder.ts imports FunnelStages from here at runtime, and a type-only
+ * edge back is what keeps the two modules from forming a require cycle.
+ */
+
+/**
+ * Stamp the person with the ladder rung they have reached. Idempotent by
+ * nature — PostHog person properties are last-write-wins — so callers may
+ * set it on every mount.
+ */
+export function setLadderRung(rung: LadderRung, height: number): void {
+  setUserProperties({ ladder_rung: rung, ladder_rung_height: height });
+}
+
+/**
+ * The invitation, measured separately from the crossing, so the weekly
+ * review reads the ask and the answer as two numbers. `engaged` is the
+ * player opening the ceremony or following the link — not completing it.
+ * Completion is the mechanism's own stage event.
+ */
+export function trackLadderPrompt(
+  rung: LadderRung,
+  engaged: boolean,
+  properties: FunnelProperties = {}
+): void {
+  trackEvent(
+    engaged
+      ? AnalyticsEvents.LADDER_PROMPT_ENGAGED
+      : AnalyticsEvents.LADDER_PROMPT_SHOWN,
+    {
+      ...attributionProperties(readAttribution()),
+      ...properties,
+      ladder_rung: rung,
+      category: EventCategories.GROWTH,
+    }
+  );
 }

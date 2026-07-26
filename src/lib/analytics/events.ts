@@ -114,6 +114,13 @@ export const AnalyticsEvents = {
   FUNNEL_ADVOCATE_ENTERED: 'funnel_advocate_entered',
   FUNNEL_PATRONIZE_ENTERED: 'funnel_patronize_entered',
   DISPATCH_WAITLIST_SUBMITTED: 'dispatch_waitlist_submitted',
+  // The lead ladder (§11.7). The RUNG events are not a second funnel: a rung
+  // reached fires the stage event above with a `ladder_rung` property, and
+  // these two only measure the invitation itself — shown, and taken up — so
+  // the weekly review can read "we asked N people, M said yes" without
+  // inflating the stage counts. Emitted through ./funnel.ts, never directly.
+  LADDER_PROMPT_SHOWN: 'ladder_prompt_shown',
+  LADDER_PROMPT_ENGAGED: 'ladder_prompt_engaged',
 } as const;
 
 export type AnalyticsEvent = typeof AnalyticsEvents[keyof typeof AnalyticsEvents];
