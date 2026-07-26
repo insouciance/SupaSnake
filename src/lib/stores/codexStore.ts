@@ -1,4 +1,12 @@
-/** Client state for the free-for-everyone Genome Codex. */
+/**
+ * Client state for the free-for-everyone Genome Codex.
+ *
+ * `unlocked` used to decide whether there WAS a catalog. Since WP-2.07a it
+ * only decides whether the discovery layer has started recording: the
+ * catalog arrives at every banked-run count, so `data` is populated
+ * whenever the server sent one. The two facts are now independent, and the
+ * store keeps them independent.
+ */
 
 import { create } from 'zustand';
 import type { CodexPayload } from '@/app/api/codex/utils';
@@ -40,7 +48,7 @@ export const useCodexStore = create<CodexState>((set) => ({
       }
       set({
         live: payload.live === true,
-        unlocked: payload.live === true && payload.unlocked !== false,
+        unlocked: payload.live === true && payload.unlocked === true,
         bankedRuns:
           typeof payload.bankedRuns === 'number'
             ? Math.max(0, Math.floor(payload.bankedRuns))
@@ -49,8 +57,11 @@ export const useCodexStore = create<CodexState>((set) => ({
           typeof payload.unlockAt === 'number'
             ? Math.max(0, Math.floor(payload.unlockAt))
             : GAME_CONFIG.genome.ftue.splicesAt,
+        // The catalog is present whenever the server sent one — the
+        // discovery gate no longer decides whether there is anything to
+        // read. A pre-2.07a server (no `genes` array) still yields null.
         data:
-          payload.live === true && payload.unlocked !== false
+          payload.live === true && Array.isArray(payload.genes)
             ? (payload as CodexPayload)
             : null,
         isLoading: false,

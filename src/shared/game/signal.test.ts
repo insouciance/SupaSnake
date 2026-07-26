@@ -19,6 +19,7 @@ import {
   ANOMALIES,
   ANOMALY_ROTATION,
   ANOMALY_STRAINS,
+  anomalySummary,
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import {
@@ -279,7 +280,7 @@ describe('the condition-set costs no new content (§12.1 slot 1)', () => {
     for (const id of SIGNAL_CONDITION_POOL) {
       const described = describeSignalCondition(id);
       expect(described.name).toBe(ANOMALIES[id].name);
-      expect(described.effect).toBe(ANOMALIES[id].effect);
+      expect(described.effect).toBe(anomalySummary(id));
       expect(described.kind).toBe(ANOMALIES[id].kind);
       // The tilt can never contradict the condition: it IS the condition's.
       expect(described.strainTilt).toBe(ANOMALY_STRAINS[id]);

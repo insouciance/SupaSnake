@@ -58,6 +58,7 @@ import {
   ANOMALIES,
   ANOMALY_ROTATION,
   ANOMALY_STRAINS,
+  anomalySummary,
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
@@ -188,7 +189,7 @@ export function describeSignalCondition(id: AnomalyId): SignalCondition {
   return {
     id: def.id,
     name: def.name,
-    effect: def.effect,
+    effect: anomalySummary(def.id),
     kind: def.kind,
     strainTilt: ANOMALY_STRAINS[def.id],
   };

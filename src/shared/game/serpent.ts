@@ -49,6 +49,7 @@
 import {
   ANOMALIES,
   ANOMALY_ROTATION,
+  anomalySummary,
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
@@ -201,7 +202,7 @@ export interface SerpentModifier {
 
 export function describeSerpentModifier(id: AnomalyId): SerpentModifier {
   const def = ANOMALIES[id];
-  return { id: def.id, name: def.name, effect: def.effect, kind: def.kind };
+  return { id: def.id, name: def.name, effect: anomalySummary(def.id), kind: def.kind };
 }
 
 /** The week, fully derived from the calendar. No id — the database owns that. */

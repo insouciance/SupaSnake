@@ -1,9 +1,9 @@
 'use client';
 
+import { strainTierLabel } from '@/shared/game/lexicon';
 import {
   STRAINS,
   STRAIN_IDS,
-  STRAIN_TIER_NAMES,
   type StrainId,
   type StrainPoints,
 } from '@/shared/game/strains';
@@ -14,14 +14,19 @@ interface StrainMeterHUDProps {
   suppressed?: readonly StrainId[];
 }
 
-function activeTierName(strain: StrainId, tier: number): string {
-  if (tier >= 3) return STRAIN_TIER_NAMES[strain].apex;
-  if (tier >= 2) return STRAIN_TIER_NAMES[strain].expression;
-  if (tier >= 1) return STRAIN_TIER_NAMES[strain].minor;
-  return 'Dormant';
-}
-
-/** Five-slot, low-frequency DOM HUD. It updates only on picks/surges. */
+/**
+ * Five-slot, low-frequency DOM HUD. It updates only on picks/surges.
+ *
+ * The tier names come from the Lexicon — this component used to carry its
+ * own copy of the same four branches, including an invented tier-0 label
+ * that existed nowhere else in the game. That label is now documented in
+ * the registry (STRAIN_TIER_DORMANT) rather than local to this file.
+ *
+ * The meter deliberately keeps a `title`-only tooltip and gains **no**
+ * popover: mid-run, one-handed, at speed, a panel that swallows the next
+ * steering input is worse than no explanation at all. The full tier text
+ * is reachable in the Codex instead.
+ */
 export function StrainMeterHUD({
   counts,
   tiers,
@@ -42,7 +47,7 @@ export function StrainMeterHUD({
           <div
             key={strain}
             data-testid={`strain-meter-${strain}`}
-            title={`${def.identity} — ${isSuppressed ? 'suppressed above Minor' : activeTierName(strain, tier)}`}
+            title={`${def.identity} — ${isSuppressed ? 'suppressed above Minor' : strainTierLabel(strain, tier)}`}
             className={`min-w-0 rounded-arcade border px-1.5 py-1 ${
               isSuppressed ? 'border-dashed opacity-70' : ''
             }`}
@@ -71,7 +76,7 @@ export function StrainMeterHUD({
               ))}
             </div>
             <p className="mt-1 truncate text-[8px] font-body text-beige/60">
-              {activeTierName(strain, tier)}
+              {strainTierLabel(strain, tier)}
             </p>
           </div>
         );

@@ -22,7 +22,7 @@ import {
 } from '@/shared/game/rulesets';
 import { isMutationId, type MutationPick } from '@/shared/game/mutations';
 import { GENES } from '@/shared/game/genes';
-import { sanitizeTraits, TRAITS, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
+import { sanitizeTraits, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints, type Lineage } from '@/shared/game/lineage';
 import {
   STRAINS,
@@ -136,6 +136,7 @@ import {
 import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
 import { RunResults, type RunResultsSerpent } from '@/components/game/RunResults';
 import { RunSetupPanel } from '@/components/game/RunSetupPanel';
+import { HeirloomSummary } from '@/components/game/HeirloomSummary';
 import {
   collectDailyTake,
   parseDailyTake,
@@ -187,6 +188,8 @@ interface EquippedSnakeView {
   generation: number;
   dynasty: string;
   traits: TraitId[];
+  /** Slots the snake's rarity + generation unlock (API-derived, §6.1). */
+  traitSlots?: number;
   lineage: Lineage | null;
 }
 
@@ -799,6 +802,7 @@ export default function GamePage() {
           variantId?: string;
           dynastyName?: string | null;
           traits?: unknown;
+          traitSlots?: unknown;
           lineage?: unknown;
         }> = data.snakes ?? [];
 
@@ -811,6 +815,10 @@ export default function GamePage() {
             generation: equipped.generation,
             dynasty: dynastyName,
             traits: sanitizeTraits(equipped.traits),
+            traitSlots:
+              typeof equipped.traitSlots === 'number'
+                ? equipped.traitSlots
+                : undefined,
             lineage: sanitizeLineage(equipped.lineage),
           });
           // Theme follows the equipped snake's dynasty
@@ -2213,6 +2221,18 @@ export default function GamePage() {
       </div>
     ) : null;
 
+  /* What the equipped snake brings to this run. Traits are live from the
+     first food of every run (settlement reads them off the snake row
+     unconditionally), so this block is NOT behind the spawn-point gate -
+     only the strain pips below are, because below that gate deriveHeirloom
+     really does return an empty heirloom. */
+  const heirloomNode = equippedSnake ? (
+    <HeirloomSummary
+      traits={equippedSnake.traits}
+      slots={equippedSnake.traitSlots}
+    />
+  ) : null;
+
   /* The inherited build: strains, heirlooms, lineage. */
   const buildSeedNode =
     equippedSnake &&
@@ -2243,11 +2263,10 @@ export default function GamePage() {
             </span>
           )}
         </div>
-        {equippedSnake.traits.length > 0 && (
-          <p className="text-xs font-body text-beige/60">
-            Heirlooms: {equippedSnake.traits.map((trait) => TRAITS[trait].name).join(' · ')}
-          </p>
-        )}
+        {/* The heirloom traits themselves moved out of this gated block and
+            into HeirloomSummary above: they are live from run 1, and a
+            name-only list explained nothing. Only the spawn points below
+            genuinely depend on the gate. */}
         {equippedSnake.lineage && (
           <p className="text-xs font-body text-beige/60">
             Lineage strength {equippedSnake.lineage.strength}
@@ -2755,6 +2774,7 @@ export default function GamePage() {
                     void handleStart(gameMode);
                   }}
                   startError={startError}
+                  heirloom={heirloomNode}
                   modeToggle={modeToggleNode}
                   anomalyPanel={anomalyPanelNode}
                   aimSelector={aimSelectorNode}
@@ -3003,6 +3023,7 @@ export default function GamePage() {
                         </span>
                       </p>
                     )}
+                    {heirloomNode}
                     {buildSeedNode}
                     <p className="text-beige/50 font-body text-xs">
                       Exit portal banks +25% — crashing salvages 60%
