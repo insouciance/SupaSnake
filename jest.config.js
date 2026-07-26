@@ -24,9 +24,14 @@ const customJestConfig = {
     // Parallel agents get their own git worktrees under .claude/worktrees/.
     // Each is a full checkout, so without this jest sweeps every one of them:
     // the suite count multiplies, and another branch's in-flight edits surface
-    // as failures in YOUR run. Excluding sibling checkouts only - it removes
-    // no test from this working tree.
-    '/.claude/',
+    // as failures in YOUR run.
+    //
+    // ANCHORED TO <rootDir> DELIBERATELY. An unanchored '/.claude/' also
+    // matches when jest RUNS INSIDE one of those worktrees - its own path
+    // contains .claude/ - so every file matched and `npm test` exited with
+    // "No tests found". Anchoring excludes nested checkouts while leaving a
+    // worktree able to test itself.
+    '<rootDir>/.claude/',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

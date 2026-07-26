@@ -1565,9 +1565,9 @@ export async function POST(request: NextRequest) {
       // records refresh. The response carries what the run WOULD have earned
       // so the player sees the stakes they practiced for.
       if (isFreeSession) {
-        // WP-2.05: reported, not fatal. Free Play pays nothing, so nothing
-        // is at stake in this echo - failing the request would refuse a
-        // practice run its recap card for no gain.
+        // WP-2.05: reported, not fatal. Free Play pays nothing, so this echo
+        // risks nothing - failing the request would refuse a practice run
+        // its recap card for no gain.
         const { data: freePlayerState, error: freePlayerError } = await supabase
           .from('players')
           .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
