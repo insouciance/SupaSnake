@@ -154,15 +154,32 @@ async function startSession(
   accessToken: string,
   snakeId: string,
   mode: 'earn' | 'free',
-  fetcher: Fetcher
+  fetcher: Fetcher,
+  signalObjectiveId?: string
 ): Promise<GameSessionStartPayload> {
+  // Constitution §7.2 / §8.6: taking the day's Signal and starting the run it
+  // is taken for are ONE act. Migration 049's `begin_signal_objective_run`
+  // binds the day's attempt to an OPEN run, and the charge is decided in the
+  // same request — so the objective travels with the START, as a lookup key
+  // among the day's server-derived three. Taking it in a separate call after
+  // an ordinary start would burn a charge on the run §8.6 makes exempt.
+  //
+  // `mode: 'signal'` is a REQUEST, never a grant: the server derives the day,
+  // resolves the id among that day's three and confirms this run owns the
+  // day's one attempt. Miss any of those and it is an ordinary run, which is
+  // why nothing here reads the answer back as permission.
+  const signalRun = typeof signalObjectiveId === 'string' && signalObjectiveId.length > 0;
   const response = await fetcher('/api/game/session', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ action: 'start', mode, snake_id: snakeId }),
+    body: JSON.stringify(
+      signalRun
+        ? { action: 'start', mode: 'signal', signalObjectiveId, snake_id: snakeId }
+        : { action: 'start', mode, snake_id: snakeId }
+    ),
   });
   const body = await responseBody(response);
 
@@ -184,7 +201,14 @@ export async function prepareLaunchHandoff(
   accessToken: string,
   userId: string,
   bootstrap: FtueBootstrapResponse,
-  fetcher: Fetcher = fetch
+  fetcher: Fetcher = fetch,
+  /**
+   * The Signal objective the player took on Home, if they took one (§7.2).
+   * Absent on an ordinary LAUNCH, which is every launch the Signal surface was
+   * not used for — so this parameter can never make an ordinary run a Signal
+   * run by default.
+   */
+  signalObjectiveId?: string
 ): Promise<LaunchHandoff> {
   // One-click Launch is always an EARNING run (Constitution §8.6). It used
   // to inspect the player's energy and silently hand them a practice run
@@ -199,7 +223,8 @@ export async function prepareLaunchHandoff(
     accessToken,
     bootstrap.equippedSnake.id,
     mode,
-    fetcher
+    fetcher,
+    signalObjectiveId
   );
 
   return {

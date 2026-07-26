@@ -398,6 +398,63 @@ describe('Home page', () => {
   // a pick-then-claim flow. That behaviour is gone, so the tests that pinned
   // it are gone with it and these pin its ABSENCE instead. Nothing here is a
   // weakened version of an old assertion — each is a stronger one.
+  /**
+   * The Signal's rollback path, from Home.
+   *
+   * This file never sets `NEXT_PUBLIC_SIGNAL_V1`, so `SIGNAL_V1_ENABLED` is
+   * false throughout it — which makes the whole suite the flag-off proof and
+   * these three the explicit assertions. The flag-on behaviour lives in
+   * `page.signal.test.tsx`.
+   */
+  describe('the World Signal, flag off (§7.2 rollback path)', () => {
+    it('renders no Signal surface', async () => {
+      setAuthed();
+      render(<Home />);
+
+      await waitForStats();
+      expect(screen.queryByTestId('signal-surface')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('signal-chip')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('signal-card')).not.toBeInTheDocument();
+    });
+
+    it('never reads the Signal panel', async () => {
+      setAuthed();
+      render(<Home />);
+
+      await waitForStats();
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const urls = (global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]));
+      expect(urls.some((u) => u.includes('/api/signal'))).toBe(false);
+    });
+
+    it('starts a run in the same one tap it always did', async () => {
+      // The tap-count baseline (§5, Rule 10). With the Signal off, LAUNCH is
+      // one tap to a prepared board and nothing stands in front of it. The
+      // flag-on suite asserts the identical count, which is the proof the
+      // Signal adds no required tap.
+      setAuthed();
+      render(<Home />);
+      await waitForStats();
+
+      fireEvent.click(screen.getByTestId('launch-cta'));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith('/game?launch=ftue-v2');
+      });
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      const startCall = (global.fetch as jest.Mock).mock.calls.find(
+        (call) => String(call[0]) === '/api/game/session'
+      );
+      expect(JSON.parse(String(startCall?.[1]?.body))).toMatchObject({
+        action: 'start',
+        mode: 'earn',
+      });
+    });
+  });
+
   describe('contracts cutover (§12.2: one daily surface)', () => {
     it('never requests the retired contracts API', async () => {
       setAuthed();
