@@ -21,6 +21,12 @@ const customJestConfig = {
     // excludes it; `npm run gate:phase1` runs it deliberately, with the stack
     // up. Excluded here so it cannot silently fail CI - never to weaken it.
     '/src/gate/',
+    // Parallel agents get their own git worktrees under .claude/worktrees/.
+    // Each is a full checkout, so without this jest sweeps every one of them:
+    // the suite count multiplies, and another branch's in-flight edits surface
+    // as failures in YOUR run. Excluding sibling checkouts only - it removes
+    // no test from this working tree.
+    '/.claude/',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
