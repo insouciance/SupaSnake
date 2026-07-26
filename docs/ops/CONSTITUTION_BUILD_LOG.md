@@ -15,7 +15,9 @@ ever. Campus seeding, the Founding Keeper SKU, and anything Phase 3+ stay owner
 work. Where a runbook step cannot be executed as written, the exact remaining
 steps are queued here and flags are left off rather than improvised around.
 
-**Phase 0 shipped to production on 25 July 2026** (`fd040af` + `be33b4b`, deploy run
+**Phase 1 shipped to production on 26 July 2026** (`2dbddd7`, deploy run
+`30194424181`, migrations 046–051 applied, health green, all surfaces behind flags
+defaulted off). **Phase 0 shipped 25 July 2026** (`fd040af` + `be33b4b`, deploy run
 `30172084085`, migrations 039–045 applied, `/api/health` healthy). Two owner-only
 steps are done: `NEXT_PUBLIC_GROWTH_SURFACES_V1` is flipped and verified in
 production, and cohort flagging is deliberately partial until launch (see below).
@@ -639,6 +641,48 @@ GT-refresh after the phase gate.
 | F-14 | `claim_clan_energy_bonus` (migration 007) is an orphan RPC with no caller in `src/`, and its `WHERE user_id = p_player_id` looks mismatched against every other RPC's `players.id` convention. | WP-0.03 |
 | F-15 | Three energy grant paths bypassed the `economy_transactions` audit entirely (offline claim, achievements, clan bonus), and `achievements/route.ts` does a read-modify-write with **no row lock**. | WP-0.03 / WP-0.04 |
 | F-16 | `/api/player/bootstrap` (migration 037) still returns `energy`/`maxEnergy` in its JSON. Harmless extra fields — the TypeScript type no longer declares them — but the shape is now a lie. | WP-0.03 |
+
+## Phase 1 release — **SHIPPED to production, 26 July 2026**
+
+| Step | Result |
+|---|---|
+| PR #8 `constitution/build` → `main` | 4/4 green, squash-merged as `2dbddd7` |
+| **Deploy to Production** (`payments_mode=test`) | run `30194424181` — **success**, both jobs |
+| Migrations applied | **046–051**, all six, exactly as dry-run predicted |
+| `/api/health` | `healthy`, database `healthy` (129 ms) |
+| Core pages `/ /game /leaderboard /shop /lab /clan /play` | all 200 |
+| `/serpent` with `SERPENT_V1` off | **200 off-state by design** — verified to leak no Depth, segments, lifetime or best-week data |
+| Leaderboard | 2 ranked players (`Sans_Souci`, `savoir`) — the owner's cohort flagging working as intended |
+
+**Every Phase 1 surface shipped dark.** Eight flags default off: `SERPENT_V1`,
+`SIGNAL_V1`, `DAILY_TAKE_V1`, `RUN_FLOW_V1`, `CLAN_V2`, `SETTLEMENT_DISPATCH_V1`,
+`CLAN_GAUNTLET`, `CLAN_PLAYOFFS`. The schema and code are live; what players see is
+unchanged until each flag is flipped. Note `NEXT_PUBLIC_*` is **build-time inlined**,
+so each flip needs a rebuild to take effect — and so does each rollback.
+
+### The gate earned its keep
+
+Migrations 046–051 had never been executed anywhere before the Phase 1 gate ran
+them against a real Postgres. It found two defects that every shape test passed
+over, either of which would have broken this deploy:
+
+- **Migration 048 could not apply at all** (SQLSTATE 42809) — migration 020 already
+  creates `clan_rivalries` as a VIEW, so `CREATE TABLE IF NOT EXISTS` was a silent
+  no-op and the next `CREATE INDEX` aborted the migration. Production has 020.
+- **Three central RPCs raised on every call** (SQLSTATE 42702) — `RETURNS TABLE` OUT
+  names colliding with column names inside `ON CONFLICT` inference. With
+  `begin_signal_objective_run` down, **§8.6's charge exemption could never have been
+  granted to any player**: the feature would have shipped inert.
+
+### One defect CI caught that branch verification did not
+
+`src/app/api/signal/panel/route.ts` exported a helper. Next.js App Router route files
+may export only HTTP handlers and known config fields, so `npm run build` failed with
+"is not a valid Route export field" — invisible to `tsc --noEmit`, lint and jest.
+**Orchestrator process gap**, not a subagent's: branch verification now includes
+`npm run build`.
+
+---
 
 ## Phase 0 gate — **PASSED**, verified empirically on `constitution/build`
 
