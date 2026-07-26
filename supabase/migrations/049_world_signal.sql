@@ -389,6 +389,11 @@ RETURNS TABLE (
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+-- GATE FIX (2026-07-26). Same defect as `ensure_serpent_week`: the
+-- RETURNS TABLE list declares an OUT variable `day`, which collides with
+-- `signal_days.day` in the `ON CONFLICT (day)` inference expression below.
+-- SQLSTATE 42702 on every call. See 046 for the full note.
+#variable_conflict use_column
 DECLARE
   v_row signal_days%ROWTYPE;
 BEGIN
@@ -491,6 +496,13 @@ RETURNS TABLE (
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+-- GATE FIX (2026-07-26). Same defect again: the RETURNS TABLE list declares
+-- an OUT variable `day_id`, which collides with `signal_objective_runs.day_id`
+-- in the `ON CONFLICT (day_id, player_id)` inference expression below.
+-- SQLSTATE 42702 on every call — so no player could ever have claimed the
+-- day's Signal attempt, and therefore no run could ever have been exempt.
+-- See 046 for the full note.
+#variable_conflict use_column
 DECLARE
   v_row signal_objective_runs%ROWTYPE;
 BEGIN

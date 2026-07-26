@@ -346,6 +346,17 @@ RETURNS TABLE (
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+-- GATE FIX (2026-07-26). The RETURNS TABLE list above declares OUT variables
+-- named `week_start`, `seed`, `starts_at`, … — the same names as the columns
+-- of `serpent_weeks`. `ON CONFLICT (week_start)` below is an index-inference
+-- EXPRESSION, so plpgsql tries to substitute the variable and the statement
+-- dies with SQLSTATE 42702, "column reference week_start is ambiguous".
+-- That made this function fail on EVERY call. It was never executed before
+-- the Phase 1 gate: the shape tests read this file as text.
+-- Every other reference in this body is already table-qualified, so telling
+-- plpgsql to prefer the column resolves the inference and changes nothing
+-- else.
+#variable_conflict use_column
 DECLARE
   v_row serpent_weeks%ROWTYPE;
 BEGIN

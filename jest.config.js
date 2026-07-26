@@ -15,6 +15,12 @@ const customJestConfig = {
     '/node_modules/',
     '/build/',
     '/e2e/',
+    // The Phase 1 gate drives real RPCs against a LOCAL Supabase stack and
+    // refuses to start unless GATE_SUPABASE_URL is a loopback address. It is
+    // not a unit test and cannot run without Docker, so the default suite
+    // excludes it; `npm run gate:phase1` runs it deliberately, with the stack
+    // up. Excluded here so it cannot silently fail CI - never to weaken it.
+    '/src/gate/',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
