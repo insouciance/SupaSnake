@@ -1,6 +1,24 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.3 · 25 July 2026
+**Version:** 1.4 · 27 July 2026
+**v1.4 changelog (owner rulings, 27 July 2026 — the Redesign Wave):**
+**Rule 15, monotonic length** (§4) — *length only ever increases; free space only
+ever shrinks; anything that costs the player costs growth.* The wave's founding
+finding is that Snake's difficulty curve is its own body (free space is `n² − L`),
+that this is a structural gift no comparable roguelite has, and that the shipped
+catalog spent it: across 144 production runs the median reached **8%** board
+occupancy and the best run ever recorded reached **~43%** — the board has never
+been filled, so the native curve has never engaged. The corollary the owner
+derived, which generalises: *once length is the difficulty clock, removing length
+is a reward, so any effect priced in "segments removed" is a bonus paid for with a
+bonus.* **INFUSE therefore inverts to +8 [H] segments**; `shed`, `splice_regenesis`
+and `splice_molted_rebirth` are killed (§13); revives grant survival, never
+shrinkage. **Per-dynasty Score curves** (§6.1) — *shapes* with comparable
+integrals, Rule 2's mechanism untouched. **The difficulty ladder** (§8.6a) — fixed,
+ordered, cumulative; unlock globally, record per-dynasty. **Clan surfaces show
+totals, not per-member attempt counts** (§7.3). Evidence and full derivation:
+`docs/game/GAMEPLAY_PROPOSAL.md`; implementation: `docs/ops/REDESIGN_WAVE.md`.
+**Rule 15 is in its seven-day cooling period until 2026-08-03** (see §15, row 15).
 **v1.3 changelog (owner ruling):** **Energy, redefined** (§8.6) — the daily-economy
 grammar returns without the paywall: 6 charges/day make runs rich, lean runs floor at
 25%, rituals (Signal objective, Serpent attempts) always full, nothing sold, nothing
@@ -197,6 +215,23 @@ the preamble.
     an image and a way in. *Reviewer: where is the URL, and what does a stranger see
     when they open it?*
 
+15. **Length only ever increases; free space only ever shrinks.** Nothing shortens
+    the snake. Anything that costs the player costs **growth**. No gene, tier,
+    splice, trait, revive, purchase, or content of any kind may rewind board
+    pressure. *Reviewer: does this effect ever reduce length or increase free
+    space? If it prices itself in "segments removed," it is pricing a reward with a
+    reward — reject it.*
+
+    *Why this is a rule and not a balance note:* the board is the difficulty clock
+    (free space is `n² − L`, falling hyperbolically on a fixed tick), and it is the
+    only escalation SupaSnake gets for free — every comparable roguelite bolts one
+    on (Hades' Pact, Slay the Spire's Ascension, Vampire Survivors' Curse, Risk of
+    Rain's time coefficient, Dead Cells' Malaise). A length-reducing effect does not
+    merely help the player; it turns the clock backwards, and it simultaneously
+    de-prices INFUSE — the one mechanic denominated in body — because a currency
+    that can be safely discarded is not a cost. One mechanic breaking two systems is
+    a constitutional problem, not a tuning problem.
+
 ---
 
 ## 5. The core run — what is protected, and why
@@ -274,6 +309,29 @@ the top 3 — because a global top-100 is an insult at small population and wall
 large (§17 [H]).
 
 **Score answers: how well do I fly?**
+
+**Per-dynasty curves (v1.4).** `scoreMultiplier(n)` is a per-ruleset function of
+food count, so it is the one place asymmetry is *already* legal under Rule 2 —
+and the shipped curves are the reason the ladder does not currently measure what
+it claims. PRIMAL and COSMIC both ship `() => 1` while CYBER carries a ×3 curve
+*and* eats four times faster at its floor, so Score per minute differs by roughly
+an order of magnitude and two of three dynasties cannot post a competitive number
+under any circumstances. Rule 2 passed mechanically the whole time; its *purpose*
+did not.
+
+Each dynasty therefore gets a **shape** — CYBER front-loaded, PRIMAL back-loaded,
+COSMIC mid-weighted [H, §17] — with **comparable integrals at the terminus**, so
+the dynasty is a choice of *how* you earn rather than *how much*. Two constraints
+bind: the fold's mechanism is untouched and `verify:constitution` stays green by
+construction; and comparable integrals are what keep **one** public board honest,
+so per-dynasty leaderboards remain unnecessary and §12.2's cap on public numbers
+is not approached. If the integrals cannot be brought within tolerance, that is a
+finding to escalate, not a licence to mint a second board.
+
+*This depends on the run ending at an occupancy rather than at a clock (Rule 15).
+When the terminus is geometric, eating faster finishes the run sooner instead of
+scoring more — which is what collapses the measured ~10× gap to the multiplier
+alone.*
 
 **Ascension** gives Score its monthly meaning — the individual climb the owner's own
 retention anatomy (a monthly promotion league) named as a primary login driver.
@@ -407,6 +465,24 @@ killed, only measured against. Clans hunt it by running under its conditions; ev
 segment of Yield feeds the hunt deeper into its coils. Sunday midnight UTC it
 submerges, the hunt settles, and Monday's Signal carries the result. The name and
 fiction may be art-directed freely; the mechanics below may not.
+
+**Clan surfaces show totals, not per-member attempt counts (v1.4).** Rule 8 already
+forbids thresholds, pass/fail bars and intra-clan reward mathematics, and the
+Serpent honours all of it: best-of-three, no Energy cost, no DNA, no officer lever.
+The pressure a member feels is nevertheless real, and it comes from one place — the
+roster shipping every member's `depth` and `attempts`, so **a zero is visible to
+teammates**. That converts a personal choice into a social debt, and the cost lands
+on someone who did not choose it.
+
+The owner's ruling on the daily (§8.6) is that withholding a reward from someone
+who did not play is natural rather than punitive — and that argument holds for the
+*individual* reward. It does not extend to the social one. So the clan card shows
+the **clan total**, the viewer's **own** contribution, and nothing per-member.
+Churn is contagious in guild data (Kawale et al., IEEE SocialCom 2009, on
+EverQuest II: the probability of churn rises with the number of departed
+neighbours), and a clan whose visible scoreboard pushes two members out becomes
+likelier to lose the rest. *Reviewer for Rule 8 additionally asks: can a member see
+another member's attempt count or absence?*
 
 **The mechanics.**
 
@@ -611,6 +687,43 @@ the audit's own interim design ("never let it prevent ordinary play"), matured:
   tail, ≈9–10k DNA on a committed day vs. unbounded before [H]) that makes
   collection, breeding, and Ascendance pacing *tunable*. The open question v1.1
   left (§17.2) is closed by this mechanism; its numbers are tuning dials.
+
+### 8.6a The ladder — the difficulty climb (v1.4)
+
+Mastery answers *how good am I with this dynasty*, and until now it had no ceiling
+to be measured against. A build system needs something to defeat; a skill number
+needs a wall. The ladder is that wall, and it is the retention structure this
+audience actually responds to — competition interest declines faster with age than
+any other motivation measured, while **Strategy is the most age-stable**
+(Quantic Foundry, n > 140,000), so the climb belongs on the build and the
+execution rather than on ranking players against each other.
+
+**Fixed, ordered, cumulative.** Rung *n* adds one **named rule** and means the same
+thing for every player. Not a pick-your-own modifier budget: a summed handicap is
+incomparable between two players, which is why Slay the Spire's A20 became a
+community identity and Hades' Heat 20 never did — *"if you're Heat 20, there's no
+telling what modifiers compose that."*
+
+- **6–8 rungs [H]**, deliberately shallow. Ladder-completion data scales inversely
+  with depth (Slay the Spire, long runs, 20 rungs: ~7% reach the top; Brotato,
+  ~20-minute runs, 6 rungs: ~36%; Peglin, 20 rungs: ~2%). At a three-minute run,
+  a shallow ladder converts a real fraction of players into "top of the ladder";
+  a twenty-rung one converts almost nobody.
+- **Unlock globally, record per-dynasty.** Clearing rung 5 anywhere lets you
+  *attempt* rung 5 everywhere; the *record* stays per dynasty. The loudest
+  complaint in Slay the Spire's decade is the per-character re-climb, and players
+  route around it with save editors — a designed system should not require that.
+- **Rungs are built from substrates that already exist** — starting length, hold
+  count, portal window, INFUSE growth, PASS reward, banish count, salvage, a
+  hostile weekly clause. A rung introduces no new system; that is what keeps it
+  inside Rule 12.
+- **Never purchasable, never gifted, never accelerated by any SKU** (Rules 3, 4).
+  Rung marks are earned-only cosmetic identity, like Ascension tiers.
+- **The rung is server-stamped into the run** and settlement validates under its
+  parameters — never a client claim, never a build-time flag (Rule 11).
+
+Ignoring the ladder costs nothing: rung 0 is the game, and every surface plays
+identically for a player who never opens it.
 
 What stays dead from the shipped system: the run-start gate, the 20-minute drip
 and its dual-clock defects (GT §9.1–9.2 — one refill authority now), energy
@@ -1249,6 +1362,10 @@ Stripe-in-test-mode means no purchases to honor — this is the last cheap momen
 | 20 | Generation 4–50 as shipped (cost + pedigree, no decisions) | Reforged as **Ascendance** (§8.2, v1.2): uncapped, asymptotic Yield curve, visual evolution stages | Existing Gen>3 snakes keep their generation and enter the Ascendance curve at it |
 | 21 | Generation-based "skill brackets" | Delete | — |
 | 22 | Victory bonus, welcome-back modal, notifications, Discord OAuth plumbing, Chronicle, Records, cosmetics substrate, Training, offer-gravity | **Keep** | The spine survives |
+| 23 | `shed` (every 25 foods, tail resets to length 8) — v1.4, Rule 15 | **Delete.** Its Launch-Ten slot goes to `static_charge` [H] | The catalog's strongest safety valve — and the reason INFUSE was never a real cost |
+| 24 | `splice_regenesis` and `splice_molted_rebirth` — v1.4 | **Delete** (both are `shed`'s children by parentage; splice catalog 10 → 8) | Two recipes; the only two that carried an absolute reset forward |
+| 25 | Length-resetting revives — Phoenix, Styx, Molted Rebirth, Second Sun (all truncate to 8 through one engine funnel) — v1.4 | **Convert:** keep the 3-cell rewind, delete the truncation, add a short phase window so a full-length snake can escape the jam that killed it | The clean-slate second chance; revives stop being a difficulty rollback |
+| 26 | FERAL tier 2 "Molt" as shed-based — v1.4 | **Replace the effect** (its shed *is* the effect, so it cannot be re-priced). `heartwood`, which triggers on shed events, re-targets with it | The proportional-shed identity WP-2.09 built |
 
 Defect fixes riding the same phases (not kills): leaderboard eligibility + myRank
 identity (GT §9.3), stale-session lifecycle (GT §9.6), QA-cohort separation
@@ -1349,6 +1466,9 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 15 | Weekly Anomaly as separate mode (shipped) | Absorbed by the Serpent | A standalone surface |
 | 16 | Clan scope: 50-cap, all layers open (shipped) | 12-cap, clan-of-one first-class, layers population-gated | Visible feature breadth at launch |
 | 17 | Analyst LLM + email digest (shipped, env-gated) | LLM retired; email deterministic-only | Narrative flourish; LLM differentiation |
+| 18 | **Length as a spendable cost** — INFUSE −4 segments, Ouroboros −3/bite, Thick Hide −5, `shed`, every revive (all shipped) | **v1.4, Rule 15: inverted.** INFUSE costs **+8 [H] growth**; the shed family is killed; survival never shrinks. **Owner ruling 27 July 2026; seven-day cooling to 2026-08-03** per §4's amendment procedure — code may be built and merged to the integration branch during it, and may not be *released* before it closes | The whole "spend your body" grammar as originally written, and the emergency valve a shrinking snake gave a player in trouble. Kept in substance: body is still the price of power — it is now paid by *growing* rather than by shrinking, which is the only version that costs anything |
+| 19 | **Per-dynasty Score parity by identical curves** (shipped: PRIMAL and COSMIC both `() => 1`) | **v1.4: differentiated shapes with comparable integrals** (§6.1). The measured consequence of "identical" was a ~10× Score-per-minute gap in CYBER's favour, so parity of *formula* was producing gross disparity of *outcome* | The simplicity of one curve for everyone; a small ongoing balance surface (three integrals to keep in tolerance) |
+| 20 | **"PASS pays body length"** (proposed in the redesign analysis, never shipped) | **Withdrawn before implementation.** It was derived when INFUSE *paid* length; once Rule 15 inverted the sign, a PASS that granted length would be a reward denominated in the currency Rule 15 outlaws. PASS instead pays quoted DNA plus a better next offer | An elegant single-axis portal (spend body ↔ gain body). Recorded because the idea is attractive and will be re-proposed by someone who has not read this row |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -1493,6 +1613,45 @@ deliberately undecided pending data.
     removed by owner edit; the test sentence carries the promise. *Test:* if trust
     sentiment or press framing weakens measurably, restore an abbreviated
     guarantee list on the public /contract page only, leaving §3 as edited.
+26. **Time-to-first-pressure** (v1.4 — the one open ruling of the Redesign Wave).
+    The measured defect is that pressure begins around minute eight, so the median
+    run (8% board occupancy) never reaches the game. *Test:* the Growth Lab
+    (`docs/ops/REDESIGN_WAVE.md` WP-3.02) ships three server-stamped growth
+    profiles; the owner plays two runs of each per dynasty and rules. Candidate
+    target: pressure at ~1:06, run ending near 3:12, from starting length 3 with
+    growth +6 for foods 1–11, +2 through 31, then +1 per 6 to a cap of 8 [H].
+    *This is decided by hands, not by the model* — the model is calibrated to one
+    expert run on one dynasty and reproduces it to within 5%, which ranks
+    candidates well and picks between them badly.
+27. **The Rule 15 dials** (v1.4). INFUSE growth **+8**; Thick Hide **+8** on
+    trigger; Ouroboros **+2** per bite; revive phase window **~12 ticks**. *Test:*
+    lab telemetry — infuse-taken rate against run stage (if late-run infusion
+    collapses to zero, the price is too steep); revive survival rate (if a revived
+    run ends within ~5 foods, the window is too short to matter and the revive is
+    decorative).
+28. **The re-basing table** (v1.4). Every food-indexed dial in the catalog was
+    authored for 150–180-food runs and now lives in ~48-food runs: offer cadence
+    (`intervalBase` 20 → ~10), the validator's `MIN_FOODS_PER_PICK` (15 → ~8),
+    hold bonus lengths (25/40 → ~35%/60% of terminus length), and the window genes
+    (`deep_roots`, `ancient_grove`, `midnight_oil`, `loan_shark`). *Test:* offers
+    per run should exceed the six-slot held cap — that is what makes PASS and
+    BANISH real decisions rather than formalities — and `verifyOfferTrace` must
+    stay clean at the new cadence.
+29. **Ladder shape** (v1.4). Rung count [H: 6–8] and the rung list. *Test:*
+    distribution of best rung per dynasty after four weeks; if >60% of active
+    players sit at rung 0, the first rung is too expensive or too dull; if >40%
+    reach the top, add rungs rather than re-tuning the existing ones.
+30. **Score-curve integrals** (v1.4, §6.1). *Test:* simulate the three curves at
+    the ruled terminus and hold total Score within ±10% across dynasties. If they
+    cannot be brought into tolerance, escalate — do not mint a second board.
+31. **Charge carryover** (v1.4, deferred from the D5 ruling). §8.6 says charges
+    never carry over; the evidence on comparable systems suggests **bankability**,
+    not purchasability, is what makes a cap read as generous — three franchises
+    independently converged on an overflow bank and all read positive, while the
+    one with no bank draws "disrespecting player time." *Test:* A/B a one-day
+    carryover (ceiling 12) against the current rule on return rate after a missed
+    day. The 25% lean tail may already be doing this work, which is precisely why
+    it is a test and not a change.
 
 ---
 
