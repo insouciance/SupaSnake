@@ -55,6 +55,7 @@ const runImage = require('./r/[seed]/opengraph-image').default;
 const weekImage = require('./w/[week]/opengraph-image').default;
 const clanImage = require('./c/[tag]/opengraph-image').default;
 const lineageImage = require('./x/[code]/opengraph-image').default;
+const buildImage = require('./b/[code]/opengraph-image').default;
 const profileImage = require('./p/[handle]/opengraph-image').default;
 const challengeImage = require('./og/challenge/route').GET;
 
@@ -123,6 +124,27 @@ describe('every artifact class has an opengraph-image route that resolves', () =
     expect(card.kicker).toBe('Lineage · CYBER');
     // Everything on it came out of the link.
     expect(card.provenance).toBe('claimed');
+  });
+
+  it('build — /b/<code>', async () => {
+    await assertImageResponse(
+      await buildImage({
+        params: Promise.resolve({
+          code: 'Vyper~CYBER~4~gold_trail%2Ctithe~gold_rush~clause%3Adeep_apex~2',
+        }),
+      })
+    );
+    const card = lastCard();
+    expect(card.title).toBe('Vyper — Gen 4');
+    expect(card.kicker).toContain('Build');
+    // Everything on it came out of the link.
+    expect(card.provenance).toBe('claimed');
+    // And a build code is a recipe, so it carries no rankable number at all.
+    const text = [card.kicker, card.title, card.subtitle, card.callToAction]
+      .concat((card.stats ?? []).map((stat) => `${stat.label} ${stat.value}`))
+      .join(' ');
+    expect(text).not.toMatch(/\byield\b/i);
+    expect(text).not.toMatch(/\bscore\b/i);
   });
 
   it('profile — /p/<handle>', async () => {
@@ -206,6 +228,22 @@ describe('a malformed artifact URL still renders a real card, never a grey box',
     expect(lastCard().title).toBe('Every snake is bred, not bought');
   });
 
+  it('an undecodable build code falls back to a generic Workbench card', async () => {
+    await assertImageResponse(await buildImage({ params: Promise.resolve({ code: 'garbage' }) }));
+    expect(lastCard().title).toBe('Plan the hunt before you take it');
+  });
+
+  it('a build code naming a gene that does not exist is refused, not repaired', async () => {
+    // The refusal that matters most on a public route: a forged plan must not
+    // render as a card of the genes it happened to spell correctly.
+    await assertImageResponse(
+      await buildImage({
+        params: Promise.resolve({ code: 'Vyper~CYBER~4~gold_trail%2Cnot_a_gene~~~0' }),
+      })
+    );
+    expect(lastCard().title).toBe('Plan the hunt before you take it');
+  });
+
   it('an invalid handle falls back to a generic Chronicle card', async () => {
     await assertImageResponse(
       await profileImage({ params: Promise.resolve({ handle: 'handler-0001' }) })
@@ -229,8 +267,9 @@ describe('no card carries a commercial surface (Rule 7)', () => {
     await clanImage({ params: Promise.resolve({ tag: 'FANG' }) });
     await lineageImage({ params: Promise.resolve({ code: 'Vyper~CYBER~4~' }) });
     await profileImage({ params: Promise.resolve({ handle: 'Sans_Souci' }) });
+    await buildImage({ params: Promise.resolve({ code: 'Vyper~CYBER~4~tithe~~~1' }) });
 
-    expect(rendered).toHaveLength(6);
+    expect(rendered).toHaveLength(7);
     for (const card of rendered) {
       const text = [card.kicker, card.title, card.subtitle, card.callToAction]
         .concat((card.stats ?? []).map((stat) => `${stat.label} ${stat.value}`))

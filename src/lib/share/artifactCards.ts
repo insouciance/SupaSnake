@@ -17,6 +17,12 @@ import {
 } from '@/shared/game/challenge';
 import type { LineageCardModel } from '@/lib/share/lineageCode';
 import { lineageGeneNames } from '@/lib/share/lineageCode';
+import type { BuildCardModel } from '@/lib/share/buildCode';
+import {
+  buildContextName,
+  buildGeneNames,
+  buildStrainReach,
+} from '@/lib/share/buildCode';
 
 function count(value: number): string {
   return Math.max(0, Math.floor(value)).toLocaleString('en-US');
@@ -199,6 +205,51 @@ export function lineageCardModelFor(model: LineageCardModel): ArtifactCardModel 
     ],
     provenance: 'claimed',
     callToAction: 'Breed your own in the Snake Lab',
+  };
+}
+
+/**
+ * A build — the seventh artifact class (WP-2.08).
+ *
+ * Everything on it came out of the link, so it is a claim, exactly as a
+ * lineage card is. What separates it from every other card here is what it
+ * does NOT carry: no projected Yield and no Score. A build code is forgeable
+ * by construction, so a Yield printed on one would be a leaderboard-shaped
+ * number arriving through a channel that settles nothing (Rule 11), and Score
+ * is independent of build by Rule 2. The stats are the plan's own structure —
+ * how many genes, how far its strains reach, how many portals it spends —
+ * and the week it was planned against.
+ */
+export function buildCardModelFor(model: BuildCardModel): ArtifactCardModel {
+  const genes = buildGeneNames(model);
+  const reach = buildStrainReach(model);
+  const stats: ArtifactStat[] = [
+    { label: 'Dynasty', value: model.dynasty },
+    { label: 'Genes', value: count(genes.length) },
+  ];
+  if (reach.length > 0) {
+    stats.push({
+      label: reach.length === 1 ? 'Strain' : 'Strains',
+      value: reach.map((entry) => entry.label).join(' · '),
+    });
+  }
+  if (model.infuses > 0) {
+    stats.push({
+      label: model.infuses === 1 ? 'Infuse' : 'Infuses',
+      value: count(model.infuses),
+    });
+  }
+
+  return {
+    kicker: `Build · ${buildContextName(model)}`,
+    title: `${model.snakeName} — Gen ${Math.max(1, Math.floor(model.generation))}`,
+    subtitle:
+      genes.length > 0
+        ? genes.join(' → ')
+        : 'An empty plan — no genes named, so nothing is claimed',
+    stats,
+    provenance: 'claimed',
+    callToAction: 'Open it in the Workbench against your own snakes',
   };
 }
 
