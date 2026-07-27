@@ -48,6 +48,34 @@ function withQuery(path: string, params: Array<[string, string]>): string {
   return `${path}?${query}`;
 }
 
+/**
+ * SELF-ENCODING CODES — why `/x/` and `/b/` interpolate their code directly.
+ *
+ * `encodeLineageCode` and `encodeBuildCode` percent-encode every FIELD and
+ * join the fields with `~`, a character `encodeURIComponent` deliberately
+ * leaves alone. The result is already a legal path segment: alphanumerics,
+ * `~`, and `%XX` escapes, and nothing that could end the segment or start a
+ * query. So there is nothing left for a path helper to encode — and wrapping
+ * it again is actively wrong, because it escapes the `%` of the code's own
+ * escapes (`%2C` → `%252C`).
+ *
+ * THAT MATTERS BECAUSE A PAGE AND A ROUTE HANDLER DO NOT AGREE. Measured on
+ * Next 15.5.21, for the URL `/…/Vyper~CYBER~4~gold_trail%2Ctithe~…`:
+ *
+ *   page.tsx      receives `gold_trail%2Ctithe`  — the segment RAW
+ *   route.ts      receives `gold_trail,tithe`    — decoded once
+ *
+ * The decoders are written for the page, which is the surface a shared link
+ * actually lands on, so they decode each field themselves. Feed a page a
+ * doubly-encoded code and that one decode yields `gold_trail%2Ctithe`, which
+ * names no gene. `/b/` then 404s (its decoder refuses) and `/x/` renders an
+ * empty snake (its decoder skips). The OG images hid the whole thing, because
+ * they resolve like route handlers and so tolerated the extra layer.
+ *
+ * This is exactly why `share-artifacts.spec.ts` writes these URLs literally
+ * rather than calling `encodeURIComponent` on them.
+ */
+
 // ---------------------------------------------------------------------------
 // The six paths
 // ---------------------------------------------------------------------------
@@ -84,8 +112,23 @@ export function clanArtifactPath(tag: string): string {
   return `/c/${encodeURIComponent(tag)}`;
 }
 
+/**
+ * A LINEAGE CODE IS NOT RE-ENCODED HERE. See `SELF-ENCODING CODES` below —
+ * this used to wrap the code in `encodeURIComponent`, and because
+ * `encodeLineageCode` had already escaped the comma between genes, every
+ * multi-gene card shared from the app arrived at `/x/` with `%252C` in it,
+ * decoded to `slipstream%2Cgold_trail`, matched no gene id, and rendered
+ * "Unwritten — no genes held". Measured, before and after the fix:
+ *
+ *   /x/Vyper~CYBER~4~slipstream%2Cgold_trail    → "Slipstream · Gold Trail"
+ *   /x/Vyper~CYBER~4~slipstream%252Cgold_trail  → "Unwritten — no genes held"
+ *
+ * A 200 with the content silently emptied, which is why it survived: nothing
+ * 404s and the only e2e case pinned a SINGLE-gene code with no escapes in it
+ * at all, so the one shape that cannot show the bug was the only shape tested.
+ */
 export function lineageArtifactPath(code: string): string {
-  return `/x/${encodeURIComponent(code)}`;
+  return `/x/${code}`;
 }
 
 export function profileArtifactPath(handle: string): string {
@@ -106,9 +149,11 @@ export function profileArtifactPath(handle: string): string {
  * The tidier-looking alternative — widening the lineage code to carry a plan —
  * is worse than a new path: it would make `decodeLineageCode`'s field-count
  * check variable, putting a shipped, tested decoder at risk to save a route.
+ *
+ * See `SELF-ENCODING CODES` below for why the code is not re-encoded here.
  */
 export function buildArtifactPath(code: string): string {
-  return `/b/${encodeURIComponent(code)}`;
+  return `/b/${code}`;
 }
 
 /**
