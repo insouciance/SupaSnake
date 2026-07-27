@@ -89,7 +89,7 @@ test.describe('every artifact URL renders an OG image (Rule 14)', () => {
   }) => {
     // Deliberately outside the WORKBENCH_ENABLED split: the seventh class's
     // image is ungated for the same reason the other six are.
-    const response = await request.get(`/b/${encodeURIComponent(BUILD_CODE)}/opengraph-image`);
+    const response = await request.get(`/b/${BUILD_CODE}/opengraph-image`);
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toMatch(/^image\//);
     expect((await response.body()).byteLength).toBeGreaterThan(MIN_IMAGE_BYTES);
@@ -108,7 +108,7 @@ test.describe('the build artifact — a recipe, never evidence (WP-2.08)', () =>
   test.skip(!WORKBENCH_ENABLED, 'NEXT_PUBLIC_WORKBENCH_V1 is off');
 
   test('the landing page offers a way in and quotes no Yield', async ({ page }) => {
-    await page.goto(`/b/${encodeURIComponent(BUILD_CODE)}`, {
+    await page.goto(`/b/${BUILD_CODE}`, {
       waitUntil: 'domcontentloaded',
     });
 
@@ -151,14 +151,14 @@ test.describe('flag off — the build page is absent but its card is not', () =>
   test.skip(WORKBENCH_ENABLED, 'NEXT_PUBLIC_WORKBENCH_V1 is on');
 
   test('/b/<code> is not found', async ({ page }) => {
-    const response = await page.goto(`/b/${encodeURIComponent(BUILD_CODE)}`, {
+    const response = await page.goto(`/b/${BUILD_CODE}`, {
       waitUntil: 'domcontentloaded',
     });
     expect(response?.status()).toBe(404);
   });
 
   test('and the already-shared link still unfurls', async ({ request }) => {
-    const response = await request.get(`/b/${encodeURIComponent(BUILD_CODE)}/opengraph-image`);
+    const response = await request.get(`/b/${BUILD_CODE}/opengraph-image`);
     expect(response.status()).toBe(200);
   });
 });
@@ -207,6 +207,28 @@ test.describe('artifact landing pages', () => {
 
     const href = await page.getByTestId('artifact-play').getAttribute('href');
     expect(href).toMatch(/^\/game\?seed=D[0-9a-f]{8}&target=1240&challenge=signal%3A214/);
+  });
+
+  /**
+   * The shape the single-gene fixture above cannot test.
+   *
+   * `encodeLineageCode` joins genes with a comma and escapes it, so ANY
+   * two-gene code contains `%2C` — and `/x/Vyper~CYBER~4~slipstream`, the only
+   * lineage URL this suite pinned, has no escapes in it at all. A path helper
+   * that re-encoded the code therefore looked fine here while silently
+   * emptying every real multi-gene card: 200 OK, "Unwritten — no genes held".
+   */
+  test('a multi-gene lineage card renders its genes, not an empty snake', async ({
+    page,
+  }) => {
+    await page.goto('/x/Vyper~CYBER~4~slipstream%2Cgold_trail', {
+      waitUntil: 'domcontentloaded',
+    });
+    const subtitle = page.getByTestId('artifact-subtitle');
+    await expect(subtitle).toBeVisible();
+    await expect(subtitle).toContainText('Slipstream');
+    await expect(subtitle).toContainText('Gold Trail');
+    await expect(subtitle).not.toContainText('Unwritten');
   });
 
   test('a forged seed in the URL cannot change the board', async ({ page }) => {

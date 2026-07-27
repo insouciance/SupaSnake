@@ -283,11 +283,51 @@ describe('the strain reach comes from the engine resolver', () => {
 
 describe('the seventh artifact path', () => {
   it('addresses a build at /b/<code>', () => {
-    expect(buildArtifactPath(VALID)).toBe(`/b/${encodeURIComponent(VALID)}`);
-    expect(buildArtifactUrl(VALID)).toContain(`/b/${encodeURIComponent(VALID)}`);
+    expect(buildArtifactPath(VALID)).toBe(`/b/${VALID}`);
+    expect(buildArtifactUrl(VALID)).toContain(`/b/${VALID}`);
   });
 
   it('does not collide with the lineage path', () => {
     expect(buildArtifactPath(VALID).startsWith('/x/')).toBe(false);
+  });
+
+  /**
+   * THE ROUND TRIP, end to end — the assertion that would have caught the
+   * defect this test was written for.
+   *
+   * The path helper used to wrap an already-encoded code in a second
+   * `encodeURIComponent`. Every unit test still passed, because each half was
+   * correct in isolation: the codec round-tripped, and the helper produced a
+   * legal URL. What broke was the SEAM — Next hands a route param through
+   * without decoding it, so the page received `gold_trail%2Ctithe`, found no
+   * gene by that name and 404'd a link the app had just generated. Only a test
+   * that walks plan → code → path → segment → plan can see that.
+   */
+  it('survives the whole journey: plan → code → path → route param → plan', () => {
+    for (const model of CARD_SHAPES) {
+      const path = buildArtifactPath(encodeBuildCode(model));
+      // What Next hands the page: the segment after `/b/`, undecoded.
+      const segment = path.slice('/b/'.length);
+      expect(decodeBuildCode(segment)).toEqual(model);
+    }
+  });
+
+  it('produces a path with exactly one segment after /b/', () => {
+    // A code that split across two segments would never match the route at
+    // all — `[code]` captures one segment, not a catch-all.
+    for (const model of CARD_SHAPES) {
+      const path = buildArtifactPath(encodeBuildCode(model));
+      expect(path.slice('/b/'.length).includes('/')).toBe(false);
+    }
+  });
+
+  it('escapes a name that would otherwise break the segment', () => {
+    const nasty = encodeBuildCode({ ...PLAN, snakeName: 'a/b?c#d e' });
+    const path = buildArtifactPath(nasty);
+    const segment = path.slice('/b/'.length);
+    expect(segment.includes('/')).toBe(false);
+    expect(segment.includes('?')).toBe(false);
+    expect(segment.includes('#')).toBe(false);
+    expect(decodeBuildCode(segment)?.snakeName).toBe('a/b?c#d e');
   });
 });
