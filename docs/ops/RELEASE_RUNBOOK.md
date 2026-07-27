@@ -1,10 +1,15 @@
 # Production Release Runbook
 
-Current baseline: application runtime `645578e`, Vercel deployment
-`dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`, and hosted migrations 001–038. The linked
-migration dry-run is currently a no-op. The immediate application rollback is
-`dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`; migration 038 remains in place because it is
-forward-only and compatible with that runtime.
+Current baseline: application runtime `cb2e112` (deployed 2026-07-26 14:38 UTC,
+run 30206502603), and hosted migrations 001–052. The linked migration dry-run is
+currently a no-op.
+
+Keep this paragraph current. It sat fourteen migrations stale — claiming
+001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
+precondition 5 below unusable: "any extra migration is a stop condition" is only
+a check if the expected list is true. Update it in the same change that
+dispatches a release, and record the rollback deployment id from the Vercel
+dashboard at that time (precondition 3).
 
 Future releases stage and verify the application before applying any named
 forward-only migration. The manual GitHub workflow encodes this order; do not

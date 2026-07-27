@@ -118,7 +118,13 @@ test.describe('Run Setup explains the snake on touch', () => {
     await expect(panel).toBeHidden();
     await trigger.tap();
     await expect(panel).toBeVisible();
-    await page.getByTestId('run-setup').tap({ position: { x: 5, y: 5 } });
+    // Dismiss by tapping the heirloom block itself, NOT `run-setup`.
+    // `run-setup` is the RunSetupPanel, which only renders under
+    // NEXT_PUBLIC_RUN_FLOW_V1 — off in CI — so targeting it made this
+    // assertion unreachable in exactly the configuration CI runs. The
+    // heirloom summary renders in BOTH flag branches, which is the whole
+    // point of the component, so it is the honest outside-tap target here.
+    await page.getByTestId('heirloom-summary').tap({ position: { x: 5, y: 5 } });
     await expect(panel).toBeHidden();
   });
 
