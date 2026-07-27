@@ -11,6 +11,8 @@ import {
 } from './offerVerifier';
 import { GENE_POOL, type GeneId, type GenePick } from '@/shared/game/genes';
 import { rollGeneOffer } from '@/shared/game/offerGravity';
+import { strainActivations } from '@/shared/game/genome';
+import type { StrainId, StrainPoints } from '@/shared/game/strains';
 
 const ctx = (over: Partial<OfferVerifyContext> = {}): OfferVerifyContext => ({
   runSeed: 'verify-seed',
@@ -33,12 +35,22 @@ function honestTrace(seed: string, offers: number): {
   const recentOffers: GeneId[][] = [];
   for (let k = 0; k < offers; k++) {
     const atFood = 16 + k * 16;
+    // Mirror the verifier exactly: it derives strain points from the picks
+    // accepted SO FAR (offerVerifier.ts:93-104), so a fixture that always
+    // passed `{}` was only ever agreeing by coincidence - and stopped
+    // agreeing the moment Rule 15 changed the pool. Fixed rather than
+    // reseeded around, because the seed was never the problem.
+    const acts = strainActivations(picks, {}, [], 3);
+    const points: StrainPoints = {};
+    for (const strain of Object.keys(acts) as StrainId[]) {
+      if (acts[strain].points > 0) points[strain] = acts[strain].points;
+    }
     const offer = rollGeneOffer({
       runSeed: seed,
       offerIndex: k,
       picks,
       pool: [...GENE_POOL],
-      points: {},
+      points,
       recentOffers: recentOffers.slice(-2),
       lineage: null,
       anomalyStrain: null,

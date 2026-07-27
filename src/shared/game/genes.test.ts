@@ -62,8 +62,11 @@ describe('gene catalog integrity', () => {
     }
   });
 
-  it('base pool = Launch Ten + 9 new base genes (no mastery/seasonal/signature)', () => {
-    expect(GENE_POOL.length).toBe(19);
+  it('base pool = the launch pool + 9 new base genes (no mastery/seasonal/signature)', () => {
+    // 18, not 19: Rule 15 retired `shed` from MUTATION_POOL, and GENE_POOL
+    // spreads it. The definition survives for legacy settlement.
+    expect(GENE_POOL.length).toBe(18);
+    expect(GENE_POOL).not.toContain('shed');
     expect(GENE_POOL).not.toContain('deep_roots');
     expect(GENE_POOL).not.toContain('solstice_engine');
     expect(GENE_POOL).not.toContain('heartwood');

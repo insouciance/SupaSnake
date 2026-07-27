@@ -239,11 +239,34 @@ export const MUTATIONS: Record<MutationId, MutationDef> = {
  * unlockedMutationPool(dynasty, masteryLevel) from the shared mastery
  * module (base ten + that dynasty's M3/M6/M9 unlocks).
  */
+/**
+ * The draftable base pool.
+ *
+ * RULE 15 (Constitution v1.4, kill-list rows 23-24) REMOVED `shed`. It reset
+ * the tail to length 8 every 25 foods, which under a design where length is
+ * the difficulty clock is not a strong upgrade but a *clock rewind* - and it
+ * simultaneously de-priced INFUSE, the one mechanic denominated in body. One
+ * gene breaking two systems.
+ *
+ * It is removed from the POOL rather than deleted from `MUTATIONS`, and that
+ * is deliberate on two counts:
+ *
+ *   1. Persisted genome blobs on already-settled runs still name it. Deleting
+ *      the definition would break the recompute of historical runs, which is
+ *      the defect WP-2.05 existed to eliminate.
+ *   2. Both of its splices - `splice_regenesis` (overgrowth + shed) and
+ *      `splice_molted_rebirth` (shed + phoenix) - require it as a parent, so
+ *      removing it here makes them unformable too, with no second edit and no
+ *      chance of the two falling out of step.
+ *
+ * Nothing draws from this list can offer `shed` again. `GENE_POOL` already
+ * carries `static_charge` in its own right, so the genome-era draft is
+ * unaffected in size.
+ */
 export const MUTATION_POOL: MutationId[] = [
   'gold_trail',
   'overgrowth',
   'wall_rush',
-  'shed',
   'mirror_wager',
   'magnet_pulse',
   'time_dilation',

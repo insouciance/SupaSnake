@@ -27,8 +27,14 @@ import { verifyOfferTrace } from '@/lib/server/offerVerifier';
  * A seed whose first two offers carry no AURUM gene, with 2 AURUM heirloom
  * points making AURUM the run's top strain from food 0. Two passes are then
  * the ONLY thing that can fill the pity window.
+ *
+ * The seed is a FIXTURE OF THE POOL, not of the rule: retiring `shed` under
+ * Rule 15 changed the weighted draw, so the previous seed ('pity-AURUM-2')
+ * started serving an AURUM gene in its second offer and the precondition no
+ * longer held. Re-derived by search rather than by weakening the assertion -
+ * the property under test is unchanged.
  */
-const RUN_SEED = 'pity-AURUM-2';
+const RUN_SEED = 'pity-AURUM-10';
 const HEIRLOOM = { AURUM: 2 } as const;
 const TOP = 'AURUM' as const;
 

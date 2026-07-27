@@ -27,12 +27,16 @@ import {
 } from './rulesets';
 
 describe('the Launch Ten', () => {
-  it('has exactly the 10 launch mutations in table order', () => {
+  it('has the launch mutations in table order, less the Rule 15 retiree', () => {
+    // `shed` was removed from the POOL by Constitution v1.4 Rule 15 (kill
+    // rows 23-24): it reset the tail to 8 every 25 foods, which is a rewind
+    // of the difficulty clock rather than an upgrade. Its DEFINITION stays in
+    // MUTATIONS so already-settled runs still recompute, which is why the
+    // count below is unchanged.
     expect(MUTATION_POOL).toEqual([
       'gold_trail',
       'overgrowth',
       'wall_rush',
-      'shed',
       'mirror_wager',
       'magnet_pulse',
       'time_dilation',
@@ -41,8 +45,8 @@ describe('the Launch Ten', () => {
       'compound_interest',
     ]);
     // 10 launch + 9 mastery (section 7.1) + 3 Season 1 seasonal (section
-    // 7.2) mutations live in MUTATIONS; only the Launch Ten are in the
-    // BASE pool.
+    // 7.2) definitions live in MUTATIONS - unchanged, because retiring a gene
+    // from the pool must never delete a definition a persisted blob names.
     expect(Object.keys(MUTATIONS)).toHaveLength(22);
   });
 
