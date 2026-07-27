@@ -9,10 +9,12 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import { decodeLineageCode, encodeLineageCode } from '@/lib/share/lineageCode';
 import {
   challengePlayPath,
   clanArtifactUrl,
   clanShare,
+  lineageArtifactPath,
   lineageArtifactUrl,
   lineageShare,
   profileArtifactUrl,
@@ -124,9 +126,50 @@ describe('the six artifact paths', () => {
 
   it('escapes anything hostile in a path segment', () => {
     expect(runArtifactPath('a/b?c=d')).toBe('/r/a%2Fb%3Fc%3Dd');
-    expect(lineageArtifactUrl('Vy per~CYBER~4~')).toBe(
-      `${CANONICAL_ORIGIN}/x/Vy%20per~CYBER~4~`
-    );
+  });
+
+  /**
+   * A LINEAGE CODE ARRIVES ALREADY ENCODED, and the path helper must not
+   * encode it again.
+   *
+   * `encodeLineageCode` escapes each field and joins with `~`; both real call
+   * sites in `/x/[code]/page.tsx` hand this helper exactly that. Re-encoding
+   * escaped the code's own `%`, and since a PAGE receives its route param raw
+   * (unlike a route handler, which gets it decoded once), the card decoded
+   * `slipstream%2Cgold_trail`, matched no gene, and rendered an empty snake
+   * with a 200. The single-gene fixture everything else used has no escapes in
+   * it, so it could never show the fault.
+   */
+  it('carries a multi-gene lineage code through the URL without mangling it', () => {
+    const code = encodeLineageCode({
+      snakeName: 'Vyper',
+      dynasty: 'CYBER',
+      generation: 4,
+      genes: ['slipstream', 'gold_trail'],
+    });
+    expect(code).toContain('%2C');
+
+    const url = lineageArtifactUrl(code);
+    expect(url).toBe(`${CANONICAL_ORIGIN}/x/${code}`);
+    // No double escape anywhere in the address.
+    expect(url).not.toContain('%252C');
+
+    // And the segment a page receives still decodes to BOTH genes.
+    const segment = url.slice(`${CANONICAL_ORIGIN}/x/`.length);
+    expect(decodeLineageCode(segment)?.genes).toEqual(['slipstream', 'gold_trail']);
+  });
+
+  it('keeps a name that needs escaping escaped, end to end', () => {
+    const code = encodeLineageCode({
+      snakeName: 'Vy per/x',
+      dynasty: 'CYBER',
+      generation: 4,
+      genes: ['slipstream'],
+    });
+    const segment = lineageArtifactPath(code).slice('/x/'.length);
+    expect(segment).not.toContain(' ');
+    expect(segment).not.toContain('/');
+    expect(decodeLineageCode(segment)?.snakeName).toBe('Vy per/x');
   });
 
   it('addresses the rest of the classes', () => {
