@@ -93,6 +93,25 @@ export function profileArtifactPath(handle: string): string {
 }
 
 /**
+ * A build — the SEVENTH class, minted deliberately (WP-2.08 owner decision).
+ *
+ * Rule 14 enumerates six things that are linkable. That list is a floor, not
+ * a ceiling: §12.2's caps table — the actual test a surface has to pass — has
+ * no artifact-class row at all, so a seventh class costs nothing there. And
+ * the query-string alternative is structurally blocked rather than merely
+ * uglier: Next's `opengraph-image` file convention receives route params and
+ * never `searchParams`, which is exactly why `/og/challenge` had to exist. A
+ * build shared as `?b=<code>` could not unfurl.
+ *
+ * The tidier-looking alternative — widening the lineage code to carry a plan —
+ * is worse than a new path: it would make `decodeLineageCode`'s field-count
+ * check variable, putting a shipped, tested decoder at risk to save a route.
+ */
+export function buildArtifactPath(code: string): string {
+  return `/b/${encodeURIComponent(code)}`;
+}
+
+/**
  * An Ascension month — and deliberately NOT a seventh artifact class.
  *
  * Rule 14 names six things that get a short path of their own. §12.2 names
@@ -128,6 +147,8 @@ export const lineageArtifactUrl = (code: string) =>
 
 export const profileArtifactUrl = (handle: string) =>
   canonicalUrl(profileArtifactPath(handle));
+
+export const buildArtifactUrl = (code: string) => canonicalUrl(buildArtifactPath(code));
 
 export const ascensionMonthUrl = (month: string) =>
   canonicalUrl(ascensionMonthPath(month));
@@ -351,6 +372,44 @@ export function lineageShare(input: LineageShareInput): SharePayload {
       input.geneNames.length > 0 ? input.geneNames.join(' · ') : 'Unwritten',
     ],
     lineageArtifactUrl(input.code)
+  );
+}
+
+/**
+ * The build card — a plan, passed on as a recipe (WP-2.08).
+ *
+ * Note what this payload cannot contain: there is no `yield` or `score` field
+ * to pass in. A build code is forgeable, so a number on it would be a claim
+ * the game never made — the share text carries the plan's shape and the week
+ * it was made for, and the reader recomputes everything else against their own
+ * inventory when they open it.
+ */
+export interface BuildShareInput {
+  code: string;
+  snakeName: string;
+  dynasty: string;
+  generation: number;
+  geneNames: readonly string[];
+  contextName: string;
+  infuses: number;
+}
+
+export function buildShare(input: BuildShareInput): SharePayload {
+  const plan =
+    input.geneNames.length > 0 ? input.geneNames.join(' → ') : 'No genes named';
+  const spend =
+    input.infuses > 0
+      ? `${input.infuses} ${input.infuses === 1 ? 'infuse' : 'infuses'}`
+      : 'No infuses';
+  return payload(
+    `SupaSnake — ${input.snakeName}'s build`,
+    [
+      `SUPASNAKE · ${input.snakeName} · Gen ${Math.max(1, Math.floor(input.generation))} ${input.dynasty.toUpperCase()}`,
+      `Planned for ${input.contextName}`,
+      plan,
+      spend,
+    ],
+    buildArtifactUrl(input.code)
   );
 }
 
