@@ -2750,23 +2750,39 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Revive physics (Phoenix and every genome revive kind): rewind the
-   * head 3 cells along the body, truncate to length 8, and re-derive the
-   * heading from the body. Economic voiding is the caller's concern.
+   * Revive physics (Phoenix and every genome revive kind): rewind the head 3
+   * cells along the body and re-derive the heading. Economic voiding is the
+   * caller's concern.
+   *
+   * RULE 15 (v1.4): the revive no longer TRUNCATES. It used to reduce the body
+   * to length 8, which was the single largest length-rewind in the game - a
+   * second chance that also handed back most of the board. A revive now grants
+   * SURVIVAL, not a clean slate: you live, and you keep every consequence of
+   * your size. `computeLengthTrace` mirrors this by doing nothing at a revive
+   * index; the two models must agree, and a revive is one of the few events
+   * the parity sweep cannot reach on its own.
+   *
+   * The rewind is kept because it is positional mercy, not length: it drops
+   * the head back onto cells the body already occupies, which is what gives a
+   * full-length snake room to escape the jam that killed it.
    */
   private rebirthBody(): void {
     const rewind = Math.min(
       MUTATION_PHYSICS.phoenixRewindCells,
       Math.max(0, this.state.snake.length - 1)
     );
-    let reborn = this.state.snake.slice(
-      rewind,
-      rewind + MUTATION_PHYSICS.phoenixRebirthLength
-    );
-    if (reborn.length === 0) {
-      reborn = this.state.snake.slice(0, MUTATION_PHYSICS.phoenixRebirthLength);
-    }
-    this.state.snake = reborn.map((s) => ({ ...s }));
+    const reborn = this.state.snake.slice(rewind);
+    const kept = (reborn.length > 0 ? reborn : this.state.snake).map((s) => ({
+      ...s,
+    }));
+    // Backing the head off drops `rewind` cells, which would be a length
+    // reduction - so the same count is restored at the tail. The head moves
+    // back along its own path, the body keeps every segment it earned, and
+    // `computeLengthTrace` is right to record no change at all.
+    const grown = this.state.snake.length - kept.length;
+    const tail = kept[kept.length - 1];
+    for (let i = 0; i < grown; i++) kept.push({ ...tail });
+    this.state.snake = kept;
 
     // Heading = from neck to head of the rewound body. Wrap seams (COSMIC)
     // leave adjacent segments a board apart - normalize by flipping sign.

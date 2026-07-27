@@ -67,6 +67,29 @@ export async function openRunSetupControls(page: Page): Promise<void> {
 }
 
 /**
+ * Get a board that is actually live, under either flag configuration.
+ *
+ * With `NEXT_PUBLIC_RUN_FLOW_V1` ON - which is how PRODUCTION runs - `/game`
+ * opens on the Run Setup page and the board does not exist until START is
+ * pressed. With the flag off the board is live on arrival. Specs that assert
+ * on in-run surfaces (`first-movement-prompt`, the HUD, the snake itself)
+ * must call this first or they assert against a setup screen.
+ *
+ * This helper is why the flag-on e2e leg exists: three specs asserted the
+ * flag-off flow and had never once run in the configuration players get.
+ */
+export async function startRunIfSetupPresent(page: Page): Promise<void> {
+  const start = page.getByTestId('earn-start');
+  if ((await start.count()) === 0) return; // flag off: already on the board
+  await expect(start).toBeVisible({ timeout: 30_000 });
+  await start.click();
+  // The board replaces the setup page; `run-setup` disappearing is the
+  // unambiguous signal, and waiting on it keeps the caller's own assertion
+  // from racing the transition.
+  await expect(page.getByTestId('run-setup')).toHaveCount(0, { timeout: 30_000 });
+}
+
+/**
  * Create a fresh anonymous (guest) session via the login page.
  * Deterministic: LoginForm awaits signInAnonymously before onSuccess
  * routes to /game.

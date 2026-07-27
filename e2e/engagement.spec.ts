@@ -11,7 +11,7 @@
  */
 
 import { test, expect, type Page, type Request } from '@playwright/test';
-import { seedConsent } from './helpers';
+import { seedConsent, startRunIfSetupPresent } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -55,6 +55,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     guestReady = true;
 
     await page.waitForURL(/\/game/, { timeout: 60000 });
+    await startRunIfSetupPresent(page);
     await expect(page.getByTestId('first-movement-prompt')).toHaveText(
       'Swipe or press an arrow to move'
     );
