@@ -63,7 +63,11 @@ the same valve:
 | **CYBER** | **time** — the arena hardens on a schedule you don't control | closing arena + the clock |
 | **COSMIC** | **failure** — what you fail to collect calcifies | your body + your own debris |
 
-> **PRIMAL coils. CYBER survives. COSMIC routes.**
+> **PRIMAL coils. CYBER survives. COSMIC terraforms.**
+>
+> *(Routing is how COSMIC terraforms — see §2.4. The earlier framing, "COSMIC
+> routes," described the action and missed the point: the route is the means, and
+> the placement of debris is the end.)*
 
 ### 2.1 No walls, ever
 
@@ -120,13 +124,76 @@ visually were: the *shape of the constellation being traced*. One less system, a
 §1.1's unreachable cap dies with it — chain length is bounded by the constellation
 size and the window, both of which are honest dials.
 
-### 2.4 Tempo
+### 2.4 The strategic layer — terraforming (owner ruling, 2026-07-27)
+
+**The problem this solves.** If the stars are interchangeable, "which do I
+abandon" resolves to "the farthest one" — an optimisation with a computable
+answer, not a strategy. That is Meier's *obvious* failure, and it is precisely
+what is wrong with COSMIC today. Something must make two equidistant stars into
+genuinely different choices.
+
+On a torus the usual answer is unavailable: there is no centre and no edge, and
+every cell is topologically identical. That absence is the opening.
+
+> **On a borderless board, debris is the only structure that exists.**
+>
+> **The player is not choosing what to lose. They are choosing where to build.**
+
+PRIMAL has walls to coil against; CYBER has a closing ring; COSMIC has nothing —
+which is why the torus is harder to manage (§2.1) and what makes abandonment
+interesting. Scatter your debris and you fragment your own space into pockets you
+cannot use. Leave it in a **line**, wave after wave, and you have built the
+scaffolding the torus denied you, exactly where you wanted it.
+
+So the question becomes *"which corpse lands where I want a wall, and which lands
+in the middle of where I intend to live?"* — a decision with no computable answer,
+because it depends on a plan only the player holds.
+
+**COSMIC's verb is terraforming. Routing is how it is done.**
+
+**This defuses the death-spiral risk in §4.** A skilled player's debris makes the
+board *more* navigable even as free space shrinks, because structure beats
+emptiness for a snake. A poor player's debris fragments the board and kills them.
+Same mechanic; the difference is entirely intent — which is the definition of a
+skill.
+
+**Design consequences, binding on the dials in §3:**
+
+- **Debris is exactly one block, on the missed star's own cell.** Placement must
+  be fully predictable or it cannot be planned, and an unplannable punishment is
+  the death spiral this frame exists to avoid.
+- **Stars must be individually identifiable before the route is committed**, so
+  the player is choosing *this* corpse's location rather than discovering it.
+
+### 2.5 The ratio is an outcome, not a dial
+
+The owner's two framings — *"the window is tight enough that only a perfect route
+collects them all"* and *"you can reach 3 of 5, maybe 4 of 5"* — are the same
+design at different points in the run, and the reconciliation is the difficulty
+curve:
+
+**Fix the window. Let the achievable count degrade with length.**
+
+Early, while the snake is short, a perfect route collects all five. As it grows,
+**the snake's own body blocks the optimal path**, so the reachable count falls on
+its own — 5, then 4, then 3, then 2. Nothing tunes "how many can they get";
+length answers it.
+
+That gives COSMIC a **self-accelerating terminus for free**: the longer the run,
+the more stars are abandoned per wave, so debris arrives faster and faster until
+the board closes. Rule 15 with a built-in ending, and no schedule anywhere in it.
+
+*Consequently the dial is the window, and the ratio is an observation.* §3's
+"constellation size" and "window length" are tuned so the 5→2 degradation lands
+across the intended run, not so a particular ratio holds.
+
+### 2.6 Tempo
 
 **COSMIC stays the slow one** (~160 ms). The tick is not a difficulty setting
 here; it is the thinking time the routing problem requires. Speed is CYBER's axis
 and must not be borrowed.
 
-### 2.5 Score
+### 2.7 Score
 
 Per D3 (§6.1): a **mid-weighted** shape with an integral comparable to PRIMAL's
 and CYBER's at the terminus. This answers the owner's *"low score because low
@@ -151,6 +218,12 @@ All [H], all for the owner's hands rather than for argument:
 *common but not total*. If a competent player collects everything, there is no
 decision; if they collect almost nothing, it is a death spiral rather than a
 route.
+
+**And the shape to tune toward (§2.5):** a short snake on a perfect route collects
+all five; the reachable count degrades to two or three by the intended terminus,
+under its own body rather than under a schedule. Measure the degradation curve in
+the lab from `run_events` — stars offered against stars collected, by length — the
+same way the traverse curve was derived from the owner's record run.
 
 ---
 
