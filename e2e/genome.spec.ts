@@ -120,7 +120,15 @@ test.describe('Genome capability UI', () => {
     });
     await openRunSetupControls(page);
     await expect(page.getByTestId('build-seed')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId('build-seed')).toContainText(/heirlooms/i);
+    // Heirlooms are NO LONGER inside Build Seed. WP-2.07a moved them into
+    // `heirloom-summary`, which renders ungated, because traits are always
+    // live at settlement while the spawn points beside them genuinely are
+    // not below 12 banked runs — the old code gated both on one flag and
+    // conflated two different facts. Asserting the new location is the
+    // stronger claim: it fails if the traits ever slide back behind the
+    // ramp, which is the regression that made Ascetic unknowable on a phone.
+    await expect(page.getByTestId('heirloom-summary')).toContainText(/heirlooms/i);
+    await expect(page.getByTestId('build-seed')).not.toContainText(/heirlooms/i);
     await expect(page.getByRole('link', { name: /open codex/i })).toBeVisible();
 
     const freeMode = page.getByTestId('mode-free');
