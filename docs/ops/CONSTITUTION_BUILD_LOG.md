@@ -961,3 +961,25 @@ Still not covered by this: production data volume, and the assertions that can
 only fail against real rows (Rule 6 on Records and `codex_first_discoveries`).
 Those remain protected by the migration's own in-transaction assertions, which
 roll the whole thing back on any mismatch.
+
+## Playtest Wave — promote-before-migrate compatibility analysis (2026-07-27)
+
+`deploy-production.yml` promotes the application BEFORE applying migrations, so
+every release has a window in which the new code runs against the old schema.
+This wave ships four migrations; each was checked against that window rather
+than assumed safe.
+
+| migration | what it does | behaviour in the window |
+|---|---|---|
+| 053 equip_snake ordered writes | `CREATE OR REPLACE` of a function | no app dependency either way; old and new callers both work |
+| 054 run_start_context | `ADD COLUMN game_sessions.run_context` | new app writes it; before the column exists the insert retry ladder (the shipped `run_seed` pattern) drops the field and starts the run anyway. Settlement falls back to the re-derive path, which is 503-hardened |
+| 055 validation severity backfill | data only, no schema | nothing for the app to depend on |
+| 056 signal_day_clauses | `ADD COLUMN` + new `ensure_signal_day` signature | **double-protected**: the call sits behind `SIGNAL_V1_ENABLED` (`NEXT_PUBLIC_SIGNAL_V1`, default off), and if reached before 056 lands, PostgREST answers PGRST202, `isMissingSignalInfra` recognises it, and the day resolves to null — the Signal goes dark rather than storing a day with a silently empty clause set |
+
+Nothing in the wave requires a coordinated redeploy, and no migration drops a
+column or table the promoted runtime reads. 054's own DOWN-NOTE records that a
+reversal needs no redeploy for the same reason.
+
+Order for the release: deploy the app, apply 053-056, run the Serpent and Signal
+ops settlement routes once, smoke, then flip flags. Flags stay off until the
+schema is in place, which is what makes the window uninteresting.
