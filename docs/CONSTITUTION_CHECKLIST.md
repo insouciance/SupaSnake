@@ -60,6 +60,13 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
 - [ ] No new claim RPC beyond the Daily Take's collect.
 - [ ] Migrations: numbered per the handoff's serialization protocol; reversible or
   with explicit down-note; every new RPC `SECURITY DEFINER` audited.
+- [ ] **A migration's NOTICE says what it actually counted.** Migration 055
+  reported "75 invalid settled earning rows examined … 54 unclassified (expected
+  0)" and alarmed everyone, because its filter also swept expired and abandoned
+  rows that had earned nothing and could never be restored. A tripwire that cries
+  wolf teaches the next reader to ignore it. Either narrow the filter to the rows
+  the message describes, or describe the rows the filter actually selects.
+  *(055 itself is applied and therefore immutable — this is for its successors.)*
 - [ ] New player-visible surfaces behind a `NEXT_PUBLIC_*` flag with the rollback
   path tested deliberately (project rule — never let CI infer it).
 

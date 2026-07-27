@@ -22,18 +22,58 @@ on:
     branches: [main, develop]
 
 jobs:
-  e2e:
+  # TWO LEGS, BECAUSE ONE WAS TESTING THE CONFIGURATION NOBODY RUNS.
+  #
+  # Until 2026-07-27 this job passed no NEXT_PUBLIC_* flag at all, so every
+  # flag-split spec ran its flag-OFF branch - while production runs all of them
+  # ON. The shipped path had jest coverage and no browser coverage whatsoever.
+  # CLAUDE.md already warned about this ("test rollback paths deliberately;
+  # never let CI infer them from an omitted flag"); this is that failure in the
+  # other direction, where the inferred branch was the one players don't get.
+  #
+  # `rollback` keeps the historical flag-off coverage. `production` mirrors the
+  # live environment. Both must pass. The aggregate job below is named `e2e` so
+  # the branch-protection required check keeps its name while covering both.
+  e2e-matrix:
+    name: e2e (${{ matrix.flags }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # NOT `[off, on]`: YAML 1.1 parsers - GitHub's among them - coerce bare
+        # `off`/`on` to booleans, which would render as "false"/"true" in the
+        # expression below, match neither branch, and silently run BOTH legs
+        # with flags off. That is precisely the bug this job exists to fix.
+        flags: [rollback, production]
     env:
       # The isolated database applies every migration, including FTUE v2's
-      # bootstrap RPC, before the production build starts.
+      # bootstrap RPC, before the production build starts. These two are
+      # production defaults on both legs (CLAUDE.md).
       NEXT_PUBLIC_FTUE_V2: 'true'
       NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Must run before `npm run build`: NEXT_PUBLIC_* are inlined at build
+      # time, so a flag exported after the build has no effect at all.
+      - name: Arm feature flags for this leg
+        run: |
+          if [ "${{ matrix.flags }}" != 'production' ]; then
+            echo 'rollback leg: no NEXT_PUBLIC_* armed, flag-off paths covered'
+            exit 0
+          fi
+          for flag in \
+            SERPENT_V1 SIGNAL_V1 RUN_FLOW_V1 CLAN_V2 CLAN_GAUNTLET CLAN_PLAYOFFS \
+            DAILY_TAKE_V1 SETTLEMENT_DISPATCH_V1 GROWTH_SURFACES_V1 ASCENSION_V1 \
+            WORLD_REPORT_V1 LEAD_LADDER_V1 SHARE_ARTIFACTS_V1 WORKBENCH_V1 \
+            PWA_V1 PLAYER_CONTRACT_V1
+          do
+            echo "NEXT_PUBLIC_${flag}=true" >> "$GITHUB_ENV"
+          done
+          echo 'production leg: mirroring the live flag environment'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -80,10 +120,29 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.flags }}
           path: playwright-report/
           retention-days: 7
 
       - name: Stop isolated Supabase
         if: always()
         run: supabase stop --no-backup
+
+  # The required check. Named `e2e` so branch protection keeps working
+  # unchanged; it now means "every leg passed" rather than "the flag-off leg
+  # passed". `if: always()` is deliberate - without it this job would be
+  # SKIPPED when a leg fails, and a skipped required check does not report a
+  # failure, so a red matrix would merge.
+  e2e:
+    needs: [e2e-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every e2e leg to pass
+        run: |
+          result='${{ needs.e2e-matrix.result }}'
+          if [ "$result" != 'success' ]; then
+            echo "::error::e2e matrix result was '$result' - one or more legs did not pass"
+            exit 1
+          fi
+          echo 'both e2e legs passed (flags off and flags on)'
