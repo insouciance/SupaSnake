@@ -215,12 +215,7 @@ function ViewTabs({ view }: { view: CodexView }) {
   );
 }
 
-function CodexPageBody() {
-  const searchParams = useSearchParams();
-  const view: CodexView =
-    WORKBENCH_V1_ENABLED && searchParams?.get('view') === 'workbench'
-      ? 'workbench'
-      : 'archive';
+function CodexShell({ view }: { view: CodexView }) {
   const { session, isAuthenticated } = useAuth();
   const {
     live,
@@ -474,15 +469,37 @@ function CodexPageBody() {
   );
 }
 
+/** The query read, which is the only part that needs the router. */
+function CodexWithParams() {
+  const searchParams = useSearchParams();
+  const view: CodexView =
+    WORKBENCH_V1_ENABLED && searchParams?.get('view') === 'workbench'
+      ? 'workbench'
+      : 'archive';
+  return <CodexShell view={view} />;
+}
+
 /**
- * `useSearchParams` needs a Suspense boundary above it or the whole route
- * deopts to client rendering — and the archive is static content that should
- * never pay that cost for a query parameter it does not read.
+ * THE FALLBACK IS THE ARCHIVE, and that is the whole point of this boundary.
+ *
+ * `useSearchParams` forces everything above it to bail out of prerendering, so
+ * whatever sits in the fallback is what a request without JavaScript — a
+ * crawler — actually receives. A placeholder there costs the Codex its
+ * indexability: measured, it took the served HTML from 59,998 bytes with the
+ * whole lexicon in it down to 21,173 bytes of empty shell. `/codex` is in the
+ * public sitemap (`src/lib/growth/siteMap.ts`) and in the landing pitch's
+ * footer, and WP-2.07a exists precisely because "a page search engines are
+ * invited to index and visitors cannot read is not a page".
+ *
+ * So the fallback renders the archive — the DEFAULT view, which is what the
+ * overwhelming majority of visits want anyway. The server sends a complete,
+ * readable Codex; hydration then swaps in the Workbench for the one URL that
+ * asked for it. Nobody waits on a query parameter to read the rules.
  */
 export default function CodexPage() {
   return (
-    <Suspense fallback={<div className="app-bg min-h-screen" />}>
-      <CodexPageBody />
+    <Suspense fallback={<CodexShell view="archive" />}>
+      <CodexWithParams />
     </Suspense>
   );
 }
