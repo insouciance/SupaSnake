@@ -24,9 +24,12 @@
  * it is absent from the JSON rather than masked here.
  */
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { WorkbenchView } from '@/components/workbench/WorkbenchView';
+import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import { NavBar } from '@/components/ui/NavBar';
 import { StrainChip } from '@/components/traits/StrainChip';
@@ -165,7 +168,59 @@ function StrainLadder() {
   );
 }
 
-export default function CodexPage() {
+/**
+ * The two views (WP-2.08).
+ *
+ * The Workbench is a second VIEW of the Codex rather than a route of its own:
+ * `?view=workbench` is shareable and back-button honest, it adds no nav entry,
+ * and it adds zero taps before a run. It also inherits the Codex's own state
+ * exactly — signed out sees the invitation, signed in sees the tool — and adds
+ * NO new gate on top. §10.4 forbids selling planning information; it does not
+ * ask for it to be walled, and walling a reference is the mistake WP-2.07a had
+ * just finished undoing.
+ *
+ * The archive is the DEFAULT for any value of `view`, including a missing one
+ * and a misspelt one. A reference page that answered an unrecognised query
+ * with an empty screen would be worse than one that ignored the query.
+ */
+type CodexView = 'archive' | 'workbench';
+
+function ViewTabs({ view }: { view: CodexView }) {
+  const tabs: Array<{ id: CodexView; href: string; label: string }> = [
+    { id: 'archive', href: '/codex', label: 'The archive' },
+    { id: 'workbench', href: '/codex?view=workbench', label: 'The Workbench' },
+  ];
+  return (
+    <nav
+      className="mb-8 flex flex-wrap gap-4 border-b border-scale-blue-light/25 pb-2"
+      aria-label="Codex views"
+      data-testid="codex-views"
+    >
+      {tabs.map((tab) => (
+        <Link
+          key={tab.id}
+          href={tab.href}
+          className={`font-display text-sm transition-colors ${
+            tab.id === view
+              ? 'text-venom-orange border-b-2 border-venom-orange pb-1'
+              : 'text-beige/60 hover:text-bone-white'
+          }`}
+          aria-current={tab.id === view ? 'page' : undefined}
+          data-testid={`codex-view-${tab.id}`}
+        >
+          {tab.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function CodexPageBody() {
+  const searchParams = useSearchParams();
+  const view: CodexView =
+    WORKBENCH_V1_ENABLED && searchParams?.get('view') === 'workbench'
+      ? 'workbench'
+      : 'archive';
   const { session, isAuthenticated } = useAuth();
   const {
     live,
@@ -203,6 +258,12 @@ export default function CodexPage() {
           </div>
         </header>
 
+        {WORKBENCH_V1_ENABLED && <ViewTabs view={view} />}
+
+        {view === 'workbench' ? (
+          <WorkbenchView />
+        ) : (
+          <>
         {/* ── The rules. No account, no API, no gate. ─────────────────── */}
         <div className="space-y-10 animate-fade-up" data-testid="codex-rules">
           <LexiconGrid
@@ -406,7 +467,22 @@ export default function CodexPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </main>
     </div>
+  );
+}
+
+/**
+ * `useSearchParams` needs a Suspense boundary above it or the whole route
+ * deopts to client rendering — and the archive is static content that should
+ * never pay that cost for a query parameter it does not read.
+ */
+export default function CodexPage() {
+  return (
+    <Suspense fallback={<div className="app-bg min-h-screen" />}>
+      <CodexPageBody />
+    </Suspense>
   );
 }
