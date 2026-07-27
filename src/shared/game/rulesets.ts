@@ -15,6 +15,7 @@
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
+import type { TerrainSchedule } from '@/shared/game/terrain';
 import {
   MUTATION_ECONOMICS,
   foodValueFlatBonus,
@@ -77,6 +78,11 @@ export interface DynastyRuleset {
   /** Score multiplier in effect when eating the n-th food (1-based). */
   scoreMultiplier(n: number): number;
   extraction: ExtractionConfig;
+  /**
+   * The arena schedule (WP-3.03): terrain that closes the board from the
+   * outside in. Absent on dynasties whose difficulty comes from elsewhere.
+   */
+  arena?: TerrainSchedule;
   validation: {
     /** Per-dynasty food-rate sanity bound (foods per second of run duration). */
     maxFoodPerSecond: number;
@@ -113,6 +119,30 @@ const EXTRACTION_DEFAULTS: ExtractionConfig = {
   intervalBase: 12,
   intervalJitter: 4,
   despawnTicks: 90,
+};
+
+/**
+ * CYBER's arena (WP-3.03, DYNASTY_CYBER §2.2).
+ *
+ * CYBER is the one dynasty the board has never threatened: its all-time
+ * occupancy ceiling is 21.8% against PRIMAL's 45.8%, and a good banked run
+ * ended at 13.5% - a board 86% empty. Its difficulty was entirely tempo, and
+ * tempo runs out at the reaction floor.
+ *
+ * So the arena hardens instead: six blocks every five foods, outermost ring
+ * first. The outer ring of a 20x20 holds 76 cells, so it completes around food
+ * 65 - which lands on the terminus rather than before it. A second ring is a
+ * ladder rung, not base content.
+ *
+ * It is also the cure for the defect that ended the owner's CYBER run: ticks
+ * per food climbed 18 -> 113 because at speed you cannot take the short line.
+ * A closing board caps how far the short line can be, so the schedule is
+ * simultaneously the difficulty source and the fix for the dead time.
+ */
+export const CYBER_ARENA: TerrainSchedule = {
+  blocksPerInterval: 6,
+  intervalFoods: 5,
+  formingSeconds: 2,
 };
 
 /** CYBER speed tier for the n-th food (1-based): floor(n/5), capped at 4. */
@@ -155,6 +185,7 @@ const CYBER: DynastyRuleset = {
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cyberMultiplier(n)),
   scoreMultiplier: (n) => cyberMultiplier(n),
   extraction: EXTRACTION_DEFAULTS,
+  arena: CYBER_ARENA,
   validation: { maxFoodPerSecond: 2.5 },
 };
 

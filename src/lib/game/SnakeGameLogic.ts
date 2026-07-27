@@ -73,6 +73,13 @@ import {
 } from '@/shared/game/runEvents';
 import { isMutationId } from '@/shared/game/mutations';
 import {
+  blocksDueAt,
+  cellKey,
+  formingTicksFor,
+  nextTerrainCells,
+  type TerrainBlock,
+} from '@/shared/game/terrain';
+import {
   baseGrowthForFood,
   resolveGrowthProfile,
   type GrowthProfile,
@@ -172,6 +179,12 @@ export interface GameState {
    * wave spawns only when every food of the current one is eaten.
    */
   foods: Position[];
+  /**
+   * Terrain (WP-3.03): occupied, lethal cells. A block forms as a floor decal
+   * (harmless, passable) and solidifies only once its cell is clear of the
+   * snake - which is what makes the overlap case structurally impossible.
+   */
+  terrain: TerrainBlock[];
   direction: Direction;
   /** Display points (ruleset-multiplied) - no longer the food count. */
   score: number;
@@ -829,6 +842,7 @@ export class SnakeGameLogic {
       snake: [],
       food: { x: 0, y: 0, z: 0 },
       foods: [],
+      terrain: [],
       direction: 'RIGHT',
       score: 0,
       dnaCollected: 0,
@@ -1334,6 +1348,10 @@ export class SnakeGameLogic {
       this.state.direction = queued;
     }
     this.slidThisTick = false;
+    // Terrain advances BEFORE the move resolves, so a block that solidifies
+    // this tick is lethal on this tick - the player saw it forming and had
+    // the whole forming window to leave.
+    this.tickTerrain();
 
     const head = this.state.snake[0];
     let newHead = this.getNextPosition(head, this.state.direction);
@@ -1383,6 +1401,17 @@ export class SnakeGameLogic {
       }
     }
 
+    // TERRAIN (WP-3.03): a solid block is lethal to the HEAD. Deliberately
+    // after the wall pardons and unprotected by them - Rift Aura, Warp Skin,
+    // Pocket Rift and Wall Rush are wall mechanics, and a block is not a wall.
+    // Pardoning terrain would hand the arena back to the player who has most
+    // invested in never meeting a wall, which is the opposite of the point.
+    const terrainHit =
+      !wallHit &&
+      this.state.terrain.some(
+        (b) => b.solid && b.x === newHead.x && b.z === newHead.z
+      );
+
     const exitExistedAtTickStart = this.state.exitTile !== null;
     const mutationExistedAtTickStart = this.state.mutationTile !== null;
 
@@ -1421,9 +1450,14 @@ export class SnakeGameLogic {
       wallHit = false; // the tail tip is gone; the move resolves normally
     }
 
-    if (wallHit || this.checkSelfCollisionForDeath(newHead)) {
+    if (wallHit || terrainHit || this.checkSelfCollisionForDeath(newHead)) {
+      // Terrain reports as 'wall' rather than growing `RunDeathCause`, which
+      // is a persisted enum (migration 022) - and it is honest: a block is a
+      // wall you watched arrive. Iron Scales absorbs a WALL hit and therefore
+      // absorbs this one too; that is deliberate, since the trait's promise is
+      // "survive one collision with the board" and terrain is the board.
       const collisionCause: Exclude<RunDeathCause, 'extracted' | 'timeout'> =
-        wallHit ? 'wall' : 'self';
+        wallHit || terrainHit ? 'wall' : 'self';
       // Iron Scales (trait): absorb exactly one WALL hit per run - the
       // snake recoils one cell off the wall and the tick is consumed.
       // Checked before any revive so the trait save never burns one.
@@ -1537,6 +1571,9 @@ export class SnakeGameLogic {
           this.state.snake.push({ ...tail });
         }
       }
+
+      // Terrain is food-indexed, so the arena advances exactly here.
+      this.placeDueTerrain();
 
       // Shed cycles, PURE HALF: loose Shed (25 -> 8), Regenesis (20 -> 8),
       // Molted Rebirth (25 -> 8), FERAL Molt (every 20, proportional) and
@@ -2562,6 +2599,9 @@ export class SnakeGameLogic {
    * seeded run must lay out identical food waves on every replay.
    */
   private sampleFoodCell(placed: Position[], anchor: Position | null): Position {
+    // Terrain is part of the board now: food that spawns inside a block is
+    // unreachable, and an unreachable food is dead time - the exact cost this
+    // wave exists to remove.
     const radius = this.ruleset.constellation?.groupRadius ?? 4;
     let position: Position = { x: 0, y: 0, z: 0 };
     let attempts = 0;
@@ -2597,12 +2637,23 @@ export class SnakeGameLogic {
         !this.isPositionOnSnake(position) &&
         !this.isPositionOnExit(position) &&
         !this.isPositionOnMutation(position) &&
+        !this.isPositionOnTerrain(position) &&
         !placed.some((p) => p.x === position.x && p.z === position.z)
       ) {
         return position;
       }
     }
     return position;
+  }
+
+  /**
+   * Any terrain in this cell, forming or solid.
+   *
+   * Forming counts: a decal becomes lethal within a couple of seconds, and
+   * food that spawns there would be a trap the player could not have read.
+   */
+  private isPositionOnTerrain(pos: Position): boolean {
+    return this.state.terrain.some((b) => b.x === pos.x && b.z === pos.z);
   }
 
   /**
@@ -2861,6 +2912,67 @@ export class SnakeGameLogic {
       else if (dz === -1) this.state.direction = 'UP';
     }
     this.directionQueue = [];
+  }
+
+  /**
+   * Advance terrain by one tick (WP-3.03).
+   *
+   * Forming blocks count down. A block whose forming has finished solidifies
+   * ONLY if its cell is clear of the snake - otherwise it stays a decal and
+   * waits ("pending"). That is what makes the overlap case impossible rather
+   * than rare: a solid block is never under the body, so the head can never be
+   * inside one, so no segment ever is.
+   */
+  private tickTerrain(): void {
+    if (this.state.terrain.length === 0) return;
+    const occupied = new Set(
+      this.state.snake.map((seg) => cellKey(seg.x, seg.z))
+    );
+    for (const block of this.state.terrain) {
+      if (block.solid) continue;
+      if (block.formingTicks > 0) {
+        block.formingTicks -= 1;
+        continue;
+      }
+      if (!occupied.has(cellKey(block.x, block.z))) block.solid = true;
+    }
+  }
+
+  /**
+   * Place any terrain the schedule says is due (WP-3.03).
+   *
+   * Food-indexed, so a replay hardens the arena identically. Blocks may form
+   * UNDER the snake - that is the interesting case, and `tickTerrain` keeps it
+   * fair - but never on food or the exit portal, which would bury them.
+   */
+  private placeDueTerrain(): void {
+    const schedule = this.ruleset.arena;
+    if (!schedule) return;
+    const due = blocksDueAt(schedule, this.state.foodEaten);
+    const missing = due - this.state.terrain.length;
+    if (missing <= 0) return;
+
+    const blocked = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    for (const food of this.state.foods) blocked.add(cellKey(food.x, food.z));
+    if (this.state.exitTile) {
+      blocked.add(cellKey(this.state.exitTile.x, this.state.exitTile.z));
+    }
+    if (this.state.exitTile2) {
+      blocked.add(cellKey(this.state.exitTile2.x, this.state.exitTile2.z));
+    }
+    if (this.state.mutationTile) {
+      blocked.add(cellKey(this.state.mutationTile.x, this.state.mutationTile.z));
+    }
+
+    const formingTicks = formingTicksFor(schedule, this.getSpeed());
+    for (const cell of nextTerrainCells(
+      this.gridSize,
+      blocked,
+      missing,
+      this.rng
+    )) {
+      this.state.terrain.push({ ...cell, formingTicks, solid: false });
+    }
   }
 
   /** Open the choice-of-2 hold after eating the mutation food. */

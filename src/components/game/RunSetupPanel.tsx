@@ -55,6 +55,16 @@ export interface RunSetupPanelProps {
    */
   startTestId: string;
   /**
+   * One always-visible line naming the run's growth profile and its current
+   * rate (WP-3.02).
+   *
+   * DELIBERATELY NOT FLAG-GATED. A readout that disappears with the lab flag
+   * cannot tell you the flag is off - which is exactly the hour that was lost
+   * when three runs played identically and nothing on screen said why. This
+   * line states what the run will actually do, in every configuration.
+   */
+  growthNote?: ReactNode;
+  /**
    * The growth-profile selector (WP-3.02), or null when the lab flag is off.
    * Rendered inside the disclosure, not beside START: it is an experiment the
    * owner opts into, and §5's law is that a first-time player sees one
@@ -89,6 +99,7 @@ export function RunSetupPanel({
   startLabel,
   challengeNote,
   startTestId,
+  growthNote = null,
   growthSelector = null,
   isStarting,
   onStart,
@@ -136,6 +147,7 @@ export function RunSetupPanel({
             {rulesetExplainer}
           </p>
           {/* The whole configuration in one line: nothing needs a decision. */}
+          {growthNote}
           <p className="font-body text-sm text-beige/70" data-testid="run-setup-summary">
             {modeLabel} · {aimLabel}
             {masteryLevel !== null && (

@@ -131,6 +131,7 @@ import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
 import {
   DEFAULT_GROWTH_PROFILE,
   GROWTH_PROFILES,
+  baseGrowthForFood,
   type GrowthProfileId,
 } from '@/shared/game/growth';
 import {
@@ -2353,6 +2354,39 @@ export default function GamePage() {
    * and the engine adopts whatever came BACK. Choosing here can never make the
    * client and the recompute disagree.
    */
+  /**
+   * The always-visible growth readout (WP-3.02).
+   *
+   * NOT gated on the lab flag, on purpose: with the flag off this must still
+   * say "Classic · +1 per food", which is what makes it a diagnostic. Three
+   * runs once played identically with nothing on screen explaining why, and a
+   * readout that vanishes with the feature could not have caught it.
+   *
+   * It reads the profile the SERVER stamped where one exists, falling back to
+   * the local selection - so what it shows is what settlement will recompute,
+   * not what the client hoped for.
+   */
+  const activeGrowth =
+    GROWTH_PROFILES[
+      (gameRef.current?.getGrowthProfileId() ?? growthProfile) as GrowthProfileId
+    ] ?? GROWTH_PROFILES[DEFAULT_GROWTH_PROFILE];
+  const growthNoteNode = (
+    <p
+      className="font-body text-sm text-beige/70"
+      data-testid="growth-readout"
+    >
+      Growth:{' '}
+      <span className="text-bone-white">{activeGrowth.label}</span>
+      {' · '}
+      <span className="text-venom-orange">
+        +{baseGrowthForFood(activeGrowth, 1)} per food
+      </span>
+      {activeGrowth.simultaneousFoods > 1
+        ? ` · ${activeGrowth.simultaneousFoods} foods on the board`
+        : ''}
+    </p>
+  );
+
   const growthSelectorNode = GROWTH_LAB_ENABLED ? (
     <div data-testid="growth-lab-selector">
       <p className="label-arcade mb-2 text-cosmic">Growth lab</p>
@@ -2899,6 +2933,7 @@ export default function GamePage() {
                   startError={startError}
                   heirloom={heirloomNode}
                   modeToggle={modeToggleNode}
+                  growthNote={growthNoteNode}
                   growthSelector={growthSelectorNode}
                   anomalyPanel={anomalyPanelNode}
                   aimSelector={aimSelectorNode}
