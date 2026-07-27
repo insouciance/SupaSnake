@@ -32,18 +32,41 @@ collision bound — and it removes cells the player can already see, so it canno
 create the "get out of the outer lane, now" pressure that a block forming
 *under* you can.
 
-### 1.1 Lifecycle
+### 1.1 Lifecycle — three states (owner ruling, 2026-07-27)
 
-Two states, and the first is the design:
+1. **Forming** — a **floor decal**, non-lethal. The snake passes freely over it.
+   Duration [H: ~2 s, expressed in *seconds* and converted by the live tick —
+   see §2.3 for why ticks are the wrong unit].
+2. **Pending** — forming has finished but the cell is still occupied by the
+   snake. It stays a decal and waits.
+3. **Solid** — extrudes the moment the cell is clear. **Lethal to the head only.**
+   Permanent.
 
-1. **Forming** — visible, animating, **non-lethal**. The snake may occupy and
-   pass through it. Duration [H: ~2 s, expressed in *seconds* and converted by
-   the live tick — see §2.3 for why ticks are the wrong unit].
-2. **Solid** — lethal on head contact, permanent.
+The forming phase is not a courtesy; it is what makes this a positioning problem
+rather than a random death, and it is the owner's own telegraph idea (from the
+speed-burst sketch) applied to the arena.
 
-The forming phase is not a courtesy. It is what makes the mechanic a *positioning
-problem* rather than a random death, and it is the owner's own telegraph idea
-(from the earlier speed-burst sketch) applied to the arena.
+**The invariant that falls out, and it is worth stating as a law:**
+
+> **A solid block is never overlapped by any part of the snake.**
+
+In Snake the body strictly follows the head — every segment was previously a head
+position (the engine unshifts the head and pops the tail; growth duplicates the
+tail cell). So if the head can never *enter* a solid cell, no segment can ever
+*occupy* one. Head-only lethality plus clear-cell solidification therefore makes
+the overlap case **structurally impossible**, not merely rare: the artist never
+has to solve it, and there is no unfair-death case to tune. The revive path is
+safe for the same reason — it rewinds the head three cells *along the body*, onto
+cells the snake already occupies.
+
+*Rejected alternative:* simply skipping occupied cells when placing a forming
+block. Tidier, but a snake coiled along the ring would prevent the ring from
+filling — which would **reward** wall-hugging on the one dynasty designed to
+punish it. Waiting to solidify keeps the pressure and removes the unfairness.
+
+*Non-exploit, checked:* a player cannot camp cells to stall the arena. A cell
+occupied by the body is not free space either; whether it holds snake or
+concrete, it cannot be used. The pressure is identical.
 
 ### 1.2 Determinism — the shippability constraint
 
@@ -163,6 +186,10 @@ than from a taxonomy.
   be validated and must not ship.
 - **Rule 15 monotonicity.** Free space is non-increasing across every tick of
   every scripted run; block count never decreases.
+- **The overlap invariant (§1.1).** Over a long seeded run, assert that **no
+  snake segment ever occupies a solid block** — including across revives, growth
+  spurts and infuses. This is the test that lets the renderer assume the case
+  cannot happen; if it ever fails, head-only lethality is wrong somewhere.
 - **Placement exclusion.** Over a long seeded run, no food and no portal ever
   spawns on a solid block; no block spawns on the exit portal.
 - **Rate bound.** A scripted CYBER run collecting at the maximum honest rate on a
@@ -175,11 +202,11 @@ than from a taxonomy.
 
 ## 4 — Open rulings for the owner
 
-1. **Head-only, or does a block obstruct the tail too?** Head-only reads exactly
-   like a wall and is simplest. But blocks can form *under* the body during the
-   telegraph, so the tail needs a stated rule either way. *Recommendation:
-   head-only lethality; the tail passes over a block it was already lying on, and
-   the block simply exists beneath it.*
+1. ~~Head-only, or does a block obstruct the tail?~~ **RULED 2026-07-27:
+   head-only, with clear-cell solidification** (§1.1). The owner's reasoning:
+   tail lethality would make the transition kill unintendedly and feel unfair,
+   and a solid block sharing a tile with the tail looks wrong even briefly.
+   Both concerns are resolved structurally by the invariant in §1.1.
 2. **Forming duration** [H: ~2 s]. Long enough to reposition at 100 ms/cell,
    short enough that the ring still completes on schedule.
 3. **Tick floor** [H: ~100 ms] — the owner's own three data points bracket
@@ -187,3 +214,7 @@ than from a taxonomy.
 4. **Does the ring fill inward or outward?** Outermost-free-ring-first gives the
    "closing in" read. The alternative — scattered interior blocks — is a
    different game and should not be smuggled in as a tuning value.
+5. **Pending-state ceiling.** If a cell stays occupied for a long time the ring
+   falls behind schedule. Cheapest answer is none at all — the schedule is
+   food-indexed, so a delayed block still arrives and the count self-corrects.
+   Worth watching in the lab rather than pre-solving.
