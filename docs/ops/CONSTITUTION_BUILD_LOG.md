@@ -1012,3 +1012,121 @@ the intended state, since flags must not flip until the schema is in place. The
 owner flips them afterwards.
 
 Stripe stays in test mode. Campus-1 seeding remains a separate owner action.
+
+## Playtest Wave — release RESULT (2026-07-27, run 30245968841)
+
+Deployed from `main` at `7dec037` (squash of PR #11), `payments_mode=test`.
+Rollback anchor recorded per runbook precondition 3: the previous production
+deployment is **`dpl_6XkMBj196wUaoZmy8SRapLmyWFcv`** (commit `cb2e112`,
+2026-07-26 14:38 UTC). The promoted deployment is
+`dpl_3cdCVw9TpYVRrSvCrhTkf6WQSYrV`.
+
+Dry-run named exactly 053, 054, 055, 056 — precondition 5 satisfied. The app was
+staged, health-smoked and promoted BEFORE the migrations were applied, as the
+expand/contract order requires. Post-migration health: `healthy` / database
+`healthy`.
+
+### 055 backfill NOTICE numbers (the record the plan asked for)
+
+```
+75 invalid settled earning rows examined
+13 re-stamped (advisory-only)
+ 8 carry a FATAL code and stay false
+54 unclassified and left untouched (expected 0)
+```
+
+**The unclassified tripwire fired, and the plan's claim that it would report
+zero was wrong** — but the rows are harmless and the allowlist was not the
+reason. Every one of the 54 reports `parseable=<NULL>, codes={}`: they are rows
+stamped `validated = false` with no `validation_errors` at all. Verified against
+production afterwards, the complete `validated = false` population breaks down as:
+
+| end_reason | extracted | has codes | earned anything | count |
+|---|---|---|---|---|
+| expired | no | no | no | 59 |
+| abandoned | no | no | no | 18 |
+| completed | yes | yes | yes | 6 |
+| completed | no | yes | yes | 2 |
+
+So **every row that earned a score or DNA carries codes, and no code-less row
+earned anything.** The 77 code-less rows are swept/expired sessions with score 0
+and DNA 0 — there is nothing in them to restore, and leaving them untouched
+costs no player anything. What the tripwire actually caught is that the
+migration's row filter is looser than the NOTICE text claims: it counts expired
+and abandoned rows among "settled earning rows". That wording is misleading in
+exactly the situation the tripwire exists for, and should be tightened — the
+count is noise, and noise in a tripwire trains the next reader to ignore it.
+
+### Effect on the owner's account (the plan's acceptance criterion)
+
+`Sans_Souci`: banked runs **21** (from ~15) — the apex gate at 20 is open; the
+1750 CYBER run of 2026-07-26 is `validated = true` again; `high_score` 2290
+(an older validated 2290 run outranks it); 18 rows remain `validated = false`,
+all expired/abandoned with nothing owed. The plan projected ~26; the real figure
+is 21, because the projection assumed more of the invalid population was
+recoverable than the code-less breakdown above allows.
+
+### Settlement
+
+`/api/ops/serpent-settlement` and `/api/ops/signal-settlement` were each invoked
+once with the `CRON_SECRET` bearer: 200 and 200. Serpent settled week
+`2026-07-20` (0 players, 0 clans — no clan activity yet). Signal settled the
+pending objective runs, one completing at 141/90 for 150 bonus DNA. Note for
+future releases: both routes are already scheduled Vercel crons
+(`serpent-settlement` Mondays 00:40 UTC, `signal-settlement` daily 00:20 UTC),
+so the manual invocation only matters when a release lands after a week boundary
+has passed — as this one did.
+
+### Found immediately after the deploy, fixed in PR #12
+
+- **Artifact codes were double-encoded.** `buildArtifactPath` and
+  `lineageArtifactPath` wrapped `encodeURIComponent` around codes their encoders
+  had already escaped field by field. Measured on Next 15.5.21: a `page.tsx`
+  receives its route param RAW while a `route.ts` receives it decoded once, so
+  the page — where a shared link lands — got one decode too few. `/b/` 404'd and
+  `/x/` returned 200 with every gene silently dropped. Not player-visible:
+  `NEXT_PUBLIC_SHARE_ARTIFACTS_V1` is off in production, verified by probe
+  (`/x/`, `/s/`, `/w/`, `/c/`, `/r/` all 404 while their `opengraph-image`
+  routes return 200). **Must land before that flag or `WORKBENCH_V1` flips.**
+- **The Codex stopped being server-rendered.** The `useSearchParams` added for
+  the Workbench tab forced the archive below a Suspense boundary, so a no-JS
+  request received the fallback. Production served 25,552 bytes with zero
+  occurrences of `codex-rules`, `lexicon-mechanics` or the extraction verbs.
+  `/codex` is in the public sitemap, which is WP-2.07a's whole justification —
+  this was a live regression shipped by this release and is the one thing in the
+  wave that reached production in a worse state than intended.
+
+### Still owner-gated
+
+Flag flips (`WORKBENCH_V1`, `SHARE_ARTIFACTS_V1`, and confirmation of the
+Phase-1 `SERPENT_V1` / `SIGNAL_V1` / `RUN_FLOW_V1` states) and campus-1 seeding.
+Stripe remains in test mode; no SKU, key or webhook changed.
+
+### Flag coverage gap, found while flipping (2026-07-27)
+
+The owner enabled every `NEXT_PUBLIC_*` flag in the Vercel production
+environment. Nine of them (`SERPENT_V1`, `SIGNAL_V1`, `RUN_FLOW_V1`, `CLAN_V2`,
+`CLAN_GAUNTLET`, `CLAN_PLAYOFFS`, `SETTLEMENT_DISPATCH_V1`, `DAILY_TAKE_V1`,
+`GROWTH_SURFACES_V1`) had already been set before the wave deploy, so they were
+inlined into `7dec037`; the remaining seven (`WORKBENCH_V1`,
+`SHARE_ARTIFACTS_V1`, `ASCENSION_V1`, `WORLD_REPORT_V1`, `LEAD_LADDER_V1`,
+`PWA_V1`, `PLAYER_CONTRACT_V1`) required the `7e5128e` rebuild.
+
+**The gap: CI sets none of these flags.** `.github/workflows` passes no
+`NEXT_PUBLIC_*` value to the e2e job, so every flag-split spec runs its
+flag-OFF branch and the flag-ON branch is exercised only by jest. Production now
+runs the opposite configuration on all of them. CLAUDE.md already warns "test
+rollback paths deliberately; never let CI infer them from an omitted flag" —
+this is that failure in the other direction: the *shipped* path is the one CI
+infers away.
+
+Concretely, `e2e/lexicon.spec.ts` had to have its outside-tap target moved off
+`run-setup` because `RunSetupPanel` does not render with `RUN_FLOW_V1` off in
+CI — while in production that panel is exactly what players get. The e2e job
+should run a second, flag-on matrix leg mirroring the production environment,
+otherwise the configuration real players use has no browser-level coverage.
+
+`PWA_V1` was reviewed before the flip and is safely reversible: the worker has
+no `fetch` handler, no cache and no offline shell (notifications only), and
+`/sw.js` answers 404 with the flag off, which makes browsers drop an existing
+registration rather than stranding it.
