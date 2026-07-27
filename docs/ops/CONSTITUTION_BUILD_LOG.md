@@ -922,3 +922,93 @@ Maintained continuously; final form at the end of this log.
 2. Confirm the authority documents landed in D-1 are the intended v1.3 text.
 3. Before the Phase 0 release: confirm Supabase backup/PITR in the dashboard
    (runbook precondition 3 — not scriptable from here, see D-3).
+
+## Playtest Wave — migration 054/055 live verification (2026-07-26)
+
+WP-2.05 reported migration 055 as its largest unverified piece: the SQL had
+never been executed, its column names had been wrong once and corrected, and
+the live-Postgres gate test was not written (no Docker in that environment).
+
+Verified here against a local Supabase stack (CLI 2.65.5), not against
+production:
+
+1. `supabase start` applied the full history including 053, 054 and 055 —
+   `schema_migrations` tops out at 055. The SQL is syntactically valid and
+   executes.
+2. 055 was then re-run against **seeded representative rows**, because its
+   first run met an empty table and its assertions passed trivially:
+
+   | seeded row | expected | observed |
+   |---|---|---|
+   | advisory-only (TRAIT_CONFLICT + DNA_MISMATCH) | re-stamp | re-stamped |
+   | rounding-only (3-DNA drift) | re-stamp | re-stamped |
+   | FATAL (INVALID_DURATION) | stay false | stayed false |
+   | unclassified future code | stay false, be named | stayed false, named in NOTICE |
+   | free play | ignored | ignored |
+
+   `high_score` rose 100 → 1750 through GREATEST; `total_dna_earned` and
+   `total_games_played` were untouched, which is correct — neither was ever
+   gated on `validated`, so neither is owed a re-credit.
+3. **Idempotence proven**: a second run reported "0 run(s) re-stamped, 0
+   high_score(s) rose" and left an identical row hash
+   (`c5939b14555718941a922830f878ce9f`) and identical player scalars.
+
+The unclassified-code branch is a `RAISE NOTICE`, never an abort, and it
+correctly named the offending session id — so an unknown historical code
+leaves its row alone rather than putting it on a public board.
+
+Still not covered by this: production data volume, and the assertions that can
+only fail against real rows (Rule 6 on Records and `codex_first_discoveries`).
+Those remain protected by the migration's own in-transaction assertions, which
+roll the whole thing back on any mismatch.
+
+## Playtest Wave — promote-before-migrate compatibility analysis (2026-07-27)
+
+`deploy-production.yml` promotes the application BEFORE applying migrations, so
+every release has a window in which the new code runs against the old schema.
+This wave ships four migrations; each was checked against that window rather
+than assumed safe.
+
+| migration | what it does | behaviour in the window |
+|---|---|---|
+| 053 equip_snake ordered writes | `CREATE OR REPLACE` of a function | no app dependency either way; old and new callers both work |
+| 054 run_start_context | `ADD COLUMN game_sessions.run_context` | new app writes it; before the column exists the insert retry ladder (the shipped `run_seed` pattern) drops the field and starts the run anyway. Settlement falls back to the re-derive path, which is 503-hardened |
+| 055 validation severity backfill | data only, no schema | nothing for the app to depend on |
+| 056 signal_day_clauses | `ADD COLUMN` + new `ensure_signal_day` signature | **double-protected**: the call sits behind `SIGNAL_V1_ENABLED` (`NEXT_PUBLIC_SIGNAL_V1`, default off), and if reached before 056 lands, PostgREST answers PGRST202, `isMissingSignalInfra` recognises it, and the day resolves to null — the Signal goes dark rather than storing a day with a silently empty clause set |
+
+Nothing in the wave requires a coordinated redeploy, and no migration drops a
+column or table the promoted runtime reads. 054's own DOWN-NOTE records that a
+reversal needs no redeploy for the same reason.
+
+Order for the release: deploy the app, apply 053-056, run the Serpent and Signal
+ops settlement routes once, smoke, then flip flags. Flags stay off until the
+schema is in place, which is what makes the window uninteresting.
+
+## Playtest Wave — release plan (2026-07-27)
+
+**Expected migration list: exactly 053, 054, 055, 056.** Runbook precondition 5
+makes any additional pending migration a stop condition, so this is the list the
+dry-run output is checked against.
+
+| # | migration | applied-state risk |
+|---|---|---|
+| 053 | equip_snake ordered writes | function replace; no app dependency either direction |
+| 054 | run_start_context column | app tolerates absence via the insert retry ladder |
+| 055 | validation severity backfill | data only; asserts and rolls back on any mismatch |
+| 056 | signal_day_clauses | flag-gated caller + PGRST202 fallback that fails closed |
+
+Sequence: merge PR #11 → dispatch **Deploy to Production** on `main`
+(`confirmation=DEPLOY`, `payments_mode=test`) → the workflow stages, smokes,
+promotes, then applies migrations and lints the linked database → invoke
+`/api/ops/serpent-settlement` and `/api/ops/signal-settlement` once each with the
+`CRON_SECRET` bearer so weeks inside the 8-day resettle window recover Depth →
+production health smoke.
+
+**Not in this release, and not within the deploying agent's access:** flipping
+`NEXT_PUBLIC_*` flags. They are build-time inlined, so enabling one needs a
+Vercel production environment change plus a rebuild, and `VERCEL_TOKEN` exists
+only as a GitHub Actions secret. The wave therefore lands **dark** — which is
+the intended state, since flags must not flip until the schema is in place. The
+owner flips them afterwards.
+
+Stripe stays in test mode. Campus-1 seeding remains a separate owner action.

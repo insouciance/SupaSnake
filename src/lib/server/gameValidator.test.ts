@@ -4,6 +4,23 @@
  * "claims can flag but never inflate" guarantee.
  */
 
+/**
+ * WP-2.05 NOTE, and it applies to every flipped assertion in this file.
+ *
+ * `valid` used to mean "no finding at all". It now means "the server could
+ * BOUND this run's physics" - which is the only thing eligibility can
+ * honestly be about, because the payout was always the server's own
+ * recompute regardless. So a claim mismatch, a clamp, a dropped illegal
+ * pick or a repaired bound leaves `valid === true`: the finding is recorded
+ * in `errors` (byte-identical to before) and in `advisoryErrors`, and the
+ * run keeps its progression, its board place and its record.
+ *
+ * Exactly two codes still set it false: INVALID_DURATION and
+ * SPLICE_CLAIMED_DIRECTLY. Every assertion below that now expects `true`
+ * also asserts the SPECIFIC code, so a flip cannot hide a finding going
+ * missing.
+ */
+
 import {
   validateGameResult,
   CLAIM_EPSILON,
@@ -140,8 +157,13 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const result = validateGameResult(input, startedAgo(185), 'PRIMAL');
       const { rawDna } = computeRunTotals('PRIMAL', 30);
 
-      expect(result.valid).toBe(false);
+      // ADVISORY: the claim lost the argument, the run did not.
+      expect(result.valid).toBe(true);
       expect(result.errors).toContainEqual(expect.stringContaining('DNA_MISMATCH'));
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('DNA_MISMATCH')
+      );
+      expect(result.fatalErrors).toEqual([]);
       // Payout unchanged: exactly the salvage of the recomputed raw total
       expect(result.adjustedDna).toBe(applyOutcome(rawDna, false));
     });
@@ -151,7 +173,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const result = validateGameResult(input, startedAgo(125), 'CYBER');
       const { rawDna } = computeRunTotals('CYBER', 20);
 
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('DNA_MISMATCH')
+      );
       expect(result.adjustedDna).toBe(applyOutcome(rawDna, true));
     });
 
@@ -159,8 +184,11 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const input = honestInput('PRIMAL', 30, false, 180, { score: 99999 });
       const result = validateGameResult(input, startedAgo(185), 'PRIMAL');
 
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
       expect(result.errors).toContainEqual(expect.stringContaining('SCORE_MISMATCH'));
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('SCORE_MISMATCH')
+      );
       expect(result.adjustedScore).toBe(computeRunTotals('PRIMAL', 30).score);
     });
 
@@ -182,7 +210,13 @@ describe('validateGameResult (Design v2 recompute)', () => {
       });
       const result = validateGameResult(input, startedAgo(185), 'PRIMAL');
 
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('DNA_MISMATCH')
+      );
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('SCORE_MISMATCH')
+      );
       expect(result.adjustedDna).toBe(
         applyOutcome(computeRunTotals('PRIMAL', 30).rawDna, false)
       );
@@ -195,8 +229,12 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const result = validateGameResult(input, startedAgo(185), 'PRIMAL');
       const { rawDna } = computeRunTotals('PRIMAL', 30);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_OUTCOME'));
+      // ADVISORY: the conflict is REPAIRED (the bank bonus is voided and
+      // the salvage rate paid), so the server still bounded the run.
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('INVALID_OUTCOME')
+      );
       expect(result.extracted).toBe(false);
       // Conflicting claims pay the salvage rate, never the bank rate
       expect(result.adjustedDna).toBe(applyOutcome(rawDna, false));
@@ -208,8 +246,8 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(65),
         'PRIMAL'
       );
-      expect(fractional.valid).toBe(false);
-      expect(fractional.errors).toContainEqual(
+      expect(fractional.valid).toBe(true);
+      expect(fractional.advisoryErrors).toContainEqual(
         expect.stringContaining('INVALID_FOOD_COUNT')
       );
 
@@ -218,7 +256,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(65),
         'PRIMAL'
       );
-      expect(negative.valid).toBe(false);
+      expect(negative.valid).toBe(true);
+      expect(negative.advisoryErrors).toContainEqual(
+        expect.stringContaining('INVALID_FOOD_COUNT')
+      );
       expect(negative.foodCount).toBe(0);
       expect(negative.adjustedDna).toBe(0);
     });
@@ -230,8 +271,13 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const input = honestInput('PRIMAL', 100, false, 60);
       const result = validateGameResult(input, startedAgo(65), 'PRIMAL');
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_FOOD_RATE'));
+      // ADVISORY: the count is clamped to the duration-derived bound, and
+      // the DURATION bound is the fatal one - so the run's physics are still
+      // bounded after this repair.
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('INVALID_FOOD_RATE')
+      );
       expect(result.foodCount).toBe(60); // ceil(60 * 1.0)
       expect(result.adjustedDna).toBe(
         applyOutcome(computeRunTotals('PRIMAL', 60).rawDna, false)
@@ -344,7 +390,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
       });
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
 
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('INVALID_MUTATIONS')
+      );
       expect(result.errors).toContainEqual(expect.stringContaining('unknown mutation id'));
       expect(result.errors).toContainEqual(expect.stringContaining('duplicate mutation'));
       expect(result.mutations).toEqual(legal);
@@ -362,8 +411,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const input = honestMutationInput('PRIMAL', 25, false, picks);
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('MUTATION_BOUND'));
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('MUTATION_BOUND')
+      );
       expect(result.mutations).toEqual([picks[0]]);
     });
 
@@ -373,7 +424,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(125),
         'PRIMAL'
       );
-      expect(early.valid).toBe(false);
+      expect(early.valid).toBe(true);
+      expect(early.advisoryErrors).toContainEqual(
+        expect.stringContaining('MUTATION_BOUND')
+      );
       expect(early.mutations).toEqual([]);
 
       const late = validateGameResult(
@@ -381,7 +435,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(125),
         'PRIMAL'
       );
-      expect(late.valid).toBe(false);
+      expect(late.valid).toBe(true);
+      expect(late.advisoryErrors).toContainEqual(
+        expect.stringContaining('MUTATION_BOUND')
+      );
       expect(late.mutations).toEqual([]);
       // Payout falls back to the mutation-free recompute
       expect(late.adjustedDna).toBe(
@@ -396,7 +453,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
       ];
       const input = honestMutationInput('PRIMAL', 45, false, picks);
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('MUTATION_BOUND')
+      );
       expect(result.mutations).toEqual([picks[0]]);
     });
 
@@ -433,8 +493,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         phoenix_triggered_at_food: 20,
       });
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('PHOENIX_INVALID'));
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('PHOENIX_INVALID')
+      );
       expect(result.phoenixTriggeredAtFood).toBeNull();
     });
 
@@ -510,8 +572,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(125),
         'COSMIC'
       );
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('COSMIC_COMBO'));
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('COSMIC_COMBO')
+      );
       expect(result.cosmic!.comboDnaBonus).toBe(420); // floor(300 x 1.4)
       // Pays the clamped value - flagging, never inflating
       expect(result.adjustedDna).toBe(applyOutcome(300 + 420, true));
@@ -523,7 +587,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(125),
         'COSMIC'
       );
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('COSMIC_COMBO')
+      );
       expect(result.cosmic!.maxChain).toBe(30);
     });
 
@@ -533,7 +600,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         startedAgo(125),
         'COSMIC'
       );
-      expect(result.valid).toBe(false);
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('COSMIC_COMBO')
+      );
       expect(result.cosmic).toEqual({
         comboDnaBonus: 0,
         comboScoreBonus: 0,
@@ -555,8 +625,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
         cosmic: { combo_dna_bonus: 400, combo_score_bonus: 400, max_chain: 9 },
       });
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('COSMIC_COMBO'));
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('COSMIC_COMBO')
+      );
       expect(result.cosmic).toBeNull();
       expect(result.adjustedDna).toBe(
         applyOutcome(computeRunTotals('PRIMAL', 30).rawDna, true)
@@ -585,12 +657,19 @@ describe('validateGameResult (Design v2 recompute)', () => {
     });
   });
 
-  describe('duration bounds (unchanged from v1)', () => {
-    it('rejects duration exceeding server elapsed time', () => {
+  describe('duration bounds — the ONE surviving fatal physics bound', () => {
+    it('rejects duration exceeding server elapsed time, and this one IS fatal', () => {
       const input = honestInput('PRIMAL', 10, false, 60);
       const result = validateGameResult(input, startedAgo(30), 'PRIMAL');
 
+      // FATAL, and deliberately the only bound of its kind left: the
+      // food-rate bound is DERIVED from duration, so an unbounded duration
+      // is an unbounded run. Signal's `endure` objective also reads
+      // `duration_seconds` straight off the row.
       expect(result.valid).toBe(false);
+      expect(result.fatalErrors).toContainEqual(
+        expect.stringContaining('INVALID_DURATION')
+      );
       expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DURATION'));
     });
 
@@ -600,12 +679,27 @@ describe('validateGameResult (Design v2 recompute)', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('rejects duration exceeding the max game duration', () => {
+    it('stores the claim clamped to elapsed time, not to elapsed + the skew', () => {
+      // The +10 above is a tolerance for REJECTING a claim. It is not a
+      // licence to record ten seconds that did not pass.
+      const input = honestInput('PRIMAL', 10, false, 60);
+      const result = validateGameResult(input, startedAgo(55), 'PRIMAL');
+      expect(result.durationSeconds).toBeGreaterThanOrEqual(54);
+      expect(result.durationSeconds).toBeLessThanOrEqual(56);
+    });
+
+    it('has NO flat maximum any more — a long careful run stays valid', () => {
+      // WP-2.05 deleted `GAME_CONFIG.session.maxDuration` (owner ruling,
+      // 2026-07-26: a long run is a good run). This used to be
+      // "rejects duration exceeding the max game duration"; a ten-minute
+      // wall invalidated exactly the tactical-hold play the extraction
+      // mechanic exists to reward.
       const input = honestInput('PRIMAL', 10, false, 650);
       const result = validateGameResult(input, startedAgo(700), 'PRIMAL');
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining('INVALID_DURATION'));
+      expect(result.valid).toBe(true);
+      expect(result.fatalErrors).toEqual([]);
+      expect(result.durationSeconds).toBe(650);
     });
   });
 });

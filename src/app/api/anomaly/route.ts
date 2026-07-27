@@ -17,6 +17,7 @@ import { isMissingSeasonInfra } from '@/lib/server/season';
 import {
   ANOMALIES,
   anomalyForWeek,
+  anomalySummary,
   anomalyWeekEnd,
   anomalyWeekStart,
 } from '@/shared/game/anomalies';
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
     const anomaly = {
       id: anomalyId,
       name: ANOMALIES[anomalyId].name,
-      effect: ANOMALIES[anomalyId].effect,
+      effect: anomalySummary(anomalyId),
       kind: ANOMALIES[anomalyId].kind,
       strainBias: ANOMALIES[anomalyId].strainBias,
       weekStart: weekStart.toISOString(),

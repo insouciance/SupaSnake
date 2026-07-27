@@ -26,7 +26,7 @@ jest.mock('@supabase/supabase-js', () => ({
 
 import { GET } from './route';
 import { NextRequest } from 'next/server';
-import { ANOMALIES, anomalyForWeek } from '@/shared/game/anomalies';
+import { ANOMALIES, anomalyForWeek, anomalySummary } from '@/shared/game/anomalies';
 
 const PLAYER_ID = 'player-1';
 
@@ -78,7 +78,7 @@ describe('GET /api/anomaly', () => {
     const expected = anomalyForWeek(new Date());
     expect(body.anomaly.id).toBe(expected);
     expect(body.anomaly.name).toBe(ANOMALIES[expected].name);
-    expect(body.anomaly.effect).toBe(ANOMALIES[expected].effect);
+    expect(body.anomaly.effect).toBe(anomalySummary(expected));
     expect(body.anomaly.strainBias).toBe(ANOMALIES[expected].strainBias);
     expect(new Date(body.anomaly.endsAt).getTime()).toBeGreaterThan(Date.now());
     expect(body.top).toEqual([{ rank: 1, name: 'Viper', score: 4200 }]);

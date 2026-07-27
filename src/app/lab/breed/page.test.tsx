@@ -12,6 +12,7 @@ import {
   initialState as collectionInitialState,
 } from '@/lib/stores/collectionStore';
 import type { OwnedSnake, SnakeVariant } from '@/shared/types/snake-data-model';
+import { TRAITS } from '@/shared/game/traits';
 
 // =============================================================================
 // MOCKS
@@ -469,6 +470,40 @@ describe('BreedPage - the draft board', () => {
       'aria-pressed',
       'false'
     );
+  });
+
+  it('prints each drafted trait’s effect and cost inline, not in a tooltip', async () => {
+    // A moment of choice: "taking one is not taking another" is only a
+    // decision if both halves of both deals are readable at once. A popover
+    // would hide one behind a tap — and would nest a button in a button.
+    mockDraftFetch();
+    useBreedingStore.setState({ parent1Id: 'snake-a', parent2Id: 'snake-b' });
+    render(<BreedPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trait-draft')).toBeInTheDocument();
+    });
+
+    for (const traitId of ['sprinter', 'hoarder', 'ascetic'] as const) {
+      expect(screen.getByTestId(`trait-option-effect-${traitId}`)).toHaveTextContent(
+        TRAITS[traitId].effect
+      );
+      expect(screen.getByTestId(`trait-option-cost-${traitId}`)).toHaveTextContent(
+        TRAITS[traitId].cost
+      );
+      expect(screen.getByTestId(`trait-option-${traitId}`)).toHaveAttribute(
+        'aria-label',
+        `${TRAITS[traitId].name}: ${TRAITS[traitId].effect} — ${TRAITS[traitId].cost}`
+      );
+    }
+
+    // The toggles stay the only buttons on the board: one per pool entry,
+    // and no popover trigger nested inside any of them.
+    const toggles = within(screen.getByTestId('trait-draft')).getAllByRole('button');
+    expect(toggles).toHaveLength(3);
+    for (const toggle of toggles) {
+      expect(toggle.querySelectorAll('button')).toHaveLength(0);
+    }
   });
 
   it('sends a variant choice back to the draft endpoint', async () => {

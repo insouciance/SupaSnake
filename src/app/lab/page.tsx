@@ -6,7 +6,7 @@
  * Uses useCollection hook for state management + gameStore for charges.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -26,6 +26,7 @@ import {
 import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
+import { rosterForVariant } from '@/lib/collection/roster';
 import { sanitizeLineage } from '@/shared/game/lineage';
 import type { StrainId } from '@/shared/game/strains';
 
@@ -49,7 +50,6 @@ export default function LabPage() {
   const router = useRouter();
   const { user, session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
-  const [codexUnlocked, setCodexUnlocked] = useState(false);
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
   const publishNotification = useNotificationStore((state) => state.publish);
   const clearNotification = useNotificationStore((state) => state.clear);
@@ -69,7 +69,6 @@ export default function LabPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled) {
-          setCodexUnlocked(data?.genomeFtue?.splicesUnlocked === true);
           setHasCompletedFirstRun(data?.hasCompletedFirstRun === true);
         }
       })
@@ -116,6 +115,7 @@ export default function LabPage() {
   const {
     dynasties,
     dnaBalance,
+    ownedSnakes,
     activeDynastyId,
     currentDynastyVariants,
     currentDynastyOwned,
@@ -127,13 +127,16 @@ export default function LabPage() {
     isUnlockModalOpen,
     isLoading,
     error,
+    equipError,
     setActiveDynasty,
     openDetailModal,
+    selectOwnedSnake,
     closeDetailModal,
     openUnlockModal,
     closeUnlockModal,
     unlockVariant,
     equipSnake,
+    toggleFavorite,
     refresh,
   } = useCollection();
 
@@ -156,22 +159,50 @@ export default function LabPage() {
 
   // Get current dynasty completion stats
   const currentCompletion = activeDynastyId
-    ? completionByDynasty[activeDynastyId] ?? { owned: 0, total: 0 }
-    : { owned: 0, total: 0 };
+    ? completionByDynasty[activeDynastyId] ?? { owned: 0, total: 0, snakes: 0 }
+    : { owned: 0, total: 0, snakes: 0 };
+
+  /**
+   * The open sheet's roster, resolved against the LIVE owned list rather
+   * than the store's snapshot, so an equip or a favorite is reflected in the
+   * selector without reopening the sheet.
+   */
+  const selectedRoster = useMemo(
+    () =>
+      selectedVariant
+        ? rosterForVariant(
+            selectedVariant.id,
+            ownedSnakes,
+            equippedSnake?.id ?? null
+          )?.snakes ?? []
+        : [],
+    [selectedVariant, ownedSnakes, equippedSnake?.id]
+  );
+
+  /** The selected sibling, refreshed from the live list by id. */
+  const selectedSnake = useMemo(
+    () =>
+      selectedOwned
+        ? selectedRoster.find((snake) => snake.id === selectedOwned.id) ??
+          selectedOwned
+        : null,
+    [selectedOwned, selectedRoster]
+  );
 
   // ---------------------------------------------------------------------------
   // HANDLERS
   // ---------------------------------------------------------------------------
 
   /**
-   * Handle variant card selection
+   * Handle variant card selection. The grid hands over the whole roster;
+   * the sheet opens on its representative and can walk the siblings.
    * - If owned: open detail modal
    * - If locked: open unlock modal
    */
   const handleSelectVariant = useCallback(
-    (variant: SnakeVariant, owned: OwnedSnake | null) => {
-      if (owned) {
-        openDetailModal(variant, owned);
+    (variant: SnakeVariant, roster: OwnedSnake[]) => {
+      if (roster.length > 0) {
+        openDetailModal(variant, roster[0]);
       } else {
         openUnlockModal(variant);
       }
@@ -222,18 +253,31 @@ export default function LabPage() {
   ]);
 
   /**
-   * Handle equip action from detail modal
+   * Handle equip action from detail modal - acts on the SELECTED sibling,
+   * and leaves the sheet open so the state change is visible.
    */
   const handleEquip = useCallback(async () => {
-    if (selectedOwned) {
-      await equipSnake(selectedOwned.id);
+    if (selectedSnake) {
+      await equipSnake(selectedSnake.id);
     }
-  }, [selectedOwned, equipSnake]);
+  }, [selectedSnake, equipSnake]);
+
+  /** Persist the favorite flag; the roster rule ranks by it. */
+  const handleToggleFavorite = useCallback(
+    async (snakeId: string, favorited: boolean) => {
+      const succeeded = await toggleFavorite(snakeId, favorited);
+      if (!succeeded) {
+        showToast('Could not save that favorite', 'error');
+      }
+      return succeeded;
+    },
+    [toggleFavorite, showToast]
+  );
 
   /** Equip when needed, create the run, then hand the ready board to game. */
   const handlePlayWithSnake = useCallback(async () => {
     if (
-      !selectedOwned ||
+      !selectedSnake ||
       !session?.access_token ||
       !user?.id ||
       isLaunchingSnake
@@ -245,17 +289,19 @@ export default function LabPage() {
       // Storage-restricted browsers retain the safe legacy pre-run screen;
       // no paid session is created without a reliable consume-once handoff.
       const equipped =
-        selectedOwned.id === equippedSnake?.id ||
-        (await equipSnake(selectedOwned.id));
+        selectedSnake.id === equippedSnake?.id ||
+        (await equipSnake(selectedSnake.id));
       if (equipped) router.push('/game');
       return;
     }
 
     setIsLaunchingSnake(true);
     try {
-      if (selectedOwned.id !== equippedSnake?.id) {
-        const equipped = await equipSnake(selectedOwned.id);
-        if (!equipped) throw new Error('Could not equip this snake');
+      if (selectedSnake.id !== equippedSnake?.id) {
+        // An equip failure already reports itself through the sheet's own
+        // equipError channel. Rethrowing it here is what made one failure
+        // surface twice, under two different messages.
+        if (!(await equipSnake(selectedSnake.id))) return;
       }
       const bootstrap = await bootstrapForLaunch(session.access_token);
       const handoff = await prepareLaunchHandoff(
@@ -276,7 +322,7 @@ export default function LabPage() {
       setIsLaunchingSnake(false);
     }
   }, [
-    selectedOwned,
+    selectedSnake,
     session?.access_token,
     user?.id,
     isLaunchingSnake,
@@ -300,7 +346,7 @@ export default function LabPage() {
    */
   const selectLineagePrimary = useCallback(
     async (primary: StrainId) => {
-      if (!selectedOwned || !session?.access_token || isUpdatingLineage) return;
+      if (!selectedSnake || !session?.access_token || isUpdatingLineage) return;
       setIsUpdatingLineage(true);
       try {
         const response = await fetch('/api/breeding/lineage', {
@@ -311,7 +357,7 @@ export default function LabPage() {
           },
           body: JSON.stringify({
             action: 'select_primary',
-            snake_id: selectedOwned.id,
+            snake_id: selectedSnake.id,
             primary,
           }),
         });
@@ -320,7 +366,7 @@ export default function LabPage() {
         if (!response.ok || !data.success || !lineage) {
           throw new Error(data.error ?? 'Lineage update failed');
         }
-        updateOwnedSnake(selectedOwned.id, { lineage });
+        updateOwnedSnake(selectedSnake.id, { lineage });
         showToast(`${primary} selected`, 'success');
       } catch (error) {
         showToast(
@@ -332,7 +378,7 @@ export default function LabPage() {
       }
     },
     [
-      selectedOwned,
+      selectedSnake,
       session?.access_token,
       isUpdatingLineage,
       updateOwnedSnake,
@@ -417,11 +463,7 @@ export default function LabPage() {
 
       {/* Header with charges and DNA */}
       <div className="pt-4 animate-fade-up">
-        <LabHeader
-          charge={charge}
-          dna={dnaBalance}
-          codexUnlocked={codexUnlocked}
-        />
+        <LabHeader charge={charge} dna={dnaBalance} />
       </div>
 
       {/* Dynasty tabs - glowing segmented control */}
@@ -444,6 +486,7 @@ export default function LabPage() {
               <CollectionProgress
                 owned={currentCompletion.owned}
                 total={currentCompletion.total}
+                snakes={currentCompletion.snakes}
                 dynastyTheme={dynastyTheme}
               />
             </div>
@@ -505,10 +548,12 @@ export default function LabPage() {
       </div>
 
       {/* Variant Detail Modal - for owned snakes */}
-      {selectedVariant && selectedOwned && activeDynasty && (
+      {selectedVariant && selectedSnake && activeDynasty && (
         <VariantDetailModal
           variant={selectedVariant}
-          owned={selectedOwned}
+          owned={selectedSnake}
+          roster={selectedRoster}
+          onSelectSnake={selectOwnedSnake}
           dynasty={activeDynasty}
           isOpen={isDetailModalOpen}
           onClose={closeDetailModal}
@@ -517,9 +562,12 @@ export default function LabPage() {
           onBreed={handleBreed}
           isEquipping={isEquipping}
           isLaunching={isLaunchingSnake}
-          isEquipped={equippedSnake?.id === selectedOwned.id}
+          isEquipped={equippedSnake?.id === selectedSnake.id}
+          equippedSnakeId={equippedSnake?.id ?? null}
+          equipError={equipError}
           isUpdatingLineage={isUpdatingLineage}
           onSelectLineagePrimary={selectLineagePrimary}
+          onToggleFavorite={handleToggleFavorite}
         />
       )}
 

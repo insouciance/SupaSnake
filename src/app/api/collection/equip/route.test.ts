@@ -5,6 +5,8 @@
 var mockAuth: jest.Mock;
 var mockFrom: jest.Mock;
 var mockRpc: jest.Mock;
+var mockCaptureException: jest.Mock;
+var mockCaptureMessage: jest.Mock;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -12,6 +14,11 @@ jest.mock('@supabase/supabase-js', () => ({
     from: (...args: unknown[]) => mockFrom(...args),
     rpc: (...args: unknown[]) => mockRpc(...args),
   }),
+}));
+
+jest.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
 }));
 
 jest.mock('../utils', () => ({
@@ -25,6 +32,7 @@ jest.mock('../utils', () => ({
     isEquipped: row.is_equipped,
     isFavorited: row.is_favorited,
     dynastyName: row.snake_variants?.dynasties?.name,
+    variantRarity: row.snake_variants?.rarity,
   })),
   getPlayerId: jest.fn(),
 }));
@@ -55,7 +63,11 @@ function foundSnake(isEquipped = false) {
     acquired_method: 'tutorial',
     is_equipped: isEquipped,
     is_favorited: false,
-    snake_variants: { name: 'PRIMAL SEED', dynasties: { name: 'PRIMAL' } },
+    snake_variants: {
+      name: 'PRIMAL SEED',
+      rarity: 'rare',
+      dynasties: { name: 'PRIMAL' },
+    },
   };
 }
 
@@ -76,6 +88,8 @@ describe('POST /api/collection/equip', () => {
     });
     mockFrom = jest.fn();
     mockRpc = jest.fn();
+    mockCaptureException = jest.fn();
+    mockCaptureMessage = jest.fn();
     mockGetPlayerId.mockResolvedValue('player-1');
   });
 
@@ -102,11 +116,23 @@ describe('POST /api/collection/equip', () => {
     expect((await response.json()).error).toBe('Validation failed');
   });
 
-  it('does not allow another player’s snake', async () => {
-    mockFrom.mockReturnValueOnce(singleQuery(null, { message: 'not found' }));
+  it('does not allow another player’s snake, and does not page anyone', async () => {
+    mockFrom.mockReturnValueOnce(
+      singleQuery(null, { code: 'PGRST116', message: 'no rows' })
+    );
     const response = await POST(request());
     expect(response.status).toBe(404);
     expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('reports a coded ownership-lookup fault while still answering 404', async () => {
+    mockFrom.mockReturnValueOnce(
+      singleQuery(null, { code: '08006', message: 'connection failure' })
+    );
+    const response = await POST(request());
+    expect(response.status).toBe(404);
+    expect(mockCaptureException).toHaveBeenCalled();
   });
 
   it('equips through one atomic RPC and returns synchronized snake data', async () => {
@@ -119,6 +145,7 @@ describe('POST /api/collection/equip', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith('equip_snake', {
       p_player_id: 'player-1',
       p_snake_id: SNAKE_ID,
@@ -130,14 +157,103 @@ describe('POST /api/collection/equip', () => {
     });
   });
 
-  it('reports an atomic equipment failure without attempting a client-side repair', async () => {
+  it('re-reads with the WIDE variant join so traitSlots and lineage survive', async () => {
+    const reread = singleQuery(foundSnake(true));
+    mockFrom
+      .mockReturnValueOnce(singleQuery(foundSnake(false)))
+      .mockReturnValueOnce(reread);
+    mockRpc.mockResolvedValue({ data: true, error: null });
+
+    await POST(request());
+
+    // The narrow `snake_variants(name, dynasties(name))` form dropped rarity
+    // and the innate affinity, degrading traitSlots and nulling lineage.
+    expect(reread.select).toHaveBeenCalledWith(
+      '*, snake_variants(*, dynasties(name))'
+    );
+  });
+
+  it('retries ONCE on 23505 and succeeds — the race cannot repeat under the lock', async () => {
+    mockFrom
+      .mockReturnValueOnce(singleQuery(foundSnake(false)))
+      .mockReturnValueOnce(singleQuery(foundSnake(true)));
+    mockRpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: '23505', message: 'duplicate key value' },
+      })
+      .mockResolvedValueOnce({ data: true, error: null });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 with a Sentry warning when 23505 survives the retry', async () => {
     mockFrom.mockReturnValueOnce(singleQuery(foundSnake(false)));
-    mockRpc.mockResolvedValue({ data: null, error: { message: 'database error' } });
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '23505', message: 'duplicate key value' },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('one-equipped-per-player'),
+      expect.objectContaining({ level: 'warning' })
+    );
+  });
+
+  it('maps the RPC ownership raise (P0001) to 404 without paging anyone', async () => {
+    mockFrom.mockReturnValueOnce(singleQuery(foundSnake(false)));
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: 'P0001', message: 'Snake not owned by player' },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(404);
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it('reports any other RPC failure as a 500 incident', async () => {
+    mockFrom.mockReturnValueOnce(singleQuery(foundSnake(false)));
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '42601', message: 'syntax error' },
+    });
 
     const response = await POST(request());
 
     expect(response.status).toBe(500);
     expect((await response.json()).error).toBe('Failed to equip snake');
-    expect(mockFrom).toHaveBeenCalledTimes(1);
+    expect(mockCaptureException).toHaveBeenCalled();
+  });
+
+  it('answers 200 when the equip COMMITTED but the re-read failed', async () => {
+    // A 500 here made the client roll its optimistic update back over a
+    // change the database had really made, leaving the UI permanently wrong.
+    mockFrom
+      .mockReturnValueOnce(singleQuery(foundSnake(false)))
+      .mockReturnValueOnce(singleQuery(null, { message: 'read timeout' }));
+    mockRpc.mockResolvedValue({ data: true, error: null });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.equippedSnake).toBeUndefined();
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Equip committed but the re-read failed',
+      expect.objectContaining({ level: 'warning' })
+    );
   });
 });

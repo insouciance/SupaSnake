@@ -212,6 +212,33 @@ post (one-tap publish); deterministic weekly settlement email on the Resend path
 (LLM narration retired). *Acceptance: post generated from a real settlement;
 email renders from settlement data, opt-in only, zero commercial content.*
 
+## 6b. The Playtest Wave — WP-2.05 … WP-2.10b (owner-approved 2026-07-26)
+
+**`docs/ops/PLAYTEST_WAVE.md` is the authoritative scope for these seven work
+packages** and supersedes anything below that contradicts it. It came out of the
+owner's first real playtest and three independent code investigations, and it
+ships **in full before campus-1 seeding** (owner ruling).
+
+Execution order — **not** numeric order, and the constraint in step 2 binds the
+whole wave:
+
+1. **WP-2.10a** connect the shipped world condition (alone, first — it changes
+   live payouts and stops the Signal UI stating a tilt the engine never applies)
+2. **WP-2.05** Player Truth — validation severity, run-start context, fold
+   parity, backfill. **Holds an exclusive lock on `session/route.ts`,
+   `gameValidator.ts`, `game.ts` and `SnakeGameLogic.ts`: no other WP may be in
+   flight while it runs.**
+3. **WP-2.06** Lab Truth ∥ **WP-2.07a** Lexicon core (file-disjoint)
+4. **WP-2.07b** Lexicon chips (after 2.06 merges)
+5. **WP-2.10b** strain-interactive weeks
+6. **WP-2.09** tuning trio (Molt shed+speed, hold budget, PASS copy)
+7. **WP-2.08** the Workbench
+
+Highest-priority defect in the wave: the validation bug is a **live DNA-loss
+path**, not only lost progression — plus a downward write of three player
+scalars and a 404 that makes the reward outbox delete a run's payout. See
+§WP-2.05 of the wave document.
+
 ## 7. Phases 2–5
 
 Sequenced in Constitution §14; decompose the same way when Phase 1 gates pass.

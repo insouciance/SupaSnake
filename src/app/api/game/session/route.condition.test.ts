@@ -1,0 +1,630 @@
+/**
+ * @jest-environment node
+ *
+ * The run's WORLD CONDITION, connected at both ends (WP-2.10a).
+ *
+ * THE DEFECT THIS FILE EXISTS TO CATCH
+ *
+ * `serpent_weeks.modifiers` and the Signal day's condition were written,
+ * parsed and rendered — and consumed by nothing. `mode` made the anomaly,
+ * Serpent and Signal runs disjoint, so a Serpent run stamped `serpent_week_id`
+ * and never `anomaly_id`; the end path read `session.anomaly_id`, found null,
+ * and recomputed the run under NO condition. The Signal surface meanwhile told
+ * the player "the gene pool tilts today" while `genomeBlock.anomalyStrain` was
+ * set only on `mode: 'anomaly'`. The condition-sets were inert and one of them
+ * was a false claim.
+ *
+ * So the assertions here are all one shape: a Serpent run and a Signal run
+ * each resolve a NON-NULL condition at start, and the settlement path
+ * recomputes with the SAME condition the start stamped — proved by the payout
+ * moving, not merely by an id being echoed.
+ *
+ * The fake below is the same small in-memory Postgres the lifecycle tests use,
+ * extended with the two tables a condition is reached through and with the
+ * three RPCs that stamp them. The RPC bodies mirror migrations 046 and 049
+ * where it matters: `ensure_serpent_week` answers with the STORED week (the
+ * row is the authority for a week's condition-set) and
+ * `begin_signal_objective_run` mirrors the attempt id onto the session row
+ * only when that session owns the attempt.
+ */
+
+const mockCaptureException = jest.fn();
+
+jest.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+  captureMessage: jest.fn(),
+}));
+
+jest.mock('@/lib/server/rateLimit', () => ({
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true }),
+}));
+jest.mock('@/lib/server/mastery', () => ({
+  getMasteryXp: jest.fn().mockResolvedValue(0),
+  // WP-2.05: settlement reads mastery XP through the STRICT variant, which
+  // reports a read failure instead of returning 0 - because 0 XP narrows the
+  // unlocked pool, which drops legal picks, which shrinks the payout.
+  getMasteryXpStrict: jest.fn().mockResolvedValue({ ok: true, xp: 0 }),
+  grantMasteryXp: jest.fn().mockResolvedValue(null),
+}));
+jest.mock('@/lib/server/gauntlet', () => ({
+  getGauntletBan: jest.fn().mockResolvedValue(null),
+}));
+jest.mock('@/lib/server/season', () => ({
+  getSeasonalMutationIds: jest.fn().mockResolvedValue([]),
+  getSeasonalGeneIds: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('@/lib/server/identity', () => ({
+  getLiveIdentityForPlayer: jest.fn().mockResolvedValue(null),
+  isMissingIdentityInfra: jest.fn().mockReturnValue(false),
+}));
+jest.mock('@/lib/server/records', () => ({
+  refreshPlayerRecords: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('@/lib/server/discordSync', () => ({
+  enqueueMasteryLevelup: jest.fn().mockResolvedValue(undefined),
+  refreshLinkedRolesForPlayer: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('@/lib/server/codex', () => ({
+  recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
+}));
+jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+
+// Both rituals are flag-gated and both default OFF. Armed here because a
+// condition cannot be resolved for a run the server refuses to accept as an
+// attempt in the first place; `serpent.flagOff` / `signal.flagOff` own the
+// other direction.
+jest.mock('@/lib/serpent/config', () => ({
+  SERPENT_V1_ENABLED: true,
+  SERPENT_UNLOCK_BANKED_RUNS: 8,
+}));
+jest.mock('@/lib/signal/config', () => ({ SIGNAL_V1_ENABLED: true }));
+
+type Row = Record<string, unknown>;
+type Call = [string, ...unknown[]];
+
+const db: {
+  players: Row[];
+  game_sessions: Row[];
+  economy_transactions: Row[];
+  collected_snakes: Row[];
+  serpent_weeks: Row[];
+  signal_objective_runs: Row[];
+} = {
+  players: [],
+  game_sessions: [],
+  economy_transactions: [],
+  collected_snakes: [],
+  serpent_weeks: [],
+  signal_objective_runs: [],
+};
+
+const rpcCalls: Array<{ fn: string; params: Row }> = [];
+
+/** The day key `ensure_signal_day` derived, as the joined row would carry it. */
+let resolvedSignalDayKey = '';
+
+function matches(row: Row, calls: Call[]): boolean {
+  for (const [op, ...args] of calls) {
+    const cell = row[args[0] as string] ?? null;
+    if (op === 'eq' && cell !== args[1]) return false;
+    if (op === 'is' && cell !== args[1]) return false;
+    if (op === 'neq' && (cell === null || cell === args[1])) return false;
+    if (op === 'lt' && !(String(cell ?? '') < String(args[1]))) return false;
+    if (op === 'gte' && !(String(cell ?? '') >= String(args[1]))) return false;
+    if (op === 'not' && args[1] === 'is' && cell === args[2]) return false;
+  }
+  return true;
+}
+
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      getUser: async () => ({ data: { user: { id: 'auth-1' } }, error: null }),
+    },
+    rpc: async (fn: string, params: Row) => {
+      rpcCalls.push({ fn, params: params ?? {} });
+      const p = (params ?? {}) as Row;
+
+      if (fn === 'ensure_serpent_week') {
+        // Migration 046: the row wins. A week created under `gold_rush` keeps
+        // it, and the drift tripwire refuses to rewrite a live week's set.
+        const week = {
+          id: SERPENT_WEEK_ID,
+          week_start: p.p_week_start,
+          starts_at: p.p_starts_at,
+          ends_at: p.p_ends_at,
+          seed: p.p_seed,
+          modifiers: [WEEK_CONDITION],
+          settled_at: null,
+        };
+        db.serpent_weeks = [week];
+        return { data: [week], error: null };
+      }
+
+      if (fn === 'ensure_signal_day') {
+        resolvedSignalDayKey = String(p.p_day ?? '');
+        return { data: [{ id: SIGNAL_DAY_ID }], error: null };
+      }
+
+      if (fn === 'begin_signal_objective_run') {
+        const attempt: Row = {
+          id: SIGNAL_ATTEMPT_ID,
+          day_id: p.p_day_id,
+          player_id: p.p_player_id,
+          objective_id: p.p_objective_id,
+          target: p.p_target,
+          session_id: p.p_session_id,
+          progress: 0,
+          completed_at: null,
+          settled_at: null,
+          bonus_paid_at: null,
+          signal_days: { day: resolvedSignalDayKey },
+          owns_attempt: true,
+        };
+        db.signal_objective_runs = [attempt];
+        // "Mirror the id onto the session ONLY when this session owns the
+        // attempt" (049) — the stamp the end path resolves the day through.
+        for (const row of db.game_sessions) {
+          if (row.id === p.p_session_id) row.signal_objective_run_id = attempt.id;
+        }
+        return { data: [attempt], error: null };
+      }
+
+      if (fn === 'consume_run_charge') {
+        return {
+          data: [
+            {
+              charged: true,
+              charges_day: new Date().toISOString().slice(0, 10),
+              charges_used: 1,
+            },
+          ],
+          error: null,
+        };
+      }
+
+      return { data: null, error: null };
+    },
+    from: (table: string) => {
+      const calls: Call[] = [];
+      let pendingUpdate: Row | null = null;
+      let pendingInsert: Row | null = null;
+
+      const rows = () => (db[table as keyof typeof db] ?? []) as Row[];
+
+      const settle = () => {
+        if (pendingInsert) {
+          const inserted = { id: `${table}-${rows().length + 1}`, ...pendingInsert };
+          rows().push(inserted);
+          pendingInsert = null;
+          return { data: [inserted], error: null };
+        }
+        const hit = rows().filter((row) => matches(row, calls));
+        if (pendingUpdate) {
+          for (const row of hit) Object.assign(row, pendingUpdate);
+          pendingUpdate = null;
+        }
+        return { data: hit, error: null };
+      };
+
+      const builder: Record<string, unknown> = {};
+      const push = (op: string) => (...args: unknown[]) => {
+        calls.push([op, ...args]);
+        return builder;
+      };
+      for (const op of [
+        'select', 'eq', 'is', 'neq', 'lt', 'gte', 'gt', 'not', 'in', 'or',
+        'order', 'range', 'limit',
+      ]) {
+        builder[op] = push(op);
+      }
+      builder.update = (payload: Row) => {
+        pendingUpdate = payload;
+        return builder;
+      };
+      builder.insert = (payload: Row) => {
+        pendingInsert = payload;
+        return builder;
+      };
+      builder.single = async () => {
+        const { data } = settle();
+        return data.length > 0
+          ? { data: data[0], error: null }
+          : { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+      };
+      builder.maybeSingle = async () => {
+        const { data } = settle();
+        return { data: data[0] ?? null, error: null };
+      };
+      builder.then = (
+        onFulfilled: (v: unknown) => unknown,
+        onRejected?: (e: unknown) => unknown
+      ) => Promise.resolve(settle()).then(onFulfilled, onRejected);
+      return builder;
+    },
+  }),
+}));
+
+import { NextRequest } from 'next/server';
+import { describe, expect, it, beforeEach } from '@jest/globals';
+import { POST } from './route';
+import {
+  ANOMALY_STRAINS,
+  anomalyForWeek,
+  type AnomalyId,
+} from '@/shared/game/anomalies';
+import {
+  applyOutcomeWithMutations,
+  computeRunTotals,
+} from '@/shared/game/rulesets';
+import { describeSignalDay, signalObjectiveId } from '@/shared/game/signal';
+
+const PLAYER_ID = 'player-1';
+const SNAKE_ID = 'snake-1';
+const VARIANT_ID = 'variant-1';
+const SERPENT_WEEK_ID = 'week-1';
+const SIGNAL_DAY_ID = 'day-1';
+const SIGNAL_ATTEMPT_ID = 'attempt-1';
+
+/**
+ * The condition both stamped paths are pinned to.
+ *
+ * `gold_rush` on purpose: it is an [E] modifier (every food ×1.5 DNA), so a
+ * settlement that ignores the condition and one that honours it produce
+ * DIFFERENT numbers. A [P] modifier would let the inert behaviour pass.
+ */
+const WEEK_CONDITION: AnomalyId = 'gold_rush';
+
+/**
+ * A UTC day whose Signal condition is `gold_rush`, for the same reason.
+ * Pinned rather than searched, so a change to the day derivation fails here
+ * loudly instead of quietly weakening the test (the guard below is the alarm).
+ */
+const GOLD_RUSH_SIGNAL_DAY = '2026-08-04';
+
+function post(body: Record<string, unknown>) {
+  return new NextRequest('http://localhost/api/game/session', {
+    method: 'POST',
+    headers: { authorization: 'Bearer token', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function seedPlayer() {
+  db.players = [
+    {
+      id: PLAYER_ID,
+      user_id: 'auth-1',
+      dna: 0,
+      total_games_played: 0,
+      total_dna_earned: 0,
+      high_score: 0,
+      breeds_completed: 0,
+    },
+  ];
+}
+
+function seedSnake() {
+  db.collected_snakes = [
+    {
+      id: SNAKE_ID,
+      player_id: PLAYER_ID,
+      snake_variant_id: VARIANT_ID,
+      is_equipped: true,
+      generation: 1,
+      traits: [],
+      snake_variants: {
+        id: VARIANT_ID,
+        name: 'CYBER SPARK',
+        dynasties: { name: 'CYBER' },
+      },
+    },
+  ];
+}
+
+/** A run that already exists and is waiting to settle. */
+function seedSession(overrides: Row = {}) {
+  const startedAt = new Date(Date.now() - 120_000).toISOString();
+  db.game_sessions = [
+    {
+      id: 'session-1',
+      player_id: PLAYER_ID,
+      dynasty: 'CYBER',
+      snake_used_id: SNAKE_ID,
+      snake_variant_id: VARIANT_ID,
+      started_at: startedAt,
+      server_started_at: startedAt,
+      ended_at: null,
+      end_reason: null,
+      score: 0,
+      dna_earned: 0,
+      validated: false,
+      is_free_play: false,
+      anomaly_id: null,
+      serpent_week_id: null,
+      signal_objective_run_id: null,
+      // Stamped at start; 'charged' settles at full strength, so the harvest
+      // envelope contributes nothing to the numbers compared below.
+      charge_state: 'charged',
+      run_seed: null,
+      ...overrides,
+    },
+  ];
+}
+
+const FOOD_COUNT = 20;
+
+function endBody(sessionId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    action: 'end',
+    sessionId,
+    food_count: FOOD_COUNT,
+    extracted: true,
+    duration_seconds: 100,
+    died: false,
+    victory: false,
+    score: 0,
+    dna_earned: 0,
+    ...overrides,
+  };
+}
+
+/** What a CYBER run of `FOOD_COUNT` foods banks under `condition`. */
+function bankedUnder(condition: AnomalyId | null): number {
+  const { rawDna } = computeRunTotals('CYBER', FOOD_COUNT, [], null, [], condition);
+  return applyOutcomeWithMutations(rawDna, true, [], false, [], condition);
+}
+
+const session = () => db.game_sessions[0];
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  db.economy_transactions = [];
+  db.serpent_weeks = [];
+  db.signal_objective_runs = [];
+  rpcCalls.length = 0;
+  resolvedSignalDayKey = '';
+  seedPlayer();
+  seedSnake();
+  seedSession();
+});
+
+// ---------------------------------------------------------------------------
+// The pins the rest of the file leans on
+// ---------------------------------------------------------------------------
+
+describe('the pinned conditions are still the ones the assertions assume', () => {
+  it('`gold_rush` is economic, so honouring it moves the payout', () => {
+    expect(bankedUnder('gold_rush')).toBeGreaterThan(bankedUnder(null));
+  });
+
+  it('the pinned Signal day still derives `gold_rush`', () => {
+    expect(describeSignalDay(new Date(`${GOLD_RUSH_SIGNAL_DAY}T12:00:00.000Z`)).condition.id)
+      .toBe('gold_rush');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A Serpent run
+// ---------------------------------------------------------------------------
+
+describe('a Serpent run resolves the week’s condition and settles under it', () => {
+  it('start resolves it from the week and puts it on the offer-weight channel', async () => {
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({ action: 'start', mode: 'serpent', snake_id: SNAKE_ID })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // NON-NULL. This is the assertion the shipped code failed.
+    expect(body.condition).toBe(WEEK_CONDITION);
+    expect(body.serpent.weekId).toBe(SERPENT_WEEK_ID);
+    // The tilt the Serpent panel advertises, now actually reaching the engine.
+    expect(body.genome.anomalyStrain).toBe(ANOMALY_STRAINS[WEEK_CONDITION]);
+    // And the row carries the stamp the end path re-derives it from.
+    expect(session().serpent_week_id).toBe(SERPENT_WEEK_ID);
+    expect(session().anomaly_id ?? null).toBeNull();
+  });
+
+  it('settlement re-derives the SAME condition from the row and recomputes with it', async () => {
+    seedSession({ serpent_week_id: SERPENT_WEEK_ID });
+    db.serpent_weeks = [{ id: SERPENT_WEEK_ID, modifiers: [WEEK_CONDITION] }];
+
+    const response = await POST(post(endBody('session-1')));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // Same id at the other end, from `serpent_week_id` alone — the row never
+    // had an `anomaly_id` to read.
+    expect(body.anomaly).toBe(WEEK_CONDITION);
+    expect(db.economy_transactions[0].metadata).toMatchObject({
+      anomaly: WEEK_CONDITION,
+    });
+    // And it reached the fold: the payout is the one the condition produces.
+    expect(session().dna_earned).toBe(bankedUnder(WEEK_CONDITION));
+    expect(session().dna_earned).toBeGreaterThan(bankedUnder(null));
+  });
+
+  it('a week whose stored set names a different modifier settles under THAT one', async () => {
+    seedSession({ serpent_week_id: SERPENT_WEEK_ID });
+    db.serpent_weeks = [{ id: SERPENT_WEEK_ID, modifiers: ['twin_exits'] }];
+
+    const response = await POST(post(endBody('session-1')));
+    const body = await response.json();
+
+    // Twin Exits banks at ×1.15 instead of ×1.25 — the condition is read from
+    // the week, never guessed from the calendar or the request.
+    expect(body.anomaly).toBe('twin_exits');
+    expect(session().dna_earned).toBe(bankedUnder('twin_exits'));
+    expect(session().dna_earned).toBeLessThan(bankedUnder(null));
+  });
+
+  it('a week the row no longer names settles under no condition at all', async () => {
+    seedSession({ serpent_week_id: 'week-that-vanished' });
+    db.serpent_weeks = [];
+
+    const response = await POST(post(endBody('session-1')));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.anomaly).toBeUndefined();
+    expect(session().dna_earned).toBe(bankedUnder(null));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A Signal run
+// ---------------------------------------------------------------------------
+
+describe('a Signal run resolves the day’s condition and settles under it', () => {
+  it('start resolves it from the claimed day and puts it on the offer-weight channel', async () => {
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({
+        action: 'start',
+        mode: 'signal',
+        snake_id: SNAKE_ID,
+        signalObjectiveId: signalObjectiveId('extract'),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // NON-NULL, and the day's own condition — not a second derivation that
+    // could drift from the one the Signal surface renders.
+    expect(body.condition).toBe(body.signal.condition.id);
+    expect(body.condition).toBe(describeSignalDay(body.signal.day).condition.id);
+    // The tilt `SignalSurface` promises the player IS the tilt the engine's
+    // offer draw reads. Asserted against the day's advertised `strainTilt`
+    // rather than against ANOMALY_STRAINS directly: since WP-2.10b a clause
+    // can outweigh the anomaly and move the tilt, and the whole point is that
+    // the sentence on screen and the stream in the engine move together. A
+    // regression that let them diverge would fail here.
+    expect(body.genome.anomalyStrain).toBe(
+      describeSignalDay(body.signal.day).condition.strainTilt
+    );
+    // The stamp the end path re-derives it from — mirrored by the RPC, not by
+    // the session insert.
+    expect(session().signal_objective_run_id).toBe(SIGNAL_ATTEMPT_ID);
+    expect(session().anomaly_id ?? null).toBeNull();
+    expect(session().serpent_week_id ?? null).toBeNull();
+  });
+
+  it('settlement re-derives the SAME condition from the attempt and recomputes with it', async () => {
+    seedSession({ signal_objective_run_id: SIGNAL_ATTEMPT_ID });
+    db.signal_objective_runs = [
+      {
+        id: SIGNAL_ATTEMPT_ID,
+        day_id: SIGNAL_DAY_ID,
+        player_id: PLAYER_ID,
+        objective_id: signalObjectiveId('extract'),
+        target: 200,
+        session_id: 'session-1',
+        progress: 0,
+        completed_at: null,
+        settled_at: null,
+        bonus_paid_at: null,
+        signal_days: { day: GOLD_RUSH_SIGNAL_DAY },
+      },
+    ];
+
+    const response = await POST(post(endBody('session-1')));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.anomaly).toBe('gold_rush');
+    expect(db.economy_transactions[0].metadata).toMatchObject({
+      anomaly: 'gold_rush',
+    });
+    expect(session().dna_earned).toBe(bankedUnder('gold_rush'));
+    expect(session().dna_earned).toBeGreaterThan(bankedUnder(null));
+  });
+
+  it('start and end agree on one id across a whole run', async () => {
+    db.game_sessions = [];
+
+    const start = await POST(
+      post({
+        action: 'start',
+        mode: 'signal',
+        snake_id: SNAKE_ID,
+        signalObjectiveId: signalObjectiveId('endure'),
+      })
+    );
+    const startBody = await start.json();
+    expect(startBody.condition).toBeTruthy();
+
+    const end = await POST(
+      post(
+        endBody(startBody.sessionId, {
+          // The run just started, so keep the claim inside the server's own
+          // elapsed bound; 8s × CYBER's 2.5 foods/s is exactly FOOD_COUNT.
+          duration_seconds: 8,
+        })
+      )
+    );
+    const endBodyJson = await end.json();
+
+    expect(end.status).toBe(200);
+    expect(endBodyJson.anomaly).toBe(startBody.condition);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The paths this must not have changed
+// ---------------------------------------------------------------------------
+
+describe('the legacy anomaly path is untouched', () => {
+  it('start still stamps `anomaly_id` and resolves the week’s rotation', async () => {
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({ action: 'start', mode: 'anomaly', snake_id: SNAKE_ID })
+    );
+    const body = await response.json();
+
+    const expected = anomalyForWeek(new Date());
+    expect(body.condition).toBe(expected);
+    expect(body.anomaly.id).toBe(expected);
+    expect(session().anomaly_id).toBe(expected);
+    expect(body.genome.anomalyStrain).toBe(ANOMALY_STRAINS[expected]);
+  });
+
+  it('settlement still reads it straight off `anomaly_id`, with no week or day lookup', async () => {
+    seedSession({ anomaly_id: 'gold_rush', anomaly_week: '2026-07-20' });
+
+    const response = await POST(post(endBody('session-1')));
+    const body = await response.json();
+
+    expect(body.anomaly).toBe('gold_rush');
+    expect(session().dna_earned).toBe(bankedUnder('gold_rush'));
+    // The stamp is the whole answer: nothing else is consulted for it.
+    expect(db.serpent_weeks).toHaveLength(0);
+    expect(db.signal_objective_runs).toHaveLength(0);
+  });
+});
+
+describe('an ordinary run has no condition at either end', () => {
+  it('start resolves none and leaves the offer channel untilted', async () => {
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({ action: 'start', mode: 'earn', snake_id: SNAKE_ID })
+    );
+    const body = await response.json();
+
+    expect(body.condition).toBeUndefined();
+    expect(body.genome.anomalyStrain).toBeNull();
+  });
+
+  it('settlement recomputes it under no condition', async () => {
+    const response = await POST(post(endBody('session-1')));
+    const body = await response.json();
+
+    expect(body.anomaly).toBeUndefined();
+    expect(session().dna_earned).toBe(bankedUnder(null));
+  });
+});

@@ -22,7 +22,7 @@ import {
 } from '@/shared/game/rulesets';
 import { isMutationId, type MutationPick } from '@/shared/game/mutations';
 import { GENES } from '@/shared/game/genes';
-import { sanitizeTraits, TRAITS, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
+import { sanitizeTraits, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints, type Lineage } from '@/shared/game/lineage';
 import {
   STRAINS,
@@ -136,6 +136,7 @@ import {
 import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
 import { RunResults, type RunResultsSerpent } from '@/components/game/RunResults';
 import { RunSetupPanel } from '@/components/game/RunSetupPanel';
+import { HeirloomSummary } from '@/components/game/HeirloomSummary';
 import {
   collectDailyTake,
   parseDailyTake,
@@ -187,6 +188,8 @@ interface EquippedSnakeView {
   generation: number;
   dynasty: string;
   traits: TraitId[];
+  /** Slots the snake's rarity + generation unlock (API-derived, §6.1). */
+  traitSlots?: number;
   lineage: Lineage | null;
 }
 
@@ -306,6 +309,16 @@ export default function GamePage() {
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
+  // The run's tactical-hold budget, mirrored from the engine (which owns it).
+  // Two plain numbers rather than an object so the per-tick sync bails out on
+  // an unchanged value instead of re-rendering the HUD every frame.
+  const [holdsUsed, setHoldsUsed] = useState(0);
+  const [holdsTotal, setHoldsTotal] = useState<number>(
+    GAME_CONFIG.session.holds.base
+  );
+  // What passing the live gene offer buys, derived by the engine from the
+  // offer stream. Null means the generic consequence line applies.
+  const [choicePityStrain, setChoicePityStrain] = useState<StrainId | null>(null);
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mobile control scheme: flick-anywhere is the default, D-pad the
@@ -449,6 +462,7 @@ export default function GamePage() {
     exitTile2,
     exitTicksRemaining,
     anomalyRun,
+    runCondition,
     charge,
     selectedDynasty,
     snake,
@@ -488,6 +502,7 @@ export default function GamePage() {
     setExitTile,
     setExitTile2,
     setAnomalyRun,
+    setRunCondition,
     setExtraFoods,
     setConstellation,
     setMutationTile,
@@ -799,6 +814,7 @@ export default function GamePage() {
           variantId?: string;
           dynastyName?: string | null;
           traits?: unknown;
+          traitSlots?: unknown;
           lineage?: unknown;
         }> = data.snakes ?? [];
 
@@ -811,6 +827,10 @@ export default function GamePage() {
             generation: equipped.generation,
             dynasty: dynastyName,
             traits: sanitizeTraits(equipped.traits),
+            traitSlots:
+              typeof equipped.traitSlots === 'number'
+                ? equipped.traitSlots
+                : undefined,
             lineage: sanitizeLineage(equipped.lineage),
           });
           // Theme follows the equipped snake's dynasty
@@ -837,6 +857,11 @@ export default function GamePage() {
     ) return;
     void fetchCodex(session.access_token);
   }, [session?.access_token, isPlaying, genomeFtue?.splicesUnlocked, fetchCodex]);
+
+  const holdBudget = useMemo(
+    () => ({ remaining: Math.max(0, holdsTotal - holdsUsed), total: holdsTotal }),
+    [holdsUsed, holdsTotal]
+  );
 
   const discoveredSplices = useMemo<SpliceId[]>(
     () => codexData?.splices.filter((splice) => splice.discovered).map((splice) => splice.id) ?? [],
@@ -884,10 +909,13 @@ export default function GamePage() {
     choiceOptions !== null || portalChoicePending || surgeChoicePending;
   const blockingOverlayActive = choiceActive || showAbandonConfirm;
 
-  // The active anomaly run's modifier id (§7.2) - shapes the BANK preview
-  // and outcome copy exactly like the server recompute will
-  const activeAnomalyId: AnomalyId | null =
-    anomalyRun && isAnomalyId(anomalyRun.id) ? anomalyRun.id : null;
+  // The run's world condition (§7.2, §7.3) - shapes the BANK preview and the
+  // outcome copy exactly like the server recompute will. Read from the store
+  // rather than from `anomalyRun`, because a Serpent or Signal run is under a
+  // condition without being an anomaly-board run: deriving it from the board
+  // context is what left the preview quoting x1.25 on a Twin Exits week the
+  // server settles at x1.15.
+  const activeAnomalyId: AnomalyId | null = runCondition;
 
   const beginPauseRearm = useCallback(() => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
@@ -933,7 +961,10 @@ export default function GamePage() {
     ) {
       return;
     }
-    game.pause();
+    // 'decision': the board is being re-armed around the run's OWN choice
+    // (gene / portal / surge). Rule 1 protects those, so they never spend a
+    // tactical hold - and this hold is not refusable either.
+    game.pause('decision');
     setAwaitingResumeInput(true);
   }, []);
 
@@ -1029,6 +1060,9 @@ export default function GamePage() {
     gameRef.current.on('mutationChoice', (data: any) => {
       setAwaitingResumeInput(false);
       setChoiceOptions(data.options, data.source ?? 'gene_food');
+      // Alongside the options, not on the next tick: the overlay must never
+      // render its consequence line from a stale forecast.
+      setChoicePityStrain(gameRef.current?.getState().pendingChoicePity ?? null);
       audioManager.play('pause');
       haptics.medium();
     });
@@ -1436,6 +1470,9 @@ export default function GamePage() {
       setDirection(state.direction);
       setQueuedDirections(queued);
       setFoodEaten(state.foodEaten);
+      setHoldsUsed(state.holdsUsed);
+      setHoldsTotal(state.holdBudget);
+      setChoicePityStrain(state.pendingChoicePity);
       setExitTile(state.exitTile, state.exitTicksRemaining);
       // Twin Exits (anomaly): the second portal of the pair
       setExitTile2(state.exitTile2);
@@ -1577,7 +1614,19 @@ export default function GamePage() {
       mode === 'anomaly' && isAnomalyId(anomalyData?.id)
         ? anomalyData.id
         : null;
-    game.setAnomaly(serverAnomaly);
+    // The run's world condition, resolved SERVER-SIDE (§7.2, §7.3): the
+    // Anomaly board's weekly modifier, the Serpent week's condition-set, or
+    // the Signal day's condition. One field, because the server resolved it -
+    // the client never derives a condition from its own `mode`.
+    //
+    // The engine plays under exactly the id settlement recomputes with, which
+    // is the whole point: a condition that changed the payout without having
+    // changed the run would flag every run under it as a claim mismatch.
+    const serverCondition = isAnomalyId(data.condition)
+      ? data.condition
+      : serverAnomaly;
+    game.setAnomaly(serverCondition);
+    setRunCondition(serverCondition);
     setAnomalyRun(
       serverAnomaly
         ? {
@@ -1614,6 +1663,7 @@ export default function GamePage() {
     syncState();
   }, [
     setAnomalyRun,
+    setRunCondition,
     setGameMode,
     setGenomeRun,
     setPortalChoicePending,
@@ -1789,8 +1839,9 @@ export default function GamePage() {
         e.preventDefault();
         if (HUD_COCKPIT_V1_ENABLED) {
           if (!isPaused && !pauseRearmingRef.current) {
-            gameRef.current?.pause();
-            setAwaitingResumeInput(true);
+            // The engine refuses the hold when the budget is spent; only
+            // arm the resume gate if the board actually stopped.
+            if (gameRef.current?.pause()) setAwaitingResumeInput(true);
           }
         } else if (isPaused) {
           setAwaitingResumeInput((armed) => !armed);
@@ -1881,8 +1932,8 @@ export default function GamePage() {
       return;
     }
     if (pauseRearmingRef.current) return;
-    gameRef.current?.pause();
-    if (HUD_COCKPIT_V1_ENABLED) setAwaitingResumeInput(true);
+    const held = gameRef.current?.pause() ?? false;
+    if (HUD_COCKPIT_V1_ENABLED && held) setAwaitingResumeInput(true);
   }, [awaitingResumeInput]);
 
   const handleResume = useCallback(() => {
@@ -2062,6 +2113,7 @@ export default function GamePage() {
     score,
     dna: dnaCollected,
     charge,
+    holds: isPlaying ? holdBudget : null,
     bankDna: previewOutcome(true, activeAnomalyId),
     crashDna: previewOutcome(false, activeAnomalyId),
     comboMultiplier,
@@ -2106,6 +2158,7 @@ export default function GamePage() {
               showStrains={genomeFtue?.strainTagsUnlocked === true}
               splicesUnlocked={genomeFtue?.splicesUnlocked === true}
               discoveredSplices={discoveredSplices}
+              pityStrain={choicePityStrain}
               onChoose={handleChooseMutation}
               onDecline={handleDeclineMutation}
             />
@@ -2213,6 +2266,18 @@ export default function GamePage() {
       </div>
     ) : null;
 
+  /* What the equipped snake brings to this run. Traits are live from the
+     first food of every run (settlement reads them off the snake row
+     unconditionally), so this block is NOT behind the spawn-point gate -
+     only the strain pips below are, because below that gate deriveHeirloom
+     really does return an empty heirloom. */
+  const heirloomNode = equippedSnake ? (
+    <HeirloomSummary
+      traits={equippedSnake.traits}
+      slots={equippedSnake.traitSlots}
+    />
+  ) : null;
+
   /* The inherited build: strains, heirlooms, lineage. */
   const buildSeedNode =
     equippedSnake &&
@@ -2243,11 +2308,10 @@ export default function GamePage() {
             </span>
           )}
         </div>
-        {equippedSnake.traits.length > 0 && (
-          <p className="text-xs font-body text-beige/60">
-            Heirlooms: {equippedSnake.traits.map((trait) => TRAITS[trait].name).join(' · ')}
-          </p>
-        )}
+        {/* The heirloom traits themselves moved out of this gated block and
+            into HeirloomSummary above: they are live from run 1, and a
+            name-only list explained nothing. Only the spawn points below
+            genuinely depend on the gate. */}
         {equippedSnake.lineage && (
           <p className="text-xs font-body text-beige/60">
             Lineage strength {equippedSnake.lineage.strength}
@@ -2358,6 +2422,24 @@ export default function GamePage() {
               earning the first food never moves or resizes the board. */}
           {isPlaying && (
             <div className="game-hud-ticker flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
+          {/* Tactical holds. Always present while a run is live, never only
+              once it is spent - a budget you discover by hitting it is a
+              trap, and the whole point of the cost being stated. */}
+          <div
+            data-testid="hold-budget"
+            data-spent={holdBudget.remaining === 0 ? 'true' : 'false'}
+            aria-label={`Tactical holds ${holdBudget.remaining} of ${holdBudget.total}`}
+            className={`flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border bg-void/80 backdrop-blur-md ${
+              holdBudget.remaining === 0
+                ? 'border-strike-red/60 text-strike-red'
+                : 'border-scale-blue-light/50 text-beige/70'
+            }`}
+          >
+            <span className="uppercase tracking-wider">Holds</span>
+            <span className="font-mono font-bold tabular-nums">
+              {holdBudget.remaining}/{holdBudget.total}
+            </span>
+          </div>
           {/* Extraction bank preview: what this run pays banked vs crashed
               (mutation-aware: Mirror Wager / Compound Interest / Phoenix
               reshape the outcome multipliers live). Subtle by default;
@@ -2595,6 +2677,7 @@ export default function GamePage() {
           showStrains={genomeFtue?.strainTagsUnlocked === true}
           splicesUnlocked={genomeFtue?.splicesUnlocked === true}
           discoveredSplices={discoveredSplices}
+          pityStrain={choicePityStrain}
           onChoose={handleChooseMutation}
           onDecline={handleDeclineMutation}
         />
@@ -2755,6 +2838,7 @@ export default function GamePage() {
                     void handleStart(gameMode);
                   }}
                   startError={startError}
+                  heirloom={heirloomNode}
                   modeToggle={modeToggleNode}
                   anomalyPanel={anomalyPanelNode}
                   aimSelector={aimSelectorNode}
@@ -3003,6 +3087,7 @@ export default function GamePage() {
                         </span>
                       </p>
                     )}
+                    {heirloomNode}
                     {buildSeedNode}
                     <p className="text-beige/50 font-body text-xs">
                       Exit portal banks +25% — crashing salvages 60%

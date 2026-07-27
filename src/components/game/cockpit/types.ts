@@ -43,6 +43,13 @@ export interface RunCockpitModel {
    * and what Training wants always (it never touches the envelope).
    */
   charge: ChargeStatus | null;
+  /**
+   * Tactical holds left in this run, and the budget they came out of. Null
+   * hides the readout - which is what Training wants, since a driven run is
+   * never metered. Stated up front on purpose: a hold budget the player only
+   * discovers by running out is a trap, not a rule.
+   */
+  holds: { remaining: number; total: number } | null;
   bankDna: number;
   crashDna: number;
   comboMultiplier: number;

@@ -58,9 +58,18 @@ import {
   ANOMALIES,
   ANOMALY_ROTATION,
   ANOMALY_STRAINS,
+  anomalySummary,
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
+import {
+  CONDITION_CLAUSES_PER_DAY,
+  CONDITION_CLAUSE_DOMAINS,
+  conditionClausesForKey,
+  conditionFromAnomaly,
+  conditionOfferTilt,
+  type ConditionClauseId,
+} from '@/shared/game/worldCondition';
 import { endReasonSettles } from '@/lib/session/lifecycle';
 
 const DAY_MS = 86_400_000;
@@ -188,7 +197,7 @@ export function describeSignalCondition(id: AnomalyId): SignalCondition {
   return {
     id: def.id,
     name: def.name,
-    effect: def.effect,
+    effect: anomalySummary(def.id),
     kind: def.kind,
     strainTilt: ANOMALY_STRAINS[def.id],
   };
@@ -199,6 +208,27 @@ export function signalConditionForDay(at: Date | number = Date.now()): AnomalyId
   const pool = SIGNAL_CONDITION_POOL;
   const state = xorshift32(signalSeedNumber(signalDayKey(at)));
   return pool[state % pool.length];
+}
+
+/**
+ * The day's CLAUSES (WP-2.10b) — the second half of its condition.
+ *
+ * Drawn under the DAY domain, never the bare day key. `SIGNAL_SEED_DOMAIN`
+ * above records why the Signal domain-separates its own seed; the clause draw
+ * has the identical hazard and a sharper edge, because a clause changes the
+ * payout while the seed only changes the board. On a Monday this key and the
+ * Serpent's week key are the same string, so without the domain every Monday's
+ * daily clause would be that week's weekly clause.
+ */
+export function signalClausesForDay(
+  at: Date | number = Date.now(),
+  count: number = CONDITION_CLAUSES_PER_DAY
+): ConditionClauseId[] {
+  return conditionClausesForKey(
+    CONDITION_CLAUSE_DOMAINS.day,
+    signalDayKey(at),
+    count
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -347,6 +377,13 @@ export interface SignalDayDefinition {
   endsAt: string;
   seed: string;
   condition: SignalCondition;
+  /**
+   * The day's clauses — the interactive half of its condition (WP-2.10b).
+   * Stored in `signal_days.clauses TEXT[]` (migration 056) so the drift
+   * tripwire has something to compare the derivation against, and re-derived
+   * here on every read so the stored row can never become the authority.
+   */
+  clauses: ConditionClauseId[];
   objectives: SignalObjective[];
 }
 
@@ -359,12 +396,29 @@ export function describeSignalDay(
   at: Date | number = Date.now()
 ): SignalDayDefinition {
   const start = signalDayStart(at);
+  const anomaly = signalConditionForDay(start);
+  const clauses = signalClausesForDay(start);
+
+  // The displayed tilt is the COMPOSED tilt, not the anomaly's alone.
+  //
+  // `SignalSurface` promises the player "Gene pool tilts X today", and the
+  // engine draws offers under `conditionOfferTilt`, which collapses the
+  // anomaly's bias together with any clause weights. Before clauses existed
+  // those were always the same strain. A clause that outweighs the anomaly
+  // makes them differ - and a surface that advertises one strain while the
+  // draw favours another is exactly the defect WP-2.10a was written to
+  // remove. Composing here means the sentence and the stream cannot disagree.
+  const composed = conditionFromAnomaly(anomaly, clauses);
+  const condition = describeSignalCondition(anomaly);
+  const tilt = conditionOfferTilt(composed);
+
   return {
     day: start.toISOString().slice(0, 10),
     startsAt: start.toISOString(),
     endsAt: signalDayEnd(start).toISOString(),
     seed: signalDaySeed(start.toISOString().slice(0, 10)),
-    condition: describeSignalCondition(signalConditionForDay(start)),
+    condition: tilt === null ? condition : { ...condition, strainTilt: tilt },
+    clauses,
     objectives: signalObjectivesForDay(start),
   };
 }

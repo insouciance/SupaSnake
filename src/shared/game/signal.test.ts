@@ -19,6 +19,7 @@ import {
   ANOMALIES,
   ANOMALY_ROTATION,
   ANOMALY_STRAINS,
+  anomalySummary,
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import {
@@ -29,6 +30,7 @@ import {
   measureSignalObjective,
   resolveSignalObjective,
   settleSignalAttempt,
+  signalClausesForDay,
   signalConditionForDay,
   signalDayEnd,
   signalDayHasEnded,
@@ -53,6 +55,10 @@ import {
   type SignalObjectiveKind,
   type SignalRunFacts,
 } from '@/shared/game/signal';
+import {
+  conditionFromAnomaly,
+  conditionOfferTilt,
+} from '@/shared/game/worldCondition';
 
 const DAY_MS = 86_400_000;
 
@@ -279,7 +285,7 @@ describe('the condition-set costs no new content (§12.1 slot 1)', () => {
     for (const id of SIGNAL_CONDITION_POOL) {
       const described = describeSignalCondition(id);
       expect(described.name).toBe(ANOMALIES[id].name);
-      expect(described.effect).toBe(ANOMALIES[id].effect);
+      expect(described.effect).toBe(anomalySummary(id));
       expect(described.kind).toBe(ANOMALIES[id].kind);
       // The tilt can never contradict the condition: it IS the condition's.
       expect(described.strainTilt).toBe(ANOMALY_STRAINS[id]);
@@ -688,7 +694,22 @@ describe('describeSignalDay is the ONE definition of a day', () => {
     expect(day.startsAt).toBe('2026-07-26T00:00:00.000Z');
     expect(day.endsAt).toBe('2026-07-27T00:00:00.000Z');
     expect(day.seed).toBe(signalDaySeed('2026-07-26'));
-    expect(day.condition).toEqual(describeSignalCondition(signalConditionForDay(at)));
+    // The condition is its anomaly's description with ONE composed override:
+    // `strainTilt` is the tilt the offer stream actually carries, which since
+    // WP-2.10b folds the day's clauses in as well as the anomaly. Asserted as
+    // an explicit composition of the two derivations rather than as the
+    // anomaly's alone, so this still fails if any un-derived state appears —
+    // and additionally fails if the advertised tilt ever stops matching the
+    // one the engine draws under.
+    const anomalyCondition = describeSignalCondition(signalConditionForDay(at));
+    const composedTilt = conditionOfferTilt(
+      conditionFromAnomaly(signalConditionForDay(at), signalClausesForDay(at))
+    );
+    expect(day.condition).toEqual({
+      ...anomalyCondition,
+      strainTilt: composedTilt ?? anomalyCondition.strainTilt,
+    });
+    expect(day.clauses).toEqual(signalClausesForDay(at));
     expect(day.objectives).toEqual(signalObjectivesForDay(at));
   });
 

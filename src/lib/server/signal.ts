@@ -74,6 +74,7 @@ import {
   type SignalObjective,
   type SignalRunFacts,
 } from '@/shared/game/signal';
+import type { ConditionClauseId } from '@/shared/game/worldCondition';
 import { SIGNAL_V1_ENABLED } from '@/lib/signal/config';
 
 interface SupabaseErrorLike {
@@ -127,6 +128,8 @@ export interface SignalDayRow {
   endsAt: string;
   seed: string;
   condition: SignalCondition;
+  /** The day's clauses (WP-2.10b), derived — never read back from the row. */
+  clauses: ConditionClauseId[];
   objectives: SignalObjective[];
 }
 
@@ -152,6 +155,7 @@ function toDayRow(
     endsAt: derived.endsAt,
     seed: derived.seed,
     condition: derived.condition,
+    clauses: derived.clauses,
     objectives: derived.objectives,
   };
 }
@@ -184,6 +188,12 @@ export async function ensureCurrentSignalDay(
     p_seed: derived.seed,
     p_modifier: derived.condition.id,
     p_strain_tilt: derived.condition.strainTilt,
+    // Migration 056. Where 056 has NOT been applied the argument names a
+    // parameter the stored function does not have, PostgREST answers PGRST202,
+    // `isMissingSignalInfra` recognises it, and the day resolves to null — the
+    // Signal goes dark rather than writing a day whose stored clause set is
+    // silently empty. Null is the closed direction here as everywhere else.
+    p_clauses: derived.clauses,
     p_objectives: derived.objectives,
   });
 
@@ -808,18 +818,22 @@ export async function autoSettleSignalAttempts(
 }
 
 /**
- * Auto-settle the attempt one finished run owns, if it owns one.
+ * The attempt one run owns, if it owns one.
  *
- * The end-of-run entry point: a route that has just settled a session calls
- * this and the day's Signal settles with it, in the same request, with no
- * claim step anywhere. Null means the run was not the day's Signal objective
- * run — the ordinary case, and not a failure.
+ * Keyed on the session, because that is the direction every end-of-run caller
+ * asks from: it has a finished run and wants to know what the Signal made of
+ * it. Null means the run was not the day's Signal objective run — the ordinary
+ * case, and not a failure.
+ *
+ * The `player_id` predicate rides along for the same reason it does in
+ * `loadSignalRunFacts`: one player's run must never be able to reach another
+ * player's attempt, whatever the join does.
  */
-export async function settleSignalAttemptForSession(
+export async function loadSignalAttemptForSession(
   supabase: SupabaseClient,
   sessionId: string,
   playerId: string
-): Promise<SignalSettlementResult | null> {
+): Promise<SignalAttemptRow | null> {
   const { data, error } = await supabase
     .from('signal_objective_runs')
     .select(ATTEMPT_COLUMNS)
@@ -834,7 +848,23 @@ export async function settleSignalAttemptForSession(
     return null;
   }
 
-  const attempt = toAttemptRow((data ?? null) as Record<string, unknown> | null);
+  return toAttemptRow((data ?? null) as Record<string, unknown> | null);
+}
+
+/**
+ * Auto-settle the attempt one finished run owns, if it owns one.
+ *
+ * The end-of-run entry point: a route that has just settled a session calls
+ * this and the day's Signal settles with it, in the same request, with no
+ * claim step anywhere. Null means the run was not the day's Signal objective
+ * run — the ordinary case, and not a failure.
+ */
+export async function settleSignalAttemptForSession(
+  supabase: SupabaseClient,
+  sessionId: string,
+  playerId: string
+): Promise<SignalSettlementResult | null> {
+  const attempt = await loadSignalAttemptForSession(supabase, sessionId, playerId);
   if (!attempt) return null;
   return settleSignalObjectiveRun(supabase, attempt);
 }

@@ -49,9 +49,16 @@
 import {
   ANOMALIES,
   ANOMALY_ROTATION,
+  anomalySummary,
   isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
+import {
+  CONDITION_CLAUSES_PER_WEEK,
+  CONDITION_CLAUSE_DOMAINS,
+  conditionClausesForKey,
+  type ConditionClauseId,
+} from '@/shared/game/worldCondition';
 import { endReasonSettles } from '@/lib/session/lifecycle';
 
 const DAY_MS = 86_400_000;
@@ -191,6 +198,27 @@ export function serpentModifiersForWeek(
   return drawn;
 }
 
+/**
+ * The week's CLAUSES (WP-2.10b) — the second half of its condition.
+ *
+ * Drawn from the same week key by the same seeded partial Fisher–Yates, under
+ * the WEEK domain. The domain is what keeps a Monday's Signal clause from
+ * being this week's Serpent clause: on a Monday `serpentWeekKey` and
+ * `signalDayKey` return the SAME STRING, so an undomained hash would tie the
+ * two rhythms together one day in seven. `worldCondition.clauses.test.ts`
+ * sweeps ~160 weeks of Mondays asserting they diverge.
+ */
+export function serpentClausesForWeek(
+  at: Date | number = Date.now(),
+  count: number = CONDITION_CLAUSES_PER_WEEK
+): ConditionClauseId[] {
+  return conditionClausesForKey(
+    CONDITION_CLAUSE_DOMAINS.week,
+    serpentWeekKey(at),
+    count
+  );
+}
+
 /** A modifier as a panel renders it. Pure projection of the shipped pool. */
 export interface SerpentModifier {
   id: AnomalyId;
@@ -201,7 +229,7 @@ export interface SerpentModifier {
 
 export function describeSerpentModifier(id: AnomalyId): SerpentModifier {
   const def = ANOMALIES[id];
-  return { id: def.id, name: def.name, effect: def.effect, kind: def.kind };
+  return { id: def.id, name: def.name, effect: anomalySummary(def.id), kind: def.kind };
 }
 
 /** The week, fully derived from the calendar. No id — the database owns that. */
@@ -214,6 +242,25 @@ export interface SerpentWeekDefinition {
   endsAt: string;
   seed: string;
   modifiers: AnomalyId[];
+  /**
+   * The week's clauses. Stored in the SAME `serpent_weeks.modifiers TEXT[]`
+   * column as the modifiers — `storedModifiers` below is the one composition —
+   * because the two vocabularies are namespaced and cannot collide, which is
+   * what lets this land with no migration at all.
+   */
+  clauses: ConditionClauseId[];
+}
+
+/**
+ * The week's condition-set exactly as the column holds it: anomalies first,
+ * then clauses. ONE function, so the writer, the drift tripwire and any
+ * reader that wants to compare a stored row against the calendar all compose
+ * the array the same way.
+ */
+export function serpentStoredModifiers(
+  week: Pick<SerpentWeekDefinition, 'modifiers' | 'clauses'>
+): string[] {
+  return [...week.modifiers, ...week.clauses];
 }
 
 /**
@@ -232,6 +279,7 @@ export function describeSerpentWeek(
     endsAt: serpentWeekEnd(start).toISOString(),
     seed: serpentWeekSeed(weekStart),
     modifiers: serpentModifiersForWeek(start),
+    clauses: serpentClausesForWeek(start),
   };
 }
 

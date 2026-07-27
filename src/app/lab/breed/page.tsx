@@ -21,6 +21,7 @@ import { useDynastyTheme, dynastyThemes } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
 import { validateBreedingPair, type BreedingBlockReason } from '@/lib/breeding/preview';
 import { getTraitSlots, sanitizeTraits, type TraitId } from '@/shared/game/traits';
+import { describe as describeEntry } from '@/shared/game/lexicon';
 import { sanitizeLineage } from '@/shared/game/lineage';
 import type { StrainId } from '@/shared/game/strains';
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -621,27 +622,66 @@ export default function BreedPage() {
                   trait{activeVariant.trait_slots === 1 ? '' : 's'} — taking one is
                   not taking another.
                 </p>
-                <div className="flex gap-2 flex-wrap">
+                {/*
+                  Inline effect and cost, NOT a popover. This is a moment of
+                  choice — "taking one is not taking another" is only a real
+                  decision if both halves of both deals are on screen at
+                  once — and this codebase's grammar for a moment of choice
+                  is inline text in uncommon-green and strike-red, as the
+                  in-run gene offer prints it. A popover would also be a
+                  button inside these toggle buttons.
+                */}
+                <div className="grid gap-2 sm:grid-cols-2">
                   {draft.trait_pool.map((entry) => {
                     const traitId = entry.trait_id as TraitId;
                     const selected = draftedTraits.includes(traitId);
+                    const lexEntry = describeEntry('trait', traitId);
+                    const source =
+                      entry.source === 'both'
+                        ? 'both'
+                        : entry.source === 'parent1'
+                          ? 'P1'
+                          : 'P2';
                     return (
                       <button
                         key={traitId}
                         type="button"
                         onClick={() => toggleTrait(traitId)}
                         aria-pressed={selected}
-                        className={`inline-flex items-center gap-1 rounded-arcade border px-1.5 py-1 transition-colors ${
+                        aria-label={
+                          lexEntry
+                            ? `${lexEntry.name}: ${lexEntry.effect} — ${lexEntry.cost}`
+                            : traitId
+                        }
+                        className={`flex flex-col items-start gap-1 rounded-arcade border px-2 py-2 text-left transition-colors ${
                           selected
                             ? 'border-venom-orange bg-void-deep/80'
                             : 'border-scale-blue-light/25 bg-void-deep/40 opacity-70'
                         }`}
                         data-testid={`trait-option-${traitId}`}
                       >
-                        <TraitChip traitId={traitId} size="sm" />
-                        <span className="text-[10px] font-mono text-beige/60">
-                          {entry.source === 'both' ? 'both' : entry.source === 'parent1' ? 'P1' : 'P2'}
+                        <span className="inline-flex items-center gap-1">
+                          <TraitChip traitId={traitId} size="sm" />
+                          <span className="text-[10px] font-mono text-beige/60">
+                            {source}
+                          </span>
                         </span>
+                        {lexEntry && (
+                          <>
+                            <span
+                              className="text-[11px] leading-snug font-body text-rarity-uncommon"
+                              data-testid={`trait-option-effect-${traitId}`}
+                            >
+                              {lexEntry.effect}
+                            </span>
+                            <span
+                              className="text-[11px] leading-snug font-body text-strike-red/90"
+                              data-testid={`trait-option-cost-${traitId}`}
+                            >
+                              {lexEntry.cost}
+                            </span>
+                          </>
+                        )}
                       </button>
                     );
                   })}
@@ -656,6 +696,12 @@ export default function BreedPage() {
                 data-testid="lineage-draft"
               >
                 <p className="text-xs font-body text-beige/70">Lineage</p>
+                {/*
+                  Display-only chips: each is the label of a toggle button,
+                  so a popover trigger here would nest one button in
+                  another. The strain identity rides the chip's aria-label
+                  and the Codex documents every strain in full.
+                */}
                 <div className="flex gap-2 flex-wrap">
                   {activeVariant.lineage_options.map((option) => {
                     const selected = option.kind === draft.preview.lineage_kind;

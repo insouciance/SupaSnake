@@ -24,6 +24,17 @@ import { seedConsent, signInAsGuest } from './helpers';
 
 const SHARE_ARTIFACTS_ENABLED = process.env.NEXT_PUBLIC_SHARE_ARTIFACTS_V1 === 'true';
 
+/**
+ * The build artifact rides its OWN flag (WP-2.08). `/b/` is the seventh
+ * artifact class and it must be able to roll back without taking the six
+ * Phase-1 classes with it, which is the whole reason it does not reuse
+ * NEXT_PUBLIC_SHARE_ARTIFACTS_V1.
+ */
+const WORKBENCH_ENABLED = process.env.NEXT_PUBLIC_WORKBENCH_V1 === 'true';
+
+/** A legal build code: name, dynasty, generation, genes, anomaly, clause, infuses. */
+const BUILD_CODE = 'Vyper~CYBER~4~gold_trail%2Ctithe~gold_rush~clause%3Adeep_apex~2';
+
 /** A PNG carrying a 1200×630 card is far larger than this. */
 const MIN_IMAGE_BYTES = 2_000;
 
@@ -70,6 +81,84 @@ test.describe('every artifact URL renders an OG image (Rule 14)', () => {
     // The flag gates the player-visible PAGE. A crawler that unfurls a link
     // during a rollback must still get a card, not a grey box.
     const response = await request.get('/s/214/opengraph-image');
+    expect(response.status()).toBe(200);
+  });
+
+  test('build — /b/<code> renders bytes on either side of its own flag', async ({
+    request,
+  }) => {
+    // Deliberately outside the WORKBENCH_ENABLED split: the seventh class's
+    // image is ungated for the same reason the other six are.
+    const response = await request.get(`/b/${encodeURIComponent(BUILD_CODE)}/opengraph-image`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toMatch(/^image\//);
+    expect((await response.body()).byteLength).toBeGreaterThan(MIN_IMAGE_BYTES);
+  });
+
+  test('an undecodable build code still renders a card rather than throwing', async ({
+    request,
+  }) => {
+    const response = await request.get('/b/garbage/opengraph-image');
+    expect(response.status()).toBe(200);
+    expect((await response.body()).byteLength).toBeGreaterThan(MIN_IMAGE_BYTES);
+  });
+});
+
+test.describe('the build artifact — a recipe, never evidence (WP-2.08)', () => {
+  test.skip(!WORKBENCH_ENABLED, 'NEXT_PUBLIC_WORKBENCH_V1 is off');
+
+  test('the landing page offers a way in and quotes no Yield', async ({ page }) => {
+    await page.goto(`/b/${encodeURIComponent(BUILD_CODE)}`, {
+      waitUntil: 'domcontentloaded',
+    });
+
+    await expect(page.getByTestId('artifact-landing')).toBeVisible();
+    await expect(page.getByTestId('artifact-title')).toHaveText('Vyper — Gen 4');
+
+    // Rule 14: "a way in".
+    const play = page.getByTestId('artifact-play');
+    await expect(play).toBeVisible();
+    await expect(play).toHaveAttribute('href', /^\/(game|codex)/);
+
+    // The constraint the class exists under: a forgeable code carries no
+    // rankable number, so neither does the page rendered from it.
+    const body = (await page.getByTestId('artifact-landing').innerText()).toLowerCase();
+    expect(body).not.toContain('yield');
+    expect(body).not.toContain('score');
+
+    // Rule 7: no commercial surface.
+    await expect(page.locator('a[href^="/shop"]')).toHaveCount(0);
+  });
+
+  test('a code naming a gene that does not exist 404s rather than guessing', async ({
+    page,
+  }) => {
+    const response = await page.goto('/b/Vyper~CYBER~4~gold_trail%2Cnot_a_gene~~~0', {
+      waitUntil: 'domcontentloaded',
+    });
+    expect(response?.status()).toBe(404);
+  });
+
+  test('a code with the wrong field count 404s', async ({ page }) => {
+    const response = await page.goto('/b/Vyper~CYBER~4~gold_trail', {
+      waitUntil: 'domcontentloaded',
+    });
+    expect(response?.status()).toBe(404);
+  });
+});
+
+test.describe('flag off — the build page is absent but its card is not', () => {
+  test.skip(WORKBENCH_ENABLED, 'NEXT_PUBLIC_WORKBENCH_V1 is on');
+
+  test('/b/<code> is not found', async ({ page }) => {
+    const response = await page.goto(`/b/${encodeURIComponent(BUILD_CODE)}`, {
+      waitUntil: 'domcontentloaded',
+    });
+    expect(response?.status()).toBe(404);
+  });
+
+  test('and the already-shared link still unfurls', async ({ request }) => {
+    const response = await request.get(`/b/${encodeURIComponent(BUILD_CODE)}/opengraph-image`);
     expect(response.status()).toBe(200);
   });
 });

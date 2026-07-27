@@ -2,14 +2,21 @@
 
 /**
  * VariantDetailModal - Full-screen modal for viewing owned snake details
- * Displays art, lore, stats, and action buttons (Equip, Breed, Favorite)
- * Panel-elevated sheet that pops in over the void; closes on backdrop
- * click or back button.
+ * Displays art, the variant's roster, lore, stats, and action buttons
+ * (Equip, Breed, Favorite). Panel-elevated sheet that pops in over the void;
+ * closes on backdrop click or back button.
+ *
+ * `owned` means THE SELECTED SNAKE. A variant the player holds several of
+ * renders a roster selector under the art, and every stat below it -
+ * Generation, Traits, Lineage, starting strain points - describes whichever
+ * sibling is selected. That is why the fix is one prop's meaning rather than
+ * a second display path.
  */
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
+import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import type { SnakeVariant, OwnedSnake, Dynasty } from '@/shared/types/snake-data-model';
 import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
 import { getTraitSlots } from '@/shared/game/traits';
@@ -24,7 +31,15 @@ import { IconArrowRight, IconBolt, IconCheck, IconEgg, IconSnake } from '@/compo
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
+  /** The SELECTED snake of the roster below - every stat describes this one */
   owned: OwnedSnake;
+  /**
+   * Every snake of this variant the player owns, in roster order. Defaults to
+   * `[owned]`, so a caller with a single snake needs no extra wiring.
+   */
+  roster?: OwnedSnake[];
+  /** Switch the sheet to a sibling */
+  onSelectSnake?: (snake: OwnedSnake) => void;
   dynasty: Dynasty;
   isOpen: boolean;
   onClose: () => void;
@@ -34,8 +49,14 @@ export interface VariantDetailModalProps {
   isEquipping: boolean;
   isLaunching?: boolean;
   isEquipped: boolean;
+  /** The id of the player's equipped snake, for marking it in the roster */
+  equippedSnakeId?: string | null;
+  /** Equip failure for THIS sheet - never the page-wide error banner */
+  equipError?: string | null;
   isUpdatingLineage?: boolean;
   onSelectLineagePrimary?: (strain: StrainId) => Promise<void>;
+  /** Persist the favorite flag; the roster rule reads it */
+  onToggleFavorite?: (snakeId: string, favorited: boolean) => Promise<boolean>;
 }
 
 /**
@@ -53,11 +74,17 @@ function hexToRgba(hex: string, opacity: number): string {
  * Heart glyph for the Favorite toggle (no equivalent in the shared icon
  * set; inherits currentColor like the shared icons).
  */
-function HeartIcon({ filled }: { filled: boolean }): React.ReactElement<any> {
+function HeartIcon({
+  filled,
+  size = 20,
+}: {
+  filled: boolean;
+  size?: number;
+}): React.ReactElement<any> {
   return (
     <svg
-      width="20"
-      height="20"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
@@ -123,6 +150,8 @@ function capitalizeRarity(rarity: string): string {
 export function VariantDetailModal({
   variant,
   owned,
+  roster,
+  onSelectSnake,
   dynasty,
   isOpen,
   onClose,
@@ -132,12 +161,17 @@ export function VariantDetailModal({
   isEquipping,
   isLaunching = false,
   isEquipped,
+  equippedSnakeId = null,
+  equipError = null,
   isUpdatingLineage = false,
   onSelectLineagePrimary,
+  onToggleFavorite,
 }: VariantDetailModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
   const modalRef = useRef<HTMLDivElement>(null);
-  const [isFavorited, setIsFavorited] = React.useState(owned.isFavorited);
+
+  const siblings = roster && roster.length > 0 ? roster : [owned];
+  const isFavorited = owned.isFavorited === true;
 
   const rarity = RARITY_STYLE[variant.rarity] ?? RARITY_STYLE.common;
   const lineage = sanitizeLineage(owned.lineage);
@@ -169,12 +203,11 @@ export function VariantDetailModal({
     };
   }, [isOpen, onClose]);
 
-  // Focus trap: focus modal when opened
-  useEffect(() => {
-    if (isOpen && modalRef.current) {
-      modalRef.current.focus();
-    }
-  }, [isOpen]);
+  // Keyboard focus stays inside the sheet and returns where it started.
+  // Deliberately NOT a ModalDialog migration: thirteen files hand-roll
+  // role="dialog", ModalDialog anchors to the top, and this is a
+  // bottom-anchored sheet - swapping it would be a visual change, not a fix.
+  useDialogFocusTrap(modalRef, isOpen);
 
   // Handle backdrop click
   const handleBackdropClick = useCallback(
@@ -186,10 +219,10 @@ export function VariantDetailModal({
     [onClose]
   );
 
-  // Handle favorite toggle
+  // Handle favorite toggle - persisted, because the roster rule reads it
   const handleFavoriteToggle = useCallback(() => {
-    setIsFavorited(!isFavorited);
-  }, [isFavorited]);
+    void onToggleFavorite?.(owned.id, !isFavorited);
+  }, [onToggleFavorite, owned.id, isFavorited]);
 
   // Handle breed click - parent navigates to the Breeding Lab
   const handleBreedClick = useCallback(() => {
@@ -276,6 +309,74 @@ export function VariantDetailModal({
             </div>
           </div>
 
+          {/*
+            Roster selector: one option per snake of this variant. A
+            wrapping radiogroup, NOT a horizontal scroller - this sheet
+            shipped a scroll bug three commits ago, and a row that scrolls
+            inside a sheet that scrolls hides options behind a gesture.
+            A single-snake variant renders nothing here.
+          */}
+          {siblings.length > 1 && (
+            <div className="px-4 pt-4" data-testid="variant-roster-selector">
+              <span className="label-arcade block mb-2">
+                Your {variant.name} ({siblings.length})
+              </span>
+              <div
+                role="radiogroup"
+                aria-label={`Choose which ${variant.name} to view`}
+                className="flex flex-wrap gap-2"
+              >
+                {siblings.map((snake) => {
+                  const isSelected = snake.id === owned.id;
+                  const snakeEquipped = snake.id === equippedSnakeId;
+                  return (
+                    <button
+                      key={snake.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() => onSelectSnake?.(snake)}
+                      data-testid={`roster-option-${snake.id}`}
+                      className={`flex items-center gap-1.5 rounded-arcade border px-3 py-2 min-h-[44px] font-mono text-xs transition-colors focus:outline-none focus-visible:ring-2 ${
+                        isSelected
+                          ? 'bg-scale-blue/70 text-bone-white'
+                          : 'bg-void-deep/60 text-beige/70 hover:text-bone-white'
+                      }`}
+                      style={{
+                        borderColor: isSelected
+                          ? theme.glow
+                          : hexToRgba(theme.glow, 0.25),
+                        boxShadow: isSelected
+                          ? `0 0 14px -6px ${theme.glow}`
+                          : undefined,
+                      }}
+                      aria-label={
+                        `Generation ${snake.generation}` +
+                        (snake.isFavorited ? ', favorited' : '') +
+                        (snakeEquipped ? ', equipped' : '')
+                      }
+                    >
+                      <span>Gen {snake.generation}</span>
+                      {snake.isFavorited && (
+                        <span className="text-strike-red" aria-hidden="true">
+                          <HeartIcon filled size={14} />
+                        </span>
+                      )}
+                      {snakeEquipped && (
+                        <span
+                          className="text-venom-orange"
+                          aria-hidden="true"
+                        >
+                          <IconCheck size={14} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Lore text section */}
           {variant.loreText && (
             <div className="px-4 pt-4">
@@ -313,7 +414,10 @@ export function VariantDetailModal({
               </div>
               <div>
                 <span className="label-arcade block">Generation</span>
-                <span className="text-sm font-body font-semibold text-bone-white">
+                <span
+                  className="text-sm font-body font-semibold text-bone-white"
+                  data-testid="variant-generation"
+                >
                   Gen {owned.generation}
                 </span>
               </div>
@@ -326,8 +430,9 @@ export function VariantDetailModal({
             </div>
 
             {/* Traits (Design v2 Phase 3A): permanent snake-bound
-                sidegrades. Filled chips carry effect + tradeoff tooltips;
-                dashed slots show unlocked-but-unfilled potential. */}
+                sidegrades. Each filled chip is tappable — this section is
+                plain layout, so a chip may safely be a button here, unlike
+                the lineage row below where the chip sits inside a select. */}
             <div className="mb-4" data-testid="variant-traits-section">
               <span className="label-arcade block mb-2">Traits</span>
               <TraitChipRow
@@ -337,6 +442,7 @@ export function VariantDetailModal({
                   getTraitSlots(variant.rarity, owned.generation)
                 }
                 size="md"
+                interactive
               />
               {(owned.traits?.length ?? 0) === 0 && (
                 <p className="text-xs mt-2 font-body text-beige/60">
@@ -349,6 +455,13 @@ export function VariantDetailModal({
             {lineage && (
               <div className="mb-4" data-testid="variant-lineage-section">
                 <span className="label-arcade block mb-2">Lineage</span>
+                {/*
+                  These chips stay display-only: each one is the label of a
+                  select button, and a popover trigger inside it would be a
+                  button inside a button — invalid, and unreachable by
+                  keyboard. The strain's identity travels in the chip's
+                  `aria-label` and in full in the Codex.
+                */}
                 <div className="flex items-center gap-2 flex-wrap">
                   {lineage.strains.map((strain) => (
                     <button
@@ -392,12 +505,15 @@ export function VariantDetailModal({
                     Starts runs with
                   </span>
                   <div className="flex gap-1.5 flex-wrap mt-1">
+                    {/* Tappable: these chips stand alone, so unlike the
+                        lineage-primary chips above they can be buttons. */}
                     {STRAIN_IDS.filter((strain) => (startingPoints[strain] ?? 0) > 0).map(
                       (strain) => (
                         <StrainChip
                           key={strain}
                           strain={strain}
                           points={startingPoints[strain]}
+                          interactive
                         />
                       )
                     )}
@@ -430,6 +546,21 @@ export function VariantDetailModal({
           className="px-4 py-4 flex flex-wrap gap-3 border-t bg-void/80"
           style={{ borderColor: hexToRgba(theme.glow, 0.3) }}
         >
+          {/*
+            Equip failures belong here, beside the control that caused them -
+            not in the page banner, whose "Retry" refetches the whole
+            collection and made one failure read as two.
+          */}
+          {equipError && (
+            <p
+              className="basis-full text-sm font-body text-strike-red"
+              role="alert"
+              data-testid="variant-equip-error"
+            >
+              {equipError}
+            </p>
+          )}
+
           {onPlay && (
             <button
               type="button"

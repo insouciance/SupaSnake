@@ -98,10 +98,35 @@ export const GAME_CONFIG = deepFreeze({
   /**
    * Game Session
    */
+  // WP-2.05 deleted `maxDuration: 600`. A flat ten-minute wall marked every
+  // long, careful run invalid — the tactical-hold play the extraction
+  // mechanic exists to reward — and it bounded nothing that the validator's
+  // comparison against the session's own `server_started_at` does not bound
+  // better. Owner ruling, 2026-07-26: a long run is a good run. Do not
+  // reintroduce a duration ceiling here; the bound belongs in the validator,
+  // against observed server time.
   session: {
     victoryScore: 100,               // Score to "win"
-    maxDuration: 600,                // 10 minutes max (seconds)
     saveInterval: 5000,              // Autosave every 5s (ms)
+    /**
+     * Tactical holds — the bound that replaced the deleted `maxDuration`.
+     *
+     * A hold is a real tactical resource: it buys thinking time, so an
+     * unlimited supply turns a precision game into a turn-based one. Three
+     * to open, and the run earns more as the body gets genuinely hard to
+     * steer. Choice holds (gene / portal / surge) are NEVER charged — those
+     * are the run's own decisions, protected by Inviolable Rule 1.
+     *
+     * Purely physical and purely client-side: a hold carries no economy, so
+     * there is nothing here for the server to enforce. Duration is bounded
+     * server-side (WP-2.05).
+     */
+    holds: {
+      /** Holds every run opens with. */
+      base: 3,
+      /** Body lengths that each grant one more hold, once, when reached. */
+      bonusAtLengths: [25, 40] as readonly number[],
+    },
   },
 
   /**

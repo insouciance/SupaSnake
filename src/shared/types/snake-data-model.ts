@@ -204,6 +204,26 @@ export interface EquipRequest {
 export interface EquipResponse {
   success: boolean;
   error?: string;
+  /**
+   * The freshly equipped row, re-read with its variant and dynasty join.
+   * The route has always returned it; declaring it is what lets the client
+   * apply the server's truth instead of keeping its optimistic guess.
+   * Absent when the equip committed but the re-read failed — the equip still
+   * succeeded, so `success` stays true and the client refreshes later.
+   */
+  equippedSnake?: OwnedSnake;
+}
+
+export interface FavoriteRequest {
+  snakeId: string;
+  favorited: boolean;
+}
+
+export interface FavoriteResponse {
+  success: boolean;
+  error?: string;
+  snakeId?: string;
+  favorited?: boolean;
 }
 
 // =============================================================================

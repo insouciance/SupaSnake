@@ -509,7 +509,17 @@ describe('Game Session Logic', () => {
       );
 
       const { rawDna } = computeRunTotals('PRIMAL', 30);
-      expect(result.valid).toBe(false);
+      // WP-2.05: ADVISORY. The claim is refused - the payout is and always
+      // was the server recompute - but refusing a CLAIM is not the same as
+      // refusing a RUN, and the run keeps its progression.
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('DNA_MISMATCH')
+      );
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('SCORE_MISMATCH')
+      );
+      expect(result.fatalErrors).toEqual([]);
       expect(result.adjustedDna).toBe(applyOutcome(rawDna, true));
     });
 
@@ -535,8 +545,13 @@ describe('Game Session Logic', () => {
         'COSMIC'
       );
 
-      expect(result.valid).toBe(false); // claim mismatch flags the session
-      expect(result.adjustedDna).toBe(0); // and pays the recompute: nothing
+      // WP-2.05: the mismatch is recorded as advisory; the run is still
+      // bounded, and it still pays exactly nothing.
+      expect(result.valid).toBe(true);
+      expect(result.advisoryErrors).toContainEqual(
+        expect.stringContaining('DNA_MISMATCH')
+      );
+      expect(result.adjustedDna).toBe(0); // pays the recompute: nothing
       expect(result.foodCount).toBe(0);
     });
 
@@ -671,10 +686,20 @@ describe('Game Session Logic', () => {
       expect(source).toMatch(
         /const yieldDna = applyAscendanceYield\(\s*validation\.adjustedDna,\s*ascendanceGeneration\s*\);/
       );
-      // The generation comes from the SNAKE ROW, never from the request.
+      // The generation comes from SERVER STATE, never from the request.
+      // WP-2.05 added the run-start context in front of the snake-row read:
+      // the generation that pays is the one the run STARTED with, so a breed
+      // completing mid-run cannot change what the run in flight is worth.
+      // The snake row remains the fallback for any run without a context.
       expect(source).toMatch(
-        /const ascendanceGeneration =\s*typeof usedSnakeRow\?\.generation === 'number'/
+        /const ascendanceGeneration =\s*runContext\?\.snake\.generation \?\?/
       );
+      expect(source).toMatch(
+        /typeof usedSnakeRow\?\.generation === 'number'/
+      );
+      // And still nothing from the request: `body.generation` has never
+      // existed and must not start now.
+      expect(source).not.toMatch(/\bbody\.generation\b/);
     });
 
     it('the multiplier module is gone from the tree entirely', () => {

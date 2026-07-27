@@ -108,4 +108,38 @@ describe('RunSetupPanel', () => {
     expect(screen.getByText('Rate limited. Wait 5s')).toBeInTheDocument();
     expect(screen.getByTestId('earn-start')).toBeInTheDocument();
   });
+
+  /**
+   * WP-2.07a. What the snake brings to the run is not an adjustable setting:
+   * a trait that removes every mutation food is something the player has to
+   * know BEFORE pressing START, so it sits outside the closed disclosure
+   * while everything tunable stays inside it.
+   */
+  it('shows the heirloom block outside the disclosure, without a second emphasis', () => {
+    const { container } = render(
+      <RunSetupPanel
+        {...props({ heirloom: <div data-testid="heirloom-summary" /> })}
+      />
+    );
+    const heirloom = screen.getByTestId('heirloom-summary');
+    const disclosure = screen.getByTestId('run-setup-adjust');
+
+    expect(screen.getByTestId('run-setup')).toContainElement(heirloom);
+    expect(disclosure).not.toContainElement(heirloom);
+    // Still exactly one emphasised action (§5).
+    expect(container.querySelectorAll('.btn-go')).toHaveLength(1);
+  });
+
+  it('drops the heirloom block when no snake resolved', () => {
+    render(
+      <RunSetupPanel
+        {...props({
+          snake: null,
+          noSnakeAvailable: true,
+          heirloom: <div data-testid="heirloom-summary" />,
+        })}
+      />
+    );
+    expect(screen.queryByTestId('heirloom-summary')).toBeNull();
+  });
 });

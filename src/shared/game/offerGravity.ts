@@ -105,40 +105,106 @@ export interface OfferContext {
   recentOffers?: GeneId[][];
   /** Lineage offer bias (strength 0+ lineages). */
   lineage?: LineageBias | null;
-  /** Anomaly strain week: +100 weight on this strain's genes. */
+  /**
+   * The run's single offer tilt: +`ANOMALY_STRAIN_WEIGHT` on this strain's
+   * genes. Named for the anomaly it began as; since WP-2.10b the SERVER
+   * resolves it from the whole world condition (anomaly + clause) through
+   * `conditionOfferTilt`, which collapses the composed weight map to its
+   * heaviest strain. The engine and `verifyOfferTrace` both receive that one
+   * resolved strain, so the drawn stream and the verified stream are the same
+   * stream by construction.
+   */
   anomalyStrain?: StrainId | null;
 }
 
 /** Anomaly strain-week weight (BUILDCRAFT_GENOME_DESIGN.md §9). */
 export const ANOMALY_STRAIN_WEIGHT = 100;
 
-function geneWeight(id: GeneId, ctx: OfferContext): number {
-  let weight: number = OFFER_GRAVITY.baseWeight;
-  let strainWeight = 0;
-  for (const strain of geneStrains(id)) {
-    strainWeight += OFFER_GRAVITY.perStrainPoint * (ctx.points[strain] ?? 0);
+/**
+ * Every term of one gene's offer weight, itemised.
+ *
+ * WHY THE BREAKDOWN IS THE PRIMITIVE AND THE SCALAR IS DERIVED
+ *
+ * The Workbench explains to a player WHY a gene is likely to be offered, and
+ * the draw decides WHETHER it is. If those were two calculations they would
+ * drift — the explanation is the sort of code nobody re-reads once it looks
+ * right. So `geneWeight` is defined as `geneWeightBreakdown(...).total` and
+ * the draw calls the scalar: the number the calculator itemises IS the number
+ * the stream weights by, and a divergence between them is not a bug that a
+ * test might catch but a state the code cannot reach.
+ */
+export interface GeneWeightBreakdown {
+  /** `OFFER_GRAVITY.baseWeight` — every candidate starts here. */
+  base: number;
+  /** Gravity before the per-gene cap: `perStrainPoint × points`, summed. */
+  strainRaw: number;
+  /** What the cap actually let through — the term that enters the total. */
+  strain: number;
+  /** True when `strainWeightCap` bound, i.e. `strain < strainRaw`. */
+  strainCapped: boolean;
+  /** `spliceCompletionWeight`, or 0 when this gene completes nothing held. */
+  spliceCompletion: number;
+  /** The held gene it would fuse with — the earliest such pick, or null. */
+  spliceWith: GeneId | null;
+  /** `lineageBiasWeight` while the run is inside `lineageBiasOffers`, else 0. */
+  lineage: number;
+  /** `ANOMALY_STRAIN_WEIGHT` when the run's condition tilts this gene, else 0. */
+  condition: number;
+  /** The sum. This is `geneWeight`. */
+  total: number;
+}
+
+export function geneWeightBreakdown(
+  id: GeneId,
+  ctx: OfferContext
+): GeneWeightBreakdown {
+  const strains = geneStrains(id);
+  const base: number = OFFER_GRAVITY.baseWeight;
+
+  let strainRaw = 0;
+  for (const strain of strains) {
+    strainRaw += OFFER_GRAVITY.perStrainPoint * (ctx.points[strain] ?? 0);
   }
-  weight += Math.min(OFFER_GRAVITY.strainWeightCap, strainWeight);
+  const strain = Math.min(OFFER_GRAVITY.strainWeightCap, strainRaw);
+
+  let spliceWith: GeneId | null = null;
   for (const pick of ctx.picks) {
     if (spliceForPair(pick.id, id) !== null) {
-      weight += OFFER_GRAVITY.spliceCompletionWeight;
+      spliceWith = pick.id;
       break;
     }
   }
-  if (
+  const spliceCompletion =
+    spliceWith === null ? 0 : OFFER_GRAVITY.spliceCompletionWeight;
+
+  const lineage =
     ctx.lineage &&
     ctx.offerIndex < OFFER_GRAVITY.lineageBiasOffers &&
-    geneStrains(id).some((s) => ctx.lineage!.strains.includes(s))
-  ) {
-    weight += OFFER_GRAVITY.lineageBiasWeight;
-  }
-  if (
-    ctx.anomalyStrain &&
-    geneStrains(id).includes(ctx.anomalyStrain)
-  ) {
-    weight += ANOMALY_STRAIN_WEIGHT;
-  }
-  return weight;
+    strains.some((s) => ctx.lineage!.strains.includes(s))
+      ? OFFER_GRAVITY.lineageBiasWeight
+      : 0;
+
+  const condition =
+    ctx.anomalyStrain && strains.includes(ctx.anomalyStrain)
+      ? ANOMALY_STRAIN_WEIGHT
+      : 0;
+
+  return {
+    base,
+    strainRaw,
+    strain,
+    strainCapped: strain < strainRaw,
+    spliceCompletion,
+    spliceWith,
+    lineage,
+    condition,
+    total: base + strain + spliceCompletion + lineage + condition,
+  };
+}
+
+/** The scalar the draw weights by — the breakdown's total, never a restatement. */
+export function geneWeight(id: GeneId, ctx: OfferContext): number {
+  return geneWeightBreakdown(id, ctx).total;
 }
 
 function weightedDraw(
@@ -168,6 +234,42 @@ export function topStrain(points: StrainPoints): StrainId | null {
     }
   }
   return best;
+}
+
+/**
+ * The strain the pity rule will force into slot 1 of the NEXT offer, or
+ * null when it will not fire.
+ *
+ * Pure, and reads exactly the inputs `rollGeneOffer` reads, so a PASS
+ * affordance can state the real consequence of passing instead of a
+ * generic promise. It is honest ONLY for the pass branch: declining leaves
+ * `points` and `picks` untouched, which is precisely why the next offer's
+ * slot 1 is knowable before it is rolled. Taking a gene can move the top
+ * strain and the candidate set, so this must never describe a pick.
+ *
+ * Call it with the offer stream's state AFTER the current offer has been
+ * pushed to `recentOffers` - the pity window counts offers, not picks, so
+ * the offer on screen is already part of the window it is being measured
+ * against.
+ */
+export function pityForecast(
+  ctx: Pick<OfferContext, 'picks' | 'pool' | 'points' | 'recentOffers'>
+): StrainId | null {
+  const top = topStrain(ctx.points);
+  if (top === null) return null;
+  const recent = ctx.recentOffers ?? [];
+  if (recent.length < OFFER_GRAVITY.pityOfferWindow) return null;
+  const starved = recent
+    .slice(-OFFER_GRAVITY.pityOfferWindow)
+    .every((offer) => !offer.some((id) => geneStrains(id).includes(top)));
+  if (!starved) return null;
+  const held = new Set(ctx.picks.map((p) => p.id));
+  const candidates = ctx.pool.filter((id) => !held.has(id) && id in GENES);
+  // Under two candidates there is no next offer at all, and a forced slot 1
+  // still needs a candidate carrying the strain - `rollGeneOffer` falls back
+  // to the unforced roll when `bestOfStrain` finds none.
+  if (candidates.length < 2) return null;
+  return candidates.some((id) => geneStrains(id).includes(top)) ? top : null;
 }
 
 /**

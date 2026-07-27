@@ -69,6 +69,59 @@ export async function getMasteryXp(
 }
 
 /**
+ * Result of a strict mastery read: either the XP, or the read error.
+ *
+ * `ok: true` still covers the pre-migration-019 window (no table, no rows) —
+ * "mastery is not live here" and "this player has no XP yet" both honestly
+ * mean level 0. What it no longer covers is a REAL read failure.
+ */
+export type MasteryXpResult =
+  | { ok: true; xp: number }
+  | { ok: false; error: unknown };
+
+/**
+ * The strict variant, for SETTLEMENT.
+ *
+ * WP-2.05: `getMasteryXp` below returns 0 on any error, and 0 XP is not a
+ * neutral default at settlement — it narrows `unlockedMutationPool`, which
+ * makes the validator drop legally-offered picks with `MUTATION_LOCKED` /
+ * `GENE_LOCKED`, which shrinks the recompute, which shrinks
+ * `validation.adjustedDna`, WHICH IS THE PAYOUT. A transient blip on
+ * `player_mastery` therefore took DNA off a finished run.
+ *
+ * Settlement calls this and answers 503 on `ok: false` so the outbox
+ * retries. The lenient reader stays for paths where a narrower pool is a
+ * display concern rather than a payout one.
+ */
+export async function getMasteryXpStrict(
+  supabase: SupabaseClient,
+  playerId: string,
+  dynasty: DynastyName
+): Promise<MasteryXpResult> {
+  try {
+    const { data, error } = await supabase
+      .from('player_mastery')
+      .select('xp')
+      .eq('player_id', playerId)
+      .eq('dynasty', dynasty)
+      .maybeSingle();
+
+    if (error) {
+      // Pre-019 is not a failure - it is "mastery is not live yet".
+      if (isMissingMasteryInfra(error)) return { ok: true, xp: 0 };
+      return { ok: false, error };
+    }
+    const xp = Number(data?.xp ?? 0);
+    return {
+      ok: true,
+      xp: Number.isFinite(xp) && xp > 0 ? Math.floor(xp) : 0,
+    };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+}
+
+/**
  * Grant banked mastery XP via the grant_mastery_xp RPC (upsert-add).
  * Returns the new XP total, or null when the grant could not be made
  * (pre-019 window: quiet; anything else: logged). Never throws.

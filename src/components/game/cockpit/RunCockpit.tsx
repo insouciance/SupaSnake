@@ -246,20 +246,34 @@ export function RunCockpit({
               <strong>{model.modeLabel}</strong>
               <span>{model.modeDetail}</span>
             </span>
-            {training ? (
-              <span className={styles.energyReadout} aria-label={training.comparison} title={training.comparison}>
-                <strong>{training.comparison}</strong>
-              </span>
-            ) : model.charge ? (
-              <span
-                className={styles.energyReadout}
-                aria-label={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
-                title={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
-              >
-                <span aria-hidden="true"><EnergyGlyph /></span>
-                <strong>{model.charge.remaining}/{model.charge.perDay}</strong>
-              </span>
-            ) : null}
+            <span className={styles.modeReadouts}>
+              {training ? (
+                <span className={styles.energyReadout} aria-label={training.comparison} title={training.comparison}>
+                  <strong>{training.comparison}</strong>
+                </span>
+              ) : model.charge ? (
+                <span
+                  className={styles.energyReadout}
+                  aria-label={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
+                  title={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
+                >
+                  <span aria-hidden="true"><EnergyGlyph /></span>
+                  <strong>{model.charge.remaining}/{model.charge.perDay}</strong>
+                </span>
+              ) : null}
+              {model.holds ? (
+                <span
+                  className={`${styles.energyReadout} ${styles.holdReadout}`}
+                  data-testid="hold-budget"
+                  data-spent={model.holds.remaining === 0 ? 'true' : 'false'}
+                  aria-label={`Tactical holds ${model.holds.remaining} of ${model.holds.total}`}
+                  title={`Tactical holds ${model.holds.remaining} of ${model.holds.total}`}
+                >
+                  <span aria-hidden="true"><PauseGlyph /></span>
+                  <strong>{model.holds.remaining}/{model.holds.total}</strong>
+                </span>
+              ) : null}
+            </span>
           </Instrument>
 
           {eventCallout ? (

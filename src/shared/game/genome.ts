@@ -40,6 +40,7 @@ import {
   STRAIN_PHYSICS,
   STRAIN_THRESHOLDS,
   capSpawnPoints,
+  moltResetLengthFor,
   strainTier,
   type StrainId,
   type StrainPoints,
@@ -53,6 +54,13 @@ import {
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
+import {
+  conditionBankDelta,
+  conditionStrainThresholdDelta,
+  normalizeCondition,
+  strainTierUnderCondition,
+  type ConditionInput,
+} from '@/shared/game/worldCondition';
 
 // =============================================================================
 // INPUT TYPES - the cross-workstream contract (engine payload, validator,
@@ -184,16 +192,28 @@ export function strainActivations(
   surges: StrainSurge[] = [],
   /** FTUE ceiling: tiers above the cap never activate (economy-binding). */
   tierCap: StrainTier = 3,
-  suppressedStrains: readonly StrainId[] = []
+  suppressedStrains: readonly StrainId[] = [],
+  /**
+   * The world condition's per-strain THRESHOLD shift, in points (WP-2.10b).
+   * Empty under no condition, which is every run the game had before it.
+   *
+   * A plain map rather than the condition object, because this is the one
+   * signature the ENGINE calls directly and it must not have to know what a
+   * `WorldCondition` is. Both sides derive the map from the same condition
+   * through `conditionStrainThresholdDelta`, so the activations the engine
+   * displays and the activations the payout recomputes are one calculation.
+   */
+  strainThresholdDelta: Readonly<Partial<Record<StrainId, number>>> = {}
 ): StrainActivations {
   const spawn = capSpawnPoints(heirloom);
   const result = {} as StrainActivations;
   for (const strain of STRAIN_IDS) {
     const points = spawn[strain] ?? 0;
+    const delta = strainThresholdDelta[strain] ?? 0;
     result[strain] = {
       points,
       genes: 0,
-      minorAt: points >= STRAIN_THRESHOLDS.minor ? 0 : null,
+      minorAt: points - delta >= STRAIN_THRESHOLDS.minor ? 0 : null,
       expressionAt: null,
       apexAt: null,
     };
@@ -213,7 +233,14 @@ export function strainActivations(
       s.points += 1;
       if (event.isGene) s.genes += 1;
       const strainCap = suppressedStrains.includes(strain) ? 1 : tierCap;
-      const tier = Math.min(strainCap, strainTier(s.points, s.genes));
+      const tier = Math.min(
+        strainCap,
+        strainTierUnderCondition(
+          s.points,
+          s.genes,
+          strainThresholdDelta[strain] ?? 0
+        )
+      );
       if (tier >= 1 && s.minorAt === null) s.minorAt = event.atFood;
       if (tier >= 2 && s.expressionAt === null) s.expressionAt = event.atFood;
       if (tier >= 3 && s.apexAt === null) s.apexAt = event.atFood;
@@ -265,8 +292,9 @@ export function computeLengthTrace(
   foodCount: number,
   activations: StrainActivations,
   input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>,
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): LengthTrace {
+  const anomaly = normalizeCondition(condition).anomaly;
   const lengthAtEat: number[] = [0];
   const shedEvents: ShedEvent[] = [];
   const loosePick = (id: GeneId) => view.loose.find((p) => p.id === id);
@@ -299,12 +327,19 @@ export function computeLengthTrace(
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
     len += growth;
     // Shed cycles (fused view replaces the loose Shed cycle post-fusion).
-    const cycles: { every: number; anchor: number; reset: number; source: ShedEvent['source'] }[] = [];
+    // `resetFor` takes the length the body has RIGHT NOW because Molt's
+    // shed is proportional; the absolute cycles simply ignore the argument.
+    const cycles: {
+      every: number;
+      anchor: number;
+      resetFor: (current: number) => number;
+      source: ShedEvent['source'];
+    }[] = [];
     if (shed) {
       cycles.push({
         every: MUTATION_PHYSICS.shedEveryFoods,
         anchor: shed.atFood,
-        reset: MUTATION_PHYSICS.shedResetLength,
+        resetFor: () => MUTATION_PHYSICS.shedResetLength,
         source: 'shed',
       });
     }
@@ -312,7 +347,7 @@ export function computeLengthTrace(
       cycles.push({
         every: SPLICE_ECONOMICS.regenesisShedEveryFoods,
         anchor: regenesis.atFood,
-        reset: SPLICE_ECONOMICS.regenesisResetLength,
+        resetFor: () => SPLICE_ECONOMICS.regenesisResetLength,
         source: 'regenesis',
       });
     }
@@ -320,7 +355,7 @@ export function computeLengthTrace(
       cycles.push({
         every: SPLICE_PHYSICS.moltedRebirthShedEveryFoods,
         anchor: moltedRebirth.atFood,
-        reset: SPLICE_PHYSICS.moltedRebirthResetLength,
+        resetFor: () => SPLICE_PHYSICS.moltedRebirthResetLength,
         source: 'molted_rebirth',
       });
     }
@@ -328,21 +363,23 @@ export function computeLengthTrace(
       cycles.push({
         every: STRAIN_PHYSICS.moltEveryFoods,
         anchor: molt,
-        reset: STRAIN_PHYSICS.moltResetLength,
+        resetFor: moltResetLengthFor,
         source: 'molt',
       });
     }
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
-      if (since > 0 && since % cycle.every === 0 && len > cycle.reset) {
-        shedEvents.push({ atFood: n, segmentsShed: len - cycle.reset, source: cycle.source });
-        len = cycle.reset;
+      if (since <= 0 || since % cycle.every !== 0) continue;
+      const reset = cycle.resetFor(len);
+      if (len > reset) {
+        shedEvents.push({ atFood: n, segmentsShed: len - reset, source: cycle.source });
+        len = reset;
       }
     }
     // Molt's growth floor is part of resolving this food, before any
     // later portal/collision/revive event stamped with the same food count.
     if (molt !== null && n > molt) {
-      len = Math.max(STRAIN_PHYSICS.moltResetLength, len);
+      len = Math.max(STRAIN_PHYSICS.moltMinLength, len);
     }
     // Reported losses at this food happen after the food resolves (Thick
     // Hide, Ouroboros, infuse cost), so they can take the body below the
@@ -569,8 +606,10 @@ function round4(value: number): number {
 export function genomeOutcomeMultipliers(
   input: GenomeRunInput,
   traits: TraitId[] = [],
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): { bank: number; death: number } {
+  const world = normalizeCondition(condition);
+  const anomaly = world.anomaly;
   const view = input.splicesEnabled === false
     ? { loose: [...input.picks], splices: [] }
     : fusePicks(input.picks);
@@ -579,7 +618,8 @@ export function genomeOutcomeMultipliers(
     input.heirloom,
     input.surges,
     input.tierCap ?? 3,
-    input.suppressedStrains ?? []
+    input.suppressedStrains ?? [],
+    conditionStrainThresholdDelta(world)
   );
   const benefitsVoided = reviveVoidsBenefits(input.revive);
   const heldGenes = input.picks.length;
@@ -649,6 +689,14 @@ export function genomeOutcomeMultipliers(
     bank = round4(bank + deltas.bank);
     death = round4(death + deltas.death);
   }
+  // The world condition's bank clause (WP-2.10b). Additive on the base the
+  // anomaly may already have replaced, exactly as the infuse and trait deltas
+  // are, and NEVER voided by a revive: a clause is a fact about the week the
+  // run was played in, not a benefit the run earned - the same reasoning that
+  // keeps trait deltas alive through a Phoenix. The §10 clamps below still
+  // bind, so no clause can lift the bank past 1.75.
+  const bankClause = conditionBankDelta(world);
+  if (bankClause !== 0) bank = round4(bank + bankClause);
   // Hard clamps (section 10).
   bank = Math.min(STRAIN_ECONOMICS.bankClamp, bank);
   death = Math.min(STRAIN_ECONOMICS.salvageClamp, death);
@@ -698,8 +746,10 @@ export function genomeClaimCaps(
   input: GenomeRunInput,
   basis: GenomeCapsBasis,
   lengthTrace: LengthTrace,
-  anomaly: AnomalyId | null = null
+  condition: ConditionInput = null
 ): GenomeClaimCaps {
+  const world = normalizeCondition(condition);
+  const anomaly = world.anomaly;
   const view = input.splicesEnabled === false
     ? { loose: [...input.picks], splices: [] }
     : fusePicks(input.picks);
@@ -708,7 +758,8 @@ export function genomeClaimCaps(
     input.heirloom,
     input.surges,
     input.tierCap ?? 3,
-    input.suppressedStrains ?? []
+    input.suppressedStrains ?? [],
+    conditionStrainThresholdDelta(world)
   );
   const find = (id: GeneId) => view.loose.find((p) => p.id === id);
   const fusedRicochet = view.splices.find((s) => s.spliceId === 'splice_ricochet');
@@ -780,28 +831,87 @@ export function genomeClaimCaps(
   };
 }
 
+/** The DNA-bearing claim fields, in report order. */
+export const GENOME_CLAIM_DNA_FIELDS = [
+  'aurumWakeDna',
+  'midasDna',
+  'moltFoodDna',
+  'ouroborosDna',
+  'staticChargeDna',
+  'ricochetDna',
+  'heartwoodDna',
+] as const;
+
+export type GenomeClaimDnaField = (typeof GENOME_CLAIM_DNA_FIELDS)[number];
+
+/** One clamp the server applied, with the DNA it cost the claim. */
+export interface GenomeClaimClamp {
+  /** The claim field, or 'total' for the aggregate backstop. */
+  field: GenomeClaimDnaField | 'secondSunTriggered' | 'total';
+  /** What the client claimed, normalized to a non-negative integer. */
+  claimed: number;
+  /** The server-computed ceiling. */
+  cap: number;
+  /** `claimed - accepted`: exactly the DNA this clamp removed. */
+  delta: number;
+}
+
+export interface GenomeClaimClampResult {
+  accepted: GenomeClaims;
+  bonusDna: number;
+  /** True when the aggregate backstop bound while every individual cap passed. */
+  globalClampHit: boolean;
+  /**
+   * Every clamp applied, individually. WP-2.05: this is what makes a
+   * `DNA_MISMATCH` explainable — the invariant the validator's tests pin is
+   * that `claimed - recomputed` is fully accounted for by these deltas, so
+   * no divergence is ever unattributed again.
+   */
+  clamps: GenomeClaimClamp[];
+}
+
 /**
- * Clamp untrusted claims against the caps. Returns the accepted claims
- * plus the total accepted bonus DNA and whether the GLOBAL clamp bound
- * while individual caps passed (the cheat signal - flag, never hide).
+ * Clamp untrusted claims against the caps. Returns the accepted claims,
+ * the total accepted bonus DNA, whether the GLOBAL clamp bound while
+ * individual caps passed (the cheat signal - flag, never hide), and the
+ * individual clamps that were applied.
  */
 export function clampGenomeClaims(
   raw: GenomeClaims,
   caps: GenomeClaimCaps
-): { accepted: GenomeClaims; bonusDna: number; globalClampHit: boolean } {
-  const clampInt = (value: unknown, cap: number): number => {
+): GenomeClaimClampResult {
+  const clamps: GenomeClaimClamp[] = [];
+  const normalize = (value: unknown): number => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(cap, Math.floor(value)));
+    return Math.max(0, Math.floor(value));
   };
+  const clampInt = (field: GenomeClaimDnaField, cap: number): number => {
+    const claimed = normalize(raw[field]);
+    const acceptedValue = Math.min(cap, claimed);
+    if (claimed > acceptedValue) {
+      clamps.push({ field, claimed, cap, delta: claimed - acceptedValue });
+    }
+    return acceptedValue;
+  };
+  const secondSunClaimed = raw.secondSunTriggered === true;
+  const secondSunAccepted = secondSunClaimed && caps.secondSunFlat > 0;
+  if (secondSunClaimed && !secondSunAccepted) {
+    clamps.push({
+      field: 'secondSunTriggered',
+      claimed: 1,
+      cap: 0,
+      delta: 1,
+    });
+  }
   const accepted: GenomeClaims = {
-    aurumWakeDna: clampInt(raw.aurumWakeDna, caps.aurumWakeDna),
-    midasDna: clampInt(raw.midasDna, caps.midasDna),
-    moltFoodDna: clampInt(raw.moltFoodDna, caps.moltFoodDna),
-    ouroborosDna: clampInt(raw.ouroborosDna, caps.ouroborosDna),
-    staticChargeDna: clampInt(raw.staticChargeDna, caps.staticChargeDna),
-    ricochetDna: clampInt(raw.ricochetDna, caps.ricochetDna),
-    heartwoodDna: clampInt(raw.heartwoodDna, caps.heartwoodDna),
-    secondSunTriggered: raw.secondSunTriggered === true && caps.secondSunFlat > 0,
+    aurumWakeDna: clampInt('aurumWakeDna', caps.aurumWakeDna),
+    midasDna: clampInt('midasDna', caps.midasDna),
+    moltFoodDna: clampInt('moltFoodDna', caps.moltFoodDna),
+    ouroborosDna: clampInt('ouroborosDna', caps.ouroborosDna),
+    staticChargeDna: clampInt('staticChargeDna', caps.staticChargeDna),
+    ricochetDna: clampInt('ricochetDna', caps.ricochetDna),
+    heartwoodDna: clampInt('heartwoodDna', caps.heartwoodDna),
+    secondSunTriggered: secondSunAccepted,
   };
   let bonusDna =
     (accepted.aurumWakeDna ?? 0) +
@@ -815,9 +925,15 @@ export function clampGenomeClaims(
   let globalClampHit = false;
   if (bonusDna > caps.globalClaimsCap) {
     globalClampHit = true;
+    clamps.push({
+      field: 'total',
+      claimed: bonusDna,
+      cap: caps.globalClaimsCap,
+      delta: bonusDna - caps.globalClaimsCap,
+    });
     bonusDna = caps.globalClaimsCap;
   }
-  return { accepted, bonusDna, globalClampHit };
+  return { accepted, bonusDna, globalClampHit, clamps };
 }
 
 // =============================================================================
