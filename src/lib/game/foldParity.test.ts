@@ -72,6 +72,7 @@ import {
 } from '@/shared/game/genome';
 import type { GeneId, GenePick } from '@/shared/game/genes';
 import { STRAIN_PHYSICS, type StrainPoints } from '@/shared/game/strains';
+import { GROWTH_PROFILES, type GrowthProfileId } from '@/shared/game/growth';
 import type { TraitId } from '@/shared/game/traits';
 import type { AnomalyId } from '@/shared/game/anomalies';
 
@@ -99,6 +100,13 @@ interface Script {
    * subsequent food, and `last_gasp`/`bulk_up` read length cliffs.
    */
   infuses?: number[];
+  /**
+   * The run's growth profile (WP-3.02). The engine takes it as config and the
+   * server takes it on `GenomeRunInput`; if those two ever resolve differently
+   * the length traces diverge on the FIRST food, which is what these cases
+   * exist to prevent.
+   */
+  growthProfileId?: GrowthProfileId;
 }
 
 interface RunOutcome {
@@ -151,6 +159,7 @@ function runScript(script: Script): RunOutcome {
     traits: script.traits ?? [],
     anomaly: script.anomaly ?? null,
     genome: engineConfig(script),
+    ...(script.growthProfileId ? { growthProfileId: script.growthProfileId } : {}),
   });
   game.start();
 
@@ -222,6 +231,9 @@ function runScript(script: Script): RunOutcome {
     prevRunDied: script.prevRunDied ?? false,
     tierCap: script.tierCap ?? 3,
     splicesEnabled: script.splicesEnabled !== false,
+    ...(script.growthProfileId
+      ? { growthProfileId: script.growthProfileId }
+      : {}),
   };
 
   const totals = computeGenomeRunTotals(
@@ -523,6 +535,60 @@ describe('fold parity: INFUSE costs growth (Rule 15, v1.4)', () => {
       .map((len, i) => ({ atFood: i, len }))
       .filter((x, i, all) => i > 1 && x.len < all[i - 1].len);
     expect(drops).toEqual([]);
+  });
+});
+
+describe('fold parity: growth profiles (WP-3.02)', () => {
+  // THE TEST THIS WORK PACKAGE EXISTS FOR. A growth curve applied on one side
+  // only diverges on the FIRST food and compounds from there - and because
+  // `last_gasp` reads a length threshold and `bulk_up` a length bucket, the
+  // divergence lands on a payout cliff rather than drifting quietly. That is
+  // how a validated run gets taken away from a player who earned it.
+  const PROFILES = Object.keys(GROWTH_PROFILES) as GrowthProfileId[];
+
+  for (const growthProfileId of PROFILES) {
+    it(`${growthProfileId}: both length models agree food by food`, () => {
+      expectParity({ name: `growth ${growthProfileId}`, foods: 45, growthProfileId });
+    });
+
+    it(`${growthProfileId}: agrees with infuses and the length-cliff genes`, () => {
+      expectParity({
+        name: `growth ${growthProfileId} + cliffs`,
+        foods: 45,
+        growthProfileId,
+        infuses: [18, 28],
+        picks: [
+          { id: 'last_gasp', atFood: 6 },
+          { id: 'bulk_up', atFood: 10 },
+          { id: 'overgrowth', atFood: 14 },
+        ],
+      });
+    });
+  }
+
+  it('an unstamped run is byte-identical to baseline', () => {
+    // The default path: a run with no `run_context` stamp - every historical
+    // run, and any run started by an older client - must fold exactly as the
+    // shipped game did.
+    const unstamped = runScript({ name: 'unstamped', foods: 40 });
+    const explicit = runScript({
+      name: 'explicit baseline',
+      foods: 40,
+      growthProfileId: 'baseline',
+    });
+    expect(unstamped.engineLengthTrace).toEqual(explicit.engineLengthTrace);
+    expect(unstamped.serverDna).toBe(explicit.serverDna);
+    expect(unstamped.serverScore).toBe(explicit.serverScore);
+  });
+
+  it('the tuned profiles actually change the run, so the cases mean something', () => {
+    // A guard against the whole suite passing because the profile was never
+    // read: if `tuned` folded identically to `baseline`, every parity case
+    // above would be green and prove nothing.
+    const baseline = runScript({ name: 'b', foods: 40, growthProfileId: 'baseline' });
+    const tuned = runScript({ name: 't', foods: 40, growthProfileId: 'tuned' });
+    expect(tuned.engineLengthTrace).not.toEqual(baseline.engineLengthTrace);
+    expect(tuned.engineLengthTrace[40]).toBeGreaterThan(baseline.engineLengthTrace[40]);
   });
 });
 

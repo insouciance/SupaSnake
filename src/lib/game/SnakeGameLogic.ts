@@ -73,6 +73,12 @@ import {
 } from '@/shared/game/runEvents';
 import { isMutationId } from '@/shared/game/mutations';
 import {
+  baseGrowthForFood,
+  resolveGrowthProfile,
+  type GrowthProfile,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
+import {
   GENE_ECONOMICS,
   GENE_PHYSICS,
   GENE_POOL,
@@ -380,6 +386,14 @@ type EventCallback = (data?: unknown) => void;
 interface GameOptions {
   gridSize?: number;
   initialLength?: number;
+  /**
+   * The run's growth profile id (WP-3.02), as stamped by the server into
+   * `run_context`. Absent or unrecognised resolves to `baseline`, which is
+   * byte-identical to the shipped game. Never derive this from a
+   * `NEXT_PUBLIC_*` flag - the server recomputes length from the stamp, so a
+   * locally-chosen profile would diverge on every food.
+   */
+  growthProfileId?: GrowthProfileId;
   initialSpeed?: number;
   /**
    * Dynasty ruleset driving speed + scoring. Defaults to COSMIC. The page
@@ -508,6 +522,13 @@ export class SnakeGameLogic {
   private anomaly: AnomalyId | null;
   /** Genome capability - non-null only when the server issued a runSeed. */
   private genome: GenomeEngineConfig | null;
+  /**
+   * The run's growth profile (WP-3.02), server-stamped into `run_context`.
+   * NEVER read from a build-time flag: `computeLengthTrace` recomputes with
+   * the stamped profile, so a client that chose its own would diverge on
+   * every length and invalidate an honest run.
+   */
+  private growth: GrowthProfile;
   /** Derived fused view of heldMutations - recomputed on every pick. */
   private fusedView: FusedView = { loose: [], splices: [] };
   /** Derived strain activations - recomputed on pick/surge. */
@@ -621,6 +642,11 @@ export class SnakeGameLogic {
         : [...MUTATION_POOL];
     this.anomaly = options.anomaly ?? null;
     this.genome = options.genome ?? null;
+    this.growth = resolveGrowthProfile(options.growthProfileId);
+    // The profile owns the starting body unless a caller pinned one.
+    if (options.initialLength === undefined) {
+      this.initialLength = this.growth.initialLength;
+    }
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
@@ -1468,9 +1494,12 @@ export class SnakeGameLogic {
       // segment), so pricing first made that branch unreachable in the
       // engine and forced an out-of-fold payment to stand in for it.
 
-      // Growth beyond the normal +1 (head unshift, tail not popped):
-      // Overgrowth +2, Bulk Up +3 - fused parents keep their growth.
+      // Growth beyond the ONE segment the move already added (head unshift,
+      // tail not popped). The profile's base is the source of truth and is
+      // shared with `computeLengthTrace` - see growth.ts, "one function, both
+      // sides". Gene and anomaly extras layer on top, unchanged.
       const extraGrowth =
+        (baseGrowthForFood(this.growth, n) - 1) +
         (this.hasGene('overgrowth') ? MUTATION_PHYSICS.overgrowthExtraSegments : 0) +
         (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
         (this.anomaly === 'overgrown'
@@ -2464,8 +2493,17 @@ export class SnakeGameLogic {
    */
   private spawnFoods(): void {
     const constellation = this.ruleset.constellation;
+    // WP-3.02: the profile's simultaneous-food count joins the existing wave
+    // target. This is the TRAVERSE fix, not generosity - on the owner's record
+    // run the median seconds-per-food rose 3.0 -> 6.9 while the MEAN
+    // quadrupled, so it is the tail of long walks that ends runs in
+    // irritation, and more food on the board kills the tail specifically.
+    // COSMIC keeps wave semantics (constellation chains depend on wave
+    // identity); the other two get the profile's count.
     const target =
-      (constellation ? constellation.groupSize : 1) +
+      (constellation
+        ? constellation.groupSize
+        : Math.max(1, this.growth.simultaneousFoods)) +
       (this.hasMutation('splitter') ? 1 : 0) +
       // Starweaver (COSMIC M3): constellation groups gain one extra food
       (constellation && this.hasMutation('starweaver')

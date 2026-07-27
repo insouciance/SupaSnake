@@ -55,6 +55,11 @@ import {
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
 import {
+  baseGrowthForFood,
+  resolveGrowthProfile,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
+import {
   conditionBankDelta,
   conditionStrainThresholdDelta,
   normalizeCondition,
@@ -113,6 +118,17 @@ export interface GenomeRunInput {
   suppressedStrains?: readonly StrainId[];
   /** FTUE gate: false keeps parent genes loose and disables Splice effects. */
   splicesEnabled?: boolean;
+  /**
+   * The run's growth profile (WP-3.02), server-stamped into `run_context` at
+   * start and replayed here at settlement.
+   *
+   * It lives on the INPUT rather than as an optional parameter deliberately:
+   * every caller already threads this object, so the profile cannot be
+   * forgotten at one call site and silently default at another - which is how
+   * client and server drift apart. Absent or unrecognised resolves to
+   * `baseline`, the shipped curve, so historical blobs recompute unchanged.
+   */
+  growthProfileId?: GrowthProfileId;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -291,10 +307,14 @@ export function computeLengthTrace(
   view: FusedView,
   foodCount: number,
   activations: StrainActivations,
-  input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>,
+  input: Pick<
+    GenomeRunInput,
+    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId'
+  >,
   condition: ConditionInput = null
 ): LengthTrace {
   const anomaly = normalizeCondition(condition).anomaly;
+  const growthProfile = resolveGrowthProfile(input.growthProfileId);
   const lengthAtEat: number[] = [0];
   const shedEvents: ShedEvent[] = [];
   const loosePick = (id: GeneId) => view.loose.find((p) => p.id === id);
@@ -326,10 +346,12 @@ export function computeLengthTrace(
   }
   const reviveAt = input.revive?.atFood ?? null;
 
-  let len: number = GAME_CONFIG.snake.initialLength;
+  let len: number = growthProfile.initialLength;
   for (let n = 1; n <= foodCount; n++) {
     lengthAtEat[n] = len;
-    let growth = 1;
+    // The profile's base growth - the ONE function the engine also calls
+    // (growth.ts). Gene and anomaly extras layer on top, exactly as before.
+    let growth = baseGrowthForFood(growthProfile, n);
     if (anomaly === 'overgrown') growth += ANOMALY_PHYSICS.overgrownExtraSegments;
     if (activeAt(overgrowth, n)) growth += MUTATION_PHYSICS.overgrowthExtraSegments;
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
