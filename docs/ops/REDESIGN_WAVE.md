@@ -254,6 +254,13 @@ As specced there, with the verifications from this planning pass folded in:
   become profile fields, re-based for `tuned`/`aggressive`, unchanged in
   `baseline` — the lab must test the draft at the new pacing or it measures a
   build system that won't exist.
+- **Standing review question for this wave, earned the hard way:** *what unit is
+  this bound in, and what happens to it when the thing it depends on changes?*
+  Three bounds were found denominated in the wrong unit in a single day —
+  `maxFoodPerSecond` (blind to multi-food, and soon to board occupancy), the
+  extraction window (ticks, so it shrinks fourfold as CYBER accelerates), and the
+  hold-bonus thresholds (absolute lengths, now reached within seconds). Every
+  bound this wave touches gets that question asked of it in review.
 - Rate bound derived, not guessed: `maxFoodPerSecond × simultaneousFoods`
   (`gameValidator.ts` food-rate branch), with the derivation in the comment.
 - Profile server-stamped into `run_context`; flag `NEXT_PUBLIC_GROWTH_LAB_V1`
@@ -291,6 +298,25 @@ ruled and §1.3's targets are confirmed or re-fit from the new `run_events`
 ---
 
 ### WP-3.04 — D3 score curves, CYBER pressure, boards cutover
+
+**Grown by the owner's CYBER playtest (2026-07-27) — see
+`docs/game/TERRAIN_AND_CYBER.md` for the full spec and its evidence.** Three
+additions, all measured rather than guessed:
+
+- **The terrain primitive** — a block is an occupied, lethal cell, forming
+  (non-lethal, telegraphed) then solid, added and never removed. Food-indexed
+  cadence and seeded cell choice so the server can replay it; without that it
+  cannot be validated and must not ship. **Shared machinery**: it is also the
+  shed rewrite (FERAL-2 / kill-list row 26) and a future ladder rung, so it
+  moves *earlier* than 3.04 if 3.03's FERAL-2 ruling needs it first.
+- **CYBER's tick floor rises to ~100 ms [H]** from 50. The owner's three
+  in-run calls (94 ms "approaching sensible", 97 ms "stops being fun", 84 ms
+  "way too fast") bracket the same value the Canabalt-derived bound predicts
+  (100–120 ms), and the banked run showed ticks-per-food climbing **18 → 113**
+  past the floor — speed stops being difficulty and becomes inefficiency.
+- **CYBER gets its own `ExtractionConfig`, authored in seconds.** The shared
+  `despawnTicks: 90` gives PRIMAL an 18 s portal window and CYBER 4.5 s at its
+  floor. Fix the unit, not the number.
 
 - `scoreMultiplier` per dynasty becomes a *shape*: CYBER front-loaded, PRIMAL
   back-loaded, COSMIC mid-weighted [H formulas drafted for owner feel-check —
