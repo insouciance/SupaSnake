@@ -1,8 +1,16 @@
 # Production Release Runbook
 
-Current baseline: application runtime `cb2e112` (deployed 2026-07-26 14:38 UTC,
-run 30206502603), and hosted migrations 001–052. The linked migration dry-run is
-currently a no-op.
+Current baseline: application runtime `7dec037` — the Playtest Wave, deployed
+2026-07-27 07:29 UTC, run 30245968841, deployment `dpl_3cdCVw9TpYVRrSvCrhTkf6WQSYrV`
+— and hosted migrations 001–056. The linked migration dry-run is currently a
+no-op. Rollback anchor for this release (precondition 3):
+`dpl_6XkMBj196wUaoZmy8SRapLmyWFcv`, commit `cb2e112`, 2026-07-26 14:38 UTC.
+
+Nothing in the pipeline records that rollback ID automatically — it was read
+from the Vercel dashboard by hand, because `VERCEL_TOKEN` lives only as a GitHub
+Actions secret. The job that promotes already holds that token, so it should
+print the outgoing deployment ID before promoting and make this paragraph a
+copy rather than a lookup.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
