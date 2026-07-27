@@ -1366,6 +1366,17 @@ Stripe-in-test-mode means no purchases to honor — this is the last cheap momen
 | 23 | `shed` (every 25 foods, tail resets to length 8) — v1.4, Rule 15 | **Delete.** Its Launch-Ten slot goes to `static_charge` [H] | The catalog's strongest safety valve — and the reason INFUSE was never a real cost |
 | 24 | `splice_regenesis` and `splice_molted_rebirth` — v1.4 | **Delete** (both are `shed`'s children by parentage; splice catalog 10 → 8) | Two recipes; the only two that carried an absolute reset forward |
 | 25 | Length-resetting revives — Phoenix, Styx, Molted Rebirth, Second Sun (all truncate to 8 through one engine funnel) — v1.4 | **Convert:** keep the 3-cell rewind, delete the truncation, add a short phase window so a full-length snake can escape the jam that killed it | The clean-slate second chance; revives stop being a difficulty rollback |
+
+**Note on row 25, recorded because it will be re-raised.** During the 27 July
+playtest the owner found the length-8 revive *fair on CYBER*, on the grounds that
+"speed isn't decreased" — i.e. it did not rewind the thing that was actually
+killing them. That observation was correct **for CYBER as it shipped**, where the
+board is irrelevant: a good banked run ended at 13.5% occupancy and the all-time
+ceiling is 21.8%. It stops being correct once CYBER's arena closes
+(`docs/game/TERRAIN_AND_CYBER.md`), because free space then becomes CYBER's clock
+too, and a length reset rewinds it exactly as it does on PRIMAL. Rule 15 therefore
+holds on all three dynasties — but only *after* the redesign, which is why it read
+as wrong in the game the owner was playing at the time.
 | 26 | FERAL tier 2 "Molt" as shed-based — v1.4 | **Replace the effect** (its shed *is* the effect, so it cannot be re-priced). `heartwood`, which triggers on shed events, re-targets with it | The proportional-shed identity WP-2.09 built |
 
 Defect fixes riding the same phases (not kills): leaderboard eligibility + myRank
