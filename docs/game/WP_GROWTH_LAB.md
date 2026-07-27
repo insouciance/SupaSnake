@@ -81,12 +81,16 @@ existing sites, unchanged.
 | Growth, foods 12–31 | +1 | **+2** | **+2** (to food 27) |
 | Growth thereafter | +1 | **+1 per 6 foods, cap 8** | **+1 per 5 foods, cap 10** |
 | Simultaneous foods | 1 | **3** | **3** |
-| Projected foods to 45% | 177 | 53 | 47 |
-| Projected pressure at | ~8:00 | **1:30** | **1:06** |
-| Projected run end | ~19:48 | **~3:30** | **~3:06** |
+| Projected foods to 45% | 153 | 48 | 42 |
+| Projected pressure at | ~4:24 | **1:06** | **1:06** |
+| Projected run end | ~10:12 | **~3:12** | **~2:48** |
 
-Projections are from the D1 model with traverse mitigation applied. `baseline`
-must be **byte-identical to today** — it is the control, and a test asserts it.
+Projections are from the D1 model with traverse mitigation applied and **D4's
++8 INFUSE included** (three taken). `baseline` is the control and must be
+**byte-identical to today's growth curve** — a test asserts it. Note that
+`baseline` still shortens versus the shipped game (10:12 rather than ~19:48)
+purely because INFUSE now adds segments instead of removing them; that is D4
+doing its work, not a lab artefact.
 
 ### 2.3 Engine — `src/lib/game/SnakeGameLogic.ts`
 
@@ -143,19 +147,19 @@ a configuration that will never ship would answer the wrong question.
   (`mutations.ts:360-361`, `splices.ts:208-210,252-253`). No suppression logic
   is needed once they are gone, which removes the `genePoolBlockedByTraits`
   plumbing this WP previously required.
-- **INFUSE inverts to +8 segments** (from −4). This materially changes the model:
-  the owner's record run took three infuses, so under D4 it carries **+24
-  segments instead of −12** — a 36-segment swing, finishing at ~52% occupancy
-  rather than 42.8%. **The §D1 projections must be re-run against the inverted
-  cost before the profiles are tuned**; they currently assume −4.
+- **INFUSE inverts to +8 segments** (from −4). The owner's record run took three
+  infuses, so under D4 it carries **+24 segments instead of −12** — a 36-segment
+  swing, finishing at 51.7% occupancy rather than 42.8%. The D1 projections and
+  the profile table below **have been re-run against the inverted cost** and
+  include three infuses at +8.
 - **FERAL Molt** and **Ouroboros** need re-signing to cost growth. Until they
   are, exclude them from lab offers — not as a design statement, but because a
   half-converted mechanic measures nothing.
 - **Revives** must grant survival, not shrinkage. Phoenix's "reborn at length 8"
   is the largest D4 violation in the catalog; for the lab, exclude any revive
   that resets length.
-- **Score rescales.** ~53 foods instead of ~180 means run scores drop roughly
-  3×. **Lab runs must not enter the leaderboard or Records.** Mark them
+- **Score rescales.** ~48 foods instead of ~180 means run scores drop roughly
+  4×. **Lab runs must not enter the leaderboard or Records.** Mark them
   non-ranking at settlement, the way free-play runs already are, so boards stay
   comparable and the wave's restored `high_score` values are not buried.
 - **Yield and DNA are unaffected by design.** No economy change is in scope.

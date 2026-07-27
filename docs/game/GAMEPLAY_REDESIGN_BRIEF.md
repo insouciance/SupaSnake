@@ -87,7 +87,9 @@ stores per-food stamps as `{e:'f', n, t}` where **t is deciseconds** (death at
 **Traverse cost, fitted from that run:**
 `seconds_per_food ≈ 3.5 + 14.0 × occupancy` (4.2 s at 5% → 9.8 s at 45%; a 2.3×
 slowdown). A simulation using this fit predicts **19.8 min** for today's config
-against 18.9 actual — **within 5%**. Note the mean/median divergence past 25%
+against 18.9 actual — **within 5%**. (That validation runs under the rules live
+at the time, INFUSE −4. The projection tables in the proposal model D4's +8 and
+so read shorter; both are correct.) Note the mean/median divergence past 25%
 occupancy: most foods stay quick and a few become enormous. **The tail is the
 problem, not the average** — which points at multi-food spawning rather than a
 speed change.
@@ -176,10 +178,9 @@ literature (19%→34% completion, Nunes & Drèze 2006) is off for every new play
 A sequenced implementation plan, as work packages under the handoff protocol,
 covering:
 
-1. **The growth lab** (`WP_GROWTH_LAB.md`) — first, because it answers D1 and
-   because its projections must be **re-run against the inverted INFUSE cost**
-   (+8 rather than −4; the owner's record run swings 36 segments, ending nearer
-   52% than 43%).
+1. **The growth lab** (`WP_GROWTH_LAB.md`) — first, because it answers D1.
+   Its projections already include D4's inverted INFUSE (+8, three taken); the
+   recommended profile is 48 foods, pressure at 1:06, run ending near 3:12.
 2. **D4 catalog surgery** — delete the length-reducers, invert INFUSE, re-sign
    Ouroboros / Thick Hide / Molt, convert revives from shrinkage to survival.
 3. **The insurance→constraint conversion** — twelve deletion mechanics down to

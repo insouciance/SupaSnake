@@ -283,22 +283,36 @@ occupancy tracks `3 + n − 4·infuses` cleanly. The run held `wall_rush` and
 > the uncorrected data suggested)
 
 **Model validation: predicts 19.8 min for today's configuration against 18.9 min
-actually played — within 5%.** Everything below uses the same fit.
+actually played — within 5%.** Note this validation is run under the rules that
+were live at the time (INFUSE −4), which is what makes it a fair test against a
+real run. The projection table below uses the same fit but models **D4's +8**,
+which is why its "TODAY" row reads 17.9 rather than 19.8. Both numbers are
+correct; they answer different questions.
 
 **Projections.** "@20%" is minutes until pressure begins; "end" is minutes to the
 45% occupancy where the owner died; "+fix" holds seconds-per-food at 4.0 via
 traverse mitigation (multi-food spawning and/or tick scaling with length).
 
+**These projections include D4's inverted INFUSE cost (+8 segments, three taken).**
+The traverse *fit* is unchanged — it is an empirical occupancy→time relationship
+measured on a run that legitimately used −4 under the old rules — but every
+projection below models growth the way it will actually ship.
+
 | Configuration | Foods | @20% | end | end +fix |
 |---|---|---|---|---|
-| **TODAY** — 400 cells, start 3, +1 | 177 | — | **19.8** | 11.8 |
-| start 60, +1 | 120 | — | 15.4 | 8.0 |
-| start 60, accelerate +1/10 foods (cap 6) | 44 | — | 5.3 | 2.9 |
-| start 30, +3 flat | 50 | — | 6.0 | 3.3 |
-| 14×14 = 196, start 20, accel +1/15 (cap 4) | 38 | — | 4.4 | 2.5 |
-| owner's shape, as first stated: +5 <15, +1 <45, accel/10 | 79 | 1.9 | 9.2 | 5.3 |
-| owner's shape, tightened: +6 <12, **+2** <32, accel/6 (cap 8) | 53 | **1.5** | 6.2 | **3.5** |
-| owner's shape, aggressive: +8 <10, +2 <28, accel/5 (cap 10) | 47 | **1.1** | 5.6 | **3.1** |
+| **TODAY** — 400 cells, start 3, +1 | 153 | 4:24 | **17.9** | 10.2 |
+| start 60, accelerate +1/10 foods (cap 6) | 39 | 1:12 | 4.7 | 2.6 |
+| start 30, +3 flat | 42 | 1:18 | 5.0 | 2.8 |
+| 14×14 = 196, start 20, accel +1/15 (cap 4) | 32 | 1:06 | 3.7 | 2.1 |
+| owner's shape, as first stated: +5 <15, +1 <45, accel/10 | 72 | 1:12 | 8.8 | 4.8 |
+| owner's shape, **tightened**: +6 <12, **+2** <32, accel/6 (cap 8) | 48 | **1:06** | 5.8 | **3.2** |
+| owner's shape, aggressive: +8 <10, +2 <28, accel/5 (cap 10) | 42 | 1:06 | 5.1 | 2.8 |
+
+**The owner's record run, re-scored under D4:** the same 180 foods with three
+infuses at +8 instead of −4 gives length **207 = 51.7%** rather than 171 = 42.8%.
+And under D4 even today's flat +1 growth reaches the 45% terminus at food **153**
+instead of 177 — so inverting INFUSE alone shortens the longest run in the
+database by roughly two minutes, before any growth change at all.
 
 **Three conclusions.**
 
@@ -307,18 +321,20 @@ traverse mitigation (multi-food spawning and/or tick scaling with length).
    at 3.1–3.5** — the target band, from two changes neither of which is a system.
 2. **The owner's fast-plateau-accelerate shape works, but the plateau must be +2,
    not +1.** The plateau holds most of the run's foods, so it dominates total
-   time: raising it from +1 to +2 moves the run from 9.2 to 6.2 minutes on its
+   time: raising it from +1 to +2 moves the run from 8.8 to 5.8 minutes on its
    own. Non-monotonic growth curves have strong precedent (TGM's relief plateaus
    and false summit; NES Tetris's flat levels 19–28, "where all skilled play
    lives"; Pac-Man's speed peaking at level 5 of 255).
-3. **Pressure should begin around 1.5 minutes**, which the tightened shape
-   delivers. Today it begins at roughly minute eight, which is why half of all
-   runs — median 8% occupancy — never reach the game at all.
+3. **Pressure should begin around one minute**, which every candidate shape now
+   delivers. Today it begins around minute four and a half — and that is *with*
+   D4's inverted INFUSE helping. Under the shipped −4 cost it was closer to
+   minute eight, which is why half of all runs (median 8% occupancy) never reach
+   the game at all.
 
 **Recommended starting point for playtest:** board unchanged at 20×20, start
 length 3, growth **+6 for foods 1–11, +2 for foods 12–31, then +1 per 6 foods to
-a cap of 8**, plus traverse mitigation. Projected: 53 foods, pressure at 1:30,
-run ends near 3:30. Put it behind a flag and let the owner's hands confirm or
+a cap of 8**, plus traverse mitigation. Projected: **48 foods, pressure at 1:06,
+run ends near 3:12**. Put it behind a flag and let the owner's hands confirm or
 reject it — the model is calibrated to one player on one dynasty and should not
 be trusted past that.
 
