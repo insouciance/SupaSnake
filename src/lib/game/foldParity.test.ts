@@ -71,7 +71,7 @@ import {
   type LengthLossEvent,
 } from '@/shared/game/genome';
 import type { GeneId, GenePick } from '@/shared/game/genes';
-import type { StrainPoints } from '@/shared/game/strains';
+import { STRAIN_PHYSICS, type StrainPoints } from '@/shared/game/strains';
 import type { TraitId } from '@/shared/game/traits';
 import type { AnomalyId } from '@/shared/game/anomalies';
 
@@ -91,6 +91,14 @@ interface Script {
   tierCap?: 1 | 2 | 3;
   splicesEnabled?: boolean;
   prevRunDied?: boolean;
+  /**
+   * Food counts at which to walk into a portal and INFUSE. Rule 15 (v1.4)
+   * makes INFUSE cost GROWTH rather than segments, so this is the axis where
+   * a one-sided edit would silently invalidate honest runs — the engine
+   * paying +8 while `computeLengthTrace` still subtracts 4 diverges on every
+   * subsequent food, and `last_gasp`/`bulk_up` read length cliffs.
+   */
+  infuses?: number[];
 }
 
 interface RunOutcome {
@@ -159,6 +167,8 @@ function runScript(script: Script): RunOutcome {
     nextPick += 1;
   }
 
+  const infuseAt = new Set(script.infuses ?? []);
+
   for (let eaten = 0; eaten < script.foods; eaten++) {
     const state = game.getState();
     if (state.isGameOver || state.isDeathSequence) break;
@@ -169,6 +179,21 @@ function runScript(script: Script): RunOutcome {
     while (nextPick < picks.length && picks[nextPick].atFood <= n) {
       game.grantMutation(picks[nextPick].id, picks[nextPick].atFood);
       nextPick += 1;
+    }
+    if (infuseAt.has(n)) {
+      // Park the food out of reach and walk onto the exit instead, so the
+      // tick resolves as a portal arrival rather than an eat.
+      const head = game.getState().snake[0];
+      game.placeFood({ x: 0, y: 0, z: 0 });
+      game.placeExit({ x: head.x + 1, y: 0, z: head.z });
+      game.tick();
+      if (!game.resolvePortalChoice('infuse')) {
+        throw new Error(
+          `script "${script.name}": infuse at food ${n} was refused — check ` +
+            'the length minimum and the per-run cap before trusting this case'
+        );
+      }
+      if (game.getState().pendingChoice) game.declineMutation();
     }
   }
 
@@ -425,6 +450,79 @@ describe('fold parity: the tithe floor (divergence E)', () => {
       ],
       foods: 60,
     });
+  });
+});
+
+describe('fold parity: INFUSE costs growth (Rule 15, v1.4)', () => {
+  // Written BEFORE the inversion, per the standing rule. The parity cases are
+  // the regression guard - they pass on either side of the change so long as
+  // BOTH sides move together, which is the failure this file exists to catch.
+  // The direction case below is the red-first assertion.
+
+  it('one infuse keeps both length models in step', () => {
+    expectParity({ name: 'infuse x1', foods: 40, infuses: [20] });
+  });
+
+  it('all three infuses, on the length-cliff genes', () => {
+    // last_gasp reads a length THRESHOLD and bulk_up a length BUCKET, so a
+    // one-sided infuse edit lands on a cliff rather than drifting quietly.
+    expectParity({
+      name: 'infuse x3 + cliffs',
+      foods: 60,
+      infuses: [20, 32, 44],
+      picks: [
+        { id: 'last_gasp', atFood: 10 },
+        { id: 'bulk_up', atFood: 15 },
+      ],
+    });
+  });
+
+  it('an infuse immediately before a boundary food', () => {
+    expectParity({
+      name: 'infuse before boundary',
+      foods: 45,
+      infuses: [24],
+      picks: [{ id: 'bulk_up', atFood: 5 }],
+    });
+  });
+
+  it('THE DIRECTION: an infuse makes the snake LONGER, never shorter', () => {
+    // Rule 15: length only ever increases, and anything that costs the player
+    // costs growth. Under the shipped -4 this assertion fails, which is the
+    // point of writing it now rather than after.
+    const outcome = runScript({ name: 'infuse direction', foods: 40, infuses: [20] });
+    const trace = outcome.engineLengthTrace;
+    // lengthAtEat[n] is the length BEFORE food n's growth, so the infuse at
+    // food 20 shows up between the readings at 20 and 21.
+    const before = trace[20];
+    const after = trace[21];
+    expect({
+      grewAcrossTheInfuse: after > before,
+      delta: after - before,
+    }).toEqual({
+      grewAcrossTheInfuse: true,
+      // +1 for food 21's own growth, +8 for the infuse.
+      delta: 1 + STRAIN_PHYSICS.infuseGrowth,
+    });
+  });
+
+  it('no length-reducing path survives anywhere in a scripted run', () => {
+    // The mechanical form of Rule 15: walk the whole trace and assert it is
+    // monotonically non-decreasing. This is the test that would have caught
+    // `shed` had it been written when `shed` was added.
+    const outcome = runScript({
+      name: 'monotonic length',
+      foods: 60,
+      infuses: [20, 32, 44],
+      picks: [
+        { id: 'overgrowth', atFood: 5 },
+        { id: 'bulk_up', atFood: 12 },
+      ],
+    });
+    const drops = outcome.engineLengthTrace
+      .map((len, i) => ({ atFood: i, len }))
+      .filter((x, i, all) => i > 1 && x.len < all[i - 1].len);
+    expect(drops).toEqual([]);
   });
 });
 

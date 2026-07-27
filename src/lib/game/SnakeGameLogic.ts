@@ -1891,12 +1891,17 @@ export class SnakeGameLogic {
   private performInfuse(): void {
     const atFood = this.state.foodEaten;
     this.state.infuses.push({ atFood });
-    // Pay 4 tail segments (never below the initial length).
-    const pay = Math.min(
-      STRAIN_PHYSICS.infuseSegmentCost,
-      Math.max(0, this.state.snake.length - this.initialLength)
-    );
-    if (pay > 0) this.state.snake.length = this.state.snake.length - pay;
+    // Rule 15: the gene is absorbed into the body, so the body GROWS. The
+    // old code sliced four segments off the tail, which under a design where
+    // length is the difficulty clock was a second reward rather than a cost.
+    // Growth is appended at the tail, exactly as food growth is, so every
+    // added cell is one the body already occupied - the snake never appears
+    // in a cell it did not travel through.
+    const tail = this.state.snake[this.state.snake.length - 1];
+    for (let i = 0; i < STRAIN_PHYSICS.infuseGrowth; i++) {
+      this.state.snake.push({ ...tail });
+    }
+    const grew = STRAIN_PHYSICS.infuseGrowth;
     // Consume the portal; the next one spawns a full interval away
     // (+2 foods per infuse via rollNextExitInterval).
     this.state.exitTile = null;
@@ -1908,7 +1913,7 @@ export class SnakeGameLogic {
     this.emit('infused', {
       atFood,
       infusesUsed: this.state.infuses.length,
-      segmentsPaid: pay,
+      segmentsGrown: grew,
     });
     // Build power: a gene offer - or a Strain Surge at the gene cap.
     if (this.heldSlotCount() < this.maxHeld()) {

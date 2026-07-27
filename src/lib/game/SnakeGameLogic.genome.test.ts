@@ -253,7 +253,7 @@ describe('portal trichotomy', () => {
     expect(payload!.genome).not.toBeNull();
   });
 
-  it('INFUSE consumes the portal, pays 4 segments, and opens a gene offer', () => {
+  it('INFUSE consumes the portal, GROWS the body, and opens a gene offer', () => {
     const game = makeGenomeGame();
     eatFoods(game, 10);
     const lengthBefore = game.getState().snake.length;
@@ -262,8 +262,9 @@ describe('portal trichotomy', () => {
     const state = game.getState();
     expect(state.infuses).toEqual([{ atFood: 10 }]);
     expect(state.exitTile).toBeNull();
+    // Rule 15 (v1.4): power is bought with board space, not with tail.
     expect(state.snake.length).toBe(
-      lengthBefore - STRAIN_PHYSICS.infuseSegmentCost
+      lengthBefore + STRAIN_PHYSICS.infuseGrowth
     );
     expect(state.pendingChoice).not.toBeNull();
     expect(state.choiceSource).toBe('infuse');
