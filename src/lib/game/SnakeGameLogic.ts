@@ -3109,12 +3109,20 @@ export class SnakeGameLogic {
    * floored at minExitDespawnTicks so the window never vanishes.
    */
   private effectiveExitDespawnTicks(): number {
+    // WP-3.04: a ruleset may author its window in SECONDS, converted here by
+    // the LIVE tick. `despawnTicks` alone is denominated in the wrong unit -
+    // 90 ticks is 18.0s on PRIMAL and 4.5s at CYBER's old floor, so the
+    // extraction window silently lost three quarters of its real duration as
+    // the dynasty accelerated. Food has no deadline, which is exactly why
+    // eating stayed possible while banking became impossible.
+    const authored = this.ruleset.extraction.despawnSeconds;
+    const base =
+      authored !== undefined
+        ? Math.max(1, Math.round((authored * 1000) / Math.max(1, this.getSpeed())))
+        : this.ruleset.extraction.despawnTicks;
     let ticks = this.hasMutation('gold_trail')
-      ? Math.min(
-          this.ruleset.extraction.despawnTicks,
-          MUTATION_PHYSICS.goldTrailPortalTicks
-        )
-      : this.ruleset.extraction.despawnTicks;
+      ? Math.min(base, MUTATION_PHYSICS.goldTrailPortalTicks)
+      : base;
     if (this.hasMutation('deep_roots')) {
       ticks -= MUTATION_PHYSICS.deepRootsPortalTicksPenalty;
     }
