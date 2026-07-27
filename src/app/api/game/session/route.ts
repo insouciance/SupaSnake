@@ -88,6 +88,8 @@ import {
   type RunStartGenomeContext,
 } from '@/lib/server/runContext';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
+import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
+import { isGrowthProfileId, type GrowthProfileId } from '@/shared/game/growth';
 import type { LineageBias } from '@/shared/game/offerGravity';
 import { ANOMALY_STRAINS } from '@/shared/game/anomalies';
 import type { GenomeValidationContext } from '@/lib/server/gameValidator';
@@ -577,6 +579,17 @@ export async function POST(request: NextRequest) {
       // settlement can read it instead of re-deriving it from six live
       // queries that may each answer differently. The run's world condition
       // is NOT here: `resolveSessionWorldCondition` owns that fact.
+      // The growth profile (WP-3.02), resolved SERVER-SIDE and stamped into
+      // the run. The client may ASK for one, but the server decides and the
+      // recompute replays from this stamp - so a tampered or stale client can
+      // only ever play the profile recorded here. Unknown/absent resolves to
+      // `baseline`, which folds byte-identically to the shipped curve.
+      const requestedProfile = (body as Record<string, unknown>)?.growthProfile;
+      const growthProfileId: GrowthProfileId | undefined =
+        GROWTH_LAB_ENABLED && isGrowthProfileId(requestedProfile)
+          ? requestedProfile
+          : undefined;
+
       startRunContext = {
         v: RUN_CONTEXT_VERSION,
         snake: {
@@ -589,6 +602,7 @@ export async function POST(request: NextRequest) {
         },
         mutationPool,
         freePlay: isFreePlay,
+        ...(growthProfileId ? { growthProfileId } : {}),
         genome: startGenomeContext,
       };
 
@@ -922,6 +936,10 @@ export async function POST(request: NextRequest) {
           traits: snakeTraits,
           mutationPool,
           mastery: masteryInfo,
+          // WP-3.02: the profile the SERVER stamped, echoed so the engine
+          // plays exactly what settlement will recompute. The client never
+          // decides this - it only learns it.
+          ...(growthProfileId ? { growthProfile: growthProfileId } : {}),
           ...(genomeBlock ? { genome: genomeBlock } : {}),
         });
       }
@@ -932,6 +950,7 @@ export async function POST(request: NextRequest) {
         traits: snakeTraits,
         mutationPool,
         mastery: masteryInfo,
+        ...(growthProfileId ? { growthProfile: growthProfileId } : {}),
         ...(gauntletBan ? { gauntletBan } : {}),
         // The run's world condition (§7.2, §7.3): the ONE id the engine plays
         // under and settlement recomputes with. Present on every run the
@@ -1229,6 +1248,12 @@ export async function POST(request: NextRequest) {
             tierCap: runContext.genome.tierCap,
             suppressedStrains: runContext.genome.suppressedStrains,
             splicesUnlocked: runContext.genome.splicesUnlocked,
+            // WP-3.02: settle under the growth curve the run STARTED under.
+            // The stamp lives on the context root, not the genome block,
+            // because a free-play or pre-genome run has a profile too.
+            ...(runContext.growthProfileId
+              ? { growthProfileId: runContext.growthProfileId }
+              : {}),
           };
         } else {
           // WP-2.05: `ok: false` is unignorable by construction, and it is a

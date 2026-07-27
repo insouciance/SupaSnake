@@ -55,6 +55,11 @@ import {
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
 import {
+  baseGrowthForFood,
+  resolveGrowthProfile,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
+import {
   conditionBankDelta,
   conditionStrainThresholdDelta,
   normalizeCondition,
@@ -113,6 +118,17 @@ export interface GenomeRunInput {
   suppressedStrains?: readonly StrainId[];
   /** FTUE gate: false keeps parent genes loose and disables Splice effects. */
   splicesEnabled?: boolean;
+  /**
+   * The run's growth profile (WP-3.02), server-stamped into `run_context` at
+   * start and replayed here at settlement.
+   *
+   * It lives on the INPUT rather than as an optional parameter deliberately:
+   * every caller already threads this object, so the profile cannot be
+   * forgotten at one call site and silently default at another - which is how
+   * client and server drift apart. Absent or unrecognised resolves to
+   * `baseline`, the shipped curve, so historical blobs recompute unchanged.
+   */
+  growthProfileId?: GrowthProfileId;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -291,10 +307,14 @@ export function computeLengthTrace(
   view: FusedView,
   foodCount: number,
   activations: StrainActivations,
-  input: Pick<GenomeRunInput, 'infuses' | 'lossEvents' | 'revive'>,
+  input: Pick<
+    GenomeRunInput,
+    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId'
+  >,
   condition: ConditionInput = null
 ): LengthTrace {
   const anomaly = normalizeCondition(condition).anomaly;
+  const growthProfile = resolveGrowthProfile(input.growthProfileId);
   const lengthAtEat: number[] = [0];
   const shedEvents: ShedEvent[] = [];
   const loosePick = (id: GeneId) => view.loose.find((p) => p.id === id);
@@ -312,16 +332,26 @@ export function computeLengthTrace(
   const regenesis = fused('splice_regenesis');
   const moltedRebirth = fused('splice_molted_rebirth');
   const molt = activations.FERAL.expressionAt;
+  // Rule 15 (v1.4): INFUSE is GROWTH, not a loss. Legacy blobs settled before
+  // the inversion still carry `lossEvents` from Thick Hide and Ouroboros and
+  // are still honoured below, so historical runs recompute exactly as they
+  // did - but no new run produces one, and infuses never appear here again.
   const losses = [...(input.lossEvents ?? [])];
+  const infuseGrowthAt = new Map<number, number>();
   for (const infuse of input.infuses) {
-    losses.push({ atFood: infuse.atFood, segments: STRAIN_PHYSICS.infuseSegmentCost });
+    infuseGrowthAt.set(
+      infuse.atFood,
+      (infuseGrowthAt.get(infuse.atFood) ?? 0) + STRAIN_PHYSICS.infuseGrowth
+    );
   }
   const reviveAt = input.revive?.atFood ?? null;
 
-  let len: number = GAME_CONFIG.snake.initialLength;
+  let len: number = growthProfile.initialLength;
   for (let n = 1; n <= foodCount; n++) {
     lengthAtEat[n] = len;
-    let growth = 1;
+    // The profile's base growth - the ONE function the engine also calls
+    // (growth.ts). Gene and anomaly extras layer on top, exactly as before.
+    let growth = baseGrowthForFood(growthProfile, n);
     if (anomaly === 'overgrown') growth += ANOMALY_PHYSICS.overgrownExtraSegments;
     if (activeAt(overgrowth, n)) growth += MUTATION_PHYSICS.overgrowthExtraSegments;
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
@@ -389,10 +419,16 @@ export function computeLengthTrace(
         len = Math.max(GAME_CONFIG.snake.initialLength, len - Math.max(0, loss.segments));
       }
     }
-    // Revive resets the body (Phoenix physics: reborn at length 8).
-    if (reviveAt === n) {
-      len = MUTATION_PHYSICS.phoenixRebirthLength;
-    }
+    // Rule 15: INFUSE grows the body, at the same point in the food's
+    // resolution where its cost used to be subtracted. Keeping the position
+    // identical is what preserves parity with the engine, which appends its
+    // segments when the portal resolves - i.e. after this food is done.
+    const grown = infuseGrowthAt.get(n);
+    if (grown !== undefined) len += grown;
+    // Rule 15: a revive no longer truncates. The engine keeps its 3-cell
+    // head rewind (a positional mercy, not a length change), so there is
+    // nothing for the length model to do here. Historical runs are unaffected
+    // because their traces were computed under the old code and stored.
   }
   return { lengthAtEat, shedEvents };
 }

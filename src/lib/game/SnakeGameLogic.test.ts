@@ -1567,7 +1567,7 @@ describe('SnakeGameLogic', () => {
   });
 
   describe('Mutation effects: Phoenix', () => {
-    it('absorbs exactly one death: rebirth at length 8, rewound 3 cells', () => {
+    it('absorbs exactly one death: rewound 3 cells, length UNCHANGED (Rule 15)', () => {
       const engine = new SnakeGameLogic({
         gridSize: 20,
         ruleset: RULESETS.PRIMAL,
@@ -1591,7 +1591,13 @@ describe('SnakeGameLogic', () => {
       expect(state.isGameOver).toBe(false);
       expect(state.phoenixAvailable).toBe(false);
       expect(state.phoenixTriggeredAtFood).toBe(8);
-      expect(state.snake).toHaveLength(8);
+      // Rule 15 (v1.4): a revive grants SURVIVAL, not a clean slate. The
+      // head backs up three cells along the body - positional mercy, so a
+      // full-length snake can escape the jam that killed it - and the three
+      // cells are restored at the tail, so the length is exactly what it was.
+      // The old behaviour truncated to 8, which was the largest single
+      // length-rewind in the game.
+      expect(state.snake).toHaveLength(11);
       expect(state.snake[0]).toEqual({ x: 16, y: 0, z: 10 }); // rewound 3
       expect(state.direction).toBe('RIGHT'); // heading re-derived from the body
 

@@ -73,6 +73,12 @@ import {
 } from '@/shared/game/runEvents';
 import { isMutationId } from '@/shared/game/mutations';
 import {
+  baseGrowthForFood,
+  resolveGrowthProfile,
+  type GrowthProfile,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
+import {
   GENE_ECONOMICS,
   GENE_PHYSICS,
   GENE_POOL,
@@ -380,6 +386,14 @@ type EventCallback = (data?: unknown) => void;
 interface GameOptions {
   gridSize?: number;
   initialLength?: number;
+  /**
+   * The run's growth profile id (WP-3.02), as stamped by the server into
+   * `run_context`. Absent or unrecognised resolves to `baseline`, which is
+   * byte-identical to the shipped game. Never derive this from a
+   * `NEXT_PUBLIC_*` flag - the server recomputes length from the stamp, so a
+   * locally-chosen profile would diverge on every food.
+   */
+  growthProfileId?: GrowthProfileId;
   initialSpeed?: number;
   /**
    * Dynasty ruleset driving speed + scoring. Defaults to COSMIC. The page
@@ -508,6 +522,13 @@ export class SnakeGameLogic {
   private anomaly: AnomalyId | null;
   /** Genome capability - non-null only when the server issued a runSeed. */
   private genome: GenomeEngineConfig | null;
+  /**
+   * The run's growth profile (WP-3.02), server-stamped into `run_context`.
+   * NEVER read from a build-time flag: `computeLengthTrace` recomputes with
+   * the stamped profile, so a client that chose its own would diverge on
+   * every length and invalidate an honest run.
+   */
+  private growth: GrowthProfile;
   /** Derived fused view of heldMutations - recomputed on every pick. */
   private fusedView: FusedView = { loose: [], splices: [] };
   /** Derived strain activations - recomputed on pick/surge. */
@@ -621,6 +642,11 @@ export class SnakeGameLogic {
         : [...MUTATION_POOL];
     this.anomaly = options.anomaly ?? null;
     this.genome = options.genome ?? null;
+    this.growth = resolveGrowthProfile(options.growthProfileId);
+    // The profile owns the starting body unless a caller pinned one.
+    if (options.initialLength === undefined) {
+      this.initialLength = this.growth.initialLength;
+    }
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
@@ -648,6 +674,32 @@ export class SnakeGameLogic {
   /** The active genome config (or null in legacy mode). */
   getGenome(): GenomeEngineConfig | null {
     return this.genome ? { ...this.genome } : null;
+  }
+
+  /**
+   * Adopt the growth profile the SERVER stamped on this run (WP-3.02).
+   *
+   * Mirrors `setGenome`: the page builds the engine on mount, before the
+   * session-start response exists, and configures it when the response
+   * arrives. Refused once the run is live, because growth decides the
+   * starting body and every subsequent length - changing it mid-run would
+   * diverge from `computeLengthTrace`, which folds one profile for the whole
+   * run.
+   *
+   * The argument is whatever the server sent; anything unrecognised resolves
+   * to `baseline`, so a client that is newer, older or confused still plays
+   * the shipped curve rather than an invented one.
+   */
+  setGrowthProfile(id: unknown): void {
+    if (this.state.isPlaying) return;
+    this.growth = resolveGrowthProfile(id);
+    this.initialLength = this.growth.initialLength;
+    this.state = this.createInitialState();
+  }
+
+  /** The run's growth profile id - what settlement will recompute with. */
+  getGrowthProfileId(): GrowthProfileId {
+    return this.growth.id;
   }
 
   /** Spawn strain points (heirloom+lineage, server-derived, pre-capped). */
@@ -1468,9 +1520,12 @@ export class SnakeGameLogic {
       // segment), so pricing first made that branch unreachable in the
       // engine and forced an out-of-fold payment to stand in for it.
 
-      // Growth beyond the normal +1 (head unshift, tail not popped):
-      // Overgrowth +2, Bulk Up +3 - fused parents keep their growth.
+      // Growth beyond the ONE segment the move already added (head unshift,
+      // tail not popped). The profile's base is the source of truth and is
+      // shared with `computeLengthTrace` - see growth.ts, "one function, both
+      // sides". Gene and anomaly extras layer on top, unchanged.
       const extraGrowth =
+        (baseGrowthForFood(this.growth, n) - 1) +
         (this.hasGene('overgrowth') ? MUTATION_PHYSICS.overgrowthExtraSegments : 0) +
         (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
         (this.anomaly === 'overgrown'
@@ -1891,12 +1946,17 @@ export class SnakeGameLogic {
   private performInfuse(): void {
     const atFood = this.state.foodEaten;
     this.state.infuses.push({ atFood });
-    // Pay 4 tail segments (never below the initial length).
-    const pay = Math.min(
-      STRAIN_PHYSICS.infuseSegmentCost,
-      Math.max(0, this.state.snake.length - this.initialLength)
-    );
-    if (pay > 0) this.state.snake.length = this.state.snake.length - pay;
+    // Rule 15: the gene is absorbed into the body, so the body GROWS. The
+    // old code sliced four segments off the tail, which under a design where
+    // length is the difficulty clock was a second reward rather than a cost.
+    // Growth is appended at the tail, exactly as food growth is, so every
+    // added cell is one the body already occupied - the snake never appears
+    // in a cell it did not travel through.
+    const tail = this.state.snake[this.state.snake.length - 1];
+    for (let i = 0; i < STRAIN_PHYSICS.infuseGrowth; i++) {
+      this.state.snake.push({ ...tail });
+    }
+    const grew = STRAIN_PHYSICS.infuseGrowth;
     // Consume the portal; the next one spawns a full interval away
     // (+2 foods per infuse via rollNextExitInterval).
     this.state.exitTile = null;
@@ -1908,7 +1968,7 @@ export class SnakeGameLogic {
     this.emit('infused', {
       atFood,
       infusesUsed: this.state.infuses.length,
-      segmentsPaid: pay,
+      segmentsGrown: grew,
     });
     // Build power: a gene offer - or a Strain Surge at the gene cap.
     if (this.heldSlotCount() < this.maxHeld()) {
@@ -2459,8 +2519,17 @@ export class SnakeGameLogic {
    */
   private spawnFoods(): void {
     const constellation = this.ruleset.constellation;
+    // WP-3.02: the profile's simultaneous-food count joins the existing wave
+    // target. This is the TRAVERSE fix, not generosity - on the owner's record
+    // run the median seconds-per-food rose 3.0 -> 6.9 while the MEAN
+    // quadrupled, so it is the tail of long walks that ends runs in
+    // irritation, and more food on the board kills the tail specifically.
+    // COSMIC keeps wave semantics (constellation chains depend on wave
+    // identity); the other two get the profile's count.
     const target =
-      (constellation ? constellation.groupSize : 1) +
+      (constellation
+        ? constellation.groupSize
+        : Math.max(1, this.growth.simultaneousFoods)) +
       (this.hasMutation('splitter') ? 1 : 0) +
       // Starweaver (COSMIC M3): constellation groups gain one extra food
       (constellation && this.hasMutation('starweaver')
@@ -2745,23 +2814,39 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Revive physics (Phoenix and every genome revive kind): rewind the
-   * head 3 cells along the body, truncate to length 8, and re-derive the
-   * heading from the body. Economic voiding is the caller's concern.
+   * Revive physics (Phoenix and every genome revive kind): rewind the head 3
+   * cells along the body and re-derive the heading. Economic voiding is the
+   * caller's concern.
+   *
+   * RULE 15 (v1.4): the revive no longer TRUNCATES. It used to reduce the body
+   * to length 8, which was the single largest length-rewind in the game - a
+   * second chance that also handed back most of the board. A revive now grants
+   * SURVIVAL, not a clean slate: you live, and you keep every consequence of
+   * your size. `computeLengthTrace` mirrors this by doing nothing at a revive
+   * index; the two models must agree, and a revive is one of the few events
+   * the parity sweep cannot reach on its own.
+   *
+   * The rewind is kept because it is positional mercy, not length: it drops
+   * the head back onto cells the body already occupies, which is what gives a
+   * full-length snake room to escape the jam that killed it.
    */
   private rebirthBody(): void {
     const rewind = Math.min(
       MUTATION_PHYSICS.phoenixRewindCells,
       Math.max(0, this.state.snake.length - 1)
     );
-    let reborn = this.state.snake.slice(
-      rewind,
-      rewind + MUTATION_PHYSICS.phoenixRebirthLength
-    );
-    if (reborn.length === 0) {
-      reborn = this.state.snake.slice(0, MUTATION_PHYSICS.phoenixRebirthLength);
-    }
-    this.state.snake = reborn.map((s) => ({ ...s }));
+    const reborn = this.state.snake.slice(rewind);
+    const kept = (reborn.length > 0 ? reborn : this.state.snake).map((s) => ({
+      ...s,
+    }));
+    // Backing the head off drops `rewind` cells, which would be a length
+    // reduction - so the same count is restored at the tail. The head moves
+    // back along its own path, the body keeps every segment it earned, and
+    // `computeLengthTrace` is right to record no change at all.
+    const grown = this.state.snake.length - kept.length;
+    const tail = kept[kept.length - 1];
+    for (let i = 0; i < grown; i++) kept.push({ ...tail });
+    this.state.snake = kept;
 
     // Heading = from neck to head of the rewound body. Wrap seams (COSMIC)
     // leave adjacent segments a board apart - normalize by flipping sign.

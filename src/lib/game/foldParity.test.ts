@@ -71,7 +71,8 @@ import {
   type LengthLossEvent,
 } from '@/shared/game/genome';
 import type { GeneId, GenePick } from '@/shared/game/genes';
-import type { StrainPoints } from '@/shared/game/strains';
+import { STRAIN_PHYSICS, type StrainPoints } from '@/shared/game/strains';
+import { GROWTH_PROFILES, type GrowthProfileId } from '@/shared/game/growth';
 import type { TraitId } from '@/shared/game/traits';
 import type { AnomalyId } from '@/shared/game/anomalies';
 
@@ -91,6 +92,21 @@ interface Script {
   tierCap?: 1 | 2 | 3;
   splicesEnabled?: boolean;
   prevRunDied?: boolean;
+  /**
+   * Food counts at which to walk into a portal and INFUSE. Rule 15 (v1.4)
+   * makes INFUSE cost GROWTH rather than segments, so this is the axis where
+   * a one-sided edit would silently invalidate honest runs — the engine
+   * paying +8 while `computeLengthTrace` still subtracts 4 diverges on every
+   * subsequent food, and `last_gasp`/`bulk_up` read length cliffs.
+   */
+  infuses?: number[];
+  /**
+   * The run's growth profile (WP-3.02). The engine takes it as config and the
+   * server takes it on `GenomeRunInput`; if those two ever resolve differently
+   * the length traces diverge on the FIRST food, which is what these cases
+   * exist to prevent.
+   */
+  growthProfileId?: GrowthProfileId;
 }
 
 interface RunOutcome {
@@ -143,6 +159,7 @@ function runScript(script: Script): RunOutcome {
     traits: script.traits ?? [],
     anomaly: script.anomaly ?? null,
     genome: engineConfig(script),
+    ...(script.growthProfileId ? { growthProfileId: script.growthProfileId } : {}),
   });
   game.start();
 
@@ -159,6 +176,8 @@ function runScript(script: Script): RunOutcome {
     nextPick += 1;
   }
 
+  const infuseAt = new Set(script.infuses ?? []);
+
   for (let eaten = 0; eaten < script.foods; eaten++) {
     const state = game.getState();
     if (state.isGameOver || state.isDeathSequence) break;
@@ -169,6 +188,21 @@ function runScript(script: Script): RunOutcome {
     while (nextPick < picks.length && picks[nextPick].atFood <= n) {
       game.grantMutation(picks[nextPick].id, picks[nextPick].atFood);
       nextPick += 1;
+    }
+    if (infuseAt.has(n)) {
+      // Park the food out of reach and walk onto the exit instead, so the
+      // tick resolves as a portal arrival rather than an eat.
+      const head = game.getState().snake[0];
+      game.placeFood({ x: 0, y: 0, z: 0 });
+      game.placeExit({ x: head.x + 1, y: 0, z: head.z });
+      game.tick();
+      if (!game.resolvePortalChoice('infuse')) {
+        throw new Error(
+          `script "${script.name}": infuse at food ${n} was refused — check ` +
+            'the length minimum and the per-run cap before trusting this case'
+        );
+      }
+      if (game.getState().pendingChoice) game.declineMutation();
     }
   }
 
@@ -197,6 +231,9 @@ function runScript(script: Script): RunOutcome {
     prevRunDied: script.prevRunDied ?? false,
     tierCap: script.tierCap ?? 3,
     splicesEnabled: script.splicesEnabled !== false,
+    ...(script.growthProfileId
+      ? { growthProfileId: script.growthProfileId }
+      : {}),
   };
 
   const totals = computeGenomeRunTotals(
@@ -425,6 +462,133 @@ describe('fold parity: the tithe floor (divergence E)', () => {
       ],
       foods: 60,
     });
+  });
+});
+
+describe('fold parity: INFUSE costs growth (Rule 15, v1.4)', () => {
+  // Written BEFORE the inversion, per the standing rule. The parity cases are
+  // the regression guard - they pass on either side of the change so long as
+  // BOTH sides move together, which is the failure this file exists to catch.
+  // The direction case below is the red-first assertion.
+
+  it('one infuse keeps both length models in step', () => {
+    expectParity({ name: 'infuse x1', foods: 40, infuses: [20] });
+  });
+
+  it('all three infuses, on the length-cliff genes', () => {
+    // last_gasp reads a length THRESHOLD and bulk_up a length BUCKET, so a
+    // one-sided infuse edit lands on a cliff rather than drifting quietly.
+    expectParity({
+      name: 'infuse x3 + cliffs',
+      foods: 60,
+      infuses: [20, 32, 44],
+      picks: [
+        { id: 'last_gasp', atFood: 10 },
+        { id: 'bulk_up', atFood: 15 },
+      ],
+    });
+  });
+
+  it('an infuse immediately before a boundary food', () => {
+    expectParity({
+      name: 'infuse before boundary',
+      foods: 45,
+      infuses: [24],
+      picks: [{ id: 'bulk_up', atFood: 5 }],
+    });
+  });
+
+  it('THE DIRECTION: an infuse makes the snake LONGER, never shorter', () => {
+    // Rule 15: length only ever increases, and anything that costs the player
+    // costs growth. Under the shipped -4 this assertion fails, which is the
+    // point of writing it now rather than after.
+    const outcome = runScript({ name: 'infuse direction', foods: 40, infuses: [20] });
+    const trace = outcome.engineLengthTrace;
+    // lengthAtEat[n] is the length BEFORE food n's growth, so the infuse at
+    // food 20 shows up between the readings at 20 and 21.
+    const before = trace[20];
+    const after = trace[21];
+    expect({
+      grewAcrossTheInfuse: after > before,
+      delta: after - before,
+    }).toEqual({
+      grewAcrossTheInfuse: true,
+      // +1 for food 21's own growth, +8 for the infuse.
+      delta: 1 + STRAIN_PHYSICS.infuseGrowth,
+    });
+  });
+
+  it('no length-reducing path survives anywhere in a scripted run', () => {
+    // The mechanical form of Rule 15: walk the whole trace and assert it is
+    // monotonically non-decreasing. This is the test that would have caught
+    // `shed` had it been written when `shed` was added.
+    const outcome = runScript({
+      name: 'monotonic length',
+      foods: 60,
+      infuses: [20, 32, 44],
+      picks: [
+        { id: 'overgrowth', atFood: 5 },
+        { id: 'bulk_up', atFood: 12 },
+      ],
+    });
+    const drops = outcome.engineLengthTrace
+      .map((len, i) => ({ atFood: i, len }))
+      .filter((x, i, all) => i > 1 && x.len < all[i - 1].len);
+    expect(drops).toEqual([]);
+  });
+});
+
+describe('fold parity: growth profiles (WP-3.02)', () => {
+  // THE TEST THIS WORK PACKAGE EXISTS FOR. A growth curve applied on one side
+  // only diverges on the FIRST food and compounds from there - and because
+  // `last_gasp` reads a length threshold and `bulk_up` a length bucket, the
+  // divergence lands on a payout cliff rather than drifting quietly. That is
+  // how a validated run gets taken away from a player who earned it.
+  const PROFILES = Object.keys(GROWTH_PROFILES) as GrowthProfileId[];
+
+  for (const growthProfileId of PROFILES) {
+    it(`${growthProfileId}: both length models agree food by food`, () => {
+      expectParity({ name: `growth ${growthProfileId}`, foods: 45, growthProfileId });
+    });
+
+    it(`${growthProfileId}: agrees with infuses and the length-cliff genes`, () => {
+      expectParity({
+        name: `growth ${growthProfileId} + cliffs`,
+        foods: 45,
+        growthProfileId,
+        infuses: [18, 28],
+        picks: [
+          { id: 'last_gasp', atFood: 6 },
+          { id: 'bulk_up', atFood: 10 },
+          { id: 'overgrowth', atFood: 14 },
+        ],
+      });
+    });
+  }
+
+  it('an unstamped run is byte-identical to baseline', () => {
+    // The default path: a run with no `run_context` stamp - every historical
+    // run, and any run started by an older client - must fold exactly as the
+    // shipped game did.
+    const unstamped = runScript({ name: 'unstamped', foods: 40 });
+    const explicit = runScript({
+      name: 'explicit baseline',
+      foods: 40,
+      growthProfileId: 'baseline',
+    });
+    expect(unstamped.engineLengthTrace).toEqual(explicit.engineLengthTrace);
+    expect(unstamped.serverDna).toBe(explicit.serverDna);
+    expect(unstamped.serverScore).toBe(explicit.serverScore);
+  });
+
+  it('the tuned profiles actually change the run, so the cases mean something', () => {
+    // A guard against the whole suite passing because the profile was never
+    // read: if `tuned` folded identically to `baseline`, every parity case
+    // above would be green and prove nothing.
+    const baseline = runScript({ name: 'b', foods: 40, growthProfileId: 'baseline' });
+    const tuned = runScript({ name: 't', foods: 40, growthProfileId: 'tuned' });
+    expect(tuned.engineLengthTrace).not.toEqual(baseline.engineLengthTrace);
+    expect(tuned.engineLengthTrace[40]).toBeGreaterThan(baseline.engineLengthTrace[40]);
   });
 });
 

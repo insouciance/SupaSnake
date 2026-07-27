@@ -49,7 +49,7 @@ const CASES: Case[] = [
   ['mechanic', 'extraction_bank', 'effect', `×${BANK.extractMultiplier}`],
   ['mechanic', 'extraction_pass', 'cost', `×${BANK.deathMultiplier}`],
   ['mechanic', 'extraction_pass', 'cost', `×${BANK.extractMultiplier}`],
-  ['mechanic', 'extraction_infuse', 'effect', `${STRAIN_PHYSICS.infuseSegmentCost} tail segments`],
+  ['mechanic', 'extraction_infuse', 'effect', `${STRAIN_PHYSICS.infuseGrowth} segments`],
   ['mechanic', 'extraction_infuse', 'effect', `bank ${signedDelta(STRAIN_ECONOMICS.infuseBankDelta)}`],
   ['mechanic', 'extraction_infuse', 'cost', `Salvage ${signedDelta(STRAIN_ECONOMICS.infuseSalvageDelta)}`],
   ['mechanic', 'extraction_infuse', 'cost', `+${STRAIN_PHYSICS.infusePortalIntervalPenalty} foods later`],

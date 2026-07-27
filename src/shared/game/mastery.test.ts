@@ -137,7 +137,10 @@ describe('unlockedMutationPool (base ten + M3/M6/M9 per dynasty)', () => {
       expect(fullMutationPool(dynasty)).toEqual(
         unlockedMutationPool(dynasty, MASTERY_MAX_LEVEL)
       );
-      expect(fullMutationPool(dynasty)).toHaveLength(13);
+      // 12, not 13: Rule 15 retired `shed` from MUTATION_POOL, which this
+      // pool spreads. The definition survives in MUTATIONS for legacy runs.
+      expect(fullMutationPool(dynasty)).toHaveLength(12);
+      expect(fullMutationPool(dynasty)).not.toContain('shed');
     }
   });
 

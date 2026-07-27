@@ -44,6 +44,13 @@ test.describe('Home authentication dialog', () => {
 
       const trigger = page.getByTestId('account-chip');
       await expect(trigger).toBeVisible();
+      // With the growth surfaces armed the landing page is taller, and at
+      // 375px portrait the chip sits outside the initial viewport: Playwright
+      // reports it visible, then fails the click with "element is outside of
+      // the viewport" because its own auto-scroll does not reach it. Scroll
+      // deliberately rather than forcing the click, so a genuinely
+      // unreachable control still fails.
+      await trigger.scrollIntoViewIfNeeded();
       await trigger.click();
 
       const dialog = page.getByRole('dialog', { name: /join the run/i });

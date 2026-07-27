@@ -8,7 +8,12 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { openRunSetupControls, seedConsent, signInAsGuest } from './helpers';
+import {
+  openRunSetupControls,
+  seedConsent,
+  signInAsGuest,
+  startRunIfSetupPresent,
+} from './helpers';
 
 test.describe('Home page', () => {
   test.beforeEach(async ({ page }) => {
@@ -18,8 +23,11 @@ test.describe('Home page', () => {
   test('displays game title', async ({ page }) => {
     await page.goto('/');
 
+    // Exact, not /supasnake/i: with the growth surfaces armed the landing
+    // page also carries a "What is SupaSnake?" section, so the loose regex is
+    // a strict-mode violation on the configuration production actually runs.
     await expect(
-      page.getByRole('heading', { name: /supasnake/i })
+      page.getByRole('heading', { name: 'SUPASNAKE', exact: true })
     ).toBeVisible();
   });
 
@@ -61,6 +69,8 @@ test.describe('Home page', () => {
     expect((await bootstrap.json()).equippedSnake.dynasty).toBe('PRIMAL');
 
     await expect(page).toHaveURL(/\/game/, { timeout: 60000 });
+    // With RUN_FLOW_V1 on (production) the board is behind START.
+    await startRunIfSetupPresent(page);
     await expect(page.getByTestId('first-movement-prompt')).toHaveText(
       'Swipe or press an arrow to move'
     );

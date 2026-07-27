@@ -128,10 +128,14 @@ describe('deterministic length model', () => {
         lossEvents: [{ atFood: 15, segments: 5 }],
       })
     );
-    // At food 10: len was 3+10=13, minus 4 (infuse) = 9 when eating 11.
-    expect(trace.lengthAtEat[11]).toBe(9);
-    // At food 15: 9+4=13... eat 15 grows to 14, minus 5 = 9 when eating 16.
-    expect(trace.lengthAtEat[16]).toBe(9);
+    // Rule 15 (v1.4): the infuse GROWS the body. At food 10 the length was
+    // 3+10=13, plus 8 = 21 when eating 11.
+    expect(trace.lengthAtEat[11]).toBe(13 + STRAIN_PHYSICS.infuseGrowth);
+    // A legacy `lossEvents` entry - Thick Hide or Ouroboros on a run settled
+    // before the inversion - is still honoured, so historical blobs recompute
+    // exactly as they did. From 21 at food 11, five more foods reach 26 as
+    // food 15 resolves, and the reported 5-segment loss lands after it: 21.
+    expect(trace.lengthAtEat[16]).toBe(13 + STRAIN_PHYSICS.infuseGrowth + 5 - 5);
   });
 
   it('Molt (FERAL expression) sheds proportionally and floors at the minimum', () => {
@@ -175,7 +179,7 @@ describe('deterministic length model', () => {
     expect(molts.length).toBe(19); // every 20 foods from activation at 10
   });
 
-  it('applies a same-index infuse after the Molt food floor', () => {
+  it('applies a same-index infuse GROWTH after the Molt food floor', () => {
     const picks: GenePick[] = [
       { id: 'overgrowth', atFood: 0 },
       { id: 'deep_roots', atFood: 5 },
@@ -190,10 +194,12 @@ describe('deterministic length model', () => {
       genome({ picks, infuses: [{ atFood: 30 }] })
     );
     // Food 30 resolves the Molt cycle and its growth floor first; only then
-    // does the portal infuse pay four segments, so it can take the body
-    // below what the floor would otherwise guarantee - just like the engine.
+    // does the portal infuse add its segments. Ordering is what keeps this in
+    // step with the engine, which appends when the portal resolves - i.e.
+    // after the food is done. Under Rule 15 the infuse can only ever take the
+    // body ABOVE the floor, never below it.
     expect(infused.lengthAtEat[31]).toBe(
-      base.lengthAtEat[31] - STRAIN_PHYSICS.infuseSegmentCost
+      base.lengthAtEat[31] + STRAIN_PHYSICS.infuseGrowth
     );
   });
 });

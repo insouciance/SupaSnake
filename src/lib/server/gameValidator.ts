@@ -79,6 +79,7 @@ import {
   type GenomeRunInput,
   type StrainSurge,
 } from '@/shared/game/genome';
+import { resolveGrowthProfile, type GrowthProfileId } from '@/shared/game/growth';
 import {
   fusePicks,
   fusedSlotCount,
@@ -128,6 +129,17 @@ export interface GenomeValidationContext {
   suppressedStrains?: readonly StrainId[];
   /** Server-derived FTUE gate. Defaults true for existing callers/tests. */
   splicesUnlocked?: boolean;
+  /**
+   * The growth profile the run STARTED under (WP-3.02), read back from
+   * `run_context`. Absent means `baseline` - which is every run predating the
+   * lab, and every run started with the flag off.
+   *
+   * The recompute must fold with the profile the engine actually played, not
+   * with whatever the current default happens to be: settle a `tuned` run on
+   * `baseline` and every length disagrees, which is a mass-invalidation bug
+   * wearing a feature flag.
+   */
+  growthProfileId?: GrowthProfileId;
 }
 
 /** The validator-accepted genome record (game_sessions.genome JSONB). */
@@ -678,7 +690,21 @@ export function validateGameResult(
   // ...bounded by the per-dynasty food rate (replaces score <= duration/2).
   // The bound is derived from the CLAMPED duration: a claim of time that
   // did not pass must not buy food headroom either.
-  const maxFood = Math.ceil(durationSeconds * ruleset.validation.maxFoodPerSecond);
+  //
+  // WP-3.02: the bound is also scaled by the run's SIMULTANEOUS FOOD COUNT.
+  // With three foods on the board the nearest is closer, so an honest player
+  // legitimately eats faster - and a bound that does not know about a mechanic
+  // which lawfully raises the rate flags honest runs. That is the same defect
+  // class as `VOLT_RATE_ALLOWANCE_FACTOR` (WP-2.05) and as the extraction
+  // window being denominated in ticks: DERIVED from the mechanic, never
+  // guessed at.
+  const foodsOnBoard = Math.max(
+    1,
+    resolveGrowthProfile(genomeCtx?.growthProfileId).simultaneousFoods
+  );
+  const maxFood = Math.ceil(
+    durationSeconds * ruleset.validation.maxFoodPerSecond * foodsOnBoard
+  );
   const claimedFoodCount = foodCount;
   if (foodCount > maxFood) {
     foodCount = maxFood;
@@ -1187,6 +1213,7 @@ function validateGenomeBranch(
     tierCap: ctx.tierCap,
     suppressedStrains: ctx.suppressedStrains ?? [],
     splicesEnabled: ctx.splicesUnlocked !== false,
+    ...(ctx.growthProfileId ? { growthProfileId: ctx.growthProfileId } : {}),
   };
 
   // g8. VOLT rate allowance: arcs raise the honest eat rate - widen the

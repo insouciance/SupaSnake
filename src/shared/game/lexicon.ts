@@ -287,7 +287,7 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
   },
   extraction_infuse: {
     name: 'INFUSE',
-    effect: `Spend the portal on power instead of safety: ${STRAIN_PHYSICS.infuseSegmentCost} tail segments buy a gene offer — or, at the gene cap, a Strain Surge. Each infuse also shifts the run's outcome by bank ${delta(STRAIN_ECONOMICS.infuseBankDelta)}.`,
+    effect: `Spend the portal on power instead of safety: absorb a gene offer — or, at the gene cap, a Strain Surge — and your body grows ${STRAIN_PHYSICS.infuseGrowth} segments to carry it. Each infuse also shifts the run's outcome by bank ${delta(STRAIN_ECONOMICS.infuseBankDelta)}.`,
     cost: `Salvage ${delta(STRAIN_ECONOMICS.infuseSalvageDelta)} per infuse, the next portal comes +${STRAIN_PHYSICS.infusePortalIntervalPenalty} foods later, and the run allows at most ${STRAIN_PHYSICS.infuseMaxPerRun}. Offered from length ${STRAIN_PHYSICS.infuseMinLength} and from ${FTUE.infuseAt} banked runs.`,
   },
   charges: {

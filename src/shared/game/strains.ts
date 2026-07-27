@@ -305,8 +305,22 @@ export const STRAIN_PHYSICS = {
   /** Phantom Coil cost: portal windows this many ticks shorter. */
   phantomPortalTicksPenalty: 10,
   // --- INFUSE (section 6) --------------------------------------------------
-  /** Infuse: tail segments paid per infuse. */
-  infuseSegmentCost: 4,
+  /**
+   * Infuse: segments GAINED per infuse (Rule 15, Constitution v1.4).
+   *
+   * This was `infuseSegmentCost: 4` - the player PAID four tail segments for
+   * a gene. Under Rule 15 that pricing has the wrong sign: length is the
+   * difficulty clock, so removing length is a reward, and the old INFUSE
+   * handed out a gene AND a roomier board. Two bonuses, no cost. It also
+   * de-priced the currency every other decision is denominated in, which is
+   * why INFUSE never felt like a real trade.
+   *
+   * Power is now bought with board space: you absorb the gene and your body
+   * grows. The cost scales correctly with time - a late infuse is genuinely
+   * fraught, because space is exactly what you are short of - and it
+   * accelerates the terminus rather than postponing it.
+   */
+  infuseGrowth: 8,
   /** Infuse: minimum snake length to be offered the option. */
   infuseMinLength: 8,
   /** Infuse: hard cap per run. */

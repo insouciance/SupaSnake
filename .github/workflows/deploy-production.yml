@@ -143,6 +143,31 @@ jobs:
             --fail --show-error --silent \
             --retry 6 --retry-delay 5 --retry-all-errors \
             | jq -e '.status == "healthy" and .checks.database.status == "healthy"'
+      # Runbook precondition 3 asks for a rollback anchor, and nothing recorded
+      # one - the 2026-07-27 release had to read it out of the Vercel dashboard
+      # by hand, because VERCEL_TOKEN exists only here. This job already holds
+      # the token, so it captures the OUTGOING production deployment before
+      # replacing it. Non-blocking on purpose: an anchor is worth having, and it
+      # is never worth failing a release over.
+      - name: Record the outgoing production deployment (rollback anchor)
+        continue-on-error: true
+        run: |
+          outgoing=$(npx vercel@56.3.1 ls --prod --yes --token="$VERCEL_TOKEN" 2>/dev/null \
+            | grep -oE 'https://[a-z0-9.-]+\.vercel\.app' | head -1 || true)
+          if [ -z "$outgoing" ]; then
+            echo "::warning::could not resolve the outgoing production deployment; record it from the dashboard before rolling back"
+            exit 0
+          fi
+          echo "ROLLBACK ANCHOR (production before this release): $outgoing"
+          {
+            echo '### Rollback anchor'
+            echo ''
+            echo "Production **before** this release: \`$outgoing\`"
+            echo ''
+            echo 'Roll back with `vercel promote <that url>`, or via Instant Rollback in the dashboard.'
+            echo 'Note: rollback does NOT revert migrations and does NOT update cron definitions.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Promote staged application
         run: >-
           npx vercel@56.3.1 promote

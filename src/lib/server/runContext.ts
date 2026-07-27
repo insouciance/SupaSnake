@@ -40,6 +40,7 @@ import { isGeneId, type GeneId } from '@/shared/game/genes';
 import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import { STRAIN_IDS, type StrainId, type StrainPoints } from '@/shared/game/strains';
 import type { LineageBias } from '@/shared/game/offerGravity';
+import { isGrowthProfileId, type GrowthProfileId } from '@/shared/game/growth';
 
 /** The current context version. A future shape change bumps this. */
 export const RUN_CONTEXT_VERSION = 1;
@@ -90,6 +91,20 @@ export interface RunStartContext {
   mutationPool: MutationId[];
   /** True when the run was started as rewardless practice. */
   freePlay: boolean;
+  /**
+   * The growth profile the run was started under (WP-3.02).
+   *
+   * Stamped here rather than gated behind a `NEXT_PUBLIC_*` flag because
+   * those are inlined at build time: a client built with one curve and a
+   * server recomputing with another disagree on every length, and a length
+   * disagreement silently invalidates an honest run. Settlement replays from
+   * this stamp, so the run settles under the rules it STARTED under - the
+   * same principle as `tierCap` and the clause thresholds above.
+   *
+   * Absent on every run started before the lab shipped; those resolve to
+   * `baseline`, which is byte-identical to the shipped curve.
+   */
+  growthProfileId?: GrowthProfileId;
   genome: RunStartGenomeContext | null;
 }
 
@@ -250,6 +265,15 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
     return { ok: false, reason: 'genome block malformed', malformed: true };
   }
 
+  // Deliberately NOT strict: an absent or unrecognised profile resolves to
+  // `baseline` instead of failing the parse. A stamp written by a newer build
+  // must never make an older one treat the whole context as malformed and
+  // fall back to re-deriving - that would be a worse outcome than settling a
+  // lab run on the shipped curve.
+  const growthProfileId = isGrowthProfileId(raw.growthProfileId)
+    ? raw.growthProfileId
+    : undefined;
+
   return {
     ok: true,
     context: {
@@ -257,6 +281,7 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
       snake: { id, generation, traits },
       mutationPool,
       freePlay: raw.freePlay,
+      ...(growthProfileId ? { growthProfileId } : {}),
       genome,
     },
   };
@@ -280,6 +305,9 @@ export function serializeRunStartContext(
     },
     mutationPool: context.mutationPool,
     freePlay: context.freePlay,
+    // Omitted entirely when baseline/absent, so a shipped-curve run stores
+    // exactly the blob it stored before the lab existed.
+    ...(context.growthProfileId ? { growthProfileId: context.growthProfileId } : {}),
     genome: context.genome
       ? {
           genePool: context.genome.genePool,
