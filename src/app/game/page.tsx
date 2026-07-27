@@ -1757,6 +1757,13 @@ export default function GamePage() {
     applyStartedRun,
     equippedSnake,
     gameMode,
+    // WP-3.02: WITHOUT THIS THE SELECTOR IS DECORATIVE. `handleStart` is a
+    // useCallback, so omitting `growthProfile` captured its first value -
+    // `baseline` - forever. Tapping Tuned updated the state and re-rendered
+    // the button while the request kept asking for baseline, so every run
+    // grew +1 and the three profiles were indistinguishable. No unit test
+    // could catch it: none of them go through React.
+    growthProfile,
     hasCompletedFirstRun,
     isStarting,
     session?.access_token,
