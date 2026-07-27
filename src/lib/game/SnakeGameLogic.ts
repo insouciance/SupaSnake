@@ -676,6 +676,32 @@ export class SnakeGameLogic {
     return this.genome ? { ...this.genome } : null;
   }
 
+  /**
+   * Adopt the growth profile the SERVER stamped on this run (WP-3.02).
+   *
+   * Mirrors `setGenome`: the page builds the engine on mount, before the
+   * session-start response exists, and configures it when the response
+   * arrives. Refused once the run is live, because growth decides the
+   * starting body and every subsequent length - changing it mid-run would
+   * diverge from `computeLengthTrace`, which folds one profile for the whole
+   * run.
+   *
+   * The argument is whatever the server sent; anything unrecognised resolves
+   * to `baseline`, so a client that is newer, older or confused still plays
+   * the shipped curve rather than an invented one.
+   */
+  setGrowthProfile(id: unknown): void {
+    if (this.state.isPlaying) return;
+    this.growth = resolveGrowthProfile(id);
+    this.initialLength = this.growth.initialLength;
+    this.state = this.createInitialState();
+  }
+
+  /** The run's growth profile id - what settlement will recompute with. */
+  getGrowthProfileId(): GrowthProfileId {
+    return this.growth.id;
+  }
+
   /** Spawn strain points (heirloom+lineage, server-derived, pre-capped). */
   private spawnStrainPoints(): StrainPoints {
     return { ...(this.genome?.heirloom ?? {}) };

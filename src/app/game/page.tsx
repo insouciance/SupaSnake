@@ -127,6 +127,12 @@ import {
 } from '@/lib/ftue/launchFlow';
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
+import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
+import {
+  DEFAULT_GROWTH_PROFILE,
+  GROWTH_PROFILES,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
 import {
   challengeRunNote,
   challengeRunRng,
@@ -298,6 +304,14 @@ export default function GamePage() {
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [particlePos, setParticlePos] = useState<[number, number, number] | null>(null);
+  /**
+   * The growth profile the player asked for (WP-3.02). A REQUEST only: the
+   * server resolves it, stamps it into `run_context` and echoes back what it
+   * actually chose, which is what the engine then adopts.
+   */
+  const [growthProfile, setGrowthProfile] = useState<GrowthProfileId>(
+    DEFAULT_GROWTH_PROFILE
+  );
   const [particleTrigger, setParticleTrigger] = useState(0);
   const [deathPos, setDeathPos] = useState<[number, number, number] | null>(null);
   const [showDeathExplosion, setShowDeathExplosion] = useState(false);
@@ -1595,6 +1609,11 @@ export default function GamePage() {
 
     // The server capability is the only Genome switch. Missing or malformed
     // capability data resets the engine cleanly to the legacy rules.
+    // WP-3.02: the growth profile the SERVER stamped. Adopted FIRST, because
+    // it decides the starting body and therefore the initial state every
+    // other setter below writes into.
+    game.setGrowthProfile((data as Record<string, unknown>).growthProfile);
+
     const genomeCapability = sanitizeGenomeCapability(data.genome);
     game.setGenome(genomeCapability);
     setGenomeRun(genomeCapability !== null);
@@ -1705,6 +1724,9 @@ export default function GamePage() {
           action: 'start',
           mode, // 'free' = rewardless practice run (§7.4)
           snake_id: equippedSnake.id, // Server validates ownership + equipped
+          // WP-3.02: a REQUEST, never a decision. The server resolves the
+          // profile, stamps it, and echoes back what it chose.
+          ...(GROWTH_LAB_ENABLED ? { growthProfile } : {}),
         }),
       });
 
@@ -2323,6 +2345,43 @@ export default function GamePage() {
       </div>
     ) : null;
 
+  /**
+   * The growth-profile selector (WP-3.02). Null unless the lab flag is armed,
+   * so production sees exactly the Run Setup page it saw before.
+   *
+   * The request is advisory: the server resolves the profile and stamps it,
+   * and the engine adopts whatever came BACK. Choosing here can never make the
+   * client and the recompute disagree.
+   */
+  const growthSelectorNode = GROWTH_LAB_ENABLED ? (
+    <div data-testid="growth-lab-selector">
+      <p className="label-arcade mb-2 text-cosmic">Growth lab</p>
+      <div className="flex flex-wrap gap-2">
+        {(Object.keys(GROWTH_PROFILES) as GrowthProfileId[]).map((id) => {
+          const profile = GROWTH_PROFILES[id];
+          const active = growthProfile === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setGrowthProfile(id)}
+              aria-pressed={active}
+              data-testid={`growth-profile-${id}`}
+              className={`rounded-arcade border px-3 py-2 text-left font-body text-xs transition-all ${
+                active
+                  ? 'border-venom-orange/70 bg-venom-orange/15 text-bone-white'
+                  : 'border-scale-blue-light/40 bg-scale-blue/40 text-beige/80 hover:border-venom-orange/50'
+              }`}
+            >
+              <span className="block font-semibold">{profile.label}</span>
+              <span className="block text-beige/60">{profile.blurb}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
   const startTestId =
     gameMode === 'free'
       ? 'free-play-start'
@@ -2840,6 +2899,7 @@ export default function GamePage() {
                   startError={startError}
                   heirloom={heirloomNode}
                   modeToggle={modeToggleNode}
+                  growthSelector={growthSelectorNode}
                   anomalyPanel={anomalyPanelNode}
                   aimSelector={aimSelectorNode}
                   controlScheme={controlSchemeNode}

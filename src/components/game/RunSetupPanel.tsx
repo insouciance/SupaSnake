@@ -54,6 +54,13 @@ export interface RunSetupPanelProps {
    * the same button under either side of the flag.
    */
   startTestId: string;
+  /**
+   * The growth-profile selector (WP-3.02), or null when the lab flag is off.
+   * Rendered inside the disclosure, not beside START: it is an experiment the
+   * owner opts into, and §5's law is that a first-time player sees one
+   * emphasised action and no demanded decisions.
+   */
+  growthSelector?: ReactNode;
   isStarting: boolean;
   onStart: () => void;
   startError: string | null;
@@ -82,6 +89,7 @@ export function RunSetupPanel({
   startLabel,
   challengeNote,
   startTestId,
+  growthSelector = null,
   isStarting,
   onStart,
   startError,
@@ -94,6 +102,7 @@ export function RunSetupPanel({
 }: RunSetupPanelProps) {
   const hasAdjustables =
     Boolean(modeToggle) ||
+    Boolean(growthSelector) ||
     Boolean(anomalyPanel) ||
     Boolean(aimSelector) ||
     Boolean(controlScheme) ||
@@ -194,6 +203,7 @@ export function RunSetupPanel({
           </summary>
           <div className="space-y-4 pt-3">
             {modeToggle}
+            {growthSelector}
             {anomalyPanel}
             {aimSelector}
             {controlScheme}
