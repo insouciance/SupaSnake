@@ -18,6 +18,8 @@ interface Archetype {
   infuses: { atFood: number }[];
   prevRunDied?: boolean;
   boundedClaimDna?: number;
+  /** COSMIC's combo, deleted in WP-3.13 - kept as an archetype knob only
+   *  where a historical build's DNA-per-run is being reproduced. */
   comboMultiplier?: number;
   designEv: number;
 }

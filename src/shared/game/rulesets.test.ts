@@ -7,16 +7,13 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import {
   BANK,
   COSMIC_CONSTELLATION,
-  COSMIC_FLUX,
   COSMIC_SPEED_MS,
-  COSMIC_TRUST_MAX_BONUS_RATIO,
   FOOD_BASE_DNA,
   FOOD_BASE_SCORE,
   RULESETS,
   applyOutcome,
   applyOutcomeWithMutations,
   computeRunTotals,
-  cosmicComboMultiplier,
   getRuleset,
   normalizeDynastyName,
   outcomeMultipliers,
@@ -128,7 +125,7 @@ describe('CYBER ruleset (Overclock)', () => {
   });
 });
 
-describe('COSMIC ruleset (Flux)', () => {
+describe('COSMIC ruleset (the torus and the constellation)', () => {
   const cosmic = RULESETS.COSMIC;
 
   it('has a fixed 160 ms tick between PRIMAL and CYBER tier 1', () => {
@@ -137,57 +134,63 @@ describe('COSMIC ruleset (Flux)', () => {
     expect(cosmic.speedForFood(80)).toBe(160);
   });
 
-  it('pays a flat base food value - the combo layer sits on top', () => {
+  it('pays a flat base food value, and nothing sits on top of it', () => {
     expect(cosmic.foodDnaValue(1)).toBe(10);
     expect(cosmic.foodDnaValue(50)).toBe(10);
     expect(cosmic.scoreMultiplier(50)).toBe(1);
   });
 
-  it('carries the constellation config: 3 glyphs, groups of 3, 8-tick window', () => {
+  it('carries the constellation config: 5 scattered stars on an 8s window', () => {
     expect(cosmic.constellation).toBe(COSMIC_CONSTELLATION);
+    expect(COSMIC_CONSTELLATION.size).toBe(5);
+    expect(COSMIC_CONSTELLATION.windowSeconds).toBe(8);
+    expect(COSMIC_CONSTELLATION.scatterMinCells).toBe(5);
+    expect(COSMIC_CONSTELLATION.calcifySeconds).toBe(2);
     expect(COSMIC_CONSTELLATION.glyphCount).toBe(3);
-    expect(COSMIC_CONSTELLATION.groupSize).toBe(3);
-    expect(COSMIC_CONSTELLATION.chainWindowTicks).toBe(8);
-    expect(COSMIC_CONSTELLATION.comboCap).toBe(2.4);
   });
 
-  it('carries the flux config: 12s open / 8s closed / ~2s telegraph at 160ms', () => {
-    expect(cosmic.flux).toBe(COSMIC_FLUX);
-    expect(COSMIC_FLUX.openTicks).toBe(75); // 12s / 0.16s
-    expect(COSMIC_FLUX.closedTicks).toBe(50); // 8s / 0.16s
-    expect(COSMIC_FLUX.telegraphTicks).toBe(12); // ~2s
-  });
+  it('the window is worth about one perfect route, and no more', () => {
+    // §3's invariant, as arithmetic rather than a hope: abandonment has to be
+    // COMMON BUT NOT TOTAL. A window far above a perfect route collects
+    // everything and the mechanic is inert; far below it collects nothing and
+    // it is a death spiral rather than a route.
+    //
+    // A Manhattan step on this board is one tick, so a route's tick cost is
+    // its length. Two uniform cells on an n x n torus are n/4 apart per axis,
+    // so n/2 in Manhattan terms - and the route is `size` such hops: one to
+    // reach the constellation, then `size - 1` between its stars.
+    const grid = GAME_CONFIG.board.gridSize;
+    const perfectRouteTicks = COSMIC_CONSTELLATION.size * (grid / 2);
+    const windowTicks =
+      (COSMIC_CONSTELLATION.windowSeconds * 1000) / COSMIC_SPEED_MS;
 
-  it('PRIMAL and CYBER carry no constellation or flux fields', () => {
-    expect(RULESETS.PRIMAL.constellation).toBeUndefined();
-    expect(RULESETS.PRIMAL.flux).toBeUndefined();
-    expect(RULESETS.CYBER.constellation).toBeUndefined();
-    expect(RULESETS.CYBER.flux).toBeUndefined();
-  });
-});
+    expect(windowTicks / perfectRouteTicks).toBeGreaterThanOrEqual(0.8);
+    expect(windowTicks / perfectRouteTicks).toBeLessThanOrEqual(1.3);
 
-describe('cosmicComboMultiplier', () => {
-  it('follows the doc table: x1.0 solo, x1.2 at chain 2, +0.2 per food, cap x2.4', () => {
-    expect(cosmicComboMultiplier(0)).toBe(1);
-    expect(cosmicComboMultiplier(1)).toBe(1);
-    expect(cosmicComboMultiplier(2)).toBeCloseTo(1.2, 10);
-    expect(cosmicComboMultiplier(3)).toBeCloseTo(1.4, 10);
-    expect(cosmicComboMultiplier(5)).toBeCloseTo(1.8, 10);
-    expect(cosmicComboMultiplier(7)).toBeCloseTo(2.2, 10);
-    expect(cosmicComboMultiplier(8)).toBe(2.4);
-    expect(cosmicComboMultiplier(20)).toBe(2.4);
-  });
-
-  it('rounds to clean per-food values at base 10', () => {
-    // round(10 x combo) for chains 1..8: the exact per-food payout steps
-    const values = [1, 2, 3, 4, 5, 6, 7, 8].map((c) =>
-      Math.round(10 * cosmicComboMultiplier(c))
+    // And it must at least be physically possible: the stars are never
+    // closer together than `scatterMinCells`, so a route cannot be cheaper
+    // than that many ticks per hop however lucky the scatter is.
+    expect(windowTicks).toBeGreaterThanOrEqual(
+      (COSMIC_CONSTELLATION.size - 1) * COSMIC_CONSTELLATION.scatterMinCells
     );
-    expect(values).toEqual([10, 12, 14, 16, 18, 20, 22, 24]);
   });
 
-  it('bounded-trust ratio is comboCap - 1 (the clamp ceiling)', () => {
-    expect(COSMIC_TRUST_MAX_BONUS_RATIO).toBeCloseTo(1.4, 10);
+  it('the board wraps, permanently, and only COSMIC does', () => {
+    expect(cosmic.torus).toBe(true);
+    expect(RULESETS.PRIMAL.torus).toBeUndefined();
+    expect(RULESETS.CYBER.torus).toBeUndefined();
+  });
+
+  it('PRIMAL and CYBER carry no constellation', () => {
+    expect(RULESETS.PRIMAL.constellation).toBeUndefined();
+    expect(RULESETS.CYBER.constellation).toBeUndefined();
+  });
+
+  it('COSMIC schedules no ARENA - its terrain is the stars it missed', () => {
+    // The distinction matters: `arena` is a food-indexed schedule that
+    // hardens the outer ring, and COSMIC has none. Its blocks are produced
+    // by play, which is why the ratio is an outcome rather than a dial.
+    expect(cosmic.arena).toBeUndefined();
   });
 });
 
@@ -281,7 +284,7 @@ describe('computeRunTotals', () => {
     expect(computeRunTotals('CYBER', 30).score).toBe(670);
   });
 
-  it('COSMIC base totals are flat (combo bonus is layered on top, clamped)', () => {
+  it('COSMIC totals are flat, and complete - nothing is layered on top', () => {
     expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 300, score: 300 });
   });
 });
@@ -351,7 +354,8 @@ describe('validation bounds', () => {
     );
     expect(RULESETS.PRIMAL.validation.maxFoodPerSecond).toBe(1.0);
     expect(RULESETS.CYBER.validation.maxFoodPerSecond).toBe(2.5);
-    // COSMIC: 160ms tick + clustered constellation groups eat faster than PRIMAL
+    // COSMIC: re-derived in WP-3.13 from the scatter rule - a wave of 5 at
+    // a minimum 5-cell separation costs >= 21 ticks, so 5/(21 x 0.16s) = 1.49
     expect(RULESETS.COSMIC.validation.maxFoodPerSecond).toBe(1.5);
   });
 });

@@ -48,7 +48,6 @@ const ctx = (over: Partial<GenomeValidationContext> = {}): GenomeValidationConte
   heirloom: {},
   genePool: [...GENE_POOL],
   prevRunDied: false,
-  crownAllowed: false,
   tierCap: 3,
   ...over,
 });

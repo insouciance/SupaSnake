@@ -12,6 +12,7 @@ import {
   GameOverData,
 } from './SnakeGameLogic';
 import {
+  COSMIC_CONSTELLATION,
   RULESETS,
   computeRunTotals,
   type DynastyName,
@@ -878,7 +879,10 @@ describe('SnakeGameLogic', () => {
       expect(state.foodEaten).toBe(foods);
     });
 
-    it('COSMIC totals equal the base recompute plus the reported combo bonus', () => {
+    it('COSMIC totals equal the recompute exactly, with no bonus layer', () => {
+      // Before WP-3.13 this test asserted a DECOMPOSITION - base plus a
+      // reported combo bonus - because the combo was the one thing the
+      // server could not derive. There is no decomposition any more.
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.COSMIC,
@@ -889,16 +893,9 @@ describe('SnakeGameLogic', () => {
 
       const expected = computeRunTotals('COSMIC', 12);
       const state = engine.getState();
-      // Bounded-trust bookkeeping: totals decompose exactly into base + bonus
-      expect(state.dnaCollected).toBe(expected.rawDna + state.comboDnaBonus);
-      expect(state.score).toBe(expected.score + state.comboScoreBonus);
+      expect(state.dnaCollected).toBe(expected.rawDna);
+      expect(state.score).toBe(expected.score);
       expect(state.foodEaten).toBe(12);
-      // Eating every tick with one glyph builds the full chain:
-      // per-food values 10,12,14,16,18,20,22 then 24 from chain 8 on
-      expect(state.maxChain).toBe(12);
-      expect(state.dnaCollected).toBe(232);
-      expect(state.comboDnaBonus).toBe(112);
-      expect(state.comboScoreBonus).toBe(112);
     });
 
     it('CYBER out-scores PRIMAL for the same foods once tiers kick in', () => {
@@ -1096,7 +1093,6 @@ describe('SnakeGameLogic', () => {
         mutations: [],
         deathCause: 'extracted', // Identity v1 section 9.5
         phoenixTriggeredAtFood: null,
-        cosmic: null, // non-COSMIC runs carry no combo claim
         genome: null, // legacy runs carry no genome payload
       });
       expect(extractedPayload).toEqual({
@@ -1647,227 +1643,8 @@ describe('SnakeGameLogic', () => {
     });
   });
 
-  // =========================================================================
-  // Design v2 Phase 2: COSMIC Flux
-  // =========================================================================
-
-  describe('COSMIC Flux: constellation groups + combo chain', () => {
-    function cosmicEngine(rng: () => number = () => 0.999): SnakeGameLogic {
-      const engine = new SnakeGameLogic({
-        gridSize: 60,
-        ruleset: RULESETS.COSMIC,
-        rng,
-      });
-      engine.start();
-      return engine;
-    }
-
-    it('spawns foods as clustered glyph groups of 3', () => {
-      const engine = cosmicEngine(mulberry(11));
-      const state = engine.getState();
-      expect(state.foods).toHaveLength(3);
-      expect(state.constellationGlyph).toBeGreaterThanOrEqual(0);
-      expect(state.constellationGlyph).toBeLessThan(3);
-      const anchor = state.foods[0];
-      for (const food of state.foods) {
-        expect(Math.abs(food.x - anchor.x)).toBeLessThanOrEqual(4);
-        expect(Math.abs(food.z - anchor.z)).toBeLessThanOrEqual(4);
-        expect(
-          state.snake.some((s) => s.x === food.x && s.z === food.z)
-        ).toBe(false);
-      }
-    });
-
-    it('Splitter widens COSMIC groups to 4', () => {
-      const engine = cosmicEngine();
-      engine.grantMutation('splitter');
-      engine.placeFood({ x: engine.getState().snake[0].x + 1, y: 0, z: 30 });
-      engine.tick(); // eat the single placed food -> new wave
-      expect(engine.getState().foods).toHaveLength(4);
-    });
-
-    it('chains same-glyph eats within the 8-tick window: x1.2 -> x2.4', () => {
-      const engine = cosmicEngine();
-      const z = engine.getState().snake[0].z;
-
-      engine.placeFood({ x: 31, y: 0, z }, 2);
-      engine.tick(); // eat 1: chain 1, 10 DNA
-      expect(engine.getState().chainLength).toBe(1);
-      expect(engine.getState().dnaCollected).toBe(10);
-
-      engine.placeFood({ x: 33, y: 0, z }, 2);
-      engine.tick();
-      engine.tick(); // eat 2 after a 2-tick gap: chain 2, +12
-      const state = engine.getState();
-      expect(state.chainLength).toBe(2);
-      expect(state.comboMultiplier).toBeCloseTo(1.2, 10);
-      expect(state.dnaCollected).toBe(22);
-      expect(state.comboDnaBonus).toBe(2);
-      expect(state.score).toBe(22);
-    });
-
-    it('a different glyph resets the chain', () => {
-      const engine = cosmicEngine();
-      const z = engine.getState().snake[0].z;
-
-      engine.placeFood({ x: 31, y: 0, z }, 0);
-      engine.tick(); // chain 1
-      engine.placeFood({ x: 32, y: 0, z }, 0);
-      engine.tick(); // chain 2
-      expect(engine.getState().chainLength).toBe(2);
-
-      engine.placeFood({ x: 33, y: 0, z }, 1); // wrong glyph
-      engine.tick();
-      expect(engine.getState().chainLength).toBe(1);
-      expect(engine.getState().comboMultiplier).toBe(1);
-    });
-
-    it('more than 8 ticks between eats breaks the chain', () => {
-      const engine = cosmicEngine();
-      const z = engine.getState().snake[0].z;
-
-      engine.placeFood({ x: 31, y: 0, z }, 2);
-      engine.tick(); // chain 1 at x=31
-      engine.placeFood({ x: 41, y: 0, z }, 2); // 10 cells away: 10-tick gap
-      for (let i = 0; i < 10; i++) engine.tick();
-      expect(engine.getState().foodEaten).toBe(2);
-      expect(engine.getState().chainLength).toBe(1); // window missed
-
-      // But an 8-tick gap keeps it alive
-      engine.placeFood({ x: 49, y: 0, z }, 2); // 8 cells -> 8-tick gap
-      for (let i = 0; i < 8; i++) engine.tick();
-      expect(engine.getState().foodEaten).toBe(3);
-      expect(engine.getState().chainLength).toBe(2);
-    });
-
-    it('caps the combo at x2.4 from chain 8 (10,12,...,24 then flat 24)', () => {
-      const engine = cosmicEngine();
-      eatFoods(engine, 10);
-      const state = engine.getState();
-      expect(state.maxChain).toBe(10);
-      expect(state.comboMultiplier).toBe(2.4);
-      // 10+12+14+16+18+20+22+24+24+24
-      expect(state.dnaCollected).toBe(184);
-      expect(state.comboDnaBonus).toBe(84);
-    });
-  });
-
-  describe('COSMIC Flux: wrap phases', () => {
-    function parkedCosmic(gridSize = 20): SnakeGameLogic {
-      const engine = new SnakeGameLogic({
-        gridSize,
-        ruleset: RULESETS.COSMIC,
-        rng: () => 0.999,
-      });
-      engine.start();
-      engine.placeFood({ x: 0, y: 0, z: 0 }); // off the march row
-      return engine;
-    }
-
-    it('opens every run with a full open-phase window', () => {
-      const engine = parkedCosmic();
-      const state = engine.getState();
-      expect(state.fluxPhase).toBe('open');
-      expect(state.fluxTicksRemaining).toBe(75);
-      expect(state.fluxTelegraph).toBe(false);
-    });
-
-    it('non-COSMIC dynasties have no flux phase', () => {
-      const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
-      engine.start();
-      expect(engine.getState().fluxPhase).toBeNull();
-    });
-
-    it('wraps the snake across the edge while the walls are open', () => {
-      const engine = parkedCosmic();
-      for (let i = 0; i < 10; i++) engine.tick(); // (10,10) -> wraps at 19
-      const state = engine.getState();
-      expect(state.isGameOver).toBe(false);
-      expect(state.isDeathSequence).toBe(false);
-      expect(state.snake[0]).toEqual({ x: 0, y: 0, z: 10 });
-    });
-
-    it('raises the telegraph ~2s before the phase flips, then flips closed', () => {
-      const engine = parkedCosmic();
-      const telegraphs: any[] = [];
-      const changes: any[] = [];
-      engine.on('fluxTelegraph', (data) => telegraphs.push(data));
-      engine.on('fluxPhaseChange', (data) => changes.push(data));
-
-      for (let i = 0; i < 63; i++) engine.tick(); // remaining hits 12
-      expect(telegraphs).toHaveLength(1);
-      expect(telegraphs[0].nextPhase).toBe('closed');
-      expect(engine.getState().fluxTelegraph).toBe(true);
-      expect(changes).toHaveLength(0);
-
-      for (let i = 0; i < 12; i++) engine.tick(); // remaining hits 0 -> flip
-      expect(changes).toHaveLength(1);
-      expect(changes[0].phase).toBe('closed');
-      const state = engine.getState();
-      expect(state.fluxPhase).toBe('closed');
-      expect(state.fluxTicksRemaining).toBe(50);
-      expect(state.fluxTelegraph).toBe(false);
-    });
-
-    it('walls kill while closed', () => {
-      const engine = parkedCosmic();
-      for (let i = 0; i < 75; i++) engine.tick(); // phase -> closed, head (5,10)
-      expect(engine.getState().fluxPhase).toBe('closed');
-      for (let i = 0; i < 15; i++) engine.tick(); // march into the wall
-      expect(engine.getState().isDeathSequence).toBe(true);
-    });
-
-    it('Wall Rush still slides during the closed phase', () => {
-      const engine = parkedCosmic();
-      engine.grantMutation('wall_rush');
-      for (let i = 0; i < 75; i++) engine.tick(); // closed, head (5,10)
-      for (let i = 0; i < 15; i++) engine.tick(); // wall -> slide
-      const state = engine.getState();
-      expect(state.isDeathSequence).toBe(false);
-      expect(state.direction).toBe('DOWN');
-    });
-
-    it('cycles back to open after the closed window', () => {
-      const engine = new SnakeGameLogic({
-        gridSize: 60,
-        ruleset: RULESETS.COSMIC,
-        rng: () => 0.999,
-      });
-      engine.start();
-      engine.placeFood({ x: 0, y: 0, z: 0 });
-      const changes: any[] = [];
-      engine.on('fluxPhaseChange', (data) => changes.push(data));
-
-      for (let i = 0; i < 75; i++) engine.tick(); // open -> closed, head (45,30)
-      engine.setDirection('DOWN');
-      for (let i = 0; i < 25; i++) engine.tick();
-      engine.setDirection('LEFT');
-      for (let i = 0; i < 25; i++) engine.tick(); // closed window survived
-
-      expect(changes.map((c) => c.phase)).toEqual(['closed', 'open']);
-      const state = engine.getState();
-      expect(state.fluxPhase).toBe('open');
-      expect(state.fluxTicksRemaining).toBe(75);
-      expect(state.isGameOver).toBe(false);
-    });
-
-    it('the choice hold freezes the flux clock (deterministic pause)', () => {
-      const engine = parkedCosmic();
-      const head = engine.getState().snake[0];
-      engine.placeMutation({ x: head.x + 1, y: 0, z: head.z });
-      engine.tick(); // opens the choice
-      expect(engine.getState().pendingChoice).not.toBeNull();
-      const frozen = engine.getState().fluxTicksRemaining;
-      for (let i = 0; i < 5; i++) engine.tick();
-      expect(engine.getState().fluxTicksRemaining).toBe(frozen);
-      engine.chooseMutation(0);
-      engine.tick();
-      expect(engine.getState().fluxTicksRemaining).toBe(frozen - 1);
-    });
-  });
-
   describe('Phase 2 restart hygiene', () => {
-    it('restart clears mutations, choice, phoenix, combo, and flux state', () => {
+    it('restart clears mutations, choice, phoenix and the constellation', () => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.COSMIC,
@@ -1889,13 +1666,11 @@ describe('SnakeGameLogic', () => {
       expect(state.mutationTile).toBeNull();
       expect(state.phoenixAvailable).toBe(false);
       expect(state.phoenixTriggeredAtFood).toBeNull();
-      expect(state.chainLength).toBe(0);
-      expect(state.comboDnaBonus).toBe(0);
-      expect(state.maxChain).toBe(0);
-      expect(state.fluxPhase).toBe('open');
-      expect(state.fluxTicksRemaining).toBe(75);
       expect(state.nextMutationAtFood).toBe(20); // rng 0.5 -> 20
-      expect(state.foods).toHaveLength(3);
+      expect(state.foods).toHaveLength(COSMIC_CONSTELLATION.size);
+      // A fresh run opens a fresh window - 8s at COSMIC's 160ms tick.
+      expect(state.constellationWindowTicks).toBe(50);
+      expect(state.constellationTicksRemaining).toBe(50);
     });
   });
 });

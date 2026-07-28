@@ -329,7 +329,6 @@ describe('claim caps + clamping', () => {
       ricochetDna: 0,
       heartwoodDna: 0,
       secondSunFlat: 0,
-      crownHeld: false,
       globalClaimsCap: 250,
     };
     const { bonusDna, globalClampHit } = clampGenomeClaims(

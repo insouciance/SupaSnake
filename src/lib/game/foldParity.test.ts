@@ -209,7 +209,7 @@ function runScript(script: Script): RunOutcome {
   const finalState = game.getState();
   const foodCount = finalState.foodEaten;
   const engineDna = finalState.dnaCollected;
-  const engineScore = finalState.score - finalState.comboScoreBonus;
+  const engineScore = finalState.score;
   const engineLengthTrace = game.getLengthTrace().lengthAtEat.slice(0, foodCount + 1);
 
   const acceptedPicks: GenePick[] = picks
@@ -244,17 +244,18 @@ function runScript(script: Script): RunOutcome {
     script.anomaly ?? null
   );
 
-  // Two layers are BOUNDED TRUST, not recompute, and neither belongs in a
-  // comparison of the two folds:
+  // ONE layer is BOUNDED TRUST rather than recompute, and it does not belong
+  // in a comparison of the two folds: the genome claims (Midas, Static
+  // Charge, Ricochet, Gilded Wake, molt foods, Ouroboros bites, Heartwood
+  // goldens), which the engine accumulates at eat time and the server CLAMPS
+  // against caps.
   //
-  //   1. the genome claims (Midas, Static Charge, Ricochet, Gilded Wake,
-  //      molt foods, Ouroboros bites, Heartwood goldens), which the engine
-  //      accumulates at eat time and the server CLAMPS against caps;
-  //   2. the COSMIC constellation combo, which depends on tick timing the
-  //      server cannot reconstruct and is likewise clamped, never derived.
+  // There were two. COSMIC's combo depended on tick timing the server cannot
+  // reconstruct and was likewise clamped rather than derived; WP-3.13 deleted
+  // it, so SCORE now needs no subtraction at all on any dynasty.
   //
-  // Subtracting both is what makes this a like-for-like comparison of the
-  // DETERMINISTIC folds. Everything that remains is arithmetic both sides
+  // Subtracting the claims is what makes this a like-for-like comparison of
+  // the DETERMINISTIC folds. Everything that remains is arithmetic both sides
   // are supposed to perform identically, so any difference is a bug.
   const claims = finalState.genomeClaims;
   const claimedBonus =
@@ -264,8 +265,7 @@ function runScript(script: Script): RunOutcome {
     (claims.aurumWakeDna ?? 0) +
     (claims.moltFoodDna ?? 0) +
     (claims.ouroborosDna ?? 0) +
-    (claims.heartwoodDna ?? 0) +
-    finalState.comboDnaBonus;
+    (claims.heartwoodDna ?? 0);
 
   void over;
 
@@ -647,17 +647,20 @@ describe('fold parity: strains and their physics', () => {
   });
 });
 
-describe('fold parity: the COSMIC combo layer', () => {
-  it('the deterministic half of a COSMIC run matches exactly', () => {
-    // The combo is bounded trust, not a recompute: the engine layers it on
-    // and the server clamps it. What must match is the run WITHOUT it,
-    // which is what `dnaNoCombo` and `computeGenomeRunTotals` both describe.
+describe('fold parity: COSMIC', () => {
+  it('a COSMIC run matches exactly, in full', () => {
+    // Before WP-3.13 only the deterministic HALF of a COSMIC run could be
+    // compared, because the combo was layered on the engine side and clamped
+    // on the server side. With the combo deleted there is no half: the whole
+    // run is the same fold on both sides.
     const outcome = runScript({
-      name: 'cosmic-combo',
+      name: 'cosmic',
       dynasty: 'COSMIC',
       picks: [{ id: 'gold_trail', atFood: 15 }],
       foods: 50,
     });
+    expect(outcome.engineDna - outcome.claimedBonus).toBe(outcome.serverDna);
+    expect(outcome.engineScore).toBe(outcome.serverScore);
     expect(
       outcome.engineLengthTrace.length
     ).toBe(outcome.serverLengthTrace.length);

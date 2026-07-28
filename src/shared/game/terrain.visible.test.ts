@@ -74,16 +74,44 @@ describe('a lethal primitive is connected to a renderer', () => {
 
 describe('no dynasty may arm an arena without a renderer', () => {
   it.each(DYNASTIES)(
-    '%s: if it schedules terrain, the renderer is present',
+    '%s: if it PRODUCES terrain by any route, the renderer is present',
     (dynasty) => {
       const ruleset = getRuleset(dynasty);
-      if (!ruleset.arena) return;
+      // Two routes now, and the second is why this reads `||` rather than
+      // just `arena`. CYBER SCHEDULES terrain (`arena`); COSMIC produces it
+      // from play — every star its constellation window closes on calcifies
+      // — with no schedule anywhere. A gate that only knew about `arena`
+      // would have let COSMIC ship the WP-3.03 defect a second time.
+      if (!ruleset.arena && !ruleset.constellation) return;
       expect(() =>
         read('src/components/game/TerrainBlocks.tsx')
       ).not.toThrow();
       expect(read('src/app/game/page.tsx')).toContain('TerrainBlocks');
     }
   );
+
+  it('COSMIC calcifies into the same primitive the renderer draws', () => {
+    // The connection, asserted rather than assumed: the engine pushes
+    // TerrainBlock-shaped objects for missed stars, so the mounted renderer
+    // picks them up with no second code path and no second chance to forget.
+    const engine = read('src/lib/game/SnakeGameLogic.ts');
+    expect(engine).toContain('calcifyConstellation');
+    expect(engine).toMatch(
+      /calcifyConstellation\(\)[\s\S]{0,2000}this\.state\.terrain\.push\(/
+    );
+  });
+
+  it('the constellation window is drawn, not merely modelled', () => {
+    // Same class of defect one layer up: the window decides where permanent
+    // lethal blocks land, so a player who cannot see it cannot have chosen
+    // them. The cockpit is the production HUD; the legacy chip is the
+    // rollback path, and both are checked because both can ship.
+    const cockpit = read('src/components/game/cockpit/RunCockpit.tsx');
+    expect(cockpit).toContain('constellation-window');
+    const page = read('src/app/game/page.tsx');
+    expect(page).toContain('constellation-chip');
+    expect(page).toContain('constellationTicksRemaining');
+  });
 
   it('an armed arena always has a non-zero forming phase', () => {
     // A block that solidifies instantly is a random death however well it is

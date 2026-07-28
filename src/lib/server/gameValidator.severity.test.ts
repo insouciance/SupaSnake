@@ -249,17 +249,28 @@ describe('the cross-check against migration 055', () => {
     expect(missing).toEqual([]);
   });
 
-  it('the migration allowlists the two RETIRED codes, and only those extra', () => {
+  it('the migration allowlists the RETIRED codes, and only those extra', () => {
     // The complete historical code universe: all nine validator revisions
-    // were walked, and exactly two codes existed that no longer do. Both
+    // were walked, and exactly two codes existed that no longer did. Both
     // were claim mismatches that never changed a payout, so both are
     // advisory. Anything else appearing here would be a code the runtime
     // table cannot classify.
+    //
+    // WP-3.13 retired a third. `COSMIC_COMBO` classified the clamping of a
+    // claimed combo bonus, and the COSMIC redesign deleted the combo, the
+    // claim and the clamp - so no run can raise the code again. Migration
+    // 055 is applied history and is not edited to match; the allowlist
+    // simply now names one code the runtime table has stopped emitting,
+    // which is the correct direction for a settlement backfill.
     const allowed = sqlCodes('wp205_advisory_codes');
     const extra = [...allowed].filter(
       (code) => VALIDATION_CODE_SEVERITY[code] !== 'advisory'
     );
-    expect(extra.sort()).toEqual(['INVALID_DNA', 'INVALID_SCORE']);
+    expect(extra.sort()).toEqual([
+      'COSMIC_COMBO',
+      'INVALID_DNA',
+      'INVALID_SCORE',
+    ]);
   });
 
   it('never re-credits DNA, mastery XP or total_games_played', () => {

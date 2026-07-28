@@ -168,7 +168,9 @@ describe('rawDna exposure (the mastery XP base)', () => {
     expect(Math.floor(result.rawDna * 1.25)).toBeLessThan(result.adjustedDna);
   });
 
-  it('rawDna includes the ACCEPTED (clamped) COSMIC combo bonus', () => {
+  it('rawDna on COSMIC is the recompute, with nothing claimed on top', () => {
+    // WP-3.13: the accepted (clamped) combo bonus used to be added here.
+    // The combo is gone, so COSMIC's mastery base is the plain fold.
     const foodCount = 50;
     const base = computeRunTotals('COSMIC', foodCount);
     const result = validateGameResult(
@@ -176,13 +178,12 @@ describe('rawDna exposure (the mastery XP base)', () => {
         food_count: foodCount,
         dna_earned: base.rawDna,
         score: base.score,
-        cosmic: { combo_dna_bonus: 100, combo_score_bonus: 100, max_chain: 6 },
       }),
       startedAt(),
       'COSMIC',
       []
     );
-    expect(result.rawDna).toBe(base.rawDna + 100);
+    expect(result.rawDna).toBe(base.rawDna);
   });
 
   it('rawDna excludes the victory bonus', () => {

@@ -86,7 +86,6 @@ describe('Genome run vertical integration', () => {
         heirloom: {},
         genePool,
         prevRunDied: false,
-        crownAllowed: false,
         tierCap: 3,
         suppressedStrains: [],
         splicesUnlocked: true,
