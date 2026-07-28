@@ -5,7 +5,10 @@
  * cell that behaves like wall. One primitive, four consumers:
  *
  *   - CYBER's arena hardens from the outside in (`DYNASTY_CYBER`)
- *   - COSMIC's uncollected stars calcify where they sat (`DYNASTY_COSMIC`)
+ *   - COSMIC's uncollected stars calcify where they sat (`DYNASTY_COSMIC`,
+ *     live since WP-3.13 - and note it uses only the BLOCK, not the
+ *     `TerrainSchedule`: COSMIC's blocks are not scheduled by a food count,
+ *     they are the wave the player failed to finish)
  *   - PRIMAL's FERAL-2 "Fortress" petrifies the oldest tail segments
  *   - a future ladder rung can start a run with a ring already placed
  *
@@ -91,8 +94,20 @@ export function formingTicksFor(
   schedule: TerrainSchedule,
   tickMs: number
 ): number {
+  return ticksForSeconds(schedule.formingSeconds, tickMs);
+}
+
+/**
+ * Seconds -> ticks at the live tick rate, floored at one tick.
+ *
+ * The conversion `formingTicksFor` was already doing, extracted so COSMIC's
+ * calcification and constellation window authored in the same unit go through
+ * the same arithmetic. Two copies of this would be two chances to round a
+ * duration differently.
+ */
+export function ticksForSeconds(seconds: number, tickMs: number): number {
   const ms = Math.max(1, tickMs);
-  return Math.max(1, Math.round((schedule.formingSeconds * 1000) / ms));
+  return Math.max(1, Math.round((seconds * 1000) / ms));
 }
 
 /** How many blocks should exist by the time `foods` have been eaten. */

@@ -332,9 +332,9 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
 // =============================================================================
 
 const DYNASTY_COSTS: Record<DynastyName, string> = {
-  PRIMAL: 'No speed tier and no combo chain: the compounding is gentle, and so is the ceiling.',
+  PRIMAL: 'No speed tier and no debris to build with: the compounding is gentle, and so is the ceiling.',
   CYBER: 'The world accelerates with every food, and the top tier is only worth what you survive long enough to bank.',
-  COSMIC: `A fixed ${COSMIC_SPEED_MS} ms/tick and a flat base food value — all of the payout lives in the chaining, and a broken chain pays nothing extra.`,
+  COSMIC: `A fixed ${COSMIC_SPEED_MS} ms/tick and a flat base food value — and every star you fail to reach in time turns solid where it sat, for the rest of the run.`,
 };
 
 // =============================================================================

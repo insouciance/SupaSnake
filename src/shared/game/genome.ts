@@ -752,8 +752,6 @@ export interface GenomeClaimCaps {
   ricochetDna: number;
   heartwoodDna: number;
   secondSunFlat: number;
-  /** COSMIC combo trust ratio (2.8-cap Crown raises 1.4 -> 1.8 at M10). */
-  crownHeld: boolean;
   /** Aggregate claims backstop: sum of claims <= deterministic x 0.35. */
   globalClaimsCap: number;
 }
@@ -855,11 +853,6 @@ export function genomeClaimCaps(
       activations.UMBRA.apexAt !== null
         ? STRAIN_ECONOMICS.secondSunTriggerFlat
         : 0,
-    crownHeld:
-      find('constellation_crown') !== undefined ||
-      view.splices.some((s) =>
-        s.parents.some((p) => p.id === 'constellation_crown')
-      ),
     globalClaimsCap: Math.floor(
       (basis.cumulativeDna[basis.foodCount] ?? 0) *
         STRAIN_ECONOMICS.genomeClaimsCapRatio

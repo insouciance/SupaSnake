@@ -187,8 +187,8 @@ export const MUTATIONS: Record<MutationId, MutationDef> = {
     id: 'starweaver',
     name: 'Starweaver',
     kind: 'P',
-    effect: 'Constellation groups spawn 4 foods',
-    cost: 'Chain window 2 ticks shorter',
+    effect: 'Constellations spawn one extra star',
+    cost: 'Constellation window 1 second shorter',
   },
   gravity_well: {
     id: 'gravity_well',
@@ -201,8 +201,8 @@ export const MUTATIONS: Record<MutationId, MutationDef> = {
     id: 'event_horizon',
     name: 'Event Horizon',
     kind: 'P',
-    effect: 'Open (wrap) phases last 25 ticks longer',
-    cost: 'Closed (killing) phases last 15 ticks longer',
+    effect: 'Missed stars stay crossable 4 seconds longer',
+    cost: 'Stars scatter 2 cells further apart',
   },
   // --- Season 1 "Solstice" seasonal mutations (section 7.2) -----------------
   // Authored per the section 5 grammar: [E] effects are pure functions of
@@ -397,15 +397,23 @@ export const MUTATION_PHYSICS = {
   tectonicPatiencePortalTicksBonus: 30,
   /** Floor for the portal window after stacked despawn costs. */
   minExitDespawnTicks: 10,
-  /** Starweaver: constellation groups gain one extra food... */
+  /** Starweaver: constellations gain one extra star... */
   starweaverExtraGroupFood: 1,
-  /** ...and the chain window shrinks by 2 ticks. */
-  starweaverChainWindowPenalty: 2,
+  /** ...and the window that has to cover them shrinks by a second. */
+  starweaverWindowSecondsPenalty: 1,
   /** Gravity Well: pull radius (Chebyshev) - outranks Magnet Pulse (2). */
   gravityWellRadius: 3,
-  /** Event Horizon: open phases +25 ticks, closed phases +15 ticks. */
-  eventHorizonOpenTicksBonus: 25,
-  eventHorizonClosedTicksPenalty: 15,
+  /**
+   * Event Horizon, RE-AUTHORED in WP-3.13 - it read "open phases +25 ticks /
+   * closed phases +15" and the wall phases it stretched no longer exist.
+   *
+   * Its trade now runs along COSMIC's own two axes: a missed star spends four
+   * more seconds as a harmless decal (so a bad route is survivable for
+   * longer), paid for with two more cells between every pair of stars (so
+   * every route is longer). More forgiveness, less reach.
+   */
+  eventHorizonCalcifySecondsBonus: 4,
+  eventHorizonScatterPenalty: 2,
   // Season 1 seasonal mutations - engine-side [P] costs
   /** Solstice Engine cost: exit portal interval +2 foods. */
   solsticeEnginePortalIntervalPenalty: 2,

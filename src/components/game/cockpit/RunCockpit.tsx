@@ -88,7 +88,8 @@ export function RunCockpit({
     '--dynasty-ambient': theme.ambientCss,
     '--snake-color': theme.snake,
   } as TokenStyle;
-  const comboLive = model.chainLength >= 2;
+  // COSMIC only: the stars left, and how much of their window is left.
+  const constellation = model.constellation;
   const readyStatus = model.state === 'ready' || model.state === 'held';
   const training = model.training;
   const primaryLabel = training?.primaryLabel ?? 'Score';
@@ -110,7 +111,13 @@ export function RunCockpit({
         <div className={styles.composition}>
           <Instrument
             className={styles.scoreInstrument}
-            label={`${primaryLabel} ${primaryValue}${!training && comboLive ? `, combo ${model.comboMultiplier.toFixed(1)}` : ''}`}
+            label={`${primaryLabel} ${primaryValue}${
+              !training && constellation
+                ? `, ${constellation.stars} ${
+                    constellation.stars === 1 ? 'star' : 'stars'
+                  } left this constellation`
+                : ''
+            }`}
           >
             <span className={styles.primaryIcon}>
               {training ? <TrainingObjectiveGlyph /> : <ScoreGlyph />}
@@ -119,9 +126,21 @@ export function RunCockpit({
               <span className={styles.instrumentLabel}>{primaryLabel}</span>
               <strong className={styles.primaryValue}>{primaryValue}</strong>
             </span>
-            {!training && (
-              <span className={`${styles.comboValue} ${comboLive ? '' : styles.telemetryDormant}`}>
-                {comboLive ? `×${model.comboMultiplier.toFixed(1)}` : '×1.0'}
+            {!training && constellation && (
+              <span
+                className={styles.comboValue}
+                data-testid="constellation-window"
+                // The bar IS the warning: it drains, and what is left on the
+                // board when it empties turns solid where it sits.
+                style={
+                  {
+                    '--constellation-window': `${Math.round(
+                      Math.max(0, Math.min(1, constellation.fraction)) * 100
+                    )}%`,
+                  } as TokenStyle
+                }
+              >
+                ★{constellation.stars}
               </span>
             )}
           </Instrument>

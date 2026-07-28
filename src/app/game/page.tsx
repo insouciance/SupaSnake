@@ -11,7 +11,6 @@ import {
   GameOverData,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
-import type { FluxPhase } from '@/lib/game/SnakeGameLogic';
 import {
   applyGenomeOutcome,
   applyOutcomeWithMutations,
@@ -488,15 +487,14 @@ export default function GamePage() {
     queuedDirections,
     extraFoods,
     constellationGlyph,
-    chainLength,
-    comboMultiplier,
+    constellationTicksRemaining,
+    constellationWindowTicks,
     mutationTile,
     mutationTicksRemaining,
     heldMutations,
     choiceOptions,
     phoenixTriggered,
-    fluxPhase,
-    fluxTelegraph,
+    torus,
     genomeRun,
     strainCounts,
     strainTiers,
@@ -528,7 +526,7 @@ export default function GamePage() {
     setHeldMutations,
     setChoiceOptions,
     setPhoenixTriggered,
-    setFlux,
+    setTorus,
     setGenomeRun,
     setStrains,
     setFusedSplices,
@@ -914,9 +912,13 @@ export default function GamePage() {
   // as soon as the equipped snake is known.
   useEffect(() => {
     if (equippedSnake) {
-      gameRef.current?.setRuleset(getRuleset(normalizeDynastyName(equippedSnake.dynasty)));
+      const ruleset = getRuleset(normalizeDynastyName(equippedSnake.dynasty));
+      gameRef.current?.setRuleset(ruleset);
+      // The rails read this: on a torus they are drawn as barely there,
+      // permanently, because that is what they are.
+      setTorus(ruleset.torus === true);
     }
-  }, [equippedSnake]);
+  }, [equippedSnake, setTorus]);
 
   // Under FTUE v2, no playable snake is a critical bootstrap/load failure.
   // The recovery path returns to Home Retry; it never makes Lab mandatory.
@@ -1152,12 +1154,10 @@ export default function GamePage() {
       showToast('Phoenix — one death absorbed', 'triumph', 3000);
     });
 
-    // COSMIC Flux: audio cues for the wall-phase telegraph + flip (the
-    // ArenaBorder rails carry the visual signal)
-    gameRef.current.on('fluxTelegraph', () => {
-      audioManager.play('directionChange');
-    });
-    gameRef.current.on('fluxPhaseChange', () => {
+    // COSMIC: the constellation window closed and its survivors calcified.
+    // The blocks themselves are drawn by TerrainBlocks; this is the moment
+    // of it, which is otherwise silent - and the moment is the feedback.
+    gameRef.current.on('constellationCalcified', () => {
       audioManager.play('uiClick');
     });
 
@@ -1175,13 +1175,6 @@ export default function GamePage() {
         // If the reward POST can't be delivered, queue it for replay on the
         // next app load so a tab close at death never loses the run's DNA.
         // Phase 2 payload fields shared by the live POST and the outbox
-        const cosmicClaim = data.cosmic
-          ? {
-              combo_dna_bonus: data.cosmic.comboDnaBonus,
-              combo_score_bonus: data.cosmic.comboScoreBonus,
-              max_chain: data.cosmic.maxChain,
-            }
-          : undefined;
         const queueForReplay = () => {
           // Free runs pay nothing - there is no reward to protect, so a
           // failed free end is never queued for replay
@@ -1197,7 +1190,6 @@ export default function GamePage() {
             ...(data.phoenixTriggeredAtFood !== null
               ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
               : {}),
-            ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
             ...(data.genome ? { genome: data.genome } : {}),
             timestamp: Date.now(),
           });
@@ -1222,13 +1214,12 @@ export default function GamePage() {
               extracted: data.extracted,
               died: !data.extracted,
               victory: false,
-              // Design v2 Phase 2: mutation picks + Phoenix + COSMIC combo
+              // Design v2 Phase 2: mutation picks + Phoenix
               mutations: data.mutations,
               ...(data.phoenixTriggeredAtFood !== null
                 ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
                 : {}),
-              ...(cosmicClaim ? { cosmic: cosmicClaim } : {}),
-              ...(data.genome ? { genome: data.genome } : {}),
+                ...(data.genome ? { genome: data.genome } : {}),
               // Identity v1 section 9.5: death cause + run events
               ...(data.deathCause ? { death_cause: data.deathCause } : {}),
               ...(runEventRecord && runEventRecord.events.length > 0
@@ -1495,12 +1486,15 @@ export default function GamePage() {
       setExitTile(state.exitTile, state.exitTicksRemaining);
       // Twin Exits (anomaly): the second portal of the pair
       setExitTile2(state.exitTile2);
-      // Phase 2 mirrors: extra foods (Splitter/COSMIC groups), the
-      // constellation chain, the mutation beacon, and the flux phase
+      // Phase 2 mirrors: extra foods (Splitter pairs, COSMIC's other stars),
+      // the constellation window, and the mutation beacon
       setExtraFoods(state.foods.slice(1));
-      setConstellation(state.constellationGlyph, state.chainLength, state.comboMultiplier);
+      setConstellation(
+        state.constellationGlyph,
+        state.constellationTicksRemaining,
+        state.constellationWindowTicks
+      );
       setMutationTile(state.mutationTile, state.mutationTicksRemaining);
-      setFlux(state.fluxPhase, state.fluxTelegraph);
       // WP-3.05: OUTSIDE the genome gate on purpose. Terrain belongs to a
       // ruleset's arena, not to buildcraft, so gating it here would recreate
       // the invisible-block bug for every non-genome run.
@@ -1525,7 +1519,7 @@ export default function GamePage() {
         performance.now()
       );
     }
-  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux, setStrains, setFusedSplices, setGildedCells, setBonusFoods, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setTerrain]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setBonusFoods, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setTerrain]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -1582,7 +1576,9 @@ export default function GamePage() {
     if (!game) throw new Error('The game board is not ready');
 
     const dynasty = normalizeDynastyName(snakeMeta.dynasty);
-    game.setRuleset(getRuleset(dynasty));
+    const ruleset = getRuleset(dynasty);
+    game.setRuleset(ruleset);
+    setTorus(ruleset.torus === true);
     setSelectedDynasty(dynasty);
     setGameMode(mode);
 
@@ -2154,8 +2150,13 @@ export default function GamePage() {
     holds: isPlaying ? holdBudget : null,
     bankDna: previewOutcome(true, activeAnomalyId),
     crashDna: previewOutcome(false, activeAnomalyId),
-    comboMultiplier,
-    chainLength,
+    constellation:
+      isPlaying && constellationWindowTicks > 0
+        ? {
+            stars: 1 + extraFoods.length,
+            fraction: constellationTicksRemaining / constellationWindowTicks,
+          }
+        : null,
     genes: heldMutations.slice(0, 6).map((pick) => ({
       id: pick.id,
       name: GENES[pick.id].name,
@@ -2579,16 +2580,26 @@ export default function GamePage() {
               </span>
             </div>
           )}
-          {/* COSMIC constellation combo chip - visible once a chain is live */}
-          {isPlaying && chainLength >= 2 && (
+          {/* COSMIC constellation window - stars left, and how long they
+              have before they calcify where they sit. Always visible on
+              COSMIC while playing: the abandonment has to be a CHOICE. */}
+          {isPlaying && constellationWindowTicks > 0 && (
             <div
-              data-testid="combo-chip"
+              data-testid="constellation-chip"
               className="flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border border-[#f0abfc]/60 bg-void/80 backdrop-blur-md"
             >
               <span className="text-[#f0abfc] font-bold">
-                ×{comboMultiplier.toFixed(1)}
+                ★{1 + extraFoods.length}
               </span>
-              <span className="text-beige/60">chain {chainLength}</span>
+              <span className="text-beige/60">
+                {Math.max(
+                  0,
+                  Math.round(
+                    (constellationTicksRemaining / constellationWindowTicks) * 100
+                  )
+                )}
+                %
+              </span>
             </div>
           )}
           {/* Anomaly run chip - the week's modifier, always visible while
@@ -3530,8 +3541,7 @@ export default function GamePage() {
             exitTicksRemaining={exitTicksRemaining}
             mutationTile={mutationTile}
             mutationTicksRemaining={mutationTicksRemaining}
-            fluxPhase={fluxPhase}
-            fluxTelegraph={fluxTelegraph}
+            torus={torus}
             direction={direction}
             queuedDirections={queuedDirections}
             aimSystem={aimSystem}
@@ -3578,9 +3588,11 @@ export default function GamePage() {
 }
 
 /**
- * COSMIC constellation glyph palette - three distinct hues, all outside
- * the violet mutation family and the cyan portal identity. Food color IS
- * the glyph signal: same hue = chainable.
+ * COSMIC constellation palette - three distinct hues, all outside the violet
+ * mutation family and the cyan portal identity. The whole wave shares one
+ * hue, so a constellation reads as ONE object with a shared deadline rather
+ * than as three unrelated foods. It used to mean "same hue = chainable";
+ * WP-3.13 deleted the chain and left the glyph what it always visually was.
  */
 const GLYPH_COLORS = ['#22d3ee', '#f0abfc', '#fbbf24'];
 
@@ -3606,8 +3618,8 @@ interface GameBoardProps {
   exitTicksRemaining: number;
   mutationTile: Position | null;
   mutationTicksRemaining: number;
-  fluxPhase: FluxPhase | null;
-  fluxTelegraph: boolean;
+  /** True on a dynasty whose edges wrap instead of killing (COSMIC). */
+  torus: boolean;
   direction: Direction;
   queuedDirections: Direction[];
   aimSystem: AimSystemId;
@@ -3636,8 +3648,7 @@ function GameBoard({
   exitTicksRemaining,
   mutationTile,
   mutationTicksRemaining,
-  fluxPhase,
-  fluxTelegraph,
+  torus,
   direction,
   queuedDirections,
   aimSystem,
@@ -3682,8 +3693,7 @@ function GameBoard({
         <ArenaAssembly
           gridSize={GAME_CONFIG.board.gridSize}
           dynasty={dynasty}
-          fluxPhase={fluxPhase}
-          fluxTelegraph={fluxTelegraph}
+          torus={torus}
         />
       ) : (
         <>
@@ -3699,8 +3709,7 @@ function GameBoard({
             color={theme.secondary}
             accentColor="#22d3ee"
             emissiveIntensity={0.5}
-            fluxPhase={fluxPhase}
-            fluxTelegraph={fluxTelegraph}
+            torus={torus}
           />
         </>
       )}
@@ -3746,7 +3755,7 @@ function GameBoard({
       </Suspense>
 
       {/* Food - clean voxel block; COSMIC tints the whole wave with its
-          constellation glyph color (same hue = chainable) */}
+          constellation hue, so the wave reads as one object */}
       {food && (
         <FoodBeacon
           position={[food.x + 0.5, 0, food.z + 0.5]}

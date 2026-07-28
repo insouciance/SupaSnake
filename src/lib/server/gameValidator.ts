@@ -18,10 +18,14 @@
  * - Phoenix: a claimed trigger is only honored when phoenix is held and
  *   the food index is plausible; honoring it strictly lowers the payout,
  *   so there is no inflation vector in either direction.
- * - COSMIC bounded trust: combo chains depend on tick timing the server
- *   cannot reconstruct, so the claimed combo bonus is accepted only up to
- *   floor(base x 1.4) (the x2.4 per-food cap) and a sane max chain;
- *   anything beyond clamps and flags rather than recomputing.
+ * - WP-3.13: COSMIC's combo was the ONE payout component this file could
+ *   not recompute - the chain depended on tick timing the server cannot
+ *   reconstruct, so it arrived as a client claim and was clamped against a
+ *   trust ratio rather than derived. The COSMIC redesign deleted the combo,
+ *   and the claim, the clamp, the ratio and the Constellation Crown's
+ *   permission to raise it went with it. Every dynasty's score and DNA are
+ *   now recomputed in full, and NOTHING reaches Score that is not folded
+ *   here.
  *
  * Phase 3A (section 6): traits. The traits parameter comes from the SNAKE
  * ROW referenced by the session (collected_snakes.traits via
@@ -35,7 +39,6 @@
 
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
-  COSMIC_TRUST_MAX_BONUS_RATIO,
   applyGenomeOutcome,
   applyOutcomeWithMutations,
   computeGenomeRunTotals,
@@ -106,8 +109,6 @@ export interface GameResultInput {
   mutations?: unknown;
   /** Claimed Phoenix trigger food index (payout-reducing when honored). */
   phoenix_triggered_at_food?: unknown;
-  /** COSMIC combo summary: { combo_dna_bonus, combo_score_bonus, max_chain }. */
-  cosmic?: unknown;
   /**
    * Genome claim block (Buildcraft: The Genome): { infuses, surges,
    * revive, claims, lossEvents, offerTrace } - sanitized here. Only
@@ -124,8 +125,6 @@ export interface GenomeValidationContext {
   genePool: GeneId[] | null;
   /** Server fact: the previous earned run ended in death (Grave Robber). */
   prevRunDied: boolean;
-  /** COSMIC M10: Constellation Crown may raise the combo trust ratio. */
-  crownAllowed: boolean;
   /** FTUE tier ceiling (economy-binding; mirrors the engine's cap). */
   tierCap: 1 | 2 | 3;
   /** Server-derived Gauntlet strain ban; Expressions/Apexes are disabled. */
@@ -159,13 +158,6 @@ export interface AcceptedGenome {
   apexes: Partial<Record<string, number>>;
   /** The global raw clamp bound while individual caps passed (cheat signal). */
   globalClampHit: boolean;
-}
-
-/** Accepted COSMIC combo claim (post-clamp). */
-export interface CosmicClaim {
-  comboDnaBonus: number;
-  comboScoreBonus: number;
-  maxChain: number;
 }
 
 // =============================================================================
@@ -247,7 +239,6 @@ export const VALIDATION_CODE_SEVERITY: Readonly<
   // did the whole job; the code reports what it cost.
   CLAIM_CLAMPED: 'advisory',
   GENOME_GLOBAL_CLAMP: 'advisory',
-  COSMIC_COMBO: 'advisory',
   // Shape/legality repairs: the offending entry is dropped and the payout
   // is recomputed from what survived.
   INVALID_MUTATIONS: 'advisory',
@@ -360,12 +351,12 @@ export interface ValidationResult {
   /** Authoritative payout: outcome(recomputed raw) [+ victory bonus]. */
   adjustedDna: number;
   /**
-   * Recomputed RAW DNA (incl. accepted COSMIC combo bonus), BEFORE the
+   * Recomputed RAW DNA, BEFORE the
    * outcome multiplier / victory bonus / account stack - the section 7.1
    * mastery XP base: extracted runs grant floor(rawDna x 1.25).
    */
   rawDna: number;
-  /** Authoritative display score (recomputed; + clamped combo on COSMIC). */
+  /** Authoritative display score - the fold, and only the fold. */
   adjustedScore: number;
   /** Validated food count (claimed, clamped to the rate bound). */
   foodCount: number;
@@ -375,8 +366,6 @@ export interface ValidationResult {
   mutations: MutationPick[];
   /** Honored Phoenix trigger food index, null when absent/implausible. */
   phoenixTriggeredAtFood: number | null;
-  /** Accepted (clamped) COSMIC combo claim, null off-COSMIC or when absent. */
-  cosmic: CosmicClaim | null;
   /**
    * Mastery XP base: the DETERMINISTIC recompute only - bounded-trust
    * claims never feed mastery (BUILDCRAFT_GENOME_DESIGN.md §9). Equals
@@ -571,68 +560,6 @@ function nonNegativeInt(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
     ? value
     : null;
-}
-
-/**
- * Sanitize + clamp the COSMIC combo claim (bounded trust). Returns the
- * accepted claim; pushes errors (=> validated:false) when anything had to
- * be clamped or zeroed.
- */
-function sanitizeCosmicClaim(
-  raw: unknown,
-  foodCount: number,
-  baseDna: number,
-  baseScore: number,
-  errors: string[],
-  trustRatio: number = COSMIC_TRUST_MAX_BONUS_RATIO
-): CosmicClaim {
-  const claim = (raw ?? {}) as Record<string, unknown>;
-  let dnaBonus = nonNegativeInt(claim.combo_dna_bonus) ?? 0;
-  let scoreBonus = nonNegativeInt(claim.combo_score_bonus) ?? 0;
-  let maxChain = nonNegativeInt(claim.max_chain) ?? 0;
-  if (
-    raw !== undefined &&
-    raw !== null &&
-    (typeof raw !== 'object' ||
-      nonNegativeInt(claim.combo_dna_bonus) === null ||
-      nonNegativeInt(claim.combo_score_bonus) === null ||
-      nonNegativeInt(claim.max_chain) === null)
-  ) {
-    errors.push('COSMIC_COMBO: malformed combo summary');
-  }
-
-  // Chain length can never exceed foods eaten
-  if (maxChain > foodCount) {
-    errors.push(`COSMIC_COMBO: max chain ${maxChain} exceeds ${foodCount} foods`);
-    maxChain = foodCount;
-  }
-
-  // A combo bonus requires at least a chain of 2
-  if ((dnaBonus > 0 || scoreBonus > 0) && maxChain < 2) {
-    errors.push('COSMIC_COMBO: combo bonus claimed without a chain');
-    dnaBonus = 0;
-    scoreBonus = 0;
-  }
-
-  // Per-dynasty ceiling: every food's combo is capped x2.4, so the bonus
-  // over the no-combo recompute is capped at base x 1.4 (x1.8 when the
-  // Constellation Crown is held at COSMIC M10 - cap x2.8).
-  const maxDnaBonus = Math.floor(baseDna * trustRatio);
-  const maxScoreBonus = Math.floor(baseScore * trustRatio);
-  if (dnaBonus > maxDnaBonus) {
-    errors.push(
-      `COSMIC_COMBO: DNA bonus ${dnaBonus} exceeds ceiling ${maxDnaBonus} - clamped`
-    );
-    dnaBonus = maxDnaBonus;
-  }
-  if (scoreBonus > maxScoreBonus) {
-    errors.push(
-      `COSMIC_COMBO: score bonus ${scoreBonus} exceeds ceiling ${maxScoreBonus} - clamped`
-    );
-    scoreBonus = maxScoreBonus;
-  }
-
-  return { comboDnaBonus: dnaBonus, comboScoreBonus: scoreBonus, maxChain };
 }
 
 export function validateGameResult(
@@ -840,19 +767,10 @@ export function validateGameResult(
     conditionAnomaly(anomaly)
   );
 
-  // 7. COSMIC bounded trust: accept the combo claim only up to the caps
-  let rawDna = baseDna;
-  let expectedScore = baseScore;
-  let cosmic: CosmicClaim | null = null;
-  if (dynasty === 'COSMIC') {
-    if (input.cosmic !== undefined && input.cosmic !== null) {
-      cosmic = sanitizeCosmicClaim(input.cosmic, foodCount, baseDna, baseScore, errors);
-      rawDna += cosmic.comboDnaBonus;
-      expectedScore += cosmic.comboScoreBonus;
-    }
-  } else if (input.cosmic !== undefined && input.cosmic !== null) {
-    errors.push(`COSMIC_COMBO: combo summary on a ${dynasty} session - ignored`);
-  }
+  // 7. The recompute IS the payout. WP-3.13 removed the one exception -
+  // COSMIC's claimed combo bonus - so nothing is added to either total here.
+  const rawDna = baseDna;
+  const expectedScore = baseScore;
 
   // 8. Outcome multiplier (mutation- and trait-aware) + victory bonus
   let expectedPayout = applyOutcomeWithMutations(
@@ -888,7 +806,6 @@ export function validateGameResult(
     extracted,
     mutations,
     phoenixTriggeredAtFood,
-    cosmic,
     masteryRawDna: rawDna,
     genome: null,
     durationSeconds,
@@ -1329,30 +1246,11 @@ function validateGenomeBranch(
         }, -${globalClamp?.delta ?? 0} DNA)`
     );
   }
-  let rawDna = totals.rawDna + bonusDna;
-  let expectedScore = totals.score;
-
-  // g10. COSMIC combo bounded trust on top (Crown raises the ratio at M10).
-  let cosmic: CosmicClaim | null = null;
-  if (dynasty === 'COSMIC') {
-    if (input.cosmic !== undefined && input.cosmic !== null) {
-      const crownHeld = ctx.crownAllowed && totals.caps.crownHeld;
-      cosmic = sanitizeCosmicClaim(
-        input.cosmic,
-        foodCount,
-        totals.rawDna,
-        totals.score,
-        errors,
-        crownHeld
-          ? GENE_ECONOMICS.crownTrustMaxBonusRatio
-          : COSMIC_TRUST_MAX_BONUS_RATIO
-      );
-      rawDna += cosmic.comboDnaBonus;
-      expectedScore += cosmic.comboScoreBonus;
-    }
-  } else if (input.cosmic !== undefined && input.cosmic !== null) {
-    errors.push(`COSMIC_COMBO: combo summary on a ${dynasty} session - ignored`);
-  }
+  const rawDna = totals.rawDna + bonusDna;
+  // WP-3.13: the fold, and nothing else. COSMIC's clamped combo used to be
+  // added here; the redesign deleted the combo, so the genome path has no
+  // score component that is not recomputed.
+  const expectedScore = totals.score;
 
   // g11. Genome outcome (clamped bank <= 1.75 / salvage <= 0.90) + victory.
   let expectedPayout = applyGenomeOutcome(
@@ -1421,7 +1319,6 @@ function validateGenomeBranch(
     mutations: picks.filter((p): p is MutationPick => isMutationId(p.id)),
     phoenixTriggeredAtFood:
       revive && revive.kind === 'phoenix' ? revive.atFood : null,
-    cosmic,
     // Mastery XP base: deterministic only - claims never feed mastery.
     masteryRawDna: totals.rawDna,
     genome: acceptedGenome,

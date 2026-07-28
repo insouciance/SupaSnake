@@ -8,21 +8,23 @@
  * app shell's accent hierarchy. Rails share one material and pylons share
  * another, so the pulse costs two uniform updates per frame.
  *
- * COSMIC Flux (Design v2 section 3.3): the rails ARE the wall-phase
- * signal. Open phase = dimmed, translucent rails (the edge barely exists -
- * you can wrap through it); telegraph before closing = fast rose pulse;
- * closed = solid bright rose (the wall is real and lethal); telegraph
- * before opening = the rose pulses back down toward the dim rail color.
- * Outside COSMIC (fluxPhase null/undefined) the Phase 1 visuals are
+ * COSMIC's torus (WP-3.13): the rails ARE the "these edges do not kill"
+ * signal - dim, translucent, and PERMANENTLY so. The edge barely exists,
+ * because on COSMIC it barely does.
+ *
+ * This replaced a four-state animation driven by the wall-phase cycle
+ * (open / closing-telegraph / closed / opening-telegraph, in rose). The
+ * cycle is gone, and its visual is gone with it: a rail that changes state
+ * is a rail whose meaning has to be re-read, and the reason the wrap was
+ * unlearnable was that its rule kept changing. One rail state, one rule.
+ *
+ * Outside COSMIC (torus false/undefined) the Phase 1 visuals are
  * byte-identical.
  */
 
 import { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-
-/** Flux rail colors: rose = lethal wall family (outside dynasty accents). */
-const FLUX_CLOSED_COLOR = '#f43f5e';
 
 interface ArenaBorderProps {
   /** Grid size (default 20) */
@@ -33,10 +35,8 @@ interface ArenaBorderProps {
   accentColor?: string;
   /** Emissive intensity */
   emissiveIntensity?: number;
-  /** COSMIC wrap-phase state; null/undefined outside COSMIC */
-  fluxPhase?: 'open' | 'closed' | null;
-  /** True during the ~2s warning window before a phase flip */
-  fluxTelegraph?: boolean;
+  /** True on a dynasty whose edges wrap instead of killing (COSMIC). */
+  torus?: boolean;
   /** Physical rail dimensions; released values remain the default. */
   railHeight?: number;
   railWidth?: number;
@@ -53,8 +53,7 @@ export function ArenaBorder({
   color = '#22d3ee',
   accentColor = '#22d3ee',
   emissiveIntensity = 0.5,
-  fluxPhase = null,
-  fluxTelegraph = false,
+  torus = false,
   railHeight = 0.15,
   railWidth = 0.08,
   glowStrength = 1,
@@ -72,8 +71,8 @@ export function ArenaBorder({
         emissiveIntensity,
         metalness: 0.55,
         roughness: 0.35,
-        // transparent so the COSMIC open phase can thin the rails out;
-        // opacity stays 1 outside flux
+        // transparent so COSMIC's torus can thin the rails out; opacity
+        // stays 1 on the dynasties whose walls kill
         transparent: true,
         opacity: 1,
       }),
@@ -82,9 +81,8 @@ export function ArenaBorder({
     [color]
   );
 
-  // Precomputed colors so the per-frame flux branch never allocates
+  // Precomputed color so the per-frame branch never allocates
   const baseRailColor = useMemo(() => new THREE.Color(color), [color]);
-  const fluxClosedColor = useMemo(() => new THREE.Color(FLUX_CLOSED_COLOR), []);
 
   const pylonMaterial = useMemo(
     () =>
@@ -101,8 +99,8 @@ export function ArenaBorder({
 
   // Additive glow strip along the rail tops - the premium replacement for
   // the deleted corner point lights: +4 draws, zero lights. Color/opacity
-  // are driven from the rail's animated state each frame, so flux phases
-  // carry through automatically.
+  // are driven from the rail's animated state each frame, so the torus
+  // look carries through automatically.
   const glowMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -125,52 +123,27 @@ export function ArenaBorder({
   }, [railMaterial, pylonMaterial, glowMaterial]);
 
   // Subtle pulse animation - no allocations, a few material writes per
-  // frame. COSMIC flux overrides the rail look per phase (see header).
+  // frame. The torus thins the rails out permanently (see header).
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     pylonMaterial.emissiveIntensity =
       pylonEmissiveIntensity + Math.sin(t * 2 + 0.8) * restingPulseAmplitude;
 
-    if (!fluxPhase) {
-      railMaterial.color.copy(baseRailColor);
-      railMaterial.emissive.copy(baseRailColor);
+    railMaterial.color.copy(baseRailColor);
+    railMaterial.emissive.copy(baseRailColor);
+    if (torus) {
+      // The edge barely exists, and never stops barely existing.
+      railMaterial.opacity = 0.35;
+      railMaterial.emissiveIntensity = 0.12 + Math.sin(t * 1.5) * 0.05;
+    } else {
       railMaterial.opacity = 1;
       railMaterial.emissiveIntensity =
         restingEmissiveIntensity + Math.sin(t * 2) * restingPulseAmplitude;
-      return;
-    }
-
-    if (fluxPhase === 'open' && !fluxTelegraph) {
-      // Open: the wall barely exists - dim, translucent rails
-      railMaterial.color.copy(baseRailColor);
-      railMaterial.emissive.copy(baseRailColor);
-      railMaterial.opacity = 0.35;
-      railMaterial.emissiveIntensity = 0.12 + Math.sin(t * 1.5) * 0.05;
-    } else if (fluxPhase === 'open' && fluxTelegraph) {
-      // Closing soon: fast rose pulse - get away from the edges
-      railMaterial.color.copy(fluxClosedColor);
-      railMaterial.emissive.copy(fluxClosedColor);
-      const pulse = 0.5 + Math.sin(t * 10) * 0.5;
-      railMaterial.opacity = 0.4 + pulse * 0.5;
-      railMaterial.emissiveIntensity = 0.3 + pulse * 0.7;
-    } else if (fluxPhase === 'closed' && !fluxTelegraph) {
-      // Closed: solid lethal wall
-      railMaterial.color.copy(fluxClosedColor);
-      railMaterial.emissive.copy(fluxClosedColor);
-      railMaterial.opacity = 1;
-      railMaterial.emissiveIntensity = 0.75 + Math.sin(t * 2.5) * 0.1;
-    } else {
-      // Opening soon: the rose pulses back down toward the dim rail state
-      railMaterial.color.copy(fluxClosedColor);
-      railMaterial.emissive.copy(fluxClosedColor);
-      const pulse = 0.5 + Math.sin(t * 6) * 0.5;
-      railMaterial.opacity = 1 - pulse * 0.55;
-      railMaterial.emissiveIntensity = 0.25 + pulse * 0.4;
     }
   });
 
-  // Glow strip follows the rail's animated color/energy (after the flux
-  // branch above so every phase carries through) - two writes, no allocs
+  // Glow strip follows the rail's animated color/energy (after the branch
+  // above so the torus look carries through) - two writes, no allocs
   useFrame(() => {
     glowMaterial.color.copy(railMaterial.emissive);
     glowMaterial.opacity =

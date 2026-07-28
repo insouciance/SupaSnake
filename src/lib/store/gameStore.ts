@@ -10,7 +10,6 @@ import type {
   Position,
   Direction,
   EndReason,
-  FluxPhase,
 } from '@/lib/game/SnakeGameLogic';
 import type { GeneId, GenePick } from '@/shared/game/genes';
 import type { SpliceId } from '@/shared/game/splices';
@@ -108,14 +107,22 @@ export interface GameStore {
    */
   runCondition: AnomalyId | null;
 
-  // Design v2 Phase 2: mutation food + COSMIC Flux (mirrored from engine)
-  /** Food cells beyond the primary one (Splitter pairs, COSMIC groups). */
+  // Design v2 Phase 2: mutation food + COSMIC constellations (from engine)
+  /** Food cells beyond the primary one (Splitter pairs, COSMIC stars). */
   extraFoods: Position[];
-  /** COSMIC: glyph (0..2) of the live constellation group, else null. */
+  /** COSMIC: hue of the live constellation, else null. Cosmetic. */
   constellationGlyph: number | null;
-  /** COSMIC: current chain length + combo multiplier (for the HUD chip). */
-  chainLength: number;
-  comboMultiplier: number;
+  /**
+   * COSMIC: the calcification window - ticks left, and what it started at.
+   *
+   * Mirrored into the store because it must be DRAWN. Uncollected stars turn
+   * into permanent lethal blocks when this reaches zero, and WP-3.03 already
+   * taught this codebase what an undrawn lethal primitive costs: a window
+   * the player cannot see is a punishment they cannot have chosen, and the
+   * abandonment being chosen is COSMIC's whole fairness argument.
+   */
+  constellationTicksRemaining: number;
+  constellationWindowTicks: number;
   /** Live mutation food cell, null when none. */
   mutationTile: Position | null;
   mutationTicksRemaining: number;
@@ -125,9 +132,8 @@ export interface GameStore {
   choiceOptions: [GeneId, GeneId] | null;
   /** True once Phoenix absorbed a death this run. */
   phoenixTriggered: boolean;
-  /** COSMIC wrap-phase state (drives the ArenaBorder rails). */
-  fluxPhase: FluxPhase | null;
-  fluxTelegraph: boolean;
+  /** True on a dynasty whose board wraps at every edge (drives the rails). */
+  torus: boolean;
 
   // Buildcraft: The Genome (mirrored from the engine; inert in legacy runs)
   /** True when this run plays under genome rules (server capability). */
@@ -196,8 +202,8 @@ export interface GameStore {
   setExtraFoods: (extraFoods: Position[]) => void;
   setConstellation: (
     glyph: number | null,
-    chainLength: number,
-    comboMultiplier: number
+    ticksRemaining: number,
+    windowTicks: number
   ) => void;
   setMutationTile: (tile: Position | null, ticksRemaining?: number) => void;
   setHeldMutations: (held: GenePick[]) => void;
@@ -206,7 +212,7 @@ export interface GameStore {
     source?: 'gene_food' | 'infuse' | null
   ) => void;
   setPhoenixTriggered: (triggered: boolean) => void;
-  setFlux: (phase: FluxPhase | null, telegraph: boolean) => void;
+  setTorus: (torus: boolean) => void;
 
   // Genome actions
   setGenomeRun: (genomeRun: boolean) => void;
@@ -253,15 +259,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   runCondition: null,
   extraFoods: [],
   constellationGlyph: null,
-  chainLength: 0,
-  comboMultiplier: 1,
+  constellationTicksRemaining: 0,
+  constellationWindowTicks: 0,
   mutationTile: null,
   mutationTicksRemaining: 0,
   heldMutations: [],
   choiceOptions: null,
   phoenixTriggered: false,
-  fluxPhase: null,
-  fluxTelegraph: false,
+  torus: false,
   genomeRun: false,
   strainCounts: {},
   strainTiers: {},
@@ -297,15 +302,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       exitTicksRemaining: 0,
       extraFoods: [],
       constellationGlyph: null,
-      chainLength: 0,
-      comboMultiplier: 1,
+      constellationTicksRemaining: 0,
+      constellationWindowTicks: 0,
       mutationTile: null,
       mutationTicksRemaining: 0,
       heldMutations: [],
       choiceOptions: null,
       phoenixTriggered: false,
-      fluxPhase: null,
-      fluxTelegraph: false,
+      torus: false,
       strainCounts: {},
       strainTiers: {},
       fusedSplices: [],
@@ -371,15 +375,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       runCondition: null,
       extraFoods: [],
       constellationGlyph: null,
-      chainLength: 0,
-      comboMultiplier: 1,
+      constellationTicksRemaining: 0,
+      constellationWindowTicks: 0,
       mutationTile: null,
       mutationTicksRemaining: 0,
       heldMutations: [],
       choiceOptions: null,
       phoenixTriggered: false,
-      fluxPhase: null,
-      fluxTelegraph: false,
+      torus: false,
       strainCounts: {},
       strainTiers: {},
       fusedSplices: [],
@@ -507,10 +510,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setConstellation: (
     glyph: number | null,
-    chainLength: number,
-    comboMultiplier: number
+    ticksRemaining: number,
+    windowTicks: number
   ) => {
-    set({ constellationGlyph: glyph, chainLength, comboMultiplier });
+    set({
+      constellationGlyph: glyph,
+      constellationTicksRemaining: ticksRemaining,
+      constellationWindowTicks: windowTicks,
+    });
   },
 
   setMutationTile: (tile: Position | null, ticksRemaining: number = 0) => {
@@ -535,8 +542,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ phoenixTriggered: triggered });
   },
 
-  setFlux: (phase: FluxPhase | null, telegraph: boolean) => {
-    set({ fluxPhase: phase, fluxTelegraph: phase ? telegraph : false });
+  setTorus: (torus: boolean) => {
+    set({ torus });
   },
 
   // Genome actions

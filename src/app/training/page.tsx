@@ -135,8 +135,7 @@ function TrainingBoard({
         <ArenaAssembly
           gridSize={scenario.gridSize}
           dynasty={scenario.dynasty}
-          fluxPhase={snapshot.state.fluxPhase}
-          fluxTelegraph={snapshot.state.fluxTelegraph}
+          torus={scenario.dynasty === 'COSMIC'}
         />
         <TrainingPathRenderer
           scenario={scenario}
@@ -696,8 +695,8 @@ export default function TrainingPage() {
     charge: null,
     bankDna: 0,
     crashDna: 0,
-    comboMultiplier: 1,
-    chainLength: 0,
+    // Training scenarios run no constellation window.
+    constellation: null,
     genes: [],
     strains: [],
     showGenome: true,
