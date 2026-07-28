@@ -55,6 +55,7 @@ import {
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
 import { carryScaled } from '@/shared/game/portals';
+import { ladderInfuseGrowth, ladderSalvageFloor } from '@/shared/game/ladder';
 import {
   baseGrowthForFood,
   resolveGrowthProfile,
@@ -147,6 +148,22 @@ export interface GenomeRunInput {
    * the two would silently rewrite every historical outcome.
    */
   portalsPassed?: number;
+  /**
+   * The D2 ladder rung the run was started at (WP-3.12), read back from
+   * `run_context` at settlement.
+   *
+   * It moves two things inside this module: what an INFUSE grows
+   * (`ladderInfuseGrowth`) and where the carry's salvage decay lands
+   * (`ladderSalvageFloor`). It sits on the input for the same reason
+   * `growthProfileId` and `portalsPassed` do — every caller already threads
+   * this object, so a call site cannot forget it and silently fold a rung-0
+   * length model against a rung-7 engine.
+   *
+   * Absent, unknown or malformed resolves to rung 0, which folds
+   * byte-identically to the shipped game. That is what makes every historical
+   * blob recompute unchanged.
+   */
+  ladderRung?: number;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -327,7 +344,7 @@ export function computeLengthTrace(
   activations: StrainActivations,
   input: Pick<
     GenomeRunInput,
-    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId'
+    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId' | 'ladderRung'
   >,
   condition: ConditionInput = null
 ): LengthTrace {
@@ -355,11 +372,17 @@ export function computeLengthTrace(
   // are still honoured below, so historical runs recompute exactly as they
   // did - but no new run produces one, and infuses never appear here again.
   const losses = [...(input.lossEvents ?? [])];
+  // WP-3.12: the ladder's "Weight of Power" rung adds segments to what an
+  // INFUSE grows. Read through `ladderInfuseGrowth` rather than off
+  // `STRAIN_PHYSICS` directly, because the ENGINE reads the same function - and
+  // a length model that folded the base 8 while the engine appended 12 would
+  // disagree with itself on every infused run.
+  const infuseSegments = ladderInfuseGrowth(input.ladderRung);
   const infuseGrowthAt = new Map<number, number>();
   for (const infuse of input.infuses) {
     infuseGrowthAt.set(
       infuse.atFood,
-      (infuseGrowthAt.get(infuse.atFood) ?? 0) + STRAIN_PHYSICS.infuseGrowth
+      (infuseGrowthAt.get(infuse.atFood) ?? 0) + infuseSegments
     );
   }
   const reviveAt = input.revive?.atFood ?? null;
@@ -761,7 +784,14 @@ export function genomeOutcomeMultipliers(
   // multipliers it was authored against. Zero is a live carry at its first
   // door, which is a different thing entirely. See `GenomeRunInput`.
   if (input.portalsPassed !== undefined) {
-    return carryScaled({ bank, death }, input.portalsPassed);
+    // WP-3.12: the ladder's "Thin Salvage" rung lowers where the decay lands.
+    // At rung 0 `ladderSalvageFloor` returns `CARRY.salvageFloor` exactly, so
+    // this call is byte-identical to the one it replaces.
+    return carryScaled(
+      { bank, death },
+      input.portalsPassed,
+      ladderSalvageFloor(input.ladderRung)
+    );
   }
   return { bank, death };
 }

@@ -39,9 +39,15 @@ import {
   FOOD_BASE_SCORE,
   RULESETS,
   cosmicComboMultiplier,
-  rollExitInterval,
   type DynastyRuleset,
 } from '@/shared/game/rulesets';
+import {
+  ladderCadence,
+  ladderHoldBase,
+  ladderInfuseGrowth,
+  ladderParams,
+  resolveLadderRung,
+} from '@/shared/game/ladder';
 import {
   MUTATION_PHYSICS,
   MUTATION_POOL,
@@ -86,8 +92,14 @@ import {
 import {
   PORTAL_SCHEDULE_LIMIT,
   portalIntervalTax,
+  // Imported from `portals.ts` rather than through `rulesets.ts`'s re-export:
+  // the re-export is typed against the full `ExtractionConfig`, and the cadence
+  // this engine rolls from is the ladder-shifted `PortalCadence`. Same
+  // function, the structural type it was written for.
+  rollExitInterval,
   portalStream,
   portalTaxFactsAt,
+  type PortalCadence,
   type PortalTaxSources,
 } from '@/shared/game/portals';
 import {
@@ -419,6 +431,14 @@ interface GameOptions {
    * locally-chosen profile would diverge on every food.
    */
   growthProfileId?: GrowthProfileId;
+  /**
+   * The D2 ladder rung (WP-3.12), as stamped by the server into `run_context`.
+   * Absent or unrecognised resolves to rung 0, which is byte-identical to the
+   * shipped game. Never derive this from a `NEXT_PUBLIC_*` flag - the server
+   * recomputes the run's lengths, doors and salvage from the stamp, so a
+   * locally-chosen rung would diverge from the settlement.
+   */
+  ladderRung?: number;
   initialSpeed?: number;
   /**
    * Dynasty ruleset driving speed + scoring. Defaults to COSMIC. The page
@@ -567,6 +587,17 @@ export class SnakeGameLogic {
    * every length and invalidate an honest run.
    */
   private growth: GrowthProfile;
+  /**
+   * The run's D2 ladder rung (WP-3.12), server-stamped into `run_context`.
+   *
+   * Same discipline as `growth`, and for the same reason: the rung moves the
+   * portal schedule, the infuse growth and the salvage floor, all three of
+   * which the settlement recomputes from the stamp. A client that chose its own
+   * rung would play a different game from the one it gets paid for.
+   *
+   * Rung 0 until the server says otherwise, and rung 0 is the shipped game.
+   */
+  private ladderRung: number = 0;
   /** Derived fused view of heldMutations - recomputed on every pick. */
   private fusedView: FusedView = { loose: [], splices: [] };
   /** Derived strain activations - recomputed on pick/surge. */
@@ -681,6 +712,10 @@ export class SnakeGameLogic {
     this.anomaly = options.anomaly ?? null;
     this.genome = options.genome ?? null;
     this.growth = resolveGrowthProfile(options.growthProfileId);
+    // The rung before createInitialState: `nextExitAtFood` is seeded from the
+    // ladder-adjusted cadence, so a rung set afterwards would leave the first
+    // door standing where rung 0 put it.
+    this.ladderRung = resolveLadderRung(options.ladderRung);
     // The profile owns the starting body unless a caller pinned one.
     if (options.initialLength === undefined) {
       this.initialLength = this.growth.initialLength;
@@ -738,6 +773,55 @@ export class SnakeGameLogic {
   /** The run's growth profile id - what settlement will recompute with. */
   getGrowthProfileId(): GrowthProfileId {
     return this.growth.id;
+  }
+
+  /**
+   * Adopt the D2 ladder rung the SERVER stamped on this run (WP-3.12).
+   *
+   * Mirrors `setGrowthProfile`: the page builds the engine on mount, before the
+   * session-start response exists, and configures it when the response arrives.
+   * Refused once the run is live, because the rung decides where the first door
+   * stands and how much an infuse grows - changing it mid-run would diverge
+   * from the settlement, which folds ONE rung for the whole run.
+   *
+   * The argument is whatever the server sent; anything unrecognised resolves to
+   * rung 0, so a client that is newer, older or confused still plays the
+   * shipped game rather than an invented rung.
+   */
+  setLadderRung(rung: unknown): void {
+    if (this.state.isPlaying) return;
+    this.ladderRung = resolveLadderRung(rung);
+    // Both of these are fixed at state creation, and `refreshHoldBudget` cannot
+    // walk the budget back down (it is monotonic by design), so the rung has to
+    // rewrite them explicitly. Safe here and only here: the run is not live, so
+    // no hold has been spent and no threshold has been crossed.
+    this.state.holdBudget = ladderHoldBase(
+      GAME_CONFIG.session.holds.base,
+      this.ladderRung
+    );
+    if (!this.state.exitTile) {
+      this.state.nextExitAtFood = this.exitCadence().firstExitAtFood;
+    }
+    this.refreshHoldBudget();
+  }
+
+  /** The run's ladder rung - what settlement will recompute with. */
+  getLadderRung(): number {
+    return this.ladderRung;
+  }
+
+  /**
+   * The portal cadence in force for this run: the dynasty's, shifted by the
+   * ladder's "Long Walk" rung.
+   *
+   * THE ONE READ. Every site that used to reach for
+   * `this.ruleset.extraction` for cadence purposes goes through here, so the
+   * incremental walk, the legacy roll and the initial `nextExitAtFood` cannot
+   * disagree about where the doors stand - and the settlement runs the same
+   * `ladderCadence` over the same numbers.
+   */
+  private exitCadence(): PortalCadence {
+    return ladderCadence(this.ruleset.extraction, this.ladderRung);
   }
 
   /** Spawn strain points (heirloom+lineage, server-derived, pre-capped). */
@@ -876,7 +960,7 @@ export class SnakeGameLogic {
       exitTile2: null,
       exitTicksRemaining: 0,
       foodTicksRemaining: 0,
-      nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
+      nextExitAtFood: this.exitCadence().firstExitAtFood,
       extracted: false,
       mutationTile: null,
       mutationTicksRemaining: 0,
@@ -917,7 +1001,13 @@ export class SnakeGameLogic {
       isGameOver: false,
       isPaused: false,
       holdsUsed: 0,
-      holdBudget: GAME_CONFIG.session.holds.base,
+      // WP-3.12: the ladder's "Short Rope" rung takes one from the OPENING
+      // budget, and it has to be applied HERE. `refreshHoldBudget` is
+      // deliberately monotonic - it can only ever raise the budget, so that a
+      // body which sheds past a threshold keeps what reaching it paid for - and
+      // a monotonic function cannot lower the base. The rung belongs at state
+      // creation or nowhere.
+      holdBudget: ladderHoldBase(GAME_CONFIG.session.holds.base, this.ladderRung),
       isDeathSequence: false,
       startTime: null,
       deathPosition: null,
@@ -1071,7 +1161,7 @@ export class SnakeGameLogic {
     this.ruleset = ruleset;
     this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     if (!this.state.isPlaying && !this.state.exitTile) {
-      this.state.nextExitAtFood = this.ruleset.extraction.firstExitAtFood;
+      this.state.nextExitAtFood = this.exitCadence().firstExitAtFood;
       this.state.fluxPhase = null;
       this.state.fluxTicksRemaining = 0;
       this.state.fluxTelegraph = false;
@@ -1323,7 +1413,15 @@ export class SnakeGameLogic {
    * from ever dropping below what the player has already spent.
    */
   private refreshHoldBudget(): void {
-    let budget: number = GAME_CONFIG.session.holds.base;
+    // WP-3.12: the ladder's "Short Rope" rung takes one from the OPENING
+    // budget, never from what a body has already earned - the `Math.max` below
+    // is what makes that true, and it is the same guarantee the paragraph above
+    // states for earned holds. `ladderHoldBase` floors at 1: a run with no hold
+    // at all is a different game, not a harder one.
+    let budget: number = ladderHoldBase(
+      GAME_CONFIG.session.holds.base,
+      this.ladderRung
+    );
     for (const threshold of GAME_CONFIG.session.holds.bonusAtLengths) {
       if (this.state.snake.length >= threshold) budget += 1;
     }
@@ -2016,11 +2114,15 @@ export class SnakeGameLogic {
     // Growth is appended at the tail, exactly as food growth is, so every
     // added cell is one the body already occupied - the snake never appears
     // in a cell it did not travel through.
+    //
+    // WP-3.12: the "Weight of Power" rung adds to this. Read through
+    // `ladderInfuseGrowth`, which `computeLengthTrace` also calls - two reads
+    // of one function, never two copies of one number.
+    const grew = ladderInfuseGrowth(this.ladderRung);
     const tail = this.state.snake[this.state.snake.length - 1];
-    for (let i = 0; i < STRAIN_PHYSICS.infuseGrowth; i++) {
+    for (let i = 0; i < grew; i++) {
       this.state.snake.push({ ...tail });
     }
-    const grew = STRAIN_PHYSICS.infuseGrowth;
     // Consume the portal. Under the seeded schedule the next door's food is
     // already fixed; the +2-foods-per-infuse exposure tax is applied when the
     // schedule advances past it, which is where the server applies it too.
@@ -3186,7 +3288,7 @@ export class SnakeGameLogic {
       if (!this.state.exitTile) this.spawnExit();
       const interval =
         rollExitInterval(
-          this.ruleset.extraction,
+          this.exitCadence(),
           portalStream(runSeed, this.portalIndex)
         ) + Math.max(0, this.portalIntervalTax(this.state.nextExitAtFood));
       this.state.nextExitAtFood += Math.max(1, interval);
@@ -3248,7 +3350,7 @@ export class SnakeGameLogic {
    */
   private rollNextExitInterval(): number {
     return (
-      rollExitInterval(this.ruleset.extraction, this.rng) +
+      rollExitInterval(this.exitCadence(), this.rng) +
       this.portalIntervalTax(this.state.foodEaten)
     );
   }
@@ -3282,10 +3384,24 @@ export class SnakeGameLogic {
     // the dynasty accelerated. Food has no deadline, which is exactly why
     // eating stayed possible while banking became impossible.
     const authored = this.ruleset.extraction.despawnSeconds;
-    const base =
+    let base =
       authored !== undefined
         ? Math.max(1, Math.round((authored * 1000) / Math.max(1, this.getSpeed())))
         : this.ruleset.extraction.despawnTicks;
+    // WP-3.12: the ladder's "Narrow Door" rung shortens the window, and it is
+    // authored in SECONDS for exactly the reason `despawnSeconds` is - a rung
+    // that subtracted TICKS would shrink fourfold as CYBER accelerated, which
+    // is the defect WP-3.04 removed. Converted here by the LIVE tick, on both
+    // branches, so it means the same duration at every tempo. Applied to the
+    // authored window before the mutation modifiers, which are ticks and stay
+    // ticks; the final `minExitDespawnTicks` floor still binds the stack.
+    const rungSeconds = ladderParams(this.ladderRung).portalWindowSecondsDelta;
+    if (rungSeconds !== 0) {
+      base = Math.max(
+        1,
+        base + Math.round((rungSeconds * 1000) / Math.max(1, this.getSpeed()))
+      );
+    }
     let ticks = this.hasMutation('gold_trail')
       ? Math.min(base, MUTATION_PHYSICS.goldTrailPortalTicks)
       : base;

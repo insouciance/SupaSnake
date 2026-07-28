@@ -54,6 +54,7 @@ import {
   portalsPassed,
   type PortalTaxSources,
 } from '@/shared/game/portals';
+import { ladderCadence } from '@/shared/game/ladder';
 import {
   MUTATION_SPAWN,
   isMutationId,
@@ -151,6 +152,7 @@ function derivePortalsPassed(args: {
   anomaly: ConditionInput;
   infuses: { atFood: number }[];
   extracted: boolean;
+  ladderRung?: number;
 }): number | undefined {
   if (!args.runSeed) return undefined;
   const view = args.splicesUnlocked
@@ -175,7 +177,12 @@ function derivePortalsPassed(args: {
       Math.min(args.tierCap, strainTierAtFood(activations.FLUX, food + 0.5)),
   };
   const met = portalsEncountered(
-    getRuleset(args.dynasty).extraction,
+    // WP-3.12: the ladder's "Long Walk" rung pushes every door further away.
+    // The ENGINE walks its incremental recurrence through the same
+    // `ladderCadence`, so the two sides cannot disagree about where the doors
+    // stood - and since the carry multiplies the payout by how many the run
+    // met, a disagreement here would be a payout disagreement.
+    ladderCadence(getRuleset(args.dynasty).extraction, args.ladderRung),
     args.runSeed,
     args.foodCount,
     (food: number) => portalIntervalTax(portalTaxFactsAt(sources, food))
@@ -220,6 +227,18 @@ export interface GenomeValidationContext {
    * wearing a feature flag.
    */
   growthProfileId?: GrowthProfileId;
+  /**
+   * The D2 ladder rung the run STARTED at (WP-3.12), read back from
+   * `run_context`.
+   *
+   * Settlement must fold under the rung the run was PLAYED at, not under
+   * whatever the ladder currently offers: the rung decides how many segments an
+   * infuse grew, where the doors stood and what a crash salvages. Absent means
+   * rung 0 - every run predating the ladder, every run started with the flag
+   * off, and every Ground run, all of which fold byte-identically to the
+   * shipped game.
+   */
+  ladderRung?: number;
 }
 
 /** The validator-accepted genome record (game_sessions.genome JSONB). */
@@ -1355,6 +1374,7 @@ function validateGenomeBranch(
     anomaly,
     infuses,
     extracted,
+    ladderRung: ctx.ladderRung,
   });
 
   const genomeInput: GenomeRunInput = {
@@ -1370,6 +1390,9 @@ function validateGenomeBranch(
     splicesEnabled: ctx.splicesUnlocked !== false,
     ...(ctx.growthProfileId ? { growthProfileId: ctx.growthProfileId } : {}),
     ...(carriedPasses !== undefined ? { portalsPassed: carriedPasses } : {}),
+    // WP-3.12: omitted at rung 0 so a Ground run's recompute is byte-identical
+    // to the one it got before the ladder existed.
+    ...(ctx.ladderRung ? { ladderRung: ctx.ladderRung } : {}),
   };
 
   // g8. VOLT rate allowance: arcs raise the honest eat rate - widen the
