@@ -84,6 +84,13 @@ import {
   markBlocked,
 } from '@/shared/game/foodPlacement';
 import {
+  PORTAL_SCHEDULE_LIMIT,
+  portalIntervalTax,
+  portalStream,
+  portalTaxFactsAt,
+  type PortalTaxSources,
+} from '@/shared/game/portals';
+import {
   baseGrowthForFood,
   resolveGrowthProfile,
   rollOfferInterval,
@@ -541,6 +548,13 @@ export class SnakeGameLogic {
    * `gridSize` can be overridden per run.
    */
   private blockedScratch: Uint8Array | null = null;
+  /**
+   * How far the seeded portal schedule has been walked, and how many doors it
+   * has produced. They differ only in the theoretical merge case documented on
+   * `advancePortalSchedule`; `portalsMet` is what the carry reads.
+   */
+  private portalIndex = 0;
+  private portalsMet = 0;
   private traits: TraitId[];
   private mutationPool: MutationId[];
   private anomaly: AnomalyId | null;
@@ -953,6 +967,8 @@ export class SnakeGameLogic {
     this.ouroborosBites = 0;
     this.shedRemovedCells = new Map();
     this.offerIndex = 0;
+    this.portalIndex = 0;
+    this.portalsMet = 0;
     this.offerTrace = [];
     this.recentOffers = [];
     this.ticksSinceAnyEat = 1_000_000;
@@ -1652,9 +1668,7 @@ export class SnakeGameLogic {
         this.state.food = { ...this.state.foods[0] };
       }
 
-      if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
-        this.spawnExit();
-      }
+      this.advancePortalSchedule(n);
       // Ascetic (trait): mutation food never spawns - no builds, pure snake
       if (
         !this.state.mutationTile &&
@@ -1709,8 +1723,7 @@ export class SnakeGameLogic {
         this.state.exitTile = null;
         this.state.exitTile2 = null;
         this.state.exitTicksRemaining = 0;
-        this.state.nextExitAtFood =
-          this.state.foodEaten + this.rollNextExitInterval();
+        this.scheduleNextPortalAfterResolve(this.state.foodEaten);
         // Identity v1 section 9.5: a portal that expires unused was
         // PASSED - the greed decision the Analyst narrates.
         this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'pass' });
@@ -1983,13 +1996,12 @@ export class SnakeGameLogic {
     return true;
   }
 
-  /** PASS consumes this door and schedules the next normal interval. */
+  /** PASS consumes this door; the schedule already holds the next one. */
   private consumePassedPortal(): void {
     this.state.exitTile = null;
     this.state.exitTile2 = null;
     this.state.exitTicksRemaining = 0;
-    this.state.nextExitAtFood =
-      this.state.foodEaten + this.rollNextExitInterval();
+    this.scheduleNextPortalAfterResolve(this.state.foodEaten);
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'pass' });
     this.emit('exitDespawned', { deliberate: true });
   }
@@ -2009,12 +2021,13 @@ export class SnakeGameLogic {
       this.state.snake.push({ ...tail });
     }
     const grew = STRAIN_PHYSICS.infuseGrowth;
-    // Consume the portal; the next one spawns a full interval away
-    // (+2 foods per infuse via rollNextExitInterval).
+    // Consume the portal. Under the seeded schedule the next door's food is
+    // already fixed; the +2-foods-per-infuse exposure tax is applied when the
+    // schedule advances past it, which is where the server applies it too.
     this.state.exitTile = null;
     this.state.exitTile2 = null;
     this.state.exitTicksRemaining = 0;
-    this.state.nextExitAtFood = atFood + this.rollNextExitInterval();
+    this.scheduleNextPortalAfterResolve(atFood);
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'infuse' });
     this.recordRunEvent({ t: this.runTimeDs(), e: 'i', n: atFood });
     this.emit('infused', {
@@ -3114,44 +3127,130 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Exit interval roll incl. the Magnet Pulse cost (+4 foods) and the
-   * Magnetism trait cost (+2 foods). The costs stack additively - each
-   * pull source pays its own portal tax.
+   * The seeded schedule is live only when the server issued a runSeed.
+   *
+   * Without one there is nothing for the settlement to replay, so a legacy or
+   * pre-genome run keeps the old roll-on-resolve behaviour - which is fine,
+   * because the carry rides the genome path and a run with no seed never
+   * reaches it.
+   */
+  private portalScheduleActive(): boolean {
+    return this.genomeActive() && !!this.genome?.runSeed;
+  }
+
+  /**
+   * Schedule the next door after one resolves — legacy runs only.
+   *
+   * Under the seeded schedule this is a no-op by design: `nextExitAtFood`
+   * already points at the next scheduled door, fixed when the schedule
+   * advanced past the one that just resolved. Rescheduling here would make the
+   * cadence depend on WHEN the player resolved it, which is precisely the
+   * tick-timing dependency that made the old schedule unreplayable.
+   */
+  private scheduleNextPortalAfterResolve(fromFood: number): void {
+    if (this.portalScheduleActive()) return;
+    this.state.nextExitAtFood = fromFood + this.rollNextExitInterval();
+  }
+
+  /**
+   * Walk the food-indexed portal schedule up to food `n`.
+   *
+   * The recurrence here is the SAME one `portalSchedule` runs on the server;
+   * this is its incremental form, because the engine learns `n` one food at a
+   * time. `portals.ts` explains why the schedule stopped being "interval from
+   * whenever the last door resolved" — that was a tick-timing fact the server
+   * could not reconstruct, and the carry cannot be a client claim.
+   *
+   * A door is COUNTED whether or not it is drawn. If one is somehow still open
+   * when the next comes due, the new one merges into it rather than stacking a
+   * second portal on the board — but the index still advances, so the engine
+   * and the settlement agree on how many doors the run met. (At the shipped
+   * cadence this cannot happen: an 18-second window against an 8-16 food
+   * interval leaves no overlap. It is defined because "cannot happen" is not
+   * the same as "is undefined".)
+   */
+  private advancePortalSchedule(n: number): void {
+    if (!this.portalScheduleActive()) {
+      // Legacy path, unchanged.
+      if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
+        this.spawnExit();
+      }
+      return;
+    }
+    const runSeed = this.genome!.runSeed;
+    while (
+      n >= this.state.nextExitAtFood &&
+      this.portalIndex < PORTAL_SCHEDULE_LIMIT
+    ) {
+      this.portalsMet += 1;
+      if (!this.state.exitTile) this.spawnExit();
+      const interval =
+        rollExitInterval(
+          this.ruleset.extraction,
+          portalStream(runSeed, this.portalIndex)
+        ) + Math.max(0, this.portalIntervalTax(this.state.nextExitAtFood));
+      this.state.nextExitAtFood += Math.max(1, interval);
+      this.portalIndex += 1;
+    }
+  }
+
+  /**
+   * Portals this run has met — the carry's only input, and the reason the
+   * schedule had to become replayable. The settlement derives the same number
+   * from `(runSeed, foodCount, the taxes in force)` and never reads this; it
+   * is exposed for the HUD, which has to quote the stake before the choice.
+   */
+  getPortalsMet(): number {
+    return this.portalsMet;
+  }
+
+  /**
+   * Additive interval penalties in force right now: the Magnet Pulse cost
+   * (+4 foods), the Magnetism trait cost (+2), and the rest. The costs stack
+   * additively - each pull source pays its own portal tax.
+   *
+   * Split out of `rollNextExitInterval` so the seeded schedule and the legacy
+   * roll cannot drift apart, and so the server has one named thing to mirror.
+   */
+  private portalIntervalTax(atFood: number): number {
+    return portalIntervalTax(portalTaxFactsAt(this.portalTaxSources(), atFood));
+  }
+
+  /**
+   * The run data the interval tax reads, in the shape the settlement supplies
+   * it. Building this rather than reading live predicates is what lets the two
+   * sides share `portalTaxFactsAt` — see `portals.ts`.
+   */
+  private portalTaxSources(): PortalTaxSources {
+    const genome = this.genomeActive();
+    return {
+      // Picks are NOT genome-gated: Magnet Pulse and Solstice Engine are
+      // mutation-era genes and tax the interval on a legacy run too. Only the
+      // strain tiers, splices and infuses below belong to the genome era.
+      picks: this.state.heldMutations,
+      splices: genome ? this.state.fusedSplices : [],
+      traits: this.traits,
+      anomaly: this.anomaly,
+      infuses: genome ? this.state.infuses : [],
+      fluxTierAt: (food) =>
+        genome && this.activations
+          ? Math.min(
+              this.ftueTierCap(),
+              strainTierAtFood(this.activations.FLUX, food + 0.5)
+            )
+          : 0,
+    };
+  }
+
+  /**
+   * The legacy roll: base interval plus the same taxes, from the engine's own
+   * rng. Kept for runs with no seed — see `portalScheduleActive`.
    */
   private rollNextExitInterval(): number {
-    let interval =
+    return (
       rollExitInterval(this.ruleset.extraction, this.rng) +
-      (this.hasMutation('magnet_pulse')
-        ? MUTATION_PHYSICS.magnetPortalIntervalPenalty
-        : 0) +
-      (this.hasMutation('solstice_engine')
-        ? MUTATION_PHYSICS.solsticeEnginePortalIntervalPenalty
-        : 0) +
-      (this.hasTrait('magnetism')
-        ? TRAIT_PHYSICS.magnetismPortalIntervalPenalty
-        : 0) +
-      // Gold Rush (anomaly): richer food, rarer doors - interval +6
-      (this.anomaly === 'gold_rush'
-        ? ANOMALY_PHYSICS.goldRushPortalIntervalPenalty
-        : 0);
-    if (this.genomeActive()) {
-      if (this.strainTierNow('FLUX') >= 2) {
-        interval += STRAIN_PHYSICS.riftAuraPortalIntervalPenalty;
-      }
-      if (this.strainTierNow('FLUX') >= 3) {
-        interval += STRAIN_PHYSICS.singularityPortalIntervalPenalty;
-      }
-      if (this.hasGene('pocket_rift')) {
-        interval += GENE_PHYSICS.pocketRiftPortalIntervalPenalty;
-      }
-      if (this.hasSplice('splice_black_magnet')) {
-        interval += SPLICE_PHYSICS.blackMagnetPortalIntervalPenalty;
-      }
-      // Every infuse pushes the next door 2 foods deeper (exposure).
-      interval +=
-        this.state.infuses.length * STRAIN_PHYSICS.infusePortalIntervalPenalty;
-    }
-    return interval;
+      this.portalIntervalTax(this.state.foodEaten)
+    );
   }
 
   /**

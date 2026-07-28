@@ -106,6 +106,8 @@ function Decision({ kind }: { kind: CockpitDecisionFixtureKind }) {
         snakeLength={18}
         bankDna={168}
         crashDna={52}
+        doorsPassed={2}
+        cadence={{ firstExitAtFood: 15, intervalBase: 12, intervalJitter: 4 }}
         onBank={() => undefined}
         onPass={() => undefined}
         onInfuse={() => undefined}

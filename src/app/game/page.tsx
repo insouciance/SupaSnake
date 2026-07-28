@@ -582,6 +582,18 @@ export default function GamePage() {
               : 3,
             suppressedStrains: capability?.suppressedStrains ?? [],
             splicesEnabled: ftue?.splicesUnlocked !== false,
+            // THE CARRY (WP-3.10), display side. Banking spends the door the
+            // player is standing on, so it prices at one fewer passed door
+            // than crashing does — which is the whole tension the portal card
+            // has to show. The server derives the real number from the seeded
+            // schedule and never reads this; a wrong preview misleads the
+            // player but cannot move a payout.
+            portalsPassed: Math.max(
+              0,
+              (gameRef.current?.getPortalsMet() ?? 0) -
+                (liveState?.infuses.length ?? 0) -
+                (extracted ? 1 : 0)
+            ),
           },
           equippedSnake?.traits ?? [],
           anomaly
@@ -922,6 +934,20 @@ export default function GamePage() {
   );
 
   const theme = themeManager.getTheme(selectedDynasty);
+
+  /**
+   * The carry's display inputs (WP-3.10).
+   *
+   * `getPortalsMet()` counts the door the player is standing on, so the doors
+   * they have ALREADY passed is one fewer — and infuses spent doors too. The
+   * portal card prices both branches from this, so an off-by-one here is a lie
+   * told at the most consequential moment in the game.
+   */
+  const activeRuleset = getRuleset(normalizeDynastyName(selectedDynasty));
+  const portalDoorsPassed = Math.max(
+    0,
+    (gameRef.current?.getPortalsMet() ?? 0) - infusesCount - 1
+  );
 
   // Dynasty ruleset follows the equipped snake. The engine is constructed
   // on mount (before the collection fetch resolves), so inject the ruleset
@@ -2231,6 +2257,8 @@ export default function GamePage() {
                   snakeLength={snake.length}
                   bankDna={previewOutcome(true, activeAnomalyId)}
                   crashDna={previewOutcome(false, activeAnomalyId)}
+                  doorsPassed={portalDoorsPassed}
+                  cadence={activeRuleset.extraction}
                   onBank={() => handlePortalChoice('bank')}
                   onPass={() => handlePortalChoice('pass')}
                   onInfuse={() => handlePortalChoice('infuse')}
@@ -2827,6 +2855,8 @@ export default function GamePage() {
           snakeLength={snake.length}
           bankDna={previewOutcome(true, activeAnomalyId)}
           crashDna={previewOutcome(false, activeAnomalyId)}
+          doorsPassed={portalDoorsPassed}
+          cadence={activeRuleset.extraction}
           onBank={() => handlePortalChoice('bank')}
           onPass={() => handlePortalChoice('pass')}
           onInfuse={() => handlePortalChoice('infuse')}
