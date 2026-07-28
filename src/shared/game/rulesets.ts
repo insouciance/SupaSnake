@@ -406,11 +406,23 @@ export const COSMIC_SPEED_MS = 160;
  *
  * It replaced the glyph-matching combo chain, which the owner ruled out
  * flatly: "it's not really fun to get the combos, it's just boring, has no
- * thrill factor." Three defects sat under that verdict, two provable from the
- * code: the x2.4 cap needed a chain of 8 that a wave of 3 could not produce,
- * `scoreMultiplier: () => 1` meant the combo never touched the ranked number
- * at all, and `groupRadius: 4` made the "chain" a pile eaten in the order it
- * happened to lie in - Meier's OBVIOUS, the default path with a bonus on it.
+ * thrill factor." Three defects sat under that verdict, all provable from the
+ * code: the x2.4 cap needed a chain of 8 that a wave of 3 could not produce;
+ * `groupRadius: 4` made the "chain" a pile eaten in the order it happened to
+ * lie in - Meier's OBVIOUS, the default path with a bonus on it; and the combo
+ * was the one payout component the SERVER COULD NOT DERIVE, because it
+ * depended on tick timing, so it arrived as a client claim and was clamped
+ * rather than recomputed.
+ *
+ * That third defect is worth stating carefully, because the case for it
+ * inverted a few days before this landed. While `scoreMultiplier` was
+ * `() => 1` the combo touched Score not at all, and the complaint was that
+ * COSMIC's only skill layer moved a number nobody ranks. WP-3.08 then gave
+ * COSMIC a real score curve, so the combo began multiplying the RANKED number
+ * - by way of a clamped client claim. That makes the argument for deleting it
+ * stronger rather than weaker: a claim reaching Score is precisely what
+ * Inviolable Rule 2 exists to prevent, and deleting the combo closed the only
+ * such path in the codebase.
  *
  * WHY THE RATIO IS NOT A DIAL (§2.5). The window is fixed and the achievable
  * count degrades on its own: early, while the snake is short, a perfect route
