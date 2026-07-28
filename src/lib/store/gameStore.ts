@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand';
+import type { TerrainBlock } from '@/shared/game/terrain';
 import type { DynastyId } from '@/shared/types/game';
 import type {
   Position,
@@ -141,6 +142,14 @@ export interface GameStore {
   gildedCells: { x: number; z: number; ticks: number }[];
   /** Bonus foods (molt drops / Heartwood goldens) - renderer. */
   bonusFoods: { x: number; z: number; kind: 'molt' | 'heartwood' }[];
+  /**
+   * Arena terrain blocks (renderer).
+   *
+   * WP-3.05: terrain reached the engine's collision chain in WP-3.03 and never
+   * reached the scene, so blocks were lethal and invisible. This field is the
+   * missing wire.
+   */
+  terrain: TerrainBlock[];
   /** Committed infuses (drives the bank-preview HUD + game-over recap). */
   infusesCount: number;
   /** Where the live gene offer came from (choice card framing). */
@@ -210,6 +219,7 @@ export interface GameStore {
   setBonusFoods: (
     foods: { x: number; z: number; kind: 'molt' | 'heartwood' }[]
   ) => void;
+  setTerrain: (terrain: TerrainBlock[]) => void;
   setInfusesCount: (count: number) => void;
   setPortalChoicePending: (pending: boolean) => void;
   setSurgeChoicePending: (pending: boolean) => void;
@@ -257,6 +267,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   strainTiers: {},
   fusedSplices: [],
   gildedCells: [],
+  terrain: [],
   bonusFoods: [],
   infusesCount: 0,
   choiceSource: null,
@@ -299,6 +310,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       strainTiers: {},
       fusedSplices: [],
       gildedCells: [],
+      terrain: [],
       bonusFoods: [],
       infusesCount: 0,
       choiceSource: null,
@@ -331,6 +343,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       portalChoicePending: false,
       surgeChoicePending: false,
       gildedCells: [],
+      terrain: [],
       bonusFoods: [],
     });
   },
@@ -371,6 +384,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       strainTiers: {},
       fusedSplices: [],
       gildedCells: [],
+      terrain: [],
       bonusFoods: [],
       infusesCount: 0,
       choiceSource: null,
@@ -543,6 +557,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setGildedCells: (cells: { x: number; z: number; ticks: number }[]) => {
     set({ gildedCells: cells });
+  },
+  setTerrain: (terrain: TerrainBlock[]) => {
+    set({ terrain });
   },
 
   setBonusFoods: (

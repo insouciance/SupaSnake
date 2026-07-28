@@ -52,6 +52,16 @@ export interface TerrainBlock extends TerrainCell {
    */
   formingTicks: number;
   /**
+   * Ticks this block's forming phase started with, so a renderer can show
+   * PROGRESS rather than a bare countdown.
+   *
+   * WP-3.05: added because the forming phase is the entire fairness argument
+   * for terrain, and an argument the player cannot see is not being made. The
+   * remaining count alone cannot be drawn as a fill — you need what it started
+   * from.
+   */
+  formingTotal: number;
+  /**
    * Solid blocks are lethal to the HEAD only. A block whose forming has
    * finished but whose cell is still occupied by the snake stays a decal and
    * waits (the "pending" state): it can never kill the body it appeared under.

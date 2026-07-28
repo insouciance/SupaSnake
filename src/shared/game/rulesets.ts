@@ -227,6 +227,23 @@ const CYBER: DynastyRuleset = {
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cyberMultiplier(n)),
   scoreMultiplier: (n) => cyberMultiplier(n),
   extraction: CYBER_EXTRACTION,
+  // ARMED ONLY BECAUSE TERRAIN IS NOW DRAWN (WP-3.05).
+  //
+  // This line previously shipped six INVISIBLE instant-death blocks onto the
+  // outer ring every five foods. Terrain was complete as physics — scheduled by
+  // `placeDueTerrain`, solidified by `tickTerrain`, lethal in the collision
+  // chain — and no component in the codebase rendered it. The player hit an
+  // empty tile and died with no explanation.
+  //
+  // A full green suite could not see it: every terrain test asserts the MODEL,
+  // and the model was never wrong. `terrain.visible.test.ts` now asserts the
+  // connection instead, including this exact rule — a dynasty that schedules
+  // terrain must have the renderer mounted.
+  //
+  // The forming phase is why arming it is fair at all: `terrain.ts` calls it
+  // "not a courtesy - it is what makes terrain a positioning problem rather
+  // than a random death". Invisible, it was only the random death; drawn as a
+  // filling decal, it is the two seconds of warning it was always meant to be.
   arena: CYBER_ARENA,
   validation: { maxFoodPerSecond: 2.5 },
 };

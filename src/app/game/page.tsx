@@ -88,6 +88,8 @@ import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
 import { MutationHUD } from '@/components/game/MutationHUD';
 import { GenomeBoardEffects } from '@/components/game/GenomeBoardEffects';
+import { TerrainBlocks } from '@/components/game/TerrainBlocks';
+import type { TerrainBlock } from '@/shared/game/terrain';
 import { GeneChoiceOverlay } from '@/components/game/GeneChoiceOverlay';
 import { StrainMeterHUD } from '@/components/game/StrainMeterHUD';
 import { ExpressionFlourish } from '@/components/game/ExpressionFlourish';
@@ -499,6 +501,8 @@ export default function GamePage() {
     strainCounts,
     strainTiers,
     gildedCells,
+    terrain,
+    setTerrain,
     bonusFoods,
     choiceSource,
     portalChoicePending,
@@ -1497,6 +1501,10 @@ export default function GamePage() {
       setConstellation(state.constellationGlyph, state.chainLength, state.comboMultiplier);
       setMutationTile(state.mutationTile, state.mutationTicksRemaining);
       setFlux(state.fluxPhase, state.fluxTelegraph);
+      // WP-3.05: OUTSIDE the genome gate on purpose. Terrain belongs to a
+      // ruleset's arena, not to buildcraft, so gating it here would recreate
+      // the invisible-block bug for every non-genome run.
+      setTerrain(state.terrain);
       if (gameRef.current.getGenome()) {
         setStrains(state.strainCounts, state.strainTiers);
         setFusedSplices(state.fusedSplices);
@@ -1517,7 +1525,7 @@ export default function GamePage() {
         performance.now()
       );
     }
-  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux, setStrains, setFusedSplices, setGildedCells, setBonusFoods, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux, setStrains, setFusedSplices, setGildedCells, setBonusFoods, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setTerrain]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -3513,6 +3521,7 @@ export default function GamePage() {
             food={food}
             extraFoods={extraFoods}
             gildedCells={gildedCells}
+            terrain={terrain}
             bonusFoods={bonusFoods}
             constellationGlyph={constellationGlyph}
             exitTile={exitTile}
@@ -3586,6 +3595,7 @@ interface GameBoardProps {
   food: Position | null;
   extraFoods: Position[];
   gildedCells: readonly { x: number; z: number; ticks: number }[];
+  terrain: readonly TerrainBlock[];
   bonusFoods: readonly { x: number; z: number; kind: 'molt' | 'heartwood' }[];
   constellationGlyph: number | null;
   exitTile: Position | null;
@@ -3617,6 +3627,7 @@ function GameBoard({
   food,
   extraFoods,
   gildedCells,
+  terrain,
   bonusFoods,
   constellationGlyph,
   exitTile,
@@ -3710,6 +3721,7 @@ function GameBoard({
       />
 
       <GenomeBoardEffects gildedCells={gildedCells} bonusFoods={bonusFoods} />
+      <TerrainBlocks terrain={terrain} />
 
       {/* Snake - one instanced body draw + a head mesh with eyes, both
           reading tick-alpha interpolated positions from the buffer every
