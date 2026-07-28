@@ -132,26 +132,16 @@ const _energyColor = new THREE.Color();
 const GRID_SIZE = GAME_CONFIG.board.gridSize;
 
 /**
- * Instance budget: one box per body cell plus one link per joint, so at most
- * 2 * (segments - 1) for a snake that has filled the whole board. Bounding the
- * emission is not optional - the alternative is silently dropping the tail of a
- * 400-cell snake, which is exactly the length at which the trail matters most.
+ * Instance budget: one box per body cell, so at most `segments - 1` for a snake
+ * that has filled the whole board. Bounding the emission is not optional - the
+ * alternative is silently dropping the tail of a 400-cell snake, which is
+ * exactly the length at which the trail matters most.
+ *
+ * It was twice this while a second box was emitted per JOINT. That pass is
+ * deleted (see `writeTrailInstances`), so the headroom went with it rather than
+ * being left behind as a number nobody could explain.
  */
-const TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY * 2;
-
-/**
- * Centre-to-centre distance above which two "consecutive" cells are not
- * actually adjacent: they straddle the COSMIC wrap seam and sit a board apart.
- * Drawing that link puts a bar straight across the arena. The engine uses the
- * same `Math.abs(delta) > 1` idiom when it rebuilds a heading after a rewind
- * (SnakeGameLogic.ts); 1.5 gives room for the mid-tick corner compression,
- * where a genuine joint shortens to 0.707 but never lengthens past 1.
- */
-const SEAM_DISTANCE = 1.5;
-
-/** Below this a "link" has no direction to point in - the duplicated tail cell
- *  on a growth tick, where two indices name one position. */
-const MIN_LINK_LENGTH = 1e-4;
+const TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY;
 
 /**
  * Instanced-body material per dynasty: a clone of the shared body material
@@ -294,56 +284,27 @@ export function writeTrailInstances(
     n++;
   }
 
-  // Pass B: one oriented link per joint, so the middle reads as a continuous
-  // form instead of a chain. A straight run is exactly 1.0 long at every alpha
-  // and tiles seamlessly; a corner compresses to 0.707 mid-tick and the link
-  // rotates through it, which is the entire reason this is an oriented box and
-  // not an axis-aligned one.
-  for (let i = 0; i + 1 < count && n < TRAIL_INSTANCE_CAPACITY; i++) {
-    const ax = getInterpolatedX(buffer, i, alpha);
-    const az = getInterpolatedZ(buffer, i, alpha);
-    const bx = getInterpolatedX(buffer, i + 1, alpha);
-    const bz = getInterpolatedZ(buffer, i + 1, alpha);
-    const dx = ax - bx;
-    const dz = az - bz;
-    // Wrap seam: these two are a board apart, not adjacent. Drawing the link
-    // would put a bar straight across the arena.
-    if (dx > SEAM_DISTANCE || dx < -SEAM_DISTANCE) continue;
-    if (dz > SEAM_DISTANCE || dz < -SEAM_DISTANCE) continue;
-    const length = Math.sqrt(dx * dx + dz * dz);
-    if (length < MIN_LINK_LENGTH) continue;
-
-    // The head (index 0) has no trail shape of its own - the neck borrows
-    // segment 1's, so the creature end joins the trail without a step.
-    const a = i === 0 ? 1 : i;
-    const b = i + 1;
-    const footA = getTrailFootprint(levels[a]) * getSegmentScale(a, count);
-    const footB = getTrailFootprint(levels[b]) * getSegmentScale(b, count);
-    const heightA = getTrailHeight(a, count) * getTrailBreathe(a, elapsed);
-    const heightB = getTrailHeight(b, count) * getTrailBreathe(b, elapsed);
-    // Narrower and shorter of the two ends: a link may never poke out of the
-    // cells it joins, which is also what lets the corner cell's own box serve
-    // as the corner cap.
-    const width = (footA < footB ? footA : footB) * TRAIL_LINK_WIDTH;
-    // TRAIL_LINK_HEIGHT is what keeps this strictly below both cells it joins.
-    // At parity the link's top face was coplanar with theirs along the whole
-    // trunk, and coplanar surfaces z-fight - see the constant's doc comment.
-    const height =
-      (heightA < heightB ? heightA : heightB) * TRAIL_LINK_HEIGHT;
-
-    _position.set((ax + bx) / 2 + 0.5, height / 2, (az + bz) / 2 + 0.5);
-    // rotation.y = t maps local +Z to (sin t, 0, cos t), so this points the
-    // box's length straight down the joint.
-    _linkQuaternion.setFromAxisAngle(_up, Math.atan2(dx, dz));
-    _scale.set(width, height, length);
-    _matrix.compose(_position, _linkQuaternion, _scale);
-    sink.setMatrixAt(n, _matrix);
-    // Coloured as the TRAILING cell: the link belongs to the tile the body is
-    // settling into, not the one it is leaving.
-    writeSegmentColor(b, count, levels[b], strainBands, bodyCount);
-    sink.setColorAt(n, _energyColor);
-    n++;
-  }
+  // PASS B — THE JOINT LINKS — IS DELETED (2026-07-28).
+  //
+  // It emitted an oriented box per joint so the middle would read as a
+  // continuous form rather than a chain. It also produced the defect the owner
+  // hit on first play: "the blocks of the snake dont render properly, they are
+  // flickering and not all sides of the cubes/segments are visible."
+  //
+  // The first diagnosis was coplanar top faces, and it was wrong — insetting
+  // the link changed the render and fixed nothing the owner could see. What
+  // settled it was a control render with this pass disabled and nothing else
+  // changed: the body came back as clean, discrete, fully-faced cubes. The
+  // links were the whole defect, not the way they were sized.
+  //
+  // They are not missed, which is the part worth recording. The fusion ruling
+  // is carried by FOOTPRINT and BRIGHTNESS: at level 2 a cell claims 0.96 of
+  // its tile, so neighbours sit a 0.04 hairline apart and already read as one
+  // solid field, and at level 0 the 0.38 gap is the point. A link bridging
+  // that gap was arguing with the metric it was supposed to express.
+  //
+  // If a continuous form is ever wanted again, the honest way is one mesh for
+  // the whole trail, not a second box interpenetrating the first.
 
   return n;
 }

@@ -27,8 +27,7 @@ import type { Position } from '@/lib/game/SnakeGameLogic';
 import { writeTrailInstances } from './InstancedSnake';
 import {
   TRAIL_HEIGHT_HEAD,
-  TRAIL_LINK_WIDTH,
-  getTrailFootprint,
+    getTrailFootprint,
 } from './SnakeModel';
 
 interface Instance {
@@ -93,11 +92,10 @@ function straight(length: number): Position[] {
 }
 
 describe('the trail is actually emitted', () => {
-  it('draws one box per body cell plus one link per joint', () => {
-    // Segment 0 is the separate head mesh, so 4 boxes; 4 joints including the
-    // neck. If this ever silently halves, the body has come apart.
+  it('draws one box per body cell', () => {
+    // Segment 0 is the separate head mesh, so a 5-cell snake is 4 boxes.
     const { count } = emit(bufferOf(straight(5)), [0, 0, 0, 0, 0]);
-    expect(count).toBe(4 + 4);
+    expect(count).toBe(4);
   });
 
   it('draws nothing for an empty or single-cell snake', () => {
@@ -178,169 +176,134 @@ describe('fusion drives the picture, not just a number', () => {
   });
 });
 
-describe('links: the continuous form, and the seam that must not be drawn', () => {
-  it('orients a link along its joint and spans the full centre-to-centre gap', () => {
-    const { sink } = emit(bufferOf(straight(3)), [0, 0, 0]);
-    // Boxes are 0 and 1; links start at index 2.
-    const link = sink.instances[2];
-    expect(link.scale.z).toBeCloseTo(1, 10);
-    // The joint runs along Z, so local +Z must already point along world Z:
-    // a yaw of 0 or PI. Either way the box's length lies on the Z axis.
-    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(link.quaternion);
-    expect(Math.abs(forward.z)).toBeCloseTo(1, 10);
-    expect(Math.abs(forward.x)).toBeCloseTo(0, 10);
+describe('one box per cell, and nothing that interpenetrates it', () => {
+  // THE DEFECT THE OWNER HIT ON FIRST PLAY, and the guard that keeps it gone:
+  // "the blocks of the snake dont render properly, they are flickering and not
+  // all sides of the cubes/segments are visible."
+  //
+  // WP-3.07 emitted a second box per JOINT, spanning centre to centre, to make
+  // the middle read as a continuous form. It was buried inside the two cells it
+  // joined, and two opaque solids sharing a volume is how faces stop being
+  // drawn. A control render with that pass disabled and nothing else changed
+  // brought the body back as clean, discrete, fully-faced cubes.
+  //
+  // The first fix attempt was wrong and is worth remembering: it assumed the
+  // problem was the link's TOP face being coplanar with the cells', inset the
+  // link, changed the render, and fixed nothing the owner could see. Sizing the
+  // intruder differently was never going to help; the intrusion was the defect.
+  //
+  // So this asserts the strong invariant rather than the narrow one: NO two
+  // emitted instances may share space at all. That makes the entire class
+  // unreachable instead of pinning the one shape it happened to take.
+  const boxOf = (i: Instance) => ({
+    minX: i.position.x - i.scale.x / 2,
+    maxX: i.position.x + i.scale.x / 2,
+    minY: i.position.y - i.scale.y / 2,
+    maxY: i.position.y + i.scale.y / 2,
+    minZ: i.position.z - i.scale.z / 2,
+    maxZ: i.position.z + i.scale.z / 2,
   });
 
-  it('turns the link with the joint on an X-axis run', () => {
-    const buffer = bufferOf([at(5, 5), at(6, 5), at(7, 5)]);
-    const { sink } = emit(buffer, [0, 0, 0]);
-    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(
-      sink.instances[2].quaternion
-    );
-    expect(Math.abs(forward.x)).toBeCloseTo(1, 10);
-    expect(Math.abs(forward.z)).toBeCloseTo(0, 10);
-  });
-
-  it('never lets a link poke out of the cells it joins', () => {
-    // This is what makes a separate corner-cap instance unnecessary: the
-    // corner cell's own box is wider than the two links meeting in it, so the
-    // box fills the outer notch that two right-angled bars would leave.
-    //
-    // Long enough that the cells around the corner are clear of the tail
-    // taper, which would otherwise narrow one end of each link.
-    const cells: Position[] = [at(5, 5), at(5, 6)];
-    for (let x = 6; x < 16; x++) cells.push(at(x, 6));
-    const buffer = bufferOf(cells);
-    const { sink } = emit(buffer, new Array(cells.length).fill(1));
-    const boxes = cells.length - 1;
-    const boxWidth = sink.instances[0].scale.x;
-    // The two links meeting in the corner cell (1,2) and (2,3).
-    for (const joint of [1, 2]) {
-      const link = sink.instances[boxes + joint];
-      expect(link.scale.x).toBeLessThan(boxWidth);
-      expect(link.scale.x).toBeCloseTo(boxWidth * TRAIL_LINK_WIDTH, 10);
+  const anyOverlap = (sink: RecordingSink, count: number): string | null => {
+    const EPS = 1e-6;
+    for (let a = 0; a < count; a++) {
+      for (let b = a + 1; b < count; b++) {
+        const A = boxOf(sink.instances[a]);
+        const B = boxOf(sink.instances[b]);
+        if (
+          A.minX < B.maxX - EPS && B.minX < A.maxX - EPS &&
+          A.minY < B.maxY - EPS && B.minY < A.maxY - EPS &&
+          A.minZ < B.maxZ - EPS && B.minZ < A.maxZ - EPS
+        ) {
+          return `instances ${a} and ${b} share volume`;
+        }
+      }
     }
+    return null;
+  };
+
+  it('emits exactly one instance per body cell - no joint pass', () => {
+    // Segment 0 is the separate head mesh, so a 5-cell snake is 4 boxes. If a
+    // second pass ever comes back this doubles and says so.
+    expect(emit(bufferOf(straight(5)), [0, 0, 0, 0, 0]).count).toBe(4);
   });
 
-  it('compresses a corner link mid-tick instead of tearing', () => {
-    // Because the engine unshifts and pops, curr[i] === prev[i-1]: a corner
-    // joint shortens to 0.707 at alpha 0.5 and rotates through it. A joint
-    // that assumed a fixed length of 1.0 would leave a gap at every turn.
-    const buffer = createInterpolationBuffer();
-    recordTick(buffer, [at(5, 6), at(5, 7), at(5, 8)], 100, 1000);
-    recordTick(buffer, [at(6, 6), at(5, 6), at(5, 7)], 100, 1100);
-    const { sink } = emit(buffer, [0, 0, 0], 0.5);
-    const neck = sink.instances[2];
-    expect(neck.scale.z).toBeGreaterThan(0.7);
-    expect(neck.scale.z).toBeLessThan(1);
-  });
-
-  it('SUPPRESSES the link across a COSMIC wrap seam', () => {
-    // Two "consecutive" segments a board apart. An unguarded link here draws
-    // a bar straight across the arena - the single most visible way this
-    // component can fail.
-    const wrapped = [at(0, 5), at(19, 5), at(18, 5), at(17, 5)];
-    const { count } = emit(bufferOf(wrapped), [0, 0, 0, 0]);
-    // 3 boxes + 3 joints, minus the one seam-straddling joint.
-    expect(count).toBe(3 + 2);
-  });
-
-  it('skips the duplicated tail cell of a growth tick', () => {
-    // recordTick seeds prev = curr for a new tail index, so two indices name
-    // one position for a tick. A zero-length link has no direction to point
-    // in and composes to a degenerate matrix.
-    const grown = [at(5, 5), at(5, 6), at(5, 7), at(5, 7)];
-    const { count } = emit(bufferOf(grown), [0, 0, 0, 0]);
-    expect(count).toBe(3 + 2);
-  });
-});
-
-describe('no two surfaces ever share a depth (the z-fighting defect)', () => {
-  // THE DEFECT THE OWNER HIT ON FIRST PLAY: "the blocks of the snake dont
-  // render properly, they are flickering and not all sides of the cubes /
-  // segments are visible."
-  //
-  // A link spans centre to centre, so it is buried inside both cells it joins.
-  // Its height used to be exactly `min(heightA, heightB)`, and along the
-  // settled trunk every cell is exactly TRAIL_HEIGHT_TRUNK — so the link's top
-  // face and the cells' top faces were COPLANAR over the whole run. Two
-  // surfaces at one depth is z-fighting by definition, and it read as notches
-  // marching along the snake's back, shimmering whenever anything moved.
-  //
-  // These assert GEOMETRY, not a constant, because the constant is not the
-  // invariant — "no link top may touch a cell top" is, and it has to survive
-  // the breathe multiplier, the sinking tail and the head-zone easing.
-  const topOf = (i: Instance): number => i.position.y + i.scale.y / 2;
-
-  it('every link top sits strictly below both cells it joins', () => {
+  it('never overlaps, at any fusion level', () => {
     const snake = straight(24);
-    const { sink, count } = emit(bufferOf(snake), new Array(24).fill(2));
-    const boxes = sink.instances.slice(0, snake.length - 1);
-    const links = sink.instances.slice(snake.length - 1, count);
-    expect(boxes.length).toBeGreaterThan(0);
-    expect(links.length).toBeGreaterThan(0);
-
-    // PAIRWISE, against the two cells this link actually joins. A global
-    // minimum would be the wrong bound and it is worth saying why: the tail
-    // sinks, so the shortest cell in the run is far from the trunk and a trunk
-    // link has no reason to clear it. Asserting that instead would fail on
-    // correct geometry, which is how a test starts getting weakened.
-    links.forEach((link, joint) => {
-      const a = boxes[Math.max(0, joint - 1)];
-      const b = boxes[Math.min(boxes.length - 1, joint)];
-      expect(topOf(link)).toBeLessThan(Math.min(topOf(a), topOf(b)));
-    });
-  });
-
-  it('holds while the head zone is breathing', () => {
-    // The breathe multiplies height per-segment per-frame, so a link between a
-    // breathing cell and a still one has two different heights to stay under.
-    // Sampled across a full cycle rather than at one lucky phase.
-    const snake = straight(20);
-    for (let step = 0; step < 24; step++) {
-      const elapsed = step / 24;
-      const { sink, count } = emit(
-        bufferOf(snake),
-        new Array(20).fill(1),
-        1,
-        elapsed
-      );
-      const boxes = sink.instances.slice(0, snake.length - 1);
-      const links = sink.instances.slice(snake.length - 1, count);
-      links.forEach((link, joint) => {
-        const a = boxes[Math.max(0, joint - 1)];
-        const b = boxes[Math.min(boxes.length - 1, joint)];
-        expect(topOf(link)).toBeLessThan(Math.min(topOf(a), topOf(b)));
-      });
+    for (const level of [0, 1, 2]) {
+      const { sink, count } = emit(bufferOf(snake), new Array(24).fill(level));
+      expect(anyOverlap(sink, count)).toBeNull();
     }
   });
 
-  it('holds through the sinking tail, where heights differ most', () => {
-    const snake = straight(30);
-    const { sink, count } = emit(bufferOf(snake), new Array(30).fill(0));
-    const boxes = sink.instances.slice(0, snake.length - 1);
-    const links = sink.instances.slice(snake.length - 1, count);
-    // Pair each link with the two cells it actually joins rather than the
-    // global minimum: the tail's cells are genuinely shorter than the trunk's,
-    // and a global bound would hide a link that clears the tail but not its
-    // own neighbours.
-    links.forEach((link, joint) => {
-      const a = boxes[Math.max(0, joint - 1)];
-      const b = boxes[Math.min(boxes.length - 1, joint)];
-      expect(topOf(link)).toBeLessThan(Math.min(topOf(a), topOf(b)));
-    });
+  it('never shares a FACE PLANE around a corner, mid-tick', () => {
+    // Mid-tick through a turn is where cells are closest, because one is moving
+    // along X while its neighbour moves along Z. Their boxes interpenetrate at
+    // the top fusion level, and that is FINE: intersecting opaque solids of one
+    // material render as a clean union, since their surfaces meet at an angle.
+    //
+    // What is not fine is two surfaces at the SAME depth, which is the z-fight
+    // condition. This asserts that, and deliberately not "no overlap" - the
+    // control render that isolated the real defect had this overlap and came
+    // back clean, and bounding overlap instead would have flattened the fusion
+    // range to fix something that was never broken.
+    const turn: Position[] = [
+      at(5, 5), at(5, 6), at(5, 7), at(6, 7), at(7, 7), at(8, 7),
+    ];
+    const buffer = createInterpolationBuffer();
+    recordTick(buffer, turn, 100, 1000);
+    recordTick(buffer, [at(5, 4), ...turn.slice(0, 5)], 100, 1100);
+    const EPS = 1e-6;
+    for (const alpha of [0, 0.25, 0.5, 0.75, 1]) {
+      const sink = new RecordingSink();
+      const packed = new Uint8Array(INTERPOLATION_CAPACITY);
+      packed.fill(2);
+      const count = writeTrailInstances(sink, buffer, alpha, packed, [], 0);
+      for (let a = 0; a < count; a++) {
+        for (let b = a + 1; b < count; b++) {
+          const A = boxOf(sink.instances[a]);
+          const B = boxOf(sink.instances[b]);
+          const overlapY = A.minY < B.maxY - EPS && B.minY < A.maxY - EPS;
+          const overlapZ = A.minZ < B.maxZ - EPS && B.minZ < A.maxZ - EPS;
+          const overlapX = A.minX < B.maxX - EPS && B.minX < A.maxX - EPS;
+          // A shared plane only fights where the other two axes overlap.
+          if (overlapY && overlapZ) {
+            for (const fa of [A.minX, A.maxX]) {
+              for (const fb of [B.minX, B.maxX]) {
+                expect(Math.abs(fa - fb)).toBeGreaterThan(EPS);
+              }
+            }
+          }
+          if (overlapY && overlapX) {
+            for (const fa of [A.minZ, A.maxZ]) {
+              for (const fb of [B.minZ, B.maxZ]) {
+                expect(Math.abs(fa - fb)).toBeGreaterThan(EPS);
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('never overlaps while the head zone is breathing', () => {
+    const snake = straight(20);
+    for (let step = 0; step < 12; step++) {
+      const { sink, count } = emit(
+        bufferOf(snake), new Array(20).fill(2), 1, step / 12
+      );
+      expect(anyOverlap(sink, count)).toBeNull();
+    }
   });
 
   it('the trunk is a cube, not a plate', () => {
-    // The second half of the same report — "not all sides of the cubes are
-    // visible". A segment 0.42 tall and up to 0.96 wide has almost no side
-    // area to be seen in. Height must stay within a factor of the footprint or
-    // the body stops reading as blocks at all.
-    const snake = straight(20);
-    const { sink } = emit(bufferOf(snake), new Array(20).fill(2));
-    const trunk = sink.instances[12];
-    const footprint = getTrailFootprint(2);
-    expect(trunk.scale.y).toBeGreaterThan(footprint * 0.6);
+    // The second half of the same report - "not all sides of the cubes are
+    // visible". A segment 0.42 tall against a footprint of up to 0.96 has
+    // almost no side area to be seen in.
+    const { sink } = emit(bufferOf(straight(20)), new Array(20).fill(2));
+    expect(sink.instances[12].scale.y).toBeGreaterThan(
+      getTrailFootprint(2) * 0.55
+    );
   });
 });
 
@@ -357,10 +320,12 @@ describe('the instance budget holds at the length where it matters', () => {
     }
     expect(snake).toHaveLength(400);
     const { sink, count } = emit(bufferOf(snake), new Array(400).fill(1));
-    // Every body cell and every joint: nothing dropped.
-    expect(count).toBe(399 + 399);
+    // Every body cell, nothing dropped. A board-filling snake is exactly the
+    // length at which the trail matters most, so silently truncating it is the
+    // one failure this budget exists to prevent.
+    expect(count).toBe(399);
     expect(sink.instances).toHaveLength(count);
-    expect(count).toBeLessThanOrEqual(INTERPOLATION_CAPACITY * 2);
+    expect(count).toBeLessThanOrEqual(INTERPOLATION_CAPACITY);
   });
 });
 

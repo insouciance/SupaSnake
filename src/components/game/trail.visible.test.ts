@@ -135,27 +135,37 @@ describe('the game scene threads what the metric needs', () => {
 });
 
 describe('the failure modes the design named explicitly', () => {
-  it('the wrap seam is guarded, or a joint draws a bar across the arena', () => {
-    // Two "consecutive" segments straddling the COSMIC seam are a board
-    // apart. An unguarded link between them is a bar across the whole board.
+  it('draws no joint links, so the wrap seam cannot be bridged at all', () => {
+    // This used to assert a SEAM_DISTANCE guard: two "consecutive" segments
+    // straddling the COSMIC seam are a board apart, and an unguarded LINK
+    // between them draws a bar across the whole arena.
+    //
+    // The joint pass is deleted (2026-07-28 - it was the flickering the owner
+    // reported on first play), and with it the only thing that could ever span
+    // two cells. Each cell is drawn on its own centre, so a seam-straddling
+    // pair simply draws two boxes a board apart, which is the truth.
+    //
+    // Asserted as the ABSENCE of the pass rather than the presence of a guard,
+    // because a guard for a thing that no longer exists is exactly the kind of
+    // dead assertion that makes a suite look greener than it is.
     const renderer = read(RENDERER);
-    expect(renderer).toContain('SEAM_DISTANCE');
-    expect(renderer).toMatch(/SEAM_DISTANCE\) continue;/);
+    expect(renderer).not.toMatch(/_linkQuaternion\.setFromAxisAngle/);
+    expect(renderer).not.toContain('MIN_LINK_LENGTH');
   });
 
-  it('the instance budget covers boxes AND links, so nothing is dropped', () => {
-    // One box per cell plus one link per joint is 2 * (segments - 1). A
-    // 400-cell snake is exactly when the trail matters most; silently
-    // truncating it there would be the worst possible place to be wrong.
+  it('the instance budget covers every body cell, so nothing is dropped', () => {
+    // One box per cell is `segments - 1`. A 400-cell snake is exactly when the
+    // trail matters most; silently truncating it there would be the worst
+    // possible place to be wrong.
     const renderer = read(RENDERER);
     expect(renderer).toMatch(
-      /TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY \* 2/
+      /TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY;/
     );
     // Both the args= allocation and the loop bound must use it.
     expect(renderer).toMatch(/args=\{\[bodyGeometry, bodyMaterial, TRAIL_INSTANCE_CAPACITY\]\}/);
     expect(renderer).toMatch(/n < TRAIL_INSTANCE_CAPACITY/);
-    expect(INTERPOLATION_CAPACITY * 2).toBeGreaterThanOrEqual(
-      2 * (INTERPOLATION_CAPACITY - 1)
+    expect(INTERPOLATION_CAPACITY).toBeGreaterThanOrEqual(
+      INTERPOLATION_CAPACITY - 1
     );
   });
 
