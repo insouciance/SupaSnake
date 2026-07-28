@@ -47,9 +47,29 @@ export interface GrowthProfile {
    * kills the tail specifically.
    */
   readonly simultaneousFoods: number;
-  /** Foods between gene offers. Re-based: a ~48-food run gets ~2 at 20. */
+  /**
+   * MEAN foods between gene offers. A ~48-food run gets ~2 at 20, ~5 at 10.
+   *
+   * WP-3.05: this field and the one below shipped DEAD. Nothing outside this
+   * module read either of them — the engine rolled every offer from
+   * `MUTATION_SPAWN.intervalBase` (20 +/- 5) and the validator bounded picks
+   * with its own hardcoded `MIN_FOODS_PER_PICK = 15`, so choosing Tuned bought
+   * a growth curve and silently kept Classic's buildcraft cadence. The owner
+   * played a ~48-food Tuned run expecting five gene offers and got two.
+   *
+   * The comment that used to sit here asserted the coupling below as if it
+   * were enforced. It was not. It is now — see `rollOfferInterval`.
+   */
   readonly offerIntervalBase: number;
-  /** Validator cadence bound; must track `offerIntervalBase` or honest runs flag. */
+  /**
+   * MINIMUM foods between gene offers: both the engine's lowest roll and the
+   * validator's per-pick bound, which is why it must be exactly one number.
+   *
+   * The jitter is DERIVED from the gap (`offerIntervalBase - minFoodsPerPick`)
+   * rather than authored separately, so the engine cannot roll an interval the
+   * validator would reject. Authoring jitter independently is precisely how
+   * the two sides drift, and a cadence drift flags honest runs.
+   */
   readonly minFoodsPerPick: number;
   /** Base segments gained on eating the n-th food (1-indexed). */
   baseGrowth(n: number): number;
@@ -154,4 +174,33 @@ export function isGrowthProfileId(value: unknown): value is GrowthProfileId {
 export function baseGrowthForFood(profile: GrowthProfile, n: number): number {
   if (!Number.isFinite(n) || n < 1) return profile.baseGrowth(1);
   return Math.max(0, Math.floor(profile.baseGrowth(n)));
+}
+
+/**
+ * Half-width of the offer-interval roll, DERIVED so the engine's floor and the
+ * validator's ceiling are the same number by construction.
+ *
+ * Authoring this independently would let the engine roll an interval tighter
+ * than the validator permits, and the player who was handed that offer by the
+ * engine would be the one flagged for taking it.
+ */
+export function offerIntervalJitter(profile: GrowthProfile): number {
+  return Math.max(0, profile.offerIntervalBase - profile.minFoodsPerPick);
+}
+
+/**
+ * Foods until the next gene offer: `offerIntervalBase +/- jitter`, uniform and
+ * inclusive, so the lowest possible roll is exactly `minFoodsPerPick`.
+ *
+ * THE ONE FUNCTION, in the same sense as `baseGrowthForFood`: the engine rolls
+ * from it and the validator bounds against `minFoodsPerPick`, which is its
+ * minimum. On `baseline` it returns 15-25 — byte-identical to the
+ * `rollMutationInterval` it replaces, which a test asserts.
+ */
+export function rollOfferInterval(
+  profile: GrowthProfile,
+  rng: () => number = Math.random
+): number {
+  const jitter = offerIntervalJitter(profile);
+  return profile.offerIntervalBase - jitter + Math.floor(rng() * (2 * jitter + 1));
 }

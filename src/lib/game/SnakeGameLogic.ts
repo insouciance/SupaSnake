@@ -48,7 +48,6 @@ import {
   MUTATION_SPAWN,
   foodValueFlatBonus,
   foodValueModifier,
-  rollMutationInterval,
   rollMutationOffer,
   type MutationId,
   type MutationPick,
@@ -82,6 +81,7 @@ import {
 import {
   baseGrowthForFood,
   resolveGrowthProfile,
+  rollOfferInterval,
   type GrowthProfile,
   type GrowthProfileId,
 } from '@/shared/game/growth';
@@ -3096,7 +3096,11 @@ export class SnakeGameLogic {
    * means the rolled food-interval doubles (40 +/- 10 instead of 20 +/- 5).
    */
   private rollNextMutationInterval(): number {
-    const interval = rollMutationInterval(this.rng);
+    // WP-3.05: rolled from the RUN'S GROWTH PROFILE, not the global
+    // `MUTATION_SPAWN` constant it used to read. That constant is why choosing
+    // Tuned changed how fast you grew but not how often you were offered a
+    // gene - the profile's cadence fields were never wired to anything.
+    const interval = rollOfferInterval(this.growth, this.rng);
     return this.hasTrait('patient')
       ? interval * TRAIT_PHYSICS.patientMutationIntervalMultiplier
       : interval;

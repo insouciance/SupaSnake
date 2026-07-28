@@ -1330,7 +1330,12 @@ export async function POST(request: NextRequest) {
         snakeTraits,
         unlockedPool,
         sessionCondition,
-        genomeCtx
+        genomeCtx,
+        // WP-3.05: the run's stamped growth profile, for the food-rate and
+        // offer-cadence bounds. `genomeCtx` carries the same value and still
+        // wins where present; this closes the case where there is no genome
+        // context at all and both bounds silently fell back to `baseline`.
+        runContext?.growthProfileId
       );
 
       // Offer-trace verification (ADVISORY, §5): replay the seeded offer
