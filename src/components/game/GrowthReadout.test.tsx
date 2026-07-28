@@ -15,7 +15,16 @@ import { GrowthReadout, GrowthStepNotice } from './GrowthReadout';
 function readout(
   presentation: 'panel' | 'ticker' | 'cockpit',
   profileId: 'baseline' | 'tuned' | 'aggressive',
-  n: number
+  n: number,
+  /**
+   * Overrides the profile's own count. Needed because WP-3.06 set
+   * `simultaneousFoods` to 1 on ALL THREE profiles (owner: "what i certainly
+   * don't like are the 3 foods on the screen"), so no shipped profile exercises
+   * the multi-food branch any more — and that branch must survive anyway, since
+   * COSMIC's constellation still places a group of 3 and the owner asked that
+   * the food count stay a cheap dial rather than a rewrite.
+   */
+  foodsOnBoard?: number
 ) {
   const profile = GROWTH_PROFILES[profileId];
   return render(
@@ -23,7 +32,7 @@ function readout(
       profileId={profile.id}
       label={profile.label}
       perFood={baseGrowthForFood(profile, n)}
-      foodsOnBoard={profile.simultaneousFoods}
+      foodsOnBoard={foodsOnBoard ?? profile.simultaneousFoods}
       presentation={presentation}
     />
   );
@@ -68,10 +77,23 @@ describe('the growth readout', () => {
     );
     single.unmount();
 
-    readout('panel', 'aggressive', 1);
+    // Explicitly 3, not `aggressive`'s own count: every shipped profile is 1
+    // after WP-3.06, so binding this case to a profile would have made it
+    // assert nothing the moment the dial moved. It is the RENDERING of a count
+    // above one that is under test here.
+    readout('panel', 'aggressive', 1, 3);
     expect(screen.getByTestId('growth-readout')).toHaveTextContent(
       '3 foods on the board'
     );
+  });
+
+  it('every shipped profile now runs one food', () => {
+    // The owner's ruling, pinned where the readout can see it: if a profile
+    // ever goes back above one, the line above stops being hypothetical and
+    // this test says so rather than letting it drift silently.
+    for (const profile of Object.values(GROWTH_PROFILES)) {
+      expect(profile.simultaneousFoods).toBe(1);
+    }
   });
 
   it('is named for a screen reader on the in-run presentations', () => {
