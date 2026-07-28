@@ -373,6 +373,51 @@ than assumed. Start there.
 
 ## §5 Findings recorded, not fixed
 
+### §5.1 THE YIELD CURVES HAVE NEVER BEEN BALANCED AGAINST EACH OTHER — owner ruling owed
+
+**This predates the Redesign Wave entirely. Nothing in this wave introduced it,
+and nothing in this wave is what you would change to fix it.** It was found
+while closing COSMIC's Yield gap (WP-3.13) only because that was the first time
+anyone went looking for the Yield equivalent of WP-3.08's Score discipline, and
+discovered there isn't one.
+
+Cumulative DNA at the **48-food terminus**, from the shipped `foodDnaValue`
+functions:
+
+| Dynasty | Yield at 48 | vs the lowest |
+|---|---|---|
+| **PRIMAL** | 705 | — |
+| **COSMIC** | 931 | 1.32x |
+| **CYBER** | 1210 | **1.72x** |
+
+*(COSMIC's 931 is post-WP-3.13. It was 480 before, and the spread was 2.52x —
+but even removing COSMIC entirely, PRIMAL and CYBER sit 1.72x apart on their
+own, and always have.)*
+
+**Why this is not obviously a bug.** WP-3.08 held the three SCORE curves to
++/-10% at the terminus, and that was correct and deliberate: Score is the
+ranked number, so a dynasty that out-scores the others makes the leaderboard
+measure dynasty choice rather than skill (Constitution §6.1, Inviolable Rule 2).
+Yield is the ECONOMY, not the ranking, and run LENGTH compensates for the
+spread — CYBER runs are short and fast, PRIMAL's are long — so the five
+archetypes in `genome.balance.test.ts` do all land within +/-15% of target
+despite it. It may be exactly right.
+
+**Why it still needs a ruling.** It has never been *stated* as a decision, or
+tested as one. There is no Yield analogue of `score.curves.test.ts`: nothing
+anywhere asserts what the spread should be, so nobody can tell an intended 1.72x
+from a drifted one, and the next dynasty-tuning package will face the same
+question with the same absence of an answer. The archetype gate catches the
+composite outcome, not the curve.
+
+**The question for the owner, in one line:** *should a dynasty's DNA per food
+be comparable to the others at a fixed food count, or is compensating through
+run length the intended design?* Either answer is cheap to encode; not
+answering is what costs.
+
+Recorded 2026-07-28. See §6 item 10.
+
+
 - ~~**COSMIC always places 3 foods**~~ — RULED and shipped in WP-3.13. The
   constellation is now **five scattered stars** on a window, and the count is
   the mechanic rather than a leftover: it must exceed what the window allows or
@@ -391,16 +436,12 @@ than assumed. Start there.
   to the playtest only works if the playtest can answer it.
   `foodDnaValue` is now `round(10 x min(3, 1 + 0.04(n-1)))` — double PRIMAL's
   compounding slope to CYBER's x3 ceiling, reached at food 51 rather than food
-  20. The archetype lands at -2.4% of target and `genome.balance.test.ts` gates
-  all five with no exemptions.
+  20. The archetype lands at **-3.5%** of target (re-measured after the
+  Fortress merge, which reshaped the claim surface; it was -2.4% before) and
+  `genome.balance.test.ts` gates all five with no exemptions.
 
-  **The finding underneath it survives and is not COSMIC's:** YIELD integrals
-  are not comparable across dynasties the way Score integrals are. At the
-  48-food terminus CYBER pays 1210 and PRIMAL 705 — a 1.72x spread that
-  predates this package. Run LENGTH compensates for it (CYBER runs are short,
-  PRIMAL's long) and the archetype EVs do land in band, so it may well be
-  correct; it has simply never been stated or tested as a decision the way
-  WP-3.08 stated the Score curves. Worth a ruling before launch.
+  **Closing it surfaced something bigger, which is NOT COSMIC's and not this
+  wave's — see §5.1.**
 - **`normalizeDynastyName` fell back to COSMIC as "the conservative payout
   floor"**, and WP-3.13's Yield re-base made that false. It now falls back to
   PRIMAL, which is the floor at every horizon a run reaches. The fallback is
@@ -437,7 +478,13 @@ than assumed. Start there.
 6. **PRIMAL** — Fortress replacing FERAL-2 Molt, tempo 200 → ~170-180ms.
 7. **D3** — per-dynasty score curves with comparable integrals.
 8. **D2 ladder** (WP-3.10).
-9. **Repair the legacy flag-on e2e specs** and make the production leg blocking.
+9. ~~**Repair the legacy flag-on e2e specs** and make the production leg
+   blocking.~~ Shipped with part 2 (`8d5f42e`); the production leg passes and
+   **blocks** now, with `GROWTH_LAB_V1` and `LADDER_V1` armed. A red production
+   leg is a real signal from here on, not the known-noise it used to be.
+10. **An owner ruling on the Yield spread** (§5.1). Not a build item — a
+    question only the owner can answer, and the answer decides whether a Yield
+    parity gate gets written at all.
 
 **D1 remains unruled.** The owner must play the complete design before judging
 time-to-first-pressure. Their earlier Tuned-over-Aggressive preference is

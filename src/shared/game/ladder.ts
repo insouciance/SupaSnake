@@ -41,6 +41,21 @@
  *     fact. A rung that made a player's run resolve a different clause set from
  *     the week it was played in would create a second source, which is exactly
  *     the drift `runContext.ts` refuses to introduce for the world condition.
+ *   - COSMIC's calcification window (`COSMIC_CONSTELLATION.windowSeconds`,
+ *     WP-3.13). NOT IMPLEMENTED, and noted here because it is the most
+ *     obviously rung-shaped dial to arrive since this list was written: it is
+ *     already authored in SECONDS, it is already the single tuning dial its
+ *     own design doc names ("the tuning dial if calcification feels punishing
+ *     - NOT the mechanic"), and shortening it is a clean difficulty increase
+ *     that changes nothing else. It would read
+ *     `constellationWindowSecondsDelta`, alongside `portalWindowSecondsDelta`
+ *     and in the same unit.
+ *
+ *     It is deliberately not added. The window has never been played, so
+ *     nobody yet knows what its base value should be — and a rung that shifts
+ *     a dial whose baseline is still unknown is the same mistake as the
+ *     CYBER-ring rung above, which was left out for exactly that reason. It
+ *     becomes a candidate the moment the owner has tuned the base.
  *
  * ── THE UNIT QUESTION, ASKED OF EVERY DIAL ──────────────────────────────────
  *
