@@ -8,23 +8,30 @@
  *
  * So these assert the two things that make it a diagnostic: it reflects the
  * SELECTION, and it renders whether or not the lab flag is armed.
+ *
+ * WP-3.09: this helper used to hand-roll its own `<p>` in the shape of the
+ * readout, which meant it would have gone on passing if the shipped node were
+ * deleted. It now renders the SHIPPED component, with the game page's own
+ * pre-run derivation (`n = 1`, because before a run the next food IS food 1).
  */
 
 import { describe, it, expect } from '@jest/globals';
 import { cleanup, render, screen } from '@testing-library/react';
 import { RunSetupPanel } from './RunSetupPanel';
+import { GrowthReadout } from './GrowthReadout';
 import { GROWTH_PROFILES, baseGrowthForFood } from '@/shared/game/growth';
 import type { GrowthProfileId } from '@/shared/game/growth';
 
 function note(id: GrowthProfileId) {
   const profile = GROWTH_PROFILES[id];
   return (
-    <p data-testid="growth-readout">
-      Growth: {profile.label} · +{baseGrowthForFood(profile, 1)} per food
-      {profile.simultaneousFoods > 1
-        ? ` · ${profile.simultaneousFoods} foods on the board`
-        : ''}
-    </p>
+    <GrowthReadout
+      profileId={profile.id}
+      label={profile.label}
+      perFood={baseGrowthForFood(profile, 1)}
+      foodsOnBoard={profile.simultaneousFoods}
+      presentation="panel"
+    />
   );
 }
 
