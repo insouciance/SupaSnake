@@ -35,13 +35,28 @@ describe('Game Configuration', () => {
     });
 
     it('should have interpolation duration less than initial speed', () => {
+      // A declared relation, not an enforced one: nothing in production reads
+      // `interpolationDuration` — `interpolationBuffer.ts` smooths against the
+      // LIVE tick from `getSpeed()`. So this pins the band's own coherence, and
+      // it still holds after WP-3.08 moved PRIMAL to 175 (150 < 175, 25ms of
+      // margin, against COSMIC's shipped 10ms). The per-dynasty ticks are
+      // checked against this number where they are declared, in
+      // `rulesets.test.ts`, which is the only place it can mean anything.
       const { interpolationDuration, initialSpeed } = GAME_CONFIG.snake;
       expect(interpolationDuration).toBeLessThan(initialSpeed);
     });
 
-    it('exposes the speed band the dynasty rulesets ramp within', () => {
-      // Design v2: speed curves live in the ruleset module (per dynasty);
-      // config only defines the band. CYBER reaches minSpeed at 100 foods.
+    it('declares the speed band, and no longer any dynasty\'s tempo', () => {
+      // Speed curves live in the ruleset module, per dynasty. What is left here
+      // is the band: `initialSpeed` is now read by exactly one thing — the
+      // numerator of CYBER's curve, which divides down toward
+      // `CYBER_TICK_FLOOR_MS` (100) and therefore never reaches `minSpeed`.
+      //
+      // 200 stays 200 because CYBER's opening tempo is unchanged. PRIMAL used
+      // to read this same field, which is why WP-3.08 gave it
+      // `PRIMAL_SPEED_MS`: retuning PRIMAL's tempo here would have silently
+      // retuned CYBER's whole curve with it. This test pins the band and the
+      // separation, not a tempo.
       const { initialSpeed, minSpeed } = GAME_CONFIG.snake;
       expect(initialSpeed).toBe(200);
       expect(minSpeed).toBe(50);

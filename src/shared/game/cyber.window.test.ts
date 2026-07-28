@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { RULESETS, CYBER_TICK_FLOOR_MS } from './rulesets';
+import { RULESETS, CYBER_TICK_FLOOR_MS, PRIMAL_SPEED_MS } from './rulesets';
 
 /** What the engine computes: seconds authored, converted by the live tick. */
 function windowSeconds(despawnSeconds: number | undefined, despawnTicks: number, tickMs: number): number {
@@ -38,18 +38,50 @@ describe('the extraction window holds its real duration', () => {
   });
 
   it('matches PRIMAL — the decision costs the same wherever it is made', () => {
+    // PRIMAL's window is read at PRIMAL's OWN tick, never at a literal 200.
+    // That literal is what this file exists to distrust, and WP-3.08 moved the
+    // tempo to 175 (PRIMAL_SPEED_MS) — which takes the 90-tick window from
+    // 18.0s to 15.75s.
+    //
+    // That shrinkage is not the rot `despawnSeconds` was invented to stop.
+    // PRIMAL's tick is CONSTANT, so 90 ticks is a knowable 90 moves of runway
+    // whatever the tempo is, and a portal window that shortens along with every
+    // other traverse in the dynasty is the tempo change doing its job. CYBER
+    // needed seconds because its tick halves *within a single run*, so the same
+    // 90 ticks meant two different decisions in one sitting.
+    //
+    // What the ruling actually asserts is that the decision costs the same
+    // ORDER wherever it is made. The defect it repaired was 4x (18.0 vs 4.5);
+    // the tolerance here is 2.5s, which holds the two dynasties inside 15%.
     const primal = RULESETS.PRIMAL.extraction;
     const primalSeconds = windowSeconds(
       primal.despawnSeconds,
       primal.despawnTicks,
-      200
+      PRIMAL_SPEED_MS
     );
     const cyberAtFloor = windowSeconds(
       RULESETS.CYBER.extraction.despawnSeconds,
       RULESETS.CYBER.extraction.despawnTicks,
       CYBER_TICK_FLOOR_MS
     );
-    expect(Math.abs(primalSeconds - cyberAtFloor)).toBeLessThan(1);
+    expect(primalSeconds).toBeCloseTo(15.75, 2);
+    expect(primalSeconds).toBeGreaterThan(15);
+    expect(Math.abs(primalSeconds - cyberAtFloor)).toBeLessThan(2.5);
+  });
+
+  it('PRIMAL is the one dynasty whose window may ride the tick count', () => {
+    // The rule the two cases above come from, stated once. A dynasty whose tick
+    // varies inside a run MUST author its window in seconds; a fixed-tempo
+    // dynasty may ride `despawnTicks`, because for it the two units say the
+    // same thing. If PRIMAL ever gets a speed curve, it needs `despawnSeconds`
+    // in the same commit.
+    for (const dynasty of ['PRIMAL', 'COSMIC'] as const) {
+      const ruleset = RULESETS[dynasty];
+      expect(ruleset.speedForFood(0)).toBe(ruleset.speedForFood(400));
+      expect(ruleset.extraction.despawnSeconds).toBeUndefined();
+    }
+    expect(RULESETS.CYBER.speedForFood(0)).not.toBe(RULESETS.CYBER.speedForFood(400));
+    expect(RULESETS.CYBER.extraction.despawnSeconds).toBeDefined();
   });
 
   it('the OLD tick-denominated behaviour is what it fixes', () => {

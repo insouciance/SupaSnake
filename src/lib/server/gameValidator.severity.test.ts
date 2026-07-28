@@ -39,8 +39,21 @@ import {
   validationCodeOf,
   type ValidationResult,
 } from './gameValidator';
+import { computeRunTotals } from '@/shared/game/rulesets';
 
 const ROOT = process.cwd();
+
+/**
+ * An honest PRIMAL score claim for `foods`.
+ *
+ * These fixtures used to hand-write `10 x food_count`, which was the fold only
+ * while every dynasty carried a flat x1 multiplier. WP-3.08 gave each dynasty a
+ * score SHAPE, and a hard-coded product silently became a claim that disagrees
+ * with the recompute - firing SCORE_MISMATCH in tests that are about something
+ * else entirely. Deriving it keeps these fixtures honest through the next curve
+ * change too: what they mean is "a claim that matches", never a literal.
+ */
+const honestScore = (foods: number) => computeRunTotals('PRIMAL', foods).score;
 
 function readSource(relative: string): string {
   return fs.readFileSync(path.join(ROOT, relative), 'utf8');
@@ -322,7 +335,7 @@ describe('appendAdvisory', () => {
       {
         food_count: 10,
         extracted: true,
-        score: 100,
+        score: honestScore(10),
         dna_earned: 100,
         duration_seconds: 30,
         died: false,
@@ -366,7 +379,7 @@ describe('THE PAYOUT NEVER DEPENDS ON SEVERITY', () => {
       {
         food_count: 40,
         extracted: true,
-        score: 400,
+        score: honestScore(40),
         dna_earned: 0,
         duration_seconds: 120,
         died: false,
@@ -376,7 +389,8 @@ describe('THE PAYOUT NEVER DEPENDS ON SEVERITY', () => {
       'PRIMAL'
     );
     // `dna_earned: 0` against a 40-food recompute is a large drift, so this
-    // run fires DNA_MISMATCH and SCORE_MISMATCH is avoided by the claim.
+    // run fires DNA_MISMATCH, while `honestScore(40)` keeps SCORE_MISMATCH out
+    // of it - one advisory at a time is the whole point of the fixture.
     expect(clean.advisoryErrors.some((e) => e.startsWith('DNA_MISMATCH'))).toBe(
       true
     );
@@ -386,7 +400,7 @@ describe('THE PAYOUT NEVER DEPENDS ON SEVERITY', () => {
       {
         food_count: 40,
         extracted: true,
-        score: 400,
+        score: honestScore(40),
         dna_earned: clean.rawDna,
         duration_seconds: 120,
         died: false,
@@ -408,7 +422,7 @@ describe('THE PAYOUT NEVER DEPENDS ON SEVERITY', () => {
       {
         food_count: 30,
         extracted: true,
-        score: 300,
+        score: honestScore(30),
         dna_earned: 0,
         duration_seconds: 100,
         died: false,
@@ -421,7 +435,7 @@ describe('THE PAYOUT NEVER DEPENDS ON SEVERITY', () => {
       {
         food_count: 30,
         extracted: true,
-        score: 300,
+        score: honestScore(30),
         dna_earned: 0,
         duration_seconds: 999_999,
         died: false,
@@ -477,7 +491,7 @@ describe('the stored duration', () => {
       {
         food_count: 5,
         extracted: true,
-        score: 50,
+        score: honestScore(5),
         dna_earned: 0,
         duration_seconds: 999_999,
         died: false,
@@ -498,7 +512,7 @@ describe('the stored duration', () => {
       {
         food_count: 5,
         extracted: true,
-        score: 50,
+        score: honestScore(5),
         dna_earned: 0,
         duration_seconds: 45,
         died: false,
@@ -515,7 +529,7 @@ describe('the stored duration', () => {
       {
         food_count: 100,
         extracted: true,
-        score: 1000,
+        score: honestScore(100),
         dna_earned: 0,
         duration_seconds: 3_000,
         died: false,

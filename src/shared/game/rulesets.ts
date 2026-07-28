@@ -71,10 +71,10 @@ export interface ExtractionConfig {
    * The portal window in SECONDS, overriding `despawnTicks` where present.
    *
    * `despawnTicks` is denominated in the wrong unit, and CYBER is where it
-   * shows: 90 ticks is 18.0s at PRIMAL's 200ms and 4.5s at CYBER's floor, so
-   * the extraction window silently lost three quarters of its real duration
-   * as the dynasty accelerated. Food has no deadline, which is why eating
-   * stayed possible exactly as banking became impossible - the owner's
+   * shows: 90 ticks was 18.0s at PRIMAL's then-200ms tick and 4.5s at CYBER's
+   * floor, so the extraction window silently lost three quarters of its real
+   * duration as the dynasty accelerated. Food has no deadline, which is why
+   * eating stayed possible exactly as banking became impossible - the owner's
    * report was 'it's pretty impossible to bank past a certain speed... I was
    * able to eat food though'.
    *
@@ -156,8 +156,11 @@ const EXTRACTION_DEFAULTS: ExtractionConfig = {
  */
 /**
  * CYBER's own extraction config: the same cadence, a window that holds its
- * real duration. 18 seconds matches PRIMAL's, which is the point - the
- * decision should cost the same wherever it is made.
+ * real duration. 18 seconds was authored to match PRIMAL's, which is the point
+ * - the decision should cost roughly the same wherever it is made. WP-3.08's
+ * tempo change moved PRIMAL's to 15.75s (see PRIMAL_SPEED_MS); the two are
+ * still the same decision, which is what the ruling was about, rather than the
+ * 4x gap it repaired.
  */
 export const CYBER_EXTRACTION: ExtractionConfig = {
   ...EXTRACTION_DEFAULTS,
@@ -192,21 +195,131 @@ function cyberTier(n: number): number {
   return Math.min(4, Math.floor(n / 5));
 }
 
-/** CYBER score/DNA multiplier: 1 + 0.5 * tier, so x1 -> x3 by food 20. */
+/** CYBER DNA multiplier: 1 + 0.5 * tier, so x1 -> x3 by food 20. */
 function cyberMultiplier(n: number): number {
   return 1 + 0.5 * cyberTier(n);
 }
 
+// =============================================================================
+// SCORE CURVES (WP-3.08 / D3 - Constitution §6.1, "Per-dynasty curves (v1.4)")
+// =============================================================================
+
+/**
+ * The food count the three score curves are balanced at.
+ *
+ * D1's candidate median run is ~48 foods (REDESIGN_WAVE §1.3), and every
+ * food-indexed dial in the catalog is being re-based against it, so it is the
+ * only honest place to compare curves. §6.1 asks for "comparable integrals at
+ * the terminus" and §17 item 30 sets the tolerance at ±10%; `rulesets.test.ts`
+ * sums all three here and holds them inside it.
+ *
+ * Past the terminus the shapes diverge on purpose - that is the dynasty's
+ * character, not a balance claim. This depends on the run ending at an
+ * occupancy rather than at a clock (Rule 15): when the terminus is geometric,
+ * eating faster finishes the run sooner instead of scoring more, which is what
+ * collapses the measured ~10x Score-per-minute gap to the multiplier alone.
+ */
+export const SCORE_TERMINUS_FOODS = 48;
+
+/**
+ * PRIMAL's score shape: BACK-LOADED (§6.1; DYNASTY_PRIMAL §2.6).
+ *
+ * x0.5 on the first food, +0.1 every two foods, capped at x2.0 from food 30 on.
+ * PRIMAL earns by depth - two thirds of a terminus run's Score sits past food
+ * 20 - so the dynasty whose entire identity is "stay in longer" finally scores
+ * like it.
+ *
+ * It shipped `() => 1`, which was half of why the ladder measured dynasty
+ * choice rather than skill: CYBER carried a x3 curve while PRIMAL and COSMIC
+ * carried none, and Score per minute differed by roughly an order of magnitude
+ * (Constitution §15, overturn 19).
+ *
+ * Written as a division by ten rather than `0.5 + 0.1 * steps` so each value is
+ * the exact double of its decimal literal - the tests pin x1.2, not
+ * x1.2000000000000002.
+ */
+function primalScoreShape(n: number): number {
+  return (5 + Math.min(15, Math.floor(n / 2))) / 10;
+}
+
+/**
+ * CYBER's score shape: FRONT-LOADED with a decaying tail (§6.1).
+ *
+ * A tent on the four-food tier: x1 climbing to x3 across foods 16-19, then back
+ * down the same steps to a x0.5 floor from food 36. Two thirds of a terminus
+ * run's Score is earned in its first half.
+ *
+ * The decay is the Score half of the ruling that raised the tick floor
+ * (WP-3.04): past the floor, speed stopped being difficulty and became
+ * inefficiency - ticks per food climbed 18 -> 113 in the owner's banked run.
+ * Paying less for those foods prices that honestly, and it gives the extraction
+ * portal something to argue with, because the peak is where BANK is worth most.
+ *
+ * This is NOT the DNA multiplier. `cyberMultiplier` still shapes `foodDnaValue`
+ * on its own five-food tier: Yield (§6.2) and Score (§6.1) answer different
+ * questions, and one shared function was what conflated them.
+ */
+function cyberScoreShape(n: number): number {
+  return Math.max(0.5, 3 - 0.5 * Math.abs(Math.floor(n / 4) - 4));
+}
+
+/**
+ * COSMIC's score shape: MID-WEIGHTED (§6.1).
+ *
+ * A tent on the six-food tier peaking at x2.5 across foods 24-29 - the middle
+ * of a terminus run - tapering to x0.5 at both ends. COSMIC's skill is the
+ * chain, and a chain needs a run already in progress to exist at all, so the
+ * shape pays where the dynasty's own mechanic can actually be played.
+ *
+ * Every value is a multiple of 0.5, which is load-bearing rather than tidy. It
+ * makes each per-food base Score a multiple of 5, and the combo multipliers
+ * step by 0.2, so `round(base * combo)` never actually rounds. That is what
+ * keeps a claimed combo bonus inside `floor(baseScore *
+ * COSMIC_TRUST_MAX_BONUS_RATIO)`, the server clamp: on a curve with, say, x0.9
+ * on it, round(9 * 2.4) = 22 is a bonus of 13 against a ceiling of 12.6, and an
+ * honest run would round its way past its own limit and be clamped down for it.
+ */
+function cosmicScoreShape(n: number): number {
+  return Math.max(0.5, 2.5 - 0.5 * Math.abs(Math.floor(n / 6) - 4));
+}
+
+/**
+ * PRIMAL's tick (DYNASTY_PRIMAL §2.5), its own constant as of WP-3.08.
+ *
+ * 175 ms, the midpoint of the doc's 170-180 band, down from the 200 it used to
+ * borrow from `GAME_CONFIG.snake.initialSpeed`. It attacks the dead walk, not
+ * the difficulty: the owner's record run measured seconds-per-food rising 3.0
+ * -> 6.9 as occupancy grew (`s/food ~= 3.5 + 14.0 x occupancy`), and the
+ * verdict on it was that the run was "eight minutes of setup to earn two
+ * minutes of game". Every traverse gets 12.5% shorter in wall-clock while no
+ * individual turn gets harder. Speed is CYBER's axis and must not be borrowed
+ * further than this.
+ *
+ * It is a constant here, the way COSMIC_SPEED_MS is, because `initialSpeed` is
+ * ALSO the numerator of CYBER's speed curve below. Retuning PRIMAL in `game.ts`
+ * would have silently retuned CYBER with it.
+ *
+ * The shared `despawnTicks: 90` portal window rides this number: 15.75s at 175
+ * ms, down from 18.0s. That is deliberate, not the unit rot `despawnSeconds`
+ * exists to prevent - PRIMAL's tick is constant, so 90 ticks is a knowable 90
+ * moves of runway whatever the tempo is, and a window that shortens with every
+ * other traverse in the dynasty is the tempo change doing its job. CYBER needed
+ * seconds because its tick halves *within* a single run.
+ */
+export const PRIMAL_SPEED_MS = 175;
+
 /**
  * PRIMAL - Steady Growth: fixed speed, compounding food value.
  * Every food is worth round(10 * (1 + 0.02 * (n - 1))) DNA - the n-th food
- * is always worth at least as much as the one before it.
+ * is always worth at least as much as the one before it. Score is back-loaded
+ * on its own curve (WP-3.08), which is the same statement made in the number
+ * the leaderboard ranks.
  */
 const PRIMAL: DynastyRuleset = {
   id: 'PRIMAL',
-  speedForFood: () => GAME_CONFIG.snake.initialSpeed,
+  speedForFood: () => PRIMAL_SPEED_MS,
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * (1 + 0.02 * (n - 1))),
-  scoreMultiplier: () => 1,
+  scoreMultiplier: (n) => primalScoreShape(n),
   extraction: EXTRACTION_DEFAULTS,
   validation: { maxFoodPerSecond: 1.0 },
 };
@@ -214,8 +327,10 @@ const PRIMAL: DynastyRuleset = {
 /**
  * CYBER - Overclock: speed ramps with every food (the migration of the old
  * log curve, driven by food count instead of score) while a speed-tier
- * multiplier scales both score and DNA: tier = floor(n/5) capped at 4,
- * multiplier = 1 + 0.5 * tier (x1 -> x3 from food 20 onward).
+ * multiplier scales DNA: tier = floor(n/5) capped at 4, multiplier =
+ * 1 + 0.5 * tier (x1 -> x3 from food 20 onward). Score is no longer that same
+ * function - it is the front-loaded shape above (WP-3.08), which peaks with the
+ * overclock and then decays.
  */
 const CYBER: DynastyRuleset = {
   id: 'CYBER',
@@ -225,7 +340,7 @@ const CYBER: DynastyRuleset = {
       Math.floor(GAME_CONFIG.snake.initialSpeed / (1 + 0.03 * foodEaten))
     ),
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cyberMultiplier(n)),
-  scoreMultiplier: (n) => cyberMultiplier(n),
+  scoreMultiplier: (n) => cyberScoreShape(n),
   extraction: CYBER_EXTRACTION,
   // ARMED ONLY BECAUSE TERRAIN IS NOW DRAWN (WP-3.05).
   //
@@ -248,7 +363,12 @@ const CYBER: DynastyRuleset = {
   validation: { maxFoodPerSecond: 2.5 },
 };
 
-/** COSMIC fixed tick speed - between PRIMAL (200) and CYBER tier 1 (150). */
+/**
+ * COSMIC fixed tick speed - between PRIMAL (175 since WP-3.08) and CYBER's
+ * 100ms floor. It was authored as "between PRIMAL's 200 and CYBER tier 1's
+ * 150"; PRIMAL closing to 175 narrows that gap to 15ms but does not invert it,
+ * and COSMIC stays the faster of the two fixed-tempo dynasties.
+ */
 export const COSMIC_SPEED_MS = 160;
 
 /**
@@ -303,16 +423,18 @@ export const COSMIC_TRUST_MAX_BONUS_RATIO = COSMIC_CONSTELLATION.comboCap - 1;
  * COSMIC - Flux: fixed 160 ms/tick, flat base food value; the skill layers
  * are the constellation combo chain (client-computed, server-clamped via
  * bounded trust - see section 3.3's validation note) and the wrap-phase
- * wall cycle (physical, never in the payout formula).
+ * wall cycle (physical, never in the payout formula). Score rides the
+ * mid-weighted shape above (WP-3.08) - the base food VALUE stays flat, because
+ * the combo is the dynasty's Yield story and does not need a second one.
  */
 const COSMIC: DynastyRuleset = {
   id: 'COSMIC',
   speedForFood: () => COSMIC_SPEED_MS,
   foodDnaValue: () => FOOD_BASE_DNA,
-  scoreMultiplier: () => 1,
+  scoreMultiplier: (n) => cosmicScoreShape(n),
   extraction: EXTRACTION_DEFAULTS,
   // 160 ms/tick + clustered constellation groups sustain a faster eat rate
-  // than PRIMAL's single scattered food at 200 ms/tick.
+  // than PRIMAL's single scattered food at 175 ms/tick.
   validation: { maxFoodPerSecond: 1.5 },
   constellation: COSMIC_CONSTELLATION,
   flux: COSMIC_FLUX,
