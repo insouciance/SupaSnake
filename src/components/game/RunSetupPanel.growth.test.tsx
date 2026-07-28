@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { RunSetupPanel } from './RunSetupPanel';
 import { GROWTH_PROFILES, baseGrowthForFood } from '@/shared/game/growth';
 import type { GrowthProfileId } from '@/shared/game/growth';
@@ -53,7 +53,21 @@ describe('the growth readout', () => {
     const readout = screen.getByTestId('growth-readout');
     expect(readout).toHaveTextContent('Tuned');
     expect(readout).toHaveTextContent('+6 per food');
-    expect(readout).toHaveTextContent('3 foods on the board');
+  });
+
+  it('says nothing about food count, because every profile places one', () => {
+    // The readout appends "N foods on the board" only when a profile places
+    // more than one. WP-3.05 took every profile back to a single food, so that
+    // clause must now be absent - a readout advertising three foods while the
+    // board holds one is the same class of defect as the readout that reported
+    // "Classic" whatever you picked.
+    for (const id of ['baseline', 'tuned', 'aggressive'] as const) {
+      panel(id, true);
+      expect(screen.getByTestId('growth-readout')).not.toHaveTextContent(
+        /foods on the board/
+      );
+      cleanup();
+    }
   });
 
   it('distinguishes every profile — the point of having it', () => {

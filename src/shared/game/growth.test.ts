@@ -102,10 +102,20 @@ describe('growth profiles', () => {
     expect(foodsToOccupancy('baseline', 0.92)).toBeGreaterThan(250);
   });
 
-  it('multi-food is on for the tuned shapes and off for the control', () => {
-    expect(GROWTH_PROFILES.baseline.simultaneousFoods).toBe(1);
-    expect(GROWTH_PROFILES.tuned.simultaneousFoods).toBeGreaterThan(1);
-    expect(GROWTH_PROFILES.aggressive.simultaneousFoods).toBeGreaterThan(1);
+  it('every profile places exactly ONE food', () => {
+    // WP-3.05 reversed WP-3.02 here. Three simultaneous foods was a real
+    // traverse-time fix - the seconds-per-food tail is what ends long runs in
+    // irritation - and the owner rejected it anyway (2026-07-28), correctly:
+    // Snake's loop is a single target, and three targets make every decision
+    // cheaper. The tail is now fixed at its cause in `foodPlacement.ts`, which
+    // narrows WHERE food may spawn as the board fills instead of adding more.
+    //
+    // Asserted for all three rather than deleted, because the traverse problem
+    // is real and "just put more food on the board" is the tempting wrong
+    // answer somebody will reach for again.
+    for (const id of ALL) {
+      expect(GROWTH_PROFILES[id].simultaneousFoods).toBe(1);
+    }
   });
 
   it('offer cadence is re-based so the draft still exists in a short run', () => {

@@ -907,6 +907,20 @@ export default function GamePage() {
     [genomeRun, genomeFtue?.strainTagsUnlocked, heldMutations]
   );
 
+  /**
+   * The whole food wave, for the spotlight rig.
+   *
+   * The store splits a wave into `food` (the first) and `extraFoods` (the
+   * rest), and `DynamicLights` used to be handed only the first — so on
+   * COSMIC, whose constellation group of 3 IS the combo mechanic, two of the
+   * three glyphs were unlit. Rejoin them here rather than teaching the light
+   * rig about the split.
+   */
+  const litFoods = useMemo(
+    () => [food, ...extraFoods].filter((cell) => cell != null),
+    [food, extraFoods]
+  );
+
   const theme = themeManager.getTheme(selectedDynasty);
 
   // Dynasty ruleset follows the equipped snake. The engine is constructed
@@ -3506,7 +3520,7 @@ export default function GamePage() {
           dynasty={selectedDynasty}
           score={score}
           isDeathSequence={isDeathSequence}
-          foodPosition={food}
+          foodPositions={litFoods}
           gridSize={GAME_CONFIG.board.gridSize}
           intensityScale={HUD_COCKPIT_V1_ENABLED ? 0.62 : 1}
         />

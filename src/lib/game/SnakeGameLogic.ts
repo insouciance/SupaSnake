@@ -79,6 +79,11 @@ import {
   type TerrainBlock,
 } from '@/shared/game/terrain';
 import {
+  blockedGrid,
+  chooseFoodCell,
+  markBlocked,
+} from '@/shared/game/foodPlacement';
+import {
   baseGrowthForFood,
   resolveGrowthProfile,
   rollOfferInterval,
@@ -530,6 +535,12 @@ export class SnakeGameLogic {
   private speed: number;
   private ruleset: DynastyRuleset;
   private rng: () => number;
+  /**
+   * Reused occupancy grid for food placement - see `waveBlockedGrid`. Held on
+   * the instance so a wave costs no allocation; sized lazily because
+   * `gridSize` can be overridden per run.
+   */
+  private blockedScratch: Uint8Array | null = null;
   private traits: TraitId[];
   private mutationPool: MutationId[];
   private anomaly: AnomalyId | null;
@@ -2554,19 +2565,25 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Spawn all foods for a new wave: a single food normally, a pair under
-   * Splitter, a constellation group of 3 (4 with Splitter) on COSMIC -
-   * clustered within groupRadius of the anchor so chains are chaseable.
+   * Spawn all foods for a new wave: one food normally, a pair under Splitter,
+   * a constellation group of 3 (4 with Splitter) on COSMIC - clustered within
+   * groupRadius of the anchor so chains are chaseable.
+   *
+   * THE OCCUPANCY GRID IS BUILT ONCE PER WAVE, NOT ONCE PER FOOD. That is the
+   * shape the owner asked for (2026-07-28: food count must stay "a cheap
+   * configuration change", never a rewrite): a wave of N is N placer calls
+   * that each exclude what the previous ones placed, with no branch anywhere
+   * on the count. Raising `simultaneousFoods` costs one more call and one more
+   * `markBlocked`; it does not cost a second code path.
    */
   private spawnFoods(): void {
     const constellation = this.ruleset.constellation;
-    // WP-3.02: the profile's simultaneous-food count joins the existing wave
-    // target. This is the TRAVERSE fix, not generosity - on the owner's record
-    // run the median seconds-per-food rose 3.0 -> 6.9 while the MEAN
-    // quadrupled, so it is the tail of long walks that ends runs in
-    // irritation, and more food on the board kills the tail specifically.
-    // COSMIC keeps wave semantics (constellation chains depend on wave
-    // identity); the other two get the profile's count.
+    // COSMIC keeps wave semantics - the constellation GROUP is the combo
+    // mechanic, so its size comes from the ruleset and never from the growth
+    // profile. The other two dynasties get the profile's count, which WP-3.06
+    // returns to one (owner: "what i certainly don't like are the 3 foods on
+    // the screen"). Collapsing this to one unconditionally would silently
+    // delete a dynasty's identity.
     const target =
       (constellation
         ? constellation.groupSize
@@ -2583,12 +2600,35 @@ export class SnakeGameLogic {
       );
     }
 
+    const blocked = this.waveBlockedGrid();
+    const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
+    const occupancy =
+      this.state.snake.length / Math.max(1, this.gridSize * this.gridSize);
+    const anchorRadius = constellation?.groupRadius ?? 4;
+
     const foods: Position[] = [];
     for (let i = 0; i < target; i++) {
-      foods.push(this.sampleFoodCell(foods, i === 0 ? null : foods[0]));
+      const cell = chooseFoodCell(
+        this.gridSize,
+        head,
+        blocked,
+        occupancy,
+        this.rng,
+        // Only a constellation clusters. Splitter's extra food on PRIMAL or
+        // CYBER is a second target, not a chain link, so it places freely.
+        constellation && i > 0
+          ? { cell: foods[0], radius: anchorRadius }
+          : null
+      );
+      // `null` means the board holds no free cell at all - the player has
+      // filled it. Placing nothing is the honest answer; the wave carries
+      // whatever it managed to place.
+      if (cell === null) break;
+      markBlocked(blocked, this.gridSize, cell.x, cell.z);
+      foods.push({ x: cell.x, y: 0, z: cell.z });
     }
     this.state.foods = foods;
-    this.state.food = { ...foods[0] };
+    if (foods.length > 0) this.state.food = { ...foods[0] };
 
     // Meteor Shower (anomaly): every fresh wave gets a 60-tick fuse
     this.state.foodTicksRemaining =
@@ -2598,56 +2638,59 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Rejection-sample one food cell (optionally clustered near an anchor).
-   * Injectable rng, like every other placement sampler here (F-12): a
-   * seeded run must lay out identical food waves on every replay.
+   * The wave's occupancy grid: every cell food may not occupy.
+   *
+   * Cached on the instance and cleared rather than reallocated. At the shipped
+   * `gridSize` of 20 that is 400 bytes and the distinction is academic, but
+   * `foldParity.test.ts` runs a 400x400 board and allocating per wave there
+   * throws off gigabytes of garbage across the sweep.
+   *
+   * Walk the OBJECTS, never probe every cell: `isPositionOnTerrain` is a scan,
+   * so a per-cell probe would be O(gridSize^2 x terrain).
    */
-  private sampleFoodCell(placed: Position[], anchor: Position | null): Position {
-    // Terrain is part of the board now: food that spawns inside a block is
-    // unreachable, and an unreachable food is dead time - the exact cost this
-    // wave exists to remove.
-    const radius = this.ruleset.constellation?.groupRadius ?? 4;
-    let position: Position = { x: 0, y: 0, z: 0 };
-    let attempts = 0;
-    const maxAttempts = 1000;
-
-    while (attempts < maxAttempts) {
-      attempts++;
-      if (anchor && attempts <= maxAttempts / 2) {
-        // Cluster around the anchor; fall back to anywhere if the
-        // neighborhood is too crowded
-        position = {
-          x: anchor.x + Math.floor(this.rng() * (2 * radius + 1)) - radius,
-          y: 0,
-          z: anchor.z + Math.floor(this.rng() * (2 * radius + 1)) - radius,
-        };
-        if (
-          position.x < 0 ||
-          position.x >= this.gridSize ||
-          position.z < 0 ||
-          position.z >= this.gridSize
-        ) {
-          continue;
-        }
-      } else {
-        position = {
-          x: Math.floor(this.rng() * this.gridSize),
-          y: 0,
-          z: Math.floor(this.rng() * this.gridSize),
-        };
-      }
-
-      if (
-        !this.isPositionOnSnake(position) &&
-        !this.isPositionOnExit(position) &&
-        !this.isPositionOnMutation(position) &&
-        !this.isPositionOnTerrain(position) &&
-        !placed.some((p) => p.x === position.x && p.z === position.z)
-      ) {
-        return position;
-      }
+  private waveBlockedGrid(): Uint8Array {
+    const cells = Math.max(0, this.gridSize * this.gridSize);
+    if (!this.blockedScratch || this.blockedScratch.length !== cells) {
+      this.blockedScratch = blockedGrid(this.gridSize);
+    } else {
+      this.blockedScratch.fill(0);
     }
-    return position;
+    const blocked = this.blockedScratch;
+
+    for (const segment of this.state.snake) {
+      markBlocked(blocked, this.gridSize, segment.x, segment.z);
+    }
+    // Terrain is part of the board now: food inside a block is unreachable,
+    // and an unreachable food is dead time - the exact cost this wave exists
+    // to remove. Exits and the mutation tile must not be buried either.
+    for (const block of this.state.terrain) {
+      markBlocked(blocked, this.gridSize, block.x, block.z);
+    }
+    if (this.state.exitTile) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.exitTile.x,
+        this.state.exitTile.z
+      );
+    }
+    if (this.state.exitTile2) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.exitTile2.x,
+        this.state.exitTile2.z
+      );
+    }
+    if (this.state.mutationTile) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.mutationTile.x,
+        this.state.mutationTile.z
+      );
+    }
+    return blocked;
   }
 
   /**
@@ -3048,6 +3091,11 @@ export class SnakeGameLogic {
         this.isPositionOnSnake(target) ||
         this.isPositionOnExit(target) ||
         this.isPositionOnMutation(target) ||
+        // Terrain is part of the board now. Without this the magnet is the
+        // one thing on the board that can put food inside a block, which is
+        // the same unreachable-food defect the placer exists to prevent -
+        // only arrived at by pulling rather than by spawning.
+        this.isPositionOnTerrain(target) ||
         this.state.foods.some(
           (f) => f !== food && f.x === target.x && f.z === target.z
         );
@@ -3056,7 +3104,13 @@ export class SnakeGameLogic {
         food.z = target.z;
       }
     }
-    this.state.food = { ...this.state.foods[0] };
+    // A wave can be empty - the placer returns null on a board with no free
+    // cell, and Arc Lightning can clear the wave mid-tick. Spreading
+    // `foods[0]` unguarded wrote `{}` into a Position and corrupted the
+    // legacy single-food mirror.
+    if (this.state.foods.length > 0) {
+      this.state.food = { ...this.state.foods[0] };
+    }
   }
 
   /**

@@ -120,7 +120,7 @@ function PrototypeScene({
         dynasty={dynasty}
         score={32}
         isDeathSequence={false}
-        foodPosition={FOOD}
+        foodPositions={[FOOD]}
         gridSize={GRID}
         intensityScale={0.62}
       />
