@@ -63,9 +63,172 @@ export function getSegmentScale(index: number, length: number): number {
  *  carry the identity at full glow; behind them the trunk's emissive
  *  energy eases down to ENERGY_MIN at the tail. Eye-comfort measure: a
  *  long snake reads as ONE calm body with a bright front, instead of a
- *  chain of equally-hot pieces shimmering in motion. */
+ *  chain of equally-hot pieces shimmering in motion.
+ *
+ *  WP-3.07 raised ENERGY_MIN from 0.55 to 0.88. The trail redesign's ruling:
+ *  "do not buy quiet with brightness". At 0.55 the segments about to free up
+ *  were the hardest ones on the board to see, which is backwards - those are
+ *  exactly the cells a player is planning around. Quiet now comes from HEIGHT
+ *  (TRAIL_HEIGHT_* below), and brightness is reserved for the one thing it
+ *  should mean: how well the body is packed (TRAIL_TONE). What is left here is
+ *  a gentle head-primacy gradient, not a legibility tax. */
 export const ENERGY_FULL_SEGMENTS = 3;
-export const ENERGY_MIN = 0.55;
+export const ENERGY_MIN = 0.88;
+
+// -----------------------------------------------------------------------------
+// The trail (WP-3.07) - pure per-segment shape, unit-tested in SnakeModel.test
+// -----------------------------------------------------------------------------
+
+/**
+ * Cell footprint by fusion level, in GRID UNITS (a cell is 1.0 wide).
+ *
+ * This is the whole "fusion is earned" ruling made visible. See
+ * `src/lib/game/trailFusion.ts` for the metric itself.
+ *
+ *   0 - running free: a 0.38 gap on every side, unmistakably discrete voxels
+ *   1 - fusing at the edges: a 0.20 gap, cells reading as neighbours
+ *   2 - fully fused: a 0.04 hairline, so the field reads solid while the grid
+ *       stays countable - the player must still be able to tell WHICH tiles
+ *       are blocked, which is the trail's first job.
+ *
+ * The old flat BODY_SIZE (0.75) sits between levels 0 and 1, so a snake that
+ * is packing averagely looks about like it always did.
+ */
+export const TRAIL_FOOTPRINT: readonly number[] = [0.62, 0.8, 0.96];
+
+export function getTrailFootprint(level: number): number {
+  if (level <= 0) return TRAIL_FOOTPRINT[0];
+  if (level >= TRAIL_FOOTPRINT.length - 1) {
+    return TRAIL_FOOTPRINT[TRAIL_FOOTPRINT.length - 1];
+  }
+  return TRAIL_FOOTPRINT[level];
+}
+
+/**
+ * Brightness multiplier by fusion level. Level 2 is "fully fused and
+ * brightest"; a cell you left behind that is now unfillable is the dark seam.
+ *
+ * Kept modest and above zero at level 0: this is a readout, not a punishment,
+ * and the segments must stay legible however badly you are packing. The top of
+ * the range is bounded by the instanced body's albedo trim (x0.75) so even a
+ * fully fused trunk stays under the bloom threshold - a blooming trunk is a
+ * flicker amplifier in motion, which is why that trim exists.
+ */
+export const TRAIL_TONE: readonly number[] = [0.8, 0.94, 1.1];
+
+export function getTrailTone(level: number): number {
+  if (level <= 0) return TRAIL_TONE[0];
+  if (level >= TRAIL_TONE.length - 1) return TRAIL_TONE[TRAIL_TONE.length - 1];
+  return TRAIL_TONE[level];
+}
+
+/**
+ * Height zones. Boxes are drawn BASE-ON-FLOOR (y = height / 2), matching
+ * TerrainBlocks' convention.
+ *
+ * Pass 1 of the design: the head zone is a creature, the trail is what it
+ * leaves behind. So the first TRAIL_HEAD_ZONE body segments stand tall and
+ * ease down into a low, settled stack - Tetris's landed pieces. The trunk is
+ * deliberately LOWER than a solid terrain block (0.62, TerrainBlocks.tsx), so
+ * the two never compete for the same read: terrain is a raised wall that never
+ * moves again, the trail is a low field that answers how you are playing.
+ *
+ * Nothing flattens to nothing. A zero-height segment forfeits its cast shadow,
+ * and the shadow is a real occupancy cue.
+ */
+export const TRAIL_HEAD_ZONE = 5;
+export const TRAIL_HEIGHT_HEAD = 0.86;
+export const TRAIL_HEIGHT_TRUNK = 0.42;
+export const TRAIL_HEIGHT_TAIL = 0.16;
+
+/**
+ * The tail zone encodes IMMINENT VACANCY, and it is denominated in TICKS, not
+ * in segments - the owner's wording, and it matters: what a player needs is
+ * "that tile frees up in two moves", which a segment count only answers by
+ * accident. The engine pops exactly one tail cell per tick, so segment `index`
+ * of a body of length `length` vacates in `length - index` ticks.
+ *
+ * 4 ticks is roughly half a second at CYBER's floor and about a second at
+ * PRIMAL's opening speed: long enough to route through, short enough that the
+ * cue is a commitment rather than a suggestion.
+ *
+ * The approximation this makes, stated: on a tick where the snake eats, the
+ * tail does not pop and every countdown is one tick pessimistic for one tick.
+ * Under-promising vacancy is the safe direction to be wrong in.
+ */
+export const TRAIL_VACANCY_TICKS = 4;
+
+/**
+ * Per-segment height. Pure and allocation-free - called per segment per frame.
+ *
+ * Where the head zone and the vacancy zone overlap (a short snake), the lower
+ * of the two wins: a segment that is both near the head and about to vacate is
+ * about to vacate, and that is the more urgent thing to say.
+ */
+export function getTrailHeight(index: number, length: number): number {
+  if (length <= 1) return TRAIL_HEIGHT_HEAD;
+
+  // Head zone: ease from the tall head down into the settled stack.
+  let height = TRAIL_HEIGHT_TRUNK;
+  if (index <= TRAIL_HEAD_ZONE) {
+    const t = index / TRAIL_HEAD_ZONE;
+    const s = t * t * (3 - 2 * t); // smoothstep
+    height = TRAIL_HEIGHT_HEAD - (TRAIL_HEIGHT_HEAD - TRAIL_HEIGHT_TRUNK) * s;
+  }
+
+  // Vacancy zone: sink toward the floor as the cell's countdown runs out.
+  const ticksToVacancy = length - index;
+  if (ticksToVacancy <= TRAIL_VACANCY_TICKS) {
+    const t =
+      TRAIL_VACANCY_TICKS <= 1
+        ? 1
+        : (TRAIL_VACANCY_TICKS - ticksToVacancy) / (TRAIL_VACANCY_TICKS - 1);
+    const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+    const sinking =
+      TRAIL_HEIGHT_TRUNK - (TRAIL_HEIGHT_TRUNK - TRAIL_HEIGHT_TAIL) * clamped;
+    if (sinking < height) height = sinking;
+  }
+
+  return height;
+}
+
+/**
+ * Head-zone breathing: a slow pulse travelling down the first few segments so
+ * the creature end reads as alive while the trail behind it stays perfectly
+ * still.
+ *
+ * Returns a HEIGHT multiplier, never a vertical offset - the base stays planted
+ * on the floor, so the cast shadow and the "which tile is blocked" read are
+ * both untouched. Amplitude decays to exactly 1.0 at the end of the head zone,
+ * which is what preserves this file's standing promise that the trunk is steady
+ * frame to frame.
+ */
+export const TRAIL_BREATHE_AMPLITUDE = 0.07;
+export const TRAIL_BREATHE_HZ = 1.35;
+/** Phase lag per segment (radians), so the pulse travels tail-ward instead of
+ *  the whole head zone throbbing in unison. */
+export const TRAIL_BREATHE_LAG = 0.85;
+
+export function getTrailBreathe(index: number, elapsedSeconds: number): number {
+  if (index <= 0 || index > TRAIL_HEAD_ZONE) return 1;
+  const decay = 1 - index / TRAIL_HEAD_ZONE;
+  const phase =
+    elapsedSeconds * TRAIL_BREATHE_HZ * Math.PI * 2 - index * TRAIL_BREATHE_LAG;
+  return 1 + TRAIL_BREATHE_AMPLITUDE * decay * Math.sin(phase);
+}
+
+/**
+ * Width of the link drawn between two consecutive cells, as a fraction of the
+ * narrower of their two footprints.
+ *
+ * Strictly below 1 for a reason that removes an instance from the design: the
+ * original sketch called for a separate cap instance at interior corners,
+ * because two axis-aligned bars meeting at a right angle leave the outer corner
+ * unfilled. But the corner CELL already has a box on it, and as long as the
+ * link is never wider than that box, the box is the cap. Same picture, one
+ * instance per corner cheaper, nothing to keep in sync.
+ */
+export const TRAIL_LINK_WIDTH = 0.72;
 
 /**
  * Per-segment energy multiplier (1.0 near the head -> ENERGY_MIN at the

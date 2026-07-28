@@ -28,6 +28,19 @@ import {
   HEAD_EMISSIVE_INTENSITY,
   BODY_EMISSIVE_INTENSITY,
   BASE_COLOR_SCALE,
+  TRAIL_FOOTPRINT,
+  TRAIL_TONE,
+  TRAIL_HEAD_ZONE,
+  TRAIL_HEIGHT_HEAD,
+  TRAIL_HEIGHT_TRUNK,
+  TRAIL_HEIGHT_TAIL,
+  TRAIL_VACANCY_TICKS,
+  TRAIL_BREATHE_AMPLITUDE,
+  TRAIL_LINK_WIDTH,
+  getTrailFootprint,
+  getTrailTone,
+  getTrailHeight,
+  getTrailBreathe,
 } from './SnakeModel';
 import { themeManager } from '@/lib/theme/ThemeManager';
 
@@ -152,7 +165,11 @@ describe('proportion constants (AAA rework pins)', () => {
     expect(TAPER_SEGMENTS).toBe(6);
     expect(TAPER_MIN).toBe(0.85);
     expect(ENERGY_FULL_SEGMENTS).toBe(3);
-    expect(ENERGY_MIN).toBe(0.55);
+    // WP-3.07 raised this from 0.55. "Do not buy quiet with brightness": at
+    // 0.55 the cells about to free up were the hardest on the board to see,
+    // and those are exactly the ones a player routes through. Quiet is taken
+    // from height now; brightness means packing.
+    expect(ENERGY_MIN).toBe(0.88);
   });
 });
 
@@ -246,6 +263,179 @@ describe('getSegmentScale (tail taper)', () => {
     // Degenerate lengths are safe
     expect(getSegmentScale(0, 1)).toBe(1);
     expect(getSegmentScale(1, 2)).toBeCloseTo(TAPER_MIN, 10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The trail (WP-3.07). Pure per-segment shape - the metric that feeds it lives
+// in src/lib/game/trailFusion.ts and is tested there.
+// ---------------------------------------------------------------------------
+
+describe('getTrailFootprint (fusion -> how much of its cell a segment claims)', () => {
+  it('grows strictly with the earned fusion level', () => {
+    expect(getTrailFootprint(0)).toBeLessThan(getTrailFootprint(1));
+    expect(getTrailFootprint(1)).toBeLessThan(getTrailFootprint(2));
+  });
+
+  it('leaves a visible gap at level 0 and a hairline at level 2', () => {
+    // Level 0 is "running free": the voxels must read as separate tiles.
+    // Level 2 is "fully fused": solid, but the grid must stay countable -
+    // telling the player WHICH tiles are blocked is the trail's first job.
+    expect(1 - getTrailFootprint(0)).toBeGreaterThan(0.25);
+    expect(1 - getTrailFootprint(2)).toBeGreaterThan(0);
+    expect(1 - getTrailFootprint(2)).toBeLessThan(0.1);
+  });
+
+  it('never exceeds a cell - a segment may not overlap its neighbours', () => {
+    for (const footprint of TRAIL_FOOTPRINT) {
+      expect(footprint).toBeGreaterThan(0);
+      expect(footprint).toBeLessThan(1);
+    }
+  });
+
+  it('clamps outside the level range instead of reading off the end', () => {
+    expect(getTrailFootprint(-3)).toBe(TRAIL_FOOTPRINT[0]);
+    expect(getTrailFootprint(9)).toBe(TRAIL_FOOTPRINT[TRAIL_FOOTPRINT.length - 1]);
+  });
+});
+
+describe('getTrailTone (fusion -> brightness)', () => {
+  it('is brightest when fully fused and darkest when running free', () => {
+    expect(getTrailTone(0)).toBeLessThan(getTrailTone(1));
+    expect(getTrailTone(1)).toBeLessThan(getTrailTone(2));
+  });
+
+  it('never goes dark enough to hide a segment', () => {
+    // This is a readout, not a punishment. Badly packed cells still have to
+    // be legible, or the feedback costs the player the information it is
+    // supposed to be giving them.
+    for (const tone of TRAIL_TONE) {
+      expect(tone).toBeGreaterThan(0.6);
+    }
+  });
+
+  it('stays under the bloom threshold once the albedo trim is applied', () => {
+    // The instanced body material multiplies albedo by 0.75 so the moving
+    // trunk never blooms - a blooming trunk is a flicker amplifier in motion.
+    for (const tone of TRAIL_TONE) {
+      expect(tone * 0.75).toBeLessThan(1);
+    }
+  });
+
+  it('clamps outside the level range', () => {
+    expect(getTrailTone(-1)).toBe(TRAIL_TONE[0]);
+    expect(getTrailTone(7)).toBe(TRAIL_TONE[TRAIL_TONE.length - 1]);
+  });
+});
+
+describe('getTrailHeight (the head is a creature, the trail is settled stack)', () => {
+  const LONG = 60;
+
+  it('stands tall at the head and settles into the trunk', () => {
+    expect(getTrailHeight(1, LONG)).toBeGreaterThan(getTrailHeight(4, LONG));
+    expect(getTrailHeight(TRAIL_HEAD_ZONE, LONG)).toBeCloseTo(
+      TRAIL_HEIGHT_TRUNK,
+      10
+    );
+  });
+
+  it('is flat through the whole middle - the trunk must be still', () => {
+    for (let i = TRAIL_HEAD_ZONE; i < LONG - TRAIL_VACANCY_TICKS; i++) {
+      expect(getTrailHeight(i, LONG)).toBeCloseTo(TRAIL_HEIGHT_TRUNK, 10);
+    }
+  });
+
+  it('sinks over exactly the last TRAIL_VACANCY_TICKS cells', () => {
+    // The tail zone encodes IMMINENT VACANCY, denominated in ticks: the
+    // engine pops one tail cell per tick, so segment `i` of a length-L body
+    // frees its tile in L - i ticks.
+    const firstSinking = LONG - TRAIL_VACANCY_TICKS;
+    expect(getTrailHeight(firstSinking, LONG)).toBeCloseTo(
+      TRAIL_HEIGHT_TRUNK,
+      10
+    );
+    for (let i = firstSinking + 1; i < LONG; i++) {
+      expect(getTrailHeight(i, LONG)).toBeLessThan(getTrailHeight(i - 1, LONG));
+    }
+    expect(getTrailHeight(LONG - 1, LONG)).toBeCloseTo(TRAIL_HEIGHT_TAIL, 10);
+  });
+
+  it('stays below a solid terrain block, which is 0.62 tall', () => {
+    // Categorical separation from TerrainBlocks: terrain is a raised wall
+    // that never moves again, the trail is a low field that answers how you
+    // are playing. They must not compete for the same read.
+    for (let i = 1; i < LONG; i++) {
+      if (i <= TRAIL_HEAD_ZONE) continue;
+      expect(getTrailHeight(i, LONG)).toBeLessThan(0.62);
+    }
+  });
+
+  it('never flattens to nothing - the cast shadow is an occupancy cue', () => {
+    for (const length of [2, 3, 5, 12, 400]) {
+      for (let i = 0; i < length; i++) {
+        expect(getTrailHeight(i, length)).toBeGreaterThan(0);
+        expect(getTrailHeight(i, length)).toBeLessThanOrEqual(
+          TRAIL_HEIGHT_HEAD
+        );
+      }
+    }
+  });
+
+  it('vacancy wins where the two zones overlap on a short snake', () => {
+    // A segment that is both near the head and about to vacate is about to
+    // vacate, and that is the more urgent thing to say.
+    const short = 4;
+    expect(getTrailHeight(short - 1, short)).toBeCloseTo(TRAIL_HEIGHT_TAIL, 10);
+  });
+});
+
+describe('getTrailBreathe (the head zone is alive, the trunk is not)', () => {
+  it('is exactly 1.0 everywhere past the head zone, at every moment', () => {
+    // The standing promise of the instanced body: no time-varying writes on
+    // the trunk. A pulse that leaked past the head zone would put motion on
+    // every cell of a 400-segment coil.
+    for (const t of [0, 0.13, 0.5, 1.7, 9.31]) {
+      for (let i = TRAIL_HEAD_ZONE + 1; i < TRAIL_HEAD_ZONE + 40; i++) {
+        expect(getTrailBreathe(i, t)).toBe(1);
+      }
+      expect(getTrailBreathe(0, t)).toBe(1);
+    }
+  });
+
+  it('decays to exactly 1.0 at the head-zone boundary (no seam)', () => {
+    for (const t of [0, 0.4, 2.2]) {
+      expect(getTrailBreathe(TRAIL_HEAD_ZONE, t)).toBe(1);
+    }
+  });
+
+  it('stays inside the declared amplitude', () => {
+    for (let step = 0; step < 200; step++) {
+      const t = step * 0.017;
+      for (let i = 1; i <= TRAIL_HEAD_ZONE; i++) {
+        const breathe = getTrailBreathe(i, t);
+        expect(breathe).toBeGreaterThanOrEqual(1 - TRAIL_BREATHE_AMPLITUDE);
+        expect(breathe).toBeLessThanOrEqual(1 + TRAIL_BREATHE_AMPLITUDE);
+      }
+    }
+  });
+
+  it('actually moves - a decorative constant would be worse than nothing', () => {
+    const samples = new Set<number>();
+    for (let step = 0; step < 40; step++) {
+      samples.add(Number(getTrailBreathe(1, step * 0.05).toFixed(4)));
+    }
+    expect(samples.size).toBeGreaterThan(5);
+  });
+});
+
+describe('TRAIL_LINK_WIDTH (why corners need no cap instance)', () => {
+  it('is strictly narrower than the cell box it joins', () => {
+    // Two axis-aligned bars meeting at a right angle leave the outer corner
+    // unfilled. The corner CELL already has a box on it, so as long as the
+    // link is never wider than that box, the box IS the cap - one instance
+    // per corner cheaper, and nothing to keep in sync.
+    expect(TRAIL_LINK_WIDTH).toBeGreaterThan(0);
+    expect(TRAIL_LINK_WIDTH).toBeLessThan(1);
   });
 });
 
