@@ -63,7 +63,7 @@
  *
  *   Scaling the flat DNA an Expression pays (the "gilded wake doubled" idea)
  *   and scaling splice effects. Both live inside that same fold, or inside the
- *   engine's live bounded-trust accrual for Molt foods and gilded cells. The
+ *   engine's live bounded-trust accrual for gilded cells. The
  *   server half alone is reachable today; shipping it alone would mean the
  *   engine paying one number and the server another.
  *
