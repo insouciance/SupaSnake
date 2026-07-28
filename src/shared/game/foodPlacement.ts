@@ -159,6 +159,55 @@ export const EXACT_WINDOW_START = 4;
 export const EXACT_WINDOW_GROWTH = 2;
 
 /**
+ * Half-width of the neighbourhood the fast path checks reachability within.
+ *
+ * REACHABILITY IS NO LONGER BEST-EFFORT, and the reason the old trade-off died
+ * is worth stating. This module used to check reachability only on the exact
+ * path — i.e. only once random sampling had exhausted, which on a sparse board
+ * never happens. The justification was that a pocket sealed by your own BODY is
+ * transient: the tail vacates, so a cell that looks sealed now may be open by
+ * the time you arrive, and refusing it would be over-strict.
+ *
+ * Terrain voids that argument completely. A pocket sealed by terrain is sealed
+ * FOREVER — Rule 15 forbids ever removing a block — so food placed inside one
+ * is not "briefly awkward", it is a target the player can never take. The owner
+ * hit exactly that: food in the outer ring, walled off by the arena, reachable
+ * only by dying.
+ *
+ * Bounded rather than unbounded because an unbounded fill is what made the
+ * first version of this module 400x too slow on `foldParity`'s 400x400 board.
+ * 16 covers a 33x33 neighbourhood — the entire 20x20 game board, so the check
+ * is EXACT where it ships, and a fixed 1089-cell ceiling anywhere else.
+ */
+export const REACH_CHECK_RADIUS = 16;
+
+/**
+ * Largest pocket the escape check will bother measuring.
+ *
+ * REACHABLE IS NOT THE SAME AS SURVIVABLE, and the owner had to lose a run to
+ * show me the difference: *"that food was reachable, but you couldn't get out
+ * alive - there was no escape path. I had to crash into myself, but I got the
+ * food first."*
+ *
+ * A reachability check only asks "can the head walk to this cell". It says
+ * nothing about whether the head can walk BACK OUT, and a cul-de-sac sealed by
+ * terrain is a cell you can enter exactly once. Taking that food is not a
+ * mistake the player made; it is a death the board arranged, which is precisely
+ * the class of thing this module exists to stop.
+ *
+ * So a candidate's pocket must hold enough free cells for the body that will
+ * come into it. The count is capped because the question is only ever "is this
+ * a trap" - a pocket with 64 free cells is not one, and measuring further costs
+ * time to learn nothing. That also bounds the fill, which is the constraint the
+ * first version of this module learned the hard way.
+ *
+ * This is a HEURISTIC and is documented as one. Proving a food is survivable is
+ * a Hamiltonian question, not a flood fill; what this rules out is the blatant
+ * case the owner hit, at a cost the hot path can carry.
+ */
+export const ESCAPE_BUDGET_CAP = 64;
+
+/**
  * Chebyshev radius around the head within which food prefers to spawn.
  *
  * Returns a radius that covers the entire board while the board is empty, so
@@ -342,6 +391,65 @@ function collectReachable(
   return tail;
 }
 
+/**
+ * Does the free region containing `index` hold at least `needed` cells?
+ *
+ * Flood fill from the candidate over free cells, stopping the moment the count
+ * is reached — so a cell in open board costs `needed` steps, not a board sweep.
+ * The snake's body is already blocked, so this measures the room that will
+ * actually be there when the head arrives.
+ */
+function regionHolds(
+  gridSize: number,
+  blocked: Uint8Array,
+  index: number,
+  needed: number
+): boolean {
+  if (needed <= 1) return true;
+  visitGeneration += 1;
+  const generation = visitGeneration;
+  let tail = 0;
+  let seen = 0;
+  visitStamp[index] = generation;
+  visitQueue[tail++] = index;
+  for (let read = 0; read < tail; read++) {
+    const current = visitQueue[read];
+    seen++;
+    if (seen >= needed) return true;
+    const x = (current / gridSize) | 0;
+    const z = current - x * gridSize;
+    if (x + 1 < gridSize) {
+      const n = current + gridSize;
+      if (!blocked[n] && visitStamp[n] !== generation) {
+        visitStamp[n] = generation;
+        visitQueue[tail++] = n;
+      }
+    }
+    if (x > 0) {
+      const n = current - gridSize;
+      if (!blocked[n] && visitStamp[n] !== generation) {
+        visitStamp[n] = generation;
+        visitQueue[tail++] = n;
+      }
+    }
+    if (z + 1 < gridSize) {
+      const n = current + 1;
+      if (!blocked[n] && visitStamp[n] !== generation) {
+        visitStamp[n] = generation;
+        visitQueue[tail++] = n;
+      }
+    }
+    if (z > 0) {
+      const n = current - 1;
+      if (!blocked[n] && visitStamp[n] !== generation) {
+        visitStamp[n] = generation;
+        visitQueue[tail++] = n;
+      }
+    }
+  }
+  return seen >= needed;
+}
+
 /** Every free cell in a window, reachable or not — the last-resort pool. */
 function collectFree(
   gridSize: number,
@@ -349,18 +457,54 @@ function collectFree(
   x0: number,
   x1: number,
   z0: number,
-  z1: number
+  z1: number,
+  /**
+   * The head's flat index, always excluded. Both fills that CAN return it seed
+   * from the head's neighbours and so drop it for free; this one sweeps a
+   * window and would hand it back. In the engine the head is always in the
+   * blocked grid so it never fires - it exists so the paths cannot disagree
+   * about one cell, which is exactly the drift the shipped placer's latent bug
+   * came from.
+   */
+  skipIndex: number
 ): number {
   let tail = 0;
   for (let x = x0; x <= x1; x++) {
     const base = x * gridSize;
     for (let z = z0; z <= z1; z++) {
       const index = base + z;
-      if (blocked[index]) continue;
+      if (blocked[index] || index === skipIndex) continue;
       visitQueue[tail++] = index;
     }
   }
   return tail;
+}
+
+/**
+ * Keep only the collected cells whose pocket is big enough to leave, compacting
+ * them to the front of the scratch queue.
+ *
+ * Copies out first because `regionHolds` reuses the same queue for its own
+ * fill — the two cannot share the buffer, and a second buffer would be a second
+ * thing to keep sized.
+ */
+const survivorScratch: number[] = [];
+function filterSurvivable(
+  gridSize: number,
+  blocked: Uint8Array,
+  count: number,
+  needed: number
+): number {
+  if (needed <= 1) return count;
+  survivorScratch.length = 0;
+  for (let i = 0; i < count; i++) survivorScratch.push(visitQueue[i]);
+  let kept = 0;
+  for (const index of survivorScratch) {
+    if (regionHolds(gridSize, blocked, index, needed)) {
+      visitQueue[kept++] = index;
+    }
+  }
+  return kept;
 }
 
 /**
@@ -415,14 +559,40 @@ export function chooseFoodCell(
    * the head. Preserved deliberately: the group is the dynasty's identity, not
    * a traverse shortcut, and it predates the growth lab entirely.
    */
-  anchor: { cell: PlacementCell; radius: number } | null = null
+  anchor: { cell: PlacementCell; radius: number } | null = null,
+  /**
+   * Free cells the candidate's pocket must hold for the run to survive taking
+   * it — normally the snake's length, capped by ESCAPE_BUDGET_CAP. Zero
+   * disables the check, which is what every caller that has no body wants.
+   */
+  minEscapeCells = 0
 ): PlacementCell | null {
   if (gridSize <= 0) return null;
   ensureScratch(gridSize * gridSize);
 
+  const headIndex = head.x * gridSize + head.z;
   const radius = foodSearchRadius(gridSize, occupancy);
   const centre = anchor ? anchor.cell : head;
   const window = anchor ? anchor.radius : radius;
+
+  // Reachability, computed ONCE and consulted by both paths. `collectReachable`
+  // stamps every cell it reaches with `visitGeneration`, so membership is an
+  // integer compare rather than a set lookup.
+  const rx0 = Math.max(0, head.x - REACH_CHECK_RADIUS);
+  const rx1 = Math.min(gridSize - 1, head.x + REACH_CHECK_RADIUS);
+  const rz0 = Math.max(0, head.z - REACH_CHECK_RADIUS);
+  const rz1 = Math.min(gridSize - 1, head.z + REACH_CHECK_RADIUS);
+  const reachedCount = collectReachable(
+    gridSize, head, blocked, rx0, rx1, rz0, rz1
+  );
+  const reachGeneration = visitGeneration;
+  // A head with nowhere to go cannot be served by a reachability filter, and
+  // refusing to place food would freeze a run that is ending anyway.
+  const requireReachable = reachedCount > 0;
+  const escapeNeeded = Math.min(
+    ESCAPE_BUDGET_CAP,
+    Math.max(0, Math.floor(minEscapeCells))
+  );
 
   // ── FAST PATH ──────────────────────────────────────────────────────────
   // Draw from inside the legal window, clamped to the board. Sampling the
@@ -440,7 +610,17 @@ export function chooseFoodCell(
     for (let attempt = 0; attempt < FAST_PATH_ATTEMPTS; attempt++) {
       const x = Math.min(wx1, wx0 + Math.floor(rng() * spanX));
       const z = Math.min(wz1, wz0 + Math.floor(rng() * spanZ));
-      if (blocked[x * gridSize + z]) continue;
+      const index = x * gridSize + z;
+      if (blocked[index]) continue;
+      // The whole point of the up-front fill: a sampled cell must be somewhere
+      // the head can actually walk to. Without this the fast path hands back
+      // any free cell, including one the arena has sealed off permanently.
+      if (requireReachable && visitStamp[index] !== reachGeneration) continue;
+      // Reachable is not survivable. A pocket smaller than the body that will
+      // enter it is a cell you can take once and never leave.
+      if (escapeNeeded > 1 && !regionHolds(gridSize, blocked, index, escapeNeeded)) {
+        continue;
+      }
       // The head's own cell, explicitly. The exact path excludes it for free —
       // its flood fill seeds from the head's NEIGHBOURS — so without this the
       // two paths would disagree about one cell. In the engine the head is
@@ -464,7 +644,9 @@ export function chooseFoodCell(
   // rides on the first glyph's. Cluster if the neighbourhood has room, and
   // fall through to the head-centred search if it does not, rather than fail.
   if (anchor) {
-    const clustered = collectFree(gridSize, blocked, wx0, wx1, wz0, wz1);
+    const clustered = collectFree(
+      gridSize, blocked, wx0, wx1, wz0, wz1, headIndex
+    );
     if (clustered > 0) return decode(pick(clustered, rng), gridSize);
   }
 
@@ -475,14 +657,19 @@ export function chooseFoodCell(
     const z0 = Math.max(0, head.z - span);
     const z1 = Math.min(gridSize - 1, head.z + span);
     const found = collectReachable(gridSize, head, blocked, x0, x1, z0, z1);
-    if (found > 0) return decode(pick(found, rng), gridSize);
+    if (found > 0) {
+      const survivable = filterSurvivable(gridSize, blocked, found, escapeNeeded);
+      if (survivable > 0) return decode(pick(survivable, rng), gridSize);
+    }
     if (span >= gridSize) break;
     span = Math.min(gridSize, span * EXACT_WINDOW_GROWTH);
   }
 
   // Preference 3: the head is sealed in. Place anywhere legal so the run can
   // finish; `null` is reserved for a board with no free cell at all.
-  const free = collectFree(gridSize, blocked, 0, gridSize - 1, 0, gridSize - 1);
+  const free = collectFree(
+    gridSize, blocked, 0, gridSize - 1, 0, gridSize - 1, headIndex
+  );
   if (free === 0) return null;
   return decode(pick(free, rng), gridSize);
 }
