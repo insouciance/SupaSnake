@@ -48,7 +48,6 @@ import {
   MUTATION_SPAWN,
   foodValueFlatBonus,
   foodValueModifier,
-  rollMutationInterval,
   rollMutationOffer,
   type MutationId,
   type MutationPick,
@@ -82,6 +81,7 @@ import {
 import {
   baseGrowthForFood,
   resolveGrowthProfile,
+  rollOfferInterval,
   type GrowthProfile,
   type GrowthProfileId,
 } from '@/shared/game/growth';
@@ -1120,6 +1120,10 @@ export class SnakeGameLogic {
       snake: this.state.snake.map(s => ({ ...s })),
       food: { ...this.state.food },
       foods: this.state.foods.map(f => ({ ...f })),
+      // Cloned per tick, deliberately: the renderer reads this through zustand,
+      // and a stable array reference would never re-render — terrain would be
+      // computed, lethal, and still invisible, which is the bug WP-3.05 found.
+      terrain: this.state.terrain.map((b) => ({ ...b })),
       exitTile: this.state.exitTile ? { ...this.state.exitTile } : null,
       exitTile2: this.state.exitTile2 ? { ...this.state.exitTile2 } : null,
       mutationTile: this.state.mutationTile ? { ...this.state.mutationTile } : null,
@@ -2971,7 +2975,12 @@ export class SnakeGameLogic {
       missing,
       this.rng
     )) {
-      this.state.terrain.push({ ...cell, formingTicks, solid: false });
+      this.state.terrain.push({
+        ...cell,
+        formingTicks,
+        formingTotal: formingTicks,
+        solid: false,
+      });
     }
   }
 
@@ -3096,7 +3105,11 @@ export class SnakeGameLogic {
    * means the rolled food-interval doubles (40 +/- 10 instead of 20 +/- 5).
    */
   private rollNextMutationInterval(): number {
-    const interval = rollMutationInterval(this.rng);
+    // WP-3.05: rolled from the RUN'S GROWTH PROFILE, not the global
+    // `MUTATION_SPAWN` constant it used to read. That constant is why choosing
+    // Tuned changed how fast you grew but not how often you were offered a
+    // gene - the profile's cadence fields were never wired to anything.
+    const interval = rollOfferInterval(this.growth, this.rng);
     return this.hasTrait('patient')
       ? interval * TRAIT_PHYSICS.patientMutationIntervalMultiplier
       : interval;

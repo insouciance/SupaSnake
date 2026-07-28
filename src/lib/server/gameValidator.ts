@@ -9,9 +9,12 @@
  *
  * Phase 2 (GAME_DESIGN_V2.md sections 3.3 + 5.3):
  * - Mutations: legality (known ids, no dupes, <= 4 held), count bound
- *   (picks <= floor(foodCount / 15); the k-th pick's atFood >= 15k and
- *   <= foodCount), then EXACT recompute of every [E] effect from its
- *   atFood onward for PRIMAL/CYBER (and the COSMIC base).
+ *   (picks <= floor(foodCount / minFoodsPerPick); the k-th pick's atFood
+ *   >= minFoodsPerPick*k and <= foodCount), then EXACT recompute of every
+ *   [E] effect from its atFood onward for PRIMAL/CYBER (and the COSMIC
+ *   base). WP-3.05: `minFoodsPerPick` is the STAMPED GROWTH PROFILE's, not
+ *   a constant 15 — it is the engine's own minimum offer interval, so the
+ *   bound and the cadence that produces the picks are one number.
  * - Phoenix: a claimed trigger is only honored when phoenix is held and
  *   the food index is plausible; honoring it strictly lowers the payout,
  *   so there is no inflation vector in either direction.
@@ -26,8 +29,8 @@
  * field. [E] trait effects join the exact recompute; the Ascetic trait's
  * physical side (mutation food never spawns) makes any mutation claim on
  * an Ascetic snake impossible, so such claims are dropped and flagged;
- * the Patient trait doubles the mutation cadence, tightening the
- * per-pick food bound from 15k to 30k.
+ * the Patient trait doubles the mutation cadence, doubling the per-pick
+ * food bound (15k to 30k on the shipped curve).
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -50,7 +53,7 @@ import {
   type MutationId,
   type MutationPick,
 } from '@/shared/game/mutations';
-import { type TraitId } from '@/shared/game/traits';
+import { TRAIT_PHYSICS, type TraitId } from '@/shared/game/traits';
 import { type AnomalyId } from '@/shared/game/anomalies';
 import {
   GENE_ECONOMICS,
@@ -446,11 +449,35 @@ export function claimDriftIsAlertable(
   return Math.abs(claimed - recomputed) > tolerance;
 }
 
-/** Minimum food gap the spawn cadence allows before the k-th mutation pick. */
+/**
+ * Minimum food gap the spawn cadence allows before the k-th mutation pick,
+ * on the shipped curve. Retained as the fallback for a run with no stamp.
+ *
+ * WP-3.05: this is `GROWTH_PROFILES.baseline.minFoodsPerPick`, and a test
+ * asserts the two agree. Prefer `minFoodsPerPickFor` — a run stamped `tuned`
+ * is offered genes every 10 +/- 2 foods, and bounding it at 15 would flag a
+ * player for accepting an offer the engine handed them.
+ */
 const MIN_FOODS_PER_PICK = 15;
 
-/** Patient trait: cadence doubled, so the k-th pick needs 30k foods. */
-const MIN_FOODS_PER_PICK_PATIENT = 30;
+/**
+ * The per-pick cadence bound for THIS run: the engine's lowest possible offer
+ * interval under the growth profile the server stamped into `run_context`.
+ *
+ * Both halves come from one place. `minFoodsPerPick` is by construction the
+ * floor of `rollOfferInterval`, so an honest engine can never produce a pick
+ * this rejects; the Patient multiplier is read from `TRAIT_PHYSICS` rather
+ * than re-typed, which is what the old hardcoded 30 was.
+ */
+function minFoodsPerPickFor(
+  profileId: GrowthProfileId | undefined,
+  traits: TraitId[]
+): number {
+  const base = resolveGrowthProfile(profileId).minFoodsPerPick;
+  return traits.includes('patient')
+    ? base * TRAIT_PHYSICS.patientMutationIntervalMultiplier
+    : base;
+}
 
 /**
  * Sanitize the claimed mutation picks against legality + cadence bounds.
@@ -639,10 +666,27 @@ export function validateGameResult(
    * into the genome pipeline: gene-pool legality, infuse bounds, fused
    * splice derivation, exact genome recompute, bounded-trust clamps.
    */
-  genomeCtx: GenomeValidationContext | null = null
+  genomeCtx: GenomeValidationContext | null = null,
+  /**
+   * The growth profile the server stamped into `run_context` at start, for
+   * runs that have NO genome context.
+   *
+   * WP-3.05. Two bounds are scaled by the profile — the food-rate ceiling and
+   * the offer-cadence floor — and both used to read it exclusively off
+   * `genomeCtx`. A legacy (non-genome) session stamped `tuned` therefore
+   * validated against `baseline`: bounded at 1 food on the board when it had
+   * three, and at 15 foods per pick when the engine offered every 10. Both
+   * flag a player for doing exactly what the server told the engine to do.
+   *
+   * `genomeCtx` still WINS where present. Its copy is the one the exact
+   * recompute folds with, so preferring it makes a bound/fold disagreement
+   * structurally impossible rather than merely unlikely.
+   */
+  runGrowthProfileId: GrowthProfileId | undefined = undefined
 ): ValidationResult {
   const errors: string[] = [];
   const ruleset = getRuleset(dynasty);
+  const growthProfileId = genomeCtx?.growthProfileId ?? runGrowthProfileId;
   const now = Date.now();
   const serverElapsed = Math.floor((now - serverStartedAt.getTime()) / 1000);
 
@@ -700,7 +744,7 @@ export function validateGameResult(
   // guessed at.
   const foodsOnBoard = Math.max(
     1,
-    resolveGrowthProfile(genomeCtx?.growthProfileId).simultaneousFoods
+    resolveGrowthProfile(growthProfileId).simultaneousFoods
   );
   const maxFood = Math.ceil(
     durationSeconds * ruleset.validation.maxFoodPerSecond * foodsOnBoard
@@ -748,7 +792,7 @@ export function validateGameResult(
     input.mutations,
     foodCount,
     errors,
-    traits.includes('patient') ? MIN_FOODS_PER_PICK_PATIENT : MIN_FOODS_PER_PICK,
+    minFoodsPerPickFor(growthProfileId, traits),
     unlockedPool
   );
 
@@ -873,7 +917,19 @@ export function validateGameResult(
 export const VOLT_RATE_ALLOWANCE_FACTOR = 1 + STRAIN_PHYSICS.arcMaxPerEat;
 
 /** Minimum food index of any gene pick (first gene food / first portal). */
-const MIN_FIRST_GENE_FOOD = 15;
+/**
+ * The earliest food at which a PORTAL can exist — `firstExitAtFood` in the
+ * extraction config. Bounds the portal count and therefore the infuse count.
+ *
+ * WP-3.05: this used to be named `MIN_FIRST_GENE_FOOD` and did double duty as
+ * the first-gene-pick floor. The two are unrelated quantities that happened to
+ * share the value 15: the portal schedule is fixed, but the first GENE offer
+ * arrives after `minFoodsPerPick` foods, which moves with the growth profile.
+ * Conflated, a `tuned` run offered its first gene at food 8-12 and was then
+ * told that gene was impossible. The gene floor now travels with the profile;
+ * this one stays with extraction.
+ */
+const MIN_FIRST_PORTAL_FOOD = 15;
 
 function occupiedGeneSlots(
   picks: GenePick[],
@@ -886,8 +942,8 @@ function occupiedGeneSlots(
 
 /** Conservative portal count bound: first at 15, then every >= 8 foods. */
 function maxPortalsSpawnable(foodCount: number): number {
-  if (foodCount < MIN_FIRST_GENE_FOOD) return 0;
-  return 1 + Math.floor((foodCount - MIN_FIRST_GENE_FOOD) / 8);
+  if (foodCount < MIN_FIRST_PORTAL_FOOD) return 0;
+  return 1 + Math.floor((foodCount - MIN_FIRST_PORTAL_FOOD) / 8);
 }
 
 /**
@@ -935,12 +991,12 @@ function sanitizeGenes(
     if (
       typeof atFood !== 'number' ||
       !Number.isInteger(atFood) ||
-      atFood < MIN_FIRST_GENE_FOOD ||
+      atFood < minFoodsPerPick ||
       atFood > foodCount ||
       atFood < lastAt
     ) {
       errors.push(
-        `GENE_BOUND: ${id} atFood ${JSON.stringify(atFood)} outside [max(${MIN_FIRST_GENE_FOOD}, ${lastAt}), ${foodCount}]`
+        `GENE_BOUND: ${id} atFood ${JSON.stringify(atFood)} outside [max(${minFoodsPerPick}, ${lastAt}), ${foodCount}]`
       );
       continue;
     }
@@ -1049,9 +1105,7 @@ function validateGenomeBranch(
   errors: string[]
 ): ValidationResult {
   const claim = (input.genome ?? {}) as Record<string, unknown>;
-  const minFoodsPerPick = traits.includes('patient')
-    ? MIN_FOODS_PER_PICK_PATIENT
-    : MIN_FOODS_PER_PICK;
+  const minFoodsPerPick = minFoodsPerPickFor(ctx.growthProfileId, traits);
 
   // g4. Infuses first (they widen the pick-count bound): strictly
   // increasing, <= 3, bounded by spawnable portals; an extraction uses
@@ -1068,9 +1122,9 @@ function validateGenomeBranch(
     infuses = infuses.slice(0, portalBudget);
   }
   for (const infuse of infuses) {
-    if (infuse.atFood < MIN_FIRST_GENE_FOOD) {
+    if (infuse.atFood < MIN_FIRST_PORTAL_FOOD) {
       errors.push(`INFUSE_BOUND: infuse at food ${infuse.atFood} before the first portal`);
-      infuses = infuses.filter((i) => i.atFood >= MIN_FIRST_GENE_FOOD);
+      infuses = infuses.filter((i) => i.atFood >= MIN_FIRST_PORTAL_FOOD);
       break;
     }
   }

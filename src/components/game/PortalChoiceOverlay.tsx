@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CHOICE_INPUT_LOCK_MS } from '@/components/game/MutationChoiceOverlay';
 import { StrainChip } from '@/components/traits/StrainChip';
-import type { StrainId } from '@/shared/game/strains';
+import {
+  STRAIN_ECONOMICS,
+  STRAIN_PHYSICS,
+  type StrainId,
+} from '@/shared/game/strains';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { FunnelStages, trackFunnelStageOnce } from '@/lib/analytics/funnel';
 
@@ -80,8 +84,21 @@ export function PortalChoiceOverlay({
           </button>
           <button type="button" disabled={locked || !canInfuse} onClick={onInfuse} aria-keyshortcuts="3 I" data-testid="portal-infuse" className={`${option} border-cosmic/60 bg-cosmic/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
             <span className="heading-display text-cosmic">3 · INFUSE</span>
-            <p className="mt-1 text-sm font-body text-beige">−4 tail · gene offer · bank +0.05</p>
-            <p className="mt-1 text-xs font-body text-beige/50">{canInfuse ? `${infusesUsed}/3 used · crash ${crashDna}` : snakeLength < 8 ? 'Needs length 8' : 'Infuse cap reached'}</p>
+            {/*
+              WP-3.05: this line read "−4 tail" while the engine grew the body
+              by +8 - a twelve-segment error pointing the wrong way, advertising
+              a reward where the code charges a cost. It described
+              `infuseSegmentCost: 4`, which Rule 15 DELETED (`rule15.test.ts`
+              asserts the field is gone); the overlay was never updated and no
+              test read this string.
+
+              So every number here is now INTERPOLATED from the constant that
+              governs it. Copy that restates a dial in a literal is copy that
+              goes stale silently, and this one sat in front of the game's most
+              consequential decision.
+            */}
+            <p className="mt-1 text-sm font-body text-beige">+{STRAIN_PHYSICS.infuseGrowth} length · gene offer · bank +{STRAIN_ECONOMICS.infuseBankDelta}</p>
+            <p className="mt-1 text-xs font-body text-beige/50">{canInfuse ? `${infusesUsed}/${STRAIN_PHYSICS.infuseMaxPerRun} used · crash ${crashDna}` : snakeLength < STRAIN_PHYSICS.infuseMinLength ? `Needs length ${STRAIN_PHYSICS.infuseMinLength}` : 'Infuse cap reached'}</p>
           </button>
         </div>
       </div>
