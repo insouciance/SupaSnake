@@ -3125,7 +3125,23 @@ export default function GamePage() {
 
       {/* Game Over / Start Screen */}
       {!isPlaying && (
-        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-void-deep/85 backdrop-blur-sm p-4">
+        /*
+         * The bottom padding clears the fixed navigation rail (WP-3.11).
+         *
+         * On mobile that rail is a bottom row pinned at
+         * `0.625rem + safe-area-inset-bottom`, and it overlays this scroller.
+         * Run Setup grew this wave - the growth readout, the ladder readout,
+         * and the Growth Lab selector when its flag is armed - and the e2e
+         * repair measured the consequence at 390x844: the `mode-free` control
+         * ended up underneath the rail, so an honest unforced click landed on
+         * the rail's Leaderboard link and the run never started.
+         *
+         * Padding a scroll container is monotone: it can only give content
+         * more room to clear the rail, never take room from a layout that
+         * already fitted. Desktop keeps `p-4` because there the rail is a
+         * right-hand column, not a bottom row.
+         */
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-void-deep/85 backdrop-blur-sm p-4 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:pb-4">
           <div
             className={`panel-elevated my-auto w-full p-8 text-center space-y-6 min-w-[320px] max-w-2xl animate-pop-in ${
               isGameOver
