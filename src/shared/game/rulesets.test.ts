@@ -7,16 +7,15 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import {
   BANK,
   COSMIC_CONSTELLATION,
-  COSMIC_FLUX,
   COSMIC_SPEED_MS,
-  COSMIC_TRUST_MAX_BONUS_RATIO,
+  COSMIC_YIELD_CAP,
+  COSMIC_YIELD_STEP,
   FOOD_BASE_DNA,
   FOOD_BASE_SCORE,
   RULESETS,
   applyOutcome,
   applyOutcomeWithMutations,
   computeRunTotals,
-  cosmicComboMultiplier,
   getRuleset,
   normalizeDynastyName,
   outcomeMultipliers,
@@ -197,7 +196,7 @@ describe('CYBER ruleset (Overclock)', () => {
   });
 });
 
-describe('COSMIC ruleset (Flux)', () => {
+describe('COSMIC ruleset (the torus and the constellation)', () => {
   const cosmic = RULESETS.COSMIC;
 
   it('has a fixed 160 ms tick, still the faster of the two fixed tempos', () => {
@@ -208,12 +207,6 @@ describe('COSMIC ruleset (Flux)', () => {
     // clustered groups and combo window are authored against being the quicker
     // board, and its flux phases are tick-counted at 160.
     expect(COSMIC_SPEED_MS).toBeLessThan(PRIMAL_SPEED_MS);
-  });
-
-  it('pays a flat base food value - the combo layer sits on top', () => {
-    expect(cosmic.foodDnaValue(1)).toBe(10);
-    expect(cosmic.foodDnaValue(50)).toBe(10);
-    expect(cosmic.foodDnaValue(500)).toBe(10);
   });
 
   it('mid-weights score: a six-food tent peaking x2.5 across foods 24-29', () => {
@@ -233,79 +226,129 @@ describe('COSMIC ruleset (Flux)', () => {
     expect(cosmic.scoreMultiplier(500)).toBe(0.5);
   });
 
-  it('keeps every per-food base score a multiple of 5, so the combo never rounds', () => {
-    // Load-bearing, not tidy. The combo steps by 0.2, so `base x combo` is an
-    // exact integer only while base is a multiple of 5. Break that and an
-    // honest max-combo run rounds past `floor(base x COSMIC_TRUST_MAX_BONUS_RATIO)`
-    // - round(9 x 2.4) = 22 is a bonus of 13 against a ceiling of 12.6 - and
-    // the server clamps a legitimate score downward.
-    let base = 0;
-    let boosted = 0;
+  it('keeps every per-food base score a multiple of 5', () => {
+    // WP-3.08 made this load-bearing: the combo stepped by 0.2, so
+    // `base x combo` was an exact integer only while base was a multiple of 5,
+    // and breaking it meant an honest max-combo run rounded past
+    // `floor(base x COSMIC_TRUST_MAX_BONUS_RATIO)` - round(9 x 2.4) = 22 is a
+    // bonus of 13 against a ceiling of 12.6 - and the server clamped a
+    // legitimate score downward.
+    //
+    // WP-3.13 DELETED THE COMBO, so nothing multiplies these values any more
+    // and the constraint no longer binds. The assertion is kept, at its
+    // reduced strength, for two reasons: the curve is unchanged and still
+    // satisfies it, and a per-food multiplier returning to COSMIC is exactly
+    // the change that would need to know this was ever true.
     for (let n = 1; n <= 200; n++) {
-      const points = FOOD_BASE_SCORE * cosmic.scoreMultiplier(n);
-      expect(points % 5).toBe(0);
-      for (let chain = 1; chain <= 12; chain++) {
-        // The exact value in fifths: base/5 x (5 + chained steps), capped at 12
-        // fifths (x2.4). What the engine computes must BE this, not round to it.
-        const exact = (points / 5) * Math.min(12, chain + 4);
-        expect(Math.round(points * cosmicComboMultiplier(chain))).toBe(exact);
-      }
-      base += points;
-      boosted += Math.round(points * COSMIC_CONSTELLATION.comboCap);
+      expect((FOOD_BASE_SCORE * cosmic.scoreMultiplier(n)) % 5).toBe(0);
     }
-    // The whole-run bonus stays inside the ratio the server clamps against,
-    // asserted in fifths so the comparison is integer and cannot lose to the
-    // float representation of 1.4.
-    expect(5 * (boosted - base)).toBeLessThanOrEqual(
-      5 * COSMIC_TRUST_MAX_BONUS_RATIO * base
-    );
   });
 
-  it('carries the constellation config: 3 glyphs, groups of 3, 8-tick window', () => {
+  it('yields on a compounding curve to a x3 ceiling, not a flat 10', () => {
+    // WP-3.13. `foodDnaValue` was flat because the COMBO was COSMIC's Yield
+    // story; deleting the combo left the flat base standing alone, which is a
+    // hole rather than a design.
+    expect(cosmic.foodDnaValue(1)).toBe(10);
+    expect(cosmic.foodDnaValue(12)).toBe(14);
+    expect(cosmic.foodDnaValue(24)).toBe(19);
+    expect(cosmic.foodDnaValue(48)).toBe(29);
+    // The ceiling is CYBER's x3, reached at food 51 rather than food 20 -
+    // same destination, a much longer journey to it.
+    expect(cosmic.foodDnaValue(51)).toBe(30);
+    expect(cosmic.foodDnaValue(500)).toBe(30);
+    expect(COSMIC_YIELD_STEP).toBe(0.04);
+    expect(COSMIC_YIELD_CAP).toBe(3);
+    // Exactly double PRIMAL's slope, which is the statement the shape makes:
+    // the board closes on you faster, because you are the one closing it.
+    expect(COSMIC_YIELD_STEP).toBe(2 * 0.02);
+  });
+
+  it('sits BETWEEN PRIMAL and CYBER in yield at the terminus', () => {
+    // The Yield analogue of the score-curve gate below, and deliberately a
+    // weaker claim than it. Score integrals are comparable by construction
+    // (+/-10%); YIELD integrals never were and are not now - CYBER pays 1210
+    // at 48 foods against PRIMAL's 705, a 1.72x spread that predates this
+    // package, because run LENGTH compensates for it (CYBER runs are short,
+    // PRIMAL's are long). So there is no single integral to match, and the
+    // honest assertion is that COSMIC is no longer the outlier: it falls
+    // inside the range the other two already span.
+    //
+    // The real parity gate for DNA is `genome.balance.test.ts`, which
+    // measures expected value per ARCHETYPE - food count, bank probability
+    // and genes included - and holds all five within +/-15% of target.
+    const yieldAt = (dynasty: DynastyName) => {
+      let total = 0;
+      for (let n = 1; n <= SCORE_TERMINUS_FOODS; n++) {
+        total += RULESETS[dynasty].foodDnaValue(n);
+      }
+      return total;
+    };
+
+    const primal = yieldAt('PRIMAL');
+    const cyber = yieldAt('CYBER');
+    const cosmicYield = yieldAt('COSMIC');
+    expect([primal, cyber, cosmicYield]).toEqual([705, 1210, 931]);
+
+    expect(cosmicYield).toBeGreaterThan(primal);
+    expect(cosmicYield).toBeLessThan(cyber);
+    // Before the re-base COSMIC paid 480 - 0.68x PRIMAL and 0.40x CYBER, so
+    // the three spanned 2.52x. The spread that remains is PRIMAL against
+    // CYBER and is not this package's to close.
+    expect(Math.max(primal, cyber, cosmicYield) / Math.min(primal, cyber, cosmicYield))
+      .toBeLessThanOrEqual(1.75);
+  });
+
+  it('carries the constellation config: 5 scattered stars on an 8s window', () => {
     expect(cosmic.constellation).toBe(COSMIC_CONSTELLATION);
+    expect(COSMIC_CONSTELLATION.size).toBe(5);
+    expect(COSMIC_CONSTELLATION.windowSeconds).toBe(8);
+    expect(COSMIC_CONSTELLATION.scatterMinCells).toBe(5);
+    expect(COSMIC_CONSTELLATION.calcifySeconds).toBe(2);
     expect(COSMIC_CONSTELLATION.glyphCount).toBe(3);
-    expect(COSMIC_CONSTELLATION.groupSize).toBe(3);
-    expect(COSMIC_CONSTELLATION.chainWindowTicks).toBe(8);
-    expect(COSMIC_CONSTELLATION.comboCap).toBe(2.4);
   });
 
-  it('carries the flux config: 12s open / 8s closed / ~2s telegraph at 160ms', () => {
-    expect(cosmic.flux).toBe(COSMIC_FLUX);
-    expect(COSMIC_FLUX.openTicks).toBe(75); // 12s / 0.16s
-    expect(COSMIC_FLUX.closedTicks).toBe(50); // 8s / 0.16s
-    expect(COSMIC_FLUX.telegraphTicks).toBe(12); // ~2s
-  });
+  it('the window is worth about one perfect route, and no more', () => {
+    // §3's invariant, as arithmetic rather than a hope: abandonment has to be
+    // COMMON BUT NOT TOTAL. A window far above a perfect route collects
+    // everything and the mechanic is inert; far below it collects nothing and
+    // it is a death spiral rather than a route.
+    //
+    // A Manhattan step on this board is one tick, so a route's tick cost is
+    // its length. Two uniform cells on an n x n torus are n/4 apart per axis,
+    // so n/2 in Manhattan terms - and the route is `size` such hops: one to
+    // reach the constellation, then `size - 1` between its stars.
+    const grid = GAME_CONFIG.board.gridSize;
+    const perfectRouteTicks = COSMIC_CONSTELLATION.size * (grid / 2);
+    const windowTicks =
+      (COSMIC_CONSTELLATION.windowSeconds * 1000) / COSMIC_SPEED_MS;
 
-  it('PRIMAL and CYBER carry no constellation or flux fields', () => {
-    expect(RULESETS.PRIMAL.constellation).toBeUndefined();
-    expect(RULESETS.PRIMAL.flux).toBeUndefined();
-    expect(RULESETS.CYBER.constellation).toBeUndefined();
-    expect(RULESETS.CYBER.flux).toBeUndefined();
-  });
-});
+    expect(windowTicks / perfectRouteTicks).toBeGreaterThanOrEqual(0.8);
+    expect(windowTicks / perfectRouteTicks).toBeLessThanOrEqual(1.3);
 
-describe('cosmicComboMultiplier', () => {
-  it('follows the doc table: x1.0 solo, x1.2 at chain 2, +0.2 per food, cap x2.4', () => {
-    expect(cosmicComboMultiplier(0)).toBe(1);
-    expect(cosmicComboMultiplier(1)).toBe(1);
-    expect(cosmicComboMultiplier(2)).toBeCloseTo(1.2, 10);
-    expect(cosmicComboMultiplier(3)).toBeCloseTo(1.4, 10);
-    expect(cosmicComboMultiplier(5)).toBeCloseTo(1.8, 10);
-    expect(cosmicComboMultiplier(7)).toBeCloseTo(2.2, 10);
-    expect(cosmicComboMultiplier(8)).toBe(2.4);
-    expect(cosmicComboMultiplier(20)).toBe(2.4);
-  });
-
-  it('rounds to clean per-food values at base 10', () => {
-    // round(10 x combo) for chains 1..8: the exact per-food payout steps
-    const values = [1, 2, 3, 4, 5, 6, 7, 8].map((c) =>
-      Math.round(10 * cosmicComboMultiplier(c))
+    // And it must at least be physically possible: the stars are never
+    // closer together than `scatterMinCells`, so a route cannot be cheaper
+    // than that many ticks per hop however lucky the scatter is.
+    expect(windowTicks).toBeGreaterThanOrEqual(
+      (COSMIC_CONSTELLATION.size - 1) * COSMIC_CONSTELLATION.scatterMinCells
     );
-    expect(values).toEqual([10, 12, 14, 16, 18, 20, 22, 24]);
   });
 
-  it('bounded-trust ratio is comboCap - 1 (the clamp ceiling)', () => {
-    expect(COSMIC_TRUST_MAX_BONUS_RATIO).toBeCloseTo(1.4, 10);
+  it('the board wraps, permanently, and only COSMIC does', () => {
+    expect(cosmic.torus).toBe(true);
+    expect(RULESETS.PRIMAL.torus).toBeUndefined();
+    expect(RULESETS.CYBER.torus).toBeUndefined();
+  });
+
+  it('PRIMAL and CYBER carry no constellation', () => {
+    expect(RULESETS.PRIMAL.constellation).toBeUndefined();
+    expect(RULESETS.CYBER.constellation).toBeUndefined();
+  });
+
+  it('COSMIC schedules no ARENA - its terrain is the stars it missed', () => {
+    // The distinction matters: `arena` is a food-indexed schedule that
+    // hardens the outer ring, and COSMIC has none. Its blocks are produced
+    // by play, which is why the ratio is an outcome rather than a dial.
+    expect(cosmic.arena).toBeUndefined();
   });
 });
 
@@ -412,10 +455,13 @@ describe('computeRunTotals', () => {
     expect(computeRunTotals('CYBER', 100).score).toBe(995);
   });
 
-  it('COSMIC base totals are flat in DNA and mid-weighted in score', () => {
-    // The combo bonus is layered on top of both by the engine, and clamped.
-    expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 300, score: 465 });
-    expect(computeRunTotals('COSMIC', 48)).toEqual({ rawDna: 480, score: 720 });
+  it('COSMIC totals compound in DNA, mid-weight in score, and are COMPLETE', () => {
+    // "Complete" is the WP-3.13 half: the combo bonus used to be layered on
+    // top of both by the engine and clamped by the server, so neither of
+    // these numbers was the whole payout. Both are now — which is also why
+    // the DNA had to be re-based, since the combo was the whole Yield story.
+    expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 474, score: 465 });
+    expect(computeRunTotals('COSMIC', 48)).toEqual({ rawDna: 931, score: 720 });
   });
 
   it('holds the three score curves within ±10% at the terminus (D3)', () => {
@@ -544,7 +590,8 @@ describe('validation bounds', () => {
     );
     expect(RULESETS.PRIMAL.validation.maxFoodPerSecond).toBe(1.0);
     expect(RULESETS.CYBER.validation.maxFoodPerSecond).toBe(2.5);
-    // COSMIC: 160ms tick + clustered constellation groups eat faster than PRIMAL
+    // COSMIC: re-derived in WP-3.13 from the scatter rule - a wave of 5 at
+    // a minimum 5-cell separation costs >= 21 ticks, so 5/(21 x 0.16s) = 1.49
     expect(RULESETS.COSMIC.validation.maxFoodPerSecond).toBe(1.5);
   });
 });
@@ -556,11 +603,15 @@ describe('normalizeDynastyName', () => {
     expect(normalizeDynastyName('Cosmic')).toBe('COSMIC');
   });
 
-  it('falls back to COSMIC for unknown or non-string values', () => {
-    expect(normalizeDynastyName('VOID')).toBe('COSMIC');
-    expect(normalizeDynastyName(null)).toBe('COSMIC');
-    expect(normalizeDynastyName(undefined)).toBe('COSMIC');
-    expect(normalizeDynastyName(42)).toBe('COSMIC');
+  it('falls back to PRIMAL - the payout floor - for unknown values', () => {
+    // It fell back to COSMIC, chosen and documented as "the conservative
+    // payout floor" while COSMIC's food value was a flat 10. WP-3.13's Yield
+    // re-base made that false, so the fallback follows the property it was
+    // chosen for rather than the name it was chosen under.
+    expect(normalizeDynastyName('VOID')).toBe('PRIMAL');
+    expect(normalizeDynastyName(null)).toBe('PRIMAL');
+    expect(normalizeDynastyName(undefined)).toBe('PRIMAL');
+    expect(normalizeDynastyName(42)).toBe('PRIMAL');
   });
 });
 

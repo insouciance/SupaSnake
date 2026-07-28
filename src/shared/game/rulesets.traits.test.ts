@@ -7,6 +7,7 @@
 import { describe, it, expect } from '@jest/globals';
 import {
   BANK,
+  RULESETS,
   applyOutcome,
   applyOutcomeWithMutations,
   computeRunTotals,
@@ -58,10 +59,19 @@ describe('computeRunTotals with traits', () => {
     }
   );
 
-  it('Ascetic pays x1.4 exactly on flat COSMIC food', () => {
-    // COSMIC base food is flat 10, so 20 foods = 200 -> 14/food = 280
+  it('Ascetic pays x1.4 exactly on every COSMIC food', () => {
+    // One round per food, applied to COSMIC's compounding base rather than
+    // to a flat 10 (WP-3.13 re-based the Yield curve). Asserted against the
+    // base fold rather than a hardcoded total, so it keeps testing the TRAIT
+    // rather than the curve underneath it - which is what it was for.
+    const base = computeRunTotals('COSMIC', 20);
     const { rawDna } = computeRunTotals('COSMIC', 20, [], null, ['ascetic']);
-    expect(rawDna).toBe(20 * 14);
+    let expected = 0;
+    for (let n = 1; n <= 20; n++) {
+      expected += Math.round(RULESETS.COSMIC.foodDnaValue(n) * 1.4);
+    }
+    expect(rawDna).toBe(expected);
+    expect(rawDna).toBeGreaterThan(base.rawDna);
   });
 
   it('outcome-only traits leave the raw totals untouched', () => {

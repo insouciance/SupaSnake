@@ -104,15 +104,23 @@ export interface DynastyRuleset {
     maxFoodPerSecond: number;
   };
   /**
-   * COSMIC only: constellation food groups + combo chaining. Presence of
-   * this field is what switches the engine into glyph-group spawning.
+   * COSMIC only: the constellation wave + its calcification window.
+   * Presence of this field is what switches the engine into scattered-star
+   * spawning and into calcifying whatever the window closes on.
    */
   constellation?: typeof COSMIC_CONSTELLATION;
   /**
-   * COSMIC only: wrap-phase wall cycling. Presence of this field is what
-   * switches the engine into flux wall behavior.
+   * The board wraps at every edge, permanently (DYNASTY_COSMIC §2.1).
+   *
+   * Not a phase, not a pickup, not a window: a property of the dynasty's
+   * board. It replaced `flux`, a 75-tick open / 50-tick closed wall cycle,
+   * on the owner's ruling that "the wall cycle is pretty useless - I never
+   * really use it, and for what?". The specific culprit was INTERMITTENCY:
+   * players absorb a wrap-around board easily when wrapping is constant,
+   * because it becomes part of the spatial model, and cannot absorb a rule
+   * that toggles every 8-12 seconds. Consistent rules produce skill.
    */
-  flux?: typeof COSMIC_FLUX;
+  torus?: boolean;
 }
 
 /** Extraction banking outcomes: leave through the portal or die trying. */
@@ -268,17 +276,27 @@ function cyberScoreShape(n: number): number {
  * COSMIC's score shape: MID-WEIGHTED (§6.1).
  *
  * A tent on the six-food tier peaking at x2.5 across foods 24-29 - the middle
- * of a terminus run - tapering to x0.5 at both ends. COSMIC's skill is the
- * chain, and a chain needs a run already in progress to exist at all, so the
- * shape pays where the dynasty's own mechanic can actually be played.
+ * of a terminus run - tapering to x0.5 at both ends. WP-3.08 authored it for
+ * the combo ("a chain needs a run already in progress to exist at all"), and
+ * WP-3.13 deleted the combo three days later. THE CURVE IS DELIBERATELY
+ * UNCHANGED, because its actual justification survives the mechanic it was
+ * written for: a mid-weighted shape pays where COSMIC's skill is expressed,
+ * and the constellation is even more mid-run than the chain was. Early, a
+ * short snake routes a perfect wave and abandons nothing, so there is nothing
+ * to be good at; late, the board is debris and the route is forced. The middle
+ * is where the abandonment decision is both live and winnable.
  *
- * Every value is a multiple of 0.5, which is load-bearing rather than tidy. It
- * makes each per-food base Score a multiple of 5, and the combo multipliers
- * step by 0.2, so `round(base * combo)` never actually rounds. That is what
- * keeps a claimed combo bonus inside `floor(baseScore *
- * COSMIC_TRUST_MAX_BONUS_RATIO)`, the server clamp: on a curve with, say, x0.9
- * on it, round(9 * 2.4) = 22 is a bonus of 13 against a ceiling of 12.6, and an
- * honest run would round its way past its own limit and be clamped down for it.
+ * Its integral is comparable to PRIMAL's and CYBER's at the terminus, which is
+ * D3's whole point and is what `score.curves.test.ts` pins.
+ *
+ * Every value is a multiple of 0.5, and that USED to be load-bearing: it made
+ * each per-food base Score a multiple of 5, and the combo stepped by 0.2, so
+ * `round(base * combo)` never actually rounded and an honest max-combo run
+ * could not round its way past `floor(baseScore * COSMIC_TRUST_MAX_BONUS_RATIO)`
+ * and be clamped down for it. With no combo there is no product to round and no
+ * ceiling to breach, so the constraint has dissolved. The granularity is kept
+ * anyway - it costs nothing, and a curve whose values are exact is one fewer
+ * thing to reason about if a per-food multiplier ever returns.
  */
 function cosmicScoreShape(n: number): number {
   return Math.max(0.5, 2.5 - 0.5 * Math.abs(Math.floor(n / 6) - 4));
@@ -373,72 +391,198 @@ const CYBER: DynastyRuleset = {
 export const COSMIC_SPEED_MS = 160;
 
 /**
- * COSMIC constellation food + combo chain tuning (section 3.3).
- * Foods spawn as glyph-tagged groups of groupSize, clustered within
- * groupRadius cells of the group anchor so chaining inside the 8-tick
- * window is physically possible. Eating a food of the same glyph as the
- * previous eat within chainWindowTicks extends the chain; combo multiplier
- * is x1.2 at chain 2, +0.2 per chained food, capped x2.4 at chain 8+.
+ * COSMIC's constellation wave (WP-3.13, DYNASTY_COSMIC §2.2).
+ *
+ * A constellation of `size` stars appears SCATTERED across the board with a
+ * window. Every star not collected before the window closes CALCIFIES on its
+ * own cell - one terrain block, permanent, lethal.
+ *
+ * That single mechanic is the dynasty. PRIMAL's pressure comes from success
+ * (you eat, you grow, the board closes) and CYBER's from time (the arena
+ * hardens on a schedule); COSMIC's comes from FAILURE - what you fail to
+ * collect is what closes the board on you. The question stops being "how fast
+ * can I eat" and becomes "which do I abandon, and where will its corpse sit
+ * for the rest of my run?".
+ *
+ * It replaced the glyph-matching combo chain, which the owner ruled out
+ * flatly: "it's not really fun to get the combos, it's just boring, has no
+ * thrill factor." Three defects sat under that verdict, all provable from the
+ * code: the x2.4 cap needed a chain of 8 that a wave of 3 could not produce;
+ * `groupRadius: 4` made the "chain" a pile eaten in the order it happened to
+ * lie in - Meier's OBVIOUS, the default path with a bonus on it; and the combo
+ * was the one payout component the SERVER COULD NOT DERIVE, because it
+ * depended on tick timing, so it arrived as a client claim and was clamped
+ * rather than recomputed.
+ *
+ * That third defect is worth stating carefully, because the case for it
+ * inverted a few days before this landed. While `scoreMultiplier` was
+ * `() => 1` the combo touched Score not at all, and the complaint was that
+ * COSMIC's only skill layer moved a number nobody ranks. WP-3.08 then gave
+ * COSMIC a real score curve, so the combo began multiplying the RANKED number
+ * - by way of a clamped client claim. That makes the argument for deleting it
+ * stronger rather than weaker: a claim reaching Score is precisely what
+ * Inviolable Rule 2 exists to prevent, and deleting the combo closed the only
+ * such path in the codebase.
+ *
+ * WHY THE RATIO IS NOT A DIAL (§2.5). The window is fixed and the achievable
+ * count degrades on its own: early, while the snake is short, a perfect route
+ * collects all five; as it grows, the snake's own body blocks the optimal
+ * path and the reachable count falls 5 -> 4 -> 3 -> 2. So COSMIC gets a
+ * self-accelerating terminus for free - the longer the run, the more stars are
+ * abandoned per wave, so debris arrives faster and faster - with no schedule
+ * anywhere in it. Tune `windowSeconds`, never "how many they should get".
+ *
+ * `glyphCount` survives the combo it used to serve. Glyphs are now what they
+ * always visually were: the hue of the constellation being traced (§2.3).
  */
 export const COSMIC_CONSTELLATION = {
+  /** Constellation hues. Cosmetic since WP-3.13 - never a chaining rule. */
   glyphCount: 3,
-  groupSize: 3,
-  groupRadius: 4,
-  chainWindowTicks: 8,
-  comboStep: 0.2,
-  comboCap: 2.4,
+  /**
+   * Stars per constellation. Must exceed what the window allows, or nothing
+   * is ever abandoned and the whole mechanic is inert.
+   */
+  size: 5,
+  /**
+   * How long the constellation lives, in SECONDS.
+   *
+   * The tuning dial if calcification feels punishing - and the ONLY one. The
+   * invariant to hold while tuning: abandonment must be common but not total.
+   * If a competent player collects everything there is no decision; if they
+   * collect almost nothing it is a death spiral rather than a route.
+   *
+   * Authored in seconds and converted by the live tick, for the reason
+   * `terrain.ts` gives: three bounds in this wave were found denominated in
+   * the wrong unit, and the extraction window silently lost three quarters of
+   * its duration as CYBER accelerated. 8 s is 50 ticks at COSMIC's 160 ms.
+   */
+  windowSeconds: 8,
+  /**
+   * Minimum toroidal MANHATTAN separation between stars.
+   *
+   * Manhattan because the snake moves orthogonally, so it is literally the
+   * travel cost. Toroidal because the board has no edges any more - and this
+   * is what makes crossing the seam a real route rather than a disorientation
+   * tax: a star that is 16 cells away the long way is 4 the short way.
+   *
+   * Replaces `groupRadius: 4`, which CLUSTERED the wave. A pile is not a
+   * routing problem.
+   */
+  scatterMinCells: 5,
+  /**
+   * How long a missed star spends as a harmless floor decal before it turns
+   * solid, in SECONDS. Matches CYBER's arena: the forming phase is what makes
+   * terrain a positioning problem rather than a random death, and it is also
+   * the moment the player reads "that one is gone".
+   */
+  calcifySeconds: 2,
 } as const;
 
 /**
- * COSMIC wrap-phase tuning (section 3.3), in ticks at 160 ms/tick:
- * 12 s open (edges wrap) = 75 ticks, 8 s closed (walls kill) = 50 ticks,
- * ~2 s telegraph = 12 ticks before every transition. Tick-based (not
- * wall-clock) so pauses and the mutation choice hold stay deterministic.
+ * COSMIC's YIELD curve (§6.2), re-based in WP-3.13. [H] both numbers.
+ *
+ * `foodDnaValue` was a flat 10 and had been since Phase 1, because the combo
+ * WAS COSMIC's Yield story - the flat base was deliberate, with the chain
+ * multiplying it. Deleting the combo removed the multiplier and left the base
+ * standing alone, which is a 2.4x hole rather than a design.
+ *
+ * WHY RE-BASING IS LESS OF AN INVENTION THAN IT LOOKS. The x2.4 the balance
+ * harness credited COSMIC with was FICTION: the cap needed a chain of 8 and a
+ * wave of 3 could not produce one, so the target was never actually being met
+ * and the combo was hiding that rather than delivering it. This does not
+ * author a new intent; it makes COSMIC's Yield mean what the other two
+ * dynasties' Yield already means.
+ *
+ * WHAT IT IS MATCHED AGAINST, and why not "the integral". Score integrals are
+ * comparable by construction (WP-3.08, +/-10% at the terminus); YIELD
+ * integrals never were, and are not now - at 48 foods CYBER pays 1210 and
+ * PRIMAL 705, a 1.72x spread that predates this package and is deliberate,
+ * because run LENGTH compensates (CYBER runs are short and PRIMAL's are long).
+ * So the honest target is the one the project already uses for DNA: the five
+ * archetypes' expected value in `genome.balance.test.ts`, within +/-15%. This
+ * curve lands COSMIC's at -2.4%, and its integral falls between the other two
+ * (931 at 48, against PRIMAL's 705 and CYBER's 1210) rather than on top of
+ * either.
+ *
+ * THE SHAPE SAYS SOMETHING, which is the point of having three of them:
+ *
+ *   - PRIMAL compounds gently (+0.02/food, uncapped) - paid for surviving
+ *     your own length.
+ *   - CYBER steps in five-food tiers to x3 by food 20 - paid for surviving
+ *     speed.
+ *   - COSMIC compounds at DOUBLE PRIMAL'S RATE to the same x3 ceiling CYBER
+ *     reaches, but by food 51 rather than food 20 - paid for surviving the
+ *     board you built. The board closes on you faster than it closes on
+ *     PRIMAL, because on COSMIC you are the one closing it.
+ *
+ * Same ceiling as CYBER, a different journey to it: "a choice of HOW you earn
+ * rather than HOW MUCH" (Constitution §6.1, stated there about Score and true
+ * of Yield for the same reason).
+ *
+ * NO DELIBERATE DISCOUNT was applied for the torus. It is tempting to argue
+ * that a board with no walls is easier and should pay less, but DYNASTY_COSMIC
+ * §2.1 argues the opposite and the production data agrees: a torus has no
+ * corners to trap you and no edges to organise around, so managing your own
+ * body is HARDER, and COSMIC is already the most self-collision-skewed
+ * dynasty (self 11 / wall 6). The six wall deaths the torus removes are
+ * replaced by debris. Parity is the honest starting point; the owner moves it
+ * by playing.
+ *
+ * REJECTED, and worth recording: paying per food in proportion to the debris
+ * on the board. Thematically perfect - you are paid for routing through what
+ * you built - and fatal, because the server cannot know the debris count
+ * without replaying the run. It would reintroduce exactly the bounded-trust
+ * claim this package deleted.
  */
-export const COSMIC_FLUX = {
-  openTicks: 75,
-  closedTicks: 50,
-  telegraphTicks: 12,
-} as const;
+export const COSMIC_YIELD_STEP = 0.04;
+export const COSMIC_YIELD_CAP = 3;
 
-/**
- * Combo multiplier for a chain of the given length: x1.0 solo, x1.2 at
- * chain 2, +0.2 per chained food, capped at x2.4 (chain 8+).
- */
-export function cosmicComboMultiplier(chainLength: number): number {
-  if (!Number.isFinite(chainLength) || chainLength < 2) return 1;
-  return Math.min(
-    COSMIC_CONSTELLATION.comboCap,
-    1 + COSMIC_CONSTELLATION.comboStep * (chainLength - 1)
-  );
+/** COSMIC's per-food DNA multiplier: 1 + 0.04(n-1), capped at x3 (food 51). */
+function cosmicYieldMultiplier(n: number): number {
+  return Math.min(COSMIC_YIELD_CAP, 1 + COSMIC_YIELD_STEP * (n - 1));
 }
 
 /**
- * Bounded-trust ceiling for COSMIC combo claims: the combo bonus above the
- * no-combo recompute can never exceed base x (comboCap - 1), because every
- * food's combo multiplier is capped at comboCap.
- */
-export const COSMIC_TRUST_MAX_BONUS_RATIO = COSMIC_CONSTELLATION.comboCap - 1;
-
-/**
- * COSMIC - Flux: fixed 160 ms/tick, flat base food value; the skill layers
- * are the constellation combo chain (client-computed, server-clamped via
- * bounded trust - see section 3.3's validation note) and the wrap-phase
- * wall cycle (physical, never in the payout formula). Score rides the
- * mid-weighted shape above (WP-3.08) - the base food VALUE stays flat, because
- * the combo is the dynasty's Yield story and does not need a second one.
+ * COSMIC - Terraforming: a permanent torus, a fixed 160 ms/tick, and stars
+ * that calcify where you left them.
+ *
+ * On a borderless board debris is the only structure that exists, so the
+ * player is not choosing what to lose - they are choosing where to build.
+ * Scatter your corpses and you fragment your own space into pockets you
+ * cannot use; leave them in a line, wave after wave, and you have built the
+ * scaffolding the torus denied you, exactly where you wanted it. Same
+ * mechanic either way; the difference is entirely intent, which is the
+ * definition of a skill.
+ *
+ * The tick stays slow deliberately (§2.6): it is not a difficulty setting
+ * here, it is the thinking time the routing problem requires. Speed is
+ * CYBER's axis and must not be borrowed.
  */
 const COSMIC: DynastyRuleset = {
   id: 'COSMIC',
   speedForFood: () => COSMIC_SPEED_MS,
-  foodDnaValue: () => FOOD_BASE_DNA,
+  foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cosmicYieldMultiplier(n)),
+  // Yield and Score are DIFFERENT AXES and stay on different shapes: this
+  // rises to a x3 ceiling while `cosmicScoreShape` is a tent that decays back
+  // to x0.5. One shared function is what conflated them on CYBER (§6.1 vs
+  // §6.2), and the two answer different questions - what the run is worth to
+  // your economy, and what it is worth on the board.
   scoreMultiplier: (n) => cosmicScoreShape(n),
   extraction: EXTRACTION_DEFAULTS,
-  // 160 ms/tick + clustered constellation groups sustain a faster eat rate
-  // than PRIMAL's single scattered food at 175 ms/tick.
+  // RE-DERIVED for the scattered wave (WP-3.13, §6 "rate bound"), not
+  // inherited: the old 1.5 was denominated against CLUSTERED groups of 3,
+  // an assumption this package deleted.
+  //
+  // Stars sit at least `scatterMinCells` apart in toroidal Manhattan terms,
+  // and that distance is exactly the tick cost of travelling between them.
+  // Clearing a wave of 5 therefore costs at least 4 x 5 = 20 ticks inside the
+  // wave, plus at least one more to reach the first star of the next one:
+  // 5 foods / (21 ticks x 0.16 s) = 1.49 foods/s. Starweaver's sixth star
+  // only lowers it (6 / (26 x 0.16) = 1.44), because the extra star pays its
+  // own separation.
   validation: { maxFoodPerSecond: 1.5 },
   constellation: COSMIC_CONSTELLATION,
-  flux: COSMIC_FLUX,
+  torus: true,
 };
 
 export const RULESETS: Record<DynastyName, DynastyRuleset> = {
@@ -452,17 +596,27 @@ export function getRuleset(dynasty: DynastyName): DynastyRuleset {
 }
 
 /**
- * Normalize an arbitrary dynasty string (session row TEXT, API payloads)
- * to a DynastyName. Unknown values fall back to COSMIC (flat base food
- * value - the conservative payout floor; its combo layer only pays when
- * the client explicitly claims it, and then only clamped).
+ * Normalize an arbitrary dynasty string (session row TEXT, API payloads) to a
+ * DynastyName.
+ *
+ * Unknown values fall back to PRIMAL. The fallback was COSMIC, chosen and
+ * documented as "the conservative payout floor" because COSMIC's food value
+ * was a flat 10 - and WP-3.13's Yield re-base made that false. PRIMAL is the
+ * floor now, at every horizon a run actually reaches (below food 172 its
+ * cumulative DNA is the lowest of the three, the single exception being food
+ * 4, where CYBER is one DNA lower).
+ *
+ * The fallback is defensive only: every write path stamps one of the three
+ * names, so it fires on malformed or legacy rows (the deprecated
+ * EMBER/CRYSTAL/VOID trio) and nothing else. It should therefore keep doing
+ * what it was chosen to do rather than keep the name it was chosen under.
  */
 export function normalizeDynastyName(value: unknown): DynastyName {
   const name = typeof value === 'string' ? value.toUpperCase() : '';
   if (name === 'PRIMAL' || name === 'CYBER' || name === 'COSMIC') {
     return name;
   }
-  return 'COSMIC';
+  return 'PRIMAL';
 }
 
 /**
@@ -472,7 +626,7 @@ export function normalizeDynastyName(value: unknown): DynastyName {
 export const rulesetExplainer: Record<DynastyName, string> = {
   PRIMAL: 'Steady speed — every food worth more than the last',
   CYBER: 'Speed rises — survive the overclock for up to ×3',
-  COSMIC: 'Chain constellations for combos while the walls phase open and shut',
+  COSMIC: 'No walls — the stars you leave behind turn solid where they sat',
 };
 
 /**
@@ -483,9 +637,12 @@ export const rulesetExplainer: Record<DynastyName, string> = {
  * from their pick point onward via the shared foodValueModifier - the same
  * function the client engine applies per eat, so PRIMAL/CYBER recompute
  * stays exact under mutations. Score is deliberately mutation-free
- * (mutations shape the economy, not the leaderboard number); the COSMIC
- * combo - which does hit score - is layered on top by the engine and
- * clamped by the server (bounded trust), never recomputed here.
+ * (mutations shape the economy, not the leaderboard number).
+ *
+ * WP-3.13: this fold is now the WHOLE score on every dynasty. COSMIC's combo
+ * was the one component that reached Score without being recomputed here -
+ * it arrived as a client claim and was clamped rather than derived - and
+ * deleting the combo closed that route entirely.
  *
  * Traits (Design v2 Phase 3A): the equipped snake's [E] traits modify each
  * food's DNA from food 1 via the shared traitFoodValueModifier, folded

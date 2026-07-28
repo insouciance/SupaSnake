@@ -15,9 +15,11 @@
  *   menu never renders over the choice overlay. [P]hysical effects live
  *   here; [E]conomic effects flow through the shared foodValueModifier so
  *   the server recompute stays exact.
- * - COSMIC Flux (section 3.3): constellation food groups with combo
- *   chaining, and wrap phases where the arena edges cycle between wrapping
- *   (open) and killing (closed) with a telegraph before each transition.
+ * - COSMIC (DYNASTY_COSMIC, rewritten in WP-3.13): a permanent torus - every
+ *   edge wraps, always - and constellations of scattered stars on a window,
+ *   where every star the window closes on CALCIFIES into a terrain block on
+ *   its own cell. The dynasty's pressure comes from what the player fails to
+ *   collect, and the debris is theirs to place.
  *
  * RNG discipline: the injectable rng drives EVERY stochastic decision the
  * engine makes - exit/mutation cadence rolls, mutation offers, exit,
@@ -38,7 +40,6 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import {
   FOOD_BASE_SCORE,
   RULESETS,
-  cosmicComboMultiplier,
   type DynastyRuleset,
 } from '@/shared/game/rulesets';
 import {
@@ -80,7 +81,6 @@ import { isMutationId } from '@/shared/game/mutations';
 import {
   blocksDueAt,
   cellKey,
-  formingTicksFor,
   formingTicksForSeconds,
   nextTerrainCells,
   type TerrainBlock,
@@ -182,27 +182,15 @@ export interface Position {
 /** How a run ended: crashed into something, or left through the exit portal. */
 export type EndReason = 'died' | 'extracted';
 
-/** COSMIC wrap-phase state: edges wrap while open, kill while closed. */
-export type FluxPhase = 'open' | 'closed';
-
-/** COSMIC bounded-trust combo summary reported in the end-of-run payload. */
-export interface CosmicComboSummary {
-  /** Total DNA earned above the no-combo recompute. */
-  comboDnaBonus: number;
-  /** Total score earned above the no-combo recompute. */
-  comboScoreBonus: number;
-  /** Longest constellation chain of the run. */
-  maxChain: number;
-}
-
 export interface GameState {
   snake: Position[];
   /** Primary food cell (= foods[0]) - kept for renderer/store compatibility. */
   food: Position;
   /**
    * All live food cells. One food normally; Splitter adds a second;
-   * COSMIC spawns constellation groups of 3 (4 with Splitter). A new
-   * wave spawns only when every food of the current one is eaten.
+   * COSMIC spawns a scattered constellation. A new wave spawns when every
+   * food of the current one is eaten - or, on COSMIC, when the window
+   * closes and the survivors calcify.
    */
   foods: Position[];
   /**
@@ -300,22 +288,24 @@ export interface GameState {
   phoenixTriggeredAtFood: number | null;
   /** True while an Iron Scales trait can still absorb one wall hit. */
   ironScalesAvailable: boolean;
-  /** COSMIC: glyph (0..2) of the current constellation group, else null. */
+  /**
+   * COSMIC: hue (0..glyphCount-1) of the live constellation, else null.
+   * Cosmetic since WP-3.13 - it identifies the wave, it never gates a bonus.
+   */
   constellationGlyph: number | null;
-  /** COSMIC: current chain length (1 = no chain yet). */
-  chainLength: number;
-  /** COSMIC: combo multiplier in effect after the last eat. */
-  comboMultiplier: number;
-  /** COSMIC: running combo bonus accumulators for the bounded-trust claim. */
-  comboDnaBonus: number;
-  comboScoreBonus: number;
-  maxChain: number;
-  /** COSMIC: wrap-phase state, null outside COSMIC. */
-  fluxPhase: FluxPhase | null;
-  /** COSMIC: ticks until the wrap phase flips. */
-  fluxTicksRemaining: number;
-  /** COSMIC: true during the ~2s warning window before a phase flip. */
-  fluxTelegraph: boolean;
+  /**
+   * COSMIC: ticks left before the live constellation's uncollected stars
+   * calcify. 0 outside COSMIC.
+   *
+   * This is the number the whole dynasty turns on, so it is state rather
+   * than a private field: a window the player cannot see is a punishment
+   * they cannot have chosen, and the abandonment being CHOSEN is the entire
+   * fairness argument (DYNASTY_COSMIC §4).
+   */
+  constellationTicksRemaining: number;
+  /** COSMIC: what `constellationTicksRemaining` started at, so a renderer
+   *  can draw the window as a depleting bar rather than a bare count. */
+  constellationWindowTicks: number;
   isPlaying: boolean;
   isGameOver: boolean;
   isPaused: boolean;
@@ -357,8 +347,6 @@ export interface GameOverData {
   deathCause: RunDeathCause | null;
   /** Food count at the Phoenix trigger (honest-client analytics + payout). */
   phoenixTriggeredAtFood: number | null;
-  /** COSMIC only: the bounded-trust combo claim. Null on other dynasties. */
-  cosmic: CosmicComboSummary | null;
   /**
    * Genome payload (null in legacy mode): the raw picks ride in
    * `mutations` above (wire compat); this carries the genome-only claims
@@ -401,8 +389,8 @@ type GameEvent =
   | 'mutationDeclined'
   | 'phoenixTriggered'
   | 'ironScalesTriggered'
-  | 'fluxTelegraph'
-  | 'fluxPhaseChange'
+  /** COSMIC: the live constellation's survivors have calcified. */
+  | 'constellationCalcified'
   // Genome events (never fire in legacy mode)
   | 'portalChoice'
   | 'infused'
@@ -569,6 +557,13 @@ export class SnakeGameLogic {
    */
   private blockedScratch: Uint8Array | null = null;
   /**
+   * The same grid with COSMIC's scatter exclusions written into it. Separate
+   * because the exclusions are a PREFERENCE: when a full board leaves the
+   * spaced grid with nowhere to place a star, the placer falls back to the
+   * real one rather than dropping the star.
+   */
+  private spacedScratch: Uint8Array | null = null;
+  /**
    * How far the seeded portal schedule has been walked, and how many doors it
    * has produced. They differ only in the theoretical merge case documented on
    * `advancePortalSchedule`; `portalsMet` is what the carry reads.
@@ -681,9 +676,8 @@ export class SnakeGameLogic {
    */
   private directionQueue: Direction[];
   private static readonly MAX_QUEUED_DIRECTIONS = 3;
-  /** COSMIC chain internals: glyph of the previous eat + ticks since it. */
-  private lastEatGlyph: number | null = null;
-  private ticksSinceLastEat = 0;
+  /** Food count at the last FLUX-apex Singularity pull, for its cadence. */
+  private lastSingularityPullAtFood = 0;
   /**
    * Run-event recorder (Identity v1 section 9.5): a compact discrete
    * event stream - food/portal/bank/mutation/near-wall/terminal - capped
@@ -992,14 +986,8 @@ export class SnakeGameLogic {
       phoenixTriggeredAtFood: null,
       ironScalesAvailable: this.hasTrait('iron_scales'),
       constellationGlyph: null,
-      chainLength: 0,
-      comboMultiplier: 1,
-      comboDnaBonus: 0,
-      comboScoreBonus: 0,
-      maxChain: 0,
-      fluxPhase: null,
-      fluxTicksRemaining: 0,
-      fluxTelegraph: false,
+      constellationTicksRemaining: 0,
+      constellationWindowTicks: 0,
       isPlaying: false,
       isGameOver: false,
       isPaused: false,
@@ -1039,15 +1027,8 @@ export class SnakeGameLogic {
     this.state.isPlaying = true;
     this.state.startTime = Date.now();
 
-    // COSMIC Flux: every run opens with a full open-phase window
-    if (this.ruleset.flux) {
-      this.state.fluxPhase = 'open';
-      this.state.fluxTicksRemaining = this.ruleset.flux.openTicks;
-    }
-
     this.directionQueue = [];
-    this.lastEatGlyph = null;
-    this.ticksSinceLastEat = 0;
+    this.lastSingularityPullAtFood = 0;
     this.runEvents = [];
     this.runEventsTruncated = false;
     this.deathCause = null;
@@ -1158,17 +1139,17 @@ export class SnakeGameLogic {
    * the engine on mount, before the equipped snake's dynasty arrives from
    * the collection API. Takes effect immediately: speed follows the new
    * ruleset's curve at the current food count, and (outside a live run)
-   * the first-exit threshold and flux state follow the new ruleset.
+   * the first-exit threshold and the constellation state follow the new
+   * ruleset.
    */
   setRuleset(ruleset: DynastyRuleset): void {
     this.ruleset = ruleset;
     this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     if (!this.state.isPlaying && !this.state.exitTile) {
       this.state.nextExitAtFood = this.exitCadence().firstExitAtFood;
-      this.state.fluxPhase = null;
-      this.state.fluxTicksRemaining = 0;
-      this.state.fluxTelegraph = false;
       this.state.constellationGlyph = null;
+      this.state.constellationTicksRemaining = 0;
+      this.state.constellationWindowTicks = 0;
     }
   }
 
@@ -1491,8 +1472,11 @@ export class SnakeGameLogic {
     let newHead = this.getNextPosition(head, this.state.direction);
     let wallHit = this.checkWallCollision(newHead);
 
-    // COSMIC Flux: while the walls are open, edges wrap to the opposite side
-    if (wallHit && this.ruleset.flux && this.state.fluxPhase === 'open') {
+    // COSMIC: the board IS a torus (WP-3.13). No phase, no charge, no
+    // telegraph - the edge wraps every tick of every run. This is one
+    // deleted condition rather than new geometry, and that is the point:
+    // the rule the owner could not learn was the toggling, not the wrap.
+    if (wallHit && this.ruleset.torus) {
       newHead = this.wrapPosition(newHead);
       wallHit = false;
     }
@@ -1653,32 +1637,13 @@ export class SnakeGameLogic {
       this.lengthTrace.lengthAtEat[n] = lengthBeforeMove;
       this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
 
-      // COSMIC constellation chain: same glyph as the previous eat within
-      // the window extends the chain; anything else resets it.
-      let combo = 1;
-      if (this.ruleset.constellation) {
-        const glyph = this.state.constellationGlyph ?? 0;
-        const withinWindow =
-          this.ticksSinceLastEat <= this.effectiveChainWindowTicks();
-        if (
-          this.state.chainLength > 0 &&
-          this.lastEatGlyph === glyph &&
-          withinWindow
-        ) {
-          this.state.chainLength += 1;
-        } else {
-          this.state.chainLength = 1;
-        }
-        this.lastEatGlyph = glyph;
-        this.ticksSinceLastEat = 0;
-        combo = cosmicComboMultiplier(this.state.chainLength);
-        this.state.comboMultiplier = combo;
-        this.state.maxChain = Math.max(this.state.maxChain, this.state.chainLength);
-      }
-
-      // Per-food value: base x combo x gene modifier x trait modifier,
-      // one round per food - mirrors computeRunTotals exactly (combo
-      // aside, which the server clamps via the bounded-trust summary).
+      // Per-food value: base x gene modifier x trait modifier, one round
+      // per food - mirrors computeRunTotals exactly, on every dynasty.
+      //
+      // WP-3.13: COSMIC used to multiply a combo in here, and that combo was
+      // the ONE payout component the server could not recompute (it depended
+      // on tick timing) - so it arrived as a claim and was clamped. Deleting
+      // the combo deleted the claim, the clamp and the trust ratio with it.
       // Anomaly [E] modifier (Gold Rush x1.5) folds into the SAME single
       // per-food round - mirroring computeRunTotals exactly, so the
       // HUD's DNA counter matches the server recompute to the digit.
@@ -1720,12 +1685,9 @@ export class SnakeGameLogic {
       this.applyShedMoves(n);
       this.applyPetrify(n);
 
-      const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
-        this.resolveFoodEconomy(n, combo);
+      const { dnaValue, scoreValue } = this.resolveFoodEconomy(n);
       this.state.dnaCollected += dnaValue;
       this.state.score += scoreValue;
-      this.state.comboDnaBonus += dnaValue - dnaNoCombo;
-      this.state.comboScoreBonus += scoreValue - baseScore;
 
       // Genome bonus layers (Midas / Static Charge / Ricochet / Gilded
       // Wake drop) - display + bounded-trust claim accumulators only.
@@ -1781,13 +1743,17 @@ export class SnakeGameLogic {
       ) {
         this.spawnMutationFood();
       }
+      // FLUX Apex "Singularity": on its own food cadence, the whole board's
+      // food is dragged in around the head. Fired here, at the food index the
+      // flat DNA is paid on, so the paid event and the physical one are the
+      // same event (see `applySingularityPull`).
+      this.applySingularityPull(n);
+
       this.emit('foodCollected', {
         position: collectedPosition,
         score: this.state.score,
         dna: this.state.dnaCollected,
         foodEaten: this.state.foodEaten,
-        chainLength: this.state.chainLength,
-        comboMultiplier: this.state.comboMultiplier,
       });
     } else {
       this.state.snake.pop();
@@ -1862,11 +1828,6 @@ export class SnakeGameLogic {
     // wall margin, recorded on episode end when >=500ms
     this.trackNearWall(this.state.snake[0]);
 
-    // COSMIC chain window countdown
-    if (this.ruleset.constellation) {
-      this.ticksSinceLastEat = Math.min(this.ticksSinceLastEat + 1, 1_000_000);
-    }
-
     // Genome per-tick upkeep: eat-gap counter (Midas window / Static
     // Charge fasting), gilded-cell expiry, phantom-phase countdown.
     if (this.genomeActive()) {
@@ -1887,36 +1848,14 @@ export class SnakeGameLogic {
       }
     }
 
-    // COSMIC Flux phase countdown + telegraph. Event Horizon (COSMIC M9)
-    // stretches both phases: open +25 ticks (benefit), closed +15 (cost).
-    if (this.ruleset.flux && this.state.fluxPhase) {
-      const { telegraphTicks } = this.ruleset.flux;
-      const horizon = this.hasMutation('event_horizon');
-      const openTicks =
-        this.ruleset.flux.openTicks +
-        (horizon ? MUTATION_PHYSICS.eventHorizonOpenTicksBonus : 0);
-      const closedTicks =
-        this.ruleset.flux.closedTicks +
-        (horizon ? MUTATION_PHYSICS.eventHorizonClosedTicksPenalty : 0);
-      this.state.fluxTicksRemaining -= 1;
-      if (this.state.fluxTicksRemaining <= 0) {
-        const nextPhase: FluxPhase =
-          this.state.fluxPhase === 'open' ? 'closed' : 'open';
-        this.state.fluxPhase = nextPhase;
-        this.state.fluxTicksRemaining =
-          nextPhase === 'open' ? openTicks : closedTicks;
-        this.state.fluxTelegraph =
-          this.state.fluxTicksRemaining <= telegraphTicks;
-        this.emit('fluxPhaseChange', { phase: nextPhase });
-      } else {
-        const nowTelegraph = this.state.fluxTicksRemaining <= telegraphTicks;
-        if (nowTelegraph && !this.state.fluxTelegraph) {
-          this.emit('fluxTelegraph', {
-            nextPhase: this.state.fluxPhase === 'open' ? 'closed' : 'open',
-            ticksUntilChange: this.state.fluxTicksRemaining,
-          });
-        }
-        this.state.fluxTelegraph = nowTelegraph;
+    // COSMIC: the constellation window closes, and whatever is left on the
+    // board calcifies where it sat. Deliberately AFTER the eat resolves, so a
+    // star collected on the closing tick counts as collected - the player who
+    // made the route by one tick is not billed for it.
+    if (this.ruleset.constellation && this.state.constellationTicksRemaining > 0) {
+      this.state.constellationTicksRemaining -= 1;
+      if (this.state.constellationTicksRemaining <= 0) {
+        this.calcifyConstellation();
       }
     }
 
@@ -2172,9 +2111,8 @@ export class SnakeGameLogic {
 
   /** Per-food economy under genome or legacy rules - one round per food. */
   private resolveFoodEconomy(
-    n: number,
-    combo: number
-  ): { dnaValue: number; scoreValue: number; dnaNoCombo: number; baseScore: number } {
+    n: number
+  ): { dnaValue: number; scoreValue: number } {
     let mod: number;
     let flat: number;
     if (this.genomeActive() && this.activations) {
@@ -2222,9 +2160,6 @@ export class SnakeGameLogic {
       traitFoodValueModifier(this.traits, n) *
       anomalyFoodValueModifier(this.anomaly, n);
     const baseDna = this.ruleset.foodDnaValue(n);
-    const baseScore = Math.round(
-      FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
-    );
     // The per-food floor, from the SAME function the server's fold calls.
     // `hasGene('tithe')` stood here, and it differs in two ways that both
     // reach the payout: it is true on tithe's own food (the shared helper
@@ -2232,12 +2167,11 @@ export class SnakeGameLogic {
     // consumed by a fusion (the helper reads the LOOSE view only).
     const floor =
       this.genomeActive() ? tithePerFoodFloor(this.fusedView, n) : 0;
-    const dnaNoCombo = Math.max(floor, Math.round(baseDna * mod) + flat);
-    const dnaValue = Math.max(floor, Math.round(baseDna * combo * mod) + flat);
+    const dnaValue = Math.max(floor, Math.round(baseDna * mod) + flat);
     const scoreValue = Math.round(
-      FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n) * combo
+      FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
     );
-    return { dnaValue, scoreValue, dnaNoCombo, baseScore };
+    return { dnaValue, scoreValue };
   }
 
   /** Genome eat-time bonus layers - display + claim accumulators. */
@@ -2468,23 +2402,7 @@ export class SnakeGameLogic {
     // there is nothing to bury. Skipping a cell would be the worse bug anyway:
     // a segment that petrified without laying stone would GROW free space,
     // which is the one thing Rule 15 forbids.
-    const formingTicks = formingTicksForSeconds(
-      STRAIN_PHYSICS.fortressFormingSeconds,
-      this.getSpeed()
-    );
-    const placed = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
-    for (const cell of removed) {
-      const key = cellKey(cell.x, cell.z);
-      if (placed.has(key)) continue;
-      placed.add(key);
-      this.state.terrain.push({
-        x: cell.x,
-        z: cell.z,
-        formingTicks,
-        formingTotal: formingTicks,
-        solid: false,
-      });
-    }
+    this.placeTerrainAt(removed, STRAIN_PHYSICS.fortressFormingSeconds);
     this.emit('petrified', {
       atFood: n,
       segments,
@@ -2528,7 +2446,7 @@ export class SnakeGameLogic {
       this.state.snake.push({ ...tail });
       this.applyShedMoves(n);
       this.applyPetrify(n);
-      const { dnaValue, scoreValue } = this.resolveFoodEconomy(n, 1);
+      const { dnaValue, scoreValue } = this.resolveFoodEconomy(n);
       this.state.dnaCollected += dnaValue;
       this.state.score += scoreValue;
       this.speed = this.effectiveSpeedForFood(n);
@@ -2703,8 +2621,7 @@ export class SnakeGameLogic {
 
   /**
    * Spawn all foods for a new wave: one food normally, a pair under Splitter,
-   * a constellation group of 3 (4 with Splitter) on COSMIC - clustered within
-   * groupRadius of the anchor so chains are chaseable.
+   * a SCATTERED constellation on COSMIC.
    *
    * THE OCCUPANCY GRID IS BUILT ONCE PER WAVE, NOT ONCE PER FOOD. That is the
    * shape the owner asked for (2026-07-28: food count must stay "a cheap
@@ -2712,24 +2629,33 @@ export class SnakeGameLogic {
    * that each exclude what the previous ones placed, with no branch anywhere
    * on the count. Raising `simultaneousFoods` costs one more call and one more
    * `markBlocked`; it does not cost a second code path.
+   *
+   * COSMIC keeps wave semantics - the constellation IS the wave, and its
+   * window is what makes the dynasty - so its size comes from the ruleset and
+   * never from the growth profile. The other two get the profile's count,
+   * which WP-3.06 returns to one (owner: "what i certainly don't like are the
+   * 3 foods on the screen"). Collapsing this to one unconditionally would
+   * silently delete a dynasty's identity.
    */
   private spawnFoods(): void {
     const constellation = this.ruleset.constellation;
-    // COSMIC keeps wave semantics - the constellation GROUP is the combo
-    // mechanic, so its size comes from the ruleset and never from the growth
-    // profile. The other two dynasties get the profile's count, which WP-3.06
-    // returns to one (owner: "what i certainly don't like are the 3 foods on
-    // the screen"). Collapsing this to one unconditionally would silently
-    // delete a dynasty's identity.
-    const target =
+    const target = Math.max(
+      1,
       (constellation
-        ? constellation.groupSize
+        ? constellation.size +
+          // Starweaver (COSMIC M3): one more star to route through, at the
+          // cost of a second off the window.
+          (this.hasMutation('starweaver')
+            ? MUTATION_PHYSICS.starweaverExtraGroupFood
+            : 0) -
+          // Constellation Crown (COSMIC's signature gene): fewer stars, a
+          // longer window - the terraformer's build, clearing waves clean.
+          (this.hasGene('constellation_crown')
+            ? GENE_PHYSICS.crownConstellationStarPenalty
+            : 0)
         : Math.max(1, this.growth.simultaneousFoods)) +
-      (this.hasMutation('splitter') ? 1 : 0) +
-      // Starweaver (COSMIC M3): constellation groups gain one extra food
-      (constellation && this.hasMutation('starweaver')
-        ? MUTATION_PHYSICS.starweaverExtraGroupFood
-        : 0);
+        (this.hasMutation('splitter') ? 1 : 0)
+    );
 
     if (constellation) {
       this.state.constellationGlyph = Math.floor(
@@ -2741,37 +2667,183 @@ export class SnakeGameLogic {
     const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
     const occupancy =
       this.state.snake.length / Math.max(1, this.gridSize * this.gridSize);
-    const anchorRadius = constellation?.groupRadius ?? 4;
+    // COSMIC SCATTERS RATHER THAN CLUSTERS (WP-3.13). The placer's `anchor`
+    // parameter exists to keep a group chaseable within `groupRadius` of its
+    // first food, and that is the opposite of what a constellation now needs:
+    // a pile is not a routing problem. So no anchor is passed, and the
+    // separation is expressed the only other way the placer understands - by
+    // BLOCKING the neighbourhood of each star before the next one is drawn.
+    //
+    // Two grids, because the separation is a PREFERENCE rather than a
+    // requirement: a late-run board can be too full to honour it, and refusing
+    // to place a star at all would be a worse failure than a close pair.
+    const spaced = constellation ? this.spacedGrid(blocked) : null;
+    const scatter = this.constellationScatterCells();
 
     const foods: Position[] = [];
     for (let i = 0; i < target; i++) {
-      const cell = chooseFoodCell(
-        this.gridSize,
-        head,
-        blocked,
-        occupancy,
-        this.rng,
-        // Only a constellation clusters. Splitter's extra food on PRIMAL or
-        // CYBER is a second target, not a chain link, so it places freely.
-        constellation && i > 0
-          ? { cell: foods[0], radius: anchorRadius }
-          : null
-      );
+      const cell =
+        (spaced && i > 0
+          ? chooseFoodCell(this.gridSize, head, spaced, occupancy, this.rng)
+          : null) ??
+        chooseFoodCell(this.gridSize, head, blocked, occupancy, this.rng);
       // `null` means the board holds no free cell at all - the player has
       // filled it. Placing nothing is the honest answer; the wave carries
       // whatever it managed to place.
       if (cell === null) break;
       markBlocked(blocked, this.gridSize, cell.x, cell.z);
+      if (spaced) {
+        markBlocked(spaced, this.gridSize, cell.x, cell.z);
+        this.markScatterZone(spaced, cell.x, cell.z, scatter);
+      }
       foods.push({ x: cell.x, y: 0, z: cell.z });
     }
     this.state.foods = foods;
     if (foods.length > 0) this.state.food = { ...foods[0] };
+
+    // The window opens with the wave and closes on whatever is left.
+    if (constellation) {
+      const window = this.constellationWindowTicks();
+      this.state.constellationWindowTicks = window;
+      this.state.constellationTicksRemaining = window;
+    }
 
     // Meteor Shower (anomaly): every fresh wave gets a 60-tick fuse
     this.state.foodTicksRemaining =
       this.anomaly === 'meteor_shower'
         ? ANOMALY_PHYSICS.meteorShowerFoodDespawnTicks
         : 0;
+  }
+
+  /**
+   * The live constellation window in ticks, at the live tick rate.
+   *
+   * Authored in seconds and converted here rather than stored in ticks, so
+   * the window cannot silently shrink if COSMIC's tempo is ever retuned -
+   * the exact rot that cost the extraction window three quarters of its real
+   * duration as CYBER accelerated.
+   */
+  private constellationWindowTicks(): number {
+    const constellation = this.ruleset.constellation;
+    if (!constellation) return 0;
+    const seconds =
+      constellation.windowSeconds +
+      (this.hasGene('constellation_crown')
+        ? GENE_PHYSICS.crownConstellationWindowSeconds
+        : 0) -
+      (this.hasMutation('starweaver')
+        ? MUTATION_PHYSICS.starweaverWindowSecondsPenalty
+        : 0);
+    return formingTicksForSeconds(Math.max(1, seconds), this.getSpeed());
+  }
+
+  /**
+   * The minimum toroidal Manhattan separation stars are placed at.
+   *
+   * Event Horizon (COSMIC M9) widens it: more thinking time, but the route
+   * between the stars is longer, so the same window buys less.
+   */
+  private constellationScatterCells(): number {
+    const constellation = this.ruleset.constellation;
+    if (!constellation) return 0;
+    return (
+      constellation.scatterMinCells +
+      (this.hasMutation('event_horizon')
+        ? MUTATION_PHYSICS.eventHorizonScatterPenalty
+        : 0)
+    );
+  }
+
+  /**
+   * THE COSMIC MECHANIC (DYNASTY_COSMIC §2.2): the window closed, so every
+   * star still on the board calcifies on its own cell and a fresh
+   * constellation appears.
+   *
+   * RULE 15, and why this is the terrain primitive rather than something new.
+   * Debris is ADDED and never removed - no gene, tier, splice, revive or rung
+   * clears one - so free space only ever shrinks. `tickTerrain` also refuses
+   * to solidify a cell the snake occupies, which is what makes a star that
+   * calcifies under the body fair rather than a random death.
+   *
+   * Exactly ONE block, on the missed star's OWN cell. §2.4 makes that binding
+   * rather than convenient: the player is choosing where to build, and a
+   * placement they cannot predict is not a choice - it is the death spiral
+   * this design exists to avoid.
+   */
+  private calcifyConstellation(): void {
+    const constellation = this.ruleset.constellation;
+    if (!constellation) return;
+    const missed = this.state.foods;
+    this.state.constellationTicksRemaining = 0;
+    if (missed.length > 0) {
+      this.placeTerrainAt(
+        missed,
+        constellation.calcifySeconds +
+          // Event Horizon (COSMIC M9): the corpse stays crossable longer.
+          (this.hasMutation('event_horizon')
+            ? MUTATION_PHYSICS.eventHorizonCalcifySecondsBonus
+            : 0)
+      );
+      this.emit('constellationCalcified', {
+        cells: missed.map((s) => ({ x: s.x, z: s.z })),
+      });
+    }
+    // A fresh constellation immediately: the board is never foodless, and the
+    // next window starts from the head the last one left the player with.
+    this.spawnFoods();
+  }
+
+  /**
+   * A copy of the wave's occupancy grid that the SCATTER rule may also write
+   * to, leaving the real one untouched.
+   *
+   * Held on the instance and copied rather than reallocated, for the reason
+   * `waveBlockedGrid` gives: `foldParity.test.ts` runs a 400x400 board, and a
+   * fresh array per wave throws off gigabytes of garbage across its sweep.
+   */
+  private spacedGrid(blocked: Uint8Array): Uint8Array {
+    if (!this.spacedScratch || this.spacedScratch.length !== blocked.length) {
+      this.spacedScratch = new Uint8Array(blocked.length);
+    }
+    this.spacedScratch.set(blocked);
+    return this.spacedScratch;
+  }
+
+  /**
+   * Block the Manhattan ball of radius `scatter - 1` around a placed star, so
+   * the next one cannot land inside it.
+   *
+   * Manhattan because the snake moves orthogonally, so the radius is literally
+   * the tick cost of travelling between two stars - which is the derivation
+   * behind COSMIC's re-authored food-rate bound, and the reason the separation
+   * is a distance rather than a bounding box.
+   *
+   * It WRAPS, because the board does. Blocking a square that stops at the edge
+   * would let two stars sit one step apart across the seam while reading as
+   * nineteen cells apart, and the seam is exactly where the scatter rule is
+   * trying to make the route interesting.
+   */
+  private markScatterZone(
+    grid: Uint8Array,
+    x: number,
+    z: number,
+    scatter: number
+  ): void {
+    const reach = scatter - 1;
+    if (reach <= 0) return;
+    const wrap = this.ruleset.torus === true;
+    for (let dx = -reach; dx <= reach; dx++) {
+      const room = reach - Math.abs(dx);
+      for (let dz = -room; dz <= room; dz++) {
+        const cx = wrap
+          ? (((x + dx) % this.gridSize) + this.gridSize) % this.gridSize
+          : x + dx;
+        const cz = wrap
+          ? (((z + dz) % this.gridSize) + this.gridSize) % this.gridSize
+          : z + dz;
+        markBlocked(grid, this.gridSize, cx, cz);
+      }
+    }
   }
 
   /**
@@ -2828,6 +2900,22 @@ export class SnakeGameLogic {
       );
     }
     return blocked;
+  }
+
+  /**
+   * Manhattan distance ON THE TORUS: the shorter of the two ways round each
+   * axis. The plain difference would be wrong on COSMIC in the case that
+   * matters most - two cells one step apart across the seam read as a board
+   * apart - and it is exactly those pairs the scatter rule is measuring.
+   */
+  private torusManhattan(a: Position, b: Position): number {
+    const dx = Math.abs(a.x - b.x);
+    const dz = Math.abs(a.z - b.z);
+    const wrap = this.ruleset.torus;
+    return (
+      (wrap ? Math.min(dx, this.gridSize - dx) : dx) +
+      (wrap ? Math.min(dz, this.gridSize - dz) : dz)
+    );
   }
 
   /**
@@ -3022,7 +3110,12 @@ export class SnakeGameLogic {
     return moves[dir];
   }
 
-  /** Wrap an out-of-bounds position to the opposite edge (COSMIC open phase). */
+  /**
+   * Wrap an out-of-bounds position to the opposite edge.
+   *
+   * Shared by COSMIC's permanent torus and by the four wall pardons that
+   * borrow it (FLUX Rift Aura, Warp Skin, Pocket Rift, the Singularity well).
+   */
   private wrapPosition(pos: Position): Position {
     return {
       x: ((pos.x % this.gridSize) + this.gridSize) % this.gridSize,
@@ -3148,15 +3241,51 @@ export class SnakeGameLogic {
       blocked.add(cellKey(this.state.mutationTile.x, this.state.mutationTile.z));
     }
 
-    const formingTicks = formingTicksFor(schedule, this.getSpeed());
-    for (const cell of nextTerrainCells(
-      this.gridSize,
-      blocked,
-      missing,
-      this.rng
-    )) {
+    this.placeTerrainAt(
+      nextTerrainCells(this.gridSize, blocked, missing, this.rng),
+      schedule.formingSeconds
+    );
+  }
+
+  /**
+   * Lay a block on each of these cells, unless one is already there.
+   *
+   * THE ONE PLACE A BLOCK IS EVER CREATED, and it earned that by being
+   * discovered three times. WP-3.03 wrote it for CYBER's arena; WP-3.11 wrote
+   * it again for Fortress's petrified segments; WP-3.13 wrote it a third time
+   * for COSMIC's calcified stars - three near-identical copies of "dedupe by
+   * cell, stamp a forming phase, push". They differ only in WHICH cells and
+   * HOW LONG the forming phase is, so those are the two parameters and
+   * nothing else is.
+   *
+   * The duplication was not cosmetic. `terrain.visible.test.ts` exists because
+   * WP-3.03 shipped terrain lethal and undrawn, and every extra copy of this
+   * loop is another place a source can be added without the renderer ever
+   * hearing about it. One path means the connection is asserted once and
+   * holds for every consumer, including the ladder rung that has not been
+   * written yet.
+   *
+   * Deliberately no food/portal exclusion here: the ARENA does that itself,
+   * before choosing its cells, because it picks cells it does not own.
+   * Fortress and COSMIC lay stone on cells they DO own - a body segment, a
+   * star - where there is nothing to bury and where skipping would be the
+   * worse bug, since a cell that failed to petrify would GROW free space,
+   * which is the one thing Rule 15 forbids.
+   */
+  private placeTerrainAt(
+    cells: readonly { x: number; z: number }[],
+    formingSeconds: number
+  ): void {
+    if (cells.length === 0) return;
+    const formingTicks = formingTicksForSeconds(formingSeconds, this.getSpeed());
+    const placed = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    for (const cell of cells) {
+      const key = cellKey(cell.x, cell.z);
+      if (placed.has(key)) continue;
+      placed.add(key);
       this.state.terrain.push({
-        ...cell,
+        x: cell.x,
+        z: cell.z,
         formingTicks,
         formingTotal: formingTicks,
         solid: false,
@@ -3507,18 +3636,82 @@ export class SnakeGameLogic {
   }
 
   /**
-   * COSMIC chain window incl. the Starweaver cost: 2 ticks shorter
-   * (bigger groups, tighter chains). Floored at 1 tick defensively.
+   * FLUX Apex "Singularity": every `singularityEveryFoods` foods after the
+   * apex, the board's food is dragged in to within `singularityPullRadius`
+   * cells of the head.
+   *
+   * WP-3.13 IMPLEMENTED THIS. `singularityPullRadius` had zero call sites
+   * while `lexicon.ts` promised the pull to the player and `genome.ts` paid
+   * `singularityFlat` on exactly this cadence - so the player was being paid
+   * for an event that never happened, and the flat bonus's own comment
+   * ("+10 flat per pull event") described a fiction. The economic half was
+   * already the harder half; the physical half is this.
+   *
+   * A relocation rather than the per-tick creep of Magnet Pulse, because
+   * that is what the copy says: one event, on a cadence, not a field. It
+   * uses the same sampler discipline as every other placement here, so a
+   * seeded run pulls to identical cells on replay.
    */
-  private effectiveChainWindowTicks(): number {
-    const base = this.ruleset.constellation?.chainWindowTicks ?? 0;
-    return Math.max(
-      1,
-      base -
-        (this.hasMutation('starweaver')
-          ? MUTATION_PHYSICS.starweaverChainWindowPenalty
-          : 0)
-    );
+  private applySingularityPull(n: number): void {
+    if (!this.genomeActive()) return;
+    if (this.strainTierNow('FLUX') < 3) return;
+    const apexAt = this.activations?.FLUX.apexAt ?? null;
+    if (apexAt === null || n <= apexAt) return;
+    if ((n - apexAt) % STRAIN_ECONOMICS.singularityEveryFoods !== 0) return;
+    if (n === this.lastSingularityPullAtFood) return;
+    this.lastSingularityPullAtFood = n;
+
+    const head = this.state.snake[0];
+    if (!head || this.state.foods.length === 0) return;
+    const radius = STRAIN_PHYSICS.singularityPullRadius;
+    const pulled: Position[] = [];
+    for (const food of this.state.foods) {
+      // Already inside the well: the pull has nothing to do.
+      if (Math.max(Math.abs(head.x - food.x), Math.abs(head.z - food.z)) <= radius) {
+        pulled.push(food);
+        continue;
+      }
+      pulled.push(this.sampleCellNearHead(head, radius, pulled) ?? food);
+    }
+    this.state.foods = pulled;
+    this.state.food = { ...pulled[0] };
+  }
+
+  /**
+   * A free cell within `radius` (Chebyshev) of the head, or null when the
+   * neighbourhood is full. Wraps on a torus, so the well works at the seam.
+   */
+  private sampleCellNearHead(
+    head: Position,
+    radius: number,
+    placed: Position[]
+  ): Position | null {
+    for (let attempts = 0; attempts < 200; attempts++) {
+      const raw = {
+        x: head.x + Math.floor(this.rng() * (2 * radius + 1)) - radius,
+        y: 0,
+        z: head.z + Math.floor(this.rng() * (2 * radius + 1)) - radius,
+      };
+      const position = this.ruleset.torus ? this.wrapPosition(raw) : raw;
+      if (
+        position.x < 0 ||
+        position.x >= this.gridSize ||
+        position.z < 0 ||
+        position.z >= this.gridSize
+      ) {
+        continue;
+      }
+      if (
+        !this.isPositionOnSnake(position) &&
+        !this.isPositionOnExit(position) &&
+        !this.isPositionOnMutation(position) &&
+        !this.isPositionOnTerrain(position) &&
+        !placed.some((p) => p.x === position.x && p.z === position.z)
+      ) {
+        return position;
+      }
+    }
+    return null;
   }
 
   /**
@@ -3681,13 +3874,6 @@ export class SnakeGameLogic {
       mutations: this.state.heldMutations.map((m) => ({ ...m })),
       deathCause: this.deathCause,
       phoenixTriggeredAtFood: this.state.phoenixTriggeredAtFood,
-      cosmic: this.ruleset.constellation
-        ? {
-            comboDnaBonus: this.state.comboDnaBonus,
-            comboScoreBonus: this.state.comboScoreBonus,
-            maxChain: this.state.maxChain,
-          }
-        : null,
       genome: this.genomeActive()
         ? {
             infuses: this.state.infuses.map((i) => ({ ...i })),

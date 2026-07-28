@@ -43,8 +43,7 @@ const MODEL: RunCockpitModel = {
   },
   bankDna: 168,
   crashDna: 52,
-  comboMultiplier: 1.8,
-  chainLength: 4,
+  constellation: { stars: 3, fraction: 0.55 },
   genes: [
     { id: 'gold_trail', name: 'Gold Trail', strains: ['AURUM'] },
     { id: 'magnet_pulse', name: 'Magnet Pulse', strains: ['FLUX'] },

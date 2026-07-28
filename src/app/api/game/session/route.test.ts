@@ -420,7 +420,11 @@ describe('Game Session Logic', () => {
     it('derives the base payout from the ruleset fold, not the claim', () => {
       const { rawDna } = computeRunTotals('PRIMAL', 5);
       expect(rawDna).toBe(52); // 10+10+10+11+11 (compounding food value)
-      expect(computeRunTotals('COSMIC', 5).rawDna).toBe(
+      // COSMIC compounds too since WP-3.13, at double PRIMAL's rate:
+      // 10+10+11+11+12. It was a flat 5 x foodValue while the deleted combo
+      // was its whole Yield story.
+      expect(computeRunTotals('COSMIC', 5).rawDna).toBe(54);
+      expect(computeRunTotals('COSMIC', 5).rawDna).toBeGreaterThan(
         5 * GAME_CONFIG.economy.dna.foodValue
       );
     });
@@ -447,8 +451,9 @@ describe('Game Session Logic', () => {
       // The route normalizes game_sessions.dynasty (TEXT, stored at start)
       const sessionRow = { dynasty: 'cyber' };
       expect(normalizeDynastyName(sessionRow.dynasty)).toBe('CYBER');
-      // Unknown/legacy rows fall back to the flat placeholder ruleset
-      expect(normalizeDynastyName(null)).toBe('COSMIC');
+      // Unknown/legacy rows fall back to the PAYOUT FLOOR, which WP-3.13's
+      // COSMIC Yield re-base moved from COSMIC to PRIMAL.
+      expect(normalizeDynastyName(null)).toBe('PRIMAL');
     });
 
     it('recomputes a banked CYBER run server-side (honest client)', () => {

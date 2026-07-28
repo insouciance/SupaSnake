@@ -520,122 +520,49 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const result = validateGameResult(input, startedAgo(185), 'CYBER');
       expect(result.valid).toBe(true);
       expect(result.mutations).toEqual([]);
-      expect(result.cosmic).toBeNull();
       expect(result.adjustedDna).toBe(
         applyOutcome(computeRunTotals('CYBER', 30).rawDna, true)
       );
     });
   });
 
-  describe('COSMIC bounded trust (combo claims clamp, never recompute)', () => {
-    function cosmicInput(
-      foodCount: number,
-      comboDnaBonus: number,
-      comboScoreBonus: number,
-      maxChain: number,
-      overrides: Partial<GameResultInput> = {}
-    ): GameResultInput {
-      const base = computeRunTotals('COSMIC', foodCount);
-      return {
-        food_count: foodCount,
-        extracted: true,
-        score: base.score + comboScoreBonus,
-        dna_earned: base.rawDna + comboDnaBonus,
-        duration_seconds: 120,
-        died: false,
-        victory: false,
-        cosmic: {
-          combo_dna_bonus: comboDnaBonus,
-          combo_score_bonus: comboScoreBonus,
-          max_chain: maxChain,
-        },
-        ...overrides,
-      };
-    }
-
-    it('accepts an in-bounds combo claim and pays base + bonus', () => {
-      // 30 foods: base DNA 300 (flat food value), base SCORE 465 under COSMIC's
-      // mid-weighted curve (WP-3.08) - the two stopped being the same number.
-      // The claimed score bonus of 200 is inside floor(465 x 1.4) = 651.
-      const result = validateGameResult(cosmicInput(30, 200, 200, 8), startedAgo(125), 'COSMIC');
-      expect(result.valid).toBe(true);
-      expect(result.cosmic).toEqual({
-        comboDnaBonus: 200,
-        comboScoreBonus: 200,
-        maxChain: 8,
-      });
-      expect(result.adjustedDna).toBe(applyOutcome(500, true));
-      expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score + 200);
-      expect(result.adjustedScore).toBe(665);
-    });
-
-    it('clamps a combo claim beyond the x1.4 ceiling and flags', () => {
-      const result = validateGameResult(
-        cosmicInput(30, 999, 999, 12),
-        startedAgo(125),
-        'COSMIC'
-      );
-      expect(result.valid).toBe(true);
-      expect(result.advisoryErrors).toContainEqual(
-        expect.stringContaining('COSMIC_COMBO')
-      );
-      expect(result.cosmic!.comboDnaBonus).toBe(420); // floor(300 x 1.4)
-      // Pays the clamped value - flagging, never inflating
-      expect(result.adjustedDna).toBe(applyOutcome(300 + 420, true));
-    });
-
-    it('rejects a chain longer than the food count', () => {
-      const result = validateGameResult(
-        cosmicInput(30, 100, 100, 45),
-        startedAgo(125),
-        'COSMIC'
-      );
-      expect(result.valid).toBe(true);
-      expect(result.advisoryErrors).toContainEqual(
-        expect.stringContaining('COSMIC_COMBO')
-      );
-      expect(result.cosmic!.maxChain).toBe(30);
-    });
-
-    it('zeroes a bonus claimed without a chain', () => {
-      const result = validateGameResult(
-        cosmicInput(30, 100, 100, 1),
-        startedAgo(125),
-        'COSMIC'
-      );
-      expect(result.valid).toBe(true);
-      expect(result.advisoryErrors).toContainEqual(
-        expect.stringContaining('COSMIC_COMBO')
-      );
-      expect(result.cosmic).toEqual({
-        comboDnaBonus: 0,
-        comboScoreBonus: 0,
-        maxChain: 1,
-      });
-      expect(result.adjustedDna).toBe(applyOutcome(300, true));
-    });
-
-    it('COSMIC without a combo summary pays the flat base (old clients)', () => {
+  describe('COSMIC claims nothing (WP-3.13 deleted the bounded-trust combo)', () => {
+    it('COSMIC pays the recompute and nothing else', () => {
       const input = honestInput('COSMIC', 30, true, 120);
       const result = validateGameResult(input, startedAgo(125), 'COSMIC');
       expect(result.valid).toBe(true);
-      expect(result.cosmic).toBeNull();
-      expect(result.adjustedDna).toBe(applyOutcome(300, true));
+      expect(result.adjustedDna).toBe(
+        applyOutcome(computeRunTotals('COSMIC', 30).rawDna, true)
+      );
+      expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score);
     });
 
-    it('ignores and flags a combo summary on a non-COSMIC session', () => {
-      const input = honestInput('PRIMAL', 30, true, 120, {
+    it('a stale combo claim from an old client buys nothing', () => {
+      // The engine stopped sending this at WP-3.13, but a reward queued in
+      // the outbox by an older build can still arrive. It must not pay, and
+      // it must not fail the run either - the run itself was honest.
+      const input = {
+        ...honestInput('COSMIC', 30, true, 120),
         cosmic: { combo_dna_bonus: 400, combo_score_bonus: 400, max_chain: 9 },
-      });
-      const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
+      } as GameResultInput;
+      const result = validateGameResult(input, startedAgo(125), 'COSMIC');
       expect(result.valid).toBe(true);
-      expect(result.advisoryErrors).toContainEqual(
-        expect.stringContaining('COSMIC_COMBO')
-      );
-      expect(result.cosmic).toBeNull();
       expect(result.adjustedDna).toBe(
-        applyOutcome(computeRunTotals('PRIMAL', 30).rawDna, true)
+        applyOutcome(computeRunTotals('COSMIC', 30).rawDna, true)
       );
+      expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score);
+    });
+
+    it('the recomputed score IS the fold, with no claimed addend', () => {
+      // R2's whole surface on the server, in one assertion: whatever the
+      // client claims, the score paid is `computeRunTotals`.
+      const claimed = computeRunTotals('COSMIC', 30).score + 5000;
+      const result = validateGameResult(
+        { ...honestInput('COSMIC', 30, true, 120), score: claimed },
+        startedAgo(125),
+        'COSMIC'
+      );
+      expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score);
     });
 
     it('E-mutations still recompute exactly under COSMIC (base layer)', () => {
@@ -644,18 +571,17 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const input: GameResultInput = {
         food_count: 40,
         extracted: true,
-        score: base.score + 50,
-        dna_earned: base.rawDna + 50,
+        score: base.score,
+        dna_earned: base.rawDna,
         duration_seconds: 120,
         died: false,
         victory: false,
         mutations: picks,
-        cosmic: { combo_dna_bonus: 50, combo_score_bonus: 50, max_chain: 4 },
       };
       const result = validateGameResult(input, startedAgo(125), 'COSMIC');
       expect(result.valid).toBe(true);
       expect(result.adjustedDna).toBe(
-        applyOutcomeWithMutations(base.rawDna + 50, true, picks)
+        applyOutcomeWithMutations(base.rawDna, true, picks)
       );
     });
   });

@@ -18,8 +18,25 @@ interface Archetype {
   infuses: { atFood: number }[];
   prevRunDied?: boolean;
   boundedClaimDna?: number;
-  comboMultiplier?: number;
   designEv: number;
+  /**
+   * A yield gap this archetype once had, and the EV it was stuck at.
+   *
+   * CLOSED, and kept as a regression anchor rather than as a licence. Only
+   * Rift Sailor carries one. WP-3.13 deleted COSMIC's combo, and this harness
+   * had modelled that combo as a flat `comboMultiplier: 2.4` over a whole run
+   * — itself fiction, because the ×2.4 cap needed a chain of 8 that a wave of
+   * 3 could not produce, so the target was never actually being met. Removing
+   * it exposed the archetype at 2077 against a 5400 target: 38% of target,
+   * about a third of the other four.
+   *
+   * COSMIC's Yield was re-based in the same package to close it
+   * (`COSMIC_YIELD_STEP` / `COSMIC_YIELD_CAP`). The number below is what it
+   * paid BEFORE, and the test asserts the archetype has moved decisively off
+   * it — so a future change that silently reverts the curve fails here rather
+   * than in a playtest.
+   */
+  closedYieldGap?: number;
 }
 
 export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
@@ -69,8 +86,8 @@ export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
       { id: 'pocket_rift', atFood: 28 },
     ],
     infuses: [],
-    comboMultiplier: 2.4,
     designEv: 5400,
+    closedYieldGap: 2077,
   },
 ] as const;
 
@@ -89,10 +106,7 @@ export function simulateGenomeArchetype(archetype: Archetype) {
   const weightedOutcome =
     archetype.bankProbability * outcome.bank +
     (1 - archetype.bankProbability) * outcome.death;
-  const rawDna = Math.round(
-    (totals.rawDna + (archetype.boundedClaimDna ?? 0)) *
-    (archetype.comboMultiplier ?? 1)
-  );
+  const rawDna = totals.rawDna + (archetype.boundedClaimDna ?? 0);
   return {
     rawDna,
     bank: outcome.bank,
@@ -103,13 +117,31 @@ export function simulateGenomeArchetype(archetype: Archetype) {
 
 describe('Genome archetype balance', () => {
   it('lands every elite archetype within 15% of the G0 target', () => {
+    // EVERY archetype, with no exemptions. Rift Sailor was exempted for one
+    // commit while COSMIC's Yield gap was open; closing the gap is what
+    // brought it back under the gate, and an exemption list here is how a
+    // hole becomes the status quo.
     const results = GENOME_BALANCE_ARCHETYPES.map((archetype) => ({
       name: archetype.name,
       designEv: archetype.designEv,
       ...simulateGenomeArchetype(archetype),
     }));
+    expect(results.length).toBe(GENOME_BALANCE_ARCHETYPES.length);
     for (const result of results) {
       expect(Math.abs(result.ev - result.designEv) / result.designEv).toBeLessThanOrEqual(0.15);
+    }
+  });
+
+  it('keeps every closed yield gap closed', () => {
+    // The anchor, pointing the other way from the gate above: not "is it near
+    // target" but "has it moved decisively off the number it was stuck at".
+    // A reverted curve could in principle satisfy neither, but this one names
+    // the specific failure so the diff that caused it is obvious.
+    for (const archetype of GENOME_BALANCE_ARCHETYPES) {
+      if (archetype.closedYieldGap === undefined) continue;
+      const { ev } = simulateGenomeArchetype(archetype);
+      expect(ev).toBeGreaterThan(archetype.closedYieldGap * 1.5);
+      expect(ev).toBeGreaterThan(archetype.designEv * 0.85);
     }
   });
 

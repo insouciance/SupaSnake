@@ -212,11 +212,11 @@ const NEW_GENES: Record<NewGeneId, Omit<GeneDef, 'id'>> = {
   },
   constellation_crown: {
     name: 'Constellation Crown',
-    kind: 'EP',
+    kind: 'P',
     strains: ['FLUX'],
-    effect: 'Constellation combo cap ×2.4 → ×2.8',
-    cost: 'Chain window one tick shorter',
-    economics: 'path',
+    effect: 'Constellation window +3 seconds',
+    cost: 'Constellations spawn one fewer star',
+    economics: 'none',
   },
 };
 
@@ -337,9 +337,6 @@ export const GENE_ECONOMICS = {
   zenithMaxTierFood: 20,
   zenithFlatBonus: 4,
   zenithPenalty: 0.95,
-  /** Constellation Crown [BT]: combo cap 2.4 -> 2.8 => trust ratio 1.8. */
-  crownComboCap: 2.8,
-  crownTrustMaxBonusRatio: 1.8,
 } as const;
 
 /** Physical tuning for the new genes (engine-side), exported for tests. */
@@ -354,8 +351,23 @@ export const GENE_PHYSICS = {
   pocketRiftRechargeFoods: 20,
   /** Pocket Rift cost: exit portal interval +2 foods. */
   pocketRiftPortalIntervalPenalty: 2,
-  /** Constellation Crown cost: chain window 1 tick shorter. */
-  crownChainWindowPenalty: 1,
+  /**
+   * Constellation Crown, RE-AUTHORED in WP-3.13.
+   *
+   * It read "combo cap x2.4 -> x2.8" and lost its referent when the COSMIC
+   * combo was deleted; `DYNASTY_COSMIC.md` §5 requires it re-authored in the
+   * same package rather than silently orphaned. It is now the terraformer's
+   * gene: three more seconds of routing time for one fewer star. Fewer stars
+   * is less DNA per wave, so the trade is real - you buy the ability to
+   * finish a constellation clean, and pay for it in what a constellation is
+   * worth.
+   *
+   * Deliberately [P] only. The old Crown raised a bounded-trust CEILING,
+   * which is how account state reached a payout ratio; nothing in COSMIC
+   * claims a payout any more, so there is no ceiling left to raise.
+   */
+  crownConstellationWindowSeconds: 3,
+  crownConstellationStarPenalty: 1,
 } as const;
 
 /**
@@ -423,7 +435,7 @@ export function geneFoodValueModifier(
         }
         break;
       // tithe / bulk_up: flat effects (geneFoodValueFlatBonus)
-      // static_charge / pocket_rift / constellation_crown: [P]/[BT] only
+      // static_charge / pocket_rift / constellation_crown: [P] only
     }
   }
   return mod;

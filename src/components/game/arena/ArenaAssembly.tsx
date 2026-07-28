@@ -12,8 +12,7 @@ import {
 interface ArenaAssemblyProps {
   gridSize: number;
   dynasty: DynastyId;
-  fluxPhase?: 'open' | 'closed' | null;
-  fluxTelegraph?: boolean;
+  torus?: boolean;
 }
 
 /**
@@ -23,8 +22,7 @@ interface ArenaAssemblyProps {
 export function ArenaAssembly({
   gridSize,
   dynasty,
-  fluxPhase = null,
-  fluxTelegraph = false,
+  torus = false,
 }: ArenaAssemblyProps) {
   const theme = getDynastyScreenTokens(dynasty);
 
@@ -48,8 +46,7 @@ export function ArenaAssembly({
         color={theme.secondary}
         accentColor={GAME_SCREEN_COLORS.systemCyan}
         emissiveIntensity={0.42}
-        fluxPhase={fluxPhase}
-        fluxTelegraph={fluxTelegraph}
+        torus={torus}
         railHeight={0.13}
         railWidth={0.11}
         glowStrength={0.62}

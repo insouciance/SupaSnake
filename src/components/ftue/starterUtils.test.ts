@@ -58,9 +58,11 @@ describe('bonusTextFor (Design v2: ruleset identity lines)', () => {
     expect(bonusTextFor('COSMIC')).toBe(rulesetExplainer.COSMIC);
   });
 
-  it('is case-insensitive and falls back to COSMIC for unknown dynasties', () => {
+  it('is case-insensitive and falls back to PRIMAL for unknown dynasties', () => {
+    // The fallback follows `normalizeDynastyName`, which WP-3.13 moved from
+    // COSMIC to PRIMAL when COSMIC stopped being the payout floor.
     expect(bonusTextFor('cyber')).toBe(rulesetExplainer.CYBER);
-    expect(bonusTextFor('GHOST')).toBe(rulesetExplainer.COSMIC);
+    expect(bonusTextFor('GHOST')).toBe(rulesetExplainer.PRIMAL);
   });
 
   it('never renders percentage-stat copy', () => {

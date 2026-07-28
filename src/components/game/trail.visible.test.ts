@@ -120,10 +120,10 @@ describe('the game scene threads what the metric needs', () => {
     // the player for hugging the one seam that is not spending any space.
     const page = read(PAGE);
     expect(page).toMatch(
-      /<InstancedSnake[\s\S]{0,400}wrapActive=\{fluxPhase === 'open'\}/
+      /<InstancedSnake[\s\S]{0,400}wrapActive=\{torus\}/
     );
     expect(page).toMatch(
-      /<InstancedSnakeFallback[\s\S]{0,400}wrapActive=\{fluxPhase === 'open'\}/
+      /<InstancedSnakeFallback[\s\S]{0,400}wrapActive=\{torus\}/
     );
   });
 

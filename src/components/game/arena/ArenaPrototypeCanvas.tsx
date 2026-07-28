@@ -129,8 +129,7 @@ function PrototypeScene({
         <ArenaAssembly
           gridSize={GRID}
           dynasty={dynasty}
-          fluxPhase={dynasty === 'COSMIC' && state === 'apex' ? 'closed' : null}
-          fluxTelegraph={dynasty === 'COSMIC' && state === 'apex'}
+          torus={dynasty === 'COSMIC'}
         />
       ) : (
         <>

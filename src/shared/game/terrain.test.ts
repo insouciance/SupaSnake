@@ -10,7 +10,7 @@ import { describe, it, expect } from '@jest/globals';
 import {
   blocksDueAt,
   cellKey,
-  formingTicksFor,
+  formingTicksForSeconds,
   nextTerrainCells,
   ringOf,
   type TerrainSchedule,
@@ -59,14 +59,15 @@ describe('terrain: the forming window is authored in seconds', () => {
     // The defect this avoids: a window in TICKS silently shrinks as a dynasty
     // accelerates. CYBER's extraction window lost 75% of its real duration
     // exactly this way.
-    expect(formingTicksFor(CYBER_ARENA, 200)).toBe(10); // 2s at 200ms
-    expect(formingTicksFor(CYBER_ARENA, 100)).toBe(20); // 2s at 100ms
-    expect(formingTicksFor(CYBER_ARENA, 50)).toBe(40); // 2s at 50ms
+    const forming = CYBER_ARENA.formingSeconds;
+    expect(formingTicksForSeconds(forming, 200)).toBe(10); // 2s at 200ms
+    expect(formingTicksForSeconds(forming, 100)).toBe(20); // 2s at 100ms
+    expect(formingTicksForSeconds(forming, 50)).toBe(40); // 2s at 50ms
   });
 
   it('never rounds down to zero ticks', () => {
-    expect(formingTicksFor({ ...CYBER_ARENA, formingSeconds: 0 }, 200)).toBe(1);
-    expect(formingTicksFor(CYBER_ARENA, 0)).toBeGreaterThan(0);
+    expect(formingTicksForSeconds(0, 200)).toBe(1);
+    expect(formingTicksForSeconds(CYBER_ARENA.formingSeconds, 0)).toBeGreaterThan(0);
   });
 });
 

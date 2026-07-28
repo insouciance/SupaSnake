@@ -35,7 +35,15 @@ export interface RewardOutboxEntry {
   mutations?: Array<{ id: string; atFood: number }>;
   /** Phoenix trigger food index, when it fired (Phase 2). */
   phoenix_triggered_at_food?: number;
-  /** COSMIC bounded-trust combo summary (Phase 2). */
+  /**
+   * COSMIC bounded-trust combo summary (Phase 2).
+   *
+   * Kept on the READ side only, and no longer sent. WP-3.13 deleted the
+   * combo; entries queued by a build older than it still carry this field
+   * and must still replay, so the shape stays parseable while the value is
+   * dropped. Those runs settle a few DNA lighter than they would have,
+   * which is the correct direction and unobservable in test mode.
+   */
   cosmic?: {
     combo_dna_bonus: number;
     combo_score_bonus: number;
@@ -190,12 +198,12 @@ export async function replayRewardOutbox(
             ? { food_count: entry.food_count }
             : {}),
           ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
-          // Phase 2 fields (mutations / Phoenix / COSMIC combo claim)
+          // Phase 2 fields (mutations / Phoenix). A queued `cosmic` claim is
+          // deliberately NOT forwarded - see the field's note above.
           ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
           ...(entry.phoenix_triggered_at_food !== undefined
             ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
             : {}),
-          ...(entry.cosmic !== undefined ? { cosmic: entry.cosmic } : {}),
           ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
         }),
       });

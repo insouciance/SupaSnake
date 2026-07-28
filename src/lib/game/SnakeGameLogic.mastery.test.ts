@@ -2,14 +2,19 @@
  * Engine tests for per-dynasty Mastery (Design v2 section 7.1):
  * - the offer RNG draws ONLY from the injected unlocked pool
  * - the [P]hysical sides of the nine mastery mutations (portal windows,
- *   Starweaver groups + chain window, Gravity Well pull, Event Horizon
- *   flux phases)
+ *   Starweaver's extra star + shorter window, Gravity Well pull, Event
+ *   Horizon's slower calcification + wider scatter)
  * - engine/recompute parity for the Deep Roots flat [E] bonus
  */
 
 import { describe, it, expect } from '@jest/globals';
 import { SnakeGameLogic } from './SnakeGameLogic';
-import { RULESETS, computeRunTotals } from '@/shared/game/rulesets';
+import {
+  COSMIC_CONSTELLATION,
+  COSMIC_SPEED_MS,
+  RULESETS,
+  computeRunTotals,
+} from '@/shared/game/rulesets';
 import {
   MUTATION_PHYSICS,
   MUTATION_POOL,
@@ -166,16 +171,38 @@ describe('portal-window physics (Deep Roots / Afterburner / Tectonic Patience)',
   });
 });
 
-describe('Starweaver (COSMIC M3): bigger groups, tighter chains', () => {
-  it('constellation groups spawn 4 foods instead of 3', () => {
+describe('Starweaver (COSMIC M3): one more star, one second less', () => {
+  it('constellations spawn an extra star', () => {
     const game = newGame({ ruleset: RULESETS.COSMIC });
-    expect(game.getState().foods).toHaveLength(3);
+    expect(game.getState().foods).toHaveLength(COSMIC_CONSTELLATION.size);
     game.grantMutation('starweaver');
     game.spawnFood();
-    expect(game.getState().foods).toHaveLength(4);
+    expect(game.getState().foods).toHaveLength(
+      COSMIC_CONSTELLATION.size + MUTATION_PHYSICS.starweaverExtraGroupFood
+    );
   });
 
-  it('does nothing outside COSMIC (no constellation groups)', () => {
+  it('and the window that has to cover them is a second shorter', () => {
+    const game = newGame({ ruleset: RULESETS.COSMIC });
+    const base = game.getState().constellationWindowTicks;
+    game.grantMutation('starweaver');
+    game.spawnFood();
+    // 1 second at COSMIC's 160ms tick is 6.25 ticks, rounded to the tick.
+    expect(game.getState().constellationWindowTicks).toBeLessThan(base);
+    expect(base - game.getState().constellationWindowTicks).toBe(
+      Math.round(
+        (COSMIC_CONSTELLATION.windowSeconds * 1000) / COSMIC_SPEED_MS
+      ) -
+        Math.round(
+          ((COSMIC_CONSTELLATION.windowSeconds -
+            MUTATION_PHYSICS.starweaverWindowSecondsPenalty) *
+            1000) /
+            COSMIC_SPEED_MS
+        )
+    );
+  });
+
+  it('does nothing outside COSMIC (no constellation)', () => {
     const game = newGame({ ruleset: RULESETS.PRIMAL });
     game.grantMutation('starweaver');
     game.spawnFood();
@@ -206,33 +233,52 @@ describe('Gravity Well (COSMIC M6): radius-3 pull', () => {
   });
 });
 
-describe('Event Horizon (COSMIC M9): stretched flux phases', () => {
-  function ticksUntilFlip(game: SnakeGameLogic): void {
-    // Run out the opening open-phase (75 ticks rolled at start)
+describe('Event Horizon (COSMIC M9): slower corpses, longer routes', () => {
+  /** Run the live constellation's window out and return the new terrain. */
+  function calcify(game: SnakeGameLogic) {
+    const before = game.getState().terrain.length;
     let guard = 0;
-    while (game.getState().fluxPhase === 'open' && guard < 200) {
+    while (game.getState().terrain.length === before && guard < 400) {
       game.tick();
       guard += 1;
     }
-    expect(game.getState().fluxPhase).toBe('closed');
+    return game.getState().terrain.slice(before);
   }
 
-  it('closed phases last 50 + 15 ticks with the mutation held', () => {
-    const game = newGame({ ruleset: RULESETS.COSMIC });
-    game.grantMutation('event_horizon');
-    ticksUntilFlip(game);
-    expect(game.getState().fluxTicksRemaining).toBe(
-      RULESETS.COSMIC.flux!.closedTicks +
-        MUTATION_PHYSICS.eventHorizonClosedTicksPenalty
+  it('missed stars spend 4 more seconds forming with the mutation held', () => {
+    const plain = newGame({ ruleset: RULESETS.COSMIC });
+    const plainForming = calcify(plain)[0].formingTotal;
+
+    const held = newGame({ ruleset: RULESETS.COSMIC });
+    held.grantMutation('event_horizon');
+    held.spawnFood(); // re-roll the wave so the scatter reflects the gene
+    const heldForming = calcify(held)[0].formingTotal;
+
+    expect(heldForming).toBeGreaterThan(plainForming);
+    expect(heldForming - plainForming).toBe(
+      Math.round(
+        (MUTATION_PHYSICS.eventHorizonCalcifySecondsBonus * 1000) /
+          COSMIC_SPEED_MS
+      )
     );
   });
 
-  it('without it the closed phase is the base 50 ticks', () => {
-    const game = newGame({ ruleset: RULESETS.COSMIC });
-    ticksUntilFlip(game);
-    expect(game.getState().fluxTicksRemaining).toBe(
-      RULESETS.COSMIC.flux!.closedTicks
-    );
+  it('and the stars sit further apart, so the same window buys less', () => {
+    const held = newGame({ ruleset: RULESETS.COSMIC, seed: 4 });
+    held.grantMutation('event_horizon');
+    held.spawnFood();
+    const foods = held.getState().foods;
+    const min = COSMIC_CONSTELLATION.scatterMinCells +
+      MUTATION_PHYSICS.eventHorizonScatterPenalty;
+    for (let i = 0; i < foods.length; i++) {
+      for (let j = i + 1; j < foods.length; j++) {
+        const dx = Math.abs(foods[i].x - foods[j].x);
+        const dz = Math.abs(foods[i].z - foods[j].z);
+        expect(
+          Math.min(dx, 200 - dx) + Math.min(dz, 200 - dz)
+        ).toBeGreaterThanOrEqual(min);
+      }
+    }
   });
 });
 

@@ -67,17 +67,21 @@ export interface RunStartGenomeContext {
   strainThresholdDelta?: Partial<Record<StrainId, number>>;
   /** FTUE gate: parent genes stay loose and Splice effects are off when false. */
   splicesUnlocked: boolean;
-  /** Server fact at start: the previous earned run ended in death. */
-  prevRunDied: boolean;
   /**
-   * COSMIC M10: the Constellation Crown may raise the combo trust ratio.
+   * Server fact at start: the previous earned run ended in death.
+   *
+   * `crownAllowed` used to sit beside this - COSMIC M10's permission to raise
+   * the combo trust ratio - and WP-3.13 deleted the combo, the ratio and the
+   * permission together. Contexts written before then still carry the key;
+   * `parseGenomeContext` no longer requires it, so those rows keep parsing.
    *
    * The condition-derived offer tilt (`anomalyStrain`) is deliberately NOT
-   * here. `resolveSessionWorldCondition` re-derives the run's condition from
-   * the session row's own stamps at settlement, and `ANOMALY_STRAINS` maps
-   * it to the same strain the engine drew under - one source, no drift.
+   * here either. `resolveSessionWorldCondition` re-derives the run's
+   * condition from the session row's own stamps at settlement, and
+   * `ANOMALY_STRAINS` maps it to the same strain the engine drew under -
+   * one source, no drift.
    */
-  crownAllowed: boolean;
+  prevRunDied: boolean;
 }
 
 export interface RunStartContext {
@@ -205,7 +209,6 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
 
   if (typeof raw.splicesUnlocked !== 'boolean') return 'invalid';
   if (typeof raw.prevRunDied !== 'boolean') return 'invalid';
-  if (typeof raw.crownAllowed !== 'boolean') return 'invalid';
 
   return {
     genePool,
@@ -215,7 +218,6 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
     suppressedStrains,
     splicesUnlocked: raw.splicesUnlocked,
     prevRunDied: raw.prevRunDied,
-    crownAllowed: raw.crownAllowed,
   };
 }
 
@@ -350,7 +352,6 @@ export function serializeRunStartContext(
           suppressedStrains: context.genome.suppressedStrains,
           splicesUnlocked: context.genome.splicesUnlocked,
           prevRunDied: context.genome.prevRunDied,
-          crownAllowed: context.genome.crownAllowed,
         }
       : null,
   };

@@ -257,7 +257,6 @@ export async function POST(request: NextRequest) {
       extracted,
       mutations,
       phoenix_triggered_at_food,
-      cosmic,
       genome,
       death_cause,
       run_events,
@@ -578,7 +577,6 @@ export async function POST(request: NextRequest) {
           suppressedStrains: [...gauntletSuppressedStrains(gauntletBan)],
           splicesUnlocked: ftue.splicesUnlocked,
           prevRunDied,
-          crownAllowed: isFreePlay || masteryLevel >= 10,
         };
       }
 
@@ -1314,7 +1312,6 @@ export async function POST(request: NextRequest) {
             heirloom: runContext.genome.heirloom,
             genePool: runContext.genome.genePool,
             prevRunDied: runContext.genome.prevRunDied,
-            crownAllowed: runContext.genome.crownAllowed,
             tierCap: runContext.genome.tierCap,
             suppressedStrains: runContext.genome.suppressedStrains,
             splicesUnlocked: runContext.genome.splicesUnlocked,
@@ -1372,7 +1369,6 @@ export async function POST(request: NextRequest) {
               isFreeSession
             ),
             prevRunDied,
-            crownAllowed: isFreeSession || endMasteryLevel >= 10,
             tierCap: ftueTierCap(endFtue),
             suppressedStrains: gauntletSuppressedStrains(endGauntletBan),
             splicesUnlocked: endFtue.splicesUnlocked,
@@ -1399,11 +1395,13 @@ export async function POST(request: NextRequest) {
           duration_seconds: duration_seconds || 0,
           died: died ?? !(extracted === true),
           victory: victory ?? false,
-          // Design v2 Phase 2: mutation picks + Phoenix trigger + the
-          // COSMIC combo summary - all sanitized inside the validator
+          // Design v2 Phase 2: mutation picks + Phoenix trigger - both
+          // sanitized inside the validator. A `cosmic` combo summary from a
+          // client older than WP-3.13 is simply not read: the combo it
+          // claimed no longer exists, so it is worth nothing rather than
+          // worth clamping.
           mutations,
           phoenix_triggered_at_food,
-          cosmic,
           // Genome claim block (infuses/surges/revive/claims/lossEvents)
           genome,
         },
@@ -1569,16 +1567,16 @@ export async function POST(request: NextRequest) {
       ).rawDna;
 
       // Sanitized mutation record for the session row (migration 014).
-      // One JSONB blob: picks in order + Phoenix trigger + accepted COSMIC
-      // combo claim; null for mutation-free non-COSMIC runs.
+      // One JSONB blob: picks in order + Phoenix trigger; null for
+      // mutation-free runs. The accepted COSMIC combo claim used to ride
+      // here too and was deleted with the combo (WP-3.13); rows written
+      // before then keep theirs, and nothing reads it.
       const mutationsRecord =
         validation.mutations.length > 0 ||
-        validation.phoenixTriggeredAtFood !== null ||
-        validation.cosmic !== null
+        validation.phoenixTriggeredAtFood !== null
           ? {
               picks: validation.mutations,
               phoenixTriggeredAtFood: validation.phoenixTriggeredAtFood,
-              cosmic: validation.cosmic,
             }
           : null;
 
@@ -1902,7 +1900,6 @@ export async function POST(request: NextRequest) {
             ...(validation.phoenixTriggeredAtFood !== null
               ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
               : {}),
-            ...(validation.cosmic ? { cosmic: validation.cosmic } : {}),
             ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
           },
         });

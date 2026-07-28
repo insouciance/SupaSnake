@@ -255,43 +255,41 @@ describe('Game Store', () => {
     });
   });
 
-  describe('Design v2 Phase 2: mutations + COSMIC Flux', () => {
+  describe('Design v2 Phase 2: mutations + COSMIC constellations', () => {
     it('has clean Phase 2 defaults', () => {
       const state = useGameStore.getState();
       expect(state.extraFoods).toEqual([]);
       expect(state.constellationGlyph).toBeNull();
-      expect(state.chainLength).toBe(0);
-      expect(state.comboMultiplier).toBe(1);
+      expect(state.constellationTicksRemaining).toBe(0);
+      expect(state.constellationWindowTicks).toBe(0);
       expect(state.mutationTile).toBeNull();
       expect(state.heldMutations).toEqual([]);
       expect(state.choiceOptions).toBeNull();
       expect(state.phoenixTriggered).toBe(false);
-      expect(state.fluxPhase).toBeNull();
-      expect(state.fluxTelegraph).toBe(false);
+      expect(state.torus).toBe(false);
     });
 
     it('mirrors engine state through the Phase 2 setters', () => {
       const store = useGameStore.getState();
       store.setExtraFoods([{ x: 1, y: 0, z: 2 }]);
-      store.setConstellation(2, 5, 1.8);
+      store.setConstellation(2, 31, 50);
       store.setMutationTile({ x: 4, y: 0, z: 4 }, 33);
       store.setHeldMutations([{ id: 'overgrowth', atFood: 17 }]);
       store.setChoiceOptions(['gold_trail', 'phoenix']);
       store.setPhoenixTriggered(true);
-      store.setFlux('open', true);
+      store.setTorus(true);
 
       const state = useGameStore.getState();
       expect(state.extraFoods).toEqual([{ x: 1, y: 0, z: 2 }]);
       expect(state.constellationGlyph).toBe(2);
-      expect(state.chainLength).toBe(5);
-      expect(state.comboMultiplier).toBe(1.8);
+      expect(state.constellationTicksRemaining).toBe(31);
+      expect(state.constellationWindowTicks).toBe(50);
       expect(state.mutationTile).toEqual({ x: 4, y: 0, z: 4 });
       expect(state.mutationTicksRemaining).toBe(33);
       expect(state.heldMutations).toEqual([{ id: 'overgrowth', atFood: 17 }]);
       expect(state.choiceOptions).toEqual(['gold_trail', 'phoenix']);
       expect(state.phoenixTriggered).toBe(true);
-      expect(state.fluxPhase).toBe('open');
-      expect(state.fluxTelegraph).toBe(true);
+      expect(state.torus).toBe(true);
     });
 
     it('clearing the mutation tile zeroes its countdown', () => {
@@ -303,13 +301,15 @@ describe('Game Store', () => {
       expect(state.mutationTicksRemaining).toBe(0);
     });
 
-    it('leaving flux (null phase) clears the telegraph flag', () => {
+    it('the constellation window survives a redraw of the same wave', () => {
+      // The window is the mechanic's only visible surface; a mirror that
+      // dropped it would hide the deadline the abandonment is chosen under.
       const store = useGameStore.getState();
-      store.setFlux('closed', true);
-      store.setFlux(null, true);
-      const state = useGameStore.getState();
-      expect(state.fluxPhase).toBeNull();
-      expect(state.fluxTelegraph).toBe(false);
+      store.setConstellation(1, 12, 50);
+      expect(useGameStore.getState().constellationTicksRemaining).toBe(12);
+      store.setConstellation(1, 11, 50);
+      expect(useGameStore.getState().constellationTicksRemaining).toBe(11);
+      expect(useGameStore.getState().constellationWindowTicks).toBe(50);
     });
 
     it('startGame clears the previous run build', () => {
@@ -317,19 +317,16 @@ describe('Game Store', () => {
         heldMutations: [{ id: 'phoenix', atFood: 20 }],
         phoenixTriggered: true,
         choiceOptions: ['gold_trail', 'shed'],
-        chainLength: 6,
-        comboMultiplier: 2.0,
-        fluxPhase: 'closed',
-        fluxTelegraph: true,
+        constellationTicksRemaining: 6,
+        constellationWindowTicks: 50,
       });
       useGameStore.getState().startGame();
       const state = useGameStore.getState();
       expect(state.heldMutations).toEqual([]);
       expect(state.phoenixTriggered).toBe(false);
       expect(state.choiceOptions).toBeNull();
-      expect(state.chainLength).toBe(0);
-      expect(state.comboMultiplier).toBe(1);
-      expect(state.fluxPhase).toBeNull();
+      expect(state.constellationTicksRemaining).toBe(0);
+      expect(state.constellationWindowTicks).toBe(0);
     });
 
     it('endGame keeps the build for the game-over screen but closes overlays', () => {
@@ -356,7 +353,7 @@ describe('Game Store', () => {
         phoenixTriggered: true,
         extraFoods: [{ x: 1, y: 0, z: 1 }],
         constellationGlyph: 1,
-        fluxPhase: 'open',
+        constellationTicksRemaining: 20,
       });
       useGameStore.getState().resetGame();
       const state = useGameStore.getState();
@@ -364,7 +361,7 @@ describe('Game Store', () => {
       expect(state.phoenixTriggered).toBe(false);
       expect(state.extraFoods).toEqual([]);
       expect(state.constellationGlyph).toBeNull();
-      expect(state.fluxPhase).toBeNull();
+      expect(state.constellationTicksRemaining).toBe(0);
     });
   });
 

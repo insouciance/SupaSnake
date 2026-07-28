@@ -142,11 +142,13 @@ export function resetTrailFusion(state: TrailFusionState): void {
  * the head. The head is included in occupancy (it blocks its cell like any
  * other segment) even though the renderer draws it as a separate mesh.
  *
- * `wrapActive` must be true whenever the arena edges are currently a passage
- * rather than a wall - COSMIC's `fluxPhase === 'open'` and friends. While the
- * edge is passable it must NOT count as a packing neighbour, or the metric pays
- * out for hugging an open seam, which is the opposite of the behaviour it
- * exists to teach.
+ * `wrapActive` must be true whenever the arena edges are a passage rather than
+ * a wall - which, since WP-3.13, means `ruleset.torus`: COSMIC's board wraps
+ * permanently, so its edges are NEVER packing neighbours, and the flag it used
+ * to read (`fluxPhase === 'open'`, true for 75 ticks in every 125) no longer
+ * exists. While the edge is passable it must NOT count as a packing neighbour,
+ * or the metric pays out for hugging an open seam, which is the opposite of
+ * the behaviour it exists to teach.
  *
  * Call this ONCE PER ENGINE TICK, not per frame: the measurement is defined on
  * integer grid cells and does not change between ticks.

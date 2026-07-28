@@ -22,8 +22,7 @@ const MODEL: RunCockpitModel = {
   },
   bankDna: 168,
   crashDna: 52,
-  comboMultiplier: 1.8,
-  chainLength: 4,
+  constellation: { stars: 3, fraction: 0.55 },
   genes: [{ id: 'gold_trail', name: 'Gold Trail', strains: ['AURUM'] }],
   strains: [
     { id: 'AURUM', name: 'Aurum', color: '#f5c542', points: 3, tier: 2, suppressed: false },
@@ -46,7 +45,9 @@ describe('RunCockpit', () => {
       </RunCockpit>
     );
 
-    expect(screen.getByLabelText(/score 12,840, combo 1.8/i)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/score 12,840, 3 stars left this constellation/i)
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/run dna 186/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/charges 4 of 6/i)).toHaveTextContent('4/6');
     // The hold budget is stated from tick zero, not discovered by running out.

@@ -177,15 +177,37 @@
   line-height: 1;
 }
 
+/*
+ * COSMIC's constellation window (WP-3.13). Star count above, and a rule
+ * beneath it that drains as the window closes - so the number says what is
+ * at stake and the rule says how long there is. Named `comboValue` still
+ * because it occupies the combo's old slot in the score instrument, and
+ * three media queries below reposition it by that name.
+ */
 .comboValue {
   position: absolute;
   right: 8px;
   bottom: 6px;
+  padding-bottom: 3px;
   color: var(--secure-gold);
   font-family: var(--font-display), sans-serif;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.comboValue::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    var(--secure-gold) var(--constellation-window, 100%),
+    rgba(255, 255, 255, 0.14) var(--constellation-window, 100%)
+  );
 }
 
 .geneRack {

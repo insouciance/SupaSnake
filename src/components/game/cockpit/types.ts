@@ -53,8 +53,18 @@ export interface RunCockpitModel {
   holds: { remaining: number; total: number } | null;
   bankDna: number;
   crashDna: number;
-  comboMultiplier: number;
-  chainLength: number;
+  /**
+   * COSMIC's constellation window: stars still on the board, and the
+   * fraction of the window left before they calcify. Null on the dynasties
+   * that have no constellation.
+   *
+   * This slot used to carry the combo multiplier and its chain length. The
+   * combo was deleted in WP-3.13 on the owner's ruling that it had "no
+   * thrill factor"; what took its place has to be VISIBLE for the same
+   * reason the combo never needed to be - it decides where permanent lethal
+   * blocks land.
+   */
+  constellation: { stars: number; fraction: number } | null;
   genes: readonly RunCockpitGene[];
   strains: readonly RunCockpitStrain[];
   showGenome: boolean;
