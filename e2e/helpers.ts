@@ -90,6 +90,41 @@ export async function startRunIfSetupPresent(page: Page): Promise<void> {
 }
 
 /**
+ * Take the deliberate first movement that releases a held board.
+ *
+ * The board is HELD until the player's first direction (§5 input semantics).
+ * `/game`'s keydown listener lives in an effect whose dependency list includes
+ * the ready flag, so the status rail renders "press a direction to start" one
+ * commit BEFORE a listener exists that can act on it. A key dispatched inside
+ * that window is dropped for good — nothing re-arms it, the board stays held,
+ * and the waiting assertion burns the whole 60s test budget. That is exactly
+ * the "60-second timeout" signature the flag-on leg was reporting: automation
+ * presses within milliseconds of the board appearing and loses the race every
+ * time, where a human never gets near it.
+ *
+ * So: wait for the held-board prompt, then press until the board reports that
+ * it is running. Every press here is the same single player action — the
+ * repeat compensates for the listener, not for the player — which is why
+ * callers that count taps count this as one.
+ *
+ * Works under both flag configurations: the cockpit's status rail and the
+ * rollback screen's prompt use different markup but the same wording.
+ */
+export async function releaseHeldBoard(
+  page: Page,
+  key: 'ArrowRight' | 'ArrowLeft' | 'ArrowUp' | 'ArrowDown' = 'ArrowRight'
+): Promise<void> {
+  const heldPrompt = page
+    .getByText(/direction to start|arrow to move|direction to resume/i)
+    .first();
+  await expect(heldPrompt).toBeVisible({ timeout: 30_000 });
+  await expect(async () => {
+    await page.keyboard.press(key);
+    await expect(heldPrompt).toBeHidden({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
+/**
  * Create a fresh anonymous (guest) session via the login page.
  * Deterministic: LoginForm awaits signInAnonymously before onSuccess
  * routes to /game.

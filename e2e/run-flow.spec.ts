@@ -15,7 +15,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { seedConsent, signInAsGuest } from './helpers';
+import { releaseHeldBoard, seedConsent, signInAsGuest } from './helpers';
 
 const RUN_FLOW_ENABLED = process.env.NEXT_PUBLIC_RUN_FLOW_V1 === 'true';
 
@@ -26,13 +26,24 @@ class Taps {
   async click(page: Page, testId: string) {
     this.count += 1;
     // The WebGL canvas repaints under the overlay; the shipped specs click
-    // start controls forced for exactly this reason.
-    await page.getByTestId(testId).click({ force: true });
+    // start controls forced for exactly this reason. `force` skips the
+    // actionability wait, and a DISABLED button fires no onClick at all, so
+    // the enabled check has to be made explicitly: LAUNCH is disabled while
+    // Home's first load settles, and a forced tap in that window is swallowed
+    // in silence.
+    const control = page.getByTestId(testId);
+    await expect(control).toBeEnabled({ timeout: 30_000 });
+    await control.click({ force: true });
   }
 
-  async press(page: Page, key: string) {
+  /**
+   * The deliberate first movement, counted as the one tap it is. See
+   * `releaseHeldBoard` for why the key may have to be dispatched more than
+   * once before the board's listener exists to receive it.
+   */
+  async press(page: Page) {
     this.count += 1;
-    await page.keyboard.press(key);
+    await releaseHeldBoard(page);
   }
 }
 
@@ -156,6 +167,15 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     'NEXT_PUBLIC_RUN_FLOW_V1 is off in this build; the flag-off suite below runs instead.'
   );
 
+  // Most of these tests play a run to its natural end against the wall, and
+  // the run is real time: sign-in, setup, board, ~15s of ticks and the
+  // settlement round trip come to roughly 25s on a warm local machine. The
+  // default 60s per test left no headroom on a cold CI worker, which is how a
+  // slow step and a broken step produced the same symptom. The budget is
+  // raised rather than the waits shortened: nothing here should pass because
+  // it was lucky.
+  test.describe.configure({ timeout: 150_000 });
+
   test.beforeEach(async ({ page }) => {
     await seedConsent(page);
   });
@@ -194,7 +214,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
 
     // Tap 3 — the deliberate first movement (§5 input semantics). The board
     // is live from here.
-    await taps.press(page, 'ArrowRight');
+    await taps.press(page);
 
     expect(taps.count).toBeLessThanOrEqual(3);
   });
@@ -246,7 +266,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await expect(page.getByTestId('game-board-viewport')).toBeVisible({
       timeout: 60_000,
     });
-    await page.keyboard.press('ArrowRight');
+    await releaseHeldBoard(page);
 
     // The run ends by itself against the wall.
     await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
@@ -262,7 +282,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     });
 
     // Tap 2 — the deliberate first movement.
-    await taps.press(page, 'ArrowRight');
+    await taps.press(page);
 
     expect(taps.count).toBeLessThanOrEqual(2);
   });
@@ -279,7 +299,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await expect(page.getByTestId('game-board-viewport')).toBeVisible({
       timeout: 60_000,
     });
-    await page.keyboard.press('ArrowRight');
+    await releaseHeldBoard(page);
 
     const results = page.getByTestId('run-results');
     await expect(results).toBeVisible({ timeout: 60_000 });
@@ -326,7 +346,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
     await page.getByTestId('earn-start').click({ force: true });
-    await page.keyboard.press('ArrowRight');
+    await releaseHeldBoard(page);
     await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('results-take')).toHaveCount(0);
   });
@@ -339,7 +359,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
     await page.getByTestId('earn-start').click({ force: true });
-    await page.keyboard.press('ArrowRight');
+    await releaseHeldBoard(page);
     await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
 
     const take = page.getByTestId('results-take');
@@ -349,13 +369,17 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await expect(page.getByTestId('results-layer-1').getByTestId('results-take'))
       .toHaveCount(1);
 
-    // WP-1.04 has not shipped /api/daily-take/collect. Collecting must be a
-    // quiet no-op, never an error surface.
+    // Collecting settles the Take. When this spec was written WP-1.04 had not
+    // shipped `/api/daily-take/collect` and the only requirement was that the
+    // button be a quiet no-op ("Your Take settles with the day."). The route
+    // exists now - `src/app/api/daily-take/collect` - so the assertion is the
+    // stronger one it always wanted to be: the collect lands, and the surface
+    // never shows the failure state (Rule 5 — nothing here may read as a
+    // loss).
     await page.getByTestId('results-take-collect').click({ force: true });
-    await expect(page.getByTestId('results-take-status')).toContainText(
-      /settles with the day/i,
-      { timeout: 20_000 }
-    );
+    const takeStatus = page.getByTestId('results-take-status');
+    await expect(takeStatus).toContainText(/collected/i, { timeout: 20_000 });
+    await expect(takeStatus).not.toContainText(/could not collect/i);
   });
 
   test('SETUP reopens the setup page over a finished run', async ({ page }) => {
@@ -364,7 +388,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
     await page.getByTestId('earn-start').click({ force: true });
-    await page.keyboard.press('ArrowRight');
+    await releaseHeldBoard(page);
     await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
 
     await page.getByTestId('results-setup').click({ force: true });
@@ -403,7 +427,7 @@ test.describe('Run Flow v1 off — the shipped screens are the rollback path', (
     await expect(page.getByTestId('game-board-viewport')).toBeVisible({
       timeout: 60_000,
     });
-    await page.keyboard.press('ArrowRight');
+    await releaseHeldBoard(page);
 
     // The shipped game-over screen, unchanged.
     await expect(page.getByTestId('gameover-crashed')).toBeVisible({

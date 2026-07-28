@@ -97,13 +97,24 @@ export function ArtifactLanding({
         )}
 
         <div className="flex flex-wrap items-center gap-4">
-          <Link
+          {/* A DOCUMENT navigation, deliberately, not a client transition.
+              `actionHref` is where a challenge link carries its seed
+              (`/game?seed=…&target=…&challenge=…`), and `/game` reads that
+              query from `window.location` once, at mount, because the engine
+              needs it before it is constructed and the route must not be
+              opted into the search-params Suspense bailout for it. During an
+              App Router client transition the new page renders before the URL
+              is committed, so a <Link> here handed the game an empty search
+              string: the shared board silently became an ordinary run and the
+              dare never appeared. A full load makes the URL true at mount,
+              which is the only thing this entry point has to guarantee. */}
+          <a
             href={actionHref}
             className="btn-go inline-flex min-h-[44px] items-center px-8 py-3 text-lg"
             data-testid="artifact-play"
           >
             {actionLabel}
-          </Link>
+          </a>
           {secondary && (
             <Link
               href={secondary.href}
