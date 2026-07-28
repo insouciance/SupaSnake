@@ -38,13 +38,25 @@ export interface GrowthProfile {
   readonly blurb: string;
   readonly initialLength: number;
   /**
-   * Foods kept on the board at once.
+   * Foods kept on the board at once. **One, on every profile** — see below.
    *
-   * This is the traverse-time fix, not a generosity knob. On the owner's
-   * record run seconds-per-food climbed from 3.0 to 6.9 (median) while the
-   * MEAN quadrupled — most foods stayed quick and a few became enormous. It
-   * is that tail that ends runs in irritation, and more foods on the board
-   * kills the tail specifically.
+   * This began as the traverse-time fix. On the owner's record run
+   * seconds-per-food climbed from 3.0 to 6.9 (median) while the MEAN
+   * quadrupled: most foods stayed quick and a few became enormous, and it is
+   * that tail that ends long runs in irritation rather than defeat. Three
+   * foods on the board kills the tail by always offering a near target.
+   *
+   * WP-3.05 REVERTS IT TO ONE (owner, 2026-07-28: "what i certainly don't like
+   * are the 3 foods on the screen"), and the owner is right on the merits.
+   * Snake's loop is a single target; three targets means never committing to a
+   * path, which is a cheaper decision every time you make it. The extras also
+   * spawned CLUSTERED around the first and only the first was ever lit, so the
+   * mechanic paying for the fix read as a dim clump rather than as choice.
+   *
+   * The tail is now fixed at its cause instead — `foodPlacement.ts` narrows
+   * where food may spawn as the board fills, so the walk shortens without the
+   * board filling up with targets. The field survives because COSMIC's
+   * constellation still places a group, and because a future rung may want it.
    */
   readonly simultaneousFoods: number;
   /**
@@ -125,7 +137,7 @@ export const GROWTH_PROFILES: Readonly<Record<GrowthProfileId, GrowthProfile>> =
     label: 'Tuned',
     blurb: 'Grow fast, settle, then the board closes on you.',
     initialLength: 3,
-    simultaneousFoods: 3,
+    simultaneousFoods: 1,
     offerIntervalBase: 10,
     minFoodsPerPick: 8,
     baseGrowth: stepped(6, 12, 2, 32, 6, 8),
@@ -137,7 +149,7 @@ export const GROWTH_PROFILES: Readonly<Record<GrowthProfileId, GrowthProfile>> =
     label: 'Aggressive',
     blurb: 'Short and vicious. The board fills before you are ready.',
     initialLength: 3,
-    simultaneousFoods: 3,
+    simultaneousFoods: 1,
     offerIntervalBase: 8,
     minFoodsPerPick: 6,
     baseGrowth: stepped(8, 10, 2, 28, 5, 10),

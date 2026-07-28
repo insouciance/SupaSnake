@@ -86,6 +86,10 @@ import {
   type GrowthProfileId,
 } from '@/shared/game/growth';
 import {
+  chooseFoodCell,
+  placementKey,
+} from '@/shared/game/foodPlacement';
+import {
   GENE_ECONOMICS,
   GENE_PHYSICS,
   GENE_POOL,
@@ -2585,10 +2589,15 @@ export class SnakeGameLogic {
 
     const foods: Position[] = [];
     for (let i = 0; i < target; i++) {
-      foods.push(this.sampleFoodCell(foods, i === 0 ? null : foods[0]));
+      const cell = this.sampleFoodCell(foods, i === 0 ? null : foods[0]);
+      // `null` means the board holds no free cell at all - the player has
+      // filled it. Placing nothing is the honest answer; the wave simply
+      // carries whatever it managed to place.
+      if (cell === null) break;
+      foods.push(cell);
     }
     this.state.foods = foods;
-    this.state.food = { ...foods[0] };
+    if (foods.length > 0) this.state.food = { ...foods[0] };
 
     // Meteor Shower (anomaly): every fresh wave gets a 60-tick fuse
     this.state.foodTicksRemaining =
@@ -2598,56 +2607,63 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Rejection-sample one food cell (optionally clustered near an anchor).
-   * Injectable rng, like every other placement sampler here (F-12): a
-   * seeded run must lay out identical food waves on every replay.
+   * Choose one food cell, or null when the board has no free cell left.
+   *
+   * WP-3.05: this REPLACES a rejection sampler that tried 1000 random cells
+   * and then returned its last guess whatever it was — food on top of the
+   * snake, on the portal, inside a terrain block. Statistically unreachable on
+   * a sparse board, which is the only board this game has ever had; this wave
+   * drives runs to high occupancy, where "statistically unreachable" expires.
+   *
+   * Enumerating the free cells makes the guarantee absolute rather than
+   * probable, and it buys reachability for free: food can no longer spawn in a
+   * pocket sealed by your own body, which was the game creating unwinnable
+   * positions rather than the player walking into them.
+   *
+   * Injectable rng, like every other placement sampler here (F-12): a seeded
+   * run must lay out identical food waves on every replay.
    */
-  private sampleFoodCell(placed: Position[], anchor: Position | null): Position {
-    // Terrain is part of the board now: food that spawns inside a block is
-    // unreachable, and an unreachable food is dead time - the exact cost this
-    // wave exists to remove.
-    const radius = this.ruleset.constellation?.groupRadius ?? 4;
-    let position: Position = { x: 0, y: 0, z: 0 };
-    let attempts = 0;
-    const maxAttempts = 1000;
-
-    while (attempts < maxAttempts) {
-      attempts++;
-      if (anchor && attempts <= maxAttempts / 2) {
-        // Cluster around the anchor; fall back to anywhere if the
-        // neighborhood is too crowded
-        position = {
-          x: anchor.x + Math.floor(this.rng() * (2 * radius + 1)) - radius,
-          y: 0,
-          z: anchor.z + Math.floor(this.rng() * (2 * radius + 1)) - radius,
-        };
+  private sampleFoodCell(
+    placed: Position[],
+    anchor: Position | null
+  ): Position | null {
+    const blocked = new Set<string>();
+    for (const segment of this.state.snake) {
+      blocked.add(placementKey(segment.x, segment.z));
+    }
+    for (const cell of placed) blocked.add(placementKey(cell.x, cell.z));
+    // Terrain is part of the board now: food inside a block is unreachable,
+    // and an unreachable food is dead time — the exact cost this wave exists
+    // to remove. Exits and the mutation tile must not be buried either.
+    for (let x = 0; x < this.gridSize; x++) {
+      for (let z = 0; z < this.gridSize; z++) {
+        const probe: Position = { x, y: 0, z };
         if (
-          position.x < 0 ||
-          position.x >= this.gridSize ||
-          position.z < 0 ||
-          position.z >= this.gridSize
+          this.isPositionOnExit(probe) ||
+          this.isPositionOnMutation(probe) ||
+          this.isPositionOnTerrain(probe)
         ) {
-          continue;
+          blocked.add(placementKey(x, z));
         }
-      } else {
-        position = {
-          x: Math.floor(this.rng() * this.gridSize),
-          y: 0,
-          z: Math.floor(this.rng() * this.gridSize),
-        };
-      }
-
-      if (
-        !this.isPositionOnSnake(position) &&
-        !this.isPositionOnExit(position) &&
-        !this.isPositionOnMutation(position) &&
-        !this.isPositionOnTerrain(position) &&
-        !placed.some((p) => p.x === position.x && p.z === position.z)
-      ) {
-        return position;
       }
     }
-    return position;
+
+    const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
+    const occupancy = this.state.snake.length / (this.gridSize * this.gridSize);
+    const cell = chooseFoodCell(
+      this.gridSize,
+      head,
+      blocked,
+      occupancy,
+      this.rng,
+      anchor
+        ? {
+            cell: anchor,
+            radius: this.ruleset.constellation?.groupRadius ?? 4,
+          }
+        : null
+    );
+    return cell === null ? null : { x: cell.x, y: 0, z: cell.z };
   }
 
   /**
