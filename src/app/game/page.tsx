@@ -3726,7 +3726,13 @@ function GameBoard({
       {/* Snake - one instanced body draw + a head mesh with eyes, both
           reading tick-alpha interpolated positions from the buffer every
           frame (growth never touches React). Box fallback while the GLB
-          streams shares the identical Core. */}
+          streams shares the identical Core.
+
+          `terrain` and `wrapActive` feed the trail's earned-fusion metric
+          (WP-3.07): solid blocks pack like walls, and an OPEN flux edge must
+          not, or the readout pays out for hugging a seam that is not actually
+          spending any space. Both fallback and GLB variants get them - the
+          Suspense swap must never change what the body is saying. */}
       <Suspense
         fallback={
           <InstancedSnakeFallback
@@ -3734,6 +3740,8 @@ function GameBoard({
             dynasty={dynasty}
             direction={direction}
             strainBands={strainBands}
+            terrain={terrain}
+            wrapActive={fluxPhase === 'open'}
           />
         }
       >
@@ -3742,6 +3750,8 @@ function GameBoard({
           dynasty={dynasty}
           direction={direction}
           strainBands={strainBands}
+          terrain={terrain}
+          wrapActive={fluxPhase === 'open'}
         />
       </Suspense>
 
