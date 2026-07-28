@@ -55,6 +55,7 @@ import {
   type LengthTrace,
   type StrainActivations,
 } from '@/shared/game/genome';
+import { rollExitInterval as rollPortalInterval } from '@/shared/game/portals';
 
 export type DynastyName = 'PRIMAL' | 'CYBER' | 'COSMIC';
 
@@ -639,6 +640,10 @@ export function rollExitInterval(
   extraction: ExtractionConfig,
   rng: () => number = Math.random
 ): number {
-  const span = 2 * extraction.intervalJitter + 1;
-  return extraction.intervalBase - extraction.intervalJitter + Math.floor(rng() * span);
+  // Delegated to `portals.ts`, which owns the seeded schedule that has to walk
+  // this same recurrence. Re-exported through here so every existing caller is
+  // untouched — but there is exactly one implementation, because an engine and
+  // a settlement that each keep their own copy of a seeded recurrence stop
+  // agreeing the first time one of them is edited.
+  return rollPortalInterval(extraction, rng);
 }

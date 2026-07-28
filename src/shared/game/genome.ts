@@ -54,6 +54,7 @@ import {
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
+import { carryScaled } from '@/shared/game/portals';
 import {
   baseGrowthForFood,
   resolveGrowthProfile,
@@ -129,6 +130,23 @@ export interface GenomeRunInput {
    * `baseline`, the shipped curve, so historical blobs recompute unchanged.
    */
   growthProfileId?: GrowthProfileId;
+  /**
+   * Portals this run DECLINED — the carry's only input (WP-3.10).
+   *
+   * SERVER-DERIVED, NEVER CLAIMED. It is computed from the seeded, food-indexed
+   * portal schedule in `portals.ts` together with the infuses and the extraction
+   * flag the settlement already knows, via the identity
+   * `passed = encountered - infuses - (extracted ? 1 : 0)`. It sits on the input
+   * for the same reason `growthProfileId` does: every caller threads this
+   * object, so a call site cannot forget it and silently default while another
+   * supplies it. ABSENT MEANS NO CARRY AT ALL — not zero passed doors. The
+   * distinction is load-bearing: zero passed doors is a live carry sitting at
+   * salvage 1.0, whereas absence is a run with no seeded schedule behind it
+   * (a legacy blob, a pre-WP-3.10 settlement, the workbench's empty genome)
+   * and must recompute on the flat 1.25/0.6 it was authored against. Collapsing
+   * the two would silently rewrite every historical outcome.
+   */
+  portalsPassed?: number;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -733,9 +751,18 @@ export function genomeOutcomeMultipliers(
   // bind, so no clause can lift the bank past 1.75.
   const bankClause = conditionBankDelta(world);
   if (bankClause !== 0) bank = round4(bank + bankClause);
-  // Hard clamps (section 10).
+  // Hard clamps (section 10). These bound what BUILD may do to an outcome,
+  // and every delta above was authored against them, so they still run on the
+  // historical base — the carry is applied afterwards, as a ratio.
   bank = Math.min(STRAIN_ECONOMICS.bankClamp, bank);
   death = Math.min(STRAIN_ECONOMICS.salvageClamp, death);
+  // THE CARRY (WP-3.10). Undefined means no seeded schedule stood behind this
+  // run — a legacy blob or the workbench's empty genome — and it keeps the flat
+  // multipliers it was authored against. Zero is a live carry at its first
+  // door, which is a different thing entirely. See `GenomeRunInput`.
+  if (input.portalsPassed !== undefined) {
+    return carryScaled({ bank, death }, input.portalsPassed);
+  }
   return { bank, death };
 }
 
