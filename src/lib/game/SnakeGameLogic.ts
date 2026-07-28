@@ -83,6 +83,7 @@ import {
   cellKey,
   formingTicksForSeconds,
   nextTerrainCells,
+  ringOf,
   type TerrainBlock,
 } from '@/shared/game/terrain';
 import {
@@ -2667,6 +2668,11 @@ export class SnakeGameLogic {
     const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
     const occupancy =
       this.state.snake.length / Math.max(1, this.gridSize * this.gridSize);
+    // The region a food sits in must hold the body that comes to get it.
+    // Owner, after losing a run to it: "that food was reachable, but you
+    // couldn't get out alive - there was no escape path. I had to crash into
+    // myself, but I got the food first."
+    const escape = this.state.snake.length;
     // COSMIC SCATTERS RATHER THAN CLUSTERS (WP-3.13). The placer's `anchor`
     // parameter exists to keep a group chaseable within `groupRadius` of its
     // first food, and that is the opposite of what a constellation now needs:
@@ -2684,9 +2690,13 @@ export class SnakeGameLogic {
     for (let i = 0; i < target; i++) {
       const cell =
         (spaced && i > 0
-          ? chooseFoodCell(this.gridSize, head, spaced, occupancy, this.rng)
+          ? chooseFoodCell(
+              this.gridSize, head, spaced, occupancy, this.rng, null, escape
+            )
           : null) ??
-        chooseFoodCell(this.gridSize, head, blocked, occupancy, this.rng);
+        chooseFoodCell(
+          this.gridSize, head, blocked, occupancy, this.rng, null, escape
+        );
       // `null` means the board holds no free cell at all - the player has
       // filled it. Placing nothing is the honest answer; the wave carries
       // whatever it managed to place.
@@ -2875,6 +2885,7 @@ export class SnakeGameLogic {
     for (const block of this.state.terrain) {
       markBlocked(blocked, this.gridSize, block.x, block.z);
     }
+    this.markClosingRing(blocked);
     if (this.state.exitTile) {
       markBlocked(
         blocked,
@@ -2916,6 +2927,56 @@ export class SnakeGameLogic {
       (wrap ? Math.min(dx, this.gridSize - dx) : dx) +
       (wrap ? Math.min(dz, this.gridSize - dz) : dz)
     );
+  }
+
+  /**
+   * Block the ring the arena is currently filling from food placement.
+   *
+   * Owner, on first play of CYBER's arena: *"it's quite tricky if you place
+   * food in the outer ring where the blocks are already, because you just
+   * crash into a new block if you just happen to be there where the block
+   * spawns in that moment - feels unfair."*
+   *
+   * They are right, and the unfairness is specifically a LURE. The arena is not
+   * unfair on its own: blocks telegraph as a harmless forming decal for two
+   * seconds and only turn lethal once the cell is clear of the snake, so a
+   * player who chooses to be in the ring accepted that. But food is not a
+   * choice - it is the one thing on the board the player MUST go to. Putting it
+   * inside the closing front turns "you went somewhere dangerous" into "the
+   * game sent you somewhere dangerous", which is the difference between a
+   * hazard and a trap.
+   *
+   * Only the ACTIVE ring is excluded - the outermost one that still has free
+   * cells. Completed rings are already solid terrain and blocked anyway, and
+   * everything inside the front is untouched, so this costs the player about
+   * one ring of board and costs the arena nothing: the schedule still closes at
+   * the same rate, it just stops baiting.
+   */
+  private markClosingRing(blocked: Uint8Array): void {
+    if (!this.ruleset.arena) return;
+    const occupied = new Set<string>();
+    for (const block of this.state.terrain) {
+      occupied.add(cellKey(block.x, block.z));
+    }
+    const maxRing = Math.floor((this.gridSize - 1) / 2);
+    for (let ring = 0; ring <= maxRing; ring++) {
+      let free = 0;
+      for (let x = ring; x < this.gridSize - ring; x++) {
+        for (let z = ring; z < this.gridSize - ring; z++) {
+          if (ringOf({ x, z }, this.gridSize) !== ring) continue;
+          if (!occupied.has(cellKey(x, z))) free++;
+        }
+      }
+      if (free === 0) continue;
+      // The outermost ring with room left is where the next blocks land.
+      for (let x = ring; x < this.gridSize - ring; x++) {
+        for (let z = ring; z < this.gridSize - ring; z++) {
+          if (ringOf({ x, z }, this.gridSize) !== ring) continue;
+          markBlocked(blocked, this.gridSize, x, z);
+        }
+      }
+      return;
+    }
   }
 
   /**

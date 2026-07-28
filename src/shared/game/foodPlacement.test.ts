@@ -136,33 +136,45 @@ describe('reachability', () => {
     }
   });
 
-  it('on a sparse board it rejection-samples, and that is the deal', () => {
-    // HONEST BOUNDARY TEST. Every reachability-correct placement is
-    // Omega(free cells) — you cannot know a cell is reachable without walking
-    // there — and the engine spawns a wave per eaten food. Paying that on a
-    // near-empty board took `foldParity.test.ts` from 11 seconds to six
-    // minutes. So placement samples first and only enumerates when sampling
-    // exhausts, exactly as the shipped game did for years.
+  it('never places food in a sealed pocket, however sparse the board', () => {
+    // THIS TEST USED TO ASSERT THE OPPOSITE, and the inversion is the point.
     //
-    // This test exists so nobody later reads the module header as promising
-    // reachability unconditionally. It asserts the LIMIT, not a feature: on a
-    // sparse board a sealed pocket is reachable-in-practice and unchecked.
+    // It was called "on a sparse board it rejection-samples, and that is the
+    // deal", and it asserted that food DOES sometimes land in a sealed pocket
+    // when the board is nearly empty - an honest boundary test for a deliberate
+    // limitation. The reasoning: a pocket sealed by your own BODY is transient,
+    // because the tail vacates, so refusing such a cell would be over-strict
+    // and paying for a flood fill on every spawn would not be worth it.
+    //
+    // Terrain killed that reasoning. A pocket sealed by terrain is sealed
+    // FOREVER - Rule 15 forbids removing a block - so food inside one is a
+    // target the player can never take. The owner hit it in a real run: food in
+    // the outer ring, walled off by the arena, reachable only by dying.
+    //
+    // Reachability is now checked on every placement, bounded to a fixed
+    // neighbourhood so it cannot reintroduce the cost that made the first
+    // version of this module 400x too slow.
     const blocked = new Set<string>([
       placementKey(1, 0),
       placementKey(0, 1),
       placementKey(1, 1),
     ]);
     const rng = seeded(99);
-    let landedInPocket = false;
     for (let i = 0; i < 4000; i++) {
       const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, grid(blocked), 0.02, rng);
-      if (cell && cell.x === 0 && cell.z === 0) landedInPocket = true;
+      expect(cell).not.toEqual({ x: 0, z: 0 });
     }
-    expect(landedInPocket).toBe(true);
-    // ...and it is still always a LEGAL cell, which is the defect that mattered.
-    const rng2 = seeded(7);
+  });
+
+  it('still returns a legal cell every time it refuses a pocket', () => {
+    const blocked = new Set<string>([
+      placementKey(1, 0),
+      placementKey(0, 1),
+      placementKey(1, 1),
+    ]);
+    const rng = seeded(7);
     for (let i = 0; i < 500; i++) {
-      const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, grid(blocked), 0.02, rng2)!;
+      const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, grid(blocked), 0.02, rng)!;
       expect(blocked.has(placementKey(cell.x, cell.z))).toBe(false);
     }
   });
@@ -182,6 +194,78 @@ describe('reachability', () => {
     const cell = chooseFoodCell(GRID, head, grid(blocked), 0.02, seeded(3));
     expect(cell).not.toBeNull();
     expect(blocked.has(placementKey(cell!.x, cell!.z))).toBe(false);
+  });
+});
+
+describe('reachable is not survivable', () => {
+  // THE OWNER'S RUN: "that food was reachable, but you couldn't get out alive -
+  // there was no escape path. I had to crash into myself, but I got the food
+  // first."
+  //
+  // BE PRECISE ABOUT WHAT THIS CHECK DOES, because the first version of these
+  // tests was not, and a test that overstates its subject is worse than none.
+  //
+  // It measures the free region containing the candidate and refuses the cell
+  // when that region cannot hold the body coming for it. That catches food
+  // stranded in a fragment of a board that terrain has cut up, and it catches
+  // food placed when the snake is already boxed in.
+  //
+  // It does NOT prove survivability in general. A pocket with a mouth belongs
+  // to the whole open region, so it measures large and passes - even though the
+  // snake's own body may seal that mouth behind it on the way in. Proving THAT
+  // is a Hamiltonian question, not a flood fill.
+  //
+  // The owner's actual case is handled a layer up, in the engine: food is no
+  // longer placed in the ring the arena is currently closing (see
+  // `markClosingRing`), which is where their food was.
+
+  it('refuses a cell whose whole region is smaller than the snake', () => {
+    // Head sealed into a 6-cell pen by terrain. Reachable, and fatal.
+    const blocked = new Set<string>();
+    for (let x = 0; x < GRID; x++) {
+      for (let z = 0; z < GRID; z++) {
+        const inPen = x <= 2 && z <= 1;
+        if (!inPen) blocked.add(placementKey(x, z));
+      }
+    }
+    blocked.add(placementKey(0, 0)); // the head's own cell
+    const rng = seeded(3);
+    // A 30-segment snake cannot survive in a 5-cell pen, so every cell in it is
+    // refused - and the placer still returns something legal rather than null.
+    for (let i = 0; i < 200; i++) {
+      const cell = chooseFoodCell(
+        GRID, { x: 0, z: 0 }, grid(blocked), 0.98, rng, null, 30
+      );
+      expect(cell).not.toBeNull();
+      expect(blocked.has(placementKey(cell!.x, cell!.z))).toBe(false);
+    }
+  });
+
+  it('allows the same pen for a snake short enough to live in it', () => {
+    // The rule is about ROOM, not about the shape being forbidden.
+    const blocked = new Set<string>();
+    for (let x = 0; x < GRID; x++) {
+      for (let z = 0; z < GRID; z++) {
+        const inPen = x <= 2 && z <= 1;
+        if (!inPen) blocked.add(placementKey(x, z));
+      }
+    }
+    blocked.add(placementKey(0, 0));
+    const cell = chooseFoodCell(
+      GRID, { x: 0, z: 0 }, grid(blocked), 0.98, seeded(9), null, 3
+    );
+    expect(cell).not.toBeNull();
+    expect(blocked.has(placementKey(cell!.x, cell!.z))).toBe(false);
+  });
+
+  it('never returns null just because nothing satisfies the budget', () => {
+    // Refusing to place food would freeze a run rather than end it, which is
+    // strictly worse than an awkward placement.
+    const blocked = blockAll([[3, 3], [3, 4]]);
+    const cell = chooseFoodCell(
+      GRID, { x: 3, z: 4 }, grid(blocked), 399 / 400, seeded(1), null, 50
+    );
+    expect(cell).toEqual({ x: 3, z: 3 });
   });
 });
 
