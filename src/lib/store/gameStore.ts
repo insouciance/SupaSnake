@@ -140,8 +140,6 @@ export interface GameStore {
   fusedSplices: { id: SpliceId; atFood: number }[];
   /** AURUM Gilded Wake trail cells (renderer). */
   gildedCells: { x: number; z: number; ticks: number }[];
-  /** Bonus foods (molt drops / Heartwood goldens) - renderer. */
-  bonusFoods: { x: number; z: number; kind: 'molt' | 'heartwood' }[];
   /**
    * Arena terrain blocks (renderer).
    *
@@ -216,9 +214,6 @@ export interface GameStore {
   ) => void;
   setFusedSplices: (splices: { id: SpliceId; atFood: number }[]) => void;
   setGildedCells: (cells: { x: number; z: number; ticks: number }[]) => void;
-  setBonusFoods: (
-    foods: { x: number; z: number; kind: 'molt' | 'heartwood' }[]
-  ) => void;
   setTerrain: (terrain: TerrainBlock[]) => void;
   setInfusesCount: (count: number) => void;
   setPortalChoicePending: (pending: boolean) => void;
@@ -268,7 +263,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   fusedSplices: [],
   gildedCells: [],
   terrain: [],
-  bonusFoods: [],
   infusesCount: 0,
   choiceSource: null,
   portalChoicePending: false,
@@ -311,7 +305,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       fusedSplices: [],
       gildedCells: [],
       terrain: [],
-      bonusFoods: [],
       infusesCount: 0,
       choiceSource: null,
       portalChoicePending: false,
@@ -344,7 +337,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       surgeChoicePending: false,
       gildedCells: [],
       terrain: [],
-      bonusFoods: [],
     });
   },
 
@@ -385,7 +377,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       fusedSplices: [],
       gildedCells: [],
       terrain: [],
-      bonusFoods: [],
       infusesCount: 0,
       choiceSource: null,
       portalChoicePending: false,
@@ -560,12 +551,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   setTerrain: (terrain: TerrainBlock[]) => {
     set({ terrain });
-  },
-
-  setBonusFoods: (
-    foods: { x: number; z: number; kind: 'molt' | 'heartwood' }[]
-  ) => {
-    set({ bonusFoods: foods });
   },
 
   setInfusesCount: (count: number) => {

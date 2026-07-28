@@ -56,6 +56,16 @@ the shed** — remove the shed and nothing remains. FERAL tier 2 therefore needs
 "each Shed/Molt event drops a golden food", `genes.ts:197-204`) dangles from the
 same hook and must be re-triggered in the same WP.
 
+**Correction of record (WP-3.11).** WP-3.01's plan below says Molt would be
+"removed from activation (tier 2 grants nothing)" until its replacement landed.
+**That quarantine was never implemented.** WP-3.01 retired the `shed` GENE and
+inverted INFUSE, but FERAL's Molt cycle stayed live in both
+`SnakeGameLogic.applyShedMoves` and `computeLengthTrace`, and the lexicon went
+on describing the shed — so a Rule 15 violation shipped in main from 2026-07-27
+until WP-3.11 removed the cycle outright. `rule15.test.ts` did not catch it
+because it asserted the retirement of the `shed` gene, not the absence of shed
+*cycles*; it now asserts both.
+
 Recommendation carried in WP-3.03, decided by the owner there: FERAL-2 becomes
 **"Fortress"** — *every 20 foods, your oldest 6 segments petrify: they stop
 following, becoming fixed terrain, and each pays 5 DNA* [H]. Length keeps

@@ -512,7 +512,7 @@ describe('bounded-trust claims', () => {
   it('zeroes claims without the matching activation', () => {
     const result = validateGameResult(
       baseInput({
-        genome: { claims: { aurumWakeDna: 500, moltFoodDna: 300 } },
+        genome: { claims: { aurumWakeDna: 500, ouroborosDna: 300 } },
       }),
       started(),
       'PRIMAL',
@@ -522,7 +522,7 @@ describe('bounded-trust claims', () => {
       ctx()
     );
     expect(result.genome!.claims.aurumWakeDna).toBe(0);
-    expect(result.genome!.claims.moltFoodDna).toBe(0);
+    expect(result.genome!.claims.ouroborosDna).toBe(0);
   });
 
   it('mastery XP base excludes accepted claims (deterministic only)', () => {

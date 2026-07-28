@@ -5,7 +5,7 @@
  * capability) is present. These suites cover: capability gating, seeded
  * gravity offers + trace, splice fusion, strain tier activation with
  * board-level physics (Rift Aura, Phantom Coil, Arc Lightning, Gilded
- * Wake, Molt, Ouroboros, Thick Hide), the portal BANK/INFUSE trichotomy,
+ * Wake, Fortress, Ouroboros, Thick Hide), the portal BANK/INFUSE trichotomy,
  * surges at the gene cap, the one-revive rule, and the genome payload.
  */
 
@@ -202,22 +202,69 @@ describe('strain physics on the board', () => {
     expect(state.foodEaten).toBe(2); // main + arced
   });
 
-  it('FERAL Expression (Molt): every 20th food sheds the tail and drops molt-food', () => {
+  it('FERAL Expression (Fortress): every 20th food petrifies the oldest segments', () => {
     const game = makeGenomeGame({}, 160);
     game.grantMutation('overgrowth', 0);
     game.grantMutation('deep_roots', 0);
     game.grantMutation('glacial_reserve', 0); // FERAL x3... deep+glacial fuse
     // Old Growth carries FERAL x2 + overgrowth = 3 FERAL genes.
     expect(game.getState().strainTiers.FERAL).toBe(2);
-    const molts: unknown[] = [];
-    game.on('moltShed', (d) => molts.push(d));
-    eatFoods(game, 20);
+    type Petrified = {
+      atFood: number;
+      segments: number;
+      cells: { x: number; z: number }[];
+    };
+    const events: Petrified[] = [];
+    game.on('petrified', (d) => events.push(d as Petrified));
+
+    const before = game.getState().snake.length;
+    eatFoods(game, 19);
+    const beforeEvent = game.getState();
+    expect(events).toEqual([]);
+    eatFoods(game, 1);
     const state = game.getState();
-    expect(molts.length).toBe(1);
-    expect(state.snake.length).toBeGreaterThanOrEqual(
-      STRAIN_PHYSICS.moltMinLength
+
+    expect(events.map((e) => ({ atFood: e.atFood, segments: e.segments }))).toEqual([
+      { atFood: 20, segments: STRAIN_PHYSICS.fortressSegments },
+    ]);
+    // SEGMENTS ARE NOT CELLS. Growth duplicates the tail cell, so a stacked
+    // tail can petrify six segments onto fewer tiles - the DNA is paid per
+    // segment and the board gets one block per distinct cell. This build grows
+    // +4 a food, so the six oldest segments here are one tile deep.
+    expect(events[0].cells).toHaveLength(STRAIN_PHYSICS.fortressSegments);
+    expect(new Set(events[0].cells.map((c) => `${c.x},${c.z}`)).size).toBe(
+      state.terrain.length
     );
-    expect(state.bonusFoods.some((f) => f.kind === 'molt')).toBe(true);
+    // The live body is SHORTER across the twentieth food even though the food
+    // grew it - that is the whole read of the mechanic, and the only place in
+    // the game where it is allowed to happen.
+    expect(state.snake.length).toBeLessThan(beforeEvent.snake.length);
+    expect(state.snake.length).toBeGreaterThan(before);
+    // ...and the stone is on the board, forming rather than lethal.
+    expect(state.terrain.length).toBeGreaterThan(0);
+    expect(state.terrain.every((b) => !b.solid)).toBe(true);
+    expect(state.terrain.every((b) => b.formingTicks > 0)).toBe(true);
+  });
+
+  it('Fortress pays through the fold, not through a claim', () => {
+    // Molt paid in pickups the player had to collect (`moltFoodDna`, bounded
+    // trust). Fortress's DNA is deterministic, so it must land in
+    // `dnaCollected` on the petrifying food itself and leave every claim
+    // untouched - otherwise the server's recompute and the HUD disagree.
+    const game = makeGenomeGame({}, 160);
+    game.grantMutation('overgrowth', 0);
+    game.grantMutation('deep_roots', 0);
+    game.grantMutation('glacial_reserve', 0);
+    eatFoods(game, 19);
+    const before = game.getState().dnaCollected;
+    const plainFood = before - game.getState().dnaCollected; // 0, by construction
+    eatFoods(game, 1);
+    const state = game.getState();
+    const paid = state.dnaCollected - before + plainFood;
+    expect(paid).toBeGreaterThanOrEqual(
+      STRAIN_PHYSICS.fortressSegments * STRAIN_ECONOMICS.fortressSegmentDna
+    );
+    expect(state.genomeClaims).toEqual({});
   });
 });
 

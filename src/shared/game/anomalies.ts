@@ -92,7 +92,7 @@ export const ANOMALIES: Record<AnomalyId, AnomalyDef> = {
     id: 'overgrown',
     name: 'Overgrown',
     kind: 'P',
-    effect: 'Molt food pays 10 DNA',
+    effect: 'Each petrified segment pays 10 DNA',
     cost: 'Every food grows one extra segment',
     strainBias: 'FERAL',
   },
@@ -151,8 +151,15 @@ export const ANOMALY_ECONOMICS = {
   goldRushFoodMultiplier: 1.5,
   /** Twin Exits: the banked outcome multiplier is x1.15 (vs the base x1.25). */
   twinExitsBankMultiplier: 1.15,
-  /** Overgrown FERAL-week buff: Molt pickups pay 10 instead of 5 flat. */
-  overgrownMoltFoodFlat: 10,
+  /**
+   * Overgrown FERAL-week buff: a petrified segment pays 10 instead of 5.
+   *
+   * WP-3.11 re-pointed this from Molt's pickups to Fortress's stone. It kept
+   * its magnitude because Overgrown's cost - an extra segment per food - is
+   * exactly what makes Fortress fire more often, so the buff still lands on
+   * the mechanic the week is named for.
+   */
+  overgrownPetrifySegmentDna: 10,
 } as const;
 
 /** Physical tuning ([P] - engine/renderer side), exported for tests. */

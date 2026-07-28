@@ -77,7 +77,7 @@ export const STRAIN_TIER_NAMES: Record<
 > = {
   AURUM: { minor: 'Gilt', expression: 'Gilded Wake', apex: 'Midas Vein' },
   VOLT: { minor: 'Tempo', expression: 'Arc Lightning', apex: 'Overclocked Reality' },
-  FERAL: { minor: 'Thick Hide', expression: 'Molt', apex: 'Ouroboros' },
+  FERAL: { minor: 'Thick Hide', expression: 'Fortress', apex: 'Ouroboros' },
   FLUX: { minor: 'Warp Skin', expression: 'Rift Aura', apex: 'Singularity' },
   UMBRA: { minor: 'Shadow Skin', expression: 'Phantom Coil', apex: 'Second Sun' },
 };
@@ -175,10 +175,18 @@ export const STRAIN_ECONOMICS = {
   /** Apex "Overclocked Reality": food +30% from apex onward (benefit). */
   overclockedRealityFoodBonus: 1.3,
   // --- FERAL ---------------------------------------------------------------
-  /** Expression "Molt" [BT]: flat DNA per molt-food eaten (separate spawns). */
-  moltFoodFlat: 5,
-  /** Molt-foods dropped per molt event (claim cap = events x this x flat). */
-  moltFoodsPerEvent: 6,
+  /**
+   * Expression "Fortress" [E]: flat DNA per petrified segment (WP-3.11).
+   *
+   * Molt paid the same 30 per event but paid it in molt FOODS dropped on the
+   * shed cells - a bounded-trust claim the player had to drive back and
+   * collect. Fortress turns those cells into TERRAIN, and terrain is "physics,
+   * never payout" (terrain.ts): a pickup sitting on a cell that is about to
+   * become lethal is payout parked on physics. So the pay is deterministic and
+   * folded at the food that petrified, which retires a claim surface instead
+   * of adding one - the server recomputes it rather than trusting it.
+   */
+  fortressSegmentDna: 5,
   /** Apex "Ouroboros" [BT]: flat DNA per tail-tip bite. */
   ouroborosBiteFlat: 30,
   /** Ouroboros claim cap: bites <= floor(foods since apex / this). */
@@ -264,30 +272,48 @@ export const STRAIN_PHYSICS = {
   // --- FERAL ---------------------------------------------------------------
   /** Thick Hide (minor): tail segments lost instead of dying, once per run. */
   thickHideSegmentLoss: 5,
-  /** Molt: every this many foods after activation, the tail sheds... */
-  moltEveryFoods: 20,
   /**
-   * ...down to this FRACTION of the body it had grown to. A proportional
-   * shed, not an absolute reset: the longer you get the more you drop, but
-   * you never get the whole board back. The absolute reset it replaced made
-   * length stop being a difficulty curve at all, which made a Molt run
-   * unbounded - the board never filled and Score became an endurance test.
+   * FORTRESS (Expression), WP-3.11 - the replacement for Molt.
+   *
+   * Molt could not be re-signed under Rule 15 (Constitution v1.4) the way
+   * Ouroboros and Thick Hide were, because Molt's EFFECT was the shed: remove
+   * the shed and nothing is left to re-price. Fortress is a replacement
+   * effect. Every `fortressEveryFoods` foods after the Expression, the oldest
+   * `fortressSegments` segments PETRIFY: they stop following and become
+   * terrain.
+   *
+   * That is Rule-15-legal three times over, and each one is load-bearing:
+   *   - length keeps counting them, so the difficulty clock never rewinds;
+   *   - the cells stay occupied, so free space does not grow;
+   *   - the live tail shortens while the board hardens - the pressure is
+   *     TRANSFORMED rather than reset, which is the opposite of a shed.
+   *
+   * Food-indexed, never tick-indexed. A food count replays; a tick count is a
+   * fixture of whatever speed curve happened to be shipped that week.
    */
-  moltShedFraction: 0.6,
+  fortressEveryFoods: 20,
+  /** Fortress: segments petrified per event. */
+  fortressSegments: 6,
   /**
-   * The floor of that shed, and ALSO the minimum body length while Molt is
-   * active. A weaker floor than Shed's 8 is part of Molt's cost: the shed
-   * segments pay flat DNA, but the snake can never get truly short again.
+   * Fortress: the forming window of a petrified block, in SECONDS.
+   *
+   * Longer than CYBER's arena (2s) deliberately. CYBER's ring is a KNOWN
+   * frontier - the player is watching the edge come in. Fortress lays its
+   * stone behind the player, in the one part of the board they have stopped
+   * looking at, so the same fairness argument needs a wider window.
+   *
+   * Seconds, not ticks, for the reason terrain.ts gives: a tick-denominated
+   * window rots the moment a dynasty's speed curve is retuned.
    */
-  moltMinLength: 12,
+  fortressFormingSeconds: 3,
   /**
-   * Molt's compounding price: every molt multiplies the tick interval by
-   * this factor for the REST OF THE RUN, clamped at `tickFloorMs`. This is
-   * what ends a Molt run. The proportional shed keeps the body dangerous;
-   * the speed step guarantees the world eventually outruns the pilot, so a
-   * run finishes on skill rather than on patience.
+   * Fortress: petrification is SKIPPED while it would take the live body
+   * below this. The stone is laid on the cells the body is standing on, so
+   * without a floor a short body would petrify itself out of existence. It is
+   * a floor on the LIVE body only - the modelled length is untouched, and a
+   * skipped event pays nothing on either side.
    */
-  moltTickFactor: 0.92,
+  fortressMinLiveLength: 12,
   /** Ouroboros: segments consumed per tail-tip bite. */
   ouroborosSegmentsPerBite: 3,
   // --- FLUX ----------------------------------------------------------------
@@ -330,18 +356,28 @@ export const STRAIN_PHYSICS = {
 } as const;
 
 /**
- * FERAL Molt's proportional shed: the length a body of `len` resets to.
+ * FERAL Fortress: does an event fire at food `n`, given the live body?
  *
  * This lives here, beside the dials and above every consumer, because the
- * client engine (`SnakeGameLogic.applyShedMoves`) and the server's
- * deterministic length model (`computeLengthTrace`) must produce the SAME
- * number at the same point in the same food. Two matching expressions in
- * two files would be a divergence waiting to happen; one function called
- * twice is parity by construction, and the fold-parity suite proves it.
+ * client engine (`SnakeGameLogic.applyPetrify`) and the server's deterministic
+ * length model (`computeLengthTrace`) must reach the SAME verdict at the same
+ * point in the same food. Two matching expressions in two files would be a
+ * divergence waiting to happen; one predicate called twice is parity by
+ * construction, and the fold-parity suite proves it food by food.
+ *
+ * `expressionAt` is the food index the FERAL Expression activated on; the
+ * cadence counts from there, and the Expression's own food never petrifies.
  */
-export function moltResetLengthFor(len: number): number {
-  return Math.max(
-    STRAIN_PHYSICS.moltMinLength,
-    Math.floor(len * STRAIN_PHYSICS.moltShedFraction)
+export function fortressFiresAt(
+  n: number,
+  expressionAt: number | null,
+  liveLength: number
+): boolean {
+  if (expressionAt === null) return false;
+  const since = n - expressionAt;
+  if (since <= 0 || since % STRAIN_PHYSICS.fortressEveryFoods !== 0) return false;
+  return (
+    liveLength - STRAIN_PHYSICS.fortressSegments >=
+    STRAIN_PHYSICS.fortressMinLiveLength
   );
 }

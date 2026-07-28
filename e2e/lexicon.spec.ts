@@ -177,7 +177,7 @@ test.describe('The Codex reads as a lexicon', () => {
       await expect(page.getByTestId(section)).toBeVisible();
     }
     // All fifteen strain tiers are spelled out.
-    await expect(page.getByTestId('lexicon-tier-FERAL-2')).toContainText('Molt');
+    await expect(page.getByTestId('lexicon-tier-FERAL-2')).toContainText('Fortress');
 
     // The discovery layer, and only it, still asks for an account.
     await expect(page.getByTestId('codex-signed-out')).toBeVisible();

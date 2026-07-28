@@ -536,7 +536,6 @@ export default function GamePage() {
     gildedCells,
     terrain,
     setTerrain,
-    bonusFoods,
     choiceSource,
     portalChoicePending,
     surgeChoicePending,
@@ -566,7 +565,6 @@ export default function GamePage() {
     setStrains,
     setFusedSplices,
     setGildedCells,
-    setBonusFoods,
     setInfusesCount,
     setPortalChoicePending,
     setSurgeChoicePending,
@@ -1134,7 +1132,6 @@ export default function GamePage() {
       setStrains(state.strainCounts, state.strainTiers);
       setFusedSplices(state.fusedSplices);
       setGildedCells(state.gildedCells);
-      setBonusFoods(state.bonusFoods);
       setInfusesCount(state.infuses.length);
       setRevive(state.revive);
     };
@@ -1539,7 +1536,6 @@ export default function GamePage() {
 
   }, [
     endGame,
-    setBonusFoods,
     setChoiceOptions,
     setDeathSequence,
     setDnaCollected,
@@ -1607,7 +1603,6 @@ export default function GamePage() {
         setStrains(state.strainCounts, state.strainTiers);
         setFusedSplices(state.fusedSplices);
         setGildedCells(state.gildedCells);
-        setBonusFoods(state.bonusFoods);
         setInfusesCount(state.infuses.length);
         setPortalChoicePending(state.pendingPortalChoice !== null);
         setSurgeChoicePending(state.pendingSurgeChoice);
@@ -1623,7 +1618,7 @@ export default function GamePage() {
         performance.now()
       );
     }
-  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux, setStrains, setFusedSplices, setGildedCells, setBonusFoods, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setTerrain]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setFlux, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setTerrain]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -3817,7 +3812,6 @@ export default function GamePage() {
             extraFoods={extraFoods}
             gildedCells={gildedCells}
             terrain={terrain}
-            bonusFoods={bonusFoods}
             constellationGlyph={constellationGlyph}
             exitTile={exitTile}
             exitTile2={exitTile2}
@@ -3891,7 +3885,6 @@ interface GameBoardProps {
   extraFoods: Position[];
   gildedCells: readonly { x: number; z: number; ticks: number }[];
   terrain: readonly TerrainBlock[];
-  bonusFoods: readonly { x: number; z: number; kind: 'molt' | 'heartwood' }[];
   constellationGlyph: number | null;
   exitTile: Position | null;
   /** Second portal of the Twin Exits anomaly pair (§7.2), null otherwise. */
@@ -3923,7 +3916,6 @@ function GameBoard({
   extraFoods,
   gildedCells,
   terrain,
-  bonusFoods,
   constellationGlyph,
   exitTile,
   exitTile2,
@@ -3959,16 +3951,13 @@ function GameBoard({
     for (const extra of extraFoods) {
       list.push({ x: extra.x, z: extra.z, kind: 'food' });
     }
-    for (const bonus of bonusFoods) {
-      list.push({ x: bonus.x, z: bonus.z, kind: 'food' });
-    }
     if (exitTile) list.push({ x: exitTile.x, z: exitTile.z, kind: 'portal' });
     if (exitTile2) list.push({ x: exitTile2.x, z: exitTile2.z, kind: 'portal' });
     if (mutationTile) {
       list.push({ x: mutationTile.x, z: mutationTile.z, kind: 'mutation' });
     }
     return list;
-  }, [food, extraFoods, bonusFoods, exitTile, exitTile2, mutationTile]);
+  }, [food, extraFoods, exitTile, exitTile2, mutationTile]);
 
   return (
     <group position={cameraShake}>
@@ -4015,7 +4004,7 @@ function GameBoard({
         laneColor={theme.primary}
       />
 
-      <GenomeBoardEffects gildedCells={gildedCells} bonusFoods={bonusFoods} />
+      <GenomeBoardEffects gildedCells={gildedCells} />
       <TerrainBlocks terrain={terrain} />
 
       {/* Snake - one instanced body draw + a head mesh with eyes, both

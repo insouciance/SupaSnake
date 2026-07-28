@@ -34,7 +34,7 @@ describe('the five Genome anomaly boards', () => {
     );
   });
 
-  it('carries the doc numbers, including Overgrown growth and Molt payout', () => {
+  it('carries the doc numbers, including Overgrown growth and Fortress payout', () => {
     expect(ANOMALY_PHYSICS.meteorShowerFoodDespawnTicks).toBe(60);
     expect(ANOMALY_ECONOMICS.goldRushFoodMultiplier).toBe(1.5);
     expect(ANOMALY_PHYSICS.goldRushPortalIntervalPenalty).toBe(6);
@@ -42,7 +42,7 @@ describe('the five Genome anomaly boards', () => {
     expect(ANOMALY_ECONOMICS.twinExitsBankMultiplier).toBe(1.15);
     expect(ANOMALY_PHYSICS.twinExitsPortalCount).toBe(2);
     expect(ANOMALY_PHYSICS.overgrownExtraSegments).toBe(1);
-    expect(ANOMALY_ECONOMICS.overgrownMoltFoodFlat).toBe(10);
+    expect(ANOMALY_ECONOMICS.overgrownPetrifySegmentDna).toBe(10);
   });
 
   it('taxonomy: Gold Rush food and Twin Exits bank are [E]; Meteor/Blackout are [P]', () => {

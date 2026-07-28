@@ -217,8 +217,8 @@ const STRAIN_TIER_COPY: Record<StrainId, Record<1 | 2 | 3, TierCopy>> = {
       cost: `It costs ${STRAIN_PHYSICS.thickHideSegmentLoss} tail segments, and only once.`,
     },
     2: {
-      effect: `Every ${STRAIN_PHYSICS.moltEveryFoods} foods the tail sheds to ${share(STRAIN_PHYSICS.moltShedFraction)} of its length, never below ${STRAIN_PHYSICS.moltMinLength}, and drops ${STRAIN_ECONOMICS.moltFoodsPerEvent} molt foods worth ${STRAIN_ECONOMICS.moltFoodFlat} DNA each.`,
-      cost: `Each molt speeds the world to ×${STRAIN_PHYSICS.moltTickFactor} tick interval, compounding for the rest of the run — and you can never be shorter than ${STRAIN_PHYSICS.moltMinLength} again.`,
+      effect: `Every ${STRAIN_PHYSICS.fortressEveryFoods} foods your oldest ${STRAIN_PHYSICS.fortressSegments} segments petrify: they stop following and become fixed terrain, paying ${STRAIN_ECONOMICS.fortressSegmentDna} DNA each.`,
+      cost: `The stone forms for ${STRAIN_PHYSICS.fortressFormingSeconds} seconds and then kills on contact, for the rest of the run. It still counts toward your length — nothing here makes you shorter — and nothing petrifies while it would leave you under ${STRAIN_PHYSICS.fortressMinLiveLength} living segments.`,
     },
     3: {
       effect: `Bite your own tail tip for ${STRAIN_ECONOMICS.ouroborosBiteFlat} flat DNA, once per ${STRAIN_ECONOMICS.ouroborosFoodsPerBite} foods eaten since the Apex.`,
