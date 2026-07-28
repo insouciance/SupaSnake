@@ -175,26 +175,42 @@ Per D3 (§6.1): a **back-loaded** shape — PRIMAL earns by depth — with an in
 comparable to CYBER's and COSMIC's at the terminus. Today's flat `() => 1` is half
 of why the leaderboard measures dynasty choice rather than skill.
 
-### 2.7 FERAL tier 2 — the Molt replacement
+### 2.7 FERAL tier 2 — "Fortress" (SHIPPED, WP-3.11)
 
-Molt cannot be re-priced under Rule 15, because **its shed *is* its effect**
-(Constitution §13, row 26). PRIMAL's signature gene `heartwood` triggers on shed
-events and is orphaned with it.
+Molt could not be re-priced under Rule 15, because **its shed *was* its effect**
+(Constitution §13, row 26). PRIMAL's signature gene `heartwood` triggered on shed
+events and was orphaned with it.
 
-**Recommended replacement — "Fortress":** every 20 foods, the snake's oldest 6
+**Fortress**, shipped: every 20 foods after the Expression, the snake's oldest 6
 segments **petrify** — they stop following, become fixed terrain, and each pays 5
 DNA [H]. Length still counts them, so the clock never rewinds; free space is
-unchanged; the *live* tail shortens while the board hardens. Pressure transforms
-rather than resets, and `heartwood` re-triggers on petrification.
+unchanged at the instant of the event and shrinks from then on; the *live* tail
+shortens while the board hardens. Pressure transforms rather than resets.
 
 It is the fourth consumer of the terrain primitive, and it gives PRIMAL a
 deliberate way to build structure — the same verb COSMIC gets from failure, here
-earned through a strain commitment.
+earned through a strain commitment. It uses the block, the forming phase and the
+pending state, and none of the schedule: Fortress is **not an arena**, and
+`ruleset.arena` remains CYBER's alone.
 
-*Alternative if a simpler world is preferred:* FERAL-2 becomes a pure
-growth-economy tier (+2 flat DNA per food while above a length threshold), and
-`heartwood` re-targets to FERAL expression generally. **Owner ruling required at
-WP-3.03.**
+Three decisions that were open in the recommendation, now made:
+
+- **`heartwood` re-triggers on petrify events, deterministically.** It was a
+  bounded-trust claim (a golden food dropped on the shed cells). The petrified
+  cells are terrain now, and terrain is "physics, never payout", so the pay
+  moved into the fold at the same magnitude — 30 flat per petrification, and
+  Fortress's own 5-per-segment with it. Two claim fields (`moltFoodDna`,
+  `heartwoodDna`) were retired rather than re-pointed.
+- **No tempo term.** Molt multiplied the tick interval by 0.92 per firing,
+  compounding, because the shed deleted the difficulty and the run needed a
+  second clock. Fortress deletes nothing — every firing hardens the board — so
+  carrying the speed step across would price the Expression twice.
+- **A live-body floor.** Nothing petrifies while it would leave fewer than 12
+  living segments, because the stone is laid on cells the body is standing on.
+
+*The alternative considered and not taken:* FERAL-2 as a pure growth-economy
+tier (+2 flat DNA per food while above a length threshold), with `heartwood`
+re-targeted to FERAL expression generally.
 
 ---
 
@@ -207,7 +223,7 @@ WP-3.03.**
 | Simultaneous foods | starts at 3; the traverse-tail fix |
 | Tick | 200 → ~170–180 |
 | Unreachable-food expiry | ticks before a walled-off food relocates |
-| Fortress cadence / segments / DNA | if Fortress is chosen at WP-3.03 |
+| Fortress cadence / segments / DNA / forming / live floor | shipped WP-3.11: 20 / 6 / 5 / 3s / 12 |
 
 **Measure from `run_events`, as §1's curve was measured:** seconds-per-food against
 occupancy, per profile. If multi-food flattens the `3.5 + 14.0 × occupancy` fit,

@@ -42,7 +42,7 @@ export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
     designEv: 5600,
   },
   {
-    name: 'Molt Farmer', dynasty: 'PRIMAL', foods: 110, bankProbability: 0.88,
+    name: 'Legacy Shed Farmer', dynasty: 'PRIMAL', foods: 110, bankProbability: 0.88,
     heirloom: { FERAL: 1 },
     picks: [{ id: 'overgrowth', atFood: 40 }, { id: 'shed', atFood: 70 }],
     infuses: [],
