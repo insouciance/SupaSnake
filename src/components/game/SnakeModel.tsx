@@ -93,6 +93,15 @@ export const ENERGY_MIN = 0.88;
  *
  * The old flat BODY_SIZE (0.75) sits between levels 0 and 1, so a snake that
  * is packing averagely looks about like it always did.
+ *
+ * A NOTE ON CORNERS, because it was nearly "fixed" by mistake. Mid-tick through
+ * a turn two cells compress well inside 1.0 apart, so at 0.96 their boxes
+ * INTERPENETRATE. That is not the rendering defect it looks like on paper:
+ * intersecting opaque solids of the same material render as a clean union,
+ * because their surfaces meet at an angle rather than sharing a depth. The
+ * control render that isolated the real defect (the joint links, now deleted)
+ * had this exact overlap and came back clean. Coplanar is the condition that
+ * breaks; overlapping is not.
  */
 export const TRAIL_FOOTPRINT: readonly number[] = [0.62, 0.8, 0.96];
 
