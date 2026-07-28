@@ -135,11 +135,28 @@ export function getTrailTone(level: number): number {
  *
  * Nothing flattens to nothing. A zero-height segment forfeits its cast shadow,
  * and the shadow is a real occupancy cue.
+ *
+ * THE TRUNK IS A CUBE, NOT A PLATE (fixed 2026-07-28, from the owner's first
+ * play of the shipped trail: *"not all sides of the cubes/segments are
+ * visible"*). It was 0.42 against a footprint of up to 0.96 — barely two fifths
+ * as tall as it was wide, so the body read as a flat ribbon and its side faces
+ * had almost no screen area to be seen in. "Take quiet from height, not from
+ * brightness" was the right instruction and this took it too far: the shipped
+ * body was a uniform 0.75 cube, and the trunk needs to stay near that or the
+ * step down from the head stops being a step and becomes a collapse.
+ *
+ * 0.58 is the most volume available without breaking the OTHER constraint this
+ * file already committed to and tests: the trunk stays below a solid terrain
+ * block (0.62), so terrain reads as a raised wall and the trail as a low field.
+ * That separation is deliberate and worth keeping, so the trunk is not a full
+ * cube — it is 0.58 against a footprint of 0.62 when unfused, which is cubic
+ * where it matters, and 0.96 when fully fused, which is the solid field the
+ * design asks for. Head and tail are unchanged; the flatness was the trunk.
  */
 export const TRAIL_HEAD_ZONE = 5;
 export const TRAIL_HEIGHT_HEAD = 0.86;
-export const TRAIL_HEIGHT_TRUNK = 0.42;
-export const TRAIL_HEIGHT_TAIL = 0.16;
+export const TRAIL_HEIGHT_TRUNK = 0.58;
+export const TRAIL_HEIGHT_TAIL = 0.26;
 
 /**
  * The tail zone encodes IMMINENT VACANCY, and it is denominated in TICKS, not
@@ -229,6 +246,33 @@ export function getTrailBreathe(index: number, elapsedSeconds: number): number {
  * instance per corner cheaper, nothing to keep in sync.
  */
 export const TRAIL_LINK_WIDTH = 0.72;
+
+/**
+ * How tall a link is, as a fraction of the SHORTER of the two cells it joins.
+ *
+ * STRICTLY BELOW 1, AND THAT IS THE WHOLE POINT. This is the fix for the defect
+ * the owner hit on first play: *"they are flickering and not all sides of the
+ * cubes/segments are visible."*
+ *
+ * A link spans centre to centre, so it is buried inside both cells it joins.
+ * At 1.0 its height equalled `min(heightA, heightB)`, and along the settled
+ * trunk — where every cell is exactly TRAIL_HEIGHT_TRUNK — that made the link's
+ * top face and the cells' top faces COPLANAR, at identical depth, over the
+ * whole run. Two surfaces at the same depth is z-fighting by definition: the
+ * winner is decided by floating-point noise per fragment, so the top of the
+ * snake broke into notches that marched along it and shimmered whenever
+ * anything moved.
+ *
+ * Insetting removes the tie instead of biasing it. `polygonOffset` would only
+ * pick a winner; a shorter link means the surfaces are never at the same depth
+ * to begin with, at any camera angle, on any GPU.
+ *
+ * The inset is also the right picture. Where two cells are fused their boxes
+ * nearly touch and the groove is invisible; where they are not, the link reads
+ * as a joint sunk between two discrete voxels, which is exactly what fusion
+ * level 0 is supposed to look like.
+ */
+export const TRAIL_LINK_HEIGHT = 0.88;
 
 /**
  * Per-segment energy multiplier (1.0 near the head -> ENERGY_MIN at the

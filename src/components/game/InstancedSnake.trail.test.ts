@@ -255,6 +255,95 @@ describe('links: the continuous form, and the seam that must not be drawn', () =
   });
 });
 
+describe('no two surfaces ever share a depth (the z-fighting defect)', () => {
+  // THE DEFECT THE OWNER HIT ON FIRST PLAY: "the blocks of the snake dont
+  // render properly, they are flickering and not all sides of the cubes /
+  // segments are visible."
+  //
+  // A link spans centre to centre, so it is buried inside both cells it joins.
+  // Its height used to be exactly `min(heightA, heightB)`, and along the
+  // settled trunk every cell is exactly TRAIL_HEIGHT_TRUNK — so the link's top
+  // face and the cells' top faces were COPLANAR over the whole run. Two
+  // surfaces at one depth is z-fighting by definition, and it read as notches
+  // marching along the snake's back, shimmering whenever anything moved.
+  //
+  // These assert GEOMETRY, not a constant, because the constant is not the
+  // invariant — "no link top may touch a cell top" is, and it has to survive
+  // the breathe multiplier, the sinking tail and the head-zone easing.
+  const topOf = (i: Instance): number => i.position.y + i.scale.y / 2;
+
+  it('every link top sits strictly below both cells it joins', () => {
+    const snake = straight(24);
+    const { sink, count } = emit(bufferOf(snake), new Array(24).fill(2));
+    const boxes = sink.instances.slice(0, snake.length - 1);
+    const links = sink.instances.slice(snake.length - 1, count);
+    expect(boxes.length).toBeGreaterThan(0);
+    expect(links.length).toBeGreaterThan(0);
+
+    // PAIRWISE, against the two cells this link actually joins. A global
+    // minimum would be the wrong bound and it is worth saying why: the tail
+    // sinks, so the shortest cell in the run is far from the trunk and a trunk
+    // link has no reason to clear it. Asserting that instead would fail on
+    // correct geometry, which is how a test starts getting weakened.
+    links.forEach((link, joint) => {
+      const a = boxes[Math.max(0, joint - 1)];
+      const b = boxes[Math.min(boxes.length - 1, joint)];
+      expect(topOf(link)).toBeLessThan(Math.min(topOf(a), topOf(b)));
+    });
+  });
+
+  it('holds while the head zone is breathing', () => {
+    // The breathe multiplies height per-segment per-frame, so a link between a
+    // breathing cell and a still one has two different heights to stay under.
+    // Sampled across a full cycle rather than at one lucky phase.
+    const snake = straight(20);
+    for (let step = 0; step < 24; step++) {
+      const elapsed = step / 24;
+      const { sink, count } = emit(
+        bufferOf(snake),
+        new Array(20).fill(1),
+        1,
+        elapsed
+      );
+      const boxes = sink.instances.slice(0, snake.length - 1);
+      const links = sink.instances.slice(snake.length - 1, count);
+      links.forEach((link, joint) => {
+        const a = boxes[Math.max(0, joint - 1)];
+        const b = boxes[Math.min(boxes.length - 1, joint)];
+        expect(topOf(link)).toBeLessThan(Math.min(topOf(a), topOf(b)));
+      });
+    }
+  });
+
+  it('holds through the sinking tail, where heights differ most', () => {
+    const snake = straight(30);
+    const { sink, count } = emit(bufferOf(snake), new Array(30).fill(0));
+    const boxes = sink.instances.slice(0, snake.length - 1);
+    const links = sink.instances.slice(snake.length - 1, count);
+    // Pair each link with the two cells it actually joins rather than the
+    // global minimum: the tail's cells are genuinely shorter than the trunk's,
+    // and a global bound would hide a link that clears the tail but not its
+    // own neighbours.
+    links.forEach((link, joint) => {
+      const a = boxes[Math.max(0, joint - 1)];
+      const b = boxes[Math.min(boxes.length - 1, joint)];
+      expect(topOf(link)).toBeLessThan(Math.min(topOf(a), topOf(b)));
+    });
+  });
+
+  it('the trunk is a cube, not a plate', () => {
+    // The second half of the same report — "not all sides of the cubes are
+    // visible". A segment 0.42 tall and up to 0.96 wide has almost no side
+    // area to be seen in. Height must stay within a factor of the footprint or
+    // the body stops reading as blocks at all.
+    const snake = straight(20);
+    const { sink } = emit(bufferOf(snake), new Array(20).fill(2));
+    const trunk = sink.instances[12];
+    const footprint = getTrailFootprint(2);
+    expect(trunk.scale.y).toBeGreaterThan(footprint * 0.6);
+  });
+});
+
 describe('the instance budget holds at the length where it matters', () => {
   it('a board-filling snake is drawn whole, not truncated', () => {
     // 400 cells is exactly when the trail is most useful and most likely to
