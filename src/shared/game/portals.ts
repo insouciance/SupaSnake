@@ -346,12 +346,25 @@ export function carryBankMultiplier(passed: number): number {
  * `passed = 0` is 1.0 — before you have declined anything there is nothing to
  * have gambled, so a crash returns the run whole. It can never exceed 1: dying
  * must never pay more than the run earned.
+ *
+ * `salvageFloor` is a PARAMETER rather than a read of `CARRY.salvageFloor`
+ * because the D2 ladder's "Thin Salvage" rung lowers it (WP-3.12). It defaults
+ * to the shipped floor, so every existing caller — and every run at rung 0 —
+ * gets exactly the curve it got before. The floor is supplied by
+ * `ladderSalvageFloor(rung)`, which is the ONE place that arithmetic lives; a
+ * caller computing its own would be a second dial that could go stale.
+ *
+ * Note that `passed = 0` is 1.0 whatever the floor is: the floor is where the
+ * decay LANDS, not where it starts, so a rung that lowers it cannot punish a
+ * player who never declined a door.
  */
-export function carrySalvageMultiplier(passed: number): number {
+export function carrySalvageMultiplier(
+  passed: number,
+  salvageFloor: number = CARRY.salvageFloor
+): number {
   const doors = Math.min(CARRY.maxPortals, Math.max(0, Math.floor(passed)));
-  const decayed =
-    CARRY.salvageFloor +
-    (1 - CARRY.salvageFloor) * Math.pow(CARRY.salvageDecay, doors);
+  const floor = Math.min(1, Math.max(0, salvageFloor));
+  const decayed = floor + (1 - floor) * Math.pow(CARRY.salvageDecay, doors);
   return round4(Math.min(1, decayed));
 }
 
@@ -388,10 +401,12 @@ export const CARRY_BASE = { bank: 1.25, salvage: 0.6 } as const;
  */
 export function carryScaled(
   outcome: { bank: number; death: number },
-  passed: number
+  passed: number,
+  salvageFloor: number = CARRY.salvageFloor
 ): { bank: number; death: number } {
   const bankRatio = carryBankMultiplier(passed) / CARRY_BASE.bank;
-  const salvageRatio = carrySalvageMultiplier(passed) / CARRY_BASE.salvage;
+  const salvageRatio =
+    carrySalvageMultiplier(passed, salvageFloor) / CARRY_BASE.salvage;
   return {
     bank: round4(outcome.bank * bankRatio),
     death: round4(Math.min(1, outcome.death * salvageRatio)),

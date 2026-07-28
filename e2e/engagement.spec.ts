@@ -13,7 +13,15 @@
 import { test, expect, type Page, type Request } from '@playwright/test';
 import { seedConsent, startRunIfSetupPresent } from './helpers';
 
-test.describe.configure({ mode: 'serial' });
+// Serial, and budgeted for the flag-on build. Step 1 alone can spend 45s
+// waiting for the bootstrap round trip, 45s on the route change and another
+// 30s inside `startRunIfSetupPresent` (Run Setup only exists with
+// NEXT_PUBLIC_RUN_FLOW_V1 on, so the rollback leg never paid for it). Against
+// the default 60s per test that arithmetic can only end in a bare timeout,
+// which then takes the rest of the file with it because the session is
+// shared. The individual waits are kept long enough to be informative and the
+// budget is raised to hold them.
+test.describe.configure({ mode: 'serial', timeout: 150_000 });
 
 test.describe('Engagement hook loop (fresh anonymous player)', () => {
   let page: Page;
@@ -37,7 +45,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
       (response) =>
         response.request().method() === 'POST' &&
         new URL(response.url()).pathname === '/api/player/bootstrap',
-      { timeout: 60000 }
+      { timeout: 45000 }
     ).catch(() => null);
     await page.getByRole('button', { name: /^launch$/i }).click();
     const response = await bootstrapPromise;
@@ -54,7 +62,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     expect(bootstrap.onboarding.needsStarterSelection).toBe(false);
     guestReady = true;
 
-    await page.waitForURL(/\/game/, { timeout: 60000 });
+    await page.waitForURL(/\/game/, { timeout: 45000 });
     await startRunIfSetupPresent(page);
     await expect(page.getByTestId('first-movement-prompt')).toHaveText(
       'Swipe or press an arrow to move'

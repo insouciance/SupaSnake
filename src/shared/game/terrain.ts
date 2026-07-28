@@ -6,7 +6,9 @@
  *
  *   - CYBER's arena hardens from the outside in (`DYNASTY_CYBER`)
  *   - COSMIC's uncollected stars calcify where they sat (`DYNASTY_COSMIC`)
- *   - PRIMAL's FERAL-2 "Fortress" petrifies the oldest tail segments
+ *   - PRIMAL's FERAL-2 "Fortress" petrifies the oldest tail segments (shipped
+ *     WP-3.11; it uses the block, the forming phase and the pending state, and
+ *     none of the schedule - `nextTerrainCells` is the ARENA's selector)
  *   - a future ladder rung can start a run with a ring already placed
  *
  * PHYSICS, NEVER PAYOUT. Terrain decides when you die, not what you earn — the
@@ -91,8 +93,25 @@ export function formingTicksFor(
   schedule: TerrainSchedule,
   tickMs: number
 ): number {
+  return formingTicksForSeconds(schedule.formingSeconds, tickMs);
+}
+
+/**
+ * The same conversion for terrain that has no SCHEDULE.
+ *
+ * PRIMAL's Fortress (WP-3.11) places blocks on the cells its own body is
+ * standing on, so it has a forming duration but no ring, no interval and no
+ * per-interval count. Handing it a fabricated `TerrainSchedule` to reach the
+ * conversion would put three meaningless numbers on the record; the honest
+ * shape is a duration, and `formingTicksFor` now delegates here so the two can
+ * never round differently.
+ */
+export function formingTicksForSeconds(
+  seconds: number,
+  tickMs: number
+): number {
   const ms = Math.max(1, tickMs);
-  return Math.max(1, Math.round((schedule.formingSeconds * 1000) / ms));
+  return Math.max(1, Math.round((seconds * 1000) / ms));
 }
 
 /** How many blocks should exist by the time `foods` have been eaten. */

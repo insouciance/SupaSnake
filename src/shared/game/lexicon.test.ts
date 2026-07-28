@@ -175,7 +175,7 @@ describe('strain tier labels', () => {
 
   it('names each tier by its family and its tier name', () => {
     const entry = describeEntry('strainTier', strainTierId('FERAL', 2));
-    expect(entry!.name).toBe('Feral Molt');
+    expect(entry!.name).toBe('Feral Fortress');
     expect(entry!.color).toBe(describeEntry('strain', 'FERAL')!.color);
   });
 

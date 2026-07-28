@@ -18,7 +18,7 @@
  * two.
  *
  * And every one of them is a FLOOR, stated in those words. The bounded-trust
- * claims — Gilded Wake cells, Molt foods, Ouroboros bites, the Second Sun
+ * claims — Gilded Wake cells, Ouroboros bites, the Second Sun
  * trigger — are claimed by a run that plays them, not derived from a build, so
  * they are excluded and the excluded ceiling is reported separately from the
  * engine's own `genomeClaimCaps` rather than guessed at or quietly folded in.

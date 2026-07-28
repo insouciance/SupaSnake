@@ -24,6 +24,7 @@ import { describe, it, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getRuleset, type DynastyName } from './rulesets';
+import { STRAIN_PHYSICS } from './strains';
 
 const root = process.cwd();
 const read = (relative: string) => readFileSync(join(root, relative), 'utf8');
@@ -84,6 +85,31 @@ describe('no dynasty may arm an arena without a renderer', () => {
       expect(read('src/app/game/page.tsx')).toContain('TerrainBlocks');
     }
   );
+
+  it("PRIMAL's Fortress reaches the same renderer without an arena", () => {
+    // WP-3.11. The rule this file holds is "a lethal primitive is connected to
+    // something that renders", and the `it.each` above checks it via
+    // `ruleset.arena` - which Fortress does not have. It would therefore have
+    // shipped invisible under a green suite, which is precisely the defect
+    // this file was written after.
+    //
+    // The connection is structural: Fortress pushes the SAME `TerrainBlock`
+    // shape into the SAME `state.terrain`, and the tick handler sets terrain
+    // OUTSIDE the genome gate (asserted above), so a build-driven block is
+    // drawn by the ruleset-driven renderer.
+    const engine = read('src/lib/game/SnakeGameLogic.ts');
+    expect(engine).toContain('private applyPetrify(');
+    expect(engine).toMatch(/applyPetrify[\s\S]{0,3000}this\.state\.terrain\.push\(/);
+    expect(read('src/app/game/page.tsx')).toContain('TerrainBlocks');
+  });
+
+  it('Fortress blocks arrive with a forming phase too', () => {
+    // The same fairness argument the arena's schedule is held to, held against
+    // the dial rather than the schedule, because Fortress has no schedule.
+    expect(STRAIN_PHYSICS.fortressFormingSeconds).toBeGreaterThan(0);
+    expect(STRAIN_PHYSICS.fortressSegments).toBeGreaterThan(0);
+    expect(STRAIN_PHYSICS.fortressEveryFoods).toBeGreaterThan(0);
+  });
 
   it('an armed arena always has a non-zero forming phase', () => {
     // A block that solidifies instantly is a random death however well it is

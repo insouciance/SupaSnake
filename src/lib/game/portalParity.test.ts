@@ -41,6 +41,14 @@ import type { GeneId, GenePick } from '@/shared/game/genes';
 import type { StrainPoints } from '@/shared/game/strains';
 import type { TraitId } from '@/shared/game/traits';
 import type { AnomalyId } from '@/shared/game/anomalies';
+import {
+  LADDER_MAX_RUNG,
+  ladderCadence,
+  ladderInfuseGrowth,
+  ladderParams,
+} from '@/shared/game/ladder';
+import { computeLengthTrace } from '@/shared/game/genome';
+import { GAME_CONFIG } from '@/shared/config/game';
 
 /** Wide enough that a straight walk never hits a wall or itself. */
 const GRID = 400;
@@ -57,11 +65,14 @@ interface Script {
   infuses?: number[];
   /** Walk onto the portal and BANK at this food, ending the run. */
   bankAt?: number;
+  /** The D2 ladder rung the server stamped on this run (WP-3.12). */
+  ladderRung?: number;
 }
 
 interface RunResult {
   engineMet: number;
   foodCount: number;
+  finalLength: number;
   picks: GenePick[];
   infuses: { atFood: number }[];
   extracted: boolean;
@@ -81,6 +92,7 @@ function runScript(script: Script): RunResult {
     rng: () => 0.5,
     traits: script.traits ?? [],
     anomaly: script.anomaly ?? null,
+    ladderRung: script.ladderRung,
     genome: {
       runSeed: `portal-${script.name}`,
       heirloom: script.heirloom ?? {},
@@ -137,6 +149,7 @@ function runScript(script: Script): RunResult {
   return {
     engineMet: game.getPortalsMet(),
     foodCount: final.foodEaten,
+    finalLength: final.snake.length,
     picks: final.heldMutations.map((m) => ({ id: m.id, atFood: m.atFood })),
     infuses: final.infuses.map((i) => ({ atFood: i.atFood })),
     extracted,
@@ -164,7 +177,9 @@ function serverMet(script: Script, run: RunResult): number {
       Math.min(3, strainTierAtFood(activations.FLUX, food + 0.5)),
   };
   return portalsEncountered(
-    getRuleset(dynasty).extraction,
+    // The settlement's cadence, assembled exactly as `derivePortalsPassed`
+    // assembles it — ladder-shifted from the stamped rung.
+    ladderCadence(getRuleset(dynasty).extraction, script.ladderRung),
     `portal-${script.name}`,
     run.foodCount,
     (food: number) => portalIntervalTax(portalTaxFactsAt(sources, food))
@@ -228,6 +243,145 @@ describe('portal parity: the schedule replays exactly', () => {
     // both halves of the identity at once.
     const run = expectParity({ name: 'infused', foods: 90, infuses: [16, 40] });
     expect(run.infuses.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * THE LADDER ACROSS THE SAME SEAM (WP-3.12).
+ *
+ * The ladder moves two things this file already watches: rung 4 pushes every
+ * door three foods further away, and rung 5 adds four segments to an infuse. The
+ * first is walked twice — the engine's incremental recurrence and the
+ * settlement's closed one — and a rung applied to only one of them would make
+ * the two disagree about how many doors a run met, which the carry then
+ * multiplies straight into the payout. So the rung is asserted at exactly the
+ * seam the carry stands on, not merely in the module that defines it.
+ */
+describe('portal parity: the ladder does not split the two walks', () => {
+  it('holds at every rung the ladder offers', () => {
+    for (let rung = 0; rung <= LADDER_MAX_RUNG; rung++) {
+      const run = expectParity({ name: `rung-${rung}`, foods: 80, ladderRung: rung });
+      expect(run.engineMet).toBeGreaterThan(2);
+    }
+  });
+
+  it('holds at every rung, on every dynasty', () => {
+    for (const dynasty of ['PRIMAL', 'CYBER', 'COSMIC'] as DynastyName[]) {
+      for (let rung = 0; rung <= LADDER_MAX_RUNG; rung++) {
+        expectParity({
+          name: `rung-${rung}-${dynasty}`,
+          dynasty,
+          foods: 80,
+          ladderRung: rung,
+        });
+      }
+    }
+  });
+
+  it('holds at a rung WITH a mid-run gene tax and infuses stacked on it', () => {
+    // Three interval sources at once: the rung's constant shift, Magnet Pulse
+    // picked at food 20, and +2 foods per infuse. If the rung were folded in at
+    // the wrong point in that stack the two walks would part company here.
+    const run = expectParity({
+      name: 'rung-taxed',
+      foods: 90,
+      ladderRung: LADDER_MAX_RUNG,
+      picks: [{ id: 'magnet_pulse', atFood: 20 }],
+      infuses: [24, 50],
+    });
+    expect(run.infuses.length).toBeGreaterThan(0);
+  });
+
+  it('actually MOVES the doors — a rung that changed nothing would prove nothing', () => {
+    // Parity that holds because the rung is inert is parity that asserts
+    // nothing. "The Long Walk" must measurably cost the run doors.
+    const ground = runScript({ name: 'walk-cmp', foods: 90 });
+    const walked = runScript({ name: 'walk-cmp', foods: 90, ladderRung: 4 });
+    expect(ladderParams(4).portalIntervalFoodsDelta).toBeGreaterThan(0);
+    expect(walked.engineMet).toBeLessThan(ground.engineMet);
+  });
+});
+
+describe('portal parity: the ladder infuse growth folds the same on both sides', () => {
+  it('the engine grows exactly what computeLengthTrace replays, at every rung', () => {
+    // The other half of the ladder that has two implementations. The engine
+    // appends segments when the portal resolves; `computeLengthTrace` adds them
+    // at the same point in the food's resolution. Both read `ladderInfuseGrowth`
+    // — this asserts they land on the same body.
+    for (let rung = 0; rung <= LADDER_MAX_RUNG; rung++) {
+      const run = runScript({
+        name: `infuse-rung-${rung}`,
+        foods: 60,
+        ladderRung: rung,
+        infuses: [16, 34],
+      });
+      expect(run.infuses.length).toBe(2);
+      const trace = computeLengthTrace(
+        { loose: [], splices: [] },
+        run.foodCount,
+        strainActivations([], {}, [], 3, []),
+        { infuses: run.infuses, ladderRung: rung },
+        null
+      );
+      // A rung-0 baseline body is 3 + one segment per food; each infuse adds
+      // the rung's growth on top. Reconstructed from the SAME function the two
+      // implementations read, so a retune of the dial cannot make this stale.
+      const expected =
+        3 + run.foodCount + run.infuses.length * ladderInfuseGrowth(rung);
+      expect(trace.lengthAtEat[run.foodCount] + 1).toBe(expected);
+    }
+  });
+
+  it('a higher rung produces a longer body for the same run', () => {
+    const shorter = runScript({ name: 'weight', foods: 60, infuses: [16, 34] });
+    const longer = runScript({
+      name: 'weight',
+      foods: 60,
+      ladderRung: 5,
+      infuses: [16, 34],
+    });
+    expect(ladderInfuseGrowth(5)).toBeGreaterThan(ladderInfuseGrowth(0));
+    expect(longer.finalLength).toBeGreaterThan(shorter.finalLength);
+  });
+});
+
+describe('the ladder dials the engine alone owns', () => {
+  it('takes a tactical hold at the rung that says so, and only there', () => {
+    // `refreshHoldBudget` is monotonic - it can only ever RAISE the budget - so
+    // a rung applied through it would silently do nothing. This is the
+    // regression test for exactly that: the budget is read off a live engine,
+    // not off the ladder module that defines the delta.
+    const base = GAME_CONFIG.session.holds.base;
+    for (let rung = 0; rung <= LADDER_MAX_RUNG; rung++) {
+      const game = new SnakeGameLogic({ gridSize: GRID, ladderRung: rung });
+      expect(game.getState().holdBudget).toBe(
+        base + ladderParams(rung).holdBudgetDelta
+      );
+    }
+  });
+
+  it('applies the rung when the SERVER stamps it after construction', () => {
+    // The real sequence: the page builds the engine on mount, the start
+    // response arrives, `setLadderRung` adopts what the server chose. A rung
+    // that only worked through the constructor would be a rung that never
+    // worked in the product.
+    const game = new SnakeGameLogic({ gridSize: GRID });
+    expect(game.getState().holdBudget).toBe(GAME_CONFIG.session.holds.base);
+    game.setLadderRung(LADDER_MAX_RUNG);
+    expect(game.getLadderRung()).toBe(LADDER_MAX_RUNG);
+    expect(game.getState().holdBudget).toBe(
+      GAME_CONFIG.session.holds.base + ladderParams(LADDER_MAX_RUNG).holdBudgetDelta
+    );
+    expect(game.getState().nextExitAtFood).toBe(
+      ladderCadence(RULESETS.COSMIC.extraction, LADDER_MAX_RUNG).firstExitAtFood
+    );
+  });
+
+  it('resolves a rung the server could not have sent to Ground', () => {
+    const game = new SnakeGameLogic({ gridSize: GRID });
+    game.setLadderRung('rung-from-the-future');
+    expect(game.getLadderRung()).toBe(0);
+    expect(game.getState().holdBudget).toBe(GAME_CONFIG.session.holds.base);
   });
 });
 

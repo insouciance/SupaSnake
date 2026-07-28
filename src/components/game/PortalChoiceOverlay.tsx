@@ -13,6 +13,7 @@ import {
   carrySalvageMultiplier,
   type PortalCadence,
 } from '@/shared/game/portals';
+import { ladderSalvageFloor } from '@/shared/game/ladder';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { FunnelStages, trackFunnelStageOnce } from '@/lib/analytics/funnel';
 
@@ -36,6 +37,20 @@ interface PortalChoiceOverlayProps {
   doorsPassed: number;
   /** The dynasty's portal cadence, for the PASS line's honest interval. */
   cadence: PortalCadence;
+  /**
+   * The run's D2 ladder rung (WP-3.12), as the server stamped it.
+   *
+   * Here for one reason: rung 6 lowers the carry's salvage floor, and this card
+   * quotes what a crash pays. A card that priced salvage at the shipped floor
+   * while the settlement paid the rung's would be a readout that lies about the
+   * single most consequential decision in the game - the exact failure this
+   * component's `doorsPassed` comment already warns about, one dial along.
+   *
+   * `ladderSalvageFloor` is the same function the settlement calls, so the two
+   * cannot disagree. Rung 0 returns the shipped floor and this card is
+   * unchanged.
+   */
+  ladderRung?: number;
   onBank: () => void;
   onPass: () => void;
   onInfuse: () => void;
@@ -49,6 +64,7 @@ export function PortalChoiceOverlay({
   crashDna,
   doorsPassed,
   cadence,
+  ladderRung = 0,
   onBank,
   onPass,
   onInfuse,
@@ -56,10 +72,11 @@ export function PortalChoiceOverlay({
   // What each branch is worth, quoted before the choice. Banking spends this
   // door; passing adds it to the count, so the two lines move in opposite
   // directions and the player can see exactly what they are staking.
+  const salvageFloor = ladderSalvageFloor(ladderRung);
   const bankNow = carryBankMultiplier(doorsPassed);
-  const salvageNow = carrySalvageMultiplier(doorsPassed);
+  const salvageNow = carrySalvageMultiplier(doorsPassed, salvageFloor);
   const bankNext = carryBankMultiplier(doorsPassed + 1);
-  const salvageNext = carrySalvageMultiplier(doorsPassed + 1);
+  const salvageNext = carrySalvageMultiplier(doorsPassed + 1, salvageFloor);
   const [locked, setLocked] = useState(true);
   const lockedRef = useRef(true);
   const dialogRef = useRef<HTMLDivElement>(null);

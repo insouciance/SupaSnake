@@ -39,9 +39,15 @@ import {
   FOOD_BASE_SCORE,
   RULESETS,
   cosmicComboMultiplier,
-  rollExitInterval,
   type DynastyRuleset,
 } from '@/shared/game/rulesets';
+import {
+  ladderCadence,
+  ladderHoldBase,
+  ladderInfuseGrowth,
+  ladderParams,
+  resolveLadderRung,
+} from '@/shared/game/ladder';
 import {
   MUTATION_PHYSICS,
   MUTATION_POOL,
@@ -75,6 +81,7 @@ import {
   blocksDueAt,
   cellKey,
   formingTicksFor,
+  formingTicksForSeconds,
   nextTerrainCells,
   type TerrainBlock,
 } from '@/shared/game/terrain';
@@ -86,8 +93,14 @@ import {
 import {
   PORTAL_SCHEDULE_LIMIT,
   portalIntervalTax,
+  // Imported from `portals.ts` rather than through `rulesets.ts`'s re-export:
+  // the re-export is typed against the full `ExtractionConfig`, and the cadence
+  // this engine rolls from is the ladder-shifted `PortalCadence`. Same
+  // function, the structural type it was written for.
+  rollExitInterval,
   portalStream,
   portalTaxFactsAt,
+  type PortalCadence,
   type PortalTaxSources,
 } from '@/shared/game/portals';
 import {
@@ -117,11 +130,12 @@ import {
 import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
-  moltResetLengthFor,
+  fortressFiresAt,
   type StrainId,
   type StrainPoints,
 } from '@/shared/game/strains';
 import {
+  fortressEventDna,
   fusePicks,
   genomeFoodValueFlatBonus,
   genomeFoodValueModifier,
@@ -245,8 +259,6 @@ export interface GameState {
   fusedSplices: { id: SpliceId; atFood: number }[];
   /** AURUM Gilded Wake trail cells with per-cell remaining ticks. */
   gildedCells: { x: number; z: number; ticks: number }[];
-  /** Bonus foods (FERAL molt drops / Heartwood goldens) - not run food. */
-  bonusFoods: { x: number; z: number; kind: 'molt' | 'heartwood' }[];
   /** Committed infuses, in order. */
   infuses: { atFood: number }[];
   /** Strain surges granted by infusing at the gene cap. */
@@ -404,7 +416,7 @@ type GameEvent =
   | 'thickHideTriggered'
   | 'warpSkinTriggered'
   | 'pocketRiftTriggered'
-  | 'moltShed'
+  | 'petrified'
   | 'reviveTriggered';
 type EventCallback = (data?: unknown) => void;
 
@@ -419,6 +431,14 @@ interface GameOptions {
    * locally-chosen profile would diverge on every food.
    */
   growthProfileId?: GrowthProfileId;
+  /**
+   * The D2 ladder rung (WP-3.12), as stamped by the server into `run_context`.
+   * Absent or unrecognised resolves to rung 0, which is byte-identical to the
+   * shipped game. Never derive this from a `NEXT_PUBLIC_*` flag - the server
+   * recomputes the run's lengths, doors and salvage from the stamp, so a
+   * locally-chosen rung would diverge from the settlement.
+   */
+  ladderRung?: number;
   initialSpeed?: number;
   /**
    * Dynasty ruleset driving speed + scoring. Defaults to COSMIC. The page
@@ -567,6 +587,17 @@ export class SnakeGameLogic {
    * every length and invalidate an honest run.
    */
   private growth: GrowthProfile;
+  /**
+   * The run's D2 ladder rung (WP-3.12), server-stamped into `run_context`.
+   *
+   * Same discipline as `growth`, and for the same reason: the rung moves the
+   * portal schedule, the infuse growth and the salvage floor, all three of
+   * which the settlement recomputes from the stamp. A client that chose its own
+   * rung would play a different game from the one it gets paid for.
+   *
+   * Rung 0 until the server says otherwise, and rung 0 is the shipped game.
+   */
+  private ladderRung: number = 0;
   /** Derived fused view of heldMutations - recomputed on every pick. */
   private fusedView: FusedView = { loose: [], splices: [] };
   /** Derived strain activations - recomputed on pick/surge. */
@@ -585,7 +616,19 @@ export class SnakeGameLogic {
    * EMPTY shed-event list - the two argument bugs behind the divergences the
    * first playtest surfaced.
    */
-  private lengthTrace: LengthTrace = { lengthAtEat: [0], shedEvents: [] };
+  private lengthTrace: LengthTrace = {
+    lengthAtEat: [0],
+    shedEvents: [],
+    petrifyEvents: [],
+  };
+  /**
+   * Segments Fortress has turned to stone this run (WP-3.11).
+   *
+   * They left `state.snake` and they never left the snake's LENGTH - see
+   * `modelledLength()`. Kept as a running count rather than derived from
+   * `petrifyEvents` on every read because it is consulted once per tick.
+   */
+  private petrified = 0;
   /**
    * Ouroboros bites taken this run.
    *
@@ -596,14 +639,6 @@ export class SnakeGameLogic {
    * would have started miscounting the bite cadence cap.
    */
   private ouroborosBites = 0;
-  /**
-   * The segments each shed event removed, kept only between the pure and
-   * visible halves of a single food so the visible half can place the molt
-   * drops and the Heartwood golden on the cells that were actually shed.
-   * Cleared by `applyShedVisuals`; never read anywhere else.
-   */
-  private shedRemovedCells = new Map<ShedEvent, Position[]>();
-
   /**
    * True while the run was opened from an authored board (Training). Such
    * runs are scripted teaching, not scored play, so they are exempt from
@@ -681,6 +716,10 @@ export class SnakeGameLogic {
     this.anomaly = options.anomaly ?? null;
     this.genome = options.genome ?? null;
     this.growth = resolveGrowthProfile(options.growthProfileId);
+    // The rung before createInitialState: `nextExitAtFood` is seeded from the
+    // ladder-adjusted cadence, so a rung set afterwards would leave the first
+    // door standing where rung 0 put it.
+    this.ladderRung = resolveLadderRung(options.ladderRung);
     // The profile owns the starting body unless a caller pinned one.
     if (options.initialLength === undefined) {
       this.initialLength = this.growth.initialLength;
@@ -738,6 +777,55 @@ export class SnakeGameLogic {
   /** The run's growth profile id - what settlement will recompute with. */
   getGrowthProfileId(): GrowthProfileId {
     return this.growth.id;
+  }
+
+  /**
+   * Adopt the D2 ladder rung the SERVER stamped on this run (WP-3.12).
+   *
+   * Mirrors `setGrowthProfile`: the page builds the engine on mount, before the
+   * session-start response exists, and configures it when the response arrives.
+   * Refused once the run is live, because the rung decides where the first door
+   * stands and how much an infuse grows - changing it mid-run would diverge
+   * from the settlement, which folds ONE rung for the whole run.
+   *
+   * The argument is whatever the server sent; anything unrecognised resolves to
+   * rung 0, so a client that is newer, older or confused still plays the
+   * shipped game rather than an invented rung.
+   */
+  setLadderRung(rung: unknown): void {
+    if (this.state.isPlaying) return;
+    this.ladderRung = resolveLadderRung(rung);
+    // Both of these are fixed at state creation, and `refreshHoldBudget` cannot
+    // walk the budget back down (it is monotonic by design), so the rung has to
+    // rewrite them explicitly. Safe here and only here: the run is not live, so
+    // no hold has been spent and no threshold has been crossed.
+    this.state.holdBudget = ladderHoldBase(
+      GAME_CONFIG.session.holds.base,
+      this.ladderRung
+    );
+    if (!this.state.exitTile) {
+      this.state.nextExitAtFood = this.exitCadence().firstExitAtFood;
+    }
+    this.refreshHoldBudget();
+  }
+
+  /** The run's ladder rung - what settlement will recompute with. */
+  getLadderRung(): number {
+    return this.ladderRung;
+  }
+
+  /**
+   * The portal cadence in force for this run: the dynasty's, shifted by the
+   * ladder's "Long Walk" rung.
+   *
+   * THE ONE READ. Every site that used to reach for
+   * `this.ruleset.extraction` for cadence purposes goes through here, so the
+   * incremental walk, the legacy roll and the initial `nextExitAtFood` cannot
+   * disagree about where the doors stand - and the settlement runs the same
+   * `ladderCadence` over the same numbers.
+   */
+  private exitCadence(): PortalCadence {
+    return ladderCadence(this.ruleset.extraction, this.ladderRung);
   }
 
   /** Spawn strain points (heirloom+lineage, server-derived, pre-capped). */
@@ -876,7 +964,7 @@ export class SnakeGameLogic {
       exitTile2: null,
       exitTicksRemaining: 0,
       foodTicksRemaining: 0,
-      nextExitAtFood: this.ruleset.extraction.firstExitAtFood,
+      nextExitAtFood: this.exitCadence().firstExitAtFood,
       extracted: false,
       mutationTile: null,
       mutationTicksRemaining: 0,
@@ -887,7 +975,6 @@ export class SnakeGameLogic {
       strainTiers: {},
       fusedSplices: [],
       gildedCells: [],
-      bonusFoods: [],
       infuses: [],
       surges: [],
       choiceSource: null,
@@ -917,7 +1004,13 @@ export class SnakeGameLogic {
       isGameOver: false,
       isPaused: false,
       holdsUsed: 0,
-      holdBudget: GAME_CONFIG.session.holds.base,
+      // WP-3.12: the ladder's "Short Rope" rung takes one from the OPENING
+      // budget, and it has to be applied HERE. `refreshHoldBudget` is
+      // deliberately monotonic - it can only ever raise the budget, so that a
+      // body which sheds past a threshold keeps what reaching it paid for - and
+      // a monotonic function cannot lower the base. The rung belongs at state
+      // creation or nowhere.
+      holdBudget: ladderHoldBase(GAME_CONFIG.session.holds.base, this.ladderRung),
       isDeathSequence: false,
       startTime: null,
       deathPosition: null,
@@ -963,9 +1056,9 @@ export class SnakeGameLogic {
     // Genome derived state
     this.fusedView = { loose: [], splices: [] };
     this.activations = null;
-    this.lengthTrace = { lengthAtEat: [0], shedEvents: [] };
+    this.lengthTrace = { lengthAtEat: [0], shedEvents: [], petrifyEvents: [] };
+    this.petrified = 0;
     this.ouroborosBites = 0;
-    this.shedRemovedCells = new Map();
     this.offerIndex = 0;
     this.portalIndex = 0;
     this.portalsMet = 0;
@@ -1071,7 +1164,7 @@ export class SnakeGameLogic {
     this.ruleset = ruleset;
     this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     if (!this.state.isPlaying && !this.state.exitTile) {
-      this.state.nextExitAtFood = this.ruleset.extraction.firstExitAtFood;
+      this.state.nextExitAtFood = this.exitCadence().firstExitAtFood;
       this.state.fluxPhase = null;
       this.state.fluxTicksRemaining = 0;
       this.state.fluxTelegraph = false;
@@ -1162,7 +1255,6 @@ export class SnakeGameLogic {
       strainTiers: { ...this.state.strainTiers },
       fusedSplices: this.state.fusedSplices.map((s) => ({ ...s })),
       gildedCells: this.state.gildedCells.map((c) => ({ ...c })),
-      bonusFoods: this.state.bonusFoods.map((f) => ({ ...f })),
       infuses: this.state.infuses.map((i) => ({ ...i })),
       surges: this.state.surges.map((s) => ({ ...s })),
       pendingPortalChoice: this.state.pendingPortalChoice
@@ -1318,14 +1410,25 @@ export class SnakeGameLogic {
 
   /**
    * Grow the hold budget as the body reaches the lengths that make it hard
-   * to steer. Earned holds are never taken back - a body that sheds past a
-   * threshold keeps what reaching it paid for, which also keeps the budget
-   * from ever dropping below what the player has already spent.
+   * to steer. Earned holds are never taken back, which keeps the budget from
+   * ever dropping below what the player has already spent.
+   *
+   * Reads the MODELLED length (WP-3.11): Fortress moves segments out of the
+   * live array, and a hold threshold is a claim about how hard the run is to
+   * steer - which petrified stone makes harder, not easier.
    */
   private refreshHoldBudget(): void {
-    let budget: number = GAME_CONFIG.session.holds.base;
+    // WP-3.12: the ladder's "Short Rope" rung takes one from the OPENING
+    // budget, never from what a body has already earned - the `Math.max` below
+    // is what makes that true, and it is the same guarantee the paragraph above
+    // states for earned holds. `ladderHoldBase` floors at 1: a run with no hold
+    // at all is a different game, not a harder one.
+    let budget: number = ladderHoldBase(
+      GAME_CONFIG.session.holds.base,
+      this.ladderRung
+    );
     for (const threshold of GAME_CONFIG.session.holds.bonusAtLengths) {
-      if (this.state.snake.length >= threshold) budget += 1;
+      if (this.modelledLength() >= threshold) budget += 1;
     }
     this.state.holdBudget = Math.max(this.state.holdBudget, budget);
   }
@@ -1535,7 +1638,11 @@ export class SnakeGameLogic {
     // records exactly this as `lengthAtEat[n]` - before the food's growth -
     // so it is captured before the head goes on rather than read back off
     // the array afterwards, when it is one segment too long.
-    const lengthBeforeMove = this.state.snake.length;
+    //
+    // WP-3.11: `modelledLength()`, not `snake.length`. Fortress moves segments
+    // out of the live array without shortening the snake, so the live array is
+    // no longer the length the model means.
+    const lengthBeforeMove = this.modelledLength();
 
     this.state.snake.unshift(newHead);
 
@@ -1606,11 +1713,12 @@ export class SnakeGameLogic {
       // Terrain is food-indexed, so the arena advances exactly here.
       this.placeDueTerrain();
 
-      // Shed cycles, PURE HALF: loose Shed (25 -> 8), Regenesis (20 -> 8),
-      // Molted Rebirth (25 -> 8), FERAL Molt (every 20, proportional) and
-      // the Molt growth floor. Length moves and trace records only -
-      // mirrors computeLengthTrace's cycle model exactly.
-      const sheds = this.applyShedMoves(n);
+      // Legacy shed cycles (settled-blob compatibility), then FERAL's
+      // Fortress. Both move the live array and record their events BEFORE the
+      // food is priced, because both are read out of the length trace by the
+      // fold that prices it.
+      this.applyShedMoves(n);
+      this.applyPetrify(n);
 
       const { dnaValue, scoreValue, dnaNoCombo, baseScore } =
         this.resolveFoodEconomy(n, combo);
@@ -1618,12 +1726,6 @@ export class SnakeGameLogic {
       this.state.score += scoreValue;
       this.state.comboDnaBonus += dnaValue - dnaNoCombo;
       this.state.comboScoreBonus += scoreValue - baseScore;
-
-      // Shed cycles, VISIBLE HALF: molt-food drops, Heartwood goldens and
-      // the `moltShed` emit. These are board objects and events, not
-      // pricing inputs, so they stay after the food resolves - exactly
-      // where they were.
-      this.applyShedVisuals(sheds);
 
       // Genome bonus layers (Midas / Static Charge / Ricochet / Gilded
       // Wake drop) - display + bounded-trust claim accumulators only.
@@ -1691,10 +1793,11 @@ export class SnakeGameLogic {
       this.state.snake.pop();
     }
 
-    // Genome pickups on the resolved head cell: bonus foods (molt drops /
-    // Heartwood goldens) and AURUM gilded cells - flat claims, not run food.
+    // Genome pickups on the resolved head cell: AURUM gilded cells - a flat
+    // claim, not run food. The molt drops and Heartwood goldens that used to
+    // be collected here were retired with Molt (WP-3.11); their successors are
+    // paid deterministically inside the fold, so there is nothing to pick up.
     if (this.genomeActive()) {
-      this.tryConsumeBonusFood(this.state.snake[0]);
       this.tryConsumeGildedCell(this.state.snake[0]);
     }
 
@@ -1964,7 +2067,9 @@ export class SnakeGameLogic {
     if (ftue && !ftue.infuseUnlocked) return false;
     return (
       this.state.infuses.length < STRAIN_PHYSICS.infuseMaxPerRun &&
-      this.state.snake.length >= STRAIN_PHYSICS.infuseMinLength
+      // Modelled, not live (WP-3.11): the minimum exists so INFUSE has a body
+      // to be denominated in, and petrified stone is still that body.
+      this.modelledLength() >= STRAIN_PHYSICS.infuseMinLength
     );
   }
 
@@ -2016,11 +2121,15 @@ export class SnakeGameLogic {
     // Growth is appended at the tail, exactly as food growth is, so every
     // added cell is one the body already occupied - the snake never appears
     // in a cell it did not travel through.
+    //
+    // WP-3.12: the "Weight of Power" rung adds to this. Read through
+    // `ladderInfuseGrowth`, which `computeLengthTrace` also calls - two reads
+    // of one function, never two copies of one number.
+    const grew = ladderInfuseGrowth(this.ladderRung);
     const tail = this.state.snake[this.state.snake.length - 1];
-    for (let i = 0; i < STRAIN_PHYSICS.infuseGrowth; i++) {
+    for (let i = 0; i < grew; i++) {
       this.state.snake.push({ ...tail });
     }
-    const grew = STRAIN_PHYSICS.infuseGrowth;
     // Consume the portal. Under the seeded schedule the next door's food is
     // already fixed; the +2-foods-per-infuse exposure tax is applied when the
     // schedule advances past it, which is where the server applies it too.
@@ -2191,7 +2300,21 @@ export class SnakeGameLogic {
    */
   private lengthAtEat(at: number): number {
     const recorded = this.lengthTrace.lengthAtEat[at];
-    return typeof recorded === 'number' ? recorded : this.state.snake.length;
+    return typeof recorded === 'number' ? recorded : this.modelledLength();
+  }
+
+  /**
+   * The MODELLED body length - what `computeLengthTrace` calls `len`, and the
+   * only length any economic rule may read (WP-3.11).
+   *
+   * Fortress petrifies segments out of `state.snake` without shortening the
+   * snake: the stone is still the player's length, it has just stopped
+   * following. So the difficulty clock, every length threshold and every
+   * length bucket read this, and only the live array itself - drawing,
+   * self-collision, the Fortress floor - reads `state.snake.length`.
+   */
+  private modelledLength(): number {
+    return this.state.snake.length + this.petrified;
   }
 
   /**
@@ -2204,6 +2327,7 @@ export class SnakeGameLogic {
     return {
       lengthAtEat: [...this.lengthTrace.lengthAtEat],
       shedEvents: this.lengthTrace.shedEvents.map((e) => ({ ...e })),
+      petrifyEvents: this.lengthTrace.petrifyEvents.map((e) => ({ ...e })),
     };
   }
 
@@ -2214,33 +2338,34 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Shed cycles, PURE HALF (WP-2.05): loose Shed 25->8, Regenesis 20->8,
-   * Molted Rebirth 25->8, FERAL Molt every 20 foods down to
-   * `moltResetLengthFor(len)`, and the Molt growth floor. Mirrors
-   * `computeLengthTrace`'s cycle model.
+   * Legacy shed cycles: loose Shed 25->8, Regenesis 20->8, Molted Rebirth
+   * 25->8. Mirrors `computeLengthTrace`'s cycle model.
    *
-   * This half moves length and records shed events, and does NOTHING else -
-   * no DNA, no board objects, no emits. That is what lets it run BEFORE the
-   * food is priced, which is what the fold requires: `genomeFoodValueFlat-
-   * Bonus` pays Regenesis `regenesisFlatPerSegment` per segment shed AT
-   * THIS FOOD, reading the shed events out of the length trace.
+   * NOTHING REACHABLE STILL DRIVES THIS. Rule 15 retired `shed` from every
+   * pool (WP-3.01), which retired both of its splices with it, and WP-3.11
+   * replaced FERAL's Molt with Fortress. The cycles survive because a blob
+   * settled before the rule still names those genes, and the engine and the
+   * server must recompute such a run the same way they always did.
    *
-   * THE PAYMENT IS NOT HERE ANY MORE. It used to be - `dnaCollected +=
+   * This runs BEFORE the food is priced, which is what the fold requires:
+   * `genomeFoodValueFlatBonus` pays Regenesis `regenesisFlatPerSegment` per
+   * segment shed AT THIS FOOD, reading the events out of the length trace.
+   *
+   * THE PAYMENT IS NOT HERE. It used to be - `dnaCollected +=
    * regenesisFlatPerSegment * segmentsShed` - because the engine passed an
    * EMPTY shed-event list into the fold and the in-fold branch could never
    * fire. Now the fold is fed the live trace and pays it, so paying it here
    * as well would pay it twice. Do not restore that line without also
    * removing the trace the fold reads.
    */
-  private applyShedMoves(n: number): ShedEvent[] {
+  private applyShedMoves(n: number): void {
     type Cycle = {
       every: number;
       anchor: number;
       /**
-       * The length this cycle resets a body of `current` to. Molt's shed is
-       * proportional, so it MUST be evaluated per firing against the live
-       * length - `computeLengthTrace` calls the identical `resetFor` at the
-       * identical point, which is what keeps the two in parity.
+       * The length this cycle resets a body of `current` to.
+       * `computeLengthTrace` calls the identical `resetFor` at the identical
+       * point, which is what keeps the two in parity.
        */
       resetFor: (current: number) => number;
       source: ShedEvent['source'];
@@ -2274,74 +2399,97 @@ export class SnakeGameLogic {
           });
         }
       }
-      const moltAt = this.activations?.FERAL.expressionAt ?? null;
-      if (moltAt !== null && this.strainTierNow('FERAL') >= 2) {
-        cycles.push({
-          every: STRAIN_PHYSICS.moltEveryFoods,
-          anchor: moltAt,
-          resetFor: moltResetLengthFor,
-          source: 'molt',
-        });
-      }
     }
-    const fired: ShedEvent[] = [];
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
       if (since <= 0 || since % cycle.every !== 0) continue;
       const reset = cycle.resetFor(this.state.snake.length);
       if (this.state.snake.length <= reset) continue;
-      const removed = this.state.snake.slice(reset);
-      const segmentsShed = removed.length;
+      const segmentsShed = this.state.snake.length - reset;
       this.state.snake.length = reset;
-      const event: ShedEvent = { atFood: n, segmentsShed, source: cycle.source };
-      fired.push(event);
       if (this.genomeActive()) {
-        this.lengthTrace.shedEvents.push(event);
-        this.shedRemovedCells.set(event, removed);
+        this.lengthTrace.shedEvents.push({
+          atFood: n,
+          segmentsShed,
+          source: cycle.source,
+        });
       }
     }
-    // FERAL Molt growth floor while the expression is active. A length move,
-    // so it belongs to this half; `computeLengthTrace` applies the same
-    // `max(moltMinLength, len)` at the same point in the food.
-    if (
-      this.genomeActive() &&
-      this.strainTierNow('FERAL') >= 2 &&
-      this.state.snake.length < STRAIN_PHYSICS.moltMinLength
-    ) {
-      const tail = this.state.snake[this.state.snake.length - 1];
-      while (this.state.snake.length < STRAIN_PHYSICS.moltMinLength) {
-        this.state.snake.push({ ...tail });
-      }
-    }
-    return fired;
   }
 
   /**
-   * Shed cycles, VISIBLE HALF (WP-2.05): the molt-food drops, the Heartwood
-   * golden and the `moltShed` emit. Board objects and events only - nothing
-   * here can change a number the server recomputes, which is precisely why
-   * it is safe to leave it after the food has been priced.
+   * FERAL Expression "FORTRESS" (WP-3.11) - the replacement for Molt.
+   *
+   * The oldest `fortressSegments` segments stop following and become terrain.
+   * Three things happen and none of them is a shed:
+   *
+   *   - the LIVE array loses the segments, so the tail the player is steering
+   *     gets shorter;
+   *   - `this.petrified` gains them, so the MODELLED length - the one the
+   *     trace records and the server recomputes - does not move at all;
+   *   - the cells they occupied become forming terrain, so free space is
+   *     unchanged at the instant of the event and shrinks from then on.
+   *
+   * That is Rule 15 satisfied by construction rather than by argument: nothing
+   * shortens the snake, and the board only ever gets tighter.
+   *
+   * IT RUNS BEFORE THE FOOD IS PRICED, unlike the molt drops it replaces. Molt
+   * paid in pickups, which are board objects and could safely land after the
+   * fold; Fortress pays deterministically THROUGH the fold, so its event has
+   * to exist in the trace by the time `resolveFoodEconomy` reads it.
+   *
+   * The block placement leans entirely on `tickTerrain`'s pending state: these
+   * cells start under the body, and a block whose forming has finished but
+   * whose cell is not yet clear simply waits. That is the case the terrain
+   * primitive was built for, so Fortress needs no fairness code of its own.
    */
-  private applyShedVisuals(events: ShedEvent[]): void {
-    if (!this.genomeActive()) {
-      this.shedRemovedCells = new Map();
-      return;
+  private applyPetrify(n: number): void {
+    if (!this.genomeActive()) return;
+    if (this.strainTierNow('FERAL') < 2) return;
+    const expressionAt = this.activations?.FERAL.expressionAt ?? null;
+    if (!fortressFiresAt(n, expressionAt, this.state.snake.length)) return;
+
+    const segments = STRAIN_PHYSICS.fortressSegments;
+    const removed = this.state.snake.splice(this.state.snake.length - segments);
+    this.petrified += segments;
+    this.lengthTrace.petrifyEvents.push({
+      atFood: n,
+      segments,
+      dna: fortressEventDna(segments, this.anomaly),
+    });
+
+    // Segments are not cells: growth duplicates the tail cell, so a run of
+    // petrified segments can be several segments deep on one tile. The DNA is
+    // paid per SEGMENT (the fold does that, from the event) and the board gets
+    // one block per distinct CELL.
+    //
+    // No food/portal exclusion here, unlike `placeDueTerrain`. These cells are
+    // BODY cells, and nothing else on the board is ever placed on the body, so
+    // there is nothing to bury. Skipping a cell would be the worse bug anyway:
+    // a segment that petrified without laying stone would GROW free space,
+    // which is the one thing Rule 15 forbids.
+    const formingTicks = formingTicksForSeconds(
+      STRAIN_PHYSICS.fortressFormingSeconds,
+      this.getSpeed()
+    );
+    const placed = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    for (const cell of removed) {
+      const key = cellKey(cell.x, cell.z);
+      if (placed.has(key)) continue;
+      placed.add(key);
+      this.state.terrain.push({
+        x: cell.x,
+        z: cell.z,
+        formingTicks,
+        formingTotal: formingTicks,
+        solid: false,
+      });
     }
-    for (const event of events) {
-      const removed = this.shedRemovedCells.get(event) ?? [];
-      if (event.source === 'molt') {
-        const drops = removed.slice(0, STRAIN_ECONOMICS.moltFoodsPerEvent);
-        for (const cell of drops) {
-          this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'molt' });
-        }
-        this.emit('moltShed', { atFood: event.atFood, drops: drops.length });
-      }
-      if (this.hasGene('heartwood') && removed.length > 0) {
-        const cell = removed[removed.length - 1];
-        this.state.bonusFoods.push({ x: cell.x, z: cell.z, kind: 'heartwood' });
-      }
-    }
-    this.shedRemovedCells = new Map();
+    this.emit('petrified', {
+      atFood: n,
+      segments,
+      cells: removed.map((cell) => ({ x: cell.x, z: cell.z })),
+    });
   }
 
   /** A pick that is NOT consumed by a fusion (its own cycle still runs). */
@@ -2367,22 +2515,22 @@ export class SnakeGameLogic {
       arcs += 1;
       this.state.foodEaten += 1;
       const n = this.state.foodEaten;
-      // An arc eat has no head unshift, so the live length IS the
+      // An arc eat has no head unshift, so the modelled length IS the
       // pre-growth length the model records for this food.
-      this.lengthTrace.lengthAtEat[n] = this.state.snake.length;
+      this.lengthTrace.lengthAtEat[n] = this.modelledLength();
       this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
-      // Growth -> shed -> price, the order `computeGenomeRunTotals` folds
-      // in: the shed events of food n are inputs to food n's own flat
-      // bonus (Regenesis pays per shed segment), so they have to have
-      // happened before the food is priced.
+      // Growth -> shed/petrify -> price, the order `computeGenomeRunTotals`
+      // folds in: the events of food n are inputs to food n's own flat bonus
+      // (Regenesis pays per shed segment, Fortress per petrified one), so
+      // they have to have happened before the food is priced.
       // +1 segment each (board pressure is the arc's physical price).
       const tail = this.state.snake[this.state.snake.length - 1];
       this.state.snake.push({ ...tail });
-      const arcSheds = this.applyShedMoves(n);
+      this.applyShedMoves(n);
+      this.applyPetrify(n);
       const { dnaValue, scoreValue } = this.resolveFoodEconomy(n, 1);
       this.state.dnaCollected += dnaValue;
       this.state.score += scoreValue;
-      this.applyShedVisuals(arcSheds);
       this.speed = this.effectiveSpeedForFood(n);
       this.refreshHoldBudget();
       this.emit('arcCollected', {
@@ -2393,30 +2541,6 @@ export class SnakeGameLogic {
     }
     if (this.state.foods.length > 0) {
       this.state.food = { ...this.state.foods[0] };
-    }
-  }
-
-  /** Consume a bonus food (molt drop / Heartwood golden) under the head. */
-  private tryConsumeBonusFood(head: Position | undefined): void {
-    if (!head || this.state.bonusFoods.length === 0) return;
-    const index = this.state.bonusFoods.findIndex(
-      (f) => f.x === head.x && f.z === head.z
-    );
-    if (index < 0) return;
-    const food = this.state.bonusFoods[index];
-    this.state.bonusFoods.splice(index, 1);
-    const claims = this.state.genomeClaims;
-    if (food.kind === 'molt') {
-      const value =
-        this.anomaly === 'overgrown'
-          ? ANOMALY_ECONOMICS.overgrownMoltFoodFlat
-          : STRAIN_ECONOMICS.moltFoodFlat;
-      this.state.dnaCollected += value;
-      claims.moltFoodDna = (claims.moltFoodDna ?? 0) + value;
-    } else {
-      this.state.dnaCollected += GENE_ECONOMICS.heartwoodGoldenFlat;
-      claims.heartwoodDna =
-        (claims.heartwoodDna ?? 0) + GENE_ECONOMICS.heartwoodGoldenFlat;
     }
   }
 
@@ -3186,7 +3310,7 @@ export class SnakeGameLogic {
       if (!this.state.exitTile) this.spawnExit();
       const interval =
         rollExitInterval(
-          this.ruleset.extraction,
+          this.exitCadence(),
           portalStream(runSeed, this.portalIndex)
         ) + Math.max(0, this.portalIntervalTax(this.state.nextExitAtFood));
       this.state.nextExitAtFood += Math.max(1, interval);
@@ -3248,7 +3372,7 @@ export class SnakeGameLogic {
    */
   private rollNextExitInterval(): number {
     return (
-      rollExitInterval(this.ruleset.extraction, this.rng) +
+      rollExitInterval(this.exitCadence(), this.rng) +
       this.portalIntervalTax(this.state.foodEaten)
     );
   }
@@ -3282,10 +3406,24 @@ export class SnakeGameLogic {
     // the dynasty accelerated. Food has no deadline, which is exactly why
     // eating stayed possible while banking became impossible.
     const authored = this.ruleset.extraction.despawnSeconds;
-    const base =
+    let base =
       authored !== undefined
         ? Math.max(1, Math.round((authored * 1000) / Math.max(1, this.getSpeed())))
         : this.ruleset.extraction.despawnTicks;
+    // WP-3.12: the ladder's "Narrow Door" rung shortens the window, and it is
+    // authored in SECONDS for exactly the reason `despawnSeconds` is - a rung
+    // that subtracted TICKS would shrink fourfold as CYBER accelerated, which
+    // is the defect WP-3.04 removed. Converted here by the LIVE tick, on both
+    // branches, so it means the same duration at every tempo. Applied to the
+    // authored window before the mutation modifiers, which are ticks and stay
+    // ticks; the final `minExitDespawnTicks` floor still binds the stack.
+    const rungSeconds = ladderParams(this.ladderRung).portalWindowSecondsDelta;
+    if (rungSeconds !== 0) {
+      base = Math.max(
+        1,
+        base + Math.round((rungSeconds * 1000) / Math.max(1, this.getSpeed()))
+      );
+    }
     let ticks = this.hasMutation('gold_trail')
       ? Math.min(base, MUTATION_PHYSICS.goldTrailPortalTicks)
       : base;
@@ -3353,32 +3491,19 @@ export class SnakeGameLogic {
         Math.floor(speed * STRAIN_PHYSICS.overclockedRealityTickFactor)
       );
     }
-    // FERAL Molt: each molt makes the world permanently faster, compounding.
-    // Molt's proportional shed keeps the body long enough to stay dangerous
-    // but no longer lets length alone end the run, so the price of shedding
-    // is tempo. The loop re-arms from getSpeed() every tick, so this applies
-    // the moment a molt fires.
-    const molts = this.moltsFired();
-    if (molts > 0) {
-      speed = Math.max(
-        STRAIN_PHYSICS.tickFloorMs,
-        Math.floor(speed * Math.pow(STRAIN_PHYSICS.moltTickFactor, molts))
-      );
-    }
+    // FERAL: NO TEMPO TERM, and its absence is a decision (WP-3.11).
+    //
+    // Molt multiplied the tick interval by 0.92 per firing, compounding for
+    // the rest of the run. That existed because Molt DELETED the difficulty:
+    // the shed handed back the board, so the run needed a second clock or it
+    // never ended. Fortress deletes nothing - it hardens the board, so every
+    // firing makes the run harder in the currency the game already escalates
+    // in. Carrying the speed step across as well would price the Expression
+    // twice, and would do it in a currency the player cannot see coming.
+    //
+    // Dropping it silently would have been a stealth tempo change, which is
+    // why it is written down here rather than simply deleted.
     return speed;
-  }
-
-  /**
-   * Molts fired so far this run - the exponent of the compounding speed
-   * step. Derived from the live length trace rather than a second counter,
-   * so it can never drift from the shed events the server recomputes.
-   */
-  private moltsFired(): number {
-    let count = 0;
-    for (const event of this.lengthTrace.shedEvents) {
-      if (event.source === 'molt') count += 1;
-    }
-    return count;
   }
 
   /**

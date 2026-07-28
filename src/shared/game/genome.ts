@@ -40,7 +40,7 @@ import {
   STRAIN_PHYSICS,
   STRAIN_THRESHOLDS,
   capSpawnPoints,
-  moltResetLengthFor,
+  fortressFiresAt,
   strainTier,
   type StrainId,
   type StrainPoints,
@@ -55,6 +55,7 @@ import {
 } from '@/shared/game/anomalies';
 import { MUTATION_ECONOMICS, MUTATION_PHYSICS } from '@/shared/game/mutations';
 import { carryScaled } from '@/shared/game/portals';
+import { ladderInfuseGrowth, ladderSalvageFloor } from '@/shared/game/ladder';
 import {
   baseGrowthForFood,
   resolveGrowthProfile,
@@ -147,6 +148,22 @@ export interface GenomeRunInput {
    * the two would silently rewrite every historical outcome.
    */
   portalsPassed?: number;
+  /**
+   * The D2 ladder rung the run was started at (WP-3.12), read back from
+   * `run_context` at settlement.
+   *
+   * It moves two things inside this module: what an INFUSE grows
+   * (`ladderInfuseGrowth`) and where the carry's salvage decay lands
+   * (`ladderSalvageFloor`). It sits on the input for the same reason
+   * `growthProfileId` and `portalsPassed` do — every caller already threads
+   * this object, so a call site cannot forget it and silently fold a rung-0
+   * length model against a rung-7 engine.
+   *
+   * Absent, unknown or malformed resolves to rung 0, which folds
+   * byte-identically to the shipped game. That is what makes every historical
+   * blob recompute unchanged.
+   */
+  ladderRung?: number;
 }
 
 export const EMPTY_GENOME: GenomeRunInput = {
@@ -157,22 +174,27 @@ export const EMPTY_GENOME: GenomeRunInput = {
   revive: null,
 };
 
-/** Bounded-trust claims - clamped by genomeClaimCaps, never recomputed. */
+/**
+ * Bounded-trust claims - clamped by genomeClaimCaps, never recomputed.
+ *
+ * WP-3.11 removed TWO of these rather than re-pointing them. `moltFoodDna` and
+ * `heartwoodDna` both paid for pickups dropped on shed cells; Fortress turns
+ * those cells into terrain, so there is nothing to collect and nothing to
+ * claim - both are now folded deterministically by
+ * `genomeFoodValueFlatBonus`. That is the direction this surface is supposed
+ * to move: a claim exists only where the server genuinely cannot recompute.
+ */
 export interface GenomeClaims {
   /** AURUM Gilded Wake: flat DNA from gilded-cell re-traversals. */
   aurumWakeDna?: number;
   /** AURUM Midas Vein: bonus DNA from golden chain-eats. */
   midasDna?: number;
-  /** FERAL Molt: flat DNA from molt-foods eaten. */
-  moltFoodDna?: number;
   /** FERAL Ouroboros: flat DNA from tail-tip bites. */
   ouroborosDna?: number;
   /** Static Charge: bonus DNA from fasting eats. */
   staticChargeDna?: number;
   /** Ricochet: bonus DNA from slide-eats. */
   ricochetDna?: number;
-  /** Heartwood: flat DNA from golden shed-drops eaten. */
-  heartwoodDna?: number;
   /** UMBRA Second Sun: the one-time trigger payment was earned. */
   secondSunTriggered?: boolean;
 }
@@ -298,16 +320,60 @@ export function strainTierAtFood(
 // DETERMINISTIC LENGTH MODEL
 // =============================================================================
 
+/**
+ * A shed cycle firing. Rule 15 (Constitution v1.4) retired every producer of
+ * these - `shed` left the pool in WP-3.01, its two splices went with it, and
+ * FERAL's Molt was replaced by Fortress in WP-3.11 - so no NEW run records one.
+ * The model keeps them because blobs settled before the rule still name the
+ * genes, and a recompute that dropped the cycle would rewrite their history.
+ */
 export interface ShedEvent {
   atFood: number;
   segmentsShed: number;
-  source: 'shed' | 'molt' | 'regenesis' | 'molted_rebirth';
+  source: 'shed' | 'regenesis' | 'molted_rebirth';
+}
+
+/**
+ * A Fortress petrification (WP-3.11): `segments` of the oldest LIVE body stop
+ * following and become terrain at food `atFood`.
+ *
+ * The modelled length does not move - that is the whole point of the mechanic,
+ * and the reason this is a separate event type rather than a `ShedEvent` with
+ * a new source. A shed event REMOVES length; a petrify event RELOCATES it.
+ *
+ * `dna` travels on the event rather than being recomputed by the consumer
+ * because the rate depends on the world condition (Overgrown pays double), and
+ * `computeLengthTrace` is the one place that already holds the condition. The
+ * alternative was a sixth argument on `genomeFoodValueFlatBonus` that a caller
+ * could forget - the exact failure mode `computeGenomeRunTotals`'s own comment
+ * warns about.
+ */
+export interface PetrifyEvent {
+  atFood: number;
+  segments: number;
+  dna: number;
 }
 
 export interface LengthTrace {
   /** lengthAtEat[n] = body length at the moment food n is eaten (1-based). */
   lengthAtEat: number[];
   shedEvents: ShedEvent[];
+  petrifyEvents: PetrifyEvent[];
+}
+
+/**
+ * What one Fortress event pays. Called by BOTH length models, so the Overgrown
+ * rate can never apply on one side only.
+ */
+export function fortressEventDna(
+  segments: number,
+  anomaly: AnomalyId | null
+): number {
+  const perSegment =
+    anomaly === 'overgrown'
+      ? ANOMALY_ECONOMICS.overgrownPetrifySegmentDna
+      : STRAIN_ECONOMICS.fortressSegmentDna;
+  return segments * perSegment;
 }
 
 function activeAt(pick: GenePick | undefined, n: number): boolean {
@@ -316,10 +382,17 @@ function activeAt(pick: GenePick | undefined, n: number): boolean {
 
 /**
  * The deterministic length model: length is a pure function of the food
- * index given picks (growth), shed cycles (fused view), the Molt
- * expression, and reported losses. Reported losses only ever SHRINK the
+ * index given picks (growth), legacy shed cycles (fused view), FERAL's
+ * Fortress, and reported losses. Reported losses only ever SHRINK the
  * model, so under-reporting them is the only vector - bounded by the
  * global raw clamp and flagged (design doc section 15.2).
+ *
+ * TWO LENGTHS, AND KNOWING WHICH IS WHICH (WP-3.11). `len` is the MODELLED
+ * length - the difficulty clock, which Rule 15 forbids from rewinding.
+ * `petrified` is how much of it has turned to stone and stopped following.
+ * The LIVE body the engine draws is `len - petrified`. Every consumer of this
+ * trace wants the modelled length; only Fortress's own floor wants the live
+ * one, and it says so.
  */
 export function computeLengthTrace(
   view: FusedView,
@@ -327,7 +400,7 @@ export function computeLengthTrace(
   activations: StrainActivations,
   input: Pick<
     GenomeRunInput,
-    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId'
+    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId' | 'ladderRung'
   >,
   condition: ConditionInput = null
 ): LengthTrace {
@@ -335,6 +408,7 @@ export function computeLengthTrace(
   const growthProfile = resolveGrowthProfile(input.growthProfileId);
   const lengthAtEat: number[] = [0];
   const shedEvents: ShedEvent[] = [];
+  const petrifyEvents: PetrifyEvent[] = [];
   const loosePick = (id: GeneId) => view.loose.find((p) => p.id === id);
   const fused = (id: SpliceId) => view.splices.find((s) => s.spliceId === id);
   const parentPick = (id: GeneId): GenePick | undefined => {
@@ -349,22 +423,29 @@ export function computeLengthTrace(
   const shed = loosePick('shed');
   const regenesis = fused('splice_regenesis');
   const moltedRebirth = fused('splice_molted_rebirth');
-  const molt = activations.FERAL.expressionAt;
+  const fortressAt = activations.FERAL.expressionAt;
   // Rule 15 (v1.4): INFUSE is GROWTH, not a loss. Legacy blobs settled before
   // the inversion still carry `lossEvents` from Thick Hide and Ouroboros and
   // are still honoured below, so historical runs recompute exactly as they
   // did - but no new run produces one, and infuses never appear here again.
   const losses = [...(input.lossEvents ?? [])];
+  // WP-3.12: the ladder's "Weight of Power" rung adds segments to what an
+  // INFUSE grows. Read through `ladderInfuseGrowth` rather than off
+  // `STRAIN_PHYSICS` directly, because the ENGINE reads the same function - and
+  // a length model that folded the base 8 while the engine appended 12 would
+  // disagree with itself on every infused run.
+  const infuseSegments = ladderInfuseGrowth(input.ladderRung);
   const infuseGrowthAt = new Map<number, number>();
   for (const infuse of input.infuses) {
     infuseGrowthAt.set(
       infuse.atFood,
-      (infuseGrowthAt.get(infuse.atFood) ?? 0) + STRAIN_PHYSICS.infuseGrowth
+      (infuseGrowthAt.get(infuse.atFood) ?? 0) + infuseSegments
     );
   }
   const reviveAt = input.revive?.atFood ?? null;
 
   let len: number = growthProfile.initialLength;
+  let petrified = 0;
   for (let n = 1; n <= foodCount; n++) {
     lengthAtEat[n] = len;
     // The profile's base growth - the ONE function the engine also calls
@@ -374,9 +455,10 @@ export function computeLengthTrace(
     if (activeAt(overgrowth, n)) growth += MUTATION_PHYSICS.overgrowthExtraSegments;
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;
     len += growth;
-    // Shed cycles (fused view replaces the loose Shed cycle post-fusion).
-    // `resetFor` takes the length the body has RIGHT NOW because Molt's
-    // shed is proportional; the absolute cycles simply ignore the argument.
+    // Legacy shed cycles (fused view replaces the loose Shed cycle
+    // post-fusion). `resetFor` takes the length the body has RIGHT NOW; every
+    // surviving cycle is absolute and ignores the argument, but the signature
+    // stays because a settled blob's recompute must not change shape.
     const cycles: {
       every: number;
       anchor: number;
@@ -407,34 +489,50 @@ export function computeLengthTrace(
         source: 'molted_rebirth',
       });
     }
-    if (molt !== null) {
-      cycles.push({
-        every: STRAIN_PHYSICS.moltEveryFoods,
-        anchor: molt,
-        resetFor: moltResetLengthFor,
-        source: 'molt',
-      });
-    }
     for (const cycle of cycles) {
       const since = n - cycle.anchor;
       if (since <= 0 || since % cycle.every !== 0) continue;
-      const reset = cycle.resetFor(len);
-      if (len > reset) {
-        shedEvents.push({ atFood: n, segmentsShed: len - reset, source: cycle.source });
-        len = reset;
+      // A shed resets the LIVE body, not the modelled length. With nothing
+      // petrified the two are the same number and this is byte-identical to
+      // what settled blobs recomputed under - but a run that reached both a
+      // legacy shed and the Fortress Expression diverged by exactly the
+      // petrified count, because the engine sheds an array it has already
+      // taken the stone out of. The randomized sweep found it at seed 80.
+      const live = len - petrified;
+      const reset = cycle.resetFor(live);
+      if (live > reset) {
+        shedEvents.push({ atFood: n, segmentsShed: live - reset, source: cycle.source });
+        len = reset + petrified;
       }
     }
-    // Molt's growth floor is part of resolving this food, before any
-    // later portal/collision/revive event stamped with the same food count.
-    if (molt !== null && n > molt) {
-      len = Math.max(STRAIN_PHYSICS.moltMinLength, len);
+    // FERAL Expression "Fortress" (WP-3.11), in the slot Molt's shed used to
+    // occupy - after this food's growth, before the food is priced, because
+    // the event's DNA is folded at this same food.
+    //
+    // `len` DOES NOT MOVE. The stone is still the snake's length; it has only
+    // stopped following. The engine mirrors this by removing the segments from
+    // its live array while recording `live + petrified` into the trace, and
+    // the fold-parity suite compares the two food by food.
+    if (fortressFiresAt(n, fortressAt, len - petrified)) {
+      const segments = STRAIN_PHYSICS.fortressSegments;
+      petrified += segments;
+      petrifyEvents.push({
+        atFood: n,
+        segments,
+        dna: fortressEventDna(segments, anomaly),
+      });
     }
     // Reported losses at this food happen after the food resolves (Thick
-    // Hide, Ouroboros, infuse cost), so they can take the body below the
-    // Molt growth floor until another food is eaten.
+    // Hide, Ouroboros), so they land on the modelled length last. The floor is
+    // on the LIVE body for the same reason the shed reset is - the engine
+    // clamps an array the stone has already left - and reduces to the old
+    // expression whenever nothing has petrified.
     for (const loss of losses) {
       if (loss.atFood === n) {
-        len = Math.max(GAME_CONFIG.snake.initialLength, len - Math.max(0, loss.segments));
+        len = Math.max(
+          GAME_CONFIG.snake.initialLength + petrified,
+          len - Math.max(0, loss.segments)
+        );
       }
     }
     // Rule 15: INFUSE grows the body, at the same point in the food's
@@ -448,7 +546,7 @@ export function computeLengthTrace(
     // nothing for the length model to do here. Historical runs are unaffected
     // because their traces were computed under the old code and stored.
   }
-  return { lengthAtEat, shedEvents };
+  return { lengthAtEat, shedEvents, petrifyEvents };
 }
 
 // =============================================================================
@@ -639,6 +737,26 @@ export function genomeFoodValueFlatBonus(
       flat += STRAIN_ECONOMICS.singularityFlat;
     }
   }
+  // FERAL Expression "Fortress" (WP-3.11): the stone pays for itself, at the
+  // food that laid it, deterministically.
+  //
+  // HEARTWOOD RIDES THE SAME EVENT. PRIMAL's signature gene paid "per
+  // Shed/Molt event", and Rule 15 retired every producer of those - so on the
+  // day Fortress replaced Molt, Heartwood would have paid ZERO and no test
+  // would have failed. It now pays per petrification, from the same list, in
+  // the same fold. Loose picks only: once a fusion consumes Heartwood the
+  // splice replaces its parents' effects, which is the rule everywhere else in
+  // this function and in `genomeClaimCaps`.
+  if (!benefitsVoided && lengthTrace.petrifyEvents.length > 0) {
+    const heartwood = view.loose.find((p) => p.id === 'heartwood');
+    for (const event of lengthTrace.petrifyEvents) {
+      if (event.atFood !== n) continue;
+      flat += event.dna;
+      if (heartwood && n > heartwood.atFood) {
+        flat += GENE_ECONOMICS.heartwoodPetrifyFlat;
+      }
+    }
+  }
   return flat;
 }
 
@@ -761,7 +879,14 @@ export function genomeOutcomeMultipliers(
   // multipliers it was authored against. Zero is a live carry at its first
   // door, which is a different thing entirely. See `GenomeRunInput`.
   if (input.portalsPassed !== undefined) {
-    return carryScaled({ bank, death }, input.portalsPassed);
+    // WP-3.12: the ladder's "Thin Salvage" rung lowers where the decay lands.
+    // At rung 0 `ladderSalvageFloor` returns `CARRY.salvageFloor` exactly, so
+    // this call is byte-identical to the one it replaces.
+    return carryScaled(
+      { bank, death },
+      input.portalsPassed,
+      ladderSalvageFloor(input.ladderRung)
+    );
   }
   return { bank, death };
 }
@@ -773,11 +898,9 @@ export function genomeOutcomeMultipliers(
 export interface GenomeClaimCaps {
   aurumWakeDna: number;
   midasDna: number;
-  moltFoodDna: number;
   ouroborosDna: number;
   staticChargeDna: number;
   ricochetDna: number;
-  heartwoodDna: number;
   secondSunFlat: number;
   /** COSMIC combo trust ratio (2.8-cap Crown raises 1.4 -> 1.8 at M10). */
   crownHeld: boolean;
@@ -829,14 +952,7 @@ export function genomeClaimCaps(
   const aurum = activations.AURUM;
   const feral = activations.FERAL;
   const staticCharge = find('static_charge');
-  const heartwood = find('heartwood');
 
-  const moltEvents = lengthTrace.shedEvents.filter(
-    (e) => e.source === 'molt'
-  ).length;
-  const heartwoodEvents = heartwood
-    ? lengthTrace.shedEvents.filter((e) => e.atFood > heartwood.atFood).length
-    : 0;
   const foodsSinceFeralApex =
     feral.apexAt !== null ? Math.max(0, basis.foodCount - feral.apexAt) : 0;
 
@@ -854,12 +970,6 @@ export function genomeClaimCaps(
             dnaSince(basis, aurum.apexAt) * STRAIN_ECONOMICS.midasMaxBonusRatio
           )
         : 0,
-    moltFoodDna:
-      moltEvents *
-      STRAIN_ECONOMICS.moltFoodsPerEvent *
-      (anomaly === 'overgrown'
-        ? ANOMALY_ECONOMICS.overgrownMoltFoodFlat
-        : STRAIN_ECONOMICS.moltFoodFlat),
     ouroborosDna:
       feral.apexAt !== null
         ? Math.floor(foodsSinceFeralApex / STRAIN_ECONOMICS.ouroborosFoodsPerBite) *
@@ -877,7 +987,6 @@ export function genomeClaimCaps(
             SPLICE_ECONOMICS.ricochetMaxBonusRatio
         )
       : 0,
-    heartwoodDna: heartwoodEvents * GENE_ECONOMICS.heartwoodGoldenFlat,
     secondSunFlat:
       activations.UMBRA.apexAt !== null
         ? STRAIN_ECONOMICS.secondSunTriggerFlat
@@ -898,11 +1007,9 @@ export function genomeClaimCaps(
 export const GENOME_CLAIM_DNA_FIELDS = [
   'aurumWakeDna',
   'midasDna',
-  'moltFoodDna',
   'ouroborosDna',
   'staticChargeDna',
   'ricochetDna',
-  'heartwoodDna',
 ] as const;
 
 export type GenomeClaimDnaField = (typeof GENOME_CLAIM_DNA_FIELDS)[number];
@@ -969,21 +1076,17 @@ export function clampGenomeClaims(
   const accepted: GenomeClaims = {
     aurumWakeDna: clampInt('aurumWakeDna', caps.aurumWakeDna),
     midasDna: clampInt('midasDna', caps.midasDna),
-    moltFoodDna: clampInt('moltFoodDna', caps.moltFoodDna),
     ouroborosDna: clampInt('ouroborosDna', caps.ouroborosDna),
     staticChargeDna: clampInt('staticChargeDna', caps.staticChargeDna),
     ricochetDna: clampInt('ricochetDna', caps.ricochetDna),
-    heartwoodDna: clampInt('heartwoodDna', caps.heartwoodDna),
     secondSunTriggered: secondSunAccepted,
   };
   let bonusDna =
     (accepted.aurumWakeDna ?? 0) +
     (accepted.midasDna ?? 0) +
-    (accepted.moltFoodDna ?? 0) +
     (accepted.ouroborosDna ?? 0) +
     (accepted.staticChargeDna ?? 0) +
     (accepted.ricochetDna ?? 0) +
-    (accepted.heartwoodDna ?? 0) +
     (accepted.secondSunTriggered ? caps.secondSunFlat : 0);
   let globalClampHit = false;
   if (bonusDna > caps.globalClaimsCap) {
