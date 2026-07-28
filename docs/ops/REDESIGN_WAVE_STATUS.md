@@ -317,6 +317,13 @@ for. One food ships; N stays easy.
 
 #### COSMIC KEEPS MULTIPLE FOODS — owner-confirmed
 
+> **Superseded in its detail by WP-3.13, and CONFIRMED in its conclusion.**
+> COSMIC still does not read `simultaneousFoods`, and its wave is still bigger
+> than one — but it is five SCATTERED stars on a calcification window rather
+> than a clustered group of three feeding a combo. The warning below was
+> right about the thing that mattered: collapsing the wave to one food deletes
+> a dynasty. Read the rest as history.
+
 COSMIC does not read `simultaneousFoods` at all, and must not start.
 `COSMIC_CONSTELLATION` places a **group of 3** (`groupSize: 3`, `glyphCount: 3`,
 `groupRadius: 4`); the combo chain is built by collecting that group in sequence
@@ -337,17 +344,20 @@ with this work: `DynamicLights` spotlights only `foods[0]`, so COSMIC's other
 glyphs are unlit, and `applyMagnetPulse` spreads `this.state.foods[0]` without a
 guard, so it corrupts a `Position` when the wave is empty.
 
-Still open, and NOT to be settled by inertia: the owner has ruled the combos are
-not fun — *"it's not really fun to get the combos, it's just boring, has no
-thrill factor"* — and the COSMIC redesign (permanent torus, calcifying stars,
-delete `COSMIC_FLUX`) is still owed. If that redesign replaces the combo, the
-group's size and shape should be reconsidered **there**, deliberately. Until
-then it stays at 3.
+**SETTLED by WP-3.13, deliberately and not by inertia.** The owner's ruling
+that the combos are not fun — *"it's not really fun to get the combos, it's
+just boring, has no thrill factor"* — was taken at face value: the chain rule
+is deleted, not reshaped, and the group was reconsidered here as this note
+asked. It went 3 → 5, and the size is now load-bearing rather than arbitrary,
+because a constellation must be bigger than its window allows or nothing is
+ever abandoned.
 
-Server note for whoever touches it: COSMIC combo bonuses are BOUNDED TRUST, not
-recomputed — the chain depends on tick timing the server cannot reconstruct, so
-the claim is clamped against `COSMIC_TRUST_MAX_BONUS_RATIO`. Reshaping the combo
-touches that clamp and the Constellation Crown gate.
+The server note that stood here is discharged: there is no COSMIC claim left to
+clamp. `COSMIC_TRUST_MAX_BONUS_RATIO`, `sanitizeCosmicClaim`, the `cosmic`
+field on the validator input and result, `crownAllowed` in the run context and
+`crownHeld` in the claim caps are all deleted, and
+`scripts/verify-constitution.mjs` inverted with them — it used to pin the
+clamp's SHAPE and now forbids a clamp existing at all.
 
 ### Next step: PROFILE, do not guess a fifth time
 
@@ -363,13 +373,24 @@ than assumed. Start there.
 
 ## §5 Findings recorded, not fixed
 
-- **COSMIC always places 3 foods** regardless of growth profile
-  (`constellation.groupSize: 3`), predating the growth lab. The owner dislikes 3
-  foods; needs a COSMIC ruling, tangled with the constellation redesign.
-- **COSMIC Singularity's food pull is not implemented.**
-  `STRAIN_PHYSICS.singularityPullRadius` has zero call sites, but `lexicon.ts`
-  and the design doc both promise it. Same class as the Signal tilt: shipped UI
-  stating something the engine never does.
+- ~~**COSMIC always places 3 foods**~~ — RULED and shipped in WP-3.13. The
+  constellation is now **five scattered stars** on a window, and the count is
+  the mechanic rather than a leftover: it must exceed what the window allows or
+  nothing is ever abandoned and nothing ever calcifies.
+- ~~**COSMIC Singularity's food pull is not implemented.**~~ — FIXED in
+  WP-3.13. `singularityPullRadius` now has a call site
+  (`applySingularityPull`), fired at the same food index the flat DNA is paid
+  on. It was chosen over deleting the promise because the player was already
+  being paid for the event, and `genome.ts`'s own comment ("+10 flat per pull
+  event") described a fiction otherwise.
+- **COSMIC's Yield is ~2.4x short of its design target.** Raised by WP-3.13 and
+  deliberately NOT closed there. The balance harness modelled the deleted combo
+  as a flat x2.4 over a whole run — itself fiction, since the cap needed a chain
+  of 8 a wave of 3 could not produce — and without it the COSMIC archetype pays
+  2077 against a 5400 target, roughly a third of the other four. `foodDnaValue`
+  is still a flat 10. `genome.balance.test.ts` records the number exactly under
+  `openYieldGap` so it cannot drift. Closing it is a Yield decision (D3 owns the
+  Score half only) and wants the owner's playtest first.
 - **Only `foods[0]` is spotlit** — `DynamicLights` takes a single position, so
   extra foods are unlit.
 - **`applyMagnetPulse` crashes on an empty `foods`** — spreads
@@ -388,7 +409,15 @@ than assumed. Start there.
 2. **The carry**, after the portal-seeding fix (§3.1). Needs a WP number.
 3. **The trail** (§3.2). Unblocked — terrain's visual language is settled.
 4. **In-run growth readout** (§3.3).
-5. **COSMIC** — permanent torus, calcifying stars, delete `COSMIC_FLUX`.
+5. ~~**COSMIC** — permanent torus, calcifying stars, delete `COSMIC_FLUX`.~~
+   Shipped as **WP-3.13**, and it settled the combo: `DYNASTY_COSMIC.md` §5
+   lists the chain rule and `comboCap` for deletion, and §2.3 retires glyphs to
+   pure decoration. What replaced the combo as COSMIC's decision is which star
+   you abandon and therefore where its corpse lands. The consequences worth
+   knowing: COSMIC now claims NOTHING the server cannot recompute (the bounded
+   -trust clamp, `COSMIC_TRUST_MAX_BONUS_RATIO` and the Constellation Crown's
+   permission to raise it are all gone), three genes were re-authored rather
+   than orphaned, and the Yield gap above is open.
 6. **PRIMAL** — Fortress replacing FERAL-2 Molt, tempo 200 → ~170-180ms.
 7. **D3** — per-dynasty score curves with comparable integrals.
 8. **D2 ladder** (WP-3.10).
