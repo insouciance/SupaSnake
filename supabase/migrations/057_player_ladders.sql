@@ -146,8 +146,14 @@ DROP POLICY IF EXISTS player_ladders_select_own ON player_ladders;
 CREATE POLICY player_ladders_select_own ON player_ladders
   FOR SELECT
   USING (
+    -- `players.user_id`, not `auth_user_id`. Every RLS policy in this schema
+    -- since 001 spells it this way; the first draft of this file guessed and
+    -- the migration aborted with 42703, taking the whole isolated-Supabase
+    -- step down with it. It was caught because the e2e leg started blocking
+    -- in the same work package — otherwise the first execution of this file
+    -- would have been the production migration step.
     player_id IN (
-      SELECT id FROM players WHERE auth_user_id = auth.uid()
+      SELECT id FROM players WHERE user_id = auth.uid()
     )
   );
 
