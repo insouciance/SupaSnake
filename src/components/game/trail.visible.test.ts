@@ -135,6 +135,18 @@ describe('the game scene threads what the metric needs', () => {
 });
 
 describe('the failure modes the design named explicitly', () => {
+  it('lifts the trail off the floor plane, and terrain with it', () => {
+    // The arena platform's top face is at exactly y = 0. Anything drawn flush
+    // on it z-fights across its whole footprint. Asserted structurally in both
+    // renderers because terrain has the identical geometry and has never been
+    // looked at by a human - it would have shipped the same banding on CYBER.
+    const renderer = read(RENDERER);
+    expect(renderer).toContain('FLOOR_CLEARANCE');
+    expect(renderer).toMatch(/FLOOR_CLEARANCE \+ height \/ 2/);
+    const terrain = read('src/components/game/TerrainBlocks.tsx');
+    expect(terrain).toContain('FLOOR_CLEARANCE');
+  });
+
   it('draws no joint links, so the wrap seam cannot be bridged at all', () => {
     // This used to assert a SEAM_DISTANCE guard: two "consecutive" segments
     // straddling the COSMIC seam are a board apart, and an unguarded LINK

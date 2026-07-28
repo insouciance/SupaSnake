@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { FLOOR_CLEARANCE } from './ArenaFloor';
 import type { TerrainBlock } from '@/shared/game/terrain';
 
 /**
@@ -94,7 +95,7 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
     for (const block of terrain) {
       if (block.solid) {
         if (solidCount >= MAX_BLOCKS) continue;
-        position.set(block.x + 0.5, 0.31, block.z + 0.5);
+        position.set(block.x + 0.5, FLOOR_CLEARANCE + 0.31, block.z + 0.5);
         scale.set(1, 1, 1);
         matrix.compose(position, quaternion, scale);
         solidMesh.setMatrixAt(solidCount, matrix);

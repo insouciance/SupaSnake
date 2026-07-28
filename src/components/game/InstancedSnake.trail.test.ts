@@ -25,6 +25,7 @@ import {
 } from '@/lib/game/interpolationBuffer';
 import type { Position } from '@/lib/game/SnakeGameLogic';
 import { writeTrailInstances } from './InstancedSnake';
+import { FLOOR_CLEARANCE, FLOOR_TOP_Y } from './ArenaFloor';
 import {
   TRAIL_HEIGHT_HEAD,
     getTrailFootprint,
@@ -113,12 +114,18 @@ describe('the trail is actually emitted', () => {
   });
 
   it('stands every box on the floor, never floating', () => {
-    // Base-on-floor is y = height / 2, TerrainBlocks' convention. A hovering
-    // box has no useful cast shadow, and the shadow is a real occupancy cue.
+    // Base-on-floor plus FLOOR_CLEARANCE, TerrainBlocks' convention. A box that
+    // truly hovers has no useful cast shadow and the shadow is a real occupancy
+    // cue; a box flush at y = 0 z-fights the platform's top face. The clearance
+    // is a fifth of a millimetre at board scale - far too small to read as
+    // floating, far too large for the depth buffer to confuse.
     const { sink, count } = emit(bufferOf(straight(12)), new Array(12).fill(1));
     for (let i = 0; i < count; i++) {
       const instance = sink.instances[i];
-      expect(instance.position.y).toBeCloseTo(instance.scale.y / 2, 10);
+      expect(instance.position.y).toBeCloseTo(
+        FLOOR_CLEARANCE + instance.scale.y / 2,
+        10
+      );
       expect(instance.scale.y).toBeGreaterThan(0);
       expect(instance.scale.y).toBeLessThanOrEqual(TRAIL_HEIGHT_HEAD);
     }
@@ -293,6 +300,24 @@ describe('one box per cell, and nothing that interpenetrates it', () => {
         bufferOf(snake), new Array(20).fill(2), 1, step / 12
       );
       expect(anyOverlap(sink, count)).toBeNull();
+    }
+  });
+
+  it('never sits flush on the floor plane', () => {
+    // THE DEFECT THE OWNER DIAGNOSED, and the one my two earlier attempts both
+    // missed: the arena platform is a 0.1-tall slab centred at -0.05, so its
+    // TOP FACE IS AT EXACTLY y = 0. A cube drawn base-on-floor at y = 0 shares
+    // that plane at identical depth across its whole footprint, and two
+    // coplanar surfaces z-fight - horizontal bands across the bottom of every
+    // face, shimmering when the snake moves along Z and looking stable when it
+    // moves along X, because only one of those changes the depth slope.
+    //
+    // Reproduced and eliminated with one variable: at FLOOR_CLEARANCE = 0 the
+    // banding is there, at 0.02 it is gone.
+    const { sink, count } = emit(bufferOf(straight(20)), new Array(20).fill(2));
+    for (let i = 0; i < count; i++) {
+      const base = sink.instances[i].position.y - sink.instances[i].scale.y / 2;
+      expect(base).toBeGreaterThan(FLOOR_TOP_Y);
     }
   });
 

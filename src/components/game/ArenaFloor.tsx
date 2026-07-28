@@ -37,6 +37,31 @@ interface ArenaFloorProps {
 /** Cells between major (emphasized) grid lines */
 const MAJOR_EVERY = 5;
 
+/**
+ * The floor's top surface, and the clearance everything standing on it must
+ * keep from that surface.
+ *
+ * The platform is a 0.1-tall slab centred at -0.05, so its top face is at
+ * EXACTLY y = 0. Anything drawn base-on-floor at y = 0 therefore shares a plane
+ * with it, at identical depth, over its whole footprint - and two coplanar
+ * surfaces are z-fighting by definition. It renders as horizontal bands across
+ * the bottom of every face that flicker as the object moves, which is what the
+ * owner reported on the trail: "they are flickering and not all sides of the
+ * cubes/segments are visible... when going vertically it is flickering."
+ *
+ * The direction-dependence is the tell. Moving along Z changes each face's
+ * depth slope relative to the floor plane, so the fight resolves differently
+ * frame to frame; moving along X leaves that slope constant, so it looks
+ * stable. Same defect either way - only one of them shimmers.
+ *
+ * CLEARANCE, NOT BIAS. Lifting by a hair removes the tie outright rather than
+ * asking the depth buffer to break it, and it is invisible: 0.02 of a cell is a
+ * fifth of a millimetre at the board's scale. `polygonOffset` would only pick a
+ * winner, and would still be wrong on a different GPU.
+ */
+export const FLOOR_TOP_Y = 0;
+export const FLOOR_CLEARANCE = 0.02;
+
 export function ArenaFloor({
   gridSize = 20,
   floorColor = '#101722',
