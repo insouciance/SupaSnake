@@ -51,6 +51,13 @@ import {
   type ConditionInput,
 } from '@/shared/game/worldCondition';
 import {
+  portalIntervalTax,
+  portalTaxFactsAt,
+  portalsEncountered,
+  portalsPassed,
+  type PortalTaxSources,
+} from '@/shared/game/portals';
+import {
   MUTATION_SPAWN,
   isMutationId,
   type MutationId,
@@ -79,6 +86,7 @@ import {
   sanitizeRevive,
   sanitizeSurges,
   strainActivations,
+  strainTierAtFood,
   type GenomeClaimClamp,
   type GenomeClaims,
   type GenomeRevive,
@@ -117,6 +125,65 @@ export interface GameResultInput {
   genome?: unknown;
 }
 
+/**
+ * Replay the portal schedule and return how many doors the run PASSED.
+ *
+ * `undefined` — not zero — when there is no seed to replay. The distinction is
+ * the difference between "this run declined nothing" and "this run has no
+ * schedule behind it", and `genomeOutcomeMultipliers` treats them differently
+ * on purpose: the first is a live carry at its first door, the second keeps the
+ * flat multipliers every pre-WP-3.10 blob was settled under.
+ *
+ * The fact-gathering is the engine's, through `portalTaxFactsAt` — the arithmetic
+ * and the facts are both shared, so the only thing left to get wrong here is
+ * handing it the wrong run, which the parity test covers.
+ */
+function derivePortalsPassed(args: {
+  runSeed?: string | null;
+  dynasty: DynastyName;
+  foodCount: number;
+  picks: GenePick[];
+  heirloom: StrainPoints;
+  surges: StrainSurge[];
+  tierCap: 1 | 2 | 3;
+  suppressedStrains: readonly StrainId[];
+  splicesUnlocked: boolean;
+  traits: TraitId[];
+  anomaly: ConditionInput;
+  infuses: { atFood: number }[];
+  extracted: boolean;
+}): number | undefined {
+  if (!args.runSeed) return undefined;
+  const view = args.splicesUnlocked
+    ? fusePicks(args.picks)
+    : { loose: [...args.picks], splices: [] };
+  const activations = strainActivations(
+    args.picks,
+    args.heirloom,
+    args.surges,
+    args.tierCap,
+    args.suppressedStrains
+  );
+  const sources: PortalTaxSources = {
+    picks: args.picks,
+    splices: view.splices.map((s) => ({ id: s.spliceId, atFood: s.atFood })),
+    traits: args.traits,
+    anomaly: conditionAnomaly(args.anomaly),
+    infuses: args.infuses,
+    // The FTUE cap binds here exactly as it binds the engine's `strainTierNow`:
+    // a capped run must not be taxed for a tier it was never allowed to reach.
+    fluxTierAt: (food: number) =>
+      Math.min(args.tierCap, strainTierAtFood(activations.FLUX, food + 0.5)),
+  };
+  const met = portalsEncountered(
+    getRuleset(args.dynasty).extraction,
+    args.runSeed,
+    args.foodCount,
+    (food: number) => portalIntervalTax(portalTaxFactsAt(sources, food))
+  );
+  return portalsPassed(met, args.infuses.length, args.extracted);
+}
+
 /** Server context for genome validation - all fields server-derived. */
 export interface GenomeValidationContext {
   /** Starting strain points (traits + lineage, from the snake row). */
@@ -131,6 +198,16 @@ export interface GenomeValidationContext {
   suppressedStrains?: readonly StrainId[];
   /** Server-derived FTUE gate. Defaults true for existing callers/tests. */
   splicesUnlocked?: boolean;
+  /**
+   * The session's `run_seed` — the same one the engine played under.
+   *
+   * WP-3.10 needs it to replay the food-indexed portal schedule and DERIVE how
+   * many doors the run passed, because the carry multiplies the payout by that
+   * count and it is far too leveraged to accept as a claim. Absent means no
+   * carry at all (see `GenomeRunInput.portalsPassed`), which is the correct
+   * answer for a session that predates the seed.
+   */
+  runSeed?: string | null;
   /**
    * The growth profile the run STARTED under (WP-3.02), read back from
    * `run_context`. Absent means `baseline` - which is every run predating the
@@ -1173,6 +1250,30 @@ function validateGenomeBranch(
 
   const lossEvents = sanitizeLossEvents(claim.lossEvents);
 
+  // THE CARRY'S INPUT, DERIVED — never claimed (WP-3.10).
+  //
+  // The client sends nothing about portals. This walks the same seeded,
+  // food-indexed schedule the engine walked, from the same run seed and the
+  // same accepted picks, and counts the doors the run met. The identity
+  // `passed = met - infuses - (extracted ? 1 : 0)` then closes it, because a
+  // door is always infused at, banked at, or passed, and the first two are
+  // already server facts by this point.
+  const carriedPasses = derivePortalsPassed({
+    runSeed: ctx.runSeed,
+    dynasty,
+    foodCount,
+    picks,
+    heirloom: ctx.heirloom,
+    surges,
+    tierCap: ctx.tierCap,
+    suppressedStrains: ctx.suppressedStrains ?? [],
+    splicesUnlocked: ctx.splicesUnlocked !== false,
+    traits,
+    anomaly,
+    infuses,
+    extracted,
+  });
+
   const genomeInput: GenomeRunInput = {
     picks,
     heirloom: ctx.heirloom,
@@ -1185,6 +1286,7 @@ function validateGenomeBranch(
     suppressedStrains: ctx.suppressedStrains ?? [],
     splicesEnabled: ctx.splicesUnlocked !== false,
     ...(ctx.growthProfileId ? { growthProfileId: ctx.growthProfileId } : {}),
+    ...(carriedPasses !== undefined ? { portalsPassed: carriedPasses } : {}),
   };
 
   // g8. VOLT rate allowance: arcs raise the honest eat rate - widen the

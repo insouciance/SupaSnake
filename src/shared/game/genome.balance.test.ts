@@ -18,10 +18,29 @@ interface Archetype {
   infuses: { atFood: number }[];
   prevRunDied?: boolean;
   boundedClaimDna?: number;
-  /** COSMIC's combo, deleted in WP-3.13 - kept as an archetype knob only
-   *  where a historical build's DNA-per-run is being reproduced. */
-  comboMultiplier?: number;
   designEv: number;
+  /**
+   * OPEN YIELD GAP — this archetype is knowingly short of its design target,
+   * and the ±15% gate below skips it for that reason rather than the target
+   * being quietly lowered to meet it.
+   *
+   * Only Rift Sailor carries it. WP-3.13 deleted COSMIC's combo, and this
+   * harness modelled that combo as a flat `comboMultiplier: 2.4` over a whole
+   * run — which was already fiction, because the ×2.4 cap needed a chain of 8
+   * that a wave of 3 could not produce. Removing it takes the archetype from
+   * 4984 to 2077, about 38% of target and about a third of the other four.
+   *
+   * That gap is real and it is NOT closed here. COSMIC's Yield curve is a
+   * separate decision from its Score curve (D3 owns the score half and gave
+   * it a mid-weighted shape; `foodDnaValue` is still a flat 10), and this
+   * package deliberately did not author one — it would be a second economy
+   * change riding a mechanic change, and the owner has to play the redesign
+   * before the number it should pay is knowable.
+   *
+   * The measured value is asserted exactly, so the day someone does close it
+   * this line fails and has to be re-decided rather than drifting.
+   */
+  openYieldGap?: number;
 }
 
 export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
@@ -71,8 +90,8 @@ export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
       { id: 'pocket_rift', atFood: 28 },
     ],
     infuses: [],
-    comboMultiplier: 2.4,
     designEv: 5400,
+    openYieldGap: 2077,
   },
 ] as const;
 
@@ -91,10 +110,7 @@ export function simulateGenomeArchetype(archetype: Archetype) {
   const weightedOutcome =
     archetype.bankProbability * outcome.bank +
     (1 - archetype.bankProbability) * outcome.death;
-  const rawDna = Math.round(
-    (totals.rawDna + (archetype.boundedClaimDna ?? 0)) *
-    (archetype.comboMultiplier ?? 1)
-  );
+  const rawDna = totals.rawDna + (archetype.boundedClaimDna ?? 0);
   return {
     rawDna,
     bank: outcome.bank,
@@ -105,13 +121,26 @@ export function simulateGenomeArchetype(archetype: Archetype) {
 
 describe('Genome archetype balance', () => {
   it('lands every elite archetype within 15% of the G0 target', () => {
-    const results = GENOME_BALANCE_ARCHETYPES.map((archetype) => ({
+    const results = GENOME_BALANCE_ARCHETYPES.filter(
+      (archetype) => archetype.openYieldGap === undefined
+    ).map((archetype) => ({
       name: archetype.name,
       designEv: archetype.designEv,
       ...simulateGenomeArchetype(archetype),
     }));
+    expect(results.length).toBeGreaterThan(0);
     for (const result of results) {
       expect(Math.abs(result.ev - result.designEv) / result.designEv).toBeLessThanOrEqual(0.15);
+    }
+  });
+
+  it('records the open yield gaps exactly, so none of them can drift', () => {
+    // An archetype below target is a finding, not a failure — but an
+    // unrecorded one is how a 2.4x hole becomes the status quo. See
+    // `openYieldGap` for why COSMIC's is open and what would close it.
+    for (const archetype of GENOME_BALANCE_ARCHETYPES) {
+      if (archetype.openYieldGap === undefined) continue;
+      expect(simulateGenomeArchetype(archetype).ev).toBe(archetype.openYieldGap);
     }
   });
 

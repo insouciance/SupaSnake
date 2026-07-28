@@ -81,6 +81,18 @@ import {
   type TerrainBlock,
 } from '@/shared/game/terrain';
 import {
+  blockedGrid,
+  chooseFoodCell,
+  markBlocked,
+} from '@/shared/game/foodPlacement';
+import {
+  PORTAL_SCHEDULE_LIMIT,
+  portalIntervalTax,
+  portalStream,
+  portalTaxFactsAt,
+  type PortalTaxSources,
+} from '@/shared/game/portals';
+import {
   baseGrowthForFood,
   resolveGrowthProfile,
   rollOfferInterval,
@@ -520,6 +532,26 @@ export class SnakeGameLogic {
   private speed: number;
   private ruleset: DynastyRuleset;
   private rng: () => number;
+  /**
+   * Reused occupancy grid for food placement - see `waveBlockedGrid`. Held on
+   * the instance so a wave costs no allocation; sized lazily because
+   * `gridSize` can be overridden per run.
+   */
+  private blockedScratch: Uint8Array | null = null;
+  /**
+   * The same grid with COSMIC's scatter exclusions written into it. Separate
+   * because the exclusions are a PREFERENCE: when a full board leaves the
+   * spaced grid with nowhere to place a star, the placer falls back to the
+   * real one rather than dropping the star.
+   */
+  private spacedScratch: Uint8Array | null = null;
+  /**
+   * How far the seeded portal schedule has been walked, and how many doors it
+   * has produced. They differ only in the theoretical merge case documented on
+   * `advancePortalSchedule`; `portalsMet` is what the carry reads.
+   */
+  private portalIndex = 0;
+  private portalsMet = 0;
   private traits: TraitId[];
   private mutationPool: MutationId[];
   private anomaly: AnomalyId | null;
@@ -918,6 +950,8 @@ export class SnakeGameLogic {
     this.ouroborosBites = 0;
     this.shedRemovedCells = new Map();
     this.offerIndex = 0;
+    this.portalIndex = 0;
+    this.portalsMet = 0;
     this.offerTrace = [];
     this.recentOffers = [];
     this.ticksSinceAnyEat = 1_000_000;
@@ -1598,9 +1632,7 @@ export class SnakeGameLogic {
         this.state.food = { ...this.state.foods[0] };
       }
 
-      if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
-        this.spawnExit();
-      }
+      this.advancePortalSchedule(n);
       // Ascetic (trait): mutation food never spawns - no builds, pure snake
       if (
         !this.state.mutationTile &&
@@ -1659,8 +1691,7 @@ export class SnakeGameLogic {
         this.state.exitTile = null;
         this.state.exitTile2 = null;
         this.state.exitTicksRemaining = 0;
-        this.state.nextExitAtFood =
-          this.state.foodEaten + this.rollNextExitInterval();
+        this.scheduleNextPortalAfterResolve(this.state.foodEaten);
         // Identity v1 section 9.5: a portal that expires unused was
         // PASSED - the greed decision the Analyst narrates.
         this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'pass' });
@@ -1906,13 +1937,12 @@ export class SnakeGameLogic {
     return true;
   }
 
-  /** PASS consumes this door and schedules the next normal interval. */
+  /** PASS consumes this door; the schedule already holds the next one. */
   private consumePassedPortal(): void {
     this.state.exitTile = null;
     this.state.exitTile2 = null;
     this.state.exitTicksRemaining = 0;
-    this.state.nextExitAtFood =
-      this.state.foodEaten + this.rollNextExitInterval();
+    this.scheduleNextPortalAfterResolve(this.state.foodEaten);
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'pass' });
     this.emit('exitDespawned', { deliberate: true });
   }
@@ -1932,12 +1962,13 @@ export class SnakeGameLogic {
       this.state.snake.push({ ...tail });
     }
     const grew = STRAIN_PHYSICS.infuseGrowth;
-    // Consume the portal; the next one spawns a full interval away
-    // (+2 foods per infuse via rollNextExitInterval).
+    // Consume the portal. Under the seeded schedule the next door's food is
+    // already fixed; the +2-foods-per-infuse exposure tax is applied when the
+    // schedule advances past it, which is where the server applies it too.
     this.state.exitTile = null;
     this.state.exitTile2 = null;
     this.state.exitTicksRemaining = 0;
-    this.state.nextExitAtFood = atFood + this.rollNextExitInterval();
+    this.scheduleNextPortalAfterResolve(atFood);
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'infuse' });
     this.recordRunEvent({ t: this.runTimeDs(), e: 'i', n: atFood });
     this.emit('infused', {
@@ -2483,18 +2514,25 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Spawn all foods for a new wave: a single food normally, a pair under
-   * Splitter, a SCATTERED constellation on COSMIC.
+   * Spawn all foods for a new wave: one food normally, a pair under Splitter,
+   * a SCATTERED constellation on COSMIC.
+   *
+   * THE OCCUPANCY GRID IS BUILT ONCE PER WAVE, NOT ONCE PER FOOD. That is the
+   * shape the owner asked for (2026-07-28: food count must stay "a cheap
+   * configuration change", never a rewrite): a wave of N is N placer calls
+   * that each exclude what the previous ones placed, with no branch anywhere
+   * on the count. Raising `simultaneousFoods` costs one more call and one more
+   * `markBlocked`; it does not cost a second code path.
+   *
+   * COSMIC keeps wave semantics - the constellation IS the wave, and its
+   * window is what makes the dynasty - so its size comes from the ruleset and
+   * never from the growth profile. The other two get the profile's count,
+   * which WP-3.06 returns to one (owner: "what i certainly don't like are the
+   * 3 foods on the screen"). Collapsing this to one unconditionally would
+   * silently delete a dynasty's identity.
    */
   private spawnFoods(): void {
     const constellation = this.ruleset.constellation;
-    // WP-3.02: the profile's simultaneous-food count joins the existing wave
-    // target. This is the TRAVERSE fix, not generosity - on the owner's record
-    // run the median seconds-per-food rose 3.0 -> 6.9 while the MEAN
-    // quadrupled, so it is the tail of long walks that ends runs in
-    // irritation, and more food on the board kills the tail specifically.
-    // COSMIC keeps wave semantics (the constellation IS the wave, and its
-    // window is what makes the dynasty); the other two get the profile's count.
     const target = Math.max(
       1,
       (constellation
@@ -2519,12 +2557,43 @@ export class SnakeGameLogic {
       );
     }
 
+    const blocked = this.waveBlockedGrid();
+    const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
+    const occupancy =
+      this.state.snake.length / Math.max(1, this.gridSize * this.gridSize);
+    // COSMIC SCATTERS RATHER THAN CLUSTERS (WP-3.13). The placer's `anchor`
+    // parameter exists to keep a group chaseable within `groupRadius` of its
+    // first food, and that is the opposite of what a constellation now needs:
+    // a pile is not a routing problem. So no anchor is passed, and the
+    // separation is expressed the only other way the placer understands - by
+    // BLOCKING the neighbourhood of each star before the next one is drawn.
+    //
+    // Two grids, because the separation is a PREFERENCE rather than a
+    // requirement: a late-run board can be too full to honour it, and refusing
+    // to place a star at all would be a worse failure than a close pair.
+    const spaced = constellation ? this.spacedGrid(blocked) : null;
+    const scatter = this.constellationScatterCells();
+
     const foods: Position[] = [];
     for (let i = 0; i < target; i++) {
-      foods.push(this.sampleFoodCell(foods, i === 0 ? null : foods[0]));
+      const cell =
+        (spaced && i > 0
+          ? chooseFoodCell(this.gridSize, head, spaced, occupancy, this.rng)
+          : null) ??
+        chooseFoodCell(this.gridSize, head, blocked, occupancy, this.rng);
+      // `null` means the board holds no free cell at all - the player has
+      // filled it. Placing nothing is the honest answer; the wave carries
+      // whatever it managed to place.
+      if (cell === null) break;
+      markBlocked(blocked, this.gridSize, cell.x, cell.z);
+      if (spaced) {
+        markBlocked(spaced, this.gridSize, cell.x, cell.z);
+        this.markScatterZone(spaced, cell.x, cell.z, scatter);
+      }
+      foods.push({ x: cell.x, y: 0, z: cell.z });
     }
     this.state.foods = foods;
-    this.state.food = { ...foods[0] };
+    if (foods.length > 0) this.state.food = { ...foods[0] };
 
     // The window opens with the wave and closes on whatever is left.
     if (constellation) {
@@ -2634,60 +2703,112 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Rejection-sample one food cell.
+   * A copy of the wave's occupancy grid that the SCATTER rule may also write
+   * to, leaving the real one untouched.
    *
-   * On COSMIC the wave is SCATTERED, not clustered: every star must sit at
-   * least `scatterMinCells` away from every star already placed, in toroidal
-   * Manhattan terms. That replaced `groupRadius: 4`, which piled the group
-   * within four cells of an anchor - and a pile is not a routing problem,
-   * it is the default path with a bonus attached.
-   *
-   * The separation is why crossing the seam is ever the right route, and it
-   * is also the derivation behind COSMIC's food-rate bound: a Manhattan
-   * distance on this board IS the tick cost of covering it.
-   *
-   * The separation is a PREFERENCE, not a hard requirement - it is dropped
-   * after half the attempts. A late-run board can be too full to honour it,
-   * and refusing to place food there would be a worse failure than a close
-   * pair. Injectable rng, like every other placement sampler here (F-12): a
-   * seeded run must lay out identical food waves on every replay.
+   * Held on the instance and copied rather than reallocated, for the reason
+   * `waveBlockedGrid` gives: `foldParity.test.ts` runs a 400x400 board, and a
+   * fresh array per wave throws off gigabytes of garbage across its sweep.
    */
-  private sampleFoodCell(placed: Position[], anchor: Position | null): Position {
-    // Terrain is part of the board now: food that spawns inside a block is
-    // unreachable, and an unreachable food is dead time - the exact cost this
-    // wave exists to remove.
-    const scatter = anchor ? this.constellationScatterCells() : 0;
-    let position: Position = { x: 0, y: 0, z: 0 };
-    let attempts = 0;
-    const maxAttempts = 1000;
+  private spacedGrid(blocked: Uint8Array): Uint8Array {
+    if (!this.spacedScratch || this.spacedScratch.length !== blocked.length) {
+      this.spacedScratch = new Uint8Array(blocked.length);
+    }
+    this.spacedScratch.set(blocked);
+    return this.spacedScratch;
+  }
 
-    while (attempts < maxAttempts) {
-      attempts++;
-      position = {
-        x: Math.floor(this.rng() * this.gridSize),
-        y: 0,
-        z: Math.floor(this.rng() * this.gridSize),
-      };
-
-      if (
-        scatter > 0 &&
-        attempts <= maxAttempts / 2 &&
-        placed.some((p) => this.torusManhattan(p, position) < scatter)
-      ) {
-        continue;
-      }
-
-      if (
-        !this.isPositionOnSnake(position) &&
-        !this.isPositionOnExit(position) &&
-        !this.isPositionOnMutation(position) &&
-        !this.isPositionOnTerrain(position) &&
-        !placed.some((p) => p.x === position.x && p.z === position.z)
-      ) {
-        return position;
+  /**
+   * Block the Manhattan ball of radius `scatter - 1` around a placed star, so
+   * the next one cannot land inside it.
+   *
+   * Manhattan because the snake moves orthogonally, so the radius is literally
+   * the tick cost of travelling between two stars - which is the derivation
+   * behind COSMIC's re-authored food-rate bound, and the reason the separation
+   * is a distance rather than a bounding box.
+   *
+   * It WRAPS, because the board does. Blocking a square that stops at the edge
+   * would let two stars sit one step apart across the seam while reading as
+   * nineteen cells apart, and the seam is exactly where the scatter rule is
+   * trying to make the route interesting.
+   */
+  private markScatterZone(
+    grid: Uint8Array,
+    x: number,
+    z: number,
+    scatter: number
+  ): void {
+    const reach = scatter - 1;
+    if (reach <= 0) return;
+    const wrap = this.ruleset.torus === true;
+    for (let dx = -reach; dx <= reach; dx++) {
+      const room = reach - Math.abs(dx);
+      for (let dz = -room; dz <= room; dz++) {
+        const cx = wrap
+          ? (((x + dx) % this.gridSize) + this.gridSize) % this.gridSize
+          : x + dx;
+        const cz = wrap
+          ? (((z + dz) % this.gridSize) + this.gridSize) % this.gridSize
+          : z + dz;
+        markBlocked(grid, this.gridSize, cx, cz);
       }
     }
-    return position;
+  }
+
+  /**
+   * The wave's occupancy grid: every cell food may not occupy.
+   *
+   * Cached on the instance and cleared rather than reallocated. At the shipped
+   * `gridSize` of 20 that is 400 bytes and the distinction is academic, but
+   * `foldParity.test.ts` runs a 400x400 board and allocating per wave there
+   * throws off gigabytes of garbage across the sweep.
+   *
+   * Walk the OBJECTS, never probe every cell: `isPositionOnTerrain` is a scan,
+   * so a per-cell probe would be O(gridSize^2 x terrain).
+   */
+  private waveBlockedGrid(): Uint8Array {
+    const cells = Math.max(0, this.gridSize * this.gridSize);
+    if (!this.blockedScratch || this.blockedScratch.length !== cells) {
+      this.blockedScratch = blockedGrid(this.gridSize);
+    } else {
+      this.blockedScratch.fill(0);
+    }
+    const blocked = this.blockedScratch;
+
+    for (const segment of this.state.snake) {
+      markBlocked(blocked, this.gridSize, segment.x, segment.z);
+    }
+    // Terrain is part of the board now: food inside a block is unreachable,
+    // and an unreachable food is dead time - the exact cost this wave exists
+    // to remove. Exits and the mutation tile must not be buried either.
+    for (const block of this.state.terrain) {
+      markBlocked(blocked, this.gridSize, block.x, block.z);
+    }
+    if (this.state.exitTile) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.exitTile.x,
+        this.state.exitTile.z
+      );
+    }
+    if (this.state.exitTile2) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.exitTile2.x,
+        this.state.exitTile2.z
+      );
+    }
+    if (this.state.mutationTile) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.mutationTile.x,
+        this.state.mutationTile.z
+      );
+    }
+    return blocked;
   }
 
   /**
@@ -3109,6 +3230,11 @@ export class SnakeGameLogic {
         this.isPositionOnSnake(target) ||
         this.isPositionOnExit(target) ||
         this.isPositionOnMutation(target) ||
+        // Terrain is part of the board now. Without this the magnet is the
+        // one thing on the board that can put food inside a block, which is
+        // the same unreachable-food defect the placer exists to prevent -
+        // only arrived at by pulling rather than by spawning.
+        this.isPositionOnTerrain(target) ||
         this.state.foods.some(
           (f) => f !== food && f.x === target.x && f.z === target.z
         );
@@ -3117,48 +3243,140 @@ export class SnakeGameLogic {
         food.z = target.z;
       }
     }
-    this.state.food = { ...this.state.foods[0] };
+    // A wave can be empty - the placer returns null on a board with no free
+    // cell, and Arc Lightning can clear the wave mid-tick. Spreading
+    // `foods[0]` unguarded wrote `{}` into a Position and corrupted the
+    // legacy single-food mirror.
+    if (this.state.foods.length > 0) {
+      this.state.food = { ...this.state.foods[0] };
+    }
   }
 
   /**
-   * Exit interval roll incl. the Magnet Pulse cost (+4 foods) and the
-   * Magnetism trait cost (+2 foods). The costs stack additively - each
-   * pull source pays its own portal tax.
+   * The seeded schedule is live only when the server issued a runSeed.
+   *
+   * Without one there is nothing for the settlement to replay, so a legacy or
+   * pre-genome run keeps the old roll-on-resolve behaviour - which is fine,
+   * because the carry rides the genome path and a run with no seed never
+   * reaches it.
+   */
+  private portalScheduleActive(): boolean {
+    return this.genomeActive() && !!this.genome?.runSeed;
+  }
+
+  /**
+   * Schedule the next door after one resolves — legacy runs only.
+   *
+   * Under the seeded schedule this is a no-op by design: `nextExitAtFood`
+   * already points at the next scheduled door, fixed when the schedule
+   * advanced past the one that just resolved. Rescheduling here would make the
+   * cadence depend on WHEN the player resolved it, which is precisely the
+   * tick-timing dependency that made the old schedule unreplayable.
+   */
+  private scheduleNextPortalAfterResolve(fromFood: number): void {
+    if (this.portalScheduleActive()) return;
+    this.state.nextExitAtFood = fromFood + this.rollNextExitInterval();
+  }
+
+  /**
+   * Walk the food-indexed portal schedule up to food `n`.
+   *
+   * The recurrence here is the SAME one `portalSchedule` runs on the server;
+   * this is its incremental form, because the engine learns `n` one food at a
+   * time. `portals.ts` explains why the schedule stopped being "interval from
+   * whenever the last door resolved" — that was a tick-timing fact the server
+   * could not reconstruct, and the carry cannot be a client claim.
+   *
+   * A door is COUNTED whether or not it is drawn. If one is somehow still open
+   * when the next comes due, the new one merges into it rather than stacking a
+   * second portal on the board — but the index still advances, so the engine
+   * and the settlement agree on how many doors the run met. (At the shipped
+   * cadence this cannot happen: an 18-second window against an 8-16 food
+   * interval leaves no overlap. It is defined because "cannot happen" is not
+   * the same as "is undefined".)
+   */
+  private advancePortalSchedule(n: number): void {
+    if (!this.portalScheduleActive()) {
+      // Legacy path, unchanged.
+      if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
+        this.spawnExit();
+      }
+      return;
+    }
+    const runSeed = this.genome!.runSeed;
+    while (
+      n >= this.state.nextExitAtFood &&
+      this.portalIndex < PORTAL_SCHEDULE_LIMIT
+    ) {
+      this.portalsMet += 1;
+      if (!this.state.exitTile) this.spawnExit();
+      const interval =
+        rollExitInterval(
+          this.ruleset.extraction,
+          portalStream(runSeed, this.portalIndex)
+        ) + Math.max(0, this.portalIntervalTax(this.state.nextExitAtFood));
+      this.state.nextExitAtFood += Math.max(1, interval);
+      this.portalIndex += 1;
+    }
+  }
+
+  /**
+   * Portals this run has met — the carry's only input, and the reason the
+   * schedule had to become replayable. The settlement derives the same number
+   * from `(runSeed, foodCount, the taxes in force)` and never reads this; it
+   * is exposed for the HUD, which has to quote the stake before the choice.
+   */
+  getPortalsMet(): number {
+    return this.portalsMet;
+  }
+
+  /**
+   * Additive interval penalties in force right now: the Magnet Pulse cost
+   * (+4 foods), the Magnetism trait cost (+2), and the rest. The costs stack
+   * additively - each pull source pays its own portal tax.
+   *
+   * Split out of `rollNextExitInterval` so the seeded schedule and the legacy
+   * roll cannot drift apart, and so the server has one named thing to mirror.
+   */
+  private portalIntervalTax(atFood: number): number {
+    return portalIntervalTax(portalTaxFactsAt(this.portalTaxSources(), atFood));
+  }
+
+  /**
+   * The run data the interval tax reads, in the shape the settlement supplies
+   * it. Building this rather than reading live predicates is what lets the two
+   * sides share `portalTaxFactsAt` — see `portals.ts`.
+   */
+  private portalTaxSources(): PortalTaxSources {
+    const genome = this.genomeActive();
+    return {
+      // Picks are NOT genome-gated: Magnet Pulse and Solstice Engine are
+      // mutation-era genes and tax the interval on a legacy run too. Only the
+      // strain tiers, splices and infuses below belong to the genome era.
+      picks: this.state.heldMutations,
+      splices: genome ? this.state.fusedSplices : [],
+      traits: this.traits,
+      anomaly: this.anomaly,
+      infuses: genome ? this.state.infuses : [],
+      fluxTierAt: (food) =>
+        genome && this.activations
+          ? Math.min(
+              this.ftueTierCap(),
+              strainTierAtFood(this.activations.FLUX, food + 0.5)
+            )
+          : 0,
+    };
+  }
+
+  /**
+   * The legacy roll: base interval plus the same taxes, from the engine's own
+   * rng. Kept for runs with no seed — see `portalScheduleActive`.
    */
   private rollNextExitInterval(): number {
-    let interval =
+    return (
       rollExitInterval(this.ruleset.extraction, this.rng) +
-      (this.hasMutation('magnet_pulse')
-        ? MUTATION_PHYSICS.magnetPortalIntervalPenalty
-        : 0) +
-      (this.hasMutation('solstice_engine')
-        ? MUTATION_PHYSICS.solsticeEnginePortalIntervalPenalty
-        : 0) +
-      (this.hasTrait('magnetism')
-        ? TRAIT_PHYSICS.magnetismPortalIntervalPenalty
-        : 0) +
-      // Gold Rush (anomaly): richer food, rarer doors - interval +6
-      (this.anomaly === 'gold_rush'
-        ? ANOMALY_PHYSICS.goldRushPortalIntervalPenalty
-        : 0);
-    if (this.genomeActive()) {
-      if (this.strainTierNow('FLUX') >= 2) {
-        interval += STRAIN_PHYSICS.riftAuraPortalIntervalPenalty;
-      }
-      if (this.strainTierNow('FLUX') >= 3) {
-        interval += STRAIN_PHYSICS.singularityPortalIntervalPenalty;
-      }
-      if (this.hasGene('pocket_rift')) {
-        interval += GENE_PHYSICS.pocketRiftPortalIntervalPenalty;
-      }
-      if (this.hasSplice('splice_black_magnet')) {
-        interval += SPLICE_PHYSICS.blackMagnetPortalIntervalPenalty;
-      }
-      // Every infuse pushes the next door 2 foods deeper (exposure).
-      interval +=
-        this.state.infuses.length * STRAIN_PHYSICS.infusePortalIntervalPenalty;
-    }
-    return interval;
+      this.portalIntervalTax(this.state.foodEaten)
+    );
   }
 
   /**

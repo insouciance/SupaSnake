@@ -127,7 +127,7 @@ function TrainingBoard({
         dynasty={scenario.dynasty}
         score={snapshot.progress}
         isDeathSequence={snapshot.state.isDeathSequence}
-        foodPosition={foodPosition}
+        foodPositions={foodPosition ? [foodPosition] : []}
         gridSize={scenario.gridSize}
         intensityScale={0.62}
       />

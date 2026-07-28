@@ -8,6 +8,11 @@ import {
   STRAIN_PHYSICS,
   type StrainId,
 } from '@/shared/game/strains';
+import {
+  carryBankMultiplier,
+  carrySalvageMultiplier,
+  type PortalCadence,
+} from '@/shared/game/portals';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { FunnelStages, trackFunnelStageOnce } from '@/lib/analytics/funnel';
 
@@ -17,6 +22,20 @@ interface PortalChoiceOverlayProps {
   snakeLength: number;
   bankDna: number;
   crashDna: number;
+  /**
+   * Doors already passed BEFORE this one (WP-3.10).
+   *
+   * The carry is the whole decision now, so the card has to price both
+   * branches before the choice rather than after it. Passed as a COUNT and not
+   * as multipliers, so this component derives them from the same functions the
+   * engine and the settlement use — copy that restates a dial in a literal is
+   * copy that goes stale silently, and this one sits in front of the game's
+   * most consequential decision. (The `-4 tail` line that survived Rule 15
+   * deleting the field it described is the standing example.)
+   */
+  doorsPassed: number;
+  /** The dynasty's portal cadence, for the PASS line's honest interval. */
+  cadence: PortalCadence;
   onBank: () => void;
   onPass: () => void;
   onInfuse: () => void;
@@ -28,10 +47,19 @@ export function PortalChoiceOverlay({
   snakeLength,
   bankDna,
   crashDna,
+  doorsPassed,
+  cadence,
   onBank,
   onPass,
   onInfuse,
 }: PortalChoiceOverlayProps) {
+  // What each branch is worth, quoted before the choice. Banking spends this
+  // door; passing adds it to the count, so the two lines move in opposite
+  // directions and the player can see exactly what they are staking.
+  const bankNow = carryBankMultiplier(doorsPassed);
+  const salvageNow = carrySalvageMultiplier(doorsPassed);
+  const bankNext = carryBankMultiplier(doorsPassed + 1);
+  const salvageNext = carrySalvageMultiplier(doorsPassed + 1);
   const [locked, setLocked] = useState(true);
   const lockedRef = useRef(true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -77,10 +105,12 @@ export function PortalChoiceOverlay({
           <button type="button" disabled={locked} onClick={bank} aria-keyshortcuts="1 B" data-testid="portal-bank" className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
             <span className="heading-display text-rarity-uncommon">1 · BANK</span>
             <p className="mt-1 text-sm font-body text-beige">End the run for <b>{bankDna} DNA</b></p>
+            <p className="mt-1 text-xs font-body text-beige/50" data-testid="portal-bank-carry">×{bankNow} banked{doorsPassed > 0 ? ` · ${doorsPassed} passed` : ''}</p>
           </button>
           <button type="button" disabled={locked} onClick={onPass} aria-keyshortcuts="2 P" data-testid="portal-pass" className={`${option} border-scale-blue-light/60 bg-void/60 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
             <span className="heading-display text-bone-white">2 · PASS</span>
-            <p className="mt-1 text-sm font-body text-beige">Next door in 12±4 foods</p>
+            <p className="mt-1 text-sm font-body text-beige">Next door in {cadence.intervalBase}±{cadence.intervalJitter} foods</p>
+            <p className="mt-1 text-xs font-body text-beige/50" data-testid="portal-pass-carry">Bank ×{bankNow} → <b className="text-rarity-uncommon">×{bankNext}</b> · crash ×{salvageNow} → <b className="text-danger">×{salvageNext}</b></p>
           </button>
           <button type="button" disabled={locked || !canInfuse} onClick={onInfuse} aria-keyshortcuts="3 I" data-testid="portal-infuse" className={`${option} border-cosmic/60 bg-cosmic/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
             <span className="heading-display text-cosmic">3 · INFUSE</span>

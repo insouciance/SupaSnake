@@ -29,11 +29,22 @@ export const GAME_CONFIG = deepFreeze({
 
   /**
    * Snake Physics
+   *
+   * `initialSpeed` is the TOP of the speed band, not any dynasty's tempo. Every
+   * fixed-tempo dynasty now owns its tick in `rulesets.ts` - COSMIC always did
+   * (`COSMIC_SPEED_MS = 160`), and PRIMAL got `PRIMAL_SPEED_MS = 175` in
+   * WP-3.08. The one live reader left is CYBER's speed curve, which starts at
+   * this value and divides down toward `CYBER_TICK_FLOOR_MS`.
+   *
+   * That is exactly why PRIMAL was given its own constant: while PRIMAL read
+   * this field, retuning PRIMAL's tempo here would have silently retuned
+   * CYBER's whole curve with it. Change this number only when CYBER's opening
+   * tempo is what you mean to change.
    */
   snake: {
     initialLength: 3,                // Starting segments
-    initialSpeed: 200,               // Milliseconds per move
-    minSpeed: 50,                    // Speed cap (fastest)
+    initialSpeed: 200,               // Milliseconds per move - CYBER's curve start
+    minSpeed: 50,                    // Speed cap (fastest); CYBER floors above it
     interpolationDuration: 150,      // Smooth movement duration (ms)
   },
 

@@ -267,7 +267,7 @@ describe('validateGameResult (Design v2 recompute)', () => {
 
   describe('per-dynasty food-rate bound', () => {
     it('clamps a PRIMAL food count above 1.0 foods/sec and recomputes from the clamp', () => {
-      // 100 foods in 60s is impossible on a fixed 200ms tick
+      // 100 foods in 60s is impossible on PRIMAL's fixed 175ms tick
       const input = honestInput('PRIMAL', 100, false, 60);
       const result = validateGameResult(input, startedAgo(65), 'PRIMAL');
 

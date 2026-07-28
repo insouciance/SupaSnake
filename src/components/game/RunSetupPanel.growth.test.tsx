@@ -8,23 +8,30 @@
  *
  * So these assert the two things that make it a diagnostic: it reflects the
  * SELECTION, and it renders whether or not the lab flag is armed.
+ *
+ * WP-3.09: this helper used to hand-roll its own `<p>` in the shape of the
+ * readout, which meant it would have gone on passing if the shipped node were
+ * deleted. It now renders the SHIPPED component, with the game page's own
+ * pre-run derivation (`n = 1`, because before a run the next food IS food 1).
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { RunSetupPanel } from './RunSetupPanel';
+import { GrowthReadout } from './GrowthReadout';
 import { GROWTH_PROFILES, baseGrowthForFood } from '@/shared/game/growth';
 import type { GrowthProfileId } from '@/shared/game/growth';
 
 function note(id: GrowthProfileId) {
   const profile = GROWTH_PROFILES[id];
   return (
-    <p data-testid="growth-readout">
-      Growth: {profile.label} · +{baseGrowthForFood(profile, 1)} per food
-      {profile.simultaneousFoods > 1
-        ? ` · ${profile.simultaneousFoods} foods on the board`
-        : ''}
-    </p>
+    <GrowthReadout
+      profileId={profile.id}
+      label={profile.label}
+      perFood={baseGrowthForFood(profile, 1)}
+      foodsOnBoard={profile.simultaneousFoods}
+      presentation="panel"
+    />
   );
 }
 
@@ -53,7 +60,21 @@ describe('the growth readout', () => {
     const readout = screen.getByTestId('growth-readout');
     expect(readout).toHaveTextContent('Tuned');
     expect(readout).toHaveTextContent('+6 per food');
-    expect(readout).toHaveTextContent('3 foods on the board');
+  });
+
+  it('says nothing about food count, because every profile places one', () => {
+    // The readout appends "N foods on the board" only when a profile places
+    // more than one. WP-3.05 took every profile back to a single food, so that
+    // clause must now be absent - a readout advertising three foods while the
+    // board holds one is the same class of defect as the readout that reported
+    // "Classic" whatever you picked.
+    for (const id of ['baseline', 'tuned', 'aggressive'] as const) {
+      panel(id, true);
+      expect(screen.getByTestId('growth-readout')).not.toHaveTextContent(
+        /foods on the board/
+      );
+      cleanup();
+    }
   });
 
   it('distinguishes every profile — the point of having it', () => {

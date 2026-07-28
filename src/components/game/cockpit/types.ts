@@ -1,5 +1,6 @@
 import type { ChargeStatus } from '@/shared/game/energyEnvelope';
 import type { GeneId } from '@/shared/game/genes';
+import type { GrowthProfileId } from '@/shared/game/growth';
 import type { StrainId, StrainTier } from '@/shared/game/strains';
 import type { DynastyId } from '@/shared/types/game';
 
@@ -69,6 +70,24 @@ export interface RunCockpitModel {
   showGenome: boolean;
   portalLive: boolean;
   portalTicksRemaining: number;
+  /**
+   * The live growth rate (WP-3.09): `baseGrowthForFood(profile, n)` for the
+   * food about to be eaten, and the profile it came from.
+   *
+   * Numbers only, never the curve. The game page calls the one function that
+   * knows the step (growth.ts) and hands the result over; the cockpit must
+   * never derive a rate, or the HUD becomes a second copy of the curve.
+   *
+   * Optional because Training has no growth profile to report - a driven run
+   * eats no profile food - and `null`/absent hides the instrument entirely
+   * rather than printing a rate that does not apply.
+   */
+  growth?: {
+    profileId: GrowthProfileId;
+    label: string;
+    perFood: number;
+    foodsOnBoard: number;
+  } | null;
   /** Training swaps economy instruments for presentation-only skill facts. */
   training?: {
     primaryLabel: string;

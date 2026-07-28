@@ -603,6 +603,54 @@
   color: var(--bone);
 }
 
+/**
+ * The live growth rate (WP-3.09). It sits in the readout group rather than the
+ * status rail because it is PASSIVE: always there, never announcing itself.
+ * Rule 1 - `pointer-events: none` so a HUD instrument can never swallow the
+ * flick that was meant to steer.
+ */
+.growthReadout {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.growthReadout > span {
+  font-size: 10px;
+}
+
+.growthReadout strong {
+  color: var(--bone);
+}
+
+/**
+ * The step notice. Transient, self-dismissing, non-interactive - it appears
+ * beside the number it explains instead of taking the status rail, which the
+ * expression flourish already owns.
+ */
+.growthNotice {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--dynasty-secondary) 65%, transparent);
+  background: color-mix(in srgb, var(--dynasty-secondary) 12%, transparent);
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .statusRail {
   grid-area: status;
   display: flex;

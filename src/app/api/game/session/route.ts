@@ -1245,6 +1245,9 @@ export async function POST(request: NextRequest) {
             tierCap: runContext.genome.tierCap,
             suppressedStrains: runContext.genome.suppressedStrains,
             splicesUnlocked: runContext.genome.splicesUnlocked,
+            // WP-3.10: the carry's pass count is REPLAYED from this seed, not
+            // claimed. Without it the run settles on the flat multipliers.
+            runSeed: sessionRunSeed,
             // WP-3.02: settle under the growth curve the run STARTED under.
             // The stamp lives on the context root, not the genome block,
             // because a free-play or pre-genome run has a profile too.
@@ -1294,6 +1297,10 @@ export async function POST(request: NextRequest) {
             tierCap: ftueTierCap(endFtue),
             suppressedStrains: gauntletSuppressedStrains(endGauntletBan),
             splicesUnlocked: endFtue.splicesUnlocked,
+            // WP-3.10: same seed, same replayed portal schedule. This is the
+            // reconstruction branch (no stored run_context), so the carry has
+            // to be derived from the same seed the engine played under.
+            runSeed: sessionRunSeed,
           };
         }
       }

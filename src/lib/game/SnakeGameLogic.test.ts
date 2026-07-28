@@ -13,6 +13,7 @@ import {
 } from './SnakeGameLogic';
 import {
   COSMIC_CONSTELLATION,
+  PRIMAL_SPEED_MS,
   RULESETS,
   computeRunTotals,
   type DynastyName,
@@ -602,7 +603,10 @@ describe('SnakeGameLogic', () => {
       const primal = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.PRIMAL });
       primal.start();
       eatFoods(primal, 10);
-      expect(primal.getSpeed()).toBe(200);
+      // WP-3.08 moved PRIMAL's tempo to 175ms and out of GAME_CONFIG. Read the
+      // constant, not the literal: the point of this test is that the number
+      // does not move DURING a run, not what the number is.
+      expect(primal.getSpeed()).toBe(PRIMAL_SPEED_MS);
     });
 
     it('ramps speed down with each food on CYBER', () => {
@@ -632,7 +636,7 @@ describe('SnakeGameLogic', () => {
       game.setRuleset(RULESETS.CYBER);
       expect(game.getSpeed()).toBe(RULESETS.CYBER.speedForFood(0));
       game.setRuleset(RULESETS.PRIMAL);
-      expect(game.getSpeed()).toBe(200);
+      expect(game.getSpeed()).toBe(PRIMAL_SPEED_MS);
       expect(game.getRuleset().id).toBe('PRIMAL');
     });
   });
@@ -853,9 +857,11 @@ describe('SnakeGameLogic', () => {
       game.placeFood({ x: state.snake[0].x + 1, y: 0, z: state.snake[0].z });
       game.tick();
 
-      // Score is display points (10/food on the flat placeholder ruleset);
-      // foodEaten is the raw fact the server recomputes from
-      expect(game.getState().score).toBe(10);
+      // Score is display points, now shaped per dynasty (WP-3.08): PRIMAL is
+      // back-loaded and opens at x0.5, so food 1 pays 5 rather than the flat 10
+      // it used to. `foodEaten` is the raw fact the server recomputes from, and
+      // it is 1 under every curve — which is the separation being asserted.
+      expect(game.getState().score).toBe(5);
       expect(game.getState().foodEaten).toBe(1);
     });
   });
@@ -898,7 +904,11 @@ describe('SnakeGameLogic', () => {
       expect(state.foodEaten).toBe(12);
     });
 
-    it('CYBER out-scores PRIMAL for the same foods once tiers kick in', () => {
+    // Named for what it asserts: DNA. Since WP-3.08 gave each dynasty its own
+    // score shape, "out-scores" and "out-yields" are different claims, and this
+    // one is about Yield — the five-food DNA tier, which the score rework left
+    // exactly where it was.
+    it('CYBER out-yields PRIMAL for the same foods once tiers kick in', () => {
       const run = (dynasty: DynastyName) => {
         const engine = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS[dynasty] });
         engine.start();
@@ -1499,9 +1509,11 @@ describe('SnakeGameLogic', () => {
     it('Time Dilation slows fixed-speed dynasties by 40ms', () => {
       const engine = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
       engine.start();
-      expect(engine.getSpeed()).toBe(200);
+      expect(engine.getSpeed()).toBe(PRIMAL_SPEED_MS);
       engine.grantMutation('time_dilation');
-      expect(engine.getSpeed()).toBe(240);
+      // The mutation adds a flat 40ms to whatever the dynasty's tick is, so it
+      // follows PRIMAL's tempo rather than restating it (175 -> 215).
+      expect(engine.getSpeed()).toBe(PRIMAL_SPEED_MS + 40);
     });
 
     it('Time Dilation runs CYBER one tier (5 foods) behind on the speed curve', () => {
