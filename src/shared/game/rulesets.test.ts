@@ -8,6 +8,8 @@ import {
   BANK,
   COSMIC_CONSTELLATION,
   COSMIC_SPEED_MS,
+  COSMIC_YIELD_CAP,
+  COSMIC_YIELD_STEP,
   FOOD_BASE_DNA,
   FOOD_BASE_SCORE,
   RULESETS,
@@ -207,12 +209,6 @@ describe('COSMIC ruleset (the torus and the constellation)', () => {
     expect(COSMIC_SPEED_MS).toBeLessThan(PRIMAL_SPEED_MS);
   });
 
-  it('pays a flat base food value, and nothing sits on top of it', () => {
-    expect(cosmic.foodDnaValue(1)).toBe(10);
-    expect(cosmic.foodDnaValue(50)).toBe(10);
-    expect(cosmic.foodDnaValue(500)).toBe(10);
-  });
-
   it('mid-weights score: a six-food tent peaking x2.5 across foods 24-29', () => {
     // WP-3.08 / D3. COSMIC's skill is the chain, and a chain needs a run
     // already in progress to exist, so the shape pays in the middle - where the
@@ -246,6 +242,60 @@ describe('COSMIC ruleset (the torus and the constellation)', () => {
     for (let n = 1; n <= 200; n++) {
       expect((FOOD_BASE_SCORE * cosmic.scoreMultiplier(n)) % 5).toBe(0);
     }
+  });
+
+  it('yields on a compounding curve to a x3 ceiling, not a flat 10', () => {
+    // WP-3.13. `foodDnaValue` was flat because the COMBO was COSMIC's Yield
+    // story; deleting the combo left the flat base standing alone, which is a
+    // hole rather than a design.
+    expect(cosmic.foodDnaValue(1)).toBe(10);
+    expect(cosmic.foodDnaValue(12)).toBe(14);
+    expect(cosmic.foodDnaValue(24)).toBe(19);
+    expect(cosmic.foodDnaValue(48)).toBe(29);
+    // The ceiling is CYBER's x3, reached at food 51 rather than food 20 -
+    // same destination, a much longer journey to it.
+    expect(cosmic.foodDnaValue(51)).toBe(30);
+    expect(cosmic.foodDnaValue(500)).toBe(30);
+    expect(COSMIC_YIELD_STEP).toBe(0.04);
+    expect(COSMIC_YIELD_CAP).toBe(3);
+    // Exactly double PRIMAL's slope, which is the statement the shape makes:
+    // the board closes on you faster, because you are the one closing it.
+    expect(COSMIC_YIELD_STEP).toBe(2 * 0.02);
+  });
+
+  it('sits BETWEEN PRIMAL and CYBER in yield at the terminus', () => {
+    // The Yield analogue of the score-curve gate below, and deliberately a
+    // weaker claim than it. Score integrals are comparable by construction
+    // (+/-10%); YIELD integrals never were and are not now - CYBER pays 1210
+    // at 48 foods against PRIMAL's 705, a 1.72x spread that predates this
+    // package, because run LENGTH compensates for it (CYBER runs are short,
+    // PRIMAL's are long). So there is no single integral to match, and the
+    // honest assertion is that COSMIC is no longer the outlier: it falls
+    // inside the range the other two already span.
+    //
+    // The real parity gate for DNA is `genome.balance.test.ts`, which
+    // measures expected value per ARCHETYPE - food count, bank probability
+    // and genes included - and holds all five within +/-15% of target.
+    const yieldAt = (dynasty: DynastyName) => {
+      let total = 0;
+      for (let n = 1; n <= SCORE_TERMINUS_FOODS; n++) {
+        total += RULESETS[dynasty].foodDnaValue(n);
+      }
+      return total;
+    };
+
+    const primal = yieldAt('PRIMAL');
+    const cyber = yieldAt('CYBER');
+    const cosmicYield = yieldAt('COSMIC');
+    expect([primal, cyber, cosmicYield]).toEqual([705, 1210, 931]);
+
+    expect(cosmicYield).toBeGreaterThan(primal);
+    expect(cosmicYield).toBeLessThan(cyber);
+    // Before the re-base COSMIC paid 480 - 0.68x PRIMAL and 0.40x CYBER, so
+    // the three spanned 2.52x. The spread that remains is PRIMAL against
+    // CYBER and is not this package's to close.
+    expect(Math.max(primal, cyber, cosmicYield) / Math.min(primal, cyber, cosmicYield))
+      .toBeLessThanOrEqual(1.75);
   });
 
   it('carries the constellation config: 5 scattered stars on an 8s window', () => {
@@ -405,12 +455,13 @@ describe('computeRunTotals', () => {
     expect(computeRunTotals('CYBER', 100).score).toBe(995);
   });
 
-  it('COSMIC totals are flat in DNA, mid-weighted in score, and COMPLETE', () => {
+  it('COSMIC totals compound in DNA, mid-weight in score, and are COMPLETE', () => {
     // "Complete" is the WP-3.13 half: the combo bonus used to be layered on
     // top of both by the engine and clamped by the server, so neither of
-    // these numbers was the whole payout. Both are now.
-    expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 300, score: 465 });
-    expect(computeRunTotals('COSMIC', 48)).toEqual({ rawDna: 480, score: 720 });
+    // these numbers was the whole payout. Both are now — which is also why
+    // the DNA had to be re-based, since the combo was the whole Yield story.
+    expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 474, score: 465 });
+    expect(computeRunTotals('COSMIC', 48)).toEqual({ rawDna: 931, score: 720 });
   });
 
   it('holds the three score curves within ±10% at the terminus (D3)', () => {
@@ -552,11 +603,15 @@ describe('normalizeDynastyName', () => {
     expect(normalizeDynastyName('Cosmic')).toBe('COSMIC');
   });
 
-  it('falls back to COSMIC for unknown or non-string values', () => {
-    expect(normalizeDynastyName('VOID')).toBe('COSMIC');
-    expect(normalizeDynastyName(null)).toBe('COSMIC');
-    expect(normalizeDynastyName(undefined)).toBe('COSMIC');
-    expect(normalizeDynastyName(42)).toBe('COSMIC');
+  it('falls back to PRIMAL - the payout floor - for unknown values', () => {
+    // It fell back to COSMIC, chosen and documented as "the conservative
+    // payout floor" while COSMIC's food value was a flat 10. WP-3.13's Yield
+    // re-base made that false, so the fallback follows the property it was
+    // chosen for rather than the name it was chosen under.
+    expect(normalizeDynastyName('VOID')).toBe('PRIMAL');
+    expect(normalizeDynastyName(null)).toBe('PRIMAL');
+    expect(normalizeDynastyName(undefined)).toBe('PRIMAL');
+    expect(normalizeDynastyName(42)).toBe('PRIMAL');
   });
 });
 

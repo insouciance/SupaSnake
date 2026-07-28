@@ -20,27 +20,23 @@ interface Archetype {
   boundedClaimDna?: number;
   designEv: number;
   /**
-   * OPEN YIELD GAP — this archetype is knowingly short of its design target,
-   * and the ±15% gate below skips it for that reason rather than the target
-   * being quietly lowered to meet it.
+   * A yield gap this archetype once had, and the EV it was stuck at.
    *
-   * Only Rift Sailor carries it. WP-3.13 deleted COSMIC's combo, and this
-   * harness modelled that combo as a flat `comboMultiplier: 2.4` over a whole
-   * run — which was already fiction, because the ×2.4 cap needed a chain of 8
-   * that a wave of 3 could not produce. Removing it takes the archetype from
-   * 4984 to 2077, about 38% of target and about a third of the other four.
+   * CLOSED, and kept as a regression anchor rather than as a licence. Only
+   * Rift Sailor carries one. WP-3.13 deleted COSMIC's combo, and this harness
+   * had modelled that combo as a flat `comboMultiplier: 2.4` over a whole run
+   * — itself fiction, because the ×2.4 cap needed a chain of 8 that a wave of
+   * 3 could not produce, so the target was never actually being met. Removing
+   * it exposed the archetype at 2077 against a 5400 target: 38% of target,
+   * about a third of the other four.
    *
-   * That gap is real and it is NOT closed here. COSMIC's Yield curve is a
-   * separate decision from its Score curve (D3 owns the score half and gave
-   * it a mid-weighted shape; `foodDnaValue` is still a flat 10), and this
-   * package deliberately did not author one — it would be a second economy
-   * change riding a mechanic change, and the owner has to play the redesign
-   * before the number it should pay is knowable.
-   *
-   * The measured value is asserted exactly, so the day someone does close it
-   * this line fails and has to be re-decided rather than drifting.
+   * COSMIC's Yield was re-based in the same package to close it
+   * (`COSMIC_YIELD_STEP` / `COSMIC_YIELD_CAP`). The number below is what it
+   * paid BEFORE, and the test asserts the archetype has moved decisively off
+   * it — so a future change that silently reverts the curve fails here rather
+   * than in a playtest.
    */
-  openYieldGap?: number;
+  closedYieldGap?: number;
 }
 
 export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
@@ -91,7 +87,7 @@ export const GENOME_BALANCE_ARCHETYPES: readonly Archetype[] = [
     ],
     infuses: [],
     designEv: 5400,
-    openYieldGap: 2077,
+    closedYieldGap: 2077,
   },
 ] as const;
 
@@ -121,26 +117,31 @@ export function simulateGenomeArchetype(archetype: Archetype) {
 
 describe('Genome archetype balance', () => {
   it('lands every elite archetype within 15% of the G0 target', () => {
-    const results = GENOME_BALANCE_ARCHETYPES.filter(
-      (archetype) => archetype.openYieldGap === undefined
-    ).map((archetype) => ({
+    // EVERY archetype, with no exemptions. Rift Sailor was exempted for one
+    // commit while COSMIC's Yield gap was open; closing the gap is what
+    // brought it back under the gate, and an exemption list here is how a
+    // hole becomes the status quo.
+    const results = GENOME_BALANCE_ARCHETYPES.map((archetype) => ({
       name: archetype.name,
       designEv: archetype.designEv,
       ...simulateGenomeArchetype(archetype),
     }));
-    expect(results.length).toBeGreaterThan(0);
+    expect(results.length).toBe(GENOME_BALANCE_ARCHETYPES.length);
     for (const result of results) {
       expect(Math.abs(result.ev - result.designEv) / result.designEv).toBeLessThanOrEqual(0.15);
     }
   });
 
-  it('records the open yield gaps exactly, so none of them can drift', () => {
-    // An archetype below target is a finding, not a failure — but an
-    // unrecorded one is how a 2.4x hole becomes the status quo. See
-    // `openYieldGap` for why COSMIC's is open and what would close it.
+  it('keeps every closed yield gap closed', () => {
+    // The anchor, pointing the other way from the gate above: not "is it near
+    // target" but "has it moved decisively off the number it was stuck at".
+    // A reverted curve could in principle satisfy neither, but this one names
+    // the specific failure so the diff that caused it is obvious.
     for (const archetype of GENOME_BALANCE_ARCHETYPES) {
-      if (archetype.openYieldGap === undefined) continue;
-      expect(simulateGenomeArchetype(archetype).ev).toBe(archetype.openYieldGap);
+      if (archetype.closedYieldGap === undefined) continue;
+      const { ev } = simulateGenomeArchetype(archetype);
+      expect(ev).toBeGreaterThan(archetype.closedYieldGap * 1.5);
+      expect(ev).toBeGreaterThan(archetype.designEv * 0.85);
     }
   });
 

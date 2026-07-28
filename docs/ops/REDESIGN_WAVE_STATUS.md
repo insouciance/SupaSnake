@@ -383,14 +383,30 @@ than assumed. Start there.
   on. It was chosen over deleting the promise because the player was already
   being paid for the event, and `genome.ts`'s own comment ("+10 flat per pull
   event") described a fiction otherwise.
-- **COSMIC's Yield is ~2.4x short of its design target.** Raised by WP-3.13 and
-  deliberately NOT closed there. The balance harness modelled the deleted combo
-  as a flat x2.4 over a whole run — itself fiction, since the cap needed a chain
-  of 8 a wave of 3 could not produce — and without it the COSMIC archetype pays
-  2077 against a 5400 target, roughly a third of the other four. `foodDnaValue`
-  is still a flat 10. `genome.balance.test.ts` records the number exactly under
-  `openYieldGap` so it cannot drift. Closing it is a Yield decision (D3 owns the
-  Score half only) and wants the owner's playtest first.
+- ~~**COSMIC's Yield is ~2.4x short of its design target.**~~ — RAISED and
+  CLOSED inside WP-3.13, after the deferral was overruled. The reason for
+  overruling it is worth keeping, because it generalises: this wave's mandate
+  is that **everything lands before a single playtest**, and a dynasty paying a
+  third of parity cannot produce a usable playtest signal. Deferring a decision
+  to the playtest only works if the playtest can answer it.
+  `foodDnaValue` is now `round(10 x min(3, 1 + 0.04(n-1)))` — double PRIMAL's
+  compounding slope to CYBER's x3 ceiling, reached at food 51 rather than food
+  20. The archetype lands at -2.4% of target and `genome.balance.test.ts` gates
+  all five with no exemptions.
+
+  **The finding underneath it survives and is not COSMIC's:** YIELD integrals
+  are not comparable across dynasties the way Score integrals are. At the
+  48-food terminus CYBER pays 1210 and PRIMAL 705 — a 1.72x spread that
+  predates this package. Run LENGTH compensates for it (CYBER runs are short,
+  PRIMAL's long) and the archetype EVs do land in band, so it may well be
+  correct; it has simply never been stated or tested as a decision the way
+  WP-3.08 stated the Score curves. Worth a ruling before launch.
+- **`normalizeDynastyName` fell back to COSMIC as "the conservative payout
+  floor"**, and WP-3.13's Yield re-base made that false. It now falls back to
+  PRIMAL, which is the floor at every horizon a run reaches. The fallback is
+  defensive only — every write path stamps one of the three names — so it fires
+  on malformed or legacy rows (the deprecated EMBER/CRYSTAL/VOID trio) and
+  nothing else.
 - **Only `foods[0]` is spotlit** — `DynamicLights` takes a single position, so
   extra foods are unlit.
 - **`applyMagnetPulse` crashes on an empty `foods`** — spreads

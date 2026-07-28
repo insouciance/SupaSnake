@@ -531,7 +531,9 @@ describe('validateGameResult (Design v2 recompute)', () => {
       const input = honestInput('COSMIC', 30, true, 120);
       const result = validateGameResult(input, startedAgo(125), 'COSMIC');
       expect(result.valid).toBe(true);
-      expect(result.adjustedDna).toBe(applyOutcome(300, true));
+      expect(result.adjustedDna).toBe(
+        applyOutcome(computeRunTotals('COSMIC', 30).rawDna, true)
+      );
       expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score);
     });
 
@@ -545,7 +547,9 @@ describe('validateGameResult (Design v2 recompute)', () => {
       } as GameResultInput;
       const result = validateGameResult(input, startedAgo(125), 'COSMIC');
       expect(result.valid).toBe(true);
-      expect(result.adjustedDna).toBe(applyOutcome(300, true));
+      expect(result.adjustedDna).toBe(
+        applyOutcome(computeRunTotals('COSMIC', 30).rawDna, true)
+      );
       expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score);
     });
 

@@ -467,6 +467,70 @@ export const COSMIC_CONSTELLATION = {
 } as const;
 
 /**
+ * COSMIC's YIELD curve (§6.2), re-based in WP-3.13. [H] both numbers.
+ *
+ * `foodDnaValue` was a flat 10 and had been since Phase 1, because the combo
+ * WAS COSMIC's Yield story - the flat base was deliberate, with the chain
+ * multiplying it. Deleting the combo removed the multiplier and left the base
+ * standing alone, which is a 2.4x hole rather than a design.
+ *
+ * WHY RE-BASING IS LESS OF AN INVENTION THAN IT LOOKS. The x2.4 the balance
+ * harness credited COSMIC with was FICTION: the cap needed a chain of 8 and a
+ * wave of 3 could not produce one, so the target was never actually being met
+ * and the combo was hiding that rather than delivering it. This does not
+ * author a new intent; it makes COSMIC's Yield mean what the other two
+ * dynasties' Yield already means.
+ *
+ * WHAT IT IS MATCHED AGAINST, and why not "the integral". Score integrals are
+ * comparable by construction (WP-3.08, +/-10% at the terminus); YIELD
+ * integrals never were, and are not now - at 48 foods CYBER pays 1210 and
+ * PRIMAL 705, a 1.72x spread that predates this package and is deliberate,
+ * because run LENGTH compensates (CYBER runs are short and PRIMAL's are long).
+ * So the honest target is the one the project already uses for DNA: the five
+ * archetypes' expected value in `genome.balance.test.ts`, within +/-15%. This
+ * curve lands COSMIC's at -2.4%, and its integral falls between the other two
+ * (931 at 48, against PRIMAL's 705 and CYBER's 1210) rather than on top of
+ * either.
+ *
+ * THE SHAPE SAYS SOMETHING, which is the point of having three of them:
+ *
+ *   - PRIMAL compounds gently (+0.02/food, uncapped) - paid for surviving
+ *     your own length.
+ *   - CYBER steps in five-food tiers to x3 by food 20 - paid for surviving
+ *     speed.
+ *   - COSMIC compounds at DOUBLE PRIMAL'S RATE to the same x3 ceiling CYBER
+ *     reaches, but by food 51 rather than food 20 - paid for surviving the
+ *     board you built. The board closes on you faster than it closes on
+ *     PRIMAL, because on COSMIC you are the one closing it.
+ *
+ * Same ceiling as CYBER, a different journey to it: "a choice of HOW you earn
+ * rather than HOW MUCH" (Constitution §6.1, stated there about Score and true
+ * of Yield for the same reason).
+ *
+ * NO DELIBERATE DISCOUNT was applied for the torus. It is tempting to argue
+ * that a board with no walls is easier and should pay less, but DYNASTY_COSMIC
+ * §2.1 argues the opposite and the production data agrees: a torus has no
+ * corners to trap you and no edges to organise around, so managing your own
+ * body is HARDER, and COSMIC is already the most self-collision-skewed
+ * dynasty (self 11 / wall 6). The six wall deaths the torus removes are
+ * replaced by debris. Parity is the honest starting point; the owner moves it
+ * by playing.
+ *
+ * REJECTED, and worth recording: paying per food in proportion to the debris
+ * on the board. Thematically perfect - you are paid for routing through what
+ * you built - and fatal, because the server cannot know the debris count
+ * without replaying the run. It would reintroduce exactly the bounded-trust
+ * claim this package deleted.
+ */
+export const COSMIC_YIELD_STEP = 0.04;
+export const COSMIC_YIELD_CAP = 3;
+
+/** COSMIC's per-food DNA multiplier: 1 + 0.04(n-1), capped at x3 (food 51). */
+function cosmicYieldMultiplier(n: number): number {
+  return Math.min(COSMIC_YIELD_CAP, 1 + COSMIC_YIELD_STEP * (n - 1));
+}
+
+/**
  * COSMIC - Terraforming: a permanent torus, a fixed 160 ms/tick, and stars
  * that calcify where you left them.
  *
@@ -485,7 +549,12 @@ export const COSMIC_CONSTELLATION = {
 const COSMIC: DynastyRuleset = {
   id: 'COSMIC',
   speedForFood: () => COSMIC_SPEED_MS,
-  foodDnaValue: () => FOOD_BASE_DNA,
+  foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cosmicYieldMultiplier(n)),
+  // Yield and Score are DIFFERENT AXES and stay on different shapes: this
+  // rises to a x3 ceiling while `cosmicScoreShape` is a tent that decays back
+  // to x0.5. One shared function is what conflated them on CYBER (§6.1 vs
+  // §6.2), and the two answer different questions - what the run is worth to
+  // your economy, and what it is worth on the board.
   scoreMultiplier: (n) => cosmicScoreShape(n),
   extraction: EXTRACTION_DEFAULTS,
   // RE-DERIVED for the scattered wave (WP-3.13, §6 "rate bound"), not
@@ -515,18 +584,27 @@ export function getRuleset(dynasty: DynastyName): DynastyRuleset {
 }
 
 /**
- * Normalize an arbitrary dynasty string (session row TEXT, API payloads)
- * to a DynastyName. Unknown values fall back to COSMIC - a flat base food
- * value and a flat score multiplier, which is the conservative payout floor
- * of the three. Since WP-3.13 deleted the combo, COSMIC carries no claimed
- * payout component at all, so the fallback is now the floor unconditionally.
+ * Normalize an arbitrary dynasty string (session row TEXT, API payloads) to a
+ * DynastyName.
+ *
+ * Unknown values fall back to PRIMAL. The fallback was COSMIC, chosen and
+ * documented as "the conservative payout floor" because COSMIC's food value
+ * was a flat 10 - and WP-3.13's Yield re-base made that false. PRIMAL is the
+ * floor now, at every horizon a run actually reaches (below food 172 its
+ * cumulative DNA is the lowest of the three, the single exception being food
+ * 4, where CYBER is one DNA lower).
+ *
+ * The fallback is defensive only: every write path stamps one of the three
+ * names, so it fires on malformed or legacy rows (the deprecated
+ * EMBER/CRYSTAL/VOID trio) and nothing else. It should therefore keep doing
+ * what it was chosen to do rather than keep the name it was chosen under.
  */
 export function normalizeDynastyName(value: unknown): DynastyName {
   const name = typeof value === 'string' ? value.toUpperCase() : '';
   if (name === 'PRIMAL' || name === 'CYBER' || name === 'COSMIC') {
     return name;
   }
-  return 'COSMIC';
+  return 'PRIMAL';
 }
 
 /**
