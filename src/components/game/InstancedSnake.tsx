@@ -76,6 +76,7 @@ import {
   updateTrailFusion,
   type TrailFusionState,
 } from '@/lib/game/trailFusion';
+import { FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
   SNAKE_MODEL_URL,
@@ -271,9 +272,12 @@ export function writeTrailInstances(
     const level = levels[i];
     const footprint = getTrailFootprint(level) * getSegmentScale(i, count);
     const height = getTrailHeight(i, count) * getTrailBreathe(i, elapsed);
+    // FLOOR_CLEARANCE, not 0: the arena platform's top face is at exactly
+    // y = 0, so a cube sitting flush on it shares that plane at identical
+    // depth and z-fights across its whole footprint. See ArenaFloor.
     _position.set(
       getInterpolatedX(buffer, i, alpha) + 0.5,
-      height / 2,
+      FLOOR_CLEARANCE + height / 2,
       getInterpolatedZ(buffer, i, alpha) + 0.5
     );
     _scale.set(footprint, height, footprint);
