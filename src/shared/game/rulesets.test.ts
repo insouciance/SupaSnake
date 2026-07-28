@@ -23,6 +23,7 @@ import {
   rollExitInterval,
   rulesetExplainer,
   type DynastyName,
+  CYBER_TICK_FLOOR_MS,
 } from './rulesets';
 import type { MutationPick } from './mutations';
 
@@ -83,8 +84,15 @@ describe('CYBER ruleset (Overclock)', () => {
     expect(cyber.speedForFood(1)).toBe(194);
     expect(cyber.speedForFood(10)).toBe(153);
     expect(cyber.speedForFood(30)).toBe(105);
-    expect(cyber.speedForFood(100)).toBe(50);
-    expect(cyber.speedForFood(1000)).toBe(GAME_CONFIG.snake.minSpeed);
+    // WP-3.04: the floor is CYBER's own 100ms, not the global 50ms. Three
+    // in-run owner calls bracket it (94ms 'approaching sensible', 97ms 'ends
+    // being fun', 84ms 'way too fast'), agreeing with the reaction-time bound
+    // of ~100-120ms for a grid game. Under the old floor two thirds of the
+    // speed curve sat below playable; past the floor the difficulty now comes
+    // from the arena instead.
+    expect(cyber.speedForFood(100)).toBe(CYBER_TICK_FLOOR_MS);
+    expect(cyber.speedForFood(1000)).toBe(CYBER_TICK_FLOOR_MS);
+    expect(CYBER_TICK_FLOOR_MS).toBeGreaterThan(GAME_CONFIG.snake.minSpeed);
   });
 
   it('speed never increases with food count and never drops below minSpeed', () => {

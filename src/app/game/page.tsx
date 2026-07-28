@@ -2373,10 +2373,19 @@ export default function GamePage() {
    * the local selection - so what it shows is what settlement will recompute,
    * not what the client hoped for.
    */
+  // Reads the SELECTION, not the engine.
+  //
+  // The first version consulted `gameRef.current?.getGrowthProfileId()` first,
+  // which is always defined - it is `baseline` until the server answers - so
+  // the `??` never fell through and this line said "Classic" whatever you
+  // picked. A readout that lies is worse than no readout: it would have sent
+  // us back to hunting the feature flag a second time.
+  //
+  // This panel is the PRE-run screen, so the selection is the honest thing to
+  // show: it is what the start request will ask for. The server still decides,
+  // and settlement recomputes from its stamp - but by then this panel is gone.
   const activeGrowth =
-    GROWTH_PROFILES[
-      (gameRef.current?.getGrowthProfileId() ?? growthProfile) as GrowthProfileId
-    ] ?? GROWTH_PROFILES[DEFAULT_GROWTH_PROFILE];
+    GROWTH_PROFILES[growthProfile] ?? GROWTH_PROFILES[DEFAULT_GROWTH_PROFILE];
   const growthNoteNode = (
     <p
       className="font-body text-sm text-beige/70"

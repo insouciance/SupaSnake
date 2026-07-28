@@ -67,6 +67,21 @@ export interface ExtractionConfig {
   intervalJitter: number;
   /** Ticks the portal stays on the board before despawning. */
   despawnTicks: number;
+  /**
+   * The portal window in SECONDS, overriding `despawnTicks` where present.
+   *
+   * `despawnTicks` is denominated in the wrong unit, and CYBER is where it
+   * shows: 90 ticks is 18.0s at PRIMAL's 200ms and 4.5s at CYBER's floor, so
+   * the extraction window silently lost three quarters of its real duration
+   * as the dynasty accelerated. Food has no deadline, which is why eating
+   * stayed possible exactly as banking became impossible - the owner's
+   * report was 'it's pretty impossible to bank past a certain speed... I was
+   * able to eat food though'.
+   *
+   * Authored in seconds and converted by the live tick, so the window cannot
+   * rot again when a speed curve is retuned.
+   */
+  despawnSeconds?: number;
 }
 
 export interface DynastyRuleset {
@@ -139,11 +154,38 @@ const EXTRACTION_DEFAULTS: ExtractionConfig = {
  * A closing board caps how far the short line can be, so the schedule is
  * simultaneously the difficulty source and the fix for the dead time.
  */
+/**
+ * CYBER's own extraction config: the same cadence, a window that holds its
+ * real duration. 18 seconds matches PRIMAL's, which is the point - the
+ * decision should cost the same wherever it is made.
+ */
+export const CYBER_EXTRACTION: ExtractionConfig = {
+  ...EXTRACTION_DEFAULTS,
+  despawnSeconds: 18,
+};
+
 export const CYBER_ARENA: TerrainSchedule = {
   blocksPerInterval: 6,
   intervalFoods: 5,
   formingSeconds: 2,
 };
+
+/**
+ * CYBER's tick floor (DYNASTY_CYBER §2.2), raised from the global 50ms.
+ *
+ * Three in-run calls from the owner bracket it: at 94ms 'approaching what is a
+ * sensible terminal speed', at 97ms 'speed ends being fun', at 84ms 'way too
+ * fast'. That agrees with the bound derived independently from reaction time -
+ * visible runway >= 3x simple reaction (~190ms) puts a grid game's floor near
+ * 100-120ms.
+ *
+ * Under the shipped curve 100ms arrived at food 33 and the run kept
+ * accelerating to food 98, so roughly two thirds of the speed curve sat below
+ * playable. The curve is unchanged; it simply stops where hands do. Past the
+ * floor the difficulty comes from the arena, which is the board finally
+ * mattering on the one dynasty it never has.
+ */
+export const CYBER_TICK_FLOOR_MS = 100;
 
 /** CYBER speed tier for the n-th food (1-based): floor(n/5), capped at 4. */
 function cyberTier(n: number): number {
@@ -179,12 +221,12 @@ const CYBER: DynastyRuleset = {
   id: 'CYBER',
   speedForFood: (foodEaten) =>
     Math.max(
-      GAME_CONFIG.snake.minSpeed,
+      CYBER_TICK_FLOOR_MS,
       Math.floor(GAME_CONFIG.snake.initialSpeed / (1 + 0.03 * foodEaten))
     ),
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cyberMultiplier(n)),
   scoreMultiplier: (n) => cyberMultiplier(n),
-  extraction: EXTRACTION_DEFAULTS,
+  extraction: CYBER_EXTRACTION,
   arena: CYBER_ARENA,
   validation: { maxFoodPerSecond: 2.5 },
 };
