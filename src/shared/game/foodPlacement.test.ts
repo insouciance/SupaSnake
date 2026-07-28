@@ -15,11 +15,28 @@
 import { describe, it, expect } from '@jest/globals';
 import {
   FOOD_RADIUS_MIN,
+  blockedGrid,
   chooseFoodCell,
   foodSearchRadius,
+  markBlocked,
   placementKey,
   reachableFrom,
 } from './foodPlacement';
+
+/**
+ * The tests express blocked cells as a readable string Set; `chooseFoodCell`
+ * takes an integer grid, because a string key per segment on the engine's
+ * hottest path cost the suite six minutes. Converted here so the tests stay
+ * legible without putting that cost back into the game.
+ */
+function grid(blocked: ReadonlySet<string>, gridSize = GRID): Uint8Array {
+  const g = blockedGrid(gridSize);
+  blocked.forEach((key) => {
+    const [x, z] = key.split(',').map(Number);
+    markBlocked(g, gridSize, x, z);
+  });
+  return g;
+}
 
 const GRID = 20;
 
@@ -55,7 +72,7 @@ describe('the placer never returns an illegal cell', () => {
       }
       const head = { x: GRID - 1, z: GRID - 1 };
       blocked.add(placementKey(head.x, head.z));
-      const cell = chooseFoodCell(GRID, head, blocked, filled / 400, rng);
+      const cell = chooseFoodCell(GRID, head, grid(blocked), filled / 400, rng);
       if (cell === null) continue;
       expect(blocked.has(placementKey(cell.x, cell.z))).toBe(false);
       expect(cell.x).toBeGreaterThanOrEqual(0);
@@ -72,17 +89,17 @@ describe('the placer never returns an illegal cell', () => {
       [3, 3],
       [3, 4],
     ]);
-    const cell = chooseFoodCell(GRID, { x: 3, z: 4 }, blocked, 399 / 400, seeded(1));
+    const cell = chooseFoodCell(GRID, { x: 3, z: 4 }, grid(blocked), 399 / 400, seeded(1));
     expect(cell).toEqual({ x: 3, z: 3 });
   });
 
   it('returns null only when the board holds no free cell', () => {
     const blocked = blockAll([]);
-    expect(chooseFoodCell(GRID, { x: 0, z: 0 }, blocked, 1, seeded(1))).toBeNull();
+    expect(chooseFoodCell(GRID, { x: 0, z: 0 }, grid(blocked), 1, seeded(1))).toBeNull();
   });
 
   it('a zero-size board is null, not a crash', () => {
-    expect(chooseFoodCell(0, { x: 0, z: 0 }, new Set(), 0, seeded(1))).toBeNull();
+    expect(chooseFoodCell(0, { x: 0, z: 0 }, blockedGrid(0), 0, seeded(1))).toBeNull();
   });
 });
 
@@ -100,7 +117,10 @@ describe('reachability', () => {
     expect(reach.has(placementKey(10, 11))).toBe(true);
   });
 
-  it('never places food in a sealed pocket while open space exists', () => {
+  it('never places food in a sealed pocket once the board is crowded', () => {
+    // The guarantee holds once random sampling stops landing, which is where
+    // sealed pockets are actually common and actually fatal. A board this full
+    // exhausts the sampler, so every placement is enumerated exactly.
     const blocked = new Set<string>([
       placementKey(1, 0),
       placementKey(0, 1),
@@ -108,8 +128,42 @@ describe('reachability', () => {
     ]);
     const rng = seeded(99);
     for (let i = 0; i < 300; i++) {
-      const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, blocked, 0.02, rng);
+      const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, grid(blocked),
+        0.9,
+        rng
+      );
       expect(cell).not.toEqual({ x: 0, z: 0 });
+    }
+  });
+
+  it('on a sparse board it rejection-samples, and that is the deal', () => {
+    // HONEST BOUNDARY TEST. Every reachability-correct placement is
+    // Omega(free cells) — you cannot know a cell is reachable without walking
+    // there — and the engine spawns a wave per eaten food. Paying that on a
+    // near-empty board took `foldParity.test.ts` from 11 seconds to six
+    // minutes. So placement samples first and only enumerates when sampling
+    // exhausts, exactly as the shipped game did for years.
+    //
+    // This test exists so nobody later reads the module header as promising
+    // reachability unconditionally. It asserts the LIMIT, not a feature: on a
+    // sparse board a sealed pocket is reachable-in-practice and unchecked.
+    const blocked = new Set<string>([
+      placementKey(1, 0),
+      placementKey(0, 1),
+      placementKey(1, 1),
+    ]);
+    const rng = seeded(99);
+    let landedInPocket = false;
+    for (let i = 0; i < 4000; i++) {
+      const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, grid(blocked), 0.02, rng);
+      if (cell && cell.x === 0 && cell.z === 0) landedInPocket = true;
+    }
+    expect(landedInPocket).toBe(true);
+    // ...and it is still always a LEGAL cell, which is the defect that mattered.
+    const rng2 = seeded(7);
+    for (let i = 0; i < 500; i++) {
+      const cell = chooseFoodCell(GRID, { x: 10, z: 10 }, grid(blocked), 0.02, rng2)!;
+      expect(blocked.has(placementKey(cell.x, cell.z))).toBe(false);
     }
   });
 
@@ -125,7 +179,7 @@ describe('reachability', () => {
       placementKey(5, 4),
       placementKey(5, 6),
     ]);
-    const cell = chooseFoodCell(GRID, head, blocked, 0.02, seeded(3));
+    const cell = chooseFoodCell(GRID, head, grid(blocked), 0.02, seeded(3));
     expect(cell).not.toBeNull();
     expect(blocked.has(placementKey(cell!.x, cell!.z))).toBe(false);
   });
@@ -169,7 +223,7 @@ describe('the search radius is the traverse fix', () => {
     const radius = foodSearchRadius(GRID, 0.5);
     const rng = seeded(11);
     for (let i = 0; i < 200; i++) {
-      const cell = chooseFoodCell(GRID, head, blocked, 0.5, rng)!;
+      const cell = chooseFoodCell(GRID, head, grid(blocked), 0.5, rng)!;
       const distance = Math.max(
         Math.abs(cell.x - head.x),
         Math.abs(cell.z - head.z)
@@ -185,10 +239,10 @@ describe('determinism and clustering', () => {
     // reproduce the board exactly (the discipline terrain.ts follows).
     const blocked = new Set<string>([placementKey(0, 0)]);
     const a = Array.from({ length: 20 }, (_, i) =>
-      chooseFoodCell(GRID, { x: 0, z: 0 }, blocked, 0.05, seeded(42 + i))
+      chooseFoodCell(GRID, { x: 0, z: 0 }, grid(blocked), 0.05, seeded(42 + i))
     );
     const b = Array.from({ length: 20 }, (_, i) =>
-      chooseFoodCell(GRID, { x: 0, z: 0 }, blocked, 0.05, seeded(42 + i))
+      chooseFoodCell(GRID, { x: 0, z: 0 }, grid(blocked), 0.05, seeded(42 + i))
     );
     expect(a).toEqual(b);
   });
@@ -198,10 +252,7 @@ describe('determinism and clustering', () => {
     const anchor = { cell: { x: 4, z: 4 }, radius: 4 };
     const rng = seeded(5);
     for (let i = 0; i < 200; i++) {
-      const cell = chooseFoodCell(
-        GRID,
-        { x: 19, z: 19 },
-        blocked,
+      const cell = chooseFoodCell(GRID, { x: 19, z: 19 }, grid(blocked),
         0.02,
         rng,
         anchor
@@ -219,10 +270,7 @@ describe('determinism and clustering', () => {
     for (let x = 0; x <= 8; x++) {
       for (let z = 0; z <= 8; z++) blocked.add(placementKey(x, z));
     }
-    const cell = chooseFoodCell(
-      GRID,
-      { x: 15, z: 15 },
-      blocked,
+    const cell = chooseFoodCell(GRID, { x: 15, z: 15 }, grid(blocked),
       0.2,
       seeded(8),
       { cell: { x: 4, z: 4 }, radius: 4 }

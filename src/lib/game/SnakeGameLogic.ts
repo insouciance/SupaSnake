@@ -86,8 +86,9 @@ import {
   type GrowthProfileId,
 } from '@/shared/game/growth';
 import {
+  blockedGrid,
   chooseFoodCell,
-  placementKey,
+  markBlocked,
 } from '@/shared/game/foodPlacement';
 import {
   GENE_ECONOMICS,
@@ -2627,25 +2628,37 @@ export class SnakeGameLogic {
     placed: Position[],
     anchor: Position | null
   ): Position | null {
-    const blocked = new Set<string>();
+    // An integer occupancy grid, never a string Set. `sampleFoodCell` runs on
+    // every food spawn, so a template literal per snake segment here cost about
+    // four million string allocations across the fold-parity sweep alone and
+    // took the suite from 11 seconds to six minutes.
+    const blocked = blockedGrid(this.gridSize);
     for (const segment of this.state.snake) {
-      blocked.add(placementKey(segment.x, segment.z));
+      markBlocked(blocked, this.gridSize, segment.x, segment.z);
     }
-    for (const cell of placed) blocked.add(placementKey(cell.x, cell.z));
+    for (const cell of placed) {
+      markBlocked(blocked, this.gridSize, cell.x, cell.z);
+    }
     // Terrain is part of the board now: food inside a block is unreachable,
-    // and an unreachable food is dead time — the exact cost this wave exists
-    // to remove. Exits and the mutation tile must not be buried either.
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let z = 0; z < this.gridSize; z++) {
-        const probe: Position = { x, y: 0, z };
-        if (
-          this.isPositionOnExit(probe) ||
-          this.isPositionOnMutation(probe) ||
-          this.isPositionOnTerrain(probe)
-        ) {
-          blocked.add(placementKey(x, z));
-        }
-      }
+    // and an unreachable food is dead time. Exits and the mutation tile must
+    // not be buried either. Walk the OBJECTS - never probe every cell, which
+    // would be O(gridSize^2 x terrain) because `isPositionOnTerrain` is a scan.
+    if (this.state.exitTile) {
+      markBlocked(blocked, this.gridSize, this.state.exitTile.x, this.state.exitTile.z);
+    }
+    if (this.state.exitTile2) {
+      markBlocked(blocked, this.gridSize, this.state.exitTile2.x, this.state.exitTile2.z);
+    }
+    if (this.state.mutationTile) {
+      markBlocked(
+        blocked,
+        this.gridSize,
+        this.state.mutationTile.x,
+        this.state.mutationTile.z
+      );
+    }
+    for (const block of this.state.terrain) {
+      markBlocked(blocked, this.gridSize, block.x, block.z);
     }
 
     const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
