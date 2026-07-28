@@ -607,6 +607,15 @@ const OWNED_TABLE_PATTERNS = [
   /^collected_snakes$/i, /breeding_history/i, /lineage/i, /variant/i,
   /battle_pass/i, /streak/i, /tenure/i, /clan_member/i, /training_bests/i,
   /player_title/i, /badge/i, /handle_events/i, /champion/i,
+  // WP-3.12. `player_ladders.best_rung` is the highest ladder rung a player has
+  // banked — a record in R6's sense, and one none of the patterns above happens
+  // to match. Added WITH the table rather than after it, so the gate covers
+  // migration 057 from its first line: `record_ladder_rung` updates via
+  // GREATEST, and an author who later replaces that with `EXCLUDED.best_rung`
+  // (`best` is a MONOTONIC_COLUMN) fails the build instead of shipping a
+  // demotion. Widening this list is always allowed; narrowing it is a Rule 6
+  // decision.
+  /ladder/i,
 ];
 
 /** Catalogues and definitions are content, not player property. */
@@ -636,8 +645,19 @@ const SQL_ZEROED = /\b([a-z0-9_]+)\s*=\s*(?:0|false)\b/i;
 /** `ON CONFLICT … DO UPDATE SET col = EXCLUDED.col` with no monotonic guard. */
 const SQL_UPSERT_OVERWRITE =
   /on\s+conflict\b[\s\S]{0,200}?do\s+update\s+set\b([\s\S]{0,500}?)(?=;|\bwhere\b|\breturning\b)/gi;
+/**
+ * A column whose whole point is that it only ever goes up.
+ *
+ * The boundaries are `^`, `$` and `_` rather than `\b`, because `\b` does not
+ * fire across an underscore: `\bbest\b` does NOT match `best_rung`, and neither
+ * does `\brung\b`. WP-3.12 found that the hard way — `player_ladders.best_rung`
+ * was invisible to this gate, so an `ON CONFLICT DO UPDATE SET best_rung =
+ * EXCLUDED.best_rung` (a straightforward demotion of an earned record) passed
+ * clean. Snake_case is the house style for every column this gate exists to
+ * protect, so matching a bare word was matching almost none of them.
+ */
 const MONOTONIC_COLUMN =
-  /\b(value|tier|level|count|best|total|score|generation|strength|rank|progress|xp)\b/i;
+  /(?:^|_|\b)(value|tier|level|count|best|total|score|generation|strength|rank|progress|xp|rung)(?:_|\b|$)/i;
 
 /**
  * Supabase client: `.from('table')` … `.update({ … })`. Only the write payload

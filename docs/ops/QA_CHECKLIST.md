@@ -38,6 +38,50 @@ the hosted Supabase project or delete its test data. Final legal review and
 mailbox monitoring are commercial-launch gates, not blockers for this
 operator-only deployment.
 
+### Redesign Wave — owner-only actions before the playtest
+
+**These block the playtest and cannot be done from a dev session.** Flag state
+exists only in the Vercel dashboard, is build-time inlined, and is unreadable
+without `VERCEL_TOKEN` (a GitHub Actions secret, deliberately absent locally).
+A flip is inert until `deploy-production.yml` is re-dispatched, so **set the
+flags first, deploy second** — the other order ships the wave dark and wastes
+the release.
+
+| Action | Why it blocks |
+|---|---|
+| Set `NEXT_PUBLIC_LADDER_V1=true` in Vercel Production | WP-3.12's rung selector is gated on it. Without it the ladder ships dark and cannot be played. The flag gates only the SELECTOR — an unstamped rung resolves to Ground (rung 0, the shipped game) on both sides, so leaving it off is safe, just useless. |
+| Confirm `NEXT_PUBLIC_GROWTH_LAB_V1` is still `true` | D1 is ruled by playing the three growth profiles against each other. It was on for the Playtest Wave; confirm it survived. |
+| Confirm the migration dry-run names **exactly** `057_player_ladders.sql` | Runbook precondition 5. Any extra migration is a stop condition. |
+
+### Redesign Wave — what to judge, and what is already known
+
+The wave's mandate was to land everything before a single playtest, so this is
+one sitting against a complete design rather than a series of partial reads.
+
+**The open question is D1** — time-to-first-pressure — and it cannot be answered
+from a partial build. The earlier Tuned-over-Aggressive preference is
+**explicitly stale**: food count is upstream of segments-per-food, traverse
+time, offer cadence and run length, and food count changed.
+
+Known before you start, so they are not reported as discoveries:
+
+- **One food on every profile.** COSMIC still places a constellation group —
+  that group is its mechanic, not a leftover.
+- **PRIMAL's wall-clock extraction window is 15.75 s, down from 18.0 s**, a
+  consequence of its tempo moving to 175 ms. Deliberate: 90 ticks is 90 *moves*
+  of runway whatever the tempo, and paying it in seconds would have granted more
+  room than the shipped game ever had.
+- **Salvage at zero passed doors is now 1.0, up from 0.6.** Dying before you
+  have declined anything costs nothing. This raises total DNA at the shallow end
+  and is an economy change — flagged, not buried.
+- **Score is no longer comparable across the leaderboard.** The per-dynasty
+  curves changed; the epoch bump is an unmade decision (see the status doc).
+- **Terrain has never been seen by a human in a live run.** Block height, decal
+  fill rate and the slate against the floor are unverified judgement calls. A
+  CYBER run past food 5 is the first look anyone will have had.
+- **The trail has been seen only in isolation** (`/dev/perf`), never in a real
+  run against terrain.
+
 ### Post-production manual rechecks
 
 The automated production acceptance run is green. These tactile and

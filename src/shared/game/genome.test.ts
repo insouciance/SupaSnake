@@ -24,7 +24,6 @@ import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
   capSpawnPoints,
-  moltResetLengthFor,
 } from '@/shared/game/strains';
 
 const genome = (partial: Partial<GenomeRunInput>): GenomeRunInput => ({
@@ -138,7 +137,7 @@ describe('deterministic length model', () => {
     expect(trace.lengthAtEat[16]).toBe(13 + STRAIN_PHYSICS.infuseGrowth + 5 - 5);
   });
 
-  it('Molt (FERAL expression) sheds proportionally and floors at the minimum', () => {
+  it('Fortress (FERAL expression) petrifies without shortening the snake', () => {
     const picks: GenePick[] = [
       { id: 'overgrowth', atFood: 0 },
       { id: 'deep_roots', atFood: 5 },
@@ -148,22 +147,28 @@ describe('deterministic length model', () => {
     expect(acts.FERAL.expressionAt).toBe(10);
     const view = fusePicks(picks); // deep_roots+glacial fuse -> Old Growth
     const trace = computeLengthTrace(view, 40, acts, genome({ picks }));
-    const molt = trace.shedEvents.find((e) => e.source === 'molt');
-    expect(molt?.atFood).toBe(30); // every 20 after activation at 10
-    // The shed is a fraction of the body it grew, not an absolute reset:
-    // reconstruct the pre-shed length from the event and check the formula.
-    const preShed = trace.lengthAtEat[31] + molt!.segmentsShed;
-    expect(trace.lengthAtEat[31]).toBe(moltResetLengthFor(preShed));
-    expect(trace.lengthAtEat[31]).toBeGreaterThanOrEqual(
-      STRAIN_PHYSICS.moltMinLength
+    const first = trace.petrifyEvents[0];
+    expect(first?.atFood).toBe(30); // every 20 after activation at 10
+    expect(first.segments).toBe(STRAIN_PHYSICS.fortressSegments);
+    expect(first.dna).toBe(
+      STRAIN_PHYSICS.fortressSegments * STRAIN_ECONOMICS.fortressSegmentDna
     );
+    // THE WHOLE POINT: the length model does not move across the event. Molt
+    // reset `lengthAtEat[31]` to 60% of the body; Fortress leaves it at food
+    // 30's reading plus food 31's growth, because the stone is still length.
+    expect(trace.lengthAtEat[31]).toBeGreaterThan(trace.lengthAtEat[30]);
+    // ...and no shed event was recorded at all - Molt's cycle is gone, not
+    // renamed. A trace that still carried one would mean the shed survived.
+    expect(trace.shedEvents).toEqual([]);
   });
 
-  it('keeps a Molt run bounded - length plateaus instead of growing forever', () => {
-    // The reason the shed became proportional: with an absolute reset the
-    // body oscillated between a fixed floor and floor+cycle forever, so the
-    // board never filled and the run had no natural end. Proportionally,
-    // length converges on a fixed point: L = fraction x (L + cycle growth).
+  it('Fortress makes the run END rather than plateau - Rule 15 in the model', () => {
+    // Molt existed here as the mechanic that kept a FERAL run BOUNDED: the
+    // proportional shed made length converge on a fixed point, so the board
+    // never filled. That is precisely what Constitution v1.4 outlawed - the
+    // board is the difficulty clock, and a converging length stops it.
+    // Fortress inverts the assertion: length climbs without limit and the
+    // occupied board (body + stone) climbs with it.
     const picks: GenePick[] = [
       { id: 'overgrowth', atFood: 0 },
       { id: 'deep_roots', atFood: 5 },
@@ -171,15 +176,14 @@ describe('deterministic length model', () => {
     ];
     const acts = strainActivations(picks, {});
     const trace = computeLengthTrace(fusePicks(picks), 400, acts, genome({ picks }));
-    const late = trace.lengthAtEat.slice(200);
-    // A cycle's worth of growth above the converged post-shed length is the
-    // whole envelope; nothing accumulates run over run.
-    expect(Math.max(...late)).toBeLessThan(200);
-    const molts = trace.shedEvents.filter((e) => e.source === 'molt');
-    expect(molts.length).toBe(19); // every 20 foods from activation at 10
+    for (let n = 2; n <= 400; n++) {
+      expect(trace.lengthAtEat[n]).toBeGreaterThanOrEqual(trace.lengthAtEat[n - 1]);
+    }
+    expect(trace.lengthAtEat[400]).toBeGreaterThan(400);
+    expect(trace.petrifyEvents.length).toBe(19); // every 20 foods from food 10
   });
 
-  it('applies a same-index infuse GROWTH after the Molt food floor', () => {
+  it('applies a same-index infuse GROWTH after the food petrifies', () => {
     const picks: GenePick[] = [
       { id: 'overgrowth', atFood: 0 },
       { id: 'deep_roots', atFood: 5 },
@@ -193,14 +197,38 @@ describe('deterministic length model', () => {
       acts,
       genome({ picks, infuses: [{ atFood: 30 }] })
     );
-    // Food 30 resolves the Molt cycle and its growth floor first; only then
-    // does the portal infuse add its segments. Ordering is what keeps this in
-    // step with the engine, which appends when the portal resolves - i.e.
-    // after the food is done. Under Rule 15 the infuse can only ever take the
-    // body ABOVE the floor, never below it.
+    // Food 30 petrifies first; only then does the portal infuse add its
+    // segments. Ordering is what keeps this in step with the engine, which
+    // appends when the portal resolves - i.e. after the food is done.
     expect(infused.lengthAtEat[31]).toBe(
       base.lengthAtEat[31] + STRAIN_PHYSICS.infuseGrowth
     );
+  });
+
+  it('the live body floor skips an event rather than eating the snake', () => {
+    // Fortress lays its stone on cells the body is standing on, so a body too
+    // short to spare them must not petrify. The floor is on the LIVE length -
+    // modelled length minus everything already turned to stone.
+    const picks: GenePick[] = [{ id: 'serpentine', atFood: 0 }];
+    const acts = strainActivations(picks, { FERAL: 2 });
+    expect(acts.FERAL.expressionAt).toBeNull(); // one gene is not an Expression
+    // Reached properly, the first event still has to clear the floor: the
+    // modelled length at food 20 is 3 + 20 = 23, live 23, and 23 - 6 >= 12.
+    const reached: GenePick[] = [
+      { id: 'serpentine', atFood: 0 },
+      { id: 'heartwood', atFood: 0 },
+    ];
+    const reachedActs = strainActivations(reached, { FERAL: 2 });
+    expect(reachedActs.FERAL.expressionAt).toBe(0);
+    const trace = computeLengthTrace(
+      fusePicks(reached),
+      20,
+      reachedActs,
+      genome({ picks: reached })
+    );
+    expect(trace.petrifyEvents.map((e) => e.atFood)).toEqual([
+      STRAIN_PHYSICS.fortressEveryFoods,
+    ]);
   });
 });
 
@@ -323,11 +351,9 @@ describe('claim caps + clamping', () => {
     const caps = {
       aurumWakeDna: 500,
       midasDna: 0,
-      moltFoodDna: 0,
       ouroborosDna: 0,
       staticChargeDna: 0,
       ricochetDna: 0,
-      heartwoodDna: 0,
       secondSunFlat: 0,
       globalClaimsCap: 250,
     };

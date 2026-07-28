@@ -30,7 +30,7 @@
  *    multipliers, so a player can see which of the three numbers moved.
  *
  * 2. A PROJECTION IS A FLOOR, NOT A FORECAST. The bounded-trust claims —
- *    Gilded Wake cells, Molt foods, Ouroboros bites, the Second Sun trigger
+ *    Gilded Wake cells, Ouroboros bites, the Second Sun trigger
  *    and the rest — are *claimed* by a run that plays them, not derived from
  *    a build. A pre-run calculator cannot know how many gilded cells you will
  *    re-cross. So they are excluded, the reading is labelled a floor, and the
@@ -446,12 +446,9 @@ const EXCLUSION_SOURCES: readonly {
     id: 'AURUM:3',
     why: 'Pays for foods chained inside the golden window. That is reflex, not build.',
   },
-  {
-    field: 'moltFoodDna',
-    kind: 'strainTier',
-    id: 'FERAL:2',
-    why: 'Pays for molt foods eaten. The molt drops them; eating them is on you.',
-  },
+  // FERAL:2 used to sit here as `moltFoodDna`. Fortress pays deterministically
+  // (WP-3.11), so the Expression is no longer an EXCLUSION from the floor - it
+  // is part of it. The projection got more accurate by losing a row.
   {
     field: 'ouroborosDna',
     kind: 'strainTier',
@@ -470,12 +467,8 @@ const EXCLUSION_SOURCES: readonly {
     id: 'splice_ricochet',
     why: 'Pays for foods eaten while wall-sliding.',
   },
-  {
-    field: 'heartwoodDna',
-    kind: 'gene',
-    id: 'heartwood',
-    why: 'Pays for golden shed-drops eaten before they expire.',
-  },
+  // `heartwood` used to sit here too, for the same reason and with the same
+  // resolution: its pay rides Fortress's petrify events and is now folded.
   {
     field: 'secondSunFlat',
     kind: 'strainTier',

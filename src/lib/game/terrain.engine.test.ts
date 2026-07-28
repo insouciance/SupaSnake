@@ -1,5 +1,6 @@
 /**
- * CYBER's closing arena, in the engine (WP-3.03).
+ * Terrain in the engine: CYBER's closing arena (WP-3.03) and PRIMAL's Fortress
+ * (WP-3.11), which reach the same primitive by different routes.
  *
  * `terrain.test.ts` covers the schedule and the placement rule as pure
  * functions. This covers what the ENGINE does with them, and in particular the
@@ -126,7 +127,20 @@ describe('the arena closes (CYBER)', () => {
     }
   });
 
-  it('PRIMAL and COSMIC have no arena — this is CYBER\'s identity', () => {
+  it("the closing RING is CYBER's identity — terrain itself is not", () => {
+    // WP-3.11 rewrote this case rather than deleting it, because what it said
+    // ("PRIMAL and COSMIC have no arena") stopped being what it MEANT the
+    // moment PRIMAL's FERAL-2 Fortress started laying blocks. Fortress is not
+    // an arena: it is not ring-selected, not schedule-placed, and not a
+    // property of the ruleset - it petrifies the cells the body is already
+    // standing on, on a build the player chose.
+    //
+    // So the assertion is now made in the terms it was always about: the
+    // `arena` SCHEDULE - the board closing from the outside in - belongs to
+    // CYBER alone, and a PRIMAL or COSMIC run with no such build stays clear.
+    expect(RULESETS.CYBER.arena).toBeDefined();
+    expect(RULESETS.PRIMAL.arena).toBeUndefined();
+    expect(RULESETS.COSMIC.arena).toBeUndefined();
     for (const id of ['PRIMAL', 'COSMIC'] as const) {
       const game = new SnakeGameLogic({
         gridSize: 20,
@@ -137,5 +151,86 @@ describe('the arena closes (CYBER)', () => {
       eat(game, 15);
       expect(game.getState().terrain).toHaveLength(0);
     }
+  });
+});
+
+describe("PRIMAL's Fortress lays terrain without an arena (WP-3.11)", () => {
+  /** A PRIMAL genome run whose FERAL Expression is live from food 0. */
+  function fortress(gridSize = 160): SnakeGameLogic {
+    const game = new SnakeGameLogic({
+      gridSize,
+      ruleset: RULESETS.PRIMAL,
+      rng: () => 0.5,
+      genome: { runSeed: 'fortress-engine', heirloom: {} },
+    });
+    game.start();
+    game.grantMutation('overgrowth', 0);
+    game.grantMutation('deep_roots', 0);
+    game.grantMutation('glacial_reserve', 0);
+    expect(game.getState().strainTiers.FERAL).toBe(2);
+    return game;
+  }
+
+  it('FREE SPACE ONLY SHRINKS across a petrification — Rule 15 on the board', () => {
+    // The claim the whole design rests on: at the instant the segments turn to
+    // stone the count of occupied cells is UNCHANGED (the cells they vacated
+    // are the cells the blocks took), and from then on it can only grow.
+    const game = fortress();
+    const occupied = () => {
+      const cells = new Set<string>();
+      for (const seg of game.getState().snake) cells.add(cellKey(seg.x, seg.z));
+      for (const b of game.getState().terrain) cells.add(cellKey(b.x, b.z));
+      return cells.size;
+    };
+    eat(game, 19, 160);
+    const before = occupied();
+    eat(game, 1, 160);
+    expect(game.getState().terrain.length).toBeGreaterThan(0);
+    // Food 20 grows the body by its own growth and petrifies six segments; the
+    // occupied count therefore rises by the growth and never falls.
+    expect(occupied()).toBeGreaterThanOrEqual(before);
+  });
+
+  it('terrain only ever grows, and a solid block never overlaps the snake', () => {
+    const game = fortress(60);
+    let previous = 0;
+    for (let i = 0; i < 120; i++) {
+      const state = game.getState();
+      if (state.isGameOver || state.isDeathSequence) break;
+      const head = state.snake[0];
+      game.placeFood({ x: (head.x + 1) % 60, y: 0, z: head.z });
+      game.tick();
+      if (game.getState().pendingChoice) game.declineMutation();
+      const after = game.getState();
+      expect(after.terrain.length).toBeGreaterThanOrEqual(previous);
+      previous = after.terrain.length;
+      const solid = new Set(
+        after.terrain.filter((b) => b.solid).map((b) => cellKey(b.x, b.z))
+      );
+      for (const seg of after.snake) {
+        expect(solid.has(cellKey(seg.x, seg.z))).toBe(false);
+      }
+    }
+    expect(previous).toBeGreaterThan(0);
+  });
+
+  it('the blocks it lays are drawn by the same renderer CYBER uses', () => {
+    // Fortress needs no renderer of its own, and that is deliberate: it emits
+    // the SAME `TerrainBlock` the arena does, into the same `state.terrain`,
+    // which `TerrainBlocks` draws unconditionally. The structural check that
+    // the renderer is mounted lives in `terrain.visible.test.ts`.
+    const game = fortress();
+    eat(game, 20, 160);
+    const block = game.getState().terrain[0];
+    expect(block).toEqual(
+      expect.objectContaining({
+        x: expect.any(Number),
+        z: expect.any(Number),
+        formingTicks: expect.any(Number),
+        formingTotal: expect.any(Number),
+        solid: false,
+      })
+    );
+    expect(block.formingTotal).toBe(block.formingTicks);
   });
 });

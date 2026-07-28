@@ -38,23 +38,22 @@ jobs:
     name: e2e (${{ matrix.flags }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # REPORTING-ONLY FOR THE PRODUCTION LEG, DELIBERATELY AND TEMPORARILY.
+    # BOTH LEGS BLOCK (WP-3.11).
     #
-    # Its first run found six failing specs, and every one is legacy debt from
-    # the years this configuration was never executed - `run-flow.spec`'s
-    # entire flag-ON describe has literally never run, plus auth, engagement
-    # and share-artifacts. None is a product defect.
+    # The production leg spent its first weeks as `continue-on-error: true`
+    # because it landed with seven failures inherited from the years this
+    # configuration was never executed. They are repaired: five in
+    # `run-flow.spec` (a first keypress dispatched before the board's listener
+    # existed, a forced tap on a disabled LAUNCH, and an assertion that WP-1.04
+    # had made obsolete), one in `auth.spec` (the bottom nav rail overflowed a
+    # 320px viewport and put the account chip off screen - a real defect, fixed
+    # in `Navigation.tsx`), and one in `share-artifacts.spec` (a challenge link
+    # followed as a client transition lost its seed - also a real defect, fixed
+    # in `ArtifactLanding.tsx`).
     #
-    # Blocking on all of that would mean no change ships until an unbounded
-    # test-repair project finishes. Reporting is still strictly better than
-    # the status quo, which was no browser coverage of the shipped path at
-    # all - the failures are now visible on every PR instead of invisible
-    # forever.
-    #
-    # The `rollback` leg still blocks, exactly as the single job did before.
-    # Flip this to `false` once the six are repaired; that is a tracked task,
-    # not an aspiration.
-    continue-on-error: ${{ matrix.flags == 'production' }}
+    # Reporting-only was the right call while the list was unbounded. It is
+    # bounded now, so a red production leg means the shipped configuration is
+    # broken and must stop the PR.
     strategy:
       fail-fast: false
       matrix:
@@ -82,11 +81,34 @@ jobs:
             echo 'rollback leg: no NEXT_PUBLIC_* armed, flag-off paths covered'
             exit 0
           fi
+          # EVERY FLAG THAT IS ON IN VERCEL, INCLUDING GROWTH_LAB_V1.
+          #
+          # It was held back one commit. WP-3.11 measured why: with the Growth
+          # Lab selector in Run Setup the panel grows, and at 390x844 the
+          # `mode-free` control ended up underneath the fixed bottom navigation
+          # rail, so the spec's deliberately unforced click landed on the
+          # rail's Leaderboard link and the run never started. That is a
+          # product defect, not a test one, and it was reachable in production
+          # the whole time - the flag is on in Vercel.
+          #
+          # The scroller behind Run Setup now reserves bottom clearance for the
+          # rail (`src/app/game/page.tsx`). Arming the flag here is what proves
+          # it: a leg that mirrors production is the only thing that can, and
+          # if this list drifts from Vercel again the leg stops meaning what
+          # its name says.
+          #
+          # `LADDER_V1` is armed here ahead of Vercel, not behind it: WP-3.12
+          # ships the ladder on, so this leg covers the path the owner will
+          # actually play. Setting it in the Vercel dashboard is an owner-only
+          # action (flag state lives nowhere else and is build-time inlined),
+          # so it is tracked in `docs/ops/QA_CHECKLIST.md`. Until it is set,
+          # this leg is deliberately AHEAD of production by exactly one flag -
+          # a documented difference rather than a silent drift.
           for flag in \
             SERPENT_V1 SIGNAL_V1 RUN_FLOW_V1 CLAN_V2 CLAN_GAUNTLET CLAN_PLAYOFFS \
             DAILY_TAKE_V1 SETTLEMENT_DISPATCH_V1 GROWTH_SURFACES_V1 ASCENSION_V1 \
             WORLD_REPORT_V1 LEAD_LADDER_V1 SHARE_ARTIFACTS_V1 WORKBENCH_V1 \
-            PWA_V1 PLAYER_CONTRACT_V1
+            PWA_V1 PLAYER_CONTRACT_V1 GROWTH_LAB_V1 LADDER_V1
           do
             echo "NEXT_PUBLIC_${flag}=true" >> "$GITHUB_ENV"
           done

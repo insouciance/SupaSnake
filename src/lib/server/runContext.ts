@@ -41,6 +41,7 @@ import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import { STRAIN_IDS, type StrainId, type StrainPoints } from '@/shared/game/strains';
 import type { LineageBias } from '@/shared/game/offerGravity';
 import { isGrowthProfileId, type GrowthProfileId } from '@/shared/game/growth';
+import { DEFAULT_LADDER_RUNG, isLadderRung } from '@/shared/game/ladder';
 
 /** The current context version. A future shape change bumps this. */
 export const RUN_CONTEXT_VERSION = 1;
@@ -109,6 +110,21 @@ export interface RunStartContext {
    * `baseline`, which is byte-identical to the shipped curve.
    */
   growthProfileId?: GrowthProfileId;
+  /**
+   * The D2 ladder rung the run was started at (WP-3.12).
+   *
+   * Stamped for exactly the reasons `growthProfileId` is, and by the same
+   * mechanism: the rung decides how many segments an INFUSE grows, where the
+   * doors stand and what a crash salvages, and all three are recomputed at
+   * settlement. A rung chosen behind a build-time flag would let a client play
+   * one set of rules while the server settles another.
+   *
+   * Absent on every run started before the ladder shipped, on every run started
+   * with the flag off, and on every rung-0 run — `serializeRunStartContext`
+   * omits the key rather than writing a zero, so a Ground run stores exactly
+   * the blob it stored before the ladder existed. All three resolve to rung 0.
+   */
+  ladderRung?: number;
   genome: RunStartGenomeContext | null;
 }
 
@@ -276,6 +292,14 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
     ? raw.growthProfileId
     : undefined;
 
+  // LENIENT FOR THE SAME REASON, and it matters more here. The ladder is
+  // expected to GROW, so a run stamped at a rung this build has not heard of is
+  // the ordinary consequence of a staged deploy - not a malformed blob. It
+  // resolves to rung 0, the shipped game, exactly as `resolveLadderRung` does
+  // everywhere else. Condemning the whole context over it would send an
+  // otherwise perfect settlement down the re-derive path.
+  const ladderRung = isLadderRung(raw.ladderRung) ? raw.ladderRung : undefined;
+
   return {
     ok: true,
     context: {
@@ -284,6 +308,9 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
       mutationPool,
       freePlay: raw.freePlay,
       ...(growthProfileId ? { growthProfileId } : {}),
+      ...(ladderRung !== undefined && ladderRung !== DEFAULT_LADDER_RUNG
+        ? { ladderRung }
+        : {}),
       genome,
     },
   };
@@ -310,6 +337,12 @@ export function serializeRunStartContext(
     // Omitted entirely when baseline/absent, so a shipped-curve run stores
     // exactly the blob it stored before the lab existed.
     ...(context.growthProfileId ? { growthProfileId: context.growthProfileId } : {}),
+    // Omitted entirely at rung 0, so a Ground run stores exactly the blob it
+    // stored before the ladder existed. An absent key and a stored 0 mean the
+    // same thing everywhere they are read, and only one of them is a byte.
+    ...(context.ladderRung !== undefined && context.ladderRung !== DEFAULT_LADDER_RUNG
+      ? { ladderRung: context.ladderRung }
+      : {}),
     genome: context.genome
       ? {
           genePool: context.genome.genePool,

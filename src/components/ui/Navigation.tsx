@@ -77,7 +77,20 @@ export function Navigation() {
 
   return (
     <nav aria-label="Primary">
-      <div className="fixed z-50 flex flex-row sm:flex-col items-center gap-1.5 sm:gap-2 bottom-[calc(0.625rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 sm:bottom-auto sm:left-auto sm:translate-x-0 sm:right-3 sm:top-1/2 sm:-translate-y-1/2">
+      {/* The mobile rail is a bottom row; the desktop rail is a right-hand
+          column. With the Serpent node armed the row is nine 40px targets
+          plus gaps - 408px - so on a 320px-wide viewport a centred row hung
+          ~44px off each edge and put its first and last nodes, Lab and the
+          account chip, out of reach: the page cannot scroll sideways to them
+          and `/game` clips them outright with `overflow-hidden`.
+
+          The rail is scaled down below 425px rather than wrapped. Wrapping
+          was the obvious fix and the wrong one: a second row grows the rail
+          upward into the bottom of whatever is behind it, which on `/game` is
+          Run Setup's own controls. Scaling keeps the rail one row, keeps it
+          shorter than it was, and changes nothing at any width that already
+          fitted. */}
+      <div className="fixed z-50 flex flex-row sm:flex-col items-center gap-1.5 sm:gap-2 max-[425px]:scale-75 bottom-[calc(0.625rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 sm:bottom-auto sm:left-auto sm:translate-x-0 sm:right-3 sm:top-1/2 sm:-translate-y-1/2">
         {nodes.map(({ href, label, Icon, notificationDestination }, i) => {
           const isActive = pathname === href;
           const badge = notificationDestination

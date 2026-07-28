@@ -198,7 +198,7 @@ const NEW_GENES: Record<NewGeneId, Omit<GeneDef, 'id'>> = {
     name: 'Heartwood',
     kind: 'EP',
     strains: ['FERAL'],
-    effect: 'Each Shed/Molt event drops one golden food (30 flat DNA)',
+    effect: 'Each Fortress petrification pays 30 flat DNA',
     cost: 'Food −5% DNA',
     economics: 'path',
   },
@@ -322,8 +322,17 @@ export const GENE_ECONOMICS = {
   lastGaspLengthThreshold: 30,
   lastGaspBonus: 1.15,
   lastGaspPenalty: 0.95,
-  /** Heartwood [BT]: golden food flat DNA per Shed/Molt event. */
-  heartwoodGoldenFlat: 30,
+  /**
+   * Heartwood [E]: flat DNA per Fortress petrify event (WP-3.11).
+   *
+   * It was a [BT] claim - a golden food dropped on the shed cells, worth the
+   * same 30, that the player had to drive back and eat. Fortress turns those
+   * cells to stone, so the drop had nowhere fair to land, and the pay moved
+   * into the deterministic fold at the same magnitude. PRIMAL's signature gene
+   * now has exactly ONE trigger, which is PRIMAL's Expression - every other
+   * producer of shed events was retired by Rule 15.
+   */
+  heartwoodPetrifyFlat: 30,
   /** Zenith Protocol: foods at CYBER max tier +4 flat; below x0.95. */
   zenithMaxTierFood: 20,
   zenithFlatBonus: 4,

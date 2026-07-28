@@ -12,6 +12,7 @@ import { GENE_POOL, SIGNATURE_GENES } from './genes';
 import { SPLICES, spliceForPair } from './splices';
 import { STRAIN_PHYSICS } from './strains';
 import { composeGenePool } from './genePool';
+import { computeLengthTrace, fusePicks, strainActivations } from './genome';
 import type { DynastyName } from './rulesets';
 
 const DYNASTIES: DynastyName[] = ['PRIMAL', 'CYBER', 'COSMIC'];
@@ -65,5 +66,43 @@ describe('Rule 15: the length-reducers are unreachable', () => {
     // The rewind is positional mercy and stays; `phoenixRebirthLength` is no
     // longer consulted by either the engine or the length model.
     expect(MUTATION_PHYSICS.phoenixRewindCells).toBeGreaterThan(0);
+  });
+
+  it('FERAL-2 transforms length rather than shedding it (WP-3.11)', () => {
+    // Molt was the one length-reducer Rule 15 could NOT be satisfied by
+    // re-pricing, because its effect WAS the shed. Fortress replaced the
+    // effect: nothing in the tier reduces length, and the dials that made the
+    // shed possible are gone rather than renamed - a `moltShedFraction` still
+    // sitting in the module would mean someone could restore the cycle with
+    // one line and no failing test.
+    expect(STRAIN_PHYSICS).not.toHaveProperty('moltShedFraction');
+    expect(STRAIN_PHYSICS).not.toHaveProperty('moltEveryFoods');
+    expect(STRAIN_PHYSICS).not.toHaveProperty('moltMinLength');
+    expect(STRAIN_PHYSICS).not.toHaveProperty('moltTickFactor');
+    expect(STRAIN_PHYSICS.fortressSegments).toBeGreaterThan(0);
+    expect(STRAIN_PHYSICS.fortressEveryFoods).toBeGreaterThan(0);
+  });
+
+  it('a petrified segment stays in the modelled length', () => {
+    // The mechanical statement of "the clock never rewinds": across the food
+    // that petrifies, the length model must not fall. Two FERAL genes plus two
+    // spawn points is the Expression exactly.
+    const picks = [
+      { id: 'serpentine' as const, atFood: 0 },
+      { id: 'heartwood' as const, atFood: 0 },
+    ];
+    const activations = strainActivations(picks, { FERAL: 2 });
+    expect(activations.FERAL.expressionAt).toBe(0);
+    const trace = computeLengthTrace(
+      fusePicks(picks),
+      STRAIN_PHYSICS.fortressEveryFoods * 3,
+      activations,
+      { picks, heirloom: {}, surges: [], infuses: [], revive: null }
+    );
+    // Expression at food 0, so events land on 20, 40 and 60.
+    expect(trace.petrifyEvents.map((e) => e.atFood)).toEqual([20, 40, 60]);
+    for (let n = 2; n < trace.lengthAtEat.length; n++) {
+      expect(trace.lengthAtEat[n]).toBeGreaterThanOrEqual(trace.lengthAtEat[n - 1]);
+    }
   });
 });

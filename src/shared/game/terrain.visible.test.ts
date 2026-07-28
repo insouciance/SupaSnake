@@ -23,7 +23,8 @@
 import { describe, it, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getRuleset, type DynastyName } from './rulesets';
+import { COSMIC_CONSTELLATION, getRuleset, type DynastyName } from './rulesets';
+import { STRAIN_PHYSICS } from './strains';
 
 const root = process.cwd();
 const read = (relative: string) => readFileSync(join(root, relative), 'utf8');
@@ -77,11 +78,14 @@ describe('no dynasty may arm an arena without a renderer', () => {
     '%s: if it PRODUCES terrain by any route, the renderer is present',
     (dynasty) => {
       const ruleset = getRuleset(dynasty);
-      // Two routes now, and the second is why this reads `||` rather than
-      // just `arena`. CYBER SCHEDULES terrain (`arena`); COSMIC produces it
-      // from play — every star its constellation window closes on calcifies
-      // — with no schedule anywhere. A gate that only knew about `arena`
-      // would have let COSMIC ship the WP-3.03 defect a second time.
+      // Two RULESET routes, which is why this reads `||` rather than just
+      // `arena`. CYBER SCHEDULES terrain (`arena`); COSMIC produces it from
+      // play — every star its constellation window closes on calcifies — with
+      // no schedule anywhere. A gate that only knew about `arena` would have
+      // let COSMIC ship the WP-3.03 defect a second time.
+      //
+      // There is a THIRD source this loop structurally cannot see: Fortress
+      // is build state, not ruleset state, so it gets its own case below.
       if (!ruleset.arena && !ruleset.constellation) return;
       expect(() =>
         read('src/components/game/TerrainBlocks.tsx')
@@ -90,15 +94,66 @@ describe('no dynasty may arm an arena without a renderer', () => {
     }
   );
 
-  it('COSMIC calcifies into the same primitive the renderer draws', () => {
-    // The connection, asserted rather than assumed: the engine pushes
-    // TerrainBlock-shaped objects for missed stars, so the mounted renderer
-    // picks them up with no second code path and no second chance to forget.
+  it('every non-arena source lays blocks through ONE engine path', () => {
+    // WP-3.11 and WP-3.13 both arrived here independently: Fortress petrifies
+    // the body cells it just shed, COSMIC calcifies the star cells whose
+    // window just closed, and NEITHER uses the arena's ring selector. Each
+    // had its own copy of "dedupe against existing terrain, push a block with
+    // a forming phase" until they were merged.
+    //
+    // They compose through `placeTerrainAt` now, and that is asserted rather
+    // than assumed, because the duplication is what this file exists to
+    // prevent one level down: two copies of the block-laying code are two
+    // places for the renderer connection to be forgotten.
     const engine = read('src/lib/game/SnakeGameLogic.ts');
-    expect(engine).toContain('calcifyConstellation');
+    expect(engine).toContain('private placeTerrainAt(');
     expect(engine).toMatch(
-      /calcifyConstellation\(\)[\s\S]{0,2000}this\.state\.terrain\.push\(/
+      /private placeTerrainAt\([\s\S]{0,2000}this\.state\.terrain\.push\(/
     );
+    // ...and it is the ONLY place that pushes a block.
+    expect(engine.match(/this\.state\.terrain\.push\(/g)).toHaveLength(1);
+  });
+
+  it("PRIMAL's Fortress reaches the same renderer without an arena", () => {
+    // WP-3.11. The rule this file holds is "a lethal primitive is connected to
+    // something that renders", and the `it.each` above checks it via
+    // `ruleset.arena` - which Fortress does not have. It would therefore have
+    // shipped invisible under a green suite, which is precisely the defect
+    // this file was written after.
+    //
+    // The connection is structural: Fortress lays the SAME `TerrainBlock`
+    // shape into the SAME `state.terrain`, and the tick handler sets terrain
+    // OUTSIDE the genome gate (asserted above), so a build-driven block is
+    // drawn by the ruleset-driven renderer.
+    const engine = read('src/lib/game/SnakeGameLogic.ts');
+    expect(engine).toContain('private applyPetrify(');
+    expect(engine).toMatch(/applyPetrify[\s\S]{0,3000}this\.placeTerrainAt\(/);
+    expect(read('src/app/game/page.tsx')).toContain('TerrainBlocks');
+  });
+
+  it('Fortress blocks arrive with a forming phase too', () => {
+    // The same fairness argument the arena's schedule is held to, held against
+    // the dial rather than the schedule, because Fortress has no schedule.
+    expect(STRAIN_PHYSICS.fortressFormingSeconds).toBeGreaterThan(0);
+    expect(STRAIN_PHYSICS.fortressSegments).toBeGreaterThan(0);
+    expect(STRAIN_PHYSICS.fortressEveryFoods).toBeGreaterThan(0);
+  });
+
+  it("COSMIC's calcification reaches it the same way", () => {
+    // WP-3.13, and the same argument as Fortress's: COSMIC has no `arena`
+    // either, so the `it.each` above catches it only because it reads
+    // `constellation` as a second terrain route.
+    const engine = read('src/lib/game/SnakeGameLogic.ts');
+    expect(engine).toContain('private calcifyConstellation(');
+    expect(engine).toMatch(
+      /calcifyConstellation\(\)[\s\S]{0,2000}this\.placeTerrainAt\(/
+    );
+  });
+
+  it('calcified stars arrive with a forming phase too', () => {
+    expect(COSMIC_CONSTELLATION.calcifySeconds).toBeGreaterThan(0);
+    expect(COSMIC_CONSTELLATION.size).toBeGreaterThan(0);
+    expect(COSMIC_CONSTELLATION.windowSeconds).toBeGreaterThan(0);
   });
 
   it('the constellation window is drawn, not merely modelled', () => {

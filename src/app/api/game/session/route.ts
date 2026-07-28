@@ -89,7 +89,15 @@ import {
 } from '@/lib/server/runContext';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
 import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
+import { LADDER_ENABLED } from '@/lib/features/ladder';
 import { isGrowthProfileId, type GrowthProfileId } from '@/shared/game/growth';
+import {
+  DEFAULT_LADDER_RUNG,
+  isLadderRung,
+  ladderGrowthProfileId,
+  ladderRung as ladderRungDefinition,
+} from '@/shared/game/ladder';
+import { readLadderRecords, recordLadderRung } from '@/lib/server/ladderRecords';
 import type { LineageBias } from '@/shared/game/offerGravity';
 import { ANOMALY_STRAINS } from '@/shared/game/anomalies';
 import type { GenomeValidationContext } from '@/lib/server/gameValidator';
@@ -583,10 +591,49 @@ export async function POST(request: NextRequest) {
       // only ever play the profile recorded here. Unknown/absent resolves to
       // `baseline`, which folds byte-identically to the shipped curve.
       const requestedProfile = (body as Record<string, unknown>)?.growthProfile;
-      const growthProfileId: GrowthProfileId | undefined =
+      let growthProfileId: GrowthProfileId | undefined =
         GROWTH_LAB_ENABLED && isGrowthProfileId(requestedProfile)
           ? requestedProfile
           : undefined;
+
+      // ---------------------------------------------------------------
+      // The D2 ladder rung (WP-3.12) — the growth profile's pattern, verbatim
+      // ---------------------------------------------------------------
+      // THE CLIENT ASKS; THE SERVER DECIDES. Three conditions have to hold for
+      // a run to be stamped above Ground, and missing any one collapses it to
+      // rung 0 — the shipped game — rather than to an error:
+      //
+      //   1. the rollout flag is on (it gates the SELECTOR, never the math);
+      //   2. the request names a rung this build actually offers; and
+      //   3. the player has UNLOCKED it, which is a database fact, not a claim.
+      //
+      // Condition 3 is where the anti-re-climb ruling lives. `readLadderRecords`
+      // answers with MAX(best_rung) across ALL dynasties, so a player who beat
+      // rung 4 on PRIMAL opens a CYBER run at rung 5 without re-climbing; their
+      // CYBER record stays their CYBER record, in its own row. Before migration
+      // 057 applies, that read reports the ladder unavailable and every run is
+      // Ground — the app is deployable ahead of its migration, as the runbook
+      // requires.
+      const requestedRung = (body as Record<string, unknown>)?.ladderRung;
+      let ladderRung: number = DEFAULT_LADDER_RUNG;
+      if (LADDER_ENABLED && isLadderRung(requestedRung)) {
+        const records = await readLadderRecords(supabase, player.id);
+        if (records.available) {
+          // CLAMPED, never refused. A client asking above its unlock is far
+          // more likely to be a stale tab than an attack, and refusing the run
+          // would cost a charge to teach a lesson the clamp teaches for free —
+          // the response echoes the rung it actually got.
+          ladderRung = Math.min(requestedRung, records.attemptable);
+        }
+      }
+      // The rung's growth floor is applied HERE, before the stamp, so it needs
+      // no second channel: the effective profile is what gets stamped, and the
+      // engine, the length models and the validator's food-rate bound all
+      // already replay from that one stamp. The floor never lowers a choice —
+      // a player who opted into a faster curve in the lab keeps it.
+      if (ladderRung !== DEFAULT_LADDER_RUNG) {
+        growthProfileId = ladderGrowthProfileId(growthProfileId, ladderRung);
+      }
 
       startRunContext = {
         v: RUN_CONTEXT_VERSION,
@@ -601,6 +648,7 @@ export async function POST(request: NextRequest) {
         mutationPool,
         freePlay: isFreePlay,
         ...(growthProfileId ? { growthProfileId } : {}),
+        ...(ladderRung !== DEFAULT_LADDER_RUNG ? { ladderRung } : {}),
         genome: startGenomeContext,
       };
 
@@ -938,6 +986,19 @@ export async function POST(request: NextRequest) {
           // plays exactly what settlement will recompute. The client never
           // decides this - it only learns it.
           ...(growthProfileId ? { growthProfile: growthProfileId } : {}),
+          // WP-3.12: the rung the SERVER resolved, with the rule it adds, so
+          // the HUD can name what this run is playing under without deriving
+          // it. Same contract as the profile above - the client never decides
+          // this, it only learns it.
+          ...(ladderRung !== DEFAULT_LADDER_RUNG
+            ? {
+                ladder: {
+                  rung: ladderRung,
+                  name: ladderRungDefinition(ladderRung).name,
+                  rule: ladderRungDefinition(ladderRung).rule,
+                },
+              }
+            : {}),
           ...(genomeBlock ? { genome: genomeBlock } : {}),
         });
       }
@@ -949,6 +1010,15 @@ export async function POST(request: NextRequest) {
         mutationPool,
         mastery: masteryInfo,
         ...(growthProfileId ? { growthProfile: growthProfileId } : {}),
+        ...(ladderRung !== DEFAULT_LADDER_RUNG
+          ? {
+              ladder: {
+                rung: ladderRung,
+                name: ladderRungDefinition(ladderRung).name,
+                rule: ladderRungDefinition(ladderRung).rule,
+              },
+            }
+          : {}),
         ...(gauntletBan ? { gauntletBan } : {}),
         // The run's world condition (§7.2, §7.3): the ONE id the engine plays
         // under and settlement recomputes with. Present on every run the
@@ -1254,6 +1324,11 @@ export async function POST(request: NextRequest) {
             ...(runContext.growthProfileId
               ? { growthProfileId: runContext.growthProfileId }
               : {}),
+            // WP-3.12: settle under the RUNG the run started at. It moves the
+            // portal schedule, the infuse growth and the salvage floor, so a
+            // run played at rung 5 and recomputed at rung 0 would disagree with
+            // itself about lengths, doors and payout. Absent means Ground.
+            ...(runContext.ladderRung ? { ladderRung: runContext.ladderRung } : {}),
           };
         } else {
           // WP-2.05: `ok: false` is unignorable by construction, and it is a
@@ -1923,6 +1998,38 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // ---------------------------------------------------------------
+      // The ladder record (WP-3.12, migration 057)
+      // ---------------------------------------------------------------
+      // WHAT BEATS A RUNG: banking one. Extraction is the game's central verb,
+      // so "I climbed rung 5" means "I got out at rung 5" — a death at rung 5
+      // is an attempt, not a record. [H] and the one rule of the ladder that is
+      // not a dial.
+      //
+      // FREE PLAY IS EXCLUDED, deliberately. §7.4 practice validates against the
+      // full pool with everything unlocked, so a rung banked there would not be
+      // the same rung an earning run climbs. The player may still PLAY any
+      // unlocked rung in practice; it simply does not set the record.
+      //
+      // The rung comes from `run_context` — the run's own permanent stamp —
+      // never from the settlement request. A run with no stored context was
+      // necessarily Ground, and `record_ladder_rung` treats that as a no-op.
+      //
+      // NEVER BLOCKS THE PAYOUT. `recordLadderRung` reports its own failures and
+      // returns null; a lost difficulty record is a lost record, and refusing to
+      // pay a banked run over one would be the far larger failure.
+      let ladderRecord: { rung: number; best: number } | null = null;
+      const settledRung = runContext?.ladderRung ?? DEFAULT_LADDER_RUNG;
+      if (validation.extracted && !isFreeSession && settledRung > DEFAULT_LADDER_RUNG) {
+        const best = await recordLadderRung(
+          supabase,
+          player.id,
+          endDynasty,
+          settledRung
+        );
+        if (best !== null) ladderRecord = { rung: settledRung, best };
+      }
+
       // Record daily play streak (non-fatal if it errors). The streak is a
       // COUNT, never a payout factor: WP-0.02 deleted the tier multiplier,
       // so nothing here re-enters settlement.
@@ -2064,6 +2171,10 @@ export async function POST(request: NextRequest) {
         ...(identityInfo ? { identity: identityInfo } : {}),
         ...(streak ? { streak } : {}),
         ...(mastery ? { mastery } : {}),
+        // WP-3.12: the rung this run banked and the record now standing for
+        // this dynasty. Present only when a rung above Ground was actually
+        // recorded, so a Ground run's response is byte-identical to before.
+        ...(ladderRecord ? { ladder: ladderRecord } : {}),
         ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
         ...(signal ? { signal } : {}),
         // The Take slot (§7.2). Present only when the server has a Take to

@@ -6,11 +6,18 @@
  *
  *   - CYBER's arena hardens from the outside in (`DYNASTY_CYBER`)
  *   - COSMIC's uncollected stars calcify where they sat (`DYNASTY_COSMIC`,
- *     live since WP-3.13 - and note it uses only the BLOCK, not the
- *     `TerrainSchedule`: COSMIC's blocks are not scheduled by a food count,
- *     they are the wave the player failed to finish)
- *   - PRIMAL's FERAL-2 "Fortress" petrifies the oldest tail segments
+ *     shipped WP-3.13)
+ *   - PRIMAL's FERAL-2 "Fortress" petrifies the oldest tail segments (shipped
+ *     WP-3.11)
  *   - a future ladder rung can start a run with a ring already placed
+ *
+ * TWO OF THOSE FOUR HAVE NO SCHEDULE, which is worth stating once here rather
+ * than discovering twice. `nextTerrainCells` is the ARENA's selector: it picks
+ * the outermost ring that still has room, and only CYBER wants that. Fortress
+ * and COSMIC both know EXACTLY which cells they are laying - the body segments
+ * that just petrified, the stars whose window just closed - so they use the
+ * block, the forming phase and the pending state, and none of the schedule.
+ * They meet in the engine's `placeTerrainAt`, not here.
  *
  * PHYSICS, NEVER PAYOUT. Terrain decides when you die, not what you earn — the
  * same split COSMIC's wall cycle already uses ("physical, never in the payout
@@ -94,18 +101,29 @@ export function formingTicksFor(
   schedule: TerrainSchedule,
   tickMs: number
 ): number {
-  return ticksForSeconds(schedule.formingSeconds, tickMs);
+  return formingTicksForSeconds(schedule.formingSeconds, tickMs);
 }
 
 /**
- * Seconds -> ticks at the live tick rate, floored at one tick.
+ * The same conversion for terrain that has no SCHEDULE, and for any other
+ * duration this module's consumers author in seconds.
  *
- * The conversion `formingTicksFor` was already doing, extracted so COSMIC's
- * calcification and constellation window authored in the same unit go through
- * the same arithmetic. Two copies of this would be two chances to round a
- * duration differently.
+ * PRIMAL's Fortress (WP-3.11) places blocks on the cells its own body is
+ * standing on, so it has a forming duration but no ring, no interval and no
+ * per-interval count. Handing it a fabricated `TerrainSchedule` to reach the
+ * conversion would put three meaningless numbers on the record; the honest
+ * shape is a duration, and `formingTicksFor` now delegates here so the two can
+ * never round differently.
+ *
+ * COSMIC (WP-3.13) arrived at the identical function independently and under a
+ * different name, which is the tell that it belongs here rather than in either
+ * caller: it converts BOTH its calcification delay and its constellation
+ * window through this. Three durations, one rounding.
  */
-export function ticksForSeconds(seconds: number, tickMs: number): number {
+export function formingTicksForSeconds(
+  seconds: number,
+  tickMs: number
+): number {
   const ms = Math.max(1, tickMs);
   return Math.max(1, Math.round((seconds * 1000) / ms));
 }

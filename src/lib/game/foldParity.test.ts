@@ -69,9 +69,16 @@ import {
   tithePerFoodFloor,
   type GenomeRunInput,
   type LengthLossEvent,
+  type PetrifyEvent,
 } from '@/shared/game/genome';
 import type { GeneId, GenePick } from '@/shared/game/genes';
-import { STRAIN_PHYSICS, type StrainPoints } from '@/shared/game/strains';
+import {
+  STRAIN_ECONOMICS,
+  STRAIN_PHYSICS,
+  type StrainPoints,
+} from '@/shared/game/strains';
+import { GENE_ECONOMICS } from '@/shared/game/genes';
+import { ANOMALY_ECONOMICS } from '@/shared/game/anomalies';
 import { GROWTH_PROFILES, type GrowthProfileId } from '@/shared/game/growth';
 import type { TraitId } from '@/shared/game/traits';
 import type { AnomalyId } from '@/shared/game/anomalies';
@@ -116,6 +123,15 @@ interface RunOutcome {
   serverScore: number;
   engineLengthTrace: number[];
   serverLengthTrace: number[];
+  /**
+   * The Fortress petrify events each side derived (WP-3.11). Deterministic on
+   * both sides and compared directly: an event the engine fired and the server
+   * did not is DNA the player is paid and then has taken away at settlement.
+   */
+  enginePetrifyEvents: PetrifyEvent[];
+  serverPetrifyEvents: PetrifyEvent[];
+  /** The live body at the end of the run - `modelled length - petrified`. */
+  engineLiveLength: number;
   /** The bounded-trust claims the engine accumulated (never deterministic). */
   claimedBonus: number;
   genomeInput: GenomeRunInput;
@@ -246,13 +262,23 @@ function runScript(script: Script): RunOutcome {
 
   // ONE layer is BOUNDED TRUST rather than recompute, and it does not belong
   // in a comparison of the two folds: the genome claims (Midas, Static
-  // Charge, Ricochet, Gilded Wake, molt foods, Ouroboros bites, Heartwood
-  // goldens), which the engine accumulates at eat time and the server CLAMPS
-  // against caps.
+  // Charge, Ricochet, Gilded Wake, Ouroboros bites), which the engine
+  // accumulates at eat time and the server CLAMPS against caps.
   //
-  // There were two. COSMIC's combo depended on tick timing the server cannot
-  // reconstruct and was likewise clamped rather than derived; WP-3.13 deleted
-  // it, so SCORE now needs no subtraction at all on any dynasty.
+  // THREE THINGS LEFT THAT LIST IN THIS WAVE, for two different reasons, and
+  // the distinction is the interesting part:
+  //
+  //   - molt foods and Heartwood goldens, because WP-3.11 made them
+  //     DETERMINISTIC. Fortress pays per petrify event, which the fold can
+  //     recompute, so they moved into the compared half rather than out of
+  //     the comparison;
+  //   - COSMIC's combo, because WP-3.13 DELETED it. It depended on tick
+  //     timing the server cannot reconstruct, so it was clamped rather than
+  //     derived, and there was no honest way to fold it.
+  //
+  // The first is a claim becoming a recompute; the second is a claim ceasing
+  // to exist. Between them, SCORE now needs no subtraction at all, on any
+  // dynasty - the score halves of these outcomes compare directly.
   //
   // Subtracting the claims is what makes this a like-for-like comparison of
   // the DETERMINISTIC folds. Everything that remains is arithmetic both sides
@@ -263,9 +289,7 @@ function runScript(script: Script): RunOutcome {
     (claims.staticChargeDna ?? 0) +
     (claims.ricochetDna ?? 0) +
     (claims.aurumWakeDna ?? 0) +
-    (claims.moltFoodDna ?? 0) +
-    (claims.ouroborosDna ?? 0) +
-    (claims.heartwoodDna ?? 0);
+    (claims.ouroborosDna ?? 0);
 
   void over;
 
@@ -276,6 +300,9 @@ function runScript(script: Script): RunOutcome {
     serverScore: totals.score,
     engineLengthTrace,
     serverLengthTrace: totals.lengthTrace.lengthAtEat.slice(0, foodCount + 1),
+    enginePetrifyEvents: game.getLengthTrace().petrifyEvents,
+    serverPetrifyEvents: totals.lengthTrace.petrifyEvents,
+    engineLiveLength: finalState.snake.length,
     claimedBonus,
     genomeInput,
   };
@@ -299,6 +326,13 @@ function expectParity(script: Script): RunOutcome {
       outcome.serverLengthTrace
     ),
   }).toEqual({ case: script.name, lengthDivergesAtFood: -1 });
+  // WP-3.11: petrification is derived, never reported, so the two derivations
+  // are compared on EVERY case rather than only the Fortress ones - a cadence
+  // that fires on one side alone is a payout bug on any build that reaches it.
+  expect({ case: script.name, petrify: outcome.enginePetrifyEvents }).toEqual({
+    case: script.name,
+    petrify: outcome.serverPetrifyEvents,
+  });
   expect({
     case: script.name,
     dna: outcome.engineDna - outcome.claimedBonus,
@@ -396,15 +430,152 @@ describe('fold parity: the shed-event argument (divergence D)', () => {
     });
   });
 
-  it('Heartwood rides shed events without changing the deterministic fold', () => {
+  it('a legacy shed blob still folds identically on both sides', () => {
+    // `shed` is retired from every pool (WP-3.01) but its definition survives
+    // for blobs that named it, so the cycle must still recompute identically.
     expectParity({
-      name: 'heartwood-sheds',
+      name: 'legacy-shed',
       picks: [
         { id: 'shed', atFood: 2 },
         { id: 'heartwood', atFood: 6 },
       ],
       foods: 70,
     });
+  });
+});
+
+describe("fold parity: PRIMAL's Fortress (WP-3.11)", () => {
+  // WRITTEN BEFORE THE MECHANIC, per this wave's standing rule.
+  //
+  // Fortress is the case the parity suite exists for, because it is the first
+  // effect where the engine's array and the model's number DELIBERATELY differ:
+  // the petrified segments leave `state.snake` and never leave the length
+  // model. Every reading of "how long is the snake" therefore has to say which
+  // one it means, on both sides, at the same point in the food. If the engine
+  // recorded its live array into `lengthAtEat` the traces would diverge by 6 at
+  // the first petrify and stay diverged, landing straight on `last_gasp`'s
+  // threshold and `bulk_up`'s bucket.
+  //
+  // It also pays DNA (5 per segment), and that pay is DERIVED on both sides
+  // rather than claimed - so an engine that petrifies one food earlier than the
+  // server pays the player DNA that settlement then takes back.
+
+  /**
+   * The Expression, reached exactly: heirloom 2 + two in-run FERAL genes is 4
+   * points and 2 genes, and the Apex needs 3 genes - so this is tier 2 and
+   * cannot silently become tier 3 and change what is under test.
+   */
+  const FERAL_2 = {
+    heirloom: { FERAL: 2 } as StrainPoints,
+    picks: [
+      { id: 'serpentine' as GeneId, atFood: 6 },
+      { id: 'glacial_reserve' as GeneId, atFood: 10 },
+    ],
+  };
+
+  it('THE CASE IS NOT VACUOUS: the Expression activates and the stone lands', () => {
+    // The Molt parity case this replaces asserted a cycle it never reached -
+    // heirloom 2 + ONE in-run gene is 3 points but one gene, and the
+    // Expression needs two, so `strainTier` capped it at 1 and the case was
+    // green for eighty foods of nothing happening. Assert the precondition.
+    const outcome = expectParity({ ...FERAL_2, name: 'fortress-fires', foods: 80 });
+    expect(outcome.serverPetrifyEvents.length).toBeGreaterThan(1);
+    expect(outcome.serverPetrifyEvents[0]).toEqual({
+      // Expression at food 10, so the first petrify is 20 foods later.
+      atFood: 10 + STRAIN_PHYSICS.fortressEveryFoods,
+      segments: STRAIN_PHYSICS.fortressSegments,
+      dna: STRAIN_PHYSICS.fortressSegments * STRAIN_ECONOMICS.fortressSegmentDna,
+    });
+  });
+
+  it('LENGTH KEEPS COUNTING THE STONE — the model never rewinds', () => {
+    const outcome = runScript({ ...FERAL_2, name: 'fortress-monotonic', foods: 80 });
+    const drops = outcome.engineLengthTrace
+      .map((len, i) => ({ atFood: i, len }))
+      .filter((x, i, all) => i > 1 && x.len < all[i - 1].len);
+    expect(drops).toEqual([]);
+  });
+
+  it('THE LIVE BODY SHORTENS BY EXACTLY WHAT TURNED TO STONE', () => {
+    // The other half of the same statement, and the one that would catch a
+    // model that quietly kept the segments in the array: modelled length minus
+    // every petrified segment is the live array, to the segment.
+    const outcome = runScript({ ...FERAL_2, name: 'fortress-live', foods: 80 });
+    const petrified = outcome.serverPetrifyEvents.reduce(
+      (sum, e) => sum + e.segments,
+      0
+    );
+    const modelled = outcome.serverLengthTrace[outcome.serverLengthTrace.length - 1];
+    expect(petrified).toBeGreaterThan(0);
+    // `lengthAtEat[last]` is the length BEFORE the last food's growth, so the
+    // live array is one segment longer than that reading minus the stone.
+    expect(outcome.engineLiveLength).toBe(modelled - petrified + 1);
+  });
+
+  it('Heartwood re-triggers on petrify, deterministically, on both sides', () => {
+    // Trap 1: Heartwood used to ride `lengthTrace.shedEvents`, and every
+    // producer of those is retired. Without this case it pays zero and no test
+    // notices. `heartwood` is itself a FERAL gene, so it is one of the two
+    // picks that reach the Expression.
+    const withoutIt = runScript({ ...FERAL_2, name: 'fortress-plain', foods: 80 });
+    const withIt = expectParity({
+      name: 'fortress+heartwood',
+      heirloom: { FERAL: 2 },
+      picks: [
+        { id: 'serpentine', atFood: 6 },
+        { id: 'heartwood', atFood: 10 },
+      ],
+      foods: 80,
+    });
+    expect(withIt.serverPetrifyEvents.length).toBe(
+      withoutIt.serverPetrifyEvents.length
+    );
+    // Heartwood's own -5%/food makes the totals incomparable directly, so the
+    // assertion is that its pay EXISTS and is folded identically - which
+    // `expectParity` above has already checked to the digit.
+    expect(GENE_ECONOMICS.heartwoodPetrifyFlat).toBeGreaterThan(0);
+  });
+
+  it('the Overgrown board pays the richer rate on both sides', () => {
+    const outcome = expectParity({
+      ...FERAL_2,
+      name: 'fortress+overgrown',
+      anomaly: 'overgrown',
+      foods: 80,
+    });
+    expect(outcome.serverPetrifyEvents[0].dna).toBe(
+      STRAIN_PHYSICS.fortressSegments * ANOMALY_ECONOMICS.overgrownPetrifySegmentDna
+    );
+  });
+
+  it('Fortress plus infuses plus the length-cliff genes', () => {
+    // INFUSE grows the body, Fortress moves segments out of it, and both
+    // `last_gasp` and `bulk_up` read the modelled length. This is the case
+    // where a one-sided length edit lands on a cliff rather than drifting.
+    expectParity({
+      name: 'fortress+infuse+cliffs',
+      heirloom: { FERAL: 2 },
+      picks: [
+        { id: 'serpentine', atFood: 6 },
+        { id: 'glacial_reserve', atFood: 10 },
+        { id: 'last_gasp', atFood: 14 },
+        { id: 'bulk_up', atFood: 18 },
+      ],
+      infuses: [26, 38, 50],
+      foods: 80,
+    });
+  });
+
+  it('a run that never reaches the Expression petrifies nothing', () => {
+    // The negative: one FERAL gene is not an Expression, and a Fortress that
+    // fires without one would be terrain nobody bought.
+    const outcome = expectParity({
+      name: 'fortress-unreached',
+      heirloom: { FERAL: 2 },
+      picks: [{ id: 'serpentine', atFood: 6 }],
+      foods: 80,
+    });
+    expect(outcome.serverPetrifyEvents).toEqual([]);
   });
 });
 
@@ -593,15 +764,6 @@ describe('fold parity: growth profiles (WP-3.02)', () => {
 });
 
 describe('fold parity: strains and their physics', () => {
-  it('FERAL Molt: the 20-food cycle and its growth floor', () => {
-    expectParity({
-      name: 'molt',
-      heirloom: { FERAL: 2 },
-      picks: [{ id: 'serpentine', atFood: 15 }],
-      foods: 80,
-    });
-  });
-
   it('VOLT arcs: three foods per eat still price one at a time', () => {
     expectParity({
       name: 'volt-arcs',

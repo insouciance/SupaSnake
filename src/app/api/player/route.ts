@@ -13,6 +13,7 @@ import { DEFAULT_AIM_SYSTEM, isAimSystemId } from '@/lib/game/aimSystems';
 import { getGenomeRunFacts, deriveFtue } from '@/lib/server/genome';
 import { getMasteryXp } from '@/lib/server/mastery';
 import { levelForXp } from '@/shared/game/mastery';
+import { readLadderRecords } from '@/lib/server/ladderRecords';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import type { FtueBootstrapResponse } from '@/lib/ftue/types';
 
@@ -184,6 +185,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // The D2 ladder (WP-3.12): which rungs this player has banked, per dynasty,
+    // and the highest they may ATTEMPT — MAX(best_rung) across dynasties, plus
+    // one. Unlock is global and the record is per-dynasty, which is the
+    // anti-re-climb ruling; `readLadderRecords` owns that arithmetic so no
+    // surface re-derives it.
+    //
+    // Read here rather than at run start because Run Setup has to render the
+    // selector BEFORE the start request exists. The server still decides: this
+    // read tells the client what to offer, and the session route re-reads and
+    // clamps whatever comes back. Failures and a missing migration 057 both
+    // report `available: false`, which renders as no ladder at all.
+    const ladder = await readLadderRecords(supabase, player.id);
+
     return NextResponse.json({
       player,
       // The day's harvest envelope (§8.6). `visible` carries the §8.6 ramp:
@@ -207,6 +221,12 @@ export async function GET(request: NextRequest) {
       // Identity v1 I4 (section 9.2): weekly Analyst digest email
       // opt-in. false pre-025 (column absent from the row).
       emailDigestOptIn: settings?.email_digest_opt_in === true,
+      ladder: {
+        available: ladder.available,
+        best: ladder.best,
+        maxBest: ladder.maxBest,
+        attemptable: ladder.attemptable,
+      },
     });
   } catch (err) {
     console.error('Player GET error:', err);
