@@ -587,10 +587,16 @@ Recorded 2026-07-28. See §6 item 10.
 
 ## §6 Still owed by the wave
 
-**Every build item below is done.** The list is kept struck-through rather than
-deleted because several entries record *how* the thing was settled, and that
-reasoning is the part a future session needs. What remains is in §6a: three
-owner decisions and one deploy.
+**Every build item below is done, and all nine are in production.** The list is
+kept struck-through rather than deleted because several entries record *how* the
+thing was settled, and that reasoning is the part a future session needs.
+
+Items 6-8 went un-struck for a day after they shipped, and the doc therefore
+read as though a third of the wave was outstanding. Recorded because this file
+IS the handoff: a stale status line here is not cosmetic, it is the artifact
+lying to whoever reads it next.
+
+What remains is in §6a, and none of it is a build item.
 
 1. ~~**Food placement** (§4) — profile first.~~ Shipped as **WP-3.06**. The
    profiling instruction was followed and it overturned the diagnosis — see §4.
@@ -611,9 +617,21 @@ owner decisions and one deploy.
    -trust clamp, `COSMIC_TRUST_MAX_BONUS_RATIO` and the Constellation Crown's
    permission to raise it are all gone), three genes were re-authored rather
    than orphaned, and the Yield gap above is open.
-6. **PRIMAL** — Fortress replacing FERAL-2 Molt, tempo 200 → ~170-180ms.
-7. **D3** — per-dynasty score curves with comparable integrals.
-8. **D2 ladder** (WP-3.10).
+6. ~~**PRIMAL** — Fortress replacing FERAL-2 Molt, tempo 200 → ~170-180ms.~~
+   Shipped as **WP-3.11** (Fortress) and **WP-3.08** (tempo, `PRIMAL_SPEED_MS
+   = 175` — its own constant, because `GAME_CONFIG.snake.initialSpeed` is also
+   CYBER's curve numerator). Fortress found that WP-3.01 never actually
+   quarantined Molt: a Rule 15 violation had been shipping since 2026-07-27.
+7. ~~**D3** — per-dynasty score curves with comparable integrals.~~ Shipped as
+   **WP-3.08**. PRIMAL back-loaded, CYBER a front-loaded tent, COSMIC
+   mid-weighted; integrals 73.5 / 73.5 / 72.0 over n=1..48, a 2.08% spread
+   against the ±10% tolerance, with a second test pinning that the three curves
+   actually DIFFER so equal integrals cannot be met by three copies of one
+   curve.
+8. ~~**D2 ladder**~~ — the plan called this WP-3.10; it shipped as **WP-3.12**,
+   because WP-3.10 was taken by the carry (see §0). Eight rungs, migration 057,
+   and it found that the Rule 6 gate was blind to every snake_case column it
+   was meant to protect.
 9. ~~**Repair the legacy flag-on e2e specs** and make the production leg
    blocking.~~ Shipped with part 2 (`8d5f42e`); the production leg passes and
    **blocks** now, with `GROWTH_LAB_V1` and `LADDER_V1` armed. A red production
@@ -659,12 +677,13 @@ the release.
 5. **The Yield spread** (§5.1). Predates this wave; the answer decides whether
    a Yield parity gate is written at all.
 
-### Then
+### Done
 
-6. **Deploy.** Runbook precondition 5: the migration dry-run must name exactly
-   `057_player_ladders.sql` and nothing else. Any extra migration is a stop
-   condition.
-7. **Play it**, and rule D1.
+6. ~~**Deploy.**~~ Released 2026-07-28. The owner set `NEXT_PUBLIC_LADDER_V1`
+   in Vercel first — flags are build-time inlined, so setting them after a
+   deploy does nothing — and the dry-run named exactly `057_player_ladders.sql`.
+   Four defect fixes followed from the first playtest (§8).
+7. **Play it**, and rule D1. — the only thing left.
 
 ---
 
@@ -681,6 +700,69 @@ each, ~35 workers competing; the 15-minute load average reached 13.04.
 commit. A full constrained run takes ~49 minutes; CI's `--runInBand --coverage`
 run must finish inside **15 minutes** or the job is cancelled.
 
+## §8 The first playtest — four defects, and the same mistake three more times
+
+Everything below was found by the owner playing, within an hour of the release.
+
+**The trail z-fought the floor.** `ArenaFloor`'s platform is a 0.1-tall slab
+centred at -0.05, so its top face is at exactly **y = 0**, and the trail drew
+every cube base-on-floor spanning `[0, height]`. Two coplanar surfaces at
+identical depth over the cube's whole footprint: horizontal bands across the
+lower part of every face.
+
+I diagnosed it twice from reading geometry and shipped both. First coplanar
+link tops (inset the link — changed the render, fixed nothing). Then the joint
+links themselves (deleted them — justified by a control render taken at a zoom
+where this banding was invisible). **The owner found it**: *"to me it looks
+like the cubes are cut by the floor - maybe your z positioning is center and
+not bottom."*
+
+The clue I had and did not use was theirs too: *"going east-west it's not
+flickering, going north-south it is."* A direction-dependent artifact means a
+conflict with a FIXED plane — moving along Z changes the depth slope against
+that plane, moving along X leaves it constant. That points away from the snake
+and at the floor, and it would have saved two deploys.
+
+`FLOOR_CLEARANCE` now lifts anything standing on the platform. **Terrain had
+the identical bug** — solid blocks span `[0, 0.62]` — and nobody had seen it
+because terrain has still never been visually verified.
+
+**Food was placed where it could not be survived.** Two separate causes:
+
+- *Reachability was best-effort.* The placer only checked it once random
+  sampling exhausted, which on a sparse board never happens. The justification
+  was that a pocket sealed by your own BODY is transient. Terrain voids that —
+  Rule 15 forbids removing a block, so a terrain-sealed pocket is permanent.
+  Now checked on every placement, bounded to 33x33 so it is exact on the
+  shipped board and cannot revive the 400x cost of §4.
+- *Food baited the closing ring.* The arena is not unfair on its own: a block
+  telegraphs for two seconds and only turns lethal once the cell is clear, so
+  entering the ring is a choice. Food is not a choice. Placing it inside the
+  closing front is the difference between a hazard and a trap. The active ring
+  is now excluded from placement; the schedule closes at the same rate.
+
+**Reachable is not survivable**, and the owner had to correct me mid-fix:
+*"that food was reachable, but you couldn't get out alive - there was no escape
+path."* A region-size check was added, and its limits are stated in the code
+rather than implied: it catches food stranded in a board-fragment or placed
+when the snake is already boxed in, and it does NOT prove survivability in
+general, because a pocket with a mouth measures as part of the whole open
+region even though the body may seal that mouth behind it.
+
+Two latent bugs fell out of the work: the placer's last-resort sweep could
+return the head's own cell (never fired in-game, because the engine always
+blocks it — the same shape as the original placer's latent bug), and the joint
+links are gone for good.
+
+### Watch this
+
+`foldParity.test.ts` now runs ~100s locally against an ~11s baseline, from the
+Fortress and COSMIC additions. Comfortably inside CI's 15-minute budget, so it
+is not urgent — but it is the suite that blew that budget once already, and the
+number is written here so the next person notices before CI does.
+
+---
+
 ### Method
 
 The two most expensive mistakes in this wave were the same mistake twice:
@@ -690,3 +772,9 @@ of measuring it** (food placement, four wrong diagnoses in a row; the bisect tha
 identified the commit took two minutes and was run fourth).
 
 When something is slow, profile it. When something is wired, assert the wire.
+
+The playtest added a third, and it is the same shape: **when something looks
+wrong, isolate one variable and look at it.** Three graphics diagnoses were
+made by reading geometry and two of them were wrong; the control render that
+settled it took two minutes. A render CHANGING is not a render being RIGHT,
+which is the specific trap I fell into.
