@@ -24,6 +24,8 @@ import {
   rulesetExplainer,
   type DynastyName,
   CYBER_TICK_FLOOR_MS,
+  PRIMAL_SPEED_MS,
+  SCORE_TERMINUS_FOODS,
 } from './rulesets';
 import type { MutationPick } from './mutations';
 
@@ -45,11 +47,30 @@ describe('bank constants', () => {
 describe('PRIMAL ruleset (Steady Growth)', () => {
   const primal = RULESETS.PRIMAL;
 
-  it('has a fixed speed equal to the config initial speed', () => {
-    expect(primal.speedForFood(0)).toBe(GAME_CONFIG.snake.initialSpeed);
-    expect(primal.speedForFood(1)).toBe(200);
-    expect(primal.speedForFood(50)).toBe(200);
-    expect(primal.speedForFood(500)).toBe(200);
+  it('has a fixed speed of its own, no longer the config initial speed', () => {
+    // WP-3.08 (DYNASTY_PRIMAL §2.5): 200 -> 175, the midpoint of the doc's
+    // 170-180 band. The constant moved OUT of GAME_CONFIG because
+    // `initialSpeed` is also the numerator of CYBER's speed curve - retuning
+    // PRIMAL there would have silently retuned CYBER too. That separation is
+    // the assertion, not a detail: these two numbers must be able to differ.
+    expect(PRIMAL_SPEED_MS).toBe(175);
+    expect(PRIMAL_SPEED_MS).not.toBe(GAME_CONFIG.snake.initialSpeed);
+    expect(primal.speedForFood(0)).toBe(PRIMAL_SPEED_MS);
+    expect(primal.speedForFood(1)).toBe(175);
+    expect(primal.speedForFood(50)).toBe(175);
+    expect(primal.speedForFood(500)).toBe(175);
+  });
+
+  it('stays inside the band the config declares, and above the interpolation', () => {
+    // The tempo may move within 170-180, but not out of the band the engine's
+    // own smoothing assumes: a tick shorter than `interpolationDuration` means
+    // the next move starts before the last one has finished drawing. 175 keeps
+    // 25ms of margin - COSMIC has shipped at 160 with 10ms for months.
+    expect(PRIMAL_SPEED_MS).toBeGreaterThanOrEqual(170);
+    expect(PRIMAL_SPEED_MS).toBeLessThanOrEqual(180);
+    expect(PRIMAL_SPEED_MS).toBeGreaterThan(GAME_CONFIG.snake.interpolationDuration);
+    expect(PRIMAL_SPEED_MS).toBeLessThanOrEqual(GAME_CONFIG.snake.initialSpeed);
+    expect(PRIMAL_SPEED_MS).toBeGreaterThan(GAME_CONFIG.snake.minSpeed);
   });
 
   it('compounds food value: round(10 * (1 + 0.02 * (n - 1)))', () => {
@@ -69,9 +90,31 @@ describe('PRIMAL ruleset (Steady Growth)', () => {
     }
   });
 
-  it('has a flat x1 score multiplier', () => {
-    expect(primal.scoreMultiplier(1)).toBe(1);
-    expect(primal.scoreMultiplier(100)).toBe(1);
+  it('back-loads score: x0.5 opening, +0.1 per two foods, capped x2.0', () => {
+    // WP-3.08 / D3. The shipped `() => 1` is gone: PRIMAL earns by depth, so
+    // the number the leaderboard ranks now says so too (Constitution §6.1).
+    expect(primal.scoreMultiplier(1)).toBe(0.5);
+    expect(primal.scoreMultiplier(2)).toBe(0.6);
+    expect(primal.scoreMultiplier(3)).toBe(0.6); // the step is two foods wide
+    expect(primal.scoreMultiplier(10)).toBe(1); // parity with the old flat curve
+    expect(primal.scoreMultiplier(14)).toBe(1.2);
+    expect(primal.scoreMultiplier(20)).toBe(1.5);
+    expect(primal.scoreMultiplier(30)).toBe(2); // the cap engages here
+    expect(primal.scoreMultiplier(100)).toBe(2);
+    expect(primal.scoreMultiplier(500)).toBe(2);
+  });
+
+  it('never decreases with n, and pays exact integer points at base 10', () => {
+    // Exactness is the reason the curve is written as a division by ten:
+    // `0.5 + 0.1 * 7` is 1.2000000000000002, and a pinned x1.2 would be a lie.
+    // With it, the fold's Math.round never actually rounds.
+    for (let n = 2; n <= 200; n++) {
+      expect(primal.scoreMultiplier(n)).toBeGreaterThanOrEqual(
+        primal.scoreMultiplier(n - 1)
+      );
+      const points = FOOD_BASE_SCORE * primal.scoreMultiplier(n);
+      expect(points).toBe(Math.round(points));
+    }
   });
 });
 
@@ -102,45 +145,120 @@ describe('CYBER ruleset (Overclock)', () => {
     }
   });
 
-  it('tiers the multiplier: floor(n/5) capped at 4, mult = 1 + 0.5 * tier', () => {
-    // Foods 1-4: tier 0 -> x1
+  it('front-loads score: a four-food tent, x1 -> x3 by food 16, then decaying', () => {
+    // WP-3.08 / D3. Score is no longer the DNA tier multiplier - the two ask
+    // different questions (Yield §6.2 vs Score §6.1) and sharing one function
+    // conflated them. The tail decays because past the tick floor speed stopped
+    // being difficulty and became inefficiency: ticks per food climbed 18 ->
+    // 113 in the owner's banked run, and those foods should not pay full price.
+    // Rise: tiers 0-4 on floor(n/4)
     expect(cyber.scoreMultiplier(1)).toBe(1);
-    expect(cyber.scoreMultiplier(4)).toBe(1);
-    // Foods 5-9: tier 1 -> x1.5
-    expect(cyber.scoreMultiplier(5)).toBe(1.5);
-    expect(cyber.scoreMultiplier(9)).toBe(1.5);
-    // Foods 10-14: tier 2 -> x2
-    expect(cyber.scoreMultiplier(10)).toBe(2);
-    // Foods 15-19: tier 3 -> x2.5
-    expect(cyber.scoreMultiplier(15)).toBe(2.5);
-    // Food 20+: tier capped at 4 -> x3
-    expect(cyber.scoreMultiplier(20)).toBe(3);
-    expect(cyber.scoreMultiplier(500)).toBe(3);
+    expect(cyber.scoreMultiplier(3)).toBe(1);
+    expect(cyber.scoreMultiplier(4)).toBe(1.5);
+    expect(cyber.scoreMultiplier(8)).toBe(2);
+    expect(cyber.scoreMultiplier(12)).toBe(2.5);
+    // Peak: foods 16-19
+    expect(cyber.scoreMultiplier(16)).toBe(3);
+    expect(cyber.scoreMultiplier(19)).toBe(3);
+    // Decay: the same steps back down
+    expect(cyber.scoreMultiplier(20)).toBe(2.5);
+    expect(cyber.scoreMultiplier(24)).toBe(2);
+    expect(cyber.scoreMultiplier(28)).toBe(1.5);
+    expect(cyber.scoreMultiplier(32)).toBe(1);
+    // Floor: x0.5 from food 36, forever
+    expect(cyber.scoreMultiplier(36)).toBe(0.5);
+    expect(cyber.scoreMultiplier(500)).toBe(0.5);
   });
 
-  it('applies the tier multiplier to per-food DNA', () => {
-    expect(cyber.foodDnaValue(1)).toBe(10);
-    expect(cyber.foodDnaValue(5)).toBe(15);
-    expect(cyber.foodDnaValue(10)).toBe(20);
-    expect(cyber.foodDnaValue(15)).toBe(25);
-    expect(cyber.foodDnaValue(20)).toBe(30);
+  it('earns two thirds of a terminus run in its first half', () => {
+    // The claim "front-loaded", stated as the only thing that makes it true.
+    let firstHalf = 0;
+    let whole = 0;
+    for (let n = 1; n <= SCORE_TERMINUS_FOODS; n++) {
+      const points = Math.round(FOOD_BASE_SCORE * cyber.scoreMultiplier(n));
+      if (n <= SCORE_TERMINUS_FOODS / 2) firstHalf += points;
+      whole += points;
+    }
+    expect(firstHalf / whole).toBeGreaterThan(0.6);
+  });
+
+  it('keeps the five-food DNA tier: floor(n/5) capped at 4, mult = 1 + 0.5 * tier', () => {
+    // The DNA multiplier is UNCHANGED by the score curve rework. It is asserted
+    // through foodDnaValue because that is now its only caller.
+    expect(cyber.foodDnaValue(1)).toBe(10); // tier 0 -> x1
+    expect(cyber.foodDnaValue(4)).toBe(10);
+    expect(cyber.foodDnaValue(5)).toBe(15); // tier 1 -> x1.5
+    expect(cyber.foodDnaValue(9)).toBe(15);
+    expect(cyber.foodDnaValue(10)).toBe(20); // tier 2 -> x2
+    expect(cyber.foodDnaValue(15)).toBe(25); // tier 3 -> x2.5
+    expect(cyber.foodDnaValue(20)).toBe(30); // tier 4 (capped) -> x3
     expect(cyber.foodDnaValue(100)).toBe(30);
+    expect(cyber.foodDnaValue(500)).toBe(30);
   });
 });
 
 describe('COSMIC ruleset (Flux)', () => {
   const cosmic = RULESETS.COSMIC;
 
-  it('has a fixed 160 ms tick between PRIMAL and CYBER tier 1', () => {
+  it('has a fixed 160 ms tick, still the faster of the two fixed tempos', () => {
     expect(COSMIC_SPEED_MS).toBe(160);
     expect(cosmic.speedForFood(0)).toBe(160);
     expect(cosmic.speedForFood(80)).toBe(160);
+    // WP-3.08 closed PRIMAL's 40ms lead to 15ms. It must not invert: COSMIC's
+    // clustered groups and combo window are authored against being the quicker
+    // board, and its flux phases are tick-counted at 160.
+    expect(COSMIC_SPEED_MS).toBeLessThan(PRIMAL_SPEED_MS);
   });
 
   it('pays a flat base food value - the combo layer sits on top', () => {
     expect(cosmic.foodDnaValue(1)).toBe(10);
     expect(cosmic.foodDnaValue(50)).toBe(10);
-    expect(cosmic.scoreMultiplier(50)).toBe(1);
+    expect(cosmic.foodDnaValue(500)).toBe(10);
+  });
+
+  it('mid-weights score: a six-food tent peaking x2.5 across foods 24-29', () => {
+    // WP-3.08 / D3. COSMIC's skill is the chain, and a chain needs a run
+    // already in progress to exist, so the shape pays in the middle - where the
+    // dynasty's own mechanic can actually be played.
+    expect(cosmic.scoreMultiplier(1)).toBe(0.5);
+    expect(cosmic.scoreMultiplier(6)).toBe(1);
+    expect(cosmic.scoreMultiplier(12)).toBe(1.5);
+    expect(cosmic.scoreMultiplier(18)).toBe(2);
+    expect(cosmic.scoreMultiplier(24)).toBe(2.5); // peak
+    expect(cosmic.scoreMultiplier(29)).toBe(2.5);
+    expect(cosmic.scoreMultiplier(30)).toBe(2);
+    expect(cosmic.scoreMultiplier(36)).toBe(1.5);
+    expect(cosmic.scoreMultiplier(42)).toBe(1);
+    expect(cosmic.scoreMultiplier(48)).toBe(0.5); // floor
+    expect(cosmic.scoreMultiplier(500)).toBe(0.5);
+  });
+
+  it('keeps every per-food base score a multiple of 5, so the combo never rounds', () => {
+    // Load-bearing, not tidy. The combo steps by 0.2, so `base x combo` is an
+    // exact integer only while base is a multiple of 5. Break that and an
+    // honest max-combo run rounds past `floor(base x COSMIC_TRUST_MAX_BONUS_RATIO)`
+    // - round(9 x 2.4) = 22 is a bonus of 13 against a ceiling of 12.6 - and
+    // the server clamps a legitimate score downward.
+    let base = 0;
+    let boosted = 0;
+    for (let n = 1; n <= 200; n++) {
+      const points = FOOD_BASE_SCORE * cosmic.scoreMultiplier(n);
+      expect(points % 5).toBe(0);
+      for (let chain = 1; chain <= 12; chain++) {
+        // The exact value in fifths: base/5 x (5 + chained steps), capped at 12
+        // fifths (x2.4). What the engine computes must BE this, not round to it.
+        const exact = (points / 5) * Math.min(12, chain + 4);
+        expect(Math.round(points * cosmicComboMultiplier(chain))).toBe(exact);
+      }
+      base += points;
+      boosted += Math.round(points * COSMIC_CONSTELLATION.comboCap);
+    }
+    // The whole-run bonus stays inside the ratio the server clamps against,
+    // asserted in fifths so the comparison is integer and cannot lose to the
+    // float representation of 1.4.
+    expect(5 * (boosted - base)).toBeLessThanOrEqual(
+      5 * COSMIC_TRUST_MAX_BONUS_RATIO * base
+    );
   });
 
   it('carries the constellation config: 3 glyphs, groups of 3, 8-tick window', () => {
@@ -264,25 +382,100 @@ describe('computeRunTotals', () => {
   });
 
   it('produces the expected PRIMAL totals at economy checkpoints', () => {
-    // Stepped compounding: sum of round(10 * (1 + 0.02 * (n-1)))
+    // DNA is untouched by WP-3.08 - stepped compounding, sum of
+    // round(10 * (1 + 0.02 * (n-1)))
     expect(computeRunTotals('PRIMAL', 10).rawDna).toBe(109);
     expect(computeRunTotals('PRIMAL', 30).rawDna).toBe(387);
     expect(computeRunTotals('PRIMAL', 60).rawDna).toBe(954);
     expect(computeRunTotals('PRIMAL', 100).rawDna).toBe(1990);
-    expect(computeRunTotals('PRIMAL', 30).score).toBe(300);
+    // Score is the back-loaded curve: 5 points on food 1, +1 every two foods,
+    // 20 from food 30 on. It was a flat 10/food (300 at 30) before WP-3.08.
+    expect(computeRunTotals('PRIMAL', 10).score).toBe(75);
+    expect(computeRunTotals('PRIMAL', 30).score).toBe(375);
+    expect(computeRunTotals('PRIMAL', 48).score).toBe(735);
+    expect(computeRunTotals('PRIMAL', 100).score).toBe(1775);
   });
 
   it('produces the expected CYBER totals at economy checkpoints', () => {
+    // DNA is untouched by WP-3.08 - the five-food tier:
     // 4x10 + 5x15 + 5x20 + 5x25 + (n-19)x30 from food 20 on
     expect(computeRunTotals('CYBER', 10).rawDna).toBe(135);
     expect(computeRunTotals('CYBER', 30).rawDna).toBe(670);
     expect(computeRunTotals('CYBER', 60).rawDna).toBe(1570);
     expect(computeRunTotals('CYBER', 100).rawDna).toBe(2770);
-    expect(computeRunTotals('CYBER', 30).score).toBe(670);
+    // Score is the front-loaded tent, which used to be that same DNA curve
+    // (670 at 30). Past the peak it decays, so the last 52 foods of a 100-food
+    // run add 200 points between them - a fifth of what the first 20 paid.
+    expect(computeRunTotals('CYBER', 10).score).toBe(150);
+    expect(computeRunTotals('CYBER', 30).score).toBe(615);
+    expect(computeRunTotals('CYBER', 48).score).toBe(735);
+    expect(computeRunTotals('CYBER', 100).score).toBe(995);
   });
 
-  it('COSMIC base totals are flat (combo bonus is layered on top, clamped)', () => {
-    expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 300, score: 300 });
+  it('COSMIC base totals are flat in DNA and mid-weighted in score', () => {
+    // The combo bonus is layered on top of both by the engine, and clamped.
+    expect(computeRunTotals('COSMIC', 30)).toEqual({ rawDna: 300, score: 465 });
+    expect(computeRunTotals('COSMIC', 48)).toEqual({ rawDna: 480, score: 720 });
+  });
+
+  it('holds the three score curves within ±10% at the terminus (D3)', () => {
+    // THE deliverable of WP-3.08, and the reason the shapes are allowed to
+    // differ at all. Constitution §6.1: "Each dynasty gets a shape - CYBER
+    // front-loaded, PRIMAL back-loaded, COSMIC mid-weighted - with comparable
+    // integrals at the terminus, so the dynasty is a choice of HOW you earn
+    // rather than HOW MUCH." §17 item 30 sets the tolerance at ±10% and says
+    // that if the integrals cannot be brought inside it, escalate rather than
+    // mint a second board.
+    //
+    // The terminus is 48 foods: D1's candidate median run (REDESIGN_WAVE §1.3),
+    // the number every other food-indexed dial in the catalog is being re-based
+    // against. Summing to a longer run would measure a shape nobody plays; to a
+    // shorter one, only the opening. Without this test "front-loaded" quietly
+    // means "CYBER scores more", which is the exact defect §6.1 was written
+    // about - Score per minute differed by roughly 10x while Rule 2 passed
+    // mechanically the whole time.
+    const integrals = ALL_DYNASTIES.map((dynasty) => {
+      let total = 0;
+      for (let n = 1; n <= SCORE_TERMINUS_FOODS; n++) {
+        total += RULESETS[dynasty].scoreMultiplier(n);
+      }
+      return total;
+    });
+
+    expect(integrals).toEqual([73.5, 73.5, 72]); // PRIMAL, CYBER, COSMIC
+    expect(Math.max(...integrals) / Math.min(...integrals) - 1).toBeLessThanOrEqual(0.1);
+
+    // And the same statement in the number a player actually sees - the fold,
+    // rounding and all, not just the multiplier.
+    const scores = ALL_DYNASTIES.map(
+      (dynasty) => computeRunTotals(dynasty, SCORE_TERMINUS_FOODS).score
+    );
+    expect(scores).toEqual([735, 735, 720]);
+    expect(Math.max(...scores) / Math.min(...scores) - 1).toBeLessThanOrEqual(0.1);
+  });
+
+  it('gives each dynasty a genuinely different shape, not three flat curves', () => {
+    // The other half of the deliverable: comparable integrals are only
+    // interesting because the curves underneath them disagree. Measured as the
+    // centre of mass of each curve - the food index the run's Score balances
+    // on, as a fraction of the terminus. Equal integrals with equal centroids
+    // would be three copies of one curve wearing different names.
+    const centroid = (dynasty: DynastyName) => {
+      const ruleset = RULESETS[dynasty];
+      let weighted = 0;
+      let total = 0;
+      for (let n = 1; n <= SCORE_TERMINUS_FOODS; n++) {
+        weighted += n * ruleset.scoreMultiplier(n);
+        total += ruleset.scoreMultiplier(n);
+      }
+      return weighted / total / SCORE_TERMINUS_FOODS;
+    };
+
+    expect(centroid('CYBER')).toBeCloseTo(0.41, 2); // front-loaded
+    expect(centroid('COSMIC')).toBeCloseTo(0.54, 2); // mid-weighted
+    expect(centroid('PRIMAL')).toBeCloseTo(0.6, 2); // back-loaded
+    expect(centroid('CYBER')).toBeLessThan(centroid('COSMIC'));
+    expect(centroid('COSMIC')).toBeLessThan(centroid('PRIMAL'));
   });
 });
 
