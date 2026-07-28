@@ -4,7 +4,7 @@ Companion to `REDESIGN_WAVE.md`, which is the PLAN. This file is the STATE:
 what has shipped, what was ruled since the plan was written, and what a fresh
 session needs in order to continue without reconstructing any of it.
 
-Last updated 2026-07-28.
+Last updated 2026-07-28 (second revision — the wave built out and merged).
 
 ---
 
@@ -17,7 +17,12 @@ full product when it's done, not parts of it."*
 So do NOT ship the remaining items one at a time and ask for a playtest between
 each. Everything in §6 lands, then the owner plays the complete design once.
 
-This has direct consequences for how to work:
+**STATUS: DISCHARGED on the build side.** All nine of §6's items are merged to
+`main` (§1). Nothing has been deployed. What is left is §6a — three owner
+decisions, two owner-only flag flips, and one release.
+
+This had direct consequences for how the work was done, and they still govern
+the next wave:
 
 - **D1 cannot be ruled until then**, and neither can anything downstream of it.
   Do not ask the owner to judge time-to-first-pressure on a partial build.
@@ -43,9 +48,27 @@ truth, pick-rate lands"*. The commits merged as PR #18 also say WP-3.05, for the
 offer cadence, terrain renderer and INFUSE copy fix.
 
 The commits are merged, so they are not being rewritten. Read the label by
-context: **in code comments, WP-3.05 means PR #18's work.** The planned
-PASS-pays package is called **the carry** throughout this document and needs a
-fresh number when it is scheduled.
+context: **in code comments, WP-3.05 means PR #18's work.**
+
+The build-out then took the next free numbers, which do NOT line up with
+`REDESIGN_WAVE.md` §3's plan numbers. The mapping, once and for all:
+
+| As built | What it is | Plan's number |
+|---|---|---|
+| WP-3.06 | One food + the rewritten placer | — (this doc's §4) |
+| WP-3.07 | The trail — earned fusion | — (this doc's §3.2) |
+| WP-3.08 | D3 Score curves + PRIMAL's own tempo | part of plan 3.04 |
+| WP-3.09 | The in-run growth readout | — (this doc's §3.3) |
+| WP-3.10 | The carry + the seeded portal schedule | "the carry" |
+| WP-3.11 | PRIMAL Fortress (FERAL-2), and the e2e leg | plan 3.03's FERAL-2 |
+| WP-3.12 | The D2 ladder | plan 3.10 |
+| WP-3.13 | COSMIC — torus + calcifying stars | — (this doc's §6.5) |
+
+**Plan 3.05 (PASS pays / offer-card / pick-rate) and plan 3.06 (BANISH) were
+NOT built and are not in this wave.** Portal PASS now pays through the carry,
+which is a different mechanism reaching the same goal; the gene-offer PASS
+reward, the offer-card rewrite, pick-rate instrumentation and BANISH all remain
+unbuilt.
 
 ---
 
@@ -60,20 +83,41 @@ fresh number when it is scheduled.
 `NEXT_PUBLIC_GROWTH_LAB_V1` is **on** in production, confirmed by the selector
 rendering.
 
-**Verify the PR #18 deploy completed** — `gh run list --workflow=deploy-production.yml
---limit 3` — before assuming production has the terrain renderer. It was still
-`in_progress` when this document was written.
+### Merged to `main`, NOT YET DEPLOYED
 
-### Open PRs
+The whole wave is on `main` and has never run in production. Three squashes:
 
-- **#19** — this document. Docs only.
+| Commit | Contents |
+|---|---|
+| `55b0f2c` (PR #25) | Part 1 — WP-3.06 one food + the rewritten placer, 3.07 the trail, 3.08 D3 curves + PRIMAL's tempo, 3.09 the growth readout, 3.10 the carry + the seeded portal schedule |
+| `8d5f42e` (PR #29) | Part 2 — WP-3.11 Fortress, 3.12 the ladder, and the e2e leg repaired and made blocking |
+| `292624e` (PR #28) | WP-3.13 — COSMIC's permanent torus and calcifying stars |
 
-### Parked branches
+**Migration 057 (`player_ladders`) is pending and has never been applied.**
+Release order is stated in the file itself: deploy the app, then apply 057. The
+app is correct without it — the ladder reader treats a missing table as "no
+ladder", every run is rung 0, and rung 0 is byte-identical to the shipped game.
 
-- **`wp/3-06-food-placement`** — one food + the new placer. See §4. Does not sit
-  on a green suite; carries a deliberately-labelled WIP commit.
-- `wp/3-05-cadence-and-food`, `wp/3-03-arena-and-readout` — merged, safe to
-  delete.
+### Why the wave merged in three squashes rather than nine PRs
+
+Branch protection requires every branch to be up to date with `main`, so each
+merge costs a full CI cycle (~20 minutes, dominated by e2e). Nine work packages
+merged serially would have been most of a day of CI. Bundling is also the
+repo's own precedent — PR #11 bundled WP-2.05 … WP-2.10b.
+
+**Integrating before merging earned its keep three times**, on collisions no
+single branch could see:
+
+- WP-3.09 asserted `aggressive` puts three foods on the board while WP-3.06 set
+  every profile to one, the same afternoon. Both were green alone.
+- Migration 057's RLS policy named `players.auth_user_id`, a column that has
+  never existed. See §2.1 — this one would have failed the production deploy.
+- Fortress and COSMIC each added a terrain-placement path, so the codebase
+  briefly held three copies of "dedupe by cell, stamp a forming phase, push a
+  block". They were converged into `placeTerrainAt` at merge, and
+  `terrain.visible.test.ts` now asserts that composition — one proof of the
+  renderer connection that holds for every consumer, including rungs nobody has
+  written yet.
 
 ---
 
@@ -109,13 +153,46 @@ The axis is **categorical** (flat-and-changing vs raised-and-still), not
 palette, so it survives anyone retuning colours. Deliberately not a dynasty
 colour: dynasty hues mean "you" everywhere else on the board.
 
-**NEVER VISUALLY VERIFIED.** `TerrainBlocks.tsx` is structurally tested but no
-human has looked at it. Block height, decal fill rate and the slate against the
-floor are unverified judgement calls. Get the owner's eyes on it early.
+**STILL NEVER VISUALLY VERIFIED IN A LIVE RUN.** `TerrainBlocks.tsx` is
+structurally tested and now has three consumers (CYBER's ring, Fortress's
+petrified segments, COSMIC's calcified stars), but no human has watched a block
+form and turn lethal. Block height, decal fill rate and the slate against the
+floor remain unverified judgement calls.
+
+The trail got its first look on 2026-07-28 via `/dev/perf` under software GL —
+no console errors, 58 draw calls, and the fusion contrast reads (packed rows
+merge into a slab, gapped regions stay discrete voxels with dark seams). That
+page uses its own camera and a scripted circuit, so head-zone expressiveness,
+the tail's ticks-until-vacancy encoding, and the trail AGAINST terrain are all
+still unseen.
+
+### §2.1 The same defect shape, twice more
+
+Two things this wave found that no test asserted, both the same shape as the
+invisible terrain — the test checked the thing rather than its consequence:
+
+- **A Rule 15 violation had been shipping since 2026-07-27.** WP-3.01 was
+  recorded as having quarantined Molt. It had not: FERAL's shed cycle was still
+  running in the engine AND in `computeLengthTrace`, still compounding tempo,
+  still described to players. `rule15.test.ts` missed it because it asserted the
+  retirement of the `shed` GENE rather than the absence of shed CYCLES. It now
+  asserts both, plus the Molt dials by name.
+- **Migration 057 would have failed the production deploy.** Its RLS policy
+  named `players.auth_user_id`; every policy in this schema since 001 reads
+  `players.user_id`. WP-3.12 deliberately did not apply its own migration — a
+  defensible call — but the consequence was that the file had never been
+  EXECUTED by anything, and its first execution would have been the deploy's
+  migration step, which runs AFTER promotion. It was caught because the same
+  wave made the e2e leg blocking, and that leg applies every migration in order
+  against an isolated Supabase. The gate paid for itself on its first run.
 
 ---
 
-## §3 Owner rulings since the plan was written
+## §3 Owner rulings since the plan was written — ALL IMPLEMENTED
+
+Kept in full because the rulings are the authority, and because several were
+harder to implement than they read. Where an entry's premise turned out to be
+wrong, the correction sits with it rather than replacing it.
 
 ### 3.1 The carry — bank and salvage drift apart (2026-07-28)
 
@@ -240,11 +317,58 @@ shipped — see §4.
 
 ---
 
-## §4 The food-placement regression — UNRESOLVED, and how to resume
+## §4 The food-placement regression — RESOLVED, and the diagnosis was wrong five times
 
-Branch: **`wp/3-06-food-placement`** (commits `dade2b6` + `0e87413`).
+Shipped as **WP-3.06** in `55b0f2c`. The parked branch is gone.
 
-**The design is right; the implementation is too slow to ship.**
+**The design was right. The implementation was not too slow to ship — the test
+HARNESS was, and the shipped game was never affected at all.**
+
+The instruction below ("PROFILE, do not guess a fifth time") was followed, and
+it overturned the section's own conclusion. The measurement, before touching
+anything:
+
+| board | rng | ms per call |
+|---|---|---|
+| 20x20 | constant | 0.0352 |
+| 20x20 | random | 0.0012 |
+| **400x400** | **constant** | **12.9019** |
+| 400x400 | random | 0.0007 |
+
+Two facts all four earlier guesses missed:
+
+1. **`gridSize` is 20 — 400 cells.** `foldParity.test.ts` sets `GRID = 400`,
+   i.e. **160,000 cells**, to keep its length arithmetic clear of walls. The
+   regression was 400x, not 32x, and it lived entirely inside a harness.
+2. **The fast path never survived that harness.** `foldParity` injects
+   `rng: () => 0.5`. A placer that sampled the whole board and *then* rejected
+   on radius drew the same cell 24 times and fell through to a full flood fill
+   on every spawn. Gating on occupancy alone and on attempt-exhaustion alone
+   were each **half** of the trigger — which is why fixes 3 and 4 both failed.
+
+The fix was three changes, not a gate: sample **inside** the legal window
+(clamped to the board, so the radius can never reject a draw); make the exact
+path **expand** a window around the head rather than sweep the board; and
+**allocate nothing** (module-level scratch with a generation stamp, and the
+occupancy grid built once per WAVE rather than once per food).
+
+`foldParity` is back to **10.6s**. The pathological path costs 40ms per 1000
+calls where the parked version needed ~13,000ms, and a cost-bound test now pins
+it — the assertion whose absence let a 400x regression ship and then be
+misdiagnosed four times.
+
+**The red test was right about a real bug.** *"returns the ONLY free cell when
+exactly one remains"* failed because both flood fills seeded from the head's
+*neighbours* but nothing stopped the BFS walking back into the head's own cell.
+In the engine the head is always in the blocked grid, so it surfaced only on a
+board blocked down to two cells.
+
+The historical record of the four wrong diagnoses is kept below, because the
+pattern is the lesson.
+
+---
+
+### The state as it was recorded before the measurement
 
 One food per profile, and a placer (`foodPlacement.ts`) that enumerates free
 cells instead of rejection-sampling — which fixes a genuine shipped bug where
@@ -359,15 +483,16 @@ field on the validator input and result, `crownAllowed` in the run context and
 `scripts/verify-constitution.mjs` inverted with them — it used to pin the
 clamp's SHAPE and now forbids a clamp existing at all.
 
-### Next step: PROFILE, do not guess a fifth time
+### Next step: PROFILE, do not guess a fifth time — DONE, see the top of §4
 
-Add a call counter and a timer around `sampleFoodCell`, or run node with
-`--prof`, and find where the time actually goes before changing anything.
+This instruction was the right one and it worked. Recorded here as written,
+because the habit it names is worth more than the bug it solved.
 
-**Verify one assumption that has never been checked:** that `spawnFoods` /
-`sampleFoodCell` is called once per eaten food. A 32× gap is hard to explain
-from ~400 operations per spawn, which suggests it may be called far more often
-than assumed. Start there.
+The unchecked assumption it flagged — that `spawnFoods` is called once per
+eaten food — turned out to be **false in the other direction**: `spawnFoods`
+fires only when the wave is EMPTY, so three foods meant one spawn per three
+eats and moving to one food tripled the spawn count. That was never the cost
+either. The cost was the board size and a degenerate rng.
 
 ---
 
@@ -462,10 +587,21 @@ Recorded 2026-07-28. See §6 item 10.
 
 ## §6 Still owed by the wave
 
-1. **Food placement** (§4) — profile first.
-2. **The carry**, after the portal-seeding fix (§3.1). Needs a WP number.
-3. **The trail** (§3.2). Unblocked — terrain's visual language is settled.
-4. **In-run growth readout** (§3.3).
+**Every build item below is done.** The list is kept struck-through rather than
+deleted because several entries record *how* the thing was settled, and that
+reasoning is the part a future session needs. What remains is in §6a: three
+owner decisions and one deploy.
+
+1. ~~**Food placement** (§4) — profile first.~~ Shipped as **WP-3.06**. The
+   profiling instruction was followed and it overturned the diagnosis — see §4.
+2. ~~**The carry**, after the portal-seeding fix (§3.1).~~ Shipped as
+   **WP-3.10**. The seeding turned out to be a harder blocker than §3.1
+   assumed: the schedule also had to stop depending on when a portal
+   *resolved*, which is tick timing no settlement can reconstruct.
+3. ~~**The trail** (§3.2).~~ Shipped as **WP-3.07**.
+4. ~~**In-run growth readout** (§3.3).~~ Shipped as **WP-3.09**. Note the
+   readout §3.3 asked for did not exist at all — WP-3.03's shipped one was
+   pre-run only and unmounted the moment a run started.
 5. ~~**COSMIC** — permanent torus, calcifying stars, delete `COSMIC_FLUX`.~~
    Shipped as **WP-3.13**, and it settled the combo: `DYNASTY_COSMIC.md` §5
    lists the chain rule and `comboCap` for deletion, and §2.3 retires glyphs to
@@ -490,6 +626,45 @@ Recorded 2026-07-28. See §6 item 10.
 time-to-first-pressure. Their earlier Tuned-over-Aggressive preference is
 explicitly **stale** — food count is upstream of segments-per-food, traverse
 time, offer cadence and run length, so the profiles must be re-derived by play.
+
+---
+
+## §6a What is actually left
+
+### Owner-only, and they block the playtest
+
+Flag state exists **only in the Vercel dashboard**, is build-time inlined, and
+is unreadable from a dev session (`VERCEL_TOKEN` is a GitHub Actions secret).
+A flip is inert until `deploy-production.yml` is re-dispatched, so the order is
+**set the flags, THEN deploy** — the other order ships the wave dark and wastes
+the release.
+
+1. Set **`NEXT_PUBLIC_LADDER_V1=true`**. Without it WP-3.12 ships dark and
+   cannot be played. (Safe, just useless: an unstamped rung resolves to Ground
+   on both sides.) Note CI already arms it, so the e2e leg is deliberately one
+   flag ahead of production until this is done.
+2. Confirm **`NEXT_PUBLIC_GROWTH_LAB_V1`** is still `true` — D1 is ruled by
+   playing the three profiles against each other.
+
+### Owner decisions, none of them taken here
+
+3. **The carry raises shallow-end DNA.** Salvage at zero passed doors is 1.0,
+   up from 0.6 — dying before you have declined anything now costs nothing.
+   That is §3.1's ruling as written, but it is an economy change.
+4. **The leaderboard epoch.** The new per-dynasty Score curves make existing
+   board entries incomparable. `src/lib/leaderboard/eligibility.ts` instructs
+   bumping `LEADERBOARD_CONTENT_VERSION`, which retires every existing entry.
+   This is WP-3.04's epoch-vs-wipe call, deliberately not taken inside a curve
+   change.
+5. **The Yield spread** (§5.1). Predates this wave; the answer decides whether
+   a Yield parity gate is written at all.
+
+### Then
+
+6. **Deploy.** Runbook precondition 5: the migration dry-run must name exactly
+   `057_player_ladders.sql` and nothing else. Any extra migration is a stop
+   condition.
+7. **Play it**, and rule D1.
 
 ---
 
