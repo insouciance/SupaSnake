@@ -27,18 +27,29 @@ test.describe('Consent banner', () => {
   });
 });
 
-test.describe('Home authentication dialog', () => {
-  test('stays above Home controls and within portrait, landscape, and desktop viewports', async ({
-    page,
-  }) => {
-    await seedConsent(page);
+/**
+ * One test per viewport, not one test over four.
+ *
+ * The assertions are unchanged; only the budget is. As a single test this
+ * loaded Home four times inside one 60s allowance, and with the growth
+ * surfaces armed - which is how production runs - Home is a heavier page with
+ * more client fetches, so the fourth load was routinely paying for the first
+ * three. A per-viewport test also names the viewport that failed instead of
+ * making every failure read "the dialog test".
+ */
+const HOME_DIALOG_VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+  { width: 844, height: 390 },
+  { width: 1280, height: 720 },
+];
 
-    for (const viewport of [
-      { width: 320, height: 568 },
-      { width: 390, height: 844 },
-      { width: 844, height: 390 },
-      { width: 1280, height: 720 },
-    ]) {
+test.describe('Home authentication dialog', () => {
+  for (const viewport of HOME_DIALOG_VIEWPORTS) {
+    test(`stays above Home controls and within the ${viewport.width}x${viewport.height} viewport`, async ({
+      page,
+    }) => {
+      await seedConsent(page);
       await page.setViewportSize(viewport);
       await page.goto('/');
 
@@ -49,7 +60,9 @@ test.describe('Home authentication dialog', () => {
       // reports it visible, then fails the click with "element is outside of
       // the viewport" because its own auto-scroll does not reach it. Scroll
       // deliberately rather than forcing the click, so a genuinely
-      // unreachable control still fails.
+      // unreachable control still fails - which is what this caught on the
+      // flag-on leg: the bottom nav rail overflowed 320px-wide viewports and
+      // pushed the chip off screen entirely (fixed in `Navigation.tsx`).
       await trigger.scrollIntoViewIfNeeded();
       await trigger.click();
 
@@ -106,8 +119,8 @@ test.describe('Home authentication dialog', () => {
       await expect(dialog).not.toBeVisible();
       await expect(trigger).toBeFocused();
       await expect(layer).toHaveCount(0);
-    }
-  });
+    });
+  }
 });
 
 test.describe('Login page', () => {
@@ -334,10 +347,12 @@ test.describe('Anonymous sessions', () => {
     // Guest is authenticated: game page shows the game UI, not the prompt
     await expect(page.getByText(/sign in to play and save/i)).not.toBeVisible();
 
-    // Navigating home keeps the session (stats panel renders for authed users)
+    // Navigating home keeps the session. This used to assert that the string
+    // "launch a game to start" was NOT visible - a phrase that no longer
+    // exists anywhere in the app, so the assertion held whether or not the
+    // session survived. The positive form is the one worth making: Home's
+    // ambient DNA counter renders only for an authenticated player.
     await page.goto('/');
-    await expect(page.getByText(/launch a game to start/i)).not.toBeVisible({
-      timeout: 15000,
-    });
+    await expect(page.locator('[title="DNA"]')).toBeVisible({ timeout: 15000 });
   });
 });
