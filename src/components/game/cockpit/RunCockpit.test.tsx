@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { GROWTH_PROFILES, baseGrowthForFood } from '@/shared/game/growth';
 import type { RunCockpitModel } from './types';
 import { RunCockpit } from './RunCockpit';
 
@@ -176,5 +177,59 @@ describe('RunCockpit', () => {
     expect(screen.getByTestId('game-board-viewport')).toContainElement(
       screen.getByTestId('held-board')
     );
+  });
+
+  /**
+   * WP-3.09. The rate has to be readable DURING the run - the WP-3.02 readout
+   * only ever lived on the pre-run setup panel, which unmounts on start.
+   */
+  it('shows the live growth rate, and layers its step notice beside it', () => {
+    // Tuned pays 6 per food until food 12, then 2. The number is derived by
+    // the game page from `baseGrowthForFood`; the cockpit only displays it.
+    const tuned = GROWTH_PROFILES.tuned;
+    render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'active',
+          statusText: 'Run stable',
+          isFirstMovementPrompt: false,
+          growth: {
+            profileId: tuned.id,
+            label: tuned.label,
+            perFood: baseGrowthForFood(tuned, 12),
+            foodsOnBoard: tuned.simultaneousFoods,
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+        growthNotice={<span data-testid="growth-step-notice">+6 → +2</span>}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+
+    expect(screen.getByTestId('growth-readout')).toHaveAttribute(
+      'data-growth-per-food',
+      '2'
+    );
+    expect(screen.getByTestId('growth-readout')).toHaveAccessibleName(
+      'Growth Tuned, plus 2 per food'
+    );
+    // LAYERS, never replaces: the status rail (and the first-movement prompt
+    // testid an e2e spec reads from it) must survive a growth notice, which is
+    // exactly what routing through `eventCallout` would have broken.
+    expect(screen.getByTestId('growth-step-notice')).toBeInTheDocument();
+    expect(screen.getByTestId('game-hud')).toHaveTextContent('Run stable');
+  });
+
+  it('omits the growth instrument when there is no profile to report', () => {
+    // Training eats no profile food. A rate printed there would be a lie.
+    render(
+      <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.queryByTestId('growth-readout')).toBeNull();
   });
 });

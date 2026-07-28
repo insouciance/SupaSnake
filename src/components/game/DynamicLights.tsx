@@ -10,26 +10,43 @@ interface DynamicLightsProps {
   dynasty: DynastyId;
   score: number;
   isDeathSequence: boolean;
-  /** Food position for spotlight targeting */
-  foodPosition?: { x: number; z: number } | null;
+  /**
+   * Every food on the board, for spotlight targeting.
+   *
+   * This took an array in WP-3.06 because it used to take one position and got
+   * handed `foods[0]`. COSMIC has always placed a constellation GROUP of three
+   * — its combo mechanic is collecting them in sequence — so two thirds of a
+   * COSMIC wave was unlit, and the dynasty whose identity is the group was the
+   * one dynasty that could not see it.
+   */
+  foodPositions?: readonly { x: number; z: number }[];
   /** Grid size for positioning */
   gridSize?: number;
   /** Cockpit-v1 can calm dynasty spill while preserving released defaults. */
   intensityScale?: number;
 }
 
+/**
+ * Spotlights are per-fragment work, so the wave is capped rather than trusted.
+ * The largest wave the game can produce is COSMIC's group of 3, plus Splitter,
+ * plus Starweaver — five. Anything beyond that is a bug elsewhere and should
+ * cost frame time nowhere.
+ */
+const MAX_FOOD_SPOTLIGHTS = 5;
+
 export function DynamicLights({
   dynasty,
   score,
   isDeathSequence,
-  foodPosition,
+  foodPositions,
   gridSize = 20,
   intensityScale = 1,
 }: DynamicLightsProps) {
   const pointLightRef = useRef<THREE.PointLight>(null);
-  const foodSpotRef = useRef<THREE.SpotLight>(null);
+  const foodSpotRefs = useRef<(THREE.SpotLight | null)[]>([]);
   const theme = themeManager.getTheme(dynasty);
   const center = gridSize / 2;
+  const lit = (foodPositions ?? []).slice(0, MAX_FOOD_SPOTLIGHTS);
 
   useFrame((state) => {
     if (!pointLightRef.current) return;
@@ -49,14 +66,14 @@ export function DynamicLights({
     const scoreBoost = Math.min(score / 50, 1) * 0.3;
     pointLightRef.current.intensity = (pulse + scoreBoost) * intensityScale;
 
-    // Update food spotlight target
-    if (foodSpotRef.current && foodPosition) {
-      foodSpotRef.current.target.position.set(
-        foodPosition.x + 0.5,
-        0,
-        foodPosition.z + 0.5
-      );
-      foodSpotRef.current.target.updateMatrixWorld();
+    // Aim each spotlight at its own food. A spotlight points at its target
+    // object, not at its own position, so this has to run per food or the
+    // extra lights hang in the air aiming at the origin.
+    for (let i = 0; i < lit.length; i++) {
+      const spot = foodSpotRefs.current[i];
+      if (!spot) continue;
+      spot.target.position.set(lit[i].x + 0.5, 0, lit[i].z + 0.5);
+      spot.target.updateMatrixWorld();
     }
   });
 
@@ -79,11 +96,14 @@ export function DynamicLights({
         color="#ffffff"
       />
 
-      {/* Food spotlight - highlights the target */}
-      {foodPosition && (
+      {/* One spotlight per food - every target on the board is lit */}
+      {lit.map((position, index) => (
         <spotLight
-          ref={foodSpotRef}
-          position={[foodPosition.x + 0.5, 8, foodPosition.z + 0.5]}
+          key={`${position.x},${position.z}`}
+          ref={(node) => {
+            foodSpotRefs.current[index] = node;
+          }}
+          position={[position.x + 0.5, 8, position.z + 0.5]}
           angle={0.4}
           penumbra={0.6}
           intensity={0.6 * intensityScale}
@@ -91,7 +111,7 @@ export function DynamicLights({
           distance={15}
           decay={2}
         />
-      )}
+      ))}
 
       {/* The old blue fill, overhead spot, and 4 corner points are gone:
           their job moved to the hemisphere base rig (page.tsx), the

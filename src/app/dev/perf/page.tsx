@@ -255,7 +255,7 @@ export default function PerfHarnessPage() {
           dynasty={config.dynasty}
           score={20}
           isDeathSequence={false}
-          foodPosition={food}
+          foodPositions={[food]}
           gridSize={GRID}
         />
         <ArenaFloor

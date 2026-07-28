@@ -267,7 +267,7 @@ describe('validateGameResult (Design v2 recompute)', () => {
 
   describe('per-dynasty food-rate bound', () => {
     it('clamps a PRIMAL food count above 1.0 foods/sec and recomputes from the clamp', () => {
-      // 100 foods in 60s is impossible on a fixed 200ms tick
+      // 100 foods in 60s is impossible on PRIMAL's fixed 175ms tick
       const input = honestInput('PRIMAL', 100, false, 60);
       const result = validateGameResult(input, startedAgo(65), 'PRIMAL');
 
@@ -554,7 +554,9 @@ describe('validateGameResult (Design v2 recompute)', () => {
     }
 
     it('accepts an in-bounds combo claim and pays base + bonus', () => {
-      // 30 foods base 300; claimed bonus 200 <= floor(300 x 1.4) = 420
+      // 30 foods: base DNA 300 (flat food value), base SCORE 465 under COSMIC's
+      // mid-weighted curve (WP-3.08) - the two stopped being the same number.
+      // The claimed score bonus of 200 is inside floor(465 x 1.4) = 651.
       const result = validateGameResult(cosmicInput(30, 200, 200, 8), startedAgo(125), 'COSMIC');
       expect(result.valid).toBe(true);
       expect(result.cosmic).toEqual({
@@ -563,7 +565,8 @@ describe('validateGameResult (Design v2 recompute)', () => {
         maxChain: 8,
       });
       expect(result.adjustedDna).toBe(applyOutcome(500, true));
-      expect(result.adjustedScore).toBe(500);
+      expect(result.adjustedScore).toBe(computeRunTotals('COSMIC', 30).score + 200);
+      expect(result.adjustedScore).toBe(665);
     });
 
     it('clamps a combo claim beyond the x1.4 ceiling and flags', () => {
