@@ -89,36 +89,28 @@ export interface TerrainSchedule {
 }
 
 /**
- * Authored in seconds and converted by the live tick, deliberately.
+ * Seconds -> ticks at the live tick rate, floored at one tick.
  *
- * Three bounds in this wave were found denominated in the wrong unit — the
- * food-rate bound (blind to multi-food), the extraction window (ticks, so it
- * shrank fourfold as CYBER accelerated), and the hold thresholds (absolute
- * lengths). A forming phase in ticks would rot the same way the moment a
- * dynasty's speed curve is retuned.
- */
-export function formingTicksFor(
-  schedule: TerrainSchedule,
-  tickMs: number
-): number {
-  return formingTicksForSeconds(schedule.formingSeconds, tickMs);
-}
-
-/**
- * The same conversion for terrain that has no SCHEDULE, and for any other
- * duration this module's consumers author in seconds.
+ * AUTHORED IN SECONDS AND CONVERTED BY THE LIVE TICK, DELIBERATELY. Three
+ * bounds in this wave were found denominated in the wrong unit — the food-rate
+ * bound (blind to multi-food), the extraction window (ticks, so it shrank
+ * fourfold as CYBER accelerated), and the hold thresholds (absolute lengths).
+ * A forming phase in ticks would rot the same way the moment a dynasty's speed
+ * curve is retuned.
  *
- * PRIMAL's Fortress (WP-3.11) places blocks on the cells its own body is
- * standing on, so it has a forming duration but no ring, no interval and no
- * per-interval count. Handing it a fabricated `TerrainSchedule` to reach the
- * conversion would put three meaningless numbers on the record; the honest
- * shape is a duration, and `formingTicksFor` now delegates here so the two can
- * never round differently.
+ * A SECONDS ARGUMENT RATHER THAN A `TerrainSchedule`, because two of the four
+ * consumers have no schedule. PRIMAL's Fortress (WP-3.11) places blocks on the
+ * cells its own body is standing on and COSMIC (WP-3.13) on the cells its
+ * missed stars sat on: a forming duration, but no ring, no interval and no
+ * per-interval count. Handing either a fabricated schedule to reach the
+ * conversion would put three meaningless numbers on the record.
  *
- * COSMIC (WP-3.13) arrived at the identical function independently and under a
- * different name, which is the tell that it belongs here rather than in either
- * caller: it converts BOTH its calcification delay and its constellation
- * window through this. Three durations, one rounding.
+ * It had a `formingTicksFor(schedule, tickMs)` sibling that took the whole
+ * schedule and read one field off it. That sibling lost its last call site
+ * when the engine's three block-laying paths were composed into
+ * `placeTerrainAt`, which takes seconds — so it was deleted rather than left
+ * as a second way to reach one conversion, which is the thing this function
+ * exists to prevent.
  */
 export function formingTicksForSeconds(
   seconds: number,

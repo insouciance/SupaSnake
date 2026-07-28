@@ -8,7 +8,7 @@
  * five foods, live in production.
  *
  * Every terrain test passed the whole time. That is the point of this file.
- * `terrain.test.ts` asserts `blocksDueAt`, `formingTicksFor`, `ringOf` and
+ * `terrain.test.ts` asserts `blocksDueAt`, `formingTicksForSeconds`, `ringOf` and
  * `nextTerrainCells`; `terrain.engine.test.ts` asserts the engine kills you.
  * All of them assert the MODEL, and the model was never wrong. The defect
  * lived in the gap between a correct model and a screen, which no model test
