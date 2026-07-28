@@ -71,6 +71,31 @@ export interface RunSetupPanelProps {
    * emphasised action and no demanded decisions.
    */
   growthSelector?: ReactNode;
+  /**
+   * One always-visible line naming the run's D2 ladder rung and the one rule it
+   * adds (WP-3.12).
+   *
+   * DELIBERATELY NOT FLAG-GATED, for the same reason `growthNote` is not. With
+   * the ladder flag off this must still say "Ground - the game as it shipped",
+   * because a readout that vanishes with its feature cannot tell you the
+   * feature is off. Two playtests in this wave were distorted by exactly that
+   * class of bug - a selector that was decorative, then a readout that lied -
+   * so a rung selector without an honest rung readout is not shippable here.
+   */
+  ladderNote?: ReactNode;
+  /**
+   * The rung selector (WP-3.12), or null when the ladder flag is off or the
+   * player has nothing above Ground unlocked.
+   *
+   * Rendered inside the SAME disclosure as the growth selector, immediately
+   * after it. That is the whole "<=1 tap added" the work package allows: the
+   * disclosure is already opened by one tap, and putting a second control
+   * inside it adds no tap at all. It must never move beside START - §5's law is
+   * that a first-time player sees one emphasised action and no demanded
+   * decisions, and the 3-tap count in `e2e/run-flow.spec.ts` is what enforces
+   * it structurally.
+   */
+  ladderSelector?: ReactNode;
   isStarting: boolean;
   onStart: () => void;
   startError: string | null;
@@ -101,6 +126,8 @@ export function RunSetupPanel({
   startTestId,
   growthNote = null,
   growthSelector = null,
+  ladderNote = null,
+  ladderSelector = null,
   isStarting,
   onStart,
   startError,
@@ -114,6 +141,7 @@ export function RunSetupPanel({
   const hasAdjustables =
     Boolean(modeToggle) ||
     Boolean(growthSelector) ||
+    Boolean(ladderSelector) ||
     Boolean(anomalyPanel) ||
     Boolean(aimSelector) ||
     Boolean(controlScheme) ||
@@ -148,6 +176,7 @@ export function RunSetupPanel({
           </p>
           {/* The whole configuration in one line: nothing needs a decision. */}
           {growthNote}
+          {ladderNote}
           <p className="font-body text-sm text-beige/70" data-testid="run-setup-summary">
             {modeLabel} · {aimLabel}
             {masteryLevel !== null && (
@@ -216,6 +245,7 @@ export function RunSetupPanel({
           <div className="space-y-4 pt-3">
             {modeToggle}
             {growthSelector}
+            {ladderSelector}
             {anomalyPanel}
             {aimSelector}
             {controlScheme}

@@ -199,6 +199,41 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     expect(taps.count).toBeLessThanOrEqual(3);
   });
 
+  test('the ladder adds a readout but no tap (WP-3.12, §5)', async ({ page }) => {
+    // The rung selector is allowed "<=1 tap added" and takes ZERO: it lives
+    // inside the disclosure the growth selector already lives in, which is
+    // still closed on arrival. This asserts the structure rather than the
+    // count, because the count above only stays 3 for as long as no control
+    // escapes that disclosure - and a selector beside START would be the
+    // obvious, plausible mistake.
+    await installRunFlowFixtures(page);
+    await signInAsGuest(page);
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
+
+    // The readout is ALWAYS visible and never gated on the ladder flag: with
+    // the flag off it must still say which rung this run plays, which is what
+    // makes it a diagnostic. Two playtests in this wave were distorted by a
+    // surface that vanished with its feature.
+    const readout = page.getByTestId('ladder-readout');
+    await expect(readout).toBeVisible();
+    await expect(readout).toContainText(/Rung \d/);
+
+    // ...and it is OUTSIDE the disclosure, which is still closed.
+    const adjust = page.getByTestId('run-setup-adjust');
+    await expect(adjust).toHaveJSProperty('open', false);
+    await expect(adjust.getByTestId('ladder-readout')).toHaveCount(0);
+
+    // The SELECTOR, where it exists at all, is inside it — so it is reachable
+    // only through a disclosure tap that was already the sanctioned one.
+    const selector = page.getByTestId('ladder-selector');
+    if ((await selector.count()) > 0) {
+      await expect(adjust.getByTestId('ladder-selector')).toHaveCount(1);
+      await expect(selector).not.toBeVisible();
+    }
+  });
+
   test('Results → REPLAY → next run in at most 2 taps (§5, cap §12.2)', async ({
     page,
   }) => {

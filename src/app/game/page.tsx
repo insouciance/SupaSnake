@@ -130,6 +130,14 @@ import {
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
+import { LADDER_ENABLED } from '@/lib/features/ladder';
+import {
+  DEFAULT_LADDER_RUNG,
+  LADDER_RUNGS,
+  ladderCadence,
+  ladderRung as ladderRungDefinition,
+  resolveLadderRung,
+} from '@/shared/game/ladder';
 import {
   DEFAULT_GROWTH_PROFILE,
   GROWTH_PROFILES,
@@ -323,6 +331,22 @@ export default function GamePage() {
    */
   const [growthProfile, setGrowthProfile] = useState<GrowthProfileId>(
     DEFAULT_GROWTH_PROFILE
+  );
+  /**
+   * The D2 ladder rung the player asked for (WP-3.12). A REQUEST only: the
+   * server reads the player's records, clamps the ask to what they have
+   * unlocked, stamps the result into `run_context` and echoes back what it
+   * actually chose - which is what the engine then adopts.
+   */
+  const [ladderRung, setLadderRung] = useState<number>(DEFAULT_LADDER_RUNG);
+  /**
+   * The highest rung this player may attempt, from `/api/player`. Zero until
+   * the profile read answers, and zero forever when migration 057 has not been
+   * applied - which renders as no selector at all rather than as a selector
+   * whose every option the server would refuse.
+   */
+  const [ladderAttemptable, setLadderAttemptable] = useState<number>(
+    DEFAULT_LADDER_RUNG
   );
   const [particleTrigger, setParticleTrigger] = useState(0);
   const [deathPos, setDeathPos] = useState<[number, number, number] | null>(null);
@@ -603,6 +627,12 @@ export default function GamePage() {
                 (liveState?.infuses.length ?? 0) -
                 (extracted ? 1 : 0)
             ),
+            // WP-3.12: the rung read off the ENGINE, not off the selector.
+            // This preview runs mid-run, and the engine holds the rung the
+            // server stamped - which is the one the settlement will fold. A
+            // preview priced at a rung the run is not being played at is the
+            // readout-that-lies failure, and this one sits on the HUD chip.
+            ladderRung: gameRef.current?.getLadderRung() ?? 0,
           },
           equippedSnake?.traits ?? [],
           anomaly
@@ -728,6 +758,15 @@ export default function GamePage() {
         if (data.genomeFtue) {
           setGenomeFtue(sanitizeGenomeFtue(data.genomeFtue));
         }
+        // WP-3.12: the ladder ceiling. `available: false` means migration 057
+        // has not applied here, and the selector stays dark - the ladder is
+        // never offered on a promise the server cannot keep.
+        const ladderInfo = data.ladder as Record<string, unknown> | undefined;
+        setLadderAttemptable(
+          ladderInfo?.available === true
+            ? resolveLadderRung(ladderInfo.attemptable)
+            : DEFAULT_LADDER_RUNG
+        );
       })
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, isPlaying, syncChargeFromServer, setAimSystem]);
@@ -953,6 +992,16 @@ export default function GamePage() {
    * told at the most consequential moment in the game.
    */
   const activeRuleset = getRuleset(normalizeDynastyName(selectedDynasty));
+  /**
+   * The portal cadence the run is actually played under (WP-3.12): the
+   * dynasty's, shifted by the ladder's "Long Walk" rung.
+   *
+   * The portal card quotes the interval to the NEXT door on its PASS line, and
+   * quoting the unshifted one at a rung that moved the doors would be a readout
+   * that lies. `ladderCadence` is the same function the engine and the
+   * settlement walk, so all three agree by construction.
+   */
+  const activeLadderCadence = ladderCadence(activeRuleset.extraction, ladderRung);
   const portalDoorsPassed = Math.max(
     0,
     (gameRef.current?.getPortalsMet() ?? 0) - infusesCount - 1
@@ -1671,6 +1720,20 @@ export default function GamePage() {
     // it decides the starting body and therefore the initial state every
     // other setter below writes into.
     game.setGrowthProfile((data as Record<string, unknown>).growthProfile);
+    // WP-3.12: the rung the SERVER stamped. Adopted alongside the profile and
+    // before the genome, because it decides where the first door stands and the
+    // opening hold budget - both of which are fixed at state creation. An
+    // absent block is rung 0, the shipped game.
+    const startedLadder = (data as Record<string, unknown>).ladder as
+      | Record<string, unknown>
+      | undefined;
+    game.setLadderRung(startedLadder?.rung);
+    // Snap the SELECTION back to what the server chose. If the ask was clamped
+    // - a stale tab, a rung since re-locked - the setup screen must not go on
+    // showing a rung the player did not play. "The client never decides this,
+    // it only learns it" has to be visible in the UI, not just true in the
+    // request.
+    setLadderRung(resolveLadderRung(startedLadder?.rung));
 
     const genomeCapability = sanitizeGenomeCapability(data.genome);
     game.setGenome(genomeCapability);
@@ -1785,6 +1848,10 @@ export default function GamePage() {
           // WP-3.02: a REQUEST, never a decision. The server resolves the
           // profile, stamps it, and echoes back what it chose.
           ...(GROWTH_LAB_ENABLED ? { growthProfile } : {}),
+          // WP-3.12: a REQUEST, never a decision. The server checks the ask
+          // against `player_ladders`, clamps it to what this player has
+          // unlocked, stamps it and echoes back the rung it chose.
+          ...(LADDER_ENABLED ? { ladderRung } : {}),
         }),
       });
 
@@ -1821,6 +1888,12 @@ export default function GamePage() {
     // grew +1 and the three profiles were indistinguishable. No unit test
     // could catch it: none of them go through React.
     growthProfile,
+    // WP-3.12: the same scar, one line down. `handleStart` is a useCallback, so
+    // omitting the rung would capture rung 0 forever and every ladder run would
+    // silently play Ground while the selector said otherwise - the WP-3.02
+    // defect, reproduced exactly. No unit test can catch it: none go through
+    // React. The e2e run-flow spec is what stands here.
+    ladderRung,
     hasCompletedFirstRun,
     isStarting,
     session?.access_token,
@@ -2342,7 +2415,8 @@ export default function GamePage() {
                   bankDna={previewOutcome(true, activeAnomalyId)}
                   crashDna={previewOutcome(false, activeAnomalyId)}
                   doorsPassed={portalDoorsPassed}
-                  cadence={activeRuleset.extraction}
+                  cadence={activeLadderCadence}
+                  ladderRung={ladderRung}
                   onBank={() => handlePortalChoice('bank')}
                   onPass={() => handlePortalChoice('pass')}
                   onInfuse={() => handlePortalChoice('infuse')}
@@ -2540,6 +2614,79 @@ export default function GamePage() {
    * and the engine adopts whatever came BACK. Choosing here can never make the
    * client and the recompute disagree.
    */
+  /**
+   * The always-visible ladder readout (WP-3.12).
+   *
+   * NOT gated on the ladder flag, on purpose, and for exactly the reason the
+   * growth readout is not: with the flag off this must still say "Ground - the
+   * game as it shipped", which is what makes it a diagnostic rather than a
+   * decoration. The status doc records two playtests distorted by this class of
+   * bug in this wave alone.
+   *
+   * It reads the SELECTION, like the growth readout above and for the same
+   * reason: this is the PRE-run screen, so the selection is the honest thing to
+   * show - it is what the start request will ask for. The server still decides,
+   * and `applyStartedRun` snaps this state back to the rung it chose, so a
+   * clamped ask corrects itself the moment the run begins.
+   */
+  const activeRung = ladderRungDefinition(ladderRung);
+  const ladderNoteNode = (
+    <p className="font-body text-sm text-beige/70" data-testid="ladder-readout">
+      Ladder:{' '}
+      <span className="text-bone-white">
+        Rung {activeRung.rung} · {activeRung.name}
+      </span>
+      {' · '}
+      <span className="text-venom-orange">{activeRung.rule}</span>
+    </p>
+  );
+
+  /**
+   * The rung selector (WP-3.12), inside the SAME disclosure as the growth
+   * selector - no tap of its own, which is how the 3-tap law survives.
+   *
+   * Null when the flag is off, and null when the player has nothing above
+   * Ground unlocked: a one-option selector is a control that teaches nothing
+   * and still costs screen. Rungs above `ladderAttemptable` are rendered
+   * DISABLED rather than hidden, because the point of a ladder is that you can
+   * see the next step and the ones after it.
+   */
+  const ladderSelectorNode =
+    LADDER_ENABLED && ladderAttemptable > DEFAULT_LADDER_RUNG ? (
+      <div data-testid="ladder-selector">
+        <p className="label-arcade mb-2 text-cosmic">Difficulty ladder</p>
+        <div className="flex flex-wrap gap-2">
+          {LADDER_RUNGS.map((rung) => {
+            const active = ladderRung === rung.rung;
+            const locked = rung.rung > ladderAttemptable;
+            return (
+              <button
+                key={rung.rung}
+                type="button"
+                onClick={() => setLadderRung(rung.rung)}
+                disabled={locked}
+                aria-pressed={active}
+                data-testid={`ladder-rung-${rung.rung}`}
+                data-locked={locked ? 'true' : 'false'}
+                className={`rounded-arcade border px-3 py-2 text-left font-body text-xs transition-all ${
+                  locked
+                    ? 'cursor-not-allowed border-scale-blue-light/20 bg-scale-blue/20 text-beige/30'
+                    : active
+                      ? 'border-venom-orange/70 bg-venom-orange/15 text-bone-white'
+                      : 'border-scale-blue-light/40 bg-scale-blue/40 text-beige/80 hover:border-venom-orange/50'
+                }`}
+              >
+                <span className="block font-semibold">
+                  {rung.rung}. {rung.name}
+                </span>
+                <span className="block text-beige/60">{rung.rule}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
   const growthSelectorNode = GROWTH_LAB_ENABLED ? (
     <div data-testid="growth-lab-selector">
       <p className="label-arcade mb-2 text-cosmic">Growth lab</p>
@@ -2956,7 +3103,8 @@ export default function GamePage() {
           bankDna={previewOutcome(true, activeAnomalyId)}
           crashDna={previewOutcome(false, activeAnomalyId)}
           doorsPassed={portalDoorsPassed}
-          cadence={activeRuleset.extraction}
+          cadence={activeLadderCadence}
+          ladderRung={ladderRung}
           onBank={() => handlePortalChoice('bank')}
           onPass={() => handlePortalChoice('pass')}
           onInfuse={() => handlePortalChoice('infuse')}
@@ -3103,6 +3251,8 @@ export default function GamePage() {
                   modeToggle={modeToggleNode}
                   growthNote={growthNoteNode}
                   growthSelector={growthSelectorNode}
+                  ladderNote={ladderNoteNode}
+                  ladderSelector={ladderSelectorNode}
                   anomalyPanel={anomalyPanelNode}
                   aimSelector={aimSelectorNode}
                   controlScheme={controlSchemeNode}
