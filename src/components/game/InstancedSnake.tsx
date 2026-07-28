@@ -79,6 +79,7 @@ import {
 import {
   HEAD_SIZE,
   SNAKE_MODEL_URL,
+  TRAIL_LINK_HEIGHT,
   TRAIL_LINK_WIDTH,
   getSegmentEnergy,
   getSegmentScale,
@@ -324,7 +325,11 @@ export function writeTrailInstances(
     // cells it joins, which is also what lets the corner cell's own box serve
     // as the corner cap.
     const width = (footA < footB ? footA : footB) * TRAIL_LINK_WIDTH;
-    const height = heightA < heightB ? heightA : heightB;
+    // TRAIL_LINK_HEIGHT is what keeps this strictly below both cells it joins.
+    // At parity the link's top face was coplanar with theirs along the whole
+    // trunk, and coplanar surfaces z-fight - see the constant's doc comment.
+    const height =
+      (heightA < heightB ? heightA : heightB) * TRAIL_LINK_HEIGHT;
 
     _position.set((ax + bx) / 2 + 0.5, height / 2, (az + bz) / 2 + 0.5);
     // rotation.y = t maps local +Z to (sin t, 0, cos t), so this points the
