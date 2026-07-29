@@ -104,6 +104,7 @@ export function RunCockpit({
       style={style}
       data-dynasty={model.dynasty}
       data-state={model.state}
+      data-input="flick"
       data-decision={decisionDock ? 'true' : 'false'}
       data-testid="game-hud"
     >
