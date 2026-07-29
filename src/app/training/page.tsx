@@ -700,8 +700,8 @@ export default function TrainingPage() {
       : 'Choose a direction to begin the attempt'
     : snapshot.state.isPaused
       ? isMobile
-        ? 'Tactical hold · flick a safe direction to resume'
-        : 'Tactical hold · choose a safe direction to resume'
+        ? 'Tactical hold · move to resume · flick a safe direction'
+        : 'Tactical hold · move to resume · choose a safe direction'
       : `${definition.primaryMetric} · ${snapshot.progress} of ${snapshot.progressTotal}`;
   const cockpitModel: RunCockpitModel = {
     dynasty: scenario.dynasty,
