@@ -12,13 +12,14 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm run lint` is clean
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
-- [ ] All migrations apply from 001 through 038 on a clean database
+- [ ] All migrations apply from 001 through 057 on a clean database
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
       current baseline, or lists exactly the migrations named in a future
       release plan
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
-- [ ] CI and production builds both use `NEXT_PUBLIC_FTUE_V2=true` and
-      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, unless deliberately testing rollback
+- [ ] CI and production builds use `NEXT_PUBLIC_FTUE_V2=true`,
+      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, `NEXT_PUBLIC_GROWTH_LAB_V1=true`, and
+      `NEXT_PUBLIC_LADDER_V1=true`, unless deliberately testing rollback
 - [ ] Production environment presence check passes; Vercel cloud-build value
       validation passes for the selected Stripe mode
 

@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-07-24
+**Updated:** 2026-07-29
 
 **Environment:** operator production, Stripe sandbox
 
@@ -12,20 +12,22 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–038 deployed and aligned |
+| Schema | Migrations 001–057 deployed and aligned |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
-| Runtime commit | `645578e` |
-| Vercel deployment | `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB` |
-| Immediate app rollback | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` |
+| Runtime commit | `bfdf8a2` |
+| Vercel deployment | `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` |
+| Immediate app rollback | `dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA` (`bb87af2`) |
 | Payments | Test/sandbox mode only |
 
-The current release passed 245 Jest suites / 2,944 tests, full lint and type
-checking, dependency and credential scans, the production build, deterministic
-cockpit fixtures, the complete isolated-Supabase E2E gate, protected PR and
-post-main CI, and focused public-production smoke. Detailed evidence is
-maintained in `docs/ops/QA_CHECKLIST.md`.
+The current release passed 383 Jest suites / 5,544 tests with coverage, full
+lint and type checking, a zero-vulnerability production dependency audit, the
+production build, deterministic cockpit fixtures, both isolated-Supabase E2E
+configurations, protected PR and post-main CI, staged health, linked database
+lint, and focused public-production smoke. Three production-flag E2E journeys
+needed their configured retry and remain recorded as flakes. Detailed evidence
+is maintained in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
 
@@ -34,6 +36,12 @@ maintained in `docs/ops/QA_CHECKLIST.md`.
 - PRIMAL is the authoritative starter for a genuinely new player.
 - Meta progression uses notification-first, player-pulled discovery.
 - The arena remains centered and clear of routine HUD elements.
+- Board pressure now has one shared physical/committed occupancy model across
+  client mechanics, rendering, and server claim validation.
+- Long snakes render as stable occupied cells with motion concentrated at the
+  head and entering/departing boundaries rather than animating every body unit.
+- Restriction reads as transformed terrain: amber forming cells, matte slate
+  solids, and a pale source relief for arena, Fortress, calcification, or rung.
 - Desktop uses compact top/bottom telemetry decks; portrait mobile keeps the
   proven composition and short landscape uses symmetric side rails.
 - Strategic gene, mutation, portal, infusion, and surge decisions command the
@@ -58,6 +66,8 @@ Production feature defaults:
 ```text
 NEXT_PUBLIC_FTUE_V2=true
 NEXT_PUBLIC_HUD_COCKPIT_V1=true
+NEXT_PUBLIC_GROWTH_LAB_V1=true
+NEXT_PUBLIC_LADDER_V1=true
 ```
 
 ## Known follow-ups
@@ -66,6 +76,13 @@ These do not invalidate the operator production release:
 
 - Physical iOS Safari and Android Chrome safe-area, browser-chrome, haptic,
   audio, camera, and long-session touch validation
+- Owner playtest ruling for D1 time-to-first-pressure, plus live-run judgement
+  of very long coils and each terrain source's forming-to-solid transition
+- Three retry-dependent production-flag E2E journeys: fresh Launch in
+  `engagement.spec.ts` and `game.spec.ts`, and Results → Replay in
+  `run-flow.spec.ts`
+- Repair the production workflow's rollback-anchor lookup; it currently sees
+  the newly staged production-target deployment rather than the outgoing alias
 - Final commercial legal review and support-mailbox operating procedures
 - Stripe test-to-live review and a controlled real purchase/refund
 - `RESEND_API_KEY` if weekly digest email becomes a marketed feature

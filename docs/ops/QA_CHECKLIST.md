@@ -1,10 +1,10 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-07-24_
+_Last updated: 2026-07-29_
 
-This is the current player-facing QA path for the deployed Genome and Training
-release. Work from top to bottom when doing a broad playtest; use the focused
-matrices near the end when verifying a fix.
+This is the current player-facing QA path for the deployed Redesign Wave and
+pressure/visual-coherence follow-up. Work from top to bottom when doing a broad
+playtest; use the focused matrices near the end when verifying a fix.
 
 Design references:
 
@@ -19,39 +19,32 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `645578e` — Training Lab and integrated UX feature batch |
-| Vercel deployment | `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB` |
-| Rollback deployment | `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6` — refined Run Cockpit; schema-038 compatible |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–038 deployed and aligned |
+| Production commit | `bfdf8a2` — pressure model, long-snake renderer, sourced terrain grammar |
+| Vercel deployment | `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` |
+| Rollback deployment | `dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA` — `bb87af2`; schema-057 compatible |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–057 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; production release/tag `645578e` / `production-2026-07-24-training-ux` |
+| Canonical source | `main`; production release workflow `30447104381` at `bfdf8a2` |
 
-Migration 038, the Training Lab, FTUE v2, the refined Run Cockpit & Arena,
-Deadeye guide, account-dialog layering, and notification-attention fixes are
-live. Training is voluntary, deterministic, server-replayed, and rewardless;
-the additive schema remains compatible with the immediate rollback runtime.
+The complete Redesign Wave, migration 057, post-playtest food/floor fixes, and
+the pressure/visual-coherence follow-up are live. The current release added no
+migration: preview and apply were both verified no-ops, so the immediate
+rollback runtime remains schema-057 compatible.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
 mailbox monitoring are commercial-launch gates, not blockers for this
 operator-only deployment.
 
-### Redesign Wave — owner-only actions before the playtest
+### Redesign Wave — completed release preconditions
 
-**These block the playtest and cannot be done from a dev session.** Flag state
-exists only in the Vercel dashboard, is build-time inlined, and is unreadable
-without `VERCEL_TOKEN` (a GitHub Actions secret, deliberately absent locally).
-A flip is inert until `deploy-production.yml` is re-dispatched, so **set the
-flags first, deploy second** — the other order ships the wave dark and wastes
-the release.
-
-| Action | Why it blocks |
-|---|---|
-| Set `NEXT_PUBLIC_LADDER_V1=true` in Vercel Production | WP-3.12's rung selector is gated on it. Without it the ladder ships dark and cannot be played. The flag gates only the SELECTOR — an unstamped rung resolves to Ground (rung 0, the shipped game) on both sides, so leaving it off is safe, just useless. |
-| Confirm `NEXT_PUBLIC_GROWTH_LAB_V1` is still `true` | D1 is ruled by playing the three growth profiles against each other. It was on for the Playtest Wave; confirm it survived. |
-| Confirm the migration dry-run names **exactly** `057_player_ladders.sql` | Runbook precondition 5. Any extra migration is a stop condition. |
+The owner enabled `NEXT_PUBLIC_LADDER_V1` before the 2026-07-28 Redesign Wave
+release and confirmed `NEXT_PUBLIC_GROWTH_LAB_V1`; both are build-time values.
+Migration 057 applied in that release. The 2026-07-29 follow-up's linked preview
+and apply steps both reported “Remote database is up to date.” D1 remains a
+playtest question, not a release-configuration task.
 
 ### Redesign Wave — what to judge, and what is already known
 
@@ -76,11 +69,40 @@ Known before you start, so they are not reported as discoveries:
   and is an economy change — flagged, not buried.
 - **Score is no longer comparable across the leaderboard.** The per-dynasty
   curves changed; the epoch bump is an unmade decision (see the status doc).
-- **Terrain has never been seen by a human in a live run.** Block height, decal
-  fill rate and the slate against the floor are unverified judgement calls. A
-  CYBER run past food 5 is the first look anyone will have had.
-- **The trail has been seen only in isolation** (`/dev/perf`), never in a real
-  run against terrain.
+- **The sourced terrain grammar has not been judged by a human in a live run.**
+  Block height, forming fill, slate integration, and the arena/Fortress/star/rung
+  reliefs remain owner playtest questions.
+- **The cell-persistent long-snake renderer has been seen only in controlled
+  fixtures**, including 40- and 160-cell coils, never through the arc of a real
+  run against live terrain.
+
+### Pressure and visual-coherence release evidence
+
+- Release workflow `30447104381` deployed exact main SHA `bfdf8a2` in Stripe
+  test mode. Vercel promoted `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS`; the actual
+  outgoing rollback is `dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA` at `bb87af2`.
+- The migration preview and apply steps were no-ops, linked database lint
+  completed without an error, and staged plus canonical app/database health
+  passed.
+- The release gate passed 383/383 Jest suites and 5,544/5,544 tests with
+  coverage, TypeScript, ESLint, the production build, and the blocking runtime
+  dependency audit with zero vulnerabilities.
+- Protected PR and post-main Build/Lint/Test/E2E checks passed. The rollback
+  E2E configuration recorded 79 passed / 23 skipped. The production
+  configuration recorded 87 passed / 12 skipped / 3 flaky: fresh Launch in
+  `engagement.spec.ts` and `game.spec.ts`, plus Results → Replay in
+  `run-flow.spec.ts`, each passing on its configured retry.
+- Local game-screen gates passed 8 viewports × 4 cockpit states, four real-WebGL
+  profiles at only +3 arena calls, and 22 frozen decision/legal-surface cases.
+  Controlled 40/20 and 160/80 snake/terrain profiles both held 60 draw calls
+  with no browser error.
+- Independent public smoke found healthy app/database status; 200 on `/`,
+  `/game`, `/login`, and `/lab`; 404 on all three dev fixtures; and 401 for a
+  missing bearer on every configured cron route.
+- The workflow's generated rollback summary is wrong: because its lookup runs
+  after staging, it selected the new staged deployment as the “outgoing” one.
+  The rollback above is recovered from the preceding successful release log;
+  fix the lookup before relying on that summary in a future incident.
 
 ### Post-production manual rechecks
 
@@ -95,6 +117,14 @@ state-heavy cases still require real-device or exploratory verification:
   flick, and the compact landscape controls remain comfortable.
 - Full live Deadeye targeting and Training preset save/reload/delete, PB
   persistence, and reward-invariance journeys.
+- Rule D1 by comparing time-to-first-pressure across the three growth profiles
+  in the same sitting; record food count, wall-clock time, and free-space state.
+- Exercise Thick Hide, Ouroboros, Phoenix, and Iron Scales in dense/edge states;
+  confirm the preserved-length and movement-blocking outcomes remain legible.
+- Grow into a genuinely long, tightly coiled snake and compare head tracking,
+  tail vacancy, internal calm, and collision attribution against a short run.
+- Watch CYBER ring, PRIMAL Fortress, COSMIC calcification, and a ladder source
+  transition from amber forming cell to slate solid with its pale relief.
 
 ### Training and UX release evidence
 

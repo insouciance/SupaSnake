@@ -1,16 +1,21 @@
 # Production Release Runbook
 
-Current baseline: application runtime `7dec037` — the Playtest Wave, deployed
-2026-07-27 07:29 UTC, run 30245968841, deployment `dpl_3cdCVw9TpYVRrSvCrhTkf6WQSYrV`
-— and hosted migrations 001–056. The linked migration dry-run is currently a
-no-op. Rollback anchor for this release (precondition 3):
-`dpl_6XkMBj196wUaoZmy8SRapLmyWFcv`, commit `cb2e112`, 2026-07-26 14:38 UTC.
+Current baseline: application runtime `bfdf8a2` — the pressure, long-snake and
+terrain-coherence release, deployed 2026-07-29 11:31 UTC, run 30447104381,
+deployment `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` — and hosted migrations
+001–057. Both the linked migration preview and apply steps reported “Remote
+database is up to date.” Rollback anchor for this release (precondition 3):
+`dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA`, commit `bb87af2`, 2026-07-28 19:34 UTC.
 
-Nothing in the pipeline records that rollback ID automatically — it was read
-from the Vercel dashboard by hand, because `VERCEL_TOKEN` lives only as a GitHub
-Actions secret. The job that promotes already holds that token, so it should
-print the outgoing deployment ID before promoting and make this paragraph a
-copy rather than a lookup.
+The workflow's rollback-anchor step is currently unreliable. Run 30447104381
+executed it after creating the staged `--prod --skip-domain` deployment, and
+`vercel ls --prod` therefore selected that new staged deployment rather than
+the outgoing canonical one. Its summary incorrectly named
+`dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` as its own rollback. The anchor above comes
+from the preceding successful release log. Until the step is moved before
+staging or resolves the canonical alias directly, record the outgoing
+deployment independently and do not trust the generated summary as rollback
+evidence.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
