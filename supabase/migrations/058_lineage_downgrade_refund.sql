@@ -262,6 +262,7 @@ BEGIN
       AND is_equipped = TRUE;
   END IF;
 
+  -- constitution-allow: owned-row-downward  owner-confirmed voluntary exchange returns the exact DNA receipt in full while immutable pedigree and refund audit remain
   DELETE FROM collected_snakes
   WHERE id = p_snake_id
     AND player_id = p_player_id;
