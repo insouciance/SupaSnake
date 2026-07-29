@@ -80,9 +80,11 @@ non-authoritative discovery state, and transient launch handoff data.
 transitions. Rendering consumes snapshots; it does not calculate rewards or
 change rules.
 
-Input paths—keyboard, flick, and D-pad—converge on the same direction contract:
+Input paths—keyboard and touch flick—converge on the same direction contract:
 
 - reversals are rejected;
+- keyboard may plan three unresolved turns, while touch flick is capped at the
+  two turns needed for an intentional L-turn;
 - duplicate/current direction is a legal deliberate start/resume command;
 - strategic overlays block input leakage;
 - Ready and tactical hold do not advance the simulation;

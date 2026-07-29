@@ -18,6 +18,7 @@ import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
 import { describe as describeEntry } from '@/shared/game/lexicon';
+import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
 
 export interface VariantCardProps {
   variant: SnakeVariant;
@@ -100,6 +101,9 @@ export function VariantCard({
   }
 
   const pulseLegendary = isOwned && rarity.pulse;
+  const yieldMultiplier = isOwned
+    ? formatAscendanceYieldMultiplier(owned.generation)
+    : null;
 
   /*
    * The chips below stay DISPLAY-ONLY: this whole card is one `<button>`,
@@ -170,7 +174,7 @@ export function VariantCard({
       onKeyDown={handleKeyDown}
       aria-label={
         isOwned
-          ? `${variant.name}, Generation ${owned.generation}` +
+          ? `${variant.name}, Generation ${owned.generation}, Yield multiplier ${yieldMultiplier}` +
             // The xN badge is decoration; the count has to be in the name or
             // a screen-reader user never learns the other snakes exist.
             (hasSiblings ? `, ${rosterCount} snakes owned` : '') +
@@ -288,7 +292,7 @@ export function VariantCard({
       )}
 
       {/* Info bar at bottom */}
-      <div className="w-full px-2 py-1.5 flex items-center justify-between gap-1 min-h-[36px] bg-void-deep/70 border-t border-scale-blue-light/30">
+      <div className="w-full px-2 py-1.5 flex items-center justify-between gap-1 min-h-[42px] bg-void-deep/70 border-t border-scale-blue-light/30">
         {/* Variant name - truncate with ellipsis */}
         <span
           className="text-xs font-body font-semibold text-bone-white truncate flex-1 text-left"
@@ -300,13 +304,15 @@ export function VariantCard({
         {/* Badge: Generation for owned, DNA cost chip for locked */}
         {isOwned ? (
           <span
-            className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded-arcade whitespace-nowrap"
+            className="flex flex-col items-end px-1.5 py-0.5 rounded-arcade whitespace-nowrap font-mono font-semibold leading-tight"
             style={{
               backgroundColor: hexToRgba(dynastyTheme.glow, 0.15),
               color: dynastyTheme.glow,
             }}
+            data-testid="variant-card-generation-yield"
           >
-            Gen {owned.generation}
+            <span className="text-xs">Gen {owned.generation}</span>
+            <span className="text-[10px] sm:text-[11px]">Yield ×{yieldMultiplier}</span>
           </span>
         ) : (
           <span

@@ -551,7 +551,7 @@ describe('useCollection', () => {
       });
     });
 
-    it('counts DISTINCT VARIANTS owned, not snake rows', () => {
+    it('counts distinct variants and only active highest-generation builds', () => {
       // The Lab's sticker book has one slot per variant. Counting rows is
       // what rendered "Collection: 43/11 (391%)" for a player with a deep
       // breeding line: four snakes of one variant is 1/2 collected, not 4/2.
@@ -592,7 +592,7 @@ describe('useCollection', () => {
       expect(result.current.completionByDynasty['dynasty-1']).toEqual({
         owned: 1,
         total: 2,
-        snakes: 4,
+        snakes: 1,
       });
       // Never above 100% at the source, so the bar cannot overflow.
       expect(

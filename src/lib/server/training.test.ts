@@ -57,6 +57,14 @@ describe('server training validation', () => {
     expect(sanitizeTrainingReference({ ...payload.scenario, seed: '../bad' })).toBeNull();
     expect(sanitizeTrainingInputs(payload.inputs, 200)).toEqual(payload.inputs);
     expect(sanitizeTrainingInputs([
+      { tick: 0, type: 'direction', direction: 'UP', source: 'flick' },
+    ], 10)).toEqual([
+      { tick: 0, type: 'direction', direction: 'UP', source: 'flick' },
+    ]);
+    expect(sanitizeTrainingInputs([
+      { tick: 0, type: 'direction', direction: 'UP', source: 'dpad' },
+    ], 10)).toBeNull();
+    expect(sanitizeTrainingInputs([
       { tick: 2, type: 'direction', direction: 'UP' },
       { tick: 1, type: 'direction', direction: 'LEFT' },
     ], 10)).toBeNull();

@@ -16,9 +16,12 @@ import {
   ASCENDANCE_START_GENERATION,
   ASCENDANCE_YIELD_CEILING,
   applyAscendanceYield,
+  ascendanceYieldBreakdown,
   ascendanceYieldBonus,
   ascendanceYieldMultiplier,
   breedingCost,
+  formatAscendanceYieldMultiplier,
+  formatYieldMultiplier,
   isAscended,
   offspringGeneration,
 } from './ascendance';
@@ -123,6 +126,31 @@ describe('existing snakes enter the curve at their own generation', () => {
     expect(applyAscendanceYield(-5, 50)).toBe(0);
     expect(applyAscendanceYield(Number.NaN, 50)).toBe(0);
     expect(applyAscendanceYield(100, Number.NaN)).toBe(100);
+  });
+
+  it('returns an exact player-facing breakdown that sums to settlement', () => {
+    expect(ascendanceYieldBreakdown(1_000, 11)).toEqual({
+      generation: 11,
+      baseYield: 1_000,
+      multiplier: 1.1273,
+      bonusYield: 127,
+      totalYield: 1_127,
+    });
+    expect(ascendanceYieldBreakdown(777, 3)).toEqual({
+      generation: 3,
+      baseYield: 777,
+      multiplier: 1,
+      bonusYield: 0,
+      totalYield: 777,
+    });
+  });
+
+  it('formats neutral and ascended multipliers without hiding precision', () => {
+    expect(formatYieldMultiplier(1)).toBe('1.00');
+    expect(formatYieldMultiplier(1.02)).toBe('1.02');
+    expect(formatYieldMultiplier(1.1289)).toBe('1.1289');
+    expect(formatAscendanceYieldMultiplier(3)).toBe('1.00');
+    expect(formatAscendanceYieldMultiplier(11)).toBe('1.1273');
   });
 });
 

@@ -9,6 +9,7 @@ import {
   Direction,
   Position,
   GameOverData,
+  type DirectionInputSource,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
 import {
@@ -60,7 +61,6 @@ import Link from 'next/link';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
 import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
 import { PerfHUD } from '@/components/game/PerfHUD';
-import { VirtualDPad } from '@/components/game/VirtualDPad';
 import { PauseMenu } from '@/components/game/PauseMenu';
 import { AbandonRunDialog } from '@/components/game/AbandonRunDialog';
 import { DynamicLights } from '@/components/game/DynamicLights';
@@ -165,6 +165,7 @@ import {
 } from '@/lib/game/dailyTake';
 import { chooseNextAction } from '@/lib/game/resultsNextAction';
 import type { FtueBootstrapSnake } from '@/lib/ftue/types';
+import type { AscendanceYieldBreakdown } from '@/shared/game/ascendance';
 import {
   buildGenomeCardModel,
   type GenomeCardModel,
@@ -225,7 +226,6 @@ interface BoardViewportShellProps {
   showPause: boolean;
   showAbandon?: boolean;
   pauseLabel: string;
-  inputDock?: ReactNode;
   decisionDock?: ReactNode;
   eventCallout?: ReactNode;
   arenaOverlay?: ReactNode;
@@ -243,7 +243,6 @@ function BoardViewportShell({
   showPause,
   showAbandon,
   pauseLabel,
-  inputDock,
   decisionDock,
   eventCallout,
   arenaOverlay,
@@ -260,7 +259,6 @@ function BoardViewportShell({
         showPause={showPause}
         showAbandon={showAbandon}
         pauseLabel={pauseLabel}
-        inputDock={inputDock}
         decisionDock={decisionDock}
         eventCallout={eventCallout}
         arenaOverlay={arenaOverlay}
@@ -286,6 +284,30 @@ function normalizeStrainTier(value: number | undefined): StrainTier {
   if (value === 2) return 2;
   if (value === 1) return 1;
   return 0;
+}
+
+function parseAscendanceBreakdown(
+  value: unknown
+): AscendanceYieldBreakdown | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (
+    !Number.isInteger(raw.generation) ||
+    (raw.generation as number) < 1 ||
+    !Number.isInteger(raw.baseYield) ||
+    (raw.baseYield as number) < 0 ||
+    typeof raw.multiplier !== 'number' ||
+    !Number.isFinite(raw.multiplier) ||
+    raw.multiplier < 1 ||
+    !Number.isInteger(raw.bonusYield) ||
+    (raw.bonusYield as number) < 0 ||
+    !Number.isInteger(raw.totalYield) ||
+    (raw.totalYield as number) < 0 ||
+    (raw.baseYield as number) + (raw.bonusYield as number) !== raw.totalYield
+  ) {
+    return null;
+  }
+  return raw as unknown as AscendanceYieldBreakdown;
 }
 
 function directionCanRelease(result: SetDirectionResult): boolean {
@@ -362,9 +384,6 @@ export default function GamePage() {
   const [choicePityStrain, setChoicePityStrain] = useState<StrainId | null>(null);
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Mobile control scheme: flick-anywhere is the default, D-pad the
-  // fallback. Client preference, persisted in localStorage.
-  const [controlMode, setControlMode] = useState<'flick' | 'dpad'>('flick');
   // Live camera azimuth written per frame by CameraRig; read at flick
   // pointerdown to freeze the gesture's orientation for the whole touch.
   const cameraAzimuthRef = useRef<number>(DEFAULT_AZIMUTH);
@@ -462,6 +481,8 @@ export default function GamePage() {
   // Layer 2: the two numbers, as the server settled them.
   const [settledYield, setSettledYield] = useState<number | null>(null);
   const [settledCredited, setSettledCredited] = useState<number | null>(null);
+  const [settledYieldBreakdown, setSettledYieldBreakdown] =
+    useState<AscendanceYieldBreakdown | null>(null);
   // Layer 2: the Serpent week's Depth (WP-1.01). `null` whenever the Serpent
   // flag is off, the week is not live, or the panel could not be read.
   const [serpentDepth, setSerpentDepth] = useState<RunResultsSerpent | null>(null);
@@ -653,26 +674,6 @@ export default function GamePage() {
 
   useEffect(() => () => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
-  }, []);
-
-  // Restore the persisted control-mode preference (default: flick)
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem('control-mode') === 'dpad') {
-        setControlMode('dpad');
-      }
-    } catch {
-      // Storage unavailable (private mode) - keep the flick default
-    }
-  }, []);
-
-  const handleControlModeChange = useCallback((mode: 'flick' | 'dpad') => {
-    setControlMode(mode);
-    try {
-      window.localStorage.setItem('control-mode', mode);
-    } catch {
-      // Preference simply won't persist
-    }
   }, []);
 
   // Enable input debug instrumentation only when the URL asks for it
@@ -1049,10 +1050,13 @@ export default function GamePage() {
     setPauseRearming(false);
   }, []);
 
-  const releaseResumeGate = useCallback((dir?: Direction): SetDirectionResult | null => {
+  const releaseResumeGate = useCallback((
+    dir?: Direction,
+    source: DirectionInputSource = 'standard'
+  ): SetDirectionResult | null => {
     const game = gameRef.current;
     if (!game || !awaitingResumeInput) return 'inactive';
-    const result = dir ? game.resumeWithDirection(dir) : null;
+    const result = dir ? game.resumeWithDirection(dir, source) : null;
     if (!dir) game.resume();
     if (game.isPaused) return result;
     setAwaitingResumeInput(false);
@@ -1362,6 +1366,9 @@ export default function GamePage() {
             const validation = result.validation ?? {};
             setSettledYield(
               typeof validation.yieldDna === 'number' ? validation.yieldDna : null
+            );
+            setSettledYieldBreakdown(
+              parseAscendanceBreakdown(validation.ascendance)
             );
             setSettledCredited(
               typeof validation.adjustedDna === 'number'
@@ -1714,6 +1721,7 @@ export default function GamePage() {
     setTakeState('idle');
     setSettledYield(null);
     setSettledCredited(null);
+    setSettledYieldBreakdown(null);
     setSerpentDepth(null);
     setSetupReopened(false);
 
@@ -2023,39 +2031,23 @@ export default function GamePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim]);
 
-  // Handle direction from D-Pad
-  const handleDPadDirection = useCallback((dir: Direction) => {
-    if (!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || !gameRef.current) return;
+  // FlickSurface delegates every direction here. Ready/resume admission is
+  // atomic, and active flicks use the two-unresolved-turn mobile buffer while
+  // keyboard input keeps the engine's three-turn planning depth.
+  const handleFlickDirection = useCallback((dir: Direction): SetDirectionResult => {
     if (awaitingResumeInput) {
-      const result = releaseResumeGate(dir);
-      if (!result || !directionCanRelease(result)) return;
-    } else if (isReady) {
-      const result = gameRef.current.setDirection(dir);
-      if (!directionCanRelease(result)) return;
-      setRequiresDirectionalStart(false);
-      setReady(false);
-      startGameLoop();
-    } else {
-      gameRef.current.setDirection(dir);
-    }
-    syncAim();
-  }, [isPlaying, isGameOver, isPaused, isReady, awaitingResumeInput, releaseResumeGate, setReady, startGameLoop, syncAim]);
-
-  // FlickSurface delegates its first direction here so validation, queuing,
-  // and release/start happen atomically before any engine tick.
-  const handleReadyDirection = useCallback((dir: Direction): SetDirectionResult => {
-    if (awaitingResumeInput) {
-      return releaseResumeGate(dir) ?? 'inactive';
+      return releaseResumeGate(dir, 'flick') ?? 'inactive';
     }
     const game = gameRef.current;
     if (!game) return 'inactive';
-    const result = game.setDirection(dir);
-    if (!directionCanRelease(result)) return result;
-    setRequiresDirectionalStart(false);
-    setReady(false);
-    startGameLoop();
+    const result = game.setDirection(dir, 'flick');
+    if (isReady && directionCanRelease(result)) {
+      setRequiresDirectionalStart(false);
+      setReady(false);
+      startGameLoop();
+    }
     return result;
-  }, [awaitingResumeInput, releaseResumeGate, setReady, startGameLoop]);
+  }, [awaitingResumeInput, isReady, releaseResumeGate, setReady, startGameLoop]);
 
   // Select an aim system - optimistic with rollback. Nothing to authorize:
   // the server validates the id only (§6.1, §15 overturn 10).
@@ -2339,11 +2331,11 @@ export default function GamePage() {
     ? 'Swipe or press an arrow to move'
     : awaitingResumeInput
       ? isMobile
-        ? `Tactical hold · ${controlMode === 'flick' ? 'flick' : 'tap'} a safe direction to resume`
+        ? 'Tactical hold · flick a safe direction to resume'
         : 'Tactical hold · press a safe direction to resume'
       : isReady
         ? isMobile
-          ? `${controlMode === 'flick' ? 'Flick' : 'Tap'} a direction to start`
+          ? 'Flick a direction to start'
           : 'Press Space or a direction to start'
         : choiceActive
           ? 'Run held for your decision'
@@ -2509,36 +2501,6 @@ export default function GamePage() {
       <AimSystemSelector selected={aimSystem} onSelect={handleSelectAimSystem} />
     </div>
   ) : null;
-
-  /* Control scheme (touch devices): flick-anywhere default, D-pad fallback. */
-  const controlSchemeNode =
-    isMobile && !noSnakeAvailable ? (
-      <div className="space-y-2">
-        <p className="label-arcade">Controls</p>
-        <div className="flex gap-2 justify-center">
-          {(['flick', 'dpad'] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => handleControlModeChange(mode)}
-              data-testid={`control-mode-${mode}`}
-              aria-pressed={controlMode === mode}
-              className={`px-4 py-2 min-h-[44px] rounded-arcade border font-body text-sm transition-all ${
-                controlMode === mode
-                  ? 'border-venom-orange/70 bg-venom-orange/15 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
-                  : 'border-scale-blue-light/50 bg-void/50 text-beige hover:text-bone-white'
-              }`}
-            >
-              {mode === 'flick' ? 'FLICK' : 'D-PAD'}
-            </button>
-          ))}
-        </div>
-        {controlMode === 'flick' && (
-          <p className="text-beige/60 text-xs font-body">
-            Flick anywhere on screen to steer
-          </p>
-        )}
-      </div>
-    ) : null;
 
   /* What the equipped snake brings to this run. Traits are live from the
      first food of every run (settlement reads them off the snake row
@@ -2977,30 +2939,13 @@ export default function GamePage() {
           between the canvas and the HUD (z-10+), so HUD buttons stay live.
           Camera touch-orbit is intentionally ceded to flick input while
           playing - the reset-view button remains available. */}
-      {isMobile && controlMode === 'flick' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive && (
+      {isMobile && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive && (
         <FlickSurface
-          gameRef={gameRef}
           getAzimuth={getCameraAzimuth}
-          isReady={isReady || awaitingResumeInput}
-          onReadyDirection={handleReadyDirection}
+          onDirection={handleFlickDirection}
           onAim={syncAim}
           debugRef={inputDebugRef}
         />
-      )}
-
-      {/* Virtual D-Pad (mobile fallback via control-mode toggle). bottom
-          offset includes the safe-area inset so the DOWN button clears home
-          indicators / browser chrome. */}
-      {!HUD_COCKPIT_V1_ENABLED && isMobile && controlMode === 'dpad' && isPlaying && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive && (
-        <div
-          className="absolute left-1/2 -translate-x-1/2 z-10"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
-        >
-          <VirtualDPad
-            onDirectionChange={handleDPadDirection}
-            disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || blockingOverlayActive}
-          />
-        </div>
       )}
 
       {/* Input instrumentation (?debug=input only) */}
@@ -3116,6 +3061,7 @@ export default function GamePage() {
                   score={score}
                   dnaCredited={settledCredited}
                   yieldDna={settledYield ?? hypotheticalDna}
+                  yieldBreakdown={settledYieldBreakdown}
                   serpent={serpentDepth}
                   take={dailyTake}
                   takeState={takeState}
@@ -3217,7 +3163,6 @@ export default function GamePage() {
                   ladderSelector={ladderSelectorNode}
                   anomalyPanel={anomalyPanelNode}
                   aimSelector={aimSelectorNode}
-                  controlScheme={controlSchemeNode}
                   buildSeed={buildSeedNode}
                 />
               )
@@ -3481,7 +3426,6 @@ export default function GamePage() {
             {modeToggleNode}
             {anomalyPanelNode}
             {aimSelectorNode}
-            {controlSchemeNode}
 
             {/* Error Message */}
             {startError && (
@@ -3644,15 +3588,6 @@ export default function GamePage() {
         showPause={!isGameOver && !isReady && !isPaused && !blockingOverlayActive}
         showAbandon={awaitingResumeInput && !showAbandonConfirm}
         pauseLabel="Pause game"
-        inputDock={
-          isMobile && controlMode === 'dpad' && !isGameOver && (!isPaused || awaitingResumeInput) && !blockingOverlayActive ? (
-            <VirtualDPad
-              density="cockpit"
-              onDirectionChange={handleDPadDirection}
-              disabled={!isPlaying || isGameOver || (isPaused && !awaitingResumeInput) || blockingOverlayActive}
-            />
-          ) : undefined
-        }
         decisionDock={cockpitDecisionDock}
         eventCallout={cockpitEventCallout}
         arenaOverlay={runRateCalloutNode}
@@ -3696,15 +3631,10 @@ export default function GamePage() {
                   <h2 className="heading-display text-3xl text-venom-orange text-glow-orange animate-breathe sm:text-5xl">
                     Ready!
                   </h2>
-                  {isMobile && controlMode === 'flick' ? (
+                  {isMobile ? (
                     <>
                       <p className="text-bone-white text-lg font-body">Flick a safe direction to start</p>
                       <p className="text-beige/60 text-sm font-body">Short flicks steer - chain them for fast turns</p>
-                    </>
-                  ) : isMobile ? (
-                    <>
-                      <p className="text-bone-white text-lg font-body">Tap a safe direction to start</p>
-                      <p className="text-beige/60 text-sm font-body">Use the D-Pad to move</p>
                     </>
                   ) : (
                     <>

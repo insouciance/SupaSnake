@@ -37,7 +37,6 @@ function props(overrides: Partial<RunSetupPanelProps> = {}): RunSetupPanelProps 
     startError: null,
     modeToggle: <div data-testid="mode-toggle" />,
     aimSelector: <div data-testid="aim-selector" />,
-    controlScheme: <div data-testid="control-scheme" />,
     ...overrides,
   };
 }
@@ -67,7 +66,7 @@ describe('RunSetupPanel', () => {
     );
     expect(disclosures).toHaveLength(1);
     expect((disclosures[0] as HTMLDetailsElement).open).toBe(false);
-    for (const id of ['mode-toggle', 'aim-selector', 'control-scheme']) {
+    for (const id of ['mode-toggle', 'aim-selector']) {
       expect(disclosures[0]).toContainElement(screen.getByTestId(id));
     }
   });
@@ -78,6 +77,9 @@ describe('RunSetupPanel', () => {
       'CYBER accelerates as you eat.'
     );
     expect(screen.getByText('Ouro')).toBeInTheDocument();
+    expect(screen.getByTestId('run-setup-yield-multiplier')).toHaveTextContent(
+      'Yield ×1.00'
+    );
   });
 
   it('starts through its callback', () => {

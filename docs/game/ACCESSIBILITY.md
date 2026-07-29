@@ -431,70 +431,20 @@ export class InputManager {
 }
 ```
 
-### 2.3 One-Handed Mode
+### 2.3 One-Handed Touch Play
 
-**Goal:** Allow gameplay with one hand (left or right)
+**Goal:** Keep ordinary touch steering usable with either hand without a
+separate control cluster.
 
-#### Control Layout Options
-
-```typescript
-// File: src/components/game/GameControls.tsx
-
-import { View, Pressable } from 'react-native';
-
-interface GameControlsProps {
-  oneHandedMode: 'off' | 'left' | 'right';
-  onDirectionChange: (direction: 'up' | 'down' | 'left' | 'right') => void;
-}
-
-export function GameControls({ oneHandedMode, onDirectionChange }: GameControlsProps) {
-  if (oneHandedMode === 'off') {
-    // Swipe-based controls
-    return <SwipeDetector onSwipe={onDirectionChange} />;
-  }
-
-  // D-pad controls positioned for one-handed use
-  const dpadStyle = {
-    position: 'absolute' as const,
-    bottom: 40,
-    [oneHandedMode === 'left' ? 'left' : 'right']: 20,
-  };
-
-  return (
-    <View style={dpadStyle}>
-      <View style={{ flexDirection: 'column', alignItems: 'center' }}>
-        <DirectionalButton direction="up" onPress={() => onDirectionChange('up')} />
-        <View style={{ flexDirection: 'row' }}>
-          <DirectionalButton direction="left" onPress={() => onDirectionChange('left')} />
-          <DirectionalButton direction="right" onPress={() => onDirectionChange('right')} />
-        </View>
-        <DirectionalButton direction="down" onPress={() => onDirectionChange('down')} />
-      </View>
-    </View>
-  );
-}
-
-function DirectionalButton({ direction, onPress }: { direction: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        width: TOUCH_TARGET_SIZES.comfortable,
-        height: TOUCH_TARGET_SIZES.comfortable,
-        margin: 4,
-        backgroundColor: '#333',
-        borderRadius: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={`Move ${direction}`}
-    >
-      <Text>{direction.charAt(0).toUpperCase()}</Text>
-    </Pressable>
-  );
-}
-```
+- The playable touch region is one continuous flick surface, so the player can
+  begin a gesture from the left, center, or right according to their grip.
+- The surface reports accepted/rejected direction feedback without relying on
+  color alone.
+- At most two unresolved flick directions are buffered. This preserves a fast
+  intentional L-turn while preventing a third incidental direction from
+  producing an unfair U-turn during tight coiling.
+- Pause and every destructive or strategic action remain explicit controls
+  outside the playable board; steering gestures cannot activate them.
 
 ### 2.4 Auto-Play / Assisted Mode
 

@@ -12,6 +12,7 @@ import {
   computeRunTotals,
   normalizeDynastyName,
 } from '@/shared/game/rulesets';
+import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 
 describe('Game Session Logic', () => {
   describe('Session Start', () => {
@@ -625,8 +626,7 @@ describe('Game Session Logic', () => {
         'PRIMAL'
       );
 
-      // Yield IS the recompute. The route no longer multiplies it by
-      // anything: `const yieldDna = validation.adjustedDna`.
+      // Gen1-3 are neutral, so Yield is exactly the validator recompute.
       const yieldDna = validation.adjustedDna;
 
       expect(yieldDna).toBe(applyOutcome(rawDna, true));
@@ -683,6 +683,30 @@ describe('Game Session Logic', () => {
       expect(veteranWithEverything).toBe(applyOutcome(rawDna, true));
     });
 
+    it('applies Gen 11 Ascendance once and exposes an integer-exact explanation', () => {
+      const { rawDna, score } = computeRunTotals('PRIMAL', 30);
+      const validation = validateGameResult(
+        {
+          food_count: 30,
+          extracted: true,
+          score,
+          dna_earned: rawDna,
+          duration_seconds: 120,
+          died: false,
+          victory: false,
+        },
+        startedAgo(125),
+        'PRIMAL'
+      );
+      const breakdown = ascendanceYieldBreakdown(validation.adjustedDna, 11);
+
+      expect(breakdown.multiplier).toBe(1.1273);
+      expect(breakdown.totalYield).toBe(
+        breakdown.baseYield + breakdown.bonusYield
+      );
+      expect(breakdown.totalYield).toBeGreaterThan(validation.adjustedDna);
+    });
+
     it('route source: the multiplier stack has no way back into settlement', () => {
       const source = routeSource();
 
@@ -702,8 +726,12 @@ describe('Game Session Logic', () => {
       // Ascendance landed - the multiplier STACK is still gone, and the one
       // surviving factor is per-snake progression, not account state.
       expect(source).toMatch(
-        /const yieldDna = applyAscendanceYield\(\s*validation\.adjustedDna,\s*ascendanceGeneration\s*\);/
+        /const ascendance = ascendanceYieldBreakdown\(\s*validation\.adjustedDna,\s*ascendanceGeneration\s*\);/
       );
+      expect(source).toMatch(/const yieldDna = ascendance\.totalYield/);
+      // Both earning and practice responses carry the same authoritative
+      // explanation; Results never estimates the contribution from Gen text.
+      expect(source.match(/\bascendance,\n/g)).toHaveLength(2);
       // The generation comes from SERVER STATE, never from the request.
       // WP-2.05 added the run-start context in front of the snake-row read:
       // the generation that pays is the one the run STARTED with, so a breed

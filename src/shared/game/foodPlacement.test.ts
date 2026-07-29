@@ -17,6 +17,7 @@ import {
   FOOD_RADIUS_MIN,
   blockedGrid,
   chooseFoodCell,
+  chooseSurvivableTargetCell,
   foodSearchRadius,
   markBlocked,
   placementKey,
@@ -266,6 +267,49 @@ describe('reachable is not survivable', () => {
       GRID, { x: 3, z: 4 }, grid(blocked), 399 / 400, seeded(1), null, 50
     );
     expect(cell).toEqual({ x: 3, z: 3 });
+  });
+
+  it('lets an optional target decline instead of spawning in a fatal pocket', () => {
+    // The head and five free cells form a sealed pen. Food retains its unsafe
+    // last resort so a doomed run can finish; a portal must not pretend this
+    // five-cell region is an actionable choice for a 30-cell body.
+    const blocked = new Set<string>();
+    for (let x = 0; x < GRID; x++) {
+      for (let z = 0; z < GRID; z++) {
+        if (!(x <= 2 && z <= 1)) blocked.add(placementKey(x, z));
+      }
+    }
+    blocked.add(placementKey(0, 0));
+
+    expect(
+      chooseSurvivableTargetCell(
+        GRID,
+        { x: 0, z: 0 },
+        grid(blocked),
+        seeded(3),
+        30
+      )
+    ).toBeNull();
+  });
+
+  it('selects the same reachable region when it has room for the body', () => {
+    const blocked = new Set<string>();
+    for (let x = 0; x < GRID; x++) {
+      for (let z = 0; z < GRID; z++) {
+        if (!(x <= 2 && z <= 1)) blocked.add(placementKey(x, z));
+      }
+    }
+    blocked.add(placementKey(0, 0));
+
+    const target = chooseSurvivableTargetCell(
+      GRID,
+      { x: 0, z: 0 },
+      grid(blocked),
+      seeded(9),
+      3
+    );
+    expect(target).not.toBeNull();
+    expect(blocked.has(placementKey(target!.x, target!.z))).toBe(false);
   });
 });
 

@@ -33,6 +33,10 @@ import {
 } from '@/components/ui/icons';
 import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { ResultsNextAction } from '@/lib/game/resultsNextAction';
+import {
+  formatYieldMultiplier,
+  type AscendanceYieldBreakdown,
+} from '@/shared/game/ascendance';
 
 /** How the run ended, for the Layer 1 headline. */
 export type RunResultsOutcome = 'extracted' | 'crashed';
@@ -79,6 +83,8 @@ export interface RunResultsProps {
   dnaCredited: number | null;
   /** Full-strength, charge-independent Yield (§6.2). */
   yieldDna: number | null;
+  /** Server-authoritative contribution of the run-start snake's generation. */
+  yieldBreakdown: AscendanceYieldBreakdown | null;
   serpent: RunResultsSerpent | null;
   take: DailyTakeSlot | null;
   takeState: TakeCollectState;
@@ -151,6 +157,7 @@ export function RunResults({
   score,
   dnaCredited,
   yieldDna,
+  yieldBreakdown,
   serpent,
   take,
   takeState,
@@ -271,6 +278,24 @@ export function RunResults({
             {yieldDna ?? dnaCredited ?? 0}
           </span>
         </p>
+        {yieldBreakdown && (
+          <div
+            className="mx-auto grid max-w-sm grid-cols-[1fr_auto] gap-x-5 gap-y-1 rounded-arcade border border-scale-blue-light/30 bg-void-deep/55 px-4 py-3 text-sm"
+            data-testid="results-yield-breakdown"
+          >
+            <span className="text-left text-beige/70">Base run Yield</span>
+            <span className="text-right font-mono text-bone-white">
+              {yieldBreakdown.baseYield.toLocaleString()}
+            </span>
+            <span className="text-left text-beige/70">
+              Gen {yieldBreakdown.generation} Yield ×
+              {formatYieldMultiplier(yieldBreakdown.multiplier)}
+            </span>
+            <span className="text-right font-mono text-venom-orange">
+              +{yieldBreakdown.bonusYield.toLocaleString()}
+            </span>
+          </div>
+        )}
         {!practice && dnaCredited !== null && yieldDna !== null && dnaCredited !== yieldDna && (
           <p className="text-sm text-beige/70" data-testid="results-credited">
             Credited this run: {dnaCredited} DNA

@@ -90,6 +90,7 @@ import {
 import {
   blockedGrid,
   chooseFoodCell,
+  chooseSurvivableTargetCell,
   markBlocked,
 } from '@/shared/game/foodPlacement';
 import {
@@ -166,6 +167,13 @@ import {
 } from '@/shared/game/offerGravity';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
+
+/**
+ * Input modality changes only buffer depth, never movement rules. Keyboard
+ * keeps the shipped three-turn planning queue; a continuous mobile flick
+ * gesture is capped at the two unresolved turns an intentional L-turn needs.
+ */
+export type DirectionInputSource = 'standard' | 'flick';
 
 /**
  * Outcome of a setDirection call. Purely informational (additive): the
@@ -687,6 +695,7 @@ export class SnakeGameLogic {
    */
   private directionQueue: Direction[];
   private static readonly MAX_QUEUED_DIRECTIONS = 3;
+  private static readonly MAX_FLICK_QUEUED_DIRECTIONS = 2;
   /** Food count at the last FLUX-apex Singularity pull, for its cadence. */
   private lastSingularityPullAtFood = 0;
   /**
@@ -1274,8 +1283,11 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Queue a direction change. Inputs buffer (up to MAX_QUEUED_DIRECTIONS)
-   * and apply one per tick, so rapid sequences like UP+LEFT within a single
+   * Queue a direction change. Keyboard inputs retain the shipped three-turn
+   * queue; flick input permits two unresolved turns. Two is enough for an
+   * L-turn, while a third direction emitted by the same fast gesture is the
+   * accidental U-turn that made tight mobile coils feel unfair. Queued turns
+   * apply one per tick, so rapid sequences like UP+LEFT within a single
    * tick execute as an S-turn instead of dropping the first press.
    *
    * Validation is against the direction the snake will be moving when this
@@ -1287,7 +1299,10 @@ export class SnakeGameLogic {
    * The return value is informational only - behavior is identical for
    * callers that ignore it.
    */
-  setDirection(dir: Direction): SetDirectionResult {
+  setDirection(
+    dir: Direction,
+    source: DirectionInputSource = 'standard'
+  ): SetDirectionResult {
     if (
       !this.state.isPlaying ||
       this.state.isGameOver ||
@@ -1299,7 +1314,7 @@ export class SnakeGameLogic {
       return 'inactive';
     }
 
-    return this.enqueueDirection(dir);
+    return this.enqueueDirection(dir, source);
   }
 
   /**
@@ -1307,7 +1322,10 @@ export class SnakeGameLogic {
    * Kept separate so a post-pause safety gate can accept the player's first
    * steering command before releasing the engine.
    */
-  private enqueueDirection(dir: Direction): SetDirectionResult {
+  private enqueueDirection(
+    dir: Direction,
+    source: DirectionInputSource
+  ): SetDirectionResult {
     const reference =
       this.directionQueue.length > 0
         ? this.directionQueue[this.directionQueue.length - 1]
@@ -1315,7 +1333,11 @@ export class SnakeGameLogic {
 
     if (dir === reference) return 'duplicate';
     if (dir === OPPOSITES[reference]) return 'reversal';
-    if (this.directionQueue.length >= SnakeGameLogic.MAX_QUEUED_DIRECTIONS) {
+    const capacity =
+      source === 'flick'
+        ? SnakeGameLogic.MAX_FLICK_QUEUED_DIRECTIONS
+        : SnakeGameLogic.MAX_QUEUED_DIRECTIONS;
+    if (this.directionQueue.length >= capacity) {
       return 'queue_full';
     }
 
@@ -1331,9 +1353,12 @@ export class SnakeGameLogic {
    * engine paused. If a rapid follow-up arrives after the first command has
    * already released the board, it falls through to normal input buffering.
    */
-  resumeWithDirection(dir: Direction): SetDirectionResult {
+  resumeWithDirection(
+    dir: Direction,
+    source: DirectionInputSource = 'standard'
+  ): SetDirectionResult {
     if (!this.state.isPaused) {
-      return this.setDirection(dir);
+      return this.setDirection(dir, source);
     }
     if (
       !this.state.isPlaying ||
@@ -1346,7 +1371,7 @@ export class SnakeGameLogic {
       return 'inactive';
     }
 
-    const result = this.enqueueDirection(dir);
+    const result = this.enqueueDirection(dir, source);
     if (result === 'accepted' || result === 'duplicate') {
       this.resume();
     }
@@ -3081,12 +3106,17 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Spawn the exit portal at a random valid position (not on the snake,
-   * food, or mutation food). Rejection sampling, mirroring spawnFood.
-   * Uses the injectable rng so tests can drive placement deterministically.
+   * Spawn an exit only when the board offers an honest route to it. Terrain,
+   * live objectives, the body, and the arena's closing front are all occupied;
+   * the destination must also sit in a free region large enough for the live
+   * body to manoeuvre. The seeded rng still owns which valid cell is chosen.
    */
   private spawnExit(): void {
     const position = this.sampleExitCell(null);
+    // A completely partitioned late board may have no honest portal cell.
+    // Not drawing a choice is better than drawing one the player cannot take;
+    // the cadence walker will retry or advance according to its existing rule.
+    if (!position) return;
     this.state.exitTile = position;
     // Twin Exits (anomaly): portals spawn as a pair sharing one window
     this.state.exitTile2 =
@@ -3101,57 +3131,57 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Rejection-sample one exit cell (not on the snake, food, mutation food,
-   * or an already-placed twin portal). Injectable rng - deterministic in
-   * tests, placement only, never payout.
+   * Select one reachable, escape-capable exit cell. Unlike the former
+   * rejection sampler, this never returns its last illegal guess after an
+   * arbitrary attempt limit.
    */
-  private sampleExitCell(exclude: Position | null): Position {
-    let position: Position;
-    let attempts = 0;
-    const maxAttempts = 1000;
-
-    do {
-      position = {
-        x: Math.floor(this.rng() * this.gridSize),
-        y: 0,
-        z: Math.floor(this.rng() * this.gridSize),
-      };
-      attempts++;
-    } while (
-      (this.isPositionOnSnake(position) ||
-        this.isPositionOnFood(position) ||
-        this.isPositionOnMutation(position) ||
-        (exclude !== null &&
-          exclude.x === position.x &&
-          exclude.z === position.z)) &&
-      attempts < maxAttempts
+  private sampleExitCell(exclude: Position | null): Position | null {
+    const head = this.state.snake[0];
+    if (!head) return null;
+    const cell = chooseSurvivableTargetCell(
+      this.gridSize,
+      head,
+      this.opportunityBlockedGrid(exclude),
+      this.rng,
+      this.state.snake.length
     );
-
-    return position;
+    return cell ? { ...cell, y: 0 } : null;
   }
 
   /**
-   * Spawn the mutation food at a random valid position (not on the snake,
-   * food, or exit portal). Injectable rng - deterministic in tests.
+   * The common fairness floor for optional opportunities. Placement remains
+   * global and seeded — it may demand a dangerous break from the player's
+   * route — but an objective is never buried in terrain, another objective,
+   * the live body, or the arena's forming front.
+   */
+  private opportunityBlockedGrid(exclude: Position | null): Uint8Array {
+    const blocked = this.waveBlockedGrid();
+    // `waveBlockedGrid` deliberately starts before a new food wave exists in
+    // its primary caller, so live food is layered here for opportunity spawns.
+    for (const food of this.state.foods) {
+      markBlocked(blocked, this.gridSize, food.x, food.z);
+    }
+    if (exclude) markBlocked(blocked, this.gridSize, exclude.x, exclude.z);
+    return blocked;
+  }
+
+  /**
+   * Spawn a timed gene opportunity under the same reachable/survivable rule
+   * as a portal. If no honest cell exists, the food-indexed cadence retries
+   * after the next eat instead of drawing an impossible temptation.
    */
   private spawnMutationFood(): void {
-    let position: Position;
-    let attempts = 0;
-    const maxAttempts = 1000;
-
-    do {
-      position = {
-        x: Math.floor(this.rng() * this.gridSize),
-        y: 0,
-        z: Math.floor(this.rng() * this.gridSize),
-      };
-      attempts++;
-    } while (
-      (this.isPositionOnSnake(position) ||
-        this.isPositionOnFood(position) ||
-        this.isPositionOnExit(position)) &&
-      attempts < maxAttempts
+    const head = this.state.snake[0];
+    if (!head) return;
+    const cell = chooseSurvivableTargetCell(
+      this.gridSize,
+      head,
+      this.opportunityBlockedGrid(null),
+      this.rng,
+      this.state.snake.length
     );
+    if (!cell) return;
+    const position: Position = { ...cell, y: 0 };
 
     this.state.mutationTile = position;
     this.state.mutationTicksRemaining = MUTATION_SPAWN.despawnTicks;

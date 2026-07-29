@@ -163,9 +163,8 @@ export default function LabPage() {
     : { owned: 0, total: 0, snakes: 0 };
 
   /**
-   * The open sheet's roster, resolved against the LIVE owned list rather
-   * than the store's snapshot, so an equip or a favorite is reflected in the
-   * selector without reopening the sheet.
+   * The open sheet's highest-generation roster, resolved against the LIVE
+   * owned list so equip/favorite changes update without reopening it.
    */
   const selectedRoster = useMemo(
     () =>
@@ -194,7 +193,7 @@ export default function LabPage() {
   // ---------------------------------------------------------------------------
 
   /**
-   * Handle variant card selection. The grid hands over the whole roster;
+   * Handle variant card selection. The grid hands over the active top-gen roster;
    * the sheet opens on its representative and can walk the siblings.
    * - If owned: open detail modal
    * - If locked: open unlock modal

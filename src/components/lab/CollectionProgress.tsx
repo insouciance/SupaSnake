@@ -15,10 +15,8 @@ export interface CollectionProgressProps {
   /** Total variants available in this dynasty */
   total: number;
   /**
-   * How many snakes the player actually holds in this dynasty. Shown beside
-   * the set count when it exceeds it - a set of 11 held as 43 snakes is a
-   * true and interesting thing to say, and saying it here is what stops
-   * anyone reading the completion number as a row count again.
+   * How many active highest-generation builds the player has in this dynasty.
+   * Historical generations are pedigree, not selectable inventory.
    */
   snakes?: number;
   /** Dynasty theme for styling */

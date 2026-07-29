@@ -1,10 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { RefObject } from 'react';
 import { FlickSurface } from './FlickSurface';
-import type {
-  SetDirectionResult,
-  SnakeGameLogic,
-} from '@/lib/game/SnakeGameLogic';
+import type { SetDirectionResult } from '@/lib/game/SnakeGameLogic';
 
 jest.mock('@/lib/effects/Haptics', () => ({
   haptics: { light: jest.fn() },
@@ -33,42 +29,37 @@ function flickRight(surface: HTMLElement, pointerId = 1): void {
 }
 
 function renderReadySurface(result: SetDirectionResult) {
-  const onReadyDirection = jest.fn(() => result);
+  const onDirection = jest.fn(() => result);
   const onAim = jest.fn();
-  const gameRef = {
-    current: {} as SnakeGameLogic,
-  } as RefObject<SnakeGameLogic>;
 
   render(
     <FlickSurface
-      gameRef={gameRef}
       getAzimuth={() => 0}
-      isReady
-      onReadyDirection={onReadyDirection}
+      onDirection={onDirection}
       onAim={onAim}
     />
   );
 
-  return { onReadyDirection, onAim };
+  return { onDirection, onAim };
 }
 
 describe('FlickSurface ready/resume gate', () => {
   it('delegates the threshold-crossing direction atomically to the gate owner', () => {
-    const { onReadyDirection, onAim } = renderReadySurface('accepted');
+    const { onDirection, onAim } = renderReadySurface('accepted');
 
     flickRight(screen.getByTestId('flick-surface'));
 
-    expect(onReadyDirection).toHaveBeenCalledWith('RIGHT');
-    expect(onReadyDirection).toHaveBeenCalledTimes(1);
+    expect(onDirection).toHaveBeenCalledWith('RIGHT');
+    expect(onDirection).toHaveBeenCalledTimes(1);
     expect(onAim).toHaveBeenCalledTimes(1);
   });
 
   it('does not sync aim when the gate rejects an unsafe reversal', () => {
-    const { onReadyDirection, onAim } = renderReadySurface('reversal');
+    const { onDirection, onAim } = renderReadySurface('reversal');
 
     flickRight(screen.getByTestId('flick-surface'));
 
-    expect(onReadyDirection).toHaveBeenCalledWith('RIGHT');
+    expect(onDirection).toHaveBeenCalledWith('RIGHT');
     expect(onAim).not.toHaveBeenCalled();
   });
 });

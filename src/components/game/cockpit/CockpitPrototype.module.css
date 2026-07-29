@@ -681,24 +681,6 @@
   outline-color: var(--danger-rose) !important;
 }
 
-.inputDock {
-  position: relative;
-  z-index: 10;
-  grid-area: genes;
-  display: none;
-  min-width: 0;
-  min-height: 0;
-  place-items: center;
-}
-
-.liveRoot[data-input='dpad'] .geneRack {
-  display: none;
-}
-
-.liveRoot[data-input='dpad'] .inputDock {
-  display: grid;
-}
-
 .eventCallout {
   position: relative;
   z-index: 2;
@@ -784,7 +766,6 @@
 .liveRoot[data-decision='true'] .statusRail,
 .liveRoot[data-decision='true'] .eventCallout,
 .liveRoot[data-decision='true'] .controls,
-.liveRoot[data-decision='true'] .inputDock,
 .liveRoot[data-decision='true'] .arenaBay {
   pointer-events: none;
   filter: saturate(0.4) brightness(0.62);
@@ -1299,18 +1280,6 @@
     height: 44px;
   }
 
-  .liveRoot[data-input='dpad'] .composition {
-    --cockpit-rail: clamp(140px, 17vw, 154px);
-  }
-
-  .liveRoot[data-input='dpad'] .geneRack {
-    display: none;
-  }
-
-  .liveRoot[data-input='dpad'] .inputDock {
-    display: grid;
-  }
-
 }
 
 @media (max-aspect-ratio: 4 / 5) {
@@ -1477,26 +1446,6 @@
     height: 44px;
   }
 
-  .liveRoot[data-input='dpad'] .composition {
-    grid-template-rows: 58px 44px minmax(0, 1fr) 140px;
-    grid-template-areas:
-      'score dna controls'
-      'status status status'
-      'arena arena arena'
-      'input input input';
-  }
-
-  .liveRoot[data-input='dpad'] .geneRack,
-  .liveRoot[data-input='dpad'] .systemsRack,
-  .liveRoot[data-input='dpad'] .modeInstrument {
-    display: none;
-  }
-
-  .liveRoot[data-input='dpad'] .inputDock {
-    display: grid;
-    grid-area: input;
-  }
-
 }
 
 @media (max-width: 350px) and (orientation: portrait) {
@@ -1563,10 +1512,6 @@
 
   .statusRail {
     font-size: 14px;
-  }
-
-  .liveRoot[data-input='dpad'] .composition {
-    grid-template-rows: 54px 42px minmax(0, 1fr) 140px;
   }
 
 }

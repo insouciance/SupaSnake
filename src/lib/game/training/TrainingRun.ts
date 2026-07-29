@@ -1,6 +1,7 @@
 import {
   SnakeGameLogic,
   type Direction,
+  type DirectionInputSource,
   type GameState,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
@@ -105,16 +106,24 @@ export class TrainingRun {
     return this.started;
   }
 
-  input(direction: Direction): SetDirectionResult {
+  input(
+    direction: Direction,
+    source: DirectionInputSource = 'standard'
+  ): SetDirectionResult {
     if (this.done || this.inputs.length >= this.scenario.maxTicks * 4 + 8) {
       return 'inactive';
     }
 
     const wasPaused = this.engine.isPaused;
     const result = wasPaused
-      ? this.engine.resumeWithDirection(direction)
-      : this.engine.setDirection(direction);
-    this.inputs.push({ tick: this.tickIndex, type: 'direction', direction });
+      ? this.engine.resumeWithDirection(direction, source)
+      : this.engine.setDirection(direction, source);
+    this.inputs.push({
+      tick: this.tickIndex,
+      type: 'direction',
+      direction,
+      ...(source === 'flick' ? { source: 'flick' as const } : {}),
+    });
 
     if (result === 'accepted') {
       if (this.started) this.acceptedTurns += 1;
@@ -302,7 +311,7 @@ export function replayTrainingAttempt(
       if (input.type === 'pause') {
         if (!run.pause()) throw new Error('Training pause event is not valid at this tick');
       } else {
-        run.input(input.direction as Direction);
+        run.input(input.direction as Direction, input.source ?? 'standard');
       }
       cursor += 1;
     }

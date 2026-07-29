@@ -127,7 +127,6 @@ describe('RunCockpit', () => {
         model={{ ...MODEL, state: 'active', isFirstMovementPrompt: false }}
         onPause={onPause}
         onResetView={onResetView}
-        inputDock={<button type="button">Move Up</button>}
         decisionDock={<div role="dialog" aria-label="Decision">Choose</div>}
       >
         <canvas />
@@ -135,7 +134,6 @@ describe('RunCockpit', () => {
     );
 
     const root = screen.getByTestId('game-hud');
-    expect(root).toHaveAttribute('data-input', 'dpad');
     expect(root).toHaveAttribute('data-decision', 'true');
     expect(screen.getByTestId('cockpit-decision-dock')).toContainElement(
       screen.getByRole('dialog', { name: 'Decision' })
