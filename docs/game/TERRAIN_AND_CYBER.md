@@ -145,11 +145,11 @@ at the last.
 
 ### 2.2 The ruleset
 
-**Tick.** Keep the hyperbolic decay, **floor at ~100 ms [H]** instead of 50.
-Under the shipped curve 100 ms arrives at food 33 and the remaining 65 foods run
-below playable — roughly two thirds of the speed curve is dead. Re-shape so the
-meaningful speed tiers span CYBER's pressure horizon instead of exhausting a
-third of the way into a viable run.
+**Tick.** Keep the hyperbolic decay, but use a **120 ms floor** and a **0.02
+per-food decay** (owner ruling, 2026-07-29). The prior 0.03/100 ms curve reached
+roughly ×2 at food 33 and became reaction-dominated. The ruled curve reaches
+125 ms (×1.6) at food 30 and 120 ms (×1.67) at food 33, preserving the full
+acceleration horizon without replacing route planning with raw reaction load.
 
 **Arena.** **6 blocks every 5 foods [H]**, filling the outermost free ring. The
 outer ring is 76 cells (19% of the board), so it completes around food 65. That
@@ -245,9 +245,10 @@ than from a taxonomy.
    Both concerns are resolved structurally by the invariant in §1.1.
 2. ~~**Forming duration** [H: ~2 s].~~ **IMPLEMENTED:** CYBER 2 seconds;
    Fortress 3 seconds because it forms behind the player's focus.
-3. ~~**Tick floor** [H: ~100 ms].~~ **IMPLEMENTED:** CYBER 100 ms. The owner
-   confirmed CYBER is thrilling with +1 body growth; future tempo tuning should
-   preserve the separation between speed pressure and body growth.
+3. ~~**Tick floor** [H: ~100 ms].~~ **RETUNED 2026-07-29:** CYBER 120 ms with
+   0.02 per-food decay. The owner confirmed CYBER is thrilling with +1 body
+   growth but found ×2 reaction-dominated; ×1.67 preserves speed pressure while
+   keeping deliberate steering in control.
 4. ~~**Does the ring fill inward or outward?**~~ **RULED:**
    outermost-free-ring first. Scattered interior blocks remain a different game.
 5. **Pending-state ceiling.** If a cell stays occupied for a long time the ring

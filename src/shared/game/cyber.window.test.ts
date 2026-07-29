@@ -86,10 +86,10 @@ describe('the extraction window holds its real duration', () => {
 
   it('the OLD tick-denominated behaviour is what it fixes', () => {
     // Regression documentation: without the seconds override, 90 ticks at the
-    // floor is a quarter of PRIMAL's window. If someone deletes
+    // floor is substantially shorter than PRIMAL's window. If someone deletes
     // `despawnSeconds`, this is the number that comes back.
     const ticksOnly = windowSeconds(undefined, 90, CYBER_TICK_FLOOR_MS);
-    expect(ticksOnly).toBeCloseTo(9, 0);
+    expect(ticksOnly).toBeCloseTo(10.8, 1);
     expect(windowSeconds(undefined, 90, 50)).toBeCloseTo(4.5, 1);
   });
 });

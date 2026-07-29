@@ -4,7 +4,17 @@ Companion to `REDESIGN_WAVE.md`, which is the PLAN. This file is the STATE:
 what has shipped, what was ruled since the plan was written, and what a fresh
 session needs in order to continue without reconstructing any of it.
 
-Last updated 2026-07-29 (D1 ruling and pressure-feedback release).
+Last updated 2026-07-29 (D1 ruling, pressure feedback, and CYBER tempo ruling).
+
+---
+
+## D3 CYBER TEMPO CLOSED — owner ruling, 2026-07-29
+
+CYBER keeps its 200 ms opening and hyperbolic acceleration, but the per-food
+decay is 0.02 and the floor is 120 ms (×1.67). This reaches ×1.6 at food 30 and
+the floor at food 33, preserving the existing acceleration horizon while
+removing the reaction-dominated ×2 terminal band. Growth remains +1; portal
+duration, arena pressure, Yield, and Score are unchanged.
 
 ---
 

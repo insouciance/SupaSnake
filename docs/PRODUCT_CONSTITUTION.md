@@ -7,9 +7,9 @@ body growth makes a tight wall-following coil the player's constructed safety;
 exit portals and timed gene opportunities tempt them to spend that structure by
 leaving it, then ask whether they can recover. Placement fairness means a target
 is physically valid, reachable, and legible — never that it is nearby, cheap, or
-safe to pursue. CYBER's current ×2.0 terminal tempo is now an explicit tuning
-question; the owner's candidate range is ×1.6–1.7 with ×1.8 as a possible cap,
-not a ruled number. See §5 and §17.32.
+safe to pursue. CYBER's terminal tempo is **×1.67** (120 ms), reached through a
+0.02 per-food decay; this keeps its acceleration identity without making ×2
+reaction load the deciding mechanic. See §5 and §17.32.
 **v1.4 D2 amendment (owner ruling, 29 July 2026):** touch play is
 **flick-only**; the inferior D-pad and its stored preference are retired. A flick
 may queue at most **two unresolved directions** — enough to express an L-turn,
@@ -1707,15 +1707,13 @@ deliberately undecided pending data.
     carryover (ceiling 12) against the current rule on return rate after a missed
     day. The 25% lean tail may already be doing this work, which is precisely why
     it is a test and not a change.
-32. **CYBER precision ceiling** (v1.4 D3, open). The current 200ms curve first
-    announces roughly ×2.0 at food 30 and reaches its 100ms floor around food 33.
-    The owner's new playtest finding is that ×2.0 feels reaction-dominated; candidate
-    terminal bands are ×1.6–1.7 (125–118ms), with ×1.8 (~111ms) as the highest
-    plausible cap. *Test:* compare capped curves on late-run steering errors,
-    intentional portal/gene detours, deaths the player calls “my mistake,” and
-    enjoyment. Preserve acceleration as CYBER's identity; choose the fastest curve
-    on which route planning and precise input still explain outcomes. Do not tune
-    from the HUD number alone.
+32. **CYBER precision ceiling** (v1.4 D3, ruled 29 July 2026). The 200ms curve
+    now decays by 0.02 per food and stops at 120ms (×1.67): food 30 reaches 125ms
+    (×1.6), and food 33 reaches the floor. This replaces the prior 0.03/100ms
+    curve whose ×2 terminal tempo felt reaction-dominated, while preserving
+    acceleration across the same pressure horizon. *Regression test:* compare
+    late-run steering errors, intentional portal/gene detours, deaths the player
+    calls “my mistake,” and enjoyment. Do not tune from the HUD number alone.
 
 ---
 
