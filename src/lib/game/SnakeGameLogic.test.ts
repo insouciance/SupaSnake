@@ -380,6 +380,29 @@ describe('SnakeGameLogic', () => {
         game.pause();
         expect(game.getQueuedDirections()).toEqual([]);
       });
+
+      it('can stage a bounded route without releasing a decision hold', () => {
+        game.pause('decision');
+
+        expect(game.stagePausedDirection('UP', 'flick')).toBe('accepted');
+        expect(game.stagePausedDirection('LEFT', 'flick')).toBe('accepted');
+        expect(game.stagePausedDirection('DOWN', 'flick')).toBe('queue_full');
+        expect(game.isPaused).toBe(true);
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+
+        game.resume();
+        game.tick();
+        expect(game.getState().direction).toBe('UP');
+        game.tick();
+        expect(game.getState().direction).toBe('LEFT');
+      });
+
+      it('refuses paused-route staging outside a live pause', () => {
+        expect(game.stagePausedDirection('UP')).toBe('inactive');
+        game.pause('decision');
+        game.resume();
+        expect(game.stagePausedDirection('UP')).toBe('inactive');
+      });
     });
 
     describe('getQueuedDirections (aim telegraph read-only view)', () => {
@@ -1862,9 +1885,17 @@ describe('SnakeGameLogic', () => {
       expect(state.phoenixTriggeredAtFood).toBeNull();
       expect(state.nextMutationAtFood).toBe(6); // rng 0.5 -> 6
       expect(state.foods).toHaveLength(COSMIC_CONSTELLATION.size);
+      expect(engine.getConstellationWave()).toBe(1);
       // A fresh run opens a fresh window - 8s at COSMIC's 160ms tick.
       expect(state.constellationWindowTicks).toBe(50);
       expect(state.constellationTicksRemaining).toBe(50);
+
+      engine.spawnFood();
+      expect(engine.getConstellationWave()).toBe(2);
+
+      // Starting again resets the presentation counter before opening wave 1.
+      engine.start();
+      expect(engine.getConstellationWave()).toBe(1);
     });
   });
 });

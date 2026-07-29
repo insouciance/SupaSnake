@@ -696,6 +696,13 @@ export class SnakeGameLogic {
   private directionQueue: Direction[];
   private static readonly MAX_QUEUED_DIRECTIONS = 3;
   private static readonly MAX_FLICK_QUEUED_DIRECTIONS = 2;
+  /**
+   * Monotonic within one run. Presentation reads this to recognise a genuinely
+   * new COSMIC constellation even when the cosmetic glyph happens to repeat.
+   * It is deliberately not part of settlement state: planning time changes no
+   * run fact and the server has nothing to validate here.
+   */
+  private constellationWave = 0;
   /** Food count at the last FLUX-apex Singularity pull, for its cadence. */
   private lastSingularityPullAtFood = 0;
   /**
@@ -741,6 +748,7 @@ export class SnakeGameLogic {
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.directionQueue = [];
+    this.constellationWave = 0;
 
     this.state = this.createInitialState();
   }
@@ -1055,6 +1063,7 @@ export class SnakeGameLogic {
     this.state.startTime = Date.now();
 
     this.directionQueue = [];
+    this.constellationWave = 0;
     this.lastSingularityPullAtFood = 0;
     this.runEvents = [];
     this.runEventsTruncated = false;
@@ -1183,6 +1192,11 @@ export class SnakeGameLogic {
   /** The active dynasty ruleset. */
   getRuleset(): DynastyRuleset {
     return this.ruleset;
+  }
+
+  /** Presentation-only identity of the live COSMIC wave (0 elsewhere). */
+  getConstellationWave(): number {
+    return this.constellationWave;
   }
 
   /**
@@ -1376,6 +1390,31 @@ export class SnakeGameLogic {
       this.resume();
     }
     return result;
+  }
+
+  /**
+   * Stage a deliberate route while a free decision hold keeps the board
+   * frozen. COSMIC's bounded constellation read uses this to let the player
+   * plan an L-turn during the first second without spending a tactical hold
+   * or releasing movement early. Normal pause still resumes atomically via
+   * `resumeWithDirection`; this method never changes pause state.
+   */
+  stagePausedDirection(
+    dir: Direction,
+    source: DirectionInputSource = 'standard'
+  ): SetDirectionResult {
+    if (
+      !this.state.isPaused ||
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isDeathSequence ||
+      this.state.pendingChoice !== null ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
+    ) {
+      return 'inactive';
+    }
+    return this.enqueueDirection(dir, source);
   }
 
   /**
@@ -2763,6 +2802,7 @@ export class SnakeGameLogic {
     );
 
     if (constellation) {
+      this.constellationWave += 1;
       this.state.constellationGlyph = Math.floor(
         this.rng() * constellation.glyphCount
       );

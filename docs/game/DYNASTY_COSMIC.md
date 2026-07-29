@@ -6,6 +6,29 @@ to `docs/game/TERRAIN_AND_CYBER.md`; feeds WP-3.02 (lab dials) and WP-3.04
 
 ---
 
+## 0 — Constellation read (owner ruling, 2026-07-29)
+
+Every fresh constellation after the opening wave receives a **bounded native
+planning window**. This is dynasty grammar, not a gene: charging a build slot or
+random offer for the minimum time needed to read COSMIC's five simultaneous
+targets would make baseline readability conditional power.
+
+- The simulation freezes for at least **1.0 second** and at most **2.0 seconds**.
+- During the guaranteed first second, keyboard input may stage the normal route
+  buffer and mobile may stage its existing two-turn L-route. The body does not
+  move early.
+- If the player has committed a direction/route, movement begins when the first
+  second closes. After that second, a new direction resumes immediately.
+- With no input, the current heading automatically continues at two seconds.
+- The read spends no tactical hold, adds no gene, changes no constellation
+  window tick, and cannot become an indefinite free pause.
+- Opening wave 1 receives no extra freeze because Ready already provides
+  unlimited pre-movement reading time. A strategic gene/portal/surge choice on
+  the same tick owns the decision surface and supersedes this window.
+
+This preserves COSMIC's tempo and the need to execute under pressure while
+making the actual route choice perceptible at the moment the board changes.
+
 ## 1 — The verdict this starts from
 
 The owner, playing COSMIC as shipped:
