@@ -349,45 +349,5 @@ test.describe('Genome capability UI', () => {
     await page.keyboard.press('Space');
     await expect(gate).toBeHidden();
 
-    // D-pad uses the same atomic release path. Restart in the fallback mode
-    // and prove a safe tap starts and resumes without an automatic tick.
-    await page.waitForTimeout(650);
-    await page.keyboard.press('p');
-    await expect(gate).toContainText(/tactical hold/i);
-    await page.getByRole('button', { name: /abandon run/i }).click();
-    const finalAbandonDialog = page.getByTestId('abandon-run-dialog');
-    await finalAbandonDialog.getByRole('button', { name: /^abandon run$/i }).click();
-    await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible();
-    await openRunSetupControls(page);
-    await page.getByTestId('control-mode-dpad').click();
-    await expect(page.getByTestId('control-mode-dpad')).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
-    // Not forced: the ANOMALY chip shifts this button when /api/anomaly
-    // resolves, and a forced click skips the stability check that rides that
-    // out. See e2e/game.spec.ts for the measured shift.
-    await page.getByTestId('mode-free').click();
-    const secondStart = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/game/session' &&
-        (response.request().postDataJSON() as { action?: string } | null)?.action === 'start'
-    );
-    await page.getByTestId('free-play-start').click({ force: true });
-    await secondStart;
-    await expect(gate).toContainText(
-      /Ready!|Swipe or press an arrow to move|(?:Flick|Tap) a direction to start/,
-      { timeout: 20_000 }
-    );
-    await page.getByRole('button', { name: /move up/i }).click();
-    await expect(gate).toBeHidden();
-    await page.waitForTimeout(650);
-    await page.keyboard.press('p');
-    await expect(gate).toContainText(/tactical hold/i);
-    // RIGHT is safe whether the opening UP has already become the authoritative
-    // heading or the engine is still on its initial RIGHT heading.
-    await page.getByRole('button', { name: /move right/i }).click();
-    await expect(gate).toBeHidden();
   });
 });

@@ -6,7 +6,12 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { trackEvent } from '@/lib/analytics/posthog';
 import { themeManager } from '@/lib/theme/ThemeManager';
-import type { Direction, Position } from '@/lib/game/SnakeGameLogic';
+import type {
+  Direction,
+  DirectionInputSource,
+  Position,
+  SetDirectionResult,
+} from '@/lib/game/SnakeGameLogic';
 import { TrainingRun, type TrainingRunSnapshot } from '@/lib/game/training/TrainingRun';
 import {
   createInterpolationBuffer,
@@ -46,8 +51,9 @@ import {
   COCKPIT_FIT_SCALE,
   COCKPIT_FRAME_MARGIN,
   COCKPIT_TARGET_Y,
+  DEFAULT_AZIMUTH,
 } from '@/components/game/CameraRig';
-import { VirtualDPad } from '@/components/game/VirtualDPad';
+import { FlickSurface } from '@/components/game/FlickSurface';
 import { TrainingPathRenderer } from '@/components/game/training/TrainingPathRenderer';
 import { DEFAULT_SANDBOX_PATH } from '@/components/training/PathComposer';
 import { TrainingHub } from '@/components/training/TrainingHub';
@@ -83,6 +89,7 @@ interface TrainingBoardProps {
   guidance: TrainingGuidance;
   ghost: TrainingBestSummary['trace'];
   bufferRef: { readonly current: InterpolationBuffer | null };
+  azimuthRef: { current: number };
   isMobile: boolean;
   resetToken: number;
 }
@@ -93,6 +100,7 @@ function TrainingBoard({
   guidance,
   ghost,
   bufferRef,
+  azimuthRef,
   isMobile,
   resetToken,
 }: TrainingBoardProps) {
@@ -171,6 +179,7 @@ function TrainingBoard({
       <CameraRig
         gridSize={scenario.gridSize}
         resetToken={resetToken}
+        azimuthRef={azimuthRef}
         frameMargin={COCKPIT_FRAME_MARGIN}
         fitScale={COCKPIT_FIT_SCALE}
         defaultPolar={COCKPIT_DEFAULT_POLAR}
@@ -217,6 +226,7 @@ export default function TrainingPage() {
   const runRef = useRef<TrainingRun | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const interpolationRef = useRef<InterpolationBuffer>(createInterpolationBuffer());
+  const cameraAzimuthRef = useRef(DEFAULT_AZIMUTH);
   const seedCounterRef = useRef(0);
   const verificationTokenRef = useRef(0);
 
@@ -510,12 +520,23 @@ export default function TrainingPage() {
     launchScenario(createTrainingScenario(references[0]), 'none', 'circuit');
   }, [difficulty, launchScenario, nextSeed]);
 
-  const handleInput = useCallback((direction: Direction) => {
+  const getCameraAzimuth = useCallback(() => cameraAzimuthRef.current, []);
+
+  const handleInput = useCallback((
+    direction: Direction,
+    source: DirectionInputSource = 'standard'
+  ): SetDirectionResult => {
     const active = runRef.current;
-    if (!active || active.isDone) return;
-    active.input(direction);
+    if (!active || active.isDone) return 'inactive';
+    const result = active.input(direction, source);
     setSnapshot(active.snapshot());
+    return result;
   }, []);
+
+  const handleFlickInput = useCallback(
+    (direction: Direction) => handleInput(direction, 'flick'),
+    [handleInput]
+  );
 
   useEffect(() => {
     if (view !== 'run') return;
@@ -674,9 +695,13 @@ export default function TrainingPage() {
     ? 'ready'
     : snapshot.state.isPaused ? 'held' : 'active';
   const status = !runRef.current?.isStarted
-    ? 'Choose a direction to begin the attempt'
+    ? isMobile
+      ? 'Flick a direction to begin the attempt'
+      : 'Choose a direction to begin the attempt'
     : snapshot.state.isPaused
-      ? 'Tactical hold · choose a safe direction to resume'
+      ? isMobile
+        ? 'Tactical hold · flick a safe direction to resume'
+        : 'Tactical hold · choose a safe direction to resume'
       : `${definition.primaryMetric} · ${snapshot.progress} of ${snapshot.progressTotal}`;
   const cockpitModel: RunCockpitModel = {
     dynasty: scenario.dynasty,
@@ -730,13 +755,6 @@ export default function TrainingPage() {
         showPause={!snapshot.state.isPaused}
         showAbandon={snapshot.state.isPaused}
         pauseLabel="Pause training"
-        inputDock={isMobile ? (
-          <VirtualDPad
-            onDirectionChange={handleInput}
-            density="cockpit"
-            disabled={snapshot.done}
-          />
-        ) : undefined}
       >
         <TrainingBoard
           scenario={scenario}
@@ -744,10 +762,18 @@ export default function TrainingPage() {
           guidance={activeGuidance}
           ghost={ghost}
           bufferRef={interpolationRef}
+          azimuthRef={cameraAzimuthRef}
           isMobile={isMobile}
           resetToken={viewResetToken}
         />
       </RunCockpit>
+      {isMobile && !snapshot.done && (
+        <FlickSurface
+          getAzimuth={getCameraAzimuth}
+          onDirection={handleFlickInput}
+          showQueuedTurns={false}
+        />
+      )}
     </div>
   );
 }

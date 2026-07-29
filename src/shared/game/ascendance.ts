@@ -60,6 +60,19 @@ function normalizeGeneration(generation: unknown): number {
 }
 
 /**
+ * The server-authoritative explanation of Ascendance's contribution to one
+ * run. This is deliberately the same object settlement returns to Results:
+ * the UI never reconstructs an economy number from a displayed percentage.
+ */
+export interface AscendanceYieldBreakdown {
+  generation: number;
+  baseYield: number;
+  multiplier: number;
+  bonusYield: number;
+  totalYield: number;
+}
+
+/**
  * The Ascendance Yield bonus for a snake at `generation`, as a fraction
  * (0.02 = +2%). 0 for Gen1–3; strictly increasing and < 0.30 thereafter.
  */
@@ -78,6 +91,49 @@ export function ascendanceYieldMultiplier(generation: number): number {
 }
 
 /**
+ * Format a Yield multiplier with 0.01% resolution while keeping the neutral
+ * value explicit (`1.00`). Examples: 1 -> "1.00", 1.02 -> "1.02",
+ * 1.1289 -> "1.1289".
+ */
+export function formatYieldMultiplier(multiplier: number): string {
+  const safe = Number.isFinite(multiplier) && multiplier >= 1 ? multiplier : 1;
+  const [whole, rawFraction = ''] = safe.toFixed(4).split('.');
+  const fraction = rawFraction.replace(/0+$/, '').padEnd(2, '0');
+  return `${whole}.${fraction}`;
+}
+
+/** Player-facing multiplier for a snake generation. */
+export function formatAscendanceYieldMultiplier(generation: number): string {
+  return formatYieldMultiplier(ascendanceYieldMultiplier(generation));
+}
+
+/**
+ * Compute both the settled total and the exact explanation shown to the
+ * player. Yield remains integer-valued; `bonusYield` includes the same final
+ * floor as settlement, so the displayed addition always sums exactly.
+ */
+export function ascendanceYieldBreakdown(
+  yieldDna: number,
+  generation: number
+): AscendanceYieldBreakdown {
+  const normalizedGeneration = normalizeGeneration(generation);
+  const safeYield = Number.isFinite(yieldDna) ? Math.max(0, yieldDna) : 0;
+  const baseYield = Math.floor(safeYield);
+  const multiplier = ascendanceYieldMultiplier(normalizedGeneration);
+  // Preserve the pre-breakdown helper's behavior even for defensive
+  // non-integer callers; production settlement already supplies an integer.
+  const totalYield = Math.floor(safeYield * multiplier);
+
+  return {
+    generation: normalizedGeneration,
+    baseYield,
+    multiplier,
+    bonusYield: totalYield - baseYield,
+    totalYield,
+  };
+}
+
+/**
  * Apply Ascendance to a run's Yield. Yield stays an integer number of DNA;
  * the multiplier is never below 1, so this can only raise it (Rule 6).
  */
@@ -85,10 +141,7 @@ export function applyAscendanceYield(
   yieldDna: number,
   generation: number
 ): number {
-  if (!Number.isFinite(yieldDna) || yieldDna <= 0) {
-    return Number.isFinite(yieldDna) ? Math.max(0, Math.floor(yieldDna)) : 0;
-  }
-  return Math.floor(yieldDna * ascendanceYieldMultiplier(generation));
+  return ascendanceYieldBreakdown(yieldDna, generation).totalYield;
 }
 
 // =============================================================================

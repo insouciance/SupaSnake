@@ -31,7 +31,6 @@ interface RunCockpitProps {
   showPause?: boolean;
   showAbandon?: boolean;
   pauseLabel?: string;
-  inputDock?: ReactNode;
   decisionDock?: ReactNode;
   eventCallout?: ReactNode;
   /** Transparent, non-interactive feedback layered directly over the arena. */
@@ -79,7 +78,6 @@ export function RunCockpit({
   showPause = true,
   showAbandon = false,
   pauseLabel = 'Pause run',
-  inputDock,
   decisionDock,
   eventCallout,
   arenaOverlay,
@@ -106,7 +104,6 @@ export function RunCockpit({
       style={style}
       data-dynasty={model.dynasty}
       data-state={model.state}
-      data-input={inputDock ? 'dpad' : 'flick'}
       data-decision={decisionDock ? 'true' : 'false'}
       data-testid="game-hud"
     >
@@ -357,16 +354,6 @@ export function RunCockpit({
               </button>
             )}
           </div>
-
-          {inputDock && (
-            <div
-              className={styles.inputDock}
-              aria-label="Directional controls"
-              data-cockpit-zone="input"
-            >
-              {inputDock}
-            </div>
-          )}
 
           {decisionDock && (
             <div

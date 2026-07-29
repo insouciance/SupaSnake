@@ -25,6 +25,7 @@ import { describe as describeEntry } from '@/shared/game/lexicon';
 import { sanitizeLineage } from '@/shared/game/lineage';
 import type { StrainId } from '@/shared/game/strains';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { formatYieldMultiplier } from '@/shared/game/ascendance';
 
 import { Navigation } from '@/components/ui/Navigation';
 import { IconArrowRight, IconDna } from '@/components/ui/icons';
@@ -566,8 +567,8 @@ export default function BreedPage() {
                 data-testid="ascendance-note"
               >
                 {draft.ascendance.yield_bonus > 0
-                  ? `Ascendance: +${(draft.ascendance.yield_bonus * 100).toFixed(2)}% Yield, permanently.`
-                  : 'Gen 4 begins Ascendance — every generation after it permanently raises this snake\u2019s Yield.'}
+                  ? `Ascendance: Yield ×${formatYieldMultiplier(draft.ascendance.yield_multiplier)} (+${(draft.ascendance.yield_bonus * 100).toFixed(2)}%), permanently.`
+                  : `Yield ×${formatYieldMultiplier(draft.ascendance.yield_multiplier)} · Gen 4 begins Ascendance.`}
               </p>
             )}
 

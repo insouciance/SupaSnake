@@ -52,8 +52,8 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
 /**
  * Reveal the Run Setup page's adjustable controls.
  *
- * WP-1.06 (Constitution §5) folds the mode toggle, the aim system, the
- * control scheme and the Build Seed into a single closed disclosure so that a
+ * WP-1.06 (Constitution §5) folds the mode toggle, the aim system, and the
+ * Build Seed into a single closed disclosure so that a
  * first-time player sees START as the only emphasised action. Specs that
  * exercise those controls call this first; it is a no-op with
  * NEXT_PUBLIC_RUN_FLOW_V1 off, where the controls are already laid out flat.

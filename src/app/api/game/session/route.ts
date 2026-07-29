@@ -60,7 +60,7 @@ import {
   type ChargeExemptionFacts,
   type ChargeState,
 } from '@/shared/game/energyEnvelope';
-import { applyAscendanceYield } from '@/shared/game/ascendance';
+import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import {
@@ -1546,10 +1546,11 @@ export async function POST(request: NextRequest) {
         (typeof usedSnakeRow?.generation === 'number'
           ? usedSnakeRow.generation
           : 1);
-      const yieldDna = applyAscendanceYield(
+      const ascendance = ascendanceYieldBreakdown(
         validation.adjustedDna,
         ascendanceGeneration
       );
+      const yieldDna = ascendance.totalYield;
       const finalDna = applyHarvestFactor(yieldDna, chargeState);
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
@@ -1766,6 +1767,9 @@ export async function POST(request: NextRequest) {
             // Yield is charge-independent (§6.2). Practice is exempt, so
             // this is what the same run would have been worth.
             yieldDna,
+            // Exact server fold, not a client reconstruction from a badge.
+            // `baseYield + bonusYield === totalYield === yieldDna`.
+            ascendance,
             chargeState,
           },
           hypotheticalDna: finalDna,
@@ -2163,6 +2167,10 @@ export async function POST(request: NextRequest) {
           // adjustedDna on a charged/exempt run; on a lean run adjustedDna
           // is the fraction actually credited and this is the run's worth.
           yieldDna,
+          // The snake's visible contribution to Yield (§8.2). Keeping the
+          // multiplier beside its integer addition makes breeding's payoff
+          // auditable without exposing settlement math to the client.
+          ascendance,
           chargeState,
         },
         ...(identityInfo ? { identity: identityInfo } : {}),

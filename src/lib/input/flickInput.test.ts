@@ -169,7 +169,7 @@ describe('Full pipeline: flicks -> mapper -> engine queue', () => {
 
   const feed = (screenDir: ScreenFlickDirection, azimuth = 0) => {
     const world = mapFlickWithAzimuth(screenDir, azimuth);
-    game.setDirection(world);
+    game.setDirection(world, 'flick');
     return world;
   };
 
@@ -209,18 +209,17 @@ describe('Full pipeline: flicks -> mapper -> engine queue', () => {
     expect(game.getState().direction).toBe('LEFT');
   });
 
-  it('full queue drops overflow, keeps determinism, one turn per node', () => {
+  it('drops an unintended third unresolved flick while preserving the L-turn', () => {
     feed('UP');
     feed('LEFT');
-    feed('DOWN');
-    feed('RIGHT'); // 4th: dropped at cap 3
-    expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT', 'DOWN']);
+    feed('DOWN'); // third unresolved direction: dropped at mobile cap 2
+    expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
     const seen: Direction[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       game.tick();
       seen.push(game.getState().direction);
     }
-    expect(seen).toEqual(['UP', 'LEFT', 'DOWN', 'DOWN']);
+    expect(seen).toEqual(['UP', 'LEFT', 'LEFT']);
   });
 
   it('camera on the opposite side inverts screen semantics at input time', () => {

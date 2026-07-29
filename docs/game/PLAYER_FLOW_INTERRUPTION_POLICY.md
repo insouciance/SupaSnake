@@ -169,7 +169,7 @@ or false FTUE value still selects its coherent rollback path, and deployment
   the same idempotent bootstrap before rate, Energy, or session writes.
 - Existing ownership, equipped choice, dynasty, resources, and progress are preserved.
 - A fresh guest reaches a held board with one Launch action and PRIMAL equipped.
-- The first safe keyboard, D-pad, or flick direction starts movement; no timer advances beforehand.
+- The first safe keyboard or flick direction starts movement; no timer advances beforehand.
 - No Lab, Contracts, collection, account, offline-reward, or optional tutorial modal appears before the first result.
 - Consent and Launch bounding boxes never overlap in supported portrait or landscape viewports.
 - Focus order follows visual order, all interactive targets meet the 44px minimum, and status updates are announced without stealing focus.

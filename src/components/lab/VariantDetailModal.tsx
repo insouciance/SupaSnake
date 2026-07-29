@@ -6,8 +6,10 @@
  * (Equip, Breed, Favorite). Panel-elevated sheet that pops in over the void;
  * closes on backdrop click or back button.
  *
- * `owned` means THE SELECTED SNAKE. A variant the player holds several of
- * renders a roster selector under the art, and every stat below it -
+ * `owned` means THE SELECTED SNAKE. A variant with several distinct builds
+ * at its highest owned generation renders a selector under the art; every
+ * historical lower generation stays in pedigree/history rather than here.
+ * Every stat below the selector —
  * Generation, Traits, Lineage, starting strain points - describes whichever
  * sibling is selected. That is why the fix is one prop's meaning rather than
  * a second display path.
@@ -23,6 +25,7 @@ import { getTraitSlots } from '@/shared/game/traits';
 import { sanitizeTraits } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints } from '@/shared/game/lineage';
 import { STRAIN_IDS, type StrainId } from '@/shared/game/strains';
+import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
@@ -34,8 +37,8 @@ export interface VariantDetailModalProps {
   /** The SELECTED snake of the roster below - every stat describes this one */
   owned: OwnedSnake;
   /**
-   * Every snake of this variant the player owns, in roster order. Defaults to
-   * `[owned]`, so a caller with a single snake needs no extra wiring.
+   * Every active highest-generation build of this variant, in roster order.
+   * Defaults to `[owned]`, so a single-build caller needs no extra wiring.
    */
   roster?: OwnedSnake[];
   /** Switch the sheet to a sibling */
@@ -180,8 +183,9 @@ export function VariantDetailModal({
     sanitizeTraits(owned.traits)
   );
 
-  // Design v2: stats are flat - the dynasty's identity is its ruleset,
-  // not a percentage. Generation stays as prestige.
+  // Base stats stay flat and Score remains build-independent. Gen4+
+  // Ascendance scales Yield separately, so its multiplier is stated beside
+  // generation rather than disguised as a stat tile.
 
   // Handle escape key to close
   useEffect(() => {
@@ -310,7 +314,7 @@ export function VariantDetailModal({
           </div>
 
           {/*
-            Roster selector: one option per snake of this variant. A
+            Roster selector: one option per distinct top-generation build. A
             wrapping radiogroup, NOT a horizontal scroller - this sheet
             shipped a scroll bug three commits ago, and a row that scrolls
             inside a sheet that scrolls hides options behind a gesture.
@@ -414,12 +418,18 @@ export function VariantDetailModal({
               </div>
               <div>
                 <span className="label-arcade block">Generation</span>
-                <span
-                  className="text-sm font-body font-semibold text-bone-white"
-                  data-testid="variant-generation"
-                >
-                  Gen {owned.generation}
-                </span>
+                <div data-testid="variant-generation">
+                  <span className="block text-sm font-body font-semibold text-bone-white">
+                    Gen {owned.generation}
+                  </span>
+                  <span
+                    className="block text-xs font-mono font-semibold"
+                    style={{ color: theme.glow }}
+                    data-testid="variant-yield-multiplier"
+                  >
+                    Yield ×{formatAscendanceYieldMultiplier(owned.generation)}
+                  </span>
+                </div>
               </div>
               <div>
                 <span className="label-arcade block">Rules</span>

@@ -67,11 +67,16 @@ export function sanitizeTrainingInputs(
     previousTick = raw.tick as number;
     if (raw.type === 'pause') {
       inputs.push({ tick: raw.tick as number, type: 'pause' });
-    } else if (raw.type === 'direction' && isTrainingDirection(raw.direction)) {
+    } else if (
+      raw.type === 'direction' &&
+      isTrainingDirection(raw.direction) &&
+      (raw.source === undefined || raw.source === 'flick')
+    ) {
       inputs.push({
         tick: raw.tick as number,
         type: 'direction',
         direction: raw.direction,
+        ...(raw.source === 'flick' ? { source: 'flick' as const } : {}),
       });
     } else {
       return null;

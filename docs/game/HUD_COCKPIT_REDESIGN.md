@@ -2,7 +2,7 @@
 
 **Status:** cockpit refinement live in production
 
-**Date:** 2026-07-24; rate-event amendment 2026-07-29
+**Date:** 2026-07-24; rate-event and touch-control amendments 2026-07-29
 
 **Implementation checkpoint:** the 2026-07-24 refinement is live behind
 `NEXT_PUBLIC_HUD_COCKPIT_V1` from final release commit `fc0fea4`, Vercel
@@ -47,13 +47,13 @@ history; where they conflict, this contract is authoritative.
   comic-like writing over the live board at run opening or at the exact change
   event. It has no panel or scrim, takes no input, auto-dismisses, does not pause
   the tick, and must not coexist with Ready or a strategic decision.
-- A strategic dialog owns focus and input atomically. Directions, flick, D-pad,
-  pause, and camera shortcuts cannot leak through. BANK ends the run;
+- A strategic dialog owns focus and input atomically. Directions, flick, pause,
+  and camera shortcuts cannot leak through. BANK ends the run;
   non-terminal choices return to a deliberate tactical hold.
 - Pause has no menu. Pause immediately freezes the simulation while preserving
   the visible board for tactical planning. A later accepted safe direction,
-  duplicate/current direction, deliberate flick, D-pad input, or eligible
-  Space input resumes atomically; reversal remains rejected. Escape/P cannot
+  duplicate/current direction, deliberate flick, or eligible Space input
+  resumes atomically; reversal remains rejected. Escape/P cannot
   bounce between redundant pause surfaces.
 - Tactical hold exposes a secondary **Abandon run** control. It opens a
   destructive `alertdialog` that states which score, run DNA, and—when
@@ -441,12 +441,11 @@ Portrait uses a shallow top instrument bar and two compact bottom docks.
 └─────────────────────────────────────────────────┘
 ┌ GENE SOCKETS  [1] [2] [3] [4] [5] [6] ────────┐
 └ STRAINS       ◉   ◉   ◉   ◉   ◉   MODE/RISK ──┘
-                 optional D-pad control dock
 ```
 
 - The board receives the largest contiguous rectangle.
-- Flick mode gives the board more height; D-pad mode owns a separate bottom
-  control dock.
+- The board-wide flick surface is the sole touch steering control and consumes
+  no separate control dock.
 - No horizontal text ticker is allowed.
 - Low-priority text becomes accessible labels and strategic-detail copy, not
   smaller typography.
@@ -655,7 +654,7 @@ pause telemetry, replay after a strategic overlay, or become an ambient pulse.
   copy, and enough panel width for side-by-side comparison where space permits.
   The smallest portrait may scroll inside the dialog rather than shrink copy.
 - Preserve focus trap, visible focus, advertised keyboard shortcuts, and the
-  atomic engine hold. No directional, flick, D-pad, pause, or camera input may
+  atomic engine hold. No directional, flick, pause, or camera input may
   leak through.
 - BANK proceeds to Results. PASS, decline, pick, INFUSE→gene, and
   INFUSE→surge resolve fully before entering the deliberate tactical hold.
@@ -948,7 +947,7 @@ device in portrait and landscape.
 - Ready, tactical hold, abandon confirmation, gene choice, portal choice, surge choice;
 - COSMIC walls open, closing telegraph, closed, and opening telegraph;
 - normal arena and Blackout visibility mask;
-- flick and D-pad control modes;
+- keyboard and touch-flick input;
 - consent visible and hidden;
 - default, reduced-motion, high-contrast, and color-vision variants.
 
@@ -974,8 +973,8 @@ device in portrait and landscape.
 - Every icon has a non-color silhouette and accessible name in detail contexts.
 - Contrast tests pass for text, focus, gauge fills, dormant states, and danger
   states.
-- Keyboard, flick, D-pad, reversal rejection, pause rearm, and engine holds
-  retain existing behavior.
+- Keyboard/flick capacities, reversal rejection, pause rearm, and engine holds
+  retain their specified behavior.
 - HUD DOM updates do not run on every engine tick.
 - Layout shift caused by the active HUD is zero.
 - Visual-regression snapshots cover background, chassis, arena, and instruments
@@ -1009,8 +1008,8 @@ device in portrait and landscape.
   distinguish snake, food, mutation, portal, aim, and lethal boundary.
 - Five-second test: a new viewer can point to score, DNA, secured/crash outcome,
   held build, and strongest strain without reading documentation.
-- Thumb-distance test: mobile players never need to reach through the board to
-  operate pause or D-pad controls.
+- Thumb-distance test: mobile players can steer from the full flick surface and
+  reach pause without crossing a strategic decision surface.
 - Couch-distance test: primary telemetry is readable in a 1080p capture.
 - Grayscale test: genes, strain progress, risk, and suppression remain
   distinguishable.

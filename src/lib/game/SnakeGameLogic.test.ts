@@ -20,6 +20,7 @@ import {
 } from '@/shared/game/rulesets';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { MUTATION_PHYSICS } from '@/shared/game/mutations';
+import { placementKey, reachableFrom } from '@/shared/game/foodPlacement';
 
 /**
  * Eat `count` foods deterministically: place the food directly in the
@@ -291,6 +292,28 @@ describe('SnakeGameLogic', () => {
         game.setDirection('DOWN');
         expect(game.setDirection('RIGHT')).toBe('queue_full');
         expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT', 'DOWN']);
+      });
+
+      it('caps flick input at two unresolved turns without changing keyboard depth', () => {
+        expect(game.setDirection('UP', 'flick')).toBe('accepted');
+        expect(game.setDirection('LEFT', 'flick')).toBe('accepted');
+        expect(game.setDirection('DOWN', 'flick')).toBe('queue_full');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+
+        // Once the first turn resolves, a new flick can occupy the freed
+        // slot; the cap limits unresolved intent, not the whole gesture/run.
+        game.tick();
+        expect(game.setDirection('DOWN', 'flick')).toBe('accepted');
+        expect(game.getQueuedDirections()).toEqual(['LEFT', 'DOWN']);
+      });
+
+      it('still classifies duplicate and reversal flicks before the full-queue guard', () => {
+        game.setDirection('UP', 'flick');
+        game.setDirection('LEFT', 'flick');
+
+        expect(game.setDirection('LEFT', 'flick')).toBe('duplicate');
+        expect(game.setDirection('RIGHT', 'flick')).toBe('reversal');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
       });
 
       it('returns inactive while paused', () => {
@@ -588,6 +611,7 @@ describe('SnakeGameLogic', () => {
         gridSize: 200,
         ruleset: RULESETS[id],
         growthProfileId: 'dynasty',
+        traits: ['ascetic'],
       });
       engine.start();
       eatFoods(engine, 20);
@@ -599,6 +623,7 @@ describe('SnakeGameLogic', () => {
         gridSize: 200,
         ruleset: RULESETS.PRIMAL,
         growthProfileId: 'dynasty',
+        traits: ['ascetic'],
       });
       engine.start();
 
@@ -1014,6 +1039,56 @@ describe('SnakeGameLogic', () => {
       expect(exit.x).toBeLessThan(60);
     });
 
+    it('never returns the sampler\'s blocked last guess as a portal', () => {
+      // Exact screenshot regression: a constant stream repeatedly nominates
+      // (0,0), which is already terrain. The former 1000-attempt sampler then
+      // returned that same illegal cell and drew a portal through the block.
+      const engine = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.CYBER,
+        rng: () => 0,
+      });
+      engine.start();
+      const harness = engine as unknown as {
+        state: GameState;
+        spawnExit: () => void;
+      };
+      harness.state.terrain.push({
+        x: 0,
+        z: 0,
+        source: 'cyber',
+        formingTicks: 0,
+        formingTotal: 1,
+        solid: true,
+      });
+
+      harness.spawnExit();
+
+      const state = engine.getState();
+      const exit = state.exitTile;
+      expect(exit).not.toBeNull();
+      expect(exit).not.toMatchObject({ x: 0, z: 0 });
+      expect(
+        state.terrain.some((block) => block.x === exit!.x && block.z === exit!.z)
+      ).toBe(false);
+
+      const blocked = new Set<string>();
+      for (const segment of state.snake) {
+        blocked.add(placementKey(segment.x, segment.z));
+      }
+      for (const block of state.terrain) {
+        blocked.add(placementKey(block.x, block.z));
+      }
+      for (const food of state.foods) {
+        blocked.add(placementKey(food.x, food.z));
+      }
+      expect(
+        reachableFrom(20, state.snake[0], blocked).has(
+          placementKey(exit!.x, exit!.z)
+        )
+      ).toBe(true);
+    });
+
     it('does not spawn a second portal while one is live', () => {
       const engine = new SnakeGameLogic({
         gridSize: 100,
@@ -1150,7 +1225,7 @@ describe('SnakeGameLogic', () => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.PRIMAL,
-        rng: () => 0.999, // exit lands at (59, 59)
+        rng: () => 0.999,
       });
       engine.start();
       let gameOver: GameOverData | null = null;
@@ -1160,18 +1235,51 @@ describe('SnakeGameLogic', () => {
 
       eatFoods(engine, 15);
       const exit = engine.getState().exitTile!;
-      expect(exit).toEqual({ x: 59, y: 0, z: 59 });
+      expect(exit).not.toBeNull();
 
-      // Steer to the exit column, then down its row. Park food far away
-      // (grid corner opposite) so no accidental eats reschedule anything.
+      // Steer on a clear row before approaching the exit. The safe placer is
+      // allowed to reject the old fixed corner when the current food occupies
+      // it, so this test follows the engine's chosen cell rather than pinning
+      // an implementation-specific RNG draw.
       engine.placeFood({ x: 0, y: 0, z: 0 });
       let guard = 0;
-      while (engine.getState().snake[0].x < exit.x && guard++ < 100) {
-        engine.tick(); // heading RIGHT
-      }
-      engine.setDirection('DOWN');
-      while (!engine.getState().isGameOver && guard++ < 300) {
+      let head = engine.getState().snake[0];
+      const needsBehindDetour = exit.z === head.z && exit.x < head.x;
+      if (needsBehindDetour) {
+        engine.setDirection('DOWN');
         engine.tick();
+        engine.setDirection('LEFT');
+        while (
+          !engine.getState().isGameOver &&
+          engine.getState().snake[0].x !== exit.x &&
+          guard++ < 300
+        ) {
+          engine.tick();
+        }
+        engine.setDirection('UP');
+        engine.tick();
+      } else {
+        if (head.z !== exit.z) {
+          engine.setDirection(exit.z < head.z ? 'UP' : 'DOWN');
+          while (
+            !engine.getState().isGameOver &&
+            engine.getState().snake[0].z !== exit.z &&
+            guard++ < 300
+          ) {
+            engine.tick();
+          }
+        }
+        head = engine.getState().snake[0];
+        if (head.x !== exit.x) {
+          engine.setDirection(exit.x < head.x ? 'LEFT' : 'RIGHT');
+          while (
+            !engine.getState().isGameOver &&
+            engine.getState().snake[0].x !== exit.x &&
+            guard++ < 300
+          ) {
+            engine.tick();
+          }
+        }
       }
 
       expect(gameOver).not.toBeNull();
@@ -1259,6 +1367,40 @@ describe('SnakeGameLogic', () => {
       });
       eatFoods(engine, 40);
       expect(spawnCount).toBe(1);
+    });
+
+    it('never returns a terrain-blocked last guess as a gene opportunity', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0,
+      });
+      engine.start();
+      const harness = engine as unknown as {
+        state: GameState;
+        spawnMutationFood: () => void;
+      };
+      harness.state.terrain.push({
+        x: 0,
+        z: 0,
+        source: 'cosmic',
+        formingTicks: 0,
+        formingTotal: 1,
+        solid: true,
+      });
+
+      harness.spawnMutationFood();
+
+      const state = engine.getState();
+      expect(state.mutationTile).not.toBeNull();
+      expect(state.mutationTile).not.toMatchObject({ x: 0, z: 0 });
+      expect(
+        state.terrain.some(
+          (block) =>
+            block.x === state.mutationTile!.x &&
+            block.z === state.mutationTile!.z
+        )
+      ).toBe(false);
     });
 
     it('despawns after its tick window and reschedules 4-8 foods out', () => {

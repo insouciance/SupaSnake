@@ -4,7 +4,7 @@
  * Run-mode toggle (Design v2 §7.4 + §7.2): EARN (rewarded) vs ANOMALY (this
  * week's modifier board - an earning run with its own leaderboard) vs FREE
  * PLAY (unlimited, rewardless practice). Rendered on the pre-game overlay
- * using the same chip pattern as the control-mode toggle.
+ * as a compact three-choice chip group.
  *
  * NO MODE IS EVER DISABLED BY THE ENVELOPE (Constitution §8.6). EARN and
  * ANOMALY used to be greyed out at zero energy, with Free Play offered as

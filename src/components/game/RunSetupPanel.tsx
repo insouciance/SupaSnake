@@ -4,7 +4,7 @@
  * The Run Setup page (Constitution §5, owner ruling 25 July 2026).
  *
  * "Launch opens one consolidated setup surface — dynasty and snake, mode
- * context, aim system, control scheme — with the primary START action always
+ * context, and aim system — with the primary START action always
  * pre-configured from the player's last choices. First-time players see it
  * fully preset: START is the only emphasized action, zero required
  * configuration. Everything adjustable, nothing demanded."
@@ -14,12 +14,13 @@
  * The law it serves is open → LAUNCH → START → board, **≤3 taps**, of which
  * this page is exactly one.
  *
- * The board, the cockpit HUD, the control schemes and the decision overlays
- * are declared correct as built and are not touched here.
+ * The board, cockpit HUD, keyboard/flick controls, and decision overlays are
+ * protected; touch is flick-only under the 29 July 2026 owner ruling.
  */
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
 import { IconPlay, IconSnake } from '@/components/ui/icons';
 
 export interface RunSetupSnake {
@@ -93,7 +94,6 @@ export interface RunSetupPanelProps {
   modeToggle?: ReactNode;
   anomalyPanel?: ReactNode;
   aimSelector?: ReactNode;
-  controlScheme?: ReactNode;
   buildSeed?: ReactNode;
 }
 
@@ -116,7 +116,6 @@ export function RunSetupPanel({
   modeToggle,
   anomalyPanel,
   aimSelector,
-  controlScheme,
   buildSeed,
 }: RunSetupPanelProps) {
   const hasAdjustables =
@@ -124,7 +123,6 @@ export function RunSetupPanel({
     Boolean(ladderSelector) ||
     Boolean(anomalyPanel) ||
     Boolean(aimSelector) ||
-    Boolean(controlScheme) ||
     Boolean(buildSeed);
 
   return (
@@ -142,6 +140,9 @@ export function RunSetupPanel({
                 {snake.name}
               </span>
               <span className="text-beige/70"> · Gen {snake.generation}</span>
+              <span className="text-beige/70" data-testid="run-setup-yield-multiplier">
+                {' '}· Yield ×{formatAscendanceYieldMultiplier(snake.generation)}
+              </span>
               <span className="text-beige/70"> · {snake.dynasty}</span>
               <Link
                 href="/lab"
@@ -226,7 +227,6 @@ export function RunSetupPanel({
             {ladderSelector}
             {anomalyPanel}
             {aimSelector}
-            {controlScheme}
             {buildSeed}
           </div>
         </details>

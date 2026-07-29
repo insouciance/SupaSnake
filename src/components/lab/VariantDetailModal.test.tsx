@@ -172,6 +172,18 @@ describe('VariantDetailModal reads the selected sibling', () => {
 
     // GEN_7 leads the roster; the stat must describe the SELECTED snake.
     expect(screen.getByTestId('variant-generation')).toHaveTextContent('Gen 1');
+    expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
+      'Yield ×1.00'
+    );
+  });
+
+  it('states the exact Ascendance multiplier beside an ascended generation', () => {
+    renderModal({ owned: GEN_7 });
+
+    expect(screen.getByTestId('variant-generation')).toHaveTextContent('Gen 7');
+    expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
+      'Yield ×1.0723'
+    );
   });
 
   it('equips the SELECTED sibling', () => {

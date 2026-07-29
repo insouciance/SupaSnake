@@ -77,6 +77,8 @@ export interface TrainingDirectionInput {
   tick: number;
   type: 'direction';
   direction: TrainingDirection;
+  /** Omitted for keyboard; preserves the two-entry mobile flick queue in replay. */
+  source?: 'flick';
 }
 
 export interface TrainingPauseInput {

@@ -55,12 +55,6 @@ const ESSENTIAL: StorageEntry[] = [
 
 const FUNCTIONAL: StorageEntry[] = [
   {
-    name: 'control-mode',
-    kind: 'localStorage',
-    purpose: 'Your preferred game input method',
-    duration: 'Until cleared',
-  },
-  {
     name: 'hint-dismissed-*',
     kind: 'localStorage',
     purpose: 'Remembers which UI hints you have dismissed',

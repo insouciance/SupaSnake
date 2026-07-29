@@ -1,6 +1,26 @@
 # The SupaSnake Product Constitution
 
 **Version:** 1.4 · amended 29 July 2026
+**v1.4 D3 playtest finding (owner, 29 July 2026):** PRIMAL's central spatial
+loop is **“Coil safely. Get tempted. Break formation. Recover—or die.”** Fast
+body growth makes a tight wall-following coil the player's constructed safety;
+exit portals and timed gene opportunities tempt them to spend that structure by
+leaving it, then ask whether they can recover. Placement fairness means a target
+is physically valid, reachable, and legible — never that it is nearby, cheap, or
+safe to pursue. CYBER's current ×2.0 terminal tempo is now an explicit tuning
+question; the owner's candidate range is ×1.6–1.7 with ×1.8 as a possible cap,
+not a ruled number. See §5 and §17.32.
+**v1.4 D2 amendment (owner ruling, 29 July 2026):** touch play is
+**flick-only**; the inferior D-pad and its stored preference are retired. A flick
+may queue at most **two unresolved directions** — enough to express an L-turn,
+without admitting the accidental third direction observed during tight, fast
+coiling. Keyboard keeps its three-turn buffer. Ascendance's economic effect must
+be inspectable: the Snake Lab and Run Setup state the equipped snake's exact
+Yield multiplier beside its generation, and Results reports the server-settled
+base Yield, generation multiplier, and added Yield. The main Snake Lab presents
+only the highest owned generation of each variant as active; equal-generation
+top builds remain distinct choices, while lower generations remain immutable
+pedigree/history and valid breeding records rather than playable roster clutter.
 **v1.4 D1 amendment (owner ruling, 29 July 2026):** normal CYBER and COSMIC
 runs grow **+1 per food throughout**; their pressure remains speed and spatial
 restriction, respectively. PRIMAL owns the body-pressure profile: **+4 while
@@ -252,16 +272,17 @@ one small convenience at a time. Protected, permanently:
 - **Input semantics:** buffered turns, reversal rejection, deliberate first movement,
   tactical hold with the board fully visible.
 - **The Run Setup page** (owner ruling, 25 July 2026): Launch opens one consolidated
-  setup surface — dynasty and snake, mode context, aim system, control scheme — with
+  setup surface — dynasty and snake, mode context, and aim system — with
   the primary START action always pre-configured from the player's last choices.
   First-time players see it fully preset: START is the only emphasized action, zero
   required configuration. Everything adjustable, nothing demanded. The law: open →
   LAUNCH → START → board, **≤3 taps**, and the setup page adds exactly one of them.
   From Results, REPLAY re-enters the run with the same configuration instantly
   (skipping setup); SETUP reopens the page.
-- **The in-run presentation as shipped** (owner ruling, 25 July 2026): the board, the
-  cockpit HUD, the control schemes, and the decision overlays are declared correct as
-  built. They change only where a surrounding-system change forces it — an energy
+- **The in-run presentation as shipped** (owner ruling, 25 July 2026; touch amended
+  by D2): the board, cockpit HUD, keyboard/flick controls, and decision overlays are
+  declared correct as built. They change only where a surrounding-system change forces
+  it — an energy
   indicator disappears with Energy, a killed system stops reporting, the mode toggle
   becomes the four entry cards — never as redesign for its own sake. The one screen
   that changes substantially is Results (below), and that is a post-run surface, not
@@ -277,6 +298,15 @@ one small convenience at a time. Protected, permanently:
   CYBER's accelerating tempo, COSMIC's spatial routing (GT §2.1). Balance within a
   dynasty is tunable; homogenizing across dynasties is not. No fourth dynasty without
   a constitutional amendment (§12.2).
+- **PRIMAL's constructed-safety loop** (owner playtest, 29 July 2026). Tight
+  wall-following coils are not an exploit to disrupt; they are the safe formation the
+  player earns through spatial precision. Portals and timed gene opportunities must
+  remain attractive enough to pull them away from it, and may be expensive or dangerous
+  to route through. The fairness floor is narrower: never overlap occupied terrain or
+  another objective, never place in a permanently sealed region, and leave enough free
+  region for a viable continuation. It does **not** guarantee a short path, preserve the
+  coil, or promise recovery. The mastery is evaluating the detour, keeping a return lane,
+  and rebuilding formation after taking it.
 - **Build-independent Score** (Rule 2).
 - **Server settlement** — exact recompute, bounded-trust clamps, idempotency (GT §2.8).
   This is stronger than the product looks; it never gets weaker.
@@ -1677,6 +1707,15 @@ deliberately undecided pending data.
     carryover (ceiling 12) against the current rule on return rate after a missed
     day. The 25% lean tail may already be doing this work, which is precisely why
     it is a test and not a change.
+32. **CYBER precision ceiling** (v1.4 D3, open). The current 200ms curve first
+    announces roughly ×2.0 at food 30 and reaches its 100ms floor around food 33.
+    The owner's new playtest finding is that ×2.0 feels reaction-dominated; candidate
+    terminal bands are ×1.6–1.7 (125–118ms), with ×1.8 (~111ms) as the highest
+    plausible cap. *Test:* compare capped curves on late-run steering errors,
+    intentional portal/gene detours, deaths the player calls “my mistake,” and
+    enjoyment. Preserve acceleration as CYBER's identity; choose the fastest curve
+    on which route planning and precise input still explain outcomes. Do not tune
+    from the HUD number alone.
 
 ---
 

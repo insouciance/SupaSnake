@@ -21,9 +21,9 @@ export interface CollectionGridProps {
   /** Dynasty theme for styling */
   dynastyTheme: DynastyTheme;
   /**
-   * Callback when a variant is selected. Receives the player's WHOLE roster
-   * for that variant, ordered by `src/lib/collection/roster.ts` - empty when
-   * the variant is locked.
+   * Callback when a variant is selected. Receives every distinct build at
+   * the variant's HIGHEST owned generation — empty when locked. Historical
+   * lower generations remain pedigree, not selectable inventory.
    */
   onSelectVariant: (variant: SnakeVariant, roster: OwnedSnake[]) => void;
   /** Loading state */
@@ -105,9 +105,9 @@ function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.Rea
  *
  * ONE CARD PER VARIANT, always: the sticker book is the point, and
  * `EmptySlot`, `CollectionProgress` and `DynastyTabs` all count slots. A
- * player holding several snakes of a variant gets one card showing the
- * roster's representative plus an `xN` chip, and tapping it hands the whole
- * roster to the detail sheet, where the siblings are selectable.
+ * player holding several top-generation builds of a variant gets one card
+ * showing their representative plus an `xN` chip; lower generations do not
+ * enter the selector.
  *
  * The grid does NOT scroll internally. It used to carry
  * `overflow-y-auto overscroll-contain` inside a `flex-1 overflow-hidden`
@@ -142,11 +142,8 @@ export function CollectionGrid({
   }, [variants]);
 
   /**
-   * Every owned snake, grouped by variant and ordered. Keyed lookup is O(1)
-   * and nothing is discarded - the previous `Map<variantId, OwnedSnake>`
-   * overwrote on every `set()`, so a collection of 43 snakes across 11
-   * variants was reduced to 11 reachable snakes, and because the collection
-   * API returns rows newest-first the survivor was always the OLDEST.
+   * Active highest-generation builds, grouped by variant and ordered. The
+   * projection is display-only; full ancestry remains in the store/database.
    */
   const rosters = useMemo(
     () => rostersByVariant(ownedSnakes, equippedSnakeId ?? null),
@@ -154,7 +151,7 @@ export function CollectionGrid({
   );
 
   /**
-   * Handle variant card tap - the caller receives the whole roster
+   * Handle variant card tap - the caller receives the active top-gen roster
    */
   const handleVariantSelect = (variant: SnakeVariant): void => {
     onSelectVariant(variant, rosters.get(variant.id)?.snakes ?? []);

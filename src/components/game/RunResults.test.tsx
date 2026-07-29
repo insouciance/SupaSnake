@@ -31,6 +31,13 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
     score: 420,
     dnaCredited: 180,
     yieldDna: 240,
+    yieldBreakdown: {
+      generation: 11,
+      baseYield: 213,
+      multiplier: 1.1273,
+      bonusYield: 27,
+      totalYield: 240,
+    },
     serpent: null,
     take: null,
     takeState: 'idle',
@@ -228,6 +235,40 @@ describe('RunResults — Layer 2', () => {
     render(<RunResults {...props()} />);
     expect(screen.getByTestId('results-score')).toHaveTextContent('420');
     expect(screen.getByTestId('results-yield')).toHaveTextContent('240');
+  });
+
+  it('shows the snake generation multiplier and its exact Yield contribution', () => {
+    render(<RunResults {...props()} />);
+    const breakdown = screen.getByTestId('results-yield-breakdown');
+    expect(breakdown).toHaveTextContent('Base run Yield');
+    expect(breakdown).toHaveTextContent('213');
+    expect(breakdown).toHaveTextContent('Gen 11 Yield ×1.1273');
+    expect(breakdown).toHaveTextContent('+27');
+  });
+
+  it('states the neutral multiplier for Gen 1-3 instead of implying a hidden bonus', () => {
+    render(
+      <RunResults
+        {...props({
+          yieldDna: 240,
+          yieldBreakdown: {
+            generation: 3,
+            baseYield: 240,
+            multiplier: 1,
+            bonusYield: 0,
+            totalYield: 240,
+          },
+        })}
+      />
+    );
+    expect(screen.getByTestId('results-yield-breakdown')).toHaveTextContent(
+      'Gen 3 Yield ×1.00'
+    );
+  });
+
+  it('omits the breakdown when settlement did not answer', () => {
+    render(<RunResults {...props({ yieldBreakdown: null })} />);
+    expect(screen.queryByTestId('results-yield-breakdown')).toBeNull();
   });
 
   it('shows no Depth when no Serpent week is live', () => {

@@ -189,8 +189,10 @@ player-auth tokens to analytics.
 
 ## Accessibility and board protection
 
-- Keyboard supports arrows and WASD; coarse pointers receive the existing
-  cockpit D-pad.
+- Keyboard supports arrows and WASD; coarse pointers receive the same
+  board-wide flick surface as an ordinary run.
+- Training preserves the ordinary input capacities: three unresolved keyboard
+  turns and two unresolved flick turns.
 - Training begins and resumes only from a deliberate direction, preserving the
   tactical-hold safety contract.
 - Controls are at least 44 px and the path composer has button alternatives to

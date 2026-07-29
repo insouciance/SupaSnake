@@ -3,7 +3,7 @@
 /**
  * FlickSurface - full-viewport flick-anywhere touch control layer.
  *
- * Mounted while playing on touch devices in "flick" control mode. Sits in a
+ * Mounted while playing on touch devices. Sits in a
  * dedicated z-band ABOVE the 3D canvas and BELOW the HUD (z-10+), so all HUD
  * buttons keep receiving their own pointer events; an isInteractiveTarget
  * check additionally rejects any pointerdown that lands on a button/link
@@ -35,7 +35,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
-  SnakeGameLogic,
   type Direction,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
@@ -56,20 +55,19 @@ import { audioManager } from '@/lib/audio/AudioManager';
 import { useGameStore } from '@/lib/store/gameStore';
 
 interface FlickSurfaceProps {
-  gameRef: RefObject<SnakeGameLogic | null>;
   /** Reads the CameraRig's live azimuth (radians). Must be stable. */
   getAzimuth: () => number;
-  /** Ready phase: the first flick starts the run. */
-  isReady: boolean;
   /**
-   * Owns the first ready/gated direction. It queues a safe command before
-   * starting or resuming and leaves the board held when the command is unsafe.
+   * Owns direction admission. The caller applies the `flick` queue policy and
+   * atomically handles ready/resume gates before returning the engine result.
    */
-  onReadyDirection: (direction: Direction) => SetDirectionResult;
+  onDirection: (direction: Direction) => SetDirectionResult;
   /** Called after an accepted input so the aim telegraph updates instantly. */
-  onAim: () => void;
+  onAim?: () => void;
   /** Debug sink for ?debug=input; current === null means no recording. */
   debugRef?: RefObject<InputDebugState | null>;
+  /** Main runs show the existing queue chip; Training owns no game store. */
+  showQueuedTurns?: boolean;
 }
 
 /** Edge pulse geometry: which screen edge lights up for each flick. */
@@ -95,12 +93,11 @@ const GLOW_DURATION_MS = 180;
 const SCREEN_DIRS: readonly ScreenFlickDirection[] = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
 
 export function FlickSurface({
-  gameRef,
   getAzimuth,
-  isReady,
-  onReadyDirection,
+  onDirection,
   onAim,
   debugRef,
+  showQueuedTurns = true,
 }: FlickSurfaceProps) {
   const recognizerRef = useRef<FlickRecognizer | null>(null);
   if (recognizerRef.current === null) {
@@ -114,13 +111,12 @@ export function FlickSurface({
   const edgeRefs = useRef<Partial<Record<ScreenFlickDirection, HTMLDivElement | null>>>({});
 
   // Latest volatile props behind stable refs so handlers never re-bind.
-  const stateRef = useRef({ isReady, onReadyDirection, onAim, getAzimuth });
+  const stateRef = useRef({ onDirection, onAim, getAzimuth });
   useEffect(() => {
-    stateRef.current.isReady = isReady;
-    stateRef.current.onReadyDirection = onReadyDirection;
+    stateRef.current.onDirection = onDirection;
     stateRef.current.onAim = onAim;
     stateRef.current.getAzimuth = getAzimuth;
-  }, [isReady, onReadyDirection, onAim, getAzimuth]);
+  }, [onDirection, onAim, getAzimuth]);
 
   const pulseEdge = useCallback(
     (side: ScreenFlickDirection, kind: 'accept' | 'reject') => {
@@ -137,22 +133,14 @@ export function FlickSurface({
 
   const executeCommand = useCallback(
     (cmd: FlickCommand) => {
-      const game = gameRef.current;
-      if (!game) return;
-
       const world = mapFlickToWorld(cmd.direction, quadrantRef.current);
-
-      // Ready/gated input is owned atomically by the page: it validates and
-      // queues this direction before allowing the first tick.
-      const result: SetDirectionResult = stateRef.current.isReady
-        ? stateRef.current.onReadyDirection(world)
-        : game.setDirection(world);
+      const result = stateRef.current.onDirection(world);
       const feedback = feedbackForResult(result);
 
       if (feedback.haptic) haptics.light();
       if (feedback.sound) audioManager.play('directionChange');
       if (feedback.glow) pulseEdge(cmd.direction, feedback.glow);
-      if (result === 'accepted') stateRef.current.onAim();
+      if (result === 'accepted') stateRef.current.onAim?.();
 
       const debug = debugRef?.current;
       if (debug) {
@@ -172,7 +160,7 @@ export function FlickSurface({
         }
       }
     },
-    [gameRef, debugRef, pulseEdge]
+    [debugRef, pulseEdge]
   );
 
   const handlePointerDown = useCallback(
@@ -232,7 +220,7 @@ export function FlickSurface({
         />
       ))}
 
-      <QueuedTurnsChip getAzimuth={getAzimuth} />
+      {showQueuedTurns && <QueuedTurnsChip getAzimuth={getAzimuth} />}
     </div>
   );
 }
@@ -249,7 +237,7 @@ const ARROW_ROTATION: Record<ScreenFlickDirection, number> = {
 const SLOT_OPACITY = [1, 0.6, 0.35];
 
 /**
- * Minimal HUD chip showing the engine's queued turns (1-3 arrows), mapped
+ * Minimal HUD chip showing the engine's queued turns, mapped
  * from absolute world directions back into the player's CURRENT view so the
  * arrows always match what is on screen. Rendered only while the queue is
  * non-empty; queuedDirections is already synced per tick + per input by the

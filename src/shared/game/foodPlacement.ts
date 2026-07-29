@@ -565,7 +565,13 @@ export function chooseFoodCell(
    * it — normally the snake's length, capped by ESCAPE_BUDGET_CAP. Zero
    * disables the check, which is what every caller that has no body wants.
    */
-  minEscapeCells = 0
+  minEscapeCells = 0,
+  /**
+   * Food must still appear when a run is already doomed, otherwise the board
+   * freezes instead of resolving. Other targets (notably exit portals) may
+   * refuse to spawn instead of offering an unreachable or fatal objective.
+   */
+  allowUnsafeFallback = true
 ): PlacementCell | null {
   if (gridSize <= 0) return null;
   ensureScratch(gridSize * gridSize);
@@ -586,6 +592,7 @@ export function chooseFoodCell(
     gridSize, head, blocked, rx0, rx1, rz0, rz1
   );
   const reachGeneration = visitGeneration;
+  if (reachedCount === 0 && !allowUnsafeFallback) return null;
   // A head with nowhere to go cannot be served by a reachability filter, and
   // refusing to place food would freeze a run that is ending anyway.
   const requireReachable = reachedCount > 0;
@@ -665,11 +672,40 @@ export function chooseFoodCell(
     span = Math.min(gridSize, span * EXACT_WINDOW_GROWTH);
   }
 
-  // Preference 3: the head is sealed in. Place anywhere legal so the run can
-  // finish; `null` is reserved for a board with no free cell at all.
+  // A portal or similarly optional target must never manufacture a false
+  // choice. If no reachable, adequately open cell exists, decline to place it
+  // and let its caller retry on a later board state.
+  if (!allowUnsafeFallback) return null;
+
+  // Preference 3 for food: the head is sealed in. Place anywhere legal so the
+  // run can finish; `null` is reserved for a board with no free cell at all.
   const free = collectFree(
     gridSize, blocked, 0, gridSize - 1, 0, gridSize - 1, headIndex
   );
   if (free === 0) return null;
   return decode(pick(free, rng), gridSize);
+}
+
+/**
+ * Choose a full-board target that the head can reach and whose free region can
+ * hold the arriving body. Unlike food placement, this has no unsafe fallback:
+ * an optional objective that cannot be reached safely does not spawn.
+ */
+export function chooseSurvivableTargetCell(
+  gridSize: number,
+  head: PlacementCell,
+  blocked: Uint8Array,
+  rng: () => number,
+  minEscapeCells = 0
+): PlacementCell | null {
+  return chooseFoodCell(
+    gridSize,
+    head,
+    blocked,
+    0,
+    rng,
+    null,
+    minEscapeCells,
+    false
+  );
 }

@@ -126,8 +126,8 @@ export interface OwnedSnakeWithStats extends OwnedSnake {
 /**
  * Compute effective stats - Design v2: base stats pass through unchanged.
  *
- * Generation is prestige-only ("Gen N" display) and dynasty identity
- * lives in the ruleset module, so neither scales stats anymore. The
+ * Generation never scales base stats (Gen4+ Ascendance scales Yield in its
+ * own fold) and dynasty identity lives in the ruleset module. The
  * signature is kept (mirroring the compute_effective_stats DB function,
  * flattened in migration 013) so existing callers stay source-compatible;
  * the extra parameters are intentionally unused.
@@ -240,9 +240,9 @@ export const DEFAULT_BASE_STATS: SnakeStats = {
 };
 
 /**
- * Generation scaling factor - Design v2: generations are prestige-only;
- * this constant is retained for historical data displays but no longer
- * feeds any stat math.
+ * Legacy base-stat generation factor. Ascendance uses its separate bounded
+ * Yield curve; this constant is retained for historical data compatibility
+ * and feeds no current math.
  */
 export const GENERATION_SCALING_FACTOR = 0.05;
 

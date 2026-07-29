@@ -224,6 +224,7 @@ test.describe('Run Cockpit v1', () => {
     }
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId('flick-surface')).toBeVisible();
     await page.keyboard.press('ArrowRight');
     await expect(gate).toBeHidden();
     await expect(page.getByRole('button', { name: /pause game/i })).toBeVisible();
@@ -264,41 +265,5 @@ test.describe('Run Cockpit v1', () => {
     await page.keyboard.press('ArrowRight');
     await expect(gate).toBeHidden();
 
-    // The fallback D-pad occupies a reserved console row/rail; it never
-    // floats over the arena and preserves the same deliberate start path.
-    await page.evaluate(() => localStorage.setItem('control-mode', 'dpad'));
-    await page.setViewportSize({ width: 320, height: 568 });
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
-      timeout: 30_000,
-    });
-    const reloadedEarnStart = page.getByTestId('earn-start');
-    await expect(reloadedEarnStart).toBeEnabled();
-    const reloadedStartResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/game/session',
-      { timeout: 30_000 }
-    );
-    await reloadedEarnStart.click({ force: true });
-    await reloadedStartResponse;
-    await expect(board).toBeVisible({ timeout: 30_000 });
-    await expect(cockpit).toHaveAttribute('data-input', 'dpad', { timeout: 30_000 });
-    await expect(gate).toBeVisible();
-
-    const dpadLayout = await readCockpitLayout(page);
-    expect(dpadLayout).not.toBeNull();
-    const dpadDock = dpadLayout!.zones.find((zone) => zone.kind === 'input');
-    expect(dpadDock).toBeDefined();
-    expect(rectanglesOverlap(dpadLayout!.board, dpadDock!.box)).toBe(false);
-    for (const label of ['Move Up', 'Move Down', 'Move Left', 'Move Right']) {
-      const target = page.getByRole('button', { name: label });
-      const box = await target.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      expect(box!.height).toBeGreaterThanOrEqual(44);
-    }
-    await page.getByRole('button', { name: 'Move Up' }).click({ force: true });
-    await expect(gate).toBeHidden();
   });
 });

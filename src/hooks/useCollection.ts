@@ -13,7 +13,10 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { distinctVariantCount } from '@/lib/collection/roster';
+import {
+  distinctVariantCount,
+  highestGenerationSnakes,
+} from '@/lib/collection/roster';
 import type {
   Dynasty,
   SnakeVariant,
@@ -29,8 +32,9 @@ import type {
 
 /**
  * Per-dynasty completion. `owned` counts DISTINCT VARIANTS, because that is
- * what the sticker book has slots for; `snakes` counts rows. Counting rows in
- * `owned` is what rendered "Collection: 43/11 (391%)".
+ * what the sticker book has slots for; `snakes` counts active highest-gen
+ * builds. Historical generations remain in `ownedSnakes`, outside this UI
+ * projection. Counting rows in `owned` is what once rendered 43/11 (391%).
  */
 export interface DynastyCompletion {
   owned: number;
@@ -260,21 +264,26 @@ export function useCollection(): UseCollectionReturn {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [variants, activeDynastyId]);
 
-  // Filter owned snakes by active dynasty
+  // The main Lab presents breeding as forward lineage progression: only the
+  // highest generation of each variant is active here. The full `ownedSnakes`
+  // array remains intact for pedigree, history and the Breeding Lab.
   const currentDynastyOwned = useMemo(() => {
     if (!activeDynastyId) return [];
     const dynastyVariantIds = new Set(
       variants.filter((v) => v.dynastyId === activeDynastyId).map((v) => v.id)
     );
-    return ownedSnakes.filter(
-      (s) => s.snakeVariantId && dynastyVariantIds.has(s.snakeVariantId)
+    return highestGenerationSnakes(
+      ownedSnakes.filter(
+        (s) => s.snakeVariantId && dynastyVariantIds.has(s.snakeVariantId)
+      )
     );
   }, [ownedSnakes, variants, activeDynastyId]);
 
   // Calculate completion stats per dynasty. `owned` is the number of
   // DISTINCT variants collected - the sticker book has one slot per variant,
   // so counting rows made a player with 43 snakes across 11 variants read
-  // "43/11 (391%)". `snakes` carries the row count for surfaces that want it.
+  // "43/11 (391%)". `snakes` carries only active highest-generation builds;
+  // lower generations are pedigree/history, not parallel playable copies.
   const completionByDynasty = useMemo(() => {
     const completion: Record<string, DynastyCompletion> = {};
 
@@ -285,10 +294,11 @@ export function useCollection(): UseCollectionReturn {
         (s) => s.snakeVariantId && dynastyVariantIds.has(s.snakeVariantId)
       );
 
+      const activeSnakes = highestGenerationSnakes(dynastySnakes);
       completion[dynasty.id] = {
         owned: distinctVariantCount(dynastySnakes),
         total: dynastyVariants.length,
-        snakes: dynastySnakes.length,
+        snakes: activeSnakes.length,
       };
     }
 

@@ -9,6 +9,7 @@
 import {
   compareOwnedSnakes,
   distinctVariantCount,
+  highestGenerationSnakes,
   rosterForVariant,
   rostersByVariant,
 } from './roster';
@@ -103,8 +104,27 @@ describe('compareOwnedSnakes', () => {
   });
 });
 
+describe('highestGenerationSnakes', () => {
+  it('keeps only each variant\'s highest generation without mutating history', () => {
+    const owned = [
+      snake({ id: 'v1-g1', snakeVariantId: 'v1', generation: 1 }),
+      snake({ id: 'v1-g7-a', snakeVariantId: 'v1', generation: 7 }),
+      snake({ id: 'v1-g7-b', snakeVariantId: 'v1', generation: 7 }),
+      snake({ id: 'v2-g3', snakeVariantId: 'v2', generation: 3 }),
+    ];
+    const active = highestGenerationSnakes(owned);
+
+    expect(active.map((entry) => entry.id)).toEqual([
+      'v1-g7-a',
+      'v1-g7-b',
+      'v2-g3',
+    ]);
+    expect(owned).toHaveLength(4);
+  });
+});
+
 describe('rostersByVariant', () => {
-  it('keeps every snake of every variant instead of overwriting', () => {
+  it('keeps every equal-generation top build of every variant', () => {
     const owned = [
       snake({ id: 'a', snakeVariantId: 'v1' }),
       snake({ id: 'b', snakeVariantId: 'v1' }),
@@ -129,6 +149,16 @@ describe('rostersByVariant', () => {
     expect(rostersByVariant(owned, null).get('v1')?.representative.id).toBe(
       'new'
     );
+  });
+
+  it('never lets an equipped lower generation displace the highest generation', () => {
+    const owned = [
+      snake({ id: 'equipped-old', snakeVariantId: 'v1', generation: 1 }),
+      snake({ id: 'highest', snakeVariantId: 'v1', generation: 11 }),
+    ];
+    const roster = rostersByVariant(owned, 'equipped-old').get('v1');
+    expect(roster?.snakes.map((entry) => entry.id)).toEqual(['highest']);
+    expect(roster?.representative.id).toBe('highest');
   });
 
   it('drops rows with no variant id — there is no card to file them under', () => {
@@ -157,16 +187,16 @@ describe('rosterForVariant', () => {
     expect(rosterForVariant('v9', [snake({ id: 'a' })], null)).toBeNull();
   });
 
-  it('returns only that variant, ordered', () => {
+  it('returns only that variant\'s highest generation', () => {
     const owned = [
       snake({ id: 'a', snakeVariantId: 'v1', generation: 1 }),
       snake({ id: 'b', snakeVariantId: 'v2', generation: 5 }),
       snake({ id: 'c', snakeVariantId: 'v1', generation: 3 }),
     ];
     const roster = rosterForVariant('v1', owned, null);
-    expect(roster?.snakes.map((entry) => entry.id)).toEqual(['c', 'a']);
+    expect(roster?.snakes.map((entry) => entry.id)).toEqual(['c']);
     expect(roster?.representative.id).toBe('c');
-    expect(roster?.count).toBe(2);
+    expect(roster?.count).toBe(1);
   });
 });
 

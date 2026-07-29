@@ -302,8 +302,8 @@ Start on desktop with keyboard controls.
 - [ ] A fresh one-click launch bypasses the pre-run overlay and opens a held
       board with only “Swipe or press an arrow to move.” Direct or returning
       navigation may still expose the voluntary pre-run controls.
-- [ ] The fresh FTUE board is completely frozen until a safe arrow/WASD, D-pad,
-      or flick direction. Space does not start the first run; later non-FTUE
+- [ ] The fresh FTUE board is completely frozen until a safe arrow/WASD or
+      flick direction. Space does not start the first run; later non-FTUE
       Ready/resume screens may preserve the current heading with Space.
 - [ ] Arrow keys and WASD steer. Rapidly enter Up then Left while moving Right:
       both legal turns execute on consecutive cells.
@@ -729,8 +729,8 @@ Release evidence (2026-07-23):
       existing ownership before any starter grant.
 - [ ] Home Launch creates one server session; `/game?launch=ftue-v2` consumes it
       once and does not issue a second start request or energy deduction.
-- [ ] The first board shows exactly the minimal movement prompt. Safe keyboard,
-      touch-flick, and D-pad directions start; unsafe reversal/Space do not.
+- [ ] The first board shows exactly the minimal movement prompt. Safe keyboard
+      and touch-flick directions start; unsafe reversal/Space do not.
 - [ ] Before the first result there is no automatic starter chooser, Lab, account,
       Contracts, Season, offline-reward, identity, or tutorial modal and no
       automatic meta-system redirect.
@@ -783,8 +783,8 @@ largest legitimate combination:
 
 Geometry and quality checks:
 
-- [x] Telemetry decks, tactical-hold status, reset/abandon controls, D-pad, and
-      browser safe areas never intersect the playable board or hide a boundary.
+- [x] Telemetry decks, tactical-hold status, reset/abandon controls, and browser
+      safe areas never intersect the playable board or hide a boundary.
       Strategic decision dialogs are the intentional frozen-state exception.
 - [x] Score, DNA, mode/Energy, genes, strains, and extraction risk use stable
       compact instruments without reflowing the board.
@@ -800,13 +800,13 @@ Geometry and quality checks:
 - [ ] Notch, Dynamic Island, rounded corners, status bar, address bar, and home
       indicator are respected in portrait and landscape.
 - [ ] Touch capture covers the intended play region but never steals HUD,
-      overlay, pause, reset, or D-pad button presses.
+      overlay, pause, or reset button presses.
 - [ ] Layout remains premium and internally consistent without changing the
       established visual identity.
 
 ## Focused regression — tactical hold and deliberate resume input
 
-Test keyboard, Flick, and D-pad separately.
+Test keyboard and Flick separately, including their distinct queue capacities.
 
 ### Initial Ready and manual tactical hold
 
@@ -823,8 +823,8 @@ Test keyboard, Flick, and D-pad separately.
 - [ ] A duplicate/current direction may release the gate safely.
 - [ ] An opposite/reversal direction is rejected and leaves the gate and board
       frozen until a safe input arrives. **RECHECK**
-- [ ] A legal flick and a legal D-pad direction release the gate; a rejected
-      gesture gives feedback without releasing it.
+- [ ] A legal flick releases the gate; a rejected gesture gives feedback
+      without releasing it.
 - [ ] Escape/P while held is a no-op; it cannot bounce into a redundant menu or
       silently resume the engine.
 - [ ] Pause and Escape/P cannot re-enter hold during the 600ms rearm period,
@@ -847,11 +847,11 @@ Test keyboard, Flick, and D-pad separately.
 - [ ] BANK ends the run and never flashes or enters a resume gate.
 - [ ] Only advertised overlay shortcuts resolve a choice: Escape declines a
       gene, and P is the portal PASS shortcut. Space, direction keys, flicks,
-      D-pad input, and every unrelated key cannot leak through or advance the
+      and every unrelated key cannot leak through or advance the
       engine before resolution.
 - [ ] Overlay focus is trapped, controls have visible focus, 1/2/3 shortcuts
       match labels, and closing restores a logical input target.
-- [ ] Direction keys, Space, flick, D-pad, pause, and camera shortcuts cannot
+- [ ] Direction keys, Space, flick, pause, and camera shortcuts cannot
       leak through a strategic dialog or destructive confirmation.
 
 ### Abandon confirmation
@@ -879,11 +879,10 @@ Test keyboard, Flick, and D-pad separately.
       portrait and landscape without page scroll or bounce.
 - [ ] Flick threshold and direction feel deliberate; cyan accepted and rose
       rejected feedback agree with the engine.
-- [ ] Chained flicks preserve legal buffered S-turns without accidental U-turns.
-- [ ] Flick/D-pad mode persists as intended and does not change mid-run after
-      orientation or refresh.
-- [ ] D-pad Up/Left/Right/Down are visible, at least 44×44 CSS px, clear browser
-      chrome/home indicators, and remain reachable with the full HUD.
+- [ ] Chained flicks preserve a legal two-turn L/S sequence; a third unresolved
+      flick is rejected before it can turn an intended coil into a U-turn.
+- [ ] Touch steering remains flick-only after orientation or refresh; no stale
+      control-mode preference can restore a D-pad.
 - [ ] `?debug=input` reports recognized flick, queue, rejection reason, and
       timing without changing gameplay.
 - [ ] Multi-touch, a second finger, long press, pinch, and an interrupted swipe

@@ -135,7 +135,8 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
     const call = ROUTE.indexOf('await describeDailyTakeSlot(');
     expect(call).toBeGreaterThan(-1);
     for (const earlier of [
-      'const yieldDna = applyAscendanceYield(',
+      'const ascendance = ascendanceYieldBreakdown(',
+      'const yieldDna = ascendance.totalYield;',
       'const finalDna = applyHarvestFactor(',
       'const settlementUpdate: Record<string, unknown> = {',
       'dna: newDna,',

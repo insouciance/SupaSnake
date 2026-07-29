@@ -11,8 +11,8 @@
  *     — the fixture is built newest-first exactly as /api/collection returns
  *     it, since that ordering is what made the old Map keep the Gen-1
  *     starter;
- *   - the count reaches a screen reader, not just a badge;
- *   - onSelectVariant receives EVERY sibling.
+ *   - historical lower generations are not selectable inventory;
+ *   - equal-generation top builds remain available.
  */
 
 import React from 'react';
@@ -135,24 +135,45 @@ describe('CollectionGrid', () => {
     expect(within(card).queryByText('Gen 1')).not.toBeInTheDocument();
   });
 
-  it('puts the roster count in the accessible name as well as the badge', () => {
+  it('does not count historical lower generations as selectable snakes', () => {
     renderGrid();
 
     const card = screen.getByTestId('variant-card-variant-0');
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 33, 33 snakes owned'
+      'PRIMAL 0, Generation 33, Yield multiplier 1.2621'
     );
-    expect(within(card).getByTestId('variant-card-roster-count')).toHaveTextContent(
-      '×33'
+    expect(within(card).queryByTestId('variant-card-roster-count')).toBeNull();
+    expect(within(card).getByTestId('variant-card-generation-yield')).toHaveTextContent(
+      'Yield ×1.2621'
     );
+  });
+
+  it('keeps distinct builds when they share the highest generation', () => {
+    renderGrid({
+      ownedSnakes: [
+        snake({ id: 'old', generation: 4 }),
+        snake({ id: 'top-a', generation: 11 }),
+        snake({ id: 'top-b', generation: 11 }),
+      ],
+    });
+
+    const card = screen.getByTestId('variant-card-variant-0');
+    expect(card).toHaveAttribute(
+      'aria-label',
+      'PRIMAL 0, Generation 11, Yield multiplier 1.1273, 2 snakes owned'
+    );
+    expect(within(card).getByTestId('variant-card-roster-count')).toHaveTextContent('×2');
   });
 
   it('renders no count chip for a variant held once', () => {
     renderGrid();
 
     const card = screen.getByTestId('variant-card-variant-3');
-    expect(card).toHaveAttribute('aria-label', 'PRIMAL 3, Generation 1');
+    expect(card).toHaveAttribute(
+      'aria-label',
+      'PRIMAL 3, Generation 1, Yield multiplier 1.00'
+    );
     expect(
       within(card).queryByTestId('variant-card-roster-count')
     ).not.toBeInTheDocument();
@@ -177,12 +198,12 @@ describe('CollectionGrid', () => {
     const card = screen.getByTestId('variant-card-variant-0');
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 4, Aurum lineage, traits Scavenger'
+      'PRIMAL 0, Generation 4, Yield multiplier 1.02, Aurum lineage, traits Scavenger'
     );
     expect(within(card).queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('hands the whole roster to onSelectVariant, every sibling included', () => {
+  it('hands only the highest generation to the main Lab selector', () => {
     const { onSelectVariant } = renderGrid();
 
     fireEvent.click(screen.getByTestId('variant-card-variant-0'));
@@ -190,9 +211,7 @@ describe('CollectionGrid', () => {
     expect(onSelectVariant).toHaveBeenCalledTimes(1);
     const [selectedVariant, roster] = onSelectVariant.mock.calls[0];
     expect(selectedVariant.id).toBe('variant-0');
-    expect(roster).toHaveLength(33);
-    expect(new Set(roster.map((s: OwnedSnake) => s.id)).size).toBe(33);
-    // Ordered: the representative leads.
+    expect(roster).toHaveLength(1);
     expect(roster[0].generation).toBe(33);
   });
 
@@ -207,14 +226,14 @@ describe('CollectionGrid', () => {
     );
   });
 
-  it('ranks the equipped snake as the representative regardless of generation', () => {
+  it('does not expose an equipped historical generation as the card representative', () => {
     renderGrid({ equippedSnakeId: 'v0-gen1' });
 
     const card = screen.getByTestId('variant-card-variant-0');
-    expect(within(card).getByText('Gen 1')).toBeInTheDocument();
+    expect(within(card).getByText('Gen 33')).toBeInTheDocument();
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 1, 33 snakes owned, Equipped'
+      'PRIMAL 0, Generation 33, Yield multiplier 1.2621'
     );
   });
 

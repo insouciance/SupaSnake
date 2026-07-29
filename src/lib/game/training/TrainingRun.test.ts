@@ -90,6 +90,38 @@ describe('TrainingRun', () => {
     expect(result.metrics.unnecessaryInputs).toBe(1);
   });
 
+  it('preserves the two-entry flick buffer in the authoritative replay trace', () => {
+    const scenario = createTrainingScenario({
+      version: TRAINING_SCENARIO_VERSION,
+      exercise: 'trace',
+      difficulty: 'foundation',
+      seed: 'mobile-flick-buffer',
+    });
+    const leftTurn: Record<Direction, Direction> = {
+      UP: 'LEFT',
+      LEFT: 'DOWN',
+      DOWN: 'RIGHT',
+      RIGHT: 'UP',
+    };
+    const client = new TrainingRun(scenario);
+    const first = leftTurn[scenario.startDirection];
+    const second = leftTurn[first];
+    const accidentalThird = leftTurn[second];
+
+    expect(client.input(first, 'flick')).toBe('accepted');
+    expect(client.input(second, 'flick')).toBe('accepted');
+    expect(client.input(accidentalThird, 'flick')).toBe('queue_full');
+    const stopped = client.stop();
+    expect(
+      stopped.inputs.every(
+        (input) => input.type !== 'direction' || input.source === 'flick'
+      )
+    ).toBe(true);
+    expect(replayTrainingAttempt(scenario, stopped.inputs, 0).metrics).toEqual(
+      stopped.metrics
+    );
+  });
+
   it('replays an input trace to the byte-equivalent metrics and ghost', () => {
     const scenario = createTrainingScenario({
       version: TRAINING_SCENARIO_VERSION,
