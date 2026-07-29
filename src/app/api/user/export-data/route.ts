@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
       sessionsResult,
       purchasesResult,
       achievementsResult,
+      breedingHistoryResult,
     ] = await Promise.all([
       supabase
         .from('collected_snakes')
@@ -113,6 +114,14 @@ export async function GET(request: NextRequest) {
         .from('player_achievements')
         .select('achievement_id, completed, completed_at, progress')
         .eq('player_id', player.id),
+      // Pedigree is permanent even when its active child was voluntarily
+      // exchanged for the exact breeding receipt (migration 058).
+      // `*` keeps the deploy compatible before 058 adds refund audit fields.
+      supabase
+        .from('breeding_history')
+        .select('*')
+        .eq('player_id', player.id)
+        .order('bred_at', { ascending: false }),
     ]);
 
     const failedQuery = [
@@ -120,6 +129,7 @@ export async function GET(request: NextRequest) {
       ['gameplay', sessionsResult.error],
       ['purchases', purchasesResult.error],
       ['achievements', achievementsResult.error],
+      ['lineage history', breedingHistoryResult.error],
     ].find((entry) => entry[1]);
 
     if (failedQuery) {
@@ -140,6 +150,7 @@ export async function GET(request: NextRequest) {
         'collection',
         'purchases',
         'achievements',
+        'lineage',
       ],
 
       account: {
@@ -181,6 +192,21 @@ export async function GET(request: NextRequest) {
             lineage: snake.lineage,
           };
         }) || [],
+      },
+
+      lineage: {
+        breedingHistory: breedingHistoryResult.data?.map((entry) => ({
+          id: entry.id,
+          parent1Id: entry.parent1_id,
+          parent2Id: entry.parent2_id,
+          childId: entry.child_id,
+          dnaCost: entry.dna_cost,
+          bredAt: entry.bred_at,
+          traitDraft: entry.trait_rolls,
+          refundedAt: entry.refunded_at ?? null,
+          refundedChildId: entry.refunded_child_id ?? null,
+          refundSnapshot: entry.refund_snapshot ?? null,
+        })) || [],
       },
 
       gameplay: {

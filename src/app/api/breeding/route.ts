@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     const { data: rows, error: historyError } = await supabase
       .from('breeding_history')
       .select(
-        `id, dna_cost, bred_at,
+        `*,
          parent1:collected_snakes!breeding_history_parent1_id_fkey(id, generation, snake_variants(name, rarity)),
          parent2:collected_snakes!breeding_history_parent2_id_fkey(id, generation, snake_variants(name, rarity)),
          trait_rolls,

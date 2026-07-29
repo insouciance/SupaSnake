@@ -217,6 +217,7 @@ describe('mapBreedingHistoryRow', () => {
       parent2: { id: 'snake-2', generation: 2, variantName: 'CYBER PULSE', rarity: 'uncommon' },
       child: { id: 'snake-3', generation: 3, variantName: 'CYBER SPARK', rarity: 'common' },
       lineage: null,
+      refundedAt: null,
     });
   });
 
@@ -254,6 +255,49 @@ describe('mapBreedingHistoryRow', () => {
     });
     expect(result.child).toBeNull();
     expect(result.lineage).toBeNull();
+    expect(result.refundedAt).toBeNull();
+  });
+
+  it('keeps a refunded pedigree readable after parent and child rows are removed', () => {
+    const result = mapBreedingHistoryRow({
+      id: 'history-refunded',
+      dna_cost: 1280,
+      bred_at: '2026-07-02T10:00:00Z',
+      refunded_at: '2026-07-29T20:00:00Z',
+      parent1: null,
+      parent2: null,
+      child: null,
+      refund_snapshot: {
+        parent1: {
+          id: 'parent-1',
+          generation: 9,
+          variant_name: 'CYBER SPARK',
+          rarity: 'rare',
+        },
+        parent2: {
+          id: 'parent-2',
+          generation: 10,
+          variant_name: 'CYBER PULSE',
+          rarity: 'epic',
+        },
+        child: {
+          id: 'child-11',
+          generation: 11,
+          variant_name: 'CYBER PULSE',
+          rarity: 'epic',
+        },
+      },
+    });
+
+    expect(result.parent1?.variantName).toBe('CYBER SPARK');
+    expect(result.parent2?.generation).toBe(10);
+    expect(result.child).toEqual({
+      id: 'child-11',
+      generation: 11,
+      variantName: 'CYBER PULSE',
+      rarity: 'epic',
+    });
+    expect(result.refundedAt).toBe('2026-07-29T20:00:00Z');
   });
 
   it('sanitizes the audited child lineage from trait_rolls', () => {

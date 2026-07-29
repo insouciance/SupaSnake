@@ -15,7 +15,7 @@
  * a second display path.
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
@@ -30,7 +30,7 @@ import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
-import { IconArrowRight, IconBolt, IconCheck, IconEgg, IconSnake } from '@/components/ui/icons';
+import { IconArrowRight, IconBolt, IconCheck, IconDna, IconEgg, IconSnake } from '@/components/ui/icons';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -60,6 +60,15 @@ export interface VariantDetailModalProps {
   onSelectLineagePrimary?: (strain: StrainId) => Promise<void>;
   /** Persist the favorite flag; the roster rule reads it */
   onToggleFavorite?: (snakeId: string, favorited: boolean) => Promise<boolean>;
+  /** Exact server-authored receipt for one reversible breeding step. */
+  downgradeRefundDna?: number | null;
+  /** Highest generation that remains after this selected build leaves. */
+  downgradeToGeneration?: number | null;
+  /** A visible topology reason the action cannot currently commit. */
+  downgradeBlockedReason?: string | null;
+  onDowngrade?: () => void;
+  isDowngrading?: boolean;
+  downgradeError?: string | null;
 }
 
 /**
@@ -169,12 +178,19 @@ export function VariantDetailModal({
   isUpdatingLineage = false,
   onSelectLineagePrimary,
   onToggleFavorite,
+  downgradeRefundDna = null,
+  downgradeToGeneration = null,
+  downgradeBlockedReason = null,
+  onDowngrade,
+  isDowngrading = false,
+  downgradeError = null,
 }: VariantDetailModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
   const modalRef = useRef<HTMLDivElement>(null);
 
   const siblings = roster && roster.length > 0 ? roster : [owned];
   const isFavorited = owned.isFavorited === true;
+  const [confirmingDowngrade, setConfirmingDowngrade] = useState(false);
 
   const rarity = RARITY_STYLE[variant.rarity] ?? RARITY_STYLE.common;
   const lineage = sanitizeLineage(owned.lineage);
@@ -232,6 +248,10 @@ export function VariantDetailModal({
   const handleBreedClick = useCallback(() => {
     onBreed();
   }, [onBreed]);
+
+  useEffect(() => {
+    setConfirmingDowngrade(false);
+  }, [owned.id, isOpen]);
 
   if (!isOpen) {
     return null;
@@ -569,6 +589,83 @@ export function VariantDetailModal({
             >
               {equipError}
             </p>
+          )}
+
+          {downgradeError && (
+            <p
+              className="basis-full text-sm font-body text-strike-red"
+              role="alert"
+              data-testid="variant-downgrade-error"
+            >
+              {downgradeError}
+            </p>
+          )}
+
+          {owned.generation > 1 && downgradeRefundDna !== null && onDowngrade && (
+            <div
+              className="basis-full rounded-arcade border border-scale-blue-light/25 bg-void-deep/70 p-3"
+              data-testid="variant-downgrade"
+            >
+              {confirmingDowngrade ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-body font-semibold text-bone-white">
+                      Refund Gen {owned.generation}?
+                    </p>
+                    <p className="mt-1 text-xs font-body leading-relaxed text-beige/70">
+                      This build leaves the active roster and its full breeding
+                      receipt returns.{' '}
+                      {downgradeToGeneration === owned.generation
+                        ? `Another Gen ${owned.generation} build remains available.`
+                        : `Gen ${downgradeToGeneration ?? Math.max(1, owned.generation - 1)} becomes this variant’s highest available generation.`}{' '}
+                      Pedigree history remains intact.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-neutral flex-1 min-h-[44px] px-3 py-2 text-sm"
+                      onClick={() => setConfirmingDowngrade(false)}
+                      disabled={isDowngrading}
+                    >
+                      Keep build
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-go flex-1 min-h-[44px] px-3 py-2 text-sm inline-flex items-center justify-center gap-2"
+                      onClick={onDowngrade}
+                      disabled={isDowngrading}
+                      aria-label={`Confirm downgrade and refund ${downgradeRefundDna} DNA`}
+                    >
+                      {isDowngrading ? <Spinner /> : <IconDna size={16} />}
+                      {isDowngrading
+                        ? 'Refunding…'
+                        : `+${downgradeRefundDna.toLocaleString()} DNA`}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn-neutral w-full min-h-[44px] px-3 py-2 text-sm inline-flex items-center justify-center gap-2"
+                    onClick={() => setConfirmingDowngrade(true)}
+                    disabled={Boolean(downgradeBlockedReason) || isDowngrading}
+                    aria-label={`Downgrade generation and refund ${downgradeRefundDna} DNA`}
+                  >
+                    <IconDna size={16} />
+                    <span>
+                      Downgrade · +{downgradeRefundDna.toLocaleString()} DNA
+                    </span>
+                  </button>
+                  {downgradeBlockedReason && (
+                    <p className="mt-2 text-xs font-body text-beige/60">
+                      {downgradeBlockedReason}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           )}
 
           {onPlay && (

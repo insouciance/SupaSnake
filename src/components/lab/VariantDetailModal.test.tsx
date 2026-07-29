@@ -244,6 +244,56 @@ describe('VariantDetailModal favorite persistence', () => {
   });
 });
 
+describe('VariantDetailModal generation refund', () => {
+  it('states the exact receipt and requires a deliberate confirmation', () => {
+    const onDowngrade = jest.fn();
+    renderModal({
+      owned: GEN_7,
+      downgradeRefundDna: 1280,
+      downgradeToGeneration: 4,
+      onDowngrade,
+    });
+
+    fireEvent.click(
+      screen.getByLabelText('Downgrade generation and refund 1280 DNA')
+    );
+
+    expect(screen.getByText('Refund Gen 7?')).toBeInTheDocument();
+    expect(screen.getByText(/Gen 4 becomes this variant’s highest/i)).toBeInTheDocument();
+    expect(onDowngrade).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByLabelText('Confirm downgrade and refund 1280 DNA')
+    );
+    expect(onDowngrade).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains why a parent must wait for its active descendants', () => {
+    renderModal({
+      owned: GEN_7,
+      downgradeRefundDna: 1280,
+      downgradeToGeneration: 4,
+      downgradeBlockedReason: 'Downgrade descendants first.',
+      onDowngrade: jest.fn(),
+    });
+
+    expect(
+      screen.getByLabelText('Downgrade generation and refund 1280 DNA')
+    ).toBeDisabled();
+    expect(screen.getByText('Downgrade descendants first.')).toBeInTheDocument();
+  });
+
+  it('never offers a refund on Gen 1', () => {
+    renderModal({
+      owned: GEN_1,
+      downgradeRefundDna: 300,
+      onDowngrade: jest.fn(),
+    });
+
+    expect(screen.queryByTestId('variant-downgrade')).not.toBeInTheDocument();
+  });
+});
+
 describe('VariantDetailModal equip errors', () => {
   it('renders the equip error inside the sheet, beside the control', () => {
     renderModal({ equipError: 'Another equip is in flight. Try again.' });

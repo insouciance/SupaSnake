@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import type { OwnedSnake } from '@/shared/types/snake-data-model';
 import { mapOwnedSnakeRow, getPlayerId } from './utils';
 
@@ -60,7 +61,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const snakes: OwnedSnake[] = (rows || []).map(mapOwnedSnakeRow);
+    // A downgrade returns the exact receipt, never a client-side estimate.
+    // This read is deliberately non-fatal: if history is temporarily
+    // unavailable, the collection remains usable and the refund control stays
+    // hidden rather than inventing a number.
+    const refundByChild = new Map<string, number>();
+    const childIds = (rows ?? []).map((row) => row.id as string).filter(Boolean);
+    if (childIds.length > 0) {
+      const { data: receipts, error: receiptError } = await supabase
+        .from('breeding_history')
+        .select('child_id, dna_cost')
+        .eq('player_id', player.id)
+        .in('child_id', childIds);
+
+      if (receiptError) {
+        console.error('Failed to fetch downgrade receipts:', receiptError);
+        Sentry.captureException(
+          new Error(`Downgrade receipt read failed: ${receiptError.message}`),
+          { extra: { playerId: player.id } }
+        );
+      } else {
+        for (const receipt of receipts ?? []) {
+          const childId = receipt.child_id as string | null;
+          const dnaCost = Number(receipt.dna_cost);
+          if (childId && Number.isSafeInteger(dnaCost) && dnaCost > 0) {
+            refundByChild.set(childId, dnaCost);
+          }
+        }
+      }
+    }
+
+    const snakes: OwnedSnake[] = (rows || []).map((row) => {
+      const snake = mapOwnedSnakeRow(row);
+      const downgradeRefundDna = refundByChild.get(snake.id);
+      return downgradeRefundDna === undefined
+        ? snake
+        : { ...snake, downgradeRefundDna };
+    });
 
     // Return snakes AND DNA balance (server authority)
     return NextResponse.json({

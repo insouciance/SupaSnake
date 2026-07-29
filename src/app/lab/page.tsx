@@ -40,7 +40,11 @@ import { CollectionGrid } from '@/components/lab/CollectionGrid';
 import { VariantDetailModal } from '@/components/lab/VariantDetailModal';
 import { UnlockConfirmModal } from '@/components/lab/UnlockConfirmModal';
 
-import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
+import type {
+  SnakeVariant,
+  OwnedSnake,
+  DowngradeSnakeResponse,
+} from '@/shared/types/snake-data-model';
 
 // =============================================================================
 // COMPONENT
@@ -147,6 +151,12 @@ export default function LabPage() {
   const updateOwnedSnake = useCollectionStore((state) => state.updateOwnedSnake);
   const [isUpdatingLineage, setIsUpdatingLineage] = useState(false);
   const [isLaunchingSnake, setIsLaunchingSnake] = useState(false);
+  const [isDowngradingSnake, setIsDowngradingSnake] = useState(false);
+  const [downgradeError, setDowngradeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDowngradeError(null);
+  }, [selectedOwned?.id, isDetailModalOpen]);
 
   // The day's charge status from the game store (server-synced, §8.6)
   const charge = useGameStore((state) => state.charge);
@@ -187,6 +197,35 @@ export default function LabPage() {
         : null,
     [selectedOwned, selectedRoster]
   );
+
+  const downgradeFacts = useMemo(() => {
+    if (!selectedSnake || selectedSnake.downgradeRefundDna === undefined) {
+      return null;
+    }
+
+    const descendants = ownedSnakes.filter(
+      (snake) =>
+        snake.parent1Id === selectedSnake.id || snake.parent2Id === selectedSnake.id
+    );
+    const remainingVariant = ownedSnakes.filter(
+      (snake) =>
+        snake.id !== selectedSnake.id &&
+        snake.snakeVariantId === selectedSnake.snakeVariantId
+    );
+    const toGeneration = remainingVariant.reduce(
+      (highest, snake) => Math.max(highest, snake.generation),
+      1
+    );
+
+    return {
+      refundDna: selectedSnake.downgradeRefundDna,
+      toGeneration,
+      blockedReason:
+        descendants.length > 0
+          ? 'Downgrade descendants first so no active lineage loses a parent.'
+          : null,
+    };
+  }, [ownedSnakes, selectedSnake]);
 
   // ---------------------------------------------------------------------------
   // HANDLERS
@@ -337,6 +376,62 @@ export default function LabPage() {
   const handleBreed = useCallback(() => {
     router.push('/lab/breed');
   }, [router]);
+
+  /**
+   * Voluntarily exchange one leaf breeding result for its exact receipt.
+   * There is no optimistic economy mutation: the wallet, ancestry removal and
+   * possible replacement equip commit together in the database, then the Lab
+   * reloads that server truth.
+   */
+  const handleDowngrade = useCallback(async () => {
+    if (
+      !selectedSnake ||
+      !session?.access_token ||
+      isDowngradingSnake ||
+      !downgradeFacts ||
+      downgradeFacts.blockedReason
+    ) {
+      return;
+    }
+
+    setIsDowngradingSnake(true);
+    setDowngradeError(null);
+    try {
+      const response = await fetch('/api/collection/downgrade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ snakeId: selectedSnake.id }),
+      });
+      const data: DowngradeSnakeResponse = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? 'Could not refund this generation');
+      }
+
+      closeDetailModal();
+      await refresh();
+      showToast(
+        `Gen ${data.fromGeneration ?? selectedSnake.generation} → Gen ${data.toGeneration ?? downgradeFacts.toGeneration} · +${(data.refundedDna ?? downgradeFacts.refundDna).toLocaleString()} DNA`,
+        'success'
+      );
+    } catch (error) {
+      setDowngradeError(
+        error instanceof Error ? error.message : 'Could not refund this generation'
+      );
+    } finally {
+      setIsDowngradingSnake(false);
+    }
+  }, [
+    selectedSnake,
+    session?.access_token,
+    isDowngradingSnake,
+    downgradeFacts,
+    closeDetailModal,
+    refresh,
+    showToast,
+  ]);
 
   /**
    * Choose which strain of a dual lineage receives its point. The lineage
@@ -567,6 +662,12 @@ export default function LabPage() {
           isUpdatingLineage={isUpdatingLineage}
           onSelectLineagePrimary={selectLineagePrimary}
           onToggleFavorite={handleToggleFavorite}
+          downgradeRefundDna={downgradeFacts?.refundDna ?? null}
+          downgradeToGeneration={downgradeFacts?.toGeneration ?? null}
+          downgradeBlockedReason={downgradeFacts?.blockedReason ?? null}
+          onDowngrade={downgradeFacts ? handleDowngrade : undefined}
+          isDowngrading={isDowngradingSnake}
+          downgradeError={downgradeError}
         />
       )}
 

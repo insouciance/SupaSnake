@@ -84,6 +84,13 @@ export interface OwnedSnake {
   isEquipped: boolean;
   isFavorited: boolean;
 
+  /**
+   * Exact DNA recorded on this snake's breeding receipt. Present only when
+   * this active row can represent a one-step lineage refund; the server RPC
+   * remains authoritative about descendants, open runs and stale requests.
+   */
+  downgradeRefundDna?: number;
+
   // Traits drafted at breeding time (Constitution §8.2) - slot order is draft order
   traits?: string[]; // TraitId[] sanitized by the API mapper
   // Trait slot count derived from variant rarity + generation (section 6.1)
@@ -224,6 +231,21 @@ export interface FavoriteResponse {
   error?: string;
   snakeId?: string;
   favorited?: boolean;
+}
+
+export interface DowngradeSnakeRequest {
+  snakeId: string;
+}
+
+export interface DowngradeSnakeResponse {
+  success: boolean;
+  error?: string;
+  refundedDna?: number;
+  newDnaBalance?: number;
+  removedSnakeId?: string;
+  replacementSnakeId?: string | null;
+  fromGeneration?: number;
+  toGeneration?: number;
 }
 
 // =============================================================================

@@ -8,6 +8,19 @@ Last updated 2026-07-29 (D1 ruling, pressure feedback, and CYBER tempo ruling).
 
 ---
 
+## D2 LINEAGE REFUND CLOSED — owner clarification, 2026-07-29
+
+The Lab still presents only each variant's highest active generation. A bred
+leaf can now be downgraded one step at a time for the exact DNA recorded on
+that breeding receipt; the next-highest build becomes active and a full
+parent/child snapshot remains in pedigree history. Active descendants and
+open runs block the exchange. If the removed build was equipped, the server
+selects and equips the strongest remaining same-variant build atomically.
+The owner clarified that this is not Rule 6 confiscation: the player initiates
+the exchange and receives the earned DNA input back in full.
+
+---
+
 ## D3 CYBER TEMPO CLOSED — owner ruling, 2026-07-29
 
 CYBER keeps its 200 ms opening and hyperbolic acceleration, but the per-food

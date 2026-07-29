@@ -116,6 +116,21 @@ const tableResults: Record<string, QueryResult> = {
     }],
     error: null,
   },
+  breeding_history: {
+    data: [{
+      id: 'breed-1',
+      parent1_id: 'parent-1',
+      parent2_id: 'parent-2',
+      child_id: null,
+      dna_cost: 1280,
+      bred_at: '2026-01-05T00:00:00.000Z',
+      trait_rolls: { preview: { generation: 11 } },
+      refunded_at: '2026-01-06T00:00:00.000Z',
+      refunded_child_id: 'child-11',
+      refund_snapshot: { child: { id: 'child-11', generation: 11 } },
+    }],
+    error: null,
+  },
 };
 
 describe('Export Data API', () => {
@@ -168,6 +183,7 @@ describe('Export Data API', () => {
       'game_sessions',
       'purchase_history',
       'player_achievements',
+      'breeding_history',
     ]) {
       expect(builders[table].eq).toHaveBeenCalledWith('player_id', 'player-id');
       expect(builders[table].eq).not.toHaveBeenCalledWith('player_id', 'auth-user-id');
@@ -214,6 +230,12 @@ describe('Export Data API', () => {
       productId: 'dna_pack',
       priceCents: 499,
       currency: 'eur',
+    });
+    expect(data.lineage.breedingHistory[0]).toMatchObject({
+      id: 'breed-1',
+      dnaCost: 1280,
+      refundedChildId: 'child-11',
+      refundSnapshot: { child: { id: 'child-11', generation: 11 } },
     });
     expect(JSON.stringify(data)).not.toContain('stripe_session');
     expect(builders.purchase_history.select).toHaveBeenCalledWith(
