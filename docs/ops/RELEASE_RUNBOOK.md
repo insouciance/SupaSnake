@@ -1,21 +1,20 @@
 # Production Release Runbook
 
-Current baseline: application runtime `bfdf8a2` — the pressure, long-snake and
-terrain-coherence release, deployed 2026-07-29 11:31 UTC, run 30447104381,
-deployment `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` — and hosted migrations
+Current baseline: application runtime `b15b5c3` — the dynasty-pressure and
+high-density-feedback release, deployed 2026-07-29 14:37 UTC, run 30460660086,
+deployment `dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` — and hosted migrations
 001–057. Both the linked migration preview and apply steps reported “Remote
 database is up to date.” Rollback anchor for this release (precondition 3):
-`dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA`, commit `bb87af2`, 2026-07-28 19:34 UTC.
+`dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS`, commit `bfdf8a2`, 2026-07-29 11:31 UTC.
 
-The workflow's rollback-anchor step is currently unreliable. Run 30447104381
+The workflow's rollback-anchor step is currently unreliable. Run 30460660086
 executed it after creating the staged `--prod --skip-domain` deployment, and
 `vercel ls --prod` therefore selected that new staged deployment rather than
 the outgoing canonical one. Its summary incorrectly named
-`dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` as its own rollback. The anchor above comes
-from the preceding successful release log. Until the step is moved before
-staging or resolves the canonical alias directly, record the outgoing
-deployment independently and do not trust the generated summary as rollback
-evidence.
+`dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` as its own rollback. The anchor above was
+recorded independently from the canonical alias before dispatch. Until the step
+is moved before staging or resolves the canonical alias directly, do not trust
+the generated summary as rollback evidence.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made

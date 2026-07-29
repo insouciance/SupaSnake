@@ -2,9 +2,10 @@
 
 _Last updated: 2026-07-29_
 
-This is the current player-facing QA path for the deployed Redesign Wave and
-pressure/visual-coherence follow-up. Work from top to bottom when doing a broad
-playtest; use the focused matrices near the end when verifying a fix.
+This is the current player-facing QA path for the deployed Redesign Wave,
+pressure/visual-coherence follow-up, and D1 dynasty-pressure ruling. Work from
+top to bottom when doing a broad playtest; use the focused matrices near the end
+when verifying a fix.
 
 Design references:
 
@@ -19,19 +20,20 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `bfdf8a2` — pressure model, long-snake renderer, sourced terrain grammar |
-| Vercel deployment | `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` |
-| Rollback deployment | `dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA` — `bb87af2`; schema-057 compatible |
+| Production commit | `b15b5c3` — dynasty pressure, rate events, coil/tail and terrain-rune feedback |
+| Vercel deployment | `dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` |
+| Rollback deployment | `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` — `bfdf8a2`; schema-057 compatible |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–057 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; production release workflow `30447104381` at `bfdf8a2` |
+| Canonical source | `main`; production release workflow `30460660086` at `b15b5c3` |
 
-The complete Redesign Wave, migration 057, post-playtest food/floor fixes, and
-the pressure/visual-coherence follow-up are live. The current release added no
-migration: preview and apply were both verified no-ops, so the immediate
-rollback runtime remains schema-057 compatible.
+The complete Redesign Wave, migration 057, post-playtest food/floor fixes, the
+pressure/visual-coherence follow-up, and the D1 dynasty-pressure ruling are
+live. The current release added no migration: preview and apply were both
+verified no-ops, so the immediate rollback runtime remains schema-057
+compatible.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -77,33 +79,36 @@ Known before you start, so they are not reported as discoveries:
   fixtures**, including 40- and 160-cell coils, never through the arc of a real
   run against live terrain.
 
-### Pressure and visual-coherence release evidence
+### Dynasty-pressure and high-density-feedback release evidence
 
-- Release workflow `30447104381` deployed exact main SHA `bfdf8a2` in Stripe
-  test mode. Vercel promoted `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS`; the actual
-  outgoing rollback is `dpl_2xwEp3Ks7hmkg2bRwkcwsQyVnThA` at `bb87af2`.
+- Release workflow `30460660086` deployed exact main SHA `b15b5c3` in Stripe
+  test mode. Vercel promoted `dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV`; the actual
+  outgoing rollback is `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` at `bfdf8a2`.
+- Preflight independently confirmed the outgoing alias and a completed physical
+  Supabase backup from 2026-07-29 07:31 UTC. PITR reports disabled; this release
+  carried no migration.
 - The migration preview and apply steps were no-ops, linked database lint
   completed without an error, and staged plus canonical app/database health
   passed.
-- The release gate passed 383/383 Jest suites and 5,544/5,544 tests with
+- The release gate passed 382/382 Jest suites and 5,525/5,525 tests with
   coverage, TypeScript, ESLint, the production build, and the blocking runtime
   dependency audit with zero vulnerabilities.
 - Protected PR and post-main Build/Lint/Test/E2E checks passed. The rollback
   E2E configuration recorded 79 passed / 23 skipped. The production
-  configuration recorded 87 passed / 12 skipped / 3 flaky: fresh Launch in
-  `engagement.spec.ts` and `game.spec.ts`, plus Results → Replay in
-  `run-flow.spec.ts`, each passing on its configured retry.
+  configuration recorded 89 passed / 12 skipped / 1 flaky: the Build Seed/full
+  telemetry-deck journey in `genome.spec.ts` missed the tactical-hold gate on
+  its first attempt and passed on its configured retry.
 - Local game-screen gates passed 8 viewports × 4 cockpit states, four real-WebGL
   profiles at only +3 arena calls, and 22 frozen decision/legal-surface cases.
   Controlled 40/20 and 160/80 snake/terrain profiles both held 60 draw calls
   with no browser error.
 - Independent public smoke found healthy app/database status; 200 on `/`,
   `/game`, `/login`, and `/lab`; 404 on all three dev fixtures; and 401 for a
-  missing bearer on every configured cron route.
+  missing bearer on all eight configured cron routes.
 - The workflow's generated rollback summary is wrong: because its lookup runs
   after staging, it selected the new staged deployment as the “outgoing” one.
-  The rollback above is recovered from the preceding successful release log;
-  fix the lookup before relying on that summary in a future incident.
+  The rollback above was independently recorded from the canonical alias before
+  dispatch; fix the lookup before relying on that summary in a future incident.
 
 ### Post-production manual rechecks
 
