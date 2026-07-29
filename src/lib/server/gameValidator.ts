@@ -8,13 +8,14 @@
  * session (validated: false) - they can never inflate the payout.
  *
  * Phase 2 (GAME_DESIGN_V2.md sections 3.3 + 5.3):
- * - Mutations: legality (known ids, no dupes, <= 4 held), count bound
+ * - Mutations/genes: legality (known ids, no dupes, <= 4 legacy mutations or
+ *   <= 6 Genome genes), count bound
  *   (picks <= floor(foodCount / minFoodsPerPick); the k-th pick's atFood
  *   >= minFoodsPerPick*k and <= foodCount), then EXACT recompute of every
  *   [E] effect from its atFood onward for PRIMAL/CYBER (and the COSMIC
- *   base). WP-3.05: `minFoodsPerPick` is the STAMPED GROWTH PROFILE's, not
- *   a constant 15 — it is the engine's own minimum offer interval, so the
- *   bound and the cadence that produces the picks are one number.
+ *   base). `minFoodsPerPick` comes from the universal Genome cadence, not a
+ *   growth profile, so the bound and the cadence that produces the picks stay
+ *   one number without coupling build opportunity to body pressure.
  * - Phoenix: a claimed trigger is only honored when phoenix is held and
  *   the food index is plausible; honoring it strictly lowers the payout,
  *   so there is no inflation vector in either direction.
@@ -34,7 +35,7 @@
  * physical side (mutation food never spawns) makes any mutation claim on
  * an Ascetic snake impossible, so such claims are dropped and flagged;
  * the Patient trait doubles the mutation cadence, doubling the per-pick
- * food bound (15k to 30k on the shipped curve).
+ * food bound (4k to 8k on the current curve).
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -97,7 +98,11 @@ import {
   type PressureGrowthEvent,
   type StrainSurge,
 } from '@/shared/game/genome';
-import { resolveGrowthProfile, type GrowthProfileId } from '@/shared/game/growth';
+import {
+  resolveGrowthProfile,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
+import { GENE_OFFER_CADENCE } from '@/shared/game/geneCadence';
 import {
   fusePicks,
   fusedSlotCount,
@@ -540,30 +545,21 @@ export function claimDriftIsAlertable(
 }
 
 /**
- * Minimum food gap the spawn cadence allows before the k-th mutation pick,
- * on the shipped curve. Retained as the fallback for a run with no stamp.
- *
- * WP-3.05: this is `GROWTH_PROFILES.baseline.minFoodsPerPick`, and a test
- * asserts the two agree. Prefer `minFoodsPerPickFor` — a run stamped `tuned`
- * is offered genes every 10 +/- 2 foods, and bounding it at 15 would flag a
- * player for accepting an offer the engine handed them.
+ * Minimum food gap the universal Genome cadence permits. It is intentionally
+ * independent of body growth, so all dynasties and ladder profiles receive
+ * the same build opportunities.
  */
-const MIN_FOODS_PER_PICK = 15;
+const MIN_FOODS_PER_PICK = GENE_OFFER_CADENCE.minFoodsPerPick;
 
 /**
- * The per-pick cadence bound for THIS run: the engine's lowest possible offer
- * interval under the growth profile the server stamped into `run_context`.
- *
- * Both halves come from one place. `minFoodsPerPick` is by construction the
- * floor of `rollOfferInterval`, so an honest engine can never produce a pick
- * this rejects; the Patient multiplier is read from `TRAIT_PHYSICS` rather
- * than re-typed, which is what the old hardcoded 30 was.
+ * The Patient multiplier is the only run-specific cadence modifier and is
+ * read from the same trait constant as the engine.
  */
 function minFoodsPerPickFor(
-  profileId: GrowthProfileId | undefined,
+  _profileId: GrowthProfileId | undefined,
   traits: TraitId[]
 ): number {
-  const base = resolveGrowthProfile(profileId).minFoodsPerPick;
+  const base = GENE_OFFER_CADENCE.minFoodsPerPick;
   return traits.includes('patient')
     ? base * TRAIT_PHYSICS.patientMutationIntervalMultiplier
     : base;
@@ -630,7 +626,7 @@ function sanitizeMutations(
   }
 
   // Cadence count bound: the k-th mutation food cannot exist before food
-  // minFoodsPerPick x k (15k normally, 30k under the Patient trait)
+  // minFoodsPerPick x k (4k normally, 8k under the Patient trait).
   const maxPicks = Math.floor(foodCount / minFoodsPerPick);
   if (picks.length > maxPicks) {
     errors.push(
@@ -699,12 +695,10 @@ export function validateGameResult(
    * The growth profile the server stamped into `run_context` at start, for
    * runs that have NO genome context.
    *
-   * WP-3.05. Two bounds are scaled by the profile — the food-rate ceiling and
-   * the offer-cadence floor — and both used to read it exclusively off
-   * `genomeCtx`. A legacy (non-genome) session stamped `tuned` therefore
-   * validated against `baseline`: bounded at 1 food on the board when it had
-   * three, and at 15 foods per pick when the engine offered every 10. Both
-   * flag a player for doing exactly what the server told the engine to do.
+   * WP-3.05 originally scaled both the food-rate ceiling and offer-cadence floor
+   * by profile. D1 later separated cadence from growth, so only simultaneous
+   * food count remains profile-derived. Legacy stamped sessions still need this
+   * argument for that physical food-rate bound.
    *
    * `genomeCtx` still WINS where present. Its copy is the one the exact
    * recompute folds with, so preferring it makes a bound/fold disagreement
@@ -815,7 +809,7 @@ export function validateGameResult(
   }
 
   // 4. Mutation legality + cadence bounds (section 5.3). The Patient
-  //    trait halves the spawn rate, so the per-pick bound tightens to 30k.
+  //    trait halves the spawn rate, so the per-pick bound tightens to 8k.
   let mutations = sanitizeMutations(
     input.mutations,
     foodCount,

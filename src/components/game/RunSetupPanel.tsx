@@ -55,28 +55,11 @@ export interface RunSetupPanelProps {
    */
   startTestId: string;
   /**
-   * One always-visible line naming the run's growth profile and its current
-   * rate (WP-3.02).
-   *
-   * DELIBERATELY NOT FLAG-GATED. A readout that disappears with the lab flag
-   * cannot tell you the flag is off - which is exactly the hour that was lost
-   * when three runs played identically and nothing on screen said why. This
-   * line states what the run will actually do, in every configuration.
-   */
-  growthNote?: ReactNode;
-  /**
-   * The growth-profile selector (WP-3.02), or null when the lab flag is off.
-   * Rendered inside the disclosure, not beside START: it is an experiment the
-   * owner opts into, and §5's law is that a first-time player sees one
-   * emphasised action and no demanded decisions.
-   */
-  growthSelector?: ReactNode;
-  /**
    * One always-visible line naming the run's D2 ladder rung and the one rule it
    * adds (WP-3.12).
    *
-   * DELIBERATELY NOT FLAG-GATED, for the same reason `growthNote` is not. With
-   * the ladder flag off this must still say "Ground - the game as it shipped",
+   * DELIBERATELY NOT FLAG-GATED. With the ladder flag off this must still say
+   * "Ground - the dynasty's natural pressure rhythm",
    * because a readout that vanishes with its feature cannot tell you the
    * feature is off. Two playtests in this wave were distorted by exactly that
    * class of bug - a selector that was decorative, then a readout that lied -
@@ -124,8 +107,6 @@ export function RunSetupPanel({
   startLabel,
   challengeNote,
   startTestId,
-  growthNote = null,
-  growthSelector = null,
   ladderNote = null,
   ladderSelector = null,
   isStarting,
@@ -140,7 +121,6 @@ export function RunSetupPanel({
 }: RunSetupPanelProps) {
   const hasAdjustables =
     Boolean(modeToggle) ||
-    Boolean(growthSelector) ||
     Boolean(ladderSelector) ||
     Boolean(anomalyPanel) ||
     Boolean(aimSelector) ||
@@ -175,7 +155,6 @@ export function RunSetupPanel({
             {rulesetExplainer}
           </p>
           {/* The whole configuration in one line: nothing needs a decision. */}
-          {growthNote}
           {ladderNote}
           <p className="font-body text-sm text-beige/70" data-testid="run-setup-summary">
             {modeLabel} · {aimLabel}
@@ -244,7 +223,6 @@ export function RunSetupPanel({
           </summary>
           <div className="space-y-4 pt-3">
             {modeToggle}
-            {growthSelector}
             {ladderSelector}
             {anomalyPanel}
             {aimSelector}

@@ -61,6 +61,7 @@ import {
   resolveGrowthProfile,
   type GrowthProfileId,
 } from '@/shared/game/growth';
+import type { DynastyName } from '@/shared/game/rulesets';
 import {
   conditionBankDelta,
   conditionStrainThresholdDelta,
@@ -432,7 +433,8 @@ export function computeLengthTrace(
     | 'growthProfileId'
     | 'ladderRung'
   >,
-  condition: ConditionInput = null
+  condition: ConditionInput = null,
+  dynasty: DynastyName = 'PRIMAL'
 ): LengthTrace {
   const anomaly = normalizeCondition(condition).anomaly;
   const growthProfile = resolveGrowthProfile(input.growthProfileId);
@@ -485,7 +487,7 @@ export function computeLengthTrace(
     lengthAtEat[n] = len;
     // The profile's base growth - the ONE function the engine also calls
     // (growth.ts). Gene and anomaly extras layer on top, exactly as before.
-    let growth = baseGrowthForFood(growthProfile, n);
+    let growth = baseGrowthForFood(growthProfile, n, dynasty, len);
     if (anomaly === 'overgrown') growth += ANOMALY_PHYSICS.overgrownExtraSegments;
     if (activeAt(overgrowth, n)) growth += MUTATION_PHYSICS.overgrowthExtraSegments;
     if (activeAt(bulkUp, n)) growth += GENE_PHYSICS.bulkUpExtraSegments;

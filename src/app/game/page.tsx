@@ -132,7 +132,6 @@ import {
 } from '@/lib/ftue/launchFlow';
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
-import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
 import {
   DEFAULT_LADDER_RUNG,
@@ -142,16 +141,13 @@ import {
   resolveLadderRung,
 } from '@/shared/game/ladder';
 import {
-  DEFAULT_GROWTH_PROFILE,
-  GROWTH_PROFILES,
   baseGrowthForFood,
   resolveGrowthProfile,
-  type GrowthProfileId,
 } from '@/shared/game/growth';
 import {
-  GrowthReadout,
-  GrowthStepNotice,
-} from '@/components/game/GrowthReadout';
+  RunRateCallout,
+  speedMultiplierBand,
+} from '@/components/game/RunRateCallout';
 import {
   challengeRunNote,
   challengeRunRng,
@@ -232,8 +228,7 @@ interface BoardViewportShellProps {
   inputDock?: ReactNode;
   decisionDock?: ReactNode;
   eventCallout?: ReactNode;
-  /** The growth step notice (WP-3.09) - the cockpit places it beside the rate. */
-  growthNotice?: ReactNode;
+  arenaOverlay?: ReactNode;
   children: ReactNode;
 }
 
@@ -251,7 +246,7 @@ function BoardViewportShell({
   inputDock,
   decisionDock,
   eventCallout,
-  growthNotice,
+  arenaOverlay,
   children,
 }: BoardViewportShellProps) {
   if (cockpitEnabled && isPlaying) {
@@ -268,7 +263,7 @@ function BoardViewportShell({
         inputDock={inputDock}
         decisionDock={decisionDock}
         eventCallout={eventCallout}
-        growthNotice={growthNotice}
+        arenaOverlay={arenaOverlay}
       >
         {children}
       </RunCockpit>
@@ -281,6 +276,7 @@ function BoardViewportShell({
       data-testid="game-board-viewport"
     >
       {children}
+      {arenaOverlay}
     </div>
   );
 }
@@ -327,14 +323,6 @@ export default function GamePage() {
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [particlePos, setParticlePos] = useState<[number, number, number] | null>(null);
-  /**
-   * The growth profile the player asked for (WP-3.02). A REQUEST only: the
-   * server resolves it, stamps it into `run_context` and echoes back what it
-   * actually chose, which is what the engine then adopts.
-   */
-  const [growthProfile, setGrowthProfile] = useState<GrowthProfileId>(
-    DEFAULT_GROWTH_PROFILE
-  );
   /**
    * The D2 ladder rung the player asked for (WP-3.12). A REQUEST only: the
    * server reads the player's records, clamps the ask to what they have
@@ -1864,9 +1852,6 @@ export default function GamePage() {
           action: 'start',
           mode, // 'free' = rewardless practice run (§7.4)
           snake_id: equippedSnake.id, // Server validates ownership + equipped
-          // WP-3.02: a REQUEST, never a decision. The server resolves the
-          // profile, stamps it, and echoes back what it chose.
-          ...(GROWTH_LAB_ENABLED ? { growthProfile } : {}),
           // WP-3.12: a REQUEST, never a decision. The server checks the ask
           // against `player_ladders`, clamps it to what this player has
           // unlocked, stamps it and echoes back the rung it chose.
@@ -1900,13 +1885,6 @@ export default function GamePage() {
     applyStartedRun,
     equippedSnake,
     gameMode,
-    // WP-3.02: WITHOUT THIS THE SELECTOR IS DECORATIVE. `handleStart` is a
-    // useCallback, so omitting `growthProfile` captured its first value -
-    // `baseline` - forever. Tapping Tuned updated the state and re-rendered
-    // the button while the request kept asking for baseline, so every run
-    // grew +1 and the three profiles were indistinguishable. No unit test
-    // could catch it: none of them go through React.
-    growthProfile,
     // WP-3.12: the same scar, one line down. `handleStart` is a useCallback, so
     // omitting the rung would capture rung 0 forever and every ladder run would
     // silently play Ground while the selector said otherwise - the WP-3.02
@@ -2205,71 +2183,103 @@ export default function GamePage() {
   }, [resultsNextAction.id]);
 
   // ---------------------------------------------------------------------
-  // THE GROWTH READOUT (WP-3.09, owner ruling REDESIGN_WAVE_STATUS §3.3).
+  // EVENT-ONLY RUN RATES.
   //
-  // "The current growth rate must be visible DURING play, plus a transient
-  // notice when the step changes."
-  //
-  // WP-3.02's readout was PRE-RUN ONLY - it lived on `RunSetupPanel`, which
-  // unmounts the moment the run starts, so the rate vanished exactly when it
-  // began to matter. Everything below is derived once, here, and rendered by
-  // both HUDs, so the cockpit and its rollback screen can never disagree.
-  //
-  // The profile source is deliberately different on the two screens, and this
-  // is the WP-3.04 scar: PRE-RUN the engine's profile is always `baseline`
-  // until the server answers, so the selection is the only honest thing to
-  // show; IN-RUN the engine carries the profile the SERVER stamped, which is
-  // what settlement will recompute from. Reading the engine pre-run is what
-  // made the first readout say "Classic" whatever you picked.
+  // Growth no longer competes with charge and tactical holds in the HUD. The
+  // board states the opening rate after the first deliberate move, then only
+  // speaks again when PRIMAL crosses a length-indexed stage. CYBER uses the
+  // same visual grammar for speed, quantized into 0.2x bands so its per-food
+  // curve does not become per-food visual noise.
   // ---------------------------------------------------------------------
-  const setupGrowth =
-    GROWTH_PROFILES[growthProfile] ?? GROWTH_PROFILES[DEFAULT_GROWTH_PROFILE];
-  const activeGrowth = isPlaying
-    ? resolveGrowthProfile(gameRef.current?.getGrowthProfileId())
-    : setupGrowth;
-  /**
-   * The food the rate DESCRIBES: the next one, not the last one.
-   *
-   * `stepped()` is indexed by the food being eaten, so after food 11 on Tuned
-   * `baseGrowthForFood(p, 11)` is still 6 while food 12 pays 2. A readout that
-   * reported the food already swallowed would promise six segments and deliver
-   * two - the precise kind of lie WP-3.04 was spent removing. Prospective also
-   * makes the pre-run case fall out of the same expression instead of needing
-   * a constant: before a run, `foodEaten` is 0 and the next food IS food 1.
-   *
-   * Pinned to 1 when no run is live because `foodEaten` survives game over -
-   * the setup panel reopened after a 40-food run must still quote the rate the
-   * NEXT run starts on.
-   */
-  const growthFoodIndex = isPlaying ? foodEaten + 1 : 1;
-  const growthPerFood = baseGrowthForFood(activeGrowth, growthFoodIndex);
+  const activeGrowth = resolveGrowthProfile(
+    gameRef.current?.getGrowthProfileId()
+  );
+  const activeDynasty = normalizeDynastyName(selectedDynasty);
+  const growthFoodIndex = Math.max(1, foodEaten + 1);
+  const modelledLength =
+    gameRef.current?.getModelledLength() ?? Math.max(3, snake.length);
+  const growthPerFood = baseGrowthForFood(
+    activeGrowth,
+    growthFoodIndex,
+    activeDynasty,
+    modelledLength
+  );
+  const cyberSpeedBand =
+    activeDynasty === 'CYBER'
+      ? speedMultiplierBand(
+          gameRef.current?.getSpeed() ?? activeRuleset.speedForFood(foodEaten),
+          activeRuleset.speedForFood(0)
+        )
+      : null;
 
-  /**
-   * The step notice. State only - it never touches the engine, so it cannot
-   * pause the tick, and it renders no interactive element, so it cannot take
-   * an input that was meant to steer (Rule 1 boundary, §3.3).
-   */
-  const [growthStep, setGrowthStep] = useState<{
-    from: number;
-    to: number;
-    at: number;
+  const [runRateCallout, setRunRateCallout] = useState<{
+    id: number;
+    growthRate?: number;
+    speedMultiplier?: number;
   } | null>(null);
-  const lastGrowthPerFoodRef = useRef<number | null>(null);
+  const runRateEventIdRef = useRef(0);
+  const runRateStartedRef = useRef(false);
+  const lastGrowthRateRef = useRef<number | null>(null);
+  const lastCyberSpeedBandRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!isPlaying) {
-      lastGrowthPerFoodRef.current = null;
-      setGrowthStep(null);
+    if (!isPlaying || isGameOver) {
+      runRateStartedRef.current = false;
+      lastGrowthRateRef.current = null;
+      lastCyberSpeedBandRef.current = null;
+      setRunRateCallout(null);
       return;
     }
-    const previous = lastGrowthPerFoodRef.current;
-    lastGrowthPerFoodRef.current = growthPerFood;
-    // The FIRST observation is the run's opening rate, not a change - a notice
-    // there would fire on every start and teach the player to ignore it.
-    if (previous === null || previous === growthPerFood) return;
-    setGrowthStep({ from: previous, to: growthPerFood, at: growthFoodIndex });
-  }, [isPlaying, growthPerFood, growthFoodIndex]);
 
-  const handleGrowthStepDone = useCallback(() => setGrowthStep(null), []);
+    // Ready and decision states own the board. Keep the rate queued until the
+    // player is moving again, and never layer it over a run decision.
+    if (isReady || blockingOverlayActive) {
+      setRunRateCallout(null);
+      return;
+    }
+
+    let growthRate: number | undefined;
+    let speedMultiplier: number | undefined;
+
+    if (!runRateStartedRef.current) {
+      runRateStartedRef.current = true;
+      growthRate = growthPerFood;
+      if (cyberSpeedBand !== null) speedMultiplier = cyberSpeedBand;
+    } else {
+      if (lastGrowthRateRef.current !== growthPerFood) {
+        growthRate = growthPerFood;
+      }
+      if (
+        cyberSpeedBand !== null &&
+        lastCyberSpeedBandRef.current !== cyberSpeedBand
+      ) {
+        speedMultiplier = cyberSpeedBand;
+      }
+    }
+
+    lastGrowthRateRef.current = growthPerFood;
+    lastCyberSpeedBandRef.current = cyberSpeedBand;
+
+    if (growthRate === undefined && speedMultiplier === undefined) return;
+    runRateEventIdRef.current += 1;
+    setRunRateCallout({
+      id: runRateEventIdRef.current,
+      ...(growthRate === undefined ? {} : { growthRate }),
+      ...(speedMultiplier === undefined ? {} : { speedMultiplier }),
+    });
+  }, [
+    blockingOverlayActive,
+    cyberSpeedBand,
+    growthPerFood,
+    isGameOver,
+    isPlaying,
+    isReady,
+  ]);
+
+  const handleRunRateCalloutDone = useCallback(
+    () => setRunRateCallout(null),
+    []
+  );
 
   // Resolve authentication and any consume-once launch handoff before a
   // second Play action can appear.
@@ -2386,14 +2396,6 @@ export default function GamePage() {
     showGenome: cockpitGenomeVisible,
     portalLive: Boolean(exitTile),
     portalTicksRemaining: Math.max(0, exitTicksRemaining),
-    /* WP-3.09: the live rate, already folded through `baseGrowthForFood`. The
-       cockpit is handed a number and never the curve. */
-    growth: {
-      profileId: activeGrowth.id,
-      label: activeGrowth.label,
-      perFood: growthPerFood,
-      foodsOnBoard: activeGrowth.simultaneousFoods,
-    },
   };
   const cockpitDecisionDock: ReactNode = !HUD_COCKPIT_V1_ENABLED
     ? undefined
@@ -2467,25 +2469,15 @@ export default function GamePage() {
       )
     : undefined;
 
-  /**
-   * The growth step notice (WP-3.09). ONE node, built once, mounted by
-   * whichever HUD the cockpit flag selects - so the rollback screen cannot
-   * quietly lose it, which is exactly how WP-3.02's readout disappeared the
-   * moment a run started.
-   *
-   * Keyed on the food the step landed on, so a second step during the first
-   * one's 1.8s remounts and restarts the timer rather than inheriting a timer
-   * that is about to fire.
-   */
-  const growthStepNoticeNode: ReactNode = isPlaying && growthStep ? (
-    <GrowthStepNotice
-      key={growthStep.at}
-      from={growthStep.from}
-      to={growthStep.to}
-      presentation={HUD_COCKPIT_V1_ENABLED ? 'cockpit' : 'ticker'}
-      onDone={handleGrowthStepDone}
-    />
-  ) : null;
+  const runRateCalloutNode: ReactNode =
+    isPlaying && !blockingOverlayActive && runRateCallout ? (
+      <RunRateCallout
+        key={runRateCallout.id}
+        growthRate={runRateCallout.growthRate}
+        speedMultiplier={runRateCallout.speedMultiplier}
+        onDone={handleRunRateCalloutDone}
+      />
+    ) : null;
 
   // ---------------------------------------------------------------------
   // Run Setup controls (Constitution §5). Hoisted so the one consolidated
@@ -2606,52 +2598,17 @@ export default function GamePage() {
     ) : null;
 
   /**
-   * The pre-run growth readout (WP-3.02, generalised by WP-3.09).
-   *
-   * NOT gated on the lab flag, on purpose: with the flag off this must still
-   * say "Classic · +1 per food", which is what makes it a diagnostic. Three
-   * runs once played identically with nothing on screen explaining why, and a
-   * readout that vanishes with the feature could not have caught it.
-   *
-   * It renders the same component and the same derived numbers as the in-run
-   * readout - `activeGrowth` and `growthPerFood` are computed once, above. On
-   * this screen no run is live, so `activeGrowth` is the SELECTION and
-   * `growthFoodIndex` is 1: before a run, the next food IS food 1, which makes
-   * WP-3.02's `n = 1` constant correct by derivation instead of by luck, and
-   * correct again on a setup panel reopened after a 40-food run.
-   */
-  const growthNoteNode = (
-    <GrowthReadout
-      profileId={activeGrowth.id}
-      label={activeGrowth.label}
-      perFood={growthPerFood}
-      foodsOnBoard={activeGrowth.simultaneousFoods}
-      presentation="panel"
-    />
-  );
-
-  /**
-   * The growth-profile selector (WP-3.02). Null unless the lab flag is armed,
-   * so production sees exactly the Run Setup page it saw before.
-   *
-   * The request is advisory: the server resolves the profile and stamps it,
-   * and the engine adopts whatever came BACK. Choosing here can never make the
-   * client and the recompute disagree.
-   */
-  /**
    * The always-visible ladder readout (WP-3.12).
    *
-   * NOT gated on the ladder flag, on purpose, and for exactly the reason the
-   * growth readout is not: with the flag off this must still say "Ground - the
-   * game as it shipped", which is what makes it a diagnostic rather than a
-   * decoration. The status doc records two playtests distorted by this class of
-   * bug in this wave alone.
+   * NOT gated on the ladder flag, on purpose: with the flag off this must still
+   * say "Ground - the game as it shipped", which makes it a diagnostic rather
+   * than decoration. The status doc records two playtests distorted by hidden
+   * configuration in this wave alone.
    *
-   * It reads the SELECTION, like the growth readout above and for the same
-   * reason: this is the PRE-run screen, so the selection is the honest thing to
-   * show - it is what the start request will ask for. The server still decides,
-   * and `applyStartedRun` snaps this state back to the rung it chose, so a
-   * clamped ask corrects itself the moment the run begins.
+   * It reads the SELECTION because this is the PRE-run screen: that is what the
+   * start request will ask for. The server still decides, and `applyStartedRun`
+   * snaps this state back to the rung it chose, so a clamped ask corrects itself
+   * the moment the run begins.
    */
   const activeRung = ladderRungDefinition(ladderRung);
   const ladderNoteNode = (
@@ -2666,8 +2623,8 @@ export default function GamePage() {
   );
 
   /**
-   * The rung selector (WP-3.12), inside the SAME disclosure as the growth
-   * selector - no tap of its own, which is how the 3-tap law survives.
+   * The rung selector (WP-3.12) remains inside the setup disclosure rather than
+   * adding another top-level tap, which is how the 3-tap law survives.
    *
    * Null when the flag is off, and null when the player has nothing above
    * Ground unlocked: a one-option selector is a control that teaches nothing
@@ -2710,35 +2667,6 @@ export default function GamePage() {
         </div>
       </div>
     ) : null;
-
-  const growthSelectorNode = GROWTH_LAB_ENABLED ? (
-    <div data-testid="growth-lab-selector">
-      <p className="label-arcade mb-2 text-cosmic">Growth lab</p>
-      <div className="flex flex-wrap gap-2">
-        {(Object.keys(GROWTH_PROFILES) as GrowthProfileId[]).map((id) => {
-          const profile = GROWTH_PROFILES[id];
-          const active = growthProfile === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setGrowthProfile(id)}
-              aria-pressed={active}
-              data-testid={`growth-profile-${id}`}
-              className={`rounded-arcade border px-3 py-2 text-left font-body text-xs transition-all ${
-                active
-                  ? 'border-venom-orange/70 bg-venom-orange/15 text-bone-white'
-                  : 'border-scale-blue-light/40 bg-scale-blue/40 text-beige/80 hover:border-venom-orange/50'
-              }`}
-            >
-              <span className="block font-semibold">{profile.label}</span>
-              <span className="block text-beige/60">{profile.blurb}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  ) : null;
 
   const startTestId =
     gameMode === 'free'
@@ -2839,19 +2767,6 @@ export default function GamePage() {
               earning the first food never moves or resizes the board. */}
           {isPlaying && (
             <div className="game-hud-ticker flex h-7 items-center gap-1.5 overflow-hidden font-body text-[10px] sm:text-xs">
-          {/* The live growth rate and its step notice (WP-3.09). This is the
-              ROLLBACK screen, and it carries them for the same reason it
-              carries the hold budget: a rate you can only read before the run
-              is a rate you cannot use during it. First, so the step notice
-              lands next to the number it is explaining. */}
-          <GrowthReadout
-            profileId={activeGrowth.id}
-            label={activeGrowth.label}
-            perFood={growthPerFood}
-            foodsOnBoard={activeGrowth.simultaneousFoods}
-            presentation="ticker"
-          />
-          {growthStepNoticeNode}
           {/* Tactical holds. Always present while a run is live, never only
               once it is spent - a budget you discover by hitting it is a
               trap, and the whole point of the cost being stated. */}
@@ -3169,9 +3084,8 @@ export default function GamePage() {
          *
          * On mobile that rail is a bottom row pinned at
          * `0.625rem + safe-area-inset-bottom`, and it overlays this scroller.
-         * Run Setup grew this wave - the growth readout, the ladder readout,
-         * and the Growth Lab selector when its flag is armed - and the e2e
-         * repair measured the consequence at 390x844: the `mode-free` control
+         * Run Setup grew during the Redesign Wave, and the e2e repair measured
+         * the consequence at 390x844: the `mode-free` control
          * ended up underneath the rail, so an honest unforced click landed on
          * the rail's Leaderboard link and the run never started.
          *
@@ -3299,8 +3213,6 @@ export default function GamePage() {
                   startError={startError}
                   heirloom={heirloomNode}
                   modeToggle={modeToggleNode}
-                  growthNote={growthNoteNode}
-                  growthSelector={growthSelectorNode}
                   ladderNote={ladderNoteNode}
                   ladderSelector={ladderSelectorNode}
                   anomalyPanel={anomalyPanelNode}
@@ -3743,7 +3655,7 @@ export default function GamePage() {
         }
         decisionDock={cockpitDecisionDock}
         eventCallout={cockpitEventCallout}
-        growthNotice={growthStepNoticeNode}
+        arenaOverlay={runRateCalloutNode}
       >
       {/* The rollback HUD keeps its legacy Ready/tactical-hold presentation.
           FTUE replaces Ready with one minimal movement line. */}

@@ -53,6 +53,19 @@ describe('Game Session Logic', () => {
       );
     });
 
+    it('stamps the ruled dynasty growth profile and ignores client profile asks', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      expect(source).toMatch(
+        /let growthProfileId: GrowthProfileId = ACTIVE_GROWTH_PROFILE/
+      );
+      expect(source).not.toMatch(/requestedProfile/);
+      expect(source).not.toMatch(/GROWTH_LAB_ENABLED/);
+      expect(source).toMatch(/growthProfileId \? \{ growthProfile: growthProfileId \}/);
+    });
+
     it('should create session from the equipped snake', () => {
       // Session start receives a collected_snakes UUID and derives
       // variant + dynasty from the DB join (no text variant ids)

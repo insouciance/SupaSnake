@@ -99,8 +99,8 @@
  */
 
 import {
+  ACTIVE_GROWTH_PROFILE,
   GROWTH_PROFILES,
-  DEFAULT_GROWTH_PROFILE,
   type GrowthProfileId,
 } from '@/shared/game/growth';
 import { STRAIN_PHYSICS } from '@/shared/game/strains';
@@ -150,7 +150,7 @@ export interface LadderRung {
 
 /** Rung 0: the shipped game, and what every delta is measured against. */
 const GROUND: LadderParams = {
-  growthProfileFloor: DEFAULT_GROWTH_PROFILE,
+  growthProfileFloor: ACTIVE_GROWTH_PROFILE,
   holdBudgetDelta: 0,
   portalWindowSecondsDelta: 0,
   portalIntervalFoodsDelta: 0,
@@ -171,7 +171,7 @@ export const LADDER_RUNGS: readonly LadderRung[] = [
   {
     rung: 0,
     name: 'Ground',
-    rule: 'The game as it shipped.',
+    rule: 'The dynasty\'s natural pressure rhythm.',
     step: {},
   },
   {
@@ -302,7 +302,12 @@ export function ladderParams(rung: unknown): LadderParams {
 }
 
 /** Growth curves in order of how hard they make the run. */
-const GROWTH_ORDER: readonly GrowthProfileId[] = ['baseline', 'tuned', 'aggressive'];
+const GROWTH_ORDER: readonly GrowthProfileId[] = [
+  'baseline',
+  'dynasty',
+  'tuned',
+  'aggressive',
+];
 
 /**
  * The growth profile a run at this rung is actually played on: the HARDER of
@@ -320,7 +325,7 @@ export function ladderGrowthProfileId(
   const asked =
     typeof requested === 'string' && requested in GROWTH_PROFILES
       ? (requested as GrowthProfileId)
-      : DEFAULT_GROWTH_PROFILE;
+      : ACTIVE_GROWTH_PROFILE;
   return GROWTH_ORDER.indexOf(asked) >= GROWTH_ORDER.indexOf(floor)
     ? asked
     : floor;

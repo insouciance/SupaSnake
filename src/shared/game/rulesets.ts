@@ -846,7 +846,14 @@ export function computeGenomeRunTotals(
     genome.suppressedStrains ?? [],
     conditionStrainThresholdDelta(world)
   );
-  const lengthTrace = computeLengthTrace(view, count, activations, genome, world);
+  const lengthTrace = computeLengthTrace(
+    view,
+    count,
+    activations,
+    genome,
+    world,
+    dynasty
+  );
   const lengthAt = (n: number) => lengthTrace.lengthAtEat[n] ?? 0;
 
   let rawDna = 0;

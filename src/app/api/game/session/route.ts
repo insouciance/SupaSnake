@@ -88,9 +88,11 @@ import {
   type RunStartGenomeContext,
 } from '@/lib/server/runContext';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
-import { GROWTH_LAB_ENABLED } from '@/lib/features/growthLab';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
-import { isGrowthProfileId, type GrowthProfileId } from '@/shared/game/growth';
+import {
+  ACTIVE_GROWTH_PROFILE,
+  type GrowthProfileId,
+} from '@/shared/game/growth';
 import {
   DEFAULT_LADDER_RUNG,
   isLadderRung,
@@ -585,16 +587,10 @@ export async function POST(request: NextRequest) {
       // settlement can read it instead of re-deriving it from six live
       // queries that may each answer differently. The run's world condition
       // is NOT here: `resolveSessionWorldCondition` owns that fact.
-      // The growth profile (WP-3.02), resolved SERVER-SIDE and stamped into
-      // the run. The client may ASK for one, but the server decides and the
-      // recompute replays from this stamp - so a tampered or stale client can
-      // only ever play the profile recorded here. Unknown/absent resolves to
-      // `baseline`, which folds byte-identically to the shipped curve.
-      const requestedProfile = (body as Record<string, unknown>)?.growthProfile;
-      let growthProfileId: GrowthProfileId | undefined =
-        GROWTH_LAB_ENABLED && isGrowthProfileId(requestedProfile)
-          ? requestedProfile
-          : undefined;
+      // D1 is ruled: the Growth Lab selector is retired. Every NEW run gets
+      // the versioned dynasty profile; missing stamps remain the historical
+      // +1 baseline at settlement. The client cannot select run math.
+      let growthProfileId: GrowthProfileId = ACTIVE_GROWTH_PROFILE;
 
       // ---------------------------------------------------------------
       // The D2 ladder rung (WP-3.12) — the growth profile's pattern, verbatim

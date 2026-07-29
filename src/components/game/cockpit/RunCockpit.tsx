@@ -2,7 +2,6 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
-import { GrowthReadout } from '@/components/game/GrowthReadout';
 import {
   AbandonGlyph,
   DnaGlyph,
@@ -35,17 +34,8 @@ interface RunCockpitProps {
   inputDock?: ReactNode;
   decisionDock?: ReactNode;
   eventCallout?: ReactNode;
-  /**
-   * The growth step notice (WP-3.09), rendered INSIDE the mode instrument
-   * beside the growth readout it explains.
-   *
-   * Deliberately not routed through `eventCallout`: that zone REPLACES the
-   * status rail (both are `grid-area: status`) and suppresses the
-   * `first-movement-prompt` testid an e2e spec depends on. A growth step is a
-   * passive fact about the run, so it layers next to its own number instead of
-   * evicting whatever the rail was saying.
-   */
-  growthNotice?: ReactNode;
+  /** Transparent, non-interactive feedback layered directly over the arena. */
+  arenaOverlay?: ReactNode;
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -92,7 +82,7 @@ export function RunCockpit({
   inputDock,
   decisionDock,
   eventCallout,
-  growthNotice,
+  arenaOverlay,
 }: RunCockpitProps) {
   const theme = getDynastyScreenTokens(model.dynasty);
   const style = {
@@ -279,19 +269,6 @@ export function RunCockpit({
               <span>{model.modeDetail}</span>
             </span>
             <span className={styles.modeReadouts}>
-              {/* The live growth rate, and its step notice beside it (WP-3.09).
-                  Training omits `growth` entirely - a driven run eats no
-                  profile food, so there is no honest rate to print. */}
-              {model.growth ? (
-                <GrowthReadout
-                  profileId={model.growth.profileId}
-                  label={model.growth.label}
-                  perFood={model.growth.perFood}
-                  foodsOnBoard={model.growth.foodsOnBoard}
-                  presentation="cockpit"
-                />
-              ) : null}
-              {growthNotice}
               {training ? (
                 <span className={styles.energyReadout} aria-label={training.comparison} title={training.comparison}>
                   <strong>{training.comparison}</strong>
@@ -417,6 +394,7 @@ export function RunCockpit({
             <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
               <div className={styles.webglViewport} data-testid="game-board-viewport">
                 {children}
+                {arenaOverlay}
               </div>
             </div>
           </div>

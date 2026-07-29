@@ -1,8 +1,9 @@
 /**
- * The growth-profile stamp round-trip (WP-3.02).
+ * The growth-profile stamp round-trip (WP-3.02, retained after D1).
  *
- * THE MECHANISM THE WHOLE LAB RESTS ON. The profile is not gated by a
- * `NEXT_PUBLIC_*` flag — those are inlined at build time, so a client built
+ * The retired Lab established the mechanism current dynasty growth still
+ * relies on. The profile is not gated by a `NEXT_PUBLIC_*` flag — those are
+ * inlined at build time, so a client built
  * with one growth curve and a server recomputing with another disagree on
  * every length, and a length disagreement silently invalidates runs a player
  * honestly earned (the defect WP-2.05 existed to eliminate).
@@ -49,7 +50,7 @@ describe('run_context: the growth profile stamp', () => {
   });
 
   it('every profile round-trips, not just the one we happened to try', () => {
-    for (const id of ['baseline', 'tuned', 'aggressive'] as const) {
+    for (const id of ['baseline', 'dynasty', 'tuned', 'aggressive'] as const) {
       const parsed = roundTrip({ ...baseContext(), growthProfileId: id });
       expect(parsed.ok).toBe(true);
       if (parsed.ok) expect(parsed.context.growthProfileId).toBe(id);
@@ -57,8 +58,8 @@ describe('run_context: the growth profile stamp', () => {
   });
 
   it('an unstamped context parses cleanly and means baseline', () => {
-    // Every run started before the lab shipped, and every run started with the
-    // flag off. This must be silent and correct, never "malformed".
+    // Every run started before profiles shipped lacks the stamp. This must be
+    // silent and correct, never "malformed".
     const parsed = roundTrip(baseContext());
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -67,9 +68,7 @@ describe('run_context: the growth profile stamp', () => {
   });
 
   it('an unstamped context stores no key at all', () => {
-    // The blob a shipped-curve run writes must be byte-identical to the blob
-    // it wrote before the lab existed - otherwise every run in the database
-    // changes shape for a feature that is off.
+    // Historical blobs remain byte-identical; new sessions stamp `dynasty`.
     expect(serializeRunStartContext(baseContext())).not.toHaveProperty(
       'growthProfileId'
     );

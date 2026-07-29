@@ -216,7 +216,7 @@ describe('gene pick validation', () => {
     expect(result.errors.join(' ')).toMatch(/GENE_LOCKED: heartwood/);
   });
 
-  it('caps held genes at 6 and enforces the offer-source bound', () => {
+  it('enforces the new four-food offer-source floor independently of slots', () => {
     const picks = [
       'gold_trail',
       'overgrowth',
@@ -224,10 +224,9 @@ describe('gene pick validation', () => {
       'mirror_wager',
       'magnet_pulse',
       'time_dilation',
-      'splitter',
-    ].map((id, i) => ({ id, atFood: 16 + i }));
+    ].map((id, i) => ({ id, atFood: 4 + i * 3 }));
     const result = validateGameResult(
-      baseInput({ mutations: picks }),
+      baseInput({ food_count: 20, mutations: picks }),
       started(),
       'PRIMAL',
       [],
@@ -239,8 +238,9 @@ describe('gene pick validation', () => {
     expect(result.advisoryErrors).toContainEqual(
       expect.stringContaining('GENE_BOUND')
     );
-    // Cap 6, then offer-source bound floor(60/15)+0 infuses = 4.
-    expect(result.genome!.picks.length).toBe(4);
+    // Six picks fit the held-slot model (the final two splice), but only five
+    // cadence offers can exist by food 20: floor(20/4) = 5.
+    expect(result.genome!.picks.length).toBe(5);
   });
 
   it('accepts seven raw picks when one splice keeps them within six slots', () => {
@@ -506,29 +506,29 @@ describe('infuse validation + outcome', () => {
 
   it('does not let one infuse fund both a seventh raw pick and a surge', () => {
     const picks = [
-      { id: 'gold_trail', atFood: 15 },
-      { id: 'compound_interest', atFood: 30 }, // splice frees one slot
-      { id: 'overgrowth', atFood: 45 },
-      { id: 'wall_rush', atFood: 60 },
-      { id: 'slipstream', atFood: 75 },
-      { id: 'serpentine', atFood: 90 },
-      { id: 'bulk_up', atFood: 95 }, // needs the infuse offer
+      { id: 'gold_trail', atFood: 4 },
+      { id: 'compound_interest', atFood: 8 }, // splice frees one slot
+      { id: 'overgrowth', atFood: 12 },
+      { id: 'wall_rush', atFood: 16 },
+      { id: 'slipstream', atFood: 20 },
+      { id: 'serpentine', atFood: 22 },
+      { id: 'bulk_up', atFood: 24 }, // seventh pick needs the infuse offer
     ] as GenomeRunInput['picks'];
     const acceptedGenome = genomeOf({
       picks,
-      infuses: [{ atFood: 95 }],
+      infuses: [{ atFood: 24 }],
     });
-    const totals = computeGenomeRunTotals('PRIMAL', 100, acceptedGenome);
+    const totals = computeGenomeRunTotals('PRIMAL', 24, acceptedGenome);
     const result = validateGameResult(
       baseInput({
-        food_count: 100,
+        food_count: 24,
         duration_seconds: 180,
         score: totals.score,
         dna_earned: totals.rawDna,
         mutations: picks,
         genome: {
           infuses: acceptedGenome.infuses,
-          surges: [{ strain: 'AURUM', atFood: 95 }],
+          surges: [{ strain: 'AURUM', atFood: 24 }],
         },
       }),
       started(),

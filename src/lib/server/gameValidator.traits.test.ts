@@ -3,7 +3,7 @@
  * - traits enter the recompute ONLY via the snake-row parameter; nothing
  *   in the client payload can inject them
  * - Ascetic drops (and flags) impossible mutation claims
- * - Patient tightens the mutation cadence bound to 30k
+ * - Patient tightens the mutation cadence bound from 4k to 8k
  * - outcome multipliers (Gambler / Patient / Hoarder) shape the payout
  */
 
@@ -123,14 +123,14 @@ describe('Ascetic x mutations (mutation food never spawns)', () => {
   });
 });
 
-describe('Patient x mutation cadence (interval doubled -> bound 30k)', () => {
+describe('Patient x mutation cadence (interval doubled -> bound 8k)', () => {
   it('accepts a pick that respects the doubled cadence', () => {
     const traits: TraitId[] = ['patient'];
-    const mutations = [{ id: 'overgrowth', atFood: 30 }];
+    const mutations = [{ id: 'overgrowth', atFood: 8 }];
     const { rawDna } = computeRunTotals(
       'PRIMAL',
       60,
-      [{ id: 'overgrowth', atFood: 30 }],
+      [{ id: 'overgrowth', atFood: 8 }],
       null,
       traits
     );
@@ -144,10 +144,10 @@ describe('Patient x mutation cadence (interval doubled -> bound 30k)', () => {
     expect(result.mutations).toHaveLength(1);
   });
 
-  it('rejects a pick at food 20 that a normal snake could have', () => {
+  it('rejects a pick at food 4 that a normal snake could have', () => {
     const traits: TraitId[] = ['patient'];
     const result = validateGameResult(
-      baseInput({ mutations: [{ id: 'overgrowth', atFood: 20 }] }),
+      baseInput({ mutations: [{ id: 'overgrowth', atFood: 4 }] }),
       startedAt(),
       'PRIMAL',
       traits
@@ -156,23 +156,24 @@ describe('Patient x mutation cadence (interval doubled -> bound 30k)', () => {
     expect(result.errors.some((e) => e.startsWith('MUTATION_BOUND'))).toBe(true);
   });
 
-  it('caps the pick COUNT at floor(foods/30)', () => {
+  it('caps the pick count at floor(foods/8)', () => {
     const traits: TraitId[] = ['patient'];
     const result = validateGameResult(
       baseInput({
-        food_count: 65,
+        food_count: 25,
         mutations: [
-          { id: 'overgrowth', atFood: 30 },
-          { id: 'gold_trail', atFood: 60 },
-          { id: 'splitter', atFood: 62 },
+          { id: 'overgrowth', atFood: 8 },
+          { id: 'gold_trail', atFood: 16 },
+          { id: 'splitter', atFood: 24 },
+          { id: 'mirror_wager', atFood: 25 },
         ],
       }),
       startedAt(),
       'PRIMAL',
       traits
     );
-    // floor(65/30) = 2 picks max under Patient
-    expect(result.mutations.length).toBeLessThanOrEqual(2);
+    // floor(25/8) = 3 picks max under Patient.
+    expect(result.mutations.length).toBeLessThanOrEqual(3);
     expect(result.errors.some((e) => e.startsWith('MUTATION_BOUND'))).toBe(true);
   });
 });

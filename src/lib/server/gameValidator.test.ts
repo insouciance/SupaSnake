@@ -402,13 +402,13 @@ describe('validateGameResult (Design v2 recompute)', () => {
       );
     });
 
-    it('bounds pick count by floor(foodCount / 15)', () => {
+    it('bounds pick count by floor(foodCount / 4)', () => {
       const picks: MutationPick[] = [
-        { id: 'overgrowth', atFood: 15 },
-        { id: 'wall_rush', atFood: 20 },
+        { id: 'overgrowth', atFood: 4 },
+        { id: 'wall_rush', atFood: 7 },
       ];
-      // 25 foods allow only floor(25/15) = 1 pick
-      const input = honestMutationInput('PRIMAL', 25, false, picks);
+      // Seven foods allow only floor(7/4) = 1 pick.
+      const input = honestMutationInput('PRIMAL', 7, false, picks);
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');
 
       expect(result.valid).toBe(true);
@@ -418,9 +418,9 @@ describe('validateGameResult (Design v2 recompute)', () => {
       expect(result.mutations).toEqual([picks[0]]);
     });
 
-    it('bounds each atFood to [15 x pick-index, foodCount]', () => {
+    it('bounds each atFood to [4 x pick-index, foodCount]', () => {
       const early = validateGameResult(
-        honestMutationInput('PRIMAL', 40, false, [{ id: 'overgrowth', atFood: 9 }]),
+        honestMutationInput('PRIMAL', 40, false, [{ id: 'overgrowth', atFood: 3 }]),
         startedAgo(125),
         'PRIMAL'
       );
@@ -446,10 +446,10 @@ describe('validateGameResult (Design v2 recompute)', () => {
       );
     });
 
-    it('a second pick before food 30 is rejected, keeping the legal prefix', () => {
+    it('a second pick before food 8 is rejected, keeping the legal prefix', () => {
       const picks: MutationPick[] = [
-        { id: 'overgrowth', atFood: 16 },
-        { id: 'wall_rush', atFood: 22 }, // < 15 x 2
+        { id: 'overgrowth', atFood: 4 },
+        { id: 'wall_rush', atFood: 7 }, // < 4 x 2
       ];
       const input = honestMutationInput('PRIMAL', 45, false, picks);
       const result = validateGameResult(input, startedAgo(125), 'PRIMAL');

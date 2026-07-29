@@ -111,18 +111,18 @@ describe('Patient: mutation cadence doubled', () => {
     expect(patientAt).toBe(
       plainAt * TRAIT_PHYSICS.patientMutationIntervalMultiplier
     );
-    // Doubled 20 +/- 5 window: 30..50
-    expect(patientAt).toBeGreaterThanOrEqual(30);
-    expect(patientAt).toBeLessThanOrEqual(50);
+    // Doubled universal 6 +/- 2 window: 8..16.
+    expect(patientAt).toBeGreaterThanOrEqual(8);
+    expect(patientAt).toBeLessThanOrEqual(16);
   });
 
-  it('no spawn happens inside the normal 15-25 window', () => {
+  it('no spawn happens before Patient\'s doubled minimum', () => {
     const game = newGame(['patient'], 200, 3);
     let spawns = 0;
     game.on('mutationSpawned', () => {
       spawns += 1;
     });
-    eatFoods(game, 29);
+    eatFoods(game, 7);
     expect(spawns).toBe(0);
   });
 });

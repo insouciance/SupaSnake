@@ -19,6 +19,11 @@
  * under- OR over-reporting a Phoenix trigger can never inflate the payout.
  */
 
+import {
+  GENE_OFFER_CADENCE,
+  rollGeneOfferInterval,
+} from '@/shared/game/geneCadence';
+
 /**
  * Mutation ids: the Launch Ten (section 5.2 table order) plus the nine
  * per-dynasty mastery mutations (section 7.1 - unlocked at M3/M6/M9 into
@@ -289,9 +294,7 @@ export interface MutationPick {
 
 /** Spawn cadence + lifetime (section 5.1). */
 export const MUTATION_SPAWN = {
-  /** Next mutation food spawns intervalBase +/- intervalJitter foods later. */
-  intervalBase: 20,
-  intervalJitter: 5,
+  ...GENE_OFFER_CADENCE,
   /** Ticks the mutation food stays on the board before despawning. */
   despawnTicks: 40,
   /** Max mutations held per run - stacking cap. */
@@ -299,17 +302,12 @@ export const MUTATION_SPAWN = {
 } as const;
 
 /**
- * Roll the food-interval to the next mutation food: 20 +/- 5, uniform,
- * inclusive (so the first spawn is eligible at food 15-25). rng is
+ * Compatibility name for the universal Genome-offer roll: 6 +/- 2, uniform,
+ * inclusive (so the first spawn is eligible at food 4-8). rng is
  * injectable for deterministic tests; affects spawn timing only.
  */
 export function rollMutationInterval(rng: () => number = Math.random): number {
-  const span = 2 * MUTATION_SPAWN.intervalJitter + 1;
-  return (
-    MUTATION_SPAWN.intervalBase -
-    MUTATION_SPAWN.intervalJitter +
-    Math.floor(rng() * span)
-  );
+  return rollGeneOfferInterval(rng);
 }
 
 /**

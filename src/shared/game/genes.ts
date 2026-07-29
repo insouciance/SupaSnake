@@ -24,6 +24,7 @@ import {
   type MutationPick,
 } from '@/shared/game/mutations';
 import { isStrainId, type StrainId } from '@/shared/game/strains';
+import { GENE_OFFER_CADENCE } from '@/shared/game/geneCadence';
 
 /** The 12 genome-era gene ids (9 base + 3 M10 dynasty signatures). */
 export type NewGeneId =
@@ -285,10 +286,9 @@ export const SIGNATURE_GENES: Record<'PRIMAL' | 'CYBER' | 'COSMIC', NewGeneId> =
   COSMIC: 'constellation_crown',
 };
 
-/** Spawn cadence under genome rules - cadence unchanged, cap raised to 6. */
+/** Universal build cadence, with the Genome-era cap raised to six. */
 export const GENOME_SPAWN = {
-  intervalBase: 20,
-  intervalJitter: 5,
+  ...GENE_OFFER_CADENCE,
   despawnTicks: 40,
   /** Max genes held per run (section 1) - up from the mutation-era 4. */
   maxHeld: 6,
