@@ -186,19 +186,22 @@ export const CYBER_ARENA: TerrainSchedule = {
 /**
  * CYBER's tick floor (DYNASTY_CYBER §2.2), raised from the global 50ms.
  *
- * Three in-run calls from the owner bracket it: at 94ms 'approaching what is a
- * sensible terminal speed', at 97ms 'speed ends being fun', at 84ms 'way too
- * fast'. That agrees with the bound derived independently from reaction time -
- * visible runway >= 3x simple reaction (~190ms) puts a grid game's floor near
- * 100-120ms.
- *
- * Under the shipped curve 100ms arrived at food 33 and the run kept
- * accelerating to food 98, so roughly two thirds of the speed curve sat below
- * playable. The curve is unchanged; it simply stops where hands do. Past the
- * floor the difficulty comes from the arena, which is the board finally
- * mattering on the one dynasty it never has.
+ * The first redesign floor of 100ms produced a x2 terminal tempo that the
+ * owner found reaction-dominated. The ruled precision band is x1.6-x1.7, with
+ * 120ms (x1.67) preserving a thrilling terminal speed while leaving route
+ * planning and precise input responsible for the outcome.
  */
-export const CYBER_TICK_FLOOR_MS = 100;
+export const CYBER_TICK_FLOOR_MS = 120;
+
+/**
+ * CYBER's per-food hyperbolic decay.
+ *
+ * Slowing the decay from 0.03 to 0.02 keeps acceleration alive through roughly
+ * the same pressure horizon: food 30 reaches 125ms (x1.6) and food 33 reaches
+ * the 120ms floor. Raising the floor alone would have ended the speed story
+ * around food 23 and handed too much of the late run to arena pressure alone.
+ */
+export const CYBER_SPEED_DECAY_PER_FOOD = 0.02;
 
 /** CYBER speed tier for the n-th food (1-based): floor(n/5), capped at 4. */
 function cyberTier(n: number): number {
@@ -357,7 +360,9 @@ const CYBER: DynastyRuleset = {
   speedForFood: (foodEaten) =>
     Math.max(
       CYBER_TICK_FLOOR_MS,
-      Math.floor(GAME_CONFIG.snake.initialSpeed / (1 + 0.03 * foodEaten))
+      Math.floor(
+        GAME_CONFIG.snake.initialSpeed / (1 + CYBER_SPEED_DECAY_PER_FOOD * foodEaten)
+      )
     ),
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cyberMultiplier(n)),
   scoreMultiplier: (n) => cyberScoreShape(n),

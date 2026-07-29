@@ -23,6 +23,7 @@ import {
   rulesetExplainer,
   type DynastyName,
   CYBER_TICK_FLOOR_MS,
+  CYBER_SPEED_DECAY_PER_FOOD,
   PRIMAL_SPEED_MS,
   SCORE_TERMINUS_FOODS,
 } from './rulesets';
@@ -120,18 +121,19 @@ describe('PRIMAL ruleset (Steady Growth)', () => {
 describe('CYBER ruleset (Overclock)', () => {
   const cyber = RULESETS.CYBER;
 
-  it('ramps speed from initialSpeed by food count (log curve, clamped to minSpeed)', () => {
+  it('ramps through the precision band and caps at x1.67', () => {
     expect(cyber.speedForFood(0)).toBe(GAME_CONFIG.snake.initialSpeed);
-    // floor(200 / (1 + 0.03 * f))
-    expect(cyber.speedForFood(1)).toBe(194);
-    expect(cyber.speedForFood(10)).toBe(153);
-    expect(cyber.speedForFood(30)).toBe(105);
-    // WP-3.04: the floor is CYBER's own 100ms, not the global 50ms. Three
-    // in-run owner calls bracket it (94ms 'approaching sensible', 97ms 'ends
-    // being fun', 84ms 'way too fast'), agreeing with the reaction-time bound
-    // of ~100-120ms for a grid game. Under the old floor two thirds of the
-    // speed curve sat below playable; past the floor the difficulty now comes
-    // from the arena instead.
+    expect(CYBER_SPEED_DECAY_PER_FOOD).toBe(0.02);
+    // floor(200 / (1 + 0.02 * f)): the meaningful ramp lasts until food 33.
+    expect(cyber.speedForFood(1)).toBe(196);
+    expect(cyber.speedForFood(10)).toBe(166);
+    expect(cyber.speedForFood(20)).toBe(142);
+    expect(cyber.speedForFood(25)).toBe(133);
+    expect(cyber.speedForFood(30)).toBe(125);
+    expect(cyber.speedForFood(32)).toBe(121);
+    expect(cyber.speedForFood(33)).toBe(CYBER_TICK_FLOOR_MS);
+    expect(CYBER_TICK_FLOOR_MS).toBe(120);
+    expect(GAME_CONFIG.snake.initialSpeed / CYBER_TICK_FLOOR_MS).toBeCloseTo(1.67, 2);
     expect(cyber.speedForFood(100)).toBe(CYBER_TICK_FLOOR_MS);
     expect(cyber.speedForFood(1000)).toBe(CYBER_TICK_FLOOR_MS);
     expect(CYBER_TICK_FLOOR_MS).toBeGreaterThan(GAME_CONFIG.snake.minSpeed);
