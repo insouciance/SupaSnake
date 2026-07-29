@@ -108,10 +108,10 @@ import {
 import {
   baseGrowthForFood,
   resolveGrowthProfile,
-  rollOfferInterval,
   type GrowthProfile,
   type GrowthProfileId,
 } from '@/shared/game/growth';
+import { rollGeneOfferInterval } from '@/shared/game/geneCadence';
 import {
   GENE_ECONOMICS,
   GENE_PHYSICS,
@@ -769,8 +769,8 @@ export class SnakeGameLogic {
    * run.
    *
    * The argument is whatever the server sent; anything unrecognised resolves
-   * to `baseline`, so a client that is newer, older or confused still plays
-   * the shipped curve rather than an invented one.
+   * to historical `baseline`, so a client that is newer, older or confused
+   * still plays a deterministic compatibility curve rather than inventing one.
    */
   setGrowthProfile(id: unknown): void {
     if (this.state.isPlaying) return;
@@ -782,6 +782,11 @@ export class SnakeGameLogic {
   /** The run's growth profile id - what settlement will recompute with. */
   getGrowthProfileId(): GrowthProfileId {
     return this.growth.id;
+  }
+
+  /** The length used by pressure thresholds, including petrified segments. */
+  getModelledLength(): number {
+    return this.modelledLength();
   }
 
   /**
@@ -1691,7 +1696,12 @@ export class SnakeGameLogic {
       // shared with `computeLengthTrace` - see growth.ts, "one function, both
       // sides". Gene and anomaly extras layer on top, unchanged.
       const extraGrowth =
-        (baseGrowthForFood(this.growth, n) - 1) +
+        (baseGrowthForFood(
+          this.growth,
+          n,
+          this.ruleset.id,
+          lengthBeforeMove
+        ) - 1) +
         (this.hasGene('overgrowth') ? MUTATION_PHYSICS.overgrowthExtraSegments : 0) +
         (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
         (this.anomaly === 'overgrown'
@@ -2492,9 +2502,24 @@ export class SnakeGameLogic {
       // folds in: the events of food n are inputs to food n's own flat bonus
       // (Regenesis pays per shed segment, Fortress per petrified one), so
       // they have to have happened before the food is priced.
-      // +1 segment each (board pressure is the arc's physical price).
+      // Arc foods do not add a moving head, so they append the FULL growth
+      // amount rather than `base - 1`. This must use the same pre-food length
+      // as the settlement fold; otherwise PRIMAL's degressive profile would
+      // downshift at a different food after an arc.
+      const lengthBeforeFood = this.modelledLength();
+      const growth =
+        baseGrowthForFood(this.growth, n, this.ruleset.id, lengthBeforeFood) +
+        (this.hasGene('overgrowth')
+          ? MUTATION_PHYSICS.overgrowthExtraSegments
+          : 0) +
+        (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
+        (this.anomaly === 'overgrown'
+          ? ANOMALY_PHYSICS.overgrownExtraSegments
+          : 0);
       const tail = this.state.snake[this.state.snake.length - 1];
-      this.state.snake.push({ ...tail });
+      for (let segment = 0; segment < growth; segment += 1) {
+        this.state.snake.push({ ...tail });
+      }
       this.applyShedMoves(n);
       this.applyPetrify(n);
       const { dnaValue, scoreValue } = this.resolveFoodEconomy(n);
@@ -3630,15 +3655,11 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Mutation cadence roll incl. the Patient trait cost: spawn rate -50%
-   * means the rolled food-interval doubles (40 +/- 10 instead of 20 +/- 5).
+   * Genome cadence roll incl. the Patient trait cost: spawn rate -50%
+   * means the universal 4-8-food interval doubles to 8-16.
    */
   private rollNextMutationInterval(): number {
-    // WP-3.05: rolled from the RUN'S GROWTH PROFILE, not the global
-    // `MUTATION_SPAWN` constant it used to read. That constant is why choosing
-    // Tuned changed how fast you grew but not how often you were offered a
-    // gene - the profile's cadence fields were never wired to anything.
-    const interval = rollOfferInterval(this.growth, this.rng);
+    const interval = rollGeneOfferInterval(this.rng);
     return this.hasTrait('patient')
       ? interval * TRAIT_PHYSICS.patientMutationIntervalMultiplier
       : interval;

@@ -71,26 +71,26 @@ describe('the Launch Ten', () => {
 });
 
 describe('spawn cadence', () => {
-  it('spawns once per 20 +/- 5 foods with a 40-tick despawn, cap 4 held', () => {
-    expect(MUTATION_SPAWN.intervalBase).toBe(20);
-    expect(MUTATION_SPAWN.intervalJitter).toBe(5);
+  it('spawns once per 6 +/- 2 foods with a 40-tick despawn, cap 4 held', () => {
+    expect(MUTATION_SPAWN.intervalBase).toBe(6);
+    expect(MUTATION_SPAWN.intervalJitter).toBe(2);
     expect(MUTATION_SPAWN.despawnTicks).toBe(40);
     expect(MUTATION_SPAWN.maxHeld).toBe(4);
   });
 
-  it('rollMutationInterval spans [15, 25] inclusive under the injected rng', () => {
-    expect(rollMutationInterval(() => 0)).toBe(15);
-    expect(rollMutationInterval(() => 0.999999)).toBe(25);
-    expect(rollMutationInterval(() => 0.5)).toBe(20);
+  it('rollMutationInterval spans [4, 8] inclusive under the injected rng', () => {
+    expect(rollMutationInterval(() => 0)).toBe(4);
+    expect(rollMutationInterval(() => 0.999999)).toBe(8);
+    expect(rollMutationInterval(() => 0.5)).toBe(6);
 
     const seen = new Set<number>();
     for (let i = 0; i < 1000; i++) {
       const value = rollMutationInterval(() => i / 1000);
-      expect(value).toBeGreaterThanOrEqual(15);
-      expect(value).toBeLessThanOrEqual(25);
+      expect(value).toBeGreaterThanOrEqual(4);
+      expect(value).toBeLessThanOrEqual(8);
       seen.add(value);
     }
-    expect(seen.size).toBe(11);
+    expect(seen.size).toBe(5);
   });
 });
 

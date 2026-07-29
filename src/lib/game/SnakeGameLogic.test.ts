@@ -582,6 +582,37 @@ describe('SnakeGameLogic', () => {
     });
   });
 
+  describe('Dynasty growth profile', () => {
+    it.each(['CYBER', 'COSMIC'] as DynastyName[])('%s grows +1 throughout', (id) => {
+      const engine = new SnakeGameLogic({
+        gridSize: 200,
+        ruleset: RULESETS[id],
+        growthProfileId: 'dynasty',
+      });
+      engine.start();
+      eatFoods(engine, 20);
+      expect(engine.getModelledLength()).toBe(23);
+    });
+
+    it('downshifts PRIMAL by modelled length from +4 to +1', () => {
+      const engine = new SnakeGameLogic({
+        gridSize: 200,
+        ruleset: RULESETS.PRIMAL,
+        growthProfileId: 'dynasty',
+      });
+      engine.start();
+
+      eatFoods(engine, 18);
+      expect(engine.getModelledLength()).toBe(75);
+      eatFoods(engine, 7);
+      expect(engine.getModelledLength()).toBe(96);
+      eatFoods(engine, 12);
+      expect(engine.getModelledLength()).toBe(120);
+      eatFoods(engine, 1);
+      expect(engine.getModelledLength()).toBe(121);
+    });
+  });
+
   describe('Speed Progression (per ruleset)', () => {
     it('should have the COSMIC Flux fixed speed on start (COSMIC default)', () => {
       const cosmic = new SnakeGameLogic({ gridSize: 20 });
@@ -1192,7 +1223,7 @@ describe('SnakeGameLogic', () => {
   // =========================================================================
 
   describe('Mutation food: spawn cadence', () => {
-    it('first spawn lands between food 15 and 25, ticksRemaining 40', () => {
+    it('first spawn lands between food 4 and 8, ticksRemaining 40', () => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.PRIMAL,
@@ -1204,14 +1235,14 @@ describe('SnakeGameLogic', () => {
         spawned = { ...(data as object), atFood: engine.getState().foodEaten };
       });
 
-      eatFoods(engine, 14);
+      eatFoods(engine, 3);
       expect(spawned).toBeNull();
       expect(engine.getState().mutationTile).toBeNull();
 
-      eatFoods(engine, 11); // through food 25 - the max threshold
+      eatFoods(engine, 5); // through food 8 - the max threshold
       expect(spawned).not.toBeNull();
-      expect(spawned.atFood).toBeGreaterThanOrEqual(15);
-      expect(spawned.atFood).toBeLessThanOrEqual(25);
+      expect(spawned.atFood).toBeGreaterThanOrEqual(4);
+      expect(spawned.atFood).toBeLessThanOrEqual(8);
       expect(spawned.ticksRemaining).toBe(40);
     });
 
@@ -1219,7 +1250,7 @@ describe('SnakeGameLogic', () => {
       const engine = new SnakeGameLogic({
         gridSize: 100,
         ruleset: RULESETS.PRIMAL,
-        rng: () => 0.999, // threshold 25, tile parked at (99,99)
+        rng: () => 0.999, // threshold 8, tile parked at (99,99)
       });
       engine.start();
       let spawnCount = 0;
@@ -1230,11 +1261,11 @@ describe('SnakeGameLogic', () => {
       expect(spawnCount).toBe(1);
     });
 
-    it('despawns after its tick window and reschedules 15-25 foods out', () => {
+    it('despawns after its tick window and reschedules 4-8 foods out', () => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.PRIMAL,
-        rng: () => 0.5, // reschedule roll = 20
+        rng: () => 0.5, // reschedule roll = 6
       });
       engine.start();
       let despawned = false;
@@ -1255,14 +1286,14 @@ describe('SnakeGameLogic', () => {
       expect(despawned).toBe(true);
       const state = engine.getState();
       expect(state.mutationTile).toBeNull();
-      expect(state.nextMutationAtFood).toBe(state.foodEaten + 20);
+      expect(state.nextMutationAtFood).toBe(state.foodEaten + 6);
     });
 
     it('stops spawning at the 4-held stacking cap', () => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.PRIMAL,
-        rng: () => 0.2, // threshold 17
+        rng: () => 0.2, // threshold 5
       });
       engine.start();
       engine.grantMutation('wall_rush');
@@ -1687,7 +1718,7 @@ describe('SnakeGameLogic', () => {
       expect(state.mutationTile).toBeNull();
       expect(state.phoenixAvailable).toBe(false);
       expect(state.phoenixTriggeredAtFood).toBeNull();
-      expect(state.nextMutationAtFood).toBe(20); // rng 0.5 -> 20
+      expect(state.nextMutationAtFood).toBe(6); // rng 0.5 -> 6
       expect(state.foods).toHaveLength(COSMIC_CONSTELLATION.size);
       // A fresh run opens a fresh window - 8s at COSMIC's 160ms tick.
       expect(state.constellationWindowTicks).toBe(50);

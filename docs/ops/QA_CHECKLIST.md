@@ -41,20 +41,21 @@ operator-only deployment.
 ### Redesign Wave — completed release preconditions
 
 The owner enabled `NEXT_PUBLIC_LADDER_V1` before the 2026-07-28 Redesign Wave
-release and confirmed `NEXT_PUBLIC_GROWTH_LAB_V1`; both are build-time values.
+release and confirmed `NEXT_PUBLIC_GROWTH_LAB_V1`; both were build-time values.
 Migration 057 applied in that release. The 2026-07-29 follow-up's linked preview
-and apply steps both reported “Remote database is up to date.” D1 remains a
-playtest question, not a release-configuration task.
+and apply steps both reported “Remote database is up to date.” D1 was ruled on
+2026-07-29; the Growth Lab flag is historical and is not a release requirement
+once the dynasty-pressure follow-up is integrated.
 
 ### Redesign Wave — what to judge, and what is already known
 
 The wave's mandate was to land everything before a single playtest, so this is
 one sitting against a complete design rather than a series of partial reads.
 
-**The open question is D1** — time-to-first-pressure — and it cannot be answered
-from a partial build. The earlier Tuned-over-Aggressive preference is
-**explicitly stale**: food count is upstream of segments-per-food, traverse
-time, offer cadence and run length, and food count changed.
+**D1 is closed.** CYBER and COSMIC use +1 normal growth throughout. PRIMAL uses
++4 below modelled length 75, +3 below 96, +2 below 120, then +1. What remains
+open is threshold calibration from real PRIMAL play, not profile selection.
+Gene offers use their own 4–8-food clock, independent of dynasty growth.
 
 Known before you start, so they are not reported as discoveries:
 
@@ -117,14 +118,22 @@ state-heavy cases still require real-device or exploratory verification:
   flick, and the compact landscape controls remain comfortable.
 - Full live Deadeye targeting and Training preset save/reload/delete, PB
   persistence, and reward-invariance journeys.
-- Rule D1 by comparing time-to-first-pressure across the three growth profiles
-  in the same sitting; record food count, wall-clock time, and free-space state.
+- Verify CYBER and COSMIC remain at +1 normal growth; verify PRIMAL announces and
+  applies +4 → +3 → +2 → +1 at modelled lengths 75/96/120. Record pressure
+  onset, control, wall-clock time, and free-space state around each handoff.
+- Confirm the opening growth inscription and CYBER speed-tier inscriptions are
+  brief, transparent, non-blocking, absent from Ready/strategic decisions, and
+  do not compete with Energy or pause telemetry.
 - Exercise Thick Hide, Ouroboros, Phoenix, and Iron Scales in dense/edge states;
   confirm the preserved-length and movement-blocking outcomes remain legible.
 - Grow into a genuinely long, tightly coiled snake and compare head tracking,
-  tail vacancy, internal calm, and collision attribution against a short run.
+  interpolated tail vacancy, internal calm, collision attribution, and the
+  one-shot contact-edge seal against a short run. The seal must not replay for a
+  settled coil or fire on the initial body.
 - Watch CYBER ring, PRIMAL Fortress, COSMIC calcification, and a ladder source
-  transition from amber forming cell to slate solid with its pale relief.
+  transition from amber forming cell to slate solid. Confirm the VOLT bolt,
+  FERAL claw, broken FLUX portal, and AURUM seal remain distinct without implying
+  that rune orientation changes collision behavior.
 
 ### Training and UX release evidence
 
@@ -326,7 +335,8 @@ Start on desktop with keyboard controls.
 
 “Mutations” are now player-facing **genes** in Genome-capable runs.
 
-- [ ] A gene pickup appears roughly every 20±5 foods, is distinct from food,
+- [ ] A gene pickup appears every 4–8 foods (Patient doubles the interval), is
+      independent of dynasty growth, is distinct from food,
       and signals its 40-tick despawn window without visual noise.
 - [ ] Collecting it freezes the engine and presents two readable choices with
       name, effect, cost, and—after the FTUE gate—strain tags.

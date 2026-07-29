@@ -64,7 +64,7 @@ describe('the ladder as a shape', () => {
 describe('rung 0 is the shipped game', () => {
   it('leaves every dial at the value its owning module publishes', () => {
     const params = ladderParams(0);
-    expect(params.growthProfileFloor).toBe('baseline');
+    expect(params.growthProfileFloor).toBe('dynasty');
     expect(params.holdBudgetDelta).toBe(0);
     expect(params.portalWindowSecondsDelta).toBe(0);
     expect(params.portalIntervalFoodsDelta).toBe(0);
@@ -83,9 +83,10 @@ describe('rung 0 is the shipped game', () => {
     );
   });
 
-  it('leaves a lab-chosen growth profile alone', () => {
+  it('starts from dynasty growth and preserves a harder stamped profile', () => {
     expect(ladderGrowthProfileId('tuned', 0)).toBe('tuned');
-    expect(ladderGrowthProfileId(undefined, 0)).toBe('baseline');
+    expect(ladderGrowthProfileId(undefined, 0)).toBe('dynasty');
+    expect(ladderGrowthProfileId('baseline', 0)).toBe('dynasty');
   });
 });
 
@@ -131,7 +132,7 @@ describe('the rungs are cumulative and monotonic', () => {
   });
 
   it('never gets easier as it climbs', () => {
-    const growthOrder = ['baseline', 'tuned', 'aggressive'];
+    const growthOrder = ['baseline', 'dynasty', 'tuned', 'aggressive'];
     for (let rung = 1; rung <= LADDER_MAX_RUNG; rung++) {
       const below = ladderParams(rung - 1);
       const here = ladderParams(rung);
@@ -227,8 +228,8 @@ describe('the growth floor raises, never lowers', () => {
     expect(ladderGrowthProfileId(undefined, LADDER_MAX_RUNG)).toBe('aggressive');
   });
 
-  it('treats an unrecognised request as baseline before applying the floor', () => {
-    expect(ladderGrowthProfileId('not-a-profile', 0)).toBe('baseline');
+  it('treats an unrecognised request as dynasty before applying the floor', () => {
+    expect(ladderGrowthProfileId('not-a-profile', 0)).toBe('dynasty');
     expect(ladderGrowthProfileId('not-a-profile', 1)).toBe('tuned');
   });
 });

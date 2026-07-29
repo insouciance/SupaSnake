@@ -13,7 +13,7 @@
  * every length an infuse produced, on where the doors stood, and on what a
  * crash salvaged. A disagreement of that kind silently invalidates runs a
  * player honestly earned, which is the defect WP-2.05 existed to eliminate and
- * the one `growthLab.ts` records for the same reason.
+ * the retired Growth Lab instrument documented for the same reason.
  *
  * So the rung is resolved SERVER-SIDE at run start, stamped into `run_context`,
  * and replayed from that stamp at settlement. With this flag off the server

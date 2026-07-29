@@ -44,6 +44,7 @@ function tick(
   options: {
     terrain?: readonly TerrainBlock[];
     wrapActive?: boolean;
+    elapsed?: number;
   } = {}
 ): number[] {
   updateTrailFusion(
@@ -51,7 +52,8 @@ function tick(
     packCells(cells),
     cells.length,
     options.terrain ?? null,
-    options.wrapActive ?? false
+    options.wrapActive ?? false,
+    options.elapsed
   );
   return cells.map((_, i) => getFusionLevel(state, i));
 }
@@ -280,8 +282,67 @@ describe('reset - a new run never inherits the dead one', () => {
     resetTrailFusion(state);
     expect(state.count).toBe(0);
     expect(getFusionLevel(state, 0)).toBe(0);
+    expect(Array.from(state.sealStartedAt).every((value) => value === -1)).toBe(
+      true
+    );
+    expect(Array.from(state.sealMask).every((value) => value === 0)).toBe(true);
     // And the first tick after a reset still adopts immediately - the tick
     // counter must not restart on the value `lastBodyTick` uses for "never".
     expect(tick(state, [[0, 0]])[0]).toBe(2);
+  });
+});
+
+describe('coil seal events', () => {
+  const centre: readonly (readonly [number, number])[] = [[5, 5]];
+  const packed = [solidBlock(4, 5), solidBlock(5, 4)];
+  const cell = 5 * GRID + 5;
+
+  it('does not celebrate level-2 cells on the opening snapshot', () => {
+    const state = fresh();
+    tick(state, [[0, 0]], { elapsed: 10 });
+    expect(state.committed[0]).toBe(2);
+    expect(state.sealStartedAt[0]).toBe(-1);
+    expect(state.sealMask[0]).toBe(0);
+  });
+
+  it('stamps one seal when a held change reaches full fusion', () => {
+    const state = fresh();
+    tick(state, centre, { elapsed: 1 });
+    expect(state.sealStartedAt[cell]).toBe(-1);
+
+    tick(state, centre, { terrain: packed, elapsed: 2 });
+    expect(state.committed[cell]).toBe(0);
+    expect(state.sealStartedAt[cell]).toBe(-1);
+
+    tick(state, centre, { terrain: packed, elapsed: 3 });
+    expect(state.committed[cell]).toBe(2);
+    expect(state.sealStartedAt[cell]).toBe(3);
+    // -X and -Z contacts are both recorded; the renderer can zip the actual
+    // seams instead of drawing a generic halo around the cell.
+    expect(state.sealMask[cell] & (1 << 1)).not.toBe(0);
+    expect(state.sealMask[cell] & (1 << 3)).not.toBe(0);
+
+    tick(state, centre, { terrain: packed, elapsed: 4 });
+    expect(state.sealStartedAt[cell]).toBe(3);
+  });
+
+  it('never stamps while the raw level alternates', () => {
+    const state = fresh();
+    tick(state, centre, { elapsed: 0 });
+    for (let index = 0; index < 10; index += 1) {
+      tick(state, centre, {
+        terrain: index % 2 === 0 ? packed : [],
+        elapsed: index + 1,
+      });
+    }
+    expect(state.sealStartedAt[cell]).toBe(-1);
+  });
+
+  it('stamps a newly entered tight cell after initialization', () => {
+    const state = fresh();
+    tick(state, [[10, 10]], { elapsed: 0 });
+    tick(state, centre, { terrain: packed, elapsed: 1 });
+    expect(state.committed[cell]).toBe(2);
+    expect(state.sealStartedAt[cell]).toBe(1);
   });
 });

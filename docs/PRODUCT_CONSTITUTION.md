@@ -1,6 +1,14 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.4 · 27 July 2026
+**Version:** 1.4 · amended 29 July 2026
+**v1.4 D1 amendment (owner ruling, 29 July 2026):** normal CYBER and COSMIC
+runs grow **+1 per food throughout**; their pressure remains speed and spatial
+restriction, respectively. PRIMAL owns the body-pressure profile: **+4 while
+modelled length is below 75, +3 below 96, +2 below 120, then +1**. Gene offers
+are a separate clock at **6 ± 2 foods (4–8)**, doubled by Patient. Growth is
+event information, not permanent telemetry: announce it non-interactively at
+run opening and whenever it changes; CYBER speed changes use the same grammar.
+The Growth Lab selector and its rollout flag no longer govern new runs.
 **v1.4 changelog (owner rulings, 27 July 2026 — the Redesign Wave):**
 **Rule 15, monotonic length** (§4) — *length only ever increases; free space only
 ever shrinks; anything that costs the player costs growth.* The wave's founding
@@ -1625,30 +1633,35 @@ deliberately undecided pending data.
     removed by owner edit; the test sentence carries the promise. *Test:* if trust
     sentiment or press framing weakens measurably, restore an abbreviated
     guarantee list on the public /contract page only, leaving §3 as edited.
-26. **Time-to-first-pressure** (v1.4 — the one open ruling of the Redesign Wave).
-    The measured defect is that pressure begins around minute eight, so the median
-    run (8% board occupancy) never reaches the game. *Test:* the Growth Lab
-    (`docs/ops/REDESIGN_WAVE.md` WP-3.02) ships three server-stamped growth
-    profiles; the owner plays two runs of each per dynasty and rules. Candidate
-    target: pressure at ~1:06, run ending near 3:12, from starting length 3 with
-    growth +6 for foods 1–11, +2 through 31, then +1 per 6 to a cap of 8 [H].
-    *This is decided by hands, not by the model* — the model is calibrated to one
-    expert run on one dynasty and reproduces it to within 5%, which ranks
-    candidates well and picks between them badly.
+26. **Time-to-first-pressure** (v1.4, **ruled 29 July 2026**). The Growth Lab
+    answered the shape question but exposed that a shared growth curve erased
+    dynasty identity. Normal CYBER and COSMIC runs therefore grow **+1 per food**;
+    speed and spatial restriction are their pressure clocks. PRIMAL owns fast
+    early body pressure and then converges to classic Snake growth, indexed by
+    modelled length rather than food count: **+4 below length 75, +3 below 96,
+    +2 below 120, +1 thereafter**. Those thresholds are 18.75%, 24%, and 30% of
+    the 20×20 board. Optional growth genes and INFUSE advance the downshift; they
+    do not prolong a high-growth stage. *Test:* compare PRIMAL pressure onset,
+    control at each threshold, and death occupancy against CYBER/COSMIC. Retune
+    thresholds, not the dynasty ownership of the clocks, if the first stage is
+    still too short or the +1 handoff arrives too late.
 27. **The Rule 15 dials** (v1.4). INFUSE growth **+8**; Thick Hide **+8** on
     trigger; Ouroboros **+2** per bite; revive phase window **~12 ticks**. *Test:*
     lab telemetry — infuse-taken rate against run stage (if late-run infusion
     collapses to zero, the price is too steep); revive survival rate (if a revived
     run ends within ~5 foods, the window is too short to matter and the revive is
     decorative).
-28. **The re-basing table** (v1.4). Every food-indexed dial in the catalog was
-    authored for 150–180-food runs and now lives in ~48-food runs: offer cadence
-    (`intervalBase` 20 → ~10), the validator's `MIN_FOODS_PER_PICK` (15 → ~8),
-    hold bonus lengths (25/40 → ~35%/60% of terminus length), and the window genes
-    (`deep_roots`, `ancient_grove`, `midnight_oil`, `loan_shark`). *Test:* offers
-    per run should exceed the six-slot held cap — that is what makes PASS and
-    BANISH real decisions rather than formalities — and `verifyOfferTrace` must
-    stay clean at the new cadence.
+28. **The re-basing table** (v1.4; cadence ruled 29 July 2026). Gene offers use
+    a dynasty-independent **6 ± 2-food interval, minimum 4**; Patient doubles the
+    sampled interval. This clock is deliberately independent of body growth so a
+    +1 dynasty can still form a significant build before pressure ends the run.
+    The validator derives its honest-pick bound from the same cadence. Hold bonus
+    lengths and window genes (`deep_roots`, `ancient_grove`, `midnight_oil`,
+    `loan_shark`) remain governed by the wave's separate rebasing tests, not by
+    offer cadence. *Test:* a
+    representative 42-food run should see about seven cadence offers, enough to
+    skip imperfect genes and still reach Expression/Apex or a setup; the six-slot
+    cap must still make PASS meaningful, and `verifyOfferTrace` must stay clean.
 29. **Ladder shape** (v1.4). Rung count [H: 6–8] and the rung list. *Test:*
     distribution of best rung per dynasty after four weeks; if >60% of active
     players sit at rung 0, the first rung is too expensive or too dull; if >40%

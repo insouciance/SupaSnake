@@ -18,8 +18,9 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
       release plan
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
 - [ ] CI and production builds use `NEXT_PUBLIC_FTUE_V2=true`,
-      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, `NEXT_PUBLIC_GROWTH_LAB_V1=true`, and
-      `NEXT_PUBLIC_LADDER_V1=true`, unless deliberately testing rollback
+      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, and `NEXT_PUBLIC_LADDER_V1=true`, unless
+      deliberately testing rollback. `NEXT_PUBLIC_GROWTH_LAB_V1` is retired and
+      must not be required by current behavior.
 - [ ] Production environment presence check passes; Vercel cloud-build value
       validation passes for the selected Stripe mode
 

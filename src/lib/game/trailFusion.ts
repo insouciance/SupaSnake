@@ -64,8 +64,8 @@ export const FUSION_MAX = 2;
 export const FUSION_HYSTERESIS_TICKS = 2;
 
 /** Orthogonal neighbour offsets. Module scope: the loop allocates nothing. */
-const NEIGHBOUR_DX = [1, -1, 0, 0] as const;
-const NEIGHBOUR_DZ = [0, 0, 1, -1] as const;
+export const FUSION_NEIGHBOUR_DX = [1, -1, 0, 0] as const;
+export const FUSION_NEIGHBOUR_DZ = [0, 0, 1, -1] as const;
 
 export interface TrailFusionState {
   readonly gridSize: number;
@@ -88,6 +88,12 @@ export interface TrailFusionState {
   readonly levels: Uint8Array;
   /** Segments described by `levels` after the last update. */
   count: number;
+  /** Seconds when a cell most recently EARNED level 2; -1 means never. */
+  readonly sealStartedAt: Float32Array;
+  /** Packed-contact directions at that moment, one bit per neighbour offset. */
+  readonly sealMask: Uint8Array;
+  /** False only until the opening body has been measured once. */
+  initialized: boolean;
   /**
    * Monotonic tick counter. Starts at 1, deliberately: `lastBodyTick` is
    * seeded with -1 for "never", and if the first update ran as tick 0 then
@@ -113,7 +119,10 @@ export function createTrailFusionState(
     pendingTicks: new Uint8Array(cells),
     lastBodyTick: new Int32Array(cells),
     levels: new Uint8Array(capacity),
+    sealStartedAt: new Float32Array(cells),
+    sealMask: new Uint8Array(cells),
     count: 0,
+    initialized: false,
     tick: 0,
   };
   resetTrailFusion(state);
@@ -130,7 +139,10 @@ export function resetTrailFusion(state: TrailFusionState): void {
   state.pendingTicks.fill(0);
   state.lastBodyTick.fill(-1);
   state.levels.fill(0);
+  state.sealStartedAt.fill(-1);
+  state.sealMask.fill(0);
   state.count = 0;
+  state.initialized = false;
   state.tick = 1;
 }
 
@@ -158,7 +170,8 @@ export function updateTrailFusion(
   cells: Float32Array,
   count: number,
   terrain: readonly TerrainBlock[] | null | undefined,
-  wrapActive: boolean
+  wrapActive: boolean,
+  elapsedSeconds: number = state.tick
 ): void {
   const { gridSize, body, solid, committed, pendingLevel, pendingTicks, lastBodyTick, levels } =
     state;
@@ -222,14 +235,42 @@ export function updateTrailFusion(
       committed[cell] = raw;
       pendingLevel[cell] = raw;
       pendingTicks[cell] = 0;
+      // Never celebrate the body that merely existed when the renderer
+      // mounted. A level-2 cell entered after that opening snapshot is a real
+      // closure: the player has just placed it into a packed pocket.
+      if (state.initialized && raw === FUSION_MAX) {
+        stampSeal(
+          state,
+          cells,
+          segments,
+          i,
+          x,
+          z,
+          wrapActive,
+          elapsedSeconds
+        );
+      }
     } else if (raw === committed[cell]) {
       pendingLevel[cell] = raw;
       pendingTicks[cell] = 0;
     } else if (raw === pendingLevel[cell]) {
       const held = pendingTicks[cell] + 1;
       if (held >= FUSION_HYSTERESIS_TICKS) {
+        const previous = committed[cell];
         committed[cell] = raw;
         pendingTicks[cell] = 0;
+        if (previous < FUSION_MAX && raw === FUSION_MAX) {
+          stampSeal(
+            state,
+            cells,
+            segments,
+            i,
+            x,
+            z,
+            wrapActive,
+            elapsedSeconds
+          );
+        }
       } else {
         pendingTicks[cell] = held;
       }
@@ -243,7 +284,33 @@ export function updateTrailFusion(
   }
 
   state.count = Math.min(segments, state.capacity);
+  state.initialized = true;
   state.tick = tick + 1;
+}
+
+function stampSeal(
+  state: TrailFusionState,
+  cells: Float32Array,
+  segments: number,
+  index: number,
+  x: number,
+  z: number,
+  wrapActive: boolean,
+  elapsedSeconds: number
+): void {
+  const cell = z * state.gridSize + x;
+  state.sealStartedAt[cell] = Number.isFinite(elapsedSeconds)
+    ? elapsedSeconds
+    : state.tick;
+  state.sealMask[cell] = packingMaskAt(
+    state,
+    cells,
+    segments,
+    index,
+    x,
+    z,
+    wrapActive
+  );
 }
 
 /**
@@ -271,8 +338,8 @@ function rawFusionAt(
 
   let packed = 0;
   for (let d = 0; d < 4; d++) {
-    const nx = x + NEIGHBOUR_DX[d];
-    const nz = z + NEIGHBOUR_DZ[d];
+    const nx = x + FUSION_NEIGHBOUR_DX[d];
+    const nz = z + FUSION_NEIGHBOUR_DZ[d];
 
     if (nx < 0 || nx >= gridSize || nz < 0 || nz >= gridSize) {
       // A wall packs. An OPEN edge does not - while COSMIC's flux phase (or a
@@ -289,6 +356,37 @@ function rawFusionAt(
   }
 
   return packed > FUSION_MAX ? FUSION_MAX : packed;
+}
+
+/** The exact contact edges that made a level-2 transition possible. */
+function packingMaskAt(
+  state: TrailFusionState,
+  cells: Float32Array,
+  segments: number,
+  index: number,
+  x: number,
+  z: number,
+  wrapActive: boolean
+): number {
+  const { gridSize, body, solid } = state;
+  const pathA = index > 0 ? cellIndexOf(cells, index - 1, gridSize) : -1;
+  const pathB = index + 1 < segments ? cellIndexOf(cells, index + 1, gridSize) : -1;
+  let mask = 0;
+
+  for (let direction = 0; direction < 4; direction += 1) {
+    const nx = x + FUSION_NEIGHBOUR_DX[direction];
+    const nz = z + FUSION_NEIGHBOUR_DZ[direction];
+    if (nx < 0 || nx >= gridSize || nz < 0 || nz >= gridSize) {
+      if (!wrapActive) mask |= 1 << direction;
+      continue;
+    }
+    const neighbour = nz * gridSize + nx;
+    if (neighbour === pathA || neighbour === pathB) continue;
+    if (body[neighbour] === 1 || solid[neighbour] === 1) {
+      mask |= 1 << direction;
+    }
+  }
+  return mask;
 }
 
 function cellIndexOf(cells: Float32Array, index: number, gridSize: number): number {

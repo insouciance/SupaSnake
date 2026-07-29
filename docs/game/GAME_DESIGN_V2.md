@@ -253,9 +253,10 @@ account stack ceiling is a hard, auditable constant.
 ## 5. Mutation Food *(Phase 2)*
 
 > **Genome (2026-07-20):** mutations are now **genes** with strain tags — see
-> `BUILDCRAFT_GENOME_DESIGN.md` §1–§5 for the authoritative held cap (6),
+> `BUILDCRAFT_GENOME_DESIGN.md` §1–§5 for the authoritative cadence, held cap (6),
 > Compound Interest retune (+0.05/held, cap +0.30), seeded offer gravity and
-> splice fusion. Everything below remains valid as the base layer.
+> splice fusion. The interaction model below remains the base layer; numerical
+> conflicts and retired effects defer to the Genome contract.
 
 Run-lasting build variance: rare timed spawns offering a choice of 2
 mutations, ~10 in the launch pool. Every mutation is an offer **with a cost**
@@ -263,7 +264,8 @@ mutations, ~10 in the launch pool. Every mutation is an offer **with a cost**
 
 ### 5.1 Spawn & choice rules
 
-- **Spawn:** once per `20 ± 5` foods (first eligible at food 15–25), never
+- **Spawn:** once per `6 ± 2` foods (first eligible at food 4–8; Patient doubles
+  the sampled interval), never
   while another mutation food is on the board. **Despawn: 40 ticks.**
   Distinct visual: a slow-pulsing violet double-helix voxel, unmistakable
   from food or portals.
@@ -306,10 +308,11 @@ End-of-run payload gains `mutations: [{ id, atFood }]` (pick order + the food
 index at pickup). The server:
 
 1. **Legality:** each `id` ∈ player's unlocked pool, not Gauntlet-banned for
-   counted runs, no duplicates, count ≤ 4.
-2. **Count bound:** picks ≤ `floor(foodCount / 15)` (cadence 20±5 means the
-   k-th mutation food cannot exist before food 15k); each `atFood` ≥ 15 ×
-   pick-index and ≤ foodCount.
+   counted runs, and not duplicated; legacy mutations cap at 4, while Genome
+   builds cap at 6 occupied slots after splice fusion.
+2. **Count bound:** picks ≤ `floor(foodCount / 4)` (or `/8` with Patient),
+   because the k-th gene food cannot exist before that cadence floor; each
+   `atFood` obeys the same per-pick lower bound and is ≤ foodCount.
 3. **Exact recompute:** applies each [E] effect from its `atFood` onward
    inside `computeRunTotals`, then outcome/Wager/Compound math. **The server
    pays its own recomputed number regardless of the claim** — mismatch flags

@@ -19,6 +19,7 @@ import {
 import { RULESETS } from '@/shared/game/rulesets';
 import { GENOME_SPAWN } from '@/shared/game/genes';
 import { STRAIN_ECONOMICS, STRAIN_PHYSICS } from '@/shared/game/strains';
+import type { GrowthProfileId } from '@/shared/game/growth';
 
 function eatFoods(game: SnakeGameLogic, count: number): void {
   for (let i = 0; i < count; i++) {
@@ -42,13 +43,15 @@ const genomeConfig = (
 /** A genome engine on a huge grid (deterministic straight-line eating). */
 function makeGenomeGame(
   config: Partial<GenomeEngineConfig> = {},
-  gridSize = 120
+  gridSize = 120,
+  growthProfileId?: GrowthProfileId
 ): SnakeGameLogic {
   const game = new SnakeGameLogic({
     gridSize,
     ruleset: RULESETS.PRIMAL,
     rng: () => 0.5,
     genome: genomeConfig(config),
+    growthProfileId,
   });
   game.start();
   return game;
@@ -271,7 +274,7 @@ describe('strain physics on the board', () => {
   });
 
   it('VOLT Expression (Arc Lightning): nearby foods auto-collect at full value', () => {
-    const game = makeGenomeGame();
+    const game = makeGenomeGame({}, 120, 'dynasty');
     game.grantMutation('time_dilation', 0);
     game.grantMutation('splitter', 0);
     game.grantMutation('redline_dividend', 0); // VOLT x3 -> expression
@@ -285,6 +288,9 @@ describe('strain physics on the board', () => {
     game.tick();
     const state = game.getState();
     expect(state.foodEaten).toBe(2); // main + arced
+    // Main food and auto-collected food both pay PRIMAL's +4 body pressure.
+    // Arc collection has no head insertion, so it must append the full four.
+    expect(state.snake).toHaveLength(11);
   });
 
   it('FERAL Expression (Fortress): every 20th food petrifies the oldest segments', () => {

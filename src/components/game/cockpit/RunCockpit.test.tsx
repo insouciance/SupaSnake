@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { GROWTH_PROFILES, baseGrowthForFood } from '@/shared/game/growth';
 import type { RunCockpitModel } from './types';
 import { RunCockpit } from './RunCockpit';
 
@@ -180,14 +179,7 @@ describe('RunCockpit', () => {
     );
   });
 
-  /**
-   * WP-3.09. The rate has to be readable DURING the run - the WP-3.02 readout
-   * only ever lived on the pre-run setup panel, which unmounts on start.
-   */
-  it('shows the live growth rate, and layers its step notice beside it', () => {
-    // Tuned pays 6 per food until food 12, then 2. The number is derived by
-    // the game page from `baseGrowthForFood`; the cockpit only displays it.
-    const tuned = GROWTH_PROFILES.tuned;
+  it('layers transient rate feedback over the arena without replacing status', () => {
     render(
       <RunCockpit
         model={{
@@ -195,42 +187,29 @@ describe('RunCockpit', () => {
           state: 'active',
           statusText: 'Run stable',
           isFirstMovementPrompt: false,
-          growth: {
-            profileId: tuned.id,
-            label: tuned.label,
-            perFood: baseGrowthForFood(tuned, 12),
-            foodsOnBoard: tuned.simultaneousFoods,
-          },
         }}
         onPause={jest.fn()}
         onResetView={jest.fn()}
-        growthNotice={<span data-testid="growth-step-notice">+6 → +2</span>}
+        arenaOverlay={<span data-testid="run-rate-callout">Growth rate +3</span>}
       >
-        <canvas />
+        <canvas data-testid="rate-board" />
       </RunCockpit>
     );
 
-    expect(screen.getByTestId('growth-readout')).toHaveAttribute(
-      'data-growth-per-food',
-      '2'
-    );
-    expect(screen.getByTestId('growth-readout')).toHaveAccessibleName(
-      'Growth Tuned, plus 2 per food'
-    );
-    // LAYERS, never replaces: the status rail (and the first-movement prompt
-    // testid an e2e spec reads from it) must survive a growth notice, which is
-    // exactly what routing through `eventCallout` would have broken.
-    expect(screen.getByTestId('growth-step-notice')).toBeInTheDocument();
+    const board = screen.getByTestId('game-board-viewport');
+    expect(board).toContainElement(screen.getByTestId('rate-board'));
+    expect(board).toContainElement(screen.getByTestId('run-rate-callout'));
     expect(screen.getByTestId('game-hud')).toHaveTextContent('Run stable');
   });
 
-  it('omits the growth instrument when there is no profile to report', () => {
-    // Training eats no profile food. A rate printed there would be a lie.
+  it('keeps growth out of the persistent HUD', () => {
     render(
       <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
         <canvas />
       </RunCockpit>
     );
     expect(screen.queryByTestId('growth-readout')).toBeNull();
+    expect(screen.getByLabelText(/charges 4 of 6/i)).toBeInTheDocument();
+    expect(screen.getByTestId('hold-budget')).toBeInTheDocument();
   });
 });

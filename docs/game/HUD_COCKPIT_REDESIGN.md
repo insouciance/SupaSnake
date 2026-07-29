@@ -2,7 +2,7 @@
 
 **Status:** cockpit refinement live in production
 
-**Date:** 2026-07-24
+**Date:** 2026-07-24; rate-event amendment 2026-07-29
 
 **Implementation checkpoint:** the 2026-07-24 refinement is live behind
 `NEXT_PUBLIC_HUD_COCKPIT_V1` from final release commit `fc0fea4`, Vercel
@@ -40,11 +40,13 @@ history; where they conflict, this contract is authoritative.
 - Active-run gene and strain identity is graphical and accessible. Full names
   and consequences belong in strategic decisions, results, Codex, accessible
   names, and pointer titles—not unreadable permanent microtext.
-- Telemetry, prompts, controls, event callouts, and the tactical-hold message
-  never overlay the playable board. Gene, mutation, portal, infusion, and
-  strain-surge decisions are the intentional exception: they are core
-  gameplay, so they become dominant centered modal dialogs over the visibly
-  frozen arena with a full-cockpit scrim.
+- Telemetry, prompts, controls, and the tactical-hold message never overlay the
+  playable board. Strategic gene, mutation, portal, infusion, and strain-surge
+  decisions are the intentional frozen-arena exception. A second, much narrower
+  exception was ruled on 2026-07-29: a rate change may appear as transparent,
+  comic-like writing over the live board at run opening or at the exact change
+  event. It has no panel or scrim, takes no input, auto-dismisses, does not pause
+  the tick, and must not coexist with Ready or a strategic decision.
 - A strategic dialog owns focus and input atomically. Directions, flick, D-pad,
   pause, and camera shortcuts cannot leak through. BANK ends the run;
   non-terminal choices return to a deliberate tactical hold.
@@ -611,6 +613,15 @@ Replace five mini-cards with five distinct symbols and segmented gauges.
 
 The protected-board rule applies to routine transient UI. Consequential
 strategic decisions are an explicit, engine-frozen exception.
+
+### Rate events
+
+Growth rate is not a setup choice or permanent cockpit instrument. Announce the
+server-stamped opening rate after the first deliberate movement, then announce
+only a real stage change. CYBER speed tiers use the same component and timing so
+both facts have one learned grammar. Rate events are typographic, transparent,
+non-interactive, and brief; they must never displace the board, fight Energy or
+pause telemetry, replay after a strategic overlay, or become an ambient pulse.
 
 ### Ready and resume
 

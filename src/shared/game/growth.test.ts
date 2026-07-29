@@ -1,149 +1,116 @@
-/**
- * Growth profiles (WP-3.02) — the D1 instrument.
- *
- * The parity between the engine and the server length model is asserted in
- * `foldParity.test.ts`, which is where a divergence would actually bite. This
- * file covers the profiles themselves: the control is really a control, the
- * resolver cannot throw, and each shape reaches its intended terminus.
- */
-
-import { describe, it, expect } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 import {
-  GROWTH_PROFILES,
-  baseGrowthForFood,
-  resolveGrowthProfile,
-  isGrowthProfileId,
+  ACTIVE_GROWTH_PROFILE,
   DEFAULT_GROWTH_PROFILE,
+  GROWTH_PROFILES,
+  PRIMAL_GROWTH_STAGES,
+  baseGrowthForFood,
+  isGrowthProfileId,
+  primalGrowthAtLength,
+  resolveGrowthProfile,
   type GrowthProfileId,
 } from './growth';
-import { STRAIN_PHYSICS } from './strains';
 
-const ALL: GrowthProfileId[] = ['baseline', 'tuned', 'aggressive'];
+const ALL = Object.keys(GROWTH_PROFILES) as GrowthProfileId[];
 
-/** Occupancy of a 400-cell board after n foods, with three infuses taken. */
-function occupancyAfter(id: GrowthProfileId, foods: number): number {
-  const profile = GROWTH_PROFILES[id];
-  let len = profile.initialLength;
-  for (let n = 1; n <= foods; n++) len += baseGrowthForFood(profile, n);
-  // Rule 15: an infuse GROWS. Three is the per-run cap, and a real run takes
-  // them - leaving them out would flatter every projection.
-  len += 3 * STRAIN_PHYSICS.infuseGrowth;
-  return len / 400;
-}
-
-function foodsToOccupancy(id: GrowthProfileId, target: number): number {
-  for (let n = 1; n <= 2000; n++) {
-    if (occupancyAfter(id, n) >= target) return n;
-  }
-  return -1;
-}
-
-describe('growth profiles', () => {
-  it('baseline is the control: +1 per food, one food, shipped cadence', () => {
-    const p = GROWTH_PROFILES.baseline;
-    for (const n of [1, 5, 20, 50, 200, 500]) {
-      expect(baseGrowthForFood(p, n)).toBe(1);
+describe('the ruled dynasty growth profile', () => {
+  it.each(['CYBER', 'COSMIC'] as const)('%s stays +1 at every length', (dynasty) => {
+    const profile = GROWTH_PROFILES.dynasty;
+    for (const length of [3, 40, 74, 75, 95, 96, 119, 120, 300]) {
+      expect(baseGrowthForFood(profile, 50, dynasty, length)).toBe(1);
     }
-    expect(p.simultaneousFoods).toBe(1);
-    expect(p.initialLength).toBe(3);
-    // The shipped dials, so a baseline run is the game as it was.
-    expect(p.offerIntervalBase).toBe(20);
-    expect(p.minFoodsPerPick).toBe(15);
   });
 
-  it('every profile grows monotonically and never shrinks (Rule 15)', () => {
+  it('PRIMAL downshifts +4 -> +3 -> +2 -> +1 at modelled-length thresholds', () => {
+    expect(PRIMAL_GROWTH_STAGES).toEqual([
+      { untilLength: 75, growth: 4 },
+      { untilLength: 96, growth: 3 },
+      { untilLength: 120, growth: 2 },
+      { untilLength: Number.POSITIVE_INFINITY, growth: 1 },
+    ]);
+    expect(primalGrowthAtLength(3)).toBe(4);
+    expect(primalGrowthAtLength(74)).toBe(4);
+    expect(primalGrowthAtLength(75)).toBe(3);
+    expect(primalGrowthAtLength(95)).toBe(3);
+    expect(primalGrowthAtLength(96)).toBe(2);
+    expect(primalGrowthAtLength(119)).toBe(2);
+    expect(primalGrowthAtLength(120)).toBe(1);
+    expect(primalGrowthAtLength(399)).toBe(1);
+  });
+
+  it('uses logical length, so extra growth advances rather than delays a downshift', () => {
+    const profile = GROWTH_PROFILES.dynasty;
+    expect(baseGrowthForFood(profile, 10, 'PRIMAL', 74)).toBe(4);
+    expect(baseGrowthForFood(profile, 10, 'PRIMAL', 75)).toBe(3);
+    expect(baseGrowthForFood(profile, 10, 'PRIMAL', 120)).toBe(1);
+  });
+
+  it('has a deterministic base-only fallback for diagnostics without live length', () => {
+    const profile = GROWTH_PROFILES.dynasty;
+    const rates = Array.from({ length: 80 }, (_, index) =>
+      baseGrowthForFood(profile, index + 1, 'PRIMAL')
+    );
+    expect(rates[0]).toBe(4);
+    expect(rates).toContain(3);
+    expect(rates).toContain(2);
+    expect(rates.at(-1)).toBe(1);
+  });
+});
+
+describe('growth compatibility', () => {
+  it('keeps missing historical stamps on the +1 baseline', () => {
+    expect(DEFAULT_GROWTH_PROFILE).toBe('baseline');
+    expect(resolveGrowthProfile(undefined).id).toBe('baseline');
+    for (const n of [1, 20, 100, 500]) {
+      expect(baseGrowthForFood(GROWTH_PROFILES.baseline, n)).toBe(1);
+    }
+  });
+
+  it('explicitly stamps new sessions with the dynasty profile', () => {
+    expect(ACTIVE_GROWTH_PROFILE).toBe('dynasty');
+    expect(ACTIVE_GROWTH_PROFILE).not.toBe(DEFAULT_GROWTH_PROFILE);
+  });
+
+  it('retains the legacy ladder curves unchanged', () => {
+    const tuned = GROWTH_PROFILES.tuned;
+    expect(baseGrowthForFood(tuned, 1)).toBe(6);
+    expect(baseGrowthForFood(tuned, 11)).toBe(6);
+    expect(baseGrowthForFood(tuned, 12)).toBe(2);
+    expect(baseGrowthForFood(tuned, 38)).toBe(3);
+    expect(baseGrowthForFood(tuned, 200)).toBe(8);
+
+    const aggressive = GROWTH_PROFILES.aggressive;
+    expect(baseGrowthForFood(aggressive, 1)).toBe(8);
+    expect(baseGrowthForFood(aggressive, 200)).toBe(10);
+  });
+
+  it('every profile keeps one food on the board and never shrinks', () => {
     for (const id of ALL) {
-      const p = GROWTH_PROFILES[id];
-      for (let n = 1; n <= 200; n++) {
-        expect(baseGrowthForFood(p, n)).toBeGreaterThanOrEqual(0);
+      const profile = GROWTH_PROFILES[id];
+      expect(profile.simultaneousFoods).toBe(1);
+      for (let n = 1; n <= 200; n += 1) {
+        expect(baseGrowthForFood(profile, n)).toBeGreaterThanOrEqual(1);
       }
     }
   });
 
-  it('the tuned shape is fast, then a plateau, then acceleration', () => {
-    const p = GROWTH_PROFILES.tuned;
-    expect(baseGrowthForFood(p, 1)).toBe(6);
-    expect(baseGrowthForFood(p, 11)).toBe(6);
-    expect(baseGrowthForFood(p, 12)).toBe(2); // plateau begins
-    expect(baseGrowthForFood(p, 31)).toBe(2);
-    expect(baseGrowthForFood(p, 32)).toBe(2); // acceleration begins
-    expect(baseGrowthForFood(p, 38)).toBe(3);
-    expect(baseGrowthForFood(p, 200)).toBe(8); // capped
-  });
-
-  it('the plateau is where most of the run happens', () => {
-    // The design claim: the plateau dominates total run time, which is why
-    // raising it from +1 to +2 moved the projection from 8.8 to 5.8 minutes.
-    const p = GROWTH_PROFILES.tuned;
-    const plateauFoods = Array.from({ length: 20 }, (_, i) => i + 12);
-    expect(plateauFoods.every((n) => baseGrowthForFood(p, n) === 2)).toBe(true);
-  });
-
-  it('pressure arrives around a minute, not around minute eight', () => {
-    // 20% occupancy is where the owner's play says a board starts mattering.
-    // Baseline needs ~4x the foods the tuned shapes do to get there.
-    const baseline = foodsToOccupancy('baseline', 0.2);
-    const tuned = foodsToOccupancy('tuned', 0.2);
-    const aggressive = foodsToOccupancy('aggressive', 0.2);
-    expect(tuned).toBeLessThan(baseline / 2);
-    expect(aggressive).toBeLessThanOrEqual(tuned);
-    expect(tuned).toBeLessThan(20);
-  });
-
-  it('the tuned shapes terminate; baseline effectively does not', () => {
-    // "Terminus" = 92% occupancy, where a board is unplayable.
-    const tuned = foodsToOccupancy('tuned', 0.92);
-    const aggressive = foodsToOccupancy('aggressive', 0.92);
-    expect(tuned).toBeGreaterThan(30);
-    expect(tuned).toBeLessThan(80);
-    expect(aggressive).toBeLessThan(tuned);
-    // Baseline needs hundreds of foods - which is exactly the defect: nobody
-    // has ever played that long, so the curve never engaged.
-    expect(foodsToOccupancy('baseline', 0.92)).toBeGreaterThan(250);
-  });
-
-  it('every profile places exactly ONE food', () => {
-    // WP-3.05 reversed WP-3.02 here. Three simultaneous foods was a real
-    // traverse-time fix - the seconds-per-food tail is what ends long runs in
-    // irritation - and the owner rejected it anyway (2026-07-28), correctly:
-    // Snake's loop is a single target, and three targets make every decision
-    // cheaper. The tail is now fixed at its cause in `foodPlacement.ts`, which
-    // narrows WHERE food may spawn as the board fills instead of adding more.
-    //
-    // Asserted for all three rather than deleted, because the traverse problem
-    // is real and "just put more food on the board" is the tempting wrong
-    // answer somebody will reach for again.
+  it('resolves only known profile ids and never throws on malformed stamps', () => {
     for (const id of ALL) {
-      expect(GROWTH_PROFILES[id].simultaneousFoods).toBe(1);
+      expect(isGrowthProfileId(id)).toBe(true);
+      expect(resolveGrowthProfile(id).id).toBe(id);
     }
-  });
-
-  it('offer cadence is re-based so the draft still exists in a short run', () => {
-    // At the shipped interval of 20, a ~48-food run sees two offers and the
-    // build system stops being a system.
-    for (const id of ['tuned', 'aggressive'] as GrowthProfileId[]) {
-      const p = GROWTH_PROFILES[id];
-      const terminus = foodsToOccupancy(id, 0.92);
-      expect(Math.floor(terminus / p.offerIntervalBase)).toBeGreaterThanOrEqual(4);
-      // The validator bound must not be stricter than the cadence, or honest
-      // runs flag. This is the same defect class as maxFoodPerSecond.
-      expect(p.minFoodsPerPick).toBeLessThanOrEqual(p.offerIntervalBase);
-    }
-  });
-
-  it('resolution is total and defaults to the shipped behaviour', () => {
-    expect(resolveGrowthProfile('tuned').id).toBe('tuned');
-    for (const bad of [undefined, null, '', 'nope', 42, {}, [], NaN]) {
+    for (const bad of [undefined, null, '', 'legendary', 42, {}, [], NaN]) {
+      expect(isGrowthProfileId(bad)).toBe(false);
       expect(resolveGrowthProfile(bad).id).toBe(DEFAULT_GROWTH_PROFILE);
     }
-    expect(isGrowthProfileId('baseline')).toBe(true);
-    expect(isGrowthProfileId('legendary')).toBe(false);
   });
 
-  it('baseGrowthForFood is defensive about the food index', () => {
-    const p = GROWTH_PROFILES.tuned;
-    expect(baseGrowthForFood(p, 0)).toBe(baseGrowthForFood(p, 1));
-    expect(baseGrowthForFood(p, -5)).toBe(baseGrowthForFood(p, 1));
-    expect(Number.isFinite(baseGrowthForFood(p, NaN))).toBe(true);
+  it('is defensive about invalid food indices and lengths', () => {
+    const profile = GROWTH_PROFILES.dynasty;
+    expect(baseGrowthForFood(profile, 0, 'PRIMAL')).toBe(
+      baseGrowthForFood(profile, 1, 'PRIMAL')
+    );
+    expect(baseGrowthForFood(profile, Number.NaN, 'PRIMAL')).toBe(4);
+    expect(primalGrowthAtLength(Number.NaN)).toBe(4);
   });
 });

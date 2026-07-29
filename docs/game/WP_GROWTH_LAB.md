@@ -1,10 +1,17 @@
 # WP-GL — The Growth Lab (playtest instrument)
 
-**Status: SPEC, pending owner ruling on D1.** Not scope until approved. On
-approval, fold into `docs/IMPLEMENTATION_HANDOFF.md` under the standard
-branch/migration protocol and delete this file.
+**Status: CONCLUDED — D1 ruled by the owner on 2026-07-29.** This file is kept
+as the historical instrument specification; its selector, candidate profiles,
+and rollout instructions are no longer current product behavior.
 
-**Purpose.** Let the owner *play* three growth configurations and say which one
+**Ruling.** Normal CYBER and COSMIC runs use classic **+1 growth throughout**.
+PRIMAL owns degressive body pressure: +4 below modelled length 75, +3 below 96,
++2 below 120, then +1. Gene offers were separated from growth and moved to a
+universal 6 ± 2-food clock (4–8; Patient doubles it). The server still stamps a
+profile for deterministic replay, but new normal runs receive `dynasty`; the
+Growth Lab selector and `NEXT_PUBLIC_GROWTH_LAB_V1` code path are retired.
+
+**Historical purpose.** Let the owner *play* three growth configurations and say which one
 feels like Snake. This is an instrument for answering D1 in
 `docs/game/GAMEPLAY_PROPOSAL.md`, not a balance change. Nothing here is intended
 to ship to players in its current form.
@@ -128,10 +135,11 @@ raised the rate.
 Resolve and stamp `growthProfileId` into `run_context`, strictly server-side.
 Never read it from the request body. Unknown or absent → `baseline`.
 
-### 2.7 Selector — Run Setup
+### 2.7 Selector — Run Setup (historical)
 
-Behind `NEXT_PUBLIC_GROWTH_LAB_V1` (new, default **off**). A three-way control
-rendering `profile.label`. Absent flag → no control, no stamp, baseline.
+The instrument used `NEXT_PUBLIC_GROWTH_LAB_V1` (default **off**) to expose a
+three-way control rendering `profile.label`. This control has been removed; the
+flag is inert in current code and should not be required by release checks.
 
 ---
 
@@ -219,5 +227,6 @@ profiles, no dynasty asymmetry, no difficulty ladder, no board-size change. Boar
 stays 20×20; if the owner wants to feel a smaller board, that is a second
 profile axis and a second instrument.
 
-**This work package does not decide anything.** It produces the evidence for D1
-and is expected to be deleted or rewritten once D1 is ruled.
+**Historical boundary.** This work package did not decide anything; it produced
+the evidence for D1. The decision record at the top now supersedes its candidate
+tables and rollout procedure.
