@@ -40,21 +40,26 @@ history; where they conflict, this contract is authoritative.
 - Active-run gene and strain identity is graphical and accessible. Full names
   and consequences belong in strategic decisions, results, Codex, accessible
   names, and pointer titles—not unreadable permanent microtext.
-- Telemetry, prompts, controls, and the tactical-hold message never overlay the
-  playable board. Strategic gene, mutation, portal, infusion, and strain-surge
-  decisions are the intentional frozen-arena exception. A second, much narrower
-  exception was ruled on 2026-07-29: a rate change may appear as transparent,
-  comic-like writing over the live board at run opening or at the exact change
-  event. It has no panel or scrim, takes no input, auto-dismisses, does not pause
-  the tick, and must not coexist with Ready or a strategic decision.
+- Telemetry, prompts, controls, tactical-hold guidance, and rate changes never
+  overlay the playable board. Strategic gene, mutation, portal, infusion, and
+  strain-surge decisions are the intentional frozen-arena exception. Growth and
+  CYBER speed changes use transparent comic-like writing in one permanently
+  reserved rail below the top instruments and above the arena. The rail is
+  camera-independent, takes no input, auto-dismisses, and never moves the arena
+  when an event appears.
 - A strategic dialog owns focus and input atomically. Directions, flick, pause,
   and camera shortcuts cannot leak through. BANK ends the run;
   non-terminal choices return to a deliberate tactical hold.
-- Pause has no menu. Pause immediately freezes the simulation while preserving
-  the visible board for tactical planning. A later accepted safe direction,
-  duplicate/current direction, deliberate flick, or eligible Space input
-  resumes atomically; reversal remains rejected. Escape/P cannot
-  bounce between redundant pause surfaces.
+- Pause has no menu. Space is the primary desktop pause key; P and Escape remain
+  secondary. Pause immediately freezes the simulation while preserving the
+  visible board for tactical planning. A later accepted safe direction,
+  duplicate/current direction, deliberate flick, or eligible fresh Space press
+  resumes atomically; reversal remains rejected and key-repeat can never turn a
+  pause into an accidental resume. On coarse-pointer play, the stable top-right
+  control cell becomes one large Pause target and the redundant camera-reset
+  target yields its space. There is no false claim that glass offers a hardware
+  keyboard's tactile certainty, but location, size, and the universal pause mark
+  make the action learnable without visual search.
 - Tactical hold exposes a secondary **Abandon run** control. It opens a
   destructive `alertdialog` that states which score, run DNA, and—when
   applicable—Energy will be forfeited. Cancelling returns to the same hold.

@@ -1,24 +1,27 @@
 .root {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  place-items: center;
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
   overflow: hidden;
 }
 
 .stack {
-  display: grid;
-  justify-items: center;
-  gap: clamp(4px, 1.2vmin, 10px);
-  transform: translateY(-7%) rotate(-2deg);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 1.5vw, 18px);
+  transform: rotate(-1deg);
   animation: rate-callout 1450ms cubic-bezier(0.16, 0.84, 0.28, 1) both;
 }
 
 .stack strong {
   font-family: var(--font-display), Impact, sans-serif;
-  font-size: clamp(1.35rem, 5.2vmin, 3.2rem);
+  font-size: clamp(1rem, 2.2vmin, 1.55rem);
   font-style: italic;
   font-weight: 900;
   line-height: 0.95;
@@ -26,40 +29,53 @@
   text-transform: uppercase;
   -webkit-text-stroke: 1px rgba(2, 8, 13, 0.9);
   paint-order: stroke fill;
-  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.72));
+  white-space: nowrap;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.72));
 }
 
 .growth {
   color: #ff8a35;
   text-shadow:
     0 0 14px rgba(255, 111, 32, 0.68),
-    3px 3px 0 #f5e8d0;
+    2px 2px 0 #f5e8d0;
 }
 
 .speed {
   color: #7df9ff;
   text-shadow:
     0 0 14px rgba(48, 220, 255, 0.64),
-    3px 3px 0 #d7fbff;
+    2px 2px 0 #d7fbff;
 }
 
 @keyframes rate-callout {
   0% {
     opacity: 0;
-    transform: translateY(8%) rotate(-4deg) scale(0.72);
+    transform: translateY(40%) rotate(-3deg) scale(0.72);
   }
   16% {
     opacity: 1;
-    transform: translateY(-7%) rotate(-2deg) scale(1.08);
+    transform: translateY(0) rotate(-1deg) scale(1.08);
   }
   28%,
   72% {
     opacity: 1;
-    transform: translateY(-7%) rotate(-2deg) scale(1);
+    transform: translateY(0) rotate(-1deg) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateY(-15%) rotate(-1deg) scale(1.02);
+    transform: translateY(-35%) rotate(0) scale(1.02);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .stack {
+    gap: 7px;
+  }
+
+  .stack strong {
+    font-size: clamp(0.875rem, 1.65vw, 0.94rem);
+    letter-spacing: 0.035em;
+    -webkit-text-stroke-width: 0.6px;
   }
 }
 

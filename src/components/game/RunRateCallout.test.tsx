@@ -4,7 +4,7 @@ import { RunRateCallout, speedMultiplierBand } from './RunRateCallout';
 describe('RunRateCallout', () => {
   afterEach(() => jest.useRealTimers());
 
-  it('announces growth and CYBER speed as one transparent board event', () => {
+  it('announces growth and CYBER speed as one transparent rail event', () => {
     render(
       <RunRateCallout
         growthRate={1}

@@ -26,8 +26,9 @@ export function speedMultiplierBand(
 }
 
 /**
- * One transparent, non-interactive board announcement. It appears after the
- * first deliberate move and only when a meaningful rate band changes.
+ * One transparent, non-interactive cockpit-rail announcement. It appears
+ * after the first deliberate move and only when a meaningful rate band
+ * changes; the fixed rail keeps it camera-independent and off the board.
  */
 export function RunRateCallout({
   growthRate,

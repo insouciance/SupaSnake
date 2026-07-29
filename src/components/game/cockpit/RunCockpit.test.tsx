@@ -146,7 +146,7 @@ describe('RunCockpit', () => {
     expect(onPause).toHaveBeenCalledTimes(1);
   });
 
-  it('turns a tactical hold into board-visible resume guidance plus an abandon action', () => {
+  it('keeps tactical-hold guidance off-board and exposes an abandon action', () => {
     const onAbandon = jest.fn();
     render(
       <RunCockpit
@@ -166,19 +166,22 @@ describe('RunCockpit', () => {
       </RunCockpit>
     );
 
-    expect(screen.getByTestId('tactical-hold')).toHaveTextContent(
-      'Tactical holdMove to resume'
+    const resumeGate = screen.getByTestId('resume-gate');
+    expect(resumeGate).toHaveTextContent(
+      'Tactical hold · press a safe direction to resume'
     );
-    expect(screen.getByTestId('tactical-hold')).toHaveAttribute('role', 'status');
     expect(screen.queryByRole('button', { name: 'Pause run' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Abandon run' }));
     expect(onAbandon).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('game-board-viewport')).toContainElement(
       screen.getByTestId('held-board')
     );
+    expect(screen.getByTestId('game-board-viewport')).not.toContainElement(
+      resumeGate
+    );
   });
 
-  it('layers transient rate feedback over the arena without replacing status', () => {
+  it('puts transient rate feedback in the fixed rail outside the arena', () => {
     render(
       <RunCockpit
         model={{
@@ -189,7 +192,7 @@ describe('RunCockpit', () => {
         }}
         onPause={jest.fn()}
         onResetView={jest.fn()}
-        arenaOverlay={<span data-testid="run-rate-callout">Growth rate +3</span>}
+        rateCallout={<span data-testid="run-rate-callout">Growth rate +3</span>}
       >
         <canvas data-testid="rate-board" />
       </RunCockpit>
@@ -197,8 +200,10 @@ describe('RunCockpit', () => {
 
     const board = screen.getByTestId('game-board-viewport');
     expect(board).toContainElement(screen.getByTestId('rate-board'));
-    expect(board).toContainElement(screen.getByTestId('run-rate-callout'));
-    expect(screen.getByTestId('game-hud')).toHaveTextContent('Run stable');
+    expect(board).not.toContainElement(screen.getByTestId('run-rate-callout'));
+    expect(screen.getByTestId('run-rate-rail')).toContainElement(
+      screen.getByTestId('run-rate-callout')
+    );
   });
 
   it('keeps growth out of the persistent HUD', () => {

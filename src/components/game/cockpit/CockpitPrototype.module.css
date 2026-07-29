@@ -64,6 +64,7 @@
 .composition {
   --cockpit-gap: clamp(7px, 0.8vw, 13px);
   --cockpit-deck: clamp(58px, 7cqh, 66px);
+  --cockpit-status: clamp(30px, 3.5cqh, 34px);
   display: grid;
   grid-template-columns:
     minmax(0, 1fr)
@@ -71,10 +72,17 @@
     minmax(150px, 1.45fr)
     minmax(128px, 1.2fr)
     auto;
-  grid-template-rows: var(--cockpit-deck) minmax(0, 1fr) var(--cockpit-deck);
+  grid-template-rows:
+    var(--cockpit-deck)
+    var(--cockpit-status)
+    minmax(0, 1fr)
+    var(--cockpit-status)
+    var(--cockpit-deck);
   grid-template-areas:
-    'score dna status mode controls'
+    'score dna mode mode controls'
+    'status status status status status'
     'arena arena arena arena arena'
+    '. . . . .'
     'genes genes systems systems systems';
   gap: var(--cockpit-gap);
   width: min(100%, calc(100cqh + 180px));
@@ -796,6 +804,10 @@
   height: 23px;
 }
 
+.controlLabel {
+  display: none;
+}
+
 .arenaBay {
   position: relative;
   z-index: 1;
@@ -813,41 +825,6 @@
   border-radius: 16%;
   background: radial-gradient(ellipse, rgba(0, 3, 6, 0.82), rgba(0, 3, 6, 0.6) 64%, transparent 78%);
   opacity: 0.72;
-}
-
-.tacticalHoldRail {
-  position: absolute;
-  top: clamp(7px, 1.5cqh, 12px);
-  left: 50%;
-  z-index: 5;
-  display: none;
-  min-height: 30px;
-  max-width: calc(100% - 24px);
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  transform: translateX(-50%);
-  border: 1px solid rgba(103, 232, 249, 0.38);
-  clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
-  color: var(--bone);
-  background: rgba(3, 9, 14, 0.88);
-  box-shadow: 0 0 22px rgba(34, 211, 238, 0.1);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.tacticalHoldRail strong {
-  color: var(--system-cyan);
-  font-family: var(--font-display), sans-serif;
-  font-weight: 400;
-}
-
-.tacticalHoldRail span {
-  color: var(--muted);
-  font-weight: 700;
 }
 
 .arenaFrame {
@@ -1142,11 +1119,13 @@
     --cockpit-rail: clamp(90px, 11.5vw, 112px);
     --cockpit-gap: 6px;
     grid-template-columns: var(--cockpit-rail) minmax(0, 1fr) var(--cockpit-rail);
-    grid-template-rows: 55px minmax(0, 1fr) 52px;
+    grid-template-rows: 28px 55px minmax(0, 1fr) 52px 28px;
     grid-template-areas:
-      'score arena dna'
+      'score status controls'
+      'score arena controls'
       'genes arena systems'
-      'mode arena controls';
+      'mode arena dna'
+      '. . .';
     gap: var(--cockpit-gap);
     width: min(100%, calc(100cqh + var(--cockpit-rail) + var(--cockpit-rail) + var(--cockpit-gap) + var(--cockpit-gap)));
   }
@@ -1264,11 +1243,12 @@
   }
 
   .statusRail {
-    display: none;
-  }
-
-  .liveRoot[data-state='held'] .tacticalHoldRail {
     display: flex;
+    gap: 5px;
+    overflow: hidden;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
   }
 
   .controls {
@@ -1280,6 +1260,46 @@
     height: 44px;
   }
 
+}
+
+@media (pointer: coarse) {
+  .liveRoot .controls {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .liveRoot .controls [data-control='view'] {
+    display: none;
+  }
+
+  .liveRoot .controls button[data-control='pause'],
+  .liveRoot .controls button[data-control='abandon'] {
+    display: flex;
+    width: 100%;
+    min-width: 78px;
+    height: 100%;
+    min-height: 52px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    touch-action: manipulation;
+  }
+
+  .liveRoot .controls button[data-control='pause'] svg,
+  .liveRoot .controls button[data-control='abandon'] svg {
+    width: 25px;
+    height: 25px;
+  }
+
+  .controlLabel {
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
 }
 
 @media (max-aspect-ratio: 4 / 5) {

@@ -33,8 +33,8 @@ interface RunCockpitProps {
   pauseLabel?: string;
   decisionDock?: ReactNode;
   eventCallout?: ReactNode;
-  /** Transparent, non-interactive feedback layered directly over the arena. */
-  arenaOverlay?: ReactNode;
+  /** Transient rate feedback in the fixed rail between HUD and arena. */
+  rateCallout?: ReactNode;
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -80,7 +80,7 @@ export function RunCockpit({
   pauseLabel = 'Pause run',
   decisionDock,
   eventCallout,
-  arenaOverlay,
+  rateCallout,
 }: RunCockpitProps) {
   const theme = getDynastyScreenTokens(model.dynasty);
   const style = {
@@ -300,6 +300,14 @@ export function RunCockpit({
             <div className={styles.eventCallout} data-cockpit-zone="status">
               {eventCallout}
             </div>
+          ) : rateCallout ? (
+            <div
+              className={styles.eventCallout}
+              data-cockpit-zone="status"
+              data-testid="run-rate-rail"
+            >
+              {rateCallout}
+            </div>
           ) : (
             <div
               className={styles.statusRail}
@@ -320,7 +328,13 @@ export function RunCockpit({
             aria-label="Cockpit controls"
             data-cockpit-zone="controls"
           >
-            <button type="button" onClick={onResetView} aria-label="Reset arena view" title="Reset view">
+            <button
+              type="button"
+              onClick={onResetView}
+              aria-label="Reset arena view"
+              title="Reset view"
+              data-control="view"
+            >
               <ResetGlyph />
             </button>
             {showPause ? (
@@ -330,8 +344,10 @@ export function RunCockpit({
                 disabled={pauseDisabled}
                 aria-label={pauseLabel}
                 title={pauseDisabled ? 'Pause rearming' : pauseLabel}
+                data-control="pause"
               >
                 <PauseGlyph />
+                <span className={styles.controlLabel}>Hold</span>
               </button>
             ) : showAbandon && onAbandon ? (
               <button
@@ -340,8 +356,10 @@ export function RunCockpit({
                 aria-label="Abandon run"
                 title="Abandon run"
                 className={styles.abandonControl}
+                data-control="abandon"
               >
                 <AbandonGlyph />
+                <span className={styles.controlLabel}>Abandon</span>
               </button>
             ) : (
               <button
@@ -368,21 +386,9 @@ export function RunCockpit({
 
           <div className={styles.arenaBay} data-testid="cockpit-arena-bay">
             <div className={styles.arenaQuietZone} aria-hidden="true" />
-            {model.state === 'held' && (
-              <div
-                className={styles.tacticalHoldRail}
-                role="status"
-                aria-live="polite"
-                data-testid="tactical-hold"
-              >
-                <strong>Tactical hold</strong>
-                <span>Move to resume</span>
-              </div>
-            )}
             <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
               <div className={styles.webglViewport} data-testid="game-board-viewport">
                 {children}
-                {arenaOverlay}
               </div>
             </div>
           </div>
