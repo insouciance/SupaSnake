@@ -4,7 +4,7 @@ Companion to `REDESIGN_WAVE.md`, which is the PLAN. This file is the STATE:
 what has shipped, what was ruled since the plan was written, and what a fresh
 session needs in order to continue without reconstructing any of it.
 
-Last updated 2026-07-29 (D1 ruling and pressure-feedback follow-up).
+Last updated 2026-07-29 (D1 ruling and pressure-feedback release).
 
 ---
 
@@ -27,8 +27,8 @@ tight coils while smoothing tail-boundary interpolation.
 
 This section supersedes older statements below that call D1 open or require
 `NEXT_PUBLIC_GROWTH_LAB_V1`; those passages are retained only where they explain
-the chronology of the wave. These changes are not production facts until their
-feature branch is integrated and released.
+the chronology of the wave. The ruling and feedback changes shipped as
+`b15b5c3` in production workflow `30460660086` on 2026-07-29.
 
 ---
 
