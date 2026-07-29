@@ -317,7 +317,15 @@ export function RunCockpit({
               data-cockpit-zone="status"
             >
               <span className={styles.statusMarker} aria-hidden="true" />
-              <span data-testid={model.isFirstMovementPrompt ? 'first-movement-prompt' : undefined}>
+              <span
+                data-testid={
+                  model.state === 'held'
+                    ? 'tactical-hold'
+                    : model.isFirstMovementPrompt
+                      ? 'first-movement-prompt'
+                      : undefined
+                }
+              >
                 {model.statusText}
               </span>
             </div>
