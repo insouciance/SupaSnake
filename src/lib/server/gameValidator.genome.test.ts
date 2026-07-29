@@ -124,7 +124,9 @@ describe('Rule-15 pressure event validation', () => {
     const result = settle(events);
     expect(result.valid).toBe(true);
     expect(result.errors).not.toEqual(
-      expect.arrayContaining([expect.stringContaining('PRESSURE_EVENT_INVALID')])
+      expect.arrayContaining([
+        expect.stringContaining('CLAIM_CLAMPED: pressureEvents'),
+      ])
     );
     expect(result.genome?.pressureEvents).toEqual(events);
   });
@@ -141,7 +143,9 @@ describe('Rule-15 pressure event validation', () => {
       { atFood: 15, source: 'thick_hide' },
     ]);
     expect(result.errors).toEqual(
-      expect.arrayContaining([expect.stringContaining('PRESSURE_EVENT_INVALID')])
+      expect.arrayContaining([
+        expect.stringContaining('CLAIM_CLAMPED: pressureEvents'),
+      ])
     );
   });
 });

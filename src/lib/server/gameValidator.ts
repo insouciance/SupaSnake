@@ -351,7 +351,6 @@ export const VALIDATION_CODE_SEVERITY: Readonly<
   INFUSE_BOUND: 'advisory',
   SURGE_INVALID: 'advisory',
   REVIVE_INVALID: 'advisory',
-  PRESSURE_EVENT_INVALID: 'advisory',
   PHOENIX_INVALID: 'advisory',
   TRAIT_CONFLICT: 'advisory',
   // Outcome/food-count repairs. `INVALID_FOOD_RATE` clamps the food count
@@ -1133,7 +1132,7 @@ function sanitizeGenomePressureEvents(
     (!Array.isArray(raw) || shaped.length !== raw.length)
   ) {
     errors.push(
-      'PRESSURE_EVENT_INVALID: malformed, out-of-range, or over-cap event dropped'
+      'CLAIM_CLAMPED: pressureEvents malformed, out-of-range, or over-cap entry dropped'
     );
   }
   if (shaped.length === 0) return [];
@@ -1153,7 +1152,7 @@ function sanitizeGenomePressureEvents(
   for (const event of shaped) {
     if (event.atFood < lastFood) {
       errors.push(
-        `PRESSURE_EVENT_INVALID: ${event.source} at food ${event.atFood} is out of order`
+        `CLAIM_CLAMPED: pressureEvents ${event.source} at food ${event.atFood} is out of order`
       );
       continue;
     }
@@ -1164,7 +1163,7 @@ function sanitizeGenomePressureEvents(
         event.atFood < feral.minorAt
       ) {
         errors.push(
-          `PRESSURE_EVENT_INVALID: Thick Hide cannot fire at food ${event.atFood}`
+          `CLAIM_CLAMPED: pressureEvents Thick Hide cannot fire at food ${event.atFood}`
         );
         continue;
       }
@@ -1180,7 +1179,7 @@ function sanitizeGenomePressureEvents(
             );
       if (apexAt === null || ouroborosBites >= biteCap) {
         errors.push(
-          `PRESSURE_EVENT_INVALID: Ouroboros cadence cannot fire at food ${event.atFood}`
+          `CLAIM_CLAMPED: pressureEvents Ouroboros cadence cannot fire at food ${event.atFood}`
         );
         continue;
       }
