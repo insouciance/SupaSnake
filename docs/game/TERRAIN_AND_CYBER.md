@@ -1,6 +1,6 @@
 # Terrain, and the CYBER ruleset
 
-**Status: IMPLEMENTED, updated 2026-07-28.** The original playtest reasoning is
+**Status: IMPLEMENTED, updated 2026-07-29.** The original playtest reasoning is
 retained; implementation authority lives in `src/shared/game/terrain.ts`, the
 rulesets, and `SnakeGameLogic`. The visual grammar in §1.2 is the current
 cross-source contract.
@@ -81,8 +81,11 @@ on it. All causes share the same categorical safety language:
   already committed and unavailable to placement. It remains passable.
 - **Solid:** a raised, matte, permanently still cell with no ambient pulse. Raised
   and still means lethal and permanent in every dynasty.
-- **Cause:** a quiet top inlay survives into the solid cell—CYBER shutter,
-  Fortress scale plate, COSMIC star scar, ladder seal. Cause may alter inlay
+- **Cause:** a quiet Genome-derived rune survives into the solid cell. CYBER
+  carries the three-stroke **VOLT bolt**, Fortress the rooted three-prong
+  **FERAL claw**, COSMIC the four-stroke broken **FLUX portal**, and ladder
+  terrain the five-sided **AURUM socket/seal**. These marks explain *why* a cell
+  transformed; their rotation has no gameplay meaning. Cause may alter rune
   silhouette/orientation, never collision shape, height, or lifecycle. It does
   not require a separate colour family.
 
@@ -145,35 +148,39 @@ at the last.
 **Tick.** Keep the hyperbolic decay, **floor at ~100 ms [H]** instead of 50.
 Under the shipped curve 100 ms arrives at food 33 and the remaining 65 foods run
 below playable — roughly two thirds of the speed curve is dead. Re-shape so the
-floor is reached near the *terminus* (food ~30 under the new pacing), not a third
-of the way in.
+meaningful speed tiers span CYBER's pressure horizon instead of exhausting a
+third of the way into a viable run.
 
 **Arena.** **6 blocks every 5 foods [H]**, filling the outermost free ring. The
-outer ring is 76 cells (19% of the board), so it completes around food 65 — which
-lands on the terminus. A second ring is a ladder rung, not base content.
+outer ring is 76 cells (19% of the board), so it completes around food 65. That
+is a major spatial handoff, not a predeclared terminus. A second starting ring
+remains a ladder rule, not base content.
 
-**Growth.** The accelerating curve shared with the lab profiles (+6 for foods
-1–11, +2 through 31, then +1 per 6 to a cap of 8 [H]).
+**Growth.** **+1 per food throughout** (owner ruling, 2026-07-29). CYBER's
+pressure identity is its accelerating movement plus a closing arena, not a
+third competing acceleration in body growth. Optional genes and INFUSE can
+still increase length.
 
 Combined projection:
 
 ```
-  food 10:  len  63 +  12 blocks =  19%   <- pressure begins
-  food 20:  len  87 +  24 blocks =  28%
-  food 30:  len 107 +  36 blocks =  36%
-  food 40:  len 130 +  48 blocks =  45%
-  food 50:  len 168 +  60 blocks =  57%
-  food 60:  len 223 +  72 blocks =  74%
-  food 70:                          95%   <- terminus
+  food 10:  len 13 + 12 blocks =  6.25%
+  food 20:  len 23 + 24 blocks = 11.75%
+  food 30:  len 33 + 36 blocks = 17.25%
+  food 40:  len 43 + 48 blocks = 22.75%
+  food 50:  len 53 + 60 blocks = 28.25%
+  food 60:  len 63 + 72 blocks = 33.75%
 ```
 
-Terminus around food 65–70, in roughly **3 to 3½ minutes** — faster in wall-clock
-than the owner's 51-food, 4:10 banked run, because the closing arena also shortens
-every traverse. **That is the point:** the block schedule is simultaneously the
-difficulty source and the cure for the efficiency collapse measured in §2.1.
+The projection deliberately omits optional body-growth genes and INFUSE. It no
+longer predicts an artificial 65–70-food terminus: player death should emerge
+from the interaction of speed, committed terrain, route choice, and any growth
+the build voluntarily adds. The block schedule remains both a difficulty source
+and a cure for the efficiency collapse measured in §2.1 because it shortens
+traverses without making the snake itself visually explode.
 
-**Score.** Front-loaded shape per D3 (§6.1), integral within ±10% of PRIMAL's and
-COSMIC's at the terminus.
+**Score.** Front-loaded shape per D3 (§6.1), compared with PRIMAL and COSMIC at
+the ruled balance horizon rather than at a growth-forced terminus.
 
 ### 2.3 Extraction — CYBER gets its own config
 
@@ -238,8 +245,9 @@ than from a taxonomy.
    Both concerns are resolved structurally by the invariant in §1.1.
 2. ~~**Forming duration** [H: ~2 s].~~ **IMPLEMENTED:** CYBER 2 seconds;
    Fortress 3 seconds because it forms behind the player's focus.
-3. ~~**Tick floor** [H: ~100 ms].~~ **IMPLEMENTED:** CYBER 100 ms. D1 still
-   requires owner playtest; do not silently retune it from telemetry-free feel.
+3. ~~**Tick floor** [H: ~100 ms].~~ **IMPLEMENTED:** CYBER 100 ms. The owner
+   confirmed CYBER is thrilling with +1 body growth; future tempo tuning should
+   preserve the separation between speed pressure and body growth.
 4. ~~**Does the ring fill inward or outward?**~~ **RULED:**
    outermost-free-ring first. Scattered interior blocks remain a different game.
 5. **Pending-state ceiling.** If a cell stays occupied for a long time the ring

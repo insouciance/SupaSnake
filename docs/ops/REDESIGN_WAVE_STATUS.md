@@ -4,7 +4,31 @@ Companion to `REDESIGN_WAVE.md`, which is the PLAN. This file is the STATE:
 what has shipped, what was ruled since the plan was written, and what a fresh
 session needs in order to continue without reconstructing any of it.
 
-Last updated 2026-07-28 (second revision — the wave built out and merged).
+Last updated 2026-07-29 (D1 ruling and pressure-feedback follow-up).
+
+---
+
+## D1 CLOSED — owner ruling, 2026-07-29
+
+The owner played CYBER and COSMIC in the complete wave and found both fun and
+thrilling, but ruled that their normal body growth must remain classic **+1**.
+CYBER owns speed pressure; COSMIC owns route/space pressure. PRIMAL owns the
+degressive body-pressure curve: +4 below modelled length 75, +3 below 96, +2
+below 120, then +1. Gene cadence is no longer coupled to any of those shapes:
+offers use 6 ± 2 foods (4–8), doubled by Patient, so skipping a poor offer does
+not make a significant build practically unreachable.
+
+The Growth Lab selector and rollout code are retired. Growth leaves setup and
+the permanent HUD; one transparent, non-blocking board inscription announces
+the opening value and later stage changes. CYBER speed changes use the same
+event grammar. The visual follow-up also replaces ambiguous block lines/Xs with
+Genome-derived source runes and adds a one-shot seal effect for newly completed
+tight coils while smoothing tail-boundary interpolation.
+
+This section supersedes older statements below that call D1 open or require
+`NEXT_PUBLIC_GROWTH_LAB_V1`; those passages are retained only where they explain
+the chronology of the wave. These changes are not production facts until their
+feature branch is integrated and released.
 
 ---
 
@@ -24,8 +48,8 @@ decisions, two owner-only flag flips, and one release.
 This had direct consequences for how the work was done, and they still govern
 the next wave:
 
-- **D1 cannot be ruled until then**, and neither can anything downstream of it.
-  Do not ask the owner to judge time-to-first-pressure on a partial build.
+- **D1 could not be ruled until then.** That sequencing condition was satisfied;
+  the completed-wave playtest produced the 2026-07-29 ruling above.
 - **Intermediate deploys are for verification, not for evaluation.** Deploying a
   half-built wave invites judgement on a design that is not finished, and the
   owner has already had two playtests distorted by exactly that (a decorative
@@ -304,11 +328,12 @@ preallocated. ~40–60 lines in the existing loop at `InstancedSnake.tsx:199-209
 
 ### 3.3 In-run growth readout
 
-The current growth rate must be visible **during** play, plus a transient notice
-when the step changes. Rule 1 boundary: a passive readout does not intrude, but
-the notice must be non-blocking, auto-dismissing, take no input, and never
-swallow a steering input or pause the tick. Must read
-`baseGrowthForFood(profile, n)` — never a second copy of the curve.
+**Superseded by the 2026-07-29 owner ruling.** Growth is event information, not
+permanent telemetry. It is absent from setup and the HUD. A transparent,
+non-blocking typographic notice appears after the opening movement and whenever
+the stage changes; CYBER speed tiers use the same mechanism. It auto-dismisses,
+takes no input, never pauses the tick, and reads the shared growth/speed rules
+rather than copying either curve into UI code.
 
 ### 3.4 One food
 
@@ -640,16 +665,15 @@ What remains is in §6a, and none of it is a build item.
     question only the owner can answer, and the answer decides whether a Yield
     parity gate gets written at all.
 
-**D1 remains unruled.** The owner must play the complete design before judging
-time-to-first-pressure. Their earlier Tuned-over-Aggressive preference is
-explicitly **stale** — food count is upstream of segments-per-food, traverse
-time, offer cadence and run length, so the profiles must be re-derived by play.
+**D1 was ruled on 2026-07-29.** See the decision record at the top. Tuned and
+Aggressive remain valid only for historical stamped sessions and explicit
+ladder diagnostics; neither is selectable for a new normal run.
 
 ---
 
 ## §6a What is actually left
 
-### Owner-only, and they block the playtest
+### Historical owner-only release steps
 
 Flag state exists **only in the Vercel dashboard**, is build-time inlined, and
 is unreadable from a dev session (`VERCEL_TOKEN` is a GitHub Actions secret).
@@ -661,8 +685,8 @@ the release.
    cannot be played. (Safe, just useless: an unstamped rung resolves to Ground
    on both sides.) Note CI already arms it, so the e2e leg is deliberately one
    flag ahead of production until this is done.
-2. Confirm **`NEXT_PUBLIC_GROWTH_LAB_V1`** is still `true` — D1 is ruled by
-   playing the three profiles against each other.
+2. ~~Confirm `NEXT_PUBLIC_GROWTH_LAB_V1=true` for the D1 instrument.~~ Completed
+   for the historical playtest; the selector and flag code are now retired.
 
 ### Owner decisions, none of them taken here
 
@@ -683,7 +707,7 @@ the release.
    in Vercel first — flags are build-time inlined, so setting them after a
    deploy does nothing — and the dry-run named exactly `057_player_ladders.sql`.
    Four defect fixes followed from the first playtest (§8).
-7. **Play it**, and rule D1. — the only thing left.
+7. ~~**Play it, and rule D1.**~~ Ruled 2026-07-29; see the top decision record.
 
 ---
 

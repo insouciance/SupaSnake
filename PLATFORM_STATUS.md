@@ -76,8 +76,9 @@ These do not invalidate the operator production release:
 
 - Physical iOS Safari and Android Chrome safe-area, browser-chrome, haptic,
   audio, camera, and long-session touch validation
-- Owner playtest ruling for D1 time-to-first-pressure, plus live-run judgement
-  of very long coils and each terrain source's forming-to-solid transition
+- Owner calibration of PRIMAL's ruled 75/96/120 growth thresholds, plus live-run
+  judgement of the coil seal, smoother tail boundary, Genome-derived terrain
+  runes, and each source's forming-to-solid transition
 - Three retry-dependent production-flag E2E journeys: fresh Launch in
   `engagement.spec.ts` and `game.spec.ts`, and Results → Replay in
   `run-flow.spec.ts`
