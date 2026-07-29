@@ -29,6 +29,7 @@ async function openCase({ kind, viewport, consent }) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     reducedMotion: 'reduce',
+    hasTouch: viewport.name !== 'desktop',
   });
   const page = await context.newPage();
   const errors = [];
@@ -86,6 +87,7 @@ async function openCase({ kind, viewport, consent }) {
     const holdRail = document.querySelector('[data-testid="tactical-hold"]');
     const resumeGate = document.querySelector('[data-testid="resume-gate"]');
     const abandonControl = document.querySelector('button[aria-label="Abandon run"]');
+    const viewControl = document.querySelector('button[aria-label="Reset arena view"]');
     const consentBanner = document.querySelector('.consent-banner');
     const footer = document.querySelector('footer');
     if (!root || !board) throw new Error('Decision fixture did not render');
@@ -93,7 +95,10 @@ async function openCase({ kind, viewport, consent }) {
     const targetRoot = kind === 'hold' ? root : dock ?? callout;
     const buttons = targetRoot
       ? [...targetRoot.querySelectorAll('button')]
-          .filter((button) => getComputedStyle(button).visibility !== 'hidden')
+          .filter((button) => {
+            const style = getComputedStyle(button);
+            return style.visibility !== 'hidden' && style.display !== 'none';
+          })
           .map(rect)
       : [];
     const primaryText = targetRoot
@@ -125,6 +130,9 @@ async function openCase({ kind, viewport, consent }) {
         ? rect(resumeGate)
         : null,
       abandonControl: abandonControl ? rect(abandonControl) : null,
+      viewControl: viewControl && getComputedStyle(viewControl).display !== 'none'
+        ? rect(viewControl)
+        : null,
       buttons,
       primaryText,
       footerVisibility: footer ? getComputedStyle(footer).visibility : null,
@@ -144,6 +152,16 @@ async function openCase({ kind, viewport, consent }) {
       `${kind}/${viewport.name}: tactical hold has no visible guidance`
     );
     invariant(metrics.abandonControl, `${kind}/${viewport.name}: abandon control missing`);
+    if (viewport.name !== 'desktop') {
+      invariant(
+        !metrics.viewControl,
+        `${kind}/${viewport.name}: reset view did not yield the coarse-pointer pause cell`
+      );
+      invariant(
+        metrics.abandonControl.width >= 78 && metrics.abandonControl.height >= 52,
+        `${kind}/${viewport.name}: coarse pause cell is only ${metrics.abandonControl.width.toFixed(1)}×${metrics.abandonControl.height.toFixed(1)}`
+      );
+    }
   } else if (metrics.dock) {
     invariant(metrics.dialog, `${kind}/${viewport.name}: dialog missing from dock`);
     invariant(metrics.panel, `${kind}/${viewport.name}: decision panel missing`);

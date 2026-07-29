@@ -229,10 +229,22 @@ test.describe('Run Cockpit v1', () => {
     await expect(gate).toBeHidden();
     await expect(page.getByRole('button', { name: /pause game/i })).toBeVisible();
 
-    await page.keyboard.press('p');
+    await page.keyboard.down('Space');
     const decisionDock = page.getByTestId('cockpit-decision-dock');
     await expect(gate).toBeVisible();
     await expect(gate).toContainText(/tactical hold/i);
+    // The browser may repeat a held Space. That repeat must not leak through
+    // the newly armed resume gate and move the snake again.
+    await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: ' ',
+        code: 'Space',
+        repeat: true,
+        bubbles: true,
+      }));
+    });
+    await expect(gate).toBeVisible();
+    await page.keyboard.up('Space');
     await expect(decisionDock).toBeHidden();
     await expect(page.getByRole('button', { name: /abandon run/i })).toBeVisible();
 
