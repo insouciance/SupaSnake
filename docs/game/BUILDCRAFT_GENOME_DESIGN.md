@@ -1,9 +1,14 @@
 # SupaSnake — Buildcraft: The Genome
 ## Strains, Expressions, Splices, Infusion & Lineage
 
-**Version:** 1.0
-**Date:** 2026-07-20
-**Status:** APPROVED — supersedes the *vocabulary* of `GAME_DESIGN_V2.md` §5 (Mutation Food) and §6 (Traits) while preserving every mechanic, id and validation proof defined there; builds on §3 (rulesets), §4 (extraction banking), §7 (meta). Dynasty spec remains LOCKED (CYBER/PRIMAL/COSMIC). Anti-P2W remains absolute: nothing in this document is purchasable for power.
+**Version:** 1.1
+**Date:** 2026-07-28
+**Status:** APPROVED — updated for Product Constitution v1.4 Rule 15 and the
+Redesign Wave implementation. It supersedes the *vocabulary* of
+`GAME_DESIGN_V2.md` §5 (Mutation Food) and §6 (Traits). Historical wire ids and
+folds remain readable, but retired effects are not reachable in a new run.
+Dynasty spec remains LOCKED (CYBER/PRIMAL/COSMIC). Anti-P2W remains absolute:
+nothing in this document is purchasable for power.
 **Companion docs:** `GAME_DESIGN_V2.md`, `MONETIZATION_DESIGN.md` (economy guardrails), `PLAYER_IDENTITY_V1.md` (card surfaces the Genome Card extends)
 
 ---
@@ -68,9 +73,21 @@ Validation classes: **[E]** exact server recompute (pure function of food index 
 - **Apex — Overclocked Reality** [E + P]: tick interval ×0.75 (faster world) and food **+30% DNA** from apex food onward. Counterweight: the speed, plus portal windows **−20 ticks**.
 
 ### FERAL
-- **Minor — Thick Hide** [P]: survive one self-collision per run — lose 5 tail segments instead of dying. Client reports trigger food index; reporting only ever reduces length-derived bonuses, so it is payout-non-increasing (same proof shape as Phoenix).
-- **Expression — Molt** [E + P/BT]: every 20th food after activation, tail resets to 8 and sheds **6 food items worth 5 flat DNA each** onto the board. Molt event count = floor((n − atExpression)/20), deterministic; whether you *ate* the molt-food is bounded-trust: ≤ 6 per event at exactly 5 DNA, hard cap. Counterweight: minimum body length 12 while active (growth floor enforced by engine).
-- **Apex — Ouroboros** [BT + P]: head touching your own **tail tip** consumes 3 segments and pays **30 flat DNA** per bite; touching any other segment still kills. Validation: bites ≤ floor(foods since apex ÷ 5), 30 DNA each, hard cap. Counterweight: food **−10%** [E] while active.
+- **Minor — Thick Hide** [BT + P]: survive one self-collision per run and gain
+  **8 permanent segments**. The client reports only `{source, atFood}`; the
+  server proves that FERAL Minor was active, permits one trigger, and derives
+  the +8 amount from shared configuration. The blocked move is cancelled.
+- **Expression — Fortress** [E + P]: every 20th food after activation, the
+  oldest **6 segments petrify**. They stop following but remain part of logical
+  length, and their distinct cells become forming terrain before hardening.
+  The event pays 5 flat DNA per petrified segment in the deterministic fold.
+  Counterweight: live-body floor 12; an event that would cross it is skipped.
+- **Apex — Ouroboros** [BT + P]: head touching the currently deployed **tail
+  tip** is legal and pays **30 flat DNA** per bite; touching any other segment
+  still kills. Every successful bite adds **2 permanent segments** rather than
+  consuming the tail. Validation bounds bites to floor(foods since apex ÷ 5),
+  derives +2/30 from shared configuration, and retains food **−10%** [E] while
+  active.
 
 ### FLUX
 - **Minor — Warp Skin** [P]: one free edge-wrap per 30 foods (wall hit wraps instead of kills, then recharges).
@@ -80,9 +97,32 @@ Validation classes: **[E]** exact server recompute (pure function of food index 
 ### UMBRA
 - **Minor — Shadow Skin** [E]: salvage **+0.05** (additive delta, same pipeline as trait outcome deltas).
 - **Expression — Phantom Coil** [P]: for 3 ticks after every eat, your head passes through your own tail. Counterweight: portal windows **−10 ticks** while active.
-- **Apex — Second Sun** [E + P]: survive one death (reborn at length 8, rewound 3 cells — Phoenix physics); the survived death pays **+150 flat DNA** (once, deterministic on reported trigger); salvage **+0.10**. **Hard rule: one revive per run total** — Second Sun absorbs a held Phoenix charge. Counterweight: bank **−0.10** while apex active. Unlike Phoenix, Second Sun's trigger does NOT void other benefits (that is its headline); the +150 pays only on a reported trigger, and the bank −0.10 persists either way, keeping reporting non-increasing overall.
+- **Apex — Second Sun** [E + P]: survive one death with every segment and
+  terrain consequence intact. The head rewinds 3 body cells, then gains a
+  **12-move body/board-edge phase** so the overlap is playable; solid terrain
+  remains solid. The survived death pays **+150 flat DNA** (once, bounded on a
+  reported trigger); salvage **+0.10**. **Hard rule: one revive per run total**
+  — Second Sun absorbs a held Phoenix charge. Counterweight: bank **−0.10**
+  while apex is active. Unlike Phoenix, Second Sun does not void other benefits.
 
 Expression/Apex [E] *costs* persist through a Phoenix trigger; *benefits* void — identical to the `GAME_DESIGN_V2.md` §5.3 discipline.
+
+### Rule 15 pressure contract
+
+New runs never append length losses. Their genome envelope may contain the
+bounded facts `pressureEvents: [{ source: 'thick_hide' | 'ouroboros', atFood }]`;
+there is no claimable segment amount. Settlement filters those facts against
+accepted FERAL activation, once-per-run/cadence bounds, and food count, then the
+shared fold derives +8 or +2. Historical `lossEvents` remain readable solely so
+already-settled v1 records recompute as they did; they are not produced by the
+current engine.
+
+The board uses three explicit pressure measures. **Logical segments** include
+following and petrified length. **Physical occupied cells** are unique live
+cells plus solid terrain. **Committed occupied cells** also include forming and
+pending terrain; this is the free-space clock used by placement. Duplicate tail
+segments each count toward logical pressure, while their shared occupied cell is
+rendered and spatially counted once.
 
 ---
 
@@ -97,7 +137,7 @@ Kinds: E (exact recompute), P (engine-only), EP (both), BT (bounded-trust compon
 | Gold Trail | AURUM | E | Every 5th food after pickup ×3 | Portals despawn 30 ticks sooner |
 | Overgrowth | FERAL | EP | Food +20% | +2 segments per food |
 | Wall Rush | FLUX | P | Slide along walls | Food −10% |
-| Shed | FERAL | EP | Every 25 foods tail resets to 8 | Food −10% |
+| Shed *(retired; legacy wire only)* | FERAL | EP | Not offered in new runs | Historical folds still recompute |
 | Mirror Wager | UMBRA | E | Bank ×1.50 | Salvage ×0.30 |
 | Magnet Pulse | FLUX | P | Pull radius 2 | Portal interval +4 |
 | Time Dilation | VOLT | EP | Speed −1 tier | Food −20% |
@@ -139,13 +179,13 @@ Kinds: E (exact recompute), P (engine-only), EP (both), BT (bounded-trust compon
 | **Serpentine** | FERAL | P | Last 5 tail segments don't kill on contact | Food −5% | Exact (cost) |
 | **Pocket Rift** | FLUX | P | Once per 20 foods, a wall hit teleports you to the opposite wall | Portal interval +2 | Engine |
 | **Grave Robber** | UMBRA | E | If your previous run ended in death, food +10% this run | None (slot + the death you already paid) | Exact — server reads previous session row |
-| **Last Gasp** | UMBRA | E | Foods eaten at length ≥30 pay +15% | Foods at length <30 pay −5% | Exact via deterministic length model; Thick Hide/Ouroboros losses are reported events that only reduce the bonus |
+| **Last Gasp** | UMBRA | E | Foods eaten at logical length ≥30 pay +15% | Foods at logical length <30 pay −5% | Deterministic fold plus bounded Rule-15 pressure events; event amounts are server-derived |
 
 ### 3.5 Dynasty signature genes (new M10 capstones)
 
 | Gene | Dynasty | Strain | Kind | Effect | Cost |
 |---|---|---|---|---|---|
-| **Heartwood** | PRIMAL M10 | FERAL | EP | Each Shed/Molt event also drops 1 golden food (×3) | Food −5% |
+| **Heartwood** | PRIMAL M10 | FERAL | EP | Each Fortress petrification pays +30 flat DNA | Food −5% |
 | **Zenith Protocol** | CYBER M10 | VOLT | E | Foods at max overclock +4 flat DNA | Foods below max tier −5% |
 | **Constellation Crown** | COSMIC M10 | FLUX | BT | Combo cap ×2.4 → ×2.8 | Chain window −1 tick. Server raises the COSMIC trust ratio only when the mastery row shows M10 |
 
@@ -164,7 +204,7 @@ Fusion trigger: pick gene B while holding gene A (order-free). The two genes are
 | # | Recipe | Splice | Strains | Kind | Effect | Cost |
 |---|---|---|---|---|---|---|
 | 1 | Gold Trail + Compound Interest | **Dragon Hoard** | AURUM×2 | E | Every 5th food ×3 **+5 flat**; bank +0.05/gene held | Portals −30 ticks |
-| 2 | Overgrowth + Shed | **Regenesis** | FERAL×2 | EP | Food +20%; every 20 foods tail resets to 8, each shed segment pays 1 flat (deterministic count; G8 balance pass) | Food −10% |
+| 2 | Overgrowth + Shed | **Regenesis** *(legacy-only)* | FERAL×2 | EP | Historical recompute only; Shed is not offerable | — |
 | 3 | Mirror Wager + Phoenix | **Styx Contract** | UMBRA×2 | EP | Bank ×1.50, salvage ×0.30, survive one death; trigger does NOT void benefits | Salvage locked ×0.30 post-trigger |
 | 4 | Time Dilation + Magnet Pulse | **Gravity Bubble** | VOLT+FLUX | EP | Speed −1 tier AND pull radius 3 | Food −25% |
 | 5 | Wall Rush + Splitter | **Ricochet** | FLUX+VOLT | EP+BT | Wall-slide; food in pairs; foods eaten while sliding +50% | Each food worth 80%. BT: slide-eat claims ≤ 40% of foods since fusion |
@@ -172,7 +212,7 @@ Fusion trigger: pick gene B while holding gene A (order-free). The two genes are
 | 7 | Deep Roots + Glacial Reserve | **Old Growth** | FERAL×2 | EP | Ramp cap +50% (vs +30%); +1 flat per 20 foods | Portals −25 ticks |
 | 8 | Compound Interest + Mirror Wager | **All In** | AURUM+UMBRA | E | Bank +0.15 per gene held | Salvage ×0.20; global bank clamp 1.75 applies |
 | 9 | Magnet Pulse + Gravity Well | **Black Magnet** | FLUX×2 | EP | Pull radius 4 | Food −15%; portal interval +4 |
-| 10 | Shed + Phoenix | **Molted Rebirth** | FERAL+UMBRA | EP | Shed cycle; survive one death keeping food multipliers | Food −10% |
+| 10 | Shed + Phoenix | **Molted Rebirth** *(legacy-only)* | FERAL+UMBRA | EP | Historical recompute only; Shed is not offerable | — |
 
 Recipe overlap (Gold Trail, Compound Interest, Mirror Wager, Shed, Phoenix, Magnet Pulse each appear in 2 recipes) is resolved deterministically: `fusePicks` fuses with the **earliest-held** eligible partner. Splices are **derived, never claimed**: the client reports raw parent picks; engine and server both run the same fusion function. A directly-claimed splice id is dropped and flagged.
 
@@ -202,7 +242,8 @@ At every exit portal:
 - **BANK** — end the run, banked multiplier applies (unchanged flow).
 - **PASS** — ignore it; next portal in 12±4 foods (unchanged).
 - **INFUSE** — consume the portal for build power. Requirements: length ≥ 8. Cap: **3 infuses per run**. Effects, per infuse:
-  - **Pay 4 tail segments** immediately (body as currency — the FERAL bridge).
+  - Gain **8 permanent segments** immediately. INFUSE buys build power with
+    future board pressure; it never pays a reward by deleting another reward.
   - Immediate **gene offer** (gravity algorithm, shared offerIndex). If already at 6 genes: **Strain Surge** instead — +1 strain point to a chosen held strain (counts toward thresholds, does NOT count as an in-run gene for gates).
   - Bank multiplier **+0.05** (additive), salvage **−0.05**.
   - Next portal interval **+2 foods**.
@@ -210,8 +251,12 @@ At every exit portal:
 **Updated outcome pipeline** (extends the existing order): anomaly base override → Mirror Wager set → Overclock Harvest delta → Compound Interest → **infuse deltas** → strain minor/apex deltas (Shadow Skin, Second Sun, Midas) → trait deltas → **hard clamps: bank ∈ [0, 1.75], salvage ∈ [0, 0.90]** → round to 4 decimals → single floor at payout.
 
 **Anti-degenerate analysis.**
-- *"Always infuse" fails*: each infuse costs 4 segments now (immediate risk on a 20×20 board), lowers the crash floor, and pushes the next exit 2 foods deeper into a run whose death probability compounds per food. Genes acquired are sidegrades with costs. EV of the 3rd infuse is negative unless survival past food 60 is elite.
-- *"Never infuse" stays viable*: the consistency archetype (§11, Molt Farmer) banks early portals and beats infuse-heavy lines on DNA/hour whenever p(bank) < ~0.75.
+- *"Always infuse" fails*: each infuse adds 8 segments now (immediate and
+  permanent pressure on a 20×20 board), lowers the crash floor, and pushes the
+  next exit 2 foods deeper into a run whose death probability compounds per
+  food. Genes acquired are sidegrades with costs.
+- *"Never infuse" stays viable*: consistency lines bank early portals and avoid
+  the infuse growth bill.
 - *PASS retains a distinct niche*: raw growth with zero added cost — correct at 6 genes when a surge point wouldn't cross a threshold, or when protecting a streak.
 - *Infuse-then-instant-bank is impossible*: infusing consumes the portal; you must survive 12±4 (+2/infuse) more foods to see another exit. Build power is always bought with exposure.
 
@@ -261,7 +306,7 @@ The 8 traits keep their exact `traits.ts` effects, slots (1-2, rarity/Gen3 rule)
 | Meteor Shower | food despawns 60 ticks | VOLT week: VOLT +100 weight; Arc Lightning range 4 |
 | Blackout | visibility 6 | UMBRA week: UMBRA +100 weight; base salvage +0.05 |
 | Twin Exits | 2 portals, bank ×1.15 | FLUX week: FLUX +100 weight; Warp Skin recharge 20 foods |
-| **Overgrown (new)** | all snakes +1 extra segment per food | FERAL week: FERAL +100 weight; Molt foods pay 10 flat (vs 5) |
+| **Overgrown (new)** | all snakes +1 extra segment per food | FERAL week: FERAL +100 weight; Fortress pays 10 flat per petrified segment (vs 5) |
 
 **Contracts** (same 400–600 daily band; seeded inactive, flipped when genome facts are live): Showtime — trigger a [strain] Expression (500); Full Helix — bank a run holding 6 genes (550); Geneticist — fuse any splice (600); Apex Predator — reach any Apex (650, weekly bonus 800); Purebred — bank with 3+ same-strain genes (500); All In — bank a run with 2+ infuses (600).
 
@@ -279,7 +324,10 @@ Two global server clamps backstop everything:
 - **Aggregate claims clamp**: the SUM of all bounded-trust claims ≤ **35% of the deterministic recompute**. (Implementation note, corrected from the earlier "×1.45 of gene-less" formulation: deterministic gene effects are exact and unforgeable — Loan Shark windows legitimately exceed ×1.45 of a gene-less run, so only the *claim* surface carries the aggregate backstop.) Individual BT caps (25/35/40/60%) bind first in practice; the aggregate clamp binding while they pass is *flagged*, never silently hidden (cheat signal).
 - **Outcome clamps**: bank ≤ **1.75**, salvage ∈ [0, **0.90**].
 
-**Food-rate bound**: Arc Lightning and Molt raise the honest eat rate; the per-dynasty `maxFoodPerSecond` bound widens by a fixed allowance only when the accepted picks make a VOLT/FERAL expression reachable — a widened but still hard cap.
+**Food-rate bound**: Arc Lightning raises the honest eat rate; the per-dynasty
+`maxFoodPerSecond` bound widens by a fixed allowance only when the accepted
+picks make the VOLT expression reachable. Fortress changes space and length,
+not food collection rate.
 
 **Ceiling analysis** (account stack streak 1.35 × set 1.30 × duel 1.05 = ×1.843, unchanged):
 
@@ -296,7 +344,12 @@ Justification: (1) infuse converts payout into risk — extra earnings are bough
 
 ---
 
-## 11. Archetype EV check (no dominant strategy)
+## 11. Archived launch-model EV check
+
+This table is retained as the v1.0 design's balance hypothesis, not a current
+gate. It predates Fortress, the carry, the new dynasty curves, and Rule 15's
+growth pricing; current balance is enforced by `genome.balance.test.ts` and must
+be measured from the current fold before any tuning decision.
 
 Rough per-run EV, elite skill, account stack 1.843, p(bank) shown:
 
@@ -350,8 +403,15 @@ Pre-unlock, the systems are invisible (not greyed out) — day-1 remains "snake,
 
 ## 15. Risks
 
-1. **Bounded-trust surface grows** (Gilded Wake, Midas, Static Charge, Ricochet, molt-eats). Each cap is individually payout-non-increasing; stacked claims are backstopped by the ×1.45 global clamp enforced as a flagged audit.
-2. **Deterministic length model** is new load-bearing infrastructure (Bulk Up, Last Gasp, infuse eligibility). Every length-changing effect must be food-indexed or reported-event-non-increasing.
+1. **Bounded-trust surface grows** (Gilded Wake, Midas, Static Charge,
+   Ricochet, Ouroboros, and the bounded Rule-15 trigger facts). Individual and
+   aggregate caps remain mandatory. Fortress removed the old molt-pickup claim
+   rather than repointing it.
+2. **The pressure model is load-bearing infrastructure** (Bulk Up, Last Gasp,
+   infuse eligibility, food placement, rendering). Logical segments, physically
+   occupied cells, and committed cells are distinct quantities. New effects may
+   add length or transform it into permanent terrain; they may never truncate
+   it or make a committed cell free again.
 3. **UMBRA heirloom concentration** (4 of 8 traits) plus salvage buffs could enable salvage-farming. EV says banked lines dominate at ≥0.62 p(bank); mitigation ready: salvage clamp 0.90 → 0.80.
 4. **Mono-strain consistency** could collapse diversity. Dial: wildcard 25% → 35% if mono-strain exceeds 40% of elite runs.
 5. **Comet Tail / All In** are the likeliest clamp-breakers; pre-tuned nerfs ready (Comet Tail portals −50 ticks; All In +0.12/held).

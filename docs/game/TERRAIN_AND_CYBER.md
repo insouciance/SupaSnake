@@ -1,8 +1,9 @@
 # Terrain, and the CYBER ruleset
 
-**Status: SPEC, from the owner's playtest of 2026-07-27.** Feeds WP-3.02 (the
-lab) and WP-3.04 (dynasty curves) in `docs/ops/REDESIGN_WAVE.md`. Not scope until
-those WPs are claimed.
+**Status: IMPLEMENTED, updated 2026-07-28.** The original playtest reasoning is
+retained; implementation authority lives in `src/shared/game/terrain.ts`, the
+rulesets, and `SnakeGameLogic`. The visual grammar in §1.2 is the current
+cross-source contract.
 
 Two things, in one document because the second is the first's first consumer.
 
@@ -10,12 +11,13 @@ Two things, in one document because the second is the first's first consumer.
 
 ## Part 1 — The terrain primitive
 
-**A block is an occupied, lethal cell.** That is the whole idea. It is not a
-hazard system, an entity, or a mode: it is a cell that behaves like wall.
+**A block is a permanently locked board cell.** That is the whole idea. It is
+not a hazard system, an entity, or a mode: it is a board cell transformed into
+wall. The rendered metaphor is deliberately not a loose concrete object.
 
 **Why one primitive and not three mechanics** (Rule 12 asks what existing system
 could not do the job): nothing in the engine can currently occupy a cell
-lethally — the board holds food, extra foods, molt foods, exit portals, the
+lethally — the board holds food, constellation stars, exit portals, the
 mutation helix and gilded cells, and **none of them is lethal**. So this is
 genuinely new. But it is *one* new thing, and it replaces three separately
 proposed mechanics:
@@ -24,6 +26,7 @@ proposed mechanics:
 |---|---|
 | **CYBER** (Part 2) | the arena hardens from the outside in |
 | **PRIMAL / FERAL-2** | the shed rewrite — your tail petrifies instead of vanishing (kill-list row 26) |
+| **COSMIC** | uncollected constellation stars calcify where they were abandoned |
 | **The ladder** (§8.6a) | a rung can start the run with a ring already placed |
 
 A shrinking *board* was considered first and rejected: it changes grid geometry,
@@ -65,12 +68,35 @@ filling — which would **reward** wall-hugging on the one dynasty designed to
 punish it. Waiting to solidify keeps the pressure and removes the unfairness.
 
 *Non-exploit, checked:* a player cannot camp cells to stall the arena. A cell
-occupied by the body is not free space either; whether it holds snake or
-concrete, it cannot be used. The pressure is identical.
+occupied by the body is not free space either; whether it holds snake or is
+committed to locking, it cannot be used. The pressure is identical.
 
-### 1.2 Determinism — the shippability constraint
+### 1.2 Visual grammar — one lifecycle, sourced signatures
 
-**Block placement must be replayable server-side or this cannot ship.**
+Terrain is a **transformation of the board**, not a collection of props placed
+on it. All causes share the same categorical safety language:
+
+- **Forming/pending:** low warm-amber fill plus four perimeter rails. The fill
+  closes across the cell as the safe window elapses; the whole outlined cell is
+  already committed and unavailable to placement. It remains passable.
+- **Solid:** a raised, matte, permanently still cell with no ambient pulse. Raised
+  and still means lethal and permanent in every dynasty.
+- **Cause:** a quiet top inlay survives into the solid cell—CYBER shutter,
+  Fortress scale plate, COSMIC star scar, ladder seal. Cause may alter inlay
+  silhouette/orientation, never collision shape, height, or lifecycle. It does
+  not require a separate colour family.
+
+Forming fill/rails, solid bases, and all source reliefs use three instanced
+meshes—not one material/mesh family per cause. Source is carried by relief
+silhouette rather than colour, so none of it borrows the active snake's dynasty
+glow; player identity and board restriction do not compete.
+
+### 1.3 Determinism — replayability, not payout
+
+Terrain changes physics, never payout. Settlement bounds the facts terrain can
+influence—duration and food count—but does not replay player movement or block
+positions. Seeded placement exists for challenge/replay parity, not as a new
+economic claim surface.
 
 - **Cadence is food-indexed**, never time-indexed: *K blocks every M foods*. Food
   index is already the spine of every replay (`run_events` stamps `{e:'f', n, t}`;
@@ -78,9 +104,10 @@ concrete, it cannot be used. The pressure is identical.
 - **Cell choice is seeded** from `run_seed` — the same injectable-rng discipline
   `sampleFoodCell` already follows (*"a seeded run must lay out identical food
   waves on every replay"*). Never `Math.random()`.
-- The server derives the block set for food *n* independently and identically.
+- Same-seed engine runs derive the scheduled block set for food *n*
+  independently and identically.
 
-### 1.3 Rules
+### 1.4 Rules
 
 - **Blocks are added, never removed.** No gene, tier, splice, revive, or ladder
   rung may clear one. Clearing terrain would be `shed` reinvented with extra
@@ -181,20 +208,22 @@ than from a taxonomy.
 
 ## 3 — Tests
 
-- **Replay determinism.** Server-derived block set for food *n* equals the
-  engine's, over a seeded sweep. This is the gate: without it the feature cannot
-  be validated and must not ship.
-- **Rule 15 monotonicity.** Free space is non-increasing across every tick of
-  every scripted run; block count never decreases.
+- **Replay determinism.** Two engines with the same seeded schedule choose the
+  same arena cells at food *n*.
+- **Rule 15 monotonicity.** Committed free space is non-increasing across every
+  scripted transition; block count never decreases. Forming cells count as
+  committed even before they are physically lethal.
 - **The overlap invariant (§1.1).** Over a long seeded run, assert that **no
   snake segment ever occupies a solid block** — including across revives, growth
   spurts and infuses. This is the test that lets the renderer assume the case
   cannot happen; if it ever fails, head-only lethality is wrong somewhere.
 - **Placement exclusion.** Over a long seeded run, no food and no portal ever
   spawns on a solid block; no block spawns on the exit portal.
-- **Rate bound.** A scripted CYBER run collecting at the maximum honest rate on a
-  50%-occupied board produces zero `INVALID_FOOD_RATE`. The bound must account for
-  **occupancy**, not just food count — traverses shorten as the arena closes.
+- **Presentation connection.** Every terrain-producing path reaches
+  `TerrainBlocks`; all four sources survive into the renderer; forming reads
+  `formingTotal`; full-board capacity is not silently truncated.
+- **Rate bound.** A scripted CYBER run collecting at the maximum honest rate on
+  a 50%-occupied board produces zero `INVALID_FOOD_RATE`.
 - **Window parity.** The portal window in real seconds is within tolerance across
   all three dynasties at every point on their speed curves.
 - **Fold parity.** Growth changes live in the one shared function; parity test
@@ -207,13 +236,12 @@ than from a taxonomy.
    tail lethality would make the transition kill unintendedly and feel unfair,
    and a solid block sharing a tile with the tail looks wrong even briefly.
    Both concerns are resolved structurally by the invariant in §1.1.
-2. **Forming duration** [H: ~2 s]. Long enough to reposition at 100 ms/cell,
-   short enough that the ring still completes on schedule.
-3. **Tick floor** [H: ~100 ms] — the owner's own three data points bracket
-   95–100; the research bound says 100–120. Confirm by playing the lab.
-4. **Does the ring fill inward or outward?** Outermost-free-ring-first gives the
-   "closing in" read. The alternative — scattered interior blocks — is a
-   different game and should not be smuggled in as a tuning value.
+2. ~~**Forming duration** [H: ~2 s].~~ **IMPLEMENTED:** CYBER 2 seconds;
+   Fortress 3 seconds because it forms behind the player's focus.
+3. ~~**Tick floor** [H: ~100 ms].~~ **IMPLEMENTED:** CYBER 100 ms. D1 still
+   requires owner playtest; do not silently retune it from telemetry-free feel.
+4. ~~**Does the ring fill inward or outward?**~~ **RULED:**
+   outermost-free-ring first. Scattered interior blocks remain a different game.
 5. **Pending-state ceiling.** If a cell stays occupied for a long time the ring
    falls behind schedule. Cheapest answer is none at all — the schedule is
    food-indexed, so a delayed block still arrives and the count self-corrects.

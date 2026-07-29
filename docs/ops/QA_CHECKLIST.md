@@ -517,9 +517,10 @@ Check both benefit and counterweight when encountered.
 - [ ] VOLT: Tempo slowdown; Arc Lightning consumes nearby food while all food
       is discounted; Overclocked Reality accelerates the world and raises food
       value while shortening portals.
-- [ ] FERAL: Thick Hide survives one self-hit by losing tail; Molt periodically
-      resets/sheds value with its body floor; Ouroboros rewards only tail-tip
-      bites and discounts normal food.
+- [ ] FERAL: Thick Hide survives one self-hit and charges +8 growth; Fortress
+      turns deployed tail cells into permanent terrain without reducing logical
+      length; Ouroboros rewards only eligible tail-tip bites, charges +2 growth,
+      and discounts normal food.
 - [ ] FLUX: Warp Skin grants/recharges a wall wrap; Rift Aura wraps all walls
       with food/portal costs; Singularity periodically pulls food and delays
       portals.
