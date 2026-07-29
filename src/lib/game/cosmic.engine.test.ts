@@ -184,6 +184,7 @@ describe('uncollected stars calcify where they sat', () => {
 
     const state = engine.getState();
     const terrainKeys = state.terrain.map((b) => cellKey(b.x, b.z));
+    expect(state.terrain.every((block) => block.source === 'cosmic')).toBe(true);
     // Whatever was NOT eaten on the way is now terrain, and nothing else is.
     for (const key of terrainKeys) expect(abandoned).toContain(key);
     expect(new Set(terrainKeys).size).toBe(terrainKeys.length);

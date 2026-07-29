@@ -1,79 +1,81 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { GAME_CONFIG } from '@/shared/config/game';
+import type { TerrainBlock, TerrainSource } from '@/shared/game/terrain';
 import { FLOOR_CLEARANCE } from './ArenaFloor';
-import type { TerrainBlock } from '@/shared/game/terrain';
 
 /**
- * TERRAIN, DRAWN (WP-3.05).
+ * One terrain physics primitive, one lifecycle, four causal signatures.
  *
- * This component exists because it did not. WP-3.03 shipped terrain as
- * complete physics — scheduled, solidifying, and lethal in the collision chain
- * — with nothing anywhere in the UI that draws it. `arena: CYBER_ARENA` then
- * put six invisible instant-death blocks on the outer ring every five foods.
- * Every terrain test passed, because every terrain test asserts the MODEL, and
- * the model was never wrong.
+ * FORMING is a claimed BOARD CELL: a low amber fill plus perimeter rails
+ * closes inward. It is passable, and its area is the remaining-warning clock.
+ * SOLID is a transformed cell: raised, matte, and permanently still. This
+ * replaces the generic "concrete cube" read with board architecture while
+ * preserving the categorical flat/raised safety grammar.
  *
- * THE FORMING PHASE IS THE WHOLE FAIRNESS ARGUMENT, so it is drawn as a fill
- * rather than a countdown. `terrain.ts` calls it "not a courtesy — it is what
- * makes terrain a positioning problem rather than a random death". A forming
- * phase the player cannot see is only the random death.
- *
- * TWO LAYERS, AND THEY DIFFER CATEGORICALLY, NOT BY COLOUR:
- *
- *   forming  — FLAT floor decal, warm, growing. Harmless. You may cross it.
- *   solid    — RAISED block, cold, static, casting a shadow. Lethal. Permanent.
- *
- * Flat-and-changing versus raised-and-still is a distinction that survives
- * anyone retuning the palette later, and it is the axis the snake's own trail
- * must also differ on: the trail responds to how you are playing, terrain never
- * moves again. Rule 15 — a block is added and never removed.
- *
- * Deliberately NOT a dynasty colour. Dynasty hues mean "you" everywhere else in
- * this scene; the arena closing in is the one thing on the board that is not.
+ * Cause survives as a quiet top relief, never a different collision shape:
+ * CYBER shutter, Fortress scale plate, Cosmic star scar, ladder seal. Source
+ * is distinguished by silhouette rather than dynasty colour. Three instanced
+ * meshes cover the whole grammar (forming, solid, relief), independent of how
+ * many cells or causes are present.
  */
 
-/** Outer ring first, so a full 20x20 board cannot overflow the buffer. */
-const MAX_BLOCKS = 256;
+const MAX_BLOCKS = GAME_CONFIG.board.gridSize * GAME_CONFIG.board.gridSize;
+const MAX_FORMING_INSTANCES = MAX_BLOCKS * 5;
+const MAX_SIGNATURES = MAX_BLOCKS * 2;
+const FORMING_HEIGHT = 0.035;
+const FORMING_FOOTPRINT = 0.86;
+const SOLID_HEIGHT = 0.72;
+const SOLID_FOOTPRINT = 0.94;
+const SIGNATURE_HEIGHT = 0.04;
 
-/**
- * Warm while it is still a decision, cold once it is architecture. Amber reads
- * as "incoming" against the `#101722` floor; slate reads as "wall".
- */
-const FORMING_COLOR = '#f5a742';
-const SOLID_COLOR = '#8fa3b8';
-
-/** Flat enough to be unmistakably floor, wide enough to claim the cell. */
-const formingGeometry = new THREE.BoxGeometry(0.9, 0.05, 0.9);
-/** Tall enough to read as an obstacle from the near-top-down camera. */
-const solidGeometry = new THREE.BoxGeometry(0.94, 0.62, 0.94);
-
+const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
 const formingMaterial = new THREE.MeshBasicMaterial({
-  color: '#ffffff',
-  transparent: true,
-  opacity: 0.6,
-  depthWrite: false,
-  vertexColors: true,
+  color: '#f2a640',
+  toneMapped: false,
 });
-
 const solidMaterial = new THREE.MeshStandardMaterial({
-  color: '#ffffff',
-  // Matte and barely emissive: terrain must not bloom. Bloom is how this scene
-  // says "alive", and the arena is the opposite of alive.
-  roughness: 0.85,
-  metalness: 0.08,
-  emissive: SOLID_COLOR,
-  emissiveIntensity: 0.12,
-  vertexColors: true,
+  color: '#8292a0',
+  roughness: 0.9,
+  metalness: 0.03,
+  emissive: '#65717c',
+  emissiveIntensity: 0.18,
+});
+const signatureMaterial = new THREE.MeshBasicMaterial({
+  color: '#e6edf1',
+  toneMapped: false,
 });
 
+// Module scratch: a terrain update allocates no THREE objects.
 const matrix = new THREE.Matrix4();
 const position = new THREE.Vector3();
-const quaternion = new THREE.Quaternion();
+const identity = new THREE.Quaternion();
+const rotation = new THREE.Quaternion();
+const yAxis = new THREE.Vector3(0, 1, 0);
 const scale = new THREE.Vector3(1, 1, 1);
-const color = new THREE.Color();
+
+function writeInstance(
+  mesh: THREE.InstancedMesh,
+  index: number,
+  x: number,
+  y: number,
+  z: number,
+  sx: number,
+  sy: number,
+  sz: number,
+  quaternion: THREE.Quaternion
+): void {
+  position.set(x, y, z);
+  scale.set(sx, sy, sz);
+  matrix.compose(position, quaternion, scale);
+  mesh.setMatrixAt(index, matrix);
+}
+
+function markUpdated(mesh: THREE.InstancedMesh): void {
+  mesh.instanceMatrix.needsUpdate = true;
+}
 
 export interface TerrainBlocksProps {
   terrain: readonly TerrainBlock[];
@@ -82,82 +84,169 @@ export interface TerrainBlocksProps {
 export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
   const formingRef = useRef<THREE.InstancedMesh>(null);
   const solidRef = useRef<THREE.InstancedMesh>(null);
-  const pulse = useRef(0);
+  const signatureRef = useRef<THREE.InstancedMesh>(null);
 
   useEffect(() => {
-    const formingMesh = formingRef.current;
-    const solidMesh = solidRef.current;
-    if (!formingMesh || !solidMesh) return;
+    const forming = formingRef.current;
+    const solid = solidRef.current;
+    const signature = signatureRef.current;
+    if (!forming || !solid || !signature) return;
 
     let formingCount = 0;
     let solidCount = 0;
+    let signatureCount = 0;
+    const addForming = (
+      x: number,
+      y: number,
+      z: number,
+      sx: number,
+      sy: number,
+      sz: number
+    ): void => {
+      if (formingCount >= MAX_FORMING_INSTANCES) return;
+      writeInstance(
+        forming,
+        formingCount,
+        x,
+        y,
+        z,
+        sx,
+        sy,
+        sz,
+        identity
+      );
+      formingCount += 1;
+    };
+    const addSignature = (
+      source: TerrainSource,
+      x: number,
+      y: number,
+      z: number,
+      sx: number,
+      sz: number,
+      angle: number
+    ): void => {
+      // `source` is intentionally consumed by the caller's silhouette switch,
+      // not mapped to a colour: dynasty hues mean player identity elsewhere.
+      void source;
+      if (signatureCount >= MAX_SIGNATURES) return;
+      rotation.setFromAxisAngle(yAxis, angle);
+      writeInstance(
+        signature,
+        signatureCount,
+        x,
+        y,
+        z,
+        sx,
+        SIGNATURE_HEIGHT,
+        sz,
+        rotation
+      );
+      signatureCount += 1;
+    };
 
     for (const block of terrain) {
+      const x = block.x + 0.5;
+      const z = block.z + 0.5;
       if (block.solid) {
-        if (solidCount >= MAX_BLOCKS) continue;
-        position.set(block.x + 0.5, FLOOR_CLEARANCE + 0.31, block.z + 0.5);
-        scale.set(1, 1, 1);
-        matrix.compose(position, quaternion, scale);
-        solidMesh.setMatrixAt(solidCount, matrix);
-        solidMesh.setColorAt(solidCount, color.set(SOLID_COLOR));
-        solidCount++;
+        if (solidCount < MAX_BLOCKS) {
+          writeInstance(
+            solid,
+            solidCount,
+            x,
+            FLOOR_CLEARANCE + SOLID_HEIGHT / 2,
+            z,
+            SOLID_FOOTPRINT,
+            SOLID_HEIGHT,
+            SOLID_FOOTPRINT,
+            identity
+          );
+          solidCount += 1;
+        }
+
+        const top = FLOOR_CLEARANCE + SOLID_HEIGHT + SIGNATURE_HEIGHT / 2;
+        switch (block.source) {
+          case 'cyber':
+            addSignature(
+              'cyber',
+              x,
+              top,
+              z,
+              0.58,
+              0.14,
+              (block.x + block.z) % 2 ? 0 : Math.PI / 2
+            );
+            break;
+          case 'fortress':
+            addSignature(
+              'fortress',
+              x,
+              top,
+              z,
+              0.5,
+              0.32,
+              (block.x + block.z) % 2 ? Math.PI / 4 : -Math.PI / 4
+            );
+            break;
+          case 'cosmic':
+            addSignature('cosmic', x, top, z, 0.46, 0.075, Math.PI / 4);
+            addSignature('cosmic', x, top, z, 0.46, 0.075, -Math.PI / 4);
+            break;
+          case 'ladder':
+            addSignature('ladder', x, top, z, 0.42, 0.08, 0);
+            addSignature('ladder', x, top, z, 0.42, 0.08, Math.PI / 2);
+            break;
+        }
         continue;
       }
 
-      if (formingCount >= MAX_BLOCKS) continue;
-      // The decal FILLS as the block forms, so "how long have I got" is read
-      // from area rather than counted. A block whose forming has finished but
-      // whose cell is still under the snake (the pending state) sits at full
-      // size and waits — visibly claimed, not yet lethal.
       const total = Math.max(1, block.formingTotal);
-      const progress = Math.min(
-        1,
-        Math.max(0, 1 - block.formingTicks / total)
+      const progress = Math.min(1, Math.max(0, 1 - block.formingTicks / total));
+      const fill = (0.22 + 0.78 * progress) * FORMING_FOOTPRINT;
+      addForming(
+        x,
+        FLOOR_CLEARANCE + FORMING_HEIGHT / 2,
+        z,
+        fill,
+        FORMING_HEIGHT,
+        fill
       );
-      const fill = 0.25 + 0.75 * progress;
-      position.set(block.x + 0.5, 0.045, block.z + 0.5);
-      scale.set(fill, 1, fill);
-      matrix.compose(position, quaternion, scale);
-      formingMesh.setMatrixAt(formingCount, matrix);
-      formingMesh.setColorAt(
-        formingCount,
-        color.set(FORMING_COLOR).multiplyScalar(0.65 + 0.35 * progress)
-      );
-      formingCount++;
+
+      // The perimeter names the whole unavailable cell even while the fill is
+      // small. Rails shorten inward with the same progress, so cause and
+      // countdown read as one transformation rather than competing effects.
+      const span = 0.2 + 0.66 * progress;
+      addForming(x, FLOOR_CLEARANCE + 0.04, z - 0.43, span, 0.035, 0.035);
+      addForming(x, FLOOR_CLEARANCE + 0.04, z + 0.43, span, 0.035, 0.035);
+      addForming(x - 0.43, FLOOR_CLEARANCE + 0.04, z, 0.035, 0.035, span);
+      addForming(x + 0.43, FLOOR_CLEARANCE + 0.04, z, 0.035, 0.035, span);
     }
 
-    formingMesh.count = formingCount;
-    solidMesh.count = solidCount;
-    formingMesh.instanceMatrix.needsUpdate = true;
-    solidMesh.instanceMatrix.needsUpdate = true;
-    if (formingMesh.instanceColor) formingMesh.instanceColor.needsUpdate = true;
-    if (solidMesh.instanceColor) solidMesh.instanceColor.needsUpdate = true;
+    forming.count = formingCount;
+    solid.count = solidCount;
+    signature.count = signatureCount;
+    markUpdated(forming);
+    markUpdated(solid);
+    markUpdated(signature);
   }, [terrain]);
-
-  // A slow breathe on the forming layer only — never on solid, which must read
-  // as inert. Amplitude is small and the period is over a second: this scene's
-  // photosensitivity budget forbids anything that reads as a flash, and a
-  // warning that hurts to look at is not a warning.
-  useFrame((_, delta) => {
-    const mesh = formingRef.current;
-    if (!mesh || mesh.count === 0) return;
-    pulse.current += delta;
-    formingMaterial.opacity = 0.52 + 0.12 * Math.sin(pulse.current * 3.2);
-  });
 
   return (
     <group>
       <instancedMesh
         ref={formingRef}
-        args={[formingGeometry, formingMaterial, MAX_BLOCKS]}
+        args={[unitBoxGeometry, formingMaterial, MAX_FORMING_INSTANCES]}
         frustumCulled={false}
       />
       <instancedMesh
         ref={solidRef}
-        args={[solidGeometry, solidMaterial, MAX_BLOCKS]}
+        args={[unitBoxGeometry, solidMaterial, MAX_BLOCKS]}
         frustumCulled={false}
-        castShadow
         receiveShadow
+      />
+      <instancedMesh
+        ref={signatureRef}
+        args={[unitBoxGeometry, signatureMaterial, MAX_SIGNATURES]}
+        frustumCulled={false}
       />
     </group>
   );

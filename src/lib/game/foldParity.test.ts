@@ -244,6 +244,7 @@ function runScript(script: Script): RunOutcome {
     infuses: finalState.infuses.map((i) => ({ ...i })),
     revive: finalState.revive ? { ...finalState.revive } : null,
     lossEvents,
+    pressureEvents: finalState.pressureEvents.map((event) => ({ ...event })),
     prevRunDied: script.prevRunDied ?? false,
     tierCap: script.tierCap ?? 3,
     splicesEnabled: script.splicesEnabled !== false,

@@ -51,7 +51,12 @@ export interface TerrainCell {
   z: number;
 }
 
+/** The mechanic that permanently claimed this cell. */
+export type TerrainSource = 'cyber' | 'fortress' | 'cosmic' | 'ladder';
+
 export interface TerrainBlock extends TerrainCell {
+  /** Visual/semantic provenance; physics remains identical for every source. */
+  source: TerrainSource;
   /**
    * Ticks remaining before this block may solidify. While positive the block
    * is a floor DECAL: visible, animating, and harmless. The snake passes over
@@ -80,6 +85,8 @@ export interface TerrainBlock extends TerrainCell {
 }
 
 export interface TerrainSchedule {
+  /** Arena schedules currently belong to CYBER; ladder starts use `ladder`. */
+  source: Extract<TerrainSource, 'cyber' | 'ladder'>;
   /** Blocks placed each interval. */
   blocksPerInterval: number;
   /** Foods between placements. Food-indexed, never time-indexed: a food count is replayable. */

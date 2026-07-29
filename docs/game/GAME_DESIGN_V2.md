@@ -297,7 +297,7 @@ server validation possible.
 | 6 | **Magnet Pulse** [P] | Food within 2 cells is pulled 1 cell/tick toward you | Exit portal interval +4 foods (bank less often) |
 | 7 | **Time Dilation** [E/P] | Speed −1 tier (CYBER: tier clamps one lower; PRIMAL/COSMIC: +40 ms/tick) | Food −20% DNA |
 | 8 | **Splitter** [E/P] | Food spawns in pairs — collect faster, board more crowded | Each food worth 70% |
-| 9 | **Phoenix** [P] | Survive one death (respawn at length 8, same position rewound 3 cells) | On trigger, lose **all** mutation economic multipliers for the rest of the run |
+| 9 | **Phoenix** [P] | Survive one death (rewind 3 cells at full length, then phase through body and board edges for 12 moves) | On trigger, lose **all** mutation economic multipliers for the rest of the run |
 | 10 | **Compound Interest** [E] | Banked bonus +10% per mutation held at extraction (incl. itself; 4 held → ×1.65) | None beyond the opportunity cost of a pick slot — the greed engine |
 
 ### 5.3 Server validation
@@ -347,7 +347,7 @@ crafting.
 | 1 | **Scavenger** | First 15 foods +30% DNA | Foods after 50: −10% |
 | 2 | **Gambler** | Banked ×1.25 → ×1.35 | Salvage ×0.60 → ×0.45 |
 | 3 | **Ascetic** | All food ×1.4 base value | Mutation foods never spawn — no builds, pure snake |
-| 4 | **Iron Scales** | Survive one wall collision per run (bounce back one cell) | Food −10% DNA |
+| 4 | **Iron Scales** | Survive one board collision per run (edge or locked cell) | Food −10% DNA |
 | 5 | **Magnetism** | Food within 1 cell pulled toward head | Exit portal interval +2 foods |
 | 6 | **Sprinter** | First 10 foods ×1.2 (dynasty-agnostic by design) | Foods after 50: ×0.9 |
 | 7 | **Patient** | Banked bonus +10% (×1.25 → ×1.35, stacks with Gambler to ×1.45) | Mutation food spawn rate −50% |

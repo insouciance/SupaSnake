@@ -55,6 +55,7 @@ describe('the arena closes (CYBER)', () => {
     const terrain = game.getState().terrain;
     expect(terrain.every((b) => !b.solid)).toBe(true);
     expect(terrain.every((b) => b.formingTicks > 0)).toBe(true);
+    expect(terrain.every((b) => b.source === 'cyber')).toBe(true);
   });
 
   it('a forming block solidifies after its window', () => {
@@ -226,6 +227,7 @@ describe("PRIMAL's Fortress lays terrain without an arena (WP-3.11)", () => {
       expect.objectContaining({
         x: expect.any(Number),
         z: expect.any(Number),
+        source: 'fortress',
         formingTicks: expect.any(Number),
         formingTotal: expect.any(Number),
         solid: false,

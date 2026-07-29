@@ -17,13 +17,11 @@ import {
   getSnakeGeometries,
   getSnakeSegmentMaterial,
   getSegmentScale,
-  getSegmentEnergy,
   SNAKE_MODEL_URL,
   HEAD_SIZE,
   BODY_SIZE,
   TAPER_SEGMENTS,
   TAPER_MIN,
-  ENERGY_FULL_SEGMENTS,
   ENERGY_MIN,
   HEAD_EMISSIVE_INTENSITY,
   BODY_EMISSIVE_INTENSITY,
@@ -36,7 +34,6 @@ import {
   TRAIL_HEIGHT_TAIL,
   TRAIL_VACANCY_TICKS,
   TRAIL_BREATHE_AMPLITUDE,
-  TRAIL_LINK_WIDTH,
   getTrailFootprint,
   getTrailTone,
   getTrailHeight,
@@ -164,53 +161,9 @@ describe('proportion constants (AAA rework pins)', () => {
     expect(BODY_SIZE).toBe(0.75);
     expect(TAPER_SEGMENTS).toBe(6);
     expect(TAPER_MIN).toBe(0.85);
-    expect(ENERGY_FULL_SEGMENTS).toBe(3);
-    // WP-3.07 raised this from 0.55. "Do not buy quiet with brightness": at
-    // 0.55 the cells about to free up were the hardest on the board to see,
-    // and those are exactly the ones a player routes through. Quiet is taken
-    // from height now; brightness means packing.
+    // The settled interior stays close to full energy. Quiet comes from
+    // cell-persistence and selective head motion, not an unreadable dark tail.
     expect(ENERGY_MIN).toBe(0.88);
-  });
-});
-
-describe('getSegmentEnergy (trunk energy falloff - eye comfort)', () => {
-  it('keeps the head and first full-glow segments at exactly 1.0', () => {
-    for (let i = 0; i <= ENERGY_FULL_SEGMENTS; i++) {
-      expect(getSegmentEnergy(i, 40)).toBe(1);
-    }
-  });
-
-  it('is monotonically non-increasing toward the tail', () => {
-    for (const length of [5, 10, 60, 100]) {
-      let previous = Infinity;
-      for (let i = 0; i < length; i++) {
-        const energy = getSegmentEnergy(i, length);
-        expect(energy).toBeLessThanOrEqual(previous);
-        previous = energy;
-      }
-    }
-  });
-
-  it('reaches exactly ENERGY_MIN at the tail tip of a long snake', () => {
-    for (const length of [10, 60, 100]) {
-      expect(getSegmentEnergy(length - 1, length)).toBeCloseTo(ENERGY_MIN, 10);
-    }
-  });
-
-  it('never leaves the [ENERGY_MIN, 1] band', () => {
-    for (const length of [1, 2, 4, 5, 30, 400]) {
-      for (let i = 0; i < length; i++) {
-        const energy = getSegmentEnergy(i, length);
-        expect(energy).toBeGreaterThanOrEqual(ENERGY_MIN);
-        expect(energy).toBeLessThanOrEqual(1);
-      }
-    }
-  });
-
-  it('short snakes stay at full energy (nothing to fall off across)', () => {
-    for (let i = 0; i < 4; i++) {
-      expect(getSegmentEnergy(i, 4)).toBe(1);
-    }
   });
 });
 
@@ -360,13 +313,13 @@ describe('getTrailHeight (the head is a creature, the trail is settled stack)', 
     expect(getTrailHeight(LONG - 1, LONG)).toBeCloseTo(TRAIL_HEIGHT_TAIL, 10);
   });
 
-  it('stays below a solid terrain block, which is 0.62 tall', () => {
+  it('stays below a solid terrain block, which is 0.72 tall', () => {
     // Categorical separation from TerrainBlocks: terrain is a raised wall
     // that never moves again, the trail is a low field that answers how you
     // are playing. They must not compete for the same read.
     for (let i = 1; i < LONG; i++) {
       if (i <= TRAIL_HEAD_ZONE) continue;
-      expect(getTrailHeight(i, LONG)).toBeLessThan(0.62);
+      expect(getTrailHeight(i, LONG)).toBeLessThan(0.72);
     }
   });
 
@@ -425,17 +378,6 @@ describe('getTrailBreathe (the head zone is alive, the trunk is not)', () => {
       samples.add(Number(getTrailBreathe(1, step * 0.05).toFixed(4)));
     }
     expect(samples.size).toBeGreaterThan(5);
-  });
-});
-
-describe('TRAIL_LINK_WIDTH (why corners need no cap instance)', () => {
-  it('is strictly narrower than the cell box it joins', () => {
-    // Two axis-aligned bars meeting at a right angle leave the outer corner
-    // unfilled. The corner CELL already has a box on it, so as long as the
-    // link is never wider than that box, the box IS the cap - one instance
-    // per corner cheaper, and nothing to keep in sync.
-    expect(TRAIL_LINK_WIDTH).toBeGreaterThan(0);
-    expect(TRAIL_LINK_WIDTH).toBeLessThan(1);
   });
 });
 

@@ -104,7 +104,7 @@ const CASES: Case[] = [
   ['strainTier', strainTierId('VOLT', 3), 'cost', `×${STRAIN_PHYSICS.overclockedRealityTickFactor}`],
   ['strainTier', strainTierId('VOLT', 3), 'cost', `${STRAIN_PHYSICS.overclockedPortalTicksPenalty} ticks sooner`],
 
-  ['strainTier', strainTierId('FERAL', 1), 'cost', `${STRAIN_PHYSICS.thickHideSegmentLoss} tail segments`],
+  ['strainTier', strainTierId('FERAL', 1), 'cost', `${STRAIN_PHYSICS.thickHideGrowth} permanent segments`],
   // FERAL:2 is Fortress (WP-3.11). All five of its dials appear in the copy,
   // which is the property this file exists to hold: a tier whose numbers the
   // player cannot read is a tier they cannot decide about.
@@ -115,7 +115,7 @@ const CASES: Case[] = [
   ['strainTier', strainTierId('FERAL', 2), 'cost', `under ${STRAIN_PHYSICS.fortressMinLiveLength} living segments`],
   ['strainTier', strainTierId('FERAL', 3), 'effect', `${STRAIN_ECONOMICS.ouroborosBiteFlat} flat DNA`],
   ['strainTier', strainTierId('FERAL', 3), 'effect', `per ${STRAIN_ECONOMICS.ouroborosFoodsPerBite} foods`],
-  ['strainTier', strainTierId('FERAL', 3), 'cost', `${STRAIN_PHYSICS.ouroborosSegmentsPerBite} segments`],
+  ['strainTier', strainTierId('FERAL', 3), 'cost', `${STRAIN_PHYSICS.ouroborosGrowthPerBite} permanent segments`],
   ['strainTier', strainTierId('FERAL', 3), 'cost', signed(STRAIN_ECONOMICS.ouroborosFoodPenalty)],
 
   ['strainTier', strainTierId('FLUX', 1), 'effect', `every ${STRAIN_PHYSICS.warpSkinRechargeFoods} foods`],

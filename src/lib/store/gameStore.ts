@@ -164,6 +164,8 @@ export interface GameStore {
   surgeChoicePending: boolean;
   /** The run's one revive, once fired (survives into game-over recap). */
   revive: GenomeRevive | null;
+  /** Remaining self/body-wall phase moves after a revive (renderer). */
+  revivePhaseTicksRemaining: number;
 
   // Audio state
   isMuted: boolean;
@@ -225,6 +227,7 @@ export interface GameStore {
   setPortalChoicePending: (pending: boolean) => void;
   setSurgeChoicePending: (pending: boolean) => void;
   setRevive: (revive: GenomeRevive | null) => void;
+  setRevivePhaseTicks: (ticks: number) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -273,6 +276,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   portalChoicePending: false,
   surgeChoicePending: false,
   revive: null,
+  revivePhaseTicksRemaining: 0,
   isMuted: false,
 
   // Actions
@@ -314,6 +318,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       portalChoicePending: false,
       surgeChoicePending: false,
       revive: null,
+      revivePhaseTicksRemaining: 0,
     });
   },
 
@@ -341,6 +346,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       surgeChoicePending: false,
       gildedCells: [],
       terrain: [],
+      revivePhaseTicksRemaining: 0,
     });
   },
 
@@ -385,6 +391,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       portalChoicePending: false,
       surgeChoicePending: false,
       revive: null,
+      revivePhaseTicksRemaining: 0,
     });
   },
 
@@ -574,5 +581,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setRevive: (revive: GenomeRevive | null) => {
     set({ revive });
+  },
+
+  setRevivePhaseTicks: (ticks: number) => {
+    set({ revivePhaseTicksRemaining: Math.max(0, Math.trunc(ticks)) });
   },
 }));

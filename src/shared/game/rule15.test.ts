@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { MUTATION_POOL, MUTATION_PHYSICS } from './mutations';
+import { MUTATIONS, MUTATION_POOL, MUTATION_PHYSICS } from './mutations';
 import { GENE_POOL, SIGNATURE_GENES } from './genes';
 import { SPLICES, spliceForPair } from './splices';
 import { STRAIN_PHYSICS } from './strains';
@@ -66,6 +66,17 @@ describe('Rule 15: the length-reducers are unreachable', () => {
     // The rewind is positional mercy and stays; `phoenixRebirthLength` is no
     // longer consulted by either the engine or the length model.
     expect(MUTATION_PHYSICS.phoenixRewindCells).toBeGreaterThan(0);
+    expect(MUTATION_PHYSICS.revivePhaseTicks).toBe(12);
+    expect(MUTATION_PHYSICS).not.toHaveProperty('phoenixRebirthLength');
+    expect(MUTATIONS.phoenix.effect).toContain('at full length');
+    expect(MUTATIONS.phoenix.effect).not.toContain('length 8');
+  });
+
+  it('both FERAL collision releases add pressure rather than deleting it', () => {
+    expect(STRAIN_PHYSICS.thickHideGrowth).toBe(8);
+    expect(STRAIN_PHYSICS.ouroborosGrowthPerBite).toBe(2);
+    expect(STRAIN_PHYSICS).not.toHaveProperty('thickHideSegmentLoss');
+    expect(STRAIN_PHYSICS).not.toHaveProperty('ouroborosSegmentsPerBite');
   });
 
   it('FERAL-2 transforms length rather than shedding it (WP-3.11)', () => {

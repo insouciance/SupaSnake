@@ -4,7 +4,7 @@
  * These tests pin the exact contract the render loop depends on:
  * double-buffer copy semantics, growth seeding (prev = curr for new tail
  * indices), alpha clamping (incl. zero-interval and late ticks), reset,
- * and the 400-segment capacity clamp.
+ * and geometric growth beyond the 400-segment initial capacity.
  */
 
 import { describe, it, expect } from '@jest/globals';
@@ -26,6 +26,8 @@ describe('createInterpolationBuffer', () => {
     expect(buffer.prev.length).toBe(INTERPOLATION_CAPACITY * 2);
     expect(buffer.curr.length).toBe(INTERPOLATION_CAPACITY * 2);
     expect(buffer.count).toBe(0);
+    expect(buffer.prevCount).toBe(0);
+    expect(buffer.initialized).toBe(false);
     expect(buffer.tickAt).toBe(0);
     expect(buffer.tickInterval).toBe(0);
   });
@@ -90,24 +92,37 @@ describe('recordTick copy semantics', () => {
     expect(buffer.count).toBe(1);
   });
 
-  it('clamps to capacity when the snake exceeds it', () => {
+  it('grows geometrically when the snake exceeds capacity', () => {
     const buffer = createInterpolationBuffer(4);
     const snake = Array.from({ length: 10 }, (_, i) => seg(i, 0));
     recordTick(buffer, snake, 100, 0);
-    expect(buffer.count).toBe(4);
-    expect(getInterpolatedX(buffer, 3, 1)).toBe(3);
+    expect(buffer.count).toBe(10);
+    expect(buffer.prev.length).toBe(16 * 2);
+    expect(buffer.curr.length).toBe(16 * 2);
+    expect(getInterpolatedX(buffer, 9, 1)).toBe(9);
   });
 
-  it('growth seeding still applies under the capacity clamp', () => {
+  it('growth seeding still applies while capacity expands', () => {
     const buffer = createInterpolationBuffer(4);
     recordTick(buffer, [seg(0, 0), seg(1, 0)], 100, 0);
     const grown = Array.from({ length: 10 }, (_, i) => seg(i + 5, 2));
     recordTick(buffer, grown, 100, 100);
-    expect(buffer.count).toBe(4);
-    // Indices 2 and 3 are new - pinned at their cells
+    expect(buffer.count).toBe(10);
+    // Every new index is pinned at its cell.
     expect(getInterpolatedX(buffer, 2, 0)).toBe(7);
     expect(getInterpolatedX(buffer, 2, 1)).toBe(7);
     expect(getInterpolatedZ(buffer, 3, 0.5)).toBe(2);
+    expect(getInterpolatedX(buffer, 9, 0.25)).toBe(14);
+  });
+
+  it('records the previous plane count across growth and shrink', () => {
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(0, 0), seg(1, 0)], 100, 0);
+    expect(buffer.prevCount).toBe(2); // first snapshot is seeded stable
+    recordTick(buffer, [seg(1, 0), seg(0, 0), seg(0, 0)], 100, 100);
+    expect(buffer.prevCount).toBe(2);
+    recordTick(buffer, [seg(2, 0)], 100, 200);
+    expect(buffer.prevCount).toBe(3);
   });
 });
 
@@ -150,6 +165,8 @@ describe('resetInterpolationBuffer', () => {
     recordTick(buffer, [seg(3, 3), seg(2, 3)], 200, 500);
     resetInterpolationBuffer(buffer);
     expect(buffer.count).toBe(0);
+    expect(buffer.prevCount).toBe(0);
+    expect(buffer.initialized).toBe(false);
     expect(buffer.tickAt).toBe(0);
     expect(buffer.tickInterval).toBe(0);
     expect(getAlpha(buffer, 999)).toBe(1);

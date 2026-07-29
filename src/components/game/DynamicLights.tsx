@@ -5,6 +5,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
 import { themeManager } from '@/lib/theme/ThemeManager';
+import { COSMIC_CONSTELLATION } from '@/shared/game/rulesets';
+import { MUTATION_PHYSICS } from '@/shared/game/mutations';
 
 interface DynamicLightsProps {
   dynasty: DynastyId;
@@ -28,11 +30,12 @@ interface DynamicLightsProps {
 
 /**
  * Spotlights are per-fragment work, so the wave is capped rather than trusted.
- * The largest wave the game can produce is COSMIC's group of 3, plus Splitter,
- * plus Starweaver — five. Anything beyond that is a bug elsewhere and should
- * cost frame time nowhere.
+ * The largest wave the game can produce is COSMIC's base five, plus Splitter,
+ * plus Starweaver — seven. Derive the moving parts so a constellation retune
+ * cannot leave two legal objectives dark again.
  */
-const MAX_FOOD_SPOTLIGHTS = 5;
+const MAX_FOOD_SPOTLIGHTS =
+  COSMIC_CONSTELLATION.size + MUTATION_PHYSICS.starweaverExtraGroupFood + 1;
 
 export function DynamicLights({
   dynasty,

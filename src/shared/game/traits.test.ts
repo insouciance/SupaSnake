@@ -202,7 +202,7 @@ describe('tuning constants', () => {
     expect(TRAIT_PHYSICS.magnetismRadius).toBe(1);
     expect(TRAIT_PHYSICS.magnetismPortalIntervalPenalty).toBe(2);
     expect(TRAIT_PHYSICS.patientMutationIntervalMultiplier).toBe(2);
-    expect(TRAIT_PHYSICS.ironScalesBounceCells).toBe(1);
+    expect(TRAIT_PHYSICS).not.toHaveProperty('ironScalesBounceCells');
   });
 
   it('economic constants match the section 6.2 table', () => {

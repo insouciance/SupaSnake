@@ -80,6 +80,76 @@ describe('genome branch dispatch', () => {
   });
 });
 
+describe('Rule-15 pressure event validation', () => {
+  const feralPicks: GenomeRunInput['picks'] = [
+    { id: 'overgrowth', atFood: 15 },
+    { id: 'deep_roots', atFood: 30 },
+    { id: 'glacial_reserve', atFood: 45 },
+  ];
+  const heirloom = { FERAL: 1 } as const;
+
+  function settle(pressureEvents: unknown) {
+    const acceptedEvents = Array.isArray(pressureEvents)
+      ? (pressureEvents as GenomeRunInput['pressureEvents'])
+      : [];
+    const genomeInput = genomeOf({
+      picks: feralPicks,
+      heirloom,
+      pressureEvents: acceptedEvents,
+    });
+    const totals = computeGenomeRunTotals('PRIMAL', 60, genomeInput);
+    return validateGameResult(
+      baseInput({
+        food_count: 60,
+        score: totals.score,
+        dna_earned: totals.rawDna,
+        mutations: feralPicks,
+        genome: { pressureEvents },
+      }),
+      started(),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      ctx({ heirloom: { ...heirloom }, genePool: null })
+    );
+  }
+
+  it('accepts one Thick Hide and cadence-bounded Ouroboros facts', () => {
+    const events = [
+      { atFood: 15, source: 'thick_hide' },
+      { atFood: 50, source: 'ouroboros' },
+      { atFood: 55, source: 'ouroboros' },
+    ];
+    const result = settle(events);
+    expect(result.valid).toBe(true);
+    expect(result.errors).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('CLAIM_CLAMPED: pressureEvents'),
+      ])
+    );
+    expect(result.genome?.pressureEvents).toEqual(events);
+  });
+
+  it('drops impossible activation, duplicate pardon, and early bite facts', () => {
+    const result = settle([
+      { atFood: 4, source: 'thick_hide' },
+      { atFood: 15, source: 'thick_hide' },
+      { atFood: 16, source: 'thick_hide' },
+      { atFood: 49, source: 'ouroboros' },
+    ]);
+    expect(result.valid).toBe(true); // advisory repair, never lost progression
+    expect(result.genome?.pressureEvents).toEqual([
+      { atFood: 15, source: 'thick_hide' },
+    ]);
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('CLAIM_CLAMPED: pressureEvents'),
+      ])
+    );
+  });
+});
+
 describe('gene pick validation', () => {
   it('accepts legal picks and pays the exact genome recompute', () => {
     const picks = [

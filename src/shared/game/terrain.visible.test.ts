@@ -201,8 +201,36 @@ describe('the forming phase can be drawn as progress', () => {
     // palette-only distinction would collapse the moment terrain and the
     // snake's own trail share a hue family.
     const renderer = read('src/components/game/TerrainBlocks.tsx');
-    expect(renderer).toContain('formingGeometry');
-    expect(renderer).toContain('solidGeometry');
-    expect(renderer).not.toMatch(/const solidGeometry = formingGeometry/);
+    expect(renderer).toMatch(/FORMING_HEIGHT = 0\.035/);
+    expect(renderer).toMatch(/SOLID_HEIGHT = 0\.72/);
+    expect(renderer).toContain('FLOOR_CLEARANCE + FORMING_HEIGHT / 2');
+    expect(renderer).toContain('FLOOR_CLEARANCE + SOLID_HEIGHT / 2');
+  });
+
+  it('every terrain cause survives into a related visual signature', () => {
+    const model = read('src/shared/game/terrain.ts');
+    const renderer = read('src/components/game/TerrainBlocks.tsx');
+    expect(model).toContain("'cyber' | 'fortress' | 'cosmic' | 'ladder'");
+    expect(model).toMatch(/source: TerrainSource/);
+    for (const source of ['cyber', 'fortress', 'cosmic', 'ladder']) {
+      expect(renderer).toContain(`case '${source}'`);
+    }
+    expect(renderer).toContain('addSignature(');
+    expect(renderer).toContain('signatureMaterial');
+    // Cause is carried by silhouette, not dynasty colour. Dynasty hues are
+    // reserved for player identity and must not turn the board into four
+    // competing palettes when several terrain sources coexist.
+    expect(renderer).toContain('not mapped to a colour');
+  });
+
+  it('covers the full board and keeps locked terrain perfectly still', () => {
+    const renderer = read('src/components/game/TerrainBlocks.tsx');
+    expect(renderer).toMatch(
+      /MAX_BLOCKS = GAME_CONFIG\.board\.gridSize \* GAME_CONFIG\.board\.gridSize/
+    );
+    expect(renderer).not.toContain('useFrame');
+    // One forming mesh, one solid mesh, one source-relief mesh. Source
+    // distinction must not consume a mesh/material per cause.
+    expect(renderer.match(/<instancedMesh/g)).toHaveLength(3);
   });
 });

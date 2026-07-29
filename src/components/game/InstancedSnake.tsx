@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * InstancedSnake - the whole snake in two draw calls.
+ * InstancedSnake - one instanced body plus a separately readable head.
  *
  * Body = ONE InstancedMesh (DynamicDrawUsage, frustumCulled off, instance
  * count written per frame straight from the interpolation buffer - growth
@@ -23,26 +23,27 @@
  *                discrete voxels with visible gaps, 2 = a solid field with a
  *                hairline seam. A cell you left behind that is now unfillable
  *                shows as a dark gap in an otherwise solid mass.
- *   BRIGHTNESS - fusion only. Deliberately NOT the index falloff it used to
- *                be: dimming the tail made the cells about to free up the
- *                hardest to see, which is backwards on gameplay grounds.
+ *   BRIGHTNESS - fusion plus one categorical head/interior step. Deliberately
+ *                NOT the old whole-body index gradient: dimming toward the
+ *                tail made cells about to free up hardest to see, which is
+ *                backwards on gameplay grounds.
  *
- * One instance per body cell plus one oriented LINK per joint, all in the same
- * InstancedMesh - the per-instance quaternion and non-uniform scale were both
- * sitting unused, so the continuous form costs no new draw call and no new
- * allocation. Corners need no cap instance: the corner cell's own box is the
- * cap, which is why TRAIL_LINK_WIDTH is strictly below 1.
+ * One instance per UNIQUE occupied body cell. Stacked growth is logical
+ * pressure, not permission to z-fight several cubes in the same tile; joint
+ * links remain deleted because interpenetrating opaque boxes caused the
+ * original flicker and missing-face defect.
  *
- * Fluidity contract:
- * - Positions come from the tick-alpha interpolation buffer every frame:
- *   exact blend between the last two authoritative engine states. The trail
- *   is NEVER snapped to the grid - 5-10 Hz is the worst flicker band there is,
- *   and the head/trail junction would gap a full cell every tick.
+ * Cell-persistence contract:
+ * - The head follows exact tick-alpha interpolation. The body renders BOARD
+ *   OCCUPANCY, not segment identity: established cells stay planted; only the
+ *   cell deposited behind the head grows in and vacated tail cells sink out.
+ *   A tight long coil therefore reads as settled terrain instead of a conveyor
+ *   of 150 equally animated boxes.
  * - ZERO per-frame allocations: all scratch objects (Vector3/Quaternion/
  *   Matrix4) live at module scope; the loop only writes. The fusion metric's
  *   working set is preallocated typed arrays in a ref.
- * - No React state anywhere in the render loop; segment growth shows up
- *   purely as a larger `mesh.count` next frame.
+ * - No React state anywhere in the render loop; occupancy changes show up
+ *   purely as a different `mesh.count` next frame.
  * - The fusion metric is folded ONCE PER ENGINE TICK, not per frame: it is
  *   defined on integer grid cells and cannot change in between.
  * - Geometry comes from the shared GLB WeakMap cache and materials from
@@ -67,7 +68,6 @@ import {
   getAlpha,
   getInterpolatedX,
   getInterpolatedZ,
-  INTERPOLATION_CAPACITY,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import {
@@ -76,13 +76,20 @@ import {
   updateTrailFusion,
   type TrailFusionState,
 } from '@/lib/game/trailFusion';
+import {
+  createTrailCellState,
+  resetTrailCells,
+  trailCellX,
+  trailCellZ,
+  updateTrailCells,
+  type TrailCellState,
+} from '@/lib/game/trailCells';
 import { FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
+  ENERGY_MIN,
   SNAKE_MODEL_URL,
-  TRAIL_LINK_HEIGHT,
-  TRAIL_LINK_WIDTH,
-  getSegmentEnergy,
+  TRAIL_HEAD_ZONE,
   getSegmentScale,
   getSnakeGeometries,
   getSnakeSegmentMaterial,
@@ -110,11 +117,13 @@ export interface InstancedSnakeProps {
   terrain?: readonly TerrainBlock[];
   /**
    * True while the arena edges are a PASSAGE rather than a wall (COSMIC's
-   * open flux phase). Walls normally count as packing neighbours; an open
+   * permanent torus). Walls normally count as packing neighbours; an open
    * edge must not, or the metric rewards hugging the one seam that is not
    * actually spending any space.
    */
   wrapActive?: boolean;
+  /** Static head shell during the short post-revive body/edge phase. */
+  revivePhaseActive?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -123,10 +132,8 @@ export interface InstancedSnakeProps {
 
 const _position = new THREE.Vector3();
 const _scale = new THREE.Vector3();
-/** Cell boxes never rotate; joint links do (see _linkQuaternion). */
+/** Cell boxes never rotate. */
 const _identityQuaternion = new THREE.Quaternion();
-const _linkQuaternion = new THREE.Quaternion();
-const _up = new THREE.Vector3(0, 1, 0);
 const _matrix = new THREE.Matrix4();
 const _energyColor = new THREE.Color();
 
@@ -142,7 +149,7 @@ const GRID_SIZE = GAME_CONFIG.board.gridSize;
  * deleted (see `writeTrailInstances`), so the headroom went with it rather than
  * being left behind as a number nobody could explain.
  */
-const TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY;
+const TRAIL_INSTANCE_CAPACITY = GRID_SIZE * GRID_SIZE;
 
 /**
  * Instanced-body material per dynasty: a clone of the shared body material
@@ -151,9 +158,9 @@ const TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY;
  *    threshold (only head/food/portal/glow strips may bloom; a blooming
  *    trunk is a flicker amplifier in motion), and
  * 2. an emissive shader patch that multiplies emissive by the per-instance
- *    color, so the trail's tone (getTrailTone x getSegmentEnergy) drives BOTH
- *    albedo and glow. The trunk itself is otherwise perfectly steady: no
- *    time-varying material writes on body segments, ever.
+ *    color, so fusion tone and the categorical head/interior hierarchy drive
+ *    BOTH albedo and glow. The trunk itself is otherwise perfectly steady:
+ *    no time-varying material writes on body segments, ever.
  */
 const instancedBodyMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
 
@@ -183,6 +190,13 @@ const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
 const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
 const eyeDarkMaterial = new THREE.MeshBasicMaterial({ color: '#06090d' });
 const eyeGlintMaterial = new THREE.MeshBasicMaterial({ color: '#e6edf3' });
+const revivePhaseMaterial = new THREE.MeshBasicMaterial({
+  color: '#f4d58d',
+  transparent: true,
+  opacity: 0.34,
+  wireframe: true,
+  depthWrite: false,
+});
 
 /**
  * Yaw that points the head's face (+Z local: the eyes' side) along each
@@ -201,23 +215,21 @@ const TWO_PI = Math.PI * 2;
 const YAW_DAMP = 14;
 
 /**
- * Write one segment's colour into `_energyColor`: fusion tone (the earned
- * signal) times the gentle head-primacy falloff. Module scope so the render
- * loop never builds a closure.
+ * Write one occupied cell's colour into `_energyColor`: fusion tone (the
+ * earned signal) times the two-level head/interior hierarchy.
  */
-function writeSegmentColor(
+function writeCellColor(
   index: number,
-  count: number,
   level: number,
   strainBands: readonly StrainId[],
-  bodyCount: number
+  bandPhase: number
 ): void {
-  const tone = getTrailTone(level) * getSegmentEnergy(index, count);
+  // Only the live front carries full energy. The settled interior is one calm,
+  // high-contrast value; no 150-cell gradient crawls through a stationary coil.
+  const energy = index <= TRAIL_HEAD_ZONE ? 1 : ENERGY_MIN;
+  const tone = getTrailTone(level) * energy;
   if (strainBands.length > 0) {
-    const band = Math.min(
-      strainBands.length - 1,
-      Math.floor(((index - 1) / bodyCount) * strainBands.length)
-    );
+    const band = bandPhase % strainBands.length;
     _energyColor.set(STRAINS[strainBands[band]].color).multiplyScalar(tone);
   } else {
     _energyColor.setScalar(tone);
@@ -240,14 +252,54 @@ export interface TrailInstanceSink {
   setColorAt(index: number, color: THREE.Color): void;
 }
 
+function writeTrailCell(
+  sink: TrailInstanceSink,
+  instance: number,
+  cell: number,
+  representative: number,
+  length: number,
+  transition: number,
+  fusion: TrailFusionState,
+  cells: TrailCellState,
+  strainBands: readonly StrainId[],
+  elapsed: number
+): number {
+  if (instance >= TRAIL_INSTANCE_CAPACITY || transition <= 0.001) {
+    return instance;
+  }
+  const level = fusion.committed[cell];
+  const footprint =
+    getTrailFootprint(level) *
+    getSegmentScale(representative, length) *
+    transition;
+  const height =
+    getTrailHeight(representative, length) *
+    getTrailBreathe(representative, elapsed) *
+    transition;
+  _position.set(
+    trailCellX(cells, cell) + 0.5,
+    FLOOR_CLEARANCE + height / 2,
+    trailCellZ(cells, cell) + 0.5
+  );
+  _scale.set(footprint, height, footprint);
+  _matrix.compose(_position, _identityQuaternion, _scale);
+  sink.setMatrixAt(instance, _matrix);
+  writeCellColor(
+    representative,
+    level,
+    strainBands,
+    cells.bandPhase[cell]
+  );
+  sink.setColorAt(instance, _energyColor);
+  return instance + 1;
+}
+
 /**
  * Emit the whole trail for one frame and return the instance count.
  *
- * One box per body cell (segment 0 is the separate head mesh), then one
- * oriented link per joint. Both passes read tick-alpha interpolated positions:
- * the middle is NEVER snapped to the grid, because 5-10 Hz is the worst
- * flicker band there is and the head/trail junction would gap a full cell
- * every tick.
+ * One box per uniquely occupied body cell (segment 0 is the separate head).
+ * Tick alpha drives only enter/leave scale; persistent coil cells remain on
+ * their authoritative centres while segment identities pass through them.
  *
  * Allocation-free: every vector, quaternion, matrix and colour it touches is
  * module scratch, and the sink is expected to copy on write (InstancedMesh
@@ -257,38 +309,54 @@ export function writeTrailInstances(
   sink: TrailInstanceSink,
   buffer: InterpolationBuffer,
   alpha: number,
-  levels: Uint8Array,
+  fusion: TrailFusionState,
+  cells: TrailCellState,
   strainBands: readonly StrainId[],
   elapsed: number
 ): number {
   const count = buffer.count;
-  const bodyCount = Math.max(1, count - 1);
   let n = 0;
 
-  // Pass A: one box per body cell. Base-on-floor (y = height / 2), matching
-  // TerrainBlocks' convention, so a sinking tail sinks INTO the floor rather
-  // than hovering above it.
-  for (let i = 1; i < count && n < TRAIL_INSTANCE_CAPACITY; i++) {
-    const level = levels[i];
-    const footprint = getTrailFootprint(level) * getSegmentScale(i, count);
-    const height = getTrailHeight(i, count) * getTrailBreathe(i, elapsed);
-    // FLOOR_CLEARANCE, not 0: the arena platform's top face is at exactly
-    // y = 0, so a cube sitting flush on it shares that plane at identical
-    // depth and z-fights across its whole footprint. See ArenaFloor.
-    _position.set(
-      getInterpolatedX(buffer, i, alpha) + 0.5,
-      FLOOR_CLEARANCE + height / 2,
-      getInterpolatedZ(buffer, i, alpha) + 0.5
+  const eased = alpha * alpha * (3 - 2 * alpha);
+
+  // Persistent cells never translate. A newly deposited cell grows into the
+  // previous head tile as the head leaves it; nothing else in the coil moves.
+  for (let index = 0; index < cells.currentCount; index += 1) {
+    const cell = cells.currentCells[index];
+    const transition = cells.previousMask[cell] === 1 ? 1 : eased;
+    n = writeTrailCell(
+      sink,
+      n,
+      cell,
+      cells.currentRepresentative[cell],
+      count,
+      transition,
+      fusion,
+      cells,
+      strainBands,
+      elapsed
     );
-    _scale.set(footprint, height, footprint);
-    _matrix.compose(_position, _identityQuaternion, _scale);
-    sink.setMatrixAt(n, _matrix);
-    writeSegmentColor(i, count, level, strainBands, bodyCount);
-    sink.setColorAt(n, _energyColor);
-    n++;
   }
 
-  // PASS B — THE JOINT LINKS — IS DELETED (2026-07-28).
+  // Cells that truly became free retain their old position and sink away.
+  // Multiple departures (Fortress/revive) share the same one-tick grammar.
+  for (let index = 0; index < cells.departingCount; index += 1) {
+    const cell = cells.departingCells[index];
+    n = writeTrailCell(
+      sink,
+      n,
+      cell,
+      cells.previousRepresentative[cell],
+      buffer.prevCount,
+      1 - eased,
+      fusion,
+      cells,
+      strainBands,
+      elapsed
+    );
+  }
+
+  // THE JOINT-LINK PASS REMAINS DELETED (2026-07-28).
   //
   // It emitted an oriented box per joint so the middle would read as a
   // continuous form rather than a chain. It also produced the defect the owner
@@ -352,6 +420,7 @@ function InstancedSnakeCore({
   strainBands = [],
   terrain,
   wrapActive = false,
+  revivePhaseActive = false,
   headGeometry,
   bodyGeometry,
 }: InstancedSnakeCoreProps) {
@@ -363,7 +432,11 @@ function InstancedSnakeCore({
   // never a render input.
   const fusionRef = useRef<TrailFusionState | null>(null);
   if (fusionRef.current === null) {
-    fusionRef.current = createTrailFusionState(GRID_SIZE, INTERPOLATION_CAPACITY);
+    fusionRef.current = createTrailFusionState(GRID_SIZE, TRAIL_INSTANCE_CAPACITY);
+  }
+  const cellRef = useRef<TrailCellState | null>(null);
+  if (cellRef.current === null) {
+    cellRef.current = createTrailCellState(GRID_SIZE);
   }
   // Which engine tick the fusion state was last folded for. `tickAt` is a
   // performance.now() stamp, so equality is an exact "same tick" test and
@@ -388,7 +461,8 @@ function InstancedSnakeCore({
     const mesh = instancedRef.current;
     const head = headRef.current;
     const fusion = fusionRef.current;
-    if (!buffer || !mesh || !head || !fusion) return;
+    const cells = cellRef.current;
+    if (!buffer || !mesh || !head || !fusion || !cells) return;
 
     const count = buffer.count;
     const alpha = getAlpha(buffer, performance.now());
@@ -402,18 +476,21 @@ function InstancedSnakeCore({
     if (tickAt === 0) {
       if (lastTickAtRef.current !== 0) {
         resetTrailFusion(fusion);
+        resetTrailCells(cells);
         lastTickAtRef.current = 0;
       }
     } else if (tickAt !== lastTickAtRef.current) {
       lastTickAtRef.current = tickAt;
       updateTrailFusion(fusion, buffer.curr, count, terrain, wrapActive);
+      updateTrailCells(cells, buffer);
     }
 
     mesh.count = writeTrailInstances(
       mesh,
       buffer,
       alpha,
-      fusion.levels,
+      fusion,
+      cells,
       strainBands,
       elapsed
     );
@@ -451,6 +528,12 @@ function InstancedSnakeCore({
         castShadow
       />
       <group ref={headRef} visible={false}>
+        <mesh
+          geometry={headGeometry}
+          material={revivePhaseMaterial}
+          scale={HEAD_SIZE * 1.14}
+          visible={revivePhaseActive}
+        />
         <mesh
           geometry={headGeometry}
           material={headMaterial}

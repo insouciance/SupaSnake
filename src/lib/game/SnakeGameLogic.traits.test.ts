@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { SnakeGameLogic, type GameOverData } from './SnakeGameLogic';
+import {
+  SnakeGameLogic,
+  type GameOverData,
+  type GameState,
+} from './SnakeGameLogic';
 import { RULESETS, computeRunTotals } from '@/shared/game/rulesets';
 import { MUTATION_SPAWN } from '@/shared/game/mutations';
 import { TRAIT_PHYSICS, type TraitId } from '@/shared/game/traits';
@@ -179,7 +183,7 @@ describe('Magnetism: radius-1 pull + portal interval tax', () => {
   });
 });
 
-describe('Iron Scales: survive one wall collision per run', () => {
+describe('Iron Scales: survive one board collision per run', () => {
   function marchIntoWall(game: SnakeGameLogic): void {
     // `start()` spawns food at a random cell. On this 10x10 grid that cell
     // sometimes lands in the head's marching row, the snake eats on the way to
@@ -202,7 +206,7 @@ describe('Iron Scales: survive one wall collision per run', () => {
     game.tick(); // the move into the wall
   }
 
-  it('absorbs the first wall hit: recoil one cell, run continues', () => {
+  it('absorbs the first wall hit without returning a cell to free space', () => {
     const game = new SnakeGameLogic({
       gridSize: 10,
       ruleset: RULESETS.PRIMAL,
@@ -215,6 +219,7 @@ describe('Iron Scales: survive one wall collision per run', () => {
     });
 
     const lengthBefore = game.getState().snake.length;
+    const freeBefore = game.getBoardPressure().committedFreeCells;
     marchIntoWall(game);
 
     const state = game.getState();
@@ -222,9 +227,11 @@ describe('Iron Scales: survive one wall collision per run', () => {
     expect(state.isGameOver).toBe(false);
     expect(state.isDeathSequence).toBe(false);
     expect(state.ironScalesAvailable).toBe(false);
-    // Recoiled one cell off the wall, length preserved
-    expect(state.snake[0].x).toBe(8);
+    // The blocked move is spent in place: neither length nor occupied space
+    // rewinds. The player has the next input window to turn away.
+    expect(state.snake[0].x).toBe(9);
     expect(state.snake.length).toBe(lengthBefore);
+    expect(game.getBoardPressure().committedFreeCells).toBe(freeBefore);
   });
 
   it('the second wall hit kills - strictly once per run', () => {
@@ -236,12 +243,11 @@ describe('Iron Scales: survive one wall collision per run', () => {
     game.start();
     marchIntoWall(game); // absorbed
     expect(game.getState().isGameOver).toBe(false);
-    game.tick(); // back to the wall column
-    game.tick(); // into the wall again - no save left
+    game.tick(); // same blocked direction, no save left
     expect(game.getState().isDeathSequence).toBe(true);
   });
 
-  it('does NOT absorb self-collision (walls only)', () => {
+  it('does NOT absorb self-collision (board edge/terrain only)', () => {
     const game = new SnakeGameLogic({
       gridSize: 30,
       ruleset: RULESETS.PRIMAL,
@@ -260,6 +266,37 @@ describe('Iron Scales: survive one wall collision per run', () => {
     expect(state.isDeathSequence || state.isGameOver).toBe(true);
     // The wall save is still unspent - it just doesn't apply to bodies
     expect(state.ironScalesAvailable).toBe(true);
+  });
+
+  it('absorbs solid terrain as a collision with the board', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.PRIMAL,
+      traits: ['iron_scales'],
+    });
+    game.start();
+    const live = (game as unknown as { state: GameState }).state;
+    const head = live.snake[0];
+    live.terrain.push({
+      x: head.x + 1,
+      z: head.z,
+      source: 'cyber',
+      formingTicks: 0,
+      formingTotal: 1,
+      solid: true,
+    });
+    let triggers = 0;
+    game.on('ironScalesTriggered', () => {
+      triggers += 1;
+    });
+
+    const freeBefore = game.getBoardPressure().committedFreeCells;
+    game.tick();
+    const state = game.getState();
+    expect(triggers).toBe(1);
+    expect(state.ironScalesAvailable).toBe(false);
+    expect(state.isDeathSequence).toBe(false);
+    expect(game.getBoardPressure().committedFreeCells).toBe(freeBefore);
   });
 
   it('a traitless snake dies on the first wall hit', () => {
