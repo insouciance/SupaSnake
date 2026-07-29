@@ -72,6 +72,8 @@ import {
 } from '@/lib/game/interpolationBuffer';
 import {
   createTrailFusionState,
+  FUSION_NEIGHBOUR_DX,
+  FUSION_NEIGHBOUR_DZ,
   resetTrailFusion,
   updateTrailFusion,
   type TrailFusionState,
@@ -84,6 +86,7 @@ import {
   updateTrailCells,
   type TrailCellState,
 } from '@/lib/game/trailCells';
+import { getDynastyScreenTokens } from './screen/gameScreenTokens';
 import { FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
@@ -197,6 +200,27 @@ const revivePhaseMaterial = new THREE.MeshBasicMaterial({
   wireframe: true,
   depthWrite: false,
 });
+
+/** A rare one-shot contact highlight, not a second persistent body layer. */
+export const COIL_SEAL_DURATION_SECONDS = 0.52;
+const COIL_SEAL_INSTANCE_CAPACITY = GRID_SIZE * GRID_SIZE * 4;
+const coilSealMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+
+function getCoilSealMaterial(dynasty: DynastyId): THREE.MeshBasicMaterial {
+  let material = coilSealMaterialCache.get(dynasty);
+  if (!material) {
+    material = new THREE.MeshBasicMaterial({
+      color: getDynastyScreenTokens(dynasty).secondary,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    coilSealMaterialCache.set(dynasty, material);
+  }
+  return material;
+}
 
 /**
  * Yaw that points the head's face (+Z local: the eyes' side) along each
@@ -323,13 +347,27 @@ export function writeTrailInstances(
   // previous head tile as the head leaves it; nothing else in the coil moves.
   for (let index = 0; index < cells.currentCount; index += 1) {
     const cell = cells.currentCells[index];
-    const transition = cells.previousMask[cell] === 1 ? 1 : eased;
+    const persistent = cells.previousMask[cell] === 1;
+    const transition = persistent ? 1 : eased;
+    // Segment identity advances one index every tick even when a coil cell
+    // does not move. Blend that representative (and the run length it is
+    // denominated in) so the vacancy taper flows instead of blinking once per
+    // engine tick. Entering cells have no previous representative to blend.
+    const representative = persistent
+      ? cells.previousRepresentative[cell] +
+        (cells.currentRepresentative[cell] -
+          cells.previousRepresentative[cell]) *
+          eased
+      : cells.currentRepresentative[cell];
+    const length = persistent
+      ? buffer.prevCount + (count - buffer.prevCount) * eased
+      : count;
     n = writeTrailCell(
       sink,
       n,
       cell,
-      cells.currentRepresentative[cell],
-      count,
+      representative,
+      length,
       transition,
       fusion,
       cells,
@@ -381,6 +419,108 @@ export function writeTrailInstances(
   return n;
 }
 
+export interface CoilSealInstanceSink {
+  setMatrixAt(index: number, matrix: THREE.Matrix4): void;
+}
+
+/**
+ * Zip short highlights along the exact contact edges that made a cell fully
+ * fused. The settled level-2 body remains calm after this half-second event.
+ */
+export function writeCoilSealInstances(
+  sink: CoilSealInstanceSink,
+  buffer: InterpolationBuffer,
+  alpha: number,
+  fusion: TrailFusionState,
+  cells: TrailCellState,
+  elapsed: number
+): number {
+  let instance = 0;
+  const eased = alpha * alpha * (3 - 2 * alpha);
+
+  for (let index = 0; index < cells.currentCount; index += 1) {
+    const cell = cells.currentCells[index];
+    const startedAt = fusion.sealStartedAt[cell];
+    const age = elapsed - startedAt;
+    if (
+      startedAt < 0 ||
+      age < 0 ||
+      age > COIL_SEAL_DURATION_SECONDS ||
+      fusion.sealMask[cell] === 0
+    ) {
+      continue;
+    }
+
+    const persistent = cells.previousMask[cell] === 1;
+    const representative = persistent
+      ? cells.previousRepresentative[cell] +
+        (cells.currentRepresentative[cell] -
+          cells.previousRepresentative[cell]) *
+          eased
+      : cells.currentRepresentative[cell];
+    const length = persistent
+      ? buffer.prevCount + (buffer.count - buffer.prevCount) * eased
+      : buffer.count;
+    const bodyHeight =
+      getTrailHeight(representative, length) *
+      getTrailBreathe(representative, elapsed);
+    const progress = age / COIL_SEAL_DURATION_SECONDS;
+    const flare = Math.sin(progress * Math.PI);
+    // Geometry, not global material opacity, carries the per-instance fade.
+    // It reaches zero at both ends so the seal never pops on or blinks out.
+    const dashLength = 0.44 * flare;
+    const dashWidth = 0.08 * flare;
+    const dashHeight = 0.053 * flare;
+    const travel = (progress - 0.5) * 0.42;
+    const x = trailCellX(cells, cell) + 0.5;
+    const z = trailCellZ(cells, cell) + 0.5;
+
+    for (let direction = 0; direction < 4; direction += 1) {
+      if ((fusion.sealMask[cell] & (1 << direction)) === 0) continue;
+      if (instance >= COIL_SEAL_INSTANCE_CAPACITY) return instance;
+
+      const nx = trailCellX(cells, cell) + FUSION_NEIGHBOUR_DX[direction];
+      const nz = trailCellZ(cells, cell) + FUSION_NEIGHBOUR_DZ[direction];
+      if (nx >= 0 && nx < cells.gridSize && nz >= 0 && nz < cells.gridSize) {
+        const neighbour = nz * cells.gridSize + nx;
+        const opposite = direction ^ 1;
+        const neighbourAge = elapsed - fusion.sealStartedAt[neighbour];
+        // A shared body seam is one line, not two coplanar highlights.
+        if (
+          neighbour < cell &&
+          cells.currentMask[neighbour] === 1 &&
+          neighbourAge >= 0 &&
+          neighbourAge <= COIL_SEAL_DURATION_SECONDS &&
+          (fusion.sealMask[neighbour] & (1 << opposite)) !== 0
+        ) {
+          continue;
+        }
+      }
+
+      if (FUSION_NEIGHBOUR_DX[direction] !== 0) {
+        _position.set(
+          x + FUSION_NEIGHBOUR_DX[direction] * 0.47,
+          FLOOR_CLEARANCE + bodyHeight + dashHeight / 2 + 0.008,
+          z + travel
+        );
+        _scale.set(dashWidth, dashHeight, dashLength);
+      } else {
+        _position.set(
+          x + travel,
+          FLOOR_CLEARANCE + bodyHeight + dashHeight / 2 + 0.008,
+          z + FUSION_NEIGHBOUR_DZ[direction] * 0.47
+        );
+        _scale.set(dashLength, dashHeight, dashWidth);
+      }
+      _matrix.compose(_position, _identityQuaternion, _scale);
+      sink.setMatrixAt(instance, _matrix);
+      instance += 1;
+    }
+  }
+
+  return instance;
+}
+
 /**
  * Eyes on the head's forward face - parented inside the head mesh so its
  * scale and damped yaw carry them (positions in unit-head-local space,
@@ -425,6 +565,7 @@ function InstancedSnakeCore({
   bodyGeometry,
 }: InstancedSnakeCoreProps) {
   const instancedRef = useRef<THREE.InstancedMesh>(null);
+  const sealRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.Group>(null);
   const yawRef = useRef(HEAD_FACE_YAW[direction]);
   // Fusion working set: preallocated typed arrays, hysteresis keyed by CELL.
@@ -446,23 +587,28 @@ function InstancedSnakeCore({
 
   const headMaterial = getSnakeSegmentMaterial(dynasty, true);
   const bodyMaterial = getInstancedBodyMaterial(dynasty);
+  const sealMaterial = getCoilSealMaterial(dynasty);
 
   // One-time GPU hints: the instance matrices stream every frame, and the
   // whole arena is always on screen - skip per-frame culling math.
   useEffect(() => {
     const mesh = instancedRef.current;
-    if (!mesh) return;
+    const seal = sealRef.current;
+    if (!mesh || !seal) return;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    seal.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
+    seal.count = 0;
   }, [bodyGeometry]);
 
   useFrame((_, delta) => {
     const buffer = bufferRef.current;
     const mesh = instancedRef.current;
+    const seal = sealRef.current;
     const head = headRef.current;
     const fusion = fusionRef.current;
     const cells = cellRef.current;
-    if (!buffer || !mesh || !head || !fusion || !cells) return;
+    if (!buffer || !mesh || !seal || !head || !fusion || !cells) return;
 
     const count = buffer.count;
     const alpha = getAlpha(buffer, performance.now());
@@ -481,7 +627,14 @@ function InstancedSnakeCore({
       }
     } else if (tickAt !== lastTickAtRef.current) {
       lastTickAtRef.current = tickAt;
-      updateTrailFusion(fusion, buffer.curr, count, terrain, wrapActive);
+      updateTrailFusion(
+        fusion,
+        buffer.curr,
+        count,
+        terrain,
+        wrapActive,
+        elapsed
+      );
       updateTrailCells(cells, buffer);
     }
 
@@ -498,6 +651,15 @@ function InstancedSnakeCore({
     if (mesh.instanceColor) {
       mesh.instanceColor.needsUpdate = true;
     }
+    seal.count = writeCoilSealInstances(
+      seal,
+      buffer,
+      alpha,
+      fusion,
+      cells,
+      elapsed
+    );
+    seal.instanceMatrix.needsUpdate = true;
 
     // Head: interpolated position + damped yaw toward the heading
     if (count > 0) {
@@ -526,6 +688,16 @@ function InstancedSnakeCore({
         args={[bodyGeometry, bodyMaterial, TRAIL_INSTANCE_CAPACITY]}
         frustumCulled={false}
         castShadow
+      />
+      <instancedMesh
+        ref={sealRef}
+        args={[
+          unitBoxGeometry,
+          sealMaterial,
+          COIL_SEAL_INSTANCE_CAPACITY,
+        ]}
+        frustumCulled={false}
+        renderOrder={4}
       />
       <group ref={headRef} visible={false}>
         <mesh

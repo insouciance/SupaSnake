@@ -33,7 +33,11 @@ import {
   updateTrailCells,
   type TrailCellState,
 } from '@/lib/game/trailCells';
-import { writeTrailInstances } from './InstancedSnake';
+import {
+  COIL_SEAL_DURATION_SECONDS,
+  writeCoilSealInstances,
+  writeTrailInstances,
+} from './InstancedSnake';
 import { FLOOR_CLEARANCE, FLOOR_TOP_Y } from './ArenaFloor';
 import {
   TRAIL_HEIGHT_HEAD,
@@ -76,6 +80,16 @@ function bufferOf(snake: readonly Position[]): InterpolationBuffer {
   const buffer = createInterpolationBuffer();
   recordTick(buffer, snake, 100, 1000);
   recordTick(buffer, snake, 100, 1100);
+  return buffer;
+}
+
+function movingBuffer(
+  previous: readonly Position[],
+  current: readonly Position[]
+): InterpolationBuffer {
+  const buffer = createInterpolationBuffer();
+  recordTick(buffer, previous, 100, 1000);
+  recordTick(buffer, current, 100, 1100);
   return buffer;
 }
 
@@ -215,6 +229,69 @@ describe('fusion drives the picture, not just a number', () => {
     const fused = emit(buffer, levels(2)).sink.instances[0];
     expect(1 - free.scale.x).toBeGreaterThan(0.25);
     expect(1 - fused.scale.x).toBeLessThan(0.1);
+  });
+});
+
+describe('tail taper is fluid across engine ticks', () => {
+  it('blends a persistent cell from its previous to current vacancy state', () => {
+    const previous = straight(10); // z 5..14
+    const current = [at(5, 4), ...previous.slice(0, -1)]; // z 4..13
+    const buffer = movingBuffer(previous, current);
+    const levels = new Array(10).fill(1);
+    const heightAt = (alpha: number) => {
+      const instance = emit(buffer, levels, alpha).sink.instances.find(
+        (entry) => Math.abs(entry.position.z - 13.5) < 1e-6
+      );
+      expect(instance).toBeDefined();
+      return instance!.scale.y;
+    };
+
+    const previousHeight = heightAt(0);
+    const middleHeight = heightAt(0.5);
+    const currentHeight = heightAt(1);
+    expect(previousHeight).toBeGreaterThan(middleHeight);
+    expect(middleHeight).toBeGreaterThan(currentHeight);
+  });
+});
+
+describe('full-fusion seal payoff', () => {
+  it('zips only the contact edges during its one-shot window', () => {
+    const buffer = bufferOf(straight(10));
+    const fusion = createTrailFusionState(20, 400);
+    const cells = createTrailCellState(20);
+    updateTrailCells(cells, buffer);
+    const cell = cells.currentCells[3];
+    fusion.sealStartedAt[cell] = 2;
+    fusion.sealMask[cell] = (1 << 0) | (1 << 3);
+
+    const active = new RecordingSink();
+    const activeCount = writeCoilSealInstances(
+      active,
+      buffer,
+      1,
+      fusion,
+      cells,
+      2 + COIL_SEAL_DURATION_SECONDS / 2
+    );
+    expect(activeCount).toBe(2);
+    for (let index = 0; index < activeCount; index += 1) {
+      expect(active.instances[index].scale.y).toBeGreaterThan(0);
+      expect(active.instances[index].position.y).toBeGreaterThan(
+        FLOOR_CLEARANCE
+      );
+    }
+
+    const expired = new RecordingSink();
+    expect(
+      writeCoilSealInstances(
+        expired,
+        buffer,
+        1,
+        fusion,
+        cells,
+        2 + COIL_SEAL_DURATION_SECONDS + 0.01
+      )
+    ).toBe(0);
   });
 });
 
@@ -418,7 +495,7 @@ describe('the head zone breathes and the trunk does not', () => {
 });
 
 describe('selective interpolation: expressive front, settled interior', () => {
-  it('keeps persistent cells fixed and animates only enter/leave scale', () => {
+  it('keeps persistent cells fixed while their taper changes fluidly', () => {
     const buffer = createInterpolationBuffer();
     recordTick(buffer, [at(5, 5), at(5, 6), at(5, 7)], 100, 1000);
     recordTick(buffer, [at(5, 4), at(5, 5), at(5, 6)], 100, 1100);
@@ -427,7 +504,10 @@ describe('selective interpolation: expressive front, settled interior', () => {
     // Current body order: entering previous-head cell z=5, then persistent z=6.
     expect(early.instances[1].position.z).toBeCloseTo(6.5, 10);
     expect(late.instances[1].position.z).toBeCloseTo(6.5, 10);
-    expect(early.instances[1].scale.y).toBeCloseTo(late.instances[1].scale.y, 10);
+    expect(early.instances[1].scale.y).not.toBeCloseTo(
+      late.instances[1].scale.y,
+      6
+    );
     expect(early.instances[0].position.z).toBeCloseTo(5.5, 10);
     expect(late.instances[0].position.z).toBeCloseTo(5.5, 10);
     expect(late.instances[0].scale.y).toBeGreaterThan(early.instances[0].scale.y);

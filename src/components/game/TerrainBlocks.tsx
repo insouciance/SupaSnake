@@ -15,16 +15,17 @@ import { FLOOR_CLEARANCE } from './ArenaFloor';
  * replaces the generic "concrete cube" read with board architecture while
  * preserving the categorical flat/raised safety grammar.
  *
- * Cause survives as a quiet top relief, never a different collision shape:
- * CYBER shutter, Fortress scale plate, Cosmic star scar, ladder seal. Source
- * is distinguished by silhouette rather than dynasty colour. Three instanced
- * meshes cover the whole grammar (forming, solid, relief), independent of how
- * many cells or causes are present.
+ * Cause survives as a quiet Genome-derived top rune, never a different
+ * collision shape: VOLT lightning for CYBER, a FERAL sprout/claw for Fortress,
+ * a broken FLUX portal for COSMIC, and an AURUM-style seal for the ladder.
+ * The rune is already present while a cell forms, then lifts with the cell as
+ * it locks. Source is distinguished by silhouette rather than dynasty colour.
+ * Three instanced meshes cover the whole grammar (forming, solid, rune).
  */
 
 const MAX_BLOCKS = GAME_CONFIG.board.gridSize * GAME_CONFIG.board.gridSize;
 const MAX_FORMING_INSTANCES = MAX_BLOCKS * 5;
-const MAX_SIGNATURES = MAX_BLOCKS * 2;
+const MAX_SIGNATURES = MAX_BLOCKS * 5;
 const FORMING_HEIGHT = 0.035;
 const FORMING_FOOTPRINT = 0.86;
 const SOLID_HEIGHT = 0.72;
@@ -55,6 +56,56 @@ const identity = new THREE.Quaternion();
 const rotation = new THREE.Quaternion();
 const yAxis = new THREE.Vector3(0, 1, 0);
 const scale = new THREE.Vector3(1, 1, 1);
+
+export interface TerrainRuneStroke {
+  readonly x1: number;
+  readonly z1: number;
+  readonly x2: number;
+  readonly z2: number;
+  readonly width: number;
+}
+
+/**
+ * Local-cell linework adapted from the Genome strain glyphs. Exported so the
+ * causal vocabulary is testable without a WebGL context.
+ */
+export function terrainRuneStrokes(
+  source: TerrainSource
+): readonly TerrainRuneStroke[] {
+  switch (source) {
+    case 'cyber':
+      // VOLT: a connected three-stroke lightning channel.
+      return [
+        { x1: 0.15, z1: -0.32, x2: -0.09, z2: -0.04, width: 0.075 },
+        { x1: -0.09, z1: -0.04, x2: 0.09, z2: -0.04, width: 0.075 },
+        { x1: 0.09, z1: -0.04, x2: -0.15, z2: 0.32, width: 0.075 },
+      ];
+    case 'fortress':
+      // FERAL: a rooted stem with two protective prongs.
+      return [
+        { x1: 0, z1: -0.3, x2: 0, z2: 0.3, width: 0.07 },
+        { x1: -0.29, z1: -0.08, x2: 0, z2: 0.09, width: 0.07 },
+        { x1: 0.29, z1: -0.08, x2: 0, z2: 0.09, width: 0.07 },
+      ];
+    case 'cosmic':
+      // FLUX: four separated portal arcs. Deliberately not the old X.
+      return [
+        { x1: -0.23, z1: -0.15, x2: -0.06, z2: -0.31, width: 0.065 },
+        { x1: 0.06, z1: -0.31, x2: 0.23, z2: -0.15, width: 0.065 },
+        { x1: 0.23, z1: 0.15, x2: 0.06, z2: 0.31, width: 0.065 },
+        { x1: -0.06, z1: 0.31, x2: -0.23, z2: 0.15, width: 0.065 },
+      ];
+    case 'ladder':
+      // AURUM / Genome socket: a compact five-sided authored seal.
+      return [
+        { x1: 0, z1: -0.31, x2: 0.28, z2: -0.1, width: 0.06 },
+        { x1: 0.28, z1: -0.1, x2: 0.17, z2: 0.28, width: 0.06 },
+        { x1: 0.17, z1: 0.28, x2: -0.17, z2: 0.28, width: 0.06 },
+        { x1: -0.17, z1: 0.28, x2: -0.28, z2: -0.1, width: 0.06 },
+        { x1: -0.28, z1: -0.1, x2: 0, z2: -0.31, width: 0.06 },
+      ];
+  }
+}
 
 function writeInstance(
   mesh: THREE.InstancedMesh,
@@ -117,32 +168,45 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
       );
       formingCount += 1;
     };
-    const addSignature = (
-      source: TerrainSource,
+    const addStroke = (
       x: number,
       y: number,
       z: number,
-      sx: number,
-      sz: number,
-      angle: number
+      stroke: TerrainRuneStroke,
+      runeScale: number
     ): void => {
-      // `source` is intentionally consumed by the caller's silhouette switch,
-      // not mapped to a colour: dynasty hues mean player identity elsewhere.
-      void source;
       if (signatureCount >= MAX_SIGNATURES) return;
+      const dx = (stroke.x2 - stroke.x1) * runeScale;
+      const dz = (stroke.z2 - stroke.z1) * runeScale;
+      const length = Math.hypot(dx, dz);
+      const centerX = x + ((stroke.x1 + stroke.x2) / 2) * runeScale;
+      const centerZ = z + ((stroke.z1 + stroke.z2) / 2) * runeScale;
+      const angle = Math.atan2(-dz, dx);
       rotation.setFromAxisAngle(yAxis, angle);
       writeInstance(
         signature,
         signatureCount,
-        x,
+        centerX,
         y,
-        z,
-        sx,
+        centerZ,
+        length,
         SIGNATURE_HEIGHT,
-        sz,
+        stroke.width * runeScale,
         rotation
       );
       signatureCount += 1;
+    };
+    const addRune = (
+      source: TerrainSource,
+      x: number,
+      y: number,
+      z: number,
+      runeScale = 1
+    ): void => {
+      // Cause is not mapped to a colour: dynasty hues mean player identity.
+      for (const stroke of terrainRuneStrokes(source)) {
+        addStroke(x, y, z, stroke, runeScale);
+      }
     };
 
     for (const block of terrain) {
@@ -165,38 +229,7 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
         }
 
         const top = FLOOR_CLEARANCE + SOLID_HEIGHT + SIGNATURE_HEIGHT / 2;
-        switch (block.source) {
-          case 'cyber':
-            addSignature(
-              'cyber',
-              x,
-              top,
-              z,
-              0.58,
-              0.14,
-              (block.x + block.z) % 2 ? 0 : Math.PI / 2
-            );
-            break;
-          case 'fortress':
-            addSignature(
-              'fortress',
-              x,
-              top,
-              z,
-              0.5,
-              0.32,
-              (block.x + block.z) % 2 ? Math.PI / 4 : -Math.PI / 4
-            );
-            break;
-          case 'cosmic':
-            addSignature('cosmic', x, top, z, 0.46, 0.075, Math.PI / 4);
-            addSignature('cosmic', x, top, z, 0.46, 0.075, -Math.PI / 4);
-            break;
-          case 'ladder':
-            addSignature('ladder', x, top, z, 0.42, 0.08, 0);
-            addSignature('ladder', x, top, z, 0.42, 0.08, Math.PI / 2);
-            break;
-        }
+        addRune(block.source, x, top, z);
         continue;
       }
 
@@ -220,6 +253,17 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
       addForming(x, FLOOR_CLEARANCE + 0.04, z + 0.43, span, 0.035, 0.035);
       addForming(x - 0.43, FLOOR_CLEARANCE + 0.04, z, 0.035, 0.035, span);
       addForming(x + 0.43, FLOOR_CLEARANCE + 0.04, z, 0.035, 0.035, span);
+
+      // The stable rune names WHY this cell is being claimed while the amber
+      // fill shows WHEN. On lock, the same mark rises with the transformed
+      // cell instead of changing symbols at the dangerous moment.
+      addRune(
+        block.source,
+        x,
+        FLOOR_CLEARANCE + FORMING_HEIGHT + SIGNATURE_HEIGHT / 2 + 0.004,
+        z,
+        0.82
+      );
     }
 
     forming.count = formingCount;

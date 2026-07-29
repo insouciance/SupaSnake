@@ -85,6 +85,16 @@ describe('the metric reaches the renderer', () => {
     expect(renderer).toMatch(/mesh\.count = writeTrailInstances\(/);
   });
 
+  it('the earned full-fusion seal has a bounded, separately testable pass', () => {
+    const renderer = read(RENDERER);
+    expect(renderer).toContain('writeCoilSealInstances(');
+    expect(renderer).toContain('fusion.sealStartedAt[cell]');
+    expect(renderer).toContain('COIL_SEAL_DURATION_SECONDS');
+    // One instanced effect mesh, not a particle system or a mesh per cell.
+    expect(renderer).toMatch(/seal\.count = writeCoilSealInstances\(/);
+    expect(renderer).toContain('COIL_SEAL_INSTANCE_CAPACITY');
+  });
+
   it('colours are written in the same pass as matrices', () => {
     // The old cache rewrote instance colours only when `count` or the strain
     // signature changed. Fusion changes per TICK without the length changing,
@@ -198,7 +208,8 @@ describe('the failure modes the design named explicitly', () => {
     expect(renderer).toContain('getInterpolatedZ(buffer');
     expect(renderer).toContain('trailCellX(cells, cell)');
     expect(renderer).toContain('trailCellZ(cells, cell)');
-    expect(renderer).toContain('cells.previousMask[cell] === 1 ? 1 : eased');
+    expect(renderer).toContain('cells.previousRepresentative[cell]');
+    expect(renderer).toContain('(count - buffer.prevCount) * eased');
   });
 
   it('quiet is taken from height, never from contrast', () => {

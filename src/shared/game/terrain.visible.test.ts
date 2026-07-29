@@ -215,12 +215,16 @@ describe('the forming phase can be drawn as progress', () => {
     for (const source of ['cyber', 'fortress', 'cosmic', 'ladder']) {
       expect(renderer).toContain(`case '${source}'`);
     }
-    expect(renderer).toContain('addSignature(');
+    expect(renderer).toContain('terrainRuneStrokes(');
+    expect(renderer).toContain('addRune(');
     expect(renderer).toContain('signatureMaterial');
     // Cause is carried by silhouette, not dynasty colour. Dynasty hues are
     // reserved for player identity and must not turn the board into four
     // competing palettes when several terrain sources coexist.
     expect(renderer).toContain('not mapped to a colour');
+    // The same causal mark is visible during the warning and after lock.
+    expect(renderer.match(/addRune\(/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(renderer).toMatch(/MAX_SIGNATURES = MAX_BLOCKS \* 5/);
   });
 
   it('covers the full board and keeps locked terrain perfectly still', () => {
