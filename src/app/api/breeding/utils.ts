@@ -133,6 +133,8 @@ export interface BreedingHistoryEntry {
   child: BreedingHistorySnake | null;
   /** The lineage the player drafted at birth (§8.2). */
   lineage: Lineage | null;
+  /** Present when the child was voluntarily exchanged for its full DNA cost. */
+  refundedAt: string | null;
 }
 
 export interface BreedingHistoryResponse {
@@ -147,6 +149,19 @@ interface SnakeJoinRow {
   id?: string;
   generation?: number;
   snake_variants?: { name?: string; rarity?: string } | null;
+}
+
+interface RefundSnapshotSnake {
+  id?: string;
+  generation?: number;
+  variant_name?: string | null;
+  rarity?: string | null;
+}
+
+interface RefundSnapshot {
+  parent1?: RefundSnapshotSnake | null;
+  parent2?: RefundSnapshotSnake | null;
+  child?: RefundSnapshotSnake | null;
 }
 
 /**
@@ -173,6 +188,18 @@ function mapSnakeJoin(
   };
 }
 
+function mapSnapshotSnake(
+  value: RefundSnapshotSnake | null | undefined
+): BreedingHistorySnake | null {
+  if (!value?.id) return null;
+  return {
+    id: value.id,
+    generation: value.generation ?? 1,
+    variantName: value.variant_name ?? null,
+    rarity: value.rarity ?? null,
+  };
+}
+
 /**
  * Convert a breeding_history row (with collected_snakes -> snake_variants
  * joins aliased as parent1/parent2/child) into the camelCase API shape.
@@ -182,13 +209,21 @@ export function mapBreedingHistoryRow(row: Record<string, unknown>): BreedingHis
     | { lineage?: { child?: unknown } | null }
     | null
     | undefined;
+  const refundSnapshot = row.refund_snapshot as RefundSnapshot | null | undefined;
   return {
     id: row.id as string,
     dnaCost: (row.dna_cost as number) ?? 0,
     bredAt: row.bred_at as string,
-    parent1: mapSnakeJoin(row.parent1 as SnakeJoinRow | SnakeJoinRow[] | null),
-    parent2: mapSnakeJoin(row.parent2 as SnakeJoinRow | SnakeJoinRow[] | null),
-    child: mapSnakeJoin(row.child as SnakeJoinRow | SnakeJoinRow[] | null),
+    parent1:
+      mapSnakeJoin(row.parent1 as SnakeJoinRow | SnakeJoinRow[] | null) ??
+      mapSnapshotSnake(refundSnapshot?.parent1),
+    parent2:
+      mapSnakeJoin(row.parent2 as SnakeJoinRow | SnakeJoinRow[] | null) ??
+      mapSnapshotSnake(refundSnapshot?.parent2),
+    child:
+      mapSnakeJoin(row.child as SnakeJoinRow | SnakeJoinRow[] | null) ??
+      mapSnapshotSnake(refundSnapshot?.child),
     lineage: sanitizeLineage(traitRolls?.lineage?.child),
+    refundedAt: typeof row.refunded_at === 'string' ? row.refunded_at : null,
   };
 }

@@ -182,6 +182,16 @@ describe('GET /api/collection', () => {
       }),
     });
 
+    // Exact refundable breeding receipt for the active child.
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      in: jest.fn().mockResolvedValueOnce({
+        data: [{ child_id: '1', dna_cost: 875 }],
+        error: null,
+      }),
+    });
+
     const request = new NextRequest('http://localhost:3000/api/collection', {
       headers: { authorization: 'Bearer valid-token' },
     });
@@ -190,6 +200,7 @@ describe('GET /api/collection', () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.snakes).toHaveLength(1);
+    expect(data.snakes[0].downgradeRefundDna).toBe(875);
   });
 });
 

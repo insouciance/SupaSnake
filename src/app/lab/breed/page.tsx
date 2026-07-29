@@ -789,6 +789,11 @@ export default function BreedPage() {
                           {entry.child
                             ? `${entry.child.variantName ?? 'Unknown'} (Gen ${entry.child.generation})`
                             : 'Offspring released'}
+                          {entry.refundedAt && (
+                            <span className="ml-2 text-[10px] font-mono uppercase tracking-wide text-beige/50">
+                              Refunded
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs font-body truncate text-beige/60">
                           {entry.parent1?.variantName ?? '?'} × {entry.parent2?.variantName ?? '?'}
@@ -806,7 +811,7 @@ export default function BreedPage() {
                         )}
                       </div>
                       <span className="text-xs font-mono font-medium shrink-0 text-beige/60 inline-flex items-center gap-1">
-                        -{entry.dnaCost}
+                        {entry.refundedAt ? '+' : '-'}{entry.dnaCost}
                         <IconDna size={12} aria-label="DNA" aria-hidden={false} role="img" />
                       </span>
                     </li>

@@ -21,6 +21,11 @@ base Yield, generation multiplier, and added Yield. The main Snake Lab presents
 only the highest owned generation of each variant as active; equal-generation
 top builds remain distinct choices, while lower generations remain immutable
 pedigree/history and valid breeding records rather than playable roster clutter.
+A highest active bred generation may be voluntarily unwound one leaf at a time:
+the exact DNA on that breeding receipt returns in full, the next-highest build
+becomes active, and an immutable snapshot preserves the refunded pedigree. This
+is an owner-directed exchange of earned value, not system confiscation under
+Rule 6; active descendants and open runs block it.
 **v1.4 D1 amendment (owner ruling, 29 July 2026):** normal CYBER and COSMIC
 runs grow **+1 per food throughout**; their pressure remains speed and spatial
 restriction, respectively. PRIMAL owns the body-pressure profile: **+4 while
@@ -199,7 +204,10 @@ the preamble.
 
 6. **Everything earned is permanent.** Records, cosmetics, tracks, tenure, lineage,
    history — no code path may reduce, expire, or confiscate them. *Reviewer: does any
-   path write a player-owned row downward?*
+   path write a player-owned row downward?* A voluntary one-step lineage refund is
+   the narrow exchange case: it returns the exact recorded DNA input in full and
+   preserves the breeding event as immutable pedigree history. It may never be
+   triggered by absence, loss, expiry, balance pressure, or another player.
 
 7. **Commerce stays in its district.** The store is reached by navigation, never by
    interruption. Zero commercial surfaces during runs and on Results. At most one
@@ -650,6 +658,13 @@ implementation contradicts it three times with `random()` (GT §4). Rulings:
   stronger forever, and the place it shows is the place that counts.
 - **Reroll tokens and the lineage reroll are retired** (nothing random remains to
   reroll). Held tokens convert to 150 DNA each (their old price) in one migration.
+- **Ascendance can be unwound from the leaves inward.** The main Lab offers the
+  highest active bred build a one-step downgrade for the exact `dna_cost` stored
+  on its breeding receipt. No estimate or current-price recalculation is allowed.
+  A snake with an active descendant or open run cannot be unwound. The active
+  child leaves the collection, the next-highest generation becomes available,
+  and the breeding event retains immutable parent/child snapshots. Repeating the
+  action can return a branch further, one explicit confirmation at a time.
 - Lineage strength rules (rarity- and generation-derived, spawn points capped at
   2/strain) stay exactly as shipped — that cap is a well-judged anti-pay-to-win
   boundary (GT §2.5) and now also protects Depth.

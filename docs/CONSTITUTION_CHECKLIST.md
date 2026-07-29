@@ -17,7 +17,9 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
 - [ ] **R5 — Absence never destructive.** A 30-day absence loses only opportunities
   and one Take-streak tier; nothing owned decays, expires, or is confiscated.
 - [ ] **R6 — Earned things are permanent.** ⚙ No code path writes a player-owned
-  row downward (cosmetics, records, tracks, tenure, lineage).
+  row downward (cosmetics, records, tracks, tenure, lineage), except the
+  owner-initiated lineage exchange defined in §8.2: exact recorded DNA returned
+  in full and immutable pedigree history retained.
 - [ ] **R7 — Commerce in its district.** Zero commercial surfaces in-run and on
   Results; ≤1 per screen elsewhere; no commercial notification/email/badge.
 - [ ] **R8 — Clans never grade, never bill.** No reward thresholds, no intra-clan
