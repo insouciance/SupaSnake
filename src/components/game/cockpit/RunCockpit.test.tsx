@@ -134,6 +134,7 @@ describe('RunCockpit', () => {
     );
 
     const root = screen.getByTestId('game-hud');
+    expect(root).toHaveAttribute('data-input', 'flick');
     expect(root).toHaveAttribute('data-decision', 'true');
     expect(screen.getByTestId('cockpit-decision-dock')).toContainElement(
       screen.getByRole('dialog', { name: 'Decision' })
