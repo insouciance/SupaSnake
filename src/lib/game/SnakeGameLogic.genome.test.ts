@@ -10,7 +10,12 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { SnakeGameLogic, type GameOverData, type GenomeEngineConfig } from './SnakeGameLogic';
+import {
+  SnakeGameLogic,
+  type GameOverData,
+  type GameState,
+  type GenomeEngineConfig,
+} from './SnakeGameLogic';
 import { RULESETS } from '@/shared/game/rulesets';
 import { GENOME_SPAWN } from '@/shared/game/genes';
 import { STRAIN_ECONOMICS, STRAIN_PHYSICS } from '@/shared/game/strains';
@@ -122,6 +127,86 @@ describe('gene picks, strain tiers, splices', () => {
 });
 
 describe('strain physics on the board', () => {
+  it('FERAL Minor (Thick Hide) pardons self only and grows +8', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 40,
+      initialLength: 5,
+      ruleset: RULESETS.PRIMAL,
+      genome: genomeConfig(),
+    });
+    game.start();
+    game.grantMutation('overgrowth', 0);
+    game.grantMutation('deep_roots', 0); // FERAL x2 -> minor
+    expect(game.getState().strainTiers.FERAL).toBe(1);
+    game.placeFood({ x: 0, y: 0, z: 0 });
+
+    game.setDirection('UP');
+    game.tick();
+    game.setDirection('LEFT');
+    game.tick();
+    const beforePardon = game.getState().snake.length;
+    game.setDirection('DOWN');
+    game.tick(); // blocked by its own horizontal body
+
+    const state = game.getState();
+    expect(state.isDeathSequence).toBe(false);
+    expect(state.thickHideAvailable).toBe(false);
+    expect(state.snake).toHaveLength(
+      beforePardon + STRAIN_PHYSICS.thickHideGrowth
+    );
+    expect(state.pressureEvents).toEqual([
+      { atFood: 0, source: 'thick_hide' },
+    ]);
+    expect(state.lossEvents).toEqual([]);
+  });
+
+  it('FERAL Apex (Ouroboros) vacates the tip, then grows +2', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 10,
+      ruleset: RULESETS.PRIMAL,
+      genome: genomeConfig({ heirloom: { FERAL: 1 } }),
+    });
+    game.startDriven({
+      // Head moves RIGHT into a unique, vacating tail tip.
+      snake: [
+        { x: 2, y: 0, z: 2 },
+        { x: 1, y: 0, z: 2 },
+        { x: 1, y: 0, z: 1 },
+        { x: 2, y: 0, z: 1 },
+        { x: 3, y: 0, z: 1 },
+        { x: 3, y: 0, z: 2 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 8, y: 0, z: 8 }],
+    });
+    game.grantMutation('overgrowth', 0);
+    game.grantMutation('deep_roots', 0);
+    game.grantMutation('glacial_reserve', 0); // 4 pts / 3 genes -> apex
+    expect(game.getState().strainTiers.FERAL).toBe(3);
+    // The physical cadence is food-indexed. Test-only state setup avoids ten
+    // unrelated routing ticks while preserving the public collision path.
+    (game as unknown as { state: GameState }).state.foodEaten =
+      STRAIN_ECONOMICS.ouroborosFoodsPerBite;
+
+    const before = game.getState().snake.length;
+    game.tick();
+    const state = game.getState();
+    expect(state.snake[0]).toEqual({ x: 3, y: 0, z: 2 });
+    expect(state.snake).toHaveLength(
+      before + STRAIN_PHYSICS.ouroborosGrowthPerBite
+    );
+    expect(state.pressureEvents).toEqual([
+      {
+        atFood: STRAIN_ECONOMICS.ouroborosFoodsPerBite,
+        source: 'ouroboros',
+      },
+    ]);
+    expect(state.lossEvents).toEqual([]);
+    expect(state.genomeClaims.ouroborosDna).toBe(
+      STRAIN_ECONOMICS.ouroborosBiteFlat
+    );
+  });
+
   it('FLUX Expression (Rift Aura): walls wrap instead of killing', () => {
     const game = makeGenomeGame({}, 40);
     game.grantMutation('wall_rush', 0);

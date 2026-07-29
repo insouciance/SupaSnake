@@ -69,7 +69,7 @@ export const TRAITS: Record<TraitId, TraitDef> = {
     id: 'iron_scales',
     name: 'Iron Scales',
     kind: 'EP',
-    effect: 'Survive one wall collision per run (bounce back one cell)',
+    effect: 'Survive one board collision per run (edge or locked cell)',
     cost: 'Food −10% DNA',
   },
   magnetism: {
@@ -197,8 +197,6 @@ export const TRAIT_PHYSICS = {
   magnetismPortalIntervalPenalty: 2,
   /** Patient cost: mutation spawn rate -50% = interval x2. */
   patientMutationIntervalMultiplier: 2,
-  /** Iron Scales: the snake recoils this many cells from the wall, once per run. */
-  ironScalesBounceCells: 1,
 } as const;
 
 /**

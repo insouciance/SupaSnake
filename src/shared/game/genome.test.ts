@@ -14,6 +14,7 @@ import {
   reviveVoidsBenefits,
   sanitizeInfuses,
   sanitizeLossEvents,
+  sanitizePressureEvents,
   sanitizeRevive,
   sanitizeSurges,
   strainActivations,
@@ -135,6 +136,34 @@ describe('deterministic length model', () => {
     // exactly as they did. From 21 at food 11, five more foods reach 26 as
     // food 15 resolves, and the reported 5-segment loss lands after it: 21.
     expect(trace.lengthAtEat[16]).toBe(13 + STRAIN_PHYSICS.infuseGrowth + 5 - 5);
+  });
+
+  it('prices Rule-15 survival events as monotonic +8/+2 growth', () => {
+    const view = fusePicks([]);
+    const acts = strainActivations([], {});
+    const trace = computeLengthTrace(
+      view,
+      5,
+      acts,
+      genome({
+        pressureEvents: [
+          { atFood: 0, source: 'thick_hide' },
+          { atFood: 3, source: 'ouroboros' },
+        ],
+      })
+    );
+    expect(trace.lengthAtEat[1]).toBe(
+      3 + STRAIN_PHYSICS.thickHideGrowth
+    );
+    expect(trace.lengthAtEat[4]).toBe(
+      3 + STRAIN_PHYSICS.thickHideGrowth + 3 +
+        STRAIN_PHYSICS.ouroborosGrowthPerBite
+    );
+    for (let food = 2; food <= 5; food += 1) {
+      expect(trace.lengthAtEat[food]).toBeGreaterThanOrEqual(
+        trace.lengthAtEat[food - 1]
+      );
+    }
   });
 
   it('Fortress (FERAL expression) petrifies without shortening the snake', () => {
@@ -392,5 +421,22 @@ describe('sanitizers', () => {
     expect(
       sanitizeLossEvents([{ atFood: 5, segments: 4 }, { atFood: 5, segments: 0 }])
     ).toEqual([{ atFood: 5, segments: 4 }]);
+  });
+
+  it('sanitizePressureEvents keeps only bounded source facts', () => {
+    expect(
+      sanitizePressureEvents(
+        [
+          { atFood: 0, source: 'thick_hide' },
+          { atFood: 25, source: 'ouroboros' },
+          { atFood: 51, source: 'ouroboros' },
+          { atFood: 10, source: 'shed' },
+        ],
+        50
+      )
+    ).toEqual([
+      { atFood: 0, source: 'thick_hide' },
+      { atFood: 25, source: 'ouroboros' },
+    ]);
   });
 });

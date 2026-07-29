@@ -13,8 +13,10 @@
  * - The buffer lives in a React ref, NEVER in zustand: writes happen every
  *   engine tick and reads happen every animation frame; neither may cause
  *   React work.
- * - Zero allocations after construction: `recordTick` swaps the two
- *   preallocated Float32Arrays and overwrites in place.
+ * - Zero allocations while within capacity. If Rule-15 growth exceeds the
+ *   current plane, `recordTick` grows both arrays geometrically rather than
+ *   silently dropping the tail; that rare engine-tick allocation is safer
+ *   than a fixed cap that becomes false as logical length exceeds board area.
  * - Growth safety: segments that appear this tick (eat/grow) seed
  *   prev = curr, so new tail pieces pop in at their cell instead of
  *   streaking across the board from stale memory.
@@ -24,8 +26,7 @@
 
 import type { Position } from './SnakeGameLogic';
 
-/** Segment capacity - comfortably above any reachable snake length on a
- *  20x20 board (400 cells). Snakes longer than this clamp to capacity. */
+/** Initial segment capacity. Logical length may exceed the 400 board cells. */
 export const INTERPOLATION_CAPACITY = 400;
 
 export interface InterpolationBuffer {
@@ -35,6 +36,10 @@ export interface InterpolationBuffer {
   curr: Float32Array;
   /** Number of segments recorded in `curr` */
   count: number;
+  /** Number of segments represented in `prev` (needed for cell transitions). */
+  prevCount: number;
+  /** Whether at least one authoritative snapshot has been recorded. */
+  initialized: boolean;
   /** Timestamp (performance.now() domain) of the last recordTick */
   tickAt: number;
   /** Milliseconds until the next tick: the engine's getSpeed() read AFTER
@@ -49,6 +54,8 @@ export function createInterpolationBuffer(
     prev: new Float32Array(capacity * 2),
     curr: new Float32Array(capacity * 2),
     count: 0,
+    prevCount: 0,
+    initialized: false,
     tickAt: 0,
     tickInterval: 0,
   };
@@ -58,6 +65,8 @@ export function createInterpolationBuffer(
  *  new run never blends against the previous run's corpse). */
 export function resetInterpolationBuffer(buffer: InterpolationBuffer): void {
   buffer.count = 0;
+  buffer.prevCount = 0;
+  buffer.initialized = false;
   buffer.tickAt = 0;
   buffer.tickInterval = 0;
 }
@@ -76,9 +85,10 @@ export function recordTick(
   tickInterval: number,
   now: number
 ): void {
-  const capacity = buffer.prev.length >> 1;
-  const prevCount = buffer.count;
-  const count = Math.min(snake.length, capacity);
+  const oldCount = buffer.count;
+  const hadSnapshot = buffer.initialized;
+  ensureInterpolationCapacity(buffer, snake.length);
+  const count = snake.length;
 
   // Double-buffer swap: last tick's curr becomes prev
   const swap = buffer.prev;
@@ -93,14 +103,34 @@ export function recordTick(
   }
   // Growth: new tail indices had no previous position - seed prev = curr
   // so they render at their cell instead of streaking from stale data
-  for (let i = prevCount; i < count; i++) {
+  for (let i = hadSnapshot ? oldCount : 0; i < count; i++) {
     prev[i * 2] = curr[i * 2];
     prev[i * 2 + 1] = curr[i * 2 + 1];
   }
 
   buffer.count = count;
+  // The first snapshot seeds prev === curr, so it is semantically stable, not
+  // 400 entering cells. Thereafter this is the old authoritative count.
+  buffer.prevCount = hadSnapshot ? oldCount : count;
+  buffer.initialized = true;
   buffer.tickAt = now;
   buffer.tickInterval = tickInterval;
+}
+
+function ensureInterpolationCapacity(
+  buffer: InterpolationBuffer,
+  required: number
+): void {
+  const current = buffer.prev.length >> 1;
+  if (required <= current) return;
+  let next = Math.max(1, current);
+  while (next < required) next *= 2;
+  const prev = new Float32Array(next * 2);
+  const curr = new Float32Array(next * 2);
+  prev.set(buffer.prev);
+  curr.set(buffer.curr);
+  buffer.prev = prev;
+  buffer.curr = curr;
 }
 
 /**

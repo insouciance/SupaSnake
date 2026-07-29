@@ -270,8 +270,11 @@ export const STRAIN_PHYSICS = {
   /** Overclocked Reality cost: portal windows this many ticks shorter. */
   overclockedPortalTicksPenalty: 20,
   // --- FERAL ---------------------------------------------------------------
-  /** Thick Hide (minor): tail segments lost instead of dying, once per run. */
-  thickHideSegmentLoss: 5,
+  /**
+   * Thick Hide (minor): growth charged when its one self-collision pardon
+   * fires. Survival is power, so Rule 15 prices it in MORE body, never a shed.
+   */
+  thickHideGrowth: 8,
   /**
    * FORTRESS (Expression), WP-3.11 - the replacement for Molt.
    *
@@ -314,8 +317,8 @@ export const STRAIN_PHYSICS = {
    * skipped event pays nothing on either side.
    */
   fortressMinLiveLength: 12,
-  /** Ouroboros: segments consumed per tail-tip bite. */
-  ouroborosSegmentsPerBite: 3,
+  /** Ouroboros: growth charged per successful tail-tip bite. */
+  ouroborosGrowthPerBite: 2,
   // --- FLUX ----------------------------------------------------------------
   /** Warp Skin (minor): one free edge-wrap per this many foods. */
   warpSkinRechargeFoods: 30,

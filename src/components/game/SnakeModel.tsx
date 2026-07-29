@@ -59,20 +59,9 @@ export function getSegmentScale(index: number, length: number): number {
   return 1 - (1 - TAPER_MIN) * s;
 }
 
-/** Energy falloff: the head + first ENERGY_FULL_SEGMENTS body segments
- *  carry the identity at full glow; behind them the trunk's emissive
- *  energy eases down to ENERGY_MIN at the tail. Eye-comfort measure: a
- *  long snake reads as ONE calm body with a bright front, instead of a
- *  chain of equally-hot pieces shimmering in motion.
- *
- *  WP-3.07 raised ENERGY_MIN from 0.55 to 0.88. The trail redesign's ruling:
- *  "do not buy quiet with brightness". At 0.55 the segments about to free up
- *  were the hardest ones on the board to see, which is backwards - those are
- *  exactly the cells a player is planning around. Quiet now comes from HEIGHT
- *  (TRAIL_HEIGHT_* below), and brightness is reserved for the one thing it
- *  should mean: how well the body is packed (TRAIL_TONE). What is left here is
- *  a gentle head-primacy gradient, not a legibility tax. */
-export const ENERGY_FULL_SEGMENTS = 3;
+/** Settled-interior energy. The renderer uses one categorical head/interior
+ * step instead of an index gradient, so a stationary coil does not carry a
+ * moving brightness wave and the tail never becomes the least legible part. */
 export const ENERGY_MIN = 0.88;
 
 // -----------------------------------------------------------------------------
@@ -138,7 +127,7 @@ export function getTrailTone(level: number): number {
  * Pass 1 of the design: the head zone is a creature, the trail is what it
  * leaves behind. So the first TRAIL_HEAD_ZONE body segments stand tall and
  * ease down into a low, settled stack - Tetris's landed pieces. The trunk is
- * deliberately LOWER than a solid terrain block (0.62, TerrainBlocks.tsx), so
+ * deliberately LOWER than a solid terrain block (0.72, TerrainBlocks.tsx), so
  * the two never compete for the same read: terrain is a raised wall that never
  * moves again, the trail is a low field that answers how you are playing.
  *
@@ -154,13 +143,12 @@ export function getTrailTone(level: number): number {
  * body was a uniform 0.75 cube, and the trunk needs to stay near that or the
  * step down from the head stops being a step and becomes a collapse.
  *
- * 0.58 is the most volume available without breaking the OTHER constraint this
- * file already committed to and tests: the trunk stays below a solid terrain
- * block (0.62), so terrain reads as a raised wall and the trail as a low field.
- * That separation is deliberate and worth keeping, so the trunk is not a full
- * cube — it is 0.58 against a footprint of 0.62 when unfused, which is cubic
- * where it matters, and 0.96 when fully fused, which is the solid field the
- * design asks for. Head and tail are unchanged; the flatness was the trunk.
+ * 0.58 preserves the OTHER constraint this file commits to and tests: the
+ * trunk stays categorically below a 0.72 solid terrain cell, so terrain reads
+ * as a raised wall and the trail as a settled field. The trunk is 0.58 against
+ * a footprint of 0.62 when unfused, which remains cubic where it matters; at
+ * 0.96 when fully fused it becomes the broad packed field the design asks for.
+ * Head and tail are unchanged; the flatness was the trunk.
  */
 export const TRAIL_HEAD_ZONE = 5;
 export const TRAIL_HEIGHT_HEAD = 0.86;
@@ -241,61 +229,6 @@ export function getTrailBreathe(index: number, elapsedSeconds: number): number {
   const phase =
     elapsedSeconds * TRAIL_BREATHE_HZ * Math.PI * 2 - index * TRAIL_BREATHE_LAG;
   return 1 + TRAIL_BREATHE_AMPLITUDE * decay * Math.sin(phase);
-}
-
-/**
- * Width of the link drawn between two consecutive cells, as a fraction of the
- * narrower of their two footprints.
- *
- * Strictly below 1 for a reason that removes an instance from the design: the
- * original sketch called for a separate cap instance at interior corners,
- * because two axis-aligned bars meeting at a right angle leave the outer corner
- * unfilled. But the corner CELL already has a box on it, and as long as the
- * link is never wider than that box, the box is the cap. Same picture, one
- * instance per corner cheaper, nothing to keep in sync.
- */
-export const TRAIL_LINK_WIDTH = 0.72;
-
-/**
- * How tall a link is, as a fraction of the SHORTER of the two cells it joins.
- *
- * STRICTLY BELOW 1, AND THAT IS THE WHOLE POINT. This is the fix for the defect
- * the owner hit on first play: *"they are flickering and not all sides of the
- * cubes/segments are visible."*
- *
- * A link spans centre to centre, so it is buried inside both cells it joins.
- * At 1.0 its height equalled `min(heightA, heightB)`, and along the settled
- * trunk — where every cell is exactly TRAIL_HEIGHT_TRUNK — that made the link's
- * top face and the cells' top faces COPLANAR, at identical depth, over the
- * whole run. Two surfaces at the same depth is z-fighting by definition: the
- * winner is decided by floating-point noise per fragment, so the top of the
- * snake broke into notches that marched along it and shimmered whenever
- * anything moved.
- *
- * Insetting removes the tie instead of biasing it. `polygonOffset` would only
- * pick a winner; a shorter link means the surfaces are never at the same depth
- * to begin with, at any camera angle, on any GPU.
- *
- * The inset is also the right picture. Where two cells are fused their boxes
- * nearly touch and the groove is invisible; where they are not, the link reads
- * as a joint sunk between two discrete voxels, which is exactly what fusion
- * level 0 is supposed to look like.
- */
-export const TRAIL_LINK_HEIGHT = 0.88;
-
-/**
- * Per-segment energy multiplier (1.0 near the head -> ENERGY_MIN at the
- * tail tip, smoothstepped). Pure and allocation-free; applied to the
- * instanced body's per-instance color so both emissive and albedo cool
- * toward the tail. Never below ENERGY_MIN, never above 1.
- */
-export function getSegmentEnergy(index: number, length: number): number {
-  if (index <= ENERGY_FULL_SEGMENTS || length <= ENERGY_FULL_SEGMENTS + 1) {
-    return 1;
-  }
-  const t = (index - ENERGY_FULL_SEGMENTS) / (length - 1 - ENERGY_FULL_SEGMENTS);
-  const s = t * t * (3 - 2 * t); // smoothstep
-  return 1 - (1 - ENERGY_MIN) * s;
 }
 
 /** Head glows brighter than the body for at-a-glance orientation. Crisper

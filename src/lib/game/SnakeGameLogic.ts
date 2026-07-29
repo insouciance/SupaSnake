@@ -85,6 +85,7 @@ import {
   nextTerrainCells,
   ringOf,
   type TerrainBlock,
+  type TerrainSource,
 } from '@/shared/game/terrain';
 import {
   blockedGrid,
@@ -148,10 +149,15 @@ import {
   type GenomeRevive,
   type LengthLossEvent,
   type LengthTrace,
+  type PressureGrowthEvent,
   type ShedEvent,
   type StrainActivations,
   type StrainSurge,
 } from '@/shared/game/genome';
+import {
+  boardPressureSnapshot,
+  type BoardPressureSnapshot,
+} from '@/shared/game/pressure';
 import {
   pityForecast,
   rollGeneOffer,
@@ -273,8 +279,10 @@ export interface GameState {
   revive: GenomeRevive | null;
   /** Bounded-trust claim accumulators (display + end-of-run claim). */
   genomeClaims: GenomeClaims;
-  /** Reported length losses (Thick Hide, Ouroboros) for the length model. */
+  /** Historical wire compatibility; new runs never append length losses. */
   lossEvents: LengthLossEvent[];
+  /** Rule-15 growth charged by physical survival/tail-bite events. */
+  pressureEvents: PressureGrowthEvent[];
   /** FERAL Thick Hide: one self-collision pardon per run. */
   thickHideAvailable: boolean;
   /** FLUX Warp Skin: free-wrap charge state. */
@@ -283,11 +291,13 @@ export interface GameState {
   pocketRiftCharged: boolean;
   /** UMBRA Phantom Coil: ticks of tail-phase remaining. */
   phantomTicksRemaining: number;
+  /** Post-revive self/body-wall phase; length and terrain remain intact. */
+  revivePhaseTicksRemaining: number;
   /** True while a held Phoenix can still absorb one death. */
   phoenixAvailable: boolean;
   /** Food count at the Phoenix trigger, null if never triggered. */
   phoenixTriggeredAtFood: number | null;
-  /** True while an Iron Scales trait can still absorb one wall hit. */
+  /** True while Iron Scales can absorb one board-boundary/terrain hit. */
   ironScalesAvailable: boolean;
   /**
    * COSMIC: hue (0..glyphCount-1) of the live constellation, else null.
@@ -363,6 +373,8 @@ export interface GameOverGenome {
   surges: StrainSurge[];
   revive: GenomeRevive | null;
   claims: GenomeClaims;
+  pressureEvents: PressureGrowthEvent[];
+  /** Legacy-only compatibility field; new runs do not append losses. */
   lossEvents: LengthLossEvent[];
   offerTrace: OfferTraceEntry[];
   /** Display facts (server re-derives its own): */
@@ -628,11 +640,9 @@ export class SnakeGameLogic {
   /**
    * Ouroboros bites taken this run.
    *
-   * Counted explicitly rather than inferred from `lossEvents` by segment
-   * size. WP-2.05 normalizes Thick Hide to report the segments it ACTUALLY
-   * removed, and a clamped Thick Hide can legitimately report 3 - the same
-   * number as a bite - so the old `filter(e => e.segments === 3).length`
-   * would have started miscounting the bite cadence cap.
+   * Counted explicitly because cadence is about physical bite events, not
+   * their fixed +2 growth price. Settlement proves the same cadence from the
+   * ordered `pressureEvents` list.
    */
   private ouroborosBites = 0;
   /**
@@ -979,10 +989,12 @@ export class SnakeGameLogic {
       revive: null,
       genomeClaims: {},
       lossEvents: [],
+      pressureEvents: [],
       thickHideAvailable: false,
       warpSkinCharged: false,
       pocketRiftCharged: false,
       phantomTicksRemaining: 0,
+      revivePhaseTicksRemaining: 0,
       phoenixAvailable: false,
       phoenixTriggeredAtFood: null,
       ironScalesAvailable: this.hasTrait('iron_scales'),
@@ -1245,6 +1257,7 @@ export class SnakeGameLogic {
       revive: this.state.revive ? { ...this.state.revive } : null,
       genomeClaims: { ...this.state.genomeClaims },
       lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
+      pressureEvents: this.state.pressureEvents.map((e) => ({ ...e })),
     };
   }
 
@@ -1473,6 +1486,15 @@ export class SnakeGameLogic {
     let newHead = this.getNextPosition(head, this.state.direction);
     let wallHit = this.checkWallCollision(newHead);
 
+    // Every revive grants a short escape phase instead of returning free
+    // space. During it the board boundary behaves like a wrap and the body is
+    // non-lethal; permanent terrain is deliberately still solid. That keeps
+    // Rule 15 intact and prevents a revive from becoming an obstacle eraser.
+    if (wallHit && this.state.revivePhaseTicksRemaining > 0) {
+      newHead = this.wrapPosition(newHead);
+      wallHit = false;
+    }
+
     // COSMIC: the board IS a torus (WP-3.13). No phase, no charge, no
     // telegraph - the edge wraps every tick of every run. This is one
     // deleted condition rather than new geometry, and that is the point:
@@ -1521,10 +1543,9 @@ export class SnakeGameLogic {
     }
 
     // TERRAIN (WP-3.03): a solid block is lethal to the HEAD. Deliberately
-    // after the wall pardons and unprotected by them - Rift Aura, Warp Skin,
-    // Pocket Rift and Wall Rush are wall mechanics, and a block is not a wall.
-    // Pardoning terrain would hand the arena back to the player who has most
-    // invested in never meeting a wall, which is the opposite of the point.
+    // after wall-only pardons: Rift Aura, Warp Skin, Pocket Rift and Wall Rush
+    // do not apply because a locked cell is not the board edge. Iron Scales is
+    // handled below as the broader one-use BOARD-collision pardon.
     const terrainHit =
       !wallHit &&
       this.state.terrain.some(
@@ -1563,13 +1584,18 @@ export class SnakeGameLogic {
       return;
     }
 
-    // FERAL Apex "Ouroboros": biting your own TAIL TIP is a meal, not a
-    // death - consume 3 segments, pay 30 flat DNA (bounded-trust claim).
-    if (!wallHit && this.tryOuroborosBite(newHead)) {
-      wallHit = false; // the tail tip is gone; the move resolves normally
-    }
+    // Ouroboros makes exactly one otherwise-lethal cell legal: the current
+    // tail tip, while cadence allows a bite. The move must resolve first (so
+    // the old tail vacates normally), then its +2 pressure cost is appended.
+    const ouroborosBite =
+      !wallHit && !terrainHit && this.canOuroborosBite(newHead);
+    const selfHit =
+      !wallHit &&
+      !terrainHit &&
+      !ouroborosBite &&
+      this.checkSelfCollisionForDeath(newHead);
 
-    if (wallHit || terrainHit || this.checkSelfCollisionForDeath(newHead)) {
+    if (wallHit || terrainHit || selfHit) {
       // Terrain reports as 'wall' rather than growing `RunDeathCause`, which
       // is a persisted enum (migration 022) - and it is honest: a block is a
       // wall you watched arrive. Iron Scales absorbs a WALL hit and therefore
@@ -1577,18 +1603,20 @@ export class SnakeGameLogic {
       // "survive one collision with the board" and terrain is the board.
       const collisionCause: Exclude<RunDeathCause, 'extracted' | 'timeout'> =
         wallHit || terrainHit ? 'wall' : 'self';
-      // Iron Scales (trait): absorb exactly one WALL hit per run - the
-      // snake recoils one cell off the wall and the tick is consumed.
+      // Iron Scales (trait): absorb exactly one BOARD hit per run. The blocked
+      // move is consumed but the body stays put; the former recoil returned a
+      // head cell to free space and therefore violated Rule 15 even though its
+      // raw segment count happened to stay constant.
       // Checked before any revive so the trait save never burns one.
-      if (wallHit && this.state.ironScalesAvailable) {
+      if ((wallHit || terrainHit) && this.state.ironScalesAvailable) {
         this.triggerIronScales(newHead);
         this.emit('tick');
         return;
       }
-      // FERAL Minor "Thick Hide": absorb one SELF collision - lose 5 tail
-      // segments instead of dying (reported, payout-non-increasing).
+      // FERAL Minor "Thick Hide": absorb one SELF collision and charge +8
+      // length. The blocked move is cancelled; survival tightens the run.
       if (
-        !wallHit &&
+        selfHit &&
         this.state.thickHideAvailable &&
         this.strainTierNow('FERAL') >= 1
       ) {
@@ -1758,6 +1786,7 @@ export class SnakeGameLogic {
       });
     } else {
       this.state.snake.pop();
+      if (ouroborosBite) this.commitOuroborosBite(newHead);
     }
 
     // Genome pickups on the resolved head cell: AURUM gilded cells - a flat
@@ -1847,6 +1876,9 @@ export class SnakeGameLogic {
       if (ateFood && this.strainTierNow('UMBRA') >= 2) {
         this.state.phantomTicksRemaining = STRAIN_PHYSICS.phantomCoilTicks;
       }
+    }
+    if (this.state.revivePhaseTicksRemaining > 0) {
+      this.state.revivePhaseTicksRemaining -= 1;
     }
 
     // COSMIC: the constellation window closes, and whatever is left on the
@@ -2253,6 +2285,20 @@ export class SnakeGameLogic {
   }
 
   /**
+   * The authoritative board-pressure vocabulary for diagnostics, placement,
+   * and tests. Kept as one snapshot so consumers cannot quietly substitute
+   * array length for occupied space once Fortress has moved body into stone.
+   */
+  getBoardPressure(): BoardPressureSnapshot {
+    return boardPressureSnapshot(
+      this.gridSize,
+      this.state.snake,
+      this.state.terrain,
+      this.modelledLength()
+    );
+  }
+
+  /**
    * The run's live length trace - the same structure the server derives
    * with `computeLengthTrace`. Exposed so the fold-parity suite can assert
    * the two are identical food by food, which is the property that keeps
@@ -2403,7 +2449,11 @@ export class SnakeGameLogic {
     // there is nothing to bury. Skipping a cell would be the worse bug anyway:
     // a segment that petrified without laying stone would GROW free space,
     // which is the one thing Rule 15 forbids.
-    this.placeTerrainAt(removed, STRAIN_PHYSICS.fortressFormingSeconds);
+    this.placeTerrainAt(
+      removed,
+      STRAIN_PHYSICS.fortressFormingSeconds,
+      'fortress'
+    );
     this.emit('petrified', {
       atFood: n,
       segments,
@@ -2489,31 +2539,43 @@ export class SnakeGameLogic {
     });
   }
 
-  /** FERAL Apex "Ouroboros": tail-tip bites are meals (capped cadence). */
-  private tryOuroborosBite(newHead: Position): boolean {
+  /** Append logical segments at the current tail without moving the body. */
+  private growTail(segments: number): void {
+    const tail = this.state.snake[this.state.snake.length - 1];
+    if (!tail) return;
+    for (let index = 0; index < segments; index += 1) {
+      this.state.snake.push({ ...tail });
+    }
+  }
+
+  /** Whether this move may bite the deployed tail tip under the cadence cap. */
+  private canOuroborosBite(newHead: Position): boolean {
     if (!this.genomeActive() || this.strainTierNow('FERAL') < 3) return false;
     const tail = this.state.snake[this.state.snake.length - 1];
     if (!tail || tail.x !== newHead.x || tail.z !== newHead.z) return false;
-    if (this.state.snake.length <= STRAIN_PHYSICS.ouroborosSegmentsPerBite + 2) {
+    // Newly grown segments begin stacked on the tail cell. That cell is not a
+    // real, vacating TIP until only the last segment occupies it; allowing a
+    // bite sooner would leave the head overlapped by its own body.
+    const beforeTail = this.state.snake[this.state.snake.length - 2];
+    if (beforeTail && beforeTail.x === tail.x && beforeTail.z === tail.z) {
       return false;
     }
     const apexAt = this.activations?.FERAL.apexAt ?? 0;
-    // WP-2.05: counted, not inferred from the loss list by segment size.
-    // Thick Hide now reports the segments it actually removed, which can
-    // legitimately be `ouroborosSegmentsPerBite`, and the old filter would
-    // then have read a Thick Hide as a bite and closed the cadence early.
     const bitesSoFar = this.ouroborosBites;
     const biteCap = Math.floor(
       Math.max(0, this.state.foodEaten - apexAt) /
         STRAIN_ECONOMICS.ouroborosFoodsPerBite
     );
-    if (bitesSoFar >= biteCap) return false;
-    this.state.snake.length =
-      this.state.snake.length - STRAIN_PHYSICS.ouroborosSegmentsPerBite;
+    return bitesSoFar < biteCap;
+  }
+
+  /** Commit the bite after the ordinary move has vacated the old tail cell. */
+  private commitOuroborosBite(newHead: Position): void {
     this.ouroborosBites += 1;
-    this.state.lossEvents.push({
+    this.growTail(STRAIN_PHYSICS.ouroborosGrowthPerBite);
+    this.state.pressureEvents.push({
       atFood: this.state.foodEaten,
-      segments: STRAIN_PHYSICS.ouroborosSegmentsPerBite,
+      source: 'ouroboros',
     });
     this.state.dnaCollected += STRAIN_ECONOMICS.ouroborosBiteFlat;
     const claims = this.state.genomeClaims;
@@ -2523,25 +2585,15 @@ export class SnakeGameLogic {
       position: { ...newHead },
       total: claims.ouroborosDna,
     });
-    return true;
   }
 
-  /** FERAL Minor "Thick Hide": lose 5 tail segments instead of dying. */
+  /** FERAL Minor: cancel one self-hit and charge +8 permanent length. */
   private triggerThickHide(collisionPosition: Position): void {
     this.state.thickHideAvailable = false;
-    const loss = Math.min(
-      STRAIN_PHYSICS.thickHideSegmentLoss,
-      Math.max(0, this.state.snake.length - this.initialLength)
-    );
-    if (loss > 0) this.state.snake.length = this.state.snake.length - loss;
-    // WP-2.05: report the segments ACTUALLY removed, not the nominal 5.
-    // This changes no payout - the model's `max(initialLength, len - 5)`
-    // and this clamp are the same number, which is why (F) was not a
-    // divergence - but a run report should not claim a loss that did not
-    // happen.
-    this.state.lossEvents.push({
+    this.growTail(STRAIN_PHYSICS.thickHideGrowth);
+    this.state.pressureEvents.push({
       atFood: this.state.foodEaten,
-      segments: loss,
+      source: 'thick_hide',
     });
     this.emit('thickHideTriggered', {
       position: { ...this.state.snake[0] },
@@ -2555,6 +2607,7 @@ export class SnakeGameLogic {
    * ticks after every eat; Serpentine exempts the last 5 tail segments.
    */
   private checkSelfCollisionForDeath(pos: Position): boolean {
+    if (this.state.revivePhaseTicksRemaining > 0) return false;
     if (!this.genomeActive()) return this.checkSelfCollision(pos);
     if (this.state.phantomTicksRemaining > 0 && this.strainTierNow('UMBRA') >= 2) {
       return false;
@@ -2586,8 +2639,8 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Fire the run's one revive: Phoenix physics for every kind (rewind 3
-   * cells, reborn at length 8). Classic Phoenix voids economic benefits;
+   * Fire the run's one revive: rewind 3 cells at unchanged length, then grant
+   * a short self/body-wall phase. Classic Phoenix voids economic benefits;
    * Styx / Molted Rebirth / Second Sun keep them (their headline). A
    * Second Sun revive pays +150 flat (bounded-trust claim).
    */
@@ -2605,6 +2658,7 @@ export class SnakeGameLogic {
       this.state.genomeClaims.secondSunTriggered = true;
     }
     this.rebirthBody();
+    this.state.revivePhaseTicksRemaining = MUTATION_PHYSICS.revivePhaseTicks;
     this.emit('reviveTriggered', {
       kind,
       atFood: this.state.revive.atFood,
@@ -2666,8 +2720,11 @@ export class SnakeGameLogic {
 
     const blocked = this.waveBlockedGrid();
     const head = this.state.snake[0] ?? { x: 0, y: 0, z: 0 };
-    const occupancy =
-      this.state.snake.length / Math.max(1, this.gridSize * this.gridSize);
+    // Food search difficulty reads cells already COMMITTED to the body or
+    // terrain, not raw segment count. Fortress therefore cannot make a board
+    // look roomier by moving six segments from the live array into stone, and
+    // stacked growth on one tail cell does not pretend to occupy six cells.
+    const occupancy = this.getBoardPressure().committedOccupancy;
     // The region a food sits in must hold the body that comes to get it.
     // Owner, after losing a run to it: "that food was reachable, but you
     // couldn't get out alive - there was no escape path. I had to crash into
@@ -2792,7 +2849,8 @@ export class SnakeGameLogic {
           // Event Horizon (COSMIC M9): the corpse stays crossable longer.
           (this.hasMutation('event_horizon')
             ? MUTATION_PHYSICS.eventHorizonCalcifySecondsBonus
-            : 0)
+            : 0),
+        'cosmic'
       );
       this.emit('constellationCalcified', {
         cells: missed.map((s) => ({ x: s.x, z: s.z })),
@@ -3216,8 +3274,9 @@ export class SnakeGameLogic {
    * the parity sweep cannot reach on its own.
    *
    * The rewind is kept because it is positional mercy, not length: it drops
-   * the head back onto cells the body already occupies, which is what gives a
-   * full-length snake room to escape the jam that killed it.
+   * the head back onto cells the body already occupies. `revivePhaseTicks`
+   * then makes that intentionally overlapped state playable without clearing
+   * body or terrain.
    */
   private rebirthBody(): void {
     const rewind = Math.min(
@@ -3304,7 +3363,8 @@ export class SnakeGameLogic {
 
     this.placeTerrainAt(
       nextTerrainCells(this.gridSize, blocked, missing, this.rng),
-      schedule.formingSeconds
+      schedule.formingSeconds,
+      schedule.source
     );
   }
 
@@ -3335,7 +3395,8 @@ export class SnakeGameLogic {
    */
   private placeTerrainAt(
     cells: readonly { x: number; z: number }[],
-    formingSeconds: number
+    formingSeconds: number,
+    source: TerrainSource
   ): void {
     if (cells.length === 0) return;
     const formingTicks = formingTicksForSeconds(formingSeconds, this.getSpeed());
@@ -3347,6 +3408,7 @@ export class SnakeGameLogic {
       this.state.terrain.push({
         x: cell.x,
         z: cell.z,
+        source,
         formingTicks,
         formingTotal: formingTicks,
         solid: false,
@@ -3797,20 +3859,15 @@ export class SnakeGameLogic {
   }
 
   /**
-   * Iron Scales: absorb one wall collision per run. The blocked move is
-   * cancelled and the snake recoils one cell backward along its own path
-   * (head withdrawn, length preserved by duplicating the tail cell -
-   * exactly how Overgrowth already grows), leaving the head a cell clear
-   * of the wall with its heading intact - the bounce buys the tick the
-   * player needed. A body hit is NOT absorbed (walls only, per the doc).
+   * Iron Scales: absorb one board collision per run (edge or solid terrain).
+   * The blocked move is cancelled and the body remains exactly where it was,
+   * buying one tick to turn. This is intentionally NOT a recoil: withdrawing
+   * the head and duplicating the tail preserved segment count but released the
+   * old head cell, growing free space in violation of Rule 15. A body hit is
+   * not absorbed.
    */
   private triggerIronScales(collisionPosition: Position): void {
     this.state.ironScalesAvailable = false;
-
-    if (this.state.snake.length >= 2) {
-      const tail = this.state.snake[this.state.snake.length - 1];
-      this.state.snake = [...this.state.snake.slice(1), { ...tail }];
-    }
 
     this.emit('ironScalesTriggered', {
       position: { ...this.state.snake[0] },
@@ -3941,6 +3998,7 @@ export class SnakeGameLogic {
             surges: this.state.surges.map((s) => ({ ...s })),
             revive: this.state.revive ? { ...this.state.revive } : null,
             claims: { ...this.state.genomeClaims },
+            pressureEvents: this.state.pressureEvents.map((e) => ({ ...e })),
             lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
             // `resolved` is engine-internal - the wire shape stays exactly
             // OfferTraceEntry, so an unresolved offer still ships as

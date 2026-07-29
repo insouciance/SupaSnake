@@ -19,7 +19,11 @@ import {
   outcomeMultipliers,
   rulesetExplainer,
 } from '@/shared/game/rulesets';
-import { isMutationId, type MutationPick } from '@/shared/game/mutations';
+import {
+  MUTATION_PHYSICS,
+  isMutationId,
+  type MutationPick,
+} from '@/shared/game/mutations';
 import { GENES } from '@/shared/game/genes';
 import { sanitizeTraits, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints, type Lineage } from '@/shared/game/lineage';
@@ -539,6 +543,7 @@ export default function GamePage() {
     surgeChoicePending,
     infusesCount,
     revive,
+    revivePhaseTicksRemaining,
     startGame: storeStartGame,
     endGame,
     setSnake,
@@ -567,6 +572,7 @@ export default function GamePage() {
     setPortalChoicePending,
     setSurgeChoicePending,
     setRevive,
+    setRevivePhaseTicks,
     setSelectedDynasty,
     aimSystem,
     setAimSystem,
@@ -602,6 +608,7 @@ export default function GamePage() {
             revive: liveState?.revive ?? revive,
             prevRunDied: capability?.prevRunDied,
             lossEvents: liveState?.lossEvents ?? [],
+            pressureEvents: liveState?.pressureEvents ?? [],
             tierCap: ftue
               ? !ftue.expressionsUnlocked
                 ? 1
@@ -1136,6 +1143,7 @@ export default function GamePage() {
       setGildedCells(state.gildedCells);
       setInfusesCount(state.infuses.length);
       setRevive(state.revive);
+      setRevivePhaseTicks(state.revivePhaseTicksRemaining);
     };
 
     gameRef.current.on('foodCollected', (data: any) => {
@@ -1236,8 +1244,21 @@ export default function GamePage() {
       }
     });
 
-    gameRef.current.on('reviveTriggered', () => {
+    gameRef.current.on('reviveTriggered', (data: any) => {
       mirrorGenomeState();
+      if (data?.kind && data.kind !== 'phoenix') {
+        const name =
+          data.kind === 'second_sun'
+            ? 'Second Sun'
+            : data.kind === 'styx'
+              ? 'Styx Contract'
+              : 'Molted Rebirth';
+        showToast(
+          `${name} — body + edge phase for ${MUTATION_PHYSICS.revivePhaseTicks} moves`,
+          'triumph',
+          3200
+        );
+      }
     });
 
     gameRef.current.on('phoenixTriggered', () => {
@@ -1246,7 +1267,11 @@ export default function GamePage() {
       audioManager.play('death');
       haptics.death();
       screenShake.heavy();
-      showToast('Phoenix — one death absorbed', 'triumph', 3000);
+      showToast(
+        `Phoenix — body + edge phase for ${MUTATION_PHYSICS.revivePhaseTicks} moves`,
+        'triumph',
+        3200
+      );
     });
 
     // COSMIC: the constellation window closed and its survivors calcified.
@@ -1537,6 +1562,7 @@ export default function GamePage() {
     setPaused,
     setPhoenixTriggered,
     setPortalChoicePending,
+    setRevivePhaseTicks,
     setRevive,
     setScore,
     setStrains,
@@ -1593,6 +1619,7 @@ export default function GamePage() {
       // ruleset's arena, not to buildcraft, so gating it here would recreate
       // the invisible-block bug for every non-genome run.
       setTerrain(state.terrain);
+      setRevivePhaseTicks(state.revivePhaseTicksRemaining);
       if (gameRef.current.getGenome()) {
         setStrains(state.strainCounts, state.strainTiers);
         setFusedSplices(state.fusedSplices);
@@ -1612,7 +1639,7 @@ export default function GamePage() {
         performance.now()
       );
     }
-  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setTerrain]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setTerrain]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -3840,6 +3867,7 @@ export default function GamePage() {
             extraFoods={extraFoods}
             gildedCells={gildedCells}
             terrain={terrain}
+            revivePhaseTicksRemaining={revivePhaseTicksRemaining}
             constellationGlyph={constellationGlyph}
             exitTile={exitTile}
             exitTile2={exitTile2}
@@ -3914,6 +3942,7 @@ interface GameBoardProps {
   extraFoods: Position[];
   gildedCells: readonly { x: number; z: number; ticks: number }[];
   terrain: readonly TerrainBlock[];
+  revivePhaseTicksRemaining: number;
   constellationGlyph: number | null;
   exitTile: Position | null;
   /** Second portal of the Twin Exits anomaly pair (§7.2), null otherwise. */
@@ -3945,6 +3974,7 @@ function GameBoard({
   extraFoods,
   gildedCells,
   terrain,
+  revivePhaseTicksRemaining,
   constellationGlyph,
   exitTile,
   exitTile2,
@@ -4059,6 +4089,7 @@ function GameBoard({
             strainBands={strainBands}
             terrain={terrain}
             wrapActive={torus}
+            revivePhaseActive={revivePhaseTicksRemaining > 0}
           />
         }
       >
@@ -4069,6 +4100,7 @@ function GameBoard({
           strainBands={strainBands}
           terrain={terrain}
           wrapActive={torus}
+          revivePhaseActive={revivePhaseTicksRemaining > 0}
         />
       </Suspense>
 

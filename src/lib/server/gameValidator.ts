@@ -75,6 +75,7 @@ import {
   type GenePick,
 } from '@/shared/game/genes';
 import {
+  STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
   type StrainId,
   type StrainPoints,
@@ -84,6 +85,7 @@ import {
   genePoolBlockedByTraits,
   sanitizeInfuses,
   sanitizeLossEvents,
+  sanitizePressureEvents,
   sanitizeRevive,
   sanitizeSurges,
   strainActivations,
@@ -92,6 +94,7 @@ import {
   type GenomeClaims,
   type GenomeRevive,
   type GenomeRunInput,
+  type PressureGrowthEvent,
   type StrainSurge,
 } from '@/shared/game/genome';
 import { resolveGrowthProfile, type GrowthProfileId } from '@/shared/game/growth';
@@ -120,7 +123,7 @@ export interface GameResultInput {
   phoenix_triggered_at_food?: unknown;
   /**
    * Genome claim block (Buildcraft: The Genome): { infuses, surges,
-   * revive, claims, lossEvents, offerTrace } - sanitized here. Only
+   * revive, claims, lossEvents, pressureEvents, offerTrace } - sanitized here. Only
    * honored when the session carries a run_seed (server capability).
    */
   genome?: unknown;
@@ -248,6 +251,8 @@ export interface AcceptedGenome {
   surges: StrainSurge[];
   infuses: { atFood: number }[];
   revive: GenomeRevive | null;
+  /** Bounded Rule-15 physical facts; each fixed growth amount is derived. */
+  pressureEvents?: PressureGrowthEvent[];
   claims: GenomeClaims;
   strainCounts: StrainPoints;
   expressions: Partial<Record<string, number>>;
@@ -346,6 +351,7 @@ export const VALIDATION_CODE_SEVERITY: Readonly<
   INFUSE_BOUND: 'advisory',
   SURGE_INVALID: 'advisory',
   REVIVE_INVALID: 'advisory',
+  PRESSURE_EVENT_INVALID: 'advisory',
   PHOENIX_INVALID: 'advisory',
   TRAIT_CONFLICT: 'advisory',
   // Outcome/food-count repairs. `INVALID_FOOD_RATE` clamps the food count
@@ -1104,6 +1110,88 @@ function sanitizeGenomeRevive(
   }
 }
 
+/**
+ * Bound the two client-reported pressure events from accepted build state.
+ * Collision geometry is not replayed at settlement, so the fact itself is a
+ * narrow bounded-trust input (one Thick Hide; cadence-capped Ouroboros). The
+ * wire carries no segment amount: after this filter accepts the event, the
+ * shared fold derives +8/+2 from its source.
+ */
+function sanitizeGenomePressureEvents(
+  raw: unknown,
+  foodCount: number,
+  picks: GenePick[],
+  heirloom: StrainPoints,
+  surges: StrainSurge[],
+  tierCap: 1 | 2 | 3,
+  suppressedStrains: readonly StrainId[],
+  errors: string[]
+): PressureGrowthEvent[] {
+  const shaped = sanitizePressureEvents(raw, foodCount);
+  if (
+    raw !== undefined &&
+    (!Array.isArray(raw) || shaped.length !== raw.length)
+  ) {
+    errors.push(
+      'PRESSURE_EVENT_INVALID: malformed, out-of-range, or over-cap event dropped'
+    );
+  }
+  if (shaped.length === 0) return [];
+
+  const feral = strainActivations(
+    picks,
+    heirloom,
+    surges,
+    tierCap,
+    suppressedStrains
+  ).FERAL;
+  const accepted: PressureGrowthEvent[] = [];
+  let lastFood = -1;
+  let thickHideUsed = false;
+  let ouroborosBites = 0;
+
+  for (const event of shaped) {
+    if (event.atFood < lastFood) {
+      errors.push(
+        `PRESSURE_EVENT_INVALID: ${event.source} at food ${event.atFood} is out of order`
+      );
+      continue;
+    }
+    if (event.source === 'thick_hide') {
+      if (
+        thickHideUsed ||
+        feral.minorAt === null ||
+        event.atFood < feral.minorAt
+      ) {
+        errors.push(
+          `PRESSURE_EVENT_INVALID: Thick Hide cannot fire at food ${event.atFood}`
+        );
+        continue;
+      }
+      thickHideUsed = true;
+    } else {
+      const apexAt = feral.apexAt;
+      const biteCap =
+        apexAt === null
+          ? 0
+          : Math.floor(
+              Math.max(0, event.atFood - apexAt) /
+                STRAIN_ECONOMICS.ouroborosFoodsPerBite
+            );
+      if (apexAt === null || ouroborosBites >= biteCap) {
+        errors.push(
+          `PRESSURE_EVENT_INVALID: Ouroboros cadence cannot fire at food ${event.atFood}`
+        );
+        continue;
+      }
+      ouroborosBites += 1;
+    }
+    accepted.push(event);
+    lastFood = event.atFood;
+  }
+  return accepted;
+}
+
 function validateGenomeBranch(
   input: GameResultInput,
   dynasty: DynastyName,
@@ -1268,6 +1356,16 @@ function validateGenomeBranch(
   );
 
   const lossEvents = sanitizeLossEvents(claim.lossEvents);
+  const pressureEvents = sanitizeGenomePressureEvents(
+    claim.pressureEvents,
+    foodCount,
+    picks,
+    ctx.heirloom,
+    surges,
+    ctx.tierCap,
+    ctx.suppressedStrains ?? [],
+    errors
+  );
 
   // THE CARRY'S INPUT, DERIVED — never claimed (WP-3.10).
   //
@@ -1302,6 +1400,7 @@ function validateGenomeBranch(
     revive,
     prevRunDied: ctx.prevRunDied,
     lossEvents,
+    pressureEvents,
     tierCap: ctx.tierCap,
     suppressedStrains: ctx.suppressedStrains ?? [],
     splicesEnabled: ctx.splicesUnlocked !== false,
@@ -1425,6 +1524,7 @@ function validateGenomeBranch(
     surges,
     infuses,
     revive,
+    pressureEvents,
     claims: accepted,
     strainCounts,
     expressions,

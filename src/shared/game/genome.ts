@@ -10,11 +10,11 @@
  *
  * Determinism contract:
  * - Deterministic [E] effects are pure in (picks with atFood, heirloom,
- *   surges, infuses, revive, lossEvents, foodCount).
+ *   surges, infuses, revive, legacy lossEvents, pressureEvents, foodCount).
  * - Bounded-trust [BT] claims are NEVER computed here - only their CAPS
  *   are; the validator clamps client claims against them.
- * - Reported events (revive, losses) are payout-non-increasing or capped
- *   (see strains.ts header + design doc section 15).
+ * - Reported physical events are structurally bounded and their fixed growth
+ *   is server-derived (see strains.ts header + design doc section 15).
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -88,10 +88,30 @@ export interface StrainSurge {
   atFood: number;
 }
 
-/** A reported length loss (Thick Hide, Ouroboros bites, revive resets). */
+/** A legacy reported length loss, accepted only for historical run blobs. */
 export interface LengthLossEvent {
   atFood: number;
   segments: number;
+}
+
+/**
+ * A physical event whose Rule-15 price is server-derived growth.
+ *
+ * The client reports only WHAT happened and after how many foods. The amount
+ * is never claimable: `pressureGrowthFor` resolves the constitutional +8/+2
+ * dials on both engine and settlement sides.
+ */
+export type PressureGrowthSource = 'thick_hide' | 'ouroboros';
+
+export interface PressureGrowthEvent {
+  atFood: number;
+  source: PressureGrowthSource;
+}
+
+export function pressureGrowthFor(source: PressureGrowthSource): number {
+  return source === 'thick_hide'
+    ? STRAIN_PHYSICS.thickHideGrowth
+    : STRAIN_PHYSICS.ouroborosGrowthPerBite;
 }
 
 /**
@@ -107,8 +127,13 @@ export interface GenomeRunInput {
   revive: GenomeRevive | null;
   /** Server-derived: previous earned run ended in death (Grave Robber). */
   prevRunDied?: boolean;
-  /** Reported, payout-non-increasing (they only shrink the length model). */
+  /** Legacy-only: historical events that predate Rule 15. */
   lossEvents?: LengthLossEvent[];
+  /**
+   * Bounded physical facts for the two Rule-15 growth-on-trigger effects.
+   * The validator bounds activation/cadence and derives the fixed amount.
+   */
+  pressureEvents?: PressureGrowthEvent[];
   /**
    * FTUE tier ceiling (server-derived from banked-run count): 1 caps at
    * minors, 2 at expressions, 3 = everything. Binds the ECONOMY, not
@@ -208,6 +233,8 @@ export interface GenomeRunRecord {
   surges: StrainSurge[];
   infuses: { atFood: number }[];
   revive: GenomeRevive | null;
+  /** Added compatibly to v1; historical records omit it. */
+  pressureEvents?: PressureGrowthEvent[];
   /** Accepted (clamped) claims. */
   claims: GenomeClaims;
   /** Final strain points at run end. */
@@ -383,9 +410,7 @@ function activeAt(pick: GenePick | undefined, n: number): boolean {
 /**
  * The deterministic length model: length is a pure function of the food
  * index given picks (growth), legacy shed cycles (fused view), FERAL's
- * Fortress, and reported losses. Reported losses only ever SHRINK the
- * model, so under-reporting them is the only vector - bounded by the
- * global raw clamp and flagged (design doc section 15.2).
+ * Fortress, legacy reported losses, and validated pressure-growth events.
  *
  * TWO LENGTHS, AND KNOWING WHICH IS WHICH (WP-3.11). `len` is the MODELLED
  * length - the difficulty clock, which Rule 15 forbids from rewinding.
@@ -400,7 +425,12 @@ export function computeLengthTrace(
   activations: StrainActivations,
   input: Pick<
     GenomeRunInput,
-    'infuses' | 'lossEvents' | 'revive' | 'growthProfileId' | 'ladderRung'
+    | 'infuses'
+    | 'lossEvents'
+    | 'pressureEvents'
+    | 'revive'
+    | 'growthProfileId'
+    | 'ladderRung'
   >,
   condition: ConditionInput = null
 ): LengthTrace {
@@ -429,6 +459,7 @@ export function computeLengthTrace(
   // are still honoured below, so historical runs recompute exactly as they
   // did - but no new run produces one, and infuses never appear here again.
   const losses = [...(input.lossEvents ?? [])];
+  const pressureEvents = [...(input.pressureEvents ?? [])];
   // WP-3.12: the ladder's "Weight of Power" rung adds segments to what an
   // INFUSE grows. Read through `ladderInfuseGrowth` rather than off
   // `STRAIN_PHYSICS` directly, because the ENGINE reads the same function - and
@@ -442,9 +473,13 @@ export function computeLengthTrace(
       (infuseGrowthAt.get(infuse.atFood) ?? 0) + infuseSegments
     );
   }
-  const reviveAt = input.revive?.atFood ?? null;
-
-  let len: number = growthProfile.initialLength;
+  // A trigger before the first food is indexed at 0. It must affect the
+  // length at food 1 rather than falling outside the 1-based fold.
+  let len: number =
+    growthProfile.initialLength +
+    pressureEvents
+      .filter((event) => event.atFood === 0)
+      .reduce((total, event) => total + pressureGrowthFor(event.source), 0);
   let petrified = 0;
   for (let n = 1; n <= foodCount; n++) {
     lengthAtEat[n] = len;
@@ -541,6 +576,12 @@ export function computeLengthTrace(
     // segments when the portal resolves - i.e. after this food is done.
     const grown = infuseGrowthAt.get(n);
     if (grown !== undefined) len += grown;
+    // Thick Hide and Ouroboros happen BETWEEN foods. `atFood: n` means the
+    // event occurred after food n and therefore changes food n+1's length,
+    // exactly where this end-of-iteration application lands.
+    for (const event of pressureEvents) {
+      if (event.atFood === n) len += pressureGrowthFor(event.source);
+    }
     // Rule 15: a revive no longer truncates. The engine keeps its 3-cell
     // head rewind (a positional mercy, not a length change), so there is
     // nothing for the length model to do here. Historical runs are unaffected
@@ -1180,6 +1221,42 @@ export function sanitizeLossEvents(raw: unknown): LengthLossEvent[] {
       segments <= 64
     ) {
       events.push({ atFood, segments });
+    }
+  }
+  return events;
+}
+
+const PRESSURE_GROWTH_SOURCES: readonly PressureGrowthSource[] = [
+  'thick_hide',
+  'ouroboros',
+] as const;
+
+/** Shape guard only; activation and cadence are proven by the validator. */
+export function sanitizePressureEvents(
+  raw: unknown,
+  foodCount: number
+): PressureGrowthEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const events: PressureGrowthEvent[] = [];
+  for (const entry of raw) {
+    if (events.length >= 64) break;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { atFood, source } = entry as {
+      atFood?: unknown;
+      source?: unknown;
+    };
+    if (
+      typeof atFood === 'number' &&
+      Number.isInteger(atFood) &&
+      atFood >= 0 &&
+      atFood <= foodCount &&
+      typeof source === 'string' &&
+      (PRESSURE_GROWTH_SOURCES as readonly string[]).includes(source)
+    ) {
+      events.push({
+        atFood,
+        source: source as PressureGrowthSource,
+      });
     }
   }
   return events;

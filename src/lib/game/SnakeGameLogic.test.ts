@@ -19,6 +19,7 @@ import {
   type DynastyName,
 } from '@/shared/game/rulesets';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { MUTATION_PHYSICS } from '@/shared/game/mutations';
 
 /**
  * Eat `count` foods deterministically: place the food directly in the
@@ -1608,9 +1609,17 @@ describe('SnakeGameLogic', () => {
       expect(state.snake).toHaveLength(11);
       expect(state.snake[0]).toEqual({ x: 16, y: 0, z: 10 }); // rewound 3
       expect(state.direction).toBe('RIGHT'); // heading re-derived from the body
+      expect(state.revivePhaseTicksRemaining).toBe(
+        MUTATION_PHYSICS.revivePhaseTicks
+      );
 
-      // The second death is real
-      for (let i = 0; i < 4; i++) engine.tick(); // back into the wall
+      // The phase is temporary: it buys twelve resolved moves (including a
+      // boundary wrap), then the next collision is real.
+      for (let i = 0; i < MUTATION_PHYSICS.revivePhaseTicks; i++) engine.tick();
+      expect(engine.getState().revivePhaseTicksRemaining).toBe(0);
+      for (let i = 0; i < 40 && !engine.getState().isDeathSequence; i++) {
+        engine.tick();
+      }
       expect(engine.getState().isDeathSequence).toBe(true);
     });
 

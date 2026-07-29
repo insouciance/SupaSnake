@@ -24,11 +24,20 @@ import {
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import type { Position } from '@/lib/game/SnakeGameLogic';
+import {
+  createTrailFusionState,
+  type TrailFusionState,
+} from '@/lib/game/trailFusion';
+import {
+  createTrailCellState,
+  updateTrailCells,
+  type TrailCellState,
+} from '@/lib/game/trailCells';
 import { writeTrailInstances } from './InstancedSnake';
 import { FLOOR_CLEARANCE, FLOOR_TOP_Y } from './ArenaFloor';
 import {
   TRAIL_HEIGHT_HEAD,
-    getTrailFootprint,
+  getTrailFootprint,
 } from './SnakeModel';
 
 interface Instance {
@@ -77,11 +86,26 @@ function emit(
   elapsed = 0
 ): { sink: RecordingSink; count: number } {
   const sink = new RecordingSink();
-  const packed = new Uint8Array(INTERPOLATION_CAPACITY);
-  levels.forEach((level, i) => {
-    packed[i] = level;
-  });
-  const count = writeTrailInstances(sink, buffer, alpha, packed, [], elapsed);
+  const fusion: TrailFusionState = createTrailFusionState(20, 400);
+  const cells: TrailCellState = createTrailCellState(20);
+  updateTrailCells(cells, buffer);
+  for (let index = 0; index < cells.currentCount; index += 1) {
+    const cell = cells.currentCells[index];
+    fusion.committed[cell] = levels[cells.currentRepresentative[cell]] ?? 0;
+  }
+  for (let index = 0; index < cells.departingCount; index += 1) {
+    const cell = cells.departingCells[index];
+    fusion.committed[cell] = levels[cells.previousRepresentative[cell]] ?? 0;
+  }
+  const count = writeTrailInstances(
+    sink,
+    buffer,
+    alpha,
+    fusion,
+    cells,
+    [],
+    elapsed
+  );
   return { sink, count };
 }
 
@@ -89,6 +113,17 @@ function emit(
 function straight(length: number): Position[] {
   const cells: Position[] = [];
   for (let i = 0; i < length; i++) cells.push(at(5, 5 + i));
+  return cells;
+}
+
+/** A contiguous in-bounds path for long-trail cases. */
+function boardSnake(length: number): Position[] {
+  const cells: Position[] = [];
+  for (let z = 0; z < 20 && cells.length < length; z += 1) {
+    for (let offset = 0; offset < 20 && cells.length < length; offset += 1) {
+      cells.push(at(z % 2 === 0 ? offset : 19 - offset, z));
+    }
+  }
   return cells;
 }
 
@@ -262,10 +297,7 @@ describe('one box per cell, and nothing that interpenetrates it', () => {
     recordTick(buffer, [at(5, 4), ...turn.slice(0, 5)], 100, 1100);
     const EPS = 1e-6;
     for (const alpha of [0, 0.25, 0.5, 0.75, 1]) {
-      const sink = new RecordingSink();
-      const packed = new Uint8Array(INTERPOLATION_CAPACITY);
-      packed.fill(2);
-      const count = writeTrailInstances(sink, buffer, alpha, packed, [], 0);
+      const { sink, count } = emit(buffer, new Array(6).fill(2), alpha, 0);
       for (let a = 0; a < count; a++) {
         for (let b = a + 1; b < count; b++) {
           const A = boxOf(sink.instances[a]);
@@ -355,8 +387,19 @@ describe('the instance budget holds at the length where it matters', () => {
 });
 
 describe('the head zone breathes and the trunk does not', () => {
+  it('uses one bright-front/interior step instead of a moving tail gradient', () => {
+    const { sink } = emit(bufferOf(boardSnake(40)), new Array(40).fill(1));
+    // Same fusion level: only the categorical front hierarchy differs.
+    expect(sink.instances[0].color.r).toBeGreaterThan(
+      sink.instances[12].color.r
+    );
+    expect(sink.instances[12].color.r).toBe(
+      sink.instances[30].color.r
+    );
+  });
+
   it('changes head-zone geometry over time and leaves the trunk identical', () => {
-    const buffer = bufferOf(straight(40));
+    const buffer = bufferOf(boardSnake(40));
     const levels = new Array(40).fill(1);
     const t0 = emit(buffer, levels, 1, 0).sink;
     const t1 = emit(buffer, levels, 1, 0.31).sink;
@@ -374,16 +417,20 @@ describe('the head zone breathes and the trunk does not', () => {
   });
 });
 
-describe('interpolation, never a grid snap', () => {
-  it('draws the body between the two authoritative ticks', () => {
-    // 5-10 Hz is the worst flicker band there is; a snapped middle would gap a
-    // full cell at the head/trail junction every tick.
+describe('selective interpolation: expressive front, settled interior', () => {
+  it('keeps persistent cells fixed and animates only enter/leave scale', () => {
     const buffer = createInterpolationBuffer();
     recordTick(buffer, [at(5, 5), at(5, 6), at(5, 7)], 100, 1000);
     recordTick(buffer, [at(5, 4), at(5, 5), at(5, 6)], 100, 1100);
-    const { sink } = emit(buffer, [0, 0, 0], 0.5);
-    // Segment 1 moved (5,6) -> (5,5): at alpha 0.5 it is on 5.5, not on a cell.
-    expect(sink.instances[0].position.z).toBeCloseTo(6.0, 10);
+    const early = emit(buffer, [0, 0, 0], 0.25).sink;
+    const late = emit(buffer, [0, 0, 0], 0.75).sink;
+    // Current body order: entering previous-head cell z=5, then persistent z=6.
+    expect(early.instances[1].position.z).toBeCloseTo(6.5, 10);
+    expect(late.instances[1].position.z).toBeCloseTo(6.5, 10);
+    expect(early.instances[1].scale.y).toBeCloseTo(late.instances[1].scale.y, 10);
+    expect(early.instances[0].position.z).toBeCloseTo(5.5, 10);
+    expect(late.instances[0].position.z).toBeCloseTo(5.5, 10);
+    expect(late.instances[0].scale.y).toBeGreaterThan(early.instances[0].scale.y);
     expect(getAlpha(buffer, 1150)).toBeCloseTo(0.5, 10);
   });
 });

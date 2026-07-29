@@ -61,11 +61,11 @@ function fresh(): TrailFusionState {
 }
 
 function solidBlock(x: number, z: number): TerrainBlock {
-  return { x, z, formingTicks: 0, formingTotal: 8, solid: true };
+  return { x, z, source: 'cyber', formingTicks: 0, formingTotal: 8, solid: true };
 }
 
 function formingBlock(x: number, z: number): TerrainBlock {
-  return { x, z, formingTicks: 4, formingTotal: 8, solid: false };
+  return { x, z, source: 'cyber', formingTicks: 4, formingTotal: 8, solid: false };
 }
 
 describe('path neighbours never count - fusion is earned, not positional', () => {
@@ -253,12 +253,15 @@ describe('degenerate inputs the engine actually produces', () => {
     expect(getFusionLevel(state, 0)).toBe(0);
   });
 
-  it('segments beyond capacity are dropped, not written past the end', () => {
+  it('walks occupancy beyond output capacity without writing past the output', () => {
     const state = createTrailFusionState(GRID, 4);
     const cells: (readonly [number, number])[] = [];
     for (let i = 0; i < 10; i++) cells.push([5, i]);
     updateTrailFusion(state, packCells(cells), cells.length, null, false);
+    // `levels` is a compatibility array and remains capacity-bounded, but the
+    // cell-keyed representation must still see segment 9.
     expect(state.count).toBe(4);
+    expect(state.body[9 * GRID + 5]).toBe(1);
   });
 
   it('getFusionLevel is 0 outside the recorded range', () => {

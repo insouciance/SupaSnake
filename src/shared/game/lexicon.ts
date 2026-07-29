@@ -213,8 +213,8 @@ const STRAIN_TIER_COPY: Record<StrainId, Record<1 | 2 | 3, TierCopy>> = {
   },
   FERAL: {
     1: {
-      effect: 'Survive one collision this run instead of dying.',
-      cost: `It costs ${STRAIN_PHYSICS.thickHideSegmentLoss} tail segments, and only once.`,
+      effect: 'Survive one self-collision this run instead of dying.',
+      cost: `The pardon grows ${STRAIN_PHYSICS.thickHideGrowth} permanent segments, and only once.`,
     },
     2: {
       effect: `Every ${STRAIN_PHYSICS.fortressEveryFoods} foods your oldest ${STRAIN_PHYSICS.fortressSegments} segments petrify: they stop following and become fixed terrain, paying ${STRAIN_ECONOMICS.fortressSegmentDna} DNA each.`,
@@ -222,7 +222,7 @@ const STRAIN_TIER_COPY: Record<StrainId, Record<1 | 2 | 3, TierCopy>> = {
     },
     3: {
       effect: `Bite your own tail tip for ${STRAIN_ECONOMICS.ouroborosBiteFlat} flat DNA, once per ${STRAIN_ECONOMICS.ouroborosFoodsPerBite} foods eaten since the Apex.`,
-      cost: `Each bite eats ${STRAIN_PHYSICS.ouroborosSegmentsPerBite} segments, and food pays ${shift(STRAIN_ECONOMICS.ouroborosFoodPenalty)} while active.`,
+      cost: `Each bite grows ${STRAIN_PHYSICS.ouroborosGrowthPerBite} permanent segments, and food pays ${shift(STRAIN_ECONOMICS.ouroborosFoodPenalty)} while active.`,
     },
   },
   FLUX: {
@@ -367,7 +367,8 @@ const TRAIT_RUN_NOTICES: Partial<
  *   a price.
  * - Three of the five **minor passives** are the plain payoff for reaching
  *   the threshold at all. (Thick Hide and Shadow Skin are not on this list:
- *   the first costs five tail segments, the second is voided by Phoenix.)
+ *   the first charges eight growth on trigger, the second is voided by
+ *   Phoenix.)
  * - **Meteor Shower** and **Blackout** are the two pure-physical anomalies:
  *   they change the board without touching the payout in either direction.
  * - The **minor threshold** itself asks for points and nothing else.

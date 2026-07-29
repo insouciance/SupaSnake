@@ -1402,7 +1402,8 @@ export async function POST(request: NextRequest) {
           // worth clamping.
           mutations,
           phoenix_triggered_at_food,
-          // Genome claim block (infuses/surges/revive/claims/lossEvents)
+          // Genome claim block (infuses/surges/revive/claims/pressureEvents;
+          // legacy lossEvents remain accepted for historical settlements).
           genome,
         },
         serverStartedAt,

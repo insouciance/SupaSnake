@@ -17,6 +17,7 @@ import {
 } from './terrain';
 
 const CYBER_ARENA: TerrainSchedule = {
+  source: 'cyber',
   blocksPerInterval: 6,
   intervalFoods: 5,
   formingSeconds: 2,

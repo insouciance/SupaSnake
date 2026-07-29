@@ -128,7 +128,8 @@ export const MUTATIONS: Record<MutationId, MutationDef> = {
     id: 'phoenix',
     name: 'Phoenix',
     kind: 'P',
-    effect: 'Survive one death (reborn at length 8, rewound 3 cells)',
+    effect:
+      'Survive one death — rewind 3 cells at full length, then phase through your body and board edges for 12 moves',
     cost: 'On trigger, lose all mutation economic bonuses',
   },
   compound_interest: {
@@ -387,7 +388,12 @@ export const MUTATION_PHYSICS = {
   timeDilationSlowMs: 40, // PRIMAL/COSMIC: +40 ms/tick
   timeDilationCyberFoodOffset: 5, // CYBER: speed as if one tier (5 foods) earlier
   phoenixRewindCells: 3,
-  phoenixRebirthLength: 8,
+  /**
+   * Every revive inherits this short escape window. The rewind preserves
+   * length; temporary self/body-wall immunity is what makes the pardon usable
+   * at the high pressure where it matters.
+   */
+  revivePhaseTicks: 12,
   // Mastery mutations (section 7.1) - engine-side physical tuning
   /** Deep Roots cost: exit portals despawn this many ticks sooner. */
   deepRootsPortalTicksPenalty: 10,

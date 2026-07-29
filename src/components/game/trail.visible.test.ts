@@ -18,7 +18,6 @@
 import { describe, it, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { INTERPOLATION_CAPACITY } from '@/lib/game/interpolationBuffer';
 
 const root = process.cwd();
 const read = (relative: string) => readFileSync(join(root, relative), 'utf8');
@@ -102,6 +101,7 @@ describe('the game scene threads what the metric needs', () => {
     const renderer = read(RENDERER);
     expect(renderer).toMatch(/terrain\?:\s*readonly TerrainBlock\[\]/);
     expect(renderer).toMatch(/wrapActive\?:\s*boolean/);
+    expect(renderer).toMatch(/revivePhaseActive\?:\s*boolean/);
   });
 
   it('terrain reaches BOTH snake variants', () => {
@@ -125,6 +125,20 @@ describe('the game scene threads what the metric needs', () => {
     expect(page).toMatch(
       /<InstancedSnakeFallback[\s\S]{0,400}wrapActive=\{torus\}/
     );
+  });
+
+  it('the post-revive phase reaches both render paths', () => {
+    // The phase is a real collision-rule change, not hidden implementation
+    // mercy. Both the streamed model and its fallback must show the same head
+    // shell, or the rule appears/disappears while the GLB loads.
+    const page = read(PAGE);
+    expect(page).toMatch(
+      /<InstancedSnake[\s\S]{0,500}revivePhaseActive=\{revivePhaseTicksRemaining > 0\}/
+    );
+    expect(page).toMatch(
+      /<InstancedSnakeFallback[\s\S]{0,500}revivePhaseActive=\{revivePhaseTicksRemaining > 0\}/
+    );
+    expect(page).toContain('setRevivePhaseTicks(state.revivePhaseTicksRemaining)');
   });
 
   it('only SOLID terrain packs', () => {
@@ -170,25 +184,21 @@ describe('the failure modes the design named explicitly', () => {
     // trail matters most; silently truncating it there would be the worst
     // possible place to be wrong.
     const renderer = read(RENDERER);
-    expect(renderer).toMatch(
-      /TRAIL_INSTANCE_CAPACITY = INTERPOLATION_CAPACITY;/
-    );
-    // Both the args= allocation and the loop bound must use it.
+    expect(renderer).toMatch(/TRAIL_INSTANCE_CAPACITY = GRID_SIZE \* GRID_SIZE;/);
+    // Both the GPU allocation and the emission guard must use the board-cell
+    // capacity. Logical segments may exceed 400; unique occupied cells cannot.
     expect(renderer).toMatch(/args=\{\[bodyGeometry, bodyMaterial, TRAIL_INSTANCE_CAPACITY\]\}/);
-    expect(renderer).toMatch(/n < TRAIL_INSTANCE_CAPACITY/);
-    expect(INTERPOLATION_CAPACITY).toBeGreaterThanOrEqual(
-      INTERPOLATION_CAPACITY - 1
-    );
+    expect(renderer).toMatch(/instance >= TRAIL_INSTANCE_CAPACITY/);
+    expect(renderer).toContain('updateTrailCells(cells, buffer)');
   });
 
-  it('the middle is never snapped to the grid', () => {
-    // 5-10 Hz is the worst flicker band there is, and a snapped middle would
-    // gap a full cell at the head/trail junction every tick. Every drawn
-    // position must come from the interpolated buffer.
+  it('interpolates the head while persistent body cells stay cell-keyed', () => {
     const renderer = read(RENDERER);
     expect(renderer).toContain('getInterpolatedX(buffer');
     expect(renderer).toContain('getInterpolatedZ(buffer');
-    expect(renderer).not.toMatch(/Math\.round\(getInterpolated/);
+    expect(renderer).toContain('trailCellX(cells, cell)');
+    expect(renderer).toContain('trailCellZ(cells, cell)');
+    expect(renderer).toContain('cells.previousMask[cell] === 1 ? 1 : eased');
   });
 
   it('quiet is taken from height, never from contrast', () => {

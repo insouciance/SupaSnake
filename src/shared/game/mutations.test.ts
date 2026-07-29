@@ -306,7 +306,7 @@ describe('physics constants (engine tuning single source of truth)', () => {
     expect(MUTATION_PHYSICS.magnetPortalIntervalPenalty).toBe(4);
     expect(MUTATION_PHYSICS.timeDilationSlowMs).toBe(40);
     expect(MUTATION_PHYSICS.phoenixRewindCells).toBe(3);
-    expect(MUTATION_PHYSICS.phoenixRebirthLength).toBe(8);
+    expect(MUTATION_PHYSICS.revivePhaseTicks).toBe(12);
     expect(MUTATION_ECONOMICS.goldTrailEveryNth).toBe(5);
   });
 });

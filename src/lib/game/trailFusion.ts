@@ -162,7 +162,10 @@ export function updateTrailFusion(
 ): void {
   const { gridSize, body, solid, committed, pendingLevel, pendingTicks, lastBodyTick, levels } =
     state;
-  const segments = Math.min(count, state.capacity);
+  // Logical length can exceed the board's 400 cells under Rule 15. Walk every
+  // packed segment so a unique tail cell beyond index 399 still contributes
+  // occupancy; the per-segment compatibility output remains capacity-bounded.
+  const segments = Math.min(count, cells.length >> 1);
 
   // 400 bytes each on a 20x20 board: a memset is cheaper than tracking and
   // clearing last tick's cells, and it cannot drift out of sync.
@@ -195,7 +198,7 @@ export function updateTrailFusion(
     const x = cells[i * 2];
     const z = cells[i * 2 + 1];
     if (x < 0 || x >= gridSize || z < 0 || z >= gridSize) {
-      levels[i] = 0;
+      if (i < levels.length) levels[i] = 0;
       continue;
     }
     const cell = z * gridSize + x;
@@ -205,7 +208,7 @@ export function updateTrailFusion(
     // otherwise the duplicate looks like a cell that was absent last tick and
     // resets its own history.
     if (lastBodyTick[cell] === tick) {
-      levels[i] = committed[cell];
+      if (i < levels.length) levels[i] = committed[cell];
       continue;
     }
 
@@ -236,10 +239,10 @@ export function updateTrailFusion(
     }
 
     lastBodyTick[cell] = tick;
-    levels[i] = committed[cell];
+    if (i < levels.length) levels[i] = committed[cell];
   }
 
-  state.count = segments;
+  state.count = Math.min(segments, state.capacity);
   state.tick = tick + 1;
 }
 

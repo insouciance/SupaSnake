@@ -3,8 +3,8 @@
 /**
  * /dev/perf - synthetic render-performance harness (dev builds only).
  *
- * Drives a scripted 100-segment snake around a serpentine circuit at 50ms
- * ticks (the engine's max speed) through the real interpolation buffer,
+ * Drives a configurable long snake around a serpentine circuit at the live
+ * 100ms CYBER floor through the real interpolation buffer,
  * inside a scene that mirrors the game board's cost profile (lights,
  * arena, food, portal, bloom). PerfHUD is always on.
  *
@@ -14,6 +14,9 @@
  * - ?dynasty=CYBER|PRIMAL|COSMIC   theme under test (default PRIMAL)
  * - ?mobile=1       mobile profile (dpr cap 1.5, no bloom)
  * - ?aim=deadeye|gridlock|pathline|firefly   mount the aim telegraph
+ * - ?length=20..360  body pressure (default 160)
+ * - ?speed=50..400   stress tick in ms (default 100)
+ * - ?terrain=0..400  sourced blocked cells (default 80)
  *
  * Production: notFound() - this page never ships to players.
  */
@@ -29,6 +32,7 @@ import { themeManager } from '@/lib/theme/ThemeManager';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
+import { TerrainBlocks } from '@/components/game/TerrainBlocks';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
@@ -50,10 +54,12 @@ import {
 import { AimRenderer } from '@/components/game/AimRenderer';
 import { isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import type { AimTarget } from '@/components/game/aimUtils';
+import type { TerrainBlock, TerrainSource } from '@/shared/game/terrain';
 
 const GRID = GAME_CONFIG.board.gridSize;
-const SNAKE_LENGTH = 100;
-const TICK_MS = 50;
+const MAX_SNAKE_LENGTH = 360;
+const DEFAULT_SNAKE_LENGTH = 160;
+const DEFAULT_TICK_MS = 100;
 
 /** Serpentine circuit over the whole board - every cell, no collisions. */
 function buildPath(): Position[] {
@@ -84,19 +90,21 @@ function directionBetween(from: Position, to: Position): Direction {
 function LegacySnake({
   segmentsRef,
   dynasty,
+  length,
 }: {
   segmentsRef: { readonly current: Position[] };
   dynasty: DynastyId;
+  length: number;
 }) {
   const meshRefs = useRef<(THREE.Mesh | null)[]>(
-    Array.from({ length: SNAKE_LENGTH }, () => null)
+    Array.from({ length: MAX_SNAKE_LENGTH }, () => null)
   );
   const targetVec = useRef(new THREE.Vector3());
 
   useFrame((_, delta) => {
     const segments = segmentsRef.current;
     const lerpFactor = Math.min(1, delta * (1000 / 150) * 3);
-    for (let i = 0; i < SNAKE_LENGTH; i++) {
+    for (let i = 0; i < length; i++) {
       const mesh = meshRefs.current[i];
       const seg = segments[i];
       if (!mesh || !seg) continue;
@@ -107,7 +115,7 @@ function LegacySnake({
 
   return (
     <>
-      {Array.from({ length: SNAKE_LENGTH }, (_, i) => (
+      {Array.from({ length }, (_, i) => (
         <Suspense
           key={i}
           fallback={
@@ -135,6 +143,40 @@ function LegacySnake({
   );
 }
 
+function boundedParam(
+  params: URLSearchParams,
+  name: string,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  const value = params.get(name);
+  if (value === null || value.trim() === '') return fallback;
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(raw)));
+}
+
+function buildTerrain(count: number): TerrainBlock[] {
+  const sources: TerrainSource[] = ['cyber', 'fortress', 'cosmic', 'ladder'];
+  const blocks: TerrainBlock[] = [];
+  for (let index = 0; index < Math.min(count, GRID * GRID); index += 1) {
+    const cell = GRID * GRID - 1 - index;
+    const x = cell % GRID;
+    const z = Math.floor(cell / GRID);
+    const forming = index % 7 === 0;
+    blocks.push({
+      x,
+      z,
+      source: sources[index % sources.length],
+      formingTicks: forming ? 5 : 0,
+      formingTotal: forming ? 10 : 1,
+      solid: !forming,
+    });
+  }
+  return blocks;
+}
+
 function isDynastyId(value: string | null): value is DynastyId {
   return value === 'CYBER' || value === 'PRIMAL' || value === 'COSMIC';
 }
@@ -147,6 +189,9 @@ export default function PerfHarnessPage() {
     dynasty: DynastyId;
     mobile: boolean;
     aim: AimSystemId | null;
+    length: number;
+    tickMs: number;
+    terrain: number;
   } | null>(null);
   const [direction, setDirection] = useState<Direction>('RIGHT');
   const [headCell, setHeadCell] = useState<Position>({ x: 0, y: 0, z: 0 });
@@ -157,9 +202,10 @@ export default function PerfHarnessPage() {
   }
   // Mutable segment objects reused every tick (no per-tick garbage)
   const segmentsRef = useRef<Position[]>(
-    Array.from({ length: SNAKE_LENGTH }, () => ({ x: 0, y: 0, z: 0 }))
+    Array.from({ length: MAX_SNAKE_LENGTH }, () => ({ x: 0, y: 0, z: 0 }))
   );
   const path = useMemo(buildPath, []);
+  const terrain = useMemo(() => buildTerrain(config?.terrain ?? 0), [config?.terrain]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -170,6 +216,15 @@ export default function PerfHarnessPage() {
       dynasty: isDynastyId(dynastyParam) ? dynastyParam : 'PRIMAL',
       mobile: params.get('mobile') === '1',
       aim: isAimSystemId(aimParam) ? aimParam : null,
+      length: boundedParam(
+        params,
+        'length',
+        DEFAULT_SNAKE_LENGTH,
+        3,
+        MAX_SNAKE_LENGTH
+      ),
+      tickMs: boundedParam(params, 'speed', DEFAULT_TICK_MS, 50, 400),
+      terrain: boundedParam(params, 'terrain', 80, 0, GRID * GRID),
     });
   }, []);
 
@@ -177,8 +232,9 @@ export default function PerfHarnessPage() {
   // the buffer exactly like the game loop does.
   useEffect(() => {
     if (!config) return;
-    let headIndex = SNAKE_LENGTH - 1;
+    let headIndex = config.length - 1;
     const segments = segmentsRef.current;
+    const activeSegments = segments.slice(0, config.length);
     const buffer = bufferRef.current!;
     resetInterpolationBuffer(buffer);
 
@@ -186,21 +242,26 @@ export default function PerfHarnessPage() {
       headIndex += 1;
       if (headIndex >= path.length) {
         // Wrap the circuit: teleport, with a buffer reset so nothing streaks
-        headIndex = SNAKE_LENGTH - 1;
+        headIndex = config.length - 1;
         resetInterpolationBuffer(buffer);
       }
-      for (let i = 0; i < SNAKE_LENGTH; i++) {
+      for (let i = 0; i < config.length; i++) {
         const cell = path[headIndex - i];
         segments[i].x = cell.x;
         segments[i].z = cell.z;
       }
       setDirection(directionBetween(path[headIndex - 1], path[headIndex]));
       setHeadCell({ x: path[headIndex].x, y: 0, z: path[headIndex].z });
-      recordTick(buffer, segments, TICK_MS, performance.now());
+      recordTick(
+        buffer,
+        activeSegments,
+        config.tickMs,
+        performance.now()
+      );
     };
 
     tick();
-    const interval = setInterval(tick, TICK_MS);
+    const interval = setInterval(tick, config.tickMs);
     return () => clearInterval(interval);
   }, [config, path]);
 
@@ -222,7 +283,10 @@ export default function PerfHarnessPage() {
           /dev/perf — {config.mode} · {config.dynasty}
           {config.mobile ? ' · mobile profile' : ''}
         </p>
-        <p>100 segments · 50ms ticks · ?mode=legacy ?dynasty= ?mobile=1</p>
+        <p>
+          {config.length} segments · {config.tickMs}ms · {config.terrain} terrain
+          · ?length= ?speed= ?terrain=
+        </p>
       </div>
       <Canvas
         camera={{
@@ -271,8 +335,13 @@ export default function PerfHarnessPage() {
           accentColor="#22d3ee"
           emissiveIntensity={0.5}
         />
+        <TerrainBlocks terrain={terrain} />
         {config.mode === 'legacy' ? (
-          <LegacySnake segmentsRef={segmentsRef} dynasty={config.dynasty} />
+          <LegacySnake
+            segmentsRef={segmentsRef}
+            dynasty={config.dynasty}
+            length={config.length}
+          />
         ) : (
           <Suspense
             fallback={
@@ -280,6 +349,7 @@ export default function PerfHarnessPage() {
                 bufferRef={bufferRef}
                 dynasty={config.dynasty}
                 direction={direction}
+                terrain={terrain}
               />
             }
           >
@@ -287,6 +357,7 @@ export default function PerfHarnessPage() {
               bufferRef={bufferRef}
               dynasty={config.dynasty}
               direction={direction}
+              terrain={terrain}
             />
           </Suspense>
         )}
