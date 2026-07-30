@@ -17,8 +17,9 @@
  *   2. A player still wearing a generated name is offered the claim, but only
  *      after a banked run, because that is the moment §5 calls the ceremony.
  *   3. A player's first completed run meets the Lab.
- *   4. New Codex discoveries earn the Codex.
- *   5. Everything else routes to the Chronicle, which is where §5 sends every
+ *   4. The canonical impact receipt may recommend one relevant destination.
+ *   5. New Codex discoveries provide a rolling-deploy fallback.
+ *   6. Everything else routes to the Chronicle, which is where §5 sends every
  *      section Results no longer carries.
  *
  * REPLAY and SETUP are NOT next actions: they are the run loop's own controls
@@ -26,10 +27,17 @@
  * Nothing here is ever commercial (Rule 7).
  */
 
+import type {
+  ProgressionDestination,
+  RunImpactAction,
+} from '@/shared/progression/runImpact';
+import { progressionArtifactHref } from '@/shared/progression/destinations';
+
 export type ResultsNextActionId =
   | 'save-progress'
   | 'claim-handle'
   | 'visit-lab'
+  | 'run-impact'
   | 'open-codex'
   | 'chronicle';
 
@@ -54,7 +62,23 @@ export interface ResultsNextActionContext {
   codexDiscoveries: number;
   /** Free Play run — rewardless practice (§7.4). */
   practice: boolean;
+  /** Server-selected destination from the immutable run-impact receipt. */
+  impactAction?: RunImpactAction | null;
 }
+
+const IMPACT_DESTINATION: Record<ProgressionDestination, {
+  href: string;
+  label: string;
+}> = {
+  chronicle: { href: '/profile', label: 'Chronicle' },
+  mastery: { href: '/lab#mastery', label: 'Mastery' },
+  records: { href: '/profile#records', label: 'Records' },
+  codex: { href: '/codex', label: 'Codex' },
+  signal: { href: '/#signal', label: 'World Signal' },
+  clan: { href: '/clan', label: 'Clan' },
+  lab: { href: '/lab', label: 'Lab' },
+  lineage: { href: '/lab#lineage', label: 'Lineage' },
+};
 
 const CHRONICLE: ResultsNextAction = {
   id: 'chronicle',
@@ -91,6 +115,18 @@ export function chooseNextAction(
       label: 'Visit the Lab',
       description: 'Breed, equip and discover the snakes you run with.',
       href: '/lab',
+    };
+  }
+  if (context.impactAction) {
+    const destination = IMPACT_DESTINATION[context.impactAction.destination];
+    return {
+      id: 'run-impact',
+      label: context.impactAction.headline,
+      description: `Continue in ${destination.label}.`,
+      href: progressionArtifactHref(
+        context.impactAction.destination,
+        context.impactAction.artifactRef
+      ),
     };
   }
   if (context.codexDiscoveries > 0) {

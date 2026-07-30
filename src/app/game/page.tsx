@@ -2389,6 +2389,7 @@ export default function GamePage() {
         isFirstCompletedRun: showFirstResultDiscovery,
         codexDiscoveries: codexDiscoveries.length,
         practice: lastRunFree,
+        impactAction: runImpact?.recommendedAction ?? null,
       }),
     [
       codexDiscoveries.length,
@@ -2396,6 +2397,7 @@ export default function GamePage() {
       isAnonymous,
       lastRunFree,
       ownIdentity?.isGenerated,
+      runImpact?.recommendedAction,
       showFirstResultDiscovery,
     ]
   );

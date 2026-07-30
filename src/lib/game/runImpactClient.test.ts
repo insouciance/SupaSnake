@@ -35,7 +35,7 @@ describe('Run Impact client contract', () => {
       impacts: [{
         key: 'mastery:cyber:6',
         pillar: 'mastery',
-        kind: 'mastery-level',
+        kind: 'mastery_level',
         significance: 'milestone',
         headline: 'CYBER Mastery M6',
         before: 5,
@@ -55,18 +55,23 @@ describe('Run Impact client contract', () => {
     ['invalid receipt', { receipt: { ...envelope().receipt, dnaCredited: -1 } }],
     ['unknown pillar', {
       impacts: [{
-        key: 'x', pillar: 'account-level', kind: 'x', significance: 'routine', headline: 'x',
+        key: 'x', pillar: 'account-level', kind: 'mastery_xp', significance: 'routine', headline: 'x',
+      }],
+    }],
+    ['unknown impact kind', {
+      impacts: [{
+        key: 'x', pillar: 'mastery', kind: 'account_level', significance: 'routine', headline: 'x',
       }],
     }],
     ['duplicate impact keys', {
       impacts: [
-        { key: 'x', pillar: 'mastery', kind: 'x', significance: 'routine', headline: 'x' },
-        { key: 'x', pillar: 'lineage', kind: 'y', significance: 'notable', headline: 'y' },
+        { key: 'x', pillar: 'mastery', kind: 'mastery_xp', significance: 'routine', headline: 'x' },
+        { key: 'x', pillar: 'lineage', kind: 'lineage_run', significance: 'notable', headline: 'y' },
       ],
     }],
     ['more than three featured impacts', {
       impacts: ['a', 'b', 'c', 'd'].map((key) => ({
-        key, pillar: 'discovery', kind: key, significance: 'notable', headline: key,
+        key, pillar: 'discovery', kind: 'codex_discovery', significance: 'notable', headline: key,
       })),
       featuredImpactKeys: ['a', 'b', 'c', 'd'],
     }],
@@ -76,11 +81,11 @@ describe('Run Impact client contract', () => {
 
   it('groups a milestone storm into three ordered beats at most', () => {
     const impacts: RunImpactEnvelope['impacts'] = [
-      { key: 'm', pillar: 'mastery', kind: 'xp', significance: 'milestone', headline: 'M6' },
-      { key: 'l', pillar: 'lineage', kind: 'gen', significance: 'notable', headline: 'Gen 5' },
-      { key: 'd', pillar: 'discovery', kind: 'codex', significance: 'historic', headline: 'World first' },
-      { key: 'c', pillar: 'clan', kind: 'five', significance: 'notable', headline: 'Entered five' },
-      { key: 's', pillar: 'calendar', kind: 'signal', significance: 'milestone', headline: '30 Signals' },
+      { key: 'm', pillar: 'mastery', kind: 'mastery_level', significance: 'milestone', headline: 'M6' },
+      { key: 'l', pillar: 'lineage', kind: 'lineage_run', significance: 'notable', headline: 'Gen 5' },
+      { key: 'd', pillar: 'discovery', kind: 'codex_discovery', significance: 'historic', headline: 'World first' },
+      { key: 'c', pillar: 'clan', kind: 'clan_top_five', significance: 'notable', headline: 'Entered five' },
+      { key: 's', pillar: 'calendar', kind: 'signal_milestone', significance: 'milestone', headline: '30 Signals' },
     ];
     const groups = groupRunImpacts(envelope({
       impacts,
@@ -88,17 +93,17 @@ describe('Run Impact client contract', () => {
     }));
     expect(groups).toHaveLength(3);
     expect(groups.map((group) => group.id)).toEqual([
-      'growth',
       'discovery',
+      'growth',
       'clan-world',
     ]);
-    expect(groups[0].impacts.map((impact) => impact.key)).toEqual(['m']);
+    expect(groups[0].impacts.map((impact) => impact.key)).toEqual(['d']);
   });
 
   it('does not invent ceremony for routine-only progress', () => {
     const value = envelope({
       impacts: [{
-        key: 'xp', pillar: 'mastery', kind: 'xp', significance: 'routine', headline: '+20 XP',
+        key: 'xp', pillar: 'mastery', kind: 'mastery_xp', significance: 'routine', headline: '+20 XP',
       }],
     });
     expect(hasRecognitionCeremony(value)).toBe(false);

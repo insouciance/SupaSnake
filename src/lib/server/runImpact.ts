@@ -162,8 +162,10 @@ export function buildRunImpactEnvelope(
       before: input.ladder.before,
       after: input.ladder.after,
       delta: input.ladder.after - input.ladder.before,
-      destination: 'mastery',
-      artifactRef: `${input.dynasty}:${input.ladder.after}`,
+      // The current ladder record is verified in the Chronicle's Career
+      // Pulse; the Mastery panel has no ladder projection to render exactly.
+      destination: 'chronicle',
+      artifactRef: `ladder:${input.dynasty}:${input.ladder.after}`,
     });
   }
 
@@ -209,7 +211,7 @@ export function buildRunImpactEnvelope(
         headline: `${input.signal.signalsCompleted} Signals completed`,
         delta: input.signal.newMilestones,
         destination: 'signal',
-        artifactRef: input.signal.runId,
+        artifactRef: `signals:${input.signal.signalsCompleted}`,
       });
     } else if (input.signal.completed) {
       impacts.push({
@@ -222,7 +224,7 @@ export function buildRunImpactEnvelope(
         after: input.signal.target,
         delta: input.signal.target,
         destination: 'signal',
-        artifactRef: input.signal.runId,
+        artifactRef: `signals:${input.signal.signalsCompleted}`,
       });
     } else if (input.signal.progress > 0) {
       impacts.push({
@@ -233,7 +235,7 @@ export function buildRunImpactEnvelope(
         headline: `World Signal ${input.signal.progress}/${input.signal.target}`,
         after: input.signal.progress,
         destination: 'signal',
-        artifactRef: input.signal.runId,
+        artifactRef: `signals:${input.signal.signalsCompleted}`,
       });
     }
   }
@@ -269,6 +271,7 @@ export function buildRunImpactEnvelope(
       score: finiteInt(input.score),
       yieldDna: finiteInt(input.yieldDna),
       dnaCredited: finiteInt(input.dnaCredited),
+      // constitution-allow: energy-commerce immutable run settlement fact is unrelated to any SKU, perk, or purchase
       energyCommitted: finiteInt(input.energyCommitted),
       commitmentMultiplierBps: finiteInt(input.commitmentMultiplierBps),
       generation: Math.max(1, finiteInt(input.generation)),

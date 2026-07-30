@@ -7,71 +7,26 @@
  * Nothing here persists progress or reconstructs an authoritative milestone.
  */
 
-export const RUN_IMPACT_VERSION = 1 as const;
+import {
+  RUN_IMPACT_VERSION,
+  type ImpactSignificance,
+  type JsonValue,
+  type ProgressionDestination,
+  type ProgressionPillar,
+  type RunImpact,
+  type RunImpactEnvelope,
+  type RunImpactKind,
+  type RunImpactReceipt,
+  type RunOutcome,
+} from '@/shared/progression/runImpact';
 
-export type RunImpactOutcome = 'extracted' | 'crashed' | 'completed';
-export type RunImpactPillar =
-  | 'mastery'
-  | 'lineage'
-  | 'discovery'
-  | 'clan'
-  | 'calendar';
-export type RunImpactSignificance =
-  | 'routine'
-  | 'notable'
-  | 'milestone'
-  | 'historic';
-export type RunImpactDestination =
-  | 'chronicle'
-  | 'mastery'
-  | 'records'
-  | 'codex'
-  | 'signal'
-  | 'clan'
-  | 'lab'
-  | 'lineage';
-export type RunImpactDynasty = 'CYBER' | 'PRIMAL' | 'COSMIC';
-
-export interface RunImpact {
-  key: string;
-  pillar: RunImpactPillar;
-  kind: string;
-  significance: RunImpactSignificance;
-  headline: string;
-  detail?: string;
-  before?: number;
-  after?: number;
-  delta?: number;
-  destination?: RunImpactDestination;
-  artifactRef?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface RunImpactReceipt {
-  score: number;
-  yieldDna: number;
-  dnaCredited: number;
-  energyCommitted: number;
-  commitmentMultiplierBps: number;
-  generation: number;
-}
-
-export interface RunImpactEnvelope {
-  version: typeof RUN_IMPACT_VERSION;
-  sessionId: string;
-  settledAt: string;
-  outcome: RunImpactOutcome;
-  dynasty: RunImpactDynasty;
-  receipt: RunImpactReceipt;
-  impacts: RunImpact[];
-  /** Server-selected ceremony candidates. Always zero to three unique keys. */
-  featuredImpactKeys: string[];
-  recommendedAction: {
-    headline: string;
-    destination: RunImpactDestination;
-    artifactRef?: string;
-  } | null;
-}
+export { RUN_IMPACT_VERSION };
+export type { RunImpact, RunImpactEnvelope, RunImpactReceipt };
+export type RunImpactOutcome = RunOutcome;
+export type RunImpactPillar = ProgressionPillar;
+export type RunImpactSignificance = ImpactSignificance;
+export type RunImpactDestination = ProgressionDestination;
+export type RunImpactDynasty = RunImpactEnvelope['dynasty'];
 
 export interface RunImpactGroup {
   id: 'growth' | 'discovery' | 'clan-world';
@@ -99,6 +54,21 @@ const OUTCOMES = new Set<RunImpactOutcome>([
   'completed',
 ]);
 const DYNASTIES = new Set<RunImpactDynasty>(['CYBER', 'PRIMAL', 'COSMIC']);
+const KINDS = new Set<RunImpactKind>([
+  'mastery_xp',
+  'mastery_level',
+  'lineage_run',
+  'record_value',
+  'record_tier',
+  'ladder_record',
+  'codex_discovery',
+  'codex_milestone',
+  'signal_progress',
+  'signal_completion',
+  'signal_milestone',
+  'clan_contribution',
+  'clan_top_five',
+]);
 const DESTINATIONS = new Set<RunImpactDestination>([
   'chronicle',
   'mastery',
@@ -121,6 +91,20 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean'
+  ) {
+    return true;
+  }
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (isObject(value)) return Object.values(value).every(isJsonValue);
+  return false;
+}
+
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
@@ -138,6 +122,7 @@ function parseImpact(value: unknown): RunImpact | null {
     value.key.length === 0 ||
     typeof value.kind !== 'string' ||
     value.kind.length === 0 ||
+    !KINDS.has(value.kind as RunImpactKind) ||
     typeof value.headline !== 'string' ||
     value.headline.length === 0 ||
     !PILLARS.has(value.pillar as RunImpactPillar) ||
@@ -156,7 +141,7 @@ function parseImpact(value: unknown): RunImpact | null {
   return {
     key: value.key,
     pillar: value.pillar as RunImpactPillar,
-    kind: value.kind,
+    kind: value.kind as RunImpactKind,
     significance: value.significance as RunImpactSignificance,
     headline: value.headline,
     ...(typeof value.detail === 'string' && value.detail.length > 0
@@ -169,7 +154,9 @@ function parseImpact(value: unknown): RunImpact | null {
     ...(typeof value.artifactRef === 'string' && value.artifactRef.length > 0
       ? { artifactRef: value.artifactRef }
       : {}),
-    ...(isObject(value.metadata) ? { metadata: value.metadata } : {}),
+    ...(isObject(value.metadata) && isJsonValue(value.metadata)
+      ? { metadata: value.metadata }
+      : {}),
   };
 }
 
@@ -194,6 +181,7 @@ export function parseRunImpactEnvelope(value: unknown): RunImpactEnvelope | null
     score: nonNegativeInteger(value.receipt.score) ?? -1,
     yieldDna: nonNegativeInteger(value.receipt.yieldDna) ?? -1,
     dnaCredited: nonNegativeInteger(value.receipt.dnaCredited) ?? -1,
+    // constitution-allow: energy-commerce settlement receipt validation is unrelated to any SKU, perk, or purchase
     energyCommitted: nonNegativeInteger(value.receipt.energyCommitted) ?? -1,
     commitmentMultiplierBps:
       nonNegativeInteger(value.receipt.commitmentMultiplierBps) ?? -1,
@@ -328,8 +316,21 @@ export function groupRunImpacts(envelope: RunImpactEnvelope): RunImpactGroup[] {
           label: bucket.label,
           significance: maxSignificance(impacts),
           impacts,
+          firstSourceIndex: Math.min(...impacts.map((impact) => source.indexOf(impact))),
         }];
-  }).slice(0, 3);
+  })
+    .sort(
+      (a, b) =>
+        SIGNIFICANCE_RANK[b.significance] - SIGNIFICANCE_RANK[a.significance] ||
+        a.firstSourceIndex - b.firstSourceIndex
+    )
+    .slice(0, 3)
+    .map(({ id, label, significance, impacts }) => ({
+      id,
+      label,
+      significance,
+      impacts,
+    }));
 }
 
 export function impactSummary(envelope: RunImpactEnvelope): string {

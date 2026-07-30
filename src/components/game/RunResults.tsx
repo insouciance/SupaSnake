@@ -437,10 +437,20 @@ export function RunResults({
           </summary>
           <div className="space-y-3 pt-3">
             <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
-              {impact ? impactSummary(impact) : 'Run impact is pending server recovery.'}
+              {impact
+                ? impactSummary(impact)
+                : practice
+                  ? 'Practice advances no persistent progress.'
+                  : 'Run impact is pending server recovery.'}
             </p>
             {impact && impactReviewStarted ? <ImpactReview envelope={impact} /> : null}
-            {!impact ? <p className="font-body text-xs text-beige/60">Rewards remain server-authoritative; no progress is reconstructed on this device.</p> : null}
+            {!impact ? (
+              <p className="font-body text-xs text-beige/60">
+                {practice
+                  ? 'Only the live practice session existed; closing it leaves no earned state behind.'
+                  : 'Rewards remain server-authoritative; no progress is reconstructed on this device.'}
+              </p>
+            ) : null}
           </div>
         </details>
 

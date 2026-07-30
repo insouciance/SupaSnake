@@ -28,7 +28,7 @@ const impact: RunImpactEnvelope = {
     {
       key: 'mastery',
       pillar: 'mastery',
-      kind: 'mastery-level',
+      kind: 'mastery_level',
       significance: 'milestone',
       headline: 'CYBER Mastery M6',
       detail: 'A new gene entered your pool.',
@@ -40,7 +40,7 @@ const impact: RunImpactEnvelope = {
     {
       key: 'codex',
       pillar: 'discovery',
-      kind: 'codex-discovery',
+      kind: 'codex_discovery',
       significance: 'historic',
       headline: 'World-first splice documented',
       destination: 'codex',
@@ -48,7 +48,7 @@ const impact: RunImpactEnvelope = {
     {
       key: 'clan',
       pillar: 'clan',
-      kind: 'clan-top-five',
+      kind: 'clan_top_five',
       significance: 'notable',
       headline: 'Entered your clan five',
       destination: 'clan',
@@ -209,10 +209,10 @@ describe('Layer 3 recognition', () => {
   it('sequences no more than three grouped, skippable beats', () => {
     render(<RunResults {...props()} />);
     fireEvent.click(screen.getByText('What this run moved'));
-    expect(screen.getByTestId('impact-beat-growth')).toBeInTheDocument();
+    expect(screen.getByTestId('impact-beat-discovery')).toBeInTheDocument();
     expect(screen.getByText('1 of 3')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('impact-review-next'));
-    expect(screen.getByTestId('impact-beat-discovery')).toBeInTheDocument();
+    expect(screen.getByTestId('impact-beat-growth')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('impact-review-skip'));
     expect(screen.getByText(/Recognition reviewed/i)).toBeInTheDocument();
   });
@@ -220,6 +220,7 @@ describe('Layer 3 recognition', () => {
   it('announces visual progress without relying on animation', () => {
     render(<RunResults {...props()} />);
     fireEvent.click(screen.getByText('What this run moved'));
+    fireEvent.click(screen.getByTestId('impact-review-next'));
     const progress = screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i });
     expect(progress).toHaveAttribute('aria-valuenow', '6');
     expect(progress).toHaveAttribute('aria-valuemax', '10');
@@ -231,11 +232,19 @@ describe('Layer 3 recognition', () => {
     expect(screen.getByText(/no progress is reconstructed on this device/i)).toBeInTheDocument();
   });
 
+  it('describes a receipt-free practice run without implying lost recovery', () => {
+    render(<RunResults {...props({ practice: true, impact: null })} />);
+    expect(screen.getByTestId('impact-summary')).toHaveTextContent(
+      'Practice advances no persistent progress.'
+    );
+    expect(screen.queryByText(/pending server recovery/i)).toBeNull();
+  });
+
   it('shows routine progress without manufacturing a ceremony', () => {
     const routine = {
       ...impact,
       impacts: [{
-        key: 'xp', pillar: 'mastery' as const, kind: 'xp', significance: 'routine' as const, headline: '+80 CYBER Mastery XP',
+        key: 'xp', pillar: 'mastery' as const, kind: 'mastery_xp' as const, significance: 'routine' as const, headline: '+80 CYBER Mastery XP',
       }],
       featuredImpactKeys: [],
     };

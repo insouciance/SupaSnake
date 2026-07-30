@@ -70,32 +70,41 @@ The client renders it; the client does not infer it.
 type ImpactSignificance = 'routine' | 'notable' | 'milestone' | 'historic';
 
 interface RunImpactEnvelope {
-  version: number;
+  version: 1;
   sessionId: string;
   settledAt: string;
-  outcome: 'extracted' | 'crashed' | 'abandoned' | 'practice';
+  outcome: 'extracted' | 'crashed' | 'completed';
+  dynasty: 'CYBER' | 'PRIMAL' | 'COSMIC';
   receipt: {
     score: number;
-    yield: number;
+    yieldDna: number;
     dnaCredited: number;
     energyCommitted: number;
     commitmentMultiplierBps: number;
+    generation: number;
   };
   impacts: RunImpact[];
-  recommendedAction: CareerDestination | null;
+  featuredImpactKeys: string[]; // zero to three
+  recommendedAction: {
+    headline: string;
+    destination: CareerDestination;
+    artifactRef?: string;
+  } | null;
 }
 
 interface RunImpact {
   key: string;
   pillar: 'mastery' | 'lineage' | 'discovery' | 'clan' | 'calendar';
   kind: string;
+  headline: string;
+  detail?: string;
   before?: number;
   after?: number;
   delta?: number;
   significance: ImpactSignificance;
-  securedAt: string;
   destination?: CareerDestination;
   artifactRef?: string;
+  metadata?: Record<string, JSONValue>;
 }
 ```
 
