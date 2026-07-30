@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-07-29
+**Updated:** 2026-07-30
 
 **Environment:** operator production, Stripe sandbox
 
@@ -18,12 +18,12 @@
 | Practice | Training Lab enabled; deterministic and rewardless |
 | Energy | Server-time recovery to 6; 1–6 commitment; nonlinear harvest |
 | Clan battle | Automatic positive-Energy eligibility; three days; best five per member |
-| Player-feature baseline | `61a1936` |
-| Energy rollout deployment | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` |
-| Energy-release app rollback | `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX` (`95ad7d3`; migration 059 supplies the compatibility bridge) |
+| Player-feature baseline | `abf9844` |
+| Control rollout deployment | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` |
+| Control-release app rollback | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` (`61a1936`; same hosted schema) |
 | Payments | Test/sandbox mode only |
 
-The current release passed 388 Jest suites / 5,568 tests with coverage, full
+The current release passed 389 Jest suites / 5,578 tests with coverage, full
 lint and type checking, a zero-vulnerability production dependency audit, the
 production build, deterministic cockpit fixtures, both isolated-Supabase E2E
 configurations, local migrations 001–059 from zero, SQL integration, protected
@@ -57,6 +57,15 @@ public-production smoke. Detailed evidence is maintained in
   frozen arena in centered dialogs.
 - Pause is a tactical hold, not a menu. Accepted movement resumes; Abandon Run
   is a secondary confirmed action.
+- Desktop and mobile accept a turn inside a 25%-tick grace window (capped at
+  40ms) and execute it at the next valid movement point; Slipstream retains its
+  distinct full-tick benefit.
+- Mobile flick input holds at most two unresolved turns and narrowly suppresses
+  only a rapid third-turn micro-U that would enter the newly formed neck. It has
+  no general steering cooldown or broad collision forgiveness.
+- COSMIC remains uninterrupted in normal play. Voluntary tactical holds begin
+  at six and gain two at modelled lengths 25 and 40, for ten across the typical
+  run; no food wave or tactical object pauses the game automatically.
 - The Training Lab provides voluntary drills, circuits, and custom routes;
   attempts are server-replayed and cannot grant run rewards.
 - Stored Energy recovers from server time at one unit per hour to a cap of six,

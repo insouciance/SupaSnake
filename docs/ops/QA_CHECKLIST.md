@@ -1,11 +1,12 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-07-29_
+_Last updated: 2026-07-30_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
-Commitment/Clan Energy Battle release. Work from top to bottom when doing a
-broad playtest; use the focused matrices near the end when verifying a fix.
+Commitment/Clan Energy Battle release, plus the control-responsiveness follow-up.
+Work from top to bottom when doing a broad playtest; use the focused matrices
+near the end when verifying a fix.
 
 Design references:
 
@@ -22,21 +23,21 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `61a1936` — Energy Commitment and automatic Clan Energy Battles |
-| Energy rollout deployment | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` |
-| Energy-release rollback | `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX` — `95ad7d3`; migration-059 compatibility bridge present |
+| Production behavior commit | `abf9844` — control responsiveness and uninterrupted COSMIC (`8810223` behavior; `abf9844` test hardening) |
+| Control rollout deployment | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` |
+| Control-release rollback | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` — `61a1936`; same hosted schema |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–059 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; latest behavior/schema rollout workflow `30523606603` at `61a1936` |
+| Canonical source | `main`; latest behavior rollout workflow `30534158859` at `abf9844` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
-Commitment/Clan Energy Battle system are live. The current release applied
-migration 059 through the reviewed production workflow. Its compatibility
-bridge lets the recorded pre-release application remain a valid emergency app
-rollback while the forward-only schema stays applied.
+Commitment/Clan Energy Battle system, and control-responsiveness follow-up are
+live. The current release carried no migration; preview and apply both verified
+that hosted migrations 001–059 were already aligned. The recorded pre-release
+application therefore remains a schema-compatible emergency app rollback.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -81,6 +82,44 @@ once the dynasty-pressure follow-up is integrated.
 - The workflow's generated rollback summary remains unreliable because lookup
   occurs after staging. The independent anchor above, not the generated staged
   ID, is the release rollback evidence.
+
+### Control responsiveness production evidence
+
+- PR 45 merged the player-facing behavior as main SHA `8810223`; PR 46 merged
+  the test-only CYBER speed-floor hardening as release SHA `abf9844`. Production
+  workflow `30534158859` promoted `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` in Stripe
+  test mode. The independently known outgoing deployment is
+  `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` at `61a1936`.
+- The release gate passed 389/389 Jest suites and 5,578/5,578 tests with
+  coverage, TypeScript, ESLint, the blocking runtime dependency audit with zero
+  vulnerabilities, and the production-target Vercel build. The focused control
+  suite passed 10 suites / 263 tests before integration.
+- Both isolated-Supabase E2E configurations passed on the behavior PR and again
+  on the test hardening PR. The production-isolated journeys took 11m24s and
+  11m13s respectively; the rollback journeys took 7m59s and 7m44s.
+- Cockpit prototype, real-WebGL, frozen decision-surface, and Constitution gates
+  passed for the player-facing change. No migration, dependency, environment,
+  payment, or feature-flag value changed.
+- The linked migration preview and apply both reported “Remote database is up
+  to date”; linked database validation, staged health, and canonical production
+  application/database health all passed.
+- The workflow again recorded the newly staged artifact as its outgoing
+  deployment because the lookup occurs after staging. The independent rollback
+  above remains the valid app anchor.
+
+### Control responsiveness — post-production manual rechecks
+
+- On desktop and mobile, enter a turn just before a movement boundary and
+  confirm the small default grace removes perceived lag without turning early;
+  confirm Slipstream remains observably stronger at one full tick.
+- On mobile, repeat very fast wall-coiling L-turns. Confirm two unresolved flick
+  turns remain reliable, a rapid accidental third micro-U into the fresh neck is
+  suppressed, and slow or spatially larger U-shaped manoeuvres remain legal and
+  dangerous.
+- In COSMIC, confirm normal play never pauses itself when food waves, portals, or
+  gene offers appear. Confirm the hold counter starts at six, gains two at
+  modelled lengths 25 and 40, remains visible on desktop and mobile, and a resume
+  input never leaks into accidental steering.
 
 ### Energy Commitment — post-production manual rechecks
 
