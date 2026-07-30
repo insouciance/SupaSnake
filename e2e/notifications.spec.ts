@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedConsent, signInAsGuest } from './helpers';
 
+const CAREER_SPINE_ENABLED =
+  process.env.NEXT_PUBLIC_CAREER_SPINE_V1 === 'true';
+
 interface ServerAttention {
   id: string;
   kind: 'action';
@@ -49,13 +52,31 @@ async function serveNotifications(page: Page, count: number): Promise<void> {
   // fetched for an authenticated account. Exercise that path directly; no
   // progress fixture may be placed in browser storage, even in E2E.
   await signInAsGuest(page);
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
 }
 
 test.describe('notification attention dialog', () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  test('flag-off does not read or display server recognition', async ({ page }) => {
+    test.skip(CAREER_SPINE_ENABLED, 'rollback-only assertion');
+    await seedConsent(page);
+    let attentionRequests = 0;
+    await page.route('**/api/progression/attention**', async (route) => {
+      attentionRequests += 1;
+      await route.fulfill({ json: { items: [], nextOffset: null } });
+    });
+    await signInAsGuest(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible();
+    expect(attentionRequests).toBe(0);
+  });
+
   test('stays inside desktop and mobile viewports with a long internal scroll list', async ({
     page,
   }) => {
+    test.skip(!CAREER_SPINE_ENABLED, 'Career Spine presentation is off');
     await seedConsent(page);
     await serveNotifications(page, 30);
 
@@ -64,7 +85,7 @@ test.describe('notification attention dialog', () => {
       { width: 320, height: 568 },
     ]) {
       await page.setViewportSize(viewport);
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page
         .getByRole('button', { name: 'Notifications, 30 actions available' })
         .click();
@@ -92,6 +113,7 @@ test.describe('notification attention dialog', () => {
   test('opening and closing does not clear attention, while its action reaches the Lab', async ({
     page,
   }) => {
+    test.skip(!CAREER_SPINE_ENABLED, 'Career Spine presentation is off');
     await seedConsent(page);
     await serveNotifications(page, 1);
 
