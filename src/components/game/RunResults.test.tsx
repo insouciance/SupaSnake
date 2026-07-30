@@ -17,12 +17,14 @@ const impact: RunImpactEnvelope = {
   outcome: 'extracted',
   dynasty: 'CYBER',
   receipt: {
+    validated: true,
     score: 440,
     yieldDna: 260,
     dnaCredited: 572,
     energyCommitted: 2,
     commitmentMultiplierBps: 22_000,
     generation: 11,
+    personalBest: { eligible: true, before: 400, after: 440, improved: true },
   },
   impacts: [
     {
@@ -65,7 +67,6 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
   return {
     outcome: 'extracted',
     practice: false,
-    personalBest: false,
     score: 420,
     dnaCredited: 180,
     yieldDna: 240,
@@ -163,6 +164,23 @@ describe('Layer 1', () => {
     expect(layer).toContainElement(screen.getByTestId('results-take'));
     fireEvent.click(screen.getByTestId('results-take-collect'));
     expect(onCollectTake).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows personal-best recognition only from the immutable receipt', () => {
+    const { rerender } = render(<RunResults {...props()} />);
+    expect(screen.getByTestId('results-personal-best')).toBeInTheDocument();
+    rerender(<RunResults {...props({
+      impact: {
+        ...impact,
+        receipt: {
+          ...impact.receipt,
+          personalBest: { eligible: true, before: 440, after: 440, improved: false },
+        },
+      },
+    })} />);
+    expect(screen.queryByTestId('results-personal-best')).toBeNull();
+    rerender(<RunResults {...props({ impact: null })} />);
+    expect(screen.queryByTestId('results-personal-best')).toBeNull();
   });
 });
 

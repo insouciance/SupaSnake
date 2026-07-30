@@ -483,12 +483,8 @@ export default function GamePage() {
   // WP-1.06 / Constitution §5: Results state. All of it is inert with
   // RUN_FLOW_V1 off - the shipped game-over screen reads none of it.
   // ---------------------------------------------------------------------
-  // Layer 1: personal-best status. Computed against the high score the
-  // account held BEFORE this run, which is why the prior value is kept in a
-  // ref rather than re-read from the settlement (the settlement has already
-  // written the new one).
-  const priorHighScoreRef = useRef(0);
-  const [personalBest, setPersonalBest] = useState(false);
+  // Layer 1 personal-best truth comes only from the immutable server receipt.
+  // The client never compares account snapshots to manufacture recognition.
   // Layer 1: the Daily Take slot. `null` until WP-1.04's settlement says
   // this was the day's first run (see lib/game/dailyTake.ts).
   const [dailyTake, setDailyTake] = useState<DailyTakeSlot | null>(null);
@@ -805,11 +801,6 @@ export default function GamePage() {
           setHasCompletedFirstRun(
             data.hasCompletedFirstRun === true ||
               Number(data.player.total_games_played ?? 0) > 0
-          );
-          // The record to beat, captured BEFORE the next run settles it.
-          priorHighScoreRef.current = Math.max(
-            priorHighScoreRef.current,
-            Number(data.player.high_score ?? 0) || 0
           );
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
@@ -1556,22 +1547,6 @@ export default function GamePage() {
                 ? (result.clanBattle as RunResultsClanBattle)
                 : null
             );
-            const settledScore =
-              typeof validation.score === 'number' ? validation.score : data.score;
-            // A record only counts if the server accepted the run and it was
-            // not rewardless practice - the same gate `players.high_score`
-            // uses, so the badge can never disagree with the record.
-            const beatsRecord =
-              !freeRunRef.current &&
-              validation.valid === true &&
-              settledScore > priorHighScoreRef.current;
-            setPersonalBest(beatsRecord);
-            if (!freeRunRef.current && validation.valid === true) {
-              priorHighScoreRef.current = Math.max(
-                priorHighScoreRef.current,
-                settledScore
-              );
-            }
             // The Take slot: present only when the server says this was the
             // day's first run. WP-1.04 owns that answer; until it ships the
             // field is absent and the slot never renders.
@@ -1907,7 +1882,6 @@ export default function GamePage() {
     // WP-1.06: Results state belongs to the run that just ended. A new run
     // clears all of it before the board appears (Rule 1 - nothing from the
     // last run renders over this one).
-    setPersonalBest(false);
     setDailyTake(null);
     setTakeState('idle');
     setSettledYield(null);
@@ -3313,7 +3287,6 @@ export default function GamePage() {
                 <RunResults
                   outcome={endReason === 'extracted' ? 'extracted' : 'crashed'}
                   practice={lastRunFree}
-                  personalBest={personalBest}
                   score={score}
                   dnaCredited={settledCredited}
                   yieldDna={settledYield ?? hypotheticalDna}

@@ -18,6 +18,7 @@ DECLARE
   v_first JSONB;
   v_second JSONB;
   v_transition JSONB;
+  v_reward JSONB;
 BEGIN
   SELECT id INTO v_variant FROM snake_variants ORDER BY created_at, id LIMIT 1;
   IF v_variant IS NULL THEN RAISE EXCEPTION '060 requires a seeded variant'; END IF;
@@ -45,6 +46,10 @@ BEGIN
     1200, 1760, 800, TRUE, TRUE, NOW(), 'completed', 2, 22000
   );
 
+  v_reward := settle_game_session_reward(
+    v_player, v_session, 1760, 1200, TRUE, '{"test":"impact"}'::JSONB
+  );
+
   v_envelope := jsonb_build_object(
     'version', 1,
     'sessionId', v_session,
@@ -52,9 +57,9 @@ BEGIN
     'outcome', 'extracted',
     'dynasty', 'PRIMAL',
     'receipt', jsonb_build_object(
-      'score', 1200, 'yieldDna', 800, 'dnaCredited', 1760,
+      'validated', true, 'score', 1200, 'yieldDna', 800, 'dnaCredited', 1760,
       'energyCommitted', 2, 'commitmentMultiplierBps', 22000,
-      'generation', 5
+      'generation', 5, 'personalBest', v_reward -> 'personal_best'
     ),
     'impacts', jsonb_build_array(
       jsonb_build_object(
@@ -66,7 +71,7 @@ BEGIN
         'key', 'mastery:PRIMAL:level:3', 'pillar', 'mastery',
         'kind', 'mastery_level', 'significance', 'milestone',
         'headline', 'PRIMAL Mastery M3', 'destination', 'mastery',
-        'before', 2, 'after', 3, 'delta', 1
+        'before', 2, 'after', 3, 'delta', 1, 'artifactRef', 'PRIMAL'
       )
     ),
     'featuredImpactKeys', jsonb_build_array('mastery:PRIMAL:level:3'),
@@ -74,6 +79,18 @@ BEGIN
       'headline', 'Review PRIMAL Mastery M3', 'destination', 'mastery'
     )
   );
+
+  BEGIN
+    PERFORM persist_run_impact_envelope(
+      v_player,
+      v_session,
+      jsonb_set(v_envelope, '{impacts,1,artifactRef}', '"   "'::JSONB)
+    );
+    RAISE EXCEPTION 'blank artifact reference was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'blank artifact reference was accepted' THEN RAISE; END IF;
+    IF SQLSTATE <> '23514' THEN RAISE; END IF;
+  END;
 
   v_first := persist_run_impact_envelope(v_player, v_session, v_envelope);
   v_second := persist_run_impact_envelope(v_player, v_session, v_envelope);
@@ -144,6 +161,202 @@ BEGIN
 END;
 $$;
 
+-- Atomic player aggregate: distinct sessions add, a replay does not, and an
+-- invalid run can settle its non-confiscated DNA without claiming PB/lineage.
+DO $$
+DECLARE
+  v_user UUID := '06000000-0000-0000-0000-000000000201';
+  v_player UUID;
+  v_snake UUID := '06000000-0000-0000-0000-000000000205';
+  v_variant UUID;
+  v_session_a UUID := '06000000-0000-0000-0000-000000000202';
+  v_session_b UUID := '06000000-0000-0000-0000-000000000203';
+  v_session_invalid UUID := '06000000-0000-0000-0000-000000000204';
+  v_initial_dna INTEGER;
+  v_initial_games INTEGER;
+  v_initial_earned INTEGER;
+  v_initial_high INTEGER;
+  v_lineage_runs INTEGER;
+  v_first JSONB;
+  v_replay JSONB;
+  v_invalid_impact JSONB;
+BEGIN
+  INSERT INTO auth.users(id, aud, role, email, created_at, updated_at)
+  VALUES (v_user, 'authenticated', 'authenticated', 'career-060-reward@example.test', NOW(), NOW());
+  SELECT id, dna, total_games_played, total_dna_earned, high_score
+  INTO v_player, v_initial_dna, v_initial_games, v_initial_earned, v_initial_high
+  FROM players WHERE user_id = v_user;
+  SELECT id INTO v_variant FROM snake_variants ORDER BY created_at, id LIMIT 1;
+  INSERT INTO collected_snakes(
+    id, player_id, snake_variant_id, generation, acquired_method, is_equipped
+  ) VALUES (v_snake, v_player, v_variant, 1, 'unlock', TRUE);
+
+  INSERT INTO game_sessions(
+    id, player_id, snake_used_id, snake_variant_id, dynasty,
+    score, dna_earned, yield_dna, validated, extracted, ended_at, end_reason,
+    energy_committed, energy_harvest_multiplier_bps
+  ) VALUES
+    (v_session_a, v_player, v_snake, v_variant, 'PRIMAL',
+     1000, 100, 100, TRUE, TRUE, NOW(), 'completed', 1, 10000),
+    (v_session_b, v_player, v_snake, v_variant, 'PRIMAL',
+     2500, 200, 200, TRUE, TRUE, NOW(), 'completed', 1, 10000),
+    (v_session_invalid, v_player, v_snake, v_variant, 'PRIMAL',
+     9999, 50, 50, FALSE, FALSE, NOW(), 'completed', 1, 10000);
+
+  v_first := settle_game_session_reward(
+    v_player, v_session_a, 100, 1000, TRUE, '{"test":"a"}'::JSONB
+  );
+  PERFORM settle_game_session_reward(
+    v_player, v_session_b, 200, 2500, TRUE, '{"test":"b"}'::JSONB
+  );
+  v_replay := settle_game_session_reward(
+    v_player, v_session_a, 100, 1000, TRUE, '{"test":"ignored-on-replay"}'::JSONB
+  );
+
+  IF v_first ->> 'applied' <> 'true' OR v_replay ->> 'applied' <> 'false' THEN
+    RAISE EXCEPTION 'same-session reward replay did not preserve exactly-once truth';
+  END IF;
+  IF (SELECT dna FROM players WHERE id = v_player) <> v_initial_dna + 300
+     OR (SELECT total_games_played FROM players WHERE id = v_player) <> v_initial_games + 2
+     OR (SELECT total_dna_earned FROM players WHERE id = v_player) <> v_initial_earned + 300
+     OR (SELECT high_score FROM players WHERE id = v_player) <> GREATEST(v_initial_high, 2500) THEN
+    RAISE EXCEPTION 'distinct session rewards lost or overwrote a player aggregate';
+  END IF;
+  IF (SELECT COUNT(*) FROM game_reward_settlements WHERE player_id = v_player) <> 2
+     OR (SELECT COUNT(*) FROM economy_transactions
+         WHERE player_id = v_player AND source_type = 'game_reward'
+           AND source_id IN (v_session_a, v_session_b)) <> 2 THEN
+    RAISE EXCEPTION 'reward replay duplicated or omitted its ledger/audit row';
+  END IF;
+
+  SELECT runs_completed INTO v_lineage_runs
+  FROM lineage_specimens WHERE specimen_id = v_snake;
+  PERFORM settle_game_session_reward(
+    v_player, v_session_invalid, 50, 9999, FALSE, '{"test":"invalid"}'::JSONB
+  );
+  IF (SELECT high_score FROM players WHERE id = v_player) <> GREATEST(v_initial_high, 2500) THEN
+    RAISE EXCEPTION 'invalid run claimed a personal best';
+  END IF;
+
+  v_invalid_impact := jsonb_build_object(
+    'version', 1, 'sessionId', v_session_invalid, 'settledAt', NOW(),
+    'outcome', 'crashed', 'dynasty', 'PRIMAL',
+    'receipt', jsonb_build_object(
+      'validated', false, 'score', 9999, 'yieldDna', 50, 'dnaCredited', 50,
+      'energyCommitted', 1, 'commitmentMultiplierBps', 10000, 'generation', 1,
+      'personalBest', jsonb_build_object(
+        'eligible', false, 'before', GREATEST(v_initial_high, 2500),
+        'after', GREATEST(v_initial_high, 2500), 'improved', false
+      )
+    ),
+    'impacts', jsonb_build_array(jsonb_build_object(
+      'key', 'lineage:' || v_snake || ':run', 'pillar', 'lineage',
+      'kind', 'lineage_run', 'significance', 'routine',
+      'headline', 'must not count', 'destination', 'lineage'
+    )),
+    'featuredImpactKeys', '[]'::JSONB, 'recommendedAction', NULL
+  );
+  BEGIN
+    PERFORM persist_run_impact_envelope(
+      v_player,
+      v_session_invalid,
+      jsonb_set(v_invalid_impact, '{receipt,personalBest,improved}', 'true'::JSONB)
+    );
+    RAISE EXCEPTION 'impact accepted invented personal-best truth';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'impact accepted invented personal-best truth' THEN RAISE; END IF;
+    IF POSITION('RUN_IMPACT_REWARD_TRUTH_MISMATCH' IN SQLERRM) = 0 THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM persist_run_impact_envelope(v_player, v_session_invalid, v_invalid_impact);
+    RAISE EXCEPTION 'invalid run impact claimed lineage';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'invalid run impact claimed lineage' THEN RAISE; END IF;
+    IF POSITION('INVALID_RUN_CANNOT_CLAIM_LINEAGE' IN SQLERRM) = 0 THEN RAISE; END IF;
+  END;
+  PERFORM persist_run_impact_envelope(
+    v_player,
+    v_session_invalid,
+    jsonb_set(v_invalid_impact, '{impacts}', '[]'::JSONB)
+  );
+  IF (SELECT runs_completed FROM lineage_specimens WHERE specimen_id = v_snake)
+     IS DISTINCT FROM v_lineage_runs THEN
+    RAISE EXCEPTION 'invalid run advanced lineage history';
+  END IF;
+END;
+$$;
+
+-- A best-set replacement can cross snakes. Specimen Clan Depth follows the
+-- final counted set and removes the displaced run instead of accumulating
+-- every run that was briefly counted.
+DO $$
+DECLARE
+  v_user UUID := '06000000-0000-0000-0000-000000000401';
+  v_player UUID;
+  v_clan UUID := '06000000-0000-0000-0000-000000000402';
+  v_battle UUID := '06000000-0000-0000-0000-000000000403';
+  v_side UUID := '06000000-0000-0000-0000-000000000404';
+  v_snake_a UUID := '06000000-0000-0000-0000-000000000405';
+  v_snake_b UUID := '06000000-0000-0000-0000-000000000406';
+  v_session_a UUID := '06000000-0000-0000-0000-000000000407';
+  v_session_b UUID := '06000000-0000-0000-0000-000000000408';
+  v_variant UUID;
+BEGIN
+  INSERT INTO auth.users(id, aud, role, email, created_at, updated_at)
+  VALUES (v_user, 'authenticated', 'authenticated', 'career-060-depth@example.test', NOW(), NOW());
+  SELECT id INTO v_player FROM players WHERE user_id = v_user;
+  SELECT id INTO v_variant FROM snake_variants ORDER BY created_at, id LIMIT 1;
+  INSERT INTO collected_snakes(
+    id, player_id, snake_variant_id, generation, acquired_method, is_equipped
+  ) VALUES
+    (v_snake_a, v_player, v_variant, 2, 'unlock', TRUE),
+    (v_snake_b, v_player, v_variant, 3, 'bred', FALSE);
+
+  INSERT INTO clans(id, name, tag, owner_id)
+  VALUES (v_clan, 'Career Depth Test', 'C60D', v_user);
+  INSERT INTO clan_energy_battles(
+    id, cycle_index, starts_at, ends_at, intermission_ends_at
+  ) VALUES (
+    v_battle, 600401, NOW() - INTERVAL '1 hour',
+    NOW() + INTERVAL '2 days', NOW() + INTERVAL '3 days'
+  );
+  INSERT INTO clan_energy_battle_sides(id, battle_id, cycle_index, clan_id, slot)
+  VALUES (v_side, v_battle, 600401, v_clan, 1);
+
+  INSERT INTO game_sessions(
+    id, player_id, snake_used_id, snake_variant_id, dynasty,
+    started_at, ended_at, end_reason, validated, extracted, score,
+    dna_earned, yield_dna, energy_committed,
+    energy_harvest_multiplier_bps, energy_commitment_locked_at,
+    clan_energy_battle_id, clan_energy_battle_side_id, clan_energy_clan_id
+  ) VALUES
+    (v_session_a, v_player, v_snake_a, v_variant, 'PRIMAL',
+     NOW() - INTERVAL '3 minutes', NOW() - INTERVAL '2 minutes',
+     'completed', TRUE, TRUE, 100, 100, 100, 1, 10000,
+     NOW() - INTERVAL '3 minutes', v_battle, v_side, v_clan),
+    (v_session_b, v_player, v_snake_b, v_variant, 'PRIMAL',
+     NOW() - INTERVAL '2 minutes', NOW() - INTERVAL '1 minute',
+     'completed', TRUE, TRUE, 200, 200, 200, 1, 10000,
+     NOW() - INTERVAL '2 minutes', v_battle, v_side, v_clan);
+
+  PERFORM record_clan_energy_contribution(v_session_a, 1, 10800, 10800);
+  PERFORM record_lineage_specimen_run(v_session_a);
+  IF (SELECT clan_depth_delivered FROM lineage_specimens WHERE specimen_id = v_snake_a) <> 100 THEN
+    RAISE EXCEPTION 'first counted run did not reach its specimen';
+  END IF;
+
+  PERFORM record_clan_energy_contribution(v_session_b, 1, 10800, 10800);
+  PERFORM record_lineage_specimen_run(v_session_b);
+  IF (SELECT clan_depth_delivered FROM lineage_specimens WHERE specimen_id = v_snake_a) <> 0
+     OR (SELECT clan_depth_delivered FROM lineage_specimens WHERE specimen_id = v_snake_b) <> 200
+     OR (SELECT clan_depth_delivered FROM lineage_specimen_runs WHERE session_id = v_session_a) <> 0
+     OR (SELECT clan_depth_delivered FROM lineage_specimen_runs WHERE session_id = v_session_b) <> 200
+     OR (SELECT score FROM clan_energy_battle_sides WHERE id = v_side) <> 200 THEN
+    RAISE EXCEPTION 'cross-specimen replacement diverged from final Clan Depth';
+  END IF;
+END;
+$$;
+
 -- Season 1 is a read-only chapter: reached identity is secured without a
 -- player claim, premium goodwill is retained, and replay changes nothing.
 DO $$
@@ -160,11 +373,8 @@ DECLARE
   v_premium_claims INTEGER;
   v_premium_inventory INTEGER;
   v_second JSONB;
+  v_compat JSONB;
 BEGIN
-  IF to_regprocedure('claim_season_tier(uuid,integer)') IS NOT NULL THEN
-    RAISE EXCEPTION 'manual season claim RPC still exists';
-  END IF;
-
   SELECT id INTO v_season FROM battle_pass_seasons WHERE season_number = 1;
   IF v_season IS NULL THEN RAISE EXCEPTION 'Season 1 is missing'; END IF;
 
@@ -176,11 +386,12 @@ BEGIN
 
   -- An old receipt is history: settlement may repair its missing inventory,
   -- but it may neither duplicate nor rewrite that timestamp.
-  SELECT id INTO v_existing_tier
-  FROM battle_pass_tiers
-  WHERE season_id = v_season AND is_premium IS FALSE
-    AND reward_type IN ('cosmetic', 'title')
-  ORDER BY level LIMIT 1;
+  SELECT t.id INTO v_existing_tier
+  FROM battle_pass_tiers t
+  JOIN cosmetic_definitions cd ON cd.id = t.reward_id
+  WHERE t.season_id = v_season AND t.is_premium IS FALSE
+    AND t.reward_type IN ('cosmetic', 'title')
+  ORDER BY t.level LIMIT 1;
   INSERT INTO player_battle_pass_claims(
     player_id, season_id, tier_id, claimed_at
   ) VALUES (v_free_player, v_season, v_existing_tier, v_existing_time);
@@ -206,7 +417,9 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM battle_pass_tiers t
+    JOIN cosmetic_definitions cd ON cd.id = t.reward_id
     WHERE t.season_id = v_season AND t.level <= 30 AND NOT t.is_premium
+      AND t.reward_type IN ('cosmetic', 'title')
       AND NOT EXISTS (
         SELECT 1 FROM player_battle_pass_claims c
         WHERE c.player_id = v_free_player AND c.tier_id = t.id
@@ -219,12 +432,21 @@ BEGIN
   ) THEN RAISE EXCEPTION 'free player received premium tier'; END IF;
   IF EXISTS (
     SELECT 1 FROM battle_pass_tiers t
+    JOIN cosmetic_definitions cd ON cd.id = t.reward_id
     WHERE t.season_id = v_season AND t.level <= 30
+      AND t.reward_type IN ('cosmetic', 'title')
       AND NOT EXISTS (
         SELECT 1 FROM player_battle_pass_claims c
         WHERE c.player_id = v_premium_player AND c.tier_id = t.id
       )
   ) THEN RAISE EXCEPTION 'premium reached tier was not secured'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM player_battle_pass_claims c
+    JOIN battle_pass_tiers t ON t.id = c.tier_id
+    LEFT JOIN cosmetic_definitions cd ON cd.id = t.reward_id
+    WHERE c.player_id IN (v_free_player, v_premium_player)
+      AND (t.reward_type NOT IN ('cosmetic', 'title') OR cd.id IS NULL)
+  ) THEN RAISE EXCEPTION 'season settlement secured a non-catalog identity receipt'; END IF;
 
   IF EXISTS (
     SELECT 1 FROM battle_pass_tiers t
@@ -269,6 +491,11 @@ BEGIN
     RAISE EXCEPTION 'season settlement replay was not idempotent';
   END IF;
   PERFORM secure_reached_season_entitlements(v_premium_player, v_season);
+  v_compat := claim_season_tier(v_free_player, 1);
+  IF COALESCE((v_compat ->> 'secured')::BOOLEAN, FALSE) IS NOT TRUE
+     OR COALESCE((v_compat ->> 'compatibility')::BOOLEAN, FALSE) IS NOT TRUE THEN
+    RAISE EXCEPTION 'rolling season compatibility call did not return secured truth';
+  END IF;
 
   IF v_free_claims <> (SELECT COUNT(*) FROM player_battle_pass_claims
                        WHERE player_id = v_free_player AND season_id = v_season)
@@ -280,6 +507,31 @@ BEGIN
                                WHERE player_id = v_premium_player AND source = 'season_track') THEN
     RAISE EXCEPTION 'season settlement replay duplicated receipts or inventory';
   END IF;
+END;
+$$;
+
+-- Runtime privilege checks: browser roles read through RLS but cannot invoke
+-- settlement mutations. The server role retains the rolling API surface.
+DO $$
+DECLARE
+  v_signature TEXT;
+BEGIN
+  FOREACH v_signature IN ARRAY ARRAY[
+    'claim_season_tier(uuid,integer)',
+    'secure_reached_season_entitlements(uuid,uuid)',
+    'settle_game_session_reward(uuid,uuid,integer,integer,boolean,jsonb)',
+    'record_lineage_specimen_run(uuid)',
+    'persist_run_impact_envelope(uuid,uuid,jsonb)',
+    'transition_player_attention(uuid,uuid,text)'
+  ] LOOP
+    IF has_function_privilege('anon', v_signature, 'EXECUTE')
+       OR has_function_privilege('authenticated', v_signature, 'EXECUTE') THEN
+      RAISE EXCEPTION 'browser role can execute server mutation %', v_signature;
+    END IF;
+    IF NOT has_function_privilege('service_role', v_signature, 'EXECUTE') THEN
+      RAISE EXCEPTION 'service role cannot execute server mutation %', v_signature;
+    END IF;
+  END LOOP;
 END;
 $$;
 

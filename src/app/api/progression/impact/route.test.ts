@@ -22,12 +22,14 @@ const impact = {
   outcome: 'extracted',
   dynasty: 'PRIMAL',
   receipt: {
+    validated: true,
     score: 1,
     yieldDna: 2,
     dnaCredited: 2,
     energyCommitted: 1,
     commitmentMultiplierBps: 10000,
     generation: 1,
+    personalBest: { eligible: true, before: 0, after: 1, improved: true },
   },
   impacts: [],
   featuredImpactKeys: [],
@@ -80,5 +82,26 @@ describe('GET /api/progression/impact', () => {
       return chain;
     });
     expect((await GET(request())).status).toBe(404);
+  });
+
+  it('returns a retryable 503 when the receipt read fails', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.select = jest.fn(() => chain);
+      chain.eq = jest.fn(() => chain);
+      chain.maybeSingle = jest.fn(async () =>
+        table === 'players'
+          ? { data: { id: 'player-1' }, error: null }
+          : { data: null, error: { code: '08006', message: 'connection failure' } }
+      );
+      return chain;
+    });
+    const response = await GET(request());
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({
+      error: 'Impact receipt is temporarily unavailable',
+      retryable: true,
+    });
   });
 });

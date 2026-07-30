@@ -138,6 +138,7 @@ import {
   persistRunImpactEnvelope,
 } from '@/lib/server/runImpact';
 import { progressionJson } from '@/lib/server/noStoreResponse';
+import { settleSessionReward } from '@/lib/server/sessionReward';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1154,17 +1155,28 @@ export async function POST(request: NextRequest) {
         }
 
         const priorReason = (session as Record<string, unknown>).end_reason;
-        const impact =
-          priorReason === SETTLED_END_REASON
-            ? await loadRunImpactEnvelope(supabase, player.id, sessionId)
-            : null;
+        let impact: Awaited<ReturnType<typeof loadRunImpactEnvelope>> | null = null;
+        if (priorReason === SETTLED_END_REASON) {
+          impact = await loadRunImpactEnvelope(supabase, player.id, sessionId);
+          if (impact.status !== 'found') {
+            return progressionJson(
+              {
+                error: 'Run settled; its impact receipt is still pending',
+                alreadyEnded: true,
+                impactPending: true,
+                retryable: true,
+              },
+              { status: 503 }
+            );
+          }
+        }
         return progressionJson(
           {
             error: 'Session already ended',
             alreadyEnded: true,
             ...(typeof priorReason === 'string' ? { endReason: priorReason } : {}),
             player: currentPlayer ?? null,
-            ...(impact ? { impact } : {}),
+            ...(impact?.status === 'found' ? { impact: impact.impact } : {}),
           },
           { status: 409 }
         );
@@ -1686,11 +1698,22 @@ export async function POST(request: NextRequest) {
       if (!endedRows || endedRows.length === 0) {
         // Lost the race: another request ended this session first
         const impact = await loadRunImpactEnvelope(supabase, player.id, sessionId);
+        if (impact.status !== 'found') {
+          return progressionJson(
+            {
+              error: 'Run settlement is finishing; retry for its impact receipt',
+              alreadyEnded: true,
+              impactPending: true,
+              retryable: true,
+            },
+            { status: 503 }
+          );
+        }
         return progressionJson(
           {
             error: 'Session already ended',
             alreadyEnded: true,
-            ...(impact ? { impact } : {}),
+            impact: impact.impact,
           },
           { status: 409 }
         );
@@ -1813,152 +1836,57 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const newDna = player.dna + finalDna;
-      // WP-2.05 — PRIORITY 1: this read is the Rule 6 violation the CI gate
-      // cannot see.
-      //
-      // It was `const { data: currentPlayer } = await ...` with no error
-      // check. On a transient failure `currentPlayer` is null, and the three
-      // expressions below then evaluate to `total_games_played: 1`,
-      // `total_dna_earned: finalDna` and `high_score: max(0, thisRunScore)` —
-      // a player with 300 runs, 90k lifetime DNA and a 12,000 record is
-      // written back to 1 run, one run's DNA, and this run's score. Three
-      // player-owned scalars, all written DOWNWARD, permanently.
-      //
-      // `verify:constitution`'s owned-row-downward gate cannot catch it
-      // because no payload field is literally decremented: every one of them
-      // is an addition or a `Math.max` over a value that silently became
-      // zero. The only defence is checking the error, so the error is
-      // checked, and the run is retried rather than settled from a blank.
-      const { data: currentPlayer, error: currentPlayerError } = await supabase
-        .from('players')
-        .select('total_games_played, high_score, total_dna_earned')
-        .eq('id', player.id)
-        .single();
-      if (currentPlayerError || !currentPlayer) {
-        return await settlementUnavailable(
-          'player scalars',
-          currentPlayerError ?? new Error('player row missing at settlement'),
-          { playerId: player.id, sessionId, alreadyStampedEnd: true }
-        );
-      }
-
-      // FINDING F-1 (WP-0.06): this write had no `validation.valid` gate, so a
-      // run that FAILED server validation still set a permanent personal
-      // record. WP-0.05 made the leaderboard immune by filtering at read time,
-      // but `players.high_score` is read by other surfaces and stayed poisoned
-      // for good.
-      //
-      // The fix stops an invalid run writing UP. It never writes DOWN: the
-      // rejected branch re-writes the value that is already there, so an
-      // existing record - however it was set - is preserved exactly (Rule 6:
-      // what a player has is permanent, and this route is not the place to
-      // decide a past record was undeserved).
-      //
-      // WP-2.05 changes what "invalid" means here, and this is the whole
-      // point of the package. `validation.valid` now means NO FATAL ERROR —
-      // the server could bound the run's physics — rather than "no finding at
-      // all". A run that merely diverged from its own claim, or had a claim
-      // clamped, or offered a pick the client legally showed, keeps its
-      // record. Only a run the server cannot bound is refused one.
-      //
-      // The reads below are no longer `?.` fallbacks: the 503 above
-      // guarantees `currentPlayer`, so none of these three can silently
-      // evaluate from zero.
-      const priorHighScore = currentPlayer.high_score || 0;
-      const newHighScore = validation.valid
-        ? Math.max(priorHighScore, validation.adjustedScore)
-        : priorHighScore;
-      const gamesPlayedCount = (currentPlayer.total_games_played || 0) + 1;
-      const newTotalDnaEarned = (currentPlayer.total_dna_earned || 0) + finalDna;
-
-      const { error: rewardUpdateError } = await supabase
-        .from('players')
-        .update({
-          dna: newDna,
-          total_games_played: gamesPlayedCount,
-          total_dna_earned: newTotalDnaEarned,
-          high_score: newHighScore,
-        })
-        .eq('id', player.id);
-
-      if (rewardUpdateError) {
-        // Primary state write failed - the player would silently lose the
-        // run's DNA. Re-open the session (best effort) so a client replay
-        // can retry, then fail the request.
-        //
-        // WP-0.06: `end_reason` is deliberately LEFT at 'completed' here. The
-        // pair (ended_at IS NULL, end_reason = 'completed') is the marker for
-        // "this run settled, the reward write failed, an outbox replay still
-        // owes the player DNA" - and it is what buys the row the long sweep
-        // window instead of the 3-hour one, so expiry cannot destroy a payout
-        // the player earned (Rule 6).
-        console.error('Failed to grant game rewards:', {
+      // The player aggregate and its game_reward audit row are one database
+      // transaction keyed by session. Distinct runs serialize on the player
+      // row (no lost update); a replay returns the first run-specific PB truth
+      // without applying DNA, games played, or audit history twice.
+      const rewardResult = await settleSessionReward(supabase, {
+        playerId: player.id,
+        sessionId,
+        finalDna,
+        score: validation.adjustedScore,
+        validated: validation.valid,
+        metadata: {
+          food_count: validation.foodCount,
+          extracted: validation.extracted,
+          original_dna_claimed: dna_earned || 0,
+          base_dna: validation.adjustedDna,
+          yield_dna: yieldDna,
+          energy_available_before: Number(
+            (session as Record<string, unknown>).energy_available_before ?? 0
+          ),
+          energy_committed: energyCommitted,
+          energy_commitment_multiplier_bps: commitmentMultiplierBps,
+          energy_recovered_at_start: Number(
+            (session as Record<string, unknown>).energy_recovered_at_start ?? 0
+          ),
+          clan_eligible:
+            typeof (session as Record<string, unknown>).clan_energy_battle_id === 'string',
+          ...(validation.mutations.length > 0
+            ? { mutations: validation.mutations }
+            : {}),
+          ...(validation.phoenixTriggeredAtFood !== null
+            ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
+            : {}),
+          ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
+        },
+      });
+      if (!rewardResult.ok) {
+        return await settlementUnavailable('atomic player reward', rewardResult.error, {
           playerId: player.id,
           sessionId,
-          dna: finalDna,
-          error: rewardUpdateError,
+          alreadyStampedEnd: true,
         });
-        const { error: reopenError } = await supabase
-          .from('game_sessions')
-          .update({ ended_at: null })
-          .eq('id', sessionId)
-          .eq('player_id', player.id);
-        if (reopenError) {
-          console.error('Failed to re-open session after reward failure:', {
-            sessionId,
-            error: reopenError,
-          });
-        }
-        return NextResponse.json({ error: 'Failed to grant rewards' }, { status: 500 });
       }
-
-      if (finalDna > 0) {
-        const { error: rewardTxError } = await supabase.from('economy_transactions').insert({
-          player_id: player.id,
-          resource_type: 'dna',
-          amount: finalDna,
-          balance_after: newDna,
-          source_type: 'game_reward',
-          source_id: sessionId,
-          metadata: {
-            score: validation.adjustedScore,
-            food_count: validation.foodCount,
-            extracted: validation.extracted,
-            original_dna_claimed: dna_earned || 0,
-            validated: validation.valid,
-            base_dna: validation.adjustedDna,
-            yield_dna: yieldDna,
-            energy_available_before: Number(
-              (session as Record<string, unknown>).energy_available_before ?? 0
-            ),
-            energy_committed: energyCommitted,
-            energy_commitment_multiplier_bps: commitmentMultiplierBps,
-            energy_recovered_at_start: Number(
-              (session as Record<string, unknown>).energy_recovered_at_start ?? 0
-            ),
-            clan_eligible:
-              typeof (session as Record<string, unknown>).clan_energy_battle_id === 'string',
-            ...(validation.mutations.length > 0
-              ? { mutations: validation.mutations }
-              : {}),
-            ...(validation.phoenixTriggeredAtFood !== null
-              ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
-              : {}),
-            ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
-          },
-        });
-
-        if (rewardTxError) {
-          // Audit log only - rewards were already granted above
-          console.error('Failed to log game_reward DNA transaction:', {
-            playerId: player.id,
-            sessionId,
-            dna: finalDna,
-            error: rewardTxError,
-          });
-        }
-      }
+      const rewardSettlement = rewardResult.settlement;
+      const updatedPlayer = {
+        dna: rewardSettlement.player.dna,
+        total_games_played: rewardSettlement.player.totalGamesPlayed,
+        high_score: rewardSettlement.player.highScore,
+        total_dna_earned: rewardSettlement.player.totalDnaEarned,
+        breeds_completed: rewardSettlement.player.breedsCompleted,
+      };
+      const personalBest = rewardSettlement.personalBest;
 
       // Genome Codex (migration 031): only validator-accepted earning runs
       // reach this point. Discovery grants are atomic/idempotent in the RPC
@@ -1972,27 +1900,6 @@ export async function POST(request: NextRequest) {
           )
         : null;
 
-      // WP-2.05: reported, not fatal, and this one is load-bearing that it
-      // stays that way. The rewards have ALREADY been granted above, so
-      // answering 5xx here would make the outbox replay a settled run into
-      // the 409 wall and show the player an error for a payout that landed.
-      const { data: updatedPlayer, error: updatedPlayerError } = await supabase
-        .from('players')
-        .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
-        .eq('id', player.id)
-        .maybeSingle();
-      if (updatedPlayerError) {
-        console.error('Post-settlement player echo read failed:', {
-          playerId: player.id,
-          sessionId,
-          error: updatedPlayerError,
-        });
-        Sentry.captureException(
-          new Error(`Post-settlement player echo failed: ${updatedPlayerError.message}`),
-          { extra: { playerId: player.id, sessionId } }
-        );
-      }
-
       // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
       // (free sessions returned above; deaths grant nothing). The XP is
       // floor(raw x 1.25) - the banked payout BEFORE Mirror Wager /
@@ -2004,8 +1911,11 @@ export async function POST(request: NextRequest) {
       let mastery: {
         dynasty: string;
         xpGained: number;
+        xpBefore: number;
         xp: number;
+        levelBefore: number;
         level: number;
+        levelsGained: number;
         leveledUp: boolean;
         unlocks: { level: number; kind: string; label: string }[];
       } | null = null;
@@ -2034,8 +1944,11 @@ export async function POST(request: NextRequest) {
             mastery = {
               dynasty: endDynasty,
               xpGained,
+              xpBefore: masteryXpBefore,
               xp: granted.xpAfter,
+              levelBefore,
               level: levelAfter,
+              levelsGained: levelAfter - levelBefore,
               leveledUp: levelAfter > levelBefore,
               unlocks,
             };
@@ -2218,12 +2131,14 @@ export async function POST(request: NextRequest) {
         dynasty: endDynasty,
         extracted: validation.extracted,
         died: died ?? true,
+        validated: validation.valid,
         score: validation.adjustedScore,
         yieldDna,
         dnaCredited: finalDna,
         energyCommitted,
         commitmentMultiplierBps,
         generation: ascendanceGeneration,
+        personalBest,
         snakeId:
           typeof (session as Record<string, unknown>).snake_used_id === 'string'
             ? ((session as Record<string, unknown>).snake_used_id as string)
@@ -2239,9 +2154,23 @@ export async function POST(request: NextRequest) {
         signal,
         clan: clanBattleResult,
       });
-      const impact =
-        (await persistRunImpactEnvelope(supabase, player.id, builtImpact)) ??
-        builtImpact;
+      const impactResult = await persistRunImpactEnvelope(
+        supabase,
+        player.id,
+        builtImpact
+      );
+      if (impactResult.status !== 'persisted') {
+        return progressionJson(
+          {
+            error: 'Run rewards are secured; its impact receipt is still pending',
+            alreadyEnded: true,
+            impactPending: true,
+            retryable: true,
+          },
+          { status: 503 }
+        );
+      }
+      const impact = impactResult.impact;
 
       return progressionJson({
         success: true,

@@ -35,6 +35,7 @@ describe('browser progress boundary', () => {
       ['src/components/clan/EnergyBattlePanel.tsx', '/api/clan/energy-battle'],
       ['src/hooks/useWalletSync.ts', '/api/player'],
       ['src/components/ui/NotificationProvider.tsx', '/api/progression/attention'],
+      ['src/lib/game/runImpactClient.ts', '/api/progression/impact'],
       ['src/components/lab/LineageDossier.tsx', '/api/progression/lineage'],
       ['src/components/profile/CareerStats.tsx', '/api/player/stats'],
       ['src/components/profile/AimSystemPanel.tsx', '/api/player'],

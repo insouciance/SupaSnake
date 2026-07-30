@@ -115,6 +115,18 @@ describe('Game Session Logic', () => {
   });
 
   describe('Session End', () => {
+    it('settles player aggregates and the audit row through one session RPC', () => {
+      const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+      const rewardFold = source.slice(
+        source.indexOf('const rewardResult = await settleSessionReward'),
+        source.indexOf('// Genome Codex')
+      );
+      expect(rewardFold).toMatch(/settleSessionReward\(supabase/);
+      expect(rewardFold).not.toMatch(/\.from\('players'\)|economy_transactions/);
+      expect(rewardFold).toMatch(/score: validation\.adjustedScore/);
+      expect(rewardFold).toMatch(/validated: validation\.valid/);
+    });
+
     it('should record final stats', () => {
       const sessionResult = {
         score: 42,
@@ -402,9 +414,9 @@ describe('Game Session Logic', () => {
       expect(freeReturn).toBeGreaterThan(-1);
       // Reward-side writes all appear only after the free-session return
       expect(source.indexOf("'record_daily_play'")).toBeGreaterThan(freeReturn);
-      expect(source.indexOf('total_dna_earned: newTotalDnaEarned')).toBeGreaterThan(freeReturn);
-      expect(source.indexOf("source_type: 'game_reward'")).toBeGreaterThan(freeReturn);
+      expect(source.indexOf('settleSessionReward(supabase')).toBeGreaterThan(freeReturn);
       expect(source.indexOf('refreshPlayerRecords(')).toBeGreaterThan(freeReturn);
+      expect(source).not.toMatch(/\.from\('economy_transactions'\)/);
       // The free start writes no economy transaction at all. A charge is
       // not a currency (§8.6), so nothing is logged to the ledger for it -
       // the session row's charge_state IS the audit record.

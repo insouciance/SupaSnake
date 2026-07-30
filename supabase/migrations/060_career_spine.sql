@@ -151,48 +151,42 @@ BEGIN
   END LOOP;
 END $$;
 
--- Rolling-deploy bridge for the previous application. The retired POST path
--- can still call this service-only function while migration 060 is live but
--- before the new application is promoted. It secures all supported identity
--- tiers atomically and returns one already-secured tier in the old response
--- shape; it never creates player claim debt or mints a retired reward.
+-- Rolling-deploy tombstone: the outgoing application may still issue its old
+-- claim call while this migration is live. The call cannot grant a requested
+-- reward or recreate claim debt; it merely asks the authoritative automatic
+-- settler to secure every catalog-backed identity tier already reached.
 CREATE OR REPLACE FUNCTION claim_season_tier(
   p_player_id UUID,
   p_level INTEGER
 ) RETURNS JSONB AS $$
 DECLARE
-  v_tier RECORD;
+  v_pass player_battle_pass%ROWTYPE;
+  v_result JSONB;
 BEGIN
-  SELECT t.id, t.season_id, t.level, t.is_premium, t.reward_type,
-         t.reward_id, t.reward_amount
-  INTO v_tier
+  IF p_level IS NULL OR p_level < 1 THEN
+    RAISE EXCEPTION 'INVALID_TIER_LEVEL';
+  END IF;
+
+  SELECT pbp.* INTO v_pass
   FROM player_battle_pass pbp
   JOIN battle_pass_seasons bps ON bps.id = pbp.season_id
-  JOIN battle_pass_tiers t ON t.season_id = pbp.season_id
-  JOIN cosmetic_definitions cd ON cd.id = t.reward_id
   WHERE pbp.player_id = p_player_id
-    AND bps.is_active
-    AND NOW() >= bps.starts_at
-    AND NOW() < bps.ends_at
-    AND pbp.current_level >= p_level
-    AND t.level = p_level
-    AND t.reward_type IN ('cosmetic', 'title')
-    AND t.reward_id IS NOT NULL
-    AND (NOT t.is_premium OR pbp.is_premium OR has_premium(p_player_id))
-  ORDER BY t.is_premium ASC, t.id
-  LIMIT 1;
+  ORDER BY bps.season_number DESC, pbp.updated_at DESC
+  LIMIT 1
+  FOR UPDATE OF pbp;
 
-  IF NOT FOUND THEN RAISE EXCEPTION 'NO_SUPPORTED_TIER_AT_LEVEL'; END IF;
-  PERFORM secure_reached_season_entitlements(p_player_id, v_tier.season_id);
+  IF NOT FOUND OR v_pass.current_level < p_level THEN
+    RAISE EXCEPTION 'LEVEL_NOT_REACHED';
+  END IF;
 
-  RETURN jsonb_build_object(
-    'level', v_tier.level,
-    'is_premium', v_tier.is_premium,
-    'reward_type', v_tier.reward_type,
-    'reward_id', v_tier.reward_id,
-    'reward_amount', v_tier.reward_amount,
-    'reroll_tokens', 0,
-    'secured', true
+  v_result := secure_reached_season_entitlements(
+    p_player_id,
+    v_pass.season_id
+  );
+  RETURN v_result || jsonb_build_object(
+    'secured', TRUE,
+    'compatibility', TRUE,
+    'requested_level', p_level
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -834,7 +828,11 @@ BEGIN
         WHEN v_run.extracted THEN GREATEST(highest_energy, COALESCE(v_run.energy_committed, 0))
         ELSE highest_energy
       END,
-      clan_depth_delivered = clan_depth_delivered + GREATEST(COALESCE(v_run.clan_depth, 0), 0),
+      clan_depth_delivered = COALESCE((
+        SELECT SUM(lsr.clan_depth_delivered)
+        FROM lineage_specimen_runs lsr
+        WHERE lsr.specimen_id = v_run.snake_used_id
+      ), 0),
       last_run_at = GREATEST(COALESCE(last_run_at, v_run.ended_at), v_run.ended_at),
       updated_at = NOW()
   WHERE specimen_id = v_run.snake_used_id;
@@ -1020,19 +1018,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Release capability probe. It is defined only after every Career Spine
--- object/function above exists, so version 1 means the full migration reached
--- its compatibility boundary rather than merely creating the first table.
-CREATE OR REPLACE FUNCTION get_career_spine_capability()
-RETURNS JSONB AS $$
-  SELECT jsonb_build_object(
-    'version', 1,
-    'exactArtifactAttention', TRUE,
-    'atomicSettlement', TRUE,
-    'lineageHistory', TRUE
-  );
-$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
-
 -- All mutation functions are service-only. Authenticated users read their own
 -- rows through RLS; APIs authenticate and invoke these functions with the
 -- service-role client.
@@ -1043,11 +1028,349 @@ REVOKE ALL ON FUNCTION retire_refunded_lineage_specimen() FROM PUBLIC, anon, aut
 REVOKE ALL ON FUNCTION record_lineage_specimen_run(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION persist_run_impact_envelope(UUID, UUID, JSONB) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION transition_player_attention(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION get_career_spine_capability() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ensure_lineage_dossier(UUID, UUID) TO service_role;
 GRANT EXECUTE ON FUNCTION record_lineage_specimen_run(UUID) TO service_role;
 GRANT EXECUTE ON FUNCTION persist_run_impact_envelope(UUID, UUID, JSONB) TO service_role;
 GRANT EXECUTE ON FUNCTION transition_player_attention(UUID, UUID, TEXT) TO service_role;
+
+-- =============================================================================
+-- FOLLOW-UP HARDENING: one atomic, session-idempotent player reward fold
+-- =============================================================================
+-- This deliberately lives in one bounded section so attention/artifact edits
+-- above can merge independently. The route has already validated and stamped
+-- the session. This RPC verifies those server-authored facts, locks the
+-- session and player, and makes the player aggregate + audit receipt one
+-- transaction. A session ledger is required even for zero-DNA runs, because
+-- games played and PB eligibility still need exactly-once semantics.
+
+CREATE TABLE game_reward_settlements (
+  session_id UUID PRIMARY KEY REFERENCES game_sessions(id) ON DELETE CASCADE,
+  player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  dna_awarded BIGINT NOT NULL CHECK (dna_awarded >= 0),
+  score BIGINT NOT NULL CHECK (score >= 0),
+  validated BOOLEAN NOT NULL,
+  high_score_before BIGINT NOT NULL CHECK (high_score_before >= 0),
+  high_score_after BIGINT NOT NULL CHECK (high_score_after >= high_score_before),
+  settled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT game_reward_settlement_player_session UNIQUE (player_id, session_id)
+);
+
+CREATE INDEX game_reward_settlements_player_recent_idx
+  ON game_reward_settlements(player_id, settled_at DESC);
+
+ALTER TABLE game_reward_settlements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY game_reward_settlements_select_own ON game_reward_settlements
+  FOR SELECT USING (
+    player_id IN (SELECT id FROM players WHERE user_id = auth.uid())
+  );
+
+COMMENT ON TABLE game_reward_settlements IS
+  'Exactly-once ledger for the atomic player aggregate and game_reward audit fold. Session truth is verified before any player-owned value changes.';
+
+CREATE OR REPLACE FUNCTION settle_game_session_reward(
+  p_player_id UUID,
+  p_session_id UUID,
+  p_final_dna INTEGER,
+  p_score INTEGER,
+  p_validated BOOLEAN,
+  p_metadata JSONB DEFAULT '{}'::JSONB
+) RETURNS JSONB AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+  v_existing game_reward_settlements%ROWTYPE;
+  v_player players%ROWTYPE;
+  v_high_before INTEGER;
+  v_high_after INTEGER;
+  v_applied BOOLEAN := FALSE;
+BEGIN
+  IF p_final_dna IS NULL OR p_final_dna < 0
+     OR p_score IS NULL OR p_score < 0
+     OR p_validated IS NULL
+     OR p_metadata IS NULL OR jsonb_typeof(p_metadata) <> 'object' THEN
+    RAISE EXCEPTION 'INVALID_GAME_REWARD_INPUT';
+  END IF;
+
+  -- Session first, player second: every invocation takes locks in the same
+  -- order. Distinct runs for one player serialize at the player row instead
+  -- of overwriting an aggregate read by the other request.
+  SELECT * INTO v_session
+  FROM game_sessions gs
+  WHERE gs.id = p_session_id AND gs.player_id = p_player_id
+  FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'GAME_REWARD_SESSION_NOT_FOUND'; END IF;
+
+  IF v_session.ended_at IS NULL
+     OR v_session.end_reason IS DISTINCT FROM 'completed'
+     OR v_session.is_free_play IS TRUE THEN
+    RAISE EXCEPTION 'GAME_REWARD_SESSION_NOT_SETTLED';
+  END IF;
+
+  -- The parameters are values already recomputed and stamped by the server
+  -- route. Refuse any drift rather than letting even a service caller create
+  -- a second version of session truth.
+  IF COALESCE(v_session.dna_earned, 0)::BIGINT IS DISTINCT FROM p_final_dna
+     OR COALESCE(v_session.score, 0)::BIGINT IS DISTINCT FROM p_score
+     OR COALESCE(v_session.validated, FALSE) IS DISTINCT FROM p_validated THEN
+    RAISE EXCEPTION 'GAME_REWARD_SESSION_MISMATCH';
+  END IF;
+
+  SELECT * INTO v_player FROM players p
+  WHERE p.id = p_player_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'GAME_REWARD_PLAYER_NOT_FOUND'; END IF;
+
+  SELECT * INTO v_existing
+  FROM game_reward_settlements grs
+  WHERE grs.session_id = p_session_id;
+
+  IF FOUND THEN
+    IF v_existing.player_id IS DISTINCT FROM p_player_id
+       OR v_existing.dna_awarded IS DISTINCT FROM p_final_dna
+       OR v_existing.score IS DISTINCT FROM p_score
+       OR v_existing.validated IS DISTINCT FROM p_validated THEN
+      RAISE EXCEPTION 'GAME_REWARD_REPLAY_MISMATCH';
+    END IF;
+    v_high_before := v_existing.high_score_before;
+    v_high_after := v_existing.high_score_after;
+  ELSE
+    v_high_before := GREATEST(COALESCE(v_player.high_score, 0), 0);
+    v_high_after := CASE
+      WHEN p_validated THEN GREATEST(v_high_before, p_score)
+      ELSE v_high_before
+    END;
+
+    UPDATE players
+    SET dna = COALESCE(dna, 0) + p_final_dna,
+        total_games_played = COALESCE(total_games_played, 0) + 1,
+        total_dna_earned = COALESCE(total_dna_earned, 0) + p_final_dna,
+        high_score = v_high_after,
+        updated_at = NOW()
+    WHERE id = p_player_id
+    RETURNING * INTO v_player;
+
+    INSERT INTO game_reward_settlements(
+      session_id, player_id, dna_awarded, score, validated,
+      high_score_before, high_score_after
+    ) VALUES (
+      p_session_id, p_player_id, p_final_dna, p_score, p_validated,
+      v_high_before, v_high_after
+    );
+
+    IF p_final_dna > 0 THEN
+      INSERT INTO economy_transactions(
+        player_id, resource_type, amount, balance_after,
+        source_type, source_id, metadata
+      ) VALUES (
+        p_player_id, 'dna', p_final_dna, v_player.dna,
+        'game_reward', p_session_id,
+        p_metadata || jsonb_build_object(
+          'score', p_score,
+          'validated', p_validated,
+          'server_session_id', p_session_id
+        )
+      );
+    END IF;
+    v_applied := TRUE;
+  END IF;
+
+  -- On replay return the player's current authoritative aggregates, while PB
+  -- before/after remains the immutable truth for this particular run.
+  SELECT * INTO v_player FROM players p WHERE p.id = p_player_id;
+  RETURN jsonb_build_object(
+    'applied', v_applied,
+    'player', jsonb_build_object(
+      'dna', COALESCE(v_player.dna, 0),
+      'total_games_played', COALESCE(v_player.total_games_played, 0),
+      'high_score', COALESCE(v_player.high_score, 0),
+      'total_dna_earned', COALESCE(v_player.total_dna_earned, 0),
+      'breeds_completed', COALESCE(v_player.breeds_completed, 0)
+    ),
+    'personal_best', jsonb_build_object(
+      'eligible', p_validated,
+      'before', v_high_before,
+      'after', v_high_after,
+      'improved', p_validated AND v_high_after > v_high_before
+    )
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION settle_game_session_reward(
+  UUID, UUID, INTEGER, INTEGER, BOOLEAN, JSONB
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION settle_game_session_reward(
+  UUID, UUID, INTEGER, INTEGER, BOOLEAN, JSONB
+) TO service_role;
+
+-- The receipt is presentation, but its validation/PB block is not authored by
+-- presentation code. Enforce equality with the immutable reward ledger at the
+-- table boundary so no API or future service caller can invent PB progress.
+CREATE OR REPLACE FUNCTION validate_run_impact_server_truth()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+  v_reward game_reward_settlements%ROWTYPE;
+  v_pb JSONB;
+BEGIN
+  SELECT * INTO v_session FROM game_sessions WHERE id = NEW.session_id;
+  SELECT * INTO v_reward FROM game_reward_settlements WHERE session_id = NEW.session_id;
+  IF v_session.id IS NULL OR v_reward.session_id IS NULL THEN
+    RAISE EXCEPTION 'RUN_IMPACT_REWARD_TRUTH_MISSING';
+  END IF;
+  v_pb := NEW.envelope #> '{receipt,personalBest}';
+  IF v_session.player_id IS DISTINCT FROM NEW.player_id
+     OR v_reward.player_id IS DISTINCT FROM NEW.player_id
+     OR jsonb_typeof(NEW.envelope #> '{receipt,validated}') IS DISTINCT FROM 'boolean'
+     OR jsonb_typeof(v_pb) IS DISTINCT FROM 'object'
+     OR jsonb_typeof(v_pb -> 'eligible') IS DISTINCT FROM 'boolean'
+     OR jsonb_typeof(v_pb -> 'before') IS DISTINCT FROM 'number'
+     OR jsonb_typeof(v_pb -> 'after') IS DISTINCT FROM 'number'
+     OR jsonb_typeof(v_pb -> 'improved') IS DISTINCT FROM 'boolean'
+     OR COALESCE((NEW.envelope #>> '{receipt,validated}')::BOOLEAN, FALSE)
+       IS DISTINCT FROM COALESCE(v_session.validated, FALSE)
+     OR (NEW.envelope #>> '{receipt,score}')::BIGINT
+       IS DISTINCT FROM COALESCE(v_session.score, 0)::BIGINT
+     OR (NEW.envelope #>> '{receipt,yieldDna}')::BIGINT
+       IS DISTINCT FROM COALESCE(v_session.yield_dna, 0)::BIGINT
+     OR (NEW.envelope #>> '{receipt,dnaCredited}')::BIGINT
+       IS DISTINCT FROM v_reward.dna_awarded
+     OR COALESCE((v_pb ->> 'eligible')::BOOLEAN, FALSE)
+       IS DISTINCT FROM v_reward.validated
+     OR (v_pb ->> 'before')::BIGINT IS DISTINCT FROM v_reward.high_score_before
+     OR (v_pb ->> 'after')::BIGINT IS DISTINCT FROM v_reward.high_score_after
+     OR COALESCE((v_pb ->> 'improved')::BOOLEAN, FALSE)
+       IS DISTINCT FROM (v_reward.validated AND v_reward.high_score_after > v_reward.high_score_before) THEN
+    RAISE EXCEPTION 'RUN_IMPACT_REWARD_TRUTH_MISMATCH';
+  END IF;
+  IF NOT v_reward.validated AND EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(NEW.envelope -> 'impacts') = 'array'
+        THEN NEW.envelope -> 'impacts' ELSE '[]'::JSONB END
+    ) impact
+    WHERE impact ->> 'kind' = 'lineage_run'
+       OR impact ->> 'pillar' = 'lineage'
+  ) THEN
+    RAISE EXCEPTION 'INVALID_RUN_CANNOT_CLAIM_LINEAGE';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION validate_run_impact_server_truth()
+  FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER run_impact_receipt_server_truth
+BEFORE INSERT OR UPDATE OF envelope ON run_impact_receipts
+FOR EACH ROW EXECUTE FUNCTION validate_run_impact_server_truth();
+
+-- A permanent moment must point to a real, stable artifact. Empty references
+-- produce dead Chronicle rows and badges that cannot lead anywhere.
+ALTER TABLE progression_moments
+  ALTER COLUMN artifact_ref SET NOT NULL;
+ALTER TABLE progression_moments
+  ADD CONSTRAINT progression_moments_artifact_ref_nonblank
+  CHECK (char_length(BTRIM(artifact_ref)) BETWEEN 1 AND 300);
+
+-- Clan Depth on a specimen means its score in the player's CURRENT counted
+-- best set, not every run that happened to enter that set once. Replacements
+-- can cross specimens, so contribution rank changes update the immutable run
+-- ledger and recompute both affected specimen totals from that ledger.
+CREATE OR REPLACE FUNCTION recompute_lineage_specimen_clan_depth(
+  p_specimen_id UUID
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE lineage_specimens ls
+  SET clan_depth_delivered = COALESCE((
+        SELECT SUM(lsr.clan_depth_delivered)
+        FROM lineage_specimen_runs lsr
+        WHERE lsr.specimen_id = p_specimen_id
+      ), 0),
+      updated_at = NOW()
+  WHERE ls.specimen_id = p_specimen_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION sync_lineage_session_clan_depth(
+  p_session_id UUID
+) RETURNS VOID AS $$
+DECLARE
+  v_specimen_id UUID;
+  v_depth BIGINT;
+BEGIN
+  SELECT lsr.specimen_id INTO v_specimen_id
+  FROM lineage_specimen_runs lsr
+  WHERE lsr.session_id = p_session_id;
+  IF NOT FOUND THEN RETURN; END IF;
+
+  SELECT COALESCE((
+    SELECT c.score
+    FROM clan_energy_contributions c
+    WHERE c.session_id = p_session_id AND c.counted IS TRUE
+  ), 0) INTO v_depth;
+
+  UPDATE lineage_specimen_runs
+  SET clan_depth_delivered = GREATEST(v_depth, 0)
+  WHERE session_id = p_session_id
+    AND clan_depth_delivered IS DISTINCT FROM GREATEST(v_depth, 0);
+
+  PERFORM recompute_lineage_specimen_clan_depth(v_specimen_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION sync_lineage_depth_from_contribution()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM sync_lineage_session_clan_depth(NEW.session_id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER clan_contribution_sync_lineage_depth
+AFTER INSERT OR UPDATE OF counted, score ON clan_energy_contributions
+FOR EACH ROW EXECUTE FUNCTION sync_lineage_depth_from_contribution();
+
+-- Reconcile the migration-time backfill to the final counted set before the
+-- schema becomes visible. This is a recompute, so replay is convergent.
+UPDATE lineage_specimen_runs lsr
+SET clan_depth_delivered = COALESCE((
+  SELECT c.score FROM clan_energy_contributions c
+  WHERE c.session_id = lsr.session_id AND c.counted IS TRUE
+), 0)
+WHERE lsr.clan_depth_delivered IS DISTINCT FROM COALESCE((
+  SELECT c.score FROM clan_energy_contributions c
+  WHERE c.session_id = lsr.session_id AND c.counted IS TRUE
+), 0);
+
+UPDATE lineage_specimens ls
+SET clan_depth_delivered = COALESCE((
+      SELECT SUM(lsr.clan_depth_delivered)
+      FROM lineage_specimen_runs lsr
+      WHERE lsr.specimen_id = ls.specimen_id
+    ), 0),
+    updated_at = NOW();
+
+REVOKE ALL ON FUNCTION recompute_lineage_specimen_clan_depth(UUID)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION sync_lineage_session_clan_depth(UUID)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION sync_lineage_depth_from_contribution()
+  FROM PUBLIC, anon, authenticated;
+
+-- Release capability probe. This is deliberately the final function defined
+-- by the migration: version 1 is visible only after exact artifact attention,
+-- atomic session settlement, immutable PB truth and final-best-set lineage
+-- reconciliation all exist in the same committed transaction.
+CREATE OR REPLACE FUNCTION get_career_spine_capability()
+RETURNS JSONB AS $$
+  SELECT jsonb_build_object(
+    'version', 1,
+    'exactArtifactAttention', TRUE,
+    'atomicSettlement', TRUE,
+    'lineageHistory', TRUE
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION get_career_spine_capability()
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION get_career_spine_capability() TO service_role;
 
 COMMIT;

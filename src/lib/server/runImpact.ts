@@ -15,8 +15,11 @@ type Dynasty = RunImpactEnvelope['dynasty'];
 export interface MasteryImpactInput {
   dynasty: string;
   xpGained: number;
+  xpBefore: number;
   xp: number;
+  levelBefore: number;
   level: number;
+  levelsGained: number;
   leveledUp: boolean;
   unlocks: { level: number; kind: string; label: string }[];
 }
@@ -37,12 +40,19 @@ export interface BuildRunImpactInput {
   dynasty: Dynasty;
   extracted: boolean;
   died: boolean;
+  validated: boolean;
   score: number;
   yieldDna: number;
   dnaCredited: number;
   energyCommitted: number;
   commitmentMultiplierBps: number;
   generation: number;
+  personalBest: {
+    eligible: boolean;
+    before: number;
+    after: number;
+    improved: boolean;
+  };
   snakeId: string | null;
   mastery: MasteryImpactInput | null;
   recordsBefore: Record<string, { value: number; tier: number }> | null;
@@ -70,7 +80,7 @@ export function buildRunImpactEnvelope(
 ): RunImpactEnvelope {
   const impacts: RunImpact[] = [];
 
-  if (input.snakeId) {
+  if (input.validated && input.snakeId) {
     impacts.push({
       key: `lineage:${input.snakeId}:run`,
       pillar: 'lineage',
@@ -83,8 +93,22 @@ export function buildRunImpactEnvelope(
     });
   }
 
+  if (input.personalBest.improved) {
+    impacts.push({
+      key: `personal-best:${input.sessionId}`,
+      pillar: 'mastery',
+      kind: 'personal_best',
+      significance: 'notable',
+      headline: 'New personal best',
+      before: input.personalBest.before,
+      after: input.personalBest.after,
+      delta: input.personalBest.after - input.personalBest.before,
+      destination: 'records',
+      artifactRef: input.sessionId,
+    });
+  }
+
   if (input.mastery) {
-    const beforeXp = Math.max(0, input.mastery.xp - input.mastery.xpGained);
     if (input.mastery.leveledUp) {
       impacts.push({
         key: `mastery:${input.dynasty}:level:${input.mastery.level}`,
@@ -95,9 +119,9 @@ export function buildRunImpactEnvelope(
         detail:
           input.mastery.unlocks.map((unlock) => unlock.label).join(' · ') ||
           'Mastery level reached',
-        before: Math.max(0, input.mastery.level - 1),
+        before: input.mastery.levelBefore,
         after: input.mastery.level,
-        delta: 1,
+        delta: input.mastery.levelsGained,
         destination: 'mastery',
         artifactRef: input.dynasty,
       });
@@ -108,7 +132,7 @@ export function buildRunImpactEnvelope(
         kind: 'mastery_xp',
         significance: 'routine',
         headline: `+${input.mastery.xpGained.toLocaleString('en-US')} ${input.dynasty} Mastery XP`,
-        before: beforeXp,
+        before: input.mastery.xpBefore,
         after: input.mastery.xp,
         delta: input.mastery.xpGained,
         destination: 'mastery',
@@ -268,6 +292,7 @@ export function buildRunImpactEnvelope(
     outcome: input.extracted ? 'extracted' : input.died ? 'crashed' : 'completed',
     dynasty: input.dynasty,
     receipt: {
+      validated: input.validated,
       score: finiteInt(input.score),
       yieldDna: finiteInt(input.yieldDna),
       dnaCredited: finiteInt(input.dnaCredited),
@@ -275,6 +300,12 @@ export function buildRunImpactEnvelope(
       energyCommitted: finiteInt(input.energyCommitted),
       commitmentMultiplierBps: finiteInt(input.commitmentMultiplierBps),
       generation: Math.max(1, finiteInt(input.generation)),
+      personalBest: {
+        eligible: input.personalBest.eligible,
+        before: finiteInt(input.personalBest.before),
+        after: finiteInt(input.personalBest.after),
+        improved: input.personalBest.improved,
+      },
     },
     impacts,
     featuredImpactKeys: featured,
@@ -304,75 +335,130 @@ export function isMissingRunImpactInfra(
 function isRunImpactEnvelope(value: unknown): value is RunImpactEnvelope {
   if (!value || typeof value !== 'object') return false;
   const envelope = value as Partial<RunImpactEnvelope>;
+  const receipt = envelope.receipt as Partial<RunImpactEnvelope['receipt']> | undefined;
+  const personalBest = receipt?.personalBest;
+  const isStoredInt = (candidate: unknown, minimum = 0): candidate is number =>
+    typeof candidate === 'number' &&
+    Number.isSafeInteger(candidate) &&
+    candidate >= minimum;
   return (
     envelope.version === RUN_IMPACT_VERSION &&
     typeof envelope.sessionId === 'string' &&
     typeof envelope.settledAt === 'string' &&
     Array.isArray(envelope.impacts) &&
     Array.isArray(envelope.featuredImpactKeys) &&
-    !!envelope.receipt &&
-    typeof envelope.receipt === 'object'
+    !!receipt &&
+    typeof receipt === 'object' &&
+    typeof receipt.validated === 'boolean' &&
+    isStoredInt(receipt.score) &&
+    isStoredInt(receipt.yieldDna) &&
+    isStoredInt(receipt.dnaCredited) &&
+    isStoredInt(receipt.energyCommitted) &&
+    isStoredInt(receipt.commitmentMultiplierBps) &&
+    isStoredInt(receipt.generation, 1) &&
+    !!personalBest &&
+    typeof personalBest === 'object' &&
+    typeof personalBest.eligible === 'boolean' &&
+    isStoredInt(personalBest.before) &&
+    isStoredInt(personalBest.after) &&
+    personalBest.after >= personalBest.before &&
+    typeof personalBest.improved === 'boolean' &&
+    personalBest.improved ===
+      (personalBest.eligible && personalBest.after > personalBest.before)
   );
 }
+
+export type RunImpactPersistResult =
+  | { status: 'persisted'; impact: RunImpactEnvelope }
+  | { status: 'unavailable'; error: unknown };
+
+export type RunImpactLoadResult =
+  | { status: 'found'; impact: RunImpactEnvelope }
+  | { status: 'absent' }
+  | { status: 'unavailable'; error: unknown };
 
 export async function persistRunImpactEnvelope(
   supabase: SupabaseClient,
   playerId: string,
   envelope: RunImpactEnvelope
-): Promise<RunImpactEnvelope | null> {
-  const { data, error } = await supabase.rpc('persist_run_impact_envelope', {
-    p_player_id: playerId,
-    p_session_id: envelope.sessionId,
-    p_envelope: envelope,
-  });
-  if (error) {
-    if (!isMissingRunImpactInfra(error)) {
-      console.error('Run impact persistence failed:', {
+): Promise<RunImpactPersistResult> {
+  try {
+    const { data, error } = await supabase.rpc('persist_run_impact_envelope', {
+      p_player_id: playerId,
+      p_session_id: envelope.sessionId,
+      p_envelope: envelope,
+    });
+    if (error) {
+      if (!isMissingRunImpactInfra(error)) {
+        console.error('Run impact persistence failed:', {
+          playerId,
+          sessionId: envelope.sessionId,
+          error,
+        });
+        Sentry.captureException(
+          new Error(`run impact persistence failed: ${error.message ?? error.code ?? 'unknown'}`),
+          { extra: { playerId, sessionId: envelope.sessionId, code: error.code } }
+        );
+      }
+      return { status: 'unavailable', error };
+    }
+    if (!isRunImpactEnvelope(data)) {
+      const error = new Error('run impact persistence returned invalid data');
+      console.error('Run impact persistence returned an invalid envelope:', {
         playerId,
         sessionId: envelope.sessionId,
-        error,
       });
-      Sentry.captureException(
-        new Error(`run impact persistence failed: ${error.message ?? error.code ?? 'unknown'}`),
-        { extra: { playerId, sessionId: envelope.sessionId, code: error.code } }
-      );
+      Sentry.captureException(error, {
+        extra: { playerId, sessionId: envelope.sessionId },
+      });
+      return { status: 'unavailable', error };
     }
-    return null;
-  }
-  if (!isRunImpactEnvelope(data)) {
-    console.error('Run impact persistence returned an invalid envelope:', {
+    return { status: 'persisted', impact: data };
+  } catch (error) {
+    console.error('Run impact persistence threw:', {
       playerId,
       sessionId: envelope.sessionId,
+      error,
     });
-    Sentry.captureException(new Error('run impact persistence returned invalid data'), {
+    Sentry.captureException(error, {
       extra: { playerId, sessionId: envelope.sessionId },
     });
-    return null;
+    return { status: 'unavailable', error };
   }
-  return data;
 }
 
 export async function loadRunImpactEnvelope(
   supabase: SupabaseClient,
   playerId: string,
   sessionId: string
-): Promise<RunImpactEnvelope | null> {
-  const { data, error } = await supabase
-    .from('run_impact_receipts')
-    .select('envelope')
-    .eq('player_id', playerId)
-    .eq('session_id', sessionId)
-    .maybeSingle();
-  if (error) {
-    if (!isMissingRunImpactInfra(error)) {
-      console.error('Run impact receipt read failed:', { playerId, sessionId, error });
-      Sentry.captureException(
-        new Error(`run impact receipt read failed: ${error.message ?? error.code ?? 'unknown'}`),
-        { extra: { playerId, sessionId, code: error.code } }
-      );
+): Promise<RunImpactLoadResult> {
+  try {
+    const { data, error } = await supabase
+      .from('run_impact_receipts')
+      .select('envelope')
+      .eq('player_id', playerId)
+      .eq('session_id', sessionId)
+      .maybeSingle();
+    if (error) {
+      if (!isMissingRunImpactInfra(error)) {
+        console.error('Run impact receipt read failed:', { playerId, sessionId, error });
+        Sentry.captureException(
+          new Error(`run impact receipt read failed: ${error.message ?? error.code ?? 'unknown'}`),
+          { extra: { playerId, sessionId, code: error.code } }
+        );
+      }
+      return { status: 'unavailable', error };
     }
-    return null;
+    if (!data) return { status: 'absent' };
+    const envelope = (data as { envelope?: unknown }).envelope;
+    if (isRunImpactEnvelope(envelope)) return { status: 'found', impact: envelope };
+    const invalid = new Error('run impact receipt contains invalid data');
+    console.error('Run impact receipt read invalid data:', { playerId, sessionId });
+    Sentry.captureException(invalid, { extra: { playerId, sessionId } });
+    return { status: 'unavailable', error: invalid };
+  } catch (error) {
+    console.error('Run impact receipt read threw:', { playerId, sessionId, error });
+    Sentry.captureException(error, { extra: { playerId, sessionId } });
+    return { status: 'unavailable', error };
   }
-  const envelope = (data as { envelope?: unknown } | null)?.envelope;
-  return isRunImpactEnvelope(envelope) ? envelope : null;
 }

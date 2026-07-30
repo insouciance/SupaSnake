@@ -57,6 +57,7 @@ const DYNASTIES = new Set<RunImpactDynasty>(['CYBER', 'PRIMAL', 'COSMIC']);
 const KINDS = new Set<RunImpactKind>([
   'mastery_xp',
   'mastery_level',
+  'personal_best',
   'lineage_run',
   'record_value',
   'record_tier',
@@ -177,7 +178,30 @@ export function parseRunImpactEnvelope(value: unknown): RunImpactEnvelope | null
     return null;
   }
 
+  const rawPersonalBest = value.receipt.personalBest;
+  if (
+    typeof value.receipt.validated !== 'boolean' ||
+    !isObject(rawPersonalBest) ||
+    typeof rawPersonalBest.eligible !== 'boolean' ||
+    typeof rawPersonalBest.improved !== 'boolean'
+  ) {
+    return null;
+  }
+  const personalBestBefore = nonNegativeInteger(rawPersonalBest.before);
+  const personalBestAfter = nonNegativeInteger(rawPersonalBest.after);
+  if (
+    personalBestBefore === undefined ||
+    personalBestAfter === undefined ||
+    personalBestAfter < personalBestBefore ||
+    rawPersonalBest.eligible !== value.receipt.validated ||
+    rawPersonalBest.improved !==
+      (rawPersonalBest.eligible && personalBestAfter > personalBestBefore)
+  ) {
+    return null;
+  }
+
   const receipt: RunImpactReceipt = {
+    validated: value.receipt.validated,
     score: nonNegativeInteger(value.receipt.score) ?? -1,
     yieldDna: nonNegativeInteger(value.receipt.yieldDna) ?? -1,
     dnaCredited: nonNegativeInteger(value.receipt.dnaCredited) ?? -1,
@@ -186,8 +210,24 @@ export function parseRunImpactEnvelope(value: unknown): RunImpactEnvelope | null
     commitmentMultiplierBps:
       nonNegativeInteger(value.receipt.commitmentMultiplierBps) ?? -1,
     generation: nonNegativeInteger(value.receipt.generation) ?? -1,
+    personalBest: {
+      eligible: rawPersonalBest.eligible,
+      before: personalBestBefore,
+      after: personalBestAfter,
+      improved: rawPersonalBest.improved,
+    },
   };
-  if (Object.values(receipt).some((number) => number < 0) || receipt.generation < 1) {
+  if (
+    [
+      receipt.score,
+      receipt.yieldDna,
+      receipt.dnaCredited,
+      receipt.energyCommitted,
+      receipt.commitmentMultiplierBps,
+      receipt.generation,
+    ].some((number) => number < 0) ||
+    receipt.generation < 1
+  ) {
     return null;
   }
 
@@ -216,7 +256,8 @@ export function parseRunImpactEnvelope(value: unknown): RunImpactEnvelope | null
       recommendedAction.headline.length === 0 ||
       !DESTINATIONS.has(recommendedAction.destination as RunImpactDestination) ||
       (recommendedAction.artifactRef !== undefined &&
-        typeof recommendedAction.artifactRef !== 'string'))
+        (typeof recommendedAction.artifactRef !== 'string' ||
+          recommendedAction.artifactRef.trim().length === 0)))
   ) {
     return null;
   }
@@ -255,7 +296,10 @@ export async function recoverRunImpact(
 ): Promise<RunImpactEnvelope | null> {
   const response = await fetchFn(
     `/api/progression/impact?sessionId=${encodeURIComponent(sessionId)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` },
+    }
   );
   if (response.status === 404) return null;
   if (!response.ok) {

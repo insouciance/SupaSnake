@@ -28,12 +28,14 @@ const impact: RunImpactEnvelope = {
   outcome: 'extracted',
   dynasty: 'PRIMAL',
   receipt: {
+    validated: true,
     score: 12,
     yieldDna: 120,
     dnaCredited: 120,
     energyCommitted: 1,
     commitmentMultiplierBps: 10_000,
     generation: 1,
+    personalBest: { eligible: true, before: 0, after: 12, improved: true },
   },
   impacts: [],
   featuredImpactKeys: [],
@@ -97,7 +99,10 @@ describe('tab-memory settlement retry queue', () => {
     expect(fetchFn).toHaveBeenNthCalledWith(
       2,
       '/api/progression/impact?sessionId=session-1',
-      { headers: { Authorization: 'Bearer token' } }
+      {
+        cache: 'no-store',
+        headers: { Authorization: 'Bearer token' },
+      }
     );
   });
 

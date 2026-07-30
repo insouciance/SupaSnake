@@ -30,6 +30,7 @@
  */
 
 const mockCaptureException = jest.fn();
+var mockSettleSessionReward: jest.Mock;
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -69,6 +70,9 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+jest.mock('@/lib/server/sessionReward', () => ({
+  settleSessionReward: (...args: unknown[]) => mockSettleSessionReward(...args),
+}));
 
 // Historical Serpent settlement helpers remain armed; new starts no longer
 // consult the flag. Signal still uses its explicit ritual flag.
@@ -226,6 +230,10 @@ jest.mock('@supabase/supabase-js', () => ({
           ],
           error: null,
         };
+      }
+
+      if (fn === 'persist_run_impact_envelope') {
+        return { data: p.p_envelope ?? null, error: null };
       }
 
       return { data: null, error: null };
@@ -432,6 +440,49 @@ beforeEach(() => {
   seedPlayer();
   seedSnake();
   seedSession();
+  mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
+    const input = rawInput as {
+      finalDna: number;
+      score: number;
+      validated: boolean;
+      sessionId: string;
+      metadata: Record<string, unknown>;
+    };
+    const row = db.players[0];
+    const before = Number(row.high_score ?? 0);
+    const after = input.validated ? Math.max(before, input.score) : before;
+    row.dna = Number(row.dna ?? 0) + input.finalDna;
+    row.total_games_played = Number(row.total_games_played ?? 0) + 1;
+    row.total_dna_earned = Number(row.total_dna_earned ?? 0) + input.finalDna;
+    row.high_score = after;
+    if (input.finalDna > 0) {
+      db.economy_transactions.push({
+        source_type: 'game_reward',
+        source_id: input.sessionId,
+        amount: input.finalDna,
+        metadata: { ...input.metadata, score: input.score, validated: input.validated },
+      });
+    }
+    return {
+      ok: true,
+      settlement: {
+        applied: true,
+        player: {
+          dna: row.dna,
+          totalGamesPlayed: row.total_games_played,
+          highScore: row.high_score,
+          totalDnaEarned: row.total_dna_earned,
+          breedsCompleted: row.breeds_completed,
+        },
+        personalBest: {
+          eligible: input.validated,
+          before,
+          after,
+          improved: input.validated && after > before,
+        },
+      },
+    };
+  });
 });
 
 // ---------------------------------------------------------------------------

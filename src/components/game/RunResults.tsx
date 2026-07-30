@@ -66,7 +66,6 @@ export interface RunResultsClanBattle {
 export interface RunResultsProps {
   outcome: RunResultsOutcome;
   practice: boolean;
-  personalBest: boolean;
   score: number;
   dnaCredited: number | null;
   yieldDna: number | null;
@@ -301,7 +300,6 @@ function ImpactReview({ envelope }: { envelope: RunImpactEnvelope }) {
 export function RunResults({
   outcome,
   practice,
-  personalBest,
   score,
   dnaCredited,
   yieldDna,
@@ -330,6 +328,7 @@ export function RunResults({
   const credited = receipt?.dnaCredited ?? dnaCredited;
   const committed = receipt?.energyCommitted ?? energyCommitted;
   const multiplier = receipt?.commitmentMultiplierBps ?? commitmentMultiplierBps;
+  const personalBest = receipt?.personalBest.improved === true;
 
   return (
     <div className="space-y-6" data-testid="run-results">

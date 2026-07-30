@@ -15,12 +15,14 @@ function envelope(overrides: Partial<RunImpactEnvelope> = {}): RunImpactEnvelope
     outcome: 'extracted',
     dynasty: 'CYBER',
     receipt: {
+      validated: true,
       score: 900,
       yieldDna: 600,
       dnaCredited: 600,
       energyCommitted: 1,
       commitmentMultiplierBps: 10_000,
       generation: 4,
+      personalBest: { eligible: true, before: 800, after: 900, improved: true },
     },
     impacts: [],
     featuredImpactKeys: [],
@@ -53,6 +55,19 @@ describe('Run Impact client contract', () => {
     ['unknown dynasty', { dynasty: 'VOID' }],
     ['malformed recommended action', { recommendedAction: 'chronicle' }],
     ['invalid receipt', { receipt: { ...envelope().receipt, dnaCredited: -1 } }],
+    ['client-invented personal best', {
+      receipt: {
+        ...envelope().receipt,
+        personalBest: { eligible: true, before: 900, after: 900, improved: true },
+      },
+    }],
+    ['personal-best eligibility that disagrees with validation', {
+      receipt: {
+        ...envelope().receipt,
+        validated: false,
+        personalBest: { eligible: true, before: 800, after: 900, improved: true },
+      },
+    }],
     ['unknown pillar', {
       impacts: [{
         key: 'x', pillar: 'account-level', kind: 'mastery_xp', significance: 'routine', headline: 'x',
@@ -121,7 +136,10 @@ describe('Run Impact client contract', () => {
     );
     expect(fetchFn).toHaveBeenCalledWith(
       '/api/progression/impact?sessionId=session%2Fone',
-      { headers: { Authorization: 'Bearer token' } }
+      {
+        cache: 'no-store',
+        headers: { Authorization: 'Bearer token' },
+      }
     );
   });
 
