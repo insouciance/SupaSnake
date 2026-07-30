@@ -51,6 +51,7 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | In-run gene/mutation/portal/infusion/surge choices | Triggered by gameplay rules | Keep as strategic modal | These are consequential gameplay decisions, not meta-system promotion. A dominant centered dialog owns the frozen arena, focus, and input; non-terminal choices return to deliberate tactical hold. |
 | First portal EXTRACT label | Once-per-device in-run visual teaching moment | Keep | It is nonblocking, contextual, and teaches the required extraction action without opening an overlay. |
 | Pause menu | Explicit player action | Replace | Pause immediately enters a board-visible tactical hold with no redundant modal or Resume button. Accepted movement resumes; Abandon Run is a secondary destructive action with confirmation. |
+| COSMIC constellation planning window | Automatic on each new wave | Remove | Constellations, portals, and offers arrive during uninterrupted real-time play. COSMIC receives a larger but finite voluntary hold budget; only the player can stop the board. |
 | Cookie consent | Legal requirement | Keep and contain | It reserves its measured layout height, respects safe areas, and never overlaps Launch. |
 | Lost registered session notice | Identity-continuity risk | Keep | Prevents silently replacing durable progress with a new anonymous identity. |
 | Lost anonymous progress confirmation | Destructive progress-loss boundary | Keep | Explicit confirmation is required before abandoning an unrecoverable local identity. |

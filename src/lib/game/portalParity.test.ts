@@ -351,7 +351,10 @@ describe('the ladder dials the engine alone owns', () => {
     // a rung applied through it would silently do nothing. This is the
     // regression test for exactly that: the budget is read off a live engine,
     // not off the ladder module that defines the delta.
-    const base = GAME_CONFIG.session.holds.base;
+    // The engine defaults to COSMIC, whose voluntary-hold profile intentionally
+    // differs from the universal fallback. Keep this parity assertion tied to
+    // the ruleset the engine is actually exercising.
+    const base = GAME_CONFIG.session.holds.cosmic.base;
     for (let rung = 0; rung <= LADDER_MAX_RUNG; rung++) {
       const game = new SnakeGameLogic({ gridSize: GRID, ladderRung: rung });
       expect(game.getState().holdBudget).toBe(
@@ -366,11 +369,14 @@ describe('the ladder dials the engine alone owns', () => {
     // that only worked through the constructor would be a rung that never
     // worked in the product.
     const game = new SnakeGameLogic({ gridSize: GRID });
-    expect(game.getState().holdBudget).toBe(GAME_CONFIG.session.holds.base);
+    expect(game.getState().holdBudget).toBe(
+      GAME_CONFIG.session.holds.cosmic.base
+    );
     game.setLadderRung(LADDER_MAX_RUNG);
     expect(game.getLadderRung()).toBe(LADDER_MAX_RUNG);
     expect(game.getState().holdBudget).toBe(
-      GAME_CONFIG.session.holds.base + ladderParams(LADDER_MAX_RUNG).holdBudgetDelta
+      GAME_CONFIG.session.holds.cosmic.base +
+        ladderParams(LADDER_MAX_RUNG).holdBudgetDelta
     );
     expect(game.getState().nextExitAtFood).toBe(
       ladderCadence(RULESETS.COSMIC.extraction, LADDER_MAX_RUNG).firstExitAtFood
@@ -381,7 +387,9 @@ describe('the ladder dials the engine alone owns', () => {
     const game = new SnakeGameLogic({ gridSize: GRID });
     game.setLadderRung('rung-from-the-future');
     expect(game.getLadderRung()).toBe(0);
-    expect(game.getState().holdBudget).toBe(GAME_CONFIG.session.holds.base);
+    expect(game.getState().holdBudget).toBe(
+      GAME_CONFIG.session.holds.cosmic.base
+    );
   });
 });
 

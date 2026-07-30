@@ -2,7 +2,8 @@
 
 **Status:** cockpit refinement live in production
 
-**Date:** 2026-07-24; rate-event and touch-control amendments 2026-07-29
+**Date:** 2026-07-24; rate-event/touch amendments 2026-07-29; control-grace and
+COSMIC hold amendment 2026-07-30
 
 **Implementation checkpoint:** the 2026-07-24 refinement is live behind
 `NEXT_PUBLIC_HUD_COCKPIT_V1` from final release commit `fc0fea4`, Vercel
@@ -60,6 +61,17 @@ history; where they conflict, this contract is authoritative.
   target yields its space. There is no false claim that glass offers a hardware
   keyboard's tactile certainty, but location, size, and the universal pause mark
   make the action learnable without visual search.
+- Direction queues retain their hard limits: three keyboard turns and two
+  mobile flick turns. One next-slot intention may be entered during the last
+  25% of a tick (maximum 40 ms) and is promoted only after a real queue slot
+  frees; it is not a third executable mobile turn. A rapid third mobile corner
+  is rejected only when same-handed turn history plus the first four neck cells
+  prove an immediate self-destructive micro-U. Slow inputs and spatially larger
+  U-shaped routes receive no pardon.
+- New COSMIC constellations never pause or slow the engine. COSMIC instead
+  exposes a visible, player-spent budget of 6 opening tactical holds and +2 at
+  modelled lengths 25 and 40. The large coarse-pointer Pause target remains
+  outside the flick surface, so using it cannot emit steering input.
 - Tactical hold exposes a secondary **Abandon run** control. It opens a
   destructive `alertdialog` that states which score, run DNA, and—when
   applicable—Energy will be forfeited. Cancelling returns to the same hold.

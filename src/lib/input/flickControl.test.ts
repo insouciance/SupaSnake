@@ -53,8 +53,8 @@ describe('feedbackForResult (spec: player always knows a command was queued)', (
     });
   });
 
-  it('reversal and queue_full: silent red flash, no haptic', () => {
-    for (const result of ['reversal', 'queue_full'] as const) {
+  it('reversal, micro-U, and queue_full: silent red flash, no haptic', () => {
+    for (const result of ['reversal', 'micro_u', 'queue_full'] as const) {
       expect(feedbackForResult(result)).toEqual({
         haptic: false,
         sound: false,

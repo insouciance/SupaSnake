@@ -1,33 +1,28 @@
 # The COSMIC ruleset
 
-**Status: SPEC, from the owner's playtest and rulings of 2026-07-27.** Companion
-to `docs/game/TERRAIN_AND_CYBER.md`; feeds WP-3.02 (lab dials) and WP-3.04
-(dynasty curves) in `docs/ops/REDESIGN_WAVE.md`. Not scope until claimed.
+**Status: LIVE design contract, from the owner's playtests and rulings of
+2026-07-27 through 2026-07-30.** Companion to
+`docs/game/TERRAIN_AND_CYBER.md`.
 
 ---
 
-## 0 — Constellation read (owner ruling, 2026-07-29)
+## 0 — Continuous route reading (owner ruling, 2026-07-30)
 
-Every fresh constellation after the opening wave receives a **bounded native
-planning window**. This is dynasty grammar, not a gene: charging a build slot or
-random offer for the minimum time needed to read COSMIC's five simultaneous
-targets would make baseline readability conditional power.
+COSMIC never freezes or slows merely because a new constellation, portal, or
+gene opportunity appeared. The former automatic 1–2 second constellation read
+felt like lag, broke the movement rhythm, and removed the pressure under which
+the dynasty's spatial skill is meant to develop. It is retired in full: there
+is no wave counter, timer, staged-input hold, or automatic resume path.
 
-- The simulation freezes for at least **1.0 second** and at most **2.0 seconds**.
-- During the guaranteed first second, keyboard input may stage the normal route
-  buffer and mobile may stage its existing two-turn L-route. The body does not
-  move early.
-- If the player has committed a direction/route, movement begins when the first
-  second closes. After that second, a new direction resumes immediately.
-- With no input, the current heading automatically continues at two seconds.
-- The read spends no tactical hold, adds no gene, changes no constellation
-  window tick, and cannot become an indefinite free pause.
-- Opening wave 1 receives no extra freeze because Ready already provides
-  unlimited pre-movement reading time. A strategic gene/portal/surge choice on
-  the same tick owns the decision surface and supersedes this window.
-
-This preserves COSMIC's tempo and the need to execute under pressure while
-making the actual route choice perceptible at the moment the board changes.
+Planning remains voluntary and player-initiated. COSMIC opens with **6 tactical
+holds**, then earns **2 more at modelled lengths 25 and 40** (10 total after the
+second threshold). The ordinary game opens with 3 and earns 1 at those same
+thresholds, so COSMIC receives approximately twice the planning capacity
+without becoming turn-based. Each hold is still finite, visible on desktop and
+mobile, and entered only through Space/P/Escape or the stable large mobile Pause
+target. Gene, portal, infusion, and surge decisions retain their intentional
+engine-frozen decision surfaces; those are choices made by the run, not route-
+reading assistance imposed by the interface.
 
 ## 1 — The verdict this starts from
 

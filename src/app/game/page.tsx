@@ -9,6 +9,7 @@ import {
   Direction,
   Position,
   GameOverData,
+  type DirectionInputTiming,
   type DirectionInputSource,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
@@ -211,19 +212,6 @@ const DIRECTION_BY_KEY: Record<string, Direction> = {
   D: 'RIGHT',
 };
 
-// A fresh COSMIC constellation is a real route-planning event, not a gene
-// reward. The first second is guaranteed reading time; a player can stage a
-// route during it. At two seconds the current line continues automatically so
-// the free hold stays bounded and cannot replace the tactical-hold economy.
-const COSMIC_PLANNING_MIN_MS = 1_000;
-const COSMIC_PLANNING_MAX_MS = 2_000;
-
-interface CosmicPlanningHold {
-  wave: number;
-  readyAt: number;
-  hasIntent: boolean;
-}
-
 interface EquippedSnakeView {
   id: string;
   name: string;
@@ -403,9 +391,6 @@ export default function GamePage() {
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
-  const [cosmicPlanningPhase, setCosmicPlanningPhase] = useState<
-    'scan' | 'route' | null
-  >(null);
   // The run's tactical-hold budget, mirrored from the engine (which owns it).
   // Two plain numbers rather than an object so the per-tick sync bails out on
   // an unchanged value instead of re-rendering the HUD every frame.
@@ -418,10 +403,6 @@ export default function GamePage() {
   const [choicePityStrain, setChoicePityStrain] = useState<StrainId | null>(null);
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cosmicPlanningRef = useRef<CosmicPlanningHold | null>(null);
-  const cosmicPlanningMinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cosmicPlanningMaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastConstellationWaveRef = useRef(0);
   // Live camera azimuth written per frame by CameraRig; read at flick
   // pointerdown to freeze the gesture's orientation for the whole touch.
   const cameraAzimuthRef = useRef<number>(DEFAULT_AZIMUTH);
@@ -744,12 +725,6 @@ export default function GamePage() {
 
   useEffect(() => () => {
     if (pauseRearmTimerRef.current) clearTimeout(pauseRearmTimerRef.current);
-    if (cosmicPlanningMinTimerRef.current) {
-      clearTimeout(cosmicPlanningMinTimerRef.current);
-    }
-    if (cosmicPlanningMaxTimerRef.current) {
-      clearTimeout(cosmicPlanningMaxTimerRef.current);
-    }
   }, []);
 
   // Enable input debug instrumentation only when the URL asks for it
@@ -1176,100 +1151,41 @@ export default function GamePage() {
     setPauseRearming(false);
   }, []);
 
-  const clearCosmicPlanningTimers = useCallback(() => {
-    if (cosmicPlanningMinTimerRef.current) {
-      clearTimeout(cosmicPlanningMinTimerRef.current);
-      cosmicPlanningMinTimerRef.current = null;
+  const withTickTiming = useCallback((
+    timing: DirectionInputTiming
+  ): DirectionInputTiming => {
+    const buffer = interpBufferRef.current;
+    if (!intervalRef.current || !buffer?.initialized || buffer.tickInterval <= 0) {
+      return timing;
     }
-    if (cosmicPlanningMaxTimerRef.current) {
-      clearTimeout(cosmicPlanningMaxTimerRef.current);
-      cosmicPlanningMaxTimerRef.current = null;
-    }
-  }, []);
-
-  const cancelCosmicPlanning = useCallback(() => {
-    if (!cosmicPlanningRef.current) return;
-    clearCosmicPlanningTimers();
-    cosmicPlanningRef.current = null;
-    setCosmicPlanningPhase(null);
-    setAwaitingResumeInput(false);
-  }, [clearCosmicPlanningTimers]);
-
-  const finishCosmicPlanning = useCallback((wave: number) => {
-    const planning = cosmicPlanningRef.current;
-    if (!planning || planning.wave !== wave) return;
-    clearCosmicPlanningTimers();
-    cosmicPlanningRef.current = null;
-    setCosmicPlanningPhase(null);
-    setAwaitingResumeInput(false);
-
-    const game = gameRef.current;
-    if (game?.isPaused) game.resume();
-    if (game?.getState().isPlaying && !game.getState().isGameOver) {
-      beginPauseRearm();
-    }
-  }, [beginPauseRearm, clearCosmicPlanningTimers]);
-
-  const beginCosmicPlanning = useCallback((wave: number) => {
-    const game = gameRef.current;
-    if (!game || cosmicPlanningRef.current || !game.pause('decision')) return;
-
-    const planning: CosmicPlanningHold = {
-      wave,
-      readyAt: Date.now() + COSMIC_PLANNING_MIN_MS,
-      hasIntent: false,
+    const elapsed = performance.now() - buffer.tickAt;
+    return {
+      ...timing,
+      nextTickInMs: Math.max(0, Math.min(buffer.tickInterval, buffer.tickInterval - elapsed)),
     };
-    cosmicPlanningRef.current = planning;
-    setCosmicPlanningPhase('scan');
-    setAwaitingResumeInput(true);
-
-    cosmicPlanningMinTimerRef.current = setTimeout(() => {
-      const live = cosmicPlanningRef.current;
-      if (!live || live.wave !== wave) return;
-      cosmicPlanningMinTimerRef.current = null;
-      setCosmicPlanningPhase('route');
-      if (live.hasIntent) finishCosmicPlanning(wave);
-    }, COSMIC_PLANNING_MIN_MS);
-
-    cosmicPlanningMaxTimerRef.current = setTimeout(() => {
-      cosmicPlanningMaxTimerRef.current = null;
-      finishCosmicPlanning(wave);
-    }, COSMIC_PLANNING_MAX_MS);
-  }, [finishCosmicPlanning]);
+  }, []);
 
   const releaseResumeGate = useCallback((
     dir?: Direction,
-    source: DirectionInputSource = 'standard'
+    source: DirectionInputSource = 'standard',
+    timing?: DirectionInputTiming
   ): SetDirectionResult | null => {
     const game = gameRef.current;
     if (!game || !awaitingResumeInput) return 'inactive';
 
-    const planning = cosmicPlanningRef.current;
-    if (planning) {
-      const readingBoard = Date.now() < planning.readyAt;
-      if (!dir) {
-        planning.hasIntent = true;
-        if (!readingBoard) finishCosmicPlanning(planning.wave);
-        return null;
-      }
-
-      const result = readingBoard
-        ? game.stagePausedDirection(dir, source)
-        : game.resumeWithDirection(dir, source);
-      if (directionCanRelease(result)) planning.hasIntent = true;
-      if (!readingBoard && !game.isPaused) {
-        finishCosmicPlanning(planning.wave);
-      }
-      return result;
-    }
-
-    const result = dir ? game.resumeWithDirection(dir, source) : null;
+    const result = dir
+      ? game.resumeWithDirection(
+          dir,
+          source,
+          timing ? withTickTiming(timing) : undefined
+        )
+      : null;
     if (!dir) game.resume();
     if (game.isPaused) return result;
     setAwaitingResumeInput(false);
     beginPauseRearm();
     return result;
-  }, [awaitingResumeInput, beginPauseRearm, finishCosmicPlanning]);
+  }, [awaitingResumeInput, beginPauseRearm, withTickTiming]);
 
   const armResumeAfterDecision = useCallback(() => {
     const game = gameRef.current;
@@ -1292,7 +1208,6 @@ export default function GamePage() {
   }, []);
 
   const handlePause = useCallback(() => {
-    if (cosmicPlanningRef.current) return;
     if (awaitingResumeInput) {
       if (!HUD_COCKPIT_V1_ENABLED) setAwaitingResumeInput(false);
       return;
@@ -1395,7 +1310,6 @@ export default function GamePage() {
     // hold while the overlay is up - this is NOT the pause state, so the
     // pause menu never renders here.
     gameRef.current.on('mutationChoice', (data: any) => {
-      cancelCosmicPlanning();
       setAwaitingResumeInput(false);
       setChoiceOptions(data.options, data.source ?? 'gene_food');
       // Alongside the options, not on the next tick: the overlay must never
@@ -1420,7 +1334,6 @@ export default function GamePage() {
     });
 
     gameRef.current.on('portalChoice', (data: any) => {
-      cancelCosmicPlanning();
       setAwaitingResumeInput(false);
       setPortalCanInfuse(data?.canInfuse === true);
       setPortalChoicePending(true);
@@ -1747,7 +1660,6 @@ export default function GamePage() {
       }
 
       endGame(data.score, data.dnaCollected, data.endReason);
-      cancelCosmicPlanning();
       setAwaitingResumeInput(false);
       setDeathSequence(false);
       setShowDeathExplosion(false);
@@ -1798,7 +1710,6 @@ export default function GamePage() {
     // Read once at mount and never reassigned; listed so the dependency
     // rule stays honest rather than suppressed.
     challengeRun,
-    cancelCosmicPlanning,
   ]);
 
   // Sync game state to store
@@ -1855,27 +1766,6 @@ export default function GamePage() {
         setRevive(state.revive);
       }
 
-      const constellationWave = gameRef.current.getConstellationWave();
-      if (constellationWave !== lastConstellationWaveRef.current) {
-        lastConstellationWaveRef.current = constellationWave;
-        // Wave 1 is already held by Ready. Every later five-star decision gets
-        // a bounded native read: no gene tax, no tactical hold spent, and no
-        // free indefinite pause. Choice overlays remain the higher-priority
-        // decision surface when one opens on the same tick.
-        if (
-          constellationWave > 1 &&
-          state.foods.length > 1 &&
-          state.isPlaying &&
-          !state.isGameOver &&
-          !state.isDeathSequence &&
-          !state.isPaused &&
-          state.pendingChoice === null &&
-          state.pendingPortalChoice === null &&
-          !state.pendingSurgeChoice
-        ) {
-          beginCosmicPlanning(constellationWave);
-        }
-      }
       // Fluidity core: stamp this tick into the interpolation buffer.
       // getSpeed() AFTER the tick is the exact interval the loop re-arms
       // with - the precise denominator for the render-side alpha.
@@ -1886,7 +1776,7 @@ export default function GamePage() {
         performance.now()
       );
     }
-  }, [beginCosmicPlanning, setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setTerrain]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setTerrain]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -2072,15 +1962,12 @@ export default function GamePage() {
     // player's accepted first direction.
     resetInterpolationBuffer(interpBufferRef.current!);
     storeStartGame();
-    cancelCosmicPlanning();
-    lastConstellationWaveRef.current = 0;
     setAwaitingResumeInput(false);
     setReady(true);
     game.start();
     syncState();
   }, [
     setAnomalyRun,
-    cancelCosmicPlanning,
     setRunCondition,
     setGameMode,
     setGenomeRun,
@@ -2266,9 +2153,10 @@ export default function GamePage() {
         if (dir || (e.code === 'Space' && !requiresDirectionalStart)) {
           e.preventDefault();
           if (dir && gameRef.current) {
+            const timing = { inputTimeMs: e.timeStamp };
             const result = awaitingResumeInput
-              ? releaseResumeGate(dir)
-              : gameRef.current.setDirection(dir);
+              ? releaseResumeGate(dir, 'standard', timing)
+              : gameRef.current.setDirection(dir, 'standard', withTickTiming(timing));
             if (!result || !directionCanRelease(result)) return;
             if (!awaitingResumeInput) {
               setRequiresDirectionalStart(false);
@@ -2305,32 +2193,39 @@ export default function GamePage() {
       const dir = DIRECTION_BY_KEY[e.key];
       if (dir && gameRef.current) {
         e.preventDefault();
-        gameRef.current.setDirection(dir);
+        gameRef.current.setDirection(
+          dir,
+          'standard',
+          withTickTiming({ inputTimeMs: e.timeStamp })
+        );
         syncAim();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, handlePause, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, handlePause, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim, withTickTiming]);
 
   // FlickSurface delegates every direction here. Ready/resume admission is
   // atomic, and active flicks use the two-unresolved-turn mobile buffer while
   // keyboard input keeps the engine's three-turn planning depth.
-  const handleFlickDirection = useCallback((dir: Direction): SetDirectionResult => {
+  const handleFlickDirection = useCallback((
+    dir: Direction,
+    timing: DirectionInputTiming
+  ): SetDirectionResult => {
     if (awaitingResumeInput) {
-      return releaseResumeGate(dir, 'flick') ?? 'inactive';
+      return releaseResumeGate(dir, 'flick', timing) ?? 'inactive';
     }
     const game = gameRef.current;
     if (!game) return 'inactive';
-    const result = game.setDirection(dir, 'flick');
+    const result = game.setDirection(dir, 'flick', withTickTiming(timing));
     if (isReady && directionCanRelease(result)) {
       setRequiresDirectionalStart(false);
       setReady(false);
       startGameLoop();
     }
     return result;
-  }, [awaitingResumeInput, isReady, releaseResumeGate, setReady, startGameLoop]);
+  }, [awaitingResumeInput, isReady, releaseResumeGate, setReady, startGameLoop, withTickTiming]);
 
   // Select an aim system - optimistic with rollback. Nothing to authorize:
   // the server validates the id only (§6.1, §15 overturn 10).
@@ -2390,12 +2285,11 @@ export default function GamePage() {
       intervalRef.current = null;
     }
     setShowAbandonConfirm(false);
-    cancelCosmicPlanning();
     setAwaitingResumeInput(false);
     cancelPauseRearm();
     setCurrentSessionId(null);
     resetGame();
-  }, [cancelCosmicPlanning, cancelPauseRearm, resetGame]);
+  }, [cancelPauseRearm, resetGame]);
 
   // Restart
   const handleRestart = useCallback(() => {
@@ -2407,14 +2301,13 @@ export default function GamePage() {
     setMinimalFirstRunPrompt(false);
     setRequiresDirectionalStart(false);
     setShowAbandonConfirm(false);
-    cancelCosmicPlanning();
     setAwaitingResumeInput(false);
     cancelPauseRearm();
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  }, [cancelCosmicPlanning, cancelPauseRearm, resetGame]);
+  }, [cancelPauseRearm, resetGame]);
 
   // ---------------------------------------------------------------------
   // Results actions (Constitution §5)
@@ -2626,14 +2519,6 @@ export default function GamePage() {
       : 'standard';
   const cockpitStatus = minimalFirstRunPrompt && isReady
     ? 'Swipe or press an arrow to move'
-    : cosmicPlanningPhase === 'scan'
-      ? isMobile
-        ? 'Constellation read · stage up to two flicks'
-        : 'Constellation read · plot your route now'
-      : cosmicPlanningPhase === 'route'
-        ? isMobile
-          ? 'Route window · flick to move'
-          : 'Route window · press a direction to move'
     : awaitingResumeInput
       ? isMobile
         ? 'Tactical hold · flick a safe direction to resume'
@@ -2654,9 +2539,7 @@ export default function GamePage() {
     state: cockpitState,
     mode: cockpitMode,
     modeLabel: anomalyRun?.name ?? (lastRunFree ? 'Free play' : selectedDynasty),
-    modeDetail: cosmicPlanningPhase
-      ? 'Planning window'
-      : awaitingResumeInput
+    modeDetail: awaitingResumeInput
         ? 'Tactical hold'
       : isReady
         ? 'Board held'
@@ -2770,7 +2653,7 @@ export default function GamePage() {
                   />
                 )
               : undefined;
-  const cockpitEventCallout = HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying && !cosmicPlanningPhase
+  const cockpitEventCallout = HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying
     ? (
         <ExpressionFlourish
           strain={expressionFlourish.strain}
@@ -2782,7 +2665,7 @@ export default function GamePage() {
     : undefined;
 
   const runRateCalloutNode: ReactNode =
-    isPlaying && !blockingOverlayActive && !cosmicPlanningPhase && runRateCallout ? (
+    isPlaying && !blockingOverlayActive && runRateCallout ? (
       <RunRateCallout
         key={runRateCallout.id}
         growthRate={runRateCallout.growthRate}
@@ -3921,7 +3804,7 @@ export default function GamePage() {
         onResetView={() => setViewResetToken((token) => token + 1)}
         pauseDisabled={pauseRearming && !awaitingResumeInput}
         showPause={!isGameOver && !isReady && !isPaused && !blockingOverlayActive}
-        showAbandon={awaitingResumeInput && !cosmicPlanningPhase && !showAbandonConfirm}
+        showAbandon={awaitingResumeInput && !showAbandonConfirm}
         pauseLabel="Pause game (Space)"
         decisionDock={cockpitDecisionDock}
         eventCallout={cockpitEventCallout}

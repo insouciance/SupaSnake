@@ -49,7 +49,13 @@ describe('FlickSurface ready/resume gate', () => {
 
     flickRight(screen.getByTestId('flick-surface'));
 
-    expect(onDirection).toHaveBeenCalledWith('RIGHT');
+    expect(onDirection).toHaveBeenCalledWith(
+      'RIGHT',
+      expect.objectContaining({
+        inputTimeMs: expect.any(Number),
+        gestureId: 1,
+      })
+    );
     expect(onDirection).toHaveBeenCalledTimes(1);
     expect(onAim).toHaveBeenCalledTimes(1);
   });
@@ -59,7 +65,10 @@ describe('FlickSurface ready/resume gate', () => {
 
     flickRight(screen.getByTestId('flick-surface'));
 
-    expect(onDirection).toHaveBeenCalledWith('RIGHT');
+    expect(onDirection).toHaveBeenCalledWith(
+      'RIGHT',
+      expect.objectContaining({ gestureId: 1 })
+    );
     expect(onAim).not.toHaveBeenCalled();
   });
 });

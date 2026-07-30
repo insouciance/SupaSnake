@@ -131,7 +131,11 @@ export class TrainingRun {
       // Reaffirming the current heading is the deliberate tactical-hold
       // release contract, not a sloppy extra command.
       if (this.started && !wasPaused) this.duplicateInputs += 1;
-    } else if (result === 'reversal' || result === 'queue_full') {
+    } else if (
+      result === 'reversal' ||
+      result === 'micro_u' ||
+      result === 'queue_full'
+    ) {
       this.rejectedInputs += 1;
     }
 

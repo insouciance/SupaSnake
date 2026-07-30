@@ -36,6 +36,7 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   type Direction,
+  type DirectionInputTiming,
   type SetDirectionResult,
 } from '@/lib/game/SnakeGameLogic';
 import {
@@ -61,7 +62,10 @@ interface FlickSurfaceProps {
    * Owns direction admission. The caller applies the `flick` queue policy and
    * atomically handles ready/resume gates before returning the engine result.
    */
-  onDirection: (direction: Direction) => SetDirectionResult;
+  onDirection: (
+    direction: Direction,
+    timing: DirectionInputTiming
+  ) => SetDirectionResult;
   /** Called after an accepted input so the aim telegraph updates instantly. */
   onAim?: () => void;
   /** Debug sink for ?debug=input; current === null means no recording. */
@@ -134,7 +138,10 @@ export function FlickSurface({
   const executeCommand = useCallback(
     (cmd: FlickCommand) => {
       const world = mapFlickToWorld(cmd.direction, quadrantRef.current);
-      const result = stateRef.current.onDirection(world);
+      const result = stateRef.current.onDirection(world, {
+        inputTimeMs: cmd.inputTime,
+        gestureId: cmd.gestureId,
+      });
       const feedback = feedbackForResult(result);
 
       if (feedback.haptic) haptics.light();

@@ -193,6 +193,7 @@ describe('uncollected stars calcify where they sat', () => {
     expect(state.constellationTicksRemaining).toBe(
       state.constellationWindowTicks
     );
+    expect(state.isPaused).toBe(false);
   });
 
   it('debris forms before it turns solid — the corpse is crossable first', () => {

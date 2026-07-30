@@ -60,10 +60,16 @@ describe('FlickRecognizer', () => {
 
   it('chained flicks in different directions fire back-to-back without release', () => {
     r.pointerDown(0, 0, 0);
-    const first = drag(r, [0, 0], [T + 4, 0], 0, 30);
-    const second = drag(r, [T + 4, 0], [T + 4, -(T + 4)], 30, 60);
-    expect(first).toEqual(['RIGHT']);
-    expect(second).toEqual(['UP']);
+    const first = r.pointerMove(T + 4, 0, 30);
+    const second = r.pointerMove(T + 4, -(T + 4), 60);
+    expect(first?.direction).toBe('RIGHT');
+    expect(second?.direction).toBe('UP');
+    expect(first?.gestureId).toBe(second?.gestureId);
+
+    r.pointerUp();
+    r.pointerDown(100, 100, 80);
+    const nextTouch = r.pointerMove(100 + T + 4, 100, 100);
+    expect(nextTouch?.gestureId).toBe((first?.gestureId ?? 0) + 1);
   });
 
   it('same-direction repeat requires a deliberate stall between segments', () => {

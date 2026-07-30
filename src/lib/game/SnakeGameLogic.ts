@@ -176,6 +176,21 @@ export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 export type DirectionInputSource = 'standard' | 'flick';
 
 /**
+ * Optional real-input timing supplied by the UI adapter. The deterministic
+ * engine never reads a clock of its own: tests and replays can provide the
+ * same facts, while callers without a real-time loop retain the exact shipped
+ * queue behavior.
+ */
+export interface DirectionInputTiming {
+  /** Monotonic event timestamp, used only to recognize one rapid flick phrase. */
+  inputTimeMs?: number;
+  /** Time until the next scheduled movement tick when the input arrived. */
+  nextTickInMs?: number;
+  /** Stable id for all commands emitted by one pointer-down gesture. */
+  gestureId?: number;
+}
+
+/**
  * Outcome of a setDirection call. Purely informational (additive): the
  * engine's queue semantics are unchanged, but callers that care (touch
  * feedback, debug instrumentation) can react to why an input did or did
@@ -185,8 +200,22 @@ export type SetDirectionResult =
   | 'accepted'
   | 'duplicate'
   | 'reversal'
+  | 'micro_u'
   | 'queue_full'
   | 'inactive';
+
+interface QueuedDirection {
+  direction: Direction;
+  source: DirectionInputSource;
+  timing?: DirectionInputTiming;
+}
+
+interface RecentFlickTurn {
+  from: Direction;
+  to: Direction;
+  inputTimeMs: number;
+  gestureId?: number;
+}
 
 export interface Position {
   x: number;
@@ -693,16 +722,15 @@ export class SnakeGameLogic {
    * turns on consecutive ticks instead of losing the first. This is the
    * core skill mechanic - inputs must never silently drop.
    */
-  private directionQueue: Direction[];
-  private static readonly MAX_QUEUED_DIRECTIONS = 3;
-  private static readonly MAX_FLICK_QUEUED_DIRECTIONS = 2;
+  private directionQueue: QueuedDirection[] = [];
   /**
-   * Monotonic within one run. Presentation reads this to recognise a genuinely
-   * new COSMIC constellation even when the cosmetic glyph happens to repeat.
-   * It is deliberately not part of settlement state: planning time changes no
-   * run fact and the server has nothing to validate here.
+   * One next-slot intention admitted only inside the fractional pre-turn
+   * window. It is deliberately outside the executable queue, so keyboard and
+   * flick queue depths remain three and two respectively.
    */
-  private constellationWave = 0;
+  private preTurnIntent: QueuedDirection | null = null;
+  /** Last two accepted flick turns, retained only to classify a third. */
+  private recentFlickTurns: RecentFlickTurn[] = [];
   /** Food count at the last FLUX-apex Singularity pull, for its cadence. */
   private lastSingularityPullAtFood = 0;
   /**
@@ -747,8 +775,7 @@ export class SnakeGameLogic {
     }
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
-    this.directionQueue = [];
-    this.constellationWave = 0;
+    this.clearDirectionalIntent();
 
     this.state = this.createInitialState();
   }
@@ -827,7 +854,7 @@ export class SnakeGameLogic {
     // rewrite them explicitly. Safe here and only here: the run is not live, so
     // no hold has been spent and no threshold has been crossed.
     this.state.holdBudget = ladderHoldBase(
-      GAME_CONFIG.session.holds.base,
+      this.holdProfile().base,
       this.ladderRung
     );
     if (!this.state.exitTile) {
@@ -977,6 +1004,22 @@ export class SnakeGameLogic {
     );
   }
 
+  /** Dynasty-specific voluntary hold profile; decision holds remain free. */
+  private holdProfile(): {
+    base: number;
+    bonusAtLengths: readonly number[];
+    bonusPerThreshold: number;
+  } {
+    if (this.ruleset.id === 'COSMIC') {
+      return GAME_CONFIG.session.holds.cosmic;
+    }
+    return {
+      base: GAME_CONFIG.session.holds.base,
+      bonusAtLengths: GAME_CONFIG.session.holds.bonusAtLengths,
+      bonusPerThreshold: 1,
+    };
+  }
+
   private createInitialState(): GameState {
     return {
       snake: [],
@@ -1033,7 +1076,7 @@ export class SnakeGameLogic {
       // body which sheds past a threshold keeps what reaching it paid for - and
       // a monotonic function cannot lower the base. The rung belongs at state
       // creation or nowhere.
-      holdBudget: ladderHoldBase(GAME_CONFIG.session.holds.base, this.ladderRung),
+      holdBudget: ladderHoldBase(this.holdProfile().base, this.ladderRung),
       isDeathSequence: false,
       startTime: null,
       deathPosition: null,
@@ -1062,8 +1105,7 @@ export class SnakeGameLogic {
     this.state.isPlaying = true;
     this.state.startTime = Date.now();
 
-    this.directionQueue = [];
-    this.constellationWave = 0;
+    this.clearDirectionalIntent();
     this.lastSingularityPullAtFood = 0;
     this.runEvents = [];
     this.runEventsTruncated = false;
@@ -1194,11 +1236,6 @@ export class SnakeGameLogic {
     return this.ruleset;
   }
 
-  /** Presentation-only identity of the live COSMIC wave (0 elsewhere). */
-  getConstellationWave(): number {
-    return this.constellationWave;
-  }
-
   /**
    * Swap the equipped snake's traits. Mirrors setRuleset: the page
    * constructs the engine on mount, before the session-start response
@@ -1315,7 +1352,8 @@ export class SnakeGameLogic {
    */
   setDirection(
     dir: Direction,
-    source: DirectionInputSource = 'standard'
+    source: DirectionInputSource = 'standard',
+    timing?: DirectionInputTiming
   ): SetDirectionResult {
     if (
       !this.state.isPlaying ||
@@ -1328,7 +1366,7 @@ export class SnakeGameLogic {
       return 'inactive';
     }
 
-    return this.enqueueDirection(dir, source);
+    return this.enqueueDirection(dir, source, timing);
   }
 
   /**
@@ -1338,25 +1376,177 @@ export class SnakeGameLogic {
    */
   private enqueueDirection(
     dir: Direction,
-    source: DirectionInputSource
+    source: DirectionInputSource,
+    timing?: DirectionInputTiming
   ): SetDirectionResult {
     const reference =
-      this.directionQueue.length > 0
-        ? this.directionQueue[this.directionQueue.length - 1]
-        : this.state.direction;
+      this.preTurnIntent?.direction ??
+      this.directionQueue[this.directionQueue.length - 1]?.direction ??
+      this.state.direction;
 
     if (dir === reference) return 'duplicate';
     if (dir === OPPOSITES[reference]) return 'reversal';
     const capacity =
       source === 'flick'
-        ? SnakeGameLogic.MAX_FLICK_QUEUED_DIRECTIONS
-        : SnakeGameLogic.MAX_QUEUED_DIRECTIONS;
-    if (this.directionQueue.length >= capacity) {
+        ? GAME_CONFIG.controls.flickQueueDepth
+        : GAME_CONFIG.controls.standardQueueDepth;
+    const queueIsFull = this.directionQueue.length >= capacity;
+    if (this.preTurnIntent || (queueIsFull && !this.isInsidePreTurnGrace(timing))) {
       return 'queue_full';
     }
 
-    this.directionQueue.push(dir);
+    const input: QueuedDirection = { direction: dir, source, timing };
+    if (source === 'flick' && this.isImmediateMobileMicroU(reference, input)) {
+      // End the physical phrase here. A later deliberate flick starts from a
+      // clean history instead of inheriting the rejected accidental corner.
+      this.recentFlickTurns = [];
+      return 'micro_u';
+    }
+
+    if (queueIsFull) {
+      // Not executable yet: reserve exactly the slot this imminent tick will
+      // free. The actual queue remains at its two/three-turn hard cap.
+      this.preTurnIntent = input;
+    } else {
+      this.directionQueue.push(input);
+    }
+    this.rememberAcceptedTurn(reference, input);
     return 'accepted';
+  }
+
+  private isInsidePreTurnGrace(timing?: DirectionInputTiming): boolean {
+    const nextTickInMs = timing?.nextTickInMs;
+    if (!Number.isFinite(nextTickInMs) || (nextTickInMs as number) < 0) {
+      return false;
+    }
+    const baseline = Math.min(
+      GAME_CONFIG.controls.preTurnGrace.maxMs,
+      this.speed * GAME_CONFIG.controls.preTurnGrace.tickFraction
+    );
+    // Slipstream finally receives its catalogued full-tick version; the
+    // universal control inherits only the deliberately smaller baseline.
+    const windowMs = this.hasGene('slipstream') ? this.speed : baseline;
+    return (nextTickInMs as number) <= windowMs;
+  }
+
+  /**
+   * Suppress only a rapid three-corner spiral that would enter the new neck.
+   * Timing establishes one physical phrase; turn handedness establishes the
+   * micro-U; predicted body geometry establishes that it is self-destructive.
+   * Missing any one condition means normal demanding steering wins.
+   */
+  private isImmediateMobileMicroU(
+    reference: Direction,
+    candidate: QueuedDirection
+  ): boolean {
+    const inputTimeMs = candidate.timing?.inputTimeMs;
+    if (!Number.isFinite(inputTimeMs) || this.recentFlickTurns.length < 2) {
+      return false;
+    }
+
+    const [first, second] = this.recentFlickTurns.slice(-2);
+    if (first.to !== second.from || second.to !== reference) return false;
+
+    const firstHand = CLOCKWISE[first.from] === first.to ? 1 : -1;
+    const secondHand = CLOCKWISE[second.from] === second.to ? 1 : -1;
+    const candidateHand = CLOCKWISE[reference] === candidate.direction ? 1 : -1;
+    if (firstHand !== secondHand || secondHand !== candidateHand) return false;
+
+    const elapsed = (inputTimeMs as number) - first.inputTimeMs;
+    if (elapsed < 0) return false;
+    const gestureId = candidate.timing?.gestureId;
+    const sameGesture =
+      gestureId !== undefined &&
+      first.gestureId === gestureId &&
+      second.gestureId === gestureId;
+    const windowMs = sameGesture
+      ? GAME_CONFIG.controls.mobileMicroU.sameGestureWindowMs
+      : GAME_CONFIG.controls.mobileMicroU.rapidWindowMs;
+    if (elapsed > windowMs) return false;
+
+    return this.predictedTurnHitsRecentNeck(candidate.direction);
+  }
+
+  private predictedTurnHitsRecentNeck(candidate: Direction): boolean {
+    if (
+      this.state.revivePhaseTicksRemaining > 0 ||
+      (this.genomeActive() &&
+        this.state.phantomTicksRemaining > 0 &&
+        this.strainTierNow('UMBRA') >= 2)
+    ) {
+      return false;
+    }
+
+    const body = this.state.snake.map((segment) => ({ ...segment }));
+    if (body.length < 2) return false;
+
+    const advancePreview = (direction: Direction): boolean => {
+      let next = this.getNextPosition(body[0], direction);
+      if (!this.isInBounds(next)) {
+        if (!this.ruleset.torus) return false;
+        next = this.wrapPosition(next);
+      }
+      body.unshift(next);
+      body.pop();
+      return true;
+    };
+
+    for (const queued of this.directionQueue) {
+      if (!advancePreview(queued.direction)) return false;
+    }
+
+    let next = this.getNextPosition(body[0], candidate);
+    if (!this.isInBounds(next)) {
+      if (!this.ruleset.torus) return false;
+      next = this.wrapPosition(next);
+    }
+    const recentDepth = Math.min(
+      GAME_CONFIG.controls.mobileMicroU.recentBodySegments,
+      body.length - 1
+    );
+    for (let index = 1; index <= recentDepth; index += 1) {
+      const segment = body[index];
+      if (segment.x === next.x && segment.z === next.z) return true;
+    }
+    return false;
+  }
+
+  private rememberAcceptedTurn(
+    from: Direction,
+    input: QueuedDirection
+  ): void {
+    if (input.source !== 'flick' || !Number.isFinite(input.timing?.inputTimeMs)) {
+      this.recentFlickTurns = [];
+      return;
+    }
+    this.recentFlickTurns.push({
+      from,
+      to: input.direction,
+      inputTimeMs: input.timing!.inputTimeMs as number,
+      ...(input.timing?.gestureId !== undefined
+        ? { gestureId: input.timing.gestureId }
+        : {}),
+    });
+    if (this.recentFlickTurns.length > 2) {
+      this.recentFlickTurns.splice(0, this.recentFlickTurns.length - 2);
+    }
+  }
+
+  private promotePreTurnIntent(): void {
+    const intent = this.preTurnIntent;
+    if (!intent) return;
+    const capacity = intent.source === 'flick'
+      ? GAME_CONFIG.controls.flickQueueDepth
+      : GAME_CONFIG.controls.standardQueueDepth;
+    if (this.directionQueue.length >= capacity) return;
+    this.directionQueue.push(intent);
+    this.preTurnIntent = null;
+  }
+
+  private clearDirectionalIntent(): void {
+    this.directionQueue = [];
+    this.preTurnIntent = null;
+    this.recentFlickTurns = [];
   }
 
   /**
@@ -1369,10 +1559,11 @@ export class SnakeGameLogic {
    */
   resumeWithDirection(
     dir: Direction,
-    source: DirectionInputSource = 'standard'
+    source: DirectionInputSource = 'standard',
+    timing?: DirectionInputTiming
   ): SetDirectionResult {
     if (!this.state.isPaused) {
-      return this.setDirection(dir, source);
+      return this.setDirection(dir, source, timing);
     }
     if (
       !this.state.isPlaying ||
@@ -1385,36 +1576,11 @@ export class SnakeGameLogic {
       return 'inactive';
     }
 
-    const result = this.enqueueDirection(dir, source);
+    const result = this.enqueueDirection(dir, source, timing);
     if (result === 'accepted' || result === 'duplicate') {
       this.resume();
     }
     return result;
-  }
-
-  /**
-   * Stage a deliberate route while a free decision hold keeps the board
-   * frozen. COSMIC's bounded constellation read uses this to let the player
-   * plan an L-turn during the first second without spending a tactical hold
-   * or releasing movement early. Normal pause still resumes atomically via
-   * `resumeWithDirection`; this method never changes pause state.
-   */
-  stagePausedDirection(
-    dir: Direction,
-    source: DirectionInputSource = 'standard'
-  ): SetDirectionResult {
-    if (
-      !this.state.isPaused ||
-      !this.state.isPlaying ||
-      this.state.isGameOver ||
-      this.state.isDeathSequence ||
-      this.state.pendingChoice !== null ||
-      this.state.pendingPortalChoice !== null ||
-      this.state.pendingSurgeChoice
-    ) {
-      return 'inactive';
-    }
-    return this.enqueueDirection(dir, source);
   }
 
   /**
@@ -1423,7 +1589,7 @@ export class SnakeGameLogic {
    * renderer's aim telegraph - queued turns are drawn before they execute.
    */
   getQueuedDirections(): Direction[] {
-    return [...this.directionQueue];
+    return this.directionQueue.map((input) => input.direction);
   }
 
   /**
@@ -1466,7 +1632,7 @@ export class SnakeGameLogic {
       if (this.state.holdsUsed >= this.state.holdBudget) return false;
       this.state.holdsUsed += 1;
     }
-    this.directionQueue = [];
+    this.clearDirectionalIntent();
     this.state.isPaused = true;
     this.emit('pause');
     return true;
@@ -1487,12 +1653,12 @@ export class SnakeGameLogic {
     // is what makes that true, and it is the same guarantee the paragraph above
     // states for earned holds. `ladderHoldBase` floors at 1: a run with no hold
     // at all is a different game, not a harder one.
-    let budget: number = ladderHoldBase(
-      GAME_CONFIG.session.holds.base,
-      this.ladderRung
-    );
-    for (const threshold of GAME_CONFIG.session.holds.bonusAtLengths) {
-      if (this.modelledLength() >= threshold) budget += 1;
+    const profile = this.holdProfile();
+    let budget: number = ladderHoldBase(profile.base, this.ladderRung);
+    for (const threshold of profile.bonusAtLengths) {
+      if (this.modelledLength() >= threshold) {
+        budget += profile.bonusPerThreshold;
+      }
     }
     this.state.holdBudget = Math.max(this.state.holdBudget, budget);
   }
@@ -1543,8 +1709,12 @@ export class SnakeGameLogic {
     // Consume exactly one buffered input per tick
     const queued = this.directionQueue.shift();
     if (queued) {
-      this.state.direction = queued;
+      this.state.direction = queued.direction;
     }
+    // The movement boundary just freed one real queue slot. Promote the
+    // fractional-tick intention now; it can execute no earlier than the next
+    // tick, exactly as if the player had entered it just after this boundary.
+    this.promotePreTurnIntent();
     this.slidThisTick = false;
     // Terrain advances BEFORE the move resolves, so a block that solidifies
     // this tick is lethal on this tick - the player saw it forming and had
@@ -2802,7 +2972,6 @@ export class SnakeGameLogic {
     );
 
     if (constellation) {
-      this.constellationWave += 1;
       this.state.constellationGlyph = Math.floor(
         this.rng() * constellation.glyphCount
       );
@@ -3403,7 +3572,7 @@ export class SnakeGameLogic {
       else if (dz === 1) this.state.direction = 'DOWN';
       else if (dz === -1) this.state.direction = 'UP';
     }
-    this.directionQueue = [];
+    this.clearDirectionalIntent();
   }
 
   /**
