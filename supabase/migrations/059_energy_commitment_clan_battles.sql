@@ -6,6 +6,16 @@
 -- automatically snapshots an active clan battle at START. Settlement records
 -- the player's best five full-strength Yields; the commitment multiplier never
 -- touches Score, Yield, clan score, fixed rewards, unlocks or mastery.
+--
+-- DOWN-NOTE (forward-only; do not drop player or battle history)
+--
+-- An application rollback is supported by the consume_run_charge bridge below,
+-- which degrades safely to one-Energy/lean runs while continuing to spend the
+-- new stock. A schema rollback must be a reviewed forward migration: preserve
+-- stored_energy, its recovery anchor, immutable session snapshots, contribution
+-- rows and honors; stop new writers first; and only then project behavior into a
+-- successor contract. Dropping these columns/tables would erase owned Energy or
+-- earned battle history and is therefore not a valid rollback.
 
 BEGIN;
 
