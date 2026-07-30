@@ -43,6 +43,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Apply stored consent on mount
     try {
+      // constitution-allow: local-progress  analytics consent contains no gameplay or progression fact
       const stored = localStorage.getItem(CONSENT_KEY);
       if (stored) {
         const prefs = JSON.parse(stored) as ConsentPreferences;

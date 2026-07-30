@@ -119,6 +119,7 @@ try {
     });
     const page = await context.newPage();
     await page.addInitScript(() => {
+      // constitution-allow: local-progress  isolated test consent fixture contains no player state
       localStorage.setItem(
         'cookie-consent',
         JSON.stringify({

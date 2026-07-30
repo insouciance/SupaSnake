@@ -38,6 +38,7 @@ export function maskEmail(email: string | null | undefined): string | null {
 function getStorage(storage?: Storage): Storage | null {
   if (storage) return storage;
   try {
+    // constitution-allow: local-progress  identity-loss guard stores account routing metadata, never progress
     return typeof window !== 'undefined' ? window.localStorage : null;
   } catch {
     return null;

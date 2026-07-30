@@ -15,7 +15,7 @@
 
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
-import { LAUNCH_HANDOFF_KEY } from '@/lib/ftue/launchFlow';
+import { clearLaunchHandoff, peekLaunchHandoff } from '@/lib/ftue/launchFlow';
 import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 jest.mock('@/lib/signal/config', () => ({ SIGNAL_V1_ENABLED: true }));
@@ -214,6 +214,7 @@ function sessionStartBody(): Record<string, unknown> | null {
 describe('Home with the World Signal armed', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearLaunchHandoff();
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
@@ -343,9 +344,7 @@ describe('Home with the World Signal armed', () => {
       expect(body).not.toHaveProperty('condition');
       expect(body).not.toHaveProperty('signalObjectiveRunId');
 
-      expect(
-        JSON.parse(String(sessionStorage.getItem(LAUNCH_HANDOFF_KEY)))
-      ).toMatchObject({ run: { sessionId: 'session-1' } });
+      expect(peekLaunchHandoff()).toMatchObject({ run: { sessionId: 'session-1' } });
     });
 
     it('takes exactly the objective the player tapped', async () => {

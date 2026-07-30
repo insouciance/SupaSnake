@@ -248,59 +248,30 @@ export async function prepareLaunchHandoff(
   };
 }
 
-export const LAUNCH_HANDOFF_KEY = 'supasnake-ftue-v2-launch';
 const LAUNCH_HANDOFF_MAX_AGE_MS = 5 * 60 * 1000;
-const STORAGE_PROBE_KEY = `${LAUNCH_HANDOFF_KEY}-probe`;
+let pendingLaunchHandoff: string | null = null;
 
-function browserSessionStorage(): Storage | null {
-  try {
-    return typeof window === 'undefined' ? null : window.sessionStorage;
-  } catch {
-    return null;
-  }
+/** The client-side handoff channel is page memory, never browser storage. */
+export function launchHandoffStorageAvailable(): boolean {
+  return typeof window !== 'undefined';
 }
 
-export function launchHandoffStorageAvailable(
-  storage: Storage | null = browserSessionStorage()
-): boolean {
-  if (!storage) return false;
+export function storeLaunchHandoff(handoff: LaunchHandoff): boolean {
   try {
-    storage.setItem(STORAGE_PROBE_KEY, '1');
-    storage.removeItem(STORAGE_PROBE_KEY);
+    pendingLaunchHandoff = JSON.stringify(handoff);
     return true;
   } catch {
     return false;
   }
 }
 
-export function storeLaunchHandoff(
-  handoff: LaunchHandoff,
-  storage: Storage | null = browserSessionStorage()
-): boolean {
-  if (!storage) return false;
-  try {
-    storage.setItem(LAUNCH_HANDOFF_KEY, JSON.stringify(handoff));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Consume-on-read prevents reload/back navigation from reusing a paid run. */
+/** Consume-on-read prevents back navigation from reusing a prepared run. */
 export function consumeLaunchHandoff(
   expectedUserId: string,
-  storage: Storage | null = browserSessionStorage(),
   now = Date.now()
 ): LaunchHandoff | null {
-  if (!storage) return null;
-
-  let raw: string | null = null;
-  try {
-    raw = storage.getItem(LAUNCH_HANDOFF_KEY);
-    storage.removeItem(LAUNCH_HANDOFF_KEY);
-  } catch {
-    return null;
-  }
+  const raw = pendingLaunchHandoff;
+  pendingLaunchHandoff = null;
   if (!raw) return null;
 
   try {
@@ -321,4 +292,19 @@ export function consumeLaunchHandoff(
   } catch {
     return null;
   }
+}
+
+/** Read-only diagnostic for UI tests; returns a detached copy. */
+export function peekLaunchHandoff(): LaunchHandoff | null {
+  if (!pendingLaunchHandoff) return null;
+  try {
+    return JSON.parse(pendingLaunchHandoff) as LaunchHandoff;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the page-memory channel on auth boundaries and between tests. */
+export function clearLaunchHandoff(): void {
+  pendingLaunchHandoff = null;
 }

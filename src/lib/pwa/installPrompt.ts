@@ -43,11 +43,10 @@
  *
  * WHERE THE RECORD LIVES
  *
- *   `localStorage`, and that is not a violation of the "no game progress in
- *   localStorage" rule. Nothing here is progress: it is a UI preference about
- *   this browser, on the device the shortcut would be installed onto, and it
- *   is worthless on any other device. Losing it costs a player nothing; moving
- *   it to the server would mean writing a row for every anonymous visitor.
+ *   PwaSurface separates the record at the storage boundary. Completed-run
+ *   evidence is memory-only because it is a progression fact. Only device UI
+ *   preferences — offer count, dismissal and installation — survive reloads.
+ *   They are worthless on another device and contain no gameplay outcome.
  *
  *   Every read is defensive. A corrupt, hand-edited or half-written value
  *   degrades to "already dismissed" — the quiet direction — never to "show it

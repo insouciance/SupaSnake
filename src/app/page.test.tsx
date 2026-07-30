@@ -11,7 +11,7 @@ import {
   dispatchNotificationAction,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
-import { LAUNCH_HANDOFF_KEY } from '@/lib/ftue/launchFlow';
+import { clearLaunchHandoff, peekLaunchHandoff } from '@/lib/ftue/launchFlow';
 
 // The 3D chamber is dynamically imported (WebGL); stub the dynamic loader
 jest.mock('next/dynamic', () => ({
@@ -227,6 +227,7 @@ async function waitForStats() {
 describe('Home page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearLaunchHandoff();
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
@@ -680,7 +681,7 @@ describe('Home page', () => {
       expect(urls.indexOf('/api/player/bootstrap')).toBeLessThan(
         urls.indexOf('/api/game/session')
       );
-      expect(JSON.parse(String(sessionStorage.getItem(LAUNCH_HANDOFF_KEY)))).toMatchObject({
+      expect(peekLaunchHandoff()).toMatchObject({
         mode: 'earn',
         bootstrap: { equippedSnake: { name: 'PRIMAL SEED', dynasty: 'PRIMAL' } },
         run: { sessionId: 'session-1' },

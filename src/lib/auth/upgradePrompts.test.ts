@@ -1,5 +1,5 @@
 /**
- * Upgrade prompt gating tests - each trigger fires once per device
+ * Upgrade prompt gating tests - each trigger fires once per page lifecycle
  */
 
 import {
@@ -7,12 +7,12 @@ import {
   markUpgradePrompted,
   isUpgradeBannerDismissed,
   dismissUpgradeBanner,
-  UPGRADE_PROMPTED_KEY,
+  resetUpgradePromptMemory,
 } from './upgradePrompts';
 
 describe('upgradePrompts', () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    resetUpgradePromptMemory();
   });
 
   describe('shouldShowUpgradePrompt / markUpgradePrompted', () => {
@@ -34,12 +34,10 @@ describe('upgradePrompts', () => {
       expect(shouldShowUpgradePrompt('first-unlock')).toBe(false);
     });
 
-    it('recovers from corrupted storage', () => {
-      window.localStorage.setItem(UPGRADE_PROMPTED_KEY, '{oops');
-      expect(shouldShowUpgradePrompt('first-unlock')).toBe(true);
-
+    it('resets only when a new page lifecycle begins', () => {
       markUpgradePrompted('first-unlock');
-      expect(shouldShowUpgradePrompt('first-unlock')).toBe(false);
+      resetUpgradePromptMemory();
+      expect(shouldShowUpgradePrompt('first-unlock')).toBe(true);
     });
   });
 

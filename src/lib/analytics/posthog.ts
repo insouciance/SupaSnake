@@ -56,6 +56,7 @@ export function initAnalytics(config: AnalyticsConfig): void {
     capture_pageview: true,
     capture_pageleave: true,
     autocapture: false, // game UI clicks are noise; we track a curated taxonomy
+    // constitution-allow: local-progress  consent-gated analytics identity stores no player progress payload
     persistence: 'localStorage+cookie',
   });
 

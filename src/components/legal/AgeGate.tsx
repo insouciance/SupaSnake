@@ -136,8 +136,10 @@ export default function AgeGate({ onVerified, onUnderage }: AgeGateProps) {
       throw new Error('Failed to save age verification');
     }
 
-    // Also save to localStorage (backup if user not logged in yet)
+    // Legal verification only: these booleans contain no gameplay or progress.
+    // constitution-allow: local-progress  legal age-verification status contains no player progress
     localStorage.setItem('age_verified', 'true');
+    // constitution-allow: local-progress  legal verification timestamp contains no player progress
     localStorage.setItem('age_verified_at', new Date().toISOString());
   };
 
