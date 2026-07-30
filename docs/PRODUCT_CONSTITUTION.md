@@ -194,7 +194,7 @@ perk; it is a fee.
 
 ## 4. The Inviolable Rules
 
-Fourteen laws. Each carries the question a reviewer asks to check compliance. These
+Fifteen laws. Each carries the question a reviewer asks to check compliance. These
 replace the deleted constraint lattice; amending any of them follows the procedure in
 the preamble.
 

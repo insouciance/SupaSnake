@@ -37,12 +37,14 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Genome/buildcraft | [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
 | Energy Commitment and Clan Energy Battles | [Energy Commitment & Clan Battles](game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md) |
+| Monetization, catalog, and commerce sequencing | [Monetization Strategy](game/MONETIZATION_STRATEGY.md) |
 | Deliberate practice | [Training Lab](game/TRAINING_LAB_DESIGN.md) |
 | Player identity | [Player Identity v1](game/PLAYER_IDENTITY_V1.md) |
 
 **Superseded:** `game/MONETIZATION_DESIGN.md` — replaced by Constitution §10, with
 the ruling recorded in its §15 Overturn Record. It is kept as the historical v1.0
-position. Do not implement from it.
+position. Do not implement from it; use the current Monetization Strategy for
+product boundaries, catalog sequencing, and commerce architecture.
 
 If an older document conflicts with one of these contracts, the newer dated
 contract and its explicit supersession language win.
@@ -56,7 +58,7 @@ contract and its explicit supersession language win.
 | Future production deployment | [Release Runbook](ops/RELEASE_RUNBOOK.md) |
 | Commercial launch gates | [Launch Checklist](ops/LAUNCH_CHECKLIST.md) |
 | Legal/compliance engineering status | [Legal & Compliance](ops/LEGAL_COMPLIANCE.md) |
-| Premium billing verification | [Premium and Billing QA](game/QA_PREMIUM_BILLING.md) |
+| Supporter billing verification | [Supporter Billing QA](game/QA_PREMIUM_BILLING.md) |
 
 ## Still current, outside the contract set
 

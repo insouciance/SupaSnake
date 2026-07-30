@@ -1,98 +1,165 @@
-# QA — SupaSnake Premium billing lifecycle (Stripe test clocks)
+# QA — Supporter billing lifecycle
 
-Manual playtest script for the subscription lifecycle that cannot run in
-CI e2e (it needs Stripe test-mode time travel). Run against a deploy with
-`STRIPE_SECRET_KEY` (test mode), the webhook endpoint registered for:
-`checkout.session.completed`, `customer.subscription.created/updated/deleted`,
-`invoice.paid`, `invoice.payment_failed`, and migration 028 applied.
+This is the manual Stripe test-clock script for the current sandbox
+subscription plumbing and the acceptance gate for the future Keeper product.
+It complements automated webhook tests; it does not authorize live payments.
 
-Reference: `docs/game/MONETIZATION_DESIGN.md` (LOCKED),
-`supabase/migrations/028_premium_subscription.sql`.
+Authority:
+
+- [`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) §10
+- [`MONETIZATION_STRATEGY.md`](./MONETIZATION_STRATEGY.md)
+- `supabase/migrations/028_premium_subscription.sql`
+
+## Current-state warning
+
+Operator production is Stripe sandbox only. The code still calls the
+subscription **Premium** and uses €9.99/month and €89.99/year test prices. The
+constitutional product is **Keeper** at €3.99/month or €34.99/year [H]. Do not
+switch Stripe to live until the name, price, entitlement boundary, copy, and
+tests have migrated together.
+
+The only current one-time source catalog is empty. A completed one-time payment
+is recorded and deliberately grants nothing; retired Energy/DNA/variant product
+IDs must fail closed.
+
+Current sandbox subscription activation may exercise the shipped supporter
+cosmetic/drop substrate. It must never grant Energy, DNA, extra contracts,
+offline recovery, progression, variants, genes, battle eligibility, Score,
+Yield, or Depth. The Premium Stats paywall is a known constitutional conflict:
+actionable analytics must become free before Keeper goes live.
 
 ## Setup
 
-1. Stripe Dashboard (test mode) → create a **test clock**, then a customer
-   on that clock with card `4242 4242 4242 4242`.
-2. Register a fresh (non-anonymous) SupaSnake account; note `players.id`.
-3. Manually attach the test-clock customer id to the player row
-   (`players.stripe_customer_id`) OR subscribe through the UI first and
-   note the created customer (test clocks then need the API flow —
-   `stripe subscriptions create -c <cus> -p <price>` on the clock).
+1. Use Stripe **test mode** and a test clock; never use a live customer or card.
+2. Register a fresh non-anonymous SupaSnake test account and record its
+   `players.id`.
+3. Ensure the test webhook receives `checkout.session.completed`, subscription
+   created/updated/deleted, `invoice.paid`, `invoice.payment_failed`,
+   `charge.refunded`, and `charge.dispute.created`.
+4. Keep the hosted operator database intact. Use a reviewed preview or a
+   disposable local stack for destructive/replay cases.
 
-## Stage 1 — Subscribe (UI happy path)
+## A. Existing sandbox plumbing regression
 
-- [ ] `/shop` → Premium section shows €9.99/month incl. VAT, yearly toggle
-      shows €89.99 + "2 months free".
-- [ ] Subscribe is blocked until BOTH boxes are ticked (§10 FAGG service
-      start + 18+). Error text names the missing consents.
-- [ ] Complete Stripe Checkout (4242 card). Redirect lands on
-      `/shop?premium=success…` with the welcome banner.
-- [ ] DB: `premium_subscriptions` row `status=active`, correct
-      `billing_interval`, `current_period_end` ≈ +1 month;
-      `players.stripe_customer_id` set; `stripe_events` has the
-      checkout + subscription events, each `processed_at` set.
-- [ ] Supporter badge + Patron Aurora banner appear in `player_cosmetics`;
-      the crown flair renders next to the handle (PlayerCard, leaderboard).
-- [ ] `player_battle_pass.is_premium = true` for the active season; the
-      season track shows the Gilded (premium) tiers claimable at reached
-      levels.
+### A1. Subscribe
 
-## Stage 2 — Perks
+- [ ] `/shop` exposes exactly one commercial surface and clearly labels the
+      current product/test prices; no one-time product is available.
+- [ ] Anonymous players are routed to account creation so ownership is not
+      device-bound.
+- [ ] Checkout is blocked until both immediate-service and 18+ recurring
+      billing confirmations are actively selected.
+- [ ] Successful test Checkout returns safely and creates one
+      `premium_subscriptions` row with the correct interval/status/period,
+      durable Stripe customer mapping, and processed `stripe_events` rows.
+- [ ] Supporter cosmetics are inserted idempotently. Resending the event creates
+      no duplicate ownership row or drop.
+- [ ] The subscription changes no Energy, DNA, progression, Genome, lineage,
+      score, Yield, Depth, clan, or battle field.
 
-- [ ] `/shop` premium card: "Claim daily +3 energy" grants +3 (may exceed
-      max_energy), button flips to "Daily stipend claimed". Second claim
-      attempt (other tab / API) → 409 `already_claimed`.
-- [ ] First stipend of the month also delivers the monthly cosmetic
-      (`premium_drop_claims` row + inventory).
-- [ ] Contracts board offers picking all 3 contracts; a 3rd pick succeeds
-      (free account control: limit stays 2).
-- [ ] `/stats` renders the dashboard (free account control: locked
-      preview + shop link).
-- [ ] `economy_transactions` has `premium_stipend` rows with correct
-      `balance_after`.
+### A2. Renewal and event ordering
 
-## Stage 3 — Renewal (test clock +1 month)
+- [ ] Advance the clock through renewal. `invoice.paid` and subscription update
+      events advance the paid period exactly once.
+- [ ] Replay an already processed event; it returns `already_processed` and
+      changes no state.
+- [ ] Deliver an older subscription event after a newer one; it returns
+      `stale_event` and cannot regress the subscription.
+- [ ] A malformed/unresolvable subscription is logged and reported without
+      granting ownership.
 
-- [ ] Advance the clock ~32 days. `invoice.paid` +
-      `customer.subscription.updated` arrive; `current_period_end`
-      advances; entitlement stays on; no duplicate cosmetic grants.
+### A3. Payment failure, cancellation, and lapse
 
-## Stage 4 — Payment failure + grace (past_due)
+- [ ] A failed renewal records the event and moves the subscription to the
+      provider state; the documented seven-day past-due grace uses provider
+      time, not client time.
+- [ ] Settings opens Stripe Billing Portal; cancel-at-period-end is mirrored and
+      shown with the actual date.
+- [ ] Access continues through the paid period and then lapses. Previously
+      delivered cosmetics and permanent history remain.
+- [ ] Lapse cannot remove an earned or delivered cosmetic, Record, lineage row,
+      Season reward, or patron mark.
 
-- [ ] Swap the card for `4000 0000 0000 0341` (attaches, then fails), then
-      advance the clock past renewal.
-- [ ] `invoice.payment_failed` recorded in `stripe_events` + Sentry
-      warning; subscription → `past_due`.
-- [ ] Entitlement REMAINS for 7 days past `current_period_end`
-      (`has_premium()` grace) — stipend still claimable; settings shows
-      the "payment issue" hint.
-- [ ] Advance beyond the grace window / let Smart Retries exhaust →
-      subscription → `canceled`/`unpaid`; perks stop (stipend 403, picks
-      back to 2, stats locked) — but cosmetics and claimed season tiers
-      REMAIN (never-revoke covenant).
+### A4. Refund/dispute and one-time fail-closed path
 
-## Stage 5 — Cancellation (EU easy cancellation)
+- [ ] Refund and dispute events are idempotently recorded and escalated for the
+      current manual policy; no unrelated player state changes.
+- [ ] A forged, stale, or retired one-time product ID cannot call a reward RPC,
+      mint a cosmetic, or grant any gameplay resource.
+- [ ] A completed one-time test payment while the catalog is empty returns
+      `not_fulfillable`, records the incident, and raises operator visibility.
 
-- [ ] Settings → Subscription → "Manage / cancel subscription" opens the
-      Stripe portal; cancel at period end.
-- [ ] `cancel_at_period_end=true` mirrored in DB; UI shows "ends <date>";
-      perks run to period end, then lapse.
-- [ ] Season lock-in: premium tiers CLAIMED this season stay claimed, and
-      if the season was entered premium, remaining premium tiers of THIS
-      season stay claimable after lapse (`player_battle_pass.is_premium`).
+## B. Keeper pre-live acceptance
 
-## Stage 6 — Withdrawal / refund path
+Run this section only after Keeper and the generic entitlement ledger are
+implemented. Every box blocks live mode.
 
-- [ ] Refund the first invoice in the Dashboard → `charge.refunded` is
-      recorded + Sentry escalation (manual review, no auto-clawback).
-- [ ] Pro-rata handling per `/legal/withdrawal` §3 is a manual support
-      action at launch — verify the page text matches the flow.
+### B1. Product truth
 
-## Regression guards
+- [ ] Every player-facing and provider-facing name says Keeper; no Premium name
+      remains in sale, consent, invoice, portal, or support copy except a clearly
+      labeled migration/history reference.
+- [ ] Gross prices are exactly the reviewed €3.99/month and €34.99/year [H], or
+      an explicit owner amendment documents a changed value.
+- [ ] The purchase screen lists only real delivered benefits: permanent monthly
+      cosmetic, Keeper-since mark, extra cosmetic loadouts, archive/Chronicle
+      presentation, and owned-variant colorways that actually exist.
+- [ ] Actionable Workbench calculations and run analytics are free. Keeper adds
+      archive depth and presentation, never a better conclusion.
+- [ ] The lapse sentence is visible before Checkout: delivered goods are kept;
+      stopping only stops future deliveries/access.
 
-- [ ] One-time energy pack purchase still works end-to-end (mode=payment
-      path untouched) and grants exactly once on webhook retry.
-- [ ] Replay a subscription webhook event (Stripe "resend") →
-      `already_processed`, no state change.
-- [ ] Deliver an older subscription event after a newer one (resend the
-      creation event) → `stale_event`, no state regression.
+### B2. Entitlement and restoration
+
+- [ ] Checkout sends a stable server-resolved product/price version; the client
+      cannot choose entitlements, price, recipient, or duration.
+- [ ] The webhook atomically records order/provider event and named
+      entitlements. Retries and out-of-order events are harmless.
+- [ ] A new browser/device restores the exact ownership from the authenticated
+      account without local storage authority.
+- [ ] Guest-to-account conversion preserves all pre-existing play state and
+      enables purchase without creating a second player.
+- [ ] The GDPR export includes subscription, order, entitlement, permanent
+      cosmetic source, refund/dispute, and delivery history.
+
+### B3. Delivery lifecycle
+
+- [ ] At least three months of named drops are complete before sale.
+- [ ] Each monthly delivery grants once despite webhook retry, login retry,
+      month boundary, timezone, or concurrent tabs.
+- [ ] A new subscriber receives only the explicitly advertised current/backfill
+      goods; tenure cannot be purchased retroactively.
+- [ ] Renewal does not duplicate prior drops. Lapse and resubscribe preserve
+      delivered goods and continue honest tenure according to the published
+      contract.
+
+### B4. Refund and support operations
+
+- [ ] The reviewed refund/withdrawal rule reconciles only paid entitlements and
+      never earned state or unrelated monthly deliveries.
+- [ ] Partial, full, duplicate, and out-of-order refund/dispute events converge
+      idempotently.
+- [ ] Customer support can inspect a non-secret transaction/entitlement audit,
+      restore ownership safely, and record an append-only correction.
+- [ ] Terms, withdrawal, cancellation, tax invoice, support mailbox, and German
+      cancellation requirements have completed counsel/operations review.
+
+## C. Founding Keeper and one-time commerce
+
+- [ ] Founding Keeper is the only first commercial-launch SKU and every included
+      cosmetic/mark is previewed before payment.
+- [ ] The future first-Season entitlement is stored and can be fulfilled
+      idempotently when that permanent Season exists.
+- [ ] Purchase, restore, refund/dispute, data export, and account
+      erasure/anonymization work without a generic resource-grant payload.
+- [ ] Ownership survives browser/device changes; duplicate Checkout completion
+      cannot duplicate cosmetics or Chronicle recognition.
+- [ ] No commercial prompt appears in a run, on Results, in notifications, or
+      inside clan surfaces.
+
+## Evidence record
+
+For each manual run, record commit, deployment, Stripe mode, test-clock/customer
+IDs in the private operator log, webhook event IDs, expected and observed rows,
+screenshots of product/consent/cancel copy, refund result, and any Sentry issue.
+Never commit customer identifiers, credentials, cards, or provider payloads.

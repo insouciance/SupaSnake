@@ -11,12 +11,18 @@ Production: <https://supasnake.com>
 
 - Next.js 15 App Router, React, TypeScript, react-three-fiber, and Zustand
 - Supabase Auth/Postgres with server-authoritative economy and progression
-- Migrations 001–038 deployed and aligned
-- FTUE v2, the refined Run Cockpit, and the Training Lab enabled in production
+- Migrations 001–059 deployed and aligned
+- FTUE v2, the refined Run Cockpit, the Training Lab, and Energy Commitment
+  enabled in production
 - Stripe sandbox/test mode until the commercial-launch checklist is complete
-- Runtime release commit `645578e`
-- Vercel deployment `dpl_44KnYTUmDYygkcHrrdxsnaAoqDWB`
-- Immediate application rollback deployment `dpl_3raqVivFqkbEXvuWy4WUvx1RAgz6`
+
+Energy recovers server-side to a six-unit cap. A rewarded run commits 1–6
+Energy at start for a configurable nonlinear personal-harvest multiplier; the
+same ordinary run automatically feeds the active three-day clan battle, where
+each member's best five full-strength Yields contribute. Current deployment,
+rollback, schema, and test evidence live in
+[Platform Status](PLATFORM_STATUS.md), avoiding volatile release identifiers in
+this overview.
 
 The live cockpit keeps the arena centered and unobstructed, uses compact
 telemetry decks, presents consequential Genome/portal decisions as dominant
@@ -86,6 +92,7 @@ are:
 - [Player Flow & Interruption Policy](docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
 - [Genome design](docs/game/BUILDCRAFT_GENOME_DESIGN.md)
 - [Energy Commitment & Clan Battles](docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
+- [Monetization Strategy](docs/game/MONETIZATION_STRATEGY.md)
 - [Run Cockpit & Arena](docs/game/HUD_COCKPIT_REDESIGN.md)
 - [Current QA baseline](docs/ops/QA_CHECKLIST.md)
 - [Production release runbook](docs/ops/RELEASE_RUNBOOK.md)
