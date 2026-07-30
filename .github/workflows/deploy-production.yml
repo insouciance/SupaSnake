@@ -86,7 +86,7 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     environment: production
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -120,6 +120,7 @@ jobs:
         with:
           version: 2.109.1
       - name: Link and preview database migrations
+        id: migration_plan
         env:
           EXPECTED_MIGRATIONS: ${{ inputs.expected_migrations }}
         run: |
@@ -142,6 +143,22 @@ jobs:
             echo "::error::pending migrations differ: expected '${expected:-none}', got '${actual:-none}'"
             exit 1
           fi
+          rollout=standard
+          if [ -z "$actual" ]; then
+            rollout=none
+          elif [ "$actual" = "060_pending_game_session_ends.sql,061_career_spine.sql" ]; then
+            rollout=career-initial
+          elif [ "$actual" = "061_career_spine.sql" ]; then
+            # Supported forward-only recovery after a prior run committed the
+            # additive bridge but stopped before the hard Career migration.
+            rollout=career-resume
+          elif [[ ",$actual," == *",060_pending_game_session_ends.sql,"* \
+              || ",$actual," == *",061_career_spine.sql,"* ]]; then
+            echo "::error::Career settlement migrations must be the exact initial or resume set"
+            exit 1
+          fi
+          echo "rollout=$rollout" >> "$GITHUB_OUTPUT"
+          echo "actual=$actual" >> "$GITHUB_OUTPUT"
 
       # Capture the artifact currently behind the canonical alias BEFORE
       # creating a staged production artifact. Listing recent deployments is
@@ -168,8 +185,59 @@ jobs:
             echo "Production **before** this release: \`$outgoing_id\` (\`$outgoing\`)"
             echo ''
             echo 'Roll back with `vercel promote <that url>`, or via Instant Rollback in the dashboard.'
-            echo 'Note: rollback does NOT revert migrations and does NOT update cron definitions.'
+            echo 'This anchor is not safe after Career bridge traffic has been accepted or migration 061 has committed.'
+            echo 'Rollback does NOT revert migrations and does NOT update cron definitions.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Career settlement has a deliberately different boundary from ordinary
+      # backward-compatible migrations. 060 only adds the durable server
+      # ingress and is safe for the outgoing application. The incoming build
+      # is not staged until that bridge exists, because it must never accept an
+      # earning result unless it can durably store it first.
+      - name: Apply additive Career settlement bridge
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' }}
+        run: |
+          set -euo pipefail
+          career_path='supabase/migrations/061_career_spine.sql'
+          if [ ! -f 'supabase/migrations/060_pending_game_session_ends.sql' ] \
+              || [ ! -f "$career_path" ]; then
+            echo "::error::the reviewed 060/061 Career migration pair is incomplete"
+            exit 1
+          fi
+          hold_dir=$(mktemp -d)
+          restore_career_migration() {
+            if [ -f "$hold_dir/061_career_spine.sql" ]; then
+              mv "$hold_dir/061_career_spine.sql" "$career_path"
+            fi
+            rmdir "$hold_dir" 2>/dev/null || true
+          }
+          trap restore_career_migration EXIT
+          mv "$career_path" "$hold_dir/061_career_spine.sql"
+          supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
+          restore_career_migration
+          trap - EXIT
+
+      - name: Verify outgoing application after additive bridge
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' }}
+        run: |
+          set -uo pipefail
+          payload=''
+          for attempt in $(seq 1 12); do
+            if payload=$(curl --fail --show-error --silent --max-time 20 \
+                https://supasnake.com/api/health) \
+              && printf '%s' "$payload" | jq -e \
+                '.status == "healthy" and .checks.database.status == "healthy"' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::outgoing application is not healthy on the additive bridge"
+          printf '%s\n' "$payload"
+          exit 1
+
+      - name: Validate additive Career bridge
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' }}
+        run: supabase db lint --linked --level warning --fail-on error
 
       # Sensitive variables are only decrypted inside Vercel's cloud build.
       # Stage and smoke the production-target build before assigning domains.
@@ -190,6 +258,13 @@ jobs:
       - name: Smoke staged application against the current schema
         run: |
           set -uo pipefail
+          expected_phase='ready'
+          expected_career='1'
+          if [ "${{ steps.migration_plan.outputs.rollout }}" = 'career-initial' ] \
+              || [ "${{ steps.migration_plan.outputs.rollout }}" = 'career-resume' ]; then
+            expected_phase='bridge'
+            expected_career='null'
+          fi
           # `vercel curl` v56 forwards an explicit global token option to the
           # underlying curl process. It reads the job's VERCEL_TOKEN environment
           # variable directly, so do not repeat that credential as a CLI flag.
@@ -201,7 +276,16 @@ jobs:
                 -- \
                 --fail --show-error --silent --max-time 20) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.surfaceEnabled == true and .release == $release' >/dev/null; then
+                  --arg phase "$expected_phase" --arg career "$expected_career" \
+                '.status == "healthy"
+                  and .checks.database.status == "healthy"
+                  and .checks.careerSpine.status == "healthy"
+                  and .checks.careerSpine.surfaceEnabled == true
+                  and .checks.careerSpine.bridgeVersion == 1
+                  and .checks.careerSpine.phase == $phase
+                  and (($career == "null" and .checks.careerSpine.careerVersion == null)
+                    or ($career == "1" and .checks.careerSpine.careerVersion == 1))
+                  and .release == $release' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
@@ -209,12 +293,15 @@ jobs:
           echo "::error::staged pre-migration health contract did not become ready"
           printf '%s\n' "$payload"
           exit 1
-      - name: Apply pending database migrations
+      - name: Apply standard pending database migrations
+        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
         run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
-      - name: Validate linked database
+      - name: Validate linked database after standard migration
+        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
         run: supabase db lint --linked --level warning --fail-on error
 
-      - name: Smoke staged application against the migrated schema
+      - name: Smoke staged application against the standard migrated schema
+        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
         run: |
           set -uo pipefail
           payload=''
@@ -225,7 +312,14 @@ jobs:
                 -- \
                 --fail --show-error --silent --max-time 20) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .checks.careerSpine.surfaceEnabled == true and .release == $release' >/dev/null; then
+                '.status == "healthy"
+                  and .checks.database.status == "healthy"
+                  and .checks.careerSpine.status == "healthy"
+                  and .checks.careerSpine.phase == "ready"
+                  and .checks.careerSpine.bridgeVersion == 1
+                  and .checks.careerSpine.careerVersion == 1
+                  and .checks.careerSpine.surfaceEnabled == true
+                  and .release == $release' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
@@ -233,7 +327,8 @@ jobs:
           echo "::error::staged post-migration capability did not become ready"
           printf '%s\n' "$payload"
           exit 1
-      - name: Smoke outgoing application against the migrated schema
+      - name: Smoke outgoing application against the standard migrated schema
+        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
         run: |
           set -uo pipefail
           payload=''
@@ -257,6 +352,59 @@ jobs:
           --yes
           --token="$VERCEL_TOKEN"
 
+      - name: Prove canonical Career bridge deployment
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+        run: |
+          set -uo pipefail
+          payload=''
+          for attempt in $(seq 1 12); do
+            if payload=$(curl --fail --show-error --silent --max-time 20 \
+                https://supasnake.com/api/health) \
+              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
+                '.status == "healthy"
+                  and .release == $release
+                  and .checks.database.status == "healthy"
+                  and .checks.careerSpine.status == "healthy"
+                  and .checks.careerSpine.phase == "bridge"
+                  and .checks.careerSpine.bridgeVersion == 1
+                  and .checks.careerSpine.careerVersion == null
+                  and .checks.careerSpine.surfaceEnabled == true' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::canonical alias did not converge on the exact Career bridge release"
+          printf '%s\n' "$payload"
+          exit 1
+
+      # The outgoing canonical settlement function was independently
+      # inspected at a 300-second maximum. Start this clock only after the
+      # exact bridge build is proven canonical, then include a 60-second
+      # margin before 061 rejects the retired absolute writer.
+      - name: Drain retired settlement invocations
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+        run: sleep 360
+
+      - name: Re-verify hard Career migration is the only pending change
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+        run: |
+          set -euo pipefail
+          preview_file=$(mktemp)
+          supabase db push --linked --include-all --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee "$preview_file"
+          actual=$(grep -oE '[0-9]{3,}_[A-Za-z0-9._-]+\.sql' "$preview_file" | sort -u | paste -sd, - || true)
+          if [ "$actual" != '061_career_spine.sql' ]; then
+            echo "::error::expected only 061_career_spine.sql after the bridge, got '${actual:-none}'"
+            exit 1
+          fi
+
+      - name: Apply hard Career settlement migration
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+        run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Validate linked database after Career cutover
+        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+        run: supabase db lint --linked --level warning --fail-on error
+
       - name: Production health smoke test
         run: |
           set -uo pipefail
@@ -265,7 +413,14 @@ jobs:
             if payload=$(curl --fail --show-error --silent --max-time 20 \
                 https://supasnake.com/api/health) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .checks.careerSpine.surfaceEnabled == true and .release == $release' >/dev/null; then
+                '.status == "healthy"
+                  and .checks.database.status == "healthy"
+                  and .checks.careerSpine.status == "healthy"
+                  and .checks.careerSpine.phase == "ready"
+                  and .checks.careerSpine.bridgeVersion == 1
+                  and .checks.careerSpine.careerVersion == 1
+                  and .checks.careerSpine.surfaceEnabled == true
+                  and .release == $release' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
