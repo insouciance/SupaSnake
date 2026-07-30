@@ -19,16 +19,11 @@ export type NotificationAttentionReason =
   | 'reward-available'
   | 'progression-opportunity';
 export type NotificationAction =
-  | 'open-contracts'
-  | 'open-season'
-  | 'open-offline-rewards'
   | 'open-save-progress';
 export type NotificationDestination =
   | 'global'
   | 'home'
   | 'lab'
-  | 'contracts'
-  | 'season'
   | 'account'
   | 'identity'
   | 'chronicle'
@@ -47,21 +42,6 @@ interface NotificationTarget {
 }
 
 export const NOTIFICATION_TARGETS = {
-  contracts: {
-    destination: 'contracts',
-    href: '/#contracts',
-    action: 'open-contracts',
-  },
-  season: {
-    destination: 'season',
-    href: '/#season',
-    action: 'open-season',
-  },
-  offlineRewards: {
-    destination: 'home',
-    href: '/#offline-rewards',
-    action: 'open-offline-rewards',
-  },
   saveProgress: {
     destination: 'account',
     href: '/#save-progress',

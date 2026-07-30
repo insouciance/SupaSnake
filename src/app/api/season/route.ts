@@ -2,21 +2,18 @@
  * Season API (Design v2 Phase 4B, sections 7.2 + 8.4)
  *
  * GET  /api/season - the live season (window, week index, playoff phase,
- *      seasonal mutations), the caller's FREE track (XP/level/tiers with
- *      claim state), the playoff bracket, and the
+ *      seasonal mutations), the caller's legacy track (XP/level/tiers with
+ *      server-settled state), the playoff bracket, and the
  *      champions banner history - one get_season RPC.
- * POST /api/season { action: 'claim', level } - claim a reached free
- *      milestone (claim_season_tier RPC: cosmetics/titles are owned via the
- *      claim record).
  *
- * PRE-MIGRATION-021 SAFE: while the RPCs do not exist, GET returns
- * { live: false } and POST returns 503 - nothing errors.
+ * PRE-MIGRATION-021 SAFE: while the RPC does not exist, GET returns
+ * { live: false }. Daily Take is the only reward collect; this route has no
+ * mutating method.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isMissingSeasonInfra } from '@/lib/server/season';
-import { mapSeasonRpcError } from './utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -35,13 +32,17 @@ async function getAuthedPlayer(request: NextRequest) {
     return { errorResponse: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
   }
 
-  const { data: player } = await supabase
+  const { data: player, error: playerError } = await supabase
     .from('players')
     .select('id')
     .eq('user_id', user.id)
     .single();
-  if (!player) {
+  if (playerError?.code === 'PGRST116' || !player) {
     return { errorResponse: NextResponse.json({ error: 'Player not found' }, { status: 404 }) };
+  }
+  if (playerError) {
+    console.error('Season player lookup failed:', playerError);
+    return { errorResponse: NextResponse.json({ error: 'Failed to load player' }, { status: 500 }) };
   }
 
   return { player };
@@ -96,50 +97,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Season GET error:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { player, errorResponse } = await getAuthedPlayer(request);
-    if (errorResponse || !player) return errorResponse!;
-
-    const body = await request.json().catch(() => ({}));
-    if (body.action !== 'claim') {
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    }
-    const level = Number(body.level);
-    if (!Number.isInteger(level) || level < 1) {
-      return NextResponse.json({ error: 'level must be a positive integer' }, { status: 400 });
-    }
-
-    const { data, error } = await supabase.rpc('claim_season_tier', {
-      p_player_id: player.id,
-      p_level: level,
-    });
-
-    if (error) {
-      if (isMissingSeasonInfra(error)) {
-        return NextResponse.json(
-          { error: 'The season track is not live yet' },
-          { status: 503 }
-        );
-      }
-      const mapped = mapSeasonRpcError(error.message || '');
-      if (mapped) {
-        return NextResponse.json(
-          { error: mapped.error, code: mapped.code },
-          { status: mapped.status }
-        );
-      }
-      console.error('claim_season_tier RPC error:', error);
-      return NextResponse.json({ error: 'Claim failed' }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true, reward: data ?? null });
-  } catch (error) {
-    console.error('Season POST error:', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

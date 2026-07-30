@@ -45,13 +45,6 @@ export type TakeCollectState =
   | 'unavailable'
   | 'error';
 
-export interface RunResultsSerpent {
-  live: boolean;
-  weekDepth: number;
-  deltaVsBestWeek: number;
-  runCounts: boolean;
-}
-
 export interface RunResultsClanBattle {
   eligible?: boolean;
   reason?: string;
@@ -81,7 +74,6 @@ export interface RunResultsProps {
   energyCommitted: number;
   commitmentMultiplierBps: number;
   clanBattle: RunResultsClanBattle | null;
-  serpent: RunResultsSerpent | null;
   take: DailyTakeSlot | null;
   takeState: TakeCollectState;
   onCollectTake: () => void;
@@ -317,7 +309,6 @@ export function RunResults({
   energyCommitted,
   commitmentMultiplierBps,
   clanBattle,
-  serpent,
   take,
   takeState,
   onCollectTake,
@@ -404,14 +395,6 @@ export function RunResults({
               </>}
             </div>
           </details>
-        )}
-
-        {serpent?.live && (
-          <p className="text-lg text-beige" data-testid="results-depth">
-            Depth this week: <span className="font-bold text-[#7df9ff]">{serpent.weekDepth.toLocaleString()}</span> segments
-            {serpent.deltaVsBestWeek !== 0 ? <span className="text-beige/70"> ({serpent.deltaVsBestWeek > 0 ? '+' : ''}{serpent.deltaVsBestWeek.toLocaleString()} vs your best week)</span> : null}
-            {serpent.runCounts ? <span className="block text-sm text-beige/70">This run&apos;s Yield counts toward the week.</span> : null}
-          </p>
         )}
 
         {clanBattle?.eligible && (

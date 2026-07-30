@@ -2523,7 +2523,7 @@ export default function GamePage() {
       <div className="consent-safe-viewport w-screen h-dvh app-bg flex items-center justify-center p-4">
         <div className="panel-elevated p-8 text-center space-y-6 w-full max-w-sm animate-pop-in">
           <h1 className="heading-display text-3xl text-venom-orange text-glow-orange">SupaSnake</h1>
-          <p className="text-beige font-body">Sign in to play and save your progress</p>
+          <p className="text-beige font-body">Sign in to play and access your account</p>
           <Link
             href="/login"
             className="btn-go inline-block px-8 py-3 text-lg min-h-[44px]"
@@ -3319,7 +3319,6 @@ export default function GamePage() {
                   energyCommitted={activeEnergyCommitted}
                   commitmentMultiplierBps={activeEnergyMultiplierBps}
                   clanBattle={clanBattleResult}
-                  serpent={null}
                   take={dailyTake}
                   takeState={takeState}
                   onCollectTake={() => {

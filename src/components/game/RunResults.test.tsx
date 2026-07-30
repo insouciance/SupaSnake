@@ -79,7 +79,6 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
     energyCommitted: 1,
     commitmentMultiplierBps: 10_000,
     clanBattle: null,
-    serpent: null,
     take: null,
     takeState: 'idle',
     onCollectTake: jest.fn(),

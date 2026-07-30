@@ -1,11 +1,10 @@
 /**
- * Tests for the Season Track modal (Design v2 §7.2): the free milestone
- * track - level/XP progress, claimable vs locked vs claimed states, the
- * claim flow, and the reward labels.
+ * Tests for the read-only Season Track modal (Constitution v1.6 §7.2):
+ * level/XP history, settling vs locked vs secured states, and reward labels.
  */
 
 import { describe, it, expect, jest } from '@jest/globals';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import {
   SeasonTrack,
   tierRewardLabel,
@@ -58,7 +57,6 @@ const baseProps = {
   isVisible: true,
   season,
   track: track(),
-  onClaim: jest.fn(async () => true),
   onDismiss: jest.fn(),
 };
 
@@ -92,20 +90,15 @@ describe('SeasonTrack', () => {
     );
   });
 
-  it('states: reached+unclaimed = claimable, claimed stays claimed, future = locked', () => {
+  it('states: reached+unsettled is settling, settled is secured, future is locked', () => {
     render(<SeasonTrack {...baseProps} />);
-    expect(screen.getByTestId('season-tier-1')).toHaveAttribute('data-state', 'claimable');
-    expect(screen.getByTestId('season-tier-5')).toHaveAttribute('data-state', 'claimed');
+    expect(screen.getByTestId('season-tier-1')).toHaveAttribute('data-state', 'settling');
+    expect(screen.getByTestId('season-tier-5')).toHaveAttribute('data-state', 'secured');
     expect(screen.getByTestId('season-tier-10')).toHaveAttribute('data-state', 'locked');
     expect(screen.getByTestId('season-tier-30')).toHaveAttribute('data-state', 'locked');
-  });
-
-  it('claims a reached milestone through onClaim', async () => {
-    const onClaim = jest.fn(async () => true);
-    render(<SeasonTrack {...baseProps} onClaim={onClaim} />);
-
-    fireEvent.click(screen.getByTestId('season-claim-1'));
-    await waitFor(() => expect(onClaim).toHaveBeenCalledWith(1));
+    expect(screen.getByText('Securing…')).toBeInTheDocument();
+    expect(screen.getByText('Secured')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /claim/i })).not.toBeInTheDocument();
   });
 
   it('closes through onDismiss', () => {

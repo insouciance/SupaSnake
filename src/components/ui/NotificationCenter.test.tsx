@@ -14,15 +14,15 @@ jest.mock('@/lib/analytics/posthog', () => ({
   trackEvent: jest.fn(),
 }));
 
-function publishContracts() {
+function publishAccountRecovery() {
   useNotificationStore.getState().publish({
-    id: 'contracts',
-    title: 'Daily Contracts ready',
-    description: 'Choose two contracts when you are ready.',
-    ...NOTIFICATION_TARGETS.contracts,
+    id: 'save-progress',
+    title: 'Protect account access',
+    description: 'Add a sign-in method to recover this guest account.',
+    ...NOTIFICATION_TARGETS.saveProgress,
     badgeKind: 'exclamation',
     attentionReason: 'action-required',
-    actionLabel: 'Choose Contracts',
+    actionLabel: 'Protect Account',
   });
 }
 
@@ -33,7 +33,7 @@ describe('NotificationCenter', () => {
   });
 
   it('opens a viewport-fixed, internally scrollable dialog without clearing attention', () => {
-    publishContracts();
+    publishAccountRecovery();
     render(<NotificationCenter />);
 
     const trigger = screen.getByRole('button', {
@@ -50,11 +50,11 @@ describe('NotificationCenter', () => {
       'overscroll-contain'
     );
     expect(screen.getByRole('button', { name: 'Close notifications' })).toBeInTheDocument();
-    expect(useNotificationStore.getState().notifications.contracts).toBeDefined();
+    expect(useNotificationStore.getState().notifications['save-progress']).toBeDefined();
   });
 
   it('closes explicitly or with Escape and restores trigger focus', () => {
-    publishContracts();
+    publishAccountRecovery();
     render(<NotificationCenter />);
 
     const trigger = screen.getByRole('button', { name: /Notifications, 1 action/ });
@@ -72,15 +72,15 @@ describe('NotificationCenter', () => {
 
   it('dispatches the semantic destination action and preserves unresolved attention', () => {
     const listener = jest.fn();
-    const unsubscribe = subscribeNotificationAction('open-contracts', listener);
-    publishContracts();
+    const unsubscribe = subscribeNotificationAction('open-save-progress', listener);
+    publishAccountRecovery();
     render(<NotificationCenter />);
 
     fireEvent.click(screen.getByRole('button', { name: /Notifications, 1 action/ }));
-    fireEvent.click(screen.getByText('Choose Contracts'));
+    fireEvent.click(screen.getByText('Protect Account'));
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(useNotificationStore.getState().notifications.contracts).toBeDefined();
+    expect(useNotificationStore.getState().notifications['save-progress']).toBeDefined();
     expect(screen.queryByRole('dialog', { name: 'Notifications' })).not.toBeInTheDocument();
     unsubscribe();
   });
