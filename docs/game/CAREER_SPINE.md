@@ -335,3 +335,10 @@ Permanent costs are schema/storage growth, receipt retention, privacy/export
 support, occasional copy/provenance review, and regression coverage. Routine
 receipts are bounded; permanent moment rows are sparse. This fits Constitution
 slot 5, Chronicle and lineage presentation, without opening a new content lane.
+
+The first atomic release deliberately retains each adopted durable-ingress
+envelope as recovery evidence. Before run volume makes that duplicate JSON a
+material storage cost, compaction may remove or reduce an **adopted** envelope
+only after the atomic reward ledger, core progression, Signal, clan result, and
+canonical impact receipt all prove durable. `staged` and `quarantined` evidence
+has no time-to-live and may never be discarded by retention cleanup.

@@ -78,6 +78,7 @@ export interface RunResultsProps {
   takeState: TakeCollectState;
   onCollectTake: () => void;
   impact: RunImpactEnvelope | null;
+  settlementPending: boolean;
   nextAction: ResultsNextAction;
   onNextAction: () => void;
   onReplay: () => void;
@@ -312,6 +313,7 @@ export function RunResults({
   takeState,
   onCollectTake,
   impact,
+  settlementPending,
   nextAction,
   onNextAction,
   onReplay,
@@ -349,6 +351,19 @@ export function RunResults({
           </p>
         )}
 
+        {settlementPending && !practice ? (
+          <div
+            className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg px-5 py-4 text-left"
+            data-testid="results-settlement-pending"
+            role="status"
+          >
+            <p className="label-arcade text-[#7df9ff]">Run secured</p>
+            <p className="mt-1 font-body text-sm text-beige/85">
+              Finalizing DNA, records, and Career progress on the server. You can safely leave this screen.
+            </p>
+          </div>
+        ) : null}
+
         {take && (
           <div className="panel-glow [--glow:#facc15] mx-auto max-w-lg space-y-2 px-5 py-4 text-left" data-testid="results-take">
             <p className="label-arcade text-[#facc15]">Daily Take</p>
@@ -371,17 +386,23 @@ export function RunResults({
         </p>
         <p className="flex items-center justify-center gap-2 text-2xl text-bone-white" data-testid="results-yield">
           <IconDna size={22} className="text-venom-orange" /> Yield:{' '}
-          <span className="font-bold text-venom-orange text-glow-orange">{settledYield.toLocaleString()}</span>
+          <span className="font-bold text-venom-orange text-glow-orange">
+            {settlementPending ? 'Finalizing…' : settledYield.toLocaleString()}
+          </span>
         </p>
 
-        {!practice && credited !== null && (
+        {!practice && settlementPending ? (
+          <p className="text-sm text-beige/70" data-testid="results-energy">
+            {committed > 0 ? `${committed} Energy committed` : 'Lean run'} · reward secured
+          </p>
+        ) : !practice && credited !== null ? (
           <p className="text-sm text-beige/70" data-testid="results-energy">
             {committed > 0 ? `${committed} Energy committed` : multiplier < 10_000 ? 'Lean run' : 'Energy-exempt run'} · {credited.toLocaleString()} DNA credited
           </p>
-        )}
+        ) : null}
         {practice && <p className="text-sm text-beige/70" data-testid="gameover-hypothetical">Practice pays nothing — this is what the run was worth.</p>}
 
-        {(yieldBreakdown || (!practice && credited !== null)) && (
+        {!settlementPending && (yieldBreakdown || (!practice && credited !== null)) && (
           <details className="mx-auto max-w-sm rounded-arcade border border-scale-blue-light/25 bg-void-deep/40 px-4 py-2 text-left" data-testid="results-receipt-details">
             <summary className="cursor-pointer text-xs text-beige/65">How Yield was settled</summary>
             <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 text-sm" data-testid={yieldBreakdown ? 'results-yield-breakdown' : undefined}>
@@ -397,7 +418,7 @@ export function RunResults({
           </details>
         )}
 
-        {clanBattle?.eligible && (
+        {!settlementPending && clanBattle?.eligible && (
           <div className="panel-glow [--glow:#7df9ff] mx-auto max-w-lg space-y-2 px-4 py-3 text-left" data-testid="results-clan-battle">
             <p className="label-arcade text-[#7df9ff]">Clan Energy Battle</p>
             <p className="font-body text-sm text-bone-white">
@@ -408,7 +429,7 @@ export function RunResults({
             {clanBattle.replacedSessionId ? <p className="font-body text-xs text-beige/65">Replaced a weaker result.</p> : null}
           </div>
         )}
-        {!clanBattle?.eligible && clanBattle?.reason === 'validation_or_timing' && outcome === 'crashed' && (
+        {!settlementPending && !clanBattle?.eligible && clanBattle?.reason === 'validation_or_timing' && outcome === 'crashed' && (
           <p className="mx-auto max-w-lg font-body text-sm text-strike-red" data-testid="results-clan-battle-lost">The crash salvaged personal DNA, but the potential clan result was not banked.</p>
         )}
       </section>
@@ -438,7 +459,9 @@ export function RunResults({
           <div className="space-y-3 pt-3">
             <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
               {CAREER_SPINE_V1_ENABLED
-                ? impact
+                ? settlementPending
+                  ? 'Run secured — Career impact is finalizing.'
+                  : impact
                   ? impactSummary(impact)
                   : practice
                     ? 'Practice advances no persistent progress.'
@@ -452,7 +475,9 @@ export function RunResults({
             ) : null}
             {CAREER_SPINE_V1_ENABLED && !impact ? (
               <p className="font-body text-xs text-beige/60">
-                {practice
+                {settlementPending
+                  ? 'The server accepted and froze this result. Settlement will complete exactly once even if you close the game.'
+                  : practice
                   ? 'Only the live practice session existed; closing it leaves no earned state behind.'
                   : 'Keep this tab online while settlement retries. The run becomes earned progress when the server accepts and validates its result; this device never stores a progress copy.'}
               </p>

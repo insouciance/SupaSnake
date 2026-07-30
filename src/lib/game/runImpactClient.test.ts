@@ -1,4 +1,5 @@
 import {
+  advancePendingRunImpact,
   groupRunImpacts,
   hasRecognitionCeremony,
   impactSummary,
@@ -152,5 +153,33 @@ describe('Run Impact client contract', () => {
       ok: false,
       status: 503,
     }))).rejects.toThrow('Impact recovery failed (503)');
+  });
+
+  it('uses an explicit write request to advance durable pending settlement', async () => {
+    const fetchFn = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ impact: envelope() }),
+    });
+    await expect(
+      advancePendingRunImpact('session/one', 'token', fetchFn)
+    ).resolves.toEqual(envelope());
+    expect(fetchFn).toHaveBeenCalledWith(
+      '/api/progression/impact?sessionId=session%2Fone',
+      {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { Authorization: 'Bearer token' },
+      }
+    );
+  });
+
+  it('keeps an accepted but unfinished receipt pending without client authority', async () => {
+    await expect(
+      advancePendingRunImpact('pending', 'token', jest.fn().mockResolvedValue({
+        ok: true,
+        status: 202,
+      }))
+    ).resolves.toBeNull();
   });
 });

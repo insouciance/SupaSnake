@@ -4,6 +4,7 @@ import {
   recoverRunImpact,
   type RunImpactEnvelope,
 } from '@/lib/game/runImpactClient';
+import { isDurablyPendingSettlement } from '@/lib/game/settlementResponse';
 
 /**
  * Tab-memory retry queue for unsent settlement requests.
@@ -50,6 +51,7 @@ export interface ReplayResult {
   dropped: number;
   remaining: number;
   impacts: RunImpactEnvelope[];
+  securedPendingSessionIds: string[];
 }
 
 let memoryQueue: RewardOutboxEntry[] = [];
@@ -107,15 +109,25 @@ async function responseImpact(
   entry: RewardOutboxEntry,
   token: string,
   fetchFn: typeof fetch
-): Promise<RunImpactEnvelope | null> {
+): Promise<{ impact: RunImpactEnvelope | null; securedPending: boolean }> {
   try {
     const body = await response.json();
     const direct = parseImpactFromSettlement(body);
-    if (direct) return direct;
+    if (direct) return { impact: direct, securedPending: false };
+    // A 202 with this exact server contract means the immutable result is
+    // already in the durable ingress. The browser must stop retrying and, for
+    // a retired persisted queue, delete its local copy immediately. Receipt
+    // recovery belongs to the server and may not exist until schema 061.
+    if (isDurablyPendingSettlement(body)) {
+      return { impact: null, securedPending: true };
+    }
   } catch {
     // A legacy or empty duplicate response still has a recovery path.
   }
-  return recoverRunImpact(entry.sessionId, token, fetchFn);
+  return {
+    impact: await recoverRunImpact(entry.sessionId, token, fetchFn),
+    securedPending: false,
+  };
 }
 
 function browserStorage(storage?: Storage): Storage | null {
@@ -165,7 +177,11 @@ async function submitEntry(
   token: string,
   fetchFn: typeof fetch
 ): Promise<
-  | { status: 'settled'; impact: RunImpactEnvelope | null }
+  | {
+      status: 'settled';
+      impact: RunImpactEnvelope | null;
+      securedPending: boolean;
+    }
   | { status: 'transient' }
   | { status: 'rejected' }
 > {
@@ -197,9 +213,10 @@ async function submitEntry(
     });
 
     if (response.ok || response.status === 409) {
+      const impactResult = await responseImpact(response, entry, token, fetchFn);
       return {
         status: 'settled',
-        impact: await responseImpact(response, entry, token, fetchFn),
+        ...impactResult,
       };
     }
     if (response.status === 401 || response.status >= 500) {
@@ -231,22 +248,36 @@ async function drainLegacyRewardOutboxOnce(
 ): Promise<ReplayResult> {
   const legacy = readLegacyOutbox(storage);
   if (!legacy.keyPresent) {
-    return { replayed: 0, dropped: 0, remaining: 0, impacts: [] };
+    return {
+      replayed: 0,
+      dropped: 0,
+      remaining: 0,
+      impacts: [],
+      securedPendingSessionIds: [],
+    };
   }
   if (legacy.entries.length === 0) {
     removeLegacyOutbox(storage);
-    return { replayed: 0, dropped: 0, remaining: 0, impacts: [] };
+    return {
+      replayed: 0,
+      dropped: 0,
+      remaining: 0,
+      impacts: [],
+      securedPendingSessionIds: [],
+    };
   }
 
   let replayed = 0;
   let dropped = 0;
   let remaining = 0;
   const impacts: RunImpactEnvelope[] = [];
+  const securedPendingSessionIds: string[] = [];
   for (const entry of legacy.entries) {
     const result = await submitEntry(entry, token, fetchFn);
     if (result.status === 'settled') {
       replayed += 1;
       if (result.impact) impacts.push(result.impact);
+      if (result.securedPending) securedPendingSessionIds.push(entry.sessionId);
     } else if (result.status === 'rejected') {
       dropped += 1;
     } else {
@@ -255,7 +286,7 @@ async function drainLegacyRewardOutboxOnce(
   }
 
   if (remaining === 0) removeLegacyOutbox(storage);
-  return { replayed, dropped, remaining, impacts };
+  return { replayed, dropped, remaining, impacts, securedPendingSessionIds };
 }
 
 export function drainLegacyRewardOutbox(
@@ -290,12 +321,19 @@ export async function replayRewardOutbox(
 ): Promise<ReplayResult> {
   const entries = pruneOutbox();
   if (entries.length === 0) {
-    return { replayed: 0, dropped: 0, remaining: 0, impacts: [] };
+    return {
+      replayed: 0,
+      dropped: 0,
+      remaining: 0,
+      impacts: [],
+      securedPendingSessionIds: [],
+    };
   }
 
   let replayed = 0;
   let dropped = 0;
   const impacts: RunImpactEnvelope[] = [];
+  const securedPendingSessionIds: string[] = [];
   const keep: RewardOutboxEntry[] = [];
 
   for (const entry of entries) {
@@ -303,6 +341,7 @@ export async function replayRewardOutbox(
     if (result.status === 'settled') {
       replayed += 1;
       if (result.impact) impacts.push(result.impact);
+      if (result.securedPending) securedPendingSessionIds.push(entry.sessionId);
     } else if (result.status === 'rejected') {
       dropped += 1;
     } else {
@@ -311,5 +350,11 @@ export async function replayRewardOutbox(
   }
 
   memoryQueue = keep;
-  return { replayed, dropped, remaining: keep.length, impacts };
+  return {
+    replayed,
+    dropped,
+    remaining: keep.length,
+    impacts,
+    securedPendingSessionIds,
+  };
 }

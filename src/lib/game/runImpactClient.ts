@@ -308,6 +308,31 @@ export async function recoverRunImpact(
   return parseImpactFromSettlement(await response.json());
 }
 
+/**
+ * Explicitly ask the server to advance a durably accepted run. Unlike the
+ * receipt-only GET, this POST may adopt and settle server-owned evidence. A
+ * null result means it remains safely pending or no receipt exists yet.
+ */
+export async function advancePendingRunImpact(
+  sessionId: string,
+  token: string,
+  fetchFn: typeof fetch = fetch
+): Promise<RunImpactEnvelope | null> {
+  const response = await fetchFn(
+    `/api/progression/impact?sessionId=${encodeURIComponent(sessionId)}`,
+    {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (response.status === 202 || response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Impact recovery failed (${response.status})`);
+  }
+  return parseImpactFromSettlement(await response.json());
+}
+
 function maxSignificance(impacts: RunImpact[]): RunImpactSignificance {
   return impacts.reduce<RunImpactSignificance>(
     (highest, impact) =>

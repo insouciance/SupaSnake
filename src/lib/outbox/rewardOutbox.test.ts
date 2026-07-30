@@ -86,6 +86,7 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [impact],
+      securedPendingSessionIds: [],
     });
     expect(readOutbox()).toEqual([]);
   });
@@ -142,9 +143,33 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [impact],
+      securedPendingSessionIds: [],
     });
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
     expect(readOutbox()).toEqual([]);
+  });
+
+  it('deletes retired browser state once the server durably accepts a pending run', async () => {
+    window.localStorage.setItem(
+      LEGACY_REWARD_OUTBOX_KEY,
+      JSON.stringify([makeEntry()])
+    );
+    const fetchFn = jest.fn().mockResolvedValue(response(202, {
+      accepted: true,
+      pendingSettlement: true,
+    }));
+
+    await expect(
+      drainLegacyRewardOutbox('token', window.localStorage, fetchFn)
+    ).resolves.toEqual({
+      replayed: 1,
+      dropped: 0,
+      remaining: 0,
+      impacts: [],
+      securedPendingSessionIds: ['session-1'],
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
   });
 
   it('never rewrites or deletes a legacy queue while settlement is transient', async () => {
@@ -169,6 +194,7 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [],
+      securedPendingSessionIds: [],
     });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();

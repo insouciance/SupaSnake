@@ -123,6 +123,7 @@ import {
 } from '@/lib/game/interpolationBuffer';
 import { useToast } from '@/components/ui/Toast';
 import { enqueueReward, replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
+import { isDurablyPendingSettlement } from '@/lib/game/settlementResponse';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import {
   NOTIFICATION_TARGETS,
@@ -182,6 +183,7 @@ import {
 } from '@/lib/share/genomeCardImage';
 import { getAimSystem, isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import {
+  advancePendingRunImpact,
   parseImpactFromSettlement,
   recoverRunImpact,
   type RunImpactEnvelope,
@@ -498,6 +500,7 @@ export default function GamePage() {
   const [settledYieldBreakdown, setSettledYieldBreakdown] =
     useState<AscendanceYieldBreakdown | null>(null);
   const [runImpact, setRunImpact] = useState<RunImpactEnvelope | null>(null);
+  const [settlementSecuredPending, setSettlementSecuredPending] = useState(false);
   // Results → SETUP reopens the setup page over a finished run (§5). REPLAY
   // skips it entirely.
   const [setupReopened, setSetupReopened] = useState(false);
@@ -534,6 +537,17 @@ export default function GamePage() {
             setSettledYield(current.receipt.yieldDna);
             setSettledCredited(current.receipt.dnaCredited);
           }
+          if (
+            currentSessionIdRef.current &&
+            result.securedPendingSessionIds.includes(currentSessionIdRef.current)
+          ) {
+            setSettlementSecuredPending(true);
+            setRunImpact(null);
+            setSettledYield(null);
+            setSettledCredited(null);
+            setSettledYieldBreakdown(null);
+            setClanBattleResult(null);
+          }
           if (result.impacts.length > 0) requestAttentionRefresh();
         })
         .catch((error) => console.error('Settlement retry failed:', error));
@@ -541,6 +555,41 @@ export default function GamePage() {
     window.addEventListener('online', replay);
     return () => window.removeEventListener('online', replay);
   }, [session?.access_token]);
+
+  // A durable 202 transfers all recovery responsibility to the server. Poll
+  // only while this Results screen remains open so the recognition can appear
+  // as soon as its canonical receipt exists; closing the tab loses nothing.
+  useEffect(() => {
+    const token = session?.access_token;
+    const sessionId = currentSessionId;
+    if (!settlementSecuredPending || !token || !sessionId) return;
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const poll = async () => {
+      try {
+        const recovered = await advancePendingRunImpact(sessionId, token);
+        if (cancelled) return;
+        if (!recovered) throw new Error('Run impact is still pending');
+        setRunImpact(recovered);
+        setSettledYield(recovered.receipt.yieldDna);
+        setSettledCredited(recovered.receipt.dnaCredited);
+        setActiveEnergyCommitted(recovered.receipt.energyCommitted);
+        setActiveEnergyMultiplierBps(recovered.receipt.commitmentMultiplierBps);
+        setSettlementSecuredPending(false);
+        requestAttentionRefresh();
+      } catch {
+        if (cancelled) return;
+        attempt += 1;
+        timeout = setTimeout(poll, Math.min(30_000, 2_000 * (2 ** attempt)));
+      }
+    };
+    timeout = setTimeout(poll, 2_000);
+    return () => {
+      cancelled = true;
+      if (timeout !== null) clearTimeout(timeout);
+    };
+  }, [currentSessionId, session?.access_token, settlementSecuredPending]);
 
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
@@ -1515,6 +1564,16 @@ export default function GamePage() {
             }
           } else {
             const result = await response.json();
+            if (isDurablyPendingSettlement(result)) {
+              // The immutable server envelope is now the recovery authority.
+              // Do not display predicted DNA or retain a client retry copy.
+              setSettlementSecuredPending(true);
+              setRunImpact(null);
+              setSettledYield(null);
+              setSettledCredited(null);
+              setSettledYieldBreakdown(null);
+              setClanBattleResult(null);
+            } else {
             const impactEnvelope = parseImpactFromSettlement(result);
             setRunImpact(impactEnvelope);
             if (impactEnvelope) requestAttentionRefresh();
@@ -1634,6 +1693,7 @@ export default function GamePage() {
                 attentionReason: 'progression-opportunity',
                 actionLabel: 'View player card',
               });
+            }
             }
           }
         } catch (err) {
@@ -1892,6 +1952,7 @@ export default function GamePage() {
     setSettledYieldBreakdown(null);
     setClanBattleResult(null);
     setRunImpact(null);
+    setSettlementSecuredPending(false);
     setSetupReopened(false);
 
     // Trait config comes from the server-owned equipped snake row.
@@ -3305,12 +3366,13 @@ export default function GamePage() {
                     void handleCollectTake();
                   }}
                   impact={runImpact}
+                  settlementPending={settlementSecuredPending}
                   nextAction={resultsNextAction}
                   onNextAction={handleResultsNextAction}
                   onReplay={handleReplay}
                   onSetup={handleOpenSetup}
                   replayPending={isStarting}
-                  replayDisabled={isStarting || !equippedSnake}
+                  replayDisabled={isStarting || !equippedSnake || settlementSecuredPending}
                   replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null

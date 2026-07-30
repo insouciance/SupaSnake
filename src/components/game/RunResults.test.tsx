@@ -88,6 +88,7 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
     takeState: 'idle',
     onCollectTake: jest.fn(),
     impact,
+    settlementPending: false,
     nextAction: {
       id: 'chronicle',
       label: 'Open your Chronicle',
@@ -195,6 +196,25 @@ describe('Layer 2', () => {
     expect(screen.getByTestId('results-yield')).toHaveTextContent('260');
     expect(screen.getByTestId('results-energy')).toHaveTextContent('2 Energy committed');
     expect(screen.getByTestId('results-energy')).toHaveTextContent('572 DNA credited');
+  });
+
+  it('distinguishes durable acceptance from a completed reward receipt', () => {
+    render(<RunResults {...props({
+      impact: null,
+      dnaCredited: null,
+      yieldDna: null,
+      settlementPending: true,
+    })} />);
+    expect(screen.getByTestId('results-settlement-pending')).toHaveTextContent(
+      /Run secured/i
+    );
+    expect(screen.getByTestId('results-yield')).toHaveTextContent('Finalizing');
+    expect(screen.getByTestId('results-energy')).toHaveTextContent('reward secured');
+    expect(screen.queryByText(/DNA credited/i)).toBeNull();
+    expect(screen.getByTestId('impact-summary')).toHaveTextContent(
+      /Career impact is finalizing/i
+    );
+    expect(screen.getByText(/even if you close the game/i)).toBeInTheDocument();
   });
 
   it('keeps detailed reward math collapsed', () => {
