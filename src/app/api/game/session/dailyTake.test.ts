@@ -139,8 +139,8 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
       'const yieldDna = ascendance.totalYield;',
       'const finalDna = applyEnergyHarvestMultiplier(',
       'const settlementUpdate: Record<string, unknown> = {',
-      'dna: newDna,',
-      "source_type: 'game_reward',",
+      'const rewardResult = await settleSessionReward(',
+      'const rewardSettlement = rewardResult.settlement;',
       'await refreshPlayerRecords(supabase, player.id);',
       'await settleSignalAttemptForSession(',
     ]) {
@@ -185,9 +185,10 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
   });
 
   it('never lets the Take reach the Free Play response either', () => {
+    const freePlayStart = ROUTE.indexOf('if (isFreeSession) {');
     const freePlay = ROUTE.slice(
-      ROUTE.indexOf('if (isFreeSession) {'),
-      ROUTE.indexOf('const newDna = player.dna + finalDna;')
+      freePlayStart,
+      ROUTE.indexOf('const rewardResult = await settleSessionReward(', freePlayStart)
     );
     expect(freePlay.length).toBeGreaterThan(100);
     // Free Play pays nothing, so it offers nothing (§7.4).

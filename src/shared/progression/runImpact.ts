@@ -37,6 +37,7 @@ export type RunOutcome = 'extracted' | 'crashed' | 'completed';
 export type RunImpactKind =
   | 'mastery_xp'
   | 'mastery_level'
+  | 'personal_best'
   | 'lineage_run'
   | 'record_value'
   | 'record_tier'
@@ -72,12 +73,19 @@ export interface RunImpact {
 }
 
 export interface RunImpactReceipt {
+  validated: boolean;
   score: number;
   yieldDna: number;
   dnaCredited: number;
   energyCommitted: number;
   commitmentMultiplierBps: number;
   generation: number;
+  personalBest: {
+    eligible: boolean;
+    before: number;
+    after: number;
+    improved: boolean;
+  };
 }
 
 export interface RunImpactAction {

@@ -14,6 +14,7 @@
  */
 
 const mockCaptureException = jest.fn();
+var mockSettleSessionReward: jest.Mock;
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -53,6 +54,9 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+jest.mock('@/lib/server/sessionReward', () => ({
+  settleSessionReward: (...args: unknown[]) => mockSettleSessionReward(...args),
+}));
 
 type Row = Record<string, unknown>;
 type Call = [string, ...unknown[]];
@@ -64,6 +68,7 @@ const db: { players: Row[]; game_sessions: Row[]; economy_transactions: Row[] } 
 };
 
 const rpcCalls: Array<{ fn: string; params: unknown }> = [];
+let impactPersistError: Row | null = null;
 
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
@@ -85,6 +90,13 @@ jest.mock('@supabase/supabase-js', () => ({
     },
     rpc: async (fn: string, params: unknown) => {
       rpcCalls.push({ fn, params });
+      if (fn === 'persist_run_impact_envelope') {
+        if (impactPersistError) return { data: null, error: impactPersistError };
+        return {
+          data: (params as { p_envelope?: unknown })?.p_envelope ?? null,
+          error: null,
+        };
+      }
       return { data: null, error: null };
     },
     from: (table: string) => {
@@ -220,8 +232,50 @@ beforeEach(() => {
   jest.clearAllMocks();
   db.economy_transactions = [];
   rpcCalls.length = 0;
+  impactPersistError = null;
   seedPlayer();
   seedSession();
+  mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
+    const input = rawInput as {
+      finalDna: number;
+      score: number;
+      validated: boolean;
+      sessionId: string;
+    };
+    const row = player();
+    const before = Number(row.high_score ?? 0);
+    const after = input.validated ? Math.max(before, input.score) : before;
+    row.dna = Number(row.dna ?? 0) + input.finalDna;
+    row.total_games_played = Number(row.total_games_played ?? 0) + 1;
+    row.total_dna_earned = Number(row.total_dna_earned ?? 0) + input.finalDna;
+    row.high_score = after;
+    if (input.finalDna > 0) {
+      db.economy_transactions.push({
+        source_type: 'game_reward',
+        source_id: input.sessionId,
+        amount: input.finalDna,
+      });
+    }
+    return {
+      ok: true,
+      settlement: {
+        applied: true,
+        player: {
+          dna: row.dna,
+          totalGamesPlayed: row.total_games_played,
+          highScore: row.high_score,
+          totalDnaEarned: row.total_dna_earned,
+          breedsCompleted: row.breeds_completed,
+        },
+        personalBest: {
+          eligible: input.validated,
+          before,
+          after,
+          improved: input.validated && after > before,
+        },
+      },
+    };
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -236,6 +290,50 @@ describe('a settled run records `completed`', () => {
     expect(session().ended_at).not.toBeNull();
     expect(session().validated).toBe(true);
     expect(player().dna).toBeGreaterThan(0);
+  });
+
+  it('re-opens the lifecycle marker when the atomic reward fold fails', async () => {
+    mockSettleSessionReward.mockResolvedValueOnce({
+      ok: false,
+      error: { code: '40001', message: 'serialization failure' },
+    });
+    const response = await POST(post(endBody()));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ retryable: true });
+    expect(session().ended_at).toBeNull();
+    expect(session().end_reason).toBe('completed');
+    expect(player().dna).toBe(0);
+    expect(player().total_games_played).toBe(0);
+  });
+
+  it('makes a concurrent completed-before-receipt response retryable', async () => {
+    seedSession({
+      ended_at: new Date().toISOString(),
+      end_reason: 'completed',
+      validated: true,
+    });
+    const response = await POST(post(endBody()));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      alreadyEnded: true,
+      impactPending: true,
+      retryable: true,
+    });
+    expect(mockSettleSessionReward).not.toHaveBeenCalled();
+  });
+
+  it('does not call an unpersisted impact envelope successful', async () => {
+    impactPersistError = { code: '08006', message: 'connection failure' };
+    const response = await POST(post(endBody()));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      alreadyEnded: true,
+      impactPending: true,
+      retryable: true,
+    });
+    // The atomic reward succeeded; only its durable presentation is pending.
+    expect(player().dna).toBeGreaterThan(0);
+    expect(session().ended_at).not.toBeNull();
   });
 });
 

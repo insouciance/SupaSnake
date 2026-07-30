@@ -1,6 +1,8 @@
 import {
   buildRunImpactEnvelope,
   isMissingRunImpactInfra,
+  loadRunImpactEnvelope,
+  persistRunImpactEnvelope,
 } from './runImpact';
 
 const base = {
@@ -9,12 +11,14 @@ const base = {
   dynasty: 'PRIMAL' as const,
   extracted: true,
   died: false,
+  validated: true,
   score: 1234,
   yieldDna: 800,
   dnaCredited: 1760,
   energyCommitted: 2,
   commitmentMultiplierBps: 22000,
   generation: 5,
+  personalBest: { eligible: true, before: 2000, after: 2000, improved: false },
   snakeId: '550e8400-e29b-41d4-a716-446655440001',
   mastery: null,
   recordsBefore: null,
@@ -34,12 +38,19 @@ describe('Career Spine run impact envelope', () => {
       outcome: 'extracted',
       dynasty: 'PRIMAL',
       receipt: {
+        validated: true,
         score: 1234,
         yieldDna: 800,
         dnaCredited: 1760,
         energyCommitted: 2,
         commitmentMultiplierBps: 22000,
         generation: 5,
+        personalBest: {
+          eligible: true,
+          before: 2000,
+          after: 2000,
+          improved: false,
+        },
       },
       featuredImpactKeys: [],
       recommendedAction: null,
@@ -54,14 +65,38 @@ describe('Career Spine run impact envelope', () => {
     expect(JSON.stringify(envelope)).not.toMatch(/claim/i);
   });
 
+  it('carries server-authored personal-best before/after truth', () => {
+    const envelope = buildRunImpactEnvelope({
+      ...base,
+      personalBest: { eligible: true, before: 900, after: 1234, improved: true },
+    });
+    expect(envelope.receipt.personalBest).toEqual({
+      eligible: true,
+      before: 900,
+      after: 1234,
+      improved: true,
+    });
+    expect(envelope.impacts).toContainEqual(
+      expect.objectContaining({
+        kind: 'personal_best',
+        before: 900,
+        after: 1234,
+        delta: 334,
+      })
+    );
+  });
+
   it('reports exact before/after Record and Mastery crossings', () => {
     const envelope = buildRunImpactEnvelope({
       ...base,
       mastery: {
         dynasty: 'PRIMAL',
         xpGained: 200,
+        xpBefore: 6900,
         xp: 7100,
+        levelBefore: 1,
         level: 3,
+        levelsGained: 2,
         leveledUp: true,
         unlocks: [{ level: 3, kind: 'mutation', label: 'Deep Roots' }],
       },
@@ -72,8 +107,9 @@ describe('Career Spine run impact envelope', () => {
       expect.arrayContaining([
         expect.objectContaining({
           key: 'mastery:PRIMAL:level:3',
-          before: 2,
+          before: 1,
           after: 3,
+          delta: 2,
           significance: 'milestone',
         }),
         expect.objectContaining({
@@ -92,8 +128,11 @@ describe('Career Spine run impact envelope', () => {
       mastery: {
         dynasty: 'PRIMAL',
         xpGained: 1000,
+        xpBefore: 174000,
         xp: 175000,
+        levelBefore: 9,
         level: 10,
+        levelsGained: 1,
         leveledUp: true,
         unlocks: [{ level: 10, kind: 'emblem', label: 'Sovereign' }],
       },
@@ -142,11 +181,96 @@ describe('Career Spine run impact envelope', () => {
     );
   });
 
+  it('never presents invalid-run lineage or PB advancement', () => {
+    const envelope = buildRunImpactEnvelope({
+      ...base,
+      validated: false,
+      personalBest: { eligible: false, before: 900, after: 900, improved: false },
+    });
+    expect(envelope.receipt.validated).toBe(false);
+    expect(envelope.receipt.personalBest).toEqual({
+      eligible: false,
+      before: 900,
+      after: 900,
+      improved: false,
+    });
+    expect(envelope.impacts).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'lineage_run' }),
+        expect.objectContaining({ kind: 'personal_best' }),
+      ])
+    );
+  });
+
   it('recognizes deploy-before-migration errors without hiding real failures', () => {
     expect(isMissingRunImpactInfra({ code: '42P01', message: 'missing relation' })).toBe(true);
     expect(
       isMissingRunImpactInfra({ code: 'PGRST202', message: 'persist_run_impact_envelope absent' })
     ).toBe(true);
     expect(isMissingRunImpactInfra({ code: '08006', message: 'connection failure' })).toBe(false);
+  });
+});
+
+describe('run impact durability results', () => {
+  const envelope = () => buildRunImpactEnvelope(base);
+
+  function readClient(result: { data: unknown; error: unknown }) {
+    const chain: Record<string, unknown> = {};
+    for (const method of ['select', 'eq']) {
+      chain[method] = jest.fn(() => chain);
+    }
+    chain.maybeSingle = jest.fn(async () => result);
+    return { from: jest.fn(() => chain) };
+  }
+
+  it('distinguishes a true absent receipt from a failed read', async () => {
+    await expect(
+      loadRunImpactEnvelope(
+        readClient({ data: null, error: null }) as never,
+        'player-1',
+        base.sessionId
+      )
+    ).resolves.toEqual({ status: 'absent' });
+
+    const failed = await loadRunImpactEnvelope(
+      readClient({ data: null, error: { code: '08006', message: 'connection failure' } }) as never,
+      'player-1',
+      base.sessionId
+    );
+    expect(failed).toMatchObject({ status: 'unavailable' });
+  });
+
+  it('treats malformed stored settlement truth as unavailable, never absent', async () => {
+    const malformed = {
+      ...envelope(),
+      receipt: { ...envelope().receipt, score: '1234' },
+    };
+    const result = await loadRunImpactEnvelope(
+      readClient({ data: { envelope: malformed }, error: null }) as never,
+      'player-1',
+      base.sessionId
+    );
+    expect(result).toMatchObject({ status: 'unavailable' });
+  });
+
+  it('never treats an unpersisted envelope as canonical success', async () => {
+    const failed = await persistRunImpactEnvelope(
+      {
+        rpc: jest.fn(async () => ({
+          data: null,
+          error: { code: '08006', message: 'connection failure' },
+        })),
+      } as never,
+      'player-1',
+      envelope()
+    );
+    expect(failed).toMatchObject({ status: 'unavailable' });
+
+    const persisted = await persistRunImpactEnvelope(
+      { rpc: jest.fn(async () => ({ data: envelope(), error: null })) } as never,
+      'player-1',
+      envelope()
+    );
+    expect(persisted).toMatchObject({ status: 'persisted', impact: envelope() });
   });
 });

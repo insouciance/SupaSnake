@@ -37,9 +37,15 @@ export async function GET(request: NextRequest) {
   }
   if (!player) return progressionJson({ error: 'Player not found' }, { status: 404 });
 
-  const impact = await loadRunImpactEnvelope(supabase, player.id, sessionId);
-  if (!impact) {
+  const result = await loadRunImpactEnvelope(supabase, player.id, sessionId);
+  if (result.status === 'unavailable') {
+    return progressionJson(
+      { error: 'Impact receipt is temporarily unavailable', retryable: true },
+      { status: 503 }
+    );
+  }
+  if (result.status === 'absent') {
     return progressionJson({ error: 'Impact receipt not found' }, { status: 404 });
   }
-  return progressionJson({ impact });
+  return progressionJson({ impact: result.impact });
 }
