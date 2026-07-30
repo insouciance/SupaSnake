@@ -556,65 +556,6 @@ export default function GamePage() {
     return () => window.removeEventListener('online', replay);
   }, [session?.access_token]);
 
-  // A durable 202 transfers all recovery responsibility to the server. Poll
-  // only while this Results screen remains open so the recognition can appear
-  // as soon as its canonical receipt exists; closing the tab loses nothing.
-  useEffect(() => {
-    const token = session?.access_token;
-    const sessionId = currentSessionId;
-    if (!settlementSecuredPending || !token || !sessionId) return;
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    let attempt = 0;
-    const poll = async () => {
-      try {
-        const recovered = await advancePendingRunImpact(sessionId, token);
-        if (cancelled) return;
-        if (!recovered) throw new Error('Run impact is still pending');
-        setRunImpact(recovered);
-        setSettledYield(recovered.receipt.yieldDna);
-        setSettledCredited(recovered.receipt.dnaCredited);
-        setActiveEnergyCommitted(recovered.receipt.energyCommitted);
-        setActiveEnergyMultiplierBps(recovered.receipt.commitmentMultiplierBps);
-        setSettlementSecuredPending(false);
-        requestAttentionRefresh();
-        void fetch('/api/player', {
-          cache: 'no-store',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error(`/api/player responded ${response.status}`);
-            }
-            return response.json();
-          })
-          .then((data) => {
-            if (typeof data.player?.dna === 'number') {
-              useCollectionStore.getState().setDnaBalance(data.player.dna);
-            }
-            syncChargeFromServer(data.energy ?? data.charge ?? null);
-          })
-          .catch((error) => {
-            console.error('Failed to refresh player after settlement:', error);
-          });
-      } catch {
-        if (cancelled) return;
-        attempt += 1;
-        timeout = setTimeout(poll, Math.min(30_000, 2_000 * (2 ** attempt)));
-      }
-    };
-    timeout = setTimeout(poll, 2_000);
-    return () => {
-      cancelled = true;
-      if (timeout !== null) clearTimeout(timeout);
-    };
-  }, [
-    currentSessionId,
-    session?.access_token,
-    settlementSecuredPending,
-    syncChargeFromServer,
-  ]);
-
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
   }, [equippedSnake]);
@@ -702,6 +643,65 @@ export default function GamePage() {
     setReady,
     syncChargeFromServer,
   } = useGameStore();
+
+  // A durable 202 transfers all recovery responsibility to the server. Poll
+  // only while this Results screen remains open so the recognition can appear
+  // as soon as its canonical receipt exists; closing the tab loses nothing.
+  useEffect(() => {
+    const token = session?.access_token;
+    const sessionId = currentSessionId;
+    if (!settlementSecuredPending || !token || !sessionId) return;
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const poll = async () => {
+      try {
+        const recovered = await advancePendingRunImpact(sessionId, token);
+        if (cancelled) return;
+        if (!recovered) throw new Error('Run impact is still pending');
+        setRunImpact(recovered);
+        setSettledYield(recovered.receipt.yieldDna);
+        setSettledCredited(recovered.receipt.dnaCredited);
+        setActiveEnergyCommitted(recovered.receipt.energyCommitted);
+        setActiveEnergyMultiplierBps(recovered.receipt.commitmentMultiplierBps);
+        setSettlementSecuredPending(false);
+        requestAttentionRefresh();
+        void fetch('/api/player', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`/api/player responded ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            if (typeof data.player?.dna === 'number') {
+              useCollectionStore.getState().setDnaBalance(data.player.dna);
+            }
+            syncChargeFromServer(data.energy ?? data.charge ?? null);
+          })
+          .catch((error) => {
+            console.error('Failed to refresh player after settlement:', error);
+          });
+      } catch {
+        if (cancelled) return;
+        attempt += 1;
+        timeout = setTimeout(poll, Math.min(30_000, 2_000 * (2 ** attempt)));
+      }
+    };
+    timeout = setTimeout(poll, 2_000);
+    return () => {
+      cancelled = true;
+      if (timeout !== null) clearTimeout(timeout);
+    };
+  }, [
+    currentSessionId,
+    session?.access_token,
+    settlementSecuredPending,
+    syncChargeFromServer,
+  ]);
 
   /**
    * Bank/crash preview for the HUD chip and game-over screen. Genome
