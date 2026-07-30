@@ -9,8 +9,12 @@
 
 \if :{?dblink_conn}
 \else
-  \echo 'dblink_conn is required for the isolated local concurrency test'
-  \quit 3
+DO $$
+BEGIN
+  RAISE EXCEPTION
+    'dblink_conn is required for the isolated local concurrency test';
+END;
+$$;
 \endif
 
 CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA extensions;
