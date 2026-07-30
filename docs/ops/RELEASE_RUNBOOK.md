@@ -74,8 +74,11 @@ performs:
 7. For ordinary backward-compatible migrations, application and lint of the
    exact pending set, followed by staged and outgoing compatibility smokes.
 8. Promotion of the staged build to `supasnake.com`.
-9. During the Career cutover, a canonical-alias smoke proving the exact release
-   SHA, bridge phase and presentation flag before the drain clock starts.
+9. A canonical-alias identity check proving that Vercel resolves
+   `supasnake.com` to the staged deployment ID—not merely another artifact from
+   the same commit. During the Career cutover, the subsequent canonical smoke
+   also proves the exact release SHA, bridge phase and presentation flag before
+   the drain clock starts.
 10. A 360-second drain of retired settlement invocations, followed by a second
     dry-run that must name only `061_career_spine.sql`.
 11. Application and lint of migration 061. New earning results accepted during

@@ -244,6 +244,7 @@ jobs:
       - name: Build and stage application in Vercel
         id: app
         run: |
+          set -euo pipefail
           deployment_url=$(npx vercel@56.3.1 deploy \
             --prod \
             --skip-domain \
@@ -254,7 +255,16 @@ jobs:
             --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
             --env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
             --token="$VERCEL_TOKEN")
+          deployment_json=$(npx vercel@56.3.1 inspect "$deployment_url" \
+            --format=json --non-interactive --token="$VERCEL_TOKEN")
+          deployment_id=$(printf '%s' "$deployment_json" | jq -er '.id')
+          deployment_ready=$(printf '%s' "$deployment_json" | jq -er '.readyState')
+          if [ "$deployment_ready" != 'READY' ]; then
+            echo "::error::staged deployment is not READY"
+            exit 1
+          fi
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "id=$deployment_id" >> "$GITHUB_OUTPUT"
       - name: Smoke staged application against the current schema
         run: |
           set -uo pipefail
@@ -351,6 +361,27 @@ jobs:
           "${{ steps.app.outputs.url }}"
           --yes
           --token="$VERCEL_TOKEN"
+
+      - name: Prove canonical alias names the staged deployment
+        run: |
+          set -euo pipefail
+          canonical_json=''
+          for attempt in $(seq 1 12); do
+            if canonical_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
+                --format=json --non-interactive --token="$VERCEL_TOKEN") \
+              && canonical_id=$(printf '%s' "$canonical_json" | jq -er '.id') \
+              && canonical_ready=$(printf '%s' "$canonical_json" | jq -er '.readyState') \
+              && canonical_target=$(printf '%s' "$canonical_json" | jq -er '.target') \
+              && [ "$canonical_id" = "${{ steps.app.outputs.id }}" ] \
+              && [ "$canonical_ready" = 'READY' ] \
+              && [ "$canonical_target" = 'production' ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::canonical alias does not name staged deployment ${{ steps.app.outputs.id }}"
+          printf '%s\n' "$canonical_json"
+          exit 1
 
       - name: Prove canonical Career bridge deployment
         if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
