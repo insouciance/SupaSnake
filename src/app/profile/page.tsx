@@ -2,8 +2,9 @@
 
 /**
  * Own Chronicle /profile (Player Identity v1 section 7): the career
- * surface - same sections as the public /p/[handle] plus the private
- * extra: the records refresh button (rate-limited server-side).
+ * surface - same durable career as the public /p/[handle], plus a private
+ * server-backed Career Pulse. Records refresh during authoritative
+ * settlement; the Chronicle does not expose infrastructure maintenance.
  *
  * WP-0.04: the Early Career collapsible and its achievements panel are
  * gone. The achievement mechanism was retired into the Legacy Records
@@ -16,15 +17,15 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
 import { ChronicleView } from '@/components/chronicle/ChronicleView';
+import { CareerPulse } from '@/components/chronicle/CareerPulse';
 import {
   ArchetypeSection,
   DigestCard,
   RecallCard,
   type AnalystArtifact,
 } from '@/components/chronicle/AnalystSections';
-import { IconMedal, IconReset } from '@/components/ui/icons';
+import { IconMedal } from '@/components/ui/icons';
 import type { ChroniclePayload } from '@/lib/chronicle/types';
-import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 interface AnalystState {
   digest: AnalystArtifact | null;
@@ -37,19 +38,11 @@ interface AnalystState {
 
 export default function ProfilePage() {
   const { user, getToken } = useAuth();
-  const clearNotification = useNotificationStore((state) => state.clear);
-  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
   const [payload, setPayload] = useState<ChroniclePayload | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [analyst, setAnalyst] = useState<AnalystState | null>(null);
-
-  // Reaching the Chronicle is the intentional discovery action represented
-  // by the identity badge. Claiming a handle remains optional inside it.
-  useEffect(() => {
-    if (notificationsHydrated) clearNotification('claim-handle');
-  }, [clearNotification, notificationsHydrated]);
 
   // Analyst artifacts (Identity v1 I4): every failure renders nothing —
   // the Chronicle never waits on, or breaks over, the Analyst.
@@ -109,6 +102,7 @@ export default function ProfilePage() {
         setLoading(false);
         return;
       }
+      setAccessToken(token);
       const response = await fetch('/api/chronicle', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -134,31 +128,6 @@ export default function ProfilePage() {
       setLoading(false);
     }
   }, [user, loadChronicle, loadAnalyst]);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
-      const response = await fetch('/api/chronicle', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'refresh' }),
-      });
-      // 429 = inside the rate window: the payload is already fresh
-      // enough; anything else re-reads.
-      if (response.ok) {
-        await loadChronicle();
-      }
-    } catch {
-      // Non-fatal: the chronicle keeps its last data.
-    } finally {
-      setRefreshing(false);
-    }
-  }, [getToken, loadChronicle]);
 
   if (!user) {
     return (
@@ -195,27 +164,15 @@ export default function ProfilePage() {
               Your career, on the record
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            {payload?.identity.handle && (
-              <Link
-                href={`/p/${payload.identity.handle}`}
-                className="btn-neutral px-4 py-2.5 min-h-[44px] inline-flex items-center font-body text-sm"
-                data-testid="public-profile-link"
-              >
-                Public view
-              </Link>
-            )}
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing || loading}
-              className="btn-arcade px-4 py-2.5 min-h-[44px] inline-flex items-center gap-2 font-body text-sm disabled:opacity-50"
-              data-testid="records-refresh-button"
-              title="Recompute your records from your career telemetry"
+          {payload?.identity.handle && (
+            <Link
+              href={`/p/${payload.identity.handle}`}
+              className="btn-neutral px-4 py-2.5 min-h-[44px] inline-flex items-center font-body text-sm"
+              data-testid="public-profile-link"
             >
-              <IconReset size={15} />
-              {refreshing ? 'Refreshing…' : 'Refresh records'}
-            </button>
-          </div>
+              Public view
+            </Link>
+          )}
         </div>
 
         {loading ? (
@@ -228,6 +185,9 @@ export default function ProfilePage() {
           <ChronicleView
             payload={payload}
             isSelf
+            careerPulseSlot={
+              accessToken ? <CareerPulse accessToken={accessToken} /> : undefined
+            }
             archetypeSlot={
               analyst?.archetype && analyst.seasonSeq !== null ? (
                 <ArchetypeSection

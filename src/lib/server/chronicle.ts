@@ -440,17 +440,22 @@ async function buildTriviaSection(
   });
 }
 
-/** Current clan + rating history + rivalry records; null when clanless. */
+/**
+ * Current clan + 3-day Energy Battle history. Aggregate battle facts and the
+ * viewer's equal honors are public Chronicle facts; individual teammate
+ * attempts never enter this read. Weekly duels survive only as an explicitly
+ * labeled archive.
+ */
 async function buildClanSection(
   supabase: SupabaseClient,
-  userId: string | null
+  player: ChroniclePlayerRow
 ): Promise<ClanSection | null> {
-  if (!userId) return null;
+  if (!player.user_id) return null;
 
   const { data: membership, error: membershipError } = await supabase
     .from('clan_members')
     .select('clan_id, clans(id, name, tag, rating)')
-    .eq('player_id', userId)
+    .eq('player_id', player.user_id)
     .maybeSingle();
   if (membershipError) {
     logUnlessMissing('clan_members', membershipError);
@@ -464,7 +469,104 @@ async function buildClanSection(
   } | null;
   if (!clan) return null;
 
-  let ratingHistory: ClanSection['ratingHistory'] = [];
+  let battleHistory: ClanSection['battleHistory'] = [];
+  let honors: ClanSection['honors'] = {
+    total: 0,
+    victories: 0,
+    stalemates: 0,
+    participations: 0,
+  };
+
+  const { data: sideRows, error: sideError } = await supabase
+    .from('clan_energy_battle_sides')
+    .select(
+      'battle_id, cycle_index, score, outcome, clan_energy_battles(starts_at, settled_at)'
+    )
+    .eq('clan_id', clan.id)
+    .order('cycle_index', { ascending: false })
+    .limit(12);
+
+  if (sideError) {
+    logUnlessMissing('clan_energy_battle_sides', sideError);
+  } else {
+    const battleIds = (sideRows ?? []).map((row) => row.battle_id as string);
+    const opponentsByBattle = new Map<
+      string,
+      { name: string; tag: string | null; depth: number; outcome: string }
+    >();
+    if (battleIds.length > 0) {
+      const { data: opponentRows, error: opponentError } = await supabase
+        .from('clan_energy_battle_sides')
+        .select('battle_id, score, outcome, clans(name, tag)')
+        .in('battle_id', battleIds)
+        .neq('clan_id', clan.id);
+      if (opponentError) {
+        logUnlessMissing('clan_energy_battle_sides opponents', opponentError);
+      } else {
+        for (const row of opponentRows ?? []) {
+          const opponentJoin = row.clans as unknown as
+            | { name: string; tag: string | null }
+            | Array<{ name: string; tag: string | null }>
+            | null;
+          const opponent = Array.isArray(opponentJoin)
+            ? opponentJoin[0] ?? null
+            : opponentJoin;
+          const opponentFacts = opponent as {
+            name: string;
+            tag: string | null;
+          } | null;
+          if (!opponentFacts) continue;
+          opponentsByBattle.set(row.battle_id as string, {
+            name: opponentFacts.name,
+            tag: opponentFacts.tag,
+            depth: Number(row.score ?? 0),
+            outcome: String(row.outcome ?? 'pending'),
+          });
+        }
+      }
+    }
+
+    battleHistory = (sideRows ?? []).map((row) => {
+      const battleJoin = row.clan_energy_battles as unknown as
+        | { starts_at: string; settled_at: string | null }
+        | Array<{ starts_at: string; settled_at: string | null }>
+        | null;
+      const battle = Array.isArray(battleJoin)
+        ? battleJoin[0] ?? null
+        : battleJoin;
+      return {
+        battleId: row.battle_id as string,
+        startedAt: battle?.starts_at ?? '',
+        settledAt: battle?.settled_at ?? null,
+        outcome: String(row.outcome ?? 'pending') as ClanSection['battleHistory'][number]['outcome'],
+        clanDepth: Number(row.score ?? 0),
+        opponent: opponentsByBattle.get(row.battle_id as string) ?? null,
+      };
+    });
+  }
+
+  const { data: honorRows, error: honorError } = await supabase
+    .from('clan_energy_honors')
+    .select('honor')
+    .eq('player_id', player.id);
+  if (honorError) {
+    logUnlessMissing('clan_energy_honors', honorError);
+  } else {
+    honors = (honorRows ?? []).reduce<ClanSection['honors']>(
+      (summary, row) => {
+        summary.total += 1;
+        if (row.honor === 'victor') summary.victories += 1;
+        else if (row.honor === 'stalemate') summary.stalemates += 1;
+        else summary.participations += 1;
+        return summary;
+      },
+      { total: 0, victories: 0, stalemates: 0, participations: 0 }
+    );
+  }
+
+  // The old ladder is history, not the current clan game. Keep it readable
+  // beneath an Archive disclosure so existing careers do not lose context.
+  let ratingHistory: NonNullable<ClanSection['legacyArchive']>['ratingHistory'] = [];
   const { data: historyRows, error: historyError } = await supabase
     .from('clan_rating_history')
     .select('week_start, rating_after, delta')
@@ -482,7 +584,7 @@ async function buildClanSection(
   }
 
   // Rivalry records: settled duels grouped by opponent (top 3 by volume).
-  let rivalries: ClanSection['rivalries'] = [];
+  let rivalries: NonNullable<ClanSection['legacyArchive']>['rivalries'] = [];
   const { data: duels, error: duelsError } = await supabase
     .from('clan_duels')
     .select('clan_a, clan_b, winner, clans_a:clan_a(name, tag), clans_b:clan_b(name, tag)')
@@ -525,13 +627,12 @@ async function buildClanSection(
       .slice(0, 3);
   }
 
-  return {
-    name: clan.name,
-    tag: clan.tag,
-    rating: clan.rating,
-    ratingHistory,
-    rivalries,
-  };
+  const legacyArchive =
+    ratingHistory.length > 0 || rivalries.length > 0
+      ? { rating: clan.rating, ratingHistory, rivalries }
+      : null;
+
+  return { name: clan.name, tag: clan.tag, battleHistory, honors, legacyArchive };
 }
 
 /**
@@ -587,7 +688,7 @@ export async function buildChronicle(
       buildRecordsSection(supabase, player.id),
       buildPbSection(supabase, player.id),
       buildSeasonChapters(supabase, player),
-      buildClanSection(supabase, player.user_id),
+      buildClanSection(supabase, player),
       buildTriviaSection(supabase, player.id),
     ]);
   }

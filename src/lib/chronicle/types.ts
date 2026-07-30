@@ -135,12 +135,37 @@ export interface ClanRivalry {
   ties: number;
 }
 
+export interface ClanEnergyBattleChapter {
+  battleId: string;
+  startedAt: string;
+  settledAt: string | null;
+  outcome: 'pending' | 'victor' | 'participant' | 'stalemate' | 'bye';
+  clanDepth: number;
+  opponent: {
+    name: string;
+    tag: string | null;
+    depth: number;
+    outcome: string;
+  } | null;
+}
+
 export interface ClanSection {
   name: string;
   tag: string;
-  rating: number;
-  ratingHistory: ClanRatingPoint[];
-  rivalries: ClanRivalry[];
+  /** Current 3-day Energy Battle history. Aggregate clan facts only. */
+  battleHistory: ClanEnergyBattleChapter[];
+  honors: {
+    total: number;
+    victories: number;
+    stalemates: number;
+    participations: number;
+  };
+  /** Immutable pre-Energy-Battle history, clearly labeled as archive. */
+  legacyArchive: {
+    rating: number;
+    ratingHistory: ClanRatingPoint[];
+    rivalries: ClanRivalry[];
+  } | null;
 }
 
 /**

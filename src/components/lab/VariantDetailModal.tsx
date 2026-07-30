@@ -69,6 +69,8 @@ export interface VariantDetailModalProps {
   onDowngrade?: () => void;
   isDowngrading?: boolean;
   downgradeError?: string | null;
+  /** Server-backed active/retired passport; never an inventory control. */
+  lineageDossierSlot?: React.ReactNode;
 }
 
 /**
@@ -184,6 +186,7 @@ export function VariantDetailModal({
   onDowngrade,
   isDowngrading = false,
   downgradeError = null,
+  lineageDossierSlot,
 }: VariantDetailModalProps): React.ReactElement<any> | null {
   const theme = useDynastyTheme(dynasty.name);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -555,6 +558,10 @@ export function VariantDetailModal({
                   </div>
                 </div>
               </div>
+            )}
+
+            {lineageDossierSlot && (
+              <div className="mb-4">{lineageDossierSlot}</div>
             )}
 
             {/* Ruleset identity - how this dynasty actually plays */}

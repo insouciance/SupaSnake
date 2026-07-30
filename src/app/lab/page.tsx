@@ -38,6 +38,7 @@ import { CollectionProgress } from '@/components/lab/CollectionProgress';
 import { MasteryPanel, type DynastyMasteryState } from '@/components/lab/MasteryPanel';
 import { CollectionGrid } from '@/components/lab/CollectionGrid';
 import { VariantDetailModal } from '@/components/lab/VariantDetailModal';
+import { LineageDossier } from '@/components/lab/LineageDossier';
 import { UnlockConfirmModal } from '@/components/lab/UnlockConfirmModal';
 
 import type {
@@ -56,13 +57,6 @@ export default function LabPage() {
   const { showToast } = useToast();
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
   const publishNotification = useNotificationStore((state) => state.publish);
-  const clearNotification = useNotificationStore((state) => state.clear);
-  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
-
-  // Entering the Lab is the player's acknowledgement of its discovery badge.
-  useEffect(() => {
-    if (notificationsHydrated) clearNotification('lab-discovery');
-  }, [clearNotification, notificationsHydrated]);
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -272,12 +266,13 @@ export default function LabPage() {
       if (succeeded && isAnonymous && hasCompletedFirstRun) {
         publishNotification({
           id: 'save-progress',
-          title: 'Keep your collection',
-          description: 'Add an email whenever you want to play on another device.',
+          title: 'Add account recovery',
+          description:
+            'Your collection is secured. Add an email for account recovery or another device.',
           ...NOTIFICATION_TARGETS.saveProgress,
           badgeKind: 'exclamation',
           attentionReason: 'action-required',
-          actionLabel: 'Save progress',
+          actionLabel: 'Add recovery',
         });
       }
     }
@@ -668,6 +663,15 @@ export default function LabPage() {
           onDowngrade={downgradeFacts ? handleDowngrade : undefined}
           isDowngrading={isDowngradingSnake}
           downgradeError={downgradeError}
+          lineageDossierSlot={
+            session?.access_token && selectedSnake.snakeVariantId ? (
+              <LineageDossier
+                accessToken={session.access_token}
+                variantId={selectedSnake.snakeVariantId}
+                specimenId={selectedSnake.id}
+              />
+            ) : undefined
+          }
         />
       )}
 

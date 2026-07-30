@@ -1,0 +1,433 @@
+'use client';
+
+/**
+ * The private, quiet front page of a career. All facts arrive from the
+ * server-owned career projection; this component never derives progress from
+ * browser state and never persists a pursuit locally.
+ */
+
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  IconArrowRight,
+  IconChart,
+  IconEgg,
+  IconMedal,
+  IconShield,
+} from '@/components/ui/icons';
+
+type CareerPillar = 'mastery' | 'lineage' | 'discovery' | 'clan' | 'calendar';
+type MomentSignificance = 'routine' | 'notable' | 'milestone' | 'historic';
+
+interface CareerMoment {
+  id: string;
+  pillar: CareerPillar;
+  kind: string;
+  significance: MomentSignificance;
+  headline: string;
+  detail?: string | null;
+  securedAt: string;
+  destination?: string | null;
+  artifactRef?: string | null;
+  source: { type: string; id: string };
+}
+
+interface PursuitCandidate {
+  id: string;
+  pillar: 'mastery' | 'lineage' | 'discovery';
+  kind: 'mastery_level' | 'record_tier' | 'ladder_record' | 'lineage_generation';
+  targetId: string;
+  headline: string;
+  destination: string;
+  current: number;
+  target: number;
+}
+
+interface PinnedPursuit extends PursuitCandidate {
+  pinnedAt: string;
+}
+
+export interface CareerPulseData {
+  generatedAt: string;
+  mastery: Array<{
+    dynasty: string;
+    xp: number;
+    level: number;
+    nextLevelXp: number | null;
+  }>;
+  records: {
+    total: number;
+    tiered: number;
+    apex: number;
+    strongest: Array<{ id: string; value: number; tier: number }>;
+  };
+  discovery: {
+    entries: number;
+    worldFirsts: number;
+    genomeWeaverUnlocked: boolean;
+  };
+  ladder: {
+    bestByDynasty: Record<string, number>;
+    maxBest: number;
+  };
+  lineage: {
+    dossiers: number;
+    activeSpecimens: number;
+    highestGeneration: number;
+  };
+  clan: {
+    honors: { participant: number; victor: number; stalemate: number };
+    activeBattle: {
+      battleId: string;
+      cycleKey: string;
+      endsAt: string;
+      ownTopFive: number[];
+      fifthBest: number;
+      clanTotal: number;
+      opponentTotal: number;
+    } | null;
+  };
+  recentMoments: CareerMoment[];
+  pursuitCandidates: PursuitCandidate[];
+  pinnedPursuit: PinnedPursuit | null;
+}
+
+interface CareerPulseResponse {
+  careerPulse?: CareerPulseData | null;
+}
+
+interface CareerPulseProps {
+  accessToken: string;
+}
+
+const PILLAR_LABELS: Record<CareerPillar, string> = {
+  mastery: 'Mastery',
+  lineage: 'Lineage',
+  discovery: 'Discovery',
+  clan: 'Clan',
+  calendar: 'World',
+};
+
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function progressPercent(current: number, target: number): number {
+  if (!Number.isFinite(current) || !Number.isFinite(target) || target <= 0) return 0;
+  return Math.max(0, Math.min(100, (current / target) * 100));
+}
+
+function MasterySummary({ pulse }: { pulse: CareerPulseData }) {
+  const strongest = [...pulse.mastery].sort(
+    (a, b) => b.level - a.level || b.xp - a.xp
+  )[0];
+  return (
+    <div className="rounded-arcade border border-venom-orange/25 bg-void/45 p-3">
+      <div className="flex items-center gap-2 text-venom-orange">
+        <IconChart size={16} />
+        <p className="label-arcade">Mastery</p>
+      </div>
+      <p className="mt-2 font-display text-lg text-bone-white">
+        {strongest ? `${strongest.dynasty} M${strongest.level}` : 'First extraction ahead'}
+      </p>
+      {pulse.mastery.length > 0 && (
+        <p className="mt-1 font-mono text-xs text-beige/60">
+          {pulse.mastery.map((entry) => `${entry.dynasty[0]}${entry.level}`).join(' · ')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LineageSummary({ pulse }: { pulse: CareerPulseData }) {
+  return (
+    <div className="rounded-arcade border border-scale-blue-light/30 bg-void/45 p-3">
+      <div className="flex items-center gap-2 text-[#7df9ff]">
+        <IconEgg size={16} />
+        <p className="label-arcade">Lineage</p>
+      </div>
+      <p className="mt-2 font-display text-lg text-bone-white">
+        {pulse.lineage.highestGeneration > 0
+          ? `Gen ${pulse.lineage.highestGeneration}`
+          : 'First lineage ahead'}
+      </p>
+      <p className="mt-1 font-body text-xs text-beige/60">
+        {pulse.lineage.activeSpecimens} active specimen
+        {pulse.lineage.activeSpecimens === 1 ? '' : 's'} · {pulse.lineage.dossiers} dossier
+        {pulse.lineage.dossiers === 1 ? '' : 's'}
+      </p>
+    </div>
+  );
+}
+
+function DiscoverySummary({ pulse }: { pulse: CareerPulseData }) {
+  return (
+    <div className="rounded-arcade border border-cosmic/30 bg-void/45 p-3">
+      <div className="flex items-center gap-2 text-cosmic">
+        <IconMedal size={16} />
+        <p className="label-arcade">Discovery</p>
+      </div>
+      <p className="mt-2 font-display text-lg text-bone-white">
+        {pulse.discovery.entries} Codex {pulse.discovery.entries === 1 ? 'entry' : 'entries'}
+      </p>
+      <p className="mt-1 font-body text-xs text-beige/60">
+        {pulse.records.tiered} tiered Record{pulse.records.tiered === 1 ? '' : 's'}
+        {pulse.discovery.worldFirsts > 0
+          ? ` · ${pulse.discovery.worldFirsts} world first${pulse.discovery.worldFirsts === 1 ? '' : 's'}`
+          : ''}
+      </p>
+    </div>
+  );
+}
+
+function Pursuit({
+  pulse,
+  busy,
+  onChange,
+}: {
+  pulse: CareerPulseData;
+  busy: boolean;
+  onChange: (candidateId: string | null) => void;
+}) {
+  const candidates = pulse.pursuitCandidates.slice(0, 6);
+  const active = pulse.pinnedPursuit;
+  return (
+    <div className="rounded-arcade border border-scale-blue-light/30 bg-void-deep/55 p-4" data-testid="career-pursuit">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="label-arcade text-beige/55">Pinned pursuit</p>
+          <p className="mt-1 font-body text-sm text-bone-white">
+            {active?.headline ?? 'No pursuit pinned — your career remains open.'}
+          </p>
+        </div>
+        <label className="font-body text-xs text-beige/65">
+          <span className="sr-only">Choose a career pursuit</span>
+          <select
+            aria-label="Choose a career pursuit"
+            value={active?.id ?? ''}
+            disabled={busy}
+            onChange={(event) => onChange(event.target.value || null)}
+            className="min-h-[44px] max-w-full rounded-arcade border border-scale-blue-light/40 bg-void px-3 text-bone-white"
+          >
+            <option value="">No pinned pursuit</option>
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.headline}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {active && (
+        <>
+          <div
+            className="mt-3 h-1.5 overflow-hidden rounded-full bg-scale-blue-dark"
+            role="progressbar"
+            aria-label={active.headline}
+            aria-valuemin={0}
+            aria-valuemax={active.target}
+            aria-valuenow={Math.min(active.current, active.target)}
+          >
+            <div
+              className="h-full rounded-full bg-venom-orange"
+              style={{ width: `${progressPercent(active.current, active.target)}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3 font-mono text-xs text-beige/60">
+            <span>{active.current.toLocaleString()} / {active.target.toLocaleString()}</span>
+            <Link href={active.destination} className="inline-flex items-center gap-1 text-cosmic hover:text-bone-white">
+              Open <IconArrowRight size={12} />
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ClanPulse({ pulse }: { pulse: CareerPulseData }) {
+  const battle = pulse.clan.activeBattle;
+  const honorTotal =
+    pulse.clan.honors.participant + pulse.clan.honors.victor + pulse.clan.honors.stalemate;
+  if (!battle && honorTotal === 0) return null;
+
+  return (
+    <div className="rounded-arcade border border-cosmic/30 bg-cosmic/5 p-4" data-testid="career-clan-pulse">
+      <div className="flex items-center gap-2 text-cosmic">
+        <IconShield size={17} />
+        <p className="label-arcade">Your clan witness</p>
+      </div>
+      {battle && (
+        <div className="mt-2 space-y-1">
+          <p className="font-body text-sm text-bone-white">
+            {battle.ownTopFive.length < 5
+              ? `${5 - battle.ownTopFive.length} open contribution slot${5 - battle.ownTopFive.length === 1 ? '' : 's'}`
+              : `Beat ${battle.fifthBest.toLocaleString()} Yield to improve your five`}
+          </p>
+          <p className="font-mono text-xs text-beige/60">
+            Clan {battle.clanTotal.toLocaleString()} · Rival {battle.opponentTotal.toLocaleString()}
+          </p>
+        </div>
+      )}
+      {honorTotal > 0 && (
+        <p className="mt-2 font-body text-xs text-beige/65">
+          {pulse.clan.honors.victor} victor · {honorTotal} completed battle honor
+          {honorTotal === 1 ? '' : 's'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RecentMoments({ moments }: { moments: CareerMoment[] }) {
+  const visible = moments
+    .filter((moment) => moment.significance !== 'routine')
+    .slice(0, 4);
+  if (visible.length === 0) return null;
+
+  return (
+    <div data-testid="career-moments">
+      <p className="label-arcade text-beige/55">Recent moments</p>
+      <ul className="mt-2 space-y-2">
+        {visible.map((moment) => (
+          <li
+            key={moment.id}
+            className="flex items-start justify-between gap-3 rounded-arcade border border-scale-blue-light/20 bg-void/40 px-3 py-2"
+            data-significance={moment.significance}
+          >
+            <div className="min-w-0">
+              <p className="font-body text-sm text-bone-white">{moment.headline}</p>
+              <p className="font-body text-xs text-beige/55">
+                {PILLAR_LABELS[moment.pillar]}{formatDate(moment.securedAt) ? ` · ${formatDate(moment.securedAt)}` : ''}
+              </p>
+            </div>
+            {moment.artifactRef ? (
+              <Link
+                href={moment.artifactRef}
+                className="shrink-0 font-body text-xs text-cosmic hover:text-bone-white"
+                aria-label={`Open verified artifact for ${moment.headline}`}
+              >
+                Verified
+              </Link>
+            ) : moment.destination ? (
+              <Link
+                href={moment.destination}
+                className="shrink-0 text-beige/55 hover:text-bone-white"
+                aria-label={`Open ${moment.headline}`}
+              >
+                <IconArrowRight size={14} />
+              </Link>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function CareerPulse({ accessToken }: CareerPulseProps) {
+  const [pulse, setPulse] = useState<CareerPulseData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch('/api/progression/career-pulse', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) throw new Error(`career pulse ${response.status}`);
+      const data = (await response.json()) as CareerPulseResponse;
+      setPulse(data.careerPulse ?? null);
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const candidatesById = useMemo(
+    () => new Set(pulse?.pursuitCandidates.map((candidate) => candidate.id) ?? []),
+    [pulse?.pursuitCandidates]
+  );
+
+  const changePursuit = useCallback(
+    async (candidateId: string | null) => {
+      // The server supplies and validates every target. This client refuses to
+      // send an id that was not in the current authoritative projection.
+      if (candidateId !== null && !candidatesById.has(candidateId)) return;
+      setBusy(true);
+      try {
+        const response = await fetch('/api/progression/career-pulse', {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ candidateId }),
+        });
+        if (!response.ok) throw new Error(`career pursuit ${response.status}`);
+        const data = (await response.json()) as CareerPulseResponse;
+        if (data.careerPulse) setPulse(data.careerPulse);
+        else await load();
+        setError(false);
+      } catch {
+        setError(true);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [accessToken, candidatesById, load]
+  );
+
+  if (loading) {
+    return (
+      <section className="panel p-4" aria-label="Career pulse" data-testid="career-pulse-loading">
+        <p className="font-body text-sm text-beige/55 animate-pulse">Reading your career…</p>
+      </section>
+    );
+  }
+  if (!pulse) {
+    return error ? (
+      <p className="font-body text-sm text-beige/55" role="status">
+        Your career pulse is temporarily unavailable. Your progress remains secured.
+      </p>
+    ) : null;
+  }
+
+  return (
+    <section className="panel-elevated space-y-4 p-4" aria-labelledby="career-pulse-title" data-testid="career-pulse">
+      <div>
+        <p className="label-arcade text-beige/55">Private career pulse</p>
+        <h2 id="career-pulse-title" className="heading-display text-xl text-bone-white">
+          What you are building
+        </h2>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MasterySummary pulse={pulse} />
+        <LineageSummary pulse={pulse} />
+        <DiscoverySummary pulse={pulse} />
+      </div>
+      <Pursuit pulse={pulse} busy={busy} onChange={changePursuit} />
+      <ClanPulse pulse={pulse} />
+      <RecentMoments moments={pulse.recentMoments} />
+      {error && (
+        <p className="font-body text-xs text-strike-red" role="status">
+          That change did not stick. The previous server state is still shown.
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default CareerPulse;

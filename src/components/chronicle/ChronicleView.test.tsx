@@ -104,14 +104,32 @@ function payload(overrides: Partial<ChroniclePayload> = {}): ChroniclePayload {
     clan: {
       name: 'Fang Dynasty',
       tag: 'FANG',
-      rating: 1064,
-      ratingHistory: [
-        { weekStart: '2026-07-13', ratingAfter: 1032, delta: 32 },
-        { weekStart: '2026-07-20', ratingAfter: 1064, delta: 32 },
+      battleHistory: [
+        {
+          battleId: 'battle-1',
+          startedAt: '2026-07-24T00:00:00.000Z',
+          settledAt: '2026-07-27T00:00:00.000Z',
+          outcome: 'victor',
+          clanDepth: 51000,
+          opponent: {
+            name: 'Void Reavers',
+            tag: 'VOID',
+            depth: 48000,
+            outcome: 'participant',
+          },
+        },
       ],
-      rivalries: [
-        { opponentName: 'Void Reavers', opponentTag: 'VOID', wins: 2, losses: 1, ties: 0 },
-      ],
+      honors: { total: 2, victories: 1, stalemates: 0, participations: 1 },
+      legacyArchive: {
+        rating: 1064,
+        ratingHistory: [
+          { weekStart: '2026-07-13', ratingAfter: 1032, delta: 32 },
+          { weekStart: '2026-07-20', ratingAfter: 1064, delta: 32 },
+        ],
+        rivalries: [
+          { opponentName: 'Void Reavers', opponentTag: 'VOID', wins: 2, losses: 1, ties: 0 },
+        ],
+      },
     },
     // Career footnotes from retired systems (WP-0.07). Most careers have
     // none, so the default fixture has none.
@@ -121,12 +139,23 @@ function payload(overrides: Partial<ChroniclePayload> = {}): ChroniclePayload {
 }
 
 describe('ChronicleView', () => {
-  it('renders the full card header with the Legacy Score', () => {
+  it('renders the full identity header without a synthetic account score', () => {
     render(<ChronicleView payload={payload()} />);
     const card = screen.getByTestId('player-card');
     expect(card).toHaveAttribute('data-variant', 'full');
-    expect(screen.getByTestId('player-card-legacy')).toHaveTextContent('75');
+    expect(screen.queryByTestId('player-card-legacy')).not.toBeInTheDocument();
     expect(screen.getByTestId('player-card-founder')).toBeInTheDocument();
+  });
+
+  it('places the private Career Pulse only in the owner view', () => {
+    const pulse = <div data-testid="private-career-pulse">Pulse</div>;
+    const { rerender } = render(
+      <ChronicleView payload={payload()} isSelf careerPulseSlot={pulse} />
+    );
+    expect(screen.getByTestId('private-career-pulse')).toBeInTheDocument();
+
+    rerender(<ChronicleView payload={payload()} careerPulseSlot={pulse} />);
+    expect(screen.queryByTestId('private-career-pulse')).not.toBeInTheDocument();
   });
 
   it('renders every section for a full payload (doc 7.1 order)', () => {
@@ -143,8 +172,11 @@ describe('ChronicleView', () => {
     expect(screen.getByTestId('pb-timeline')).toBeInTheDocument();
     expect(screen.getByTestId('records-cabinet')).toBeInTheDocument();
     expect(screen.getByTestId('season-crowned')).toHaveTextContent('Crowned');
-    expect(screen.getByTestId('clan-rating-sparkline')).toBeInTheDocument();
-    expect(screen.getByTestId('clan-rivalries')).toHaveTextContent('Void Reavers');
+    expect(screen.getByTestId('clan-energy-history')).toHaveTextContent('51,000');
+    expect(screen.getByTestId('clan-honors')).toHaveTextContent('1 victor');
+    expect(screen.getByTestId('clan-legacy-archive')).toHaveTextContent(
+      'Archived weekly duel history'
+    );
   });
 
   it('limited payload (<5 earning runs): header + collection log ONLY (section 7.2)', () => {
