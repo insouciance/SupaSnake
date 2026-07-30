@@ -54,8 +54,9 @@ The emotional sequence is:
    Atelier may alter appearance. Neither may mint or imitate earned proof.
 9. **No progress-related fact, payload, receipt, notification, seen state,
    pursuit, reward request, or career projection is stored in `localStorage`,
-   `sessionStorage`, IndexedDB, Cache Storage, or another browser-persistent
-   store.** Authenticated state is server-held. Guest presentation may live in
+   `sessionStorage`, IndexedDB, Cache Storage, cookies, analytics persistence,
+   or another browser-persistent store.** Authenticated state is server-held.
+   Guest presentation may live in
    memory for the current document and disappear on reload. Consent, legal
    choices, device preferences, and non-progress accessibility/UI preferences
    are outside this rule only when no player progress can be inferred from
@@ -76,12 +77,19 @@ interface RunImpactEnvelope {
   outcome: 'extracted' | 'crashed' | 'completed';
   dynasty: 'CYBER' | 'PRIMAL' | 'COSMIC';
   receipt: {
+    validated: boolean;
     score: number;
     yieldDna: number;
     dnaCredited: number;
     energyCommitted: number;
     commitmentMultiplierBps: number;
     generation: number;
+    personalBest: {
+      eligible: boolean;
+      before: number;
+      after: number;
+      improved: boolean;
+    };
   };
   impacts: RunImpact[];
   featuredImpactKeys: string[]; // zero to three
@@ -110,6 +118,8 @@ interface RunImpact {
 
 Requirements:
 
+- The session reward ledger, player aggregate, DNA audit row, and immutable PB
+  truth settle atomically and idempotently before presentation is persisted.
 - One receipt per session, unique and idempotent.
 - Settlement, duplicate completion, reconnect, and response-loss recovery all
   resolve to the same receipt.
