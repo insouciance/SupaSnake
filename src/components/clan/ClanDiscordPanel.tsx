@@ -108,7 +108,8 @@ export function ClanDiscordPanel({ accessToken, view, onChanged }: ClanDiscordPa
                   {discord.model === 'own' ? 'Clan server linked' : 'Official server — clan channel live'}
                 </p>
                 <p className="text-beige text-sm font-body">
-                  Duel results, research unlocks and mastery milestones post to your channel.
+                  Presence and selected career milestones can post here. Energy Battle
+                  attempts and teammate performance stay private in the game.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -185,12 +186,13 @@ export function ClanDiscordPanel({ accessToken, view, onChanged }: ClanDiscordPa
         ) : isOwner ? (
           <>
             <p className="text-bone-white font-body mb-1">
-              Give your clan a home. Discord <em>is</em> the clan&apos;s social layer — duel
-              results, research unlocks and champion crowns post there automatically.
+              Give your clan a home. Discord <em>is</em> the clan&apos;s conversation layer;
+              SupaSnake keeps Energy Battle attempts, thresholds and member comparisons private.
             </p>
             <p className="text-beige/70 text-sm font-body mb-4">
               Two ways to link — a private channel + role in the official SupaSnake server
-              (one click), or the bot joins a server your clan already owns.
+              (one click), or the bot joins a server your clan already owns. Selected shared
+              milestones may appear, never a member performance feed.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <button
