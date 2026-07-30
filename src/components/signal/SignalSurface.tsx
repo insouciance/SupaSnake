@@ -182,6 +182,7 @@ export function SignalSurface({
     const load = async () => {
       try {
         const response = await fetch('/api/signal/panel', {
+          cache: 'no-store',
           headers: { Authorization: `Bearer ${token}` },
         });
         // Rule 11 / the repo's known `.then(res => res.json())` defect: a 500

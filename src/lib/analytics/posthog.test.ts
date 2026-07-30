@@ -61,23 +61,68 @@ describe('PostHog Analytics', () => {
           api_host: 'https://eu.i.posthog.com',
           autocapture: false,
           persistence: 'memory',
+          disable_persistence: true,
+          disable_session_recording: true,
+          disable_surveys: true,
+          disable_surveys_automatic_display: true,
+          disable_product_tours: true,
+          disable_conversations: true,
+          disable_web_experiments: true,
+          disable_external_dependency_loading: true,
+          rageclick: false,
+          capture_heatmaps: false,
+          capture_dead_clicks: false,
+          capture_exceptions: false,
           advanced_disable_flags: true,
         })
       );
       expect(isAnalyticsInitialized()).toBe(true);
     });
 
-    it('removes the legacy PostHog browser-persistence blob', () => {
-      const key = 'ph_phc_legacy_posthog';
-      window.localStorage.setItem(key, JSON.stringify({
+    it('removes every prior-token PostHog blob without touching consent', () => {
+      const oldKey = 'ph_phc_old_project_posthog';
+      const olderKey = 'ph_phc_older_project_posthog';
+      const emptyTokenKey = 'ph__posthog';
+      const consentKey = '__ph_opt_in_out_phc_current';
+      window.localStorage.setItem(oldKey, JSON.stringify({
         $stored_person_properties: { ladder_rung: 'belonging' },
       }));
-      window.sessionStorage.setItem(key, 'legacy');
+      window.localStorage.setItem(olderKey, 'older');
+      window.localStorage.setItem(emptyTokenKey, 'empty-token legacy');
+      window.localStorage.setItem(consentKey, '1');
+      window.sessionStorage.setItem(oldKey, 'legacy');
+      window.sessionStorage.setItem('unrelated', 'keep');
 
-      clearLegacyPostHogPersistence('phc_legacy');
+      clearLegacyPostHogPersistence();
+
+      expect(window.localStorage.getItem(oldKey)).toBeNull();
+      expect(window.localStorage.getItem(olderKey)).toBeNull();
+      expect(window.localStorage.getItem(emptyTokenKey)).toBeNull();
+      expect(window.sessionStorage.getItem(oldKey)).toBeNull();
+      expect(window.localStorage.getItem(consentKey)).toBe('1');
+      expect(window.sessionStorage.getItem('unrelated')).toBe('keep');
+    });
+
+    it('expires every accessible prior-token PostHog cookie', () => {
+      document.cookie = 'ph_phc_old_project_posthog=legacy; Path=/';
+      document.cookie = 'unrelated_cookie=keep; Path=/';
+
+      clearLegacyPostHogPersistence();
+
+      expect(document.cookie).not.toContain('ph_phc_old_project_posthog');
+      expect(document.cookie).toContain('unrelated_cookie=keep');
+    });
+
+    it('purges legacy persistence even when no current token exists', () => {
+      const key = 'ph_phc_previous_posthog';
+      window.localStorage.setItem(key, 'legacy');
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      initAnalytics({ apiKey: '' });
 
       expect(window.localStorage.getItem(key)).toBeNull();
-      expect(window.sessionStorage.getItem(key)).toBeNull();
+      expect(mocked.init).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
     it('does not re-initialize on subsequent calls', () => {

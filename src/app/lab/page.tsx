@@ -69,6 +69,7 @@ export default function LabPage() {
     if (!session?.access_token) return;
     let cancelled = false;
     fetch('/api/player', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${session.access_token}` },
     })
       .then((res) => (res.ok ? res.json() : null))
@@ -90,6 +91,7 @@ export default function LabPage() {
     if (!session?.access_token) return;
     let cancelled = false;
     fetch('/api/mastery', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${session.access_token}` },
     })
       .then((res) => (res.ok ? res.json() : null))

@@ -84,6 +84,7 @@ describe('EnergyBattlePanel', () => {
     expect(screen.getByText('#5 · 1E · Gen 10')).toBeInTheDocument();
     expect(screen.queryByText(/member attempts/i)).not.toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledWith('/api/clan/energy-battle', {
+      cache: 'no-store',
       headers: { Authorization: 'Bearer token' },
     });
   });

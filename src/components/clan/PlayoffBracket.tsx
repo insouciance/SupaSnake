@@ -109,6 +109,7 @@ export function PlayoffBracket({ accessToken }: PlayoffBracketProps) {
     if (!accessToken) return;
     let cancelled = false;
     fetch('/api/season', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((res) => (res.ok ? res.json() : null))

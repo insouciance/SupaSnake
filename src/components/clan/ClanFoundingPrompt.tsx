@@ -77,6 +77,7 @@ export function ClanFoundingPrompt({
     if (!accessToken) return;
     try {
       const response = await fetch('/api/player', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) return;

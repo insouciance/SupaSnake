@@ -26,6 +26,7 @@ export function AimSystemPanel() {
     let cancelled = false;
 
     fetch('/api/player', {
+      cache: 'no-store',
       headers: { 'Authorization': `Bearer ${session.access_token}` },
     })
       // FINDING F-24 (WP-1.06): this was a bare `res.json()`. A 401 or a 500

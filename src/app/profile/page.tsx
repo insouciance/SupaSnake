@@ -61,7 +61,7 @@ export default function ProfilePage() {
         seasonName: null,
       };
 
-      const digestRes = await fetch('/api/analyst/digest', { headers });
+      const digestRes = await fetch('/api/analyst/digest', { cache: 'no-store', headers });
       if (digestRes.ok) {
         const data = await digestRes.json();
         if (data?.digest?.headline) {
@@ -70,7 +70,7 @@ export default function ProfilePage() {
         }
       }
 
-      let recallRes = await fetch('/api/analyst/recall', { headers });
+      let recallRes = await fetch('/api/analyst/recall', { cache: 'no-store', headers });
       if (recallRes.ok) {
         let data = await recallRes.json();
         // No cached Recall yet: ask for a generation once (cache-first,
@@ -105,6 +105,7 @@ export default function ProfilePage() {
       }
       setAccessToken(token);
       const response = await fetch('/api/chronicle', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {

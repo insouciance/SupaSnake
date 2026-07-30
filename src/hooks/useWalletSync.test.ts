@@ -112,6 +112,7 @@ describe('useWalletSync', () => {
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith('/api/player', {
+        cache: 'no-store',
         headers: { Authorization: 'Bearer test-token' },
       });
     });

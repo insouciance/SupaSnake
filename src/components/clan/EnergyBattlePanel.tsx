@@ -53,6 +53,7 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
   useEffect(() => {
     let cancelled = false;
     fetch('/api/clan/energy-battle', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then(async (response) => {

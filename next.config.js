@@ -71,8 +71,20 @@ const nextConfig = {
       {
         // API payloads may contain authoritative account state. Never permit
         // a browser, service worker, shared proxy or framework cache to retain
-        // them. Public pages can still cache their own static presentation.
+        // them. Static presentation outside progress-bearing routes can still
+        // use its route-specific cache policy.
         source: '/api/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'private, no-store',
+          },
+        ],
+      },
+      {
+        // A Chronicle is public by player choice, but remains earned progress.
+        // Keep its HTML/RSC representation out of browser and shared caches.
+        source: '/p/:path*',
         headers: [
           {
             key: 'Cache-Control',

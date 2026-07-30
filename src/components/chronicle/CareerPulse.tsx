@@ -338,6 +338,7 @@ export function CareerPulse({ accessToken }: CareerPulseProps) {
   const load = useCallback(async () => {
     try {
       const response = await fetch('/api/progression/career-pulse', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) throw new Error(`career pulse ${response.status}`);
