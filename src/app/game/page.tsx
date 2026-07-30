@@ -578,6 +578,25 @@ export default function GamePage() {
         setActiveEnergyMultiplierBps(recovered.receipt.commitmentMultiplierBps);
         setSettlementSecuredPending(false);
         requestAttentionRefresh();
+        void fetch('/api/player', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`/api/player responded ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            if (typeof data.player?.dna === 'number') {
+              useCollectionStore.getState().setDnaBalance(data.player.dna);
+            }
+            syncChargeFromServer(data.energy ?? data.charge ?? null);
+          })
+          .catch((error) => {
+            console.error('Failed to refresh player after settlement:', error);
+          });
       } catch {
         if (cancelled) return;
         attempt += 1;
@@ -589,7 +608,12 @@ export default function GamePage() {
       cancelled = true;
       if (timeout !== null) clearTimeout(timeout);
     };
-  }, [currentSessionId, session?.access_token, settlementSecuredPending]);
+  }, [
+    currentSessionId,
+    session?.access_token,
+    settlementSecuredPending,
+    syncChargeFromServer,
+  ]);
 
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
