@@ -168,6 +168,13 @@ describe('no dynasty may arm an arena without a renderer', () => {
     expect(page).toContain('constellationTicksRemaining');
   });
 
+  it('never turns a new constellation into an automatic planning pause', () => {
+    const page = read('src/app/game/page.tsx');
+    const engine = read('src/lib/game/SnakeGameLogic.ts');
+    expect(page).not.toMatch(/COSMIC_PLANNING|cosmicPlanning|getConstellationWave/);
+    expect(engine).not.toMatch(/stagePausedDirection|getConstellationWave/);
+  });
+
   it('an armed arena always has a non-zero forming phase', () => {
     // A block that solidifies instantly is a random death however well it is
     // drawn. `terrain.ts`: the forming phase "is not a courtesy - it is what

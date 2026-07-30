@@ -1,6 +1,6 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.5 · amended 29 July 2026
+**Version:** 1.5 · amended 30 July 2026
 **v1.5 amendment (explicit owner ruling, 29 July 2026):** **Energy Commitment**
 replaces the fixed daily envelope (§8.6). Energy is stored to a cap of **6 [H]**,
 recovers on authoritative server time at **1/hour [H]** including offline partial
@@ -25,6 +25,20 @@ honor, never DNA or future scoring power. This owner order amends Rules 8–10 a
 §12.2 rhythm/mode caps where the retired separate Serpent mode previously bound.
 The required cooling period is waived by the owner order for this greenlit
 implementation; the cost is recorded in §15.
+**v1.5 D4 control amendment (explicit owner ruling, 30 July 2026):** the
+two-entry mobile executable queue and three-entry keyboard queue remain hard
+caps. Both gain one non-executable next-slot intention only during the final
+quarter of a tick, capped at 40 ms; Slipstream retains its stronger full-tick
+version. Mobile additionally rejects a third rapid same-handed flick only when
+the projected next cell lies in the first four newly formed neck segments. The
+guard must prove timing, gesture sequence, and lethal geometry together: it is
+not a cooldown, general collision pardon, or ban on larger U-shaped routes.
+COSMIC receives no automatic constellation pause or slowdown. Route reading
+stays live; voluntary tactical holds open at 6 and grant +2 at modelled lengths
+25 and 40, remaining finite, visible, and exclusively player-initiated. The
+retired 1–2 second wave freeze, staged route API, and automatic resume path have
+no compatibility status.
+
 **v1.4 D3 playtest finding (owner, 29 July 2026):** PRIMAL's central spatial
 loop is **“Coil safely. Get tempted. Break formation. Recover—or die.”** Fast
 body growth makes a tight wall-following coil the player's constructed safety;
@@ -308,8 +322,10 @@ The run is the reason everything else exists. It is the best-built part of the p
 (GT §2, §12) and the part a future contributor is most likely to erode by accident,
 one small convenience at a time. Protected, permanently:
 
-- **Input semantics:** buffered turns, reversal rejection, deliberate first movement,
-  tactical hold with the board fully visible.
+- **Input semantics:** capped buffered turns, the D4 fractional pre-turn
+  intention, narrow geometry-proven mobile micro-U rejection, reversal
+  rejection, deliberate first movement, and player-initiated tactical hold
+  with the board fully visible. COSMIC constellation waves never force a hold.
 - **The Run Setup page** (owner ruling, 25 July 2026): Launch opens one consolidated
   setup surface — dynasty and snake, mode context, and aim system — with
   the primary START action always pre-configured from the player's last choices.

@@ -49,6 +49,37 @@ export const GAME_CONFIG = deepFreeze({
   },
 
   /**
+   * Directional input feel. These values change admission timing only; they
+   * never alter movement cadence, collision rules, or the number of turns
+   * that can sit in the executable queue.
+   */
+  controls: {
+    /** Keyboard keeps the shipped planning depth. */
+    standardQueueDepth: 3,
+    /** A mobile L-turn needs two unresolved directions, never three. */
+    flickQueueDepth: 2,
+    /**
+     * A full queue may reserve one next-slot intention only at the very end
+     * of the current tick. This is the universal fractional-tick grace.
+     */
+    preTurnGrace: {
+      tickFraction: 0.25,
+      maxMs: 40,
+    },
+    /**
+     * A third rapid flick is suppressed only when three same-handed turns
+     * would immediately enter the newly formed neck. Separate gestures use
+     * the tighter window; one continuous physical gesture gets a little more
+     * room for slow touch sampling.
+     */
+    mobileMicroU: {
+      rapidWindowMs: 420,
+      sameGestureWindowMs: 650,
+      recentBodySegments: 4,
+    },
+  },
+
+  /**
    * Economy - DNA & Resources
    */
   economy: {
@@ -149,8 +180,9 @@ export const GAME_CONFIG = deepFreeze({
      *
      * A hold is a real tactical resource: it buys thinking time, so an
      * unlimited supply turns a precision game into a turn-based one. Three
-     * to open, and the run earns more as the body gets genuinely hard to
-     * steer. Choice holds (gene / portal / surge) are NEVER charged — those
+     * open normally; COSMIC uses its explicit doubled profile, and every run
+     * earns more as the body gets genuinely hard to steer. Choice holds (gene
+     * / portal / surge) are NEVER charged — those
      * are the run's own decisions, protected by Inviolable Rule 1.
      *
      * Purely physical and purely client-side: a hold carries no economy, so
@@ -162,6 +194,16 @@ export const GAME_CONFIG = deepFreeze({
       base: 3,
       /** Body lengths that each grant one more hold, once, when reached. */
       bonusAtLengths: [25, 40] as readonly number[],
+      /**
+       * COSMIC keeps continuous real-time play, but its denser route reads
+       * receive roughly twice the voluntary planning capacity: six up front
+       * and two more at each of the same earned body thresholds.
+       */
+      cosmic: {
+        base: 6,
+        bonusAtLengths: [25, 40] as readonly number[],
+        bonusPerThreshold: 2,
+      },
     },
   },
 

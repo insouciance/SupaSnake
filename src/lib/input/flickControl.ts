@@ -40,6 +40,10 @@ const FEEDBACK: Record<SetDirectionResult, FlickFeedback> = {
   // Rejections the player should SEE (input registered, engine said no):
   // no haptic - the buzz is reserved for "it counted".
   reversal: { haptic: false, sound: false, glow: 'reject' },
+  // The physical gesture was recognized, but its rapid third corner would
+  // enter the new neck. A quiet red acknowledgement explains why it did not
+  // steer without rewarding the accidental command.
+  micro_u: { haptic: false, sound: false, glow: 'reject' },
   queue_full: { haptic: false, sound: false, glow: 'reject' },
   // Duplicate = "keep going the way you're going": the world already shows
   // exactly what was asked for, so extra feedback would only add noise.

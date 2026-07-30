@@ -29,6 +29,8 @@ export interface FlickCommand {
   direction: ScreenFlickDirection;
   /** Event timestamp (ms) at which the threshold was crossed. */
   inputTime: number;
+  /** Every command emitted during one pointer-down shares this id. */
+  gestureId: number;
 }
 
 export interface FlickRecognizerConfig {
@@ -62,6 +64,8 @@ export class FlickRecognizer {
   private stallAnchorX = 0;
   private stallAnchorY = 0;
   private stallAnchorTime = 0;
+  private gestureSequence = 0;
+  private activeGestureId = 0;
 
   constructor(config: FlickRecognizerConfig = DEFAULT_FLICK_CONFIG) {
     this.config = config;
@@ -70,6 +74,8 @@ export class FlickRecognizer {
   /** Begin a touch. Resets all segment state. */
   pointerDown(x: number, y: number, time: number): void {
     this.active = true;
+    this.gestureSequence += 1;
+    this.activeGestureId = this.gestureSequence;
     this.originX = x;
     this.originY = y;
     this.lastX = x;
@@ -146,7 +152,11 @@ export class FlickRecognizer {
     this.stallAnchorX = x;
     this.stallAnchorY = y;
     this.stallAnchorTime = time;
-    return { direction, inputTime: time };
+    return {
+      direction,
+      inputTime: time,
+      gestureId: this.activeGestureId,
+    };
   }
 
   /** End the touch. The next touch starts a fresh segment. */

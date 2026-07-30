@@ -316,6 +316,119 @@ describe('SnakeGameLogic', () => {
         expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
       });
 
+      it('reserves one full-queue intention inside the fractional pre-turn window', () => {
+        game.setDirection('UP', 'flick');
+        game.setDirection('LEFT', 'flick');
+
+        expect(
+          game.setDirection('DOWN', 'flick', { nextTickInMs: 8 })
+        ).toBe('accepted');
+        // The executable mobile queue remains capped at two. The intention
+        // enters only after this imminent tick frees a slot.
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+        game.tick();
+        expect(game.getQueuedDirections()).toEqual(['LEFT', 'DOWN']);
+        game.tick();
+        game.tick();
+        expect(game.getState().direction).toBe('DOWN');
+      });
+
+      it('does not reserve a full-queue intention outside the small grace', () => {
+        game.setDirection('UP', 'flick');
+        game.setDirection('LEFT', 'flick');
+
+        expect(
+          game.setDirection('DOWN', 'flick', {
+            nextTickInMs: GAME_CONFIG.controls.preTurnGrace.maxMs + 1,
+          })
+        ).toBe('queue_full');
+        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
+      });
+
+      it('keeps Slipstream as the stronger full-tick pre-turn grace', () => {
+        game.grantMutation('slipstream', 0);
+        game.setDirection('UP', 'flick');
+        game.setDirection('LEFT', 'flick');
+
+        expect(
+          game.setDirection('DOWN', 'flick', {
+            nextTickInMs: game.getSpeed() - 1,
+          })
+        ).toBe('accepted');
+      });
+
+      it('suppresses a rapid third mobile corner only when it enters the new neck', () => {
+        const tight = new SnakeGameLogic({
+          gridSize: 30,
+          initialLength: 8,
+          ruleset: RULESETS.PRIMAL,
+        });
+        tight.start();
+        expect(tight.setDirection('UP', 'flick', {
+          inputTimeMs: 0,
+          gestureId: 1,
+        })).toBe('accepted');
+        tight.tick();
+        expect(tight.setDirection('LEFT', 'flick', {
+          inputTimeMs: 170,
+          gestureId: 1,
+        })).toBe('accepted');
+        tight.tick();
+
+        expect(tight.setDirection('DOWN', 'flick', {
+          inputTimeMs: 340,
+          gestureId: 1,
+        })).toBe('micro_u');
+        expect(tight.getQueuedDirections()).toEqual([]);
+        tight.tick();
+        expect(tight.getState().isDeathSequence).toBe(false);
+        expect(tight.getState().direction).toBe('LEFT');
+      });
+
+      it('allows the same rapid turn phrase once geometry makes a larger U safe', () => {
+        const roomyTurn = new SnakeGameLogic({
+          gridSize: 30,
+          initialLength: 5,
+          ruleset: RULESETS.PRIMAL,
+        });
+        roomyTurn.start();
+        roomyTurn.setDirection('UP', 'flick', { inputTimeMs: 0, gestureId: 7 });
+        roomyTurn.tick();
+        roomyTurn.setDirection('LEFT', 'flick', { inputTimeMs: 120, gestureId: 7 });
+        roomyTurn.tick();
+        // Deliberately create spatial separation before the third corner.
+        roomyTurn.tick();
+        roomyTurn.tick();
+
+        expect(roomyTurn.setDirection('DOWN', 'flick', {
+          inputTimeMs: 300,
+          gestureId: 7,
+        })).toBe('accepted');
+        roomyTurn.tick();
+        expect(roomyTurn.getState().isDeathSequence).toBe(false);
+        expect(roomyTurn.getState().direction).toBe('DOWN');
+      });
+
+      it('does not forgive a slow deliberate tight self-collision', () => {
+        const deliberate = new SnakeGameLogic({
+          gridSize: 30,
+          initialLength: 8,
+          ruleset: RULESETS.PRIMAL,
+        });
+        deliberate.start();
+        deliberate.setDirection('UP', 'flick', { inputTimeMs: 0, gestureId: 2 });
+        deliberate.tick();
+        deliberate.setDirection('LEFT', 'flick', { inputTimeMs: 300, gestureId: 2 });
+        deliberate.tick();
+
+        expect(deliberate.setDirection('DOWN', 'flick', {
+          inputTimeMs: 1_000,
+          gestureId: 2,
+        })).toBe('accepted');
+        deliberate.tick();
+        expect(deliberate.getState().isDeathSequence).toBe(true);
+      });
+
       it('returns inactive while paused', () => {
         game.pause();
         expect(game.setDirection('UP')).toBe('inactive');
@@ -373,36 +486,20 @@ describe('SnakeGameLogic', () => {
       });
 
       it('clears stale buffered turns whenever the game pauses', () => {
-        game.setDirection('UP');
-        game.setDirection('LEFT');
+        game.setDirection('UP', 'flick');
+        game.setDirection('LEFT', 'flick');
+        expect(game.setDirection('DOWN', 'flick', { nextTickInMs: 1 })).toBe(
+          'accepted'
+        );
         expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
 
         game.pause();
         expect(game.getQueuedDirections()).toEqual([]);
-      });
-
-      it('can stage a bounded route without releasing a decision hold', () => {
-        game.pause('decision');
-
-        expect(game.stagePausedDirection('UP', 'flick')).toBe('accepted');
-        expect(game.stagePausedDirection('LEFT', 'flick')).toBe('accepted');
-        expect(game.stagePausedDirection('DOWN', 'flick')).toBe('queue_full');
-        expect(game.isPaused).toBe(true);
-        expect(game.getQueuedDirections()).toEqual(['UP', 'LEFT']);
-
         game.resume();
         game.tick();
-        expect(game.getState().direction).toBe('UP');
-        game.tick();
-        expect(game.getState().direction).toBe('LEFT');
+        expect(game.getState().direction).toBe('RIGHT');
       });
 
-      it('refuses paused-route staging outside a live pause', () => {
-        expect(game.stagePausedDirection('UP')).toBe('inactive');
-        game.pause('decision');
-        game.resume();
-        expect(game.stagePausedDirection('UP')).toBe('inactive');
-      });
     });
 
     describe('getQueuedDirections (aim telegraph read-only view)', () => {
@@ -916,6 +1013,33 @@ describe('SnakeGameLogic', () => {
       // Monotonic: the budget only ever grows, so a shed can never strand a
       // player having already spent more holds than they are allowed.
       expect(seen).toEqual([...seen].sort((a, b) => a - b));
+    });
+
+    it('roughly doubles both opening and earned voluntary holds in COSMIC', () => {
+      const cosmic = new SnakeGameLogic({
+        gridSize: 120,
+        ruleset: RULESETS.COSMIC,
+      });
+      cosmic.start();
+      expect(cosmic.getState().holdBudget).toBe(
+        GAME_CONFIG.session.holds.cosmic.base
+      );
+
+      const profile = GAME_CONFIG.session.holds.cosmic;
+      const target = Math.max(...profile.bonusAtLengths);
+      while (
+        cosmic.getModelledLength() < target &&
+        !cosmic.getState().isGameOver
+      ) {
+        const head = cosmic.getState().snake[0];
+        cosmic.placeFood({ x: head.x + 1, y: 0, z: head.z });
+        cosmic.tick();
+        if (cosmic.getState().pendingChoice) cosmic.declineMutation();
+      }
+      expect(cosmic.getState().holdBudget).toBe(
+        profile.base +
+          profile.bonusAtLengths.length * profile.bonusPerThreshold
+      );
     });
   });
 
@@ -1885,17 +2009,17 @@ describe('SnakeGameLogic', () => {
       expect(state.phoenixTriggeredAtFood).toBeNull();
       expect(state.nextMutationAtFood).toBe(6); // rng 0.5 -> 6
       expect(state.foods).toHaveLength(COSMIC_CONSTELLATION.size);
-      expect(engine.getConstellationWave()).toBe(1);
       // A fresh run opens a fresh window - 8s at COSMIC's 160ms tick.
       expect(state.constellationWindowTicks).toBe(50);
       expect(state.constellationTicksRemaining).toBe(50);
 
       engine.spawnFood();
-      expect(engine.getConstellationWave()).toBe(2);
+      expect(engine.getState().foods).toHaveLength(COSMIC_CONSTELLATION.size);
 
-      // Starting again resets the presentation counter before opening wave 1.
+      // Starting again opens a normal live constellation with no planning
+      // counter or forced-pause state attached to it.
       engine.start();
-      expect(engine.getConstellationWave()).toBe(1);
+      expect(engine.getState().isPaused).toBe(false);
     });
   });
 });
