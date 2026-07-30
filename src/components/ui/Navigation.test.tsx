@@ -122,6 +122,6 @@ describe('Navigation', () => {
 
     render(<Navigation />);
 
-    expect(screen.getByRole('status', { name: 'New Lab activity' })).toHaveTextContent('!');
+    expect(screen.getByRole('status', { name: 'New Lab activity' })).toHaveTextContent('');
   });
 });

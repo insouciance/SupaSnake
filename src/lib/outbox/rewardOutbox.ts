@@ -1,21 +1,22 @@
 import type { GameOverGenome } from '@/lib/game/SnakeGameLogic';
+import {
+  parseImpactFromSettlement,
+  recoverRunImpact,
+  type RunImpactEnvelope,
+} from '@/lib/game/runImpactClient';
 
 /**
- * Reward Outbox - localStorage-backed queue of unsent game-session-end
- * payloads.
+ * Tab-memory retry queue for unsent settlement requests.
  *
- * When the game-over POST to /api/game/session fails (tab closed at death,
- * network drop, expired token), the run's rewards are queued here and
- * replayed on the next app load with a fresh token. The server dedupes by
- * sessionId (an already-ended session returns 409), so replays are safe.
+ * Progress must never be stored in localStorage, sessionStorage, IndexedDB,
+ * or another client database. The authoritative run already exists on the
+ * server; this queue only retries the end request while this JavaScript
+ * context survives. If the server settled but the response was lost, receipt
+ * recovery returns the canonical impact envelope instead of replaying a
+ * client-authored account of progress.
  */
 
-export const REWARD_OUTBOX_KEY = 'supasnake-reward-outbox';
-
-/** Queue is capped; oldest entries are dropped first. */
 export const REWARD_OUTBOX_MAX_ENTRIES = 20;
-
-/** Entries older than this are considered expired and dropped. */
 export const REWARD_OUTBOX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface RewardOutboxEntry {
@@ -23,58 +24,31 @@ export interface RewardOutboxEntry {
   score: number;
   dna_earned: number;
   duration_seconds: number;
-  /**
-   * Raw foods eaten (Design v2). Optional so entries queued by older
-   * builds still replay - the server falls back to legacy validation
-   * when it is absent.
-   */
   food_count?: number;
-  /** True when the run ended through the exit portal (Design v2). */
   extracted?: boolean;
-  /** Mutation picks in order (Design v2 Phase 2); optional for old entries. */
   mutations?: Array<{ id: string; atFood: number }>;
-  /** Phoenix trigger food index, when it fired (Phase 2). */
   phoenix_triggered_at_food?: number;
-  /**
-   * COSMIC bounded-trust combo summary (Phase 2).
-   *
-   * Kept on the READ side only, and no longer sent. WP-3.13 deleted the
-   * combo; entries queued by a build older than it still carry this field
-   * and must still replay, so the shape stays parseable while the value is
-   * dropped. Those runs settle a few DNA lighter than they would have,
-   * which is the correct direction and unobservable in test mode.
-   */
   cosmic?: {
     combo_dna_bonus: number;
     combo_score_bonus: number;
     max_chain: number;
   };
-  /** Genome-only trace. Required to replay a run_seed-backed session. */
   genome?: GameOverGenome;
-  /** Epoch ms when the run ended (used for expiry). */
   timestamp: number;
 }
 
 export interface ReplayResult {
   replayed: number;
-  /** Entries dropped as permanently rejected (4xx) or expired. */
   dropped: number;
-  /** Entries kept for a future attempt (network / 5xx / 401). */
   remaining: number;
+  impacts: RunImpactEnvelope[];
 }
 
-function getStorage(storage?: Storage): Storage | null {
-  if (storage) return storage;
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-}
+let memoryQueue: RewardOutboxEntry[] = [];
 
-function isValidEntry(e: unknown): e is RewardOutboxEntry {
-  if (!e || typeof e !== 'object') return false;
-  const entry = e as Partial<RewardOutboxEntry>;
+function isValidEntry(value: unknown): value is RewardOutboxEntry {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Partial<RewardOutboxEntry>;
   return (
     typeof entry.sessionId === 'string' &&
     entry.sessionId.length > 0 &&
@@ -94,86 +68,63 @@ function isValidEntry(e: unknown): e is RewardOutboxEntry {
   );
 }
 
-export function readOutbox(storage?: Storage): RewardOutboxEntry[] {
-  const store = getStorage(storage);
-  if (!store) return [];
-  try {
-    const raw = store.getItem(REWARD_OUTBOX_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidEntry);
-  } catch {
-    return [];
-  }
+/** Read a defensive copy of this tab's queue. */
+export function readOutbox(): RewardOutboxEntry[] {
+  return memoryQueue.map((entry) => ({ ...entry }));
 }
 
-function writeOutbox(entries: RewardOutboxEntry[], storage?: Storage): void {
-  const store = getStorage(storage);
-  if (!store) return;
-  try {
-    if (entries.length === 0) {
-      store.removeItem(REWARD_OUTBOX_KEY);
-    } else {
-      store.setItem(REWARD_OUTBOX_KEY, JSON.stringify(entries));
-    }
-  } catch (err) {
-    console.error('Reward outbox write failed:', err);
-  }
-}
-
-/** Drop expired entries; returns the fresh queue. */
-export function pruneOutbox(storage?: Storage, now: number = Date.now()): RewardOutboxEntry[] {
-  const entries = readOutbox(storage);
-  const fresh = entries.filter((e) => now - e.timestamp <= REWARD_OUTBOX_MAX_AGE_MS);
-  if (fresh.length !== entries.length) {
-    writeOutbox(fresh, storage);
-  }
-  return fresh;
-}
-
-/**
- * Queue an unsent session-end payload. Dedupes by sessionId and caps the
- * queue at REWARD_OUTBOX_MAX_ENTRIES (oldest dropped first).
- */
-export function enqueueReward(entry: RewardOutboxEntry, storage?: Storage): void {
-  if (!isValidEntry(entry)) return;
-  const entries = pruneOutbox(storage, Date.now()).filter(
-    (e) => e.sessionId !== entry.sessionId
+export function pruneOutbox(now: number = Date.now()): RewardOutboxEntry[] {
+  memoryQueue = memoryQueue.filter(
+    (entry) => now - entry.timestamp <= REWARD_OUTBOX_MAX_AGE_MS
   );
-  entries.push(entry);
-  while (entries.length > REWARD_OUTBOX_MAX_ENTRIES) {
-    entries.shift();
-  }
-  writeOutbox(entries, storage);
+  return readOutbox();
 }
 
-export function clearOutbox(storage?: Storage): void {
-  writeOutbox([], storage);
+export function enqueueReward(entry: RewardOutboxEntry): void {
+  if (!isValidEntry(entry)) return;
+  memoryQueue = pruneOutbox().filter(
+    (queued) => queued.sessionId !== entry.sessionId
+  );
+  memoryQueue.push({ ...entry });
+  while (memoryQueue.length > REWARD_OUTBOX_MAX_ENTRIES) memoryQueue.shift();
+}
+
+export function clearOutbox(): void {
+  memoryQueue = [];
+}
+
+async function responseImpact(
+  response: Response,
+  entry: RewardOutboxEntry,
+  token: string,
+  fetchFn: typeof fetch
+): Promise<RunImpactEnvelope | null> {
+  try {
+    const body = await response.json();
+    const direct = parseImpactFromSettlement(body);
+    if (direct) return direct;
+  } catch {
+    // A legacy or empty duplicate response still has a recovery path.
+  }
+  return recoverRunImpact(entry.sessionId, token, fetchFn);
 }
 
 /**
- * Replay all queued entries against /api/game/session with the given token.
- *
- * Per entry:
- * - 2xx  -> delivered, removed
- * - 409  -> session already ended (server dedupe), removed
- * - 401  -> token problem, kept for a future replay with a fresh token
- * - other 4xx -> permanently rejected, removed
- * - network error / 5xx -> kept for a future replay
+ * Retry this tab's queued settlements. 2xx and already-settled 409 responses
+ * both recover the canonical receipt. Only transient failures remain queued.
  */
 export async function replayRewardOutbox(
   token: string,
-  storage?: Storage,
   fetchFn: typeof fetch = fetch
 ): Promise<ReplayResult> {
-  const entries = pruneOutbox(storage, Date.now());
+  const entries = pruneOutbox();
   if (entries.length === 0) {
-    return { replayed: 0, dropped: 0, remaining: 0 };
+    return { replayed: 0, dropped: 0, remaining: 0, impacts: [] };
   }
 
   let replayed = 0;
   let dropped = 0;
+  const impacts: RunImpactEnvelope[] = [];
   const keep: RewardOutboxEntry[] = [];
 
   for (const entry of entries) {
@@ -192,14 +143,10 @@ export async function replayRewardOutbox(
           duration_seconds: entry.duration_seconds,
           died: !(entry.extracted === true),
           victory: false,
-          // Design v2 fields; omitted for entries queued by older builds
-          // (the server then uses its legacy validation path)
           ...(typeof entry.food_count === 'number'
             ? { food_count: entry.food_count }
             : {}),
           ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
-          // Phase 2 fields (mutations / Phoenix). A queued `cosmic` claim is
-          // deliberately NOT forwarded - see the field's note above.
           ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
           ...(entry.phoenix_triggered_at_food !== undefined
             ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
@@ -209,24 +156,23 @@ export async function replayRewardOutbox(
       });
 
       if (response.ok || response.status === 409) {
-        replayed += response.ok ? 1 : 0;
-        dropped += response.ok ? 0 : 1;
+        replayed += 1;
+        const impact = await responseImpact(response, entry, token, fetchFn);
+        if (impact) impacts.push(impact);
       } else if (response.status === 401 || response.status >= 500) {
         keep.push(entry);
       } else {
-        // Permanent 4xx rejection - retrying will never succeed
         console.error(
-          `Reward outbox entry rejected (status ${response.status}), dropping session ${entry.sessionId}`
+          `Settlement retry rejected (status ${response.status}), dropping session ${entry.sessionId}`
         );
         dropped += 1;
       }
-    } catch (err) {
-      // Network failure - keep for next load
-      console.error('Reward outbox replay network error:', err);
+    } catch (error) {
+      console.error('Settlement retry network error:', error);
       keep.push(entry);
     }
   }
 
-  writeOutbox(keep, storage);
-  return { replayed, dropped, remaining: keep.length };
+  memoryQueue = keep;
+  return { replayed, dropped, remaining: keep.length, impacts };
 }

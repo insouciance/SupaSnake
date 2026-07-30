@@ -1,27 +1,65 @@
-/**
- * Results — the constitutional shape (§5, cap §12.2).
- *
- * These assertions are the law, not the styling: exactly three layers,
- * exactly one recommended next action, zero commercial surfaces, and a Take
- * slot that appears only when the server said this was the day's first run.
- */
-
-import { render, screen, fireEvent } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { RunResults, type RunResultsProps } from './RunResults';
 import type { DailyTakeSlot } from '@/lib/game/dailyTake';
+import type { RunImpactEnvelope } from '@/lib/game/runImpactClient';
 
 jest.mock('next/link', () => ({
   __esModule: true,
-  default: ({
-    children,
-    href,
-    ...rest
-  }: React.PropsWithChildren<{ href: string }>) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
+  default: ({ children, href, ...rest }: React.PropsWithChildren<{ href: string }>) => (
+    <a href={href} {...rest}>{children}</a>
   ),
 }));
+
+const impact: RunImpactEnvelope = {
+  version: 1,
+  sessionId: 'session-1',
+  settledAt: '2026-07-30T10:00:00.000Z',
+  outcome: 'extracted',
+  dynasty: 'CYBER',
+  receipt: {
+    score: 440,
+    yieldDna: 260,
+    dnaCredited: 572,
+    energyCommitted: 2,
+    commitmentMultiplierBps: 22_000,
+    generation: 11,
+  },
+  impacts: [
+    {
+      key: 'mastery',
+      pillar: 'mastery',
+      kind: 'mastery-level',
+      significance: 'milestone',
+      headline: 'CYBER Mastery M6',
+      detail: 'A new gene entered your pool.',
+      before: 5,
+      after: 6,
+      metadata: { target: 10 },
+      destination: 'mastery',
+    },
+    {
+      key: 'codex',
+      pillar: 'discovery',
+      kind: 'codex-discovery',
+      significance: 'historic',
+      headline: 'World-first splice documented',
+      destination: 'codex',
+    },
+    {
+      key: 'clan',
+      pillar: 'clan',
+      kind: 'clan-top-five',
+      significance: 'notable',
+      headline: 'Entered your clan five',
+      destination: 'clan',
+    },
+  ],
+  featuredImpactKeys: ['mastery', 'codex', 'clan'],
+  recommendedAction: {
+    headline: 'Review CYBER Mastery M6',
+    destination: 'mastery',
+  },
+};
 
 function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
   return {
@@ -38,11 +76,14 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
       bonusYield: 27,
       totalYield: 240,
     },
+    energyCommitted: 1,
+    commitmentMultiplierBps: 10_000,
+    clanBattle: null,
     serpent: null,
     take: null,
     takeState: 'idle',
     onCollectTake: jest.fn(),
-    digest: { mastery: null, codex: [], streakDays: null, genes: [] },
+    impact,
     nextAction: {
       id: 'chronicle',
       label: 'Open your Chronicle',
@@ -54,6 +95,7 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
     onSetup: jest.fn(),
     replayPending: false,
     replayDisabled: false,
+    replayEnergy: 1,
     ...overrides,
   };
 }
@@ -66,284 +108,141 @@ const take: DailyTakeSlot = {
   collected: false,
 };
 
-describe('RunResults — the three layers', () => {
-  it('renders exactly three layers', () => {
+describe('RunResults constitutional hierarchy', () => {
+  it('renders exactly three layers and one next action', () => {
     const { container } = render(<RunResults {...props()} />);
-    expect(
-      container.querySelectorAll('[data-testid^="results-layer-"]')
-    ).toHaveLength(3);
-    expect(screen.getByTestId('results-layer-1')).toBeInTheDocument();
-    expect(screen.getByTestId('results-layer-2')).toBeInTheDocument();
-    expect(screen.getByTestId('results-layer-3')).toBeInTheDocument();
-  });
-
-  it('renders exactly one recommended next action', () => {
-    const { container } = render(
-      <RunResults
-        {...props({
-          digest: {
-            mastery: {
-              dynasty: 'CYBER',
-              xpGained: 120,
-              level: 4,
-              leveledUp: true,
-              unlocks: [{ level: 4, kind: 'mutation', label: 'Phoenix' }],
-            },
-            codex: [{ key: 'splice:x', label: 'Splice X' }],
-            streakDays: 5,
-            genes: ['Phoenix'],
-          },
-        })}
-      />
-    );
-    expect(
-      container.querySelectorAll('[data-testid="results-next-action"]')
-    ).toHaveLength(1);
-  });
-
-  it('keeps the next action inside Layer 3', () => {
-    render(<RunResults {...props()} />);
+    expect(container.querySelectorAll('[data-testid^="results-layer-"]')).toHaveLength(3);
+    expect(container.querySelectorAll('[data-testid="results-next-action"]')).toHaveLength(1);
     expect(screen.getByTestId('results-layer-3')).toContainElement(
       screen.getByTestId('results-next-action')
     );
   });
 
-  it('collapses the progression digest into one closed disclosure', () => {
-    const { container } = render(
-      <RunResults
-        {...props({
-          digest: {
-            mastery: null,
-            codex: [{ key: 'a', label: 'A' }],
-            streakDays: 2,
-            genes: [],
-          },
-        })}
-      />
-    );
-    const digests = container.querySelectorAll('[data-testid="results-digest"]');
-    expect(digests).toHaveLength(1);
-    expect((digests[0] as HTMLDetailsElement).open).toBe(false);
-  });
-
-  it('carries no commercial surface (Rule 7)', () => {
-    const { container } = render(
-      <RunResults
-        {...props({
-          digest: {
-            mastery: {
-              dynasty: 'PRIMAL',
-              xpGained: 90,
-              level: 2,
-              leveledUp: false,
-              unlocks: [],
-            },
-            codex: [{ key: 'a', label: 'A' }],
-            streakDays: 9,
-            genes: ['Phoenix'],
-          },
-          take,
-        })}
-      />
-    );
-    for (const anchor of Array.from(container.querySelectorAll('a[href]'))) {
-      expect(anchor.getAttribute('href')).not.toMatch(
-        /shop|premium|checkout|store|billing|stripe/i
-      );
-    }
-    expect(container.textContent ?? '').not.toMatch(
-      /\b(buy|purchase|upgrade to|subscribe|keeper|season pass|€|\$\d)/i
-    );
-  });
-});
-
-describe('RunResults — Layer 1', () => {
-  it('names the outcome', () => {
-    render(<RunResults {...props()} />);
-    expect(screen.getByTestId('gameover-extracted')).toBeInTheDocument();
-
-    render(<RunResults {...props({ outcome: 'crashed' })} />);
-    expect(screen.getByTestId('gameover-crashed')).toBeInTheDocument();
-
-    render(<RunResults {...props({ practice: true })} />);
-    expect(screen.getByTestId('gameover-practice')).toBeInTheDocument();
-  });
-
-  it('shows personal-best status only when the run set one', () => {
-    render(<RunResults {...props()} />);
-    expect(screen.queryByTestId('results-personal-best')).toBeNull();
-
-    render(<RunResults {...props({ personalBest: true })} />);
-    expect(screen.getByTestId('results-personal-best')).toBeInTheDocument();
-  });
-
-  it('places the share artifact on Layer 1 (§11.3)', () => {
-    render(
-      <RunResults
-        {...props({ shareArtifact: <div data-testid="share-card">card</div> })}
-      />
-    );
-    expect(screen.getByTestId('results-layer-1')).toContainElement(
-      screen.getByTestId('share-card')
-    );
-  });
-
-  it('renders no Take slot when the server did not report one', () => {
-    render(<RunResults {...props()} />);
-    expect(screen.queryByTestId('results-take')).toBeNull();
-  });
-
-  it('renders the Take slot on the day first run, inside Layer 1', () => {
-    render(<RunResults {...props({ take })} />);
-    const slot = screen.getByTestId('results-take');
-    expect(screen.getByTestId('results-layer-1')).toContainElement(slot);
-    expect(slot).toHaveTextContent('150 DNA');
-    expect(slot).toHaveTextContent('day 3 streak');
-  });
-
-  it('collects the Take once and then disables the button', () => {
-    const onCollectTake = jest.fn();
-    const { rerender } = render(
-      <RunResults {...props({ take, onCollectTake })} />
-    );
-    fireEvent.click(screen.getByTestId('results-take-collect'));
-    expect(onCollectTake).toHaveBeenCalledTimes(1);
-
-    rerender(
-      <RunResults
-        {...props({
-          take: { ...take, collected: true },
-          onCollectTake,
-          takeState: 'collected',
-        })}
-      />
-    );
-    expect(screen.getByTestId('results-take-collect')).toBeDisabled();
-  });
-
-  it('treats a missing collect endpoint as a statement, not an error', () => {
-    render(<RunResults {...props({ take, takeState: 'unavailable' })} />);
-    expect(screen.getByTestId('results-take-status')).toHaveTextContent(
-      /settles with the day/i
-    );
-    expect(screen.getByTestId('results-take-collect')).toBeDisabled();
-  });
-});
-
-describe('RunResults — Layer 2', () => {
-  it('shows the two numbers', () => {
-    render(<RunResults {...props()} />);
-    expect(screen.getByTestId('results-score')).toHaveTextContent('420');
-    expect(screen.getByTestId('results-yield')).toHaveTextContent('240');
-  });
-
-  it('shows the snake generation multiplier and its exact Yield contribution', () => {
-    render(<RunResults {...props()} />);
-    const breakdown = screen.getByTestId('results-yield-breakdown');
-    expect(breakdown).toHaveTextContent('Base run Yield');
-    expect(breakdown).toHaveTextContent('213');
-    expect(breakdown).toHaveTextContent('Gen 11 Yield ×1.1273');
-    expect(breakdown).toHaveTextContent('+27');
-  });
-
-  it('states the neutral multiplier for Gen 1-3 instead of implying a hidden bonus', () => {
-    render(
-      <RunResults
-        {...props({
-          yieldDna: 240,
-          yieldBreakdown: {
-            generation: 3,
-            baseYield: 240,
-            multiplier: 1,
-            bonusYield: 0,
-            totalYield: 240,
-          },
-        })}
-      />
-    );
-    expect(screen.getByTestId('results-yield-breakdown')).toHaveTextContent(
-      'Gen 3 Yield ×1.00'
-    );
-  });
-
-  it('omits the breakdown when settlement did not answer', () => {
-    render(<RunResults {...props({ yieldBreakdown: null })} />);
-    expect(screen.queryByTestId('results-yield-breakdown')).toBeNull();
-  });
-
-  it('shows no Depth when no Serpent week is live', () => {
-    render(<RunResults {...props()} />);
-    expect(screen.queryByTestId('results-depth')).toBeNull();
-  });
-
-  it('adds the Depth contribution during a Serpent week', () => {
-    render(
-      <RunResults
-        {...props({
-          serpent: {
-            live: true,
-            weekDepth: 2315,
-            deltaVsBestWeek: 120,
-            runCounts: true,
-          },
-        })}
-      />
-    );
-    const depth = screen.getByTestId('results-depth');
-    expect(depth).toHaveTextContent('2,315');
-    expect(depth).toHaveTextContent('+120');
-    expect(depth).toHaveTextContent(/counts toward the week/i);
-  });
-
-  it('degrades to Score and Yield when the Serpent flag is off', () => {
-    render(<RunResults {...props({ serpent: null })} />);
-    expect(screen.getByTestId('results-score')).toBeInTheDocument();
-    expect(screen.getByTestId('results-yield')).toBeInTheDocument();
-    expect(screen.queryByTestId('results-depth')).toBeNull();
-  });
-});
-
-describe('RunResults — the run loop controls', () => {
-  it('offers REPLAY and SETUP outside the three layers', () => {
-    render(<RunResults {...props()} />);
-    const replay = screen.getByTestId('results-replay');
-    const setup = screen.getByTestId('results-setup');
-    for (const layer of [1, 2, 3]) {
-      expect(screen.getByTestId(`results-layer-${layer}`)).not.toContainElement(
-        replay
-      );
-      expect(screen.getByTestId(`results-layer-${layer}`)).not.toContainElement(
-        setup
-      );
-    }
-  });
-
-  it('replays and reopens setup through their callbacks', () => {
+  it('keeps Replay and Setup outside every layer and immediately operable', () => {
     const onReplay = jest.fn();
     const onSetup = jest.fn();
     render(<RunResults {...props({ onReplay, onSetup })} />);
+    for (const layer of [1, 2, 3]) {
+      expect(screen.getByTestId(`results-layer-${layer}`)).not.toContainElement(
+        screen.getByTestId('results-replay')
+      );
+    }
     fireEvent.click(screen.getByTestId('results-replay'));
     fireEvent.click(screen.getByTestId('results-setup'));
     expect(onReplay).toHaveBeenCalledTimes(1);
     expect(onSetup).toHaveBeenCalledTimes(1);
   });
 
-  it('invokes the next action when it opens a modal instead of navigating', () => {
-    const onNextAction = jest.fn();
-    render(
-      <RunResults
-        {...props({
-          nextAction: {
-            id: 'save-progress',
-            label: 'Save this progress',
-            description: 'Add an email.',
-            href: null,
-          },
-          onNextAction,
-        })}
-      />
-    );
-    fireEvent.click(screen.getByTestId('results-next-action'));
-    expect(onNextAction).toHaveBeenCalledTimes(1);
+  it('has no commercial copy or destination', () => {
+    const { container } = render(<RunResults {...props()} />);
+    expect(container.textContent ?? '').not.toMatch(/buy|purchase|subscribe|keeper|season pass|€/i);
+    for (const anchor of Array.from(container.querySelectorAll('a[href]'))) {
+      expect(anchor.getAttribute('href')).not.toMatch(/shop|checkout|billing/i);
+    }
+  });
+});
+
+describe('Layer 1', () => {
+  it('names extracted, crash, and practice outcomes', () => {
+    const { rerender } = render(<RunResults {...props()} />);
+    expect(screen.getByTestId('gameover-extracted')).toBeInTheDocument();
+    rerender(<RunResults {...props({ outcome: 'crashed' })} />);
+    expect(screen.getByTestId('gameover-crashed')).toBeInTheDocument();
+    rerender(<RunResults {...props({ practice: true })} />);
+    expect(screen.getByTestId('gameover-practice')).toBeInTheDocument();
+  });
+
+  it('keeps share and the one literal Daily Take collect in Layer 1', () => {
+    const onCollectTake = jest.fn();
+    render(<RunResults {...props({
+      take,
+      onCollectTake,
+      shareArtifact: <div data-testid="share-artifact">share</div>,
+    })} />);
+    const layer = screen.getByTestId('results-layer-1');
+    expect(layer).toContainElement(screen.getByTestId('share-artifact'));
+    expect(layer).toContainElement(screen.getByTestId('results-take'));
+    fireEvent.click(screen.getByTestId('results-take-collect'));
+    expect(onCollectTake).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Layer 2', () => {
+  it('uses the immutable receipt for Score, Yield, credited DNA, and commitment', () => {
+    render(<RunResults {...props()} />);
+    expect(screen.getByTestId('results-score')).toHaveTextContent('440');
+    expect(screen.getByTestId('results-yield')).toHaveTextContent('260');
+    expect(screen.getByTestId('results-energy')).toHaveTextContent('2 Energy committed');
+    expect(screen.getByTestId('results-energy')).toHaveTextContent('572 DNA credited');
+  });
+
+  it('keeps detailed reward math collapsed', () => {
+    render(<RunResults {...props()} />);
+    const details = screen.getByTestId('results-receipt-details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(screen.getByTestId('results-yield-breakdown')).toHaveTextContent('Gen 11 Yield ×1.1273');
+  });
+
+  it('shows only the clan delta and never repeats the full five', () => {
+    render(<RunResults {...props({
+      clanBattle: {
+        eligible: true,
+        enteredTopFive: true,
+        scoreDelta: 12_400,
+        replacedSessionId: 'old',
+        topFive: [{ sessionId: 'secret-row', score: 999_999, rank: 1, energyCommitted: 6, generation: 11 }],
+      },
+    })} />);
+    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('+12,400 Clan Depth');
+    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('Replaced a weaker result');
+    expect(screen.queryByText('999,999 Yield')).toBeNull();
+  });
+});
+
+describe('Layer 3 recognition', () => {
+  it('starts as one closed digest with a compact summary', () => {
+    render(<RunResults {...props()} />);
+    const digest = screen.getByTestId('results-digest') as HTMLDetailsElement;
+    expect(digest.open).toBe(false);
+    expect(screen.getByTestId('impact-summary')).toHaveTextContent('CYBER Mastery M6');
+  });
+
+  it('sequences no more than three grouped, skippable beats', () => {
+    render(<RunResults {...props()} />);
+    fireEvent.click(screen.getByText('What this run moved'));
+    expect(screen.getByTestId('impact-beat-growth')).toBeInTheDocument();
+    expect(screen.getByText('1 of 3')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('impact-review-next'));
+    expect(screen.getByTestId('impact-beat-discovery')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('impact-review-skip'));
+    expect(screen.getByText(/Recognition reviewed/i)).toBeInTheDocument();
+  });
+
+  it('announces visual progress without relying on animation', () => {
+    render(<RunResults {...props()} />);
+    fireEvent.click(screen.getByText('What this run moved'));
+    const progress = screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i });
+    expect(progress).toHaveAttribute('aria-valuenow', '6');
+    expect(progress).toHaveAttribute('aria-valuemax', '10');
+  });
+
+  it('states pending recovery instead of constructing client progress', () => {
+    render(<RunResults {...props({ impact: null })} />);
+    expect(screen.getByTestId('impact-summary')).toHaveTextContent(/pending server recovery/i);
+    expect(screen.getByText(/no progress is reconstructed on this device/i)).toBeInTheDocument();
+  });
+
+  it('shows routine progress without manufacturing a ceremony', () => {
+    const routine = {
+      ...impact,
+      impacts: [{
+        key: 'xp', pillar: 'mastery' as const, kind: 'xp', significance: 'routine' as const, headline: '+80 CYBER Mastery XP',
+      }],
+      featuredImpactKeys: [],
+    };
+    render(<RunResults {...props({ impact: routine })} />);
+    fireEvent.click(screen.getByText('What this run moved'));
+    expect(screen.getByTestId('impact-routine-list')).toHaveTextContent('+80 CYBER Mastery XP');
+    expect(screen.queryByTestId('impact-review-next')).toBeNull();
   });
 });

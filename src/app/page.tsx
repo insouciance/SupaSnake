@@ -57,6 +57,7 @@ import {
 } from '@/lib/ftue/launchFlow';
 import {
   NOTIFICATION_TARGETS,
+  requestAttentionRefresh,
   subscribeNotificationAction,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
@@ -167,13 +168,18 @@ export default function Home() {
     });
   }, []);
 
-  // Replay any queued game rewards that failed to send (tab closed at
-  // death, network drop). Server dedupes by sessionId.
+  // Retry any settlement requests held in this tab's memory. Progress never
+  // enters browser persistence; a delivered/duplicate request recovers the
+  // canonical server impact receipt and refreshes server-owned attention.
   useEffect(() => {
     if (!token) return;
-    replayRewardOutbox(token).catch((err) => {
-      console.error('Reward outbox replay failed:', err);
-    });
+    replayRewardOutbox(token)
+      .then((result) => {
+        if (result.impacts.length > 0) requestAttentionRefresh();
+      })
+      .catch((err) => {
+        console.error('Settlement retry failed:', err);
+      });
   }, [token]);
 
   // Real home stats from server authority: /api/player + /api/streaks

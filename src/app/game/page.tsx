@@ -122,10 +122,11 @@ import {
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import { useToast } from '@/components/ui/Toast';
-import { enqueueReward } from '@/lib/outbox/rewardOutbox';
+import { enqueueReward, replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import {
   NOTIFICATION_TARGETS,
+  requestAttentionRefresh,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 import {
@@ -180,6 +181,11 @@ import {
 } from '@/lib/share/genomeCardImage';
 import { getAimSystem, isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import {
+  parseImpactFromSettlement,
+  recoverRunImpact,
+  type RunImpactEnvelope,
+} from '@/lib/game/runImpactClient';
+import {
   IconBolt,
   IconDna,
   IconFlame,
@@ -191,12 +197,6 @@ import {
   IconUser,
 } from '@/components/ui/icons';
 
-/**
- * First-extraction claim prompt bookkeeping (Identity v1 section 3.3):
- * device-scoped UI state ONLY (never game progress) - shown at most once
- * per device until claimed or dismissed twice.
- */
-const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
 const DIRECTION_BY_KEY: Record<string, Direction> = {
   ArrowUp: 'UP',
   ArrowDown: 'DOWN',
@@ -331,18 +331,6 @@ function parseAscendanceBreakdown(
 
 function directionCanRelease(result: SetDirectionResult): boolean {
   return result === 'accepted' || result === 'duplicate';
-}
-
-function recordHandlePromptDismissal(claimed: boolean): void {
-  try {
-    const current = Number(window.localStorage.getItem(HANDLE_PROMPT_KEY) ?? '0');
-    window.localStorage.setItem(
-      HANDLE_PROMPT_KEY,
-      claimed ? '99' : String(current + 1)
-    );
-  } catch {
-    // Storage unavailable - the prompt simply may repeat
-  }
 }
 
 export default function GamePage() {
@@ -512,6 +500,7 @@ export default function GamePage() {
   const [settledCredited, setSettledCredited] = useState<number | null>(null);
   const [settledYieldBreakdown, setSettledYieldBreakdown] =
     useState<AscendanceYieldBreakdown | null>(null);
+  const [runImpact, setRunImpact] = useState<RunImpactEnvelope | null>(null);
   // Results → SETUP reopens the setup page over a finished run (§5). REPLAY
   // skips it entirely.
   const [setupReopened, setSetupReopened] = useState(false);
@@ -531,6 +520,30 @@ export default function GamePage() {
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
+
+  // Retry an undelivered settlement when this tab regains connectivity. The
+  // queue is memory-only; a settled duplicate recovers its canonical receipt.
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) return;
+    const replay = () => {
+      void replayRewardOutbox(token)
+        .then((result) => {
+          const current = result.impacts.find(
+            (impact) => impact.sessionId === currentSessionIdRef.current
+          );
+          if (current) {
+            setRunImpact(current);
+            setSettledYield(current.receipt.yieldDna);
+            setSettledCredited(current.receipt.dnaCredited);
+          }
+          if (result.impacts.length > 0) requestAttentionRefresh();
+        })
+        .catch((error) => console.error('Settlement retry failed:', error));
+    };
+    window.addEventListener('online', replay);
+    return () => window.removeEventListener('online', replay);
+  }, [session?.access_token]);
 
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
@@ -1420,9 +1433,10 @@ export default function GamePage() {
         // it ended. Display/Analyst input only - the server stores it
         // separately from the payout path and validates every bound.
         const runEventRecord = gameRef.current?.getRunEvents() ?? null;
-        // If the reward POST can't be delivered, queue it for replay on the
-        // next app load so a tab close at death never loses the run's DNA.
-        // Phase 2 payload fields shared by the live POST and the outbox
+        // If the settlement POST cannot be delivered, keep a tab-memory retry
+        // while this runtime survives. No progress payload is written to
+        // browser storage; durable recovery belongs to the server session.
+        // Phase 2 payload fields shared by the live POST and retry queue.
         const queueForReplay = () => {
           // Free runs pay nothing - there is no reward to protect, so a
           // failed free end is never queued for replay
@@ -1477,13 +1491,39 @@ export default function GamePage() {
           });
 
           if (!response.ok) {
-            // 409 = session already ended (duplicate) - nothing to retry
-            if (response.status !== 409) {
+            if (response.status === 409) {
+              // A delivered settlement whose response was lost is not allowed
+              // to lose its recognition. New servers return `impact` on the
+              // duplicate itself; recovery covers older/empty 409 bodies.
+              const duplicateBody = await response.json().catch(() => null);
+              const recovered =
+                parseImpactFromSettlement(duplicateBody) ??
+                await recoverRunImpact(
+                  sessionId,
+                  currentSession.access_token
+                ).catch((error) => {
+                  console.error('Failed to recover settled run impact:', error);
+                  return null;
+                });
+              if (recovered) {
+                setRunImpact(recovered);
+                setSettledYield(recovered.receipt.yieldDna);
+                setSettledCredited(recovered.receipt.dnaCredited);
+                setActiveEnergyCommitted(recovered.receipt.energyCommitted);
+                setActiveEnergyMultiplierBps(
+                  recovered.receipt.commitmentMultiplierBps
+                );
+                requestAttentionRefresh();
+              }
+            } else {
               console.error(`Game end rejected (status ${response.status}), queueing for replay`);
               queueForReplay();
             }
           } else {
             const result = await response.json();
+            const impactEnvelope = parseImpactFromSettlement(result);
+            setRunImpact(impactEnvelope);
+            if (impactEnvelope) requestAttentionRefresh();
 
             // Sync DNA balance to collection store (server authority)
             if (result.player?.dna !== undefined) {
@@ -1874,6 +1914,7 @@ export default function GamePage() {
     setSettledCredited(null);
     setSettledYieldBreakdown(null);
     setClanBattleResult(null);
+    setRunImpact(null);
     setSetupReopened(false);
 
     // Trait config comes from the server-owned equipped snake row.
@@ -3284,22 +3325,7 @@ export default function GamePage() {
                   onCollectTake={() => {
                     void handleCollectTake();
                   }}
-                  digest={{
-                    mastery: masteryResult,
-                    codex: codexDiscoveries.map((discovery) => ({
-                      key: `${discovery.type}:${discovery.entryId}`,
-                      label: `${codexEntryName(discovery.type, discovery.entryId)}${
-                        discovery.worldFirst ? ' · WORLD FIRST' : ''
-                      }${discovery.rewardDna > 0 ? ` · +${discovery.rewardDna} DNA` : ''}`,
-                    })),
-                    streakDays: streakInfo?.current ?? null,
-                    genes: heldMutations.map(
-                      (pick) =>
-                        `${GENES[pick.id].name}${
-                          pick.id === 'phoenix' && phoenixTriggered ? ' (spent)' : ''
-                        }`
-                    ),
-                  }}
+                  impact={runImpact}
                   nextAction={resultsNextAction}
                   onNextAction={handleResultsNextAction}
                   onReplay={handleReplay}
@@ -3309,25 +3335,6 @@ export default function GamePage() {
                   replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
-                  }
-                  analyst={
-                    currentSessionId && session?.access_token && !lastRunFree ? (
-                      <RunInsightCard
-                        sessionId={currentSessionId}
-                        accessToken={session.access_token}
-                      />
-                    ) : null
-                  }
-                  playerCard={
-                    ownIdentity ? (
-                      <PlayerCard
-                        identity={ownIdentity}
-                        variant="card"
-                        isSelf
-                        onClaim={() => setShowHandleClaim(true)}
-                        className="text-left"
-                      />
-                    ) : null
                   }
                 />
               ) : (
@@ -3780,11 +3787,9 @@ export default function GamePage() {
       <HandleClaimModal
         isOpen={showHandleClaim}
         onClose={() => {
-          recordHandlePromptDismissal(false);
           setShowHandleClaim(false);
         }}
         onClaimed={(handle) => {
-          recordHandlePromptDismissal(true);
           setOwnIdentity((prev) =>
             prev ? { ...prev, handle, displayHandle: handle, isGenerated: false } : prev
           );

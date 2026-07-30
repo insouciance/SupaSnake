@@ -62,6 +62,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SIGNAL_V1_ENABLED } from '@/lib/signal/config';
 import { signalDayIndex, signalDayKeyToDate } from '@/shared/game/signal';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 
 // ---------------------------------------------------------------------------
 // The shape `GET /api/signal/panel` publishes (see that route's contract)
@@ -143,6 +144,10 @@ export function SignalSurface({
   const [state, setState] = useState<LoadState>('loading');
   const [open, setOpen] = useState(false);
   const [reloads, setReloads] = useState(0);
+
+  // The Signal's recognition clears when the player opens the loaded daily
+  // card, not when Home happens to mount its collapsed chip.
+  useRecognitionSeen('signal', open && state === 'ready' && view !== null, token);
 
   useEffect(() => {
     if (!SIGNAL_V1_ENABLED || !token) return;
