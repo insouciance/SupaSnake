@@ -11,9 +11,10 @@
  * mutating method.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isMissingSeasonInfra } from '@/lib/server/season';
+import { progressionJson } from '@/lib/server/noStoreResponse';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -23,13 +24,13 @@ const supabase = createClient(
 async function getAuthedPlayer(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   if (!authHeader) {
-    return { errorResponse: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+    return { errorResponse: progressionJson({ error: 'Unauthorized' }, { status: 401 }) };
   }
 
   const token = authHeader.replace('Bearer ', '');
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) {
-    return { errorResponse: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
+    return { errorResponse: progressionJson({ error: 'Invalid token' }, { status: 401 }) };
   }
 
   const { data: player, error: playerError } = await supabase
@@ -37,12 +38,12 @@ async function getAuthedPlayer(request: NextRequest) {
     .select('id')
     .eq('user_id', user.id)
     .single();
-  if (playerError?.code === 'PGRST116' || !player) {
-    return { errorResponse: NextResponse.json({ error: 'Player not found' }, { status: 404 }) };
-  }
-  if (playerError) {
+  if (playerError && playerError.code !== 'PGRST116') {
     console.error('Season player lookup failed:', playerError);
-    return { errorResponse: NextResponse.json({ error: 'Failed to load player' }, { status: 500 }) };
+    return { errorResponse: progressionJson({ error: 'Failed to load player' }, { status: 500 }) };
+  }
+  if (playerError?.code === 'PGRST116' || !player) {
+    return { errorResponse: progressionJson({ error: 'Player not found' }, { status: 404 }) };
   }
 
   return { player };
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       if (isMissingSeasonInfra(error)) {
-        return NextResponse.json({
+        return progressionJson({
           live: false,
           season: null,
           track: null,
@@ -68,12 +69,15 @@ export async function GET(request: NextRequest) {
         });
       }
       console.error('get_season RPC error:', error);
-      return NextResponse.json({ error: 'Failed to load season' }, { status: 500 });
+      return progressionJson({ error: 'Failed to load season' }, { status: 500 });
     }
 
     const payload = (data ?? {}) as Record<string, unknown>;
     const rawSeason = payload.season && typeof payload.season === 'object'
       ? payload.season as Record<string, unknown>
+      : null;
+    const rawTrack = payload.track && typeof payload.track === 'object'
+      ? payload.track as Record<string, unknown>
       : null;
     // get_season's stable pre-Genome wire key is `mutations`. Every row in
     // that frozen catalog is a gene, so expose a correctly named alias while
@@ -88,15 +92,31 @@ export async function GET(request: NextRequest) {
               : [],
         }
       : null;
-    return NextResponse.json({
+    const track = rawTrack
+      ? {
+          ...rawTrack,
+          tiers: Array.isArray(rawTrack.tiers)
+            ? rawTrack.tiers.filter((value) => {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+                const tier = value as Record<string, unknown>;
+                return (
+                  (tier.reward_type === 'cosmetic' || tier.reward_type === 'title') &&
+                  typeof tier.reward_id === 'string' &&
+                  tier.reward_id.trim().length > 0
+                );
+              })
+            : [],
+        }
+      : null;
+    return progressionJson({
       live: true,
       season,
-      track: payload.track ?? null,
+      track,
       playoffs: Array.isArray(payload.playoffs) ? payload.playoffs : [],
       champions: Array.isArray(payload.champions) ? payload.champions : [],
     });
   } catch (error) {
     console.error('Season GET error:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return progressionJson({ error: 'Internal error' }, { status: 500 });
   }
 }

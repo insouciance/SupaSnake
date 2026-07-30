@@ -106,7 +106,19 @@ describe('GET /api/season', () => {
           playoff_phase: 'none',
           mutations: [{ id: 'solstice_engine', name: 'Solstice Engine' }],
         },
-        track: { xp: 1200, level: 4, max_level: 30, xp_per_level: 400, tiers: [], reroll_tokens: 2 },
+        track: {
+          xp: 1200,
+          level: 4,
+          max_level: 30,
+          xp_per_level: 400,
+          tiers: [
+            { level: 1, reward_type: 'cosmetic', reward_id: 'trail-one' },
+            { level: 2, reward_type: 'title', reward_id: 'title-one' },
+            { level: 3, reward_type: 'reroll_token', reward_id: null },
+            { level: 4, reward_type: 'variant', reward_id: 'snake-one' },
+          ],
+          reroll_tokens: 2,
+        },
         playoffs: [],
         champions: [{ seq: 1, clan_name: 'VIPERS' }],
       },
@@ -115,12 +127,17 @@ describe('GET /api/season', () => {
 
     const response = await GET(getRequest());
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     const body = await response.json();
     expect(body.live).toBe(true);
     expect(body.season.seq).toBe(1);
     expect(body.season.genes).toEqual([{ id: 'solstice_engine', name: 'Solstice Engine' }]);
     expect(body.season.mutations).toEqual([{ id: 'solstice_engine', name: 'Solstice Engine' }]);
     expect(body.track.level).toBe(4);
+    expect(body.track.tiers).toEqual([
+      { level: 1, reward_type: 'cosmetic', reward_id: 'trail-one' },
+      { level: 2, reward_type: 'title', reward_id: 'title-one' },
+    ]);
     expect(body.champions).toHaveLength(1);
     expect(mockRpc).toHaveBeenCalledWith('get_season', { p_player_id: PLAYER_ID });
   });
