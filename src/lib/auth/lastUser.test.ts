@@ -10,12 +10,12 @@ import {
   markProgressLossNoticed,
   maskEmail,
   LAST_USER_KEY,
-  PROGRESS_LOSS_NOTICE_KEY,
 } from './lastUser';
 
 describe('lastUser', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    clearLastUser();
   });
 
   describe('maskEmail', () => {
@@ -80,7 +80,7 @@ describe('lastUser', () => {
       clearLastUser();
 
       expect(readLastUser()).toBeNull();
-      expect(window.localStorage.getItem(PROGRESS_LOSS_NOTICE_KEY)).toBeNull();
+      expect(window.localStorage.length).toBe(0);
     });
   });
 

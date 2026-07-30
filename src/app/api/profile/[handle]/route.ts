@@ -7,7 +7,7 @@
  *   only - handler-NNNN derived names are never addressable, section
  *   3.2), serves the public-safe Chronicle payload (player_identity_view
  *   + Chronicle aggregates - nothing private), 404 for unknown or
- *   invalid handles, CDN-cached via s-maxage=60.
+ *   invalid handles. Even public career facts are never browser-cached.
  *
  * Empty-state rule (section 7.2): a player with <5 earning runs serves
  * header + collection log only (limited: true).
@@ -26,7 +26,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=300';
+const CACHE_CONTROL = 'private, no-store';
 
 export async function GET(
   request: NextRequest,

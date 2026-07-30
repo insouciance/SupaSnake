@@ -17,6 +17,7 @@ import {
   trackGameEvent,
   trackEconomyEvent,
   getSessionId,
+  clearLegacyPostHogPersistence,
 } from './posthog';
 
 jest.mock('posthog-js', () => ({
@@ -59,9 +60,24 @@ describe('PostHog Analytics', () => {
         expect.objectContaining({
           api_host: 'https://eu.i.posthog.com',
           autocapture: false,
+          persistence: 'memory',
+          advanced_disable_flags: true,
         })
       );
       expect(isAnalyticsInitialized()).toBe(true);
+    });
+
+    it('removes the legacy PostHog browser-persistence blob', () => {
+      const key = 'ph_phc_legacy_posthog';
+      window.localStorage.setItem(key, JSON.stringify({
+        $stored_person_properties: { ladder_rung: 'belonging' },
+      }));
+      window.sessionStorage.setItem(key, 'legacy');
+
+      clearLegacyPostHogPersistence('phc_legacy');
+
+      expect(window.localStorage.getItem(key)).toBeNull();
+      expect(window.sessionStorage.getItem(key)).toBeNull();
     });
 
     it('does not re-initialize on subsequent calls', () => {

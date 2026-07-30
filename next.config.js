@@ -69,6 +69,18 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // API payloads may contain authoritative account state. Never permit
+        // a browser, service worker, shared proxy or framework cache to retain
+        // them. Public pages can still cache their own static presentation.
+        source: '/api/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'private, no-store',
+          },
+        ],
+      },
+      {
         source: '/static/:path*',
         headers: [
           {

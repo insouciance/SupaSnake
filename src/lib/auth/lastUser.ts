@@ -9,7 +9,7 @@
  */
 
 export const LAST_USER_KEY = 'supasnake-last-user';
-export const PROGRESS_LOSS_NOTICE_KEY = 'supasnake-progress-loss-noticed';
+let lossNoticeShownThisDocument = false;
 
 export interface LastUserMarker {
   userId: string;
@@ -86,11 +86,11 @@ export function recordLastUser(
 }
 
 export function clearLastUser(storage?: Storage): void {
+  lossNoticeShownThisDocument = false;
   const store = getStorage(storage);
   if (!store) return;
   try {
     store.removeItem(LAST_USER_KEY);
-    store.removeItem(PROGRESS_LOSS_NOTICE_KEY);
   } catch {
     // ignore
   }
@@ -102,27 +102,19 @@ export function clearLastUser(storage?: Storage): void {
  */
 export function evaluateAnonymousSignInGate(
   marker: LastUserMarker | null,
-  storage?: Storage
+  _storage?: Storage
 ): AnonymousSignInGate {
   if (!marker) return 'proceed';
   if (!marker.isAnonymous) return 'welcome-back';
 
   // Previous anonymous identity is gone - warn exactly once.
-  const store = getStorage(storage);
-  try {
-    if (store?.getItem(PROGRESS_LOSS_NOTICE_KEY) === '1') return 'proceed';
-  } catch {
-    return 'proceed';
-  }
+  if (lossNoticeShownThisDocument) return 'proceed';
   return 'warn-progress-loss';
 }
 
 /** Mark the one-time "previous progress may be unrecoverable" notice as shown. */
-export function markProgressLossNoticed(storage?: Storage): void {
-  const store = getStorage(storage);
-  try {
-    store?.setItem(PROGRESS_LOSS_NOTICE_KEY, '1');
-  } catch {
-    // ignore
-  }
+export function markProgressLossNoticed(_storage?: Storage): void {
+  // Presentation memory only. A notice about server-account continuity is not
+  // itself allowed to become browser-persistent progression state.
+  lossNoticeShownThisDocument = true;
 }

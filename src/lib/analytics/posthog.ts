@@ -41,6 +41,31 @@ export const ANALYTICS_READY_EVENT = 'analytics-ready';
 let initialized = false;
 
 /**
+ * Remove the SDK blob used before Constitution v1.6. PostHog stores person
+ * properties in the same persistence record as its device id; some of those
+ * properties described career/lifecycle state. Analytics is memory-only now,
+ * so retaining that old blob would violate the no-browser-progress rule even
+ * though new code never reads it as game authority.
+ */
+export function clearLegacyPostHogPersistence(apiKey: string): void {
+  if (typeof window === 'undefined' || !apiKey) return;
+  const key = `ph_${apiKey}_posthog`;
+  try {
+    // constitution-allow: local-progress destructive migration removes a legacy progress-bearing analytics blob
+    window.localStorage.removeItem(key);
+    // constitution-allow: local-progress destructive migration removes any legacy session-scoped analytics copy
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable in hardened/private contexts. Memory-only
+    // initialization below remains safe in that case.
+  }
+  if (typeof document !== 'undefined') {
+    // constitution-allow: local-progress destructive migration expires the legacy analytics cookie copy
+    document.cookie = `${encodeURIComponent(key)}=; Max-Age=0; Path=/; SameSite=Lax`;
+  }
+}
+
+/**
  * Initialize PostHog SDK.
  * Safe to call multiple times - only the first call initializes.
  */
@@ -51,13 +76,18 @@ export function initAnalytics(config: AnalyticsConfig): void {
   }
   if (initialized) return;
 
+  clearLegacyPostHogPersistence(config.apiKey);
+
   posthog.init(config.apiKey, {
     api_host: config.host || 'https://eu.i.posthog.com',
     capture_pageview: true,
     capture_pageleave: true,
     autocapture: false, // game UI clicks are noise; we track a curated taxonomy
-    // constitution-allow: local-progress  consent-gated analytics identity stores no player progress payload
-    persistence: 'localStorage+cookie',
+    // Person properties can include lifecycle/progression segmentation. Keep
+    // the SDK entirely in this document's memory so none can reach browser
+    // persistence, even indirectly inside a dependency.
+    persistence: 'memory',
+    advanced_disable_flags: true,
   });
 
   if (config.userId) {

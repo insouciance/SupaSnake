@@ -96,7 +96,7 @@ describe('GET /api/profile/[handle]', () => {
     expect(mockBuildChronicle).not.toHaveBeenCalled();
   });
 
-  it('serves the public payload with the s-maxage cache header', async () => {
+  it('serves the public payload without browser persistence', async () => {
     wirePlayers({
       id: 'player-1',
       user_id: 'user-1',
@@ -106,9 +106,7 @@ describe('GET /api/profile/[handle]', () => {
     const [request, context] = requestFor('souci'); // case-insensitive
     const response = await GET(request, context);
     expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe(
-      'public, s-maxage=60, stale-while-revalidate=300'
-    );
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     const body = await response.json();
     expect(body.identity.displayHandle).toBe('Souci');
     expect(body.legacyScore).toBe(75);

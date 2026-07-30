@@ -5,7 +5,7 @@
 
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
-import { recordLastUser, readLastUser, PROGRESS_LOSS_NOTICE_KEY } from '@/lib/auth/lastUser';
+import { clearLastUser, recordLastUser, readLastUser } from '@/lib/auth/lastUser';
 import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
 import { useNotificationStore } from '@/lib/stores/notificationStore';
 import { clearLaunchHandoff, peekLaunchHandoff } from '@/lib/ftue/launchFlow';
@@ -233,6 +233,7 @@ describe('Home page', () => {
     clearLaunchHandoff();
     window.localStorage.clear();
     window.sessionStorage.clear();
+    clearLastUser();
     window.history.replaceState(null, '', '/');
     useNotificationStore.setState({ notifications: {}, hasHydrated: true });
     setupFetch();
@@ -625,7 +626,7 @@ describe('Home page', () => {
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith('/game?launch=ftue-v2');
       });
-      expect(window.localStorage.getItem(PROGRESS_LOSS_NOTICE_KEY)).toBe('1');
+      expect(window.localStorage.getItem('supasnake-progress-loss-noticed')).toBeNull();
     });
 
     it('takes a truly fresh guest from one Launch through auth, bootstrap, and run loading', async () => {

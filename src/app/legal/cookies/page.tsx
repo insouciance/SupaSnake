@@ -42,13 +42,7 @@ const ESSENTIAL: StorageEntry[] = [
     name: 'supasnake-last-user',
     kind: 'localStorage',
     purpose:
-      'Session-recovery hint (account ID and a masked e-mail hint, e.g. "jo***@…") so we can warn you before you lose guest progress',
-    duration: 'Until cleared',
-  },
-  {
-    name: 'supasnake-progress-loss-noticed',
-    kind: 'localStorage',
-    purpose: 'Remembers that the progress-loss warning was shown',
+      'Account-continuity hint (account ID and a masked e-mail hint, e.g. "jo***@…") so we do not silently create a different guest account. It contains no earned state.',
     duration: 'Until cleared',
   },
 ];
@@ -65,17 +59,11 @@ const FUNCTIONAL: StorageEntry[] = [
 
 const ANALYTICS: StorageEntry[] = [
   {
-    name: 'ph_* (PostHog)',
-    kind: 'Cookie',
-    purpose:
-      'Product analytics: pseudonymous device/session ID linking usage events. Set only after you enable Analytics in the cookie banner. EU-hosted.',
-    duration: 'Up to 12 months',
-  },
-  {
-    name: 'PostHog persistence entries',
+    name: '__ph_opt_in_out_*',
     kind: 'localStorage',
-    purpose: 'Analytics device/session identifiers (consent-gated)',
-    duration: 'Until consent is revoked or storage cleared',
+    purpose:
+      'Remembers only whether you opted product analytics in or out. PostHog device IDs, person properties, and analytics session state are memory-only and disappear when the page closes.',
+    duration: 'Until your choice changes or storage is cleared',
   },
 ];
 
