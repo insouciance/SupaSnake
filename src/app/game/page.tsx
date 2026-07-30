@@ -680,7 +680,6 @@ export default function GamePage() {
             if (typeof data.player?.dna === 'number') {
               useCollectionStore.getState().setDnaBalance(data.player.dna);
             }
-            syncChargeFromServer(data.energy ?? data.charge ?? null);
           })
           .catch((error) => {
             console.error('Failed to refresh player after settlement:', error);
@@ -696,12 +695,7 @@ export default function GamePage() {
       cancelled = true;
       if (timeout !== null) clearTimeout(timeout);
     };
-  }, [
-    currentSessionId,
-    session?.access_token,
-    settlementSecuredPending,
-    syncChargeFromServer,
-  ]);
+  }, [currentSessionId, session?.access_token, settlementSecuredPending]);
 
   /**
    * Bank/crash preview for the HUD chip and game-over screen. Genome
