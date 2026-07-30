@@ -13,6 +13,7 @@ import {
 } from './SnakeGameLogic';
 import {
   COSMIC_CONSTELLATION,
+  CYBER_TICK_FLOOR_MS,
   PRIMAL_SPEED_MS,
   RULESETS,
   computeRunTotals,
@@ -802,10 +803,16 @@ describe('SnakeGameLogic', () => {
     });
 
     it('never drops below the minimum speed on CYBER', () => {
-      const cyber = new SnakeGameLogic({ gridSize: 200, ruleset: RULESETS.CYBER });
-      cyber.start();
-      eatFoods(cyber, 60);
-      expect(cyber.getSpeed()).toBeGreaterThanOrEqual(50);
+      // This is a curve invariant, not a survival simulation. Marching a live
+      // CYBER run through 60 foods also activates randomized arena blocks and
+      // can end the run before the speed assertion, making the test flaky for
+      // a reason unrelated to tempo.
+      for (let foodEaten = 0; foodEaten <= 1_000; foodEaten++) {
+        expect(RULESETS.CYBER.speedForFood(foodEaten)).toBeGreaterThanOrEqual(
+          CYBER_TICK_FLOOR_MS
+        );
+      }
+      expect(RULESETS.CYBER.speedForFood(1_000)).toBe(CYBER_TICK_FLOOR_MS);
     });
 
     it('setRuleset re-derives speed from the current food count', () => {
