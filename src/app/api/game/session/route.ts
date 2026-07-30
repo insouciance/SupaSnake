@@ -132,6 +132,12 @@ import {
 } from '@/shared/game/worldCondition';
 import type { StrainId } from '@/shared/game/strains';
 import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
+import {
+  buildRunImpactEnvelope,
+  loadRunImpactEnvelope,
+  persistRunImpactEnvelope,
+} from '@/lib/server/runImpact';
+import { progressionJson } from '@/lib/server/noStoreResponse';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1148,12 +1154,17 @@ export async function POST(request: NextRequest) {
         }
 
         const priorReason = (session as Record<string, unknown>).end_reason;
-        return NextResponse.json(
+        const impact =
+          priorReason === SETTLED_END_REASON
+            ? await loadRunImpactEnvelope(supabase, player.id, sessionId)
+            : null;
+        return progressionJson(
           {
             error: 'Session already ended',
             alreadyEnded: true,
             ...(typeof priorReason === 'string' ? { endReason: priorReason } : {}),
             player: currentPlayer ?? null,
+            ...(impact ? { impact } : {}),
           },
           { status: 409 }
         );
@@ -1618,6 +1629,7 @@ export async function POST(request: NextRequest) {
       // Mark the session ended BEFORE granting rewards - this is the
       // idempotency anchor. Guard on ended_at IS NULL so two concurrent
       // 'end' calls can't both pass the check above and double-grant.
+      const settledAt = new Date().toISOString();
       const settlementUpdate: Record<string, unknown> = {
         score: validation.adjustedScore,
         // Free sessions never earn - the row records a zero payout
@@ -1634,7 +1646,7 @@ export async function POST(request: NextRequest) {
         died: died ?? true,
         victory: victory ?? false,
         extracted: validation.extracted,
-        ended_at: new Date().toISOString(),
+        ended_at: settledAt,
         validated: validation.valid,
         validation_errors: validation.errors.length > 0 ? validation.errors : null,
         foods_collected: validation.foodCount,
@@ -1673,8 +1685,13 @@ export async function POST(request: NextRequest) {
 
       if (!endedRows || endedRows.length === 0) {
         // Lost the race: another request ended this session first
-        return NextResponse.json(
-          { error: 'Session already ended', alreadyEnded: true },
+        const impact = await loadRunImpactEnvelope(supabase, player.id, sessionId);
+        return progressionJson(
+          {
+            error: 'Session already ended',
+            alreadyEnded: true,
+            ...(impact ? { impact } : {}),
+          },
           { status: 409 }
         );
       }
@@ -2047,8 +2064,11 @@ export async function POST(request: NextRequest) {
       // returns null; a lost difficulty record is a lost record, and refusing to
       // pay a banked run over one would be the far larger failure.
       let ladderRecord: { rung: number; best: number } | null = null;
+      let ladderBefore = DEFAULT_LADDER_RUNG;
       const settledRung = runContext?.ladderRung ?? DEFAULT_LADDER_RUNG;
       if (validation.extracted && !isFreeSession && settledRung > DEFAULT_LADDER_RUNG) {
+        const before = await readLadderRecords(supabase, player.id);
+        ladderBefore = before.best[endDynasty];
         const best = await recordLadderRung(
           supabase,
           player.id,
@@ -2106,7 +2126,7 @@ export async function POST(request: NextRequest) {
       // recompute-from-aggregates after all rewards land - like mastery,
       // strictly non-fatal (pre-023 or any failure just skips it; the
       // helper never throws).
-      await refreshPlayerRecords(supabase, player.id);
+      const recordsAfter = await refreshPlayerRecords(supabase, player.id);
 
       // The World Signal settles itself (§7.2: "rewards settle automatically -
       // no claim cascades, ever"). Called after the run's own rewards land, so
@@ -2188,7 +2208,42 @@ export async function POST(request: NextRequest) {
       // Results layer's default is simply that the Take is not offered.
       const takeSlot = await describeDailyTakeSlot(supabase, player.id);
 
-      return NextResponse.json({
+      // The Career Spine receipt is recognition of already-secured progress,
+      // never a second settlement or claim. Its RPC stores the envelope,
+      // meaningful moments and milestone attention atomically; duplicate end
+      // requests and reconnect recovery read this same canonical row.
+      const builtImpact = buildRunImpactEnvelope({
+        sessionId,
+        settledAt,
+        dynasty: endDynasty,
+        extracted: validation.extracted,
+        died: died ?? true,
+        score: validation.adjustedScore,
+        yieldDna,
+        dnaCredited: finalDna,
+        energyCommitted,
+        commitmentMultiplierBps,
+        generation: ascendanceGeneration,
+        snakeId:
+          typeof (session as Record<string, unknown>).snake_used_id === 'string'
+            ? ((session as Record<string, unknown>).snake_used_id as string)
+            : null,
+        mastery,
+        recordsBefore: recordsAfter?.previousRecords ?? null,
+        recordsAfter: recordsAfter?.records ?? null,
+        ladder:
+          ladderRecord && ladderRecord.best > ladderBefore
+            ? { before: ladderBefore, after: ladderRecord.best, rung: settledRung }
+            : null,
+        codex,
+        signal,
+        clan: clanBattleResult,
+      });
+      const impact =
+        (await persistRunImpactEnvelope(supabase, player.id, builtImpact)) ??
+        builtImpact;
+
+      return progressionJson({
         success: true,
         player: updatedPlayer,
         validation: {
@@ -2226,6 +2281,7 @@ export async function POST(request: NextRequest) {
         ...(takeSlot?.firstRunOfDay ? { dailyTake: takeSlot } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
+        impact,
       });
     }
 

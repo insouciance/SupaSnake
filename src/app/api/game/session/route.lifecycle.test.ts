@@ -231,6 +231,7 @@ describe('a settled run records `completed`', () => {
     const response = await POST(post(endBody()));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(session().end_reason).toBe('completed');
     expect(session().ended_at).not.toBeNull();
     expect(session().validated).toBe(true);
