@@ -454,7 +454,7 @@ export function RunResults({
               <p className="font-body text-xs text-beige/60">
                 {practice
                   ? 'Only the live practice session existed; closing it leaves no earned state behind.'
-                  : 'Rewards remain server-authoritative; no progress is reconstructed on this device.'}
+                  : 'Keep this tab online while settlement retries. The run becomes earned progress when the server accepts and validates its result; this device never stores a progress copy.'}
               </p>
             ) : null}
           </div>

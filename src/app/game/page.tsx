@@ -1427,7 +1427,9 @@ export default function GamePage() {
         const runEventRecord = gameRef.current?.getRunEvents() ?? null;
         // If the settlement POST cannot be delivered, keep a tab-memory retry
         // while this runtime survives. No progress payload is written to
-        // browser storage; durable recovery belongs to the server session.
+        // browser storage. Durable recovery begins once the server accepts
+        // and freezes this result; an undelivered client claim is not yet an
+        // earned settlement and cannot be reconstructed authoritatively.
         // Phase 2 payload fields shared by the live POST and retry queue.
         const queueForReplay = () => {
           // Free runs pay nothing - there is no reward to protect, so a

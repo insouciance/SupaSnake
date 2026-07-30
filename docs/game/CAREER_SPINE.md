@@ -124,6 +124,12 @@ interface RunImpact {
 
 Requirements:
 
+- A run outcome becomes earned progress when the authoritative end endpoint
+  accepts, validates, and freezes its immutable settlement snapshot. Before
+  that boundary a client claim is not server-verifiable progress: the live tab
+  retries in memory and tells the player to remain online, but never writes the
+  claim to browser storage. Once frozen, recovery is wholly server-owned and
+  survives tab loss, process death, retries, and reconnects.
 - The session reward ledger, player aggregate, DNA audit row, and immutable PB
   truth settle atomically and idempotently before presentation is persisted.
 - One receipt per session, unique and idempotent.

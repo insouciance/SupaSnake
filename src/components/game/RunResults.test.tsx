@@ -251,7 +251,7 @@ describe('Layer 3 recognition', () => {
   it('states pending recovery instead of constructing client progress', () => {
     render(<RunResults {...props({ impact: null })} />);
     expect(screen.getByTestId('impact-summary')).toHaveTextContent(/pending server recovery/i);
-    expect(screen.getByText(/no progress is reconstructed on this device/i)).toBeInTheDocument();
+    expect(screen.getByText(/becomes earned progress when the server accepts/i)).toBeInTheDocument();
   });
 
   it('describes a receipt-free practice run without implying lost recovery', () => {
