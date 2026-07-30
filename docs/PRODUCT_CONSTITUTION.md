@@ -1,6 +1,28 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.5 · amended 30 July 2026
+**Version:** 1.6 · amended 30 July 2026
+**v1.6 amendment (explicit owner ruling, 30 July 2026):** the metagame becomes
+one **Career Spine** from authoritative settlement to Results, attention, and
+permanent memory (`docs/game/CAREER_SPINE.md`). It introduces no Account Level,
+currency, mode, ritual, pillar, or public number. Every run settlement receives
+a durable server-authored impact receipt; rewards secure immediately; Daily Take
+remains the only literal collect; and at most three significance-gated,
+skippable recognition beats may be reviewed on Results without delaying Replay.
+Attention and recognition become separate server-held states with exact clearing.
+The owner Chronicle gains a private Career Pulse and one organizing pursuit drawn
+from existing goals; Lineage gains active/retired specimen history; public status
+uses curated, provenance-labelled proof rather than an opaque Legacy Score
+headline. Social proof stays own-result, equal-honor, and opt-in: Rule 8 privacy
+does not bend.
+
+Rule 11 is strengthened: no progress-related fact, receipt, pending settlement,
+attention state, pursuit, or career projection may persist in `localStorage`,
+`sessionStorage`, IndexedDB, Cache Storage, or equivalent browser storage.
+Authenticated state is server-authoritative; guest recognition may live only in
+memory for the current document. The existing local reward outbox and persisted
+progress-notification store are expressly retired. This is a direct owner order;
+the seven-day cooling period is waived for the greenlit implementation, with the
+cost recorded in §15.
 **v1.5 amendment (explicit owner ruling, 29 July 2026):** **Energy Commitment**
 replaces the fixed daily envelope (§8.6). Energy is stored to a cap of **6 [H]**,
 recovers on authoritative server time at **1/hour [H]** including offline partial
@@ -280,7 +302,10 @@ the preamble.
 11. **Server authority is absolute.** All economy and progress mutations go through
     API routes and RPCs; the client never writes balances; every settlement is an
     exact server recompute; every Supabase error is checked and reported (GT §2.8).
-    *Reviewer: existing project rule; audit the mutation path.*
+    No progress-related fact, receipt, request, attention state, pursuit, or career
+    projection persists in browser storage of any kind. Authenticated recovery is
+    server-held; guest recognition is memory-only. *Reviewer: audit both the mutation
+    path and every browser-persistence call.*
 
 12. **Additions pass the dilution test** (§12.3) **and default to subtraction.** Every
     proposal names the existing system that could not do the job. *Reviewer: which
@@ -379,9 +404,13 @@ one small convenience at a time. Protected, permanently:
 6 toasts, and 3 notifications — GT §6.3, the single worst surface in the product):
 Layer 1, outcome — what happened, personal-best status, and the share artifact.
 Layer 2, the two numbers — Score, and Yield with its Depth contribution during an
-active Serpent battle. Layer 3, one collapsed progression digest, with exactly **one** recommended
-next action. Everything else routes to the Chronicle. No commerce (Rule 7). The share
-prompt is Layer 1, because the share artifact is product, not marketing (§11.3).
+active Serpent battle. Layer 3, one collapsed progression digest backed by the
+server's canonical impact receipt, with exactly **one** recommended next action.
+Routine movement is one compact sentence; notable-or-greater movement may offer one
+optional, skippable review of at most three grouped beats. Review is presentation,
+never a claim, and Replay never waits for it. Everything else routes to the
+Chronicle. No commerce (Rule 7). The share prompt is Layer 1, because the share
+artifact is product, not marketing (§11.3).
 
 ---
 
@@ -856,6 +885,42 @@ dual-clock recovery, Energy purchases and the premium stipend, and the
 €4-destroying claim path. What returns by owner order is server-authoritative timed
 recovery itself, with a storage cap and a commitment decision rather than a refill
 claim.
+
+### 8.7 The Career Spine — progress felt, remembered, and witnessed (v1.6)
+
+The game already computes enough progression. The missing system is the reliable
+projection of those facts into recognition and memory. The Career Spine therefore
+adds no fourth pillar and computes no new public number. It binds each authoritative
+settlement to one versioned, idempotent **Run Impact Receipt** containing the exact
+Score/Yield/DNA receipt and the server-known transitions for Mastery, Lineage,
+Discovery, Signal, ladder, Records, and the player's own clan contribution.
+
+Four states stay separate:
+
+1. **Settlement** secures value and progress immediately.
+2. **Presentation** shows the result now or after recovery; skipping it loses nothing.
+3. **Attention** points only to an unresolved action or unseen meaningful destination.
+4. **Memory** retains selected milestone/historic moments in Chronicle, Lineage, and
+   clan history.
+
+Daily Take remains the only collect. Everything else is an optional reveal or review,
+not a claim cascade. Significance is deterministic and bounded: routine, notable,
+milestone, historic; Results groups it into at most three beats. A failed or practice
+run is reported honestly and does not receive fake progress merely because it
+happened.
+
+The owner Chronicle begins with a private Career Pulse: a quiet three-pillar
+snapshot, one optional pinned pursuit selected from existing systems, recent
+meaningful moments, and the player's private battle state. A pursuit organizes; it
+never grants value, starts a timer, creates a task economy, or appears publicly as
+unfinished work.
+
+Lineage dossiers survive the lifecycle of active collection rows. A refunded leaf is
+kept as immutable `retired_refunded` history but may not be equipped or advertised as
+currently owned generation proof. Public identity keeps three curated proof slots
+with explicit earned/lineage/discovery/clan/supporter provenance. Paid decoration may
+frame proof, never become it. The full contract is
+`docs/game/CAREER_SPINE.md`.
 
 ---
 
@@ -1605,6 +1670,9 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 21 | **Fixed six-charge UTC-daily envelope; no timed recovery or carryover** (v1.3) | **v1.5 Energy Commitment:** server-time +1/hour to cap 6, partial/offline recovery, deliberate 0–6 start commitment, nonlinear harvest curve (§8.6). Explicit owner ruling, 29 July 2026; the seven-day cooling period is waived by that greenlit implementation order | The clean bounded-daily economy and “no timers” simplicity; active players can recover materially more than six/day; a visible timer returns. The waiver gives up a deliberate pause before changing a constitutional pacing rule, so economy telemetry and a reversible config curve are mandatory |
 | 22 | **World Serpent as a separate weekly, no-Energy, cooperative best-three mode** (v1.3–1.4) | **v1.5:** Serpent is a 3-day Clan Energy Battle automatically fed by positive-Energy normal runs; best five per member; 1-day intermission; historical weeks remain immutable | The universal cooperative boss, a calendar-week artifact, unlimited unrationed attempts, and full participation in three runs. Gained: one coherent normal-run loop where personal economic stakes and clan responsibility are the same decision |
 | 23 | **Rule 8 forbids all thresholds and clan-vs-clan reward mathematics** | **v1.5 narrow amendment:** a player may privately see their own fifth-best replacement line; paired aggregate outcomes grant victor vs participant/stalemate honors. No teammate detail, officer lever, economy reward, minimum, or paid route is introduced | The absolute “no thresholds anywhere” sentence and purely self-referential clan outcome; accepted to create the owner-directed mastery pressure while preserving privacy and non-power rewards |
+| 24 | **Progress acknowledgement through client-local notification state and a local reward outbox** | **v1.6:** every impact, attention state, pursuit, receipt, and pending settlement recovery is server-held; progress-related browser persistence is forbidden. Explicit owner ruling, 30 July 2026; cooling period waived for the greenlit build | The offline convenience of replaying an unsent settlement from one browser and cheap per-device notification state. Gained: one authoritative cross-device truth and no hidden progress-shaped data on the device |
+| 25 | **Active collection as the default emotional grammar for earned rewards** | **v1.6:** rewards secure immediately; optional Review/Reveal supplies the lap of applause; only Daily Take remains a literal collect | The repeated tactile claim moment. Gained: no stranded rewards, claim debt, cascade, or manipulative notification backlog |
+| 26 | **Legacy Score as the full Player Card's public prestige headline** | **v1.6:** underlying Records remain permanent, but the opaque aggregate retires from the public headline in favor of three curated, provenance-labelled proofs | The convenience of one summary number. Gained: status that says what was earned and cannot be confused with Score, Depth, or paid decoration |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -1639,6 +1707,13 @@ full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
 amendment record for Energy Commitment and automatic Clan Energy Battles. They
 supersede C1's refill cadence and the separate best-three Serpent mechanics while
 preserving its never-gates and never-sold constraints.
+
+**v1.6 owner ruling (30 July 2026):** rows 24–26 above record the Career Spine,
+the absolute ban on progress-related browser persistence, review-not-claim reward
+recognition, and understandable curated public proof. The owner explicitly approved
+the complete phased implementation and production release; the cooling period was
+waived in that order. No cap grows: this is the projection and subtraction layer for
+the three existing pillars.
 
 **Where this document rules against the audit** (recorded for honesty): energy is
 deleted outright rather than A/B-tested first (§15.2); clans launch as clan-of-one
@@ -1812,7 +1887,7 @@ deliberately undecided pending data.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.5 on 29 July 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.6 on 30 July 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*

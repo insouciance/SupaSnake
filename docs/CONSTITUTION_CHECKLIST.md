@@ -1,7 +1,7 @@
 # Constitution Compliance Checklist
 
 Run on **every PR**. Copy into the PR description and check each line. A `[ ]` left
-unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.5) §4.
+unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.6) §4.
 Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer reads.
 
 ## The 15 Rules
@@ -33,7 +33,8 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   archetype, gene-pool growth past 16, dynasty, or Results layer; taps ≤3/≤2.
 - [ ] **R11 — Server authority.** ⚙ All economy/progress mutations via API routes +
   RPCs; settlement is server recompute; **every Supabase `error` checked** and
-  reported to Sentry.
+  reported to Sentry. No progress-related fact, receipt, pending request,
+  attention state, pursuit, or career projection persists in browser storage.
 - [ ] **R12 — Subtraction first.** The PR names the existing system that could not
   do the job (in the description).
 - [ ] **R13 — Operating cost stated.** The PR description names the permanent
@@ -62,6 +63,9 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   parity test written first. A divergence silently invalidates honest runs.
 - [ ] No energy grant/consume path reachable from any purchase or perk.
 - [ ] No new claim RPC beyond the Daily Take's collect.
+- [ ] **No local progress ⚙ (R11).** `npm run verify:constitution` finds no
+  progress-related `localStorage`, `sessionStorage`, IndexedDB, Cache Storage, or
+  equivalent browser-persistent state, including reward outboxes and notifications.
 - [ ] Migrations: numbered per the handoff's serialization protocol; reversible or
   with explicit down-note; every new RPC `SECURITY DEFINER` audited.
 - [ ] **A migration's NOTICE says what it actually counted.** Migration 055

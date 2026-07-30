@@ -66,25 +66,31 @@ components remain available for rollback or reuse, but FTUE v2 does not mount
 them automatically. Their presence in the source tree is not an active player
 interruption.
 
-## Central notification contract
+## Central attention and recognition contract
 
-All discoverable meta systems use one notification model:
+All discoverable meta systems use one server-authoritative model with two
+presentations:
 
 - `hidden`, `exclamation`, and numeric presentation
 - menu, tab, and icon attachment points
-- a single source of truth for live updates
+- authenticated server state as the single source of truth for live updates
 - explicit clearing on the destination/action that resolves the item
-- persistence only for UI discovery state, never authoritative player progress
+- no progress-related browser persistence of any kind; guest items are memory-only
 - reduced-motion-aware animation and an accessible text label
 
-The red presentation is an attention badge, not an unread receipt. It appears
-only for an action the player needs to complete, an available item or reward,
-or an optional action that meaningfully benefits or protects progression. Each
-record has one semantic id and one reachable destination; unavailable,
-inaccessible, duplicate, and already-resolved actions remain hidden. Opening
-the notification center does not acknowledge its contents. A record resolves
-only after its underlying action is completed, claimed, explicitly
-acknowledged, or no longer available.
+The red/global presentation is **Action Attention**, not an unread receipt. It
+appears only for an unresolved action the player needs to complete or deliberately
+dismiss: Daily Take, save account, claim handle, or an integrity-required choice.
+An unseen milestone is **Recognition** and may place only a subtle dot on its
+destination. Routine progress never badges. Counts aggregate by destination and
+pillar and display at most `9+`.
+
+Each record has one semantic id and one reachable destination; unavailable,
+inaccessible, duplicate, and already-resolved actions remain hidden. Opening the
+notification center does not acknowledge its contents. Merely mounting a route
+does not acknowledge its contents. An action resolves only after completion or
+explicit dismissal where permitted; recognition clears only after the exact
+milestone content has rendered.
 
 The notification center is a viewport-bound dialog with an explicit close
 action. Its list scrolls internally at constrained heights, and selecting an
@@ -92,7 +98,10 @@ item invokes the existing destination interface through a semantic action with
 a route/hash fallback. Notification surfaces never duplicate Contracts,
 rewards, account, Lab, Season, or identity interfaces.
 
-Feature code publishes semantic items (for example `contracts`, `offline-rewards`, `lab-discovery`, `save-progress`, or `identity`) rather than rendering an automatic modal. The notification center is an optional inbox, and destination badges derive from the same records.
+Feature code publishes current semantic items rather than rendering an automatic
+modal. Retired Contracts and offline-passive-reward destinations do not survive as
+notification vocabulary. The notification center is an optional action inbox;
+destination recognition derives from the same authoritative moment records.
 
 ## Authoritative bootstrap invariants
 

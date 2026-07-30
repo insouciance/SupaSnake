@@ -123,6 +123,9 @@ Every paid entitlement must pass all of these tests:
    leaderboard standing.
 7. It creates no paid authority over a clan member and reveals no teammate
    performance detail that the free clan contract withholds.
+8. It cannot create, elevate, reorder, or imitate an earned Career Spine impact,
+   proof slot, attention item, milestone significance, or social honor. Paid
+   presentation carries explicit decorative/supporter provenance.
 
 ### 3.2 Recommended boundary
 
@@ -136,6 +139,12 @@ Every paid entitlement must pass all of these tests:
 | Progression | All Mastery, Lineage, Discovery, DNA sinks, genes, variants, challenges, and rewards | Cosmetic/narrative season lane only; paid completion never changes progression power |
 | Clan | Found/join/leave, invite links, roster, moderation, heraldry baseline, Discord link, Energy Battle facts, own best five, aggregate totals, and share cards | At most a later clan-owned visual commission: heraldry expansion and presentation assets. No member analytics, officer tier, recruitment score, extra capacity, or battle benefit |
 | Organization | Generous limits that support ordinary play; basic filters and sharing | Additional cosmetic loadouts, archival folders/tags/notes, profile showcases, and long-term curation |
+
+The Career Spine is the free factual substrate. Keeper may frame, organize, and
+retain more routine history, but canonical impact receipts, current progress,
+milestone history, active lineage truth, socially consequential runs, and every
+conclusion needed to improve remain free. A paid layout may frame earned proof;
+it is never proof itself.
 
 **Required correction before live sale:** the current
 `/api/premium/stats` endpoint makes per-Dynasty performance and extraction

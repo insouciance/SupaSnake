@@ -1,13 +1,19 @@
 # SupaSnake — Player Identity v1
 ## Handles, Player Cards, Records, Chronicle, Clan Communities & The Analyst
 
-**Version:** 1.0
-**Date:** 2026-07-18
-**Status:** APPROVED — implementation phased I1–I4 (see §11); doc-of-record for the "Identity v1" overhaul (plan: `investigate-this-repo-it-rosy-charm`)
+**Version:** 1.1
+**Date:** 2026-07-30
+**Status:** APPROVED — Identity v1 remains the substrate; the owner-approved
+Career Spine (`CAREER_SPINE.md`, Constitution v1.6) supersedes the public Legacy
+Score headline, Chronicle order, clan-contribution visibility, recognition,
+attention, and client-persistence rules below where they conflict.
 **Companion docs:** `GAME_DESIGN_V2.md` (the game these identities are earned in), `systems/CLAN_DUELS_spec.md`, migrations 019–021 (mastery, gauntlet, seasons — the systems this doc makes *visible*)
 **Current-rules notice (2026-07-29):** Product Constitution v1.5 §10 and
 `ENERGY_COMMITMENT_AND_CLAN_BATTLES.md` supersede this document's historical
 Energy-commerce statement. Energy and recovery are never sold.
+**Career notice (2026-07-30):** all progress, receipts, attention, pursuits,
+lineage history, and seen state are server-authoritative. None persists in any
+browser storage. Rewards auto-secure; Daily Take is the only collect.
 
 ---
 
@@ -218,8 +224,9 @@ leaderboard route are re-declared onto this view in I1.
   badge. Used in dense lists (leaderboards, contributor tables).
 - **`card`** — the standard card: banner background, avatar + frame, handle,
   title, 3 badges, clan tag, mastery pips. Used at moments of judgment.
-- **`full`** — the profile header: card plus Legacy Score, founder/tenure
-  detail, and equipped-cosmetic showcase.
+- **`full`** — the profile header: card plus founder/tenure detail, three
+  curated provenance-labelled proofs, and equipped-cosmetic showcase. Legacy
+  Score remains an internal/historical aggregate, not the public headline.
 
 ### 4.3 Surfaces (launch set)
 
@@ -388,10 +395,12 @@ open-ended by design, like OSRS total level).
 
 ### 6.2 Legacy Score
 
-`players.legacy_score` = sum of banked tier points across all records. It is
-the one-number prestige summary on the `full` card and a Linked-Roles
-metadata field (§8.4). It buys nothing, multiplies nothing, and is never an
-input to any economy or matchmaking formula.
+`players.legacy_score` = sum of banked tier points across all records. It remains
+an internal/historical compatibility aggregate and may remain Linked-Roles
+metadata until that contract is versioned. Constitution v1.6 retires it from the
+public `full` card: understandable curated proof replaces an opaque third public
+number. It buys nothing, multiplies nothing, and is never an input to any economy
+or matchmaking formula.
 
 ### 6.3 Computation model
 
@@ -441,20 +450,25 @@ private).
 
 ### 7.1 Sections (top to bottom)
 
-1. **Header** — `full` Player Card + Legacy Score + founder/tenure line.
-2. **PB timeline** — weekly `MAX(score)` line per dynasty since account
+1. **Header** — `full` Player Card, founder/tenure, and three curated proofs.
+2. **Private Career Pulse** (own view only) — quiet three-pillar snapshot,
+   one optional server-held pursuit, recent meaningful moments, private Clan
+   Energy Battle state, and one destination. It is absent from public profiles.
+3. **PB timeline** — weekly `MAX(score)` line per dynasty since account
    creation, annotated with record-tier moments ("Gold — High Water") and
    mastery level-ups. This is the "you are improving" graph.
-3. **Records cabinet** — all 21 records with tier progress bars, grouped by
+4. **Lineage dossiers** — active branch first; immutable retired/refunded
+   passports visibly historical and never equip-capable.
+5. **Records cabinet** — all 21 records with tier progress bars, grouped by
    category; capstone progress ring per category.
-4. **Collection log** — every variant with `acquired_at` first-acquired
+6. **Collection log** — every variant with `acquired_at` first-acquired
    date (OSRS collection log); missing variants shown as silhouettes.
-5. **Season chapters** — one chapter per season: track level reached,
+7. **Season chapters** — one chapter per season: track level reached,
    archetype earned, anomaly best finishes, gauntlet weeks, championship
    banner if Crowned. Season Recall card (§9.2) embeds here.
-6. **Clan history** — current clan card, `clan_rating_history` graph
-   (table appended at settlement from I2), rivalry records of the clan.
-7. **Early Career** — the collapsed legacy-achievements panel (§6.6).
+8. **Clan history** — current Energy Battle honors, aggregate battle history,
+   and rivalry memory; no teammate attempt or contribution detail.
+9. **Early Career** — the collapsed legacy-achievements panel (§6.6).
 
 ### 7.2 Empty states (anti-dead-surface)
 
@@ -488,8 +502,10 @@ duel settlement). The research tree (020) finally buys pixels.
 ### 8.2 Roster, officers, invites
 
 - **Roster UI**: grid of `card` Player Cards with role chips
-  (owner/officer/member), weekly counted-DNA, mastery pips. This is the
-  clan's face — a wall of identities, not a name list.
+  (owner/officer/member), curated proof, and mastery pips. It exposes no weekly
+  output, contribution, absence, Energy, generation, attempt count, threshold,
+  or intra-clan rank. This is the clan's face — a wall of identities, not a
+  manager dashboard.
 - **`set_clan_member_role`** (promote/demote, owner-only for officer
   changes; owners transfer via existing ownership path).
 - **`respond_clan_invite`** — the 007 invites schema
@@ -533,6 +549,11 @@ opportunistic drains consume; dead-letter after 5 attempts. Event types:
 | `season_champion` | Championship decided — @everyone in the champion's channel |
 | `member_joined` | Invite accepted |
 
+Constitution v1.6 replaces stale duel/research/champion operational copy with
+current Energy Battle outcomes, equal honors, rare Mastery milestones, and
+voluntary verified artifacts. Automatic posts never compare members or reveal
+private attempt facts; they are rate-limited and non-commercial.
+
 **Linked Roles metadata** (Discord max 5 — we use exactly 5):
 `mastery_level` (highest dynasty level), `legacy_score`,
 `gauntlet_champion` (boolean), `founder` (boolean), `extraction_count`.
@@ -559,6 +580,10 @@ Deterministic facts, narrated. `src/lib/analyst/facts.ts` computes typed
 fact sheets in pure TypeScript — this is the tested, load-bearing logic. The
 LLM's only job is turning a fact sheet into 2–3 sentences + ≤2 tips. It
 never sees raw tables, never computes, never chats.
+
+The Analyst is not part of Results progression recognition. A run insight is an
+optional separate review or Chronicle artifact; asynchronous narration never
+delays or reflows the authoritative impact receipt.
 
 ### 9.1 Model & SDK (LOCKED user decision: OpenAI)
 

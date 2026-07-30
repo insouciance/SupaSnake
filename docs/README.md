@@ -33,6 +33,7 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Area | Authoritative document |
 |---|---|
 | Complete game direction | [Game Design v2](game/GAME_DESIGN_V2.md) |
+| Progress recognition, career memory, and social proof | [Career Spine](game/CAREER_SPINE.md) |
 | Player flow, onboarding, and interruptions | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
 | Genome/buildcraft | [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
