@@ -572,7 +572,7 @@ Use a clan owner/officer, a second account, and the official Discord server.
 - [ ] Bank and crash runs produce specific post-run insight grounded only in
       recorded facts; the same run returns the cached artifact.
 - [ ] Weekly digest totals agree with run history and do not invent numbers.
-- [ ] Digest email is opt-in, guests are prompted to save progress, one message
+- [ ] Digest email is opt-in, guests are invited to add account recovery, one message
       is sent per eligible week, and opting out stops it.
 - [ ] Season archetype and Season Recall follow their eligibility thresholds;
       sharing uses the public profile and leaks no private data.

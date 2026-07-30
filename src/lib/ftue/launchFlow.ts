@@ -304,7 +304,7 @@ export function peekLaunchHandoff(): LaunchHandoff | null {
   }
 }
 
-/** Clear the page-memory channel on auth boundaries and between tests. */
+/** Clear the page-memory channel for an explicit lifecycle reset or isolated test. */
 export function clearLaunchHandoff(): void {
   pendingLaunchHandoff = null;
 }

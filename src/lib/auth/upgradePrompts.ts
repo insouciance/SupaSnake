@@ -30,7 +30,7 @@ export function dismissUpgradeBanner(): void {
   bannerDismissedThisPage = true;
 }
 
-/** Reset lifecycle-only UI guards on sign-out and between isolated tests. */
+/** Reset lifecycle-only UI guards for an explicit lifecycle reset or isolated test. */
 export function resetUpgradePromptMemory(): void {
   promptedThisPage.clear();
   bannerDismissedThisPage = false;

@@ -144,11 +144,11 @@ describe('Shop page', () => {
       expect(checkoutCalls).toHaveLength(0);
     });
 
-    it('shows the save-progress notice with an account button', () => {
+    it('shows the account-recovery notice with an account button', () => {
       setAuth({ isAnonymous: true });
       render(<ShopPage />);
 
-      expect(screen.getByText('Save your progress!')).toBeInTheDocument();
+      expect(screen.getByText('Protect your account')).toBeInTheDocument();
       fireEvent.click(screen.getByText('Create Account'));
       expect(screen.getByTestId('account-upgrade-modal')).toBeInTheDocument();
     });

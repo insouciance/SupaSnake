@@ -82,7 +82,9 @@ function installRecordStorage(): RecordStorage | null {
           installedAt: device.installedAt ?? null,
         });
       } catch {
-        return null;
+        // The record parser treats unreadable data as already dismissed, the
+        // quiet direction for an optional install offer.
+        return '{';
       }
     },
     setItem(key, value) {

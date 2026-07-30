@@ -1,6 +1,6 @@
 <!--
 Every PR on this repository is a work package from docs/IMPLEMENTATION_HANDOFF.md
-and is judged against docs/PRODUCT_CONSTITUTION.md (v1.3).
+and is judged against docs/PRODUCT_CONSTITUTION.md (v1.6).
 
 The checklist below is a verbatim copy of docs/CONSTITUTION_CHECKLIST.md. If that
 file changes, this template changes with it in the same PR. An unchecked `[ ]`
@@ -74,10 +74,10 @@ Migration files: <!-- paths, or n/a -->
 
 # Constitution Compliance Checklist
 
-Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.3) §4. Items marked ⚙ are
+Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.6) §4. Items marked ⚙ are
 mechanically checkable (grep/test); the rest are reviewer reads.
 
-## The 14 Rules
+## The 15 Rules
 
 - [ ] **R1 — Run sanctity.** Nothing new renders, fires, or sounds between first
   input and run end except the run's own decisions.
@@ -90,11 +90,15 @@ mechanically checkable (grep/test); the rest are reviewer reads.
 - [ ] **R5 — Absence never destructive.** A 30-day absence loses only opportunities
   and one Take-streak tier; nothing owned decays, expires, or is confiscated.
 - [ ] **R6 — Earned things are permanent.** ⚙ No code path writes a player-owned
-  row downward (cosmetics, records, tracks, tenure, lineage).
+  row downward (cosmetics, records, tracks, tenure, lineage), except the
+  owner-initiated lineage exchange defined in §8.2: exact recorded DNA returned
+  in full and immutable pedigree history retained.
 - [ ] **R7 — Commerce in its district.** Zero commercial surfaces in-run and on
   Results; ≤1 per screen elsewhere; no commercial notification/email/badge.
-- [ ] **R8 — Clans never grade, never bill.** No reward thresholds, no intra-clan
-  reward math, no officer lever keyed to member output, no purchasable clan number.
+- [ ] **R8 — Clans create responsibility, never payroll.** No intra-clan reward
+  tiers or minimums, no officer lever keyed to member output, no purchasable clan
+  number, and no visibility into another member's attempts, absence, threshold,
+  contribution, or rank.
 - [ ] **R9 — Pillars/numbers/calendar.** The change lands in Mastery, Lineage, or
   Discovery; surfaces on Score or Depth; schedules on Signal/Ascension, Serpent, or
   season — or an amendment is attached.
@@ -102,23 +106,48 @@ mechanically checkable (grep/test); the rest are reviewer reads.
   archetype, gene-pool growth past 16, dynasty, or Results layer; taps ≤3/≤2.
 - [ ] **R11 — Server authority.** ⚙ All economy/progress mutations via API routes +
   RPCs; settlement is server recompute; **every Supabase `error` checked** and
-  reported to Sentry.
+  reported to Sentry. No progress-related fact, receipt, pending request,
+  attention state, pursuit, or career projection persists in browser storage.
 - [ ] **R12 — Subtraction first.** The PR names the existing system that could not
   do the job (in the description).
 - [ ] **R13 — Operating cost stated.** The PR description names the permanent
   operating cost at current capacity (content cadence, balance, moderation, support).
 - [ ] **R14 — If it matters, it has a URL.** New meaningful artifacts are linkable
   with an OG image.
+- [ ] **R15 — Length only increases; free space only shrinks.** ⚙ Nothing in this
+  PR reduces snake length or enlarges free space — no reset, truncation, splice,
+  slice, or "costs N segments". Anything that costs the player costs **growth**.
+  *If a cost is written as "segments removed," it is pricing a reward with a
+  reward — send it back.*
+- [ ] **R8 addendum (v1.5) — no member is individually visible.** No clan surface
+  ships another member's attempt count, absence, or per-member contribution.
 
 ## Mechanical gates ⚙ (run before review)
 
 - [ ] `npx tsc --noEmit` and `npm run lint` and `npm test` green.
 - [ ] No `TODO`/`FIXME` in committed code (project rule).
-- [ ] No `random()` in any breeding/lineage path (post WP-1.6).
+- [ ] No `random()` in any breeding/lineage path (armed once WP-1.05 merges).
+- [ ] **Length monotonicity ⚙ (R15).** No length-reducing path in engine or length
+  model: grep the diff for `slice(`/`splice(`/`length =` on the snake body and for
+  reset-style dials. Arms fully once WP-3.01 lands; until then the shed family is
+  the known exception and is being deleted, not grandfathered.
+- [ ] **Fold parity ⚙.** Any change to growth or length lands in ONE shared
+  function called by both `SnakeGameLogic` and `computeLengthTrace`, with the
+  parity test written first. A divergence silently invalidates honest runs.
 - [ ] No energy grant/consume path reachable from any purchase or perk.
 - [ ] No new claim RPC beyond the Daily Take's collect.
+- [ ] **No local progress ⚙ (R11).** `npm run verify:constitution` finds no
+  progress-related `localStorage`, `sessionStorage`, IndexedDB, Cache Storage, or
+  equivalent browser-persistent state, including reward outboxes and notifications.
 - [ ] Migrations: numbered per the handoff's serialization protocol; reversible or
   with explicit down-note; every new RPC `SECURITY DEFINER` audited.
+- [ ] **A migration's NOTICE says what it actually counted.** Migration 055
+  reported "75 invalid settled earning rows examined … 54 unclassified (expected
+  0)" and alarmed everyone, because its filter also swept expired and abandoned
+  rows that had earned nothing and could never be restored. A tripwire that cries
+  wolf teaches the next reader to ignore it. Either narrow the filter to the rows
+  the message describes, or describe the rows the filter actually selects.
+  *(055 itself is applied and therefore immutable — this is for its successors.)*
 - [ ] New player-visible surfaces behind a `NEXT_PUBLIC_*` flag with the rollback
   path tested deliberately (project rule — never let CI infer it).
 

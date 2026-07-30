@@ -42,7 +42,7 @@ export interface ResultsNextAction {
 }
 
 export interface ResultsNextActionContext {
-  /** The account is anonymous — its progress lives only in this browser. */
+  /** The server account is anonymous and has no user-controlled recovery path. */
   isAnonymous: boolean;
   /** The run banked at the portal (a crash is not the claim ceremony). */
   extracted: boolean;
@@ -72,8 +72,8 @@ export function chooseNextAction(
   if (context.isAnonymous && !context.practice) {
     return {
       id: 'save-progress',
-      label: 'Save this progress',
-      description: 'Add an email so this account survives closing the tab.',
+      label: 'Protect this account',
+      description: 'Add an email so you can recover this server account on any device.',
       href: null,
     };
   }

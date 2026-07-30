@@ -82,9 +82,9 @@ We collect different types of data depending on how you use SupaSnake. Here's wh
 - **Password** - encrypted using bcrypt hashing (we never see your actual password)
 - **Age verification** - your birth year, hashed using SHA-256 (we never store your raw date of birth)
 
-**Legal basis (GDPR):** Contractual necessity (Article 6(1)(b)) - we need this data to provide you with an account and save your progress.
+**Legal basis (GDPR):** Contractual necessity (Article 6(1)(b)) - we need this data to provide a recoverable account and synchronize server-held progress.
 
-**Why we need it:** Without an account, you can't save your progress, sync across devices, or participate in collection/breeding features.
+**Why we need it:** Anonymous progress is already secured on our servers, but without a recoverable sign-in you cannot restore access or synchronize that account across devices.
 
 **How to provide it:** Account creation screen in the app.
 
@@ -1936,7 +1936,7 @@ We still respect your privacy and offer similar protections:
 - Error logs - to fix bugs
 
 **How we use it:**
-- Run the game (save your progress, sync across devices)
+- Run the game (persist progress on our servers and sync recoverable accounts across devices)
 - Improve the game (analytics, A/B testing)
 - Fix bugs (error tracking)
 - Measure marketing (attribution)
