@@ -16,6 +16,7 @@ const SOLO_CLAN: ClanDirectoryRow = {
   memberCount: 1,
   bestWeekDepth: 320,
   lastHuntedWeek: '2026-07-20',
+  lastHuntKind: 'legacy_week',
 };
 
 describe('the empty directory is a reading, not a dead end', () => {
@@ -23,7 +24,7 @@ describe('the empty directory is a reading, not a dead end', () => {
     render(<ClanDirectory clans={[]} />);
 
     const empty = screen.getByTestId('clan-directory-empty');
-    expect(empty).toHaveTextContent(/No clan has settled a hunt yet/i);
+    expect(empty).toHaveTextContent(/No clan has banked a battle contribution yet/i);
     expect(empty).toHaveTextContent(/be the first name here/i);
   });
 
@@ -48,7 +49,7 @@ describe('N = 1: a directory of one clan, with one member', () => {
     const row = screen.getByTestId('directory-row');
     expect(within(row).getByText('Lone Coil')).toBeInTheDocument();
     expect(within(row).getByText('[LC]')).toBeInTheDocument();
-    expect(row).toHaveTextContent('1 member · deepest week 320 segments');
+    expect(row).toHaveTextContent('1 member · deepest battle 320 segments');
   });
 
   it('says "1 member", never "1/20"', () => {
@@ -56,12 +57,22 @@ describe('N = 1: a directory of one clan, with one member', () => {
     expect(container.textContent).not.toMatch(/\d+\s*\/\s*\d+/);
   });
 
-  it('links the week the clan last hunted (Rule 14)', () => {
+  it('links the most recent battle artifact (Rule 14)', () => {
     render(<ClanDirectory clans={[SOLO_CLAN]} />);
     expect(screen.getByTestId('directory-week-link')).toHaveAttribute(
       'href',
       '/serpent?week=2026-07-20'
     );
+  });
+
+  it('routes a current Energy Battle to the live surface rather than a legacy archive', () => {
+    render(
+      <ClanDirectory
+        clans={[{ ...SOLO_CLAN, lastHuntedWeek: '2026-07-27', lastHuntKind: 'energy_battle' }]}
+      />
+    );
+    expect(screen.getByTestId('directory-week-link')).toHaveAttribute('href', '/serpent');
+    expect(screen.getByTestId('directory-week-link')).toHaveTextContent(/current battle/i);
   });
 
   it('omits the week link rather than linking nowhere', () => {

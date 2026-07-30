@@ -467,7 +467,7 @@ describe('a Serpent attempt consumes NO charge (§8.6)', () => {
     expect(rpcCalls.map((call) => call.fn)).not.toContain('consume_run_charge');
   });
 
-  it('is exempt even on a day whose allotment is already empty', async () => {
+  it('is exempt regardless of the recovered Energy stock', async () => {
     const { client, rpcCalls } = fakeClient({
       tables: { players: { data: [{ charges_day: '2026-07-27', charges_used: 6 }] } },
     });
@@ -478,28 +478,28 @@ describe('a Serpent attempt consumes NO charge (§8.6)', () => {
       NOW
     );
     expect(charge.state).toBe('exempt');
-    expect(charge.status.remaining).toBe(0);
-    expect(rpcCalls).toHaveLength(0);
+    expect(charge.status.available).toBe(6);
+    expect(rpcCalls.map((call) => call.fn)).toEqual(['read_player_energy']);
   });
 });
 
 // ---------------------------------------------------------------------------
-// The session route actually populates the fact (the hook WP-0.01 left open)
+// Explicit Serpent starts are retired; Energy runs now feed Clan Battles
 // ---------------------------------------------------------------------------
 
-describe('the session route supplies the server-resolved week id', () => {
+describe('the session route does not open a separate Serpent attempt', () => {
   const routeSource = fs.readFileSync(
     path.join(process.cwd(), 'src/app/api/game/session/route.ts'),
     'utf8'
   );
 
-  it('resolves the week from the server clock and passes its id as the fact', () => {
-    expect(routeSource).toMatch(/ensureCurrentSerpentWeek\(supabase, startedAtDate\)/);
-    expect(routeSource).toMatch(/serpentWeekId: serpentWeek\?\.id \?\? null/);
+  it('normalizes a legacy Serpent request to the ordinary Energy path', () => {
+    expect(routeSource).not.toMatch(/ensureCurrentSerpentWeek/);
+    expect(routeSource).toMatch(/serpentWeekId: null/);
   });
 
-  it('stamps the flag on the session row at START', () => {
-    expect(routeSource).toMatch(/serpent_week_id: serpentWeek\.id/);
+  it('does not stamp a new Serpent week at START', () => {
+    expect(routeSource).not.toMatch(/serpent_week_id:\s*serpent/i);
   });
 
   it('never derives the week from the request body', () => {

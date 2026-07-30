@@ -265,7 +265,7 @@ describe('GET directory — short and alive, and never a total (§9.2)', () => {
       };
       const result = { data: rows[table] ?? [], error: null };
       const chain: Record<string, unknown> = {};
-      for (const op of ['eq', 'in', 'is', 'not', 'order', 'limit', 'neq']) {
+      for (const op of ['eq', 'in', 'is', 'not', 'order', 'limit', 'neq', 'gt', 'gte']) {
         chain[op] = () => chain;
       }
       chain.select = () => {

@@ -6,11 +6,8 @@
  * PLAY (unlimited, rewardless practice). Rendered on the pre-game overlay
  * as a compact three-choice chip group.
  *
- * NO MODE IS EVER DISABLED BY THE ENVELOPE (Constitution §8.6). EARN and
- * ANOMALY used to be greyed out at zero energy, with Free Play offered as
- * the consolation - the "second-class run" the Constitution abolished. An
- * empty allotment now changes one thing only: the run harvests lean. It is
- * still an earning run, it still Scores, it still ranks.
+ * NO MODE IS DISABLED BY ENERGY. Run Setup owns the 0..available commitment;
+ * this selector chooses rules, never purchasing power or permission to play.
  *
  * The ANOMALY chip only renders while the board is live (pre-migration-021
  * the server reports { live: false }).
@@ -24,7 +21,7 @@ import { STRAINS, type StrainId } from '@/shared/game/strains';
 
 interface ModeToggleProps {
   mode: GameMode;
-  /** The day's charge status; null hides all envelope copy (ramp/pre-sync). */
+  /** Stored Energy status; null hides recovery copy before server sync. */
   charge: ChargeStatus | null;
   onSelect: (mode: GameMode) => void;
   /** This week's anomaly name; null hides the ANOMALY chip (board not live). */
@@ -40,7 +37,7 @@ export function ModeToggle({
   anomalyName = null,
   anomalyStrain = null,
 }: ModeToggleProps) {
-  const leanNext = charge !== null && charge.remaining <= 0;
+  const leanNext = charge !== null && (charge.available ?? charge.remaining) <= 0;
 
   const chipClass = (selected: boolean, disabled: boolean) =>
     `px-4 py-2 min-h-[44px] rounded-arcade border font-body text-sm transition-all ${
@@ -115,7 +112,7 @@ export function ModeToggle({
         </p>
       ) : (
         <p className="text-beige/60 text-xs font-body" data-testid="mode-earn-hint">
-          DNA, contracts, and streaks count
+          DNA, records, and streaks count
         </p>
       )}
       {leanNext && mode !== 'free' && (
@@ -123,8 +120,8 @@ export function ModeToggle({
           className="text-beige/70 text-xs font-body"
           data-testid="mode-lean-harvest"
         >
-          Today&apos;s rich harvest is spent — this run still counts
-          everywhere, at a lean harvest. Refills at 00:00 UTC.
+          No Energy is stored — this run still counts everywhere at a lean
+          harvest. One Energy recovers each hour.
         </p>
       )}
     </div>

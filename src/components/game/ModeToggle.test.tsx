@@ -7,22 +7,30 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ModeToggle } from './ModeToggle';
 import { GAME_CONFIG } from '@/shared/config/game';
 
-const PER_DAY = GAME_CONFIG.economy.energy.chargesPerDay;
+const CAPACITY = GAME_CONFIG.economy.energy.capacity;
 
 /** A day with charges left. */
 const charged = {
+  available: 3,
+  capacity: CAPACITY,
+  recoveryIntervalSeconds: 3600,
+  recoveryStartedAt: '2026-07-25T12:00:00.000Z',
+  nextRecoveryAt: '2026-07-25T13:00:00.000Z',
+  recoveryProgress: 0,
+  serverNow: '2026-07-25T12:00:00.000Z',
   remaining: 3,
-  perDay: PER_DAY,
-  usedToday: PER_DAY - 3,
+  perDay: CAPACITY,
+  usedToday: CAPACITY - 3,
   day: '2026-07-25',
-  refillsAt: '2026-07-26T00:00:00.000Z',
+  refillsAt: '2026-07-25T13:00:00.000Z',
 };
 
 /** A day whose rich harvest is spent. */
 const spent = {
   ...charged,
+  available: 0,
   remaining: 0,
-  usedToday: PER_DAY,
+  usedToday: CAPACITY,
 };
 
 describe('ModeToggle', () => {
@@ -89,7 +97,7 @@ describe('ModeToggle', () => {
     const message = screen.getByTestId('mode-lean-harvest');
     expect(message).toHaveTextContent(/this run still counts everywhere/i);
     expect(message).toHaveTextContent(/lean harvest/i);
-    expect(message).toHaveTextContent(/00:00 UTC/);
+    expect(message).toHaveTextContent(/one Energy recovers each hour/i);
     // No language of permission, waiting, or exhaustion.
     expect(message).not.toHaveTextContent(/out of energy/i);
     expect(message).not.toHaveTextContent(/wait/i);

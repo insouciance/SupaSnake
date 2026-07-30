@@ -5,7 +5,7 @@
  * commercial surface per screen).
  *
  * WP-0.09 deleted the one-time storefront: the Energy Packs section (§8.6/§10.4
- * — energy is a daily allotment with no balance to top up) and the Bundles
+ * — Energy recovers only and can never be topped up) and the Bundles
  * section (both bundles sold energy, DNA and a variant). What used to be
  * "shows Buy buttons" and "replaces every Buy button with a create-account CTA"
  * is now written against the surviving surface, `PremiumSection`, because that
@@ -90,7 +90,7 @@ describe('Shop page', () => {
     });
 
     it('sells no Energy anywhere (Constitution §8.6, §10.4)', () => {
-      // Energy is on the never-sold list, and charges are a daily allotment
+      // Energy is on the never-sold list and recovers only
       // with no balance to top up — those SKUs could no longer deliver
       // anything at all. A listing that takes money for a good that does
       // not exist is worse than a dead code path.

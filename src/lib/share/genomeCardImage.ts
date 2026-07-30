@@ -23,7 +23,7 @@ export interface GenomeCardMilestone {
 /**
  * The settled payout cascade, as it actually settles after WP-0.02:
  * raw fold -> genome -> outcome multiplier (BANK x1.25 / SALVAGE x0.60),
- * and then only the day's harvest factor (§8.6) on a lean run. The account
+ * and then the immutable Energy Commitment harvest factor (§8.6). The account
  * multiplier stack (streak / collection set / clan duel) is deleted - the
  * card must never show a factor the settlement does not apply.
  */

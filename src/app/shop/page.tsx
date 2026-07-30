@@ -7,9 +7,9 @@
  * commercial surface per screen, none in-run or on Results).
  *
  * WP-0.09 removed the one-time storefront entirely. The Energy Packs section
- * went with §8.6/§10.4 — energy is a daily allotment with no balance to top
- * up, so those SKUs could not have delivered anything even if selling them
- * were permitted. The Bundles section went with them: both bundles sold
+ * went with §8.6/§10.4 — Energy is recovered only and never sold, so those
+ * SKUs could not have delivered anything even if selling them were permitted.
+ * The Bundles section went with them: both bundles sold
  * energy, DNA and a variant, all three on the never-sold list.
  *
  * The §18(1)(11) FAGG immediate-delivery consent checkbox went with the last
@@ -26,7 +26,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useWalletSync } from '@/hooks/useWalletSync';
-import { ChargeMeter } from '@/components/ui/ChargeMeter';
 import { NavBar } from '@/components/ui/NavBar';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import { PremiumSection } from '@/components/engagement/PremiumSection';
@@ -36,7 +35,7 @@ import { IconCart, IconDna } from '@/components/ui/icons';
 
 export default function ShopPage() {
   const { isAnonymous } = useAuth();
-  const { dnaBalance, charge } = useWalletSync();
+  const { dnaBalance } = useWalletSync();
   const [canceled, setCanceled] = useState(false);
   const [premiumSuccess, setPremiumSuccess] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -72,11 +71,6 @@ export default function ShopPage() {
             <IconDna size={18} className="text-venom-orange" />
             <span className="text-bone-white font-display">{dnaBalance.toLocaleString()}</span>
           </div>
-          {charge && (
-            <div className="flex items-center px-3 py-1.5 rounded-arcade border border-scale-blue-light/60 bg-void/70">
-              <ChargeMeter charge={charge} />
-            </div>
-          )}
           <Link
             href="/"
             className="btn-neutral px-4 py-2 min-h-[44px] inline-flex items-center"

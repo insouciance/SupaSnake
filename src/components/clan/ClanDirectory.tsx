@@ -3,9 +3,9 @@
 /**
  * The clan directory (Constitution §9.2).
  *
- * "There is no browse-empty-directory dead end: the directory shows only clans
- * that hunted this week or last, so it is short and alive rather than long and
- * dead. Total-population counts are never displayed anywhere."
+ * The directory is deliberately short and alive: clans appear through a
+ * current/recent Energy Battle or preserved Serpent history. Total-population
+ * counts are never displayed anywhere.
  *
  * The server half already guarantees the first sentence — `GET
  * /api/clan?view=directory` returns alive clans and has no field for a total.
@@ -47,6 +47,7 @@ export interface ClanDirectoryRow {
   memberCount: number;
   bestWeekDepth: number;
   lastHuntedWeek: string | null;
+  lastHuntKind?: 'energy_battle' | 'legacy_week' | null;
 }
 
 export interface ClanDirectoryProps {
@@ -57,24 +58,24 @@ export interface ClanDirectoryProps {
 export function ClanDirectory({ clans, loading = false }: ClanDirectoryProps) {
   return (
     <section className="animate-fade-up" data-testid="clan-directory">
-      <h2 className="heading-display text-2xl text-bone-white mb-1">Hunting this week</h2>
+      <h2 className="heading-display text-2xl text-bone-white mb-1">Clans in the hunt</h2>
       <p className="text-beige/60 text-sm font-body mb-4">
-        Clans that hunted the Serpent this week or last. A clan appears here once it has
-        settled a week, and it is joined by invite rather than from this list.
+        Clans with a current or recent Serpent battle. A clan appears after its first
+        banked contribution and is joined by invite rather than from this list.
       </p>
 
       {loading ? (
         <div className="text-center py-8" data-testid="clan-directory-loading">
           <div className="w-12 h-12 border-4 border-venom-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-beige font-body">Reading the week&rsquo;s hunts…</p>
+          <p className="text-beige font-body">Reading recent battles…</p>
         </div>
       ) : clans.length === 0 ? (
         <div className="panel p-8 text-center" data-testid="clan-directory-empty">
           <p className="text-beige font-body">
-            No clan has settled a hunt yet. Found yours and be the first name here.
+            No clan has banked a battle contribution yet. Found yours and be the first name here.
           </p>
           <p className="text-beige/60 font-body text-sm mt-2">
-            A clan of one hunts every week and holds its own records, so there is nothing
+            A clan of one can enter every battle and hold its own records, so there is nothing
             here you are waiting on other people for.
           </p>
         </div>
@@ -100,19 +101,23 @@ export function ClanDirectory({ clans, loading = false }: ClanDirectoryProps) {
                 </div>
                 <p className="text-xs text-beige/60 font-body mt-1">
                   {clan.memberCount} {clan.memberCount === 1 ? 'member' : 'members'} ·
-                  deepest week {segments(clan.bestWeekDepth)}
+                  deepest battle {segments(clan.bestWeekDepth)}
                 </p>
               </div>
 
-              {/* Rule 14: the week a clan last hunted is a linkable artifact,
-                  and this is the one link a directory row honestly owns. */}
+              {/* The most recent battle remains a linkable artifact. */}
               {clan.lastHuntedWeek && (
                 <Link
-                  href={`/serpent?week=${clan.lastHuntedWeek}`}
+                  href={
+                    clan.lastHuntKind === 'energy_battle'
+                      ? '/serpent'
+                      : `/serpent?week=${clan.lastHuntedWeek}`
+                  }
                   data-testid="directory-week-link"
                   className="text-cosmic-glow hover:text-bone-white font-body text-sm transition-colors"
                 >
-                  Week of {formatWeekStart(clan.lastHuntedWeek)} →
+                  {clan.lastHuntKind === 'energy_battle' ? 'Current battle' : 'Archived week'}{' '}
+                  · {formatWeekStart(clan.lastHuntedWeek)} →
                 </Link>
               )}
 

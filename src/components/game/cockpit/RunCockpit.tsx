@@ -271,14 +271,33 @@ export function RunCockpit({
                 <span className={styles.energyReadout} aria-label={training.comparison} title={training.comparison}>
                   <strong>{training.comparison}</strong>
                 </span>
-              ) : model.charge ? (
+              ) : model.energyCommitment ? (
                 <span
                   className={styles.energyReadout}
-                  aria-label={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
-                  title={`Charges ${model.charge.remaining} of ${model.charge.perDay}`}
+                  data-testid="energy-stake"
+                  aria-label={
+                    model.energyCommitment.state === 'charged'
+                      ? `${model.energyCommitment.committed} Energy committed, harvest multiplier ${model.energyCommitment.multiplierBps / 10_000}`
+                      : model.energyCommitment.state === 'lean'
+                        ? 'Lean run, harvest multiplier 0.25'
+                        : 'Energy-exempt run, full harvest'
+                  }
+                  title={
+                    model.energyCommitment.state === 'charged'
+                      ? `${model.energyCommitment.committed} Energy · ×${(model.energyCommitment.multiplierBps / 10_000).toFixed(1)}`
+                      : model.energyCommitment.state === 'lean'
+                        ? 'Lean · ×0.25'
+                        : 'Exempt · ×1.0'
+                  }
                 >
                   <span aria-hidden="true"><EnergyGlyph /></span>
-                  <strong>{model.charge.remaining}/{model.charge.perDay}</strong>
+                  <strong>
+                    {model.energyCommitment.state === 'charged'
+                      ? `${model.energyCommitment.committed}E ×${(model.energyCommitment.multiplierBps / 10_000).toFixed(1)}`
+                      : model.energyCommitment.state === 'lean'
+                        ? 'LEAN ×0.25'
+                        : 'EXEMPT ×1.0'}
+                  </strong>
                 </span>
               ) : null}
               {model.holds ? (

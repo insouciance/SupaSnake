@@ -1,10 +1,8 @@
 /**
  * Offline Progress Calculation Tests
  *
- * Passive DNA only. The energy-restoration half of this module is gone
- * (Constitution §8.6): time away restores nothing, because nothing was
- * depleted - the day's charges refill on the UTC date, identically for a
- * player who was here all day and one who was away for a month.
+ * Passive-DNA claim only. Energy recovery belongs to its independent,
+ * server-time ledger (Constitution §8.6), never this preview/claim module.
  */
 
 import {

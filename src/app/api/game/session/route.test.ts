@@ -16,10 +16,7 @@ import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 
 describe('Game Session Logic', () => {
   describe('Session Start', () => {
-    it('has no energy gate at all — every run starts (Constitution §8.6)', () => {
-      // Structural, not arithmetic: the route must contain no start check
-      // and no cost constant. "Energy never gates playing. Every run always
-      // starts, always Scores, always ranks, always counts."
+    it('keeps zero-Energy lean play available without old balance clocks', () => {
       const source = fs.readFileSync(
         path.join(__dirname, 'route.ts'),
         'utf8'
@@ -28,16 +25,20 @@ describe('Game Session Logic', () => {
       expect(source).not.toMatch(/costPerGame/);
       expect(source).not.toMatch(/player\.energy/);
       expect(source).not.toMatch(/energy_regen_at/);
+      expect(source).toMatch(/requestedEnergyCommitment < 0/);
+      expect(source).toMatch(/zero remains a valid lean run/);
     });
 
-    it('consumes a charge instead of deducting a balance', () => {
+    it('commits Energy through the atomic server wrapper', () => {
       const source = fs.readFileSync(
         path.join(__dirname, 'route.ts'),
         'utf8'
       );
       // One call, to the atomic server RPC wrapper - never an arithmetic
       // read-modify-write on a column in this route.
-      expect(source).toMatch(/consumeRunCharge\(/);
+      expect(source).toMatch(/commitRunEnergy\(/);
+      expect(source).toMatch(/requestedEnergyCommitment/);
+      expect(source).toMatch(/confirmMaxEnergy/);
       expect(source).not.toMatch(/energy: newEnergy/);
     });
 
@@ -222,9 +223,7 @@ describe('Game Session Logic', () => {
   describe('Free Play (mode: free, Design v2 §7.4)', () => {
     const startedAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
 
-    it('every mode starts — free play is no longer the zero-charge fallback', () => {
-      // The old gate made 'free' the only startable mode at zero energy.
-      // Free Play is now a deliberate choice, never a demotion.
+    it('free play is explicitly exempt while zero remains a valid earning commitment', () => {
       const source = fs.readFileSync(
         path.join(__dirname, 'route.ts'),
         'utf8'
@@ -233,8 +232,9 @@ describe('Game Session Logic', () => {
         source.indexOf("if (action === 'start')"),
         source.indexOf("if (action === 'end')")
       );
-      expect(startAction).not.toMatch(/status: 400 \}[\s\S]{0,80}energy/i);
-      expect(startAction).not.toMatch(/isFreePlay &&[\s\S]{0,60}energy/i);
+      expect(startAction).toMatch(/const requestedEnergyCommitment = isFreePlay\s*\? 0/);
+      expect(startAction).toMatch(/requestedEnergyCommitment < 0/);
+      expect(startAction).not.toMatch(/requestedEnergyCommitment <= 0/);
     });
 
     it('start marks the free session and exempts it from the envelope', () => {

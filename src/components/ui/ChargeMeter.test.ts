@@ -1,10 +1,7 @@
 /**
  * Tests for the ChargeMeter's display utilities.
  *
- * Replaces the EnergyTimer tests, which asserted a per-point regeneration
- * countdown (`calculateTimeUntilNextEnergy`) and an `M:SS` format. There is
- * no per-point regeneration to count down any more - only the daily reset,
- * which can be up to 24 hours away and is therefore formatted in hours.
+ * Energy now recovers per point, so this pins the visible next-tick clock.
  */
 
 import { describe, it, expect } from '@jest/globals';
@@ -12,12 +9,12 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import { formatRefillCountdown, timeUntilRefill } from './ChargeMeter';
 
 describe('timeUntilRefill', () => {
-  it('returns the remaining milliseconds until the reset', () => {
+  it('returns the remaining milliseconds until the next recovery', () => {
     const now = Date.parse('2026-07-25T12:00:00Z');
     expect(timeUntilRefill('2026-07-26T00:00:00.000Z', now)).toBe(12 * 3600_000);
   });
 
-  it('returns 0 once the reset has passed', () => {
+  it('returns 0 once the recovery time has passed', () => {
     const now = Date.parse('2026-07-26T00:00:01Z');
     expect(timeUntilRefill('2026-07-26T00:00:00.000Z', now)).toBe(0);
   });
@@ -35,14 +32,14 @@ describe('formatRefillCountdown', () => {
     expect(formatRefillCountdown(90 * 60_000)).toBe('1h 30m');
   });
 
-  it('formats a sub-hour wait in minutes', () => {
-    expect(formatRefillCountdown(45 * 60_000)).toBe('45m');
-    expect(formatRefillCountdown(60_000)).toBe('1m');
+  it('formats a sub-hour wait in minutes and seconds', () => {
+    expect(formatRefillCountdown(45 * 60_000)).toBe('45m 0s');
+    expect(formatRefillCountdown(60_000)).toBe('1m 0s');
   });
 
-  it('avoids a bare "0m" at the boundary', () => {
-    expect(formatRefillCountdown(0)).toBe('less than a minute');
-    expect(formatRefillCountdown(30_000)).toBe('less than a minute');
+  it('shows the final seconds at the boundary', () => {
+    expect(formatRefillCountdown(0)).toBe('0s');
+    expect(formatRefillCountdown(30_000)).toBe('30s');
   });
 
   it('can express a full day, which the old M:SS format could not', () => {
@@ -51,13 +48,11 @@ describe('formatRefillCountdown', () => {
 });
 
 describe('ChargeMeter integration with game config', () => {
-  it('draws one pill per daily charge', () => {
-    expect(GAME_CONFIG.economy.energy.chargesPerDay).toBe(6);
+  it('draws one pill per stored Energy', () => {
+    expect(GAME_CONFIG.economy.energy.capacity).toBe(6);
   });
 
-  it('has no regeneration rate or cap to render', () => {
-    const energy = GAME_CONFIG.economy.energy as Record<string, unknown>;
-    expect(energy.regenRateMinutes).toBeUndefined();
-    expect(energy.maxEnergy).toBeUndefined();
+  it('renders the centralized hourly cadence', () => {
+    expect(GAME_CONFIG.economy.energy.recoveryIntervalSeconds).toBe(3600);
   });
 });

@@ -86,11 +86,9 @@ describe('Game Configuration', () => {
     });
   });
 
-  describe('Economy - the daily harvest envelope (Constitution §8.6)', () => {
-    it('should grant a day\'s worth of charges, not a stock', () => {
-      const { chargesPerDay } = GAME_CONFIG.economy.energy;
-      expect(chargesPerDay).toBeGreaterThanOrEqual(4);
-      expect(chargesPerDay).toBeLessThanOrEqual(12);
+  describe('Economy - Energy Commitment (Constitution §8.6 amendment)', () => {
+    it('should cap stored and single-run Energy at six', () => {
+      expect(GAME_CONFIG.economy.energy.capacity).toBe(6);
     });
 
     it('should harvest lean, never zero, on an uncharged run', () => {
@@ -100,21 +98,27 @@ describe('Game Configuration', () => {
     });
 
     it('should hide the meter until the player has met the game', () => {
-      const { meterVisibleAtBankedRuns, chargesPerDay } =
+      const { meterVisibleAtBankedRuns, capacity } =
         GAME_CONFIG.economy.energy;
       expect(meterVisibleAtBankedRuns).toBeGreaterThan(0);
-      expect(meterVisibleAtBankedRuns).toBeLessThan(chargesPerDay * 2);
+      expect(meterVisibleAtBankedRuns).toBeLessThan(capacity * 2);
     });
 
-    it('should expose no cap, cost-per-game or regen rate', () => {
-      // These three knobs defined the gate, the drip and the stock. Their
-      // absence is the mechanism, not an oversight - if one returns, the
-      // system the Constitution retired has returned with it.
+    it('should expose one recovery cadence and no purchasable cost', () => {
       const energy = GAME_CONFIG.economy.energy as Record<string, unknown>;
-      expect(energy.maxEnergy).toBeUndefined();
       expect(energy.costPerGame).toBeUndefined();
-      expect(energy.regenRateMinutes).toBeUndefined();
-      expect(energy.regenRateMs).toBeUndefined();
+      expect(energy.recoveryIntervalSeconds).toBe(3600);
+      expect(energy.commitmentMultipliersBps).toEqual([
+        10_000, 22_000, 36_000, 52_000, 72_000, 100_000,
+      ]);
+    });
+
+    it('keeps clan cadence, best-five, and delayed-run bounds centralized', () => {
+      expect(GAME_CONFIG.economy.clanBattle.activeDurationSeconds).toBe(259_200);
+      expect(GAME_CONFIG.economy.clanBattle.intermissionDurationSeconds).toBe(86_400);
+      expect(GAME_CONFIG.economy.clanBattle.contributingRunsPerMember).toBe(5);
+      expect(GAME_CONFIG.economy.clanBattle.completionGraceSeconds).toBe(10_800);
+      expect(GAME_CONFIG.economy.clanBattle.maxEligibleRunDurationSeconds).toBe(10_800);
     });
   });
 
@@ -221,13 +225,10 @@ describe('Game Configuration', () => {
       expect(gamesNeededToBreed).toBeLessThanOrEqual(10);
     });
 
-    it('should bound the day\'s rich harvest to a tunable envelope', () => {
-      // §8.6's stated purpose for the whole mechanism: a bounded daily
-      // economy envelope that makes collection and breeding pacing tunable.
-      // A day of full-harvest runs must be a finite, small number.
-      const { chargesPerDay } = GAME_CONFIG.economy.energy;
-      expect(Number.isInteger(chargesPerDay)).toBe(true);
-      expect(chargesPerDay).toBeLessThanOrEqual(12);
+    it('should bound accumulated exposure to a tunable stock', () => {
+      const { capacity } = GAME_CONFIG.economy.energy;
+      expect(Number.isInteger(capacity)).toBe(true);
+      expect(capacity).toBeLessThanOrEqual(12);
     });
 
     it('should have grid large enough for snake growth', () => {

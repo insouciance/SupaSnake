@@ -158,7 +158,7 @@ export default function LabPage() {
     setDowngradeError(null);
   }, [selectedOwned?.id, isDetailModalOpen]);
 
-  // The day's charge status from the game store (server-synced, §8.6)
+  // Recovering Energy from the game store (server-synced, §8.6)
   const charge = useGameStore((state) => state.charge);
 
   // Get active dynasty object for modals

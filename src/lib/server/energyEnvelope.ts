@@ -1,30 +1,18 @@
-/**
- * Energy envelope — server authority (Constitution §8.6, Rule 11).
- *
- * The only code in the product that may write the charge ledger. Reads are
- * pure and lazy: `readChargeStatus` never writes, so a GET can never advance
- * a clock. The single write is `consumeRunCharge`, which delegates to the
- * `consume_run_charge` RPC (migration 039) so that the read-modify-write is
- * atomic under a row lock — two concurrent run starts can never both take
- * the last charge.
- *
- * PRE-MIGRATION-039 SAFE: until 039 applies, the ledger columns and the RPC
- * do not exist. Every helper degrades to a full, unconsumed day — a missing
- * migration must never make a player's runs settle lean (Rule 5: absence is
- * never destructive, and a deploy gap is the operator's absence, not the
- * player's).
- */
+/** Server authority for Energy recovery and immutable run commitments. */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { GAME_CONFIG } from '@/shared/config/game';
 import {
+  energyCommitmentMultiplierBps,
   isChargeExempt,
+  isValidEnergyCommitment,
   resolveChargeStatus,
+  resolveEnergyStatus,
   type ChargeExemptionFacts,
-  type ChargeLedger,
   type ChargeState,
   type ChargeStatus,
+  type EnergyStatus,
 } from '@/shared/game/energyEnvelope';
 
 interface SupabaseErrorLike {
@@ -32,127 +20,268 @@ interface SupabaseErrorLike {
   message?: string;
 }
 
-/**
- * True when the error just means migration 039 has not been applied yet:
- * missing column (42703), missing RPC (42883 / PostgREST PGRST202), missing
- * relation (42P01), or a message naming the envelope objects.
- */
-export function isMissingEnvelopeInfra(
-  error: SupabaseErrorLike | null | undefined
-): boolean {
+export function isMissingEnvelopeInfra(error: SupabaseErrorLike | null | undefined): boolean {
   if (!error) return false;
-  if (
-    error.code === '42P01' ||
-    error.code === '42703' ||
-    error.code === '42883' ||
-    error.code === 'PGRST202'
-  ) {
-    return true;
-  }
-  return /charges_day|charges_used|consume_run_charge|charge_state/i.test(
+  if (['42P01', '42703', '42883', 'PGRST202'].includes(error.code || '')) return true;
+  return /stored_energy|energy_updated_at|read_player_energy|commit_run_energy|energy_committed|commitment_multiplier/i.test(
     error.message || ''
   );
 }
 
-/** A day that has consumed nothing — the safe degradation for every path. */
-const FULL_DAY_LEDGER: ChargeLedger = { chargesDay: null, chargesUsed: 0 };
+function statusFromRpc(row: Record<string, unknown> | null): EnergyStatus {
+  const serverNow =
+    typeof row?.server_now === 'string' ? row.server_now : new Date().toISOString();
+  return resolveEnergyStatus(
+    {
+      storedEnergy: Number(row?.energy_available ?? GAME_CONFIG.economy.energy.capacity),
+      updatedAt:
+        typeof row?.energy_updated_at === 'string' ? row.energy_updated_at : serverNow,
+    },
+    new Date(serverNow)
+  );
+}
 
-/**
- * Read the player's charge status without writing anything.
- *
- * Never fails the caller: a missing ledger (pre-039, or a brand-new row)
- * reads as a full day, which is exactly what it is.
- */
-export async function readChargeStatus(
+/** Read recovery using database time. Falls back safely during migration rollout. */
+export async function readEnergyStatus(
   supabase: SupabaseClient,
-  playerId: string,
-  now: Date | number = Date.now()
-): Promise<ChargeStatus> {
-  const { data, error } = await supabase
+  playerId: string
+): Promise<EnergyStatus> {
+  const { data, error } = await supabase.rpc('read_player_energy', {
+    p_player_id: playerId,
+    p_capacity: GAME_CONFIG.economy.energy.capacity,
+    p_recovery_interval_seconds: GAME_CONFIG.economy.energy.recoveryIntervalSeconds,
+  });
+
+  if (!error) {
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+    return statusFromRpc(row);
+  }
+
+  if (!isMissingEnvelopeInfra(error)) {
+    console.error('Energy ledger read failed:', { playerId, error });
+    Sentry.captureException(new Error(`readEnergyStatus failed: ${error.message}`), {
+      extra: { playerId, code: error.code },
+    });
+  }
+
+  // Migration overlap: translate the old UTC-day envelope rather than block
+  // setup. No client time reaches either path.
+  const legacy = await supabase
     .from('players')
     .select('charges_day, charges_used')
     .eq('id', playerId)
     .single();
-
-  if (error) {
-    if (!isMissingEnvelopeInfra(error)) {
-      console.error('Charge ledger read failed:', { playerId, error });
-      Sentry.captureException(
-        new Error(`readChargeStatus failed: ${error.message}`),
-        { extra: { playerId, code: error.code } }
-      );
-    }
-    return resolveChargeStatus(FULL_DAY_LEDGER, now);
+  if (!legacy.error) {
+    return resolveChargeStatus({
+      chargesDay: (legacy.data?.charges_day as string | null) ?? null,
+      chargesUsed: Number(legacy.data?.charges_used ?? 0),
+    });
   }
 
-  return resolveChargeStatus(
-    {
-      chargesDay: (data?.charges_day as string | null) ?? null,
-      chargesUsed: (data?.charges_used as number | null) ?? 0,
-    },
-    now
-  );
+  return resolveEnergyStatus({
+    storedEnergy: GAME_CONFIG.economy.energy.capacity,
+    updatedAt: new Date(),
+  });
 }
 
-export interface ConsumeChargeResult {
-  /** How this run settles. Stamp it on the session row. */
+/** Backwards-compatible export while components migrate terminology. */
+export const readChargeStatus = readEnergyStatus;
+
+export class EnergyCommitmentError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: 'invalid' | 'insufficient' | 'unavailable'
+  ) {
+    super(message);
+    this.name = 'EnergyCommitmentError';
+  }
+}
+
+export interface CommitEnergyResult {
   state: ChargeState;
-  /** The status AFTER this run's consumption, for the response/HUD. */
-  status: ChargeStatus;
+  status: EnergyStatus;
+  energyCommitted: number;
+  commitmentMultiplierBps: number;
+  energyAvailableBefore: number;
+  energyRecoveredAtStart: number;
+  /** Immutable clan snapshot stamped by the same transaction, when eligible. */
+  clanBattle: {
+    battleId: string;
+    sideId: string;
+    clanId: string;
+    endsAt: string;
+    fifthBestToBeat: number;
+  } | null;
+}
+
+function parseBattle(row: Record<string, unknown> | null): CommitEnergyResult['clanBattle'] {
+  if (
+    typeof row?.clan_battle_id !== 'string' ||
+    typeof row?.clan_battle_side_id !== 'string' ||
+    typeof row?.clan_id !== 'string' ||
+    typeof row?.clan_battle_ends_at !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    battleId: row.clan_battle_id,
+    sideId: row.clan_battle_side_id,
+    clanId: row.clan_id,
+    endsAt: row.clan_battle_ends_at,
+    fifthBestToBeat: Number(row.clan_fifth_threshold ?? 0),
+  };
 }
 
 /**
- * Decide and record how a starting run settles against the envelope.
- *
- * Order matters: exemption is checked FIRST, so a Signal objective run or a
- * Serpent attempt never touches the ledger even when charges are available
- * (§8.6 — "the rituals are always full-fat"). Only a non-exempt run reaches
- * the RPC, and only the RPC can move `charges_used`.
- *
- * A run is NEVER blocked. When the day's allotment is empty the RPC reports
- * `charged: false` and the run starts anyway, settling lean.
+ * Consume the selected stock and stamp the session under one database lock.
+ * Calling this twice for the same session returns the original snapshot and
+ * never spends twice.
+ */
+export async function commitRunEnergy(
+  supabase: SupabaseClient,
+  playerId: string,
+  sessionId: string,
+  requestedCommitment: number,
+  facts: ChargeExemptionFacts
+): Promise<CommitEnergyResult> {
+  const exempt = isChargeExempt(facts);
+  const commitment = exempt ? 0 : requestedCommitment;
+
+  if (!exempt && commitment !== 0 && !isValidEnergyCommitment(commitment)) {
+    throw new EnergyCommitmentError('Commit between 1 and 6 Energy.', 'invalid');
+  }
+
+  const energyConfig = GAME_CONFIG.economy.energy;
+  const battleConfig = GAME_CONFIG.economy.clanBattle;
+  const { data, error } = await supabase.rpc('commit_run_energy', {
+    p_player_id: playerId,
+    p_session_id: sessionId,
+    p_commitment: commitment,
+    p_exempt: exempt,
+    p_capacity: energyConfig.capacity,
+    p_recovery_interval_seconds: energyConfig.recoveryIntervalSeconds,
+    p_commitment_multipliers_bps: [...energyConfig.commitmentMultipliersBps],
+    p_battle_epoch: battleConfig.epochUtc,
+    p_battle_active_seconds: battleConfig.activeDurationSeconds,
+    p_battle_intermission_seconds: battleConfig.intermissionDurationSeconds,
+    p_battle_best_count: battleConfig.contributingRunsPerMember,
+  });
+
+  if (error) {
+    if (/insufficient_energy/i.test(error.message || '')) {
+      throw new EnergyCommitmentError('Not enough recovered Energy.', 'insufficient');
+    }
+
+    if (isMissingEnvelopeInfra(error)) {
+      // App-before-migration compatibility: a one-E start uses one old daily
+      // charge. Larger commitments wait for the schema instead of silently
+      // receiving the wrong multiplier.
+      if (exempt || commitment === 0) {
+        const status = await readEnergyStatus(supabase, playerId);
+        return {
+          state: exempt ? 'exempt' : 'lean',
+          status,
+          energyCommitted: 0,
+          commitmentMultiplierBps: exempt ? 10_000 : energyCommitmentMultiplierBps(0),
+          energyAvailableBefore: status.available,
+          energyRecoveredAtStart: 0,
+          clanBattle: null,
+        };
+      }
+      if (commitment === 1) {
+        const legacy = await supabase.rpc('consume_run_charge', {
+          p_player_id: playerId,
+          p_charges_per_day: energyConfig.capacity,
+        });
+        if (!legacy.error) {
+          const legacyRow = (Array.isArray(legacy.data) ? legacy.data[0] : legacy.data) as
+            | { charged?: boolean; charges_day?: string; charges_used?: number }
+            | null;
+          const status = resolveChargeStatus({
+            chargesDay: legacyRow?.charges_day ?? null,
+            chargesUsed: legacyRow?.charges_used ?? 0,
+          });
+          return {
+            state: legacyRow?.charged === true ? 'charged' : 'lean',
+            status,
+            energyCommitted: legacyRow?.charged === true ? 1 : 0,
+            commitmentMultiplierBps:
+              legacyRow?.charged === true ? 10_000 : energyCommitmentMultiplierBps(0),
+            energyAvailableBefore: status.available + (legacyRow?.charged === true ? 1 : 0),
+            energyRecoveredAtStart: 0,
+            clanBattle: null,
+          };
+        }
+      }
+      throw new EnergyCommitmentError('Energy Commitment is temporarily unavailable.', 'unavailable');
+    }
+
+    console.error('commit_run_energy RPC failed:', { playerId, sessionId, error });
+    Sentry.captureException(new Error(`commit_run_energy failed: ${error.message}`), {
+      extra: { playerId, sessionId, commitment, code: error.code },
+    });
+    throw new EnergyCommitmentError('Could not commit Energy. Try again.', 'unavailable');
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (!row) {
+    const failure = new Error('commit_run_energy returned no snapshot');
+    console.error('commit_run_energy RPC returned no snapshot:', {
+      playerId,
+      sessionId,
+      commitment,
+    });
+    Sentry.captureException(failure, { extra: { playerId, sessionId, commitment } });
+    throw new EnergyCommitmentError('Could not commit Energy. Try again.', 'unavailable');
+  }
+  return {
+    state:
+      row?.run_state === 'exempt'
+        ? 'exempt'
+        : row?.run_state === 'lean'
+          ? 'lean'
+          : 'charged',
+    status: statusFromRpc(row),
+    energyCommitted: Number(row?.energy_committed ?? commitment),
+    commitmentMultiplierBps: Number(
+      row?.commitment_multiplier_bps ?? energyCommitmentMultiplierBps(commitment)
+    ),
+    energyAvailableBefore: Number(row?.energy_available_before ?? commitment),
+    energyRecoveredAtStart: Number(row?.energy_recovered ?? 0),
+    clanBattle: parseBattle(row),
+  };
+}
+
+/**
+ * Legacy test/helper API. Production session starts use `commitRunEnergy`.
+ * It intentionally cannot express a multi-E commitment or session snapshot.
  */
 export async function consumeRunCharge(
   supabase: SupabaseClient,
   playerId: string,
-  facts: ChargeExemptionFacts,
-  now: Date | number = Date.now()
-): Promise<ConsumeChargeResult> {
+  facts: ChargeExemptionFacts
+): Promise<{ state: ChargeState; status: ChargeStatus }> {
   if (isChargeExempt(facts)) {
-    return { state: 'exempt', status: await readChargeStatus(supabase, playerId, now) };
+    return { state: 'exempt', status: await readEnergyStatus(supabase, playerId) };
   }
-
   const { data, error } = await supabase.rpc('consume_run_charge', {
     p_player_id: playerId,
-    p_charges_per_day: GAME_CONFIG.economy.energy.chargesPerDay,
+    p_charges_per_day: GAME_CONFIG.economy.energy.capacity,
   });
-
   if (error) {
-    // The envelope is a pacing layer, never a gate. If the ledger is
-    // unreachable the run still starts and — deliberately — settles at FULL
-    // strength: a server fault must not quietly cut a player's harvest to a
-    // quarter. Under-charging on an outage is the honest failure direction.
-    if (!isMissingEnvelopeInfra(error)) {
-      console.error('consume_run_charge RPC failed:', { playerId, error });
-      Sentry.captureException(
-        new Error(`consume_run_charge failed: ${error.message}`),
-        { extra: { playerId, code: error.code } }
-      );
-    }
-    return { state: 'charged', status: resolveChargeStatus(FULL_DAY_LEDGER, now) };
+    return {
+      state: 'charged',
+      status: await readEnergyStatus(supabase, playerId),
+    };
   }
-
   const row = (Array.isArray(data) ? data[0] : data) as
     | { charged?: boolean; charges_day?: string; charges_used?: number }
     | null;
-
-  const status = resolveChargeStatus(
-    {
+  return {
+    state: row?.charged === true ? 'charged' : 'lean',
+    status: resolveChargeStatus({
       chargesDay: row?.charges_day ?? null,
       chargesUsed: row?.charges_used ?? 0,
-    },
-    now
-  );
-
-  return { state: row?.charged === true ? 'charged' : 'lean', status };
+    }),
+  };
 }

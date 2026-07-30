@@ -291,9 +291,9 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
     cost: `Salvage ${delta(STRAIN_ECONOMICS.infuseSalvageDelta)} per infuse, the next portal comes +${STRAIN_PHYSICS.infusePortalIntervalPenalty} foods later, and the run allows at most ${STRAIN_PHYSICS.infuseMaxPerRun}. Offered from length ${STRAIN_PHYSICS.infuseMinLength} and from ${FTUE.infuseAt} banked runs.`,
   },
   charges: {
-    name: 'Charges',
-    effect: `The day grants ${ENERGY.chargesPerDay} charges, back to full at 00:00 UTC. A charged run harvests its DNA at full strength.`,
-    cost: `Past the day's ${ENERGY.chargesPerDay}th run the harvest drops to ${share(ENERGY.leanHarvestFactor)} — lean, never zero. Nothing gates play: an uncharged run still Scores, still ranks, still counts. Charges cannot be bought, gifted or earned; the only refill is the clock.`,
+    name: 'Energy Commitment',
+    effect: `Store up to ${ENERGY.capacity} Energy. One recovers every ${ENERGY.recoveryIntervalSeconds / 3600} hour on server time, including while offline. Commit 1–${ENERGY.capacity} before a run for a nonlinear harvest multiplier.`,
+    cost: `Every committed unit is consumed when the run starts and is never refunded for a crash or abandonment. A zero-Energy run still Scores, ranks and counts at ${share(ENERGY.leanHarvestFactor)} harvest. Energy cannot be bought or gifted.`,
   },
   strain_minor: {
     name: 'Minor passive',

@@ -3,7 +3,7 @@
 /**
  * useWalletSync - Unified wallet synchronization hook
  *
- * Combines DNA balance (collectionStore) + the day's charge status
+ * Combines DNA balance (collectionStore) + recovering Energy status
  * (gameStore, Constitution §8.6)
  * Single source of truth: /api/player endpoint
  *
@@ -20,7 +20,7 @@ import { useGameStore, type ChargeSnapshot } from '@/lib/store/gameStore';
 
 interface WalletState {
   dnaBalance: number;
-  /** The day's harvest envelope; null until the first sync. */
+  /** Recovering Energy status; null until the first sync. */
   charge: ChargeSnapshot | null;
   isLoading: boolean;
   error: string | null;
@@ -63,8 +63,8 @@ export function useWalletSync(): WalletState {
         }
       }
 
-      // The charge block is top-level on the response, not on `player` -
-      // it is derived state, not a stored balance (§8.6).
+      // The compatibility-named charge block is top-level on the response.
+      // Its stock was reconciled against server time before being returned.
       syncChargeFromServer((data.charge as ChargeSnapshot | undefined) ?? null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Wallet sync failed';

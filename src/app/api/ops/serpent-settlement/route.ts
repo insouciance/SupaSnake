@@ -1,8 +1,9 @@
 /**
- * Serpent settlement — GET /api/ops/serpent-settlement (Constitution §7.3).
+ * Historical Serpent + Clan Energy settlement — GET /api/ops/serpent-settlement.
  *
- * "Sunday midnight UTC it submerges, the hunt settles, and Monday's Signal
- * carries the result." This is the cron that settles it.
+ * Migration 059 retired new explicit Serpent attempts, but historical weeks
+ * still have to converge. The same authenticated hourly sweep now reconciles
+ * any post-payout Clan Energy contribution and settles completed 3-day battles.
  *
  * Auth: exact `CRON_SECRET` bearer, the same contract as
  * `/api/ops/session-sweep`, `/api/discord/dispatch` and `/api/analyst/cron`.
@@ -34,7 +35,8 @@
  * `economy_transactions`, a cosmetic, an entitlement or a charge. The one
  * claim endpoint this game has is the Daily Take's, and it is not this.
  *
- * Response: `{ ok, settled: [...], skipped }`. `skipped` is true in the window
+ * Response includes historical `settled`/`pairings` plus `energyBattles`.
+ * `skipped` is true in the window
  * before migration 046 is applied — expected, not an error. A week that failed
  * to settle returns 500 so a silently broken cron is visible in the platform
  * log; the next run retries it.
@@ -45,6 +47,10 @@ import { createClient } from '@supabase/supabase-js';
 import { isAuthorizedCron } from '@/lib/server/cronAuth';
 import { settleDueSerpentWeeks } from '@/lib/server/serpent';
 import { settleDueClanWeeks } from '@/lib/server/clanHunt';
+import {
+  reconcileClanEnergyContributions,
+  settleClanEnergyBattles,
+} from '@/lib/server/clanEnergyBattle';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -71,9 +77,18 @@ export async function GET(request: NextRequest) {
    * and there is no statement in that RPC through which it could.
    */
   const pairings = await settleDueClanWeeks(supabase);
+  let energyReconciled: number | null = null;
+  let energySettled: number | null = null;
+  let energyError: string | null = null;
+  try {
+    energyReconciled = await reconcileClanEnergyContributions(supabase);
+    energySettled = await settleClanEnergyBattles(supabase);
+  } catch (error) {
+    energyError = error instanceof Error ? error.message : 'Energy Battle settlement failed';
+  }
 
   const body = {
-    ok: !result.failed && !pairings.failed,
+    ok: !result.failed && !pairings.failed && energyError === null,
     settled: result.settled.map((week) => ({
       weekStart: week.weekStart,
       players: week.players,
@@ -88,13 +103,21 @@ export async function GET(request: NextRequest) {
       chronicleEntries: week.chronicleEntries,
       failed: week.failed,
     })),
+    energyBattles: {
+      reconciled: energyReconciled,
+      settled: energySettled,
+      skipped: energyReconciled === null && energySettled === null,
+    },
     skipped: result.skipped,
   };
 
-  if (result.failed || pairings.failed) {
+  if (result.failed || pairings.failed || energyError) {
     // The helper already reported it to Sentry; the cron needs a non-200 so a
     // permanently failing settlement is visible on the platform.
-    return NextResponse.json({ ...body, error: 'Settlement failed' }, { status: 500 });
+    return NextResponse.json(
+      { ...body, error: energyError ?? 'Settlement failed' },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json(body);

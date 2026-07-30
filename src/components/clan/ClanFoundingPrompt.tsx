@@ -26,7 +26,7 @@
  *   §12.2 caps Results at three layers with exactly one recommended action, and
  *   WP-1.06 spends all three. A prompt for a different system landing there
  *   would be a fourth thing competing with that one action. It lives on the two
- *   surfaces it is about — the clan page and the Serpent week — where a player
+ *   surfaces it is about — the clan page and the Serpent battle — where a player
  *   arrives by navigation and Rule 7's "never by interruption" is satisfied by
  *   construction.
  */
@@ -123,13 +123,12 @@ export function ClanFoundingPrompt({
         The World Serpent is hunting
       </h2>
       <p className="text-beige/80 font-body text-sm">
-        Every week a Serpent surfaces and clans hunt it — your best three runs of the week
-        feed it, and the week is read against your own deepest one. You can hunt it with a
-        clan of your own from today.
+        Every three-day battle turns your ordinary Energy runs into clan attempts. Your
+        strongest five banked Yields contribute automatically—there is no separate mode.
       </p>
       <p className="text-beige/70 font-body text-sm mt-2">
-        A clan of one is a clan. It hunts every week, it holds its own records, and it is
-        paired with a rival on the weeks a matching clan is hunting too.
+        A clan of one is a clan. It holds its own records and is paired when another clan
+        enters the same battle cycle.
       </p>
 
       <div className="flex flex-wrap gap-3 mt-4">

@@ -1,13 +1,12 @@
 /**
  * Game Session API - Start/End game sessions
  *
- * Server authority: results validated and recomputed server-side; the daily
- * charge is consumed and stamped server-side (Constitution §8.6).
+ * Server authority: results validated and recomputed server-side; Energy is
+ * recovered, committed and stamped server-side (Constitution §8.6).
  *
  * Energy never gates a run. There is no start check: every run starts,
- * Scores, ranks and counts. The charge decides only the HARVEST - a charged
- * or exempt run pays full Yield, a run that finds the day's allotment empty
- * pays the lean factor.
+ * Scores, ranks and counts. A commitment multiplies only credited harvest;
+ * an explicit zero-Energy run remains available at the lean factor.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -49,17 +48,20 @@ import {
 } from '@/shared/game/anomalies';
 import * as Sentry from '@sentry/nextjs';
 import {
-  consumeRunCharge,
+  commitRunEnergy,
+  EnergyCommitmentError,
   isMissingEnvelopeInfra,
 } from '@/lib/server/energyEnvelope';
 import {
-  applyHarvestFactor,
+  applyEnergyHarvestMultiplier,
+  energyCommitmentMultiplierBps,
   isChargeMeterVisible,
   isChargeState,
   NO_EXEMPTION,
   type ChargeExemptionFacts,
   type ChargeState,
 } from '@/shared/game/energyEnvelope';
+import { recordClanEnergyContribution } from '@/lib/server/clanEnergyBattle';
 import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
@@ -115,15 +117,11 @@ import {
 // WP-0.02 test asserts this file's source cannot mention the former at all.
 import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
-import { ensureCurrentSerpentWeek } from '@/lib/server/serpent';
 import {
   claimSignalObjectiveRun,
   settleSignalAttemptForSession,
 } from '@/lib/server/signal';
-import {
-  resolveSessionWorldCondition,
-  serpentWeekCondition,
-} from '@/lib/server/worldCondition';
+import { resolveSessionWorldCondition } from '@/lib/server/worldCondition';
 import {
   conditionFromAnomaly,
   conditionOfferTilt,
@@ -249,6 +247,8 @@ export async function POST(request: NextRequest) {
       // among the day's server-derived three. Never a definition — there is
       // deliberately no day, target, seed or condition field beside it.
       signalObjectiveId,
+      energyCommitment,
+      confirmMaxEnergy,
       snake_id,
       score,
       dna_earned,
@@ -320,12 +320,10 @@ export async function POST(request: NextRequest) {
     // rotation) and stamped on the session row - never client-asserted.
     const isAnomalyRun = mode === 'anomaly';
 
-    // Constitution §7.3 The World Serpent: a Serpent attempt is a full,
-    // ordinary run — any dynasty, the player's own snake, full build active —
-    // whose Yield feeds the week's Depth. `mode: 'serpent'` is a REQUEST. It
-    // becomes a fact only if the server can resolve the week from its own
-    // calendar (below); if it cannot, the run is an ordinary charged run.
-    const isSerpentRun = mode === 'serpent';
+    // Constitution v1.5 retires explicit Serpent attempts. A legacy client
+    // sending `mode: 'serpent'` now receives the same ordinary Energy run as
+    // `mode: 'earn'`; positive commitment automatically feeds the active Clan
+    // Energy Battle. Historical stamped Serpent sessions still settle below.
 
     // Constitution §7.2 The World Signal: the day names a condition and three
     // objectives, and the player takes one. `mode: 'signal'` is a REQUEST, in
@@ -357,11 +355,39 @@ export async function POST(request: NextRequest) {
       // leaves the row open, which is exactly the status quo it fixes.
       await abandonStalePlayerSessions(supabase, player.id);
 
-      // NOTE: there is deliberately NO energy check here. Constitution §8.6:
-      // "Energy never gates playing. Every run always starts, always Scores,
-      // always ranks, always counts." A run with no charge left is not a
-      // second-class run - it is a full run with a lean harvest. Re-adding a
-      // start gate here is a constitutional violation, not a tuning change.
+      // Old clients default to the conservative one-Energy commitment. Zero
+      // is an explicit lean run; 1..6 is a stored-Energy run. A maximum
+      // commitment requires an extra acknowledgement so a stale tap or replay
+      // cannot silently expose the full stock.
+      const requestedEnergyCommitment = isFreePlay
+        ? 0
+        : energyCommitment === undefined
+          ? 1
+          : energyCommitment;
+      if (
+        typeof requestedEnergyCommitment !== 'number' ||
+        !Number.isInteger(requestedEnergyCommitment) ||
+        requestedEnergyCommitment < 0 ||
+        requestedEnergyCommitment > GAME_CONFIG.economy.energy.capacity
+      ) {
+        return NextResponse.json(
+          { error: 'Energy commitment must be a whole number from 0 to 6' },
+          { status: 400 }
+        );
+      }
+      if (
+        requestedEnergyCommitment === GAME_CONFIG.economy.energy.capacity &&
+        confirmMaxEnergy !== true
+      ) {
+        return NextResponse.json(
+          { error: 'Confirm the maximum Energy commitment before starting' },
+          { status: 400 }
+        );
+      }
+
+      // Energy never gates playing: zero remains a valid lean run. A positive
+      // commitment can be rejected only when that requested stock is not
+      // available; the player can immediately choose a smaller amount or zero.
 
       if (!snake_id) {
         return NextResponse.json({ error: 'snake_id is required' }, { status: 400 });
@@ -658,20 +684,6 @@ export async function POST(request: NextRequest) {
         ? anomalyWeekStart(startedAtDate).toISOString().slice(0, 10)
         : null;
 
-      // ---------------------------------------------------------------
-      // The World Serpent (Constitution §7.3, §8.6)
-      // ---------------------------------------------------------------
-      // The week, its seed and its modifier set are DERIVED FROM THE UTC
-      // CALENDAR by `ensureCurrentSerpentWeek` — the request contributes
-      // nothing (Rule 11). Three things have to be true for a run to become a
-      // Serpent attempt: the client asked, the flag is on, and the server
-      // resolved a week row. Miss any one and this stays null, which means an
-      // ordinary charged run — exactly the closed-by-default posture WP-0.01
-      // built the exemption hook around.
-      const serpentWeek = isSerpentRun
-        ? await ensureCurrentSerpentWeek(supabase, startedAtDate)
-        : null;
-
       const sessionInsert: Record<string, unknown> = {
         player_id: player.id,
         snake_used_id: snake.id,
@@ -686,10 +698,6 @@ export async function POST(request: NextRequest) {
         ...(isAnomalyRun
           ? { anomaly_id: startAnomalyId, anomaly_week: startAnomalyWeek }
           : {}),
-        // Serpent run flagging (migration 046) - only sent when the server
-        // resolved a week, so the insert stays compatible with the pre-046
-        // schema for every other run in the game.
-        ...(serpentWeek ? { serpent_week_id: serpentWeek.id } : {}),
       };
       // THE PRE-MIGRATION RETRY LADDER (extended by WP-2.05).
       //
@@ -771,15 +779,6 @@ export async function POST(request: NextRequest) {
             { status: 503 }
           );
         }
-        // Pre-migration-046 window: the serpent column doesn't exist yet.
-        // Only a Serpent attempt can reach this - every other run omits the
-        // marker - so ordinary play is unaffected.
-        if (serpentWeek && /serpent_week_id/i.test(sessionError.message || '')) {
-          return NextResponse.json(
-            { error: 'The World Serpent has not surfaced yet — try a ranked run' },
-            { status: 503 }
-          );
-        }
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
 
@@ -829,13 +828,13 @@ export async function POST(request: NextRequest) {
       // ---------------------------------------------------------------
       // The run's world condition (§7.2, §7.3 - WP-2.10a)
       // ---------------------------------------------------------------
-      // One modifier owns the run, whichever ritual named it: the Anomaly
-      // board's weekly rotation, the Serpent week's condition-set, or the
-      // Signal day's condition. All three are SERVER-DERIVED from the calendar
-      // above, and all three are stamped on the session row, so settlement
+      // One modifier owns the run, whichever active surface named it: the
+      // Anomaly board's weekly rotation or the Signal day's condition. Both
+      // are SERVER-DERIVED from the calendar and stamped on the session row, so settlement
       // re-derives this exact id from the row alone
       // (`resolveSessionWorldCondition`) and recomputes the run under the rules
-      // it was actually played under. The client asserts nothing.
+      // it was actually played under. That resolver also honors immutable
+      // historical Serpent stamps. The client asserts nothing.
       //
       // Resolved AFTER the Signal claim because the Signal half is gated on
       // `exemptRunId`: `begin_signal_objective_run` mirrors
@@ -847,14 +846,12 @@ export async function POST(request: NextRequest) {
       // The three arms are unchanged; each just answers with more.
       const runCondition: WorldCondition = startAnomalyId
         ? conditionFromAnomaly(startAnomalyId)
-        : serpentWeek
-          ? serpentWeekCondition(serpentWeek)
-          : signalClaim?.exemptRunId && signalClaim.day
-            ? conditionFromAnomaly(
-                signalClaim.day.condition.id,
-                signalClaim.day.clauses
-              )
-            : NEUTRAL_CONDITION;
+        : signalClaim?.exemptRunId && signalClaim.day
+          ? conditionFromAnomaly(
+              signalClaim.day.condition.id,
+              signalClaim.day.clauses
+            )
+          : NEUTRAL_CONDITION;
 
       // The condition's reach into the run, composed HERE and only here.
       //
@@ -904,14 +901,9 @@ export async function POST(request: NextRequest) {
       // Exemption is decided from SERVER facts only - the client's `mode`
       // is a request, never a grant. Free Play is rewardless, so charging
       // it would be a pure penalty for practising. The Signal objective run
-      // (§7.2, WP-1.03) and Serpent attempts (§7.3, §8.6 "the rituals are
-      // always full-fat") are exempt.
-      //
-      // WP-1.01 fills in the Serpent half: `serpentWeek` is the week row the
-      // SERVER resolved from its own calendar a few lines above, so the id
-      // below is a fact the server can point at - never a claim the client
-      // made. A client sending `mode: 'serpent'` with the flag off, or before
-      // migration 046, resolves no week and gets an ordinary charged run.
+      // (§7.2, WP-1.03) remains exempt. The retired explicit Serpent mode is
+      // intentionally not an exemption; it normalizes to an ordinary Energy
+      // run and joins the battle through the immutable Energy snapshot.
       //
       // WP-1.03 fills in the Signal half the same way. `exemptRunId` is
       // non-null on exactly one condition: the SERVER derived today, resolved
@@ -926,19 +918,46 @@ export async function POST(request: NextRequest) {
         ...NO_EXEMPTION,
         rewardless: isFreePlay,
         signalObjectiveRunId: signalClaim?.exemptRunId ?? null,
-        serpentWeekId: serpentWeek?.id ?? null,
+        serpentWeekId: null,
       };
-      const charge = await consumeRunCharge(
-        supabase,
-        player.id,
-        exemptionFacts
-      );
+      let charge;
+      try {
+        charge = await commitRunEnergy(
+          supabase,
+          player.id,
+          session.id,
+          requestedEnergyCommitment,
+          exemptionFacts
+        );
+      } catch (error) {
+        // The session row exists, but gameplay has not begun. Close it without
+        // reward so it cannot later settle, while preserving the audit trail.
+        const { error: closeError } = await supabase
+          .from('game_sessions')
+          .update({ ended_at: new Date().toISOString(), end_reason: 'abandoned' })
+          .eq('id', session.id)
+          .eq('player_id', player.id)
+          .is('ended_at', null);
+        if (closeError && !isMissingLifecycleInfra(closeError)) {
+          console.error('Failed to close rejected Energy session:', {
+            sessionId: session.id,
+            error: closeError,
+          });
+        }
+        if (error instanceof EnergyCommitmentError) {
+          const status = error.reason === 'invalid' ? 400 : error.reason === 'insufficient' ? 409 : 503;
+          return NextResponse.json(
+            { error: error.message, reason: error.reason },
+            { status }
+          );
+        }
+        throw error;
+      }
 
-      // Stamp how this run settles onto the session row. Separate,
-      // best-effort write in the established pattern of run_events/genome
-      // below: pre-migration-039 the column is missing and this fails
-      // non-fatally, leaving charge_state NULL - which settles the run at
-      // FULL strength. Every failure mode here favours the player.
+      // Migration-overlap compatibility. Post-059 the RPC already stamped the
+      // complete immutable snapshot; this same-value write is harmless. On
+      // the brief app-before-migration window it preserves the old one-Energy
+      // settlement label.
       const { error: chargeStampError } = await supabase
         .from('game_sessions')
         .update({ charge_state: charge.state })
@@ -957,9 +976,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // No economy_transactions row: a charge is NOT a currency (§8.6, and
-      // §12.2's cap of one currency). The session row's charge_state is the
-      // audit record of what the envelope did.
+      // No economy_transactions row: Energy is a non-purchasable pacing
+      // resource, not the game's economy currency. The immutable session
+      // snapshot is the consumption and telemetry record.
 
       // `visible` carries the §8.6 ramp so the HUD hides the meter for a
       // player who has not met the game yet - the same rule /api/player
@@ -967,6 +986,10 @@ export async function POST(request: NextRequest) {
       const chargeBlock = {
         state: charge.state,
         ...charge.status,
+        committed: charge.energyCommitted,
+        commitmentMultiplierBps: charge.commitmentMultiplierBps,
+        energyAvailableBefore: charge.energyAvailableBefore,
+        energyRecoveredAtStart: charge.energyRecoveredAtStart,
         visible: isChargeMeterVisible(player.total_games_played ?? 0),
       };
 
@@ -974,6 +997,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           sessionId: session.id,
           freePlay: true,
+          energy: chargeBlock,
           charge: chargeBlock,
           traits: snakeTraits,
           mutationPool,
@@ -1001,7 +1025,20 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         sessionId: session.id,
+        energy: chargeBlock,
+        // Compatibility alias for clients deployed before migration 059.
         charge: chargeBlock,
+        ...(charge.clanBattle
+          ? {
+              clanBattle: {
+                eligible: true,
+                battleId: charge.clanBattle.battleId,
+                clanId: charge.clanBattle.clanId,
+                endsAt: charge.clanBattle.endsAt,
+                fifthBestToBeat: charge.clanBattle.fifthBestToBeat,
+              },
+            }
+          : {}),
         traits: snakeTraits,
         mutationPool,
         mastery: masteryInfo,
@@ -1016,17 +1053,11 @@ export async function POST(request: NextRequest) {
             }
           : {}),
         ...(gauntletBan ? { gauntletBan } : {}),
-        // The run's world condition (§7.2, §7.3): the ONE id the engine plays
-        // under and settlement recomputes with. Present on every run the
-        // server resolved one for, whichever ritual named it, so the client
-        // never has to infer a condition from three differently-shaped blocks
-        // - or, worse, from its own `mode`.
+        // The run's world condition: the ONE id the engine plays under and
+        // settlement recomputes with. Present on every run the server resolved
+        // one for, so the client never has to infer it from its own `mode`.
         ...(runCondition.anomaly ? { condition: runCondition.anomaly } : {}),
         ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
-        // Serpent context for the HUD (§7.3): the week's conditions and when
-        // it submerges. Present only on a run the server accepted as an
-        // attempt - its presence IS the confirmation that the exemption was
-        // granted, so the client never has to infer it.
         // Signal context for the HUD (§7.2): the day's condition and the
         // objective this run is playing for. Present only on a run the server
         // accepted as the day's attempt - its presence IS the confirmation
@@ -1040,17 +1071,6 @@ export async function POST(request: NextRequest) {
                 endsAt: signalClaim.day.endsAt,
                 condition: signalClaim.day.condition,
                 objective: signalClaim.objective,
-              },
-            }
-          : {}),
-        ...(serpentWeek
-          ? {
-              serpent: {
-                weekId: serpentWeek.id,
-                weekStart: serpentWeek.weekStart,
-                endsAt: serpentWeek.endsAt,
-                seed: serpentWeek.seed,
-                modifiers: serpentWeek.modifiers,
               },
             }
           : {}),
@@ -1523,6 +1543,19 @@ export async function POST(request: NextRequest) {
       const chargeState: ChargeState = isChargeState(rawChargeState)
         ? rawChargeState
         : 'charged';
+      const rawCommitmentBps = Number(
+        (session as Record<string, unknown>).energy_harvest_multiplier_bps
+      );
+      const commitmentMultiplierBps =
+        Number.isInteger(rawCommitmentBps) && rawCommitmentBps >= 0
+          ? rawCommitmentBps
+          : chargeState === 'lean'
+            ? energyCommitmentMultiplierBps(0)
+            : 10_000;
+      const energyCommitted = Math.max(
+        0,
+        Math.floor(Number((session as Record<string, unknown>).energy_committed) || 0)
+      );
 
       // WP-0.02: the account multiplier stack (streak tier x collection set
       // bonus x clan-duel bonus) is DELETED. A settled run is worth its raw
@@ -1551,7 +1584,11 @@ export async function POST(request: NextRequest) {
         ascendanceGeneration
       );
       const yieldDna = ascendance.totalYield;
-      const finalDna = applyHarvestFactor(yieldDna, chargeState);
+      const finalDna = applyEnergyHarvestMultiplier(
+        yieldDna,
+        commitmentMultiplierBps,
+        chargeState
+      );
       // Genome Card cascade anchor: the same run with traits/anomaly but no
       // in-run genes. This is display data from server authority, never an
       // input to rewards.
@@ -1585,6 +1622,9 @@ export async function POST(request: NextRequest) {
         score: validation.adjustedScore,
         // Free sessions never earn - the row records a zero payout
         dna_earned: isFreeSession ? 0 : finalDna,
+        // Full-strength competitive/economic result. Commitment never changes
+        // this number; clan best-five scoring reads it directly.
+        yield_dna: yieldDna,
         // WP-2.05: the CLAMPED duration, `min(claim, serverElapsed)`. The
         // row is read directly by Signal's `endure` objective, so storing a
         // client claim of 999999 would complete an objective nobody played.
@@ -1688,30 +1728,6 @@ export async function POST(request: NextRequest) {
             error: captureError,
           });
         }
-      }
-
-      // Yield (§6.2), recorded separately from what the run paid, and always
-      // at full strength. On a lean run dna_earned above is the fraction
-      // while this stays whole - which is what lets Depth (WP-1.01) and the
-      // records read the run's real worth without ever seeing the charge
-      // state. Best-effort in the migration-029 pattern: pre-039 the column
-      // is missing and this fails non-fatally, never touching the payout.
-      const { error: yieldCaptureError } = await supabase
-        .from('game_sessions')
-        .update({ yield_dna: yieldDna })
-        .eq('id', sessionId)
-        .eq('player_id', player.id);
-      if (yieldCaptureError && !isMissingEnvelopeInfra(yieldCaptureError)) {
-        console.error('Failed to record run yield:', {
-          playerId: player.id,
-          sessionId,
-          yieldDna,
-          error: yieldCaptureError,
-        });
-        Sentry.captureException(
-          new Error(`yield_dna capture failed: ${yieldCaptureError.message}`),
-          { extra: { playerId: player.id, sessionId } }
-        );
       }
 
       // Identity (section 3.3): the game-over screen prompts a handle
@@ -1895,6 +1911,17 @@ export async function POST(request: NextRequest) {
             original_dna_claimed: dna_earned || 0,
             validated: validation.valid,
             base_dna: validation.adjustedDna,
+            yield_dna: yieldDna,
+            energy_available_before: Number(
+              (session as Record<string, unknown>).energy_available_before ?? 0
+            ),
+            energy_committed: energyCommitted,
+            energy_commitment_multiplier_bps: commitmentMultiplierBps,
+            energy_recovered_at_start: Number(
+              (session as Record<string, unknown>).energy_recovered_at_start ?? 0
+            ),
+            clan_eligible:
+              typeof (session as Record<string, unknown>).clan_energy_battle_id === 'string',
             ...(validation.mutations.length > 0
               ? { mutations: validation.mutations }
               : {}),
@@ -2112,6 +2139,15 @@ export async function POST(request: NextRequest) {
             }
           : null;
 
+      // Automatic clan layer: any valid Energy-funded ordinary run stamped
+      // into an active battle at START is offered to the atomic best-five
+      // recorder. Personal DNA has already landed; a clan outage can never
+      // undo or delay it, and the settlement cron can reconcile the session.
+      const clanBattleResult = await recordClanEnergyContribution(
+        supabase,
+        sessionId
+      );
+
       // Discord feed + Linked Roles (Identity v1 section 8.4) - both
       // strictly non-fatal, both no-ops pre-024 / without a link:
       // - mastery_levelup enqueue at M5+ (M1-4 are too chatty), linked
@@ -2172,6 +2208,8 @@ export async function POST(request: NextRequest) {
           // auditable without exposing settlement math to the client.
           ascendance,
           chargeState,
+          energyCommitted,
+          commitmentMultiplierBps,
         },
         ...(identityInfo ? { identity: identityInfo } : {}),
         ...(streak ? { streak } : {}),
@@ -2182,6 +2220,7 @@ export async function POST(request: NextRequest) {
         ...(ladderRecord ? { ladder: ladderRecord } : {}),
         ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
         ...(signal ? { signal } : {}),
+        ...(clanBattleResult ? { clanBattle: clanBattleResult } : {}),
         // The Take slot (§7.2). Present only when the server has a Take to
         // offer; `parseDailyTake` refuses anything without `firstRunOfDay`.
         ...(takeSlot?.firstRunOfDay ? { dailyTake: takeSlot } : {}),

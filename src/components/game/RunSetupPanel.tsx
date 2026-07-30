@@ -90,6 +90,8 @@ export interface RunSetupPanelProps {
    * before pressing START. Carries no `btn-go`.
    */
   heirloom?: ReactNode;
+  /** Central run stake, visible beside START rather than hidden in settings. */
+  energySelector?: ReactNode;
   /** The adjustable controls, all inside the one collapsed disclosure. */
   modeToggle?: ReactNode;
   anomalyPanel?: ReactNode;
@@ -113,6 +115,7 @@ export function RunSetupPanel({
   onStart,
   startError,
   heirloom,
+  energySelector,
   modeToggle,
   anomalyPanel,
   aimSelector,
@@ -176,6 +179,8 @@ export function RunSetupPanel({
       )}
 
       {snake && heirloom}
+
+      {snake && energySelector}
 
       {challengeNote && (
         <p

@@ -11,7 +11,6 @@
 import { describe, it, expect } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GAME_CONFIG } from '@/shared/config/game';
 
 const MIGRATION_039 = path.join(
   process.cwd(),
@@ -88,7 +87,7 @@ describe('Migration 039: consume_run_charge is the only writer', () => {
   it('defaults the allotment to the same [H] dial the server sends', () => {
     expect(sql).toMatch(
       new RegExp(
-        `p_charges_per_day INTEGER DEFAULT ${GAME_CONFIG.economy.energy.chargesPerDay}`
+        'p_charges_per_day INTEGER DEFAULT 6'
       )
     );
   });

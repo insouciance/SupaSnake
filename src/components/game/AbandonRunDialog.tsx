@@ -6,8 +6,10 @@ import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 interface AbandonRunDialogProps {
   score: number;
   dnaCollected: number;
-  /** Whether this run consumed one of the day's charges (§8.6). */
+  /** Whether this run consumed a positive Energy commitment (§8.6). */
   costsCharge: boolean;
+  /** Exact immutable start-time exposure. */
+  energyCommitted?: number;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -17,6 +19,7 @@ export function AbandonRunDialog({
   score,
   dnaCollected,
   costsCharge,
+  energyCommitted = 1,
   onCancel,
   onConfirm,
 }: AbandonRunDialogProps) {
@@ -62,7 +65,7 @@ export function AbandonRunDialog({
           </p>
           {costsCharge && (
             <p className="text-strike-red/85">
-              The charge this run consumed is not returned.
+              The {energyCommitted} committed Energy is not returned.
             </p>
           )}
         </div>

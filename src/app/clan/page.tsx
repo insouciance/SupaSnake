@@ -7,9 +7,9 @@
  *
  *   no clan   — found one (name + preset heraldry, one tap plus a name), or
  *               paste an invite code. Below them, the directory of clans that
- *               hunted this week or last: short and alive, never long and
+ *               hunted recently: short and alive, never long and
  *               dead, and never showing how many clans exist in total (§9.2).
- *   in a clan — the hunt (self-referential primary, optional rival layer),
+ *   in a clan — the automatic Energy Battle, heraldry, roster, and invite,
  *               heraldry, the roster, the invite link.
  *   gated     — the Gauntlet, the duel surface and the playoff bracket render
  *               only when their population flags are on (§9.3, §12.1 slot 7).
@@ -20,8 +20,7 @@
  *   The "Weekly Score" and "Total Score" tiles. §12.2 caps public numbers at
  *   two — Score and Depth — and a third clan number that ranked clans against
  *   each other was over the cap; the columns behind the tiles are dropped in
- *   migration 048. What stands in their place is the clan's Depth: its best
- *   week, and this week against it.
+ *   migration 048. What stands in their place is battle Depth.
  *
  *   The promote/demote controls and the officer invite console. Rule 8, and
  *   this work package's acceptance criterion.
@@ -41,7 +40,7 @@ import { PlayoffBracket } from '@/components/clan/PlayoffBracket';
 import { ClanIdentityEditor } from '@/components/clan/ClanIdentityEditor';
 import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
 import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
-import { ClanHuntPanel } from '@/components/clan/ClanHuntPanel';
+import { EnergyBattlePanel } from '@/components/clan/EnergyBattlePanel';
 import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
 import { ClanDirectory, type ClanDirectoryRow } from '@/components/clan/ClanDirectory';
 import { useClanFull, clanAction } from '@/components/clan/useClanFull';
@@ -201,7 +200,7 @@ export default function ClanPage() {
               <IconShield size={34} />
               Clans
             </h1>
-            <p className="text-beige font-body mt-1">Someone specific sees your week</p>
+            <p className="text-beige font-body mt-1">Ordinary Energy runs become clan moments</p>
           </div>
           <Link
             href="/game"
@@ -270,7 +269,7 @@ export default function ClanPage() {
                   </p>
                 </div>
                 <div className="bg-void/60 border border-scale-blue-light/50 rounded-arcade p-3 text-center">
-                  <p className="label-arcade">Best Week</p>
+                  <p className="label-arcade">Best Battle</p>
                   <p className="text-xl font-display text-bone-white">
                     {(myClan.bestWeekDepth ?? 0).toLocaleString()}
                   </p>
@@ -288,8 +287,8 @@ export default function ClanPage() {
                   no onClick and never had one. WP-0.03 removed the whole
                   panel with the faucet behind it. A clan pays nobody
                   (Rule 8), and there is no energy balance to pay into
-                  (§8.6). What a clan gives is the Serpent hunt, and
-                  WP-1.07 renders it here off GET /api/clan/hunt. */}
+                  (§8.6). What a clan gives is the Serpent battle, rendered
+                  below from the automatic Energy-run overlay. */}
 
               <button
                 onClick={handleLeave}
@@ -301,11 +300,11 @@ export default function ClanPage() {
             </div>
           </section>
 
-          {/* The hunt (§7.3, §9.2–9.4): the clan against its own best week
-              first, the additive contribution list second, and the rival only
-              on the weeks a symmetric one exists. Complete at a clan of one. */}
+          {/* One social layer over ordinary Energy-funded runs. */}
           <div className="animate-fade-up">
-            <ClanHuntPanel accessToken={session?.access_token} />
+            {session?.access_token && (
+              <EnergyBattlePanel accessToken={session.access_token} />
+            )}
           </div>
 
           {fullView?.clan && (
@@ -348,7 +347,7 @@ export default function ClanPage() {
             {/* The founding prompt (§9.2). On this page the two buttons open
                 the forms that are already below it, so the prompt is the
                 reason rather than a second route: it says what a clan is FOR
-                (the Serpent hunts every week) before asking for a name.
+                (ordinary Energy runs become shared attempts) before asking for a name.
                 Below the ramp beat it renders nothing at all — no counter and
                 no locked card, because being shown a number you have not
                 reached is what turns a ramp into a cut line (Rule 8). */}
@@ -365,8 +364,8 @@ export default function ClanPage() {
                 <div className="panel-elevated p-6 animate-pop-in" data-testid="found-clan">
                   <h2 className="heading-display text-2xl text-bone-white mb-1">Found a Clan</h2>
                   <p className="text-beige/70 text-sm font-body mb-4">
-                    A clan of one is a clan. It hunts, it holds records, and it gets a
-                    rival the week a matching one exists.
+                    A clan of one is a clan. It holds records and gets a rival when a
+                    matching clan enters the battle cycle.
                   </p>
                   <form onSubmit={handleFound} className="space-y-4">
                     <div>

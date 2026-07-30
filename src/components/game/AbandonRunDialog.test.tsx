@@ -17,7 +17,7 @@ describe('AbandonRunDialog', () => {
     const dialog = screen.getByRole('alertdialog', { name: 'Abandon run?' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog).toHaveTextContent('Score 12,840 and 186 run DNA will not be recorded');
-    expect(dialog).toHaveTextContent('The charge this run consumed is not returned.');
+    expect(dialog).toHaveTextContent('The 1 committed Energy is not returned.');
     expect(screen.getByRole('button', { name: 'Keep planning' })).toHaveFocus();
 
     fireEvent.keyDown(window, { key: 'Escape' });

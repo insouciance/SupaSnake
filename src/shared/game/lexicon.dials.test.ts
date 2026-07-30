@@ -57,9 +57,10 @@ const CASES: Case[] = [
   ['mechanic', 'extraction_infuse', 'cost', `length ${STRAIN_PHYSICS.infuseMinLength}`],
   ['mechanic', 'extraction_infuse', 'cost', `from ${FTUE.infuseAt} banked runs`],
 
-  // ── Charges ─────────────────────────────────────────────────────────────
-  ['mechanic', 'charges', 'effect', `grants ${ENERGY.chargesPerDay} charges`],
-  ['mechanic', 'charges', 'cost', `${ENERGY.chargesPerDay}th run`],
+  // ── Energy Commitment ──────────────────────────────────────────────────
+  ['mechanic', 'charges', 'effect', `up to ${ENERGY.capacity} Energy`],
+  ['mechanic', 'charges', 'effect', `${ENERGY.recoveryIntervalSeconds / 3600} hour`],
+  ['mechanic', 'charges', 'effect', `1–${ENERGY.capacity}`],
   ['mechanic', 'charges', 'cost', pct(ENERGY.leanHarvestFactor)],
 
   // ── The three strain thresholds ─────────────────────────────────────────
