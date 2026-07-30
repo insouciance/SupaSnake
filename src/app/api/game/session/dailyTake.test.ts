@@ -137,7 +137,7 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
     for (const earlier of [
       'const ascendance = ascendanceYieldBreakdown(',
       'const yieldDna = ascendance.totalYield;',
-      'const finalDna = applyHarvestFactor(',
+      'const finalDna = applyEnergyHarvestMultiplier(',
       'const settlementUpdate: Record<string, unknown> = {',
       'dna: newDna,',
       "source_type: 'game_reward',",

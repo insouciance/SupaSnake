@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
-import { readChargeStatus } from '@/lib/server/energyEnvelope';
+import { readEnergyStatus } from '@/lib/server/energyEnvelope';
 import { isChargeMeterVisible } from '@/shared/game/energyEnvelope';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { DEFAULT_AIM_SYSTEM, isAimSystemId } from '@/lib/game/aimSystems';
@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
     if (error && error.code === 'PGRST116') {
       const { data: newPlayer, error: createError } = await supabase
         .from('players')
-        // No energy fields: the envelope has no starting balance to seed
-        // (§8.6). The deprecated columns keep their schema defaults.
+        // Stored Energy uses its schema-owned cap default. No client-supplied
+        // balance enters player creation.
         .insert({
           user_id: user.id,
           dna: 0,
@@ -116,16 +116,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Database error' }, { status: 500 });
     }
 
-    // The daily harvest envelope (Constitution §8.6). Purely a READ: the
-    // status is derived from (charges_day, charges_used) against the current
-    // UTC date, so a profile fetch never writes and never advances a clock.
-    //
-    // This replaces the 20-minute regeneration drip that used to run here
-    // and persist on every GET. That drip was one of the two competing
-    // restoration authorities recorded in GROUND_TRUTH §9.2 (the other was
-    // /api/player/claim-offline); both are gone. The UTC day rolling over is
-    // now the only refill event in the product.
-    const charge = await readChargeStatus(supabase, player.id);
+    // Lazy recovery is resolved with database NOW(), under the same row lock
+    // used by commitment. The response includes server time and the persisted
+    // partial-tick anchor; the browser's clock is display-only.
+    const energy = await readEnergyStatus(supabase, player.id);
 
     // Calculate collection size for passive progress
     const collectionSize = player.collected_snakes?.length || 0;
@@ -197,15 +191,18 @@ export async function GET(request: NextRequest) {
     // clamps whatever comes back. Failures and a missing migration 057 both
     // report `available: false`, which renders as no ladder at all.
     const ladder = await readLadderRecords(supabase, player.id);
+    const energyMeterProgress = genomeFtue?.bankedRuns ?? player.total_games_played ?? 0;
 
     return NextResponse.json({
       player,
-      // The day's harvest envelope (§8.6). `visible` carries the §8.6 ramp:
-      // the meter is not shown until the player has banked enough runs to
-      // have met the game, so a newcomer never meets scarcity first.
+      energy: {
+        ...energy,
+        visible: isChargeMeterVisible(energyMeterProgress),
+      },
+      // Compatibility alias for already-open clients during rollout.
       charge: {
-        ...charge,
-        visible: isChargeMeterVisible(player.total_games_played ?? 0),
+        ...energy,
+        visible: isChargeMeterVisible(energyMeterProgress),
       },
       // Additional fields for Welcome Back modal
       lastLoginAt: player.last_login_at || null,

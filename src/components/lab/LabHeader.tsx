@@ -2,7 +2,7 @@
 
 /**
  * LabHeader - Top header for Lab screen
- * Displays title, the day's charge status, and DNA balance
+ * Displays title, recovering Energy status, and DNA balance
  * Mobile-first with sticky positioning (sits below the fixed global nav)
  */
 
@@ -11,7 +11,7 @@ import { IconBolt, IconDna, IconHome } from '@/components/ui/icons';
 import type { ChargeStatus } from '@/shared/game/energyEnvelope';
 
 interface LabHeaderProps {
-  /** The day's harvest envelope (§8.6); null hides the readout. */
+  /** Recovering Energy (§8.6); null hides the readout. */
   charge: ChargeStatus | null;
   /** Current DNA balance */
   dna: number;
@@ -64,19 +64,19 @@ export function LabHeader({ charge, dna }: LabHeaderProps) {
 
         {/* Resources - Right side */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* The day's charges (§8.6). Absent until the server syncs. */}
+          {/* Recovered Energy (§8.6). Absent until the server syncs. */}
           {charge && (
             <div
               className="panel flex items-center gap-1.5 px-2.5 py-1.5"
-              aria-label={`Charges: ${charge.remaining} of ${charge.perDay}`}
-              title={`Charges: ${charge.remaining}/${charge.perDay} today`}
+              aria-label={`Energy: ${charge.available} of ${charge.capacity}`}
+              title={`Energy: ${charge.available}/${charge.capacity}`}
             >
               <IconBolt
                 size={16}
-                className={charge.remaining > 0 ? 'text-venom-orange' : 'text-venom-orange/50'}
+                className={charge.available > 0 ? 'text-venom-orange' : 'text-venom-orange/50'}
               />
               <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
-                {charge.remaining}
+                {charge.available}
               </span>
             </div>
           )}

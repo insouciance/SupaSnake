@@ -47,12 +47,20 @@ class Taps {
   }
 }
 
-const CHARGE = {
-  remaining: 4,
+const ENERGY = {
+  available: 6,
+  capacity: 6,
+  recoveryIntervalSeconds: 3600,
+  recoveryStartedAt: '2026-07-29T08:00:00.000Z',
+  nextRecoveryAt: null,
+  recoveryProgress: 1,
+  serverNow: '2026-07-29T08:30:00.000Z',
+  // Compatibility aliases remain part of the rollout response contract.
+  remaining: 6,
   perDay: 6,
-  usedToday: 2,
-  day: '2026-07-25',
-  refillsAt: '2026-07-26T00:00:00.000Z',
+  usedToday: 0,
+  day: '2026-07-29',
+  refillsAt: null,
   visible: true,
 };
 
@@ -80,7 +88,8 @@ async function installRunFlowFixtures(
           total_games_played: 20,
           high_score: 10_000,
         },
-        charge: CHARGE,
+        energy: ENERGY,
+        charge: ENERGY,
         needsStarterSelection: false,
         hasCompletedFirstRun: true,
         aimSystem: 'deadeye',
@@ -111,14 +120,28 @@ async function installRunFlowFixtures(
   });
 
   await page.route('**/api/game/session', async (route) => {
-    const body = route.request().postDataJSON() as { action?: string } | null;
+    const body = route.request().postDataJSON() as {
+      action?: string;
+      energyCommitment?: number;
+    } | null;
     if (body?.action === 'start') {
+      const committed = Math.max(0, Math.min(6, body.energyCommitment ?? 1));
+      const multiplierBps = [2_500, 10_000, 22_000, 36_000, 52_000, 72_000, 100_000][committed];
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         json: {
           sessionId: `run-flow-session-${Date.now()}`,
-          charge: { state: 'charged', ...CHARGE },
+          energy: {
+            state: committed > 0 ? 'charged' : 'lean',
+            ...ENERGY,
+            available: ENERGY.available - committed,
+            remaining: ENERGY.remaining - committed,
+            committed,
+            commitmentMultiplierBps: multiplierBps,
+            energyAvailableBefore: ENERGY.available,
+            energyRecoveredAtStart: 0,
+          },
           traits: [],
           mutationPool: [],
           mastery: { dynasty: 'PRIMAL', xp: 0, level: 2 },
@@ -217,6 +240,39 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await taps.press(page);
 
     expect(taps.count).toBeLessThanOrEqual(3);
+  });
+
+  test('maximum Energy commitment is explicit, previewed, and confirmed in the start request', async ({
+    page,
+  }) => {
+    await installRunFlowFixtures(page);
+    await signInAsGuest(page);
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+
+    const setup = page.getByTestId('run-setup');
+    await expect(setup).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
+    await expect(page.getByTestId('energy-summary')).toContainText('×1.0');
+
+    const maximum = page.getByTestId('energy-commit-6');
+    await maximum.click();
+    await expect(maximum).toContainText('Confirm 6');
+    await expect(maximum).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
+
+    await maximum.click();
+    await expect(maximum).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('energy-summary')).toContainText('Commit 6 Energy');
+    await expect(page.getByTestId('energy-summary')).toContainText('×10.0');
+
+    const startRequest = page.waitForRequest((request) => {
+      if (request.method() !== 'POST') return false;
+      return new URL(request.url()).pathname === '/api/game/session';
+    });
+    await page.getByTestId('earn-start').click({ force: true });
+    const payload = (await startRequest).postDataJSON() as Record<string, unknown>;
+    expect(payload.energyCommitment).toBe(6);
+    expect(payload.confirmMaxEnergy).toBe(true);
   });
 
   test('the ladder adds a readout but no tap (WP-3.12, §5)', async ({ page }) => {

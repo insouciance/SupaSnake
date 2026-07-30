@@ -3,12 +3,12 @@
  * Pure functions for calculating passive DNA earned while the player is away.
  * Used by both client (preview) and server (authoritative).
  *
- * Energy is deliberately absent (Constitution §8.6). This module used to
- * mirror the 20-minute regeneration drip so the client could preview an
- * "Energy Restored" number - a second implementation of a formula that
- * already had two competing server-side clocks (GROUND_TRUTH §9.2). The
- * envelope has no drip to mirror: charges refill only when the UTC date
- * changes, and time away restores nothing because nothing was depleted.
+ * Energy is deliberately absent from this claim (Constitution §8.6). It now
+ * recovers independently on the authoritative Energy ledger, including while
+ * offline. This module once mirrored a client-side “Energy Restored” preview,
+ * creating a second implementation beside competing server clocks
+ * (GROUND_TRUTH §9.2). That duplication stays deleted: an authenticated
+ * Energy read applies server-time recovery instead.
  */
 
 import { ENGAGEMENT_CONFIG } from '@/shared/config/engagement';

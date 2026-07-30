@@ -85,6 +85,7 @@ are:
 - [Game Design v2](docs/game/GAME_DESIGN_V2.md)
 - [Player Flow & Interruption Policy](docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
 - [Genome design](docs/game/BUILDCRAFT_GENOME_DESIGN.md)
+- [Energy Commitment & Clan Battles](docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
 - [Run Cockpit & Arena](docs/game/HUD_COCKPIT_REDESIGN.md)
 - [Current QA baseline](docs/ops/QA_CHECKLIST.md)
 - [Production release runbook](docs/ops/RELEASE_RUNBOOK.md)

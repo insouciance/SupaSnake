@@ -71,16 +71,27 @@ export const LAUNCH_PHASE_LABEL: Record<LaunchPhase, string> = {
 
 export interface GameSessionStartPayload {
   sessionId: string;
-  /** The day's charge status plus how this run settles (§8.6). */
-  charge?: {
+  /** Server-authoritative recovered stock and immutable run commitment. */
+  energy?: {
     state: 'charged' | 'lean' | 'exempt';
+    available: number;
+    capacity: number;
+    recoveryIntervalSeconds: number;
+    recoveryStartedAt: string;
+    nextRecoveryAt: string | null;
+    recoveryProgress: number;
+    serverNow: string;
+    committed: number;
+    commitmentMultiplierBps: number;
     remaining: number;
     perDay: number;
     usedToday: number;
     day: string;
-    refillsAt: string;
+    refillsAt: string | null;
     visible: boolean;
   };
+  /** Compatibility alias during migration 059 rollout. */
+  charge?: GameSessionStartPayload['energy'];
   freePlay?: boolean;
   traits?: unknown;
   mutationPool?: unknown;

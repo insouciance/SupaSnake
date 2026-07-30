@@ -20,8 +20,8 @@ import type { AnomalyId } from '@/shared/game/anomalies';
 import type { ChargeState, ChargeStatus } from '@/shared/game/energyEnvelope';
 
 /**
- * The day's charge status as the server reported it, plus the §8.6 ramp
- * flag telling the UI whether the meter should be shown at all.
+ * Recovering Energy as the server reported it, plus the ambient-meter ramp
+ * flag. Run Setup still shows stock because commitment is a real choice.
  */
 export interface ChargeSnapshot extends ChargeStatus {
   visible: boolean;
@@ -61,9 +61,9 @@ export interface GameStore {
   endReason: EndReason | null;
 
   /**
-   * The day's harvest envelope (Constitution §8.6), synced from the server.
-   * Display only - the client never decides charge state and never blocks a
-   * run on it. Null until the first sync.
+   * Stored Energy (Constitution §8.6), synced from the server. Display only —
+   * the client never recovers, spends, or blocks a run on it. Null until the
+   * first sync.
    */
   charge: ChargeSnapshot | null;
 
@@ -463,9 +463,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   syncChargeFromServer: (charge: ChargeSnapshot | null) => {
     // Straight mirror of server authority (Rule 11). The client never
-    // computes, decrements or refills charges - a stale snapshot simply
-    // renders stale until the next sync, and nothing gameplay-facing
-    // depends on it.
+    // computes, decrements or refills Energy. Setup refreshes when the
+    // server-provided next tick arrives; the refreshed API read remains the
+    // only source of stock.
     set({ charge });
   },
 

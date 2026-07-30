@@ -79,7 +79,7 @@ describe('Player API Logic', () => {
       // no balance and no cap, that expression cannot be written.
       const energy = GAME_CONFIG.economy.energy as Record<string, unknown>;
       expect(energy.maxEnergy).toBeUndefined();
-      expect(GAME_CONFIG.economy.energy.chargesPerDay).toBeGreaterThan(0);
+      expect(GAME_CONFIG.economy.energy.capacity).toBeGreaterThan(0);
     });
 
     it('should not go below 0 DNA', () => {

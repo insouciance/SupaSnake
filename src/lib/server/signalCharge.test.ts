@@ -163,7 +163,7 @@ describe("the day's Signal objective run consumes NO charge (§8.6)", () => {
     expect(rpcCalls.map((call) => call.fn)).not.toContain('consume_run_charge');
   });
 
-  it('is exempt even on a day whose allotment is already empty', async () => {
+  it('is exempt regardless of the recovered Energy stock', async () => {
     const { client, rpcCalls } = fakeClient({
       tables: { players: { data: [{ charges_day: '2026-07-22', charges_used: 6 }] } },
     });
@@ -174,8 +174,11 @@ describe("the day's Signal objective run consumes NO charge (§8.6)", () => {
       NOW
     );
     expect(charge.state).toBe('exempt');
-    expect(charge.status.remaining).toBe(0);
-    expect(rpcCalls).toHaveLength(0);
+    // Exempt compatibility calls do not mutate the wallet. With no new
+    // recovery ledger in this test double the safe migration-overlap read is
+    // a full stock; the invariant is that no commitment/consumption RPC runs.
+    expect(charge.status.available).toBe(6);
+    expect(rpcCalls.map((call) => call.fn)).toEqual(['read_player_energy']);
   });
 
   it('sends the day and the target the CALENDAR derived, not the request', async () => {

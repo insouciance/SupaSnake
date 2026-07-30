@@ -11,7 +11,7 @@
  *            artifact, and the Daily Take collect on the day's first run.
  *            The share prompt is L1 because the artifact is product (§11.3).
  *   Layer 2  the two numbers — Score, and Yield with its Depth contribution
- *            during Serpent weeks (§6).
+ *            during an active Clan Energy Battle (§6).
  *   Layer 3  ONE collapsed progression digest, with exactly ONE recommended
  *            next action. Everything else routes to the Chronicle.
  *
@@ -60,6 +60,23 @@ export interface RunResultsSerpent {
   runCounts: boolean;
 }
 
+export interface RunResultsClanBattle {
+  eligible?: boolean;
+  reason?: string;
+  enteredTopFive?: boolean;
+  replacedSessionId?: string | null;
+  scoreDelta?: number;
+  clanTotal?: number;
+  fifthBest?: number;
+  topFive?: Array<{
+    sessionId: string;
+    score: number;
+    rank: number;
+    energyCommitted: number;
+    generation: number;
+  }>;
+}
+
 export interface RunResultsDigest {
   mastery: {
     dynasty: string;
@@ -85,6 +102,9 @@ export interface RunResultsProps {
   yieldDna: number | null;
   /** Server-authoritative contribution of the run-start snake's generation. */
   yieldBreakdown: AscendanceYieldBreakdown | null;
+  energyCommitted: number;
+  commitmentMultiplierBps: number;
+  clanBattle: RunResultsClanBattle | null;
   serpent: RunResultsSerpent | null;
   take: DailyTakeSlot | null;
   takeState: TakeCollectState;
@@ -97,6 +117,7 @@ export interface RunResultsProps {
   onSetup: () => void;
   replayPending: boolean;
   replayDisabled: boolean;
+  replayEnergy: number;
   /** The share artifact (Genome Card). Layer 1. */
   shareArtifact?: ReactNode;
   /** The Analyst's run insight. Folded into the Layer 3 digest. */
@@ -158,6 +179,9 @@ export function RunResults({
   dnaCredited,
   yieldDna,
   yieldBreakdown,
+  energyCommitted,
+  commitmentMultiplierBps,
+  clanBattle,
   serpent,
   take,
   takeState,
@@ -169,6 +193,7 @@ export function RunResults({
   onSetup,
   replayPending,
   replayDisabled,
+  replayEnergy,
   shareArtifact,
   analyst,
   playerCard,
@@ -297,8 +322,30 @@ export function RunResults({
           </div>
         )}
         {!practice && dnaCredited !== null && yieldDna !== null && dnaCredited !== yieldDna && (
-          <p className="text-sm text-beige/70" data-testid="results-credited">
-            Credited this run: {dnaCredited} DNA
+          <div className="space-y-1 text-sm text-beige/70" data-testid="results-credited">
+            <p>
+              {energyCommitted > 0
+                ? `${energyCommitted} Energy committed`
+                : 'Lean run'}{' '}
+              · Harvest ×{(commitmentMultiplierBps / 10_000).toFixed(
+                commitmentMultiplierBps < 10_000 ? 2 : 1
+              )}
+            </p>
+            <p className="font-bold text-bone-white">
+              Credited this run: {dnaCredited.toLocaleString()} DNA
+            </p>
+          </div>
+        )}
+        {!practice && dnaCredited !== null && yieldDna === dnaCredited && (
+          <p className="text-sm text-beige/70" data-testid="results-energy">
+            {energyCommitted > 0
+              ? `${energyCommitted} Energy committed`
+              : commitmentMultiplierBps < 10_000
+                ? 'Lean run'
+                : 'Energy-exempt run'}{' '}
+            · Harvest ×
+            {(commitmentMultiplierBps / 10_000).toFixed(1)} ·{' '}
+            {dnaCredited.toLocaleString()} DNA credited
           </p>
         )}
         {practice && (
@@ -327,6 +374,57 @@ export function RunResults({
             )}
           </p>
         )}
+        {clanBattle?.eligible && (
+          <div
+            className="panel-glow [--glow:#7df9ff] mx-auto max-w-lg space-y-2 px-4 py-3 text-left"
+            data-testid="results-clan-battle"
+          >
+            <p className="label-arcade text-[#7df9ff]">Clan Energy Battle</p>
+            <p className="font-body text-sm text-bone-white">
+              {clanBattle.enteredTopFive
+                ? `This run entered your five${
+                    (clanBattle.scoreDelta ?? 0) > 0
+                      ? ` and added ${(clanBattle.scoreDelta ?? 0).toLocaleString()} to the clan total`
+                      : ''
+                  }.`
+                : `This run did not beat your fifth-best result${
+                    (clanBattle.fifthBest ?? 0) > 0
+                      ? ` of ${(clanBattle.fifthBest ?? 0).toLocaleString()}`
+                      : ''
+                  }.`}
+            </p>
+            {clanBattle.replacedSessionId && (
+              <p className="font-body text-xs text-beige/65">A weaker result left your five.</p>
+            )}
+            {Array.isArray(clanBattle.topFive) && clanBattle.topFive.length > 0 && (
+              <ol className="space-y-1 font-mono text-xs text-beige/75">
+                {clanBattle.topFive.map((result) => (
+                  <li key={result.sessionId} className="flex justify-between gap-4">
+                    <span>#{result.rank} · {result.energyCommitted}E · Gen {result.generation}</span>
+                    <span className="text-bone-white">{result.score.toLocaleString()} Yield</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+        {!clanBattle?.eligible &&
+          clanBattle?.reason === 'validation_or_timing' &&
+          outcome === 'crashed' && (
+            <p
+              className="mx-auto max-w-lg font-body text-sm text-strike-red"
+              data-testid="results-clan-battle-lost"
+            >
+              The crash salvaged personal DNA, but the potential clan result was not banked.
+            </p>
+          )}
+        {!clanBattle?.eligible &&
+          clanBattle?.reason === 'validation_or_timing' &&
+          outcome === 'extracted' && (
+            <p className="mx-auto max-w-lg font-body text-sm text-beige/65">
+              Personal rewards settled, but this run did not meet the clan battle&apos;s validation or timing bounds.
+            </p>
+          )}
       </section>
 
       {/* ------------------------------------------------------------- */}
@@ -470,7 +568,11 @@ export function RunResults({
           }`}
         >
           <IconPlay size={20} />
-          {replayPending ? 'Starting…' : 'Replay'}
+          {replayPending
+            ? 'Starting…'
+            : replayEnergy > 0
+              ? `Replay · ${replayEnergy} Energy`
+              : 'Replay · Lean'}
         </button>
         <button
           type="button"

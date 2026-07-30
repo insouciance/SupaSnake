@@ -65,21 +65,27 @@ export const GAME_CONFIG = deepFreeze({
       completionBonus: 50,           // Bonus for winning
     },
     /**
-     * Energy — the daily harvest envelope (Constitution §8.6).
+     * Energy Commitment — stored run charge (Constitution §8.6, owner
+     * amendment 29 July 2026).
      *
-     * Energy never gates playing. Every run always starts, always Scores,
-     * always ranks, always counts. Energy paces the HARVEST only: a charged
-     * run harvests full DNA; an uncharged run plays identically and harvests
-     * the lean factor - lean, never zero.
+     * Energy recovers on server time and may be committed 1..capacity to one
+     * ordinary run. The complete commitment is consumed at START and is
+     * immutable thereafter. It multiplies only that run's credited harvest;
+     * Score, Yield, fixed rewards, unlocks and clan score remain independent.
+     * A run with no Energy can still be played at the lean harvest factor.
      *
-     * The day grants a fixed number of charges, reset to full at 00:00 UTC.
-     * There is no drip, no carry-over, no accumulation, and no grant path:
-     * charges are DERIVED from (charges_day, charges_used), so no purchase,
-     * perk, reward or stipend can add one (§10.4 never-sold list).
+     * Energy remains on the never-sold list. Recovery is the only source.
      */
     energy: {
-      /** [H] Charges granted per UTC day. Reset, never accrual. */
-      chargesPerDay: 6,
+      /** [H] Maximum stored Energy and maximum single-run commitment. */
+      capacity: 6,
+      /** [H] Server-time recovery cadence. Partial progress persists. */
+      recoveryIntervalSeconds: 60 * 60,
+      /**
+       * [H] Harvest multiplier in basis points, indexed by commitment - 1.
+       * Basis points keep server/client rounding exact and configurable.
+       */
+      commitmentMultipliersBps: [10_000, 22_000, 36_000, 52_000, 72_000, 100_000],
       /** [H] Harvest factor applied to an uncharged run's DNA. */
       leanHarvestFactor: 0.25,
       /**
@@ -87,6 +93,25 @@ export const GAME_CONFIG = deepFreeze({
        * player never meets scarcity before they have met the game.
        */
       meterVisibleAtBankedRuns: 4,
+    },
+    /**
+     * Clan Energy Battles — one social consequence layered over ordinary
+     * Energy-funded runs. These dials deliberately live beside Energy so the
+     * economy and competitive windows cannot drift into separate systems.
+     */
+    clanBattle: {
+      /** Monday 27 July 2026 00:00 UTC starts cycle zero. */
+      epochUtc: '2026-07-27T00:00:00.000Z',
+      /** [H] Active scoring window: three days. */
+      activeDurationSeconds: 3 * 24 * 60 * 60,
+      /** [H] Result/intermission window: one day. */
+      intermissionDurationSeconds: 24 * 60 * 60,
+      /** [H] Only each member's strongest five valid runs count. */
+      contributingRunsPerMember: 5,
+      /** A run begun before the deadline may settle within this bound. */
+      completionGraceSeconds: 3 * 60 * 60,
+      /** [H] Competitive eligibility only; personal long runs remain valid. */
+      maxEligibleRunDurationSeconds: 3 * 60 * 60,
     },
   },
 

@@ -14,10 +14,11 @@
  * set only on `mode: 'anomaly'`. The condition-sets were inert and one of them
  * was a false claim.
  *
- * So the assertions here are all one shape: a Serpent run and a Signal run
- * each resolve a NON-NULL condition at start, and the settlement path
- * recomputes with the SAME condition the start stamped — proved by the payout
- * moving, not merely by an id being echoed.
+ * v1.5 retires explicit Serpent starts in favour of automatic Clan Energy
+ * Battles over ordinary runs. This suite now pins both sides of the cutover:
+ * a legacy `mode: serpent` start is normalized to ordinary Energy play, while
+ * an already-stamped historical Serpent session still settles under the exact
+ * condition it was played under. Signal remains an explicit ritual.
  *
  * The fake below is the same small in-memory Postgres the lifecycle tests use,
  * extended with the two tables a condition is reached through and with the
@@ -69,10 +70,8 @@ jest.mock('@/lib/server/codex', () => ({
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
 
-// Both rituals are flag-gated and both default OFF. Armed here because a
-// condition cannot be resolved for a run the server refuses to accept as an
-// attempt in the first place; `serpent.flagOff` / `signal.flagOff` own the
-// other direction.
+// Historical Serpent settlement helpers remain armed; new starts no longer
+// consult the flag. Signal still uses its explicit ritual flag.
 jest.mock('@/lib/serpent/config', () => ({
   SERPENT_V1_ENABLED: true,
   SERPENT_UNLOCK_BANKED_RUNS: 8,
@@ -168,6 +167,52 @@ jest.mock('@supabase/supabase-js', () => ({
           if (row.id === p.p_session_id) row.signal_objective_run_id = attempt.id;
         }
         return { data: [attempt], error: null };
+      }
+
+      if (fn === 'commit_run_energy') {
+        const exempt = p.p_exempt === true;
+        const requested = Number(p.p_commitment ?? 0);
+        const commitment = exempt ? 0 : requested;
+        const multipliers = Array.isArray(p.p_commitment_multipliers_bps)
+          ? p.p_commitment_multipliers_bps as number[]
+          : [10_000, 22_000, 36_000, 52_000, 72_000, 100_000];
+        const multiplierBps = exempt
+          ? 10_000
+          : commitment === 0
+            ? 2_500
+            : Number(multipliers[commitment - 1]);
+        const serverNow = new Date().toISOString();
+        const runState = exempt ? 'exempt' : commitment === 0 ? 'lean' : 'charged';
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (target) {
+          Object.assign(target, {
+            charge_state: runState,
+            energy_committed: commitment,
+            energy_harvest_multiplier_bps: multiplierBps,
+            energy_available_before: 6,
+            energy_recovered_at_start: 0,
+            energy_recovery_anchor_at: serverNow,
+            energy_commitment_locked_at: serverNow,
+          });
+        }
+        return {
+          data: [{
+            run_state: runState,
+            energy_available: 6 - commitment,
+            energy_updated_at: serverNow,
+            energy_recovered: 0,
+            server_now: serverNow,
+            energy_available_before: 6,
+            energy_committed: commitment,
+            commitment_multiplier_bps: multiplierBps,
+            clan_battle_id: null,
+            clan_battle_side_id: null,
+            clan_id: null,
+            clan_battle_ends_at: null,
+            clan_fifth_threshold: 0,
+          }],
+          error: null,
+        };
       }
 
       if (fn === 'consume_run_charge') {
@@ -405,11 +450,53 @@ describe('the pinned conditions are still the ones the assertions assume', () =>
 });
 
 // ---------------------------------------------------------------------------
-// A Serpent run
+// Retired Serpent start; historical Serpent settlement
 // ---------------------------------------------------------------------------
 
-describe('a Serpent run resolves the week’s condition and settles under it', () => {
-  it('start resolves it from the week and puts it on the offer-weight channel', async () => {
+describe('the Serpent cutover preserves history without creating a separate mode', () => {
+  it('requires an explicit maximum-commitment confirmation', async () => {
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({
+        action: 'start',
+        mode: 'earn',
+        snake_id: SNAKE_ID,
+        energyCommitment: 6,
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/confirm.*maximum energy/i);
+    expect(db.game_sessions).toHaveLength(0);
+    expect(rpcCalls.some((call) => call.fn === 'commit_run_energy')).toBe(false);
+  });
+
+  it('passes a confirmed six-Energy commitment to the atomic start RPC', async () => {
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({
+        action: 'start',
+        mode: 'earn',
+        snake_id: SNAKE_ID,
+        energyCommitment: 6,
+        confirmMaxEnergy: true,
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.energy.committed).toBe(6);
+    expect(body.energy.commitmentMultiplierBps).toBe(100_000);
+    expect(rpcCalls).toContainEqual(expect.objectContaining({
+      fn: 'commit_run_energy',
+      params: expect.objectContaining({ p_commitment: 6, p_exempt: false }),
+    }));
+  });
+
+  it('normalizes a legacy Serpent request to an ordinary Energy run', async () => {
     db.game_sessions = [];
 
     const response = await POST(
@@ -418,14 +505,15 @@ describe('a Serpent run resolves the week’s condition and settles under it', (
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    // NON-NULL. This is the assertion the shipped code failed.
-    expect(body.condition).toBe(WEEK_CONDITION);
-    expect(body.serpent.weekId).toBe(SERPENT_WEEK_ID);
-    // The tilt the Serpent panel advertises, now actually reaching the engine.
-    expect(body.genome.anomalyStrain).toBe(ANOMALY_STRAINS[WEEK_CONDITION]);
-    // And the row carries the stamp the end path re-derives it from.
-    expect(session().serpent_week_id).toBe(SERPENT_WEEK_ID);
+    expect(body.condition).toBeUndefined();
+    expect(body.serpent).toBeUndefined();
+    expect(session().serpent_week_id ?? null).toBeNull();
     expect(session().anomaly_id ?? null).toBeNull();
+    expect(rpcCalls.some((call) => call.fn === 'ensure_serpent_week')).toBe(false);
+    expect(rpcCalls).toContainEqual(expect.objectContaining({
+      fn: 'commit_run_energy',
+      params: expect.objectContaining({ p_commitment: 1, p_exempt: false }),
+    }));
   });
 
   it('settlement re-derives the SAME condition from the row and recomputes with it', async () => {

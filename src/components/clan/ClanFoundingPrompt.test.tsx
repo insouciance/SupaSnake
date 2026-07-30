@@ -66,6 +66,7 @@ describe('at the ramp beat', () => {
 
     expect(screen.getByTestId('clan-founding-prompt')).toBeInTheDocument();
     expect(screen.getByText(/The World Serpent is hunting/i)).toBeInTheDocument();
+    expect(screen.getByText(/strongest five banked yields/i)).toBeInTheDocument();
     expect(screen.getByText(/A clan of one is a clan/i)).toBeInTheDocument();
   });
 

@@ -126,12 +126,14 @@ interface Fixtures {
 function setupFetch(fixtures: Fixtures = {}) {
   const playerBody = {
     player: { id: 'player-1', dna: 320, high_score: 777, total_games_played: 3 },
-    charge: {
-      remaining: 4,
-      perDay: 6,
-      usedToday: 2,
-      day: DAY_KEY,
-      refillsAt: '2026-07-27T00:00:00.000Z',
+    energy: {
+      available: 4,
+      capacity: 6,
+      recoveryIntervalSeconds: 3600,
+      recoveryStartedAt: `${DAY_KEY}T12:30:00.000Z`,
+      nextRecoveryAt: `${DAY_KEY}T13:30:00.000Z`,
+      recoveryProgress: 0.5,
+      serverNow: `${DAY_KEY}T13:00:00.000Z`,
       visible: true,
     },
     collectionSize: 3,
@@ -427,12 +429,14 @@ describe('Home with the World Signal armed', () => {
         if (u.includes('/api/player')) {
           return jsonResponse({
             player: { id: 'player-1', dna: 0, high_score: 0, total_games_played: 0 },
-            charge: {
-              remaining: 6,
-              perDay: 6,
-              usedToday: 0,
-              day: DAY_KEY,
-              refillsAt: '2026-07-27T00:00:00.000Z',
+            energy: {
+              available: 6,
+              capacity: 6,
+              recoveryIntervalSeconds: 3600,
+              recoveryStartedAt: `${DAY_KEY}T13:00:00.000Z`,
+              nextRecoveryAt: null,
+              recoveryProgress: 1,
+              serverNow: `${DAY_KEY}T13:00:00.000Z`,
               visible: false,
             },
             collectionSize: 1,

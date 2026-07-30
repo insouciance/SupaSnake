@@ -1,192 +1,136 @@
 'use client';
 
 /**
- * The Serpent week — `/serpent`, and `/serpent?week=YYYY-MM-DD` (Rule 14).
- *
- * §12.2 caps weekly surfaces at one, and this is it. Two blocks, in §7.3's
- * order: the hunt that is running, then the Monday briefing for a week that has
- * submerged. Both are readings — nothing on this page mutates anything, and
- * nothing on it is for sale (Rule 7: this is navigation, and the store stays in
- * its district).
- *
- * WHY THE WEEK IS IN THE URL
- *
- *   Rule 14: "every meaningful artifact — a run, a snake, a clan, a Signal day,
- *   a Serpent week, a profile — is linkable". A Serpent week is named on the
- *   list, so `?week=` selects it and the briefing's week picker is a row of
- *   links rather than a dropdown. A stranger opening one of those links sees a
- *   real week; a wrong key sees an honest "there is no Serpent week at that
- *   date" instead of a silent fallback that would make a broken link look fine.
- *
- * FLAG OFF
- *
- *   `NEXT_PUBLIC_SERPENT_V1` is off by default, and the panel API answers 200
- *   with `live: false` in that state rather than an error — deliberately, so
- *   this page renders an off state. The page itself is NOT hidden when the flag
- *   is off: a URL that 404s intermittently is worse than one that always
- *   resolves and tells you the Serpent has not surfaced yet. What the flag does
- *   hide is the navigation entry, so nobody is led here before there is a hunt.
- *
- * WHAT THIS PAGE FETCHES
- *
- *   `GET /api/serpent/panel` for the week and the player, — only to fill
- *   §7.3's third block — `GET /api/clan/hunt` for the paired rival, and
- *   `GET /api/player` for two things the panel contract does not carry: the
- *   banked-run count the founding prompt keys off, and the player's own
- *   `players.id` so their row in the contribution list can be named as theirs.
- *   That last read is done once here and passed down, rather than by each
- *   component separately.
- *
- *   The rival read is allowed to fail silently: §9.4 makes rivalry a layer,
- *   never load-bearing, so a page missing it is still a complete page. The
- *   player read is allowed to fail silently too — without it the founding
- *   prompt simply does not appear and the contribution rows are named by
- *   handle alone. Neither absence turns into an error the player has to read.
+ * `/serpent` is the automatic Clan Energy Battle. Historical
+ * `/serpent?week=YYYY-MM-DD` artifacts remain readable under their original
+ * stamped rules; migration 059 retires new explicit attempts, not history.
  */
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
-import { SerpentWeekPanel } from '@/components/serpent/SerpentWeekPanel';
+import { EnergyBattlePanel } from '@/components/clan/EnergyBattlePanel';
 import { MondayBriefing } from '@/components/serpent/MondayBriefing';
 import { SettlementPostCard } from '@/components/serpent/SettlementPostCard';
-import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
-import { defaultBriefingWeek } from '@/lib/serpent/briefing';
 import { emptySerpentPanel, type SerpentPanel } from '@/lib/server/serpent';
 import type { ClanHuntPanel } from '@/lib/server/clanHunt';
 
-interface PlayerIdentity {
-  playerId: string | null;
-  bankedRuns: number | null;
+function HistoricalSerpentArchive({
+  accessToken,
+  weekKey,
+}: {
+  accessToken: string;
+  weekKey: string;
+}) {
+  const [panel, setPanel] = useState<SerpentPanel | null>(null);
+  const [hunt, setHunt] = useState<ClanHuntPanel | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    void Promise.all([
+      fetch('/api/serpent/panel', { headers })
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
+      fetch('/api/clan/hunt', { headers })
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
+    ]).then(([panelData, huntData]) => {
+      if (cancelled) return;
+      setPanel(panelData as SerpentPanel | null);
+      setHunt(huntData as ClanHuntPanel | null);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  if (loading) {
+    return <p className="text-center font-body text-beige/60">Reading archived hunt…</p>;
+  }
+
+  const view = panel ?? emptySerpentPanel();
+  return (
+    <section className="space-y-6" data-testid="serpent-history">
+      <header className="space-y-2 text-center">
+        <p className="label-arcade text-cosmic">Immutable history</p>
+        <h1 className="heading-display text-4xl text-bone-white">Archived World Serpent</h1>
+        <p className="font-body text-sm text-beige/70">
+          This week settled under the retired best-three hunt rules. It is preserved,
+          not re-scored by Energy Commitment.
+        </p>
+      </header>
+      <MondayBriefing
+        panel={view}
+        weekKey={weekKey}
+        rival={hunt?.rival ?? null}
+        rivalWeekStart={hunt?.week?.weekStart ?? null}
+      />
+      <SettlementPostCard panel={view} weekKey={weekKey} />
+      <div className="text-center">
+        <Link href="/serpent" className="font-body text-sm text-cosmic underline">
+          Return to the current Clan Energy Battle
+        </Link>
+      </div>
+    </section>
+  );
 }
 
 function SerpentContent() {
   const searchParams = useSearchParams();
   const { session, isAuthenticated, isLoading } = useAuth();
-  const [panel, setPanel] = useState<SerpentPanel | null>(null);
-  const [hunt, setHunt] = useState<ClanHuntPanel | null>(null);
-  const [identity, setIdentity] = useState<PlayerIdentity>({
-    playerId: null,
-    bankedRuns: null,
-  });
-  const [loading, setLoading] = useState(true);
-
-  const accessToken = session?.access_token;
-
-  const load = useCallback(async () => {
-    if (!accessToken) {
-      setLoading(false);
-      return;
-    }
-    const headers = { Authorization: `Bearer ${accessToken}` };
-    try {
-      const response = await fetch('/api/serpent/panel', { headers });
-      if (response.ok) setPanel((await response.json()) as SerpentPanel);
-    } catch {
-      // A failed read leaves the panel absent rather than inventing numbers.
-    }
-    try {
-      const response = await fetch('/api/clan/hunt', { headers });
-      if (response.ok) setHunt((await response.json()) as ClanHuntPanel);
-    } catch {
-      // The rival is a layer (§9.4). Its absence is never an error state.
-    }
-    try {
-      const response = await fetch('/api/player', { headers });
-      if (response.ok) {
-        const json = (await response.json()) as {
-          player?: { id?: string } | null;
-          genomeFtue?: { bankedRuns?: number } | null;
-        };
-        setIdentity({
-          playerId: typeof json.player?.id === 'string' ? json.player.id : null,
-          bankedRuns:
-            typeof json.genomeFtue?.bankedRuns === 'number'
-              ? json.genomeFtue.bankedRuns
-              : null,
-        });
-      }
-    } catch {
-      // Without it the prompt stays away and rows are named by handle alone.
-    }
-    setLoading(false);
-  }, [accessToken]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const weekKey = searchParams.get('week') || defaultBriefingWeek();
-
-  if (isLoading || loading) {
-    return (
-      <div className="app-bg min-h-screen">
-        <NavBar />
-        <main className="max-w-4xl mx-auto px-4 py-10">
-          <p className="text-beige font-body">Reading the week…</p>
-        </main>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="app-bg min-h-screen">
-        <NavBar />
-        <main className="max-w-4xl mx-auto px-4 py-10">
-          <h1 className="heading-display text-3xl text-bone-white mb-2">
-            The World Serpent
-          </h1>
-          <p className="text-beige/80 font-body mb-4">
-            A Serpent surfaces every Monday and submerges on Sunday midnight UTC. Sign in
-            and your runs start feeding the hunt.
-          </p>
-          <Link
-            href="/login?returnTo=/serpent"
-            className="btn-go px-6 py-2 min-h-[44px] inline-flex items-center"
-          >
-            Sign in
-          </Link>
-        </main>
-      </div>
-    );
-  }
-
-  // A failed or absent read renders the same off state the API itself returns
-  // when the flag is down, rather than a second hand-written zero shape that
-  // could drift from the contract.
-  const view = panel ?? emptySerpentPanel();
+  const historicalWeek = searchParams.get('week');
 
   return (
-    <div className="app-bg min-h-screen">
+    <main className="consent-safe-viewport app-bg min-h-dvh pb-24">
       <NavBar />
-      <main className="max-w-4xl mx-auto px-4 py-10 pb-28">
-        <h1 className="heading-display text-3xl text-bone-white mb-6">The World Serpent</h1>
-
-        <ClanFoundingPrompt
-          accessToken={accessToken}
-          inClan={Boolean(view.clan)}
-          bankedRuns={identity.bankedRuns}
-        />
-
-        <div className="mb-8">
-          <SerpentWeekPanel panel={view} youPlayerId={identity.playerId} />
-        </div>
-
-        <MondayBriefing
-          panel={view}
-          weekKey={weekKey}
-          rival={hunt?.rival ?? null}
-          rivalWeekStart={hunt?.week?.weekStart ?? null}
-        />
-
-        {/* §11.6: the week auto-composes into a post; publishing is a tap.
-            Flag-gated off, and it renders nothing when it is down. */}
-        <SettlementPostCard panel={view} weekKey={weekKey} />
-      </main>
-    </div>
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
+        {isLoading ? (
+          <p className="text-center font-body text-beige/60">Reading the World Serpent…</p>
+        ) : !isAuthenticated || !session?.access_token ? (
+          <div className="panel-elevated space-y-3 p-6 text-center">
+            <h1 className="heading-display text-3xl text-bone-white">The World Serpent</h1>
+            <p className="font-body text-beige">Sign in to see your clan&apos;s battle and history.</p>
+            <Link
+              href="/login?returnTo=/serpent"
+              className="btn-go inline-flex min-h-[44px] items-center px-6 py-3"
+            >
+              Sign in
+            </Link>
+          </div>
+        ) : historicalWeek ? (
+          <HistoricalSerpentArchive
+            accessToken={session.access_token}
+            weekKey={historicalWeek}
+          />
+        ) : (
+          <>
+            <header className="space-y-2 text-center">
+              <p className="label-arcade text-cosmic">The World Serpent</p>
+              <h1 className="heading-display text-4xl text-bone-white">Clan Energy Battle</h1>
+              <p className="mx-auto max-w-2xl font-body text-sm text-beige/70">
+                Play the normal game. Every Energy-funded run during the three-day
+                window is entered automatically; only your strongest five Yields
+                contribute. Energy increases personal harvest, not battle score.
+              </p>
+            </header>
+            <EnergyBattlePanel accessToken={session.access_token} />
+            <div className="text-center">
+              <Link
+                href="/game"
+                className="btn-go inline-flex min-h-[44px] items-center px-7 py-3"
+              >
+                Open Run Setup
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </main>
   );
 }
 
@@ -196,8 +140,8 @@ export default function SerpentPage() {
       fallback={
         <div className="app-bg min-h-screen">
           <NavBar />
-          <main className="max-w-4xl mx-auto px-4 py-10">
-            <p className="text-beige font-body">Reading the week…</p>
+          <main className="mx-auto max-w-3xl px-4 py-10">
+            <p className="font-body text-beige">Reading the World Serpent…</p>
           </main>
         </div>
       }

@@ -5,7 +5,7 @@
  *
  * A premium game menu, not a web dashboard: the player's equipped snake
  * lives as a 3D character in a full-viewport chamber behind the UI. Over
- * it, a minimal hierarchy - small wordmark up top, ambient DNA/charges
+ * it, a minimal hierarchy - small wordmark up top, ambient DNA/Energy
  * counters top-right, one rotating mission line, and a single obvious
  * primary action: LAUNCH.
  */
@@ -73,7 +73,7 @@ const TOTAL_VARIANTS = MVP_DYNASTIES.length * 10;
 
 interface HomeStats {
   dna: number;
-  /** The day's harvest envelope (§8.6); null before sync or while the ramp hides it. */
+  /** Recovering Energy (§8.6); null before sync or while the ramp hides it. */
   charge: ChargeSnapshot | null;
   highScore: number;
   collectionSize: number;
@@ -194,7 +194,10 @@ export default function Home() {
           if (!cancelled && data.player) {
             setStats({
               dna: data.player.dna ?? 0,
-              charge: (data.charge as ChargeSnapshot | undefined) ?? null,
+              charge:
+                (data.energy as ChargeSnapshot | undefined) ??
+                (data.charge as ChargeSnapshot | undefined) ??
+                null,
               highScore: data.player.high_score ?? 0,
               collectionSize: data.collectionSize ?? 0,
               needsStarterSelection: data.needsStarterSelection ?? false,
@@ -805,13 +808,13 @@ export default function Home() {
               {stats ? stats.dna.toLocaleString('en-US') : '—'}
             </span>
           </span>
-          {/* Charges appear only once the §8.6 ramp says so - a new player
+          {/* Energy appears only once the §8.6 ramp says so - a new player
               never meets scarcity before they have met the game. */}
           {stats?.charge?.visible && (
-            <span className="flex items-center gap-1.5" title="Charges today">
+            <span className="flex items-center gap-1.5" title="Recovered Energy">
               <IconBolt size={16} className="text-venom-orange" />
               <span className="font-mono font-bold text-sm">
-                {stats.charge.remaining}/{stats.charge.perDay}
+                {stats.charge.available}/{stats.charge.capacity}
               </span>
             </span>
           )}

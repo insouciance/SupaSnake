@@ -59,6 +59,7 @@ import {
   DIRECTORY_ALIVE_WEEKS,
 } from '@/lib/clan/config';
 import { CLAN_LIMITS } from '@/lib/clan/types';
+import { GAME_CONFIG } from '@/shared/config/game';
 
 interface SupabaseErrorLike {
   code?: string;
@@ -181,6 +182,7 @@ export interface ClanDirectoryEntry {
   bestWeekDepth: number;
   /** Did it hunt this week or last? Only alive clans are listed at all. */
   lastHuntedWeek: string | null;
+  lastHuntKind: 'energy_battle' | 'legacy_week' | null;
 }
 
 /**
@@ -204,6 +206,55 @@ export async function loadClanDirectory(
   supabase: SupabaseClient,
   limit = 50
 ): Promise<ClanDirectoryEntry[]> {
+  const lastHuntedByClan = new Map<string, string>();
+  const lastHuntKindByClan = new Map<string, 'energy_battle' | 'legacy_week'>();
+  const activeBestByClan = new Map<string, number>();
+
+  // v1.5: an Energy Battle becomes visible after its first bank, not only
+  // after settlement. Read the current and previous four-day cycles, then
+  // merge the immutable historical Serpent weeks below. App-before-migration
+  // falls through to the historical source without breaking the directory.
+  const battle = GAME_CONFIG.economy.clanBattle;
+  const cycleSeconds = battle.activeDurationSeconds + battle.intermissionDurationSeconds;
+  const recentBattleCutoff = new Date(Date.now() - cycleSeconds * 2 * 1000).toISOString();
+  const { data: battleSides, error: battleSideError } = await supabase
+    .from('clan_energy_battle_sides')
+    .select('clan_id, score, created_at, clan_energy_battles(starts_at)')
+    .gt('score', 0)
+    .gte('created_at', recentBattleCutoff)
+    .order('created_at', { ascending: false })
+    .limit(Math.max(50, limit * 4));
+
+  if (battleSideError) {
+    const missing =
+      ['42P01', '42703', 'PGRST200', 'PGRST205'].includes(battleSideError.code || '') ||
+      /schema cache.*clan_energy_|relation .*clan_energy_.* does not exist/i.test(
+        battleSideError.message || ''
+      );
+    if (!missing) report('directory Energy Battle scan', battleSideError, {});
+  } else {
+    for (const row of (battleSides ?? []) as Array<Record<string, unknown>>) {
+      const clanId = String(row.clan_id ?? '');
+      if (!clanId) continue;
+      const joined = Array.isArray(row.clan_energy_battles)
+        ? row.clan_energy_battles[0]
+        : row.clan_energy_battles;
+      const startsAt =
+        joined && typeof joined === 'object'
+          ? String((joined as Record<string, unknown>).starts_at ?? '').slice(0, 10)
+          : String(row.created_at ?? '').slice(0, 10);
+      const current = lastHuntedByClan.get(clanId);
+      if (startsAt && (!current || startsAt > current)) {
+        lastHuntedByClan.set(clanId, startsAt);
+        lastHuntKindByClan.set(clanId, 'energy_battle');
+      }
+      activeBestByClan.set(
+        clanId,
+        Math.max(activeBestByClan.get(clanId) ?? 0, Number(row.score ?? 0))
+      );
+    }
+  }
+
   const { data: weeks, error: weekError } = await supabase
     .from('serpent_weeks')
     .select('id, week_start')
@@ -211,32 +262,32 @@ export async function loadClanDirectory(
     .limit(DIRECTORY_ALIVE_WEEKS);
   if (weekError) {
     if (!isMissingClanRework(weekError)) report('directory week scan', weekError, {});
-    return [];
-  }
-
-  const weekRows = (weeks ?? []) as Array<Record<string, unknown>>;
-  const weekIds = weekRows.map((row) => String(row.id ?? ''));
-  const weekStartById = new Map(
-    weekRows.map((row) => [String(row.id ?? ''), String(row.week_start ?? '').slice(0, 10)])
-  );
-  if (weekIds.length === 0) return [];
-
-  const { data: hunted, error: huntedError } = await supabase
-    .from('serpent_week_clans')
-    .select('clan_id, week_id, depth')
-    .in('week_id', weekIds);
-  if (huntedError) {
-    if (!isMissingClanRework(huntedError)) report('directory hunt scan', huntedError, {});
-    return [];
-  }
-
-  const lastHuntedByClan = new Map<string, string>();
-  for (const row of (hunted ?? []) as Array<Record<string, unknown>>) {
-    if (Number(row.depth ?? 0) <= 0) continue;
-    const clanId = String(row.clan_id ?? '');
-    const weekStart = weekStartById.get(String(row.week_id ?? '')) ?? '';
-    const current = lastHuntedByClan.get(clanId);
-    if (!current || weekStart > current) lastHuntedByClan.set(clanId, weekStart);
+  } else {
+    const weekRows = (weeks ?? []) as Array<Record<string, unknown>>;
+    const weekIds = weekRows.map((row) => String(row.id ?? '')).filter(Boolean);
+    const weekStartById = new Map(
+      weekRows.map((row) => [String(row.id ?? ''), String(row.week_start ?? '').slice(0, 10)])
+    );
+    if (weekIds.length > 0) {
+      const { data: hunted, error: huntedError } = await supabase
+        .from('serpent_week_clans')
+        .select('clan_id, week_id, depth')
+        .in('week_id', weekIds);
+      if (huntedError) {
+        if (!isMissingClanRework(huntedError)) report('directory hunt scan', huntedError, {});
+      } else {
+        for (const row of (hunted ?? []) as Array<Record<string, unknown>>) {
+          if (Number(row.depth ?? 0) <= 0) continue;
+          const clanId = String(row.clan_id ?? '');
+          const weekStart = weekStartById.get(String(row.week_id ?? '')) ?? '';
+          const current = lastHuntedByClan.get(clanId);
+          if (!current || weekStart > current) {
+            lastHuntedByClan.set(clanId, weekStart);
+            lastHuntKindByClan.set(clanId, 'legacy_week');
+          }
+        }
+      }
+    }
   }
 
   const clanIds = Array.from(lastHuntedByClan.keys());
@@ -265,8 +316,12 @@ export async function loadClanDirectory(
       colorPrimary: (row.color_primary as string | null) ?? null,
       memberCount: Number(row.member_count ?? 0),
       maxMembers: Number(row.max_members ?? CLAN_LIMITS.maxMembers),
-      bestWeekDepth: Number(row.best_week_depth ?? 0),
+      bestWeekDepth: Math.max(
+        Number(row.best_week_depth ?? 0),
+        activeBestByClan.get(String(row.id ?? '')) ?? 0
+      ),
       lastHuntedWeek: lastHuntedByClan.get(String(row.id ?? '')) ?? null,
+      lastHuntKind: lastHuntKindByClan.get(String(row.id ?? '')) ?? null,
     }))
     .sort(
       (a, b) =>

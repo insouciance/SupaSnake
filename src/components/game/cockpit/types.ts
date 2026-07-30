@@ -38,11 +38,16 @@ export interface RunCockpitModel {
   score: number;
   dna: number;
   /**
-   * The day's harvest envelope (Constitution §8.6). Null hides the readout
-   * entirely - which is what the §8.6 ramp wants before the meter surfaces,
-   * and what Training wants always (it never touches the envelope).
+   * Latest stored-Energy snapshot (Constitution §8.6). The cockpit presents
+   * the immutable run stake below, not this remaining balance.
    */
   charge: ChargeStatus | null;
+  /** Immutable run stake; unlike remaining stock, this matters mid-run. */
+  energyCommitment?: {
+    committed: number;
+    multiplierBps: number;
+    state: 'charged' | 'lean' | 'exempt';
+  } | null;
   /**
    * Tactical holds left in this run, and the budget they came out of. Null
    * hides the readout - which is what Training wants, since a driven run is

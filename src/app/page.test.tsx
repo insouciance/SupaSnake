@@ -118,15 +118,17 @@ function setupFetch(fixtures: FetchFixtures = {}) {
       high_score: 777,
       total_games_played: 3,
     },
-    // The day's harvest envelope (§8.6). `visible` carries the ramp: this
+    // The recovering harvest envelope (§8.6). `visible` carries the ramp: this
     // fixture has 3 banked runs, below the 4-run threshold, so the meter is
     // hidden - see the dedicated ramp tests below.
-    charge: {
-      remaining: 4,
-      perDay: 6,
-      usedToday: 2,
-      day: '2026-07-25',
-      refillsAt: '2026-07-26T00:00:00.000Z',
+    energy: {
+      available: 4,
+      capacity: 6,
+      recoveryIntervalSeconds: 3600,
+      recoveryStartedAt: '2026-07-25T12:30:00.000Z',
+      nextRecoveryAt: '2026-07-25T13:30:00.000Z',
+      recoveryProgress: 0.5,
+      serverNow: '2026-07-25T13:00:00.000Z',
       visible: true,
     },
     collectionSize: 3,
@@ -215,7 +217,7 @@ function setUnauthed() {
   return { signInAnonymously };
 }
 
-/** Waits for authed stats to land (the charge counter shows left/perDay) */
+/** Waits for authed stats to land (the Energy counter shows stock/capacity). */
 async function waitForStats() {
   await waitFor(() => {
     expect(screen.getByText('4/6')).toBeInTheDocument();
@@ -244,7 +246,7 @@ describe('Home page', () => {
     });
   });
 
-  describe('the charge meter ramp (Constitution §8.6)', () => {
+  describe('the Energy meter ramp (Constitution §8.6)', () => {
     it('hides the meter until the player has met the game', async () => {
       // "A new player never meets scarcity before they have met the game."
       // The server sends visible:false below the banked-run threshold and
@@ -258,12 +260,14 @@ describe('Home page', () => {
             high_score: 10,
             total_games_played: 1,
           },
-          charge: {
-            remaining: 5,
-            perDay: 6,
-            usedToday: 1,
-            day: '2026-07-25',
-            refillsAt: '2026-07-26T00:00:00.000Z',
+          energy: {
+            available: 5,
+            capacity: 6,
+            recoveryIntervalSeconds: 3600,
+            recoveryStartedAt: '2026-07-25T12:30:00.000Z',
+            nextRecoveryAt: '2026-07-25T13:30:00.000Z',
+            recoveryProgress: 0.5,
+            serverNow: '2026-07-25T13:00:00.000Z',
             visible: false,
           },
           collectionSize: 1,
@@ -277,26 +281,26 @@ describe('Home page', () => {
         expect(screen.getByText('320')).toBeInTheDocument();
       });
       expect(screen.queryByText('5/6')).not.toBeInTheDocument();
-      expect(screen.queryByTitle('Charges today')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Recovered Energy')).not.toBeInTheDocument();
     });
 
     it('shows the meter once the ramp opens it', async () => {
       setAuthed();
       render(<Home />);
       await waitForStats();
-      expect(screen.getByTitle('Charges today')).toBeInTheDocument();
+      expect(screen.getByTitle('Recovered Energy')).toBeInTheDocument();
     });
   });
 
   describe('ambient counters (server authority)', () => {
-    it('fetches and shows DNA and the day\'s charges', async () => {
+    it('fetches and shows DNA and recovered Energy', async () => {
       setAuthed();
       render(<Home />);
 
       await waitForStats();
 
       expect(screen.getByText('320')).toBeInTheDocument(); // DNA
-      expect(screen.getByText('4/6')).toBeInTheDocument(); // charges today
+      expect(screen.getByText('4/6')).toBeInTheDocument(); // Energy stock
 
       await waitFor(() => {
         const calls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));

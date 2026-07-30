@@ -16,9 +16,10 @@
  * (GROUND_TRUTH §9.1: buy the 25-energy Vault, be away an hour, come back
  * with 5) and disagreed indefinitely with the `energy_regen_at` clock in
  * /api/player (§9.2). Both defects are structurally impossible now: there is
- * no energy balance for this route to clamp and no clock for it to compete
- * with. The daily allotment refills only when the UTC date changes, and only
- * `consume_run_charge` ever writes the ledger.
+ * no legacy energy balance for this route to clamp and no client-derived
+ * clock for it to compete with. Migration 059's independent Energy ledger
+ * recovers through `read_player_energy`/`commit_run_energy`; this claim route
+ * never grants, accelerates, or mutates it.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

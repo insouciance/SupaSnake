@@ -1,44 +1,14 @@
 /**
- * Energy — the daily harvest envelope (Constitution §8.6).
+ * Energy Commitment — deterministic shared rules.
  *
- * Deterministic, dependency-free rules shared by the server (authority) and
- * the client (display only). Nothing here reads or writes a database.
- *
- * The model in one sentence: the day grants a fixed number of CHARGES, the
- * allotment resets to full at 00:00 UTC, and a run that consumes a charge
- * harvests full DNA while a run that finds the allotment empty still plays,
- * still Scores, still ranks — and harvests the lean factor.
- *
- * Three properties this module exists to guarantee:
- *
- *  1. **No grant path.** Charges are derived from `(charges_day,
- *     charges_used)`; there is no balance to add to. No purchase, perk,
- *     stipend, streak, achievement or reward can mint one, because minting
- *     is not an operation the model has (§10.4, Rule 3).
- *  2. **One clock.** The only refill authority is the UTC date rolling over
- *     (GT §9.2 fixed: the 20-minute drip and the offline restore both had
- *     their own clock, and the two disagreed indefinitely).
- *  3. **Absence is never destructive** (Rule 5). Charges never accumulate as
- *     credit and never accumulate as debt. A player returning after 30 days
- *     opens the day with exactly the same allotment as a player who has
- *     played every day: `chargesPerDay`. Nothing owned is touched.
+ * Persistence and spending are server-authoritative. This module is pure so
+ * the database adapter, API routes, UI previews and tests all use the same
+ * recovery, commitment and integer-rounding contract.
  */
 
 import { GAME_CONFIG } from '@/shared/config/game';
 
-/**
- * How a run settles against the envelope. Stamped on the session row at
- * start (server-derived, never client-asserted) and read back at settlement.
- *
- * - `charged` — a charge was consumed; full harvest.
- * - `lean`    — the day's allotment was empty; the run played identically
- *               and harvests `leanHarvestFactor`.
- * - `exempt`  — the run consumes no charge and harvests full-strength: the
- *               day's Signal objective run, every Serpent attempt (§8.6
- *               "the rituals are always full-fat"), and rewardless practice
- *               runs, which take nothing from the envelope because they pay
- *               nothing into it.
- */
+/** `charged` is retained as the stored legacy label for an Energy-funded run. */
 export type ChargeState = 'charged' | 'lean' | 'exempt';
 
 const CHARGE_STATES: readonly ChargeState[] = ['charged', 'lean', 'exempt'];
@@ -47,130 +17,186 @@ export function isChargeState(value: unknown): value is ChargeState {
   return typeof value === 'string' && (CHARGE_STATES as readonly string[]).includes(value);
 }
 
-/** The stored, day-scoped ledger. This is the entire persistent model. */
+/** Server-owned recovery ledger. `updatedAt` is the partial-tick anchor. */
+export interface EnergyLedger {
+  storedEnergy: number;
+  updatedAt: string | Date | number | null;
+}
+
+/** Legacy daily ledger, accepted only while application and migration overlap. */
 export interface ChargeLedger {
-  /** UTC day the counter belongs to, `YYYY-MM-DD`; null before first use. */
   chargesDay: string | null;
-  /** Charges consumed on `chargesDay`. Never negative. */
   chargesUsed: number;
 }
 
-/** What a caller (route response, HUD) needs to render or decide. */
-export interface ChargeStatus {
-  /** Charges left today, `0..chargesPerDay`. */
+/** Everything a client needs to display recovery without becoming authority. */
+export interface EnergyStatus {
+  available: number;
+  capacity: number;
+  recoveryIntervalSeconds: number;
+  recoveryStartedAt: string;
+  nextRecoveryAt: string | null;
+  recoveryProgress: number;
+  serverNow: string;
+  /** Compatibility aliases for pre-amendment callers. */
   remaining: number;
-  /** The day's full allotment. */
   perDay: number;
-  /** Charges consumed today (0 once the day has rolled over). */
   usedToday: number;
-  /** The UTC day this status describes, `YYYY-MM-DD`. */
   day: string;
-  /** ISO timestamp of the next 00:00 UTC reset — the only refill event. */
-  refillsAt: string;
+  refillsAt: string | null;
 }
 
-/**
- * The UTC calendar day of an instant, as `YYYY-MM-DD`.
- *
- * `toISOString()` is always UTC, so this is timezone-independent by
- * construction — every player on earth rolls over at the same moment, which
- * is what makes "one clock" checkable.
- */
+/** Temporary name compatibility while old surfaces migrate to Energy copy. */
+export type ChargeStatus = EnergyStatus;
+
+function finiteDateMs(value: EnergyLedger['updatedAt'], fallback: number): number {
+  if (value === null) return fallback;
+  const parsed = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(parsed) || parsed > fallback) return fallback;
+  return parsed;
+}
+
+function clampWhole(value: number, low: number, high: number): number {
+  if (!Number.isFinite(value)) return low;
+  return Math.min(high, Math.max(low, Math.floor(value)));
+}
+
+/** UTC day retained for audit metadata and backwards-compatible response shape. */
 export function utcDayKey(at: Date | number = Date.now()): string {
   return new Date(at).toISOString().slice(0, 10);
 }
 
-/** The next 00:00 UTC strictly after `at` — when the allotment resets. */
+/** Deprecated daily-reset helper retained for old clients during rollout. */
 export function nextUtcMidnight(at: Date | number = Date.now()): Date {
   const d = new Date(at);
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0, 0)
-  );
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
 }
 
 /**
- * Resolve a stored ledger into today's status. Pure and lazy: reading never
- * mutates anything, and a stale `chargesDay` simply reads as a full day.
- *
- * A ledger from any previous day yields `remaining === perDay`. That is the
- * refill — there is no separate refill operation to run, no cron, no timer,
- * and therefore nothing that can fail to run and leave a player short.
+ * Lazily resolve offline recovery. No client clock is trusted by the server:
+ * authoritative callers pass database `NOW()` and the RPC persists the
+ * resulting stock and partial-tick anchor under a row lock.
  */
-export function resolveChargeStatus(
-  ledger: ChargeLedger,
+export function resolveEnergyStatus(
+  ledger: EnergyLedger,
   now: Date | number = Date.now(),
-  perDay: number = GAME_CONFIG.economy.energy.chargesPerDay
-): ChargeStatus {
-  const day = utcDayKey(now);
-  const isToday = ledger.chargesDay === day;
-  // A negative or absurd stored counter can only ever cost the player, so
-  // clamp it into the honest range rather than trusting it.
-  const usedToday = isToday
-    ? Math.min(Math.max(0, Math.floor(ledger.chargesUsed) || 0), perDay)
-    : 0;
+  capacity: number = GAME_CONFIG.economy.energy.capacity,
+  recoveryIntervalSeconds: number = GAME_CONFIG.economy.energy.recoveryIntervalSeconds
+): EnergyStatus {
+  const nowMs = new Date(now).getTime();
+  const safeNow = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const safeCapacity = Math.max(1, Math.floor(capacity));
+  const intervalMs = Math.max(1, Math.floor(recoveryIntervalSeconds)) * 1000;
+  const stored = clampWhole(ledger.storedEnergy, 0, safeCapacity);
+  const anchorMs = finiteDateMs(ledger.updatedAt, safeNow);
+  const elapsedMs = Math.max(0, safeNow - anchorMs);
+  const recovered = stored >= safeCapacity ? 0 : Math.floor(elapsedMs / intervalMs);
+  const available = Math.min(safeCapacity, stored + recovered);
+
+  // At cap, elapsed overflow is intentionally discarded. The consumption RPC
+  // anchors the next tick to the spend instant, so hoarding cannot bank time.
+  const effectiveAnchorMs =
+    available >= safeCapacity ? safeNow : anchorMs + recovered * intervalMs;
+  const progress =
+    available >= safeCapacity
+      ? 1
+      : Math.min(1, Math.max(0, (safeNow - effectiveAnchorMs) / intervalMs));
+  const nextRecoveryAt =
+    available >= safeCapacity
+      ? null
+      : new Date(effectiveAnchorMs + intervalMs).toISOString();
 
   return {
-    remaining: Math.max(0, perDay - usedToday),
-    perDay,
-    usedToday,
-    day,
-    refillsAt: nextUtcMidnight(now).toISOString(),
+    available,
+    capacity: safeCapacity,
+    recoveryIntervalSeconds: Math.floor(intervalMs / 1000),
+    recoveryStartedAt: new Date(effectiveAnchorMs).toISOString(),
+    nextRecoveryAt,
+    recoveryProgress: progress,
+    serverNow: new Date(safeNow).toISOString(),
+    remaining: available,
+    perDay: safeCapacity,
+    usedToday: safeCapacity - available,
+    day: utcDayKey(safeNow),
+    refillsAt: nextRecoveryAt,
   };
 }
 
-/**
- * Server-derived facts that can exempt a run from consuming a charge.
- *
- * Every field is resolved by the server from its own tables — the client's
- * `mode` string is a request, never a grant. A run is exempt only when the
- * server can point at the row that makes it exempt, so today, with neither
- * system built, no client can obtain an exemption by asking for one.
- */
+/** Compatibility resolver for a pre-migration daily ledger. */
+export function resolveChargeStatus(
+  ledger: ChargeLedger,
+  now: Date | number = Date.now(),
+  capacity: number = GAME_CONFIG.economy.energy.capacity
+): ChargeStatus {
+  const remaining =
+    ledger.chargesDay === utcDayKey(now)
+      ? capacity - clampWhole(ledger.chargesUsed, 0, capacity)
+      : capacity;
+  return resolveEnergyStatus({ storedEnergy: remaining, updatedAt: now }, now, capacity);
+}
+
 export interface ChargeExemptionFacts {
-  /**
-   * The player's Signal objective run for the current UTC day, when the
-   * server has confirmed this run is it (Constitution §7.2; built by
-   * WP-1.03). Null when the Signal is not live or this run is not it.
-   */
   signalObjectiveRunId: string | null;
-  /**
-   * The active Serpent week this run is an attempt in, when the server has
-   * confirmed it (§7.3; built by WP-1.01). Null when the Serpent is not live
-   * or this run is not an attempt.
-   */
+  /** Legacy explicit Serpent attempts remain exempt while historical code exists. */
   serpentWeekId: string | null;
-  /**
-   * Rewardless practice (Free Play / Training). Such a run pays nothing, so
-   * it takes nothing: charging it would be a pure penalty for practising.
-   */
   rewardless: boolean;
 }
 
-/** No exemption — the default every run starts from. */
 export const NO_EXEMPTION: ChargeExemptionFacts = {
   signalObjectiveRunId: null,
   serpentWeekId: null,
   rewardless: false,
 };
 
-/**
- * Whether the server's own facts exempt this run. Closed by default: an
- * exemption requires a server-resolved identifier, never a client claim.
- */
 export function isChargeExempt(facts: ChargeExemptionFacts): boolean {
+  return facts.rewardless || facts.signalObjectiveRunId !== null || facts.serpentWeekId !== null;
+}
+
+export function isValidEnergyCommitment(value: unknown): value is number {
   return (
-    facts.rewardless ||
-    facts.signalObjectiveRunId !== null ||
-    facts.serpentWeekId !== null
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= GAME_CONFIG.economy.energy.capacity
   );
 }
 
+/** Basis-point curve lookup. Zero is the explicit lean-run choice. */
+export function energyCommitmentMultiplierBps(commitment: number): number {
+  if (commitment === 0) {
+    return Math.round(GAME_CONFIG.economy.energy.leanHarvestFactor * 10_000);
+  }
+  if (!isValidEnergyCommitment(commitment)) return 0;
+  return GAME_CONFIG.economy.energy.commitmentMultipliersBps[commitment - 1] ?? 0;
+}
+
+export function energyCommitmentMultiplier(commitment: number): number {
+  return energyCommitmentMultiplierBps(commitment) / 10_000;
+}
+
+export function formatEnergyMultiplier(commitment: number): string {
+  const multiplier = energyCommitmentMultiplier(commitment);
+  return Number.isInteger(multiplier) ? multiplier.toFixed(1) : multiplier.toFixed(1);
+}
+
 /**
- * The harvest factor a settled run's DNA is multiplied by.
- *
- * Exempt and charged runs are indistinguishable at settlement — both harvest
- * full strength. Only an empty allotment is lean.
+ * Apply the immutable start-time multiplier using integer arithmetic.
+ * Yield remains the unmodified full-strength value; only credited DNA uses
+ * this result. A positive Yield on a lean run remains worth at least 1 DNA.
  */
+export function applyEnergyHarvestMultiplier(
+  yieldDna: number,
+  multiplierBps: number,
+  state: ChargeState
+): number {
+  if (!Number.isFinite(yieldDna) || yieldDna <= 0) return 0;
+  const safeYield = Math.floor(yieldDna);
+  const safeBps = Math.max(0, Math.floor(multiplierBps));
+  const credited = Math.floor((safeYield * safeBps) / 10_000);
+  return state === 'lean' ? Math.max(1, credited) : credited;
+}
+
+/** Legacy one-E/lean helper used by historical settlement tests. */
 export function harvestFactor(
   state: ChargeState,
   leanFactor: number = GAME_CONFIG.economy.energy.leanHarvestFactor
@@ -178,32 +204,19 @@ export function harvestFactor(
   return state === 'lean' ? leanFactor : 1;
 }
 
-/**
- * Apply the harvest factor to a full-strength Yield.
- *
- * `yieldDna` is the run's full-strength economic total — the number Depth,
- * Mastery and every record read (§6.2: "Yield is charge-independent"). The
- * return value is only what the DNA balance is credited.
- *
- * Floors, so the harvest is never fractional; a lean run with any Yield at
- * all still pays at least 1 DNA — §8.6's "lean, never zero" is enforced
- * here rather than left to rounding.
- */
+/** Legacy one-E/lean helper; new settlement passes the stored basis points. */
 export function applyHarvestFactor(
   yieldDna: number,
   state: ChargeState,
   leanFactor: number = GAME_CONFIG.economy.energy.leanHarvestFactor
 ): number {
-  if (!Number.isFinite(yieldDna) || yieldDna <= 0) return 0;
-  const factor = harvestFactor(state, leanFactor);
-  if (factor >= 1) return Math.floor(yieldDna);
-  return Math.max(1, Math.floor(yieldDna * factor));
+  return applyEnergyHarvestMultiplier(
+    yieldDna,
+    Math.round(harvestFactor(state, leanFactor) * 10_000),
+    state
+  );
 }
 
-/**
- * Whether the charge meter should be shown at all (§8.6): the ramp keeps it
- * hidden until the player has banked enough runs to have met the game.
- */
 export function isChargeMeterVisible(
   bankedRuns: number,
   threshold: number = GAME_CONFIG.economy.energy.meterVisibleAtBankedRuns

@@ -103,6 +103,7 @@ import {
 import { GenomeCard } from '@/components/game/GenomeCard';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { ModeToggle } from '@/components/game/ModeToggle';
+import { EnergyCommitmentSelector } from '@/components/game/EnergyCommitmentSelector';
 import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
 import { BlackoutMask } from '@/components/game/BlackoutMask';
 import {
@@ -154,8 +155,10 @@ import {
   readChallengeRun,
   type ChallengeRun,
 } from '@/lib/game/challengeRun';
-import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
-import { RunResults, type RunResultsSerpent } from '@/components/game/RunResults';
+import {
+  RunResults,
+  type RunResultsClanBattle,
+} from '@/components/game/RunResults';
 import { RunSetupPanel } from '@/components/game/RunSetupPanel';
 import { HeirloomSummary } from '@/components/game/HeirloomSummary';
 import {
@@ -165,7 +168,11 @@ import {
 } from '@/lib/game/dailyTake';
 import { chooseNextAction } from '@/lib/game/resultsNextAction';
 import type { FtueBootstrapSnake } from '@/lib/ftue/types';
-import type { AscendanceYieldBreakdown } from '@/shared/game/ascendance';
+import {
+  ascendanceYieldBreakdown,
+  type AscendanceYieldBreakdown,
+} from '@/shared/game/ascendance';
+import { applyEnergyHarvestMultiplier } from '@/shared/game/energyEnvelope';
 import {
   buildGenomeCardModel,
   type GenomeCardModel,
@@ -434,6 +441,16 @@ export default function GamePage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  // Setup defaults conservatively to one. The active values are copied from
+  // the server's immutable session snapshot and drive previews/results.
+  const [energyCommitment, setEnergyCommitment] = useState(1);
+  const [activeEnergyCommitted, setActiveEnergyCommitted] = useState(0);
+  const [activeEnergyMultiplierBps, setActiveEnergyMultiplierBps] = useState(10_000);
+  const [clanBattleResult, setClanBattleResult] = useState<RunResultsClanBattle | null>(null);
+  const [clanBattleSetup, setClanBattleSetup] = useState<{
+    active: boolean;
+    fifthBestToBeat: number;
+  } | null>(null);
   // Every /game entry resolves whether it carries Home's consume-once run
   // before rendering a second Play action. Direct navigation resolves to the
   // existing voluntary pre-run screen; FTUE launch proceeds straight to board.
@@ -514,9 +531,6 @@ export default function GamePage() {
   const [settledCredited, setSettledCredited] = useState<number | null>(null);
   const [settledYieldBreakdown, setSettledYieldBreakdown] =
     useState<AscendanceYieldBreakdown | null>(null);
-  // Layer 2: the Serpent week's Depth (WP-1.01). `null` whenever the Serpent
-  // flag is off, the week is not live, or the panel could not be read.
-  const [serpentDepth, setSerpentDepth] = useState<RunResultsSerpent | null>(null);
   // Results → SETUP reopens the setup page over a finished run (§5). REPLAY
   // skips it entirely.
   const [setupReopened, setSetupReopened] = useState(false);
@@ -633,11 +647,26 @@ export default function GamePage() {
    */
   const previewOutcome = useCallback(
     (extracted: boolean, anomaly: AnomalyId | null = null): number => {
+      const priceCommittedHarvest = (runYieldBase: number): number => {
+        const fullYield = ascendanceYieldBreakdown(
+          runYieldBase,
+          equippedSnake?.generation ?? 1
+        ).totalYield;
+        return applyEnergyHarvestMultiplier(
+          fullYield,
+          activeEnergyMultiplierBps,
+          activeEnergyCommitted > 0
+            ? 'charged'
+            : activeEnergyMultiplierBps < 10_000
+              ? 'lean'
+              : 'exempt'
+        );
+      };
       if (genomeRun) {
         const liveState = gameRef.current?.getState();
         const capability = gameRef.current?.getGenome();
         const ftue = capability?.ftue;
-        return applyGenomeOutcome(
+        return priceCommittedHarvest(applyGenomeOutcome(
           dnaCollected,
           extracted,
           {
@@ -679,18 +708,28 @@ export default function GamePage() {
           },
           equippedSnake?.traits ?? [],
           anomaly
-        );
+        ));
       }
-      return applyOutcomeWithMutations(
+      return priceCommittedHarvest(applyOutcomeWithMutations(
         dnaCollected,
         extracted,
         heldMutations.filter((m): m is MutationPick => isMutationId(m.id)),
         phoenixTriggered,
         [],
         anomaly
-      );
+      ));
     },
-    [genomeRun, dnaCollected, heldMutations, revive, phoenixTriggered, equippedSnake?.traits]
+    [
+      activeEnergyCommitted,
+      activeEnergyMultiplierBps,
+      genomeRun,
+      dnaCollected,
+      heldMutations,
+      revive,
+      phoenixTriggered,
+      equippedSnake?.generation,
+      equippedSnake?.traits,
+    ]
   );
 
   // Detect mobile device
@@ -767,7 +806,14 @@ export default function GamePage() {
       })
       .then(data => {
         if (data.player) {
-          syncChargeFromServer(data.charge ?? null);
+          const serverEnergy = data.energy ?? data.charge ?? null;
+          syncChargeFromServer(serverEnergy);
+          if (serverEnergy) {
+            const available = Math.max(0, Number(serverEnergy.available ?? serverEnergy.remaining) || 0);
+            setEnergyCommitment((current) =>
+              current > available ? (available > 0 ? 1 : 0) : current
+            );
+          }
           setHasCompletedFirstRun(
             data.hasCompletedFirstRun === true ||
               Number(data.player.total_games_played ?? 0) > 0
@@ -800,6 +846,61 @@ export default function GamePage() {
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, isPlaying, syncChargeFromServer, setAimSystem]);
 
+  // A player may leave Run Setup open across a recovery boundary. Schedule
+  // from the server's two timestamps—not Date.now()—then re-read authority so
+  // the selector gains the recovered unit without a reload. This timer never
+  // mutates stock locally and cannot be accelerated by the device clock.
+  useEffect(() => {
+    const accessToken = session?.access_token;
+    const available = charge?.available ?? charge?.remaining ?? 0;
+    const capacity = charge?.capacity ?? charge?.perDay ?? 0;
+    const nextAt = charge?.nextRecoveryAt ?? charge?.refillsAt;
+    const serverNow = charge?.serverNow;
+    if (isPlaying || !accessToken || !nextAt || !serverNow || available >= capacity) {
+      return;
+    }
+
+    const delay = Math.max(
+      250,
+      new Date(nextAt).getTime() - new Date(serverNow).getTime() + 250
+    );
+    const timer = window.setTimeout(() => {
+      void fetch('/api/player', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(`/api/player responded ${response.status}`);
+          return response.json();
+        })
+        .then((data) => {
+          const serverEnergy = data.energy ?? data.charge ?? null;
+          syncChargeFromServer(serverEnergy);
+          if (serverEnergy) {
+            const recovered = Math.max(
+              0,
+              Number(serverEnergy.available ?? serverEnergy.remaining) || 0
+            );
+            setEnergyCommitment((current) =>
+              current > recovered ? (recovered > 0 ? 1 : 0) : current
+            );
+          }
+        })
+        .catch((error) => console.error('Failed to refresh recovered Energy:', error));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    charge?.available,
+    charge?.capacity,
+    charge?.nextRecoveryAt,
+    charge?.perDay,
+    charge?.refillsAt,
+    charge?.remaining,
+    charge?.serverNow,
+    isPlaying,
+    session?.access_token,
+    syncChargeFromServer,
+  ]);
+
   // Weekly Anomaly board (§7.2): fetched between runs so the pre-game
   // entry shows the live modifier + leaderboard. Refreshes after every
   // run (isPlaying flips back) so "your best" is current. Non-fatal.
@@ -816,6 +917,35 @@ export default function GamePage() {
         }
       })
       .catch(err => console.error('Failed to fetch anomaly board:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, isPlaying]);
+
+  // Automatic clan-battle context for the commitment decision. Attempt-level
+  // detail is only the viewer's own; team/opponent are aggregate totals.
+  useEffect(() => {
+    if (!session?.access_token || isPlaying) return;
+    let cancelled = false;
+    fetch('/api/clan/energy-battle', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setClanBattleSetup(
+          data?.active === true && data?.eligible === true
+            ? {
+                active: true,
+                fifthBestToBeat: Number(data.you?.fifthBest ?? 0) || 0,
+              }
+            : null
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to fetch Clan Energy Battle:', error);
+        if (!cancelled) setClanBattleSetup(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -858,47 +988,6 @@ export default function GamePage() {
       })
       .catch(err => console.error('Failed to fetch mastery:', err));
   }, [session?.access_token]);
-
-  // Results Layer 2 (§6.2): the Serpent week's Depth, read once the run has
-  // settled. WP-1.01 publishes the panel; with NEXT_PUBLIC_SERPENT_V1 off it
-  // answers `live: false`, so this degrades to "Score and Yield only" without
-  // a special case. Non-fatal in every direction: a failed read shows no
-  // Depth rather than an error.
-  useEffect(() => {
-    if (!RUN_FLOW_V1_ENABLED || !SERPENT_V1_ENABLED) return;
-    if (!session?.access_token || !isGameOver || isPlaying) return;
-    let cancelled = false;
-    fetch('/api/serpent/panel', {
-      headers: { 'Authorization': `Bearer ${session.access_token}` },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data || data.live !== true) {
-          if (!cancelled) setSerpentDepth(null);
-          return;
-        }
-        const you = data.you ?? {};
-        const counted: number[] = Array.isArray(you.countedYields)
-          ? you.countedYields.filter((v: unknown) => typeof v === 'number')
-          : [];
-        setSerpentDepth({
-          live: true,
-          weekDepth: Number(you.depth ?? 0) || 0,
-          deltaVsBestWeek: Number(you.deltaVsBestWeek ?? 0) || 0,
-          // The panel's counted set IS the week's best three after
-          // settlement, so membership is an exact answer to "did this run
-          // count", not an estimate.
-          runCounts: settledYield !== null && counted.includes(settledYield),
-        });
-      })
-      .catch((err) => {
-        console.error('Failed to fetch Serpent panel:', err);
-        if (!cancelled) setSerpentDepth(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.access_token, isGameOver, isPlaying, settledYield]);
 
   // Fetch collection to find the equipped snake (game always uses it)
   useEffect(() => {
@@ -1509,6 +1598,11 @@ export default function GamePage() {
                 ? validation.adjustedDna
                 : null
             );
+            setClanBattleResult(
+              result.clanBattle && typeof result.clanBattle === 'object'
+                ? (result.clanBattle as RunResultsClanBattle)
+                : null
+            );
             const settledScore =
               typeof validation.score === 'number' ? validation.score : data.score;
             // A record only counts if the server accepted the run and it was
@@ -1830,7 +1924,7 @@ export default function GamePage() {
 
   // NOTE: the effect that used to demote EARN/ANOMALY to FREE at zero
   // energy is deliberately gone (Constitution §8.6). Running out of the
-  // day's charges no longer changes what the player may do - it changes
+  // stored Energy no longer changes what the player may do - it changes
   // only what the run harvests. Silently switching their mode would be the
   // "second-class run" the Constitution abolished, and would also take a
   // choice away from them without asking.
@@ -1857,7 +1951,16 @@ export default function GamePage() {
 
     // Sync server state to local. The server has already decided and
     // stamped how this run settles; the client only mirrors it.
-    syncChargeFromServer(data.charge ?? null);
+    const startedEnergy = data.energy ?? data.charge ?? null;
+    syncChargeFromServer(startedEnergy);
+    const committed = Math.max(0, Number(startedEnergy?.committed ?? 0) || 0);
+    const multiplierBps = Math.max(
+      0,
+      Number(startedEnergy?.commitmentMultiplierBps ?? 10_000) || 10_000
+    );
+    setActiveEnergyCommitted(committed);
+    setActiveEnergyMultiplierBps(multiplierBps);
+    setEnergyCommitment((startedEnergy?.available ?? 0) > 0 ? 1 : 0);
     setCurrentSessionId(data.sessionId);
     gameStartTime.current = Date.now();
     freeRunRef.current = mode === 'free';
@@ -1880,7 +1983,7 @@ export default function GamePage() {
     setSettledYield(null);
     setSettledCredited(null);
     setSettledYieldBreakdown(null);
-    setSerpentDepth(null);
+    setClanBattleResult(null);
     setSetupReopened(false);
 
     // Trait config comes from the server-owned equipped snake row.
@@ -1993,8 +2096,14 @@ export default function GamePage() {
 
   // Start game from the voluntary pre-run screen. Home/Lab handoffs bypass
   // this request because their server session already exists.
-  const handleStart = useCallback(async (modeOverride?: GameMode) => {
+  const handleStart = useCallback(async (
+    modeOverride?: GameMode,
+    commitmentOverride?: number
+  ) => {
     const mode = modeOverride ?? gameMode;
+    const commitment = mode === 'free'
+      ? 0
+      : commitmentOverride ?? energyCommitment;
     if (!session?.access_token) {
       setStartError('Please sign in to play');
       return;
@@ -2021,6 +2130,10 @@ export default function GamePage() {
           action: 'start',
           mode, // 'free' = rewardless practice run (§7.4)
           snake_id: equippedSnake.id, // Server validates ownership + equipped
+          energyCommitment: commitment,
+          ...(commitment === GAME_CONFIG.economy.energy.capacity
+            ? { confirmMaxEnergy: true }
+            : {}),
           // WP-3.12: a REQUEST, never a decision. The server checks the ask
           // against `player_ladders`, clamps it to what this player has
           // unlocked, stamps it and echoes back the rung it chose.
@@ -2053,6 +2166,7 @@ export default function GamePage() {
   }, [
     applyStartedRun,
     equippedSnake,
+    energyCommitment,
     gameMode,
     // WP-3.12: the same scar, one line down. `handleStart` is a useCallback, so
     // omitting the rung would capture rung 0 forever and every ladder run would
@@ -2249,6 +2363,28 @@ export default function GamePage() {
   }, []);
 
   const handleQuit = useCallback(() => {
+    const token = sessionRef.current?.access_token;
+    const sessionId = currentSessionIdRef.current;
+    if (token && sessionId) {
+      // Energy was consumed at START, so this request never decides a refund.
+      // It closes the authoritative session promptly for telemetry and makes
+      // it impossible for an abandoned attempt to be submitted later.
+      void fetch('/api/game/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        keepalive: true,
+        body: JSON.stringify({ action: 'abandon', sessionId, reason: 'abandoned' }),
+      })
+        .then((response) => {
+          if (!response.ok && response.status !== 409) {
+            console.error(`Failed to close abandoned run: ${response.status}`);
+          }
+        })
+        .catch((error) => console.error('Failed to close abandoned run:', error));
+    }
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -2283,11 +2419,11 @@ export default function GamePage() {
   // ---------------------------------------------------------------------
   // Results actions (Constitution §5)
   // ---------------------------------------------------------------------
-  // REPLAY: re-enter the run with the SAME configuration, skipping setup.
-  // One tap here plus the deliberate first direction is the whole ≤2.
+  // REPLAY keeps the rules/build but deliberately never repeats a large
+  // stake. It uses one Energy when available, otherwise a lean run.
   const handleReplay = useCallback(() => {
-    void handleStart(gameMode);
-  }, [gameMode, handleStart]);
+    void handleStart(gameMode, (charge?.available ?? 0) > 0 ? 1 : 0);
+  }, [charge?.available, gameMode, handleStart]);
 
   // SETUP: reopen the setup page over the finished run. The run's numbers
   // stay settled; only the surface changes.
@@ -2532,6 +2668,18 @@ export default function GamePage() {
     score,
     dna: dnaCollected,
     charge,
+    energyCommitment: lastRunFree
+      ? null
+      : {
+          committed: activeEnergyCommitted,
+          multiplierBps: activeEnergyMultiplierBps,
+          state:
+            activeEnergyCommitted > 0
+              ? 'charged'
+              : activeEnergyMultiplierBps < 10_000
+                ? 'lean'
+                : 'exempt',
+        },
     holds: isPlaying ? holdBudget : null,
     bankDna: previewOutcome(true, activeAnomalyId),
     crashDna: previewOutcome(false, activeAnomalyId),
@@ -2568,6 +2716,7 @@ export default function GamePage() {
             score={score}
             dnaCollected={dnaCollected}
             costsCharge={!lastRunFree}
+            energyCommitted={activeEnergyCommitted}
             onCancel={() => setShowAbandonConfirm(false)}
             onConfirm={handleQuit}
           />
@@ -2658,6 +2807,16 @@ export default function GamePage() {
       anomalyStrain={anomalyBoard?.live ? anomalyBoard.anomaly.strainBias : null}
     />
   ) : null;
+
+  const energySelectorNode =
+    !noSnakeAvailable && gameMode !== 'free' ? (
+      <EnergyCommitmentSelector
+        energy={charge}
+        value={energyCommitment}
+        onChange={setEnergyCommitment}
+        clanBattle={clanBattleSetup}
+      />
+    ) : null;
 
   /* Weekly Anomaly board entry: modifier, timer, your best, top 10 */
   const anomalyPanelNode =
@@ -2890,9 +3049,9 @@ export default function GamePage() {
               <IconBolt size={13} className="shrink-0 text-venom-orange" />
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">
                 <span className="lg:hidden">NRG</span>
-                <span className="hidden lg:inline">Charges</span>
+                <span className="hidden lg:inline">Energy</span>
               </span>
-              <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{charge ? `${charge.remaining}/${charge.perDay}` : '—'}</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-venom-orange sm:text-base">{charge ? `${charge.available}/${charge.capacity}` : '—'}</span>
             </div>
           </div>
 
@@ -3233,7 +3392,10 @@ export default function GamePage() {
                   dnaCredited={settledCredited}
                   yieldDna={settledYield ?? hypotheticalDna}
                   yieldBreakdown={settledYieldBreakdown}
-                  serpent={serpentDepth}
+                  energyCommitted={activeEnergyCommitted}
+                  commitmentMultiplierBps={activeEnergyMultiplierBps}
+                  clanBattle={clanBattleResult}
+                  serpent={null}
                   take={dailyTake}
                   takeState={takeState}
                   onCollectTake={() => {
@@ -3261,6 +3423,7 @@ export default function GamePage() {
                   onSetup={handleOpenSetup}
                   replayPending={isStarting}
                   replayDisabled={isStarting || !equippedSnake}
+                  replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
                   }
@@ -3319,8 +3482,8 @@ export default function GamePage() {
                     gameMode === 'free'
                       ? 'Free Play'
                       : gameMode === 'anomaly'
-                        ? 'Run the Anomaly'
-                        : 'Play'
+                        ? `Run the Anomaly · ${energyCommitment > 0 ? `${energyCommitment} Energy` : 'Lean'}`
+                        : `Play · ${energyCommitment > 0 ? `${energyCommitment} Energy` : 'Lean'}`
                   }
                   startTestId={startTestId}
                   isStarting={isStarting}
@@ -3329,6 +3492,7 @@ export default function GamePage() {
                   }}
                   startError={startError}
                   heirloom={heirloomNode}
+                  energySelector={energySelectorNode}
                   modeToggle={modeToggleNode}
                   ladderNote={ladderNoteNode}
                   ladderSelector={ladderSelectorNode}
@@ -3595,6 +3759,7 @@ export default function GamePage() {
             )}
 
             {modeToggleNode}
+            {energySelectorNode}
             {anomalyPanelNode}
             {aimSelectorNode}
 
@@ -3657,18 +3822,17 @@ export default function GamePage() {
                         : isGameOver
                           ? 'Play Again'
                           : 'Play'}
-                      {charge !== null && charge.remaining > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-base">
-                          <IconBolt size={16} />
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1 text-base">
+                        <IconBolt size={16} />
+                        {energyCommitment > 0 ? `${energyCommitment} Energy` : 'Lean'}
+                      </span>
                     </>
                   )}
                 </button>
               )}
 
-              {/* After a practice run, the earning path is always offered -
-                  it is never conditioned on the day's charges. */}
+              {/* After a practice run, the earning path is always offered —
+                  it is never conditioned on stored Energy. */}
               {isGameOver && lastRunFree && gameMode === 'free' && (
                 <button
                   onClick={() => setGameMode('earn')}

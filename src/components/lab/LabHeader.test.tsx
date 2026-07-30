@@ -23,13 +23,20 @@ describe('LabHeader', () => {
     );
   });
 
-  it('shows the day’s charges only once the server has synced them', () => {
+  it('shows recovered Energy only once the server has synced it', () => {
     const { rerender } = render(<LabHeader charge={null} dna={2450} />);
     expect(screen.queryByLabelText(/charges:/i)).toBeNull();
 
     rerender(
       <LabHeader
         charge={{
+          available: 4,
+          capacity: 6,
+          recoveryIntervalSeconds: 3600,
+          recoveryStartedAt: '2026-07-26T12:30:00.000Z',
+          nextRecoveryAt: '2026-07-26T13:30:00.000Z',
+          recoveryProgress: 0.5,
+          serverNow: '2026-07-26T13:00:00.000Z',
           remaining: 4,
           perDay: 6,
           usedToday: 2,
@@ -39,7 +46,7 @@ describe('LabHeader', () => {
         dna={2450}
       />
     );
-    expect(screen.getByLabelText('Charges: 4 of 6')).toBeInTheDocument();
+    expect(screen.getByLabelText('Energy: 4 of 6')).toBeInTheDocument();
     expect(screen.getByLabelText('DNA balance: 2,450')).toBeInTheDocument();
   });
 });

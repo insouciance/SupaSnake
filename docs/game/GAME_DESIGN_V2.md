@@ -6,6 +6,12 @@
 **Status:** APPROVED — implementation phased (see §12); supersedes the stat-bonus and generation-scaling portions of `systems/DYNASTY_SYSTEM_specification_v1.0.md`
 **Companion docs:** `systems/CLAN_DUELS_spec.md` (v1 duels — the base the Gauntlet builds on), approved plan + Phase-1 implementation mapping (plan archive)
 **Buildcraft note (2026-07-20):** `BUILDCRAFT_GENOME_DESIGN.md` evolves §5 (Mutation Food) and §6 (Traits) into the Genome system — strains, expressions, splices, infusion, lineage. All mechanics, ids and validation proofs in §5/§6 remain valid; the Genome doc layers on top and is authoritative where the two overlap (held cap, Compound Interest tuning, outcome clamps, offer algorithm).
+**Current-rules notice (2026-07-29):** the Energy, Energy-commerce, clan-scoring,
+clan-schedule, and related economy projections in §§7.4–9 and the affected §11
+migration notes are historical. Product Constitution v1.5 and
+`ENERGY_COMMITMENT_AND_CLAN_BATTLES.md` supersede them: Energy recovers hourly to
+six, is committed 0–6 per ordinary run, is never sold, and active clan battles
+use each member's best five banked Energy runs across a three-day window.
 
 ---
 
@@ -449,8 +455,8 @@ login streak (the multiplier) is unchanged apart from the §4.4 retune.
 - **Everything unlocked:** all three rulesets and the *entire* mutation pool
   (including mutations the player hasn't earned into their earning-run pool)
   — practice is also a showroom.
-- Energy meters **earning runs** only; the shop sells earning capacity and
-  cosmetics, never power.
+- Energy meters **earning runs** only. Energy, recovery, and earning capacity
+  are never sold; Constitution §10 governs commercial products.
 
 ---
 
@@ -514,20 +520,20 @@ power.**
 - **Season playoffs:** final 2 weeks, top 8 by rating, single-elimination
   bracket using the same weekly protocol; champion gets cosmetics + banner
   history, never economy rewards.
-- **Anti-P2W:** money can buy energy (earning capacity) but (a) counted
-  scoring is best-N-per-member + top-N-members (inherited from duels v1) so
-  volume saturates fast, (b) tithes are hard-capped per member per week,
-  (c) research grants options/cosmetics and one +1-run slot, (d) all payout
-  math is server-recomputed. The richest clan can be *prepared*, never
-  *stronger*.
+- **Anti-P2W (current ruling):** money cannot buy Energy, recovery, earning
+  capacity, DNA, or any clan number. The active battle counts each member's
+  best five banked Energy runs, and its score is full-strength Yield without
+  the Energy Commitment multiplier. See the current Energy contract and
+  Constitution §10; the Gauntlet model above remains historical direction.
 
 ---
 
 ## 9. Economy Compatibility
 
-Assumptions: 3 energy-gated earning runs/hour sustained (20-min regen,
-unchanged); "elite" = top-percentile execution at that dynasty's target run
-length; account stack as noted.
+**Historical model only.** The table below assumed three earning runs per hour
+under the former 20-minute recovery model. It is not a forecast for the current
+hourly-recovery Commitment economy; the current estimates and telemetry gates
+live in `ENERGY_COMMITMENT_AND_CLAN_BATTLES.md`.
 
 **DNA/hour, v1 vs v2** (per-run payout × 3):
 

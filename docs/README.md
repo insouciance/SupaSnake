@@ -7,7 +7,7 @@ documents remain useful context but do not override the files listed here.
 
 | Need | Document |
 |---|---|
-| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.4) |
+| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.5) |
 | What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
 | The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
 | The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |
@@ -36,6 +36,7 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Player flow, onboarding, and interruptions | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
 | Genome/buildcraft | [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
+| Energy Commitment and Clan Energy Battles | [Energy Commitment & Clan Battles](game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md) |
 | Deliberate practice | [Training Lab](game/TRAINING_LAB_DESIGN.md) |
 | Player identity | [Player Identity v1](game/PLAYER_IDENTITY_V1.md) |
 

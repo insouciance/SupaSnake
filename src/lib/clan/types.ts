@@ -65,8 +65,8 @@ export interface ClanInvite {
  * `CLAN_BONUS_CONFIG` ("+1 energy every 6 hours in an active clan") used
  * to live here, next to a `canClaimClanBonus()` helper. Both are gone.
  *
- * There is no energy balance to credit any more (Constitution §8.6: the
- * day's charges are DERIVED, never granted), the RPC behind the promise
+ * Energy cannot be credited by a clan (Constitution §8.6: recovery is its
+ * only source), the RPC behind the promise
  * -- `claim_clan_energy_bonus`, migration 007 -- had no caller in `src/`
  * and wrote to the wrong key besides, and Rule 8 forbids a clan number
  * that pays. The clan page advertised the bonus in two places and

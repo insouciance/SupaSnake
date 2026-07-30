@@ -19,6 +19,7 @@ const MODEL: RunCockpitModel = {
     day: '2026-07-25',
     refillsAt: '2026-07-26T00:00:00.000Z',
   },
+  energyCommitment: { committed: 4, multiplierBps: 52_000, state: 'charged' },
   bankDna: 168,
   crashDna: 52,
   constellation: { stars: 3, fraction: 0.55 },
@@ -48,7 +49,8 @@ describe('RunCockpit', () => {
       screen.getByLabelText(/score 12,840, 3 stars left this constellation/i)
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/run dna 186/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/charges 4 of 6/i)).toHaveTextContent('4/6');
+    expect(screen.getByTestId('energy-stake')).toHaveTextContent('4E ×5.2');
+    expect(screen.getByLabelText(/4 energy committed, harvest multiplier 5.2/i)).toBeInTheDocument();
     // The hold budget is stated from tick zero, not discovered by running out.
     expect(screen.getByTestId('hold-budget')).toHaveTextContent('2/4');
     expect(screen.getByTestId('hold-budget')).toHaveAttribute('data-spent', 'false');
@@ -87,6 +89,7 @@ describe('RunCockpit', () => {
           mode: 'training',
           modeLabel: 'Training · Trace',
           showGenome: true,
+          energyCommitment: null,
           training: {
             primaryLabel: 'Gates',
             primaryValue: '3/6',
@@ -213,7 +216,7 @@ describe('RunCockpit', () => {
       </RunCockpit>
     );
     expect(screen.queryByTestId('growth-readout')).toBeNull();
-    expect(screen.getByLabelText(/charges 4 of 6/i)).toBeInTheDocument();
+    expect(screen.getByTestId('energy-stake')).toHaveTextContent('4E ×5.2');
     expect(screen.getByTestId('hold-budget')).toBeInTheDocument();
   });
 });

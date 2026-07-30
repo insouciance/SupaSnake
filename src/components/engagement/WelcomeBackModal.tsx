@@ -90,10 +90,9 @@ export function WelcomeBackModal({
 
         {/* Rewards list */}
         <div className="space-y-3 mb-6">
-          {/* Energy is not restored by time away and is not stipended
-              (Constitution §8.6): the day's charges refill at 00:00 UTC for
-              everyone, so there is nothing here to award. Passive DNA is
-              the whole of the offline claim now. */}
+          {/* Energy recovers automatically on its own server-time ledger; it
+              is not a claim reward and this modal must never grant it.
+              Passive DNA is the whole of this explicit offline claim. */}
           <RewardRow
             icon={<IconDna size={22} className="text-rarity-uncommon" />}
             label="DNA Gathered"
