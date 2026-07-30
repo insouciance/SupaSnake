@@ -12,22 +12,24 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–057 deployed and aligned |
+| Schema | Migrations 001–059 deployed and aligned |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
-| Runtime commit | `b15b5c3` |
-| Vercel deployment | `dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` |
-| Immediate app rollback | `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` (`bfdf8a2`) |
+| Energy | Server-time recovery to 6; 1–6 commitment; nonlinear harvest |
+| Clan battle | Automatic positive-Energy eligibility; three days; best five per member |
+| Player-feature baseline | `61a1936` |
+| Energy rollout deployment | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` |
+| Energy-release app rollback | `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX` (`95ad7d3`; migration 059 supplies the compatibility bridge) |
 | Payments | Test/sandbox mode only |
 
-The current release passed 382 Jest suites / 5,525 tests with coverage, full
+The current release passed 388 Jest suites / 5,568 tests with coverage, full
 lint and type checking, a zero-vulnerability production dependency audit, the
 production build, deterministic cockpit fixtures, both isolated-Supabase E2E
-configurations, protected PR and post-main CI, staged health, linked database
-lint, and focused public-production smoke. One production-flag Genome journey
-needed its configured retry and remains recorded as a flake. Detailed evidence
-is maintained in `docs/ops/QA_CHECKLIST.md`.
+configurations, local migrations 001–059 from zero, SQL integration, protected
+PR and post-main CI, staged health, linked database lint, and focused
+public-production smoke. Detailed evidence is maintained in
+`docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
 
@@ -57,6 +59,15 @@ is maintained in `docs/ops/QA_CHECKLIST.md`.
   is a secondary confirmed action.
 - The Training Lab provides voluntary drills, circuits, and custom routes;
   attempts are server-replayed and cannot grant run rewards.
+- Stored Energy recovers from server time at one unit per hour to a cap of six,
+  including partial and offline progress. Run Setup defaults to one committed
+  Energy and requires a second explicit confirmation for six.
+- Personal credited DNA applies the immutable commitment curve only to normal
+  run harvest. Score, Yield, Depth, Mastery, achievements, unlocks, and fixed
+  rewards remain commitment-independent.
+- A positive-Energy normal run begun during an active clan cycle is assigned
+  automatically. Each member's five strongest banked Yields contribute; the
+  viewer sees their own replacement threshold and aggregate clan totals.
 
 ## Engineering baseline
 
@@ -86,9 +97,16 @@ These do not invalidate the operator production release:
 - Owner calibration of PRIMAL's ruled 75/96/120 growth thresholds, plus live-run
   judgement of the coil seal, smoother tail boundary, Genome-derived terrain
   runes, and each source's forming-to-solid transition
-- One retry-dependent production-flag E2E journey in `genome.spec.ts`: Build
-  Seed/full telemetry-deck coverage missed the tactical-hold gate on its first
-  attempt
+- Live Energy tuning: commitment distribution, bank timing, effective reward
+  per Energy, progression inflation among high-frequency returners, and whether
+  six-Energy attempts become disproportionately attractive
+- Live clan tuning: best-five replacement cadence, three-day participation,
+  low-Energy skill competitiveness, late-cycle clustering, and generation
+  progression during a battle
+- Linked database lint reports two non-blocking migration-059 warnings: unused
+  local recovery variables and a conservative UUID-array cast warning. The
+  exercised SQL integration path passed; clean these in a dedicated migration
+  rather than rewriting deployed history.
 - Repair the production workflow's rollback-anchor lookup; it currently sees
   the newly staged production-target deployment rather than the outgoing alias
 - Final commercial legal review and support-mailbox operating procedures
@@ -101,6 +119,8 @@ These do not invalidate the operator production release:
 - Product direction: `docs/game/GAME_DESIGN_V2.md`
 - Player flow: `docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md`
 - Cockpit: `docs/game/HUD_COCKPIT_REDESIGN.md`
+- Energy and clan battles: `docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md`
+- Monetization: `docs/game/MONETIZATION_STRATEGY.md`
 - Production QA: `docs/ops/QA_CHECKLIST.md`
 - Environment state: `docs/ops/ENV_MATRIX.md`
 - Deployment procedure: `docs/ops/RELEASE_RUNBOOK.md`

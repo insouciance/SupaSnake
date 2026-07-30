@@ -1,20 +1,21 @@
 # Production Release Runbook
 
-Current baseline: application runtime `b15b5c3` — the dynasty-pressure and
-high-density-feedback release, deployed 2026-07-29 14:37 UTC, run 30460660086,
-deployment `dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` — and hosted migrations
-001–057. Both the linked migration preview and apply steps reported “Remote
-database is up to date.” Rollback anchor for this release (precondition 3):
-`dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS`, commit `bfdf8a2`, 2026-07-29 11:31 UTC.
+Current player-feature baseline: application runtime `61a1936` — the Energy
+Commitment and Clan Energy Battle release, deployed 2026-07-29 by workflow run
+30523606603, deployment `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` — and hosted
+migrations 001–059. Migration 059 applied through the reviewed workflow and the
+canonical application/database health check passed. Rollback anchor for this
+release (precondition 3): `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX`, commit `95ad7d3`.
+Migration 059 is forward-only and includes an explicit compatibility bridge for
+that prior application runtime.
 
-The workflow's rollback-anchor step is currently unreliable. Run 30460660086
+The workflow's rollback-anchor step is currently unreliable. Run 30523606603
 executed it after creating the staged `--prod --skip-domain` deployment, and
 `vercel ls --prod` therefore selected that new staged deployment rather than
-the outgoing canonical one. Its summary incorrectly named
-`dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` as its own rollback. The anchor above was
-recorded independently from the canonical alias before dispatch. Until the step
-is moved before staging or resolves the canonical alias directly, do not trust
-the generated summary as rollback evidence.
+the outgoing canonical one. Its summary therefore named the staged deployment
+instead of the independent outgoing anchor above. Until the step is moved
+before staging or resolves the canonical alias directly, do not trust the
+generated summary as rollback evidence.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
@@ -112,15 +113,19 @@ so verify cron state explicitly after any rollback.
 
 Treat the switch as a separate reviewed release:
 
-1. Create/verify seven live EUR tax-inclusive prices and the live webhook.
-2. Replace publishable key, secret key, webhook secret and all Price IDs in the
-   Vercel production environment together.
+1. Create/verify only the live EUR tax-inclusive product and price versions
+   named by the reviewed release catalog. The first commercial release is
+   Founding Keeper only; the current retired one-time IDs and old Premium plans
+   are not a launch catalog.
+2. Replace publishable key, secret key, webhook secret and the exact active Price
+   IDs in the Vercel production environment together.
 3. Keep old test prices active until the first live deployment succeeds; old
    deployments embed their public Price IDs.
 4. Dispatch the workflow with `payments_mode=live`; cloud-build validation must
    pass before promotion.
-5. Perform one low-value real purchase/refund with accounting approval, verify
-   idempotent credit and tax records, then monitor webhooks and Sentry.
+5. Perform one approved real purchase/refund, verify idempotent entitlement,
+   restoration, refund, consent and tax records, then monitor webhooks and
+   Sentry.
 
 ## Hosted development boundary
 

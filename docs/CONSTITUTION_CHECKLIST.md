@@ -1,7 +1,7 @@
 # Constitution Compliance Checklist
 
 Run on **every PR**. Copy into the PR description and check each line. A `[ ]` left
-unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.4) §4.
+unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.5) §4.
 Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer reads.
 
 ## The 15 Rules
@@ -22,8 +22,10 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   in full and immutable pedigree history retained.
 - [ ] **R7 — Commerce in its district.** Zero commercial surfaces in-run and on
   Results; ≤1 per screen elsewhere; no commercial notification/email/badge.
-- [ ] **R8 — Clans never grade, never bill.** No reward thresholds, no intra-clan
-  reward math, no officer lever keyed to member output, no purchasable clan number.
+- [ ] **R8 — Clans create responsibility, never payroll.** No intra-clan reward
+  tiers or minimums, no officer lever keyed to member output, no purchasable clan
+  number, and no visibility into another member's attempts, absence, threshold,
+  contribution, or rank.
 - [ ] **R9 — Pillars/numbers/calendar.** The change lands in Mastery, Lineage, or
   Discovery; surfaces on Score or Depth; schedules on Signal/Ascension, Serpent, or
   season — or an amendment is attached.
@@ -43,7 +45,7 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   slice, or "costs N segments". Anything that costs the player costs **growth**.
   *If a cost is written as "segments removed," it is pricing a reward with a
   reward — send it back.*
-- [ ] **R8 addendum (v1.4) — no member is individually visible.** No clan surface
+- [ ] **R8 addendum (v1.5) — no member is individually visible.** No clan surface
   ships another member's attempt count, absence, or per-member contribution.
 
 ## Mechanical gates ⚙ (run before review)

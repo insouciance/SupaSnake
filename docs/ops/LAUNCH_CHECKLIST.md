@@ -12,7 +12,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm run lint` is clean
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
-- [ ] All migrations apply from 001 through 057 on a clean database
+- [ ] All migrations apply from 001 through 059 on a clean database
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
       current baseline, or lists exactly the migrations named in a future
       release plan
@@ -35,6 +35,15 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Age gate rejects under-14 and accepts an eligible 14+ user
 - [ ] Guest → atomic PRIMAL bootstrap → run → DNA → daily reward flow persists
       after reload without mandatory Lab or a second Play action
+- [ ] Run Setup shows server-authoritative Energy, partial recovery, next-unit
+      time, 1–6 commitment choices and the exact multiplier; six Energy requires
+      a second deliberate confirmation
+- [ ] One-, multi-, crash, abandon, reconnect, revive, and duplicate-completion
+      journeys consume Energy exactly once and reconcile the displayed DNA with
+      the authoritative settlement
+- [ ] During an active clan cycle, positive-Energy normal runs attach at start,
+      update only the player's best five banked Yields, and expose no teammate
+      performance detail or paid advantage
 - [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and Codex
 - [ ] Registered deletion schedules 30 days out; a new sign-in cancels it
 - [ ] Guest deletion requires `DELETE MY ACCOUNT` and erases immediately
@@ -42,14 +51,21 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 ## Payments
 
 - [ ] Stripe remains in sandbox while running pre-launch checks
-- [ ] All five one-time and both Premium prices are EUR and tax-inclusive
+- [ ] The live source catalog contains only reviewed constitutional products;
+      retired Energy/DNA/variant products and the old Premium plans cannot be
+      checked out
+- [ ] Founding Keeper is the only first-launch SKU, is gross-EUR and
+      tax-inclusive, and previews every permanent entitlement before payment
 - [ ] Stripe Tax is active and Checkout requests automatic tax
-- [ ] Sandbox purchase credits exactly once and records the webhook event
-- [ ] Sandbox refund is reflected without an orphaned entitlement
-- [ ] Premium monthly/yearly checkout, portal cancellation, renewal, and failed
-      payment behavior are verified
-- [ ] Live-mode keys, seven live Price IDs, and a live webhook are installed as
-      one reviewed change; the production workflow is run with `live`
+- [ ] Sandbox purchase grants each entitlement exactly once and records the
+      order, line item, consent, provider event, and ownership source
+- [ ] Sandbox restore, refund, and dispute reconcile ownership without touching
+      earned cosmetics, DNA, progression, or unrelated permanent deliveries
+- [ ] Before Keeper is sold, monthly/yearly checkout, portal cancellation,
+      renewal, grace, lapse, restoration, and permanent-delivery behavior are
+      verified at the approved Keeper name and prices
+- [ ] Live-mode keys, the exact reviewed active Price IDs, and a live webhook
+      are installed as one change; the production workflow is run with `live`
 
 ## Legal and operations
 
@@ -70,7 +86,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Backups/PITR and current Vercel production deployment ID are recorded
 - [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (application first, database second)
 - [ ] Post-release health and core smoke checks pass on `supasnake.com`
-- [ ] All three cron routes reject no/incorrect bearer tokens
+- [ ] Every configured cron route rejects no/incorrect bearer tokens
 - [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs
 
 ## No-go triggers

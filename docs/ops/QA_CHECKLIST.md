@@ -3,16 +3,18 @@
 _Last updated: 2026-07-29_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
-pressure/visual-coherence follow-up, and D1 dynasty-pressure ruling. Work from
-top to bottom when doing a broad playtest; use the focused matrices near the end
-when verifying a fix.
+pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
+Commitment/Clan Energy Battle release. Work from top to bottom when doing a
+broad playtest; use the focused matrices near the end when verifying a fix.
 
 Design references:
 
 - [Game Design v2](../game/GAME_DESIGN_V2.md)
 - [Buildcraft: The Genome](../game/BUILDCRAFT_GENOME_DESIGN.md)
+- [Energy Commitment and Clan Battles](../game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
+- [Monetization Strategy](../game/MONETIZATION_STRATEGY.md)
 - [Player Flow & Interruption Policy](../game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
-- [Premium and billing QA](../game/QA_PREMIUM_BILLING.md)
+- [Supporter billing QA](../game/QA_PREMIUM_BILLING.md)
 - [Launch checklist](./LAUNCH_CHECKLIST.md)
 
 ## Current target and test rules
@@ -20,20 +22,21 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production commit | `b15b5c3` — dynasty pressure, rate events, coil/tail and terrain-rune feedback |
-| Vercel deployment | `dpl_8mvz76gzhGNSWRnRgoiTPTgFr1zV` |
-| Rollback deployment | `dpl_2AtMADdjpLTtNBeUUB1AFN59nAAS` — `bfdf8a2`; schema-057 compatible |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–057 deployed and aligned |
+| Production behavior commit | `61a1936` — Energy Commitment and automatic Clan Energy Battles |
+| Energy rollout deployment | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` |
+| Energy-release rollback | `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX` — `95ad7d3`; migration-059 compatibility bridge present |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–059 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; production release workflow `30460660086` at `b15b5c3` |
+| Canonical source | `main`; latest behavior/schema rollout workflow `30523606603` at `61a1936` |
 
-The complete Redesign Wave, migration 057, post-playtest food/floor fixes, the
-pressure/visual-coherence follow-up, and the D1 dynasty-pressure ruling are
-live. The current release added no migration: preview and apply were both
-verified no-ops, so the immediate rollback runtime remains schema-057
-compatible.
+The complete Redesign Wave, post-playtest food/floor fixes,
+pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
+Commitment/Clan Energy Battle system are live. The current release applied
+migration 059 through the reviewed production workflow. Its compatibility
+bridge lets the recorded pre-release application remain a valid emergency app
+rollback while the forward-only schema stays applied.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -48,6 +51,54 @@ Migration 057 applied in that release. The 2026-07-29 follow-up's linked preview
 and apply steps both reported “Remote database is up to date.” D1 was ruled on
 2026-07-29; the Growth Lab flag is historical and is not a release requirement
 once the dynasty-pressure follow-up is integrated.
+
+### Energy Commitment and Clan Energy Battle production evidence
+
+- PR 43 merged as exact main SHA `61a1936`. Production workflow
+  `30523606603` promoted `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` in Stripe test mode
+  and applied migration 059. The independently recorded outgoing deployment is
+  `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX` at `95ad7d3`.
+- The release gate passed 388/388 Jest suites and 5,568/5,568 tests with
+  coverage, TypeScript, ESLint, the production build, the blocking runtime
+  dependency audit with zero vulnerabilities, and `git diff --check`.
+- A disposable local Supabase reset applied migrations 001–059 from zero. The
+  Energy/Clan SQL integration exercised recovery, immutable consumption,
+  duplicate protection, battle assignment, best-five replacement, settlement,
+  and the old-runtime compatibility bridge inside a rollback transaction.
+- Both isolated-Supabase E2E configurations passed, along with 8×4 cockpit
+  geometry states, four real-WebGL profiles, and 22 frozen decision/legal
+  states.
+- The linked migration preview named only migration 059; apply completed and
+  canonical application/database health passed. Linked database lint had no
+  error. It reported two non-blocking migration-059 warnings: unused local
+  recovery variables and a conservative text-to-UUID-array cast warning. The
+  exercised SQL path passed; deployed migration history remains immutable.
+- Public production returned 200 on `/`, `/game`, `/clan`, `/serpent`, and
+  `/shop`; `/api/health` reported healthy application and database. Missing
+  bearer authentication returned 401 on the Serpent, session-sweep,
+  settlement-dispatch, and Signal settlement cron routes, and the clan Energy
+  Battle API rejected an unauthenticated request with 401.
+- The workflow's generated rollback summary remains unreliable because lookup
+  occurs after staging. The independent anchor above, not the generated staged
+  ID, is the release rollback evidence.
+
+### Energy Commitment — post-production manual rechecks
+
+- Compare one-, three-, and six-Energy runs. Confirm Run Setup defaults to one,
+  reflects server recovery/partial progress, updates the harvest preview
+  exactly, and makes six a deliberate two-step commitment.
+- Confirm Energy disappears once at start and is never refunded by crash,
+  abandon, poor result, reconnect, revive, or duplicate completion.
+- Compare all banks and Results against the server formula. Commitment applies
+  to credited normal-run DNA only; Score, Yield, Depth, Mastery, fixed rewards,
+  and leaderboard values remain unchanged.
+- During a live clan cycle, confirm every positive-Energy normal run announces
+  automatic eligibility, a banked result enters/replaces only the player's top
+  five, and the result explains the fifth-best threshold, replaced result, and
+  aggregate clan increase.
+- Observe commitment distribution, bank timing, effective reward per Energy,
+  high-frequency DNA inflation, late-cycle clustering, generation changes, and
+  whether strong one-Energy runs remain competitively meaningful.
 
 ### Redesign Wave — what to judge, and what is already known
 

@@ -47,10 +47,11 @@ but must be closed before marketing or opening the product commercially.
 2. Confirm the exact WKO Fachgruppe and supervisory-authority wording.
 3. Confirm signed/click-through DPAs and transfer mechanisms for Supabase,
    Vercel, PostHog, Sentry, Stripe, Resend and OpenAI.
-4. Keep the deployed 001–038 migration history aligned and assign an operator
+4. Keep the deployed 001–059 migration history aligned and assign an operator
    for `contact_messages` and `gdpr_requests` deadlines.
-5. Complete counsel review of the Premium subscription, Germany cancellation
-   surface, Terms, withdrawal flow, and final legal copy.
+5. Complete counsel review of Founding Keeper, the later Keeper subscription,
+   Germany cancellation surface, gifting/refund ownership, Terms, withdrawal
+   flow, and final legal copy.
 6. Establish the internal Article 30 processing record and Article 33
    72-hour breach-response owner/path.
 
@@ -78,3 +79,6 @@ but must be closed before marketing or opening the product commercially.
   migration.
 - Configure Resend and verify `noreply@supasnake.com` before advertising weekly
   digest e-mail as available.
+- Extend portability/export coverage to subscriptions, cosmetics, generic paid
+  entitlements, gifts, refunds/disputes, and permanent Season ownership before
+  any live commercial catalog opens.

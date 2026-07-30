@@ -1,6 +1,6 @@
 # Environment & Credentials Matrix
 
-Status: 2026-07-24. Values are never recorded in this file.
+Status: 2026-07-29. Values are never recorded in this file.
 
 ## Production
 
@@ -13,10 +13,10 @@ inside its cloud build/runtime.
 |---|---|---|
 | Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Configured; dedicated EU (`eu-central-1`) project |
 | Stripe core | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Configured in sandbox/test mode |
-| Stripe catalog | Five one-time `NEXT_PUBLIC_STRIPE_*` price IDs plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured; EUR, tax-inclusive prices |
+| Stripe catalog | Legacy one-time `NEXT_PUBLIC_STRIPE_*` names plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured for sandbox compatibility; the one-time source catalog is empty and the old Premium name/prices are not approved for live sale. Founding Keeper requires its own reviewed price mapping |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
-| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1` | `https://supasnake.com`, age 14, FTUE v2 and refined cockpit enabled |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit and Ladder enabled |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
 | Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |
@@ -39,9 +39,9 @@ Sensitive values are available.
 
 - Linked production project: `gmpwyzqafoyowndbvlma` (`supasnake`,
   `eu-central-1`).
-- Production has migrations 001–038. Migration 037's bootstrap/backfill and
-  migration 038's additive Training persistence were verified; the current
-  linked dry-run is a no-op.
+- Production has migrations 001–059. Migration 059's Energy Commitment and Clan
+  Energy Battle schema was applied by production workflow 30523606603; the
+  post-apply application/database health check passed.
 - Future pending migrations must be named in the release evidence and applied
   through the reviewed production workflow only.
 - Local and CI E2E use `supabase/config.toml` and a disposable Supabase stack;

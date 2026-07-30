@@ -3,7 +3,9 @@
 > **SUPERSEDED 2026-07-25** by `docs/PRODUCT_CONSTITUTION.md` §10, with the ruling
 > and its costs recorded in the Constitution's §15 Overturn Record (row 1) and the
 > owner's sign-off given via the Constitution brief. **Do not implement from this
-> document.** It is preserved unedited below as the historical record of the v1.0
+> document.** Use `MONETIZATION_STRATEGY.md` for the current catalog, boundaries,
+> and commerce implementation sequence. This file is preserved below as the
+> historical record of the v1.0
 > position (progression perks, energy SKUs, ~1.7× DNA guardrail) that the
 > Constitution overturned.
 
