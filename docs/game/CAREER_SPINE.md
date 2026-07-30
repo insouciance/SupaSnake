@@ -61,6 +61,12 @@ The emotional sequence is:
    choices, device preferences, and non-progress accessibility/UI preferences
    are outside this rule only when no player progress can be inferred from
    them.
+10. `NEXT_PUBLIC_CAREER_SPINE_V1` is a presentation-only rollback boundary.
+    When it is not the exact string `true`, the new Career Pulse, snake
+    passport, run-recognition review, attention reads, and seen transitions are
+    absent. Settlement, receipts, moments, lineage history, and every earned
+    mutation continue server-side; switching presentation off can never stop
+    or erase progress.
 
 ## 3. The canonical impact contract
 

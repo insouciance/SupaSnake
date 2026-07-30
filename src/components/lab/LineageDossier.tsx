@@ -12,6 +12,7 @@ import type {
   LineageDossier as LineageDossierContract,
   LineageSpecimen,
 } from '@/shared/progression/career';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 
 export type LineageDossierData = LineageDossierContract;
 
@@ -68,7 +69,7 @@ function RunFacts({ runs }: { runs: LineageSpecimen['runs'] }) {
   );
 }
 
-export function LineageDossier({
+function LineageDossierEnabled({
   accessToken,
   variantId,
   specimenId,
@@ -232,6 +233,11 @@ export function LineageDossier({
       )}
     </section>
   );
+}
+
+export function LineageDossier(props: LineageDossierProps) {
+  if (!CAREER_SPINE_V1_ENABLED) return null;
+  return <LineageDossierEnabled {...props} />;
 }
 
 export default LineageDossier;

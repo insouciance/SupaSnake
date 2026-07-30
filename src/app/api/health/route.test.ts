@@ -17,6 +17,9 @@ jest.mock('@supabase/supabase-js', () => ({
     rpc: jest.fn(() => Promise.resolve({ data: { version: 1 }, error: null })),
   })),
 }));
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -56,7 +59,11 @@ describe('GET /api/health', () => {
     expect(data.checks).toBeDefined();
     expect(data.checks.database).toBeDefined();
     expect(data.checks.database.status).toBe('healthy');
-    expect(data.checks.careerSpine).toEqual({ status: 'healthy', version: 1 });
+    expect(data.checks.careerSpine).toEqual({
+      status: 'healthy',
+      surfaceEnabled: true,
+      version: 1,
+    });
   });
 
   it('reports a rolling pre-migration capability without failing basic health', async () => {

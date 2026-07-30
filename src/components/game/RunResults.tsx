@@ -36,6 +36,7 @@ import {
   formatYieldMultiplier,
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 
 export type RunResultsOutcome = 'extracted' | 'crashed';
 export type TakeCollectState =
@@ -418,7 +419,7 @@ export function RunResults({
           data-testid="results-digest"
           onToggle={(event) => {
             const open = (event.currentTarget as HTMLDetailsElement).open;
-            if (open && impact) {
+            if (CAREER_SPINE_V1_ENABLED && open && impact) {
               trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_OPENED, {
                 session_id: impact.sessionId,
                 impact_count: impact.impacts.length,
@@ -436,14 +437,20 @@ export function RunResults({
           </summary>
           <div className="space-y-3 pt-3">
             <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
-              {impact
-                ? impactSummary(impact)
+              {CAREER_SPINE_V1_ENABLED
+                ? impact
+                  ? impactSummary(impact)
+                  : practice
+                    ? 'Practice advances no persistent progress.'
+                    : 'Run impact is pending server recovery.'
                 : practice
                   ? 'Practice advances no persistent progress.'
-                  : 'Run impact is pending server recovery.'}
+                  : 'Persistent progress was secured by the server.'}
             </p>
-            {impact && impactReviewStarted ? <ImpactReview envelope={impact} /> : null}
-            {!impact ? (
+            {CAREER_SPINE_V1_ENABLED && impact && impactReviewStarted ? (
+              <ImpactReview envelope={impact} />
+            ) : null}
+            {CAREER_SPINE_V1_ENABLED && !impact ? (
               <p className="font-body text-xs text-beige/60">
                 {practice
                   ? 'Only the live practice session existed; closing it leaves no earned state behind.'

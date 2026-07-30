@@ -39,6 +39,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
       NEXT_PUBLIC_FTUE_V2: 'true'
       NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
+      NEXT_PUBLIC_CAREER_SPINE_V1: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -181,7 +182,9 @@ jobs:
             --yes \
             --archive=tgz \
             --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
+            --build-env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
             --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
+            --env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
             --token="$VERCEL_TOKEN")
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Smoke staged application against the current schema
@@ -198,7 +201,7 @@ jobs:
                 -- \
                 --fail --show-error --silent --max-time 20) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .checks.database.status == "healthy" and .release == $release' >/dev/null; then
+                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.surfaceEnabled == true and .release == $release' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
@@ -222,7 +225,7 @@ jobs:
                 -- \
                 --fail --show-error --silent --max-time 20) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .release == $release' >/dev/null; then
+                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .checks.careerSpine.surfaceEnabled == true and .release == $release' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
@@ -262,7 +265,7 @@ jobs:
             if payload=$(curl --fail --show-error --silent --max-time 20 \
                 https://supasnake.com/api/health) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .release == $release' >/dev/null; then
+                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .checks.careerSpine.surfaceEnabled == true and .release == $release' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi

@@ -7,6 +7,7 @@ import {
   parseServerAttentionItem,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 
 /**
  * Synchronizes the inbox from server authority. No notification or earned
@@ -17,6 +18,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isLoading) return;
+    if (!CAREER_SPINE_V1_ENABLED) {
+      // Presentation rollback only: the server continues securing moments,
+      // while this build reads and clears none of them.
+      useNotificationStore.getState().replaceServerItems([]);
+      return;
+    }
     const token = session?.access_token;
     let cancelled = false;
 

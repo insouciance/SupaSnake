@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 
 interface HealthCheck {
   status: 'healthy' | 'unhealthy';
@@ -20,6 +21,7 @@ interface HealthCheck {
 
 interface CapabilityCheck {
   status: 'healthy' | 'pending' | 'unhealthy';
+  surfaceEnabled: boolean;
   version?: number;
   error?: string;
 }
@@ -47,7 +49,11 @@ async function checkCareerSpine(): Promise<CapabilityCheck> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
-    return { status: 'unhealthy', error: 'Career capability configuration missing' };
+    return {
+      status: 'unhealthy',
+      surfaceEnabled: CAREER_SPINE_V1_ENABLED,
+      error: 'Career capability configuration missing',
+    };
   }
   try {
     const supabase = createClient(supabaseUrl, serviceKey, {
@@ -56,17 +62,30 @@ async function checkCareerSpine(): Promise<CapabilityCheck> {
     const { data, error } = await supabase.rpc('get_career_spine_capability');
     if (error) {
       if (['42883', 'PGRST202'].includes(error.code ?? '')) {
-        return { status: 'pending', error: 'Career Spine migration pending' };
+        return {
+          status: 'pending',
+          surfaceEnabled: CAREER_SPINE_V1_ENABLED,
+          error: 'Career Spine migration pending',
+        };
       }
-      return { status: 'unhealthy', error: error.message };
+      return {
+        status: 'unhealthy',
+        surfaceEnabled: CAREER_SPINE_V1_ENABLED,
+        error: error.message,
+      };
     }
     const version = Number((data as { version?: unknown } | null)?.version);
     return version === 1
-      ? { status: 'healthy', version }
-      : { status: 'unhealthy', error: 'Unexpected Career Spine capability version' };
+      ? { status: 'healthy', surfaceEnabled: CAREER_SPINE_V1_ENABLED, version }
+      : {
+          status: 'unhealthy',
+          surfaceEnabled: CAREER_SPINE_V1_ENABLED,
+          error: 'Unexpected Career Spine capability version',
+        };
   } catch (error) {
     return {
       status: 'unhealthy',
+      surfaceEnabled: CAREER_SPINE_V1_ENABLED,
       error: error instanceof Error ? error.message : 'Unknown capability error',
     };
   }

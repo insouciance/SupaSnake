@@ -23,6 +23,7 @@ import type {
 } from '@/shared/progression/runImpact';
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { progressionArtifactHref } from '@/shared/progression/destinations';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 
 export type CareerPulseData = CareerPulseContract;
 
@@ -329,7 +330,7 @@ function RecentMoments({ moments }: { moments: ProgressionMoment[] }) {
   );
 }
 
-export function CareerPulse({ accessToken }: CareerPulseProps) {
+function CareerPulseEnabled({ accessToken }: CareerPulseProps) {
   const [pulse, setPulse] = useState<CareerPulseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -448,6 +449,11 @@ export function CareerPulse({ accessToken }: CareerPulseProps) {
       )}
     </section>
   );
+}
+
+export function CareerPulse(props: CareerPulseProps) {
+  if (!CAREER_SPINE_V1_ENABLED) return null;
+  return <CareerPulseEnabled {...props} />;
 }
 
 export default CareerPulse;

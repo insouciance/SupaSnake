@@ -3,6 +3,10 @@ import { RunResults, type RunResultsProps } from './RunResults';
 import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { RunImpactEnvelope } from '@/lib/game/runImpactClient';
 
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
+
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ children, href, ...rest }: React.PropsWithChildren<{ href: string }>) => (

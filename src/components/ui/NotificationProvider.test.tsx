@@ -6,6 +6,9 @@ let token: string | undefined = 'token';
 jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({ session: token ? { access_token: token } : null, isLoading: false }),
 }));
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
 
 describe('NotificationProvider', () => {
   beforeEach(() => {

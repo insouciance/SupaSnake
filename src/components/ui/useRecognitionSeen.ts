@@ -8,6 +8,7 @@ import {
   useNotificationStore,
   type NotificationDestination,
 } from '@/lib/stores/notificationStore';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 
 const recognitionTransitionsInFlight = new Set<string>();
 
@@ -33,6 +34,7 @@ export function useRecognitionSeen(
   const includeUnscoped = options?.includeUnscoped === true;
 
   useEffect(() => {
+    if (!CAREER_SPINE_V1_ENABLED) return;
     if (!contentIsVisible) return;
     const renderedArtifacts = new Set<string>(JSON.parse(artifactRefsKey));
     const recognition = Object.values(notifications).filter(

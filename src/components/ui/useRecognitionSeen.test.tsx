@@ -3,6 +3,9 @@ import { useRecognitionSeen } from './useRecognitionSeen';
 import { useNotificationStore, type ServerAttentionItem } from '@/lib/stores/notificationStore';
 
 jest.mock('@/lib/analytics/posthog', () => ({ trackEvent: jest.fn() }));
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
 
 const recognition: ServerAttentionItem = {
   id: 'codex-moment',

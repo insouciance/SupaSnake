@@ -136,6 +136,7 @@ import {
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import {
   DEFAULT_LADDER_RUNG,
   LADDER_RUNGS,
@@ -2363,7 +2364,9 @@ export default function GamePage() {
         isFirstCompletedRun: showFirstResultDiscovery,
         codexDiscoveries: codexDiscoveries.length,
         practice: lastRunFree,
-        impactAction: runImpact?.recommendedAction ?? null,
+        impactAction: CAREER_SPINE_V1_ENABLED
+          ? runImpact?.recommendedAction ?? null
+          : null,
       }),
     [
       codexDiscoveries.length,

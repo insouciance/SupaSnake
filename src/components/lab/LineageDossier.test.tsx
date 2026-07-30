@@ -3,6 +3,10 @@ import '@testing-library/jest-dom';
 import { LineageDossier, type LineageDossierData } from './LineageDossier';
 import { useNotificationStore } from '@/lib/stores/notificationStore';
 
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
+
 const runs = {
   completed: 12,
   extractions: 8,

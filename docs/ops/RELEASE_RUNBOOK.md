@@ -55,6 +55,8 @@ performs:
    to the dispatch's exact `expected_migrations` filenames (`none` for a no-op).
 4. A production-target cloud build. `next.config.js` validates the decrypted
    environment values and fails on wrong URL, Stripe mode, Price IDs or keys.
+   The workflow explicitly compiles `NEXT_PUBLIC_CAREER_SPINE_V1=true`; the
+   flag is presentation-only and never gates settlement or earned progress.
 5. A staged `--prod --skip-domain` deployment and authenticated health check
    against the current schema. Deployment protection must remain enabled.
 6. Application of pending backward-compatible forward Supabase migrations and
@@ -63,8 +65,9 @@ performs:
    SHA and Career Spine capability version against the migrated schema,
    followed by a canonical database-health check of the outgoing application.
 8. Promotion of the staged build to `supasnake.com`.
-9. Final canonical production health check asserting the promoted release SHA
-   and Career Spine capability version.
+9. Final canonical production health check asserting the promoted release SHA,
+   Career Spine capability version, and that this artifact was compiled with
+   the Career Spine presentation flag enabled.
 
 The protected staged-health command consumes `VERCEL_TOKEN` from the job
 environment. With Vercel CLI 56, do not repeat that credential as an explicit

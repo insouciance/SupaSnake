@@ -3,6 +3,10 @@ import '@testing-library/jest-dom';
 import { CareerPulse, type CareerPulseData } from './CareerPulse';
 import { useNotificationStore } from '@/lib/stores/notificationStore';
 
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
+
 const PULSE: CareerPulseData = {
   generatedAt: '2026-07-30T12:00:00.000Z',
   mastery: [
