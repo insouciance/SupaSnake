@@ -3499,6 +3499,18 @@ export default function GamePage() {
                     </p>
                   </div>
                 )}
+                {settlementSecuredPending && !lastRunFree ? (
+                  <div
+                    className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg px-5 py-4 text-left"
+                    data-testid="legacy-results-settlement-pending"
+                    role="status"
+                  >
+                    <p className="label-arcade text-[#7df9ff]">Run secured</p>
+                    <p className="mt-1 font-body text-sm text-beige/85">
+                      DNA and Career progress are finalizing on the server. You can safely leave this screen.
+                    </p>
+                  </div>
+                ) : null}
                 {/* Identity v1 (section 4.3): your card at the moment of
                     judgment - claim affordance while the name is generated */}
                 {ownIdentity && (
@@ -3517,7 +3529,9 @@ export default function GamePage() {
                   <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
                     <IconDna size={22} className="text-venom-orange" />
                     DNA:{' '}
-                    {lastRunFree ? (
+                    {settlementSecuredPending && !lastRunFree ? (
+                      <span className="font-bold text-[#7df9ff]">Finalizing…</span>
+                    ) : lastRunFree ? (
                       // The stakes they practiced for: server-priced when the
                       // end POST succeeded, local recompute as the fallback
                       <span
@@ -3555,7 +3569,7 @@ export default function GamePage() {
                       ))}
                     </div>
                   )}
-                  {streakInfo && (
+                  {!settlementSecuredPending && streakInfo && (
                     <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                       <IconFlame size={18} className="text-venom-orange" />
                       Day <span className="font-bold text-venom-orange">{streakInfo.current}</span> streak
@@ -3563,7 +3577,7 @@ export default function GamePage() {
                   )}
                   {/* Mastery XP (Design v2 §7.1) - banked XP from this
                       extraction + the level-up moment when a rung falls */}
-                  {masteryResult && (
+                  {!settlementSecuredPending && masteryResult && (
                     <div className="space-y-2 pt-1" data-testid="gameover-mastery">
                       <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                         <span className="font-bold text-[#7df9ff]">
@@ -3613,7 +3627,11 @@ export default function GamePage() {
                     data-testid="first-result-discovery"
                   >
                     <p className="heading-display text-xl text-[#7df9ff]">
-                      {lastRunFree ? 'Your first run is complete.' : 'You earned DNA.'}
+                      {lastRunFree
+                        ? 'Your first run is complete.'
+                        : settlementSecuredPending
+                          ? 'Your first run is secured.'
+                          : 'You earned DNA.'}
                     </p>
                     <p className="font-body text-sm text-beige/80">
                       Visit the Lab to discover more snakes, or keep playing with{' '}
@@ -3652,7 +3670,7 @@ export default function GamePage() {
                 {/* The Analyst's post-run insight (Identity v1 section 9.2):
                     lazy, additive, never blocks the game-over flow —
                     pre-025/disabled/guest states render nothing */}
-                {currentSessionId && session?.access_token && !lastRunFree && (
+                {currentSessionId && session?.access_token && !lastRunFree && !settlementSecuredPending && (
                   <RunInsightCard
                     sessionId={currentSessionId}
                     accessToken={session.access_token}
@@ -3760,10 +3778,10 @@ export default function GamePage() {
                    ModeToggle says so above. */
                 <button
                   onClick={() => handleStart(gameMode === 'anomaly' ? 'anomaly' : 'earn')}
-                  disabled={isStarting || !equippedSnake}
+                  disabled={isStarting || !equippedSnake || settlementSecuredPending}
                   data-testid={gameMode === 'anomaly' ? 'anomaly-start' : 'earn-start'}
                   className={`btn-go inline-flex items-center gap-2 px-8 py-4 text-xl min-h-[44px] ${
-                    isStarting || !equippedSnake
+                    isStarting || !equippedSnake || settlementSecuredPending
                       ? 'cursor-wait'
                       : 'animate-glow-pulse shadow-venom-orange/50'
                   }`}
