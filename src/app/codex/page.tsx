@@ -32,6 +32,7 @@ import { WorkbenchView } from '@/components/workbench/WorkbenchView';
 import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import { NavBar } from '@/components/ui/NavBar';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconDna, IconFlask } from '@/components/ui/icons';
 import { GENES } from '@/shared/game/genes';
@@ -231,6 +232,14 @@ function CodexShell({ view }: { view: CodexView }) {
   useEffect(() => {
     if (session?.access_token) void fetchCodex(session.access_token);
   }, [session?.access_token, fetchCodex]);
+
+  // The Codex dot clears only when this player's discovery layer has actually
+  // loaded. Merely navigating to the public rules reference is not enough.
+  useRecognitionSeen(
+    'codex',
+    Boolean(session?.access_token) && !isLoading && data !== null,
+    session?.access_token
+  );
 
   return (
     <div className="app-bg min-h-screen text-bone-white px-4 sm:px-6 pt-8 pb-28 sm:pb-8 sm:pr-16">

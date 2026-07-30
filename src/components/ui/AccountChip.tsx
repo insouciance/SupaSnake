@@ -21,6 +21,7 @@ import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import {
   destinationBadge,
   subscribeNotificationAction,
+  transitionServerNotification,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 
@@ -29,7 +30,7 @@ interface AccountChipProps {
 }
 
 export function AccountChip({ className = '' }: AccountChipProps) {
-  const { user, isAnonymous, isLoading, signOut } = useAuth();
+  const { user, session, isAnonymous, isLoading, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -40,9 +41,26 @@ export function AccountChip({ className = '' }: AccountChipProps) {
 
   useEffect(() => {
     if (notificationsHydrated && !isLoading && !isAnonymous) {
-      clearNotification('save-progress');
+      const item = useNotificationStore.getState().notifications['save-progress'];
+      if (item?.serverManaged && session?.access_token) {
+        void transitionServerNotification(
+          item.id,
+          'resolved',
+          session.access_token
+        ).catch((error) => {
+          console.error('Failed to resolve save-progress attention:', error);
+        });
+      } else {
+        clearNotification('save-progress');
+      }
     }
-  }, [isAnonymous, isLoading, notificationsHydrated, clearNotification]);
+  }, [
+    isAnonymous,
+    isLoading,
+    notificationsHydrated,
+    clearNotification,
+    session?.access_token,
+  ]);
 
   useEffect(() => {
     if (!isAnonymous) return;

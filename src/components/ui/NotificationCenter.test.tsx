@@ -6,6 +6,14 @@ import {
 } from '@/lib/stores/notificationStore';
 import { NotificationCenter } from './NotificationCenter';
 
+jest.mock('@/lib/auth/AuthProvider', () => ({
+  useAuth: () => ({ session: null }),
+}));
+
+jest.mock('@/lib/analytics/posthog', () => ({
+  trackEvent: jest.fn(),
+}));
+
 function publishContracts() {
   useNotificationStore.getState().publish({
     id: 'contracts',
@@ -86,7 +94,7 @@ describe('NotificationCenter', () => {
         description: 'A progression opportunity is available.',
         ...NOTIFICATION_TARGETS.lab,
         badgeKind: 'exclamation',
-        attentionReason: 'progression-opportunity',
+        attentionReason: 'action-required',
         actionLabel: 'Visit the Lab',
       });
     }
@@ -100,5 +108,22 @@ describe('NotificationCenter', () => {
       'flex-1',
       'overflow-y-auto'
     );
+  });
+
+  it('keeps recognition out of the global action inbox', () => {
+    useNotificationStore.getState().publish({
+      id: 'record-gold',
+      title: 'Record reached Gold',
+      description: 'See it in the Chronicle.',
+      destination: 'records',
+      href: '/profile#records',
+      badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+    });
+    render(<NotificationCenter />);
+    expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
+    expect(screen.queryByText('Record reached Gold')).toBeNull();
   });
 });

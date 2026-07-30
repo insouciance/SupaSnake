@@ -92,6 +92,11 @@ export const AnalyticsEvents = {
   CHALLENGE_COMPLETED: 'challenge_completed',
   NOTIFICATION_OPENED: 'notification_opened',
   NOTIFICATION_DISMISSED: 'notification_dismissed',
+  RUN_IMPACT_REVIEW_OPENED: 'run_impact_review_opened',
+  RUN_IMPACT_REVIEW_ADVANCED: 'run_impact_review_advanced',
+  RUN_IMPACT_REVIEW_SKIPPED: 'run_impact_review_skipped',
+  RUN_IMPACT_REVIEW_COMPLETED: 'run_impact_review_completed',
+  RECOGNITION_DESTINATION_SEEN: 'recognition_destination_seen',
 
   // Social Events
   CLAN_VIEWED: 'clan_viewed',
