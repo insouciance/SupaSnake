@@ -259,8 +259,9 @@ jobs:
             --format=json --non-interactive --token="$VERCEL_TOKEN")
           deployment_id=$(printf '%s' "$deployment_json" | jq -er '.id')
           deployment_ready=$(printf '%s' "$deployment_json" | jq -er '.readyState')
-          if [ "$deployment_ready" != 'READY' ]; then
-            echo "::error::staged deployment is not READY"
+          deployment_target=$(printf '%s' "$deployment_json" | jq -er '.target')
+          if [ "$deployment_ready" != 'READY' ] || [ "$deployment_target" != 'production' ]; then
+            echo "::error::staged deployment is not a READY production-target artifact"
             exit 1
           fi
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
