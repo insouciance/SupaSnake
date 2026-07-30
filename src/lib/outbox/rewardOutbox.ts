@@ -53,6 +53,7 @@ export interface ReplayResult {
 }
 
 let memoryQueue: RewardOutboxEntry[] = [];
+let legacyDrainInFlight: { token: string; promise: Promise<ReplayResult> } | null = null;
 
 function isValidEntry(value: unknown): value is RewardOutboxEntry {
   if (!value || typeof value !== 'object') return false;
@@ -223,7 +224,7 @@ async function submitEntry(
  * Successfully replayed entries may be sent again while another legacy entry
  * is transient; session settlement and receipt recovery are idempotent.
  */
-export async function drainLegacyRewardOutbox(
+async function drainLegacyRewardOutboxOnce(
   token: string,
   storage?: Storage,
   fetchFn: typeof fetch = fetch
@@ -255,6 +256,28 @@ export async function drainLegacyRewardOutbox(
 
   if (remaining === 0) removeLegacyOutbox(storage);
   return { replayed, dropped, remaining, impacts };
+}
+
+export function drainLegacyRewardOutbox(
+  token: string,
+  storage?: Storage,
+  fetchFn: typeof fetch = fetch
+): Promise<ReplayResult> {
+  // React Strict Mode, token refresh, Home and Game can all request the
+  // migration at once. Coalesce only the real browser/default-fetch path;
+  // explicit test/injected transports remain independently observable.
+  const coalesce = storage === undefined && fetchFn === fetch;
+  if (coalesce && legacyDrainInFlight?.token === token) {
+    return legacyDrainInFlight.promise;
+  }
+  const promise = drainLegacyRewardOutboxOnce(token, storage, fetchFn);
+  if (!coalesce) return promise;
+  legacyDrainInFlight = { token, promise };
+  const clear = () => {
+    if (legacyDrainInFlight?.promise === promise) legacyDrainInFlight = null;
+  };
+  void promise.then(clear, clear);
+  return promise;
 }
 
 /**

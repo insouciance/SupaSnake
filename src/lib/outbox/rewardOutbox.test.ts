@@ -173,4 +173,24 @@ describe('tab-memory settlement retry queue', () => {
     expect(fetchFn).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
   });
+
+  it('coalesces concurrent default-browser drains', async () => {
+    window.localStorage.setItem(
+      LEGACY_REWARD_OUTBOX_KEY,
+      JSON.stringify([makeEntry()])
+    );
+    let resolveFetch: ((value: Response) => void) | undefined;
+    global.fetch = jest.fn().mockImplementation(
+      () => new Promise<Response>((resolve) => { resolveFetch = resolve; })
+    ) as jest.Mock;
+
+    const first = drainLegacyRewardOutbox('token');
+    const second = drainLegacyRewardOutbox('token');
+    expect(first).toBe(second);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    resolveFetch?.(response(200, { impact }));
+    await expect(first).resolves.toMatchObject({ replayed: 1, remaining: 0 });
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
+  });
 });
