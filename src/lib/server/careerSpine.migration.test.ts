@@ -8,7 +8,7 @@ const migration = fs.readFileSync(
 const code = migration.replace(/--[^\n]*/g, '');
 
 describe('migration 060 Career Spine', () => {
-  it('auto-secures reached Season 1 tiers and retires the manual claim RPC', () => {
+  it('auto-secures only valid identity tiers and leaves a service-only rolling bridge', () => {
     const start = code.indexOf('CREATE OR REPLACE FUNCTION secure_reached_season_entitlements');
     const end = code.indexOf('$$ LANGUAGE plpgsql SECURITY DEFINER', start);
     const body = code.slice(start, end);
@@ -17,9 +17,18 @@ describe('migration 060 Career Spine', () => {
     expect(body).toMatch(/INSERT INTO player_cosmetics/);
     expect(body).toMatch(/t\.reward_type IN \('cosmetic', 'title'\)/);
     expect(body).toMatch(/INSERT INTO player_battle_pass_claims/);
+    expect((body.match(/t\.reward_type IN \('cosmetic', 'title'\)/g) ?? [])).toHaveLength(3);
+    expect((body.match(/JOIN cosmetic_definitions cd ON cd\.id = t\.reward_id/g) ?? [])).toHaveLength(3);
+    expect(body).toMatch(/RAISE EXCEPTION 'INVALID_SEASON_IDENTITY_TIER'/);
     expect(body).toMatch(/ON CONFLICT \(player_id, tier_id\) DO NOTHING/);
     expect(body).not.toMatch(/UPDATE players|economy_transactions|reward_type = 'dna'|reward_type = 'energy'/);
-    expect(code).toMatch(/DROP FUNCTION IF EXISTS claim_season_tier\(UUID, INTEGER\)/);
+    expect(code).not.toMatch(/DROP FUNCTION IF EXISTS claim_season_tier/);
+    expect(code).toMatch(/CREATE OR REPLACE FUNCTION claim_season_tier/);
+    expect(code).toMatch(/'secured', true/);
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION claim_season_tier\(UUID, INTEGER\)\s+FROM PUBLIC, anon, authenticated/
+    );
+    expect(code).toMatch(/GRANT EXECUTE ON FUNCTION claim_season_tier\(UUID, INTEGER\) TO service_role/);
     expect(code).toMatch(/AFTER INSERT ON player_battle_pass/);
     expect(code).toMatch(/AFTER UPDATE OF current_level, is_premium ON player_battle_pass/);
     expect(code).toMatch(
@@ -42,6 +51,7 @@ describe('migration 060 Career Spine', () => {
     expect(body).toMatch(/ON CONFLICT \(session_id\) DO NOTHING/);
     expect(body).toMatch(/INSERT INTO progression_moments/);
     expect(body).toMatch(/INSERT INTO player_attention_items/);
+    expect(body).toMatch(/attention_kind, destination, headline, detail, artifact_ref/);
     expect(body).toMatch(/v_significance IN \('milestone', 'historic'\)/);
     expect(body).not.toMatch(/UPDATE players|economy_transactions/);
   });
@@ -50,6 +60,35 @@ describe('migration 060 Career Spine', () => {
     expect(code).toMatch(/attention_kind = 'action' OR status NOT IN \('resolved', 'dismissed'\)/);
     expect(code).toMatch(/v_item\.attention_kind <> 'action'/);
     expect(code).toMatch(/RAISE EXCEPTION 'INVALID_ATTENTION_TRANSITION'/);
+    expect(code).toMatch(/'artifactRef', v_item\.artifact_ref/);
+    expect(code).toMatch(/char_length\(btrim\(artifact_ref\)\) BETWEEN 1 AND 300/);
+    expect(code).toMatch(
+      /char_length\(btrim\(COALESCE\(v_impact ->> 'artifactRef', ''\)\)\) > 0/
+    );
+  });
+
+  it('exposes a service-only release capability after the complete contract', () => {
+    expect(code).toMatch(/CREATE OR REPLACE FUNCTION get_career_spine_capability\(\)/);
+    expect(code).toMatch(/'version', 1/);
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION get_career_spine_capability\(\) FROM PUBLIC, anon, authenticated/
+    );
+    expect(code).toMatch(
+      /GRANT EXECUTE ON FUNCTION get_career_spine_capability\(\) TO service_role/
+    );
+  });
+
+  it('keeps auth UUID identity bridges behind server routes', () => {
+    expect(code).toMatch(
+      /REVOKE SELECT ON player_identity_view FROM PUBLIC, anon, authenticated/
+    );
+    expect(code).toMatch(/GRANT SELECT ON player_identity_view TO service_role/);
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION get_player_identities\(UUID\[\]\) FROM PUBLIC, anon, authenticated/
+    );
+    expect(code).toMatch(
+      /GRANT EXECUTE ON FUNCTION get_player_identities\(UUID\[\]\) TO service_role/
+    );
   });
 
   it('makes every progress table server-write-only with own-row reads', () => {
@@ -81,6 +120,8 @@ describe('migration 060 Career Spine', () => {
     expect(code).toMatch(/specimen_id UUID NOT NULL REFERENCES lineage_specimens\(specimen_id\) ON DELETE CASCADE/);
     expect(code).toMatch(/ON CONFLICT \(session_id\) DO NOTHING/);
     expect(code).toMatch(/IF v_inserted IS NULL THEN RETURN FALSE/);
+    expect(code).toMatch(/WHEN v_run\.extracted THEN GREATEST\(highest_energy/);
+    expect(code).toMatch(/MAX\(energy_committed\) FILTER \(WHERE extracted\)/);
   });
 
   it('keeps all mutation functions service-role only', () => {

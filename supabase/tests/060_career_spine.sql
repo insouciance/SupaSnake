@@ -126,8 +126,9 @@ BEGIN
           'traits', '[]'::JSONB, 'lineage', NULL
         ),
         'parent1', NULL, 'parent2', NULL
-      )
+  )
   WHERE id = v_history;
+  -- constitution-allow: owned-row-downward test fixture simulates the production refund RPC and verifies permanent archival
   DELETE FROM collected_snakes WHERE id = v_child;
 
   IF NOT EXISTS (

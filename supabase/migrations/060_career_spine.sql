@@ -49,6 +49,19 @@ BEGIN
 
   v_has_premium := v_pass.is_premium OR has_premium(p_player_id);
 
+  IF EXISTS (
+    SELECT 1
+    FROM battle_pass_tiers t
+    LEFT JOIN cosmetic_definitions cd ON cd.id = t.reward_id
+    WHERE t.season_id = p_season_id
+      AND t.level <= v_pass.current_level
+      AND (NOT t.is_premium OR v_has_premium)
+      AND t.reward_type IN ('cosmetic', 'title')
+      AND (t.reward_id IS NULL OR cd.id IS NULL)
+  ) THEN
+    RAISE EXCEPTION 'INVALID_SEASON_IDENTITY_TIER';
+  END IF;
+
   -- Preserve the existing goodwill rule: once a current subscriber reaches
   -- this chapter, its premium identity rewards remain theirs after a lapse.
   IF v_has_premium AND NOT v_pass.is_premium THEN
@@ -74,9 +87,12 @@ BEGIN
   INSERT INTO player_battle_pass_claims(player_id, season_id, tier_id)
   SELECT p_player_id, p_season_id, t.id
   FROM battle_pass_tiers t
+  JOIN cosmetic_definitions cd ON cd.id = t.reward_id
   WHERE t.season_id = p_season_id
     AND t.level <= v_pass.current_level
     AND (NOT t.is_premium OR v_has_premium)
+    AND t.reward_type IN ('cosmetic', 'title')
+    AND t.reward_id IS NOT NULL
   ON CONFLICT (player_id, tier_id) DO NOTHING;
   GET DIAGNOSTICS v_secured_receipts = ROW_COUNT;
 
@@ -135,12 +151,68 @@ BEGIN
   END LOOP;
 END $$;
 
-DROP FUNCTION IF EXISTS claim_season_tier(UUID, INTEGER);
+-- Rolling-deploy bridge for the previous application. The retired POST path
+-- can still call this service-only function while migration 060 is live but
+-- before the new application is promoted. It secures all supported identity
+-- tiers atomically and returns one already-secured tier in the old response
+-- shape; it never creates player claim debt or mints a retired reward.
+CREATE OR REPLACE FUNCTION claim_season_tier(
+  p_player_id UUID,
+  p_level INTEGER
+) RETURNS JSONB AS $$
+DECLARE
+  v_tier RECORD;
+BEGIN
+  SELECT t.id, t.season_id, t.level, t.is_premium, t.reward_type,
+         t.reward_id, t.reward_amount
+  INTO v_tier
+  FROM player_battle_pass pbp
+  JOIN battle_pass_seasons bps ON bps.id = pbp.season_id
+  JOIN battle_pass_tiers t ON t.season_id = pbp.season_id
+  JOIN cosmetic_definitions cd ON cd.id = t.reward_id
+  WHERE pbp.player_id = p_player_id
+    AND bps.is_active
+    AND NOW() >= bps.starts_at
+    AND NOW() < bps.ends_at
+    AND pbp.current_level >= p_level
+    AND t.level = p_level
+    AND t.reward_type IN ('cosmetic', 'title')
+    AND t.reward_id IS NOT NULL
+    AND (NOT t.is_premium OR pbp.is_premium OR has_premium(p_player_id))
+  ORDER BY t.is_premium ASC, t.id
+  LIMIT 1;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'NO_SUPPORTED_TIER_AT_LEVEL'; END IF;
+  PERFORM secure_reached_season_entitlements(p_player_id, v_tier.season_id);
+
+  RETURN jsonb_build_object(
+    'level', v_tier.level,
+    'is_premium', v_tier.is_premium,
+    'reward_type', v_tier.reward_type,
+    'reward_id', v_tier.reward_id,
+    'reward_amount', v_tier.reward_amount,
+    'reroll_tokens', 0,
+    'secured', true
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION claim_season_tier(UUID, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION claim_season_tier(UUID, INTEGER) TO service_role;
 
 COMMENT ON TABLE player_battle_pass_claims IS
   'Immutable auto-settlement receipts for reached season tiers. No player claim action remains.';
 COMMENT ON COLUMN player_battle_pass_claims.claimed_at IS
   'Legacy column name: the timestamp at which this reached tier became secured automatically.';
+
+-- Identity reads are mediated by server routes. The historical public view
+-- includes auth UUIDs solely so trusted roster code can bridge id spaces;
+-- exposing the raw view or batch RPC directly would leak those identifiers.
+REVOKE SELECT ON player_identity_view FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON player_identity_view TO service_role;
+REVOKE ALL ON FUNCTION get_player_identities(UUID[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION get_player_identities(UUID[]) TO service_role;
 
 -- -----------------------------------------------------------------------------
 -- 1. Canonical versioned receipt (one immutable answer per settled session)
@@ -196,7 +268,9 @@ CREATE TABLE progression_moments (
   destination TEXT CHECK (destination IS NULL OR destination IN (
     'chronicle', 'mastery', 'records', 'codex', 'signal', 'clan', 'lab', 'lineage'
   )),
-  artifact_ref TEXT CHECK (artifact_ref IS NULL OR char_length(artifact_ref) <= 300),
+  artifact_ref TEXT CHECK (
+    artifact_ref IS NULL OR char_length(btrim(artifact_ref)) BETWEEN 1 AND 300
+  ),
   payload JSONB NOT NULL DEFAULT '{}'::JSONB CHECK (jsonb_typeof(payload) = 'object'),
   secured_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -228,6 +302,9 @@ CREATE TABLE player_attention_items (
   )),
   headline TEXT NOT NULL CHECK (char_length(headline) BETWEEN 1 AND 160),
   detail TEXT CHECK (detail IS NULL OR char_length(detail) <= 500),
+  artifact_ref TEXT CHECK (
+    artifact_ref IS NULL OR char_length(btrim(artifact_ref)) BETWEEN 1 AND 300
+  ),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   seen_at TIMESTAMPTZ,
   resolved_at TIMESTAMPTZ,
@@ -238,6 +315,14 @@ CREATE TABLE player_attention_items (
   ),
   CONSTRAINT recognition_never_action_terminal CHECK (
     attention_kind = 'action' OR status NOT IN ('resolved', 'dismissed')
+  ),
+  CONSTRAINT recognition_has_exact_artifact CHECK (
+    attention_kind <> 'recognition'
+    OR (
+      moment_id IS NOT NULL
+      AND artifact_ref IS NOT NULL
+      AND char_length(btrim(artifact_ref)) > 0
+    )
   )
 );
 
@@ -252,6 +337,89 @@ CREATE POLICY player_attention_items_select_own ON player_attention_items
 
 COMMENT ON TABLE player_attention_items IS
   'Cross-device attention state. Recognition clears only when the exact destination content is viewed; action items remain until resolved or deliberately dismissed.';
+
+-- Clan honors are permanent personal history, not properties of the clan a
+-- player happens to belong to later. Materialize future awards at insertion so
+-- switching/leaving a clan can never orphan the earned social proof.
+CREATE OR REPLACE FUNCTION materialize_clan_energy_honor()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_moment_id UUID;
+  v_significance TEXT;
+  v_headline TEXT;
+BEGIN
+  v_significance := CASE NEW.honor
+    WHEN 'victor' THEN 'historic'
+    WHEN 'stalemate' THEN 'milestone'
+    ELSE 'notable'
+  END;
+  v_headline := CASE NEW.honor
+    WHEN 'victor' THEN 'Clan Energy Battle victory'
+    WHEN 'stalemate' THEN 'Clan Energy Battle stalemate'
+    ELSE 'Clan Energy Battle served'
+  END;
+
+  INSERT INTO progression_moments(
+    player_id, source_type, source_id, moment_key, pillar, kind,
+    significance, headline, detail, destination, artifact_ref, payload, secured_at
+  ) VALUES (
+    NEW.player_id, 'clan_battle', NEW.battle_id::TEXT, 'honor', 'clan',
+    'clan_battle_honor', v_significance, v_headline,
+    'Permanent personal proof of contribution to a completed battle.',
+    'chronicle', 'clan-battle:' || NEW.battle_id,
+    jsonb_build_object(
+      'battleId', NEW.battle_id,
+      'clanId', NEW.clan_id,
+      'honor', NEW.honor
+    ),
+    NEW.awarded_at
+  )
+  ON CONFLICT (player_id, source_type, source_id, moment_key) DO UPDATE
+    SET payload = progression_moments.payload
+  RETURNING id INTO v_moment_id;
+
+  IF NEW.honor IN ('victor', 'stalemate') THEN
+    INSERT INTO player_attention_items(
+      player_id, moment_id, source_type, source_id, attention_key,
+      attention_kind, destination, headline, detail, artifact_ref
+    ) VALUES (
+      NEW.player_id, v_moment_id, 'clan_battle', NEW.battle_id::TEXT,
+      'honor', 'recognition', 'chronicle', v_headline,
+      'Your permanent clan honor is now in the Chronicle.',
+      'clan-battle:' || NEW.battle_id
+    ) ON CONFLICT (player_id, source_type, source_id, attention_key) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION materialize_clan_energy_honor()
+  FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS clan_energy_honor_materialize ON clan_energy_honors;
+CREATE TRIGGER clan_energy_honor_materialize
+AFTER INSERT ON clan_energy_honors
+FOR EACH ROW EXECUTE FUNCTION materialize_clan_energy_honor();
+
+-- Existing honors become Chronicle history without creating retroactive badge
+-- debt. Future INSERTs use the trigger above and may create recognition.
+INSERT INTO progression_moments(
+  player_id, source_type, source_id, moment_key, pillar, kind,
+  significance, headline, detail, destination, artifact_ref, payload, secured_at
+)
+SELECT h.player_id, 'clan_battle', h.battle_id::TEXT, 'honor', 'clan',
+       'clan_battle_honor',
+       CASE h.honor WHEN 'victor' THEN 'historic'
+                    WHEN 'stalemate' THEN 'milestone' ELSE 'notable' END,
+       CASE h.honor WHEN 'victor' THEN 'Clan Energy Battle victory'
+                    WHEN 'stalemate' THEN 'Clan Energy Battle stalemate'
+                    ELSE 'Clan Energy Battle served' END,
+       'Permanent personal proof of contribution to a completed battle.',
+       'chronicle', 'clan-battle:' || h.battle_id,
+       jsonb_build_object('battleId', h.battle_id, 'clanId', h.clan_id, 'honor', h.honor),
+       h.awarded_at
+FROM clan_energy_honors h
+ON CONFLICT (player_id, source_type, source_id, moment_key) DO NOTHING;
 
 -- One optional pursuit chosen from server-derived candidates. It is an
 -- organizing preference, never another progress meter or reward source.
@@ -387,6 +555,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   v_dossier_id UUID;
   v_history_id UUID;
+  v_moment_id UUID;
 BEGIN
   v_dossier_id := ensure_lineage_dossier(NEW.player_id, NEW.snake_variant_id);
   SELECT bh.id INTO v_history_id
@@ -413,7 +582,7 @@ BEGIN
   ON CONFLICT (specimen_id) DO UPDATE SET
     dossier_id = EXCLUDED.dossier_id,
     status = 'active',
-    generation = EXCLUDED.generation,
+    generation = GREATEST(lineage_specimens.generation, EXCLUDED.generation),
     parent1_specimen_id = EXCLUDED.parent1_specimen_id,
     parent2_specimen_id = EXCLUDED.parent2_specimen_id,
     traits = EXCLUDED.traits,
@@ -424,6 +593,47 @@ BEGIN
     updated_at = NOW();
 
   UPDATE lineage_dossiers SET updated_at = NOW() WHERE id = v_dossier_id;
+
+  IF TG_OP = 'INSERT' THEN
+  INSERT INTO progression_moments(
+    player_id, source_type, source_id, moment_key, pillar, kind,
+    significance, headline, detail, destination, artifact_ref, payload, secured_at
+  ) VALUES (
+    NEW.player_id, 'lineage', NEW.id::TEXT, 'specimen-acquired', 'lineage',
+    'lineage_specimen_acquired',
+    CASE WHEN NEW.generation > 1 THEN 'milestone' ELSE 'notable' END,
+    CASE WHEN NEW.generation > 1
+      THEN 'Gen ' || NEW.generation || ' lineage bred'
+      ELSE 'New snake passport opened'
+    END,
+    'The specimen now has a permanent lineage chapter.',
+    'lineage', NEW.id::TEXT,
+    jsonb_build_object(
+      'specimenId', NEW.id,
+      'variantId', NEW.snake_variant_id,
+      'generation', NEW.generation
+    ),
+    COALESCE(NEW.acquired_at, NOW())
+  )
+  ON CONFLICT (player_id, source_type, source_id, moment_key) DO UPDATE
+    SET payload = progression_moments.payload
+  RETURNING id INTO v_moment_id;
+
+  -- A bred generation is a real ownership milestone; the initial passport is
+  -- recorded quietly to avoid turning first-time collection into badge debt.
+  IF NEW.generation > 1 THEN
+    INSERT INTO player_attention_items(
+      player_id, moment_id, source_type, source_id, attention_key,
+      attention_kind, destination, headline, detail, artifact_ref
+    ) VALUES (
+      NEW.player_id, v_moment_id, 'lineage', NEW.id::TEXT,
+      'specimen-acquired', 'recognition', 'lineage',
+      'Gen ' || NEW.generation || ' lineage bred',
+      'Open its permanent snake passport.', NEW.id::TEXT
+    ) ON CONFLICT (player_id, source_type, source_id, attention_key) DO NOTHING;
+  END IF;
+  END IF;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -483,6 +693,24 @@ BEGIN
       identity_snapshot = COALESCE(v_history.refund_snapshot -> 'child', identity_snapshot),
       updated_at = NOW()
   WHERE specimen_id = OLD.id AND player_id = OLD.player_id;
+
+  INSERT INTO progression_moments(
+    player_id, source_type, source_id, moment_key, pillar, kind,
+    significance, headline, detail, destination, artifact_ref, payload, secured_at
+  ) VALUES (
+    OLD.player_id, 'lineage', OLD.id::TEXT, 'specimen-retired-refunded',
+    'lineage', 'lineage_specimen_retired', 'notable',
+    'Gen ' || OLD.generation || ' lineage retired',
+    'DNA was refunded; the specimen passport remains part of the Chronicle.',
+    'lineage', OLD.id::TEXT,
+    jsonb_build_object(
+      'specimenId', OLD.id,
+      'variantId', OLD.snake_variant_id,
+      'generation', OLD.generation,
+      'refundHistoryId', v_history.id
+    ),
+    v_history.refunded_at
+  ) ON CONFLICT (player_id, source_type, source_id, moment_key) DO NOTHING;
 
   RETURN OLD;
 END;
@@ -602,7 +830,10 @@ BEGIN
       extractions = extractions + CASE WHEN v_run.extracted THEN 1 ELSE 0 END,
       best_score = GREATEST(best_score, COALESCE(v_run.score, 0)),
       best_yield = GREATEST(best_yield, COALESCE(v_run.yield_dna, 0)),
-      highest_energy = GREATEST(highest_energy, COALESCE(v_run.energy_committed, 0)),
+      highest_energy = CASE
+        WHEN v_run.extracted THEN GREATEST(highest_energy, COALESCE(v_run.energy_committed, 0))
+        ELSE highest_energy
+      END,
       clan_depth_delivered = clan_depth_delivered + GREATEST(COALESCE(v_run.clan_depth, 0), 0),
       last_run_at = GREATEST(COALESCE(last_run_at, v_run.ended_at), v_run.ended_at),
       updated_at = NOW()
@@ -642,7 +873,7 @@ FROM (
   SELECT specimen_id, COUNT(*)::INTEGER AS runs_completed,
          COUNT(*) FILTER (WHERE extracted)::INTEGER AS extractions,
          MAX(score) AS best_score, MAX(yield_dna) AS best_yield,
-         MAX(energy_committed) AS highest_energy,
+         COALESCE(MAX(energy_committed) FILTER (WHERE extracted), 0) AS highest_energy,
          SUM(clan_depth_delivered) AS clan_depth_delivered,
          MAX(ended_at) AS last_run_at
   FROM lineage_specimen_runs GROUP BY specimen_id
@@ -717,14 +948,16 @@ BEGIN
 
     -- Recognition attention is reserved for actual milestones. Notable facts
     -- remain in Results and Chronicle without creating badge debt.
-    IF v_significance IN ('milestone', 'historic') AND v_destination IS NOT NULL THEN
+    IF v_significance IN ('milestone', 'historic')
+       AND v_destination IS NOT NULL
+       AND char_length(btrim(COALESCE(v_impact ->> 'artifactRef', ''))) > 0 THEN
       INSERT INTO player_attention_items(
         player_id, moment_id, source_type, source_id, attention_key,
-        attention_kind, destination, headline, detail
+        attention_kind, destination, headline, detail, artifact_ref
       ) VALUES (
         p_player_id, v_moment_id, 'run', p_session_id::TEXT,
         v_impact ->> 'key', 'recognition', v_destination,
-        v_impact ->> 'headline', v_impact ->> 'detail'
+        v_impact ->> 'headline', v_impact ->> 'detail', v_impact ->> 'artifactRef'
       ) ON CONFLICT (player_id, source_type, source_id, attention_key) DO NOTHING;
     END IF;
   END LOOP;
@@ -778,6 +1011,7 @@ BEGIN
     'headline', v_item.headline,
     'detail', v_item.detail,
     'momentId', v_item.moment_id,
+    'artifactRef', v_item.artifact_ref,
     'source', jsonb_build_object('type', v_item.source_type, 'id', v_item.source_id),
     'createdAt', v_item.created_at,
     'seenAt', v_item.seen_at,
@@ -785,6 +1019,19 @@ BEGIN
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Release capability probe. It is defined only after every Career Spine
+-- object/function above exists, so version 1 means the full migration reached
+-- its compatibility boundary rather than merely creating the first table.
+CREATE OR REPLACE FUNCTION get_career_spine_capability()
+RETURNS JSONB AS $$
+  SELECT jsonb_build_object(
+    'version', 1,
+    'exactArtifactAttention', TRUE,
+    'atomicSettlement', TRUE,
+    'lineageHistory', TRUE
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 
 -- All mutation functions are service-only. Authenticated users read their own
 -- rows through RLS; APIs authenticate and invoke these functions with the
@@ -796,9 +1043,11 @@ REVOKE ALL ON FUNCTION retire_refunded_lineage_specimen() FROM PUBLIC, anon, aut
 REVOKE ALL ON FUNCTION record_lineage_specimen_run(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION persist_run_impact_envelope(UUID, UUID, JSONB) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION transition_player_attention(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION get_career_spine_capability() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ensure_lineage_dossier(UUID, UUID) TO service_role;
 GRANT EXECUTE ON FUNCTION record_lineage_specimen_run(UUID) TO service_role;
 GRANT EXECUTE ON FUNCTION persist_run_impact_envelope(UUID, UUID, JSONB) TO service_role;
 GRANT EXECUTE ON FUNCTION transition_player_attention(UUID, UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION get_career_spine_capability() TO service_role;
 
 COMMIT;
