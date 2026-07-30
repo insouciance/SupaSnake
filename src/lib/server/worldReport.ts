@@ -3,9 +3,9 @@
  *
  * The pure composer in `@/lib/report/worldReport` decides what a returning
  * player is told. This module decides only what it is told FROM: the player's
- * last run, their Serpent standings, and the settled world weeks that
- * submerged while they were away. Three reads, all of settled rows, none of
- * them a write.
+ * last run, monotonic Depth standing, and aggregate Clan Energy Battles that
+ * settled while they were away. Every fact was already secured server-side;
+ * none of these reads writes or claims anything.
  *
  * NO MIGRATION, AND WHY THERE MUST NOT BE ONE
  *
@@ -26,11 +26,10 @@
  *
  * IT COSTS THE SAME NO MATTER HOW LONG THE ABSENCE (Rule 13)
  *
- *   At most `WORLD_REPORT_WEEK_LIMIT` roll-ups are read, because the report
- *   names at most that many weeks. A two-year return is exactly as expensive
- *   as a two-week one, and the day-count check runs BEFORE the panel read, so
- *   the overwhelmingly common case — somebody who played yesterday — costs one
- *   small query and stops.
+ *   The battle reader caps its settled-cycle query at four rows. A two-year
+ *   return is therefore exactly as expensive as a two-week one, and the
+ *   day-count check runs BEFORE any social read, so the overwhelmingly common
+ *   case — somebody who played yesterday — costs one small query and stops.
  *
  * RULE 11
  *
@@ -43,20 +42,16 @@
 import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { WorldSettlement } from '@/lib/growth/settlementPost';
 import {
   WORLD_REPORT_MIN_ABSENT_DAYS,
   WORLD_REPORT_V1_ENABLED,
-  WORLD_REPORT_WEEK_LIMIT,
 } from '@/lib/report/config';
 import {
   composeWorldReport,
   daysAway,
-  submergedWeeksWhileAway,
   type WorldReport,
 } from '@/lib/report/worldReport';
-import { buildSerpentPanel } from '@/lib/server/serpent';
-import { readWorldRollup } from '@/lib/server/worldRollup';
+import { readWorldReportEnergyContext } from '@/lib/server/worldReportEnergy';
 
 function report(scope: string, error: unknown, extra: Record<string, unknown> = {}) {
   console.error(`World Report ${scope} failed:`, { ...extra, error });
@@ -113,24 +108,16 @@ export async function buildWorldReport(
   // they cost one query and nothing else.
   if (daysAway(lastSeenAt, now) < WORLD_REPORT_MIN_ABSENT_DAYS) return null;
 
-  const panel = await buildSerpentPanel(supabase, playerId, now);
-
-  const weekKeys = submergedWeeksWhileAway(lastSeenAt, now).slice(
-    0,
-    WORLD_REPORT_WEEK_LIMIT
+  const energyContext = await readWorldReportEnergyContext(
+    supabase,
+    playerId,
+    lastSeenAt,
+    now
   );
-  const weeks: WorldSettlement[] = [];
-  for (const weekKey of weekKeys) {
-    const rollup = await readWorldRollup(supabase, weekKey);
-    // A week whose roll-up could not be read is not dropped from the report —
-    // it still submerged, and the composer reads it on its conditions alone.
-    // Omitting the week would understate the world; inventing clans for it
-    // would overstate it.
-    if (rollup) weeks.push({ weekKey, ...rollup });
-  }
+  if (!energyContext) return null;
 
   try {
-    return composeWorldReport({ lastSeenAt, panel, weeks }, now);
+    return composeWorldReport({ lastSeenAt, energyContext }, now);
   } catch (error) {
     // The Rule 5 sweep refused the copy. Loud, and no report rather than one
     // that tells a returning player they are in arrears.
