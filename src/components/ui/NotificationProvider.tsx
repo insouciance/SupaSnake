@@ -5,9 +5,23 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import {
   ATTENTION_REFRESH_EVENT,
   parseServerAttentionItem,
+  requestAttentionRefresh,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import { drainLegacyRewardOutbox } from '@/lib/outbox/rewardOutbox';
+
+const LEGACY_NOTIFICATION_STORAGE_KEY = 'supasnake-ui-notifications-v1';
+
+function removeLegacyNotificationStorage(): void {
+  try {
+    // constitution-allow: local-progress destructive migration removes the retired persisted notification store without reading or replacing it
+    window.localStorage.removeItem(LEGACY_NOTIFICATION_STORAGE_KEY);
+  } catch {
+    // A hardened/private browser may deny storage access. The application
+    // still creates no replacement; the destructive pass repeats next load.
+  }
+}
 
 /**
  * Synchronizes the inbox from server authority. No notification or earned
@@ -15,6 +29,20 @@ import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
  */
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { session, isLoading } = useAuth();
+
+  useEffect(() => {
+    removeLegacyNotificationStorage();
+  }, []);
+
+  useEffect(() => {
+    const token = session?.access_token;
+    if (isLoading || !token) return;
+    void drainLegacyRewardOutbox(token)
+      .then((result) => {
+        if (result.impacts.length > 0) requestAttentionRefresh();
+      })
+      .catch((error) => console.error('Legacy settlement drain failed:', error));
+  }, [isLoading, session?.access_token]);
 
   useEffect(() => {
     if (isLoading) return;

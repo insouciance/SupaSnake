@@ -52,6 +52,21 @@ describe('NotificationProvider', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it('unconditionally deletes the retired persisted notification store', async () => {
+    token = undefined;
+    window.localStorage.setItem(
+      'supasnake-ui-notifications-v1',
+      JSON.stringify({ state: { notifications: { stale: { id: 'stale' } } } })
+    );
+
+    render(<NotificationProvider><div>child</div></NotificationProvider>);
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem('supasnake-ui-notifications-v1')).toBeNull();
+    });
+    expect(useNotificationStore.getState().notifications).toEqual({});
+  });
+
   it('loads every server page before replacing the memory-only inbox', async () => {
     const first = {
       id: 'record-1',

@@ -19,6 +19,14 @@ import {
 export const REWARD_OUTBOX_MAX_ENTRIES = 20;
 export const REWARD_OUTBOX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Read-only migration key used by production builds that predate the
+ * server-owned settlement queue. New code never writes this key. It remains
+ * named here solely so an already-stored run can reach the authoritative
+ * endpoint before the obsolete browser copy is destroyed.
+ */
+export const LEGACY_REWARD_OUTBOX_KEY = 'supasnake-reward-outbox';
+
 export interface RewardOutboxEntry {
   sessionId: string;
   score: number;
@@ -109,6 +117,146 @@ async function responseImpact(
   return recoverRunImpact(entry.sessionId, token, fetchFn);
 }
 
+function browserStorage(storage?: Storage): Storage | null {
+  if (storage) return storage;
+  try {
+    // constitution-allow: local-progress one-time migration reads only the retired reward key so server settlement can precede deletion
+    return typeof window !== 'undefined' ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+function readLegacyOutbox(storage?: Storage): {
+  entries: RewardOutboxEntry[];
+  keyPresent: boolean;
+} {
+  const store = browserStorage(storage);
+  if (!store) return { entries: [], keyPresent: false };
+  try {
+    const raw = store.getItem(LEGACY_REWARD_OUTBOX_KEY);
+    if (raw === null) return { entries: [], keyPresent: false };
+    const parsed: unknown = JSON.parse(raw);
+    return {
+      entries: Array.isArray(parsed) ? parsed.filter(isValidEntry) : [],
+      keyPresent: true,
+    };
+  } catch {
+    // An unreadable legacy blob cannot be settled. Removing it is the only
+    // direction that restores the no-browser-progress invariant.
+    return { entries: [], keyPresent: true };
+  }
+}
+
+function removeLegacyOutbox(storage?: Storage): void {
+  const store = browserStorage(storage);
+  if (!store) return;
+  try {
+    store.removeItem(LEGACY_REWARD_OUTBOX_KEY);
+  } catch {
+    // Hardened/private contexts may refuse storage access. Nothing new is
+    // written, and the next page lifecycle makes the same destructive pass.
+  }
+}
+
+async function submitEntry(
+  entry: RewardOutboxEntry,
+  token: string,
+  fetchFn: typeof fetch
+): Promise<
+  | { status: 'settled'; impact: RunImpactEnvelope | null }
+  | { status: 'transient' }
+  | { status: 'rejected' }
+> {
+  try {
+    const response = await fetchFn('/api/game/session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        action: 'end',
+        sessionId: entry.sessionId,
+        score: entry.score,
+        dna_earned: entry.dna_earned,
+        duration_seconds: entry.duration_seconds,
+        died: !(entry.extracted === true),
+        victory: false,
+        ...(typeof entry.food_count === 'number'
+          ? { food_count: entry.food_count }
+          : {}),
+        ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
+        ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
+        ...(entry.phoenix_triggered_at_food !== undefined
+          ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
+          : {}),
+        ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
+      }),
+    });
+
+    if (response.ok || response.status === 409) {
+      return {
+        status: 'settled',
+        impact: await responseImpact(response, entry, token, fetchFn),
+      };
+    }
+    if (response.status === 401 || response.status >= 500) {
+      return { status: 'transient' };
+    }
+    console.error(
+      `Settlement retry rejected (status ${response.status}), dropping session ${entry.sessionId}`
+    );
+    return { status: 'rejected' };
+  } catch (error) {
+    console.error('Settlement retry network error:', error);
+    return { status: 'transient' };
+  }
+}
+
+/**
+ * One-time production migration for queues written by older builds.
+ *
+ * The legacy value is never modified or extended. It is removed only after
+ * every valid entry reached an authoritative terminal response, so a network
+ * outage cannot turn the browser-storage cleanup into lost earned progress.
+ * Successfully replayed entries may be sent again while another legacy entry
+ * is transient; session settlement and receipt recovery are idempotent.
+ */
+export async function drainLegacyRewardOutbox(
+  token: string,
+  storage?: Storage,
+  fetchFn: typeof fetch = fetch
+): Promise<ReplayResult> {
+  const legacy = readLegacyOutbox(storage);
+  if (!legacy.keyPresent) {
+    return { replayed: 0, dropped: 0, remaining: 0, impacts: [] };
+  }
+  if (legacy.entries.length === 0) {
+    removeLegacyOutbox(storage);
+    return { replayed: 0, dropped: 0, remaining: 0, impacts: [] };
+  }
+
+  let replayed = 0;
+  let dropped = 0;
+  let remaining = 0;
+  const impacts: RunImpactEnvelope[] = [];
+  for (const entry of legacy.entries) {
+    const result = await submitEntry(entry, token, fetchFn);
+    if (result.status === 'settled') {
+      replayed += 1;
+      if (result.impact) impacts.push(result.impact);
+    } else if (result.status === 'rejected') {
+      dropped += 1;
+    } else {
+      remaining += 1;
+    }
+  }
+
+  if (remaining === 0) removeLegacyOutbox(storage);
+  return { replayed, dropped, remaining, impacts };
+}
+
 /**
  * Retry this tab's queued settlements. 2xx and already-settled 409 responses
  * both recover the canonical receipt. Only transient failures remain queued.
@@ -128,47 +276,13 @@ export async function replayRewardOutbox(
   const keep: RewardOutboxEntry[] = [];
 
   for (const entry of entries) {
-    try {
-      const response = await fetchFn('/api/game/session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'end',
-          sessionId: entry.sessionId,
-          score: entry.score,
-          dna_earned: entry.dna_earned,
-          duration_seconds: entry.duration_seconds,
-          died: !(entry.extracted === true),
-          victory: false,
-          ...(typeof entry.food_count === 'number'
-            ? { food_count: entry.food_count }
-            : {}),
-          ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
-          ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
-          ...(entry.phoenix_triggered_at_food !== undefined
-            ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
-            : {}),
-          ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
-        }),
-      });
-
-      if (response.ok || response.status === 409) {
-        replayed += 1;
-        const impact = await responseImpact(response, entry, token, fetchFn);
-        if (impact) impacts.push(impact);
-      } else if (response.status === 401 || response.status >= 500) {
-        keep.push(entry);
-      } else {
-        console.error(
-          `Settlement retry rejected (status ${response.status}), dropping session ${entry.sessionId}`
-        );
-        dropped += 1;
-      }
-    } catch (error) {
-      console.error('Settlement retry network error:', error);
+    const result = await submitEntry(entry, token, fetchFn);
+    if (result.status === 'settled') {
+      replayed += 1;
+      if (result.impact) impacts.push(result.impact);
+    } else if (result.status === 'rejected') {
+      dropped += 1;
+    } else {
       keep.push(entry);
     }
   }

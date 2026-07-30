@@ -1,6 +1,8 @@
 import {
   clearOutbox,
+  drainLegacyRewardOutbox,
   enqueueReward,
+  LEGACY_REWARD_OUTBOX_KEY,
   pruneOutbox,
   readOutbox,
   replayRewardOutbox,
@@ -124,5 +126,51 @@ describe('tab-memory settlement retry queue', () => {
       expect.stringContaining('dropping session invalid')
     );
     consoleError.mockRestore();
+  });
+
+  it('drains a legacy persisted run to server truth and deletes the retired key', async () => {
+    window.localStorage.setItem(
+      LEGACY_REWARD_OUTBOX_KEY,
+      JSON.stringify([makeEntry()])
+    );
+    const fetchFn = jest.fn().mockResolvedValue(response(200, { impact }));
+
+    await expect(
+      drainLegacyRewardOutbox('token', window.localStorage, fetchFn)
+    ).resolves.toEqual({
+      replayed: 1,
+      dropped: 0,
+      remaining: 0,
+      impacts: [impact],
+    });
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
+    expect(readOutbox()).toEqual([]);
+  });
+
+  it('never rewrites or deletes a legacy queue while settlement is transient', async () => {
+    const serialized = JSON.stringify([makeEntry()]);
+    window.localStorage.setItem(LEGACY_REWARD_OUTBOX_KEY, serialized);
+    const fetchFn = jest.fn().mockResolvedValue(response(503));
+
+    await expect(
+      drainLegacyRewardOutbox('token', window.localStorage, fetchFn)
+    ).resolves.toMatchObject({ replayed: 0, dropped: 0, remaining: 1 });
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBe(serialized);
+  });
+
+  it('deletes an unreadable retired queue without creating replacement storage', async () => {
+    window.localStorage.setItem(LEGACY_REWARD_OUTBOX_KEY, '{not-json');
+    const fetchFn = jest.fn();
+
+    await expect(
+      drainLegacyRewardOutbox('token', window.localStorage, fetchFn)
+    ).resolves.toEqual({
+      replayed: 0,
+      dropped: 0,
+      remaining: 0,
+      impacts: [],
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
   });
 });

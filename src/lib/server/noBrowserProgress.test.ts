@@ -70,4 +70,20 @@ describe('browser progress boundary', () => {
     expect(source).toMatch(/disable_external_dependency_loading:\s*true/);
     expect(source).not.toMatch(/persistence:\s*['"]localStorage/);
   });
+
+  it('drains the retired reward queue and deletes the retired notification store', () => {
+    const outbox = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/outbox/rewardOutbox.ts'),
+      'utf8'
+    );
+    const provider = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/ui/NotificationProvider.tsx'),
+      'utf8'
+    );
+    expect(outbox).toContain("LEGACY_REWARD_OUTBOX_KEY = 'supasnake-reward-outbox'");
+    expect(outbox).toMatch(/if \(remaining === 0\) removeLegacyOutbox\(storage\)/);
+    expect(outbox).not.toMatch(/setItem\(LEGACY_REWARD_OUTBOX_KEY/);
+    expect(provider).toContain("'supasnake-ui-notifications-v1'");
+    expect(provider).toMatch(/removeItem\(LEGACY_NOTIFICATION_STORAGE_KEY\)/);
+  });
 });
