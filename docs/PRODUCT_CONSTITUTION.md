@@ -1,6 +1,30 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.4 · amended 29 July 2026
+**Version:** 1.5 · amended 29 July 2026
+**v1.5 amendment (explicit owner ruling, 29 July 2026):** **Energy Commitment**
+replaces the fixed daily envelope (§8.6). Energy is stored to a cap of **6 [H]**,
+recovers on authoritative server time at **1/hour [H]** including offline partial
+progress, and may be committed **1–6** to one ordinary run. The full commitment is
+consumed at start and never refunded for a crash, abandonment, poor result, revive,
+or reconnect. Credited run DNA receives the configurable nonlinear curve
+**×1 / ×2.2 / ×3.6 / ×5.2 / ×7.2 / ×10 [H]**; Score, full-strength Yield, Mastery,
+fixed rewards, unlocks, and clan score do not. Zero-Energy lean runs remain playable
+at ×0.25 harvest. Higher commitment changes stakes, never physics or hidden
+difficulty. The previous prohibition on timed/offline Energy recovery is expressly
+overturned.
+
+The World Serpent becomes an **automatic Clan Energy Battle layered over normal
+play** (§7.3, §9): 3 days active + 1 day intermission [H], positive-Energy runs
+assigned immutably at start, and each member's five strongest valid Yields summed
+into clan Depth. There is no battle queue, second Energy pool, special physics, or
+progression lock. Only the viewer's own five and replacement threshold are exposed;
+teammates remain aggregate-only. Energy multiplies personal harvest, never the clan
+contribution, so a brilliant 1-Energy run can beat a cautious 6-Energy run. Both
+sides earn permanent non-power participation history; victory earns the stronger
+honor, never DNA or future scoring power. This owner order amends Rules 8–10 and the
+§12.2 rhythm/mode caps where the retired separate Serpent mode previously bound.
+The required cooling period is waived by the owner order for this greenlit
+implementation; the cost is recorded in §15.
 **v1.4 D3 playtest finding (owner, 29 July 2026):** PRIMAL's central spatial
 loop is **“Coil safely. Get tempted. Break formation. Recover—or die.”** Fast
 body growth makes a tight wall-following coil the player's constructed safety;
@@ -53,7 +77,7 @@ totals, not per-member attempt counts** (§7.3). Evidence and full derivation:
 `docs/game/GAMEPLAY_PROPOSAL.md`; implementation: `docs/ops/REDESIGN_WAVE.md`.
 **Rule 15's seven-day cooling period was waived by the owner on 27 July 2026**;
 the waiver and its reasoning are recorded in §15, row 18. Rule 15 is in force.
-**v1.3 changelog (owner ruling):** **Energy, redefined** (§8.6) — the daily-economy
+**v1.3 changelog (owner ruling; superseded by v1.5):** **Energy, redefined** (§8.6) — the daily-economy
 grammar returns without the paywall: 6 charges/day make runs rich, lean runs floor at
 25%, rituals (Signal objective, Serpent attempts) always full, nothing sold, nothing
 gated, no timers. The post-energy pacing question (§17.2) is closed by mechanism, its
@@ -96,7 +120,7 @@ are starting values.
 **One sentence.** SupaSnake is a three-minute precision snake game — instant in any
 browser, on any phone — where greed is a decision: bank your run, push your luck, or
 feed your build — and everything you keep compounds into a mastery record, a bred
-lineage, and a small clan's weekly hunt that notices when you get better.
+lineage, and a small clan battle that notices when you get better.
 
 **Platform.** Browser-first is the strategy, not the identity: SupaSnake is a snake
 game for browser *and* mobile — today one responsive instant-play web game (touch is
@@ -111,9 +135,8 @@ rulesets, not palette swaps. Around that run sit exactly three things a player b
 over years: **Mastery** (proof of skill, per dynasty), **Lineage** (a bred snake that
 is theirs), and **Discovery** (knowledge of how the genome plays). Two numbers make
 the building legible: **Score**, which measures the pilot and never reads the build,
-and **Depth**, which measures the whole dynasty and resolves every week in a
-cooperative hunt against the World Serpent, witnessed by a clan small enough that
-every member is load-bearing.
+and **Depth**, which measures the whole dynasty in recurring World Serpent clan
+battles, witnessed by a clan small enough that every member is load-bearing.
 
 **What SupaSnake refuses to be:**
 
@@ -145,7 +168,7 @@ The existing mission line — *Where Skill Creates Legacy* — is correct and st
                         THE CLAN WITNESSES (§9)
               1–12 people; everyone load-bearing; no grading
                                │
-     daily: WORLD SIGNAL (§7.2) · weekly: WORLD SERPENT (§7.3)
+     daily: WORLD SIGNAL (§7.2) · recurring: WORLD SERPENT BATTLE (§7.3)
    monthly: ASCENSION (§6.1) · quarterly: SEASON THEME (§7.4)
 ```
 
@@ -207,7 +230,11 @@ the preamble.
    path write a player-owned row downward?* A voluntary one-step lineage refund is
    the narrow exchange case: it returns the exact recorded DNA input in full and
    preserves the breeding event as immutable pedigree history. It may never be
-   triggered by absence, loss, expiry, balance pressure, or another player.
+   triggered by absence, loss, expiry, balance pressure, or another player. A
+   player-directed spend is not confiscation: DNA deliberately spent on a purchase
+   and Energy deliberately committed to start a run may move downward only through
+   their named authoritative transaction, with the amount and consequence shown
+   before confirmation.
 
 7. **Commerce stays in its district.** The store is reached by navigation, never by
    interruption. Zero commercial surfaces during runs and on Results. At most one
@@ -215,20 +242,24 @@ the preamble.
    email, or badge is ever commercial. *Reviewer: count the commercial surfaces on
    every screen; check the notification feed.*
 
-8. **Clans never grade and never bill.** Participation pays proportionally — no reward
-   thresholds, no pass/fail bars, no intra-clan reward mathematics, no officer lever
-   keyed to a member's output, and no purchasable clan number. *Reviewer: can any
-   member's reward change because of another member's number? Can money change any
-   clan number? Does any UI give an officer a mechanical reason to evaluate a member?*
+8. **Clans create responsibility, never payroll.** The player may see their own five
+   contributing results and the personal score needed to replace their fifth; other
+   members' attempts, absences, thresholds, and ranks stay private. Clan outcomes
+   grant the same bounded non-power honor to every eligible participant on a side,
+   with a stronger victory honor; there are no intra-clan reward tiers, minimums,
+   officer levers keyed to output, DNA rewards, or purchasable clan numbers.
+   *Reviewer: can a member inspect or economically punish another member's output?
+   Can money change any clan number? Is the fifth-best threshold clearly the viewer's
+   private replacement line rather than a participation demand?*
 
 9. **Three pillars, two numbers, one calendar.** New work lands inside Mastery, Lineage,
    or Discovery; surfaces on Score or Depth; and schedules on the Signal (including its
-   monthly Ascension cycle), the Serpent, or the season. A proposal that fits none of
+   monthly Ascension cycle), the Serpent battle cycle, or the season. A proposal that fits none of
    these is rejected or triggers a formal amendment. *Reviewer: name the pillar, the
    number, and the beat.*
 
 10. **The Caps are law** (§12.2): one currency, zero premium currencies, one daily and
-    one weekly surface, ≤16 active genes, three dynasties, four SKU archetypes, three
+    one recurring clan surface, ≤16 active genes, three dynasties, four SKU archetypes, three
     Results layers, ≤3 taps from open to board through the Run Setup page. *Reviewer:
     does the proposal increment any capped count?*
 
@@ -286,7 +317,11 @@ one small convenience at a time. Protected, permanently:
   required configuration. Everything adjustable, nothing demanded. The law: open →
   LAUNCH → START → board, **≤3 taps**, and the setup page adds exactly one of them.
   From Results, REPLAY re-enters the run with the same configuration instantly
-  (skipping setup); SETUP reopens the page.
+  (skipping setup); SETUP reopens the page. Energy Commitment is part of this
+  setup surface: default 1, current stock/recovery/next tick and multiplier visible,
+  no required adjustment, and a deliberate two-step selection before all six can be
+  exposed. REPLAY never silently repeats a multi-Energy commitment: it uses 1 Energy
+  when available, otherwise lean.
 - **The in-run presentation as shipped** (owner ruling, 25 July 2026; touch amended
   by D2): the board, cockpit HUD, keyboard/flick controls, and decision overlays are
   declared correct as built. They change only where a surrounding-system change forces
@@ -327,8 +362,8 @@ one small convenience at a time. Protected, permanently:
 **The Results screen is constitutionally three layers** (currently up to 14 sections,
 6 toasts, and 3 notifications — GT §6.3, the single worst surface in the product):
 Layer 1, outcome — what happened, personal-best status, and the share artifact.
-Layer 2, the two numbers — Score, and Yield with its Depth contribution during Serpent
-weeks. Layer 3, one collapsed progression digest, with exactly **one** recommended
+Layer 2, the two numbers — Score, and Yield with its Depth contribution during an
+active Serpent battle. Layer 3, one collapsed progression digest, with exactly **one** recommended
 next action. Everything else routes to the Chronicle. No commerce (Rule 7). The share
 prompt is Layer 1, because the share artifact is product, not marketing (§11.3).
 
@@ -405,14 +440,16 @@ exists mechanically; this document promotes it from bookkeeping to meaning. Yiel
 state — the DNA a run actually pays is Yield × the charge factor (§8.6), but Depth,
 Mastery, and every record read the full number.
 
-**Depth** is Yield accumulated against the World Serpent (§7.3): the sum of a player's
-best three Serpent runs in a week is their **weekly Depth**; a clan's weekly Depth is
-the sum of its members'; **lifetime Depth** is monotonic and never decreases. Depth is
-denominated in **segments** — how far into the Serpent's endless body the hunt
-reached. "Depth 2,315" is this game's version of the number the owner improved every
-week for two years, and it is built from everything the account has become: the bred
-snake's lineage, the traits chosen at breeding, the genes known and picked well, the
-mastery that unlocked them, and the piloting to bank it all.
+**Depth** is Yield accumulated against the World Serpent (§7.3): during each active
+three-day battle, a player's **battle Depth** is the sum of their five strongest valid
+Energy-funded Yields; clan battle Depth is the sum of its members' battle Depths.
+Additional attempts can only replace a weaker result. **Lifetime Depth** is monotonic
+and never decreases. Depth is denominated in **segments** — how far into the
+Serpent's endless body the clan drove the hunt. "Depth 2,315" is this game's version
+of the number the owner improved for two years, and it is built from everything the
+account has become: the bred snake's lineage, the traits chosen at breeding, the
+genes known and picked well, the mastery that unlocked them, and the piloting to bank
+it all.
 
 **Depth answers: what is my dynasty worth when it is tested?**
 
@@ -420,19 +457,18 @@ Rules that keep the two numbers honest:
 
 - Yield never appears on the Score ladder; Score never appears on Serpent surfaces.
   Different names, different units (points vs segments), different screens.
-- Depth is compared to **your own history first** (weekly Depth vs your best week),
-  the clan's history second (clan Depth vs clan best), and rivals third, only when a
-  symmetric rival exists (§9.4).
+- Depth is compared to **your own five first**, the clan total second, and the paired
+  rival total third. Other members' individual attempts remain private (§9.4).
 - Money cannot reach Depth. This is load-bearing and is *only* true because §10 bans
   selling DNA, variants, genes, and anything else build-adjacent. The convergence
   metric and the monetization ruling are one decision wearing two hats — reverse
   either and the other collapses. This dependency is stated here so nobody "just adds
   a small DNA pack" in 2028.
-- Depth has **no thresholds anywhere** — no reward bars, no minimum contributions, no
-  completion state. Every segment counts, from every member, always (Rule 8). The
-  Raid: Shadow Legends failure — hard damage floors below which effort pays nothing,
-  which convert clans into performance reviews — is the single documented way this
-  design dies, and it is prohibited at the rule level, not the tuning level.
+- Depth has **one private replacement threshold and no participation threshold**.
+  Until five slots are filled, every valid attempt contributes. After that, the
+  viewer sees the Yield needed to replace their own fifth result; it never changes
+  eligibility, rewards, or another member's treatment. No minimum contribution,
+  officer bar, or per-member public ranking may be derived from it (Rule 8).
 
 ---
 
@@ -448,17 +484,20 @@ accumulates as debt.
 
 | Rhythm | Surface | What changes | What it costs to miss |
 |---|---|---|---|
-| Daily | **World Signal** + the Daily Take | One seeded condition-set + choice of objective; first run pays the Take; Energy refills to 6 (§8.6) | The day's Take, its charges, and one streak tier — never anything owned; the day archives as practice |
-| Weekly | **World Serpent** | One seeded hunt; Depth resolves Sunday 24:00 UTC | Nothing; best-3 means a 3-run week is full participation |
+| Continuous | **Energy recovery** | +1 stored Energy/hour [H], offline, to cap 6 | Recovery opportunities beyond the cap; no owned value decays |
+| Daily | **World Signal** + the Daily Take | One seeded condition-set + choice of objective; first run pays the Take | The day's Take and one streak tier — never anything owned; the day archives as practice |
+| 4-day cycle | **World Serpent Clan Energy Battle** | 3 days active, 1 day intermission; ordinary Energy runs feed Depth automatically | Nothing owned; unused recovery beyond cap and fewer attempts remain |
 | Monthly | **Ascension** (§6.1) | League cycle on best-10 Signal scores; promotion-only | Nothing mechanical; fewer scoring days remain — the sports consequence, not a penalty |
 | Quarterly | **Season** | Theme, curated modifier rotation, cosmetic track | Nothing; tracks never expire (§10.4) |
 
-Ascension is the Signal's monthly aggregation view, not a new play surface — the cap
-of one daily and one weekly play surface stands.
+Ascension is the Signal's monthly aggregation view, and the Serpent battle is an
+aggregation of ordinary runs, not a separate gameplay mode. The cap of one daily
+ritual and one recurring clan surface stands.
 
-Day boundary: **00:00 UTC**, globally, displayed in local time with a countdown. Week:
-Monday 00:00 UTC. One clock for the whole world; shared state beats local comfort
-(decision 8).
+Day boundary: **00:00 UTC** for Signal/Take, globally, displayed in local time with a
+countdown. Serpent cycle zero begins Monday 27 July 2026 00:00 UTC [H], with fixed
+72-hour active and 24-hour intermission phases. Energy recovery itself is elapsed
+server time, not a calendar reset. Shared authoritative clocks beat client locale.
 
 ### 7.2 The World Signal — the daily ritual
 
@@ -502,71 +541,68 @@ The Signal **replaces Contracts** (two-of-three picks, premium third slot, claim
 ceremony — all retired, §13) and absorbs the daily-leaderboard surface. It is the
 *only* daily surface, by cap, and the Take lives inside it.
 
-### 7.3 The World Serpent — the weekly hunt and the home of Depth
+### 7.3 The World Serpent — Clan Energy Battle and the home of Depth
 
-The convergence mechanic. The strongest known home for an investment number is an
-asynchronous cooperative boss; SupaSnake's boss is native to snake:
+The convergence mechanic now sits directly on the normal run. The World Serpent is
+the fiction and the clan-versus-clan comparison is the social consequence; neither
+creates a second physics ruleset or asks the player to enter a queue.
 
-**The fiction.** Each week a World Serpent surfaces — an endless serpent, never
-killed, only measured against. Clans hunt it by running under its conditions; every
-segment of Yield feeds the hunt deeper into its coils. Sunday midnight UTC it
-submerges, the hunt settles, and Monday's Signal carries the result. The name and
-fiction may be art-directed freely; the mechanics below may not.
-
-**Clan surfaces show totals, not per-member attempt counts (v1.4).** Rule 8 already
-forbids thresholds, pass/fail bars and intra-clan reward mathematics, and the
-Serpent honours all of it: best-of-three, no Energy cost, no DNA, no officer lever.
-The pressure a member feels is nevertheless real, and it comes from one place — the
-roster shipping every member's `depth` and `attempts`, so **a zero is visible to
-teammates**. That converts a personal choice into a social debt, and the cost lands
-on someone who did not choose it.
-
-The owner's ruling on the daily (§8.6) is that withholding a reward from someone
-who did not play is natural rather than punitive — and that argument holds for the
-*individual* reward. It does not extend to the social one. So the clan card shows
-the **clan total**, the viewer's **own** contribution, and nothing per-member.
-Churn is contagious in guild data (Kawale et al., IEEE SocialCom 2009, on
-EverQuest II: the probability of churn rises with the number of departed
-neighbours), and a clan whose visible scoreboard pushes two members out becomes
-likelier to lose the rest. *Reviewer for Rule 8 additionally asks: can a member see
-another member's attempt count or absence?*
+**The central moment.** A player has six recovered Energy, commits all of it, and
+builds a run already strong enough to enter their five. Banking protects a meaningful
+personal harvest and a clan contribution. Continuing could deliver the battle, or a
+crash could consume the full commitment and contribute nothing. That pressure is the
+mechanic. High commitment therefore receives no speed increase, control penalty,
+banking reduction, collision change, or arbitrary debuff.
 
 **The mechanics.**
 
-- One seeded condition-set per week, same for all clans, drawn from the curated
-  modifier pool (reusing the shipped weekly-Anomaly machinery — GT §5 — which the
-  Serpent absorbs and retires).
-- Any dynasty, the player's own equipped snake, full build active. Unlimited
-  attempts — Serpent runs consume no Energy, and Depth always counts full-strength
-  Yield regardless of charge state (§8.6); the DNA a Serpent run pays follows normal
-  charge rules, so the hunt is never rationed and never farmable. **Best three runs
-  count** — improvement, not volume, is the lever. A player with twenty minutes a
-  week participates fully; the WoW "second job" failure mode is structurally
-  excluded [H, §17.4].
-- Personal weekly Depth = sum of best three Yields. Clan weekly Depth = sum of member
-  Depths. Lifetime Depth = monotonic accumulation.
-- Settlement is automatic (weekly cron — infrastructure pattern already exists). The
-  Monday briefing leads with **you vs your best week**, then the clan vs its best
-  week, then the rival comparison if one was paired (§9.4).
-- Pays: the runs themselves already paid DNA; settlement adds cosmetic milestone
-  progress on lifetime Depth, a Chronicle entry for records (personal best week, clan
-  best week), and heraldic laurels for paired-week outcomes. **No DNA settlement
-  bonus** — Depth is measured, not farmed; the daily bonus lane is the Take (§7.2),
-  and doubling it here would re-inflate the economy.
-- No thresholds, no minimums, no floors (Rule 8, §6.2).
-- Surfaces at 8 banked runs — the ramp beat where builds become real (GT §6.2) —
-  bundled with the clan-founding prompt (§9.2).
+- One cycle is **3 active days + 1 intermission day [H]**. A run that starts before
+  the active deadline may complete within **3 hours [H]**; longer-delayed completion
+  does not count. A separate **3-hour maximum clan-eligible run duration [H]**
+  prevents an attempt from being held open across the cycle; it does not invalidate
+  or reduce the personal payout of a longer run. Settlement waits through the grace.
+- Any valid normal run with a positive Energy commitment, begun while its player is
+  an eligible member of a clan during an active cycle, is assigned automatically and
+  immutably at start. There is no opt-in per attempt, battle run screen, second Energy
+  pool, or separate battle mode. Signal's objective run and zero-Energy lean/training
+  runs are not eligible.
+- Start-time assignment fixes battle, side, clan, generation context, and the
+  player's then-current fifth-best threshold. Leaving later does not redirect the
+  run. A player is locked to one clan per cycle; switching clans cannot double-score,
+  and the new clan becomes eligible next cycle. Joining during a cycle may score from
+  the first positive-Energy run, provided no earlier cycle lock exists.
+- Every valid completed attempt is retained for audit. The player's strongest
+  **five [H]** full-strength Yields count; a sixth result replaces only a weaker one.
+  Clan Depth is the sum of every member's current five. Insertion, replacement, and
+  the clan-total delta are atomic and idempotent.
+- **Energy commitment does not multiply clan score.** It multiplies credited DNA
+  after Yield is fixed. Clan contribution is the stored full-strength `yield_dna`,
+  so commitment raises economic exposure and emotional pressure without making six
+  Energy mathematically mandatory. Score never enters this surface.
+- The viewer sees their five, Energy committed and generation on each, whether the
+  new result entered, what it replaced, the clan-total increase, and—only once all
+  five slots are filled—the fifth-best Yield to beat. Teammates' individual attempts,
+  absences, and thresholds are not exposed.
+- Ordinary progression stays live throughout: earn/spend DNA, breed, and use a later
+  generation in later attempts. There is no hidden battle snapshot at launch; any
+  last-day generation concentration is measured before restrictions are considered.
+- Settlement grants no DNA. Every player with a valid contribution receives a
+  permanent participant (or stalemate) honor; the winning side receives the distinct
+  victor honor. Honors are identity/history, cannot improve later scoring, and never
+  expire. Each side's achieved battle Depth is banked once into existing monotonic
+  personal/clan Depth history regardless of outcome. An unmatched side receives
+  participation history, not an economic walkover.
 
-**Why a boss and not clan-vs-clan:** you fight the Serpent, not another clan. There is
-no walkover when the population is tiny, no matchmaking symmetry to protect at N=1,
-and a clan of one still has a real hunt every single week. Rivalry layers on top when
-symmetry exists; it is dressing, never the load-bearing wall (§9.4). This is also the
-documented lesson (AFK Arena's proportional guild boss vs the built-in inequality of
-guild PvP).
+**The privacy boundary.** Social responsibility is deliberate; public performance
+management is not. The clan card shows both clan totals and the viewer's own five.
+No roster row carries another member's attempt count, zero, fifth-best line, Energy
+commitment, or ranking. Officers receive no stat-gated kick/recruitment control.
 
-**Solo-operability:** the Serpent's weekly content is a seed and a modifier draw.
-Season themes re-skin it quarterly. Zero per-week authoring. One cron, one settlement
-function, one panel. The MVP is genuinely small (§14, Phase 1).
+**Operating cost.** Pairing is lazy and deterministic at start, contribution
+reconciliation and settlement are one hourly idempotent job, and the system authors
+no bespoke battle content. The historical separate World Serpent weeks, artifacts,
+and honors remain immutable history; no new explicit Serpent attempt is required or
+created by the player-facing flow.
 
 ### 7.4 Seasons — the quarterly theme
 
@@ -589,7 +625,7 @@ curated modifier rotation for Signals, a cosmetic track, and a Chronicle chapter
 
 When a player comes back after three or more absent days [H], one screen — never
 blocking Launch, Rule 1 and the two-tap law intact — reports what moved: which
-Serpent weeks settled and how the clan fared, the rival's Depth delta, Ascension
+Serpent battle cycles settled and how the clan fared, the rival's Depth delta, Ascension
 movement, today's Signal. It is written as news ("HOLLOW FANG reached Depth 51,000
 without you — they left the door open"), never as debt: no claims, no catch-up
 tasks, nothing owed. **Binding tone rule: the Report may make a player miss the
@@ -654,7 +690,7 @@ implementation contradicts it three times with `random()` (GT §4). Rulings:
   Ascendance so the lane spans months, not day one [H] — the previous economy's
   honest error was that Gen3 fell on day one. Score remains untouched by all of it
   (Rule 2): the ladder measures the pilot; Ascendance pays where investment is
-  *supposed* to pay — the weekly hunt, where your clan is watching. Your snake gets
+  *supposed* to pay — the Serpent battle, where your clan is watching. Your snake gets
   stronger forever, and the place it shows is the place that counts.
 - **Reroll tokens and the lineage reroll are retired** (nothing random remains to
   reroll). Held tokens convert to 150 DNA each (their old price) in one migration.
@@ -710,37 +746,57 @@ income, set bonuses, global streak multipliers, clan-duel multipliers (§13). DN
 never sold, never gifted by systems, and never a proxy for anything money can reach
 (Rule 3). Payout now primarily reflects successful play, which is what P1 asked for.
 
-### 8.6 Energy, redefined — the daily harvest envelope
+### 8.6 Energy Commitment — recovered stakes, chosen at run start (v1.5)
 
-v1.0 deleted Energy outright; the owner ruled that the daily-economy grammar it
-carried is worth keeping. What returns is the **pacing layer, not the paywall** —
-the audit's own interim design ("never let it prevent ordinary play"), matured:
+Energy is the player's deliberate exposure decision, not a fixed count of ordinary
+full-reward runs. It is a recoverable run charge, not the spendable economy currency:
+DNA remains the only currency, and Energy remains unbuyable.
 
-- **Energy never gates playing.** Every run always starts, always Scores, always
-  ranks, always counts — Signal, Serpent, Ascension, Mastery, leaderboards. There
-  is no second-class run and no Free Play tier.
-- **Energy makes runs rich.** The day grants **6 charges [H]**, refilled to full at
-  00:00 UTC — no drip timers, no overflow anxiety, no "come back in 20 minutes."
-  One clean allotment per day. A charged run harvests **full DNA**; an uncharged
-  run still plays and still counts everywhere, but harvests **25% [H]** — lean,
-  never zero.
-- **The rituals are always full-fat.** The day's Signal objective run and all
-  Serpent attempts consume no Energy; Depth always counts full-strength Yield; and
-  Mastery XP is computed from the full fold. Scarcity paces the *harvest* — never
-  the hunt, the ritual, the ladder, or the record.
-- **Energy is never sold, gifted, stipended, or touched by any SKU or perk**
-  (§10.4 stands — money still cannot reach DNA, Yield, or Depth through it). It
-  never accumulates, never carries over, and is not a currency — §12.2's cap of
-  one currency stands.
-- **The meter surfaces at 4 banked runs [H]**, with the rest of the ramp — a new
-  player never meets scarcity before they have met the game.
-- **What this buys:** the day has a shape — wake, Take, Signal, spend your six,
-  hunt the Serpent, done for today; tomorrow it refills. Anticipation without a
-  paywall, "my dailies are done" without a checklist, runs that are worth spending
-  well — and a **bounded daily economy envelope** (~7 full-harvest runs plus a lean
-  tail, ≈9–10k DNA on a committed day vs. unbounded before [H]) that makes
-  collection, breeding, and Ascendance pacing *tunable*. The open question v1.1
-  left (§17.2) is closed by this mechanism; its numbers are tuning dials.
+- **Stored recovery.** Capacity **6 [H]**; recovery **1 Energy per 3,600 server
+  seconds [H]**, including offline. Whole elapsed ticks are applied lazily under a
+  player-row lock and partial progress remains in the recovery anchor. Time above cap
+  is discarded; spending from full begins a fresh tick. The UI shows stock, partial
+  progress, and the next tick using a server timestamp plus monotonic display clock.
+  Device time and timezone never grant recovery.
+- **The commitment.** Before a normal earning run, choose zero or a whole number from
+  1 to `min(stored, 6)`. Default **1**; selecting all six requires a deliberate
+  confirmation. The chosen amount is consumed in the same authoritative transaction
+  that immutably stamps the session. A crash, abandonment, failed result, revive,
+  disconnect, reconnect, duplicate request, or decision to bank early never refunds
+  it. This is a voluntary spend of a resource, not system confiscation under Rule 6.
+- **The initial harvest curve [H]:** 1 → ×1.0; 2 → ×2.2; 3 → ×3.6; 4 → ×5.2;
+  5 → ×7.2; 6 → ×10.0. The premium above linearity pays for exposing several
+  recovered units to one failure event. It is stored in integer basis points on the
+  session so client preview and server settlement round identically.
+- **What receives it.** First settle the run's full-strength Yield, including build,
+  generation, and extraction/crash outcome; then multiply only the credited normal
+  run DNA. Score, Yield itself, Depth/clan contribution, Mastery, achievements,
+  fixed unlocks, Signal/Take bonuses, rare fixed drops, quest progress, and
+  leaderboard values never receive the commitment multiplier.
+- **No hidden counterweight.** High commitment does not change speed, controls,
+  collision, board pressure, banking ratios, portal timing, gene odds, or validation.
+  Its counterweight is concentrated loss exposure and the player's resulting banking
+  judgment. Low/aggressive, high/conservative, and high/aggressive-for-experts are all
+  valid strategies.
+- **Energy never gates playing.** At zero stock—or by choice—the same normal run can
+  start lean at **×0.25 [H]** credited harvest, with a minimum of 1 DNA for a positive
+  Yield. Free/Training remains rewardless; the daily Signal objective run remains
+  exempt/full-strength. Only a positive-Energy normal run can feed a Clan Energy
+  Battle (§7.3).
+- **Energy is never sold, gifted, stipended, granted by a pass, accelerated, or
+  touched by a SKU or perk.** Recovery is its only source (§10.4). It carries over
+  only inside the six-unit cap; there is no overflow bank or daily recovery claim.
+- **The meter surfaces at 4 banked runs [H]**. Energy Commitment lives in Run Setup,
+  not as a mid-run interruption. Results state committed Energy, multiplier,
+  full-strength Yield, and exact credited DNA.
+
+**Economy compromise.** The owner-set hourly rhythm can supply up to 24 Energy/day
+to a player who returns repeatedly, versus the prior six full charges. The cap leaves
+once-daily stock at six, but the nonlinear curve also makes a successful six-Energy
+return worth 10 one-Energy harvests. The release therefore makes no hidden base-rate
+cut and does not casually rebalance the whole economy; all dials stay centralized and
+the explicit telemetry in §17.2 governs the first retune. This accepts a measurable
+inflation risk in exchange for honest stakes and frequent recovery.
 
 ### 8.6a The ladder — the difficulty climb (v1.4)
 
@@ -779,11 +835,11 @@ telling what modifiers compose that."*
 Ignoring the ladder costs nothing: rung 0 is the game, and every surface plays
 identically for a player who never opens it.
 
-What stays dead from the shipped system: the run-start gate, the 20-minute drip
-and its dual-clock defects (GT §9.1–9.2 — one refill authority now), energy
-purchases and the premium stipend, the €4-destroying claim path, and Free Play as
-a second-class mode. What returns is the part the owner actually loved: a daily
-allotment worth spending well, and a tomorrow worth waking up for.
+What stays dead from the shipped system: the run-start gate, client-controlled or
+dual-clock recovery, Energy purchases and the premium stipend, and the
+€4-destroying claim path. What returns by owner order is server-authoritative timed
+recovery itself, with a storage cap and a commitment decision rather than a refill
+claim.
 
 ---
 
@@ -798,48 +854,46 @@ variable. Density of noticing is.
 
 ### 9.1 What clans are for
 
-A clan is a witness, not an institution. It exists so that when your Depth beats your
-best week, someone specific sees it happen and their number moved because yours did.
-Everything else — heraldry, banter, rivalry, playoffs — is elaboration on being
-noticed.
+A clan is a witness under shared stakes, not an institution. It exists so an ordinary
+run can become a moment where someone specific needs you to execute, bank well, and
+improve a shared Depth. Everything else — heraldry, banter, rivalry, playoffs — is
+elaboration on being noticed.
 
 ### 9.2 The clan design
 
 - **Clan size: 1–12, soft-full at 6** [H] (overturns the shipped 50-cap and deletes
   the never-enforced minMembers:20 constant — GT §10). At six members, every member
-  is visibly load-bearing in the weekly sum; at fifty, forty are wallpaper. Small
+  can be load-bearing in the battle sum; at fifty, forty are wallpaper. Small
   clans also make symmetric pairing tractable at tiny population.
-- **The clan of one is a first-class citizen.** A solo player's clan hunts the Serpent
-  weekly, holds Depth records, appears in the directory, and gets paired when a
-  symmetric rival exists. Mechanically this is already true (duel matchmaking accepts
-  `member_count >= 1` — the brief's verified fact); this document makes it the design
-  rather than an accident. The owner's "two clans of one person each" instinct is the
-  correct foundation, structurally.
+- **The clan of one is a first-class citizen.** A solo clan builds battle and lifetime
+  Depth, appears in the directory, and pairs when a rival enters the same cycle. If no
+  rival forms, its run history remains real and settlement records participation rather
+  than fabricating a win.
 - **Founding flow:** at Serpent unlock (8 banks), one skippable prompt: found your
   clan (name it, pick preset heraldry) or join by invite code/link. Founding is one
   tap plus a name. There is no browse-empty-directory dead end: the directory shows
-  only clans that hunted this week or last, so it is short and alive rather than long
+  only recently active clans, so it is short and alive rather than long
   and dead. Total-population counts are never displayed anywhere.
 - **Roster mechanics:** invite links are the only recruitment surface (§11.3 — the
-  invite is the acquisition artifact). Leaving or merging clans carries your personal
-  Depth history with you; clan records stay with the clan. Kicking exists as plain
-  roster management, but the game never supplies a stat-gated tool, a minimum-Depth
-  field, or any officer lever keyed to output (Rule 8).
-- **Contribution display:** member contributions are visible — visibility *is* the
-  witness mechanism — but never with cut lines, never with required minimums, and
-  rewards never depend on intra-clan position. The display is additive ("Sans_Souci
-  fed 2,315 segments"), not evaluative.
+  invite is the acquisition artifact). A run stays attached to the clan snapshot at
+  start; one cycle lock prevents switching for double credit. Personal historical
+  honors stay with the player; clan records stay with the clan. Kicking remains plain
+  roster management with no stat-gated tool, minimum-Depth field, or officer output
+  lever (Rule 8).
+- **Contribution display:** the player sees their own strongest five and the two clan
+  aggregates. Nobody sees another member's attempt list, zero, Energy amount,
+  generation, fifth-best line, or intra-clan rank. The witness is the shared number
+  and the run-result celebration, not a manager dashboard.
 - **Moderation surface (solo-dev bound):** clan names filtered, heraldry preset-only,
   no free-text descriptions at launch, report path on every clan and handle. UGC
   surface stays this small until there is a population that earns more.
 
 ### 9.3 Degradation and scale — one design, three populations
 
-- **N = 1 player:** your clan of one hunts the Serpent; the week resolves against
-  your own best. The game is complete and honest — a measurement game, never an empty
-  room.
+- **N = 1 player:** a clan of one accumulates its own battle Depth and participation
+  honor. The opponent reads “forming”; no phantom rival or free victory is invented.
 - **N = 20 retained players:** three to six small clans; pairing produces real
-  rivalry most weeks; the directory is short and fully alive. This is the complete
+  rivalry in most cycles; the directory is short and fully alive. This is the complete
   competitive MVP, and it needs *twenty people* — a marketing problem with a known
   solution, not a structural barrier.
 - **N = 20,000:** pairing bands become promotion-tiered clan leagues (seasonal
@@ -853,37 +907,32 @@ noticed.
 
 ### 9.4 Symmetry — the honest complication, solved structurally
 
-Twenty players split into one active clan and one lapsed clan would produce a
-walkover, which is worse than no competition. So rivalry is never load-bearing:
+At launch, pairing is deterministic and lazy: the first unpaired clan in the cycle is
+matched by the next eligible clan. This is deliberately simpler than pretending the
+current population supports a rating algorithm. It creates three safeguards:
 
-- The **primary** weekly outcome is always self-referential — clan Depth vs the
-  clan's best week. It cannot walkover, cannot embarrass, and works at every N.
-- Rival pairing is a **layer**, activated per-week only when a symmetric rival exists:
-  matched on size band and trailing-four-week activity band [H]. No symmetric rival
-  this week → no pairing, no shame, the hunt still resolves.
-- Paired outcomes pay heraldic laurels and Chronicle entries — never economy (the
-  shipped clan-duel ×1.05 DNA multiplier is deleted, §13, closing the "clan
-  contribution as economic pressure" door from the reward side too).
-- **Rivalry has memory.** Pairing prefers the standing rival while both clans remain
-  in-band [H]: head-to-head records (W–L, streaks, closest week, all-time margin)
-  live in both clans' Chronicles, and a season-end **Rivalry Ledger** memorializes
-  the year's duels. Sports leagues run on derbies — the *same* opponent, with
-  history — and this is that, at zero content cost. Either clan may decline
-  continuation at a season boundary, silently, no forfeit recorded; sustained band
-  divergence dissolves a mismatch automatically (walkover protection stays primary).
+- A side is created only by a real positive-Energy attempt; inactive clans do not
+  populate a matchmaking queue or create scheduled obligations.
+- No opponent by settlement means participation, not victory. Winner prestige cannot
+  be farmed from an empty population.
+- Pairing quality, size/activity bands, and standing-rival preference are later-stage
+  refinements opened only when observed clan count supports them [H]. They may change
+  opponents, never scoring, Energy, or rewards.
+
+Paired outcomes grant victor/participant/stalemate honors and Chronicle history—never
+DNA, multipliers, Energy, or future battle power. The shipped clan-duel ×1.05 DNA
+multiplier remains deleted (§13).
 
 ### 9.5 Why the Hunt can never become the pressure to spend
 
-The Survivor.io failure the owner named, closed at every link of the chain: money
-cannot buy DNA, variants, genes, traits, or anything else that feeds Yield (§10);
-therefore money cannot move Depth (Rule 3); therefore a clanmate's spending cannot
-change the clan's number, and a member's wallet is invisible in the hunt. Best-3
-bounds the time a member can be expected to give; proportional payment with no
-thresholds means no member can cost anyone a reward; and the absence of officer
-levers means nobody can be measured against a bar that doesn't exist. A clan can
-pressure you to *play well*, which is the game, and to *show up three times a week*,
-which is friendship. It cannot pressure you to pay, because there is nothing to pay
-for that it could see.
+The Survivor.io failure the owner named is closed at every commercial link: money
+cannot buy DNA, Energy, recovery, variants, genes, traits, analysis unavailable to
+free players, or anything else that feeds Yield (§10); therefore money cannot move
+Depth (Rule 3), and a member's wallet is invisible in the battle. Best-five bounds
+what can contribute while allowing practice/replacement. The private replacement
+line creates self-pressure without handing officers a quota. A clan can pressure you
+to *play well* and the game deliberately allows that social responsibility; it cannot
+pressure you to pay, because payment has no route to the shared number.
 
 ### 9.6 SupaSnake's Harvard — the smallest population we can saturate
 
@@ -896,7 +945,7 @@ same problem, solved by the same act:
   already share the exact reference frame this game answers, with a real relationship
   to the founder. Formed into **4–6 founding clans, each with a captain who recruited
   their own members** — so the first stranger to arrive sees a short directory of
-  genuinely alive clans with real weekly Depths, never an empty room. This is also
+  genuinely alive clans with real battle Depths, never an empty room. This is also
   the symmetry seed: several small clans of comparable activity, by construction.
 - **Campus 2+ — one bounded niche community at a time**, chosen by criteria (has a
   hub; browser-game tolerant; skill-culture; small enough to notice a newcomer
@@ -1006,7 +1055,8 @@ cannot operate. This gives veteran surplus DNA a permanent identity-aligned sink
 
 Energy in any form or amount — it no longer gates play and is never sold (§8.6) ·
 DNA or any spendable currency · variants, traits, genes, splices, heirlooms · breeding influence
-of any kind · objective counts, Signal or Serpent attempts · offline anything ·
+of any kind · objective counts, Signal attempts, or battle eligibility · offline
+recovery, recovery rate, capacity, or overflow ·
 XP or progression rates · leaderboard eligibility, placement, or protection · aim
 systems or any planning information · randomized outcomes, direct or laundered
 through any intermediary · anything that expires, decays, or can be confiscated.
@@ -1321,7 +1371,7 @@ forces a deliberate, recorded amendment opening an eighth.
 | Slot | Grows by | Marginal cost |
 |---|---|---|
 | 1. Signal conditions | New seeded condition-sets from existing mechanics | Near zero |
-| 2. Serpent weeks & season re-skins | New modifier draws, themed hunts | Near zero |
+| 2. Serpent battles & season re-skins | New presentation treatments; run rules stay ordinary | Near zero |
 | 3. Mastery trials | Authored per-dynasty skill challenges, cosmetic rungs | Low, bounded |
 | 4. Cosmetic lines | Items in the six shipped slots (Atelier, seasons, earned shelf, drops) | Low |
 | 5. Chronicle & lineage presentation | History, pedigree, records surfaces | Low |
@@ -1337,12 +1387,12 @@ mechanic is permanently expensive for one person. The slots are all of the first
 |---|---|---|
 | Currencies | **1** (DNA) | Premium currencies: **0**, forever |
 | Daily ritual surfaces | **1** (Signal) | Ascension is its monthly aggregation view, not a surface |
-| Weekly surfaces | **1** (Serpent) | |
+| Recurring clan surfaces | **1** (Serpent Battle) | Aggregates normal runs; never a queue |
 | Progression pillars | **3** | Mastery, Lineage, Discovery |
 | Public numbers | **2** | Score, Depth |
 | Dynasties | **3** | A fourth is an amendment, argued from a year of live data |
 | Active gene pool | **≤16**, floor 12 | Additions swap, never stack |
-| Game modes | **4** | Run, Signal, Serpent, Training |
+| Game modes | **3** | Run, Signal, Training; battle is an automatic overlay |
 | Commercial SKU archetypes | **4** | Keeper, Atelier, Season, Patronage (Founding + Patron Packs) |
 | Results layers | **3** | With exactly 1 recommended next action |
 | Taps: open→board / results→rerun | **≤3** / **≤2** | Run Setup included; REPLAY skips setup |
@@ -1394,13 +1444,13 @@ Stripe-in-test-mode means no purchases to honor — this is the last cheap momen
 
 | # | System (state) | Action | Preservation path |
 |---|---|---|---|
-| 1 | **Energy as shipped** — start-gate, 20-min drip regen, stipend, purchases, Free-Play split (GT §3.3) | **Redefine (§8.6, v1.3):** gate, timers, and commerce deleted; 6 daily charges pace harvest richness; every run is a real run | Columns and meter reused with new semantics; §9.1/§9.2 defects die (no purchases, single refill authority) |
+| 1 | **Energy as shipped** — start-gate, 20-min client-influenced drip, stipend, purchases, Free-Play split (GT §3.3) | **Redefine (§8.6, v1.5):** no gate or commerce; server-time hourly recovery to cap 6; deliberate 0–6 commitment; every normal run remains playable | Historical charge columns retained for audit; new balance and session snapshot are authoritative |
 | 2 | Energy SKUs ×3 + Starter/Dynasty bundles ×2 | Delete before any live key | Nothing to preserve (test mode) |
 | 3 | Premium as shipped (false Season-Pass claim, inert queue perk) | Replace with Keeper (§10.2); truth-pass `premium.ts` | No real subscribers exist |
 | 4 | Streak DNA multipliers (global income stack) | Delete the global multiplier; the streak concept returns bonus-scoped as the Daily Take streak (§7.2, v1.2) | Longest streak → permanent Legacy Record; streak history seeds the Take streak |
 | 5 | Collection set-bonus multiplier | Delete | None needed (no owned thing removed) |
 | 6 | Clan-duel DNA multiplier | Delete | Duel history → Chronicle; rewards become heraldic |
-| 7 | Offline passive DNA + offline energy restore (root provider) | Delete | Replaced by the **World Report** (§7.5), Phase 2 — motion as news, never debt, no claims |
+| 7 | Offline passive DNA + client/root-provider Energy restore | Delete passive DNA and the client authority; **v1.5 restores only server-time Energy recovery** (§8.6) | World Report remains return news; recovery is automatic, capped, and claimless |
 | 8 | Legacy 28-day calendar API (unreachable, still live — GT §9.8) | Delete route + RPC | Grant history stays in transactions |
 | 9 | Dead config (GT §10: firstWinBonus, battlePass block, inactive contracts, stale docstrings, minMembers…) | Delete/correct in one sweep | Git history |
 | 10 | Contracts (2/day, premium 3rd, claim ceremony) | Merge into Signal at its ship; retire RPCs | Contract history stays in transactions; Season 1 unaffected (lapses 09-07) |
@@ -1444,7 +1494,8 @@ Dependency-ordered. "Launch" means the first campus seeding — not a press mome
 
 **Phase 0 — Truth and subtraction** *(before anything else)*
 Kill-list items 1–9, 13, 16, 18, 21 (one large subtraction-and-redefinition release;
-item 1 is the §8.6 Energy semantic migration; items 19–20 move to Phase 1 with the
+item 1 is the §8.6 Energy semantic migration (now superseded by v1.5 commitment);
+items 19–20 move to Phase 1 with the
 lineage rework so breeding is never left random-without-rerolls) · atomic
 achievements→Records migration (item 11) · leaderboard eligibility + identity fixes ·
 stale-session lifecycle · QA/dev cohort flagging out of all public surfaces · web
@@ -1455,15 +1506,16 @@ proceed: economy paths audited post-subtraction; boards show only real, ended,
 validated runs.*
 
 **Phase 1 — The two numbers** *(the product becomes this document)*
-Results → three layers with one next action · **World Serpent MVP**: weekly seed,
-Yield→Depth, clan-of-one, founding flow, settlement cron, settlement card ·
+Results → three layers with one next action · **World Serpent Clan Energy Battle**:
+ordinary positive-Energy runs → best-five Depth, clan-of-one, founding flow,
+settlement cron, settlement card ·
 **World Signal MVP**: daily seed, objective choice, auto-settle, share grid +
 **minimal challenge links** (seed + target score); contracts retire at cutover
 (item 10) · **the Daily Take** (§7.2) · **the Run Setup page** (§5) · clan cap 12 +
 directory-shows-alive-only + Anomaly absorbed (items 14–15) · **lineage rework**
 (items 19–20): deterministic draft, reroll retirement/conversion, **Ascendance**
 (§8.2) · share URLs for all artifact classes · settlement auto-post tooling
-(§11.6). *Gate: a clan of one completes a full Signal→Serpent→settlement→share week
+(§11.6). *Gate: a clan of one completes a full Signal→Energy Battle→settlement→share cycle
 untouched by the developer.*
 
 **Phase 2 — First campus (launch)**
@@ -1534,6 +1586,9 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 18 | **Length as a spendable cost** — INFUSE −4 segments, Ouroboros −3/bite, Thick Hide −5, `shed`, every revive (all shipped) | **v1.4, Rule 15: inverted.** INFUSE costs **+8 [H] growth**; the shed family is killed; survival never shrinks. **Owner ruling 27 July 2026. The seven-day cooling period required by §4 was WAIVED by the owner the same day** — recorded here because §4 requires the sign-off to live in this record, and because a self-waiver of a self-imposed brake should be visible rather than silent. *Grounds:* the amendment is pre-launch with no audience, nothing built on it has shipped, and it rests on a day of the owner's own playtesting rather than on argument — 144 production runs showing a median of 8% board occupancy, plus a 26-minute PRIMAL run and a banked CYBER run generating the evidence directly. *What the waiver gives up:* the deliberate delay that exists precisely to catch same-day enthusiasm. If Rule 15 proves wrong in the lab, it is reversed by the same procedure and recorded here again | The whole "spend your body" grammar as originally written, and the emergency valve a shrinking snake gave a player in trouble. Kept in substance: body is still the price of power — it is now paid by *growing* rather than by shrinking, which is the only version that costs anything |
 | 19 | **Per-dynasty Score parity by identical curves** (shipped: PRIMAL and COSMIC both `() => 1`) | **v1.4: differentiated shapes with comparable integrals** (§6.1). The measured consequence of "identical" was a ~10× Score-per-minute gap in CYBER's favour, so parity of *formula* was producing gross disparity of *outcome* | The simplicity of one curve for everyone; a small ongoing balance surface (three integrals to keep in tolerance) |
 | 20 | **"PASS pays body length"** (proposed in the redesign analysis, never shipped) | **Withdrawn before implementation.** It was derived when INFUSE *paid* length; once Rule 15 inverted the sign, a PASS that granted length would be a reward denominated in the currency Rule 15 outlaws. PASS instead pays quoted DNA plus a better next offer | An elegant single-axis portal (spend body ↔ gain body). Recorded because the idea is attractive and will be re-proposed by someone who has not read this row |
+| 21 | **Fixed six-charge UTC-daily envelope; no timed recovery or carryover** (v1.3) | **v1.5 Energy Commitment:** server-time +1/hour to cap 6, partial/offline recovery, deliberate 0–6 start commitment, nonlinear harvest curve (§8.6). Explicit owner ruling, 29 July 2026; the seven-day cooling period is waived by that greenlit implementation order | The clean bounded-daily economy and “no timers” simplicity; active players can recover materially more than six/day; a visible timer returns. The waiver gives up a deliberate pause before changing a constitutional pacing rule, so economy telemetry and a reversible config curve are mandatory |
+| 22 | **World Serpent as a separate weekly, no-Energy, cooperative best-three mode** (v1.3–1.4) | **v1.5:** Serpent is a 3-day Clan Energy Battle automatically fed by positive-Energy normal runs; best five per member; 1-day intermission; historical weeks remain immutable | The universal cooperative boss, a calendar-week artifact, unlimited unrationed attempts, and full participation in three runs. Gained: one coherent normal-run loop where personal economic stakes and clan responsibility are the same decision |
+| 23 | **Rule 8 forbids all thresholds and clan-vs-clan reward mathematics** | **v1.5 narrow amendment:** a player may privately see their own fifth-best replacement line; paired aggregate outcomes grant victor vs participant/stalemate honors. No teammate detail, officer lever, economy reward, minimum, or paid route is introduced | The absolute “no thresholds anywhere” sentence and purely self-referential clan outcome; accepted to create the owner-directed mastery pressure while preserving privacy and non-power rewards |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -1563,6 +1618,11 @@ full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
 | # | Prior position | v1.3 ruling | What is given up |
 |---|---|---|---|
 | C1 | Energy deleted outright (v1.0, kill #1); economy pacing left open (§17.2) | **Energy redefined** (§8.6): never gates play, never sold; 6 daily charges make runs rich, lean runs floor at 25%; rituals always full-fat; the pacing question closed by mechanism | The unlimited-full-yield simplicity; a meter returns to the game's surfaces; "no energy" leaves the marketing line ("no energy paywall" replaces it) |
+
+**v1.5 owner rulings (29 July 2026):** rows 21–23 above are the complete
+amendment record for Energy Commitment and automatic Clan Energy Battles. They
+supersede C1's refill cadence and the separate best-three Serpent mechanics while
+preserving its never-gates and never-sold constraints.
 
 **Where this document rules against the audit** (recorded for honesty): energy is
 deleted outright rather than A/B-tested first (§15.2); clans launch as clan-of-one
@@ -1600,18 +1660,22 @@ deliberately undecided pending data.
    comprehension interviews + mis-navigation telemetry between the two surfaces;
    act if >20% conflate. *Mitigation already in design:* distinct names, units,
    screens.
-2. **Energy envelope calibration** (v1.3 — the pacing *mechanism* is decided in
-   §8.6 and is not open; these dials tune it). Charges 6/day, lean factor 25%,
-   meter at 4 banks. *Test:* daily DNA distribution by cohort; collection,
-   breeding, and Ascendance completion curves against churn; and whether the
-   session-end feels like "done for today" (interviews) rather than "cut off."
-   Adjust cap and lean factor first; the always-full rituals are never touched.
+2. **Energy Commitment economy calibration** (v1.5 — recovery and commitment are
+   decided; these numbers are dials). Cap 6, 3,600-second recovery, curve
+   1/2.2/3.6/5.2/7.2/10, lean 25%, meter at 4 banks. *Test:* DNA/day and
+   effective DNA/Energy across once-daily, 2–3-session, and highly active cohorts;
+   commitment distribution; bank timing and crash rate by commitment; collection,
+   breeding, and Ascendance completion; stock time-at-cap and session return cadence.
+   First retune recovery interval or curve—not hidden base payouts—and publish the
+   change. Specifically test whether successful 6-Energy runs inflate progression
+   before considering ×12.
 3. **Keeper price (€3.99/€34.99).** *Test:* post-Phase-3, measure conversion ×
    tenure × refund against the revenue-per-subscriber cut; revisit only with ≥3
    months of payer-status retention data.
-4. **Best-3 Serpent cap.** *Test:* participation distribution; if p75 of active
-   hunters play <3 Serpent runs/week, drop to best-2; if grinding clusters at
-   exactly 3 with fatigue signals, consider best-2 as well.
+4. **Best-five Clan Energy cap.** *Test:* eligible attempts/player/cycle,
+   replacement rate, whether effort clusters exactly at five, and whether the fifth
+   threshold creates mastery pressure or obligation. If most players cannot fill five
+   despite recovered stock, test best-four; do not increase the cap to reward volume.
 5. **Signal objective count (1 vs 3).** *Test:* A/B open-rate, completion, and
    next-day return across the first two campuses.
 6. **Clan size 12 / soft-full 6.** *Test:* pairing symmetry quality and intra-clan
@@ -1714,14 +1778,14 @@ deliberately undecided pending data.
 30. **Score-curve integrals** (v1.4, §6.1). *Test:* simulate the three curves at
     the ruled terminus and hold total Score within ±10% across dynasties. If they
     cannot be brought into tolerance, escalate — do not mint a second board.
-31. **Charge carryover** (v1.4, deferred from the D5 ruling). §8.6 says charges
-    never carry over; the evidence on comparable systems suggests **bankability**,
-    not purchasability, is what makes a cap read as generous — three franchises
-    independently converged on an overflow bank and all read positive, while the
-    one with no bank draws "disrespecting player time." *Test:* A/B a one-day
-    carryover (ceiling 12) against the current rule on return rate after a missed
-    day. The 25% lean tail may already be doing this work, which is precisely why
-    it is a test and not a change.
+31. **Clan Energy Battle balance** (v1.5). *Test:* commitment mix among counted
+    results; whether 6-Energy attempts become socially mandatory; share of top-five
+    slots held by 1-Energy runs; attempt timing across all three days; final-day
+    clustering; repeat-winner rate; victor/participant progression sentiment; and
+    generation changes within a cycle. Progression remains unlocked unless real data
+    shows unacceptable last-day dominance. Pairing bands open only after population
+    supports them; do not normalize score or multiply it by Energy to cure a social
+    perception problem.
 32. **CYBER precision ceiling** (v1.4 D3, ruled 29 July 2026). The 200ms curve
     now decays by 0.02 per food and stops at 120ms (×1.67): food 30 reaches 125ms
     (×1.6), and food 33 reaches the floor. This replaces the prior 0.03/100ms
@@ -1732,7 +1796,7 @@ deliberately undecided pending data.
 
 ---
 
-*Ratified 25 July 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.5 on 29 July 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*

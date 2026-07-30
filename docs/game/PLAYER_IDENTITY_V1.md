@@ -5,6 +5,9 @@
 **Date:** 2026-07-18
 **Status:** APPROVED — implementation phased I1–I4 (see §11); doc-of-record for the "Identity v1" overhaul (plan: `investigate-this-repo-it-rosy-charm`)
 **Companion docs:** `GAME_DESIGN_V2.md` (the game these identities are earned in), `systems/CLAN_DUELS_spec.md`, migrations 019–021 (mastery, gauntlet, seasons — the systems this doc makes *visible*)
+**Current-rules notice (2026-07-29):** Product Constitution v1.5 §10 and
+`ENERGY_COMMITMENT_AND_CLAN_BATTLES.md` supersede this document's historical
+Energy-commerce statement. Energy and recovery are never sold.
 
 ---
 
@@ -647,8 +650,9 @@ untouched byte-for-byte. Audit surface: migrations 022–025 contain no
 
 ### 10.2 Anti-P2W statement
 
-Money can buy energy (earning capacity, per GDv2 §7.4) and — later, maybe —
-taste cosmetics under the §5.6 visual-distinction rule. Money can never buy:
+Money may buy only Constitution-compliant identity, content, and organization
+products; it cannot buy Energy, recovery, DNA, Yield, or clan power. Money can
+never buy:
 a handle change ahead of cooldown, any record tier, Legacy Score, any item
 in the prestige catalog, mastery, tenure, or the Founder marker. Tenure and
 founder status are *unbuyable at any price forever* — that is what makes
