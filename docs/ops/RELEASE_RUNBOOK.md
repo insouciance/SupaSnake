@@ -24,9 +24,11 @@ dispatches a release, and record the rollback deployment id from the Vercel
 dashboard at that time (precondition 3).
 
 Future releases stage and verify the application before applying any named
-forward-only migration. The manual GitHub workflow encodes this order; do not
-run `supabase db push` independently. A repository-only merge that reconciles
-`main` with an already-live artifact is not a production deployment.
+forward-only migration, then prove both the staged application and the outgoing
+canonical application against the migrated schema before promotion. The manual
+GitHub workflow encodes this order; do not run `supabase db push` independently.
+A repository-only merge that reconciles `main` with an already-live artifact is
+not a production deployment.
 
 ## Preconditions
 
@@ -51,20 +53,23 @@ mode. The workflow performs:
    environment values and fails on wrong URL, Stripe mode, Price IDs or keys.
 5. A staged `--prod --skip-domain` deployment and authenticated health check
    against the current schema. Deployment protection must remain enabled.
-6. Promotion of that capability-aware build to `supasnake.com`.
-7. Application of pending Supabase migrations and linked database lint.
-8. Canonical production health check after the migration step, including when
-   that step is a no-op.
+6. Application of pending additive Supabase migrations and linked database lint.
+7. A second staged health check against the migrated schema, followed by a
+   canonical health check proving the outgoing application remains compatible.
+8. Promotion of the staged build to `supasnake.com`.
+9. Final canonical production health check.
 
 The protected staged-health command consumes `VERCEL_TOKEN` from the job
 environment. With Vercel CLI 56, do not repeat that credential as an explicit
 `vercel curl --token` option: the subcommand forwards it to raw curl instead of
 using it for CLI authentication.
 
-This closes the unsafe window in a capability-changing release: an older
-application never serves a schema it cannot understand. Every release with a
-pending migration must document compatibility on both sides of the boundary.
-If no migration is pending, the database step must remain a verified no-op.
+This closes both unsafe windows in a capability-changing release: the new
+application is tested on both schemas before it can serve players, and the old
+application is tested on the migrated schema before promotion. Every release
+with a pending migration must document compatibility on both sides of the
+boundary. If no migration is pending, the database step must remain a verified
+no-op.
 
 ## Repository-only mainline reconciliation
 
@@ -96,10 +101,11 @@ updated:
 | Failure point | Safe response |
 |---|---|
 | Verification, env validation, dry-run or staged build fails | Stop. Production is unchanged. |
-| Staged health fails | Do not promote or migrate. Inspect Vercel logs. |
-| Promotion fails | Do not migrate. Production remains on the previous alias. |
-| Migration fails before any migration commits | Keep the compatible staged application only when the release plan proves that state safe; repair and rerun the forward migration. |
+| Initial staged health fails | Do not migrate or promote. Inspect Vercel logs. |
+| Migration fails before any migration commits | Do not promote. The outgoing application remains canonical; repair and rerun the forward migration. |
 | Migration partially applies | Do not promote an incompatible build. Assess migration table/state, take a backup, and forward-fix. |
+| Either post-migration compatibility smoke fails | Do not promote. Keep the outgoing application canonical and forward-fix the additive schema/application boundary. |
+| Promotion fails | The migrated schema and outgoing application have already passed compatibility smoke; retry promotion or investigate Vercel without reverting schema. |
 | Post-migration app regression | Deploy a schema-compatible fix/revert based on the current release line; do not assume an older artifact is database-compatible. |
 
 Database migrations are forward-only unless a separately reviewed restoration
