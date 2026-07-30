@@ -10,7 +10,8 @@ export type IdentityProvenance =
   | 'lineage'
   | 'discovery'
   | 'clan'
-  | 'supporter';
+  | 'supporter'
+  | 'unverified';
 
 export interface IdentityBadge {
   id: string;
@@ -27,11 +28,12 @@ export interface IdentityBadge {
 export function badgeProvenance(badge: IdentityBadge): IdentityProvenance {
   if (badge.provenance) return badge.provenance;
   const clue = `${badge.source ?? ''} ${badge.id} ${badge.name}`.toLowerCase();
-  if (/premium|supporter|keeper|patron|purchase|shop/.test(clue)) return 'supporter';
+  if (/premium|supporter|keeper|patron|purchase|shop|solstice_gilded/.test(clue)) return 'supporter';
   if (/clan|victor|stalemate|serpent|battle_honor/.test(clue)) return 'clan';
   if (/lineage|pedigree|generation|ascendance/.test(clue)) return 'lineage';
   if (/codex|genome|discovery|record|weaver/.test(clue)) return 'discovery';
-  return 'earned';
+  if (/founder|founding|archetype|solstice_badge|mastery/.test(clue)) return 'earned';
+  return 'unverified';
 }
 
 export interface BannerRender {

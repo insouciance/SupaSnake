@@ -146,6 +146,7 @@ const PROVENANCE_LABEL: Record<IdentityProvenance, string> = {
   discovery: 'Discovery',
   clan: 'Clan',
   supporter: 'Supporter · decorative',
+  unverified: 'Source unverified',
 };
 
 function Badge({
@@ -159,11 +160,12 @@ function Badge({
 }) {
   const isFounder = badge.id === 'badge_founder';
   const provenance = badgeProvenance(badge);
+  const competitiveProof = provenance !== 'supporter' && provenance !== 'unverified';
   return (
     <span
       data-testid="player-card-badge"
       data-provenance={provenance}
-      data-competitive-proof={provenance === 'supporter' ? 'false' : 'true'}
+      data-competitive-proof={competitiveProof ? 'true' : 'false'}
       title={`${badge.name} — ${PROVENANCE_LABEL[provenance]}`}
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-arcade border text-xs font-body ${
         BADGE_RARITY_TEXT[badge.rarity] ?? 'text-beige/80'

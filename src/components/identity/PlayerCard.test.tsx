@@ -105,17 +105,39 @@ describe('PlayerCard', () => {
             badges: [
               { id: 'record_vault_t3', name: 'Vault Gold', rarity: 'rare' },
               { id: 'badge_premium_supporter', name: 'Lab Patron', rarity: 'epic' },
+              { id: 'solstice_gilded_badge', name: 'Gilded Badge', rarity: 'rare' },
             ],
           })}
           variant="full"
         />
       );
-      const [record, supporter] = screen.getAllByTestId('player-card-badge');
+      const [record, supporter, gilded] = screen.getAllByTestId('player-card-badge');
       expect(record).toHaveAttribute('data-provenance', 'discovery');
       expect(record).toHaveAttribute('data-competitive-proof', 'true');
       expect(supporter).toHaveAttribute('data-provenance', 'supporter');
       expect(supporter).toHaveAttribute('data-competitive-proof', 'false');
+      expect(gilded).toHaveAttribute('data-provenance', 'supporter');
+      expect(gilded).toHaveAttribute('data-competitive-proof', 'false');
       expect(screen.getByTestId('player-card-premium')).toHaveAttribute(
+        'data-competitive-proof',
+        'false'
+      );
+    });
+
+    it('does not call a badge competitive proof when its source is unknown', () => {
+      render(
+        <PlayerCard
+          identity={identity({
+            badges: [{ id: 'mystery_badge', name: 'Unknown Origin', rarity: 'rare' }],
+          })}
+          variant="full"
+        />
+      );
+      expect(screen.getByTestId('player-card-badge')).toHaveAttribute(
+        'data-provenance',
+        'unverified'
+      );
+      expect(screen.getByTestId('player-card-badge')).toHaveAttribute(
         'data-competitive-proof',
         'false'
       );
