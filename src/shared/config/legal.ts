@@ -101,7 +101,7 @@ export const LEGAL_VERSIONS = {
   terms: '2026-07-22',
   // 2026-07-25: attribution (§3.6a) and the Dispatch list (§3.9) disclosed.
   privacy: '2026-07-25',
-  cookies: '2026-07-25',
+  cookies: '2026-07-30',
   impressum: '2026-07-22',
   withdrawal: '2026-07-22',
   accessibility: '2026-07-22',

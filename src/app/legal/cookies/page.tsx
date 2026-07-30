@@ -55,9 +55,10 @@ const ESSENTIAL: StorageEntry[] = [
 
 const FUNCTIONAL: StorageEntry[] = [
   {
-    name: 'hint-dismissed-*',
+    name: 'supasnake.pwa.install.v1.device',
     kind: 'localStorage',
-    purpose: 'Remembers which UI hints you have dismissed',
+    purpose:
+      'Remembers whether this device dismissed or installed the optional home-screen shortcut, and how often that offer appeared. It contains no run or progression data.',
     duration: 'Until cleared',
   },
 ];
@@ -75,13 +76,6 @@ const ANALYTICS: StorageEntry[] = [
     kind: 'localStorage',
     purpose: 'Analytics device/session identifiers (consent-gated)',
     duration: 'Until consent is revoked or storage cleared',
-  },
-  {
-    name: 'supasnake-funnel-*',
-    kind: 'localStorage',
-    purpose:
-      'Remembers that a one-off milestone (first banked run, handle claimed) has already been counted, so it is not reported twice. Written only while Analytics is enabled.',
-    duration: 'Until cleared',
   },
 ];
 
@@ -165,7 +159,9 @@ export default function CookiePolicyPage() {
             </p>
             <p>
               We set no advertising or marketing cookies, and no third-party
-              tracking pixels.
+              tracking pixels. Game progress, run receipts, rewards, and
+              notification state are stored on SupaSnake&apos;s servers, never in
+              browser storage.
             </p>
           </section>
 
