@@ -1,21 +1,21 @@
 # Production Release Runbook
 
-Current player-feature baseline: application runtime `61a1936` — the Energy
-Commitment and Clan Energy Battle release, deployed 2026-07-29 by workflow run
-30523606603, deployment `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` — and hosted
-migrations 001–059. Migration 059 applied through the reviewed workflow and the
-canonical application/database health check passed. Rollback anchor for this
-release (precondition 3): `dpl_Bg8ru9SP2jAczR9hyW8PrMsNpCBX`, commit `95ad7d3`.
-Migration 059 is forward-only and includes an explicit compatibility bridge for
-that prior application runtime.
+Current player-feature baseline: application runtime `abf9844` — the control
+responsiveness and uninterrupted-Cosmic release, deployed 2026-07-30 by workflow
+run 30534158859, deployment `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` — and hosted
+migrations 001–059. The migration preview and apply steps were verified no-ops,
+linked database validation passed, and the canonical application/database health
+check passed. Rollback anchor for this release (precondition 3):
+`dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR`, commit `61a1936`; both runtimes use the same
+hosted schema.
 
-The workflow's rollback-anchor step is currently unreliable. Run 30523606603
+The workflow's rollback-anchor step is currently unreliable. Run 30534158859
 executed it after creating the staged `--prod --skip-domain` deployment, and
-`vercel ls --prod` therefore selected that new staged deployment rather than
-the outgoing canonical one. Its summary therefore named the staged deployment
-instead of the independent outgoing anchor above. Until the step is moved
-before staging or resolves the canonical alias directly, do not trust the
-generated summary as rollback evidence.
+`vercel ls --prod` therefore selected the new
+`dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` artifact rather than the outgoing canonical
+one. Its summary named the staged deployment instead of the independent outgoing
+anchor above. Until the step is moved before staging or resolves the canonical
+alias directly, do not trust the generated summary as rollback evidence.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
