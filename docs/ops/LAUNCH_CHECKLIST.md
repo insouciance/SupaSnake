@@ -13,7 +13,8 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
 - [ ] All migrations apply from 001 through the release's highest numbered
-      migration (060 for the Career Spine release) on a clean database
+      migration (061 for the Career Spine release) on a clean database; the
+      060-only additive bridge and separate 061 cutover are also exercised
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
       current baseline, or lists exactly the migrations named in a future
       release plan
@@ -85,7 +86,8 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 ## Release execution
 
 - [ ] Backups/PITR and current Vercel production deployment ID are recorded
-- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (application first, database second)
+- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (including the reviewed 060 bridge →
+      exact application SHA → invocation drain → 061 Career cutover order)
 - [ ] Post-release health and core smoke checks pass on `supasnake.com`
 - [ ] Every configured cron route rejects no/incorrect bearer tokens
 - [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs
