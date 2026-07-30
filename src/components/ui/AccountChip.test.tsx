@@ -102,11 +102,11 @@ describe('AccountChip', () => {
 
       const chip = screen.getByTestId('account-chip');
       expect(chip).toHaveTextContent(/guest/i);
-      expect(chip).not.toHaveTextContent(/save progress/i);
+      expect(chip).not.toHaveTextContent(/add recovery/i);
       expect(chip).toHaveAccessibleName('Playing as guest');
     });
 
-    it('surfaces save progress when the centralized post-run badge exists', () => {
+    it('surfaces account recovery when the centralized post-run badge exists', () => {
       useNotificationStore.getState().publish({
         id: 'save-progress',
         title: 'Keep your collection',
@@ -118,8 +118,8 @@ describe('AccountChip', () => {
       render(<AccountChip />);
 
       const chip = screen.getByTestId('account-chip');
-      expect(chip).toHaveTextContent(/save progress/i);
-      expect(chip).toHaveAccessibleName(/save progress available/i);
+      expect(chip).toHaveTextContent(/add recovery/i);
+      expect(chip).toHaveAccessibleName(/account recovery available/i);
     });
 
     it('opens the account upgrade modal on tap', () => {

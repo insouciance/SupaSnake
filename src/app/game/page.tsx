@@ -1688,12 +1688,12 @@ export default function GamePage() {
           if (currentSession?.user?.is_anonymous === true) {
             notifications.publish({
               id: 'save-progress',
-              title: 'Keep your progress',
-              description: 'Add an email whenever you want to play on another device.',
+              title: 'Protect your account',
+              description: 'Your progress is secured. Add an email to recover this account on another device.',
               ...NOTIFICATION_TARGETS.saveProgress,
               badgeKind: 'exclamation',
               attentionReason: 'action-required',
-              actionLabel: 'Save progress',
+              actionLabel: 'Add recovery',
             });
           }
         }
@@ -3759,15 +3759,15 @@ export default function GamePage() {
               )}
             </div>
 
-            {/* Guests: secondary post-run CTA to secure the DNA they just
-                earned - never shown before or during a run */}
+            {/* Guests: secondary post-run CTA for account recovery — progress
+                is already server-secured, and this never interrupts a run. */}
             {isGameOver && isAnonymous && (
               <button
                 onClick={() => setShowSaveProgress(true)}
                 data-testid="gameover-save-progress"
                 className="block mx-auto text-sm font-body text-venom-orange underline hover:text-venom-orange-light transition-colors min-h-[44px]"
               >
-                Playing as guest - save this progress with a free account
+                Playing as guest — add recovery for this account
               </button>
             )}
               </>
@@ -3776,7 +3776,7 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Save-progress modal (opened from the game-over screen) */}
+      {/* Account-recovery modal (internal legacy ID: save-progress). */}
       <AccountUpgradeModal
         isOpen={showSaveProgress}
         onClose={() => setShowSaveProgress(false)}
