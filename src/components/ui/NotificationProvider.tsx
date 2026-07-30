@@ -26,20 +26,33 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const response = await fetch('/api/progression/attention', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          throw new Error(`Attention read failed (${response.status})`);
-        }
-        const body = await response.json();
-        const items = Array.isArray(body?.items)
-          ? body.items.map(parseServerAttentionItem).filter(Boolean)
-          : [];
-        if (!cancelled) {
-          useNotificationStore.getState().replaceServerItems(
-            items as NonNullable<ReturnType<typeof parseServerAttentionItem>>[]
+        const items: NonNullable<ReturnType<typeof parseServerAttentionItem>>[] = [];
+        let offset = 0;
+        do {
+          const response = await fetch(
+            offset === 0
+              ? '/api/progression/attention'
+              : `/api/progression/attention?offset=${offset}`,
+            {
+              cache: 'no-store',
+              headers: { Authorization: `Bearer ${token}` },
+            }
           );
+          if (!response.ok) {
+            throw new Error(`Attention read failed (${response.status})`);
+          }
+          const body = await response.json();
+          if (Array.isArray(body?.items)) {
+            items.push(...body.items.map(parseServerAttentionItem).filter(
+              (item: ReturnType<typeof parseServerAttentionItem>): item is NonNullable<typeof item> =>
+                item !== null
+            ));
+          }
+          const nextOffset = Number(body?.nextOffset);
+          offset = Number.isInteger(nextOffset) && nextOffset > offset ? nextOffset : 0;
+        } while (offset > 0);
+        if (!cancelled) {
+          useNotificationStore.getState().replaceServerItems(items);
         }
       } catch (error) {
         // An outage must not erase server-owned attention already visible in

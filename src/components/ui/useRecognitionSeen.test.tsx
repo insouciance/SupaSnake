@@ -10,12 +10,22 @@ const recognition: ServerAttentionItem = {
   status: 'unseen',
   destination: 'codex',
   headline: 'New splice',
+  momentId: 'm1',
+  artifactRef: 'splice:helix-bloom',
   source: { type: 'moment', id: 'm1' },
   createdAt: '2026-07-30T10:00:00.000Z',
 };
 
-function Harness({ visible, token = 'token' }: { visible: boolean; token?: string }) {
-  useRecognitionSeen('codex', visible, token);
+function Harness({
+  visible,
+  token = 'token',
+  artifactRefs = ['splice:helix-bloom'],
+}: {
+  visible: boolean;
+  token?: string;
+  artifactRefs?: string[];
+}) {
+  useRecognitionSeen('codex', visible, token, { artifactRefs });
   return null;
 }
 
@@ -48,5 +58,28 @@ describe('useRecognitionSeen', () => {
     await waitFor(() => {
       expect(useNotificationStore.getState().notifications[recognition.id]).toBeUndefined();
     });
+  });
+
+  it('does not clear another artifact merely because the destination is open', async () => {
+    const other = {
+      ...recognition,
+      id: 'other-codex-moment',
+      artifactRef: 'gene:second-wind',
+    };
+    useNotificationStore.getState().replaceServerItems([recognition, other]);
+    render(<Harness visible />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/progression/attention',
+      expect.objectContaining({
+        body: JSON.stringify({ id: recognition.id, transition: 'seen' }),
+      })
+    );
+    expect(useNotificationStore.getState().notifications[other.id]).toBeDefined();
+  });
+
+  it('keeps artifact-scoped recognition when no matching artifact rendered', () => {
+    render(<Harness visible artifactRefs={[]} />);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

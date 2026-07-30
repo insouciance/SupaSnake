@@ -46,7 +46,6 @@ import { ClanDirectory, type ClanDirectoryRow } from '@/components/clan/ClanDire
 import { useClanFull, clanAction } from '@/components/clan/useClanFull';
 import Link from 'next/link';
 import { IconShield, IconUser } from '@/components/ui/icons';
-import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 
 interface MyClan extends Clan {
   role: string;
@@ -76,14 +75,8 @@ export default function ClanPage() {
 
   const {
     view: fullView,
-    loading: fullViewLoading,
     refresh: refreshFullView,
   } = useClanFull(
-    session?.access_token
-  );
-  useRecognitionSeen(
-    'clan',
-    !fullViewLoading && Boolean(myClan && fullView?.clan),
     session?.access_token
   );
 

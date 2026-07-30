@@ -3,6 +3,7 @@ import {
   destinationBadge,
   notificationList,
   parseServerAttentionItem,
+  recognitionHref,
   transitionServerNotification,
   useNotificationStore,
   type ServerAttentionItem,
@@ -27,6 +28,7 @@ const recognition: ServerAttentionItem = {
   headline: 'Risk Carrier reached Gold',
   source: { type: 'moment', id: 'moment-1' },
   momentId: 'moment-1',
+  artifactRef: 'risk_carrier',
   createdAt: '2026-07-30T11:00:00.000Z',
 };
 
@@ -68,6 +70,22 @@ describe('attention and recognition store', () => {
     expect(destinationBadge(useNotificationStore.getState().notifications, 'account')).toEqual({
       kind: 'exclamation',
     });
+  });
+
+  it('exposes the newest exact recognition route for a destination family', () => {
+    useNotificationStore.getState().replaceServerItems([
+      recognition,
+      {
+        ...recognition,
+        id: 'newer-mastery',
+        destination: 'mastery',
+        artifactRef: 'PRIMAL',
+        createdAt: '2026-07-30T12:00:00.000Z',
+      },
+    ]);
+    expect(recognitionHref(useNotificationStore.getState().notifications, 'lab')).toBe(
+      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+    );
   });
 
   it('maps legacy progression opportunities to memory-only recognition', () => {
@@ -129,6 +147,10 @@ describe('attention and recognition store', () => {
 
   it('validates server data and refuses dead destinations', () => {
     expect(parseServerAttentionItem({ ...action, source: null })).toBeNull();
+    expect(parseServerAttentionItem({ ...action, artifactRef: 42 })).toBeNull();
+    expect(parseServerAttentionItem({ ...recognition, artifactRef: '   ' })).toBeNull();
+    expect(parseServerAttentionItem({ ...recognition, momentId: undefined })).toBeNull();
+    expect(parseServerAttentionItem({ ...recognition, artifactRef: undefined })).toBeNull();
     useNotificationStore.getState().replaceServerItems([
       { ...recognition, destination: 'unknown-system' },
     ]);

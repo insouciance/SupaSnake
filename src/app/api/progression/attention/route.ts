@@ -17,6 +17,7 @@ const supabase = createClient(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TRANSITIONS = new Set(['seen', 'resolved', 'dismissed']);
+const ATTENTION_PAGE_SIZE = 100;
 
 async function playerFor(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -54,6 +55,7 @@ function itemFromRow(row: Record<string, unknown>): ProgressionAttentionItem {
   };
   if (typeof row.detail === 'string') item.detail = row.detail;
   if (typeof row.moment_id === 'string') item.momentId = row.moment_id;
+  if (typeof row.artifact_ref === 'string') item.artifactRef = row.artifact_ref;
   if (typeof row.seen_at === 'string') item.seenAt = row.seen_at;
   if (typeof row.resolved_at === 'string') item.resolvedAt = row.resolved_at;
   return item;
@@ -64,28 +66,41 @@ export async function GET(request: NextRequest) {
   if ('response' in auth) return auth.response;
 
   const includeClosed = request.nextUrl.searchParams.get('includeClosed') === 'true';
+  const rawOffset = request.nextUrl.searchParams.get('offset') ?? '0';
+  const offset = Number(rawOffset);
+  if (!Number.isInteger(offset) || offset < 0 || offset > 10_000) {
+    return progressionJson({ error: 'Invalid attention offset' }, { status: 400 });
+  }
   let query = supabase
     .from('player_attention_items')
-    .select('id, moment_id, source_type, source_id, attention_kind, status, destination, headline, detail, created_at, seen_at, resolved_at')
+    .select('id, moment_id, source_type, source_id, attention_kind, status, destination, headline, detail, artifact_ref, created_at, seen_at, resolved_at')
     .eq('player_id', auth.playerId)
+    // `unseen` sorts after `seen`; descending keeps new recognition ahead of
+    // long-lived seen actions while pagination still makes every row reachable.
+    .order('status', { ascending: false })
     .order('created_at', { ascending: false });
-  if (!includeClosed) query = query.in('status', ['unseen', 'seen']);
-  const { data, error } = await query.limit(100);
+  if (!includeClosed) {
+    // Filter before LIMIT. Otherwise a long history of already-seen
+    // recognition can starve older open actions or unseen milestones.
+    query = query.or('status.eq.unseen,and(attention_kind.eq.action,status.eq.seen)');
+  }
+  const { data, error } = await query.range(
+    offset,
+    offset + ATTENTION_PAGE_SIZE - 1
+  );
   if (error) {
     if (isMissingRunImpactInfra(error)) return progressionJson({ items: [] });
     console.error('Attention list failed:', { playerId: auth.playerId, error });
     Sentry.captureException(new Error(`attention list failed: ${error.message}`));
     return progressionJson({ error: 'Could not read attention' }, { status: 503 });
   }
-  const items = ((data ?? []) as Record<string, unknown>[])
-    .filter(
-      (row) =>
-        includeClosed ||
-        row.status === 'unseen' ||
-        (row.attention_kind === 'action' && row.status === 'seen')
-    )
-    .map(itemFromRow);
-  return progressionJson({ items });
+  const items = ((data ?? []) as Record<string, unknown>[]).map(itemFromRow);
+  return progressionJson({
+    items,
+    nextOffset: items.length === ATTENTION_PAGE_SIZE
+      ? offset + ATTENTION_PAGE_SIZE
+      : null,
+  });
 }
 
 export async function PATCH(request: NextRequest) {

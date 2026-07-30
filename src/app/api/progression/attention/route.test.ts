@@ -37,8 +37,9 @@ describe('/api/progression/attention', () => {
       chain.select = jest.fn(() => chain);
       chain.eq = jest.fn(() => chain);
       chain.in = jest.fn(() => chain);
+      chain.or = jest.fn(() => chain);
       chain.order = jest.fn(() => chain);
-      chain.limit = jest.fn(async () => ({
+      chain.range = jest.fn(async () => ({
         data:
           table === 'player_attention_items'
             ? [
@@ -52,6 +53,7 @@ describe('/api/progression/attention', () => {
                   destination: 'mastery',
                   headline: 'PRIMAL Mastery M3',
                   detail: null,
+                  artifact_ref: 'PRIMAL',
                   created_at: '2026-07-30T12:00:00Z',
                   seen_at: null,
                   resolved_at: null,
@@ -85,9 +87,29 @@ describe('/api/progression/attention', () => {
           kind: 'recognition',
           status: 'unseen',
           source: { type: 'run', id: 'session-1' },
+          artifactRef: 'PRIMAL',
         }),
       ],
+      nextOffset: null,
     });
+    const attentionChain = mockFrom.mock.results
+      .map((result) => result.value as Record<string, jest.Mock>)
+      .find((chain) => chain.or?.mock.calls.length > 0);
+    expect(attentionChain?.or).toHaveBeenCalledWith(
+      'status.eq.unseen,and(attention_kind.eq.action,status.eq.seen)'
+    );
+    expect(attentionChain?.order).toHaveBeenNthCalledWith(1, 'status', {
+      ascending: false,
+    });
+    expect(attentionChain?.range).toHaveBeenCalledWith(0, 99);
+  });
+
+  it('rejects an invalid pagination offset', async () => {
+    const response = await GET(new NextRequest(
+      'http://localhost/api/progression/attention?offset=-1',
+      { headers: { authorization: 'Bearer token' } }
+    ));
+    expect(response.status).toBe(400);
   });
 
   it('transitions one owned item through the SQL state machine', async () => {

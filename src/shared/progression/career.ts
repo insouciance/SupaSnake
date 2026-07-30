@@ -51,6 +51,11 @@ export interface CareerPulse {
   };
   clan: {
     honors: { participant: number; victor: number; stalemate: number };
+    honorHistory: Array<{
+      battleId: string;
+      honor: 'participant' | 'victor' | 'stalemate';
+      awardedAt: string;
+    }>;
     activeBattle: null | {
       battleId: string;
       cycleKey: string;

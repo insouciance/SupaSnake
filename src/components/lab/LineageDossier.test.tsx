@@ -1,6 +1,7 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { LineageDossier, type LineageDossierData } from './LineageDossier';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 const runs = {
   completed: 12,
@@ -57,6 +58,61 @@ const fetchMock = jest.fn();
 beforeEach(() => {
   fetchMock.mockReset();
   global.fetch = fetchMock;
+  useNotificationStore.setState({ notifications: {}, hasHydrated: true });
+  window.history.replaceState({}, '', '/lab');
+  Element.prototype.scrollIntoView = jest.fn();
+});
+
+it('renders and clears the exact retired passport reached from recognition', async () => {
+  useNotificationStore.getState().replaceServerItems([{
+    id: 'retired-passport-recognition',
+    kind: 'recognition',
+    status: 'unseen',
+    destination: 'lineage',
+    headline: 'Gen 10 lineage bred',
+    momentId: 'moment-10',
+    artifactRef: 'retired-10',
+    source: { type: 'lineage', id: 'retired-10' },
+    createdAt: '2026-07-20T00:00:00Z',
+  }]);
+  window.history.replaceState(
+    {},
+    '',
+    '/lab?specimen=retired-10#lineage-specimen-retired-10'
+  );
+  fetchMock
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ dossiers: [DOSSIER] }) })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        item: {
+          id: 'retired-passport-recognition',
+          kind: 'recognition',
+          status: 'seen',
+          destination: 'lineage',
+          headline: 'Gen 10 lineage bred',
+          momentId: 'moment-10',
+          artifactRef: 'retired-10',
+          source: { type: 'lineage', id: 'retired-10' },
+          createdAt: '2026-07-20T00:00:00Z',
+        },
+      }),
+    });
+
+  render(
+    <LineageDossier accessToken="token" variantId="variant-1" specimenId="retired-10" />
+  );
+
+  const retired = await screen.findByText('Gen 10 · Retired by refund');
+  expect(retired.closest('[data-specimen-status="retired_refunded"]')).not.toBeNull();
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    '/api/progression/attention',
+    expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ id: 'retired-passport-recognition', transition: 'seen' }),
+    })
+  ));
+  await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
 });
 
 it('shows the active passport and preserves a refunded generation as retired history', async () => {

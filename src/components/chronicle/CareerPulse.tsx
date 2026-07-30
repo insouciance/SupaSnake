@@ -15,82 +15,16 @@ import {
   IconMedal,
   IconShield,
 } from '@/components/ui/icons';
+import type { CareerPulse as CareerPulseContract } from '@/shared/progression/career';
+import type {
+  ProgressionDestination,
+  ProgressionMoment,
+  ProgressionPillar,
+} from '@/shared/progression/runImpact';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
+import { progressionArtifactHref } from '@/shared/progression/destinations';
 
-type CareerPillar = 'mastery' | 'lineage' | 'discovery' | 'clan' | 'calendar';
-type MomentSignificance = 'routine' | 'notable' | 'milestone' | 'historic';
-
-interface CareerMoment {
-  id: string;
-  pillar: CareerPillar;
-  kind: string;
-  significance: MomentSignificance;
-  headline: string;
-  detail?: string | null;
-  securedAt: string;
-  destination?: string | null;
-  artifactRef?: string | null;
-  source: { type: string; id: string };
-}
-
-interface PursuitCandidate {
-  id: string;
-  pillar: 'mastery' | 'lineage' | 'discovery';
-  kind: 'mastery_level' | 'record_tier' | 'ladder_record' | 'lineage_generation';
-  targetId: string;
-  headline: string;
-  destination: string;
-  current: number;
-  target: number;
-}
-
-interface PinnedPursuit extends PursuitCandidate {
-  pinnedAt: string;
-}
-
-export interface CareerPulseData {
-  generatedAt: string;
-  mastery: Array<{
-    dynasty: string;
-    xp: number;
-    level: number;
-    nextLevelXp: number | null;
-  }>;
-  records: {
-    total: number;
-    tiered: number;
-    apex: number;
-    strongest: Array<{ id: string; value: number; tier: number }>;
-  };
-  discovery: {
-    entries: number;
-    worldFirsts: number;
-    genomeWeaverUnlocked: boolean;
-  };
-  ladder: {
-    bestByDynasty: Record<string, number>;
-    maxBest: number;
-  };
-  lineage: {
-    dossiers: number;
-    activeSpecimens: number;
-    highestGeneration: number;
-  };
-  clan: {
-    honors: { participant: number; victor: number; stalemate: number };
-    activeBattle: {
-      battleId: string;
-      cycleKey: string;
-      endsAt: string;
-      ownTopFive: number[];
-      fifthBest: number;
-      clanTotal: number;
-      opponentTotal: number;
-    } | null;
-  };
-  recentMoments: CareerMoment[];
-  pursuitCandidates: PursuitCandidate[];
-  pinnedPursuit: PinnedPursuit | null;
-}
+export type CareerPulseData = CareerPulseContract;
 
 interface CareerPulseResponse {
   careerPulse?: CareerPulseData | null;
@@ -100,12 +34,23 @@ interface CareerPulseProps {
   accessToken: string;
 }
 
-const PILLAR_LABELS: Record<CareerPillar, string> = {
+const PILLAR_LABELS: Record<ProgressionPillar, string> = {
   mastery: 'Mastery',
   lineage: 'Lineage',
   discovery: 'Discovery',
   clan: 'Clan',
   calendar: 'World',
+};
+
+const DESTINATION_HREF: Record<ProgressionDestination, string> = {
+  chronicle: '/profile',
+  mastery: '/lab#mastery',
+  records: '/profile#records',
+  codex: '/codex',
+  signal: '/#signal',
+  clan: '/clan',
+  lab: '/lab',
+  lineage: '/lab#lineage',
 };
 
 function formatDate(iso: string): string {
@@ -133,9 +78,11 @@ function MasterySummary({ pulse }: { pulse: CareerPulseData }) {
         <p className="label-arcade">Mastery</p>
       </div>
       <p className="mt-2 font-display text-lg text-bone-white">
-        {strongest ? `${strongest.dynasty} M${strongest.level}` : 'First extraction ahead'}
+        {strongest && (strongest.xp > 0 || strongest.level > 0)
+          ? `${strongest.dynasty} M${strongest.level}`
+          : 'First extraction ahead'}
       </p>
-      {pulse.mastery.length > 0 && (
+      {pulse.mastery.some((entry) => entry.xp > 0 || entry.level > 0) && (
         <p className="mt-1 font-mono text-xs text-beige/60">
           {pulse.mastery.map((entry) => `${entry.dynasty[0]}${entry.level}`).join(' · ')}
         </p>
@@ -173,7 +120,9 @@ function DiscoverySummary({ pulse }: { pulse: CareerPulseData }) {
         <p className="label-arcade">Discovery</p>
       </div>
       <p className="mt-2 font-display text-lg text-bone-white">
-        {pulse.discovery.entries} Codex {pulse.discovery.entries === 1 ? 'entry' : 'entries'}
+        {pulse.discovery.entries > 0
+          ? `${pulse.discovery.entries} Codex ${pulse.discovery.entries === 1 ? 'entry' : 'entries'}`
+          : 'First discovery ahead'}
       </p>
       <p className="mt-1 font-body text-xs text-beige/60">
         {pulse.records.tiered} tiered Record{pulse.records.tiered === 1 ? '' : 's'}
@@ -181,6 +130,39 @@ function DiscoverySummary({ pulse }: { pulse: CareerPulseData }) {
           ? ` · ${pulse.discovery.worldFirsts} world first${pulse.discovery.worldFirsts === 1 ? '' : 's'}`
           : ''}
       </p>
+    </div>
+  );
+}
+
+function LadderArchive({ pulse }: { pulse: CareerPulseData }) {
+  if (pulse.ladder.maxBest <= 0) return null;
+  return (
+    <div
+      className="rounded-arcade border border-scale-blue-light/25 bg-void/40 p-3"
+      data-testid="career-ladder-archive"
+    >
+      <p className="label-arcade text-beige/55">Banked difficulty ladder</p>
+      <div className="mt-2 flex flex-wrap gap-3">
+        {(['CYBER', 'PRIMAL', 'COSMIC'] as const).map((dynasty) => {
+          const best = pulse.ladder.bestByDynasty[dynasty];
+          if (best <= 0) return null;
+          return (
+            <div key={dynasty} className="flex items-center gap-1.5">
+              <span className="font-body text-xs text-beige/65">{dynasty}</span>
+              {Array.from({ length: best }, (_, index) => index + 1).map((rung) => (
+                <span
+                  key={rung}
+                  id={`career-artifact-ladder-${dynasty}-${rung}`}
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-cosmic/35 bg-cosmic/10 px-1 font-mono text-[10px] text-cosmic"
+                  title={`${dynasty} ladder rung ${rung} banked`}
+                >
+                  {rung}
+                </span>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -240,7 +222,7 @@ function Pursuit({
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 font-mono text-xs text-beige/60">
             <span>{active.current.toLocaleString()} / {active.target.toLocaleString()}</span>
-            <Link href={active.destination} className="inline-flex items-center gap-1 text-cosmic hover:text-bone-white">
+            <Link href={DESTINATION_HREF[active.destination]} className="inline-flex items-center gap-1 text-cosmic hover:text-bone-white">
               Open <IconArrowRight size={12} />
             </Link>
           </div>
@@ -265,29 +247,46 @@ function ClanPulse({ pulse }: { pulse: CareerPulseData }) {
       {battle && (
         <div className="mt-2 space-y-1">
           <p className="font-body text-sm text-bone-white">
-            {battle.ownTopFive.length < 5
+            {battle.ownTopFive.length < 5 || battle.fifthBest === null
               ? `${5 - battle.ownTopFive.length} open contribution slot${5 - battle.ownTopFive.length === 1 ? '' : 's'}`
               : `Beat ${battle.fifthBest.toLocaleString()} Yield to improve your five`}
           </p>
           <p className="font-mono text-xs text-beige/60">
-            Clan {battle.clanTotal.toLocaleString()} · Rival {battle.opponentTotal.toLocaleString()}
+            Clan {battle.clanTotal.toLocaleString()} · Rival {battle.opponentTotal === null ? 'pending' : battle.opponentTotal.toLocaleString()}
           </p>
         </div>
       )}
       {honorTotal > 0 && (
-        <p className="mt-2 font-body text-xs text-beige/65">
-          {pulse.clan.honors.victor} victor · {honorTotal} completed battle honor
-          {honorTotal === 1 ? '' : 's'}
-        </p>
+        <div className="mt-2 space-y-2">
+          <p className="font-body text-xs text-beige/65">
+            {pulse.clan.honors.victor} victor · {honorTotal} completed battle honor
+            {honorTotal === 1 ? '' : 's'}
+          </p>
+          {pulse.clan.honorHistory.length > 0 && (
+            <ol
+              className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto"
+              aria-label="Clan battle honor archive"
+            >
+              {pulse.clan.honorHistory.map((honor) => (
+                <li
+                  key={honor.battleId}
+                  id={`career-artifact-clan-battle-${honor.battleId}`}
+                  className="rounded-full border border-cosmic/25 bg-void/45 px-2 py-0.5 font-body text-[10px] uppercase text-cosmic"
+                  title={`Awarded ${formatDate(honor.awardedAt)}`}
+                >
+                  {honor.honor}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function RecentMoments({ moments }: { moments: CareerMoment[] }) {
-  const visible = moments
-    .filter((moment) => moment.significance !== 'routine')
-    .slice(0, 4);
+function RecentMoments({ moments }: { moments: ProgressionMoment[] }) {
+  const visible = moments.slice(0, 4);
   if (visible.length === 0) return null;
 
   return (
@@ -306,9 +305,9 @@ function RecentMoments({ moments }: { moments: CareerMoment[] }) {
                 {PILLAR_LABELS[moment.pillar]}{formatDate(moment.securedAt) ? ` · ${formatDate(moment.securedAt)}` : ''}
               </p>
             </div>
-            {moment.artifactRef ? (
+            {moment.artifactRef && moment.destination ? (
               <Link
-                href={moment.artifactRef}
+                href={progressionArtifactHref(moment.destination, moment.artifactRef)}
                 className="shrink-0 font-body text-xs text-cosmic hover:text-bone-white"
                 aria-label={`Open verified artifact for ${moment.headline}`}
               >
@@ -316,7 +315,7 @@ function RecentMoments({ moments }: { moments: CareerMoment[] }) {
               </Link>
             ) : moment.destination ? (
               <Link
-                href={moment.destination}
+                href={DESTINATION_HREF[moment.destination]}
                 className="shrink-0 text-beige/55 hover:text-bone-white"
                 aria-label={`Open ${moment.headline}`}
               >
@@ -360,6 +359,25 @@ export function CareerPulse({ accessToken }: CareerPulseProps) {
     () => new Set(pulse?.pursuitCandidates.map((candidate) => candidate.id) ?? []),
     [pulse?.pursuitCandidates]
   );
+  const renderedChronicleArtifacts = useMemo(
+    () => {
+      if (!pulse) return [];
+      const refs: string[] = [];
+      for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+        for (let rung = 1; rung <= pulse.ladder.bestByDynasty[dynasty]; rung += 1) {
+          refs.push(`ladder:${dynasty}:${rung}`);
+        }
+      }
+      for (const honor of pulse.clan.honorHistory) {
+        refs.push(`clan-battle:${honor.battleId}`);
+      }
+      return refs;
+    },
+    [pulse]
+  );
+  useRecognitionSeen('chronicle', pulse !== null, accessToken, {
+    artifactRefs: renderedChronicleArtifacts,
+  });
 
   const changePursuit = useCallback(
     async (candidateId: string | null) => {
@@ -418,6 +436,7 @@ export function CareerPulse({ accessToken }: CareerPulseProps) {
         <LineageSummary pulse={pulse} />
         <DiscoverySummary pulse={pulse} />
       </div>
+      <LadderArchive pulse={pulse} />
       <Pursuit pulse={pulse} busy={busy} onChange={changePursuit} />
       <ClanPulse pulse={pulse} />
       <RecentMoments moments={pulse.recentMoments} />

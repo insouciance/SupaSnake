@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { progressionArtifactHref } from '@/shared/progression/destinations';
 
 /**
  * Attention is an unresolved action. Recognition is an unseen earned moment.
@@ -117,6 +118,8 @@ export interface GameNotification extends NotificationBase {
   /** True when the API, rather than this tab, owns the item lifecycle. */
   serverManaged: boolean;
   serverStatus?: 'unseen' | 'seen';
+  /** Exact server-owned artifact that must be rendered before recognition clears. */
+  artifactRef?: string;
 }
 
 export type NotificationInput =
@@ -138,6 +141,7 @@ export interface ServerAttentionItem {
   headline: string;
   detail?: string;
   momentId?: string;
+  artifactRef?: string;
   source: { type: string; id: string };
   createdAt: string;
   seenAt?: string;
@@ -196,6 +200,17 @@ export function parseServerAttentionItem(value: unknown): ServerAttentionItem | 
   }
   const source = item.source as Record<string, unknown>;
   if (typeof source.type !== 'string' || typeof source.id !== 'string') return null;
+  if (
+    item.artifactRef !== undefined &&
+    (typeof item.artifactRef !== 'string' || item.artifactRef.trim().length === 0)
+  ) return null;
+  if (
+    item.kind === 'recognition' &&
+    (typeof item.momentId !== 'string' ||
+      item.momentId.trim().length === 0 ||
+      typeof item.artifactRef !== 'string' ||
+      item.artifactRef.trim().length === 0)
+  ) return null;
   return item as unknown as ServerAttentionItem;
 }
 
@@ -210,12 +225,27 @@ function notificationFromServerItem(item: ServerAttentionItem): GameNotification
   const target = destinationTarget(item.destination);
   if (!target) return null;
   const createdAt = Date.parse(item.createdAt);
+  const href = item.artifactRef && [
+    'chronicle',
+    'mastery',
+    'records',
+    'codex',
+    'signal',
+    'clan',
+    'lab',
+    'lineage',
+  ].includes(target.destination)
+    ? progressionArtifactHref(
+        target.destination as Parameters<typeof progressionArtifactHref>[0],
+        item.artifactRef
+      )
+    : target.href;
   return {
     id: item.id,
     title: item.headline,
     description: item.detail ?? (item.kind === 'action' ? 'Action available.' : 'New milestone.'),
     destination: target.destination,
-    href: target.href,
+    href,
     ...('action' in target && target.action ? { action: target.action } : {}),
     notificationClass: item.kind === 'action' ? 'attention' : 'recognition',
     badgeKind: item.kind === 'action' ? 'exclamation' : 'dot',
@@ -223,6 +253,7 @@ function notificationFromServerItem(item: ServerAttentionItem): GameNotification
       item.kind === 'action' ? 'action-required' : 'progression-opportunity',
     serverManaged: true,
     serverStatus: item.status === 'seen' ? 'seen' : 'unseen',
+    ...(item.artifactRef ? { artifactRef: item.artifactRef } : {}),
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     updatedAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
   };
@@ -365,13 +396,23 @@ export function destinationBadge(
     : { kind: 'hidden' };
 }
 
+/** Newest exact recognition target for a rail/surface destination family. */
+export function recognitionHref(
+  notifications: Record<string, GameNotification>,
+  destination: NotificationDestination
+): string | null {
+  return notificationList(notifications, 'recognition').find(
+    (notification) => destinationMatches(notification.destination, destination)
+  )?.href ?? null;
+}
+
 function destinationMatches(
   itemDestination: NotificationDestination,
   surfaceDestination: NotificationDestination
 ): boolean {
   if (itemDestination === surfaceDestination) return true;
   const families: Partial<Record<NotificationDestination, NotificationDestination[]>> = {
-    lab: ['lab', 'mastery', 'lineage'],
+    lab: ['lab', 'mastery', 'lineage', 'codex'],
     identity: ['identity', 'chronicle', 'records'],
     chronicle: ['identity', 'chronicle', 'records'],
     home: ['home', 'signal'],

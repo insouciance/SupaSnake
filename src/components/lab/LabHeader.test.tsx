@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { LabHeader } from './LabHeader';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 describe('LabHeader', () => {
+  beforeEach(() => {
+    useNotificationStore.setState({ notifications: {}, hasHydrated: true });
+  });
   it('always provides a clear route back Home', () => {
     render(<LabHeader charge={null} dna={100} />);
     expect(screen.getByRole('link', { name: /back home/i })).toHaveAttribute('href', '/');
@@ -20,6 +24,25 @@ describe('LabHeader', () => {
     expect(screen.getByRole('link', { name: /genome codex/i })).toHaveAttribute(
       'href',
       '/codex'
+    );
+  });
+
+  it('opens the exact unseen Codex proof from its quiet dot', () => {
+    useNotificationStore.getState().replaceServerItems([{
+      id: 'codex-proof',
+      kind: 'recognition',
+      status: 'unseen',
+      destination: 'codex',
+      headline: 'Phase Shift discovered',
+      momentId: 'moment-1',
+      artifactRef: 'gene:phase_shift',
+      source: { type: 'run', id: 'session-1' },
+      createdAt: '2026-07-30T12:00:00.000Z',
+    }]);
+    render(<LabHeader charge={null} dna={100} />);
+    expect(screen.getByRole('link', { name: /genome codex/i })).toHaveAttribute(
+      'href',
+      '/codex#codex-gene-phase_shift'
     );
   });
 

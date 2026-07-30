@@ -124,4 +124,25 @@ describe('Navigation', () => {
 
     expect(screen.getByRole('status', { name: 'New Lab activity' })).toHaveTextContent('');
   });
+
+  it('makes a quiet recognition dot open its newest exact artifact', () => {
+    useNotificationStore.getState().replaceServerItems([{
+      id: 'mastery-moment',
+      kind: 'recognition',
+      status: 'unseen',
+      destination: 'mastery',
+      headline: 'PRIMAL M4',
+      momentId: 'moment-1',
+      artifactRef: 'PRIMAL',
+      source: { type: 'run', id: 'session-1' },
+      createdAt: '2026-07-30T12:00:00.000Z',
+    }]);
+
+    render(<Navigation />);
+
+    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute(
+      'href',
+      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+    );
+  });
 });

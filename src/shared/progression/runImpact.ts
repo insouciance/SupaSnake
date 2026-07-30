@@ -124,6 +124,8 @@ export interface ProgressionAttentionItem {
   headline: string;
   detail?: string;
   momentId?: string;
+  /** Stable identifier of the exact earned artifact this item points at. */
+  artifactRef?: string;
   source: { type: string; id: string };
   createdAt: string;
   seenAt?: string;

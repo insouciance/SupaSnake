@@ -136,8 +136,9 @@ export async function readCareerPulse(
 
   const honorsQuery = await supabase
     .from('clan_energy_honors')
-    .select('honor')
-    .eq('player_id', playerId);
+    .select('battle_id, honor, awarded_at')
+    .eq('player_id', playerId)
+    .order('awarded_at', { ascending: false });
   if (honorsQuery.error && !/clan_energy_honors/i.test(honorsQuery.error.message ?? '')) {
     return { ok: false, error: honorsQuery.error, scope: 'clan-honors' };
   }
@@ -147,6 +148,18 @@ export async function readCareerPulse(
     else if (row.honor === 'stalemate') honors.stalemate += 1;
     else if (row.honor === 'participant') honors.participant += 1;
   }
+  const honorHistory = (honorsQuery.data ?? []).flatMap((row) => {
+    if (
+      typeof row.battle_id !== 'string' ||
+      typeof row.awarded_at !== 'string' ||
+      !['participant', 'victor', 'stalemate'].includes(String(row.honor))
+    ) return [];
+    return [{
+      battleId: row.battle_id,
+      honor: row.honor as 'participant' | 'victor' | 'stalemate',
+      awardedAt: row.awarded_at,
+    }];
+  });
 
   let activeBattle: CareerPulse['clan']['activeBattle'] = null;
   const membershipQuery = await supabase
@@ -159,6 +172,11 @@ export async function readCareerPulse(
   }
   if (membershipQuery.data?.clan_id) {
     const cycle = energyBattleCycleAt();
+    if (cycle.phase !== 'active') {
+      // Intermission is history/preparation, not an active decision state.
+      // Honors still render above; no live threshold is implied.
+      activeBattle = null;
+    } else {
     const sideQuery = await supabase
       .from('clan_energy_battle_sides')
       .select('id, battle_id, score, clan_energy_battles(ends_at)')
@@ -204,6 +222,7 @@ export async function readCareerPulse(
         clanTotal: int(sideQuery.data.score),
         opponentTotal: opponentQuery.data ? int(opponentQuery.data.score) : null,
       };
+    }
     }
   }
 
@@ -284,7 +303,7 @@ export async function readCareerPulse(
         activeSpecimens: activeSpecimens.length,
         highestGeneration,
       },
-      clan: { honors, activeBattle },
+      clan: { honors, honorHistory, activeBattle },
       recentMoments,
       pursuitCandidates,
       pinnedPursuit,

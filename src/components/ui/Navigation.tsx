@@ -30,6 +30,7 @@ import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import { NotificationCenter } from '@/components/ui/NotificationCenter';
 import {
   destinationBadge,
+  recognitionHref,
   useNotificationStore,
   type NotificationDestination,
 } from '@/lib/stores/notificationStore';
@@ -59,13 +60,13 @@ export function Navigation() {
   const nodes: RailNode[] = [
     ...(pathname === '/'
       ? []
-      : [{ href: '/', label: 'Home', Icon: IconHome }]),
+      : [{ href: '/', label: 'Home', Icon: IconHome, notificationDestination: 'home' as const }]),
     { href: '/lab', label: 'Lab', Icon: IconFlask, notificationDestination: 'lab' },
     ...(GAME_CONFIG.features.leaderboards
       ? [{ href: '/leaderboard', label: 'Leaderboard', Icon: IconTrophy }]
       : []),
     ...(GAME_CONFIG.features.clans
-      ? [{ href: '/clan', label: 'Clan', Icon: IconShield }]
+      ? [{ href: '/clan', label: 'Clan', Icon: IconShield, notificationDestination: 'clan' as const }]
       : []),
     ...(SERPENT_V1_ENABLED
       ? [{ href: '/serpent', label: 'Serpent', Icon: IconSnake }]
@@ -96,10 +97,15 @@ export function Navigation() {
           const badge = notificationDestination
             ? destinationBadge(notifications, notificationDestination)
             : { kind: 'hidden' as const };
+          const recognitionTarget =
+            notificationDestination && badge.kind === 'dot'
+              ? recognitionHref(notifications, notificationDestination)
+              : null;
+          const targetHref = recognitionTarget ?? href;
           return (
             <Link
               key={href}
-              href={href}
+              href={targetHref}
               aria-label={label}
               aria-current={isActive ? 'page' : undefined}
               className={`group relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-arcade border backdrop-blur-xl transition-all animate-fade-up ${

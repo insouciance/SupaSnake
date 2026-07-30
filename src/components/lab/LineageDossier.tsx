@@ -7,41 +7,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconEgg } from '@/components/ui/icons';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
+import type {
+  LineageDossier as LineageDossierContract,
+  LineageSpecimen,
+} from '@/shared/progression/career';
 
-interface SpecimenRunRecord {
-  completed: number;
-  extractions: number;
-  bestScore: number;
-  bestYield: number;
-  highestEnergy: number;
-  clanDepthDelivered: number;
-  lastRunAt: string | null;
-}
-
-interface LineageSpecimen {
-  id: string;
-  status: 'active' | 'retired_refunded';
-  owned: boolean;
-  equippable: boolean;
-  generation: number;
-  parent1Id: string | null;
-  parent2Id: string | null;
-  traits: string[];
-  lineage: unknown;
-  acquiredAt: string;
-  retiredAt: string | null;
-  breedingHistoryId: string | null;
-  runs: SpecimenRunRecord;
-}
-
-export interface LineageDossierData {
-  id: string;
-  variant: { id: string; name: string; dynasty: string; rarity: string };
-  createdAt: string;
-  updatedAt: string;
-  highestActiveGeneration: number;
-  specimens: LineageSpecimen[];
-}
+export type LineageDossierData = LineageDossierContract;
 
 interface DossierResponse {
   dossiers?: LineageDossierData[];
@@ -64,7 +36,7 @@ function shortDate(iso: string | null): string {
   }).format(date);
 }
 
-function RunFacts({ runs }: { runs: SpecimenRunRecord }) {
+function RunFacts({ runs }: { runs: LineageSpecimen['runs'] }) {
   if (runs.completed <= 0) {
     return <p className="font-body text-xs text-beige/55">Its first run is still ahead.</p>;
   }
@@ -108,6 +80,7 @@ export function LineageDossier({
   useEffect(() => {
     let cancelled = false;
     fetch('/api/progression/lineage', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then(async (response) => {
@@ -146,6 +119,20 @@ export function LineageDossier({
   );
   const current = specimens.find((specimen) => specimen.id === specimenId) ?? null;
 
+  useEffect(() => {
+    if (!current || typeof window === 'undefined') return;
+    const id = `lineage-specimen-${current.id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    if (window.location.hash !== `#${id}`) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [current]);
+
+  useRecognitionSeen('lineage', dossier !== null, accessToken, {
+    artifactRefs: specimens.map((specimen) => specimen.id),
+  });
+
   if (loading) {
     return (
       <div className="rounded-arcade border border-scale-blue-light/25 bg-void-deep/55 p-3" data-testid="lineage-dossier-loading">
@@ -163,6 +150,7 @@ export function LineageDossier({
 
   return (
     <section
+      id="lineage"
       className="rounded-arcade border border-scale-blue-light/30 bg-void-deep/60 p-3"
       aria-labelledby="lineage-dossier-title"
       data-testid="lineage-dossier"
@@ -174,9 +162,15 @@ export function LineageDossier({
             {dossier.variant.name} lineage
           </h3>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-arcade border border-cosmic/35 bg-cosmic/10 px-2 py-1 font-mono text-xs text-cosmic">
-          <IconEgg size={13} /> Gen {dossier.highestActiveGeneration}
-        </span>
+        {dossier.highestActiveGeneration === null ? (
+          <span className="rounded-arcade border border-scale-blue-light/25 bg-void/45 px-2 py-1 font-body text-xs text-beige/55">
+            No active specimen
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-arcade border border-cosmic/35 bg-cosmic/10 px-2 py-1 font-mono text-xs text-cosmic">
+            <IconEgg size={13} /> Gen {dossier.highestActiveGeneration}
+          </span>
+        )}
       </div>
 
       {current && (
@@ -211,6 +205,7 @@ export function LineageDossier({
               return (
                 <li
                   key={`${specimen.status}-${specimen.id}`}
+                  id={`lineage-specimen-${specimen.id}`}
                   className="flex items-center justify-between gap-3 rounded-arcade border border-scale-blue-light/15 bg-void/35 px-3 py-2"
                   data-specimen-status={specimen.status}
                   data-owned={specimen.owned ? 'true' : 'false'}

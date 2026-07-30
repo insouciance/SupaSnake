@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { CareerPulse, type CareerPulseData } from './CareerPulse';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 const PULSE: CareerPulseData = {
   generatedAt: '2026-07-30T12:00:00.000Z',
@@ -16,10 +17,17 @@ const PULSE: CareerPulseData = {
     strongest: [{ id: 'risk_carrier', value: 6, tier: 5 }],
   },
   discovery: { entries: 12, worldFirsts: 1, genomeWeaverUnlocked: false },
-  ladder: { bestByDynasty: { PRIMAL: 3 }, maxBest: 3 },
+  ladder: { bestByDynasty: { PRIMAL: 3, CYBER: 1, COSMIC: 2 }, maxBest: 3 },
   lineage: { dossiers: 3, activeSpecimens: 5, highestGeneration: 11 },
   clan: {
     honors: { participant: 2, victor: 1, stalemate: 0 },
+    honorHistory: [
+      {
+        battleId: '550e8400-e29b-41d4-a716-446655440000',
+        honor: 'victor',
+        awardedAt: '2026-07-29T12:00:00.000Z',
+      },
+    ],
     activeBattle: {
       battleId: 'battle-1',
       cycleKey: 'cycle-7',
@@ -38,8 +46,8 @@ const PULSE: CareerPulseData = {
       significance: 'milestone',
       headline: 'PRIMAL M4 reached',
       securedAt: '2026-07-30T12:00:00.000Z',
-      destination: '/lab',
-      artifactRef: '/p/Souci',
+      destination: 'mastery',
+      artifactRef: 'PRIMAL:M4',
       source: { type: 'session', id: 'session-1' },
     },
   ],
@@ -50,7 +58,7 @@ const PULSE: CareerPulseData = {
       kind: 'mastery_level',
       targetId: 'PRIMAL:5',
       headline: 'Reach PRIMAL M5',
-      destination: '/lab',
+      destination: 'mastery',
       current: 14000,
       target: 25000,
     },
@@ -63,6 +71,7 @@ const fetchMock = jest.fn();
 beforeEach(() => {
   fetchMock.mockReset();
   global.fetch = fetchMock;
+  useNotificationStore.setState({ notifications: {}, hasHydrated: true });
 });
 
 it('renders one quiet private view of the three pillars and own clan threshold', async () => {
@@ -79,6 +88,9 @@ it('renders one quiet private view of the three pillars and own clan threshold',
   expect(screen.getByText('12 Codex entries')).toBeInTheDocument();
   expect(screen.getByText(/Beat 600 Yield to improve your five/)).toBeInTheDocument();
   expect(screen.getByText(/Clan 9,500 · Rival 9,100/)).toBeInTheDocument();
+  expect(screen.getByTestId('career-ladder-archive')).toBeInTheDocument();
+  expect(document.getElementById('career-artifact-ladder-PRIMAL-3')).not.toBeNull();
+  expect(document.getElementById('career-artifact-clan-battle-550e8400-e29b-41d4-a716-446655440000')).not.toBeNull();
   expect(screen.queryByText(/member|teammate|rank/i)).not.toBeInTheDocument();
 });
 
@@ -118,4 +130,59 @@ it('degrades without fabricating progress when the read fails', async () => {
   expect(
     await screen.findByText(/progress remains secured/i)
   ).toBeInTheDocument();
+});
+
+it('renders the full permanent clan honor archive rather than starving old proof', async () => {
+  const honorHistory = Array.from({ length: 11 }, (_, index) => ({
+    battleId: `battle-${index + 1}`,
+    honor: 'victor' as const,
+    awardedAt: `2026-07-${String(29 - index).padStart(2, '0')}T12:00:00.000Z`,
+  }));
+  fetchMock.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      careerPulse: { ...PULSE, clan: { ...PULSE.clan, honorHistory } },
+    }),
+  });
+
+  render(<CareerPulse accessToken="token" />);
+
+  expect(await screen.findByTestId('career-pulse')).toBeInTheDocument();
+  expect(document.getElementById('career-artifact-clan-battle-battle-11')).not.toBeNull();
+});
+
+it('does not clear an unknown Chronicle ref merely because it is in the recent feed', async () => {
+  useNotificationStore.getState().replaceServerItems([{
+    id: 'future-artifact',
+    kind: 'recognition',
+    status: 'unseen',
+    destination: 'chronicle',
+    headline: 'Future proof',
+    momentId: 'future-moment',
+    artifactRef: 'future:proof',
+    source: { type: 'moment', id: 'future-moment' },
+    createdAt: '2026-07-30T12:00:00.000Z',
+  }]);
+  fetchMock.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      careerPulse: {
+        ...PULSE,
+        recentMoments: [{
+          ...PULSE.recentMoments[0],
+          destination: 'chronicle',
+          artifactRef: 'future:proof',
+        }],
+      },
+    }),
+  });
+
+  render(<CareerPulse accessToken="token" />);
+
+  expect(await screen.findByTestId('career-pulse')).toBeInTheDocument();
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    '/api/progression/attention',
+    expect.objectContaining({ method: 'PATCH' })
+  );
+  expect(useNotificationStore.getState().notifications['future-artifact']).toBeDefined();
 });

@@ -12,7 +12,7 @@
  * there is no second progression display to keep in step with it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
@@ -25,6 +25,7 @@ import {
   type AnalystArtifact,
 } from '@/components/chronicle/AnalystSections';
 import { IconMedal } from '@/components/ui/icons';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import type { ChroniclePayload } from '@/lib/chronicle/types';
 
 interface AnalystState {
@@ -128,6 +129,31 @@ export default function ProfilePage() {
       setLoading(false);
     }
   }, [user, loadChronicle, loadAnalyst]);
+
+  const renderedRecordArtifacts = useMemo(
+    () => payload?.records?.records.map((record) => record.id) ?? [],
+    [payload?.records]
+  );
+
+  useEffect(() => {
+    if (renderedRecordArtifacts.length === 0 || typeof window === 'undefined') return;
+    const id = window.location.hash.slice(1);
+    if (!id.startsWith('record-')) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [renderedRecordArtifacts]);
+
+  // A Records dot clears only for the exact records now visible in the
+  // cabinet. Chronicle moments clear inside CareerPulse after those exact
+  // moment artifacts render; route entry alone clears nothing.
+  useRecognitionSeen(
+    'records',
+    renderedRecordArtifacts.length > 0 && !loading && error === null,
+    accessToken ?? undefined,
+    { artifactRefs: renderedRecordArtifacts }
+  );
 
   if (!user) {
     return (

@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useCollection } from '@/hooks/useCollection';
@@ -26,6 +26,7 @@ import {
 import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { rosterForVariant } from '@/lib/collection/roster';
 import { sanitizeLineage } from '@/shared/game/lineage';
 import type { StrainId } from '@/shared/game/strains';
@@ -38,7 +39,10 @@ import { CollectionProgress } from '@/components/lab/CollectionProgress';
 import { MasteryPanel, type DynastyMasteryState } from '@/components/lab/MasteryPanel';
 import { CollectionGrid } from '@/components/lab/CollectionGrid';
 import { VariantDetailModal } from '@/components/lab/VariantDetailModal';
-import { LineageDossier } from '@/components/lab/LineageDossier';
+import {
+  LineageDossier,
+  type LineageDossierData,
+} from '@/components/lab/LineageDossier';
 import { UnlockConfirmModal } from '@/components/lab/UnlockConfirmModal';
 
 import type {
@@ -53,6 +57,9 @@ import type {
 
 export default function LabPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedSpecimenId = searchParams.get('specimen');
+  const requestedDynasty = searchParams.get('dynasty')?.toUpperCase() ?? null;
   const { user, session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
@@ -112,6 +119,7 @@ export default function LabPage() {
   // Collection state from hook
   const {
     dynasties,
+    variants,
     dnaBalance,
     ownedSnakes,
     activeDynastyId,
@@ -137,6 +145,63 @@ export default function LabPage() {
     toggleFavorite,
     refresh,
   } = useCollection();
+  const openedDeepLinkedSpecimen = useRef<string | null>(null);
+  const [deepLinkedSpecimenId, setDeepLinkedSpecimenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      isLoading ||
+      !requestedSpecimenId ||
+      !session?.access_token ||
+      openedDeepLinkedSpecimen.current === requestedSpecimenId
+    ) return;
+    let cancelled = false;
+
+    const openSpecimen = async () => {
+      let specimen = ownedSnakes.find((snake) => snake.id === requestedSpecimenId) ?? null;
+      let variantId = specimen?.snakeVariantId ?? null;
+
+      if (!variantId) {
+        const response = await fetch('/api/progression/lineage', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!response.ok) return;
+        const data = (await response.json()) as { dossiers?: LineageDossierData[] };
+        const dossier = data.dossiers?.find((entry) =>
+          entry.specimens.some((entrySpecimen) => entrySpecimen.id === requestedSpecimenId)
+        );
+        if (!dossier) return;
+        variantId = dossier.variant.id;
+        specimen = [...ownedSnakes]
+          .filter((snake) => snake.snakeVariantId === variantId)
+          .sort((a, b) => b.generation - a.generation)[0] ?? null;
+      }
+
+      const variant = variants.find((entry) => entry.id === variantId);
+      if (cancelled || !specimen || !variant) return;
+      setActiveDynasty(variant.dynastyId);
+      openDetailModal(variant, specimen);
+      setDeepLinkedSpecimenId(requestedSpecimenId);
+      openedDeepLinkedSpecimen.current = requestedSpecimenId;
+    };
+
+    void openSpecimen().catch(() => {
+      // The ordinary Lab remains usable; server recognition stays unseen
+      // until its exact durable passport can be loaded.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isLoading,
+    openDetailModal,
+    ownedSnakes,
+    requestedSpecimenId,
+    session?.access_token,
+    setActiveDynasty,
+    variants,
+  ]);
 
   // Get modal loading/error states directly from store
   const isUnlocking = useCollectionStore((state) => state.isUnlocking);
@@ -157,6 +222,35 @@ export default function LabPage() {
 
   // Get active dynasty object for modals
   const activeDynasty = dynasties.find((d) => d.id === activeDynastyId);
+  const activeMasteryKey = activeDynasty?.name?.toUpperCase?.() ?? '';
+
+  useEffect(() => {
+    if (dynasties.length === 0 || typeof window === 'undefined') return;
+    if (!requestedDynasty) return;
+    const dynasty = dynasties.find(
+      (candidate) => candidate.name.toUpperCase() === requestedDynasty
+    );
+    if (dynasty && dynasty.id !== activeDynastyId) setActiveDynasty(dynasty.id);
+  }, [activeDynastyId, dynasties, requestedDynasty, setActiveDynasty]);
+
+  useEffect(() => {
+    if (!activeMasteryKey || !masteryByDynasty[activeMasteryKey] || typeof window === 'undefined') {
+      return;
+    }
+    const id = window.location.hash.slice(1);
+    if (id !== `mastery-${activeMasteryKey}`) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeMasteryKey, masteryByDynasty]);
+
+  useRecognitionSeen(
+    'mastery',
+    Boolean(activeMasteryKey && masteryByDynasty[activeMasteryKey]),
+    session?.access_token,
+    { artifactRefs: activeMasteryKey ? [activeMasteryKey] : [] }
+  );
 
   // Get dynasty theme for current dynasty
   const dynastyTheme = useDynastyTheme(activeDynasty?.name ?? 'PRIMAL');
@@ -233,6 +327,7 @@ export default function LabPage() {
    */
   const handleSelectVariant = useCallback(
     (variant: SnakeVariant, roster: OwnedSnake[]) => {
+      setDeepLinkedSpecimenId(null);
       if (roster.length > 0) {
         openDetailModal(variant, roster[0]);
       } else {
@@ -594,12 +689,14 @@ export default function LabPage() {
 
       {/* Per-dynasty Mastery track (Design v2 §7.1) */}
       {activeDynasty && masteryByDynasty[activeDynasty.name?.toUpperCase?.() ?? ''] && (
-        <div className="px-4 pb-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
+        <div id="mastery" className="px-4 pb-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
           <div className="max-w-6xl mx-auto">
-            <MasteryPanel
-              mastery={masteryByDynasty[activeDynasty.name.toUpperCase()]}
-              dynastyTheme={dynastyTheme}
-            />
+            <div id={`mastery-${activeMasteryKey}`}>
+              <MasteryPanel
+                mastery={masteryByDynasty[activeDynasty.name.toUpperCase()]}
+                dynastyTheme={dynastyTheme}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -642,7 +739,10 @@ export default function LabPage() {
           variant={selectedVariant}
           owned={selectedSnake}
           roster={selectedRoster}
-          onSelectSnake={selectOwnedSnake}
+          onSelectSnake={(snake) => {
+            setDeepLinkedSpecimenId(null);
+            selectOwnedSnake(snake);
+          }}
           dynasty={activeDynasty}
           isOpen={isDetailModalOpen}
           onClose={closeDetailModal}
@@ -668,7 +768,7 @@ export default function LabPage() {
               <LineageDossier
                 accessToken={session.access_token}
                 variantId={selectedSnake.snakeVariantId}
-                specimenId={selectedSnake.id}
+                specimenId={deepLinkedSpecimenId ?? selectedSnake.id}
               />
             ) : undefined
           }

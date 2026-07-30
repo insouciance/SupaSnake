@@ -197,6 +197,7 @@ export function RecordsCabinet({
                 return (
                   <div
                     key={record.id}
+                    id={`record-${record.id}`}
                     className="space-y-1"
                     data-testid={`record-${record.id}`}
                   >

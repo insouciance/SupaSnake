@@ -27,13 +27,15 @@ function Section({
   title,
   children,
   testId,
+  id,
 }: {
   title: string;
   children: React.ReactNode;
   testId: string;
+  id?: string;
 }) {
   return (
-    <section className="space-y-3 animate-fade-up" data-testid={testId}>
+    <section id={id} className="space-y-3 animate-fade-up" data-testid={testId}>
       <h2 className="heading-display text-xl text-venom-orange text-glow-orange">
         {title}
       </h2>
@@ -99,7 +101,7 @@ export function ChronicleView({
             )}
           </Section>
 
-          <Section title="Records" testId="section-records">
+          <Section id="records" title="Records" testId="section-records">
             {payload.records ? (
               <RecordsCabinet data={payload.records} />
             ) : (
