@@ -179,6 +179,54 @@ describe('a week away', () => {
   });
 });
 
+describe('the current Clan Energy Battle report', () => {
+  const report = () =>
+    compose({
+      energyContext: {
+        standing: { bestBattleDepth: 12400, lifetimeDepth: 48200 },
+        battles: [
+          {
+            battleId: 'battle-1',
+            settledAt: '2026-07-25T03:00:00.000Z',
+            outcome: 'victor',
+            clan: {
+              id: 'clan-1',
+              name: 'Hollow Fang',
+              tag: 'HFG',
+              depth: 51000,
+            },
+            opponent: { name: 'Quiet Scale', tag: 'QTS', depth: 47000 },
+          },
+        ],
+      },
+    });
+
+  it('reports settled aggregate battles instead of the retired weekly hunt', () => {
+    expect(report().battleCyclesSettled).toBe(1);
+    expect(report().weeksSubmerged).toBe(0);
+    expect(report().sections.map((entry) => entry.id)).toEqual([
+      'battles',
+      'standing',
+      'today',
+    ]);
+    const text = worldReportText(report());
+    expect(text).toContain('HOLLOW FANG reached Depth 51,000 segments');
+    expect(text).toContain('Depth difference: 4,000 segments');
+    expect(text).toContain('HOLLOW FANG took the victor honor');
+    expect(text).not.toMatch(/Serpent week|surfaced|submerged/);
+  });
+
+  it('shows the current battle standing and links only aggregate artifacts', () => {
+    expect(section(report(), 'standing')!.lines[0].text).toBe(
+      'Your deepest Clan Battle contribution still stands at 12,400 segments.'
+    );
+    expect(report().links.some((href) => href.includes('/c/HFG'))).toBe(true);
+    expect(report().links.some((href) => /\/s\/\d+$/.test(href))).toBe(true);
+    const raw = JSON.stringify(report());
+    expect(raw).not.toMatch(/teammate|commitment|threshold|generation|attempts/);
+  });
+});
+
 describe('a month away', () => {
   const report = () =>
     compose({
