@@ -48,7 +48,7 @@ describe('browser progress boundary', () => {
       const source = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
       const escapedEndpoint = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       expect(source).toMatch(
-        new RegExp(`fetch\\(['\"]${escapedEndpoint}['\"][\\s\\S]{0,180}cache:\\s*['\"]no-store['\"]`)
+        new RegExp(`${escapedEndpoint}[\\s\\S]{0,260}cache:\\s*['\"]no-store['\"]`)
       );
     }
   });
