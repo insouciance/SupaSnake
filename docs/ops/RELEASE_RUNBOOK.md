@@ -9,13 +9,12 @@ check passed. Rollback anchor for this release (precondition 3):
 `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR`, commit `61a1936`; both runtimes use the same
 hosted schema.
 
-The workflow's rollback-anchor step is currently unreliable. Run 30534158859
-executed it after creating the staged `--prod --skip-domain` deployment, and
-`vercel ls --prod` therefore selected the new
-`dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` artifact rather than the outgoing canonical
-one. Its summary named the staged deployment instead of the independent outgoing
-anchor above. Until the step is moved before staging or resolves the canonical
-alias directly, do not trust the generated summary as rollback evidence.
+Run 30534158859 exposed a rollback-anchor ordering defect: the workflow queried
+`vercel ls --prod` after creating the staged `--prod --skip-domain` artifact and
+therefore named the new artifact instead of the outgoing canonical deployment.
+The workflow now records the anchor before staging. Confirm the next release
+summary names the known outgoing deployment before treating this correction as
+operationally proven.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
