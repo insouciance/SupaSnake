@@ -15,6 +15,11 @@ on:
         options:
           - test
           - live
+      expected_migrations:
+        description: 'Exact comma-separated pending migration filenames, or none'
+        required: true
+        default: none
+        type: string
 
 permissions:
   contents: read
@@ -114,27 +119,52 @@ jobs:
         with:
           version: 2.109.1
       - name: Link and preview database migrations
+        env:
+          EXPECTED_MIGRATIONS: ${{ inputs.expected_migrations }}
         run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
-          supabase db push --linked --include-all --dry-run --password "$SUPABASE_DB_PASSWORD"
-
-      # Capture the outgoing artifact BEFORE creating a new `--prod` staged
-      # deployment. Once staging exists, `vercel ls --prod` may select that
-      # artifact even though the canonical domain has not been promoted yet.
-      - name: Record the outgoing production deployment (rollback anchor)
-        continue-on-error: true
-        run: |
-          outgoing=$(npx vercel@56.3.1 ls --prod --yes --token="$VERCEL_TOKEN" 2>/dev/null \
-            | grep -oE 'https://[a-z0-9.-]+\.vercel\.app' | head -1 || true)
-          if [ -z "$outgoing" ]; then
-            echo "::warning::could not resolve the outgoing production deployment; record it from the dashboard before rolling back"
-            exit 0
+          set -euo pipefail
+          if [ "$SUPABASE_PROJECT_ID" != "gmpwyzqafoyowndbvlma" ]; then
+            echo "::error::production project mismatch; refusing to link or mutate $SUPABASE_PROJECT_ID"
+            exit 1
           fi
-          echo "ROLLBACK ANCHOR (production before this release): $outgoing"
+          supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+          preview_file=$(mktemp)
+          supabase db push --linked --include-all --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee "$preview_file"
+          actual=$(grep -oE '[0-9]{3,}_[A-Za-z0-9._-]+\.sql' "$preview_file" | sort -u | paste -sd, - || true)
+          expected=$(printf '%s' "$EXPECTED_MIGRATIONS" | tr -d '[:space:]')
+          if ! [[ "$expected" =~ ^(none|[0-9]{3,}_[A-Za-z0-9._-]+\.sql(,[0-9]{3,}_[A-Za-z0-9._-]+\.sql)*)$ ]]; then
+            echo "::error::expected_migrations must be 'none' or an exact comma-separated migration filename list"
+            exit 1
+          fi
+          if [ "$expected" = "none" ]; then expected=""; fi
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::pending migrations differ: expected '${expected:-none}', got '${actual:-none}'"
+            exit 1
+          fi
+
+      # Capture the artifact currently behind the canonical alias BEFORE
+      # creating a staged production artifact. Listing recent deployments is
+      # insufficient because an earlier unpromoted --skip-domain artifact may
+      # be newer than the deployment actually serving players.
+      - name: Record the outgoing production deployment (rollback anchor)
+        run: |
+          set -euo pipefail
+          outgoing_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
+            --format=json --non-interactive --token="$VERCEL_TOKEN")
+          outgoing_id=$(printf '%s' "$outgoing_json" | jq -er '.id')
+          outgoing_host=$(printf '%s' "$outgoing_json" | jq -er '.url')
+          outgoing_ready=$(printf '%s' "$outgoing_json" | jq -er '.readyState')
+          outgoing_target=$(printf '%s' "$outgoing_json" | jq -er '.target')
+          if [ "$outgoing_ready" != "READY" ] || [ "$outgoing_target" != "production" ]; then
+            echo "::error::canonical alias did not resolve to a ready production deployment"
+            exit 1
+          fi
+          outgoing="https://$outgoing_host"
+          echo "ROLLBACK ANCHOR (production before this release): $outgoing_id $outgoing"
           {
             echo '### Rollback anchor'
             echo ''
-            echo "Production **before** this release: \`$outgoing\`"
+            echo "Production **before** this release: \`$outgoing_id\` (\`$outgoing\`)"
             echo ''
             echo 'Roll back with `vercel promote <that url>`, or via Instant Rollback in the dashboard.'
             echo 'Note: rollback does NOT revert migrations and does NOT update cron definitions.'
@@ -151,20 +181,31 @@ jobs:
             --yes \
             --archive=tgz \
             --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
+            --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
             --token="$VERCEL_TOKEN")
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Smoke staged application against the current schema
         run: |
+          set -uo pipefail
           # `vercel curl` v56 forwards an explicit global token option to the
           # underlying curl process. It reads the job's VERCEL_TOKEN environment
           # variable directly, so do not repeat that credential as a CLI flag.
-          npx vercel@56.3.1 curl /api/health \
-            --deployment "${{ steps.app.outputs.url }}" \
-            --yes \
-            -- \
-            --fail --show-error --silent \
-            --retry 6 --retry-delay 5 --retry-all-errors \
-            | jq -e '.status == "healthy" and .checks.database.status == "healthy"'
+          payload=''
+          for attempt in $(seq 1 12); do
+            if payload=$(npx vercel@56.3.1 curl /api/health \
+                --deployment "${{ steps.app.outputs.url }}" \
+                --yes \
+                -- \
+                --fail --show-error --silent --max-time 20) \
+              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
+                '.status == "healthy" and .checks.database.status == "healthy" and .release == $release' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::staged pre-migration health contract did not become ready"
+          printf '%s\n' "$payload"
+          exit 1
       - name: Apply pending database migrations
         run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
       - name: Validate linked database
@@ -172,19 +213,39 @@ jobs:
 
       - name: Smoke staged application against the migrated schema
         run: |
-          npx vercel@56.3.1 curl /api/health \
-            --deployment "${{ steps.app.outputs.url }}" \
-            --yes \
-            -- \
-            --fail --show-error --silent \
-            --retry 6 --retry-delay 5 --retry-all-errors \
-            | jq -e '.status == "healthy" and .checks.database.status == "healthy"'
+          set -uo pipefail
+          payload=''
+          for attempt in $(seq 1 12); do
+            if payload=$(npx vercel@56.3.1 curl /api/health \
+                --deployment "${{ steps.app.outputs.url }}" \
+                --yes \
+                -- \
+                --fail --show-error --silent --max-time 20) \
+              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
+                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .release == $release' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::staged post-migration capability did not become ready"
+          printf '%s\n' "$payload"
+          exit 1
       - name: Smoke outgoing application against the migrated schema
         run: |
-          curl --fail --show-error --silent \
-            --retry 6 --retry-delay 5 --retry-all-errors \
-            https://supasnake.com/api/health \
-            | jq -e '.status == "healthy" and .checks.database.status == "healthy"'
+          set -uo pipefail
+          payload=''
+          for attempt in $(seq 1 12); do
+            if payload=$(curl --fail --show-error --silent --max-time 20 \
+                https://supasnake.com/api/health) \
+              && printf '%s' "$payload" | jq -e \
+                '.status == "healthy" and .checks.database.status == "healthy"' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::outgoing application is not healthy on the migrated schema"
+          printf '%s\n' "$payload"
+          exit 1
 
       - name: Promote staged application
         run: >-
@@ -195,7 +256,17 @@ jobs:
 
       - name: Production health smoke test
         run: |
-          curl --fail --show-error --silent \
-            --retry 6 --retry-delay 5 --retry-all-errors \
-            https://supasnake.com/api/health \
-            | jq -e '.status == "healthy" and .checks.database.status == "healthy"'
+          set -uo pipefail
+          payload=''
+          for attempt in $(seq 1 12); do
+            if payload=$(curl --fail --show-error --silent --max-time 20 \
+                https://supasnake.com/api/health) \
+              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
+                '.status == "healthy" and .checks.database.status == "healthy" and .checks.careerSpine.status == "healthy" and .checks.careerSpine.version == 1 and .release == $release' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::canonical alias did not converge on the promoted capability"
+          printf '%s\n' "$payload"
+          exit 1

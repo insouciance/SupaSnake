@@ -18,8 +18,15 @@ interface HealthCheck {
   error?: string;
 }
 
+interface CapabilityCheck {
+  status: 'healthy' | 'pending' | 'unhealthy';
+  version?: number;
+  error?: string;
+}
+
 interface HealthResponse {
   status: 'healthy' | 'unhealthy';
+  release: string;
   timestamp: string;
   version: string;
   environment: string;
@@ -32,7 +39,37 @@ interface HealthResponse {
   };
   checks: {
     database: HealthCheck;
+    careerSpine: CapabilityCheck;
   };
+}
+
+async function checkCareerSpine(): Promise<CapabilityCheck> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return { status: 'unhealthy', error: 'Career capability configuration missing' };
+  }
+  try {
+    const supabase = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await supabase.rpc('get_career_spine_capability');
+    if (error) {
+      if (['42883', 'PGRST202'].includes(error.code ?? '')) {
+        return { status: 'pending', error: 'Career Spine migration pending' };
+      }
+      return { status: 'unhealthy', error: error.message };
+    }
+    const version = Number((data as { version?: unknown } | null)?.version);
+    return version === 1
+      ? { status: 'healthy', version }
+      : { status: 'unhealthy', error: 'Unexpected Career Spine capability version' };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      error: error instanceof Error ? error.message : 'Unknown capability error',
+    };
+  }
 }
 
 // Track process start time for uptime calculation
@@ -98,15 +135,18 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
 
   // Perform health checks
   const databaseCheck = await checkDatabase();
+  const careerSpineCheck = await checkCareerSpine();
 
   // Get memory usage
   const memoryUsage = process.memoryUsage();
 
   // Determine overall health
-  const isHealthy = databaseCheck.status === 'healthy';
+  const isHealthy =
+    databaseCheck.status === 'healthy' && careerSpineCheck.status !== 'unhealthy';
 
   const response: HealthResponse = {
     status: isHealthy ? 'healthy' : 'unhealthy',
+    release: process.env.SUPASNAKE_RELEASE_SHA || 'unknown',
     timestamp,
     version: process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
@@ -119,6 +159,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     },
     checks: {
       database: databaseCheck,
+      careerSpine: careerSpineCheck,
     },
   };
 

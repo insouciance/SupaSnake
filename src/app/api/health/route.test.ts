@@ -14,6 +14,7 @@ jest.mock('@supabase/supabase-js', () => ({
         limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
       })),
     })),
+    rpc: jest.fn(() => Promise.resolve({ data: { version: 1 }, error: null })),
   })),
 }));
 
@@ -27,6 +28,8 @@ describe('GET /api/health', () => {
       ...originalEnv,
       NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
+      SUPASNAKE_RELEASE_SHA: 'release-sha',
       NODE_ENV: 'test',
     };
   });
@@ -43,6 +46,7 @@ describe('GET /api/health', () => {
     expect(data.status).toBe('healthy');
     expect(data.timestamp).toBeDefined();
     expect(data.version).toBeDefined();
+    expect(data.release).toBe('release-sha');
   });
 
   it('should include database health check', async () => {
@@ -52,6 +56,76 @@ describe('GET /api/health', () => {
     expect(data.checks).toBeDefined();
     expect(data.checks.database).toBeDefined();
     expect(data.checks.database.status).toBe('healthy');
+    expect(data.checks.careerSpine).toEqual({ status: 'healthy', version: 1 });
+  });
+
+  it('reports a rolling pre-migration capability without failing basic health', async () => {
+    (createClient as jest.Mock).mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select: jest.fn(() => ({
+          limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+        })),
+      })),
+    }).mockReturnValueOnce({
+      rpc: jest.fn(() => Promise.resolve({
+        data: null,
+        error: { code: 'PGRST202', message: 'get_career_spine_capability is missing' },
+      })),
+    });
+
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.checks.careerSpine.status).toBe('pending');
+  });
+
+  it('fails health when the deployed Career Spine capability is malformed', async () => {
+    (createClient as jest.Mock).mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select: jest.fn(() => ({
+          limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+        })),
+      })),
+    }).mockReturnValueOnce({
+      rpc: jest.fn(() => Promise.resolve({ data: { version: 2 }, error: null })),
+    });
+
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(503);
+    expect(data.status).toBe('unhealthy');
+    expect(data.checks.careerSpine.status).toBe('unhealthy');
+  });
+
+  it('fails health when the service-role capability configuration is absent', async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(503);
+    expect(data.checks.careerSpine.status).toBe('unhealthy');
+  });
+
+  it('does not disguise a permission failure as a pending migration', async () => {
+    (createClient as jest.Mock).mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select: jest.fn(() => ({
+          limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+        })),
+      })),
+    }).mockReturnValueOnce({
+      rpc: jest.fn(() => Promise.resolve({
+        data: null,
+        error: {
+          code: '42501',
+          message: 'permission denied for function get_career_spine_capability',
+        },
+      })),
+    });
+
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(503);
+    expect(data.checks.careerSpine.status).toBe('unhealthy');
   });
 
   it('should include uptime information', async () => {

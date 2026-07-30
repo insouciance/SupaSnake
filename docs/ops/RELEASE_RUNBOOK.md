@@ -12,9 +12,10 @@ hosted schema.
 Run 30534158859 exposed a rollback-anchor ordering defect: the workflow queried
 `vercel ls --prod` after creating the staged `--prod --skip-domain` artifact and
 therefore named the new artifact instead of the outgoing canonical deployment.
-The workflow now records the anchor before staging. Confirm the next release
-summary names the known outgoing deployment before treating this correction as
-operationally proven.
+The workflow now resolves `supasnake.com` itself with `vercel inspect` before
+staging and blocks release unless that alias names a ready production artifact.
+Confirm the next release summary names the known outgoing deployment before
+treating this correction as operationally proven.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
@@ -43,33 +44,40 @@ not a production deployment.
 
 ## Automated sequence
 
-Dispatch **Deploy to Production** on `main`, type `DEPLOY`, and select the Stripe
-mode. The workflow performs:
+Dispatch **Deploy to Production** on `main`, type `DEPLOY`, select the Stripe
+mode, and enter the exact comma-separated pending migration filenames in
+`expected_migrations` (`none` only when the dry-run must be empty). The workflow
+performs:
 
 1. Unit tests, type check, lint and high-severity dependency audit.
 2. Vercel Sensitive-variable presence validation.
-3. Supabase link and migration dry-run (no state change).
+3. Supabase link and migration dry-run (no state change), mechanically matched
+   to the dispatch's exact `expected_migrations` filenames (`none` for a no-op).
 4. A production-target cloud build. `next.config.js` validates the decrypted
    environment values and fails on wrong URL, Stripe mode, Price IDs or keys.
 5. A staged `--prod --skip-domain` deployment and authenticated health check
    against the current schema. Deployment protection must remain enabled.
-6. Application of pending additive Supabase migrations and linked database lint.
-7. A second staged health check against the migrated schema, followed by a
-   canonical health check proving the outgoing application remains compatible.
+6. Application of pending backward-compatible forward Supabase migrations and
+   linked database lint.
+7. A second staged health/capability-boundary check that requires the release
+   SHA and Career Spine capability version against the migrated schema,
+   followed by a canonical database-health check of the outgoing application.
 8. Promotion of the staged build to `supasnake.com`.
-9. Final canonical production health check.
+9. Final canonical production health check asserting the promoted release SHA
+   and Career Spine capability version.
 
 The protected staged-health command consumes `VERCEL_TOKEN` from the job
 environment. With Vercel CLI 56, do not repeat that credential as an explicit
 `vercel curl --token` option: the subcommand forwards it to raw curl instead of
 using it for CLI authentication.
 
-This closes both unsafe windows in a capability-changing release: the new
-application is tested on both schemas before it can serve players, and the old
-application is tested on the migrated schema before promotion. Every release
-with a pending migration must document compatibility on both sides of the
-boundary. If no migration is pending, the database step must remain a verified
-no-op.
+This closes both release-boundary windows: the new application's health contract
+is tested on both schemas before it can serve players, and the old application's
+health contract is tested on the migrated schema before promotion. Feature-level
+rolling compatibility still requires focused local/integration tests; these
+health smokes do not claim to exercise every API. Every release with a pending
+migration must document compatibility on both sides of the boundary. If no
+migration is pending, the database step must remain a verified no-op.
 
 ## Repository-only mainline reconciliation
 

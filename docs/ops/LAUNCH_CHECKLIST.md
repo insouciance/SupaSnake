@@ -12,7 +12,8 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm run lint` is clean
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
-- [ ] All migrations apply from 001 through 059 on a clean database
+- [ ] All migrations apply from 001 through the release's highest numbered
+      migration (060 for the Career Spine release) on a clean database
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
       current baseline, or lists exactly the migrations named in a future
       release plan
