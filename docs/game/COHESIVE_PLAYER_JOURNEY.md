@@ -1,15 +1,15 @@
 # SupaSnake Cohesive Player Journey
 
-**Status:** Review candidate · awaiting Product Owner UX validation · 31 July 2026
+**Status:** Product Owner approved · implementation contract · 31 July 2026
 
 **Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.8 remains design law. This
-review candidate defines the proposed end-to-end player journey, information
+contract defines the approved end-to-end player journey, information
 architecture, run-continuity presentation, and cross-system attention behavior;
-it becomes an authoritative product contract only after Product Owner approval.
-The Career Spine, Run Cockpit, Energy Commitment, Player Flow, and clan contracts
-remain authoritative for their system calculations. Where an older document says
-a disconnect itself ends a run, or a Lab action silently starts one, this candidate
-records the proposed replacement; it supersedes that language only after approval.
+it is authoritative within the Constitution's protected bounds. The Career Spine,
+Run Cockpit, Energy Commitment, Player Flow, and clan contracts remain authoritative
+for their system calculations. Where an older document says a disconnect itself
+ends a run, or a Lab action silently starts one, this contract supersedes that
+journey language.
 
 ## 1. Outcome and design thesis
 
