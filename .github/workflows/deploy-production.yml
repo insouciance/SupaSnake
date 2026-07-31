@@ -32,7 +32,7 @@ jobs:
   verify:
     if: ${{ inputs.confirmation == 'DEPLOY' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
@@ -68,6 +68,19 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      - name: Start clean isolated Supabase for SQL contracts
+        run: |
+          supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
+          supabase db reset --local
+      - name: Run isolated SQL contracts, including two-session races
+        run: bash scripts/run-local-sql-contracts.sh
+      - name: Stop isolated Supabase
+        if: always()
+        run: supabase stop --no-backup
       - name: Unit, type, lint, and dependency gates
         run: |
           npm test -- --coverage --runInBand
@@ -145,9 +158,6 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # The application is deliberately staged before any pending forward-only
-      # migration. Every release must document its exact expected migration
-      # list; any additional pending migration is a stop condition.
       - name: Pull production environment
         run: npx vercel@56.3.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
       - name: Validate production environment contract
@@ -167,8 +177,8 @@ jobs:
           EXPECTED_MIGRATIONS: ${{ inputs.expected_migrations }}
         run: |
           set -euo pipefail
-          if [ "$SUPABASE_PROJECT_ID" != "gmpwyzqafoyowndbvlma" ]; then
-            echo "::error::production project mismatch; refusing to link or mutate $SUPABASE_PROJECT_ID"
+          if [ "$SUPABASE_PROJECT_ID" != 'gmpwyzqafoyowndbvlma' ]; then
+            echo "::error::production project mismatch; refusing $SUPABASE_PROJECT_ID"
             exit 1
           fi
           supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
@@ -177,48 +187,33 @@ jobs:
           actual=$(grep -oE '[0-9]{3,}_[A-Za-z0-9._-]+\.sql' "$preview_file" | sort -u | paste -sd, - || true)
           expected=$(printf '%s' "$EXPECTED_MIGRATIONS" | tr -d '[:space:]')
           if ! [[ "$expected" =~ ^(none|[0-9]{3,}_[A-Za-z0-9._-]+\.sql(,[0-9]{3,}_[A-Za-z0-9._-]+\.sql)*)$ ]]; then
-            echo "::error::expected_migrations must be 'none' or an exact comma-separated migration filename list"
+            echo "::error::expected_migrations must be 'none' or an exact comma-separated filename list"
             exit 1
           fi
-          if [ "$expected" = "none" ]; then expected=""; fi
+          if [ "$expected" = 'none' ]; then expected=''; fi
           if [ "$actual" != "$expected" ]; then
             echo "::error::pending migrations differ: expected '${expected:-none}', got '${actual:-none}'"
             exit 1
           fi
+
           rollout=standard
           if [ -z "$actual" ]; then
             rollout=none
-          elif [ "$actual" = "060_pending_game_session_ends.sql,061_career_spine.sql" ]; then
-            rollout=career-initial
-          elif [ "$actual" = "061_career_spine.sql" ]; then
-            # Supported forward-only recovery after a prior run committed the
-            # additive bridge but stopped before the hard Career migration.
-            rollout=career-resume
-          elif [ "$actual" = "062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql" ]; then
+          elif [ "$actual" = '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql' ]; then
             rollout=cohesive-ux-initial
-          elif [ "$actual" = "063_run_continuity.sql,064_atomic_dynasty_favorites.sql" ] \
-              || [ "$actual" = "064_atomic_dynasty_favorites.sql" ]; then
-            # Forward-only recovery if a prior cohesive release committed one
-            # or two bridge-safe migrations before the workflow stopped.
+          elif [ "$actual" = '063_run_continuity.sql,064_atomic_dynasty_favorites.sql' ] \
+              || [ "$actual" = '064_atomic_dynasty_favorites.sql' ]; then
             rollout=cohesive-ux-resume
-          elif [[ ",$actual," == *",060_pending_game_session_ends.sql,"* \
-              || ",$actual," == *",061_career_spine.sql,"* ]]; then
-            echo "::error::Career settlement migrations must be the exact initial or resume set"
-            exit 1
           elif [[ ",$actual," == *",062_competitive_clans.sql,"* \
               || ",$actual," == *",063_run_continuity.sql,"* \
               || ",$actual," == *",064_atomic_dynasty_favorites.sql,"* ]]; then
-            echo "::error::Cohesive UX migrations must be the exact initial set or an ordered recovery suffix"
+            echo "::error::Cohesive UX migrations require the exact initial set or an ordered suffix"
             exit 1
           fi
           echo "rollout=$rollout" >> "$GITHUB_OUTPUT"
           echo "actual=$actual" >> "$GITHUB_OUTPUT"
 
-      # Capture the artifact currently behind the canonical alias BEFORE
-      # creating a staged production artifact. Listing recent deployments is
-      # insufficient because an earlier unpromoted --skip-domain artifact may
-      # be newer than the deployment actually serving players.
-      - name: Record the outgoing production deployment (rollback anchor)
+      - name: Record exact outgoing production deployment
         id: outgoing
         run: |
           set -euo pipefail
@@ -226,240 +221,112 @@ jobs:
             --format=json --non-interactive --token="$VERCEL_TOKEN")
           outgoing_id=$(printf '%s' "$outgoing_json" | jq -er '.id')
           outgoing_host=$(printf '%s' "$outgoing_json" | jq -er '.url')
-          outgoing_ready=$(printf '%s' "$outgoing_json" | jq -er '.readyState')
-          outgoing_target=$(printf '%s' "$outgoing_json" | jq -er '.target')
-          if [ "$outgoing_ready" != "READY" ] || [ "$outgoing_target" != "production" ]; then
-            echo "::error::canonical alias did not resolve to a ready production deployment"
+          if ! printf '%s' "$outgoing_json" | jq -e \
+            '.readyState == "READY" and .target == "production"' >/dev/null; then
+            echo "::error::canonical alias is not a ready production deployment"
             exit 1
           fi
-          outgoing="https://$outgoing_host"
           {
             echo "id=$outgoing_id"
             echo "host=$outgoing_host"
-            echo "url=$outgoing"
+            echo "url=https://$outgoing_host"
           } >> "$GITHUB_OUTPUT"
-          echo "ROLLBACK ANCHOR (production before this release): $outgoing_id $outgoing"
           {
-            echo '### Rollback anchor'
+            echo '### Outgoing production anchor'
             echo ''
-            echo "Production **before** this release: \`$outgoing_id\` (\`$outgoing\`)"
+            echo "Before cutover: \`$outgoing_id\` (\`https://$outgoing_host\`)"
             echo ''
-            echo 'Roll back with `vercel promote <that url>`, or via Instant Rollback in the dashboard.'
-            echo 'This anchor is not safe after Career bridge traffic has been accepted or migration 061 has committed.'
-            echo 'Rollback does NOT revert migrations and does NOT update cron definitions.'
+            echo 'A rollback is never automatic. Use the supported `vercel rollback <deployment>` command only after checking schema compatibility, then prove alias and cron state independently.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Snapshot production cron ownership
+      - name: Snapshot exact outgoing cron state
         id: cron_before
-        run: |
-          set -euo pipefail
-          project_json=$(curl --fail --show-error --silent --max-time 20 \
-            -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID")
-          expected=$(jq -c '[.crons[] | {path, schedule}] | sort_by(.path, .schedule)' vercel.json)
-          actual=$(printf '%s' "$project_json" \
-            | jq -c '[.crons.definitions[] | {path, schedule}] | sort_by(.path, .schedule)')
-          cron_deployment=$(printf '%s' "$project_json" | jq -er '.crons.deploymentId')
-          cron_enabled=$(printf '%s' "$project_json" \
-            | jq -er '.crons.enabledAt != null and .crons.disabledAt == null')
-          hosts_match=$(printf '%s' "$project_json" \
-            | jq -er --arg host "${{ steps.outgoing.outputs.host }}" \
-              '[.crons.definitions[].host] | length > 0 and all(. == $host)')
-          if [ "$actual" != "$expected" ] \
-              || [ "$cron_deployment" != "${{ steps.outgoing.outputs.id }}" ] \
-              || [ "$cron_enabled" != 'true' ] \
-              || [ "$hosts_match" != 'true' ]; then
-            echo "::error::Production cron definitions or ownership differ from the outgoing release"
-            exit 1
-          fi
-          echo "deployment_id=$cron_deployment" >> "$GITHUB_OUTPUT"
-          echo "definitions_sha=$(printf '%s' "$actual" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        env:
+          EXPECTED_CRON_DEPLOYMENT_ID: ${{ steps.outgoing.outputs.id }}
+          EXPECTED_CRON_HOST: ${{ steps.outgoing.outputs.host }}
+        run: bash scripts/verify-vercel-cron-state.sh
 
-      # Career settlement has a deliberately different boundary from ordinary
-      # backward-compatible migrations. 060 only adds the durable server
-      # ingress and is safe for the outgoing application. The incoming build
-      # is not staged until that bridge exists, because it must never accept an
-      # earning result unless it can durably store it first.
-      - name: Apply additive Career settlement bridge
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' }}
-        run: |
-          set -euo pipefail
-          career_path='supabase/migrations/061_career_spine.sql'
-          if [ ! -f 'supabase/migrations/060_pending_game_session_ends.sql' ] \
-              || [ ! -f "$career_path" ]; then
-            echo "::error::the reviewed 060/061 Career migration pair is incomplete"
-            exit 1
-          fi
-          hold_dir=$(mktemp -d)
-          restore_career_migration() {
-            if [ -f "$hold_dir/061_career_spine.sql" ]; then
-              mv "$hold_dir/061_career_spine.sql" "$career_path"
-            fi
-            rmdir "$hold_dir" 2>/dev/null || true
-          }
-          trap restore_career_migration EXIT
-          mv "$career_path" "$hold_dir/061_career_spine.sql"
-          supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
-          restore_career_migration
-          trap - EXIT
-
-      - name: Verify outgoing application after additive bridge
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' }}
-        run: |
-          set -uo pipefail
-          payload=''
-          for attempt in $(seq 1 12); do
-            if payload=$(curl --fail --show-error --silent --max-time 20 \
-                https://supasnake.com/api/health) \
-              && printf '%s' "$payload" | jq -e \
-                '.status == "healthy" and .checks.database.status == "healthy"' >/dev/null; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::outgoing application is not healthy on the additive bridge"
-          printf '%s\n' "$payload"
-          exit 1
-
-      - name: Validate additive Career bridge
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' }}
-        run: supabase db lint --linked --level warning --fail-on error
-
-      # 062–064 are deliberately bridge-safe for the outgoing runtime. Apply
-      # them before creating a production-target staged artifact because Vercel
-      # may transfer cron ownership as soon as `--prod --skip-domain` is ready.
-      # This prevents an incoming cron invocation from ever seeing schema 061.
-      - name: Apply cohesive UX bridge migrations
-        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
-        run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
-
-      - name: Validate cohesive UX bridge schema
-        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
-        run: supabase db lint --linked --level warning --fail-on error
-
-      - name: Verify outgoing application after cohesive UX bridges
-        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
-        run: |
-          set -uo pipefail
-          payload=''
-          for attempt in $(seq 1 12); do
-            if payload=$(curl --fail --show-error --silent --max-time 20 \
-                https://supasnake.com/api/health) \
-              && printf '%s' "$payload" | jq -e \
-                '.status == "healthy" and .checks.database.status == "healthy"' >/dev/null; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::Outgoing application is not healthy on the cohesive UX bridge schema"
-          printf '%s\n' "$payload"
-          exit 1
-
-      # Sensitive variables are only decrypted inside Vercel's cloud build.
-      # Stage and smoke the production-target build before assigning domains.
-      - name: Build and stage application in Vercel
-        id: app
+      # Preview is an ordinary Preview deployment. Vercel invokes project cron
+      # jobs only on Production, so this artifact cannot acquire production
+      # cron ownership. It is the sole pre-cutover application artifact.
+      - name: Build isolated Preview artifact
+        id: preview
         run: |
           set -euo pipefail
           deployment_url=$(npx vercel@56.3.1 deploy \
-            --prod \
-            --skip-domain \
             --yes \
             --archive=tgz \
             --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
-            --build-env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
-            --build-env NEXT_PUBLIC_RUN_FLOW_V1="true" \
+            --build-env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
+            --build-env NEXT_PUBLIC_RUN_FLOW_V1='true' \
             --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
-            --env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
-            --env NEXT_PUBLIC_RUN_FLOW_V1="true" \
+            --env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
+            --env NEXT_PUBLIC_RUN_FLOW_V1='true' \
             --token="$VERCEL_TOKEN")
           deployment_json=$(npx vercel@56.3.1 inspect "$deployment_url" \
             --format=json --non-interactive --token="$VERCEL_TOKEN")
           deployment_id=$(printf '%s' "$deployment_json" | jq -er '.id')
-          deployment_ready=$(printf '%s' "$deployment_json" | jq -er '.readyState')
-          deployment_target=$(printf '%s' "$deployment_json" | jq -er '.target')
-          if [ "$deployment_ready" != 'READY' ] || [ "$deployment_target" != 'production' ]; then
-            echo "::error::staged deployment is not a READY production-target artifact"
+          deployment_host=$(printf '%s' "$deployment_json" | jq -er '.url')
+          deployment_target=$(printf '%s' "$deployment_json" | jq -r '.target // "preview"')
+          if [ "$deployment_target" != 'preview' ] \
+              || ! printf '%s' "$deployment_json" | jq -e '.readyState == "READY"' >/dev/null \
+              || [ "$deployment_id" = "${{ steps.outgoing.outputs.id }}" ]; then
+            echo "::error::preflight artifact is not an isolated READY Preview"
             exit 1
           fi
-          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
-          echo "id=$deployment_id" >> "$GITHUB_OUTPUT"
-          echo "host=$(printf '%s' "$deployment_json" | jq -er '.url')" >> "$GITHUB_OUTPUT"
+          {
+            echo "url=$deployment_url"
+            echo "id=$deployment_id"
+            echo "host=$deployment_host"
+            echo 'target=preview'
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Verify cron definitions after staging
+      - name: Prove Preview left canonical alias unchanged
         run: |
           set -euo pipefail
-          project_json=$(curl --fail --show-error --silent --max-time 20 \
-            -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID")
-          expected=$(jq -c '[.crons[] | {path, schedule}] | sort_by(.path, .schedule)' vercel.json)
-          actual=$(printf '%s' "$project_json" \
-            | jq -c '[.crons.definitions[] | {path, schedule}] | sort_by(.path, .schedule)')
-          actual_sha=$(printf '%s' "$actual" | sha256sum | cut -d' ' -f1)
-          cron_deployment=$(printf '%s' "$project_json" | jq -er '.crons.deploymentId')
-          if [ "$actual" != "$expected" ] \
-              || [ "$actual_sha" != "${{ steps.cron_before.outputs.definitions_sha }}" ]; then
-            echo "::error::Staging changed the reviewed production cron definitions"
+          canonical_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
+            --format=json --non-interactive --token="$VERCEL_TOKEN")
+          if ! printf '%s' "$canonical_json" | jq -e \
+            --arg id "${{ steps.outgoing.outputs.id }}" \
+            --arg host "${{ steps.outgoing.outputs.host }}" \
+            '.id == $id and .url == $host and .readyState == "READY" and .target == "production"' >/dev/null; then
+            echo "::error::Preview creation changed the canonical production alias"
             exit 1
           fi
-          if [ "$cron_deployment" = "${{ steps.outgoing.outputs.id }}" ]; then
-            expected_host="${{ steps.outgoing.outputs.host }}"
-          elif [ "$cron_deployment" = "${{ steps.app.outputs.id }}" ]; then
-            expected_host="${{ steps.app.outputs.host }}"
-          else
-            echo "::error::Cron ownership moved to an unknown deployment: $cron_deployment"
-            exit 1
-          fi
-          printf '%s' "$project_json" \
-            | jq -e --arg host "$expected_host" \
-              '.crons.enabledAt != null
-                and .crons.disabledAt == null
-                and ([.crons.definitions[].host] | length > 0 and all(. == $host))' >/dev/null
-      - name: Smoke staged application against the current schema
+      - name: Prove Preview cannot own production cron
+        env:
+          EXPECTED_CRON_DEPLOYMENT_ID: ${{ steps.outgoing.outputs.id }}
+          EXPECTED_CRON_HOST: ${{ steps.outgoing.outputs.host }}
+          EXPECTED_CRON_DEFINITIONS_SHA: ${{ steps.cron_before.outputs.definitions_sha }}
+        run: bash scripts/verify-vercel-cron-state.sh
+
+      - name: Smoke Preview against pre-migration schema
+        if: ${{ steps.migration_plan.outputs.rollout == 'standard' || steps.migration_plan.outputs.rollout == 'none' }}
         run: |
           set -uo pipefail
-          expected_phase='ready'
-          expected_career='1'
-          if [ "${{ steps.migration_plan.outputs.rollout }}" = 'career-initial' ] \
-              || [ "${{ steps.migration_plan.outputs.rollout }}" = 'career-resume' ]; then
-            expected_phase='bridge'
-            expected_career='null'
-          fi
-          # `vercel curl` v56 forwards an explicit global token option to the
-          # underlying curl process. It reads the job's VERCEL_TOKEN environment
-          # variable directly, so do not repeat that credential as a CLI flag.
           payload=''
           for attempt in $(seq 1 12); do
             if payload=$(npx vercel@56.3.1 curl /api/health \
-                --deployment "${{ steps.app.outputs.url }}" \
-                --yes \
-                -- \
+                --deployment "${{ steps.preview.outputs.url }}" --yes -- \
                 --fail --show-error --silent --max-time 20) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                  --arg phase "$expected_phase" --arg career "$expected_career" \
-                '.status == "healthy"
-                  and .checks.database.status == "healthy"
-                  and .checks.careerSpine.status == "healthy"
-                  and .checks.careerSpine.surfaceEnabled == true
-                  and .checks.runFlow.status == "healthy"
-                  and .checks.runFlow.surfaceEnabled == true
-                  and .checks.cohesiveRelease.status == "healthy"
-                  and .checks.cohesiveRelease.version == 1
-                  and .checks.cohesiveRelease.foundingBridgeVersion == 1
-                  and .checks.cohesiveRelease.continuityVersion == 1
-                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1
-                  and .checks.careerSpine.bridgeVersion == 1
-                  and .checks.careerSpine.phase == $phase
-                  and (($career == "null" and .checks.careerSpine.careerVersion == null)
-                    or ($career == "1" and .checks.careerSpine.careerVersion == 1))
-                  and .release == $release' >/dev/null; then
+                '.status == "healthy" and .release == $release
+                  and .checks.database.status == "healthy"' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-          echo "::error::staged pre-migration health contract did not become ready"
+          echo "::error::Preview is not compatible with the current schema"
           printf '%s\n' "$payload"
           exit 1
+
+      - name: Apply cohesive UX bridge migrations
+        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
+        run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
+      - name: Validate cohesive UX bridge schema
+        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
+        run: supabase db lint --linked --level warning --fail-on error
+
       - name: Apply standard pending database migrations
         if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
         run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
@@ -467,42 +334,32 @@ jobs:
         if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
         run: supabase db lint --linked --level warning --fail-on error
 
-      - name: Smoke staged application against the standard migrated schema
-        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
+      # This is the only SQL test permitted against hosted production. It has
+      # no fixtures and is guarded by both Management API read_only=true and
+      # BEGIN TRANSACTION READ ONLY in the SQL file.
+      - name: Probe linked cohesive schema read-only
+        run: bash scripts/probe-linked-cohesive-schema.sh
+
+      - name: Prove bridge push left canonical alias unchanged
         run: |
-          set -uo pipefail
-          payload=''
-          for attempt in $(seq 1 12); do
-            if payload=$(npx vercel@56.3.1 curl /api/health \
-                --deployment "${{ steps.app.outputs.url }}" \
-                --yes \
-                -- \
-                --fail --show-error --silent --max-time 20) \
-              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy"
-                  and .checks.database.status == "healthy"
-                  and .checks.careerSpine.status == "healthy"
-                  and .checks.careerSpine.phase == "ready"
-                  and .checks.careerSpine.bridgeVersion == 1
-                  and .checks.careerSpine.careerVersion == 1
-                  and .checks.careerSpine.surfaceEnabled == true
-                  and .checks.runFlow.status == "healthy"
-                  and .checks.runFlow.surfaceEnabled == true
-                  and .checks.cohesiveRelease.status == "healthy"
-                  and .checks.cohesiveRelease.version == 1
-                  and .checks.cohesiveRelease.foundingBridgeVersion == 1
-                  and .checks.cohesiveRelease.continuityVersion == 1
-                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1
-                  and .release == $release' >/dev/null; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::staged post-migration capability did not become ready"
-          printf '%s\n' "$payload"
-          exit 1
-      - name: Smoke outgoing application against the standard migrated schema
-        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
+          set -euo pipefail
+          canonical_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
+            --format=json --non-interactive --token="$VERCEL_TOKEN")
+          if ! printf '%s' "$canonical_json" | jq -e \
+            --arg id "${{ steps.outgoing.outputs.id }}" \
+            --arg host "${{ steps.outgoing.outputs.host }}" \
+            '.id == $id and .url == $host and .readyState == "READY" and .target == "production"' >/dev/null; then
+            echo "::error::canonical alias changed before deliberate cutover"
+            exit 1
+          fi
+      - name: Prove bridge push left production cron unchanged
+        env:
+          EXPECTED_CRON_DEPLOYMENT_ID: ${{ steps.outgoing.outputs.id }}
+          EXPECTED_CRON_HOST: ${{ steps.outgoing.outputs.host }}
+          EXPECTED_CRON_DEFINITIONS_SHA: ${{ steps.cron_before.outputs.definitions_sha }}
+        run: bash scripts/verify-vercel-cron-state.sh
+
+      - name: Verify outgoing application on final bridge schema
         run: |
           set -uo pipefail
           payload=''
@@ -515,86 +372,26 @@ jobs:
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-          echo "::error::outgoing application is not healthy on the migrated schema"
+          echo "::error::outgoing production is not healthy on final bridge schema"
           printf '%s\n' "$payload"
           exit 1
 
-      - name: Promote staged application
-        run: >-
-          npx vercel@56.3.1 promote
-          "${{ steps.app.outputs.url }}"
-          --yes
-          --token="$VERCEL_TOKEN"
-
-      - name: Prove canonical alias names the staged deployment
-        run: |
-          set -euo pipefail
-          canonical_json=''
-          for attempt in $(seq 1 12); do
-            if canonical_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
-                --format=json --non-interactive --token="$VERCEL_TOKEN") \
-              && canonical_id=$(printf '%s' "$canonical_json" | jq -er '.id') \
-              && canonical_ready=$(printf '%s' "$canonical_json" | jq -er '.readyState') \
-              && canonical_target=$(printf '%s' "$canonical_json" | jq -er '.target') \
-              && [ "$canonical_id" = "${{ steps.app.outputs.id }}" ] \
-              && [ "$canonical_ready" = 'READY' ] \
-              && [ "$canonical_target" = 'production' ]; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::canonical alias does not name staged deployment ${{ steps.app.outputs.id }}"
-          printf '%s\n' "$canonical_json"
-          exit 1
-
-      - name: Prove promoted deployment owns the reviewed cron schedule
-        run: |
-          set -uo pipefail
-          project_json=''
-          expected=$(jq -c '[.crons[] | {path, schedule}] | sort_by(.path, .schedule)' vercel.json)
-          expected_sha="${{ steps.cron_before.outputs.definitions_sha }}"
-          for attempt in $(seq 1 12); do
-            if project_json=$(curl --fail --show-error --silent --max-time 20 \
-                -H "Authorization: Bearer $VERCEL_TOKEN" \
-                "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID"); then
-              actual=$(printf '%s' "$project_json" \
-                | jq -c '[.crons.definitions[] | {path, schedule}] | sort_by(.path, .schedule)')
-              actual_sha=$(printf '%s' "$actual" | sha256sum | cut -d' ' -f1)
-              if [ "$actual" = "$expected" ] \
-                  && [ "$actual_sha" = "$expected_sha" ] \
-                  && printf '%s' "$project_json" \
-                    | jq -e \
-                      --arg deployment "${{ steps.app.outputs.id }}" \
-                      --arg host "${{ steps.app.outputs.host }}" \
-                      '.crons.deploymentId == $deployment
-                        and .crons.enabledAt != null
-                        and .crons.disabledAt == null
-                        and ([.crons.definitions[].host] | length > 0 and all(. == $host))' \
-                      >/dev/null; then
-                exit 0
-              fi
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::Promoted deployment did not take exact ownership of the reviewed cron schedule"
-          exit 1
-
-      - name: Prove canonical Career bridge deployment
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+      - name: Smoke exact Preview on final bridge schema
         run: |
           set -uo pipefail
           payload=''
           for attempt in $(seq 1 12); do
-            if payload=$(curl --fail --show-error --silent --max-time 20 \
-                https://supasnake.com/api/health) \
+            if payload=$(npx vercel@56.3.1 curl /api/health \
+                --deployment "${{ steps.preview.outputs.url }}" --yes -- \
+                --fail --show-error --silent --max-time 20) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
                 '.status == "healthy"
                   and .release == $release
                   and .checks.database.status == "healthy"
                   and .checks.careerSpine.status == "healthy"
-                  and .checks.careerSpine.phase == "bridge"
+                  and .checks.careerSpine.phase == "ready"
                   and .checks.careerSpine.bridgeVersion == 1
-                  and .checks.careerSpine.careerVersion == null
+                  and .checks.careerSpine.careerVersion == 1
                   and .checks.careerSpine.surfaceEnabled == true
                   and .checks.runFlow.status == "healthy"
                   and .checks.runFlow.surfaceEnabled == true
@@ -607,37 +404,77 @@ jobs:
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-          echo "::error::canonical alias did not converge on the exact Career bridge release"
+          echo "::error::exact Preview did not pass the final capability contract"
           printf '%s\n' "$payload"
           exit 1
 
-      # The outgoing canonical settlement function was independently
-      # inspected at a 300-second maximum. Start this clock only after the
-      # exact bridge build is proven canonical, then include a 60-second
-      # margin before 061 rejects the retired absolute writer.
-      - name: Drain retired settlement invocations
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
-        run: sleep 360
-
-      - name: Re-verify hard Career migration is the only pending change
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
+      # There is deliberately no --prod --skip-domain artifact. Once every
+      # preflight has passed, this single supported Production deployment is
+      # allowed to become Current. A failed build never creates an abandoned
+      # production staging interval whose cron ownership needs guessing.
+      - name: Create deliberate Production deployment and cut over
+        id: production_attempt
         run: |
           set -euo pipefail
-          preview_file=$(mktemp)
-          supabase db push --linked --include-all --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee "$preview_file"
-          actual=$(grep -oE '[0-9]{3,}_[A-Za-z0-9._-]+\.sql' "$preview_file" | sort -u | paste -sd, - || true)
-          if [ "$actual" != '061_career_spine.sql' ]; then
-            echo "::error::expected only 061_career_spine.sql after the bridge, got '${actual:-none}'"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          deployment_url=$(npx vercel@56.3.1 deploy \
+            --prod \
+            --yes \
+            --archive=tgz \
+            --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
+            --build-env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
+            --build-env NEXT_PUBLIC_RUN_FLOW_V1='true' \
+            --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
+            --env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
+            --env NEXT_PUBLIC_RUN_FLOW_V1='true' \
+            --token="$VERCEL_TOKEN")
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect exact Production deployment
+        id: production
+        run: |
+          set -euo pipefail
+          deployment_json=$(npx vercel@56.3.1 inspect \
+            "${{ steps.production_attempt.outputs.url }}" \
+            --format=json --non-interactive --token="$VERCEL_TOKEN")
+          deployment_id=$(printf '%s' "$deployment_json" | jq -er '.id')
+          deployment_host=$(printf '%s' "$deployment_json" | jq -er '.url')
+          if ! printf '%s' "$deployment_json" | jq -e \
+            '.readyState == "READY" and .target == "production"' >/dev/null \
+              || [ "$deployment_id" = "${{ steps.outgoing.outputs.id }}" ]; then
+            echo "::error::new artifact is not a distinct READY Production deployment"
             exit 1
           fi
+          {
+            echo "id=$deployment_id"
+            echo "host=$deployment_host"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Apply hard Career settlement migration
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
-        run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
+      - name: Prove canonical alias names exact Production deployment
+        run: |
+          set -uo pipefail
+          canonical_json=''
+          for attempt in $(seq 1 12); do
+            if canonical_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
+                --format=json --non-interactive --token="$VERCEL_TOKEN") \
+              && printf '%s' "$canonical_json" | jq -e \
+                --arg id "${{ steps.production.outputs.id }}" \
+                --arg host "${{ steps.production.outputs.host }}" \
+                '.id == $id and .url == $host and .readyState == "READY" and .target == "production"' >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::canonical alias does not name the exact new Production deployment"
+          printf '%s\n' "$canonical_json"
+          exit 1
 
-      - name: Validate linked database after Career cutover
-        if: ${{ steps.migration_plan.outputs.rollout == 'career-initial' || steps.migration_plan.outputs.rollout == 'career-resume' }}
-        run: supabase db lint --linked --level warning --fail-on error
+      - name: Prove exact Production deployment owns reviewed cron schedule
+        env:
+          EXPECTED_CRON_DEPLOYMENT_ID: ${{ steps.production.outputs.id }}
+          EXPECTED_CRON_HOST: ${{ steps.production.outputs.host }}
+          EXPECTED_CRON_DEFINITIONS_SHA: ${{ steps.cron_before.outputs.definitions_sha }}
+        run: bash scripts/verify-vercel-cron-state.sh
 
       - name: Production health smoke test
         run: |
@@ -648,6 +485,7 @@ jobs:
                 https://supasnake.com/api/health) \
               && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
                 '.status == "healthy"
+                  and .release == $release
                   and .checks.database.status == "healthy"
                   and .checks.careerSpine.status == "healthy"
                   and .checks.careerSpine.phase == "ready"
@@ -660,57 +498,66 @@ jobs:
                   and .checks.cohesiveRelease.version == 1
                   and .checks.cohesiveRelease.foundingBridgeVersion == 1
                   and .checks.cohesiveRelease.continuityVersion == 1
-                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1
-                  and .release == $release' >/dev/null; then
+                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-          echo "::error::canonical alias did not converge on the promoted capability"
+          echo "::error::canonical alias did not converge on exact healthy release"
           printf '%s\n' "$payload"
           exit 1
 
-      # A production-target staged deployment may acquire the project cron
-      # schedule before domain promotion. If a later pre-promotion check fails,
-      # explicitly re-promote the still-canonical outgoing artifact so cron
-      # ownership cannot remain on an abandoned staged build.
-      - name: Restore outgoing cron ownership after an unpromoted failure
-        if: ${{ failure() && steps.app.outputs.id != '' }}
+      # Read-only diagnostics run even when the Production CLI command returns
+      # ambiguously. They never mutate aliases or cron configuration. An
+      # outgoing/outgoing result is a safe pre-cutover stop; a new or mixed
+      # result is an explicit operator incident, not an unsupported auto-fix.
+      - name: Classify production state after cutover attempt
+        if: ${{ always() && steps.production_attempt.outputs.started == 'true' }}
+        env:
+          RELEASE_JOB_STATUS: ${{ job.status }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           canonical_json=$(npx vercel@56.3.1 inspect https://supasnake.com \
-            --format=json --non-interactive --token="$VERCEL_TOKEN")
-          canonical_id=$(printf '%s' "$canonical_json" | jq -er '.id')
-          if [ "$canonical_id" != "${{ steps.outgoing.outputs.id }}" ]; then
-            echo "Canonical deployment already changed; automatic cron restoration is intentionally skipped."
+            --format=json --non-interactive --token="$VERCEL_TOKEN" 2>/dev/null || true)
+          canonical_id=$(printf '%s' "$canonical_json" | jq -r '.id // empty' 2>/dev/null || true)
+          canonical_host=$(printf '%s' "$canonical_json" | jq -r '.url // empty' 2>/dev/null || true)
+          health_payload=$(curl --show-error --silent --max-time 20 \
+            https://supasnake.com/api/health 2>/dev/null || true)
+          live_release=$(printf '%s' "$health_payload" | jq -r '.release // empty' 2>/dev/null || true)
+          project_json=$(curl --fail-with-body --show-error --silent --max-time 20 \
+            --header "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" 2>/dev/null || true)
+          cron_id=$(printf '%s' "$project_json" | jq -r '.crons.deploymentId // empty' 2>/dev/null || true)
+          cron_host=$(printf '%s' "$project_json" \
+            | jq -r 'if ([.crons.definitions[].host] | unique | length) == 1 then .crons.definitions[0].host else "" end' \
+              2>/dev/null || true)
+          cron_defs=$(printf '%s' "$project_json" \
+            | jq -c '[.crons.definitions[] | {path, schedule}] | sort_by(.path, .schedule)' \
+              2>/dev/null || true)
+          expected_defs=$(jq -c '[.crons[] | {path, schedule}] | sort_by(.path, .schedule)' vercel.json)
+          cron_enabled=$(printf '%s' "$project_json" \
+            | jq -r '.crons.enabledAt != null and .crons.disabledAt == null' 2>/dev/null || true)
+
+          echo "canonical=$canonical_id host=$canonical_host release=$live_release cron=$cron_id cron_host=$cron_host enabled=$cron_enabled"
+          if [ "$RELEASE_JOB_STATUS" = 'success' ]; then
             exit 0
           fi
-
-          project_json=$(curl --fail --show-error --silent --max-time 20 \
-            -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID")
-          cron_deployment=$(printf '%s' "$project_json" | jq -er '.crons.deploymentId')
-          if [ "$cron_deployment" != "${{ steps.outgoing.outputs.id }}" ]; then
-            npx vercel@56.3.1 promote "${{ steps.outgoing.outputs.url }}" \
-              --yes --token="$VERCEL_TOKEN"
+          if [ "$canonical_id" = "${{ steps.outgoing.outputs.id }}" ] \
+              && [ "$canonical_host" = "${{ steps.outgoing.outputs.host }}" ] \
+              && [ "$cron_id" = "${{ steps.outgoing.outputs.id }}" ] \
+              && [ "$cron_host" = "${{ steps.outgoing.outputs.host }}" ] \
+              && [ "$cron_defs" = "$expected_defs" ] \
+              && [ "$cron_enabled" = 'true' ]; then
+            echo "::warning::Production attempt stopped before cutover; canonical application and cron remain exactly outgoing."
+            exit 0
           fi
-
-          for attempt in $(seq 1 12); do
-            project_json=$(curl --fail --show-error --silent --max-time 20 \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID")
-            if printf '%s' "$project_json" \
-              | jq -e \
-                --arg deployment "${{ steps.outgoing.outputs.id }}" \
-                --arg host "${{ steps.outgoing.outputs.host }}" \
-                '.crons.deploymentId == $deployment
-                  and .crons.enabledAt != null
-                  and .crons.disabledAt == null
-                  and ([.crons.definitions[].host] | length > 0 and all(. == $host))' \
-                >/dev/null; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::Could not restore outgoing cron ownership after failed staging"
+          if [ "$live_release" = "${{ github.sha }}" ] \
+              && [ "$cron_id" = "$canonical_id" ] \
+              && [ "$cron_host" = "$canonical_host" ] \
+              && [ "$cron_defs" = "$expected_defs" ] \
+              && [ "$cron_enabled" = 'true' ]; then
+            echo "::error::The new release is canonical after a failed workflow step. Stop automation and follow the post-cutover incident procedure; do not promote the outgoing artifact."
+            exit 1
+          fi
+          echo "::error::Ambiguous production/cron state after cutover attempt. Freeze releases and inspect alias, release SHA, cron owner, hosts, definitions, and enabled state manually."
           exit 1

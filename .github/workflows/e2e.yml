@@ -22,6 +22,27 @@ on:
     branches: [main, develop]
 
 jobs:
+  sql-contracts:
+    name: isolated SQL contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      - name: Start clean isolated Supabase
+        run: |
+          supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
+          supabase db reset --local
+      - name: Run ordinary and two-connection SQL contracts
+        run: bash scripts/run-local-sql-contracts.sh
+      - name: Stop isolated Supabase
+        if: always()
+        run: supabase stop --no-backup
+
   # TWO LEGS, BECAUSE ONE WAS TESTING THE CONFIGURATION NOBODY RUNS.
   #
   # Until 2026-07-27 this job passed no NEXT_PUBLIC_* flag at all, so every
@@ -173,15 +194,16 @@ jobs:
   # SKIPPED when a leg fails, and a skipped required check does not report a
   # failure, so a red matrix would merge.
   e2e:
-    needs: [e2e-matrix]
+    needs: [sql-contracts, e2e-matrix]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every e2e leg to pass
         run: |
-          result='${{ needs.e2e-matrix.result }}'
-          if [ "$result" != 'success' ]; then
-            echo "::error::e2e matrix result was '$result' - one or more legs did not pass"
+          sql_result='${{ needs.sql-contracts.result }}'
+          e2e_result='${{ needs.e2e-matrix.result }}'
+          if [ "$sql_result" != 'success' ] || [ "$e2e_result" != 'success' ]; then
+            echo "::error::SQL contracts=$sql_result, e2e matrix=$e2e_result - every isolated gate must pass"
             exit 1
           fi
-          echo 'both e2e legs passed (flags off and flags on)'
+          echo 'SQL contracts and both e2e legs passed (flags off and flags on)'
