@@ -16,7 +16,7 @@ export function progressionArtifactHref(
   if (!artifactRef) {
     switch (destination) {
       case 'chronicle': return '/profile';
-      case 'mastery': return '/lab#mastery';
+      case 'mastery': return '/profile#mastery';
       case 'records': return '/profile#records';
       case 'codex': return '/codex';
       case 'signal': return '/#signal';
@@ -30,7 +30,7 @@ export function progressionArtifactHref(
   switch (destination) {
     case 'mastery': {
       const dynasty = fragmentToken(artifactRef.replace(/^mastery:/, '').toUpperCase());
-      return `/lab?dynasty=${encodeURIComponent(dynasty)}#mastery-${dynasty}`;
+      return `/profile#mastery-${dynasty}`;
     }
     case 'records':
       return `/profile#record-${token}`;

@@ -76,13 +76,13 @@ describe('HomeCommandRail', () => {
 
   it('keeps exact recognition links and attention badges on the compact rail', () => {
     useNotificationStore.getState().replaceServerItems([{
-      id: 'record-moment',
+      id: 'mastery-moment',
       kind: 'recognition',
       status: 'unseen',
-      destination: 'records',
-      headline: 'New record',
+      destination: 'mastery',
+      headline: 'PRIMAL Mastery M4',
       momentId: 'moment-1',
-      artifactRef: 'record-1',
+      artifactRef: 'PRIMAL',
       source: { type: 'run', id: 'session-1' },
       createdAt: '2026-07-31T12:00:00.000Z',
     }]);
@@ -106,7 +106,7 @@ describe('HomeCommandRail', () => {
 
     expect(screen.getByRole('link', { name: 'You' })).toHaveAttribute(
       'href',
-      '/profile#record-record-1'
+      '/profile#mastery-PRIMAL'
     );
     expect(screen.getByRole('status', { name: 'New Lab activity' })).toBeInTheDocument();
   });

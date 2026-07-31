@@ -73,7 +73,7 @@ describe('chooseNextAction', () => {
       id: 'run-impact',
       label: 'Review PRIMAL Mastery M4',
       description: 'Continue in Mastery.',
-      href: '/lab?dynasty=PRIMAL#mastery-PRIMAL',
+      href: '/profile#mastery-PRIMAL',
     });
   });
 

@@ -30,6 +30,7 @@ import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPa
 import { LeadLadder } from '@/components/growth/LeadLadder';
 import type { LadderState } from '@/lib/growth/leadLadder';
 import { AscensionMonth } from '@/components/signal/AscensionMonth';
+import { ClanGateway } from '@/components/compete/ClanGateway';
 
 type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
 
@@ -277,6 +278,8 @@ export default function LeaderboardPage() {
             Play
           </Link>
         </div>
+
+        {GAME_CONFIG.features.clans && <ClanGateway />}
 
         {/* The lead ladder (§11.7) — public identity as the conversion
             mechanism. Behind NEXT_PUBLIC_LEAD_LADDER_V1; renders null while

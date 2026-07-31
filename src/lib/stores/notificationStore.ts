@@ -51,7 +51,7 @@ export const NOTIFICATION_TARGETS = {
   lab: { destination: 'lab', href: '/lab' },
   identity: { destination: 'identity', href: '/profile' },
   chronicle: { destination: 'chronicle', href: '/profile' },
-  mastery: { destination: 'mastery', href: '/lab#mastery' },
+  mastery: { destination: 'mastery', href: '/profile#mastery' },
   records: { destination: 'records', href: '/profile#records' },
   codex: { destination: 'codex', href: '/codex' },
   signal: { destination: 'signal', href: '/#signal' },
@@ -412,9 +412,9 @@ function destinationMatches(
 ): boolean {
   if (itemDestination === surfaceDestination) return true;
   const families: Partial<Record<NotificationDestination, NotificationDestination[]>> = {
-    lab: ['lab', 'mastery', 'lineage', 'codex'],
-    identity: ['identity', 'chronicle', 'records'],
-    chronicle: ['identity', 'chronicle', 'records'],
+    lab: ['lab', 'lineage', 'codex'],
+    identity: ['identity', 'chronicle', 'mastery', 'records'],
+    chronicle: ['identity', 'chronicle', 'mastery', 'records'],
     home: ['home', 'signal'],
   };
   return families[surfaceDestination]?.includes(itemDestination) ?? false;

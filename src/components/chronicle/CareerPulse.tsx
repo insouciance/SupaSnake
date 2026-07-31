@@ -45,7 +45,7 @@ const PILLAR_LABELS: Record<ProgressionPillar, string> = {
 
 const DESTINATION_HREF: Record<ProgressionDestination, string> = {
   chronicle: '/profile',
-  mastery: '/lab#mastery',
+  mastery: '/profile#mastery',
   records: '/profile#records',
   codex: '/codex',
   signal: '/#signal',
@@ -73,21 +73,35 @@ function MasterySummary({ pulse }: { pulse: CareerPulseData }) {
     (a, b) => b.level - a.level || b.xp - a.xp
   )[0];
   return (
-    <div className="rounded-arcade border border-venom-orange/25 bg-void/45 p-3">
+    <div
+      id="mastery"
+      className="scroll-mt-24 rounded-arcade border border-venom-orange/25 bg-void/45 p-3"
+    >
       <div className="flex items-center gap-2 text-venom-orange">
         <IconChart size={16} />
         <p className="label-arcade">Mastery</p>
       </div>
       <p className="mt-2 font-display text-lg text-bone-white">
         {strongest && (strongest.xp > 0 || strongest.level > 0)
-          ? `${strongest.dynasty} M${strongest.level}`
+          ? `Peak · ${strongest.dynasty} M${strongest.level}`
           : 'First extraction ahead'}
       </p>
-      {pulse.mastery.some((entry) => entry.xp > 0 || entry.level > 0) && (
-        <p className="mt-1 font-mono text-xs text-beige/60">
-          {pulse.mastery.map((entry) => `${entry.dynasty[0]}${entry.level}`).join(' · ')}
-        </p>
-      )}
+      <ul className="mt-2 grid grid-cols-3 gap-1.5" aria-label="Dynasty Mastery">
+        {pulse.mastery.map((entry) => (
+          <li
+            key={entry.dynasty}
+            id={`mastery-${entry.dynasty}`}
+            data-testid={`mastery-summary-${entry.dynasty.toLowerCase()}`}
+            aria-label={`${entry.dynasty} Mastery M${entry.level}`}
+            className="scroll-mt-24 rounded-md border border-scale-blue-light/25 bg-void-deep/55 px-1.5 py-1 text-center"
+          >
+            <span className="block truncate font-body text-[9px] uppercase tracking-wide text-beige/55">
+              {entry.dynasty}
+            </span>
+            <span className="block font-mono text-xs text-bone-white">M{entry.level}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -377,8 +391,26 @@ function CareerPulseEnabled({ accessToken }: CareerPulseProps) {
     },
     [pulse]
   );
+  const renderedMasteryArtifacts = useMemo(
+    () => pulse?.mastery.map((entry) => entry.dynasty) ?? [],
+    [pulse]
+  );
+
+  useEffect(() => {
+    if (renderedMasteryArtifacts.length === 0 || typeof window === 'undefined') return;
+    const id = window.location.hash.slice(1);
+    if (!id.startsWith('mastery-')) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView?.({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [renderedMasteryArtifacts]);
+
   useRecognitionSeen('chronicle', pulse !== null, accessToken, {
     artifactRefs: renderedChronicleArtifacts,
+  });
+  useRecognitionSeen('mastery', pulse !== null, accessToken, {
+    artifactRefs: renderedMasteryArtifacts,
   });
 
   const changePursuit = useCallback(
