@@ -14,6 +14,7 @@ describe('migration 063 — server-owned run continuity', () => {
   it('binds one immutable request id and manifest to a player session', () => {
     expect(code).toMatch(/ADD COLUMN start_request_id UUID/);
     expect(code).toMatch(/ADD COLUMN start_request_fingerprint TEXT/);
+    expect(code).toMatch(/ADD COLUMN continuity_start_intent JSONB/);
     expect(code).toMatch(/ADD COLUMN start_manifest JSONB/);
     expect(code).toMatch(/ADD COLUMN simulation_seed UUID/);
     expect(code).toMatch(/ADD COLUMN simulation_version SMALLINT/);
@@ -24,6 +25,7 @@ describe('migration 063 — server-owned run continuity', () => {
     expect(code).toMatch(/ADD COLUMN continuity_lease_epoch INTEGER NOT NULL DEFAULT 0/);
     expect(code).toMatch(/game_sessions_player_start_request_unique/);
     expect(code).toMatch(/NEW\.start_request_id IS DISTINCT FROM OLD\.start_request_id/);
+    expect(code).toMatch(/NEW\.continuity_start_intent IS DISTINCT FROM OLD\.continuity_start_intent/);
     expect(code).toMatch(/NEW\.start_manifest IS DISTINCT FROM OLD\.start_manifest/);
     expect(code).toMatch(/NEW\.simulation_seed IS DISTINCT FROM OLD\.simulation_seed/);
     expect(code).toMatch(
@@ -68,6 +70,7 @@ describe('migration 063 — server-owned run continuity', () => {
       'activate_run_continuity',
       'resume_run_continuity',
       'save_run_continuity_checkpoint',
+      'stage_run_continuity_terminal',
       'stage_continuity_game_session_end',
       'complete_free_run_continuity',
       'abandon_run_continuity',
@@ -107,17 +110,25 @@ describe('migration 063 — server-owned run continuity', () => {
   });
 
   it('locks terminal continuity transitions to the current checkpoint and lease', () => {
+    const terminalIntent = code.match(
+      /CREATE OR REPLACE FUNCTION stage_run_continuity_terminal[\s\S]+?REVOKE ALL ON FUNCTION stage_run_continuity_terminal/
+    )?.[0] ?? '';
     const stagedEnd = code.match(
       /CREATE OR REPLACE FUNCTION stage_continuity_game_session_end[\s\S]+?REVOKE ALL ON FUNCTION stage_continuity_game_session_end/
     )?.[0] ?? '';
     const freeEnd = code.match(
       /CREATE OR REPLACE FUNCTION complete_free_run_continuity[\s\S]+?REVOKE ALL ON FUNCTION complete_free_run_continuity/
     )?.[0] ?? '';
+    expect(terminalIntent).toMatch(/FOR UPDATE/);
+    expect(terminalIntent).toMatch(/continuity_checkpoint_revision IS DISTINCT FROM p_expected_revision/);
+    expect(terminalIntent).toMatch(/continuity_lease_hash IS DISTINCT FROM p_lease_hash/);
+    expect(terminalIntent).toMatch(/continuity_phase = 'terminal'/);
     for (const terminal of [stagedEnd, freeEnd]) {
       expect(terminal).toMatch(/FOR UPDATE/);
-      expect(terminal).toMatch(/continuity_phase IS DISTINCT FROM 'active'/);
+      expect(terminal).toMatch(/continuity_phase NOT IN \('active', 'terminal'\)/);
       expect(terminal).toMatch(/continuity_checkpoint IS NULL/);
       expect(terminal).toMatch(/continuity_lease_hash IS DISTINCT FROM p_lease_hash/);
+      expect(terminal).toMatch(/v_session\.continuity_phase = 'active'/);
     }
   });
 

@@ -1,10 +1,13 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
   activatePreparedRun,
+  buildTerminalReplayProof,
+  classifyTerminalRecoveryResponse,
   createRunStartRequestId,
   fetchActiveRun,
   LatestOnlyAsyncQueue,
   matchesContinuityAuthority,
+  retryPreparingRunStart,
   resumeCheckpointedRun,
   saveActiveRunCheckpoint,
 } from './runContinuityClient';
@@ -23,6 +26,67 @@ describe('run continuity client', () => {
     expect(createRunStartRequestId()).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
+  });
+
+  it('builds only the terminal suffix anchored to the accepted checkpoint', () => {
+    const accepted = {
+      ticks: 4,
+      actions: [{ tick: 2, kind: 'turn' as const, direction: 'UP' as const }],
+    };
+    const terminal = {
+      ticks: 6,
+      actions: [
+        ...accepted.actions,
+        { tick: 5, kind: 'turn' as const, direction: 'LEFT' as const },
+      ],
+    };
+    expect(buildTerminalReplayProof(accepted, terminal)).toEqual({
+      fromTick: 4,
+      toTick: 6,
+      actionOffset: 1,
+      actions: [{ tick: 5, kind: 'turn', direction: 'LEFT' }],
+    });
+  });
+
+  it('classifies only explicit durable terminal recovery responses', () => {
+    expect(classifyTerminalRecoveryResponse(202, {
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+    })).toBe('settling');
+    expect(classifyTerminalRecoveryResponse(409, {
+      alreadyEnded: true,
+      impact: { sessionId: 'run-1' },
+    })).toBe('settling');
+    expect(classifyTerminalRecoveryResponse(200, { validation: {} }))
+      .toBe('completed');
+    expect(classifyTerminalRecoveryResponse(409, {
+      reason: 'checkpoint_conflict',
+    })).toBe('retry');
+  });
+
+  it('parses a durable terminal phase instead of making it legacy', async () => {
+    const fetcher = jest.fn(async () => response({
+      activeRun: {
+        sessionId: 'run-terminal',
+        phase: 'terminal',
+        startedAt: '2026-07-31T08:00:00Z',
+        activatedAt: '2026-07-31T08:00:02Z',
+        energyCommitted: 6,
+        canContinue: false,
+        requiresAbandon: false,
+        manifest: null,
+        checkpoint: null,
+        checkpointRevision: 4,
+        checkpointSavedAt: '2026-07-31T08:05:00Z',
+        leaseToken: null,
+        leaseEpoch: 1,
+      },
+    })) as unknown as typeof fetch;
+    await expect(fetchActiveRun('token', fetcher)).resolves.toMatchObject({
+      phase: 'terminal',
+      requiresAbandon: false,
+    });
   });
 
   it('rejects late recovery from another auth or run session', () => {
@@ -84,6 +148,48 @@ describe('run continuity client', () => {
     expect(fetcher).toHaveBeenCalledWith(
       '/api/game/session',
       expect.objectContaining({ cache: 'no-store' })
+    );
+  });
+
+  it('repairs a preparing shell with its exact server-stored start intent', async () => {
+    const intent = {
+      v: 1 as const,
+      startRequestId: '2f515f00-908b-4f7d-86fb-721db70fed83',
+      mode: 'signal' as const,
+      snakeId: 'snake-cosmic-1',
+      energyCommitment: 6,
+      confirmMaxEnergy: true,
+      signalObjectiveId: 'signal-7',
+      ladderRung: 3,
+    };
+    const fetcher = jest.fn(async (_url, init) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        action: 'start',
+        startRequestId: intent.startRequestId,
+        mode: 'signal',
+        snake_id: 'snake-cosmic-1',
+        energyCommitment: 6,
+        confirmMaxEnergy: true,
+        signalObjectiveId: 'signal-7',
+        ladderRung: 3,
+      });
+      return response({
+        sessionId: 'run-repaired',
+        simulation: { seed: 'server-seed', version: 1 },
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      retryPreparingRunStart('access-token', intent, fetcher)
+    ).resolves.toMatchObject({ sessionId: 'run-repaired' });
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/game/session',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      })
     );
   });
 

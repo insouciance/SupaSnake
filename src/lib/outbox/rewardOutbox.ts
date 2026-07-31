@@ -1,4 +1,7 @@
-import type { GameOverGenome } from '@/lib/game/SnakeGameLogic';
+import type {
+  GameOverGenome,
+  SnakeTerminalReplayProof,
+} from '@/lib/game/SnakeGameLogic';
 import {
   parseImpactFromSettlement,
   recoverRunImpact,
@@ -47,6 +50,9 @@ export interface RewardOutboxEntry {
   genome?: GameOverGenome;
   /** In-memory exclusive lease for continuity-era runs; never persisted. */
   leaseToken?: string;
+  /** Canonical replay evidence for continuity-era terminalization. */
+  replay?: SnakeTerminalReplayProof;
+  expectedRevision?: number;
   timestamp: number;
 }
 
@@ -69,6 +75,24 @@ let memoryReplayTail: Promise<void> = Promise.resolve();
 function isValidEntry(value: unknown): value is RewardOutboxEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<RewardOutboxEntry>;
+  const replayValid = entry.replay === undefined || (
+    typeof entry.replay === 'object' &&
+    entry.replay !== null &&
+    Number.isSafeInteger(entry.replay.fromTick) &&
+    Number.isSafeInteger(entry.replay.toTick) &&
+    entry.replay.fromTick >= 0 &&
+    entry.replay.toTick >= entry.replay.fromTick &&
+    Number.isSafeInteger(entry.replay.actionOffset) &&
+    entry.replay.actionOffset >= 0 &&
+    Array.isArray(entry.replay.actions) &&
+    entry.replay.actions.every(
+      (action, index, actions) =>
+        Number.isSafeInteger(action?.tick) &&
+        action.tick >= entry.replay!.fromTick &&
+        action.tick <= entry.replay!.toTick &&
+        (index === 0 || action.tick >= actions[index - 1].tick)
+    )
+  );
   return (
     typeof entry.sessionId === 'string' &&
     entry.sessionId.length > 0 &&
@@ -88,7 +112,12 @@ function isValidEntry(value: unknown): value is RewardOutboxEntry {
     (entry.genome === undefined ||
       (typeof entry.genome === 'object' && entry.genome !== null)) &&
     (entry.leaseToken === undefined ||
-      (typeof entry.leaseToken === 'string' && entry.leaseToken.length >= 32))
+      (typeof entry.leaseToken === 'string' && entry.leaseToken.length >= 32)) &&
+    replayValid &&
+    (entry.expectedRevision === undefined ||
+      (Number.isSafeInteger(entry.expectedRevision) && entry.expectedRevision >= 1)) &&
+    (entry.replay === undefined ||
+      (entry.expectedRevision !== undefined && entry.leaseToken !== undefined))
   );
 }
 
@@ -136,36 +165,64 @@ async function responseImpact(
   impact: RunImpactEnvelope | null;
   securedPending: boolean;
   leaseConflict: boolean;
+  canonical: boolean;
+  reason: string | null;
 }> {
+  let reason: string | null = null;
+  let alreadyEnded = false;
   try {
     const body = await response.json();
+    const bodyRecord = body && typeof body === 'object'
+      ? body as Record<string, unknown>
+      : null;
+    reason = typeof bodyRecord?.reason === 'string' ? bodyRecord.reason : null;
+    alreadyEnded = bodyRecord?.alreadyEnded === true;
     if (
-      body &&
-      typeof body === 'object' &&
-      (body as Record<string, unknown>).reason === 'lease_conflict'
+      reason === 'lease_conflict'
     ) {
       // This tab no longer owns the run. Retrying the stale terminal claim can
       // never succeed and must not be mistaken for an idempotent settlement.
-      return { impact: null, securedPending: false, leaseConflict: true };
+      return {
+        impact: null,
+        securedPending: false,
+        leaseConflict: true,
+        canonical: false,
+        reason,
+      };
     }
     const direct = parseImpactFromSettlement(body);
     if (direct) {
-      return { impact: direct, securedPending: false, leaseConflict: false };
+      return {
+        impact: direct,
+        securedPending: false,
+        leaseConflict: false,
+        canonical: true,
+        reason,
+      };
     }
     // A 202 with this exact server contract means the immutable result is
     // already in the durable ingress. The browser must stop retrying and, for
     // a retired persisted queue, delete its local copy immediately. Receipt
     // recovery belongs to the server and may not exist until schema 061.
     if (isDurablyPendingSettlement(body)) {
-      return { impact: null, securedPending: true, leaseConflict: false };
+      return {
+        impact: null,
+        securedPending: true,
+        leaseConflict: false,
+        canonical: true,
+        reason,
+      };
     }
   } catch {
     // A legacy or empty duplicate response still has a recovery path.
   }
+  const recovered = await recoverRunImpact(entry.sessionId, token, fetchFn);
   return {
-    impact: await recoverRunImpact(entry.sessionId, token, fetchFn),
+    impact: recovered,
     securedPending: false,
     leaseConflict: false,
+    canonical: alreadyEnded || recovered !== null,
+    reason,
   };
 }
 
@@ -232,25 +289,33 @@ async function submitEntry(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        action: 'end',
-        sessionId: entry.sessionId,
-        score: entry.score,
-        dna_earned: entry.dna_earned,
-        duration_seconds: entry.duration_seconds,
-        died: !(entry.extracted === true),
-        victory: false,
-        ...(typeof entry.food_count === 'number'
-          ? { food_count: entry.food_count }
-          : {}),
-        ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
-        ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
-        ...(entry.phoenix_triggered_at_food !== undefined
-          ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
-          : {}),
-        ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
-        ...(entry.leaseToken !== undefined ? { leaseToken: entry.leaseToken } : {}),
-      }),
+      body: JSON.stringify(entry.replay
+        ? {
+            action: 'terminal',
+            sessionId: entry.sessionId,
+            replay: entry.replay,
+            expectedRevision: entry.expectedRevision,
+            leaseToken: entry.leaseToken,
+          }
+        : {
+            action: 'end',
+            sessionId: entry.sessionId,
+            score: entry.score,
+            dna_earned: entry.dna_earned,
+            duration_seconds: entry.duration_seconds,
+            died: !(entry.extracted === true),
+            victory: false,
+            ...(typeof entry.food_count === 'number'
+              ? { food_count: entry.food_count }
+              : {}),
+            ...(entry.extracted !== undefined ? { extracted: entry.extracted } : {}),
+            ...(entry.mutations !== undefined ? { mutations: entry.mutations } : {}),
+            ...(entry.phoenix_triggered_at_food !== undefined
+              ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
+              : {}),
+            ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
+            ...(entry.leaseToken !== undefined ? { leaseToken: entry.leaseToken } : {}),
+          }),
     });
 
     if (response.ok || response.status === 409) {
@@ -259,6 +324,15 @@ async function submitEntry(
         console.error(
           `Settlement retry lost its run lease; dropping stale session ${entry.sessionId}`
         );
+        return { status: 'rejected' };
+      }
+      if (response.status === 409 && !impactResult.canonical) {
+        if (
+          impactResult.reason === 'checkpoint_conflict' ||
+          impactResult.reason === 'terminal_intent_required'
+        ) {
+          return { status: 'transient' };
+        }
         return { status: 'rejected' };
       }
       return {

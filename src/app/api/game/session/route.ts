@@ -142,7 +142,10 @@ import {
   RunContinuityError,
   saveRunCheckpoint,
   stageContinuityRunEnd,
+  stageRunTerminalIntent,
   stageRunStartFinalization,
+  terminalFactsFromRow,
+  type ContinuityRow,
 } from '@/lib/server/runContinuity';
 
 // Preserve the proven production budget: settlement now contains multiple
@@ -341,7 +344,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
+    let {
       action,
       mode,
       sessionId,
@@ -368,6 +371,7 @@ export async function POST(request: NextRequest) {
       expectedRevision,
       checkpoint,
       leaseToken,
+      replay,
     } = body;
 
     // Rolling-deploy boundary: a tab loaded before continuity support cannot
@@ -615,6 +619,7 @@ export async function POST(request: NextRequest) {
           typeof signalObjectiveId === 'string' ? signalObjectiveId : null,
         ladderRung: requestedLadderRung,
       });
+      let preparingShell: ContinuityRow | null = null;
 
       try {
         const existing = await findRunByStartRequest(
@@ -654,18 +659,16 @@ export async function POST(request: NextRequest) {
           if (resumedManifest) {
             return progressionJson(resumedManifest);
           }
-          return progressionJson(
-            {
-              accepted: true,
-              preparing: true,
-              retryable: true,
-              sessionId: existing.id,
-            },
-            { status: 202 }
-          );
+          // A zero-spend shell with no draft is reconstructable from its
+          // immutable start intent. Continue through the ordinary derivation
+          // and stage/finalize this same row; "Check again" must repair it,
+          // not loop forever on a 202 receipt.
+          preparingShell = existing;
         }
 
-        const activeRun = await readActiveRun(supabase, player.id);
+        const activeRun = preparingShell
+          ? null
+          : await readActiveRun(supabase, player.id);
         if (activeRun) {
           return progressionJson(
             {
@@ -934,7 +937,7 @@ export async function POST(request: NextRequest) {
       let startRunContext: RunStartContext | null = null;
       let startGenomeContext: RunStartGenomeContext | null = null;
       if (GAME_CONFIG.features.genome) {
-        genomeSeed = randomUUID();
+        genomeSeed = preparingShell?.run_seed ?? randomUUID();
         // WP-2.05: refused rather than absorbed. `bankedRuns = 0` from a
         // swallowed error hands the engine tier cap 1 and an empty heirloom,
         // and the context persisted below would then make that wrong answer
@@ -1065,8 +1068,9 @@ export async function POST(request: NextRequest) {
         genome: startGenomeContext,
       };
 
-      const serverStartedAt = new Date().toISOString();
-      const simulationSeed = randomUUID();
+      const serverStartedAt =
+        preparingShell?.server_started_at ?? new Date().toISOString();
+      const simulationSeed = preparingShell?.simulation_seed ?? randomUUID();
 
       // Anomaly stamp (section 7.2): the week's modifier, derived from the
       // deterministic rotation - the client never asserts it
@@ -1084,6 +1088,17 @@ export async function POST(request: NextRequest) {
         server_started_at: serverStartedAt,
         start_request_id: startRequestId,
         start_request_fingerprint: startFingerprint,
+        continuity_start_intent: {
+          v: 1,
+          startRequestId,
+          mode: continuityMode,
+          snakeId: snake_id,
+          energyCommitment: requestedEnergyCommitment,
+          confirmMaxEnergy: confirmMaxEnergy === true,
+          signalObjectiveId:
+            typeof signalObjectiveId === 'string' ? signalObjectiveId : null,
+          ladderRung: requestedLadderRung,
+        },
         simulation_seed: simulationSeed,
         simulation_version: RUN_CONTINUITY_VERSION,
         simulation_rules_version: SNAKE_RULES_VERSION,
@@ -1117,43 +1132,47 @@ export async function POST(request: NextRequest) {
       const contextInsert = startRunContext
         ? { run_context: serializeRunStartContext(startRunContext) }
         : {};
-      let { data: session, error: sessionError } = await supabase
-        .from('game_sessions')
-        .insert({
-          ...sessionInsert,
-          ...(genomeSeed ? { run_seed: genomeSeed } : {}),
-          ...contextInsert,
-        })
-        .select()
-        .single();
-      if (
-        sessionError &&
-        startRunContext &&
-        /run_context/i.test(sessionError.message || '')
-      ) {
-        startRunContext = null;
+      let session: ContinuityRow | Record<string, unknown> | null = preparingShell;
+      let sessionError: { code?: string; message?: string } | null = null;
+      if (!preparingShell) {
         ({ data: session, error: sessionError } = await supabase
           .from('game_sessions')
           .insert({
             ...sessionInsert,
             ...(genomeSeed ? { run_seed: genomeSeed } : {}),
+            ...contextInsert,
           })
           .select()
           .single());
-      }
-      if (
-        sessionError &&
-        genomeSeed &&
-        /run_seed/i.test(sessionError.message || '')
-      ) {
-        genomeSeed = null;
-        genomeBlock = null;
-        startRunContext = null;
-        ({ data: session, error: sessionError } = await supabase
-          .from('game_sessions')
-          .insert(sessionInsert)
-          .select()
-          .single());
+        if (
+          sessionError &&
+          startRunContext &&
+          /run_context/i.test(sessionError.message || '')
+        ) {
+          startRunContext = null;
+          ({ data: session, error: sessionError } = await supabase
+            .from('game_sessions')
+            .insert({
+              ...sessionInsert,
+              ...(genomeSeed ? { run_seed: genomeSeed } : {}),
+            })
+            .select()
+            .single());
+        }
+        if (
+          sessionError &&
+          genomeSeed &&
+          /run_seed/i.test(sessionError.message || '')
+        ) {
+          genomeSeed = null;
+          genomeBlock = null;
+          startRunContext = null;
+          ({ data: session, error: sessionError } = await supabase
+            .from('game_sessions')
+            .insert(sessionInsert)
+            .select()
+            .single());
+        }
       }
 
       if (sessionError) {
@@ -1252,6 +1271,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
 
+      // Supabase can theoretically return no row and no transport error. Never
+      // let that ambiguous response flow into Signal claiming or start
+      // finalization; a preparing shell is useful only when its durable id is
+      // known and the same id is used through the whole transaction repair.
+      if (!session || typeof session.id !== 'string') {
+        return progressionJson(
+          {
+            error: 'Run launch could not confirm its secured session',
+            reason: 'unavailable',
+            retryable: true,
+          },
+          { status: 503 }
+        );
+      }
+      const createdSessionId = session.id;
+
       // Anomaly board context for the HUD (name + modifier + week timer)
       const anomalyInfo =
         isAnomalyRun && startAnomalyId
@@ -1289,7 +1324,7 @@ export async function POST(request: NextRequest) {
         ? await claimSignalObjectiveRun(
             supabase,
             player.id,
-            session.id,
+            createdSessionId,
             signalObjectiveId,
             startedAtDate
           )
@@ -1464,7 +1499,7 @@ export async function POST(request: NextRequest) {
         // browser to remember progress.
         await stageRunStartFinalization(supabase, {
           playerId: player.id,
-          sessionId: session.id,
+          sessionId: createdSessionId,
           requestedCommitment: requestedEnergyCommitment,
           exempt: energyExempt,
           energyVisible,
@@ -1476,7 +1511,7 @@ export async function POST(request: NextRequest) {
         // recovered by request id or GET; a failed transaction spends zero.
         const manifest = await finalizeRunStart(supabase, {
           playerId: player.id,
-          sessionId: session.id,
+          sessionId: createdSessionId,
           startRequestId,
           fingerprint: startFingerprint,
           requestedCommitment: requestedEnergyCommitment,
@@ -1497,14 +1532,14 @@ export async function POST(request: NextRequest) {
                 ended_at: new Date().toISOString(),
                 end_reason: 'abandoned',
               })
-              .eq('id', session.id)
+              .eq('id', createdSessionId)
               .eq('player_id', player.id)
               .eq('continuity_phase', 'preparing')
               .is('start_manifest', null)
               .is('ended_at', null);
             if (closeError && !isMissingLifecycleInfra(closeError)) {
               console.error('Failed to close rejected Energy session:', {
-                sessionId: session.id,
+                sessionId: createdSessionId,
                 error: closeError,
               });
             }
@@ -1521,12 +1556,12 @@ export async function POST(request: NextRequest) {
           if (status >= 500) {
             console.error('Run continuity finalization failed:', {
               playerId: player.id,
-              sessionId: session.id,
+              sessionId: createdSessionId,
               reason: error.reason,
             });
             Sentry.captureException(error, {
               tags: { progression_stage: 'run_start_continuity' },
-              extra: { playerId: player.id, sessionId: session.id },
+              extra: { playerId: player.id, sessionId: createdSessionId },
             });
           }
           return progressionJson(
@@ -1534,7 +1569,7 @@ export async function POST(request: NextRequest) {
               error: error.message,
               reason: error.reason,
               retryable: status === 503,
-              ...(status === 503 ? { sessionId: session.id } : {}),
+              ...(status === 503 ? { sessionId: createdSessionId } : {}),
             },
             { status }
           );
@@ -1543,7 +1578,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (action === 'end') {
+    if (action === 'end' || action === 'terminal') {
       if (!sessionId) {
         return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
       }
@@ -1581,27 +1616,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 });
       }
 
-      if (!session.ended_at) {
-        try {
-          assertTerminalRunLease(
-            session as Record<string, unknown>,
-            leaseToken
-          );
-        } catch (error) {
-          if (error instanceof RunContinuityError) {
-            return progressionJson(
-              { error: error.message, reason: error.reason },
-              { status: 409 }
-            );
-          }
-          throw error;
-        }
-      }
+      const continuitySession =
+        (session as Record<string, unknown>).start_request_id != null;
 
-      // During the 060→061 cutover, a fully validated end may already be in
-      // the dedicated service-only pending table while the session remains
-      // open. A replay acknowledges that durable handoff; no browser queue or
-      // browser persistence is part of the settlement guarantee.
+      // A terminal request can be replayed after the terminal->settling RPC
+      // committed but before its HTTP response reached the browser. Recognize
+      // that durable handoff before attempting to terminalize again: the
+      // settling row no longer accepts a lease-bound terminal transition, and
+      // treating its 409 as a fresh gameplay conflict would strand the outbox.
+      // This is also the migration-060 -> 061 replay bridge for legacy rows.
       if (
         !session.ended_at &&
         (session as Record<string, unknown>).end_reason === SETTLED_END_REASON
@@ -1614,13 +1637,10 @@ export async function POST(request: NextRequest) {
           pendingEnd && typeof pendingEnd === 'object' && !Array.isArray(pendingEnd)
             ? (pendingEnd as Record<string, unknown>).state
             : null;
-        const continuitySession =
-          (session as Record<string, unknown>).start_request_id != null;
         if (pendingEndError && continuitySession) {
           // A continuity run reaches `completed` only through the atomic
           // ingress. Never fall through and try to validate/restage it after a
-          // transient receipt lookup failure; the terminal RPC correctly
-          // refuses that second transition.
+          // transient receipt lookup failure.
           return await settlementUnavailable(
             'pending end replay',
             pendingEndError,
@@ -1682,6 +1702,100 @@ export async function POST(request: NextRequest) {
             new Error('pending run settlement requires operator recovery'),
             { playerId: player.id, sessionId }
           );
+        }
+        if (continuitySession) {
+          return await settlementUnavailable(
+            'pending end replay state',
+            new Error('continuity pending end returned an unknown state'),
+            { playerId: player.id, sessionId }
+          );
+        }
+      }
+
+      let terminalIntentAccepted = false;
+      if (!session.ended_at && continuitySession) {
+        const continuityPhase =
+          (session as Record<string, unknown>).continuity_phase;
+        let terminalFacts: Record<string, unknown> | null = null;
+        if (action === 'terminal') {
+          try {
+            const intent = await stageRunTerminalIntent(supabase, {
+              playerId: player.id,
+              sessionId,
+              expectedRevision,
+              leaseToken,
+              replay,
+            });
+            terminalFacts = intent.facts;
+            terminalIntentAccepted = true;
+          } catch (error) {
+            if (error instanceof RunContinuityError) {
+              const status = error.reason === 'not_found' ? 404
+                : error.reason === 'invalid_checkpoint' ? 400
+                  : error.reason === 'lease_conflict' ||
+                      error.reason === 'checkpoint_conflict' ||
+                      error.reason === 'not_prepared'
+                    ? 409
+                    : 503;
+              return progressionJson(
+                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { status }
+              );
+            }
+            throw error;
+          }
+        } else if (continuityPhase === 'terminal') {
+          terminalFacts = terminalFactsFromRow(
+            session as Record<string, unknown>
+          );
+          terminalIntentAccepted = terminalFacts !== null;
+        } else {
+          // Every continuity row is replay-authoritative. A later rules bump
+          // makes an unfinished row incompatible; it must never downgrade to
+          // the legacy client-authored settlement path merely because its
+          // stamped rules version differs from this deployment.
+          return progressionJson(
+            {
+              error: 'Secure the replay-derived terminal outcome first.',
+              reason: 'terminal_intent_required',
+              retryable: true,
+            },
+            { status: 409 }
+          );
+        }
+
+        if (terminalIntentAccepted && terminalFacts) {
+          score = terminalFacts.score;
+          dna_earned = terminalFacts.dna_earned;
+          duration_seconds = terminalFacts.duration_seconds;
+          food_count = terminalFacts.food_count;
+          extracted = terminalFacts.extracted;
+          died = terminalFacts.died;
+          victory = terminalFacts.victory;
+          mutations = terminalFacts.mutations;
+          phoenix_triggered_at_food = terminalFacts.phoenix_triggered_at_food;
+          genome = terminalFacts.genome;
+          death_cause = terminalFacts.death_cause;
+          run_events = terminalFacts.run_events;
+        }
+      }
+
+      if (!session.ended_at) {
+        try {
+          if (!terminalIntentAccepted) {
+            assertTerminalRunLease(
+              session as Record<string, unknown>,
+              leaseToken
+            );
+          }
+        } catch (error) {
+          if (error instanceof RunContinuityError) {
+            return progressionJson(
+              { error: error.message, reason: error.reason },
+              { status: 409 }
+            );
+          }
+          throw error;
         }
       }
 
@@ -2361,6 +2475,7 @@ export async function POST(request: NextRequest) {
               playerId: player.id,
               sessionId,
               leaseToken,
+              terminalized: terminalIntentAccepted,
               facts: {
                 score: validation.adjustedScore,
                 dnaEarned: 0,
@@ -2421,6 +2536,7 @@ export async function POST(request: NextRequest) {
               playerId: player.id,
               sessionId,
               leaseToken,
+              terminalized: terminalIntentAccepted,
               envelope: pendingEnvelope,
             });
           } catch (error) {

@@ -12,6 +12,7 @@ BEGIN;
 ALTER TABLE game_sessions
   ADD COLUMN start_request_id UUID,
   ADD COLUMN start_request_fingerprint TEXT,
+  ADD COLUMN continuity_start_intent JSONB,
   ADD COLUMN start_manifest JSONB,
   ADD COLUMN start_manifest_draft JSONB,
   ADD COLUMN continuity_energy_commitment SMALLINT,
@@ -28,7 +29,10 @@ ALTER TABLE game_sessions
   ADD COLUMN continuity_checkpoint_digest TEXT,
   ADD COLUMN continuity_lease_hash TEXT,
   ADD COLUMN continuity_lease_epoch INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN continuity_lease_issued_at TIMESTAMPTZ;
+  ADD COLUMN continuity_lease_issued_at TIMESTAMPTZ,
+  ADD COLUMN continuity_terminal_facts JSONB,
+  ADD COLUMN continuity_terminal_digest TEXT,
+  ADD COLUMN continuity_terminal_at TIMESTAMPTZ;
 
 ALTER TABLE game_sessions
   ADD CONSTRAINT game_sessions_start_request_pair
@@ -44,6 +48,16 @@ ALTER TABLE game_sessions
       OR (
         jsonb_typeof(start_manifest) = 'object'
         AND octet_length(start_manifest::TEXT) <= 131072
+      )
+    ),
+  ADD CONSTRAINT game_sessions_start_intent_shape
+    CHECK (
+      continuity_start_intent IS NULL
+      OR (
+        jsonb_typeof(continuity_start_intent) = 'object'
+        AND octet_length(continuity_start_intent::TEXT) <= 4096
+        AND continuity_start_intent->>'v' = '1'
+        AND continuity_start_intent->>'startRequestId' = start_request_id::TEXT
       )
     ),
   ADD CONSTRAINT game_sessions_start_manifest_draft_shape
@@ -62,17 +76,17 @@ ALTER TABLE game_sessions
   ADD CONSTRAINT game_sessions_continuity_phase_valid
     CHECK (
       continuity_phase IS NULL
-      OR continuity_phase IN ('preparing', 'prepared', 'active')
+      OR continuity_phase IN ('preparing', 'prepared', 'active', 'terminal')
     ),
   ADD CONSTRAINT game_sessions_continuity_checkpoint_shape
     CHECK (
-      (continuity_phase IS DISTINCT FROM 'active'
+      (continuity_phase NOT IN ('active', 'terminal')
        AND continuity_checkpoint IS NULL
        AND continuity_checkpoint_revision = 0
        AND continuity_checkpoint_saved_at IS NULL
        AND continuity_checkpoint_digest IS NULL)
       OR
-      (continuity_phase = 'active'
+      (continuity_phase IN ('active', 'terminal')
        AND jsonb_typeof(continuity_checkpoint) = 'object'
        AND octet_length(continuity_checkpoint::TEXT) <= 1048576
        AND continuity_checkpoint_revision > 0
@@ -81,15 +95,28 @@ ALTER TABLE game_sessions
     ),
   ADD CONSTRAINT game_sessions_continuity_lease_shape
     CHECK (
-      (continuity_phase IS DISTINCT FROM 'active'
+      (continuity_phase NOT IN ('active', 'terminal')
        AND continuity_lease_hash IS NULL
        AND continuity_lease_epoch = 0
        AND continuity_lease_issued_at IS NULL)
       OR
-      (continuity_phase = 'active'
+      (continuity_phase IN ('active', 'terminal')
        AND continuity_lease_hash ~ '^[0-9a-f]{64}$'
        AND continuity_lease_epoch > 0
        AND continuity_lease_issued_at IS NOT NULL)
+    ),
+  ADD CONSTRAINT game_sessions_continuity_terminal_shape
+    CHECK (
+      (continuity_phase IS DISTINCT FROM 'terminal'
+       AND continuity_terminal_facts IS NULL
+       AND continuity_terminal_digest IS NULL
+       AND continuity_terminal_at IS NULL)
+      OR
+      (continuity_phase = 'terminal'
+       AND jsonb_typeof(continuity_terminal_facts) = 'object'
+       AND octet_length(continuity_terminal_facts::TEXT) <= 262144
+       AND continuity_terminal_digest ~ '^[0-9a-f]{64}$'
+       AND continuity_terminal_at IS NOT NULL)
     ),
   ADD CONSTRAINT game_sessions_simulation_version_valid
     CHECK (
@@ -105,6 +132,7 @@ ALTER TABLE game_sessions
     CHECK (
       (continuity_phase IS NULL
        AND start_request_id IS NULL
+       AND continuity_start_intent IS NULL
        AND start_manifest IS NULL
        AND start_manifest_draft IS NULL
        AND simulation_seed IS NULL
@@ -114,6 +142,7 @@ ALTER TABLE game_sessions
       OR
       (continuity_phase = 'preparing'
        AND start_request_id IS NOT NULL
+       AND continuity_start_intent IS NOT NULL
        AND start_manifest IS NULL
        AND simulation_seed IS NOT NULL
        AND simulation_version = 1
@@ -122,6 +151,7 @@ ALTER TABLE game_sessions
       OR
       (continuity_phase = 'prepared'
        AND start_request_id IS NOT NULL
+       AND continuity_start_intent IS NOT NULL
        AND start_manifest IS NOT NULL
        AND start_manifest_draft IS NOT NULL
        AND simulation_seed IS NOT NULL
@@ -131,6 +161,7 @@ ALTER TABLE game_sessions
       OR
       (continuity_phase = 'active'
        AND start_request_id IS NOT NULL
+       AND continuity_start_intent IS NOT NULL
        AND start_manifest IS NOT NULL
        AND start_manifest_draft IS NOT NULL
        AND simulation_seed IS NOT NULL
@@ -139,12 +170,27 @@ ALTER TABLE game_sessions
        AND continuity_checkpoint IS NOT NULL
        AND continuity_checkpoint_revision > 0
        AND continuity_activated_at IS NOT NULL)
+      OR
+      (continuity_phase = 'terminal'
+       AND start_request_id IS NOT NULL
+       AND continuity_start_intent IS NOT NULL
+       AND start_manifest IS NOT NULL
+       AND start_manifest_draft IS NOT NULL
+       AND simulation_seed IS NOT NULL
+       AND simulation_version = 1
+       AND simulation_rules_version IS NOT NULL
+       AND continuity_checkpoint IS NOT NULL
+       AND continuity_checkpoint_revision > 0
+       AND continuity_activated_at IS NOT NULL
+       AND continuity_terminal_facts IS NOT NULL)
     );
 
 COMMENT ON COLUMN game_sessions.start_request_id IS
   'Client-generated UUID naming one deliberate start intent. Server-unique per player and immutable; retries return this session instead of spending again.';
 COMMENT ON COLUMN game_sessions.start_request_fingerprint IS
   'SHA-256 of the normalized player-selected start intent. Same id with a different fingerprint is rejected.';
+COMMENT ON COLUMN game_sessions.continuity_start_intent IS
+  'Immutable normalized launch choices used only to retry a zero-spend preparing shell after reload.';
 COMMENT ON COLUMN game_sessions.start_manifest IS
   'Immutable, client-safe server start response. Stored in the same transaction that commits Energy; never browser-persisted.';
 COMMENT ON COLUMN game_sessions.start_manifest_draft IS
@@ -156,13 +202,15 @@ COMMENT ON COLUMN game_sessions.simulation_version IS
 COMMENT ON COLUMN game_sessions.simulation_rules_version IS
   'Immutable rules/content version required to interpret and resume the deterministic simulation safely.';
 COMMENT ON COLUMN game_sessions.continuity_phase IS
-  'preparing before atomic Energy+manifest finalization, prepared while safely continuable before first input, active after explicit activation.';
+  'preparing before atomic Energy+manifest finalization, prepared before first input, active after activation, terminal once replay-derived outcome evidence is durable.';
 COMMENT ON COLUMN game_sessions.continuity_checkpoint IS
   'Latest service-accepted live simulation checkpoint. Continuation-only; payout remains server-recomputed from immutable session facts.';
 COMMENT ON COLUMN game_sessions.continuity_checkpoint_revision IS
   'Monotonic compare-and-swap revision for idempotent checkpoint writes.';
 COMMENT ON COLUMN game_sessions.continuity_lease_hash IS
   'SHA-256 of the current in-memory resume lease. Rotated at activation/resume so an older tab cannot fork or settle the run.';
+COMMENT ON COLUMN game_sessions.continuity_terminal_facts IS
+  'Service-derived immutable terminal facts replayed from the last canonical checkpoint. Never client-authored payout authority.';
 
 CREATE UNIQUE INDEX game_sessions_player_start_request_unique
   ON game_sessions(player_id, start_request_id)
@@ -222,6 +270,7 @@ BEGIN
   IF OLD.start_request_id IS NOT NULL AND (
        NEW.start_request_id IS DISTINCT FROM OLD.start_request_id
     OR NEW.start_request_fingerprint IS DISTINCT FROM OLD.start_request_fingerprint
+    OR NEW.continuity_start_intent IS DISTINCT FROM OLD.continuity_start_intent
     OR NEW.simulation_seed IS DISTINCT FROM OLD.simulation_seed
     OR NEW.simulation_version IS DISTINCT FROM OLD.simulation_version
     OR NEW.simulation_rules_version IS DISTINCT FROM OLD.simulation_rules_version
@@ -243,13 +292,26 @@ BEGIN
     RAISE EXCEPTION 'run_continuity_manifest_draft_immutable';
   END IF;
 
+  IF OLD.continuity_terminal_facts IS NOT NULL AND (
+       NEW.continuity_terminal_facts IS DISTINCT FROM OLD.continuity_terminal_facts
+    OR NEW.continuity_terminal_digest IS DISTINCT FROM OLD.continuity_terminal_digest
+    OR NEW.continuity_terminal_at IS DISTINCT FROM OLD.continuity_terminal_at
+  ) THEN
+    RAISE EXCEPTION 'run_continuity_terminal_immutable';
+  END IF;
+
   IF OLD.continuity_phase = 'prepared'
      AND NEW.continuity_phase IS DISTINCT FROM 'prepared'
      AND NEW.continuity_phase IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'run_continuity_phase_cannot_reverse';
   END IF;
   IF OLD.continuity_phase = 'active'
-     AND NEW.continuity_phase IS DISTINCT FROM 'active' THEN
+     AND NEW.continuity_phase IS DISTINCT FROM 'active'
+     AND NEW.continuity_phase IS DISTINCT FROM 'terminal' THEN
+    RAISE EXCEPTION 'run_continuity_phase_cannot_reverse';
+  END IF;
+  IF OLD.continuity_phase = 'terminal'
+     AND NEW.continuity_phase IS DISTINCT FROM 'terminal' THEN
     RAISE EXCEPTION 'run_continuity_phase_cannot_reverse';
   END IF;
   IF OLD.continuity_phase IS NULL
@@ -711,6 +773,87 @@ GRANT EXECUTE ON FUNCTION save_run_continuity_checkpoint(
   UUID, UUID, INTEGER, JSONB, TEXT, TEXT, INTEGER
 ) TO service_role;
 
+-- The browser may disappear between collision/bank and the full progression
+-- fold. First lock the replay-derived terminal facts under the active lease;
+-- from this commit onward the run cannot resume, checkpoint, or abandon.
+CREATE OR REPLACE FUNCTION stage_run_continuity_terminal(
+  p_player_id UUID,
+  p_session_id UUID,
+  p_expected_revision INTEGER,
+  p_lease_hash TEXT,
+  p_terminal_facts JSONB,
+  p_terminal_digest TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+  v_inserted BOOLEAN := FALSE;
+BEGIN
+  IF p_expected_revision < 1
+     OR p_lease_hash !~ '^[0-9a-f]{64}$'
+     OR p_terminal_digest !~ '^[0-9a-f]{64}$'
+     OR p_terminal_facts IS NULL
+     OR jsonb_typeof(p_terminal_facts) <> 'object'
+     OR octet_length(p_terminal_facts::TEXT) > 262144 THEN
+    RAISE EXCEPTION 'invalid_terminal_intent';
+  END IF;
+
+  SELECT gs.* INTO v_session
+    FROM game_sessions gs
+   WHERE gs.id = p_session_id
+     AND gs.player_id = p_player_id
+   FOR UPDATE;
+
+  IF NOT FOUND OR v_session.ended_at IS NOT NULL THEN
+    RAISE EXCEPTION 'session_not_found';
+  END IF;
+  IF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+    RAISE EXCEPTION 'run_lease_conflict';
+  END IF;
+  IF v_session.continuity_checkpoint_revision IS DISTINCT FROM p_expected_revision THEN
+    RAISE EXCEPTION 'checkpoint_revision_conflict';
+  END IF;
+
+  IF v_session.continuity_phase = 'terminal' THEN
+    IF v_session.continuity_terminal_digest IS DISTINCT FROM p_terminal_digest
+       OR v_session.continuity_terminal_facts IS DISTINCT FROM p_terminal_facts THEN
+      RAISE EXCEPTION 'terminal_intent_conflict';
+    END IF;
+  ELSIF v_session.continuity_phase = 'active'
+        AND v_session.end_reason IS NULL THEN
+    UPDATE game_sessions gs
+       SET continuity_phase = 'terminal',
+           continuity_terminal_facts = p_terminal_facts,
+           continuity_terminal_digest = p_terminal_digest,
+           continuity_terminal_at = clock_timestamp()
+     WHERE gs.id = p_session_id
+     RETURNING gs.* INTO v_session;
+    v_inserted := TRUE;
+  ELSE
+    RAISE EXCEPTION 'run_not_terminalizable';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'accepted', TRUE,
+    'inserted', v_inserted,
+    'sessionId', v_session.id,
+    'terminalAt', v_session.continuity_terminal_at,
+    'digest', v_session.continuity_terminal_digest
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION stage_run_continuity_terminal(
+  UUID, UUID, INTEGER, TEXT, JSONB, TEXT
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION stage_run_continuity_terminal(
+  UUID, UUID, INTEGER, TEXT, JSONB, TEXT
+) TO service_role;
+
 -- Terminal transitions share the checkpoint lease's row lock. The HTTP
 -- handler performs expensive validation first, so an application-only lease
 -- check is a TOCTOU bug: another tab can resume during that work. This wrapper
@@ -731,7 +874,7 @@ DECLARE
   v_session game_sessions%ROWTYPE;
   v_pending pending_game_session_ends%ROWTYPE;
 BEGIN
-  IF p_lease_hash !~ '^[0-9a-f]{64}$' THEN
+  IF p_lease_hash IS NOT NULL AND p_lease_hash !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'run_lease_conflict';
   END IF;
 
@@ -747,12 +890,18 @@ BEGIN
   IF v_session.ended_at IS NOT NULL
      OR (v_session.end_reason IS NOT NULL
          AND v_session.end_reason IS DISTINCT FROM 'completed')
-     OR v_session.continuity_phase IS DISTINCT FROM 'active'
+     OR v_session.continuity_phase NOT IN ('active', 'terminal')
      OR v_session.continuity_checkpoint IS NULL
      OR v_session.continuity_checkpoint_revision < 1 THEN
     RAISE EXCEPTION 'run_not_terminalizable';
   END IF;
-  IF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+  IF v_session.continuity_phase = 'active' THEN
+    IF p_lease_hash IS NULL OR
+       v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+      RAISE EXCEPTION 'run_lease_conflict';
+    END IF;
+  ELSIF p_lease_hash IS NOT NULL AND
+        v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
     RAISE EXCEPTION 'run_lease_conflict';
   END IF;
 
@@ -813,7 +962,7 @@ AS $$
 DECLARE
   v_session game_sessions%ROWTYPE;
 BEGIN
-  IF p_lease_hash !~ '^[0-9a-f]{64}$'
+  IF (p_lease_hash IS NOT NULL AND p_lease_hash !~ '^[0-9a-f]{64}$')
      OR p_facts IS NULL
      OR jsonb_typeof(p_facts) <> 'object'
      OR octet_length(p_facts::TEXT) > 65536
@@ -841,13 +990,19 @@ BEGIN
     RAISE EXCEPTION 'session_not_found';
   END IF;
   IF v_session.ended_at IS NOT NULL OR v_session.end_reason IS NOT NULL
-     OR v_session.continuity_phase IS DISTINCT FROM 'active'
+     OR v_session.continuity_phase NOT IN ('active', 'terminal')
      OR v_session.continuity_checkpoint IS NULL
      OR v_session.continuity_checkpoint_revision < 1
      OR NOT COALESCE(v_session.is_free_play, FALSE) THEN
     RAISE EXCEPTION 'run_not_terminalizable';
   END IF;
-  IF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+  IF v_session.continuity_phase = 'active' THEN
+    IF p_lease_hash IS NULL OR
+       v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+      RAISE EXCEPTION 'run_lease_conflict';
+    END IF;
+  ELSIF p_lease_hash IS NOT NULL AND
+        v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
     RAISE EXCEPTION 'run_lease_conflict';
   END IF;
 
