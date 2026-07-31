@@ -120,8 +120,8 @@ describe('SettingsPage', () => {
 
     it('shows link back to the game', () => {
       render(<SettingsPage />);
-      // The page's return-to-game affordance is the "Play" link
-      const playLink = screen.getByRole('link', { name: 'Play' });
+      // The page CTA stays distinct from the persistent navigation's Play link.
+      const playLink = screen.getByRole('link', { name: 'Play a run' });
       expect(playLink).toHaveAttribute('href', '/game');
     });
   });
