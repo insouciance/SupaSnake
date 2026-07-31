@@ -34,6 +34,19 @@ jest.mock('@/lib/features/careerSpine', () => ({
 jest.mock('@/lib/features/runFlow', () => ({
   RUN_FLOW_V1_ENABLED: true,
 }));
+jest.mock('@/lib/server/productionPublicSurface', () => ({
+  inspectProductionPublicSurface: jest.fn(() => ({
+    healthy: true,
+    version: 1,
+    contractHash: 'contract-hash',
+    declaredHash: 'contract-hash',
+    projectRef: 'gmpwyzqafoyowndbvlma',
+    expectedProjectRef: 'gmpwyzqafoyowndbvlma',
+    enabledFlagCount: 21,
+    expectedFlagCount: 21,
+    disabledFlags: [],
+  })),
+}));
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -84,6 +97,12 @@ describe('GET /api/health', () => {
     expect(data.checks.runFlow).toMatchObject({
       status: 'healthy',
       surfaceEnabled: true,
+    });
+    expect(data.checks.publicSurface).toMatchObject({
+      status: 'healthy',
+      contractHash: 'contract-hash',
+      projectRef: 'gmpwyzqafoyowndbvlma',
+      enabledFlagCount: 21,
     });
     expect(data.checks.cohesiveRelease).toMatchObject({
       status: 'healthy',

@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
+import { inspectProductionPublicSurface } from '@/lib/server/productionPublicSurface';
 
 interface HealthCheck {
   status: 'healthy' | 'unhealthy';
@@ -44,6 +45,16 @@ interface HealthResponse {
     };
     runFlow: HealthCheck & {
       surfaceEnabled: boolean;
+    };
+    publicSurface: HealthCheck & {
+      version: number;
+      contractHash: string;
+      declaredHash: string;
+      projectRef: string | null;
+      expectedProjectRef: string;
+      enabledFlagCount: number;
+      expectedFlagCount: number;
+      disabledFlags: string[];
     };
     cohesiveRelease: HealthCheck & {
       version?: number;
@@ -243,12 +254,18 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     status: 'healthy',
     surfaceEnabled: RUN_FLOW_V1_ENABLED,
   };
+  const publicSurfaceInspection = inspectProductionPublicSurface(process.env);
+  const publicSurfaceCheck: HealthResponse['checks']['publicSurface'] = {
+    status: publicSurfaceInspection.healthy ? 'healthy' : 'unhealthy',
+    ...publicSurfaceInspection,
+  };
 
   // Determine overall health
   const isHealthy =
     databaseCheck.status === 'healthy' &&
     careerSpineCheck.status === 'healthy' &&
-    cohesiveReleaseCheck.status === 'healthy';
+    cohesiveReleaseCheck.status === 'healthy' &&
+    publicSurfaceCheck.status === 'healthy';
 
   const response: HealthResponse = {
     status: isHealthy ? 'healthy' : 'unhealthy',
@@ -272,6 +289,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     },
     checks: {
       database: databaseCheck,
+      publicSurface: publicSurfaceCheck,
       careerSpine: careerSpineCheck,
       runFlow: runFlowCheck,
       cohesiveRelease: cohesiveReleaseCheck,
