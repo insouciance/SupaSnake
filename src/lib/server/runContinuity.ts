@@ -17,12 +17,17 @@ import { resolveGrowthProfile } from '@/shared/game/growth';
 import { ladderHoldBase, resolveLadderRung } from '@/shared/game/ladder';
 import { isAnomalyId } from '@/shared/game/anomalies';
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
-import { STRAIN_PHYSICS } from '@/shared/game/strains';
+import { isStrainId, STRAIN_PHYSICS } from '@/shared/game/strains';
 import {
   SNAKE_RULES_VERSION,
   SnakeGameLogic,
+  type Direction,
+  type GameOverData,
   type Position,
   type SnakeCheckpointV1,
+  type SnakeReplayAction,
+  type SnakeReplayTrace,
+  type SnakeTerminalReplayProof,
 } from '@/lib/game/SnakeGameLogic';
 import {
   computeLengthTrace,
@@ -44,6 +49,10 @@ export const RUN_CONTINUITY_VERSION = 1;
 export const RUN_CHECKPOINT_MAX_BYTES = 1_048_576;
 export const RUN_CHECKPOINT_FOOD_RATE_ALLOWANCE =
   1 + STRAIN_PHYSICS.arcMaxPerEat;
+export const RUN_REPLAY_MAX_ACTIONS = 50_000;
+export const RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT = 512;
+export const RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT = 2_048;
+export const RUN_TERMINAL_FACTS_MAX_BYTES = 262_144;
 const START_REQUEST_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -60,10 +69,22 @@ export interface RunStartManifest extends Record<string, unknown> {
   sessionId: string;
 }
 
+export interface StoredRunStartIntent extends Record<string, unknown> {
+  v: 1;
+  startRequestId: string;
+  mode: StartFingerprintInput['mode'];
+  snakeId: string;
+  energyCommitment: number;
+  confirmMaxEnergy: boolean;
+  signalObjectiveId: string | null;
+  ladderRung: number | null;
+}
+
 export interface ContinuityRow {
   id: string;
   start_request_id: string | null;
   start_request_fingerprint: string | null;
+  continuity_start_intent?: StoredRunStartIntent | null;
   start_manifest: RunStartManifest | null;
   start_manifest_draft: Record<string, unknown> | null;
   continuity_energy_commitment: number | null;
@@ -75,6 +96,9 @@ export interface ContinuityRow {
   continuity_checkpoint_revision?: number | null;
   continuity_checkpoint_saved_at?: string | null;
   continuity_checkpoint_digest?: string | null;
+  continuity_terminal_facts?: Record<string, unknown> | null;
+  continuity_terminal_digest?: string | null;
+  continuity_terminal_at?: string | null;
   continuity_lease_hash?: string | null;
   continuity_lease_epoch?: number | null;
   continuity_lease_issued_at?: string | null;
@@ -82,6 +106,8 @@ export interface ContinuityRow {
   dynasty?: string | null;
   started_at: string;
   server_started_at?: string | null;
+  simulation_seed?: string | null;
+  run_seed?: string | null;
   energy_committed?: number | null;
   ended_at: string | null;
   end_reason: string | null;
@@ -89,7 +115,7 @@ export interface ContinuityRow {
 
 export interface ActiveRunContract {
   sessionId: string;
-  phase: 'preparing' | 'prepared' | 'active' | 'settling' | 'incompatible' | 'legacy';
+  phase: 'preparing' | 'prepared' | 'active' | 'terminal' | 'settling' | 'incompatible' | 'legacy';
   startedAt: string;
   activatedAt: string | null;
   energyCommitted: number;
@@ -101,6 +127,7 @@ export interface ActiveRunContract {
   checkpointSavedAt: string | null;
   leaseToken: string | null;
   leaseEpoch: number;
+  startIntent: StoredRunStartIntent | null;
 }
 
 export class RunContinuityError extends Error {
@@ -151,7 +178,7 @@ export function isMissingRunContinuityInfra(
   if (['42P01', '42703', '42883', 'PGRST202', 'PGRST204'].includes(error.code ?? '')) {
     return true;
   }
-  return /start_request_id|start_request_fingerprint|start_manifest|simulation_rules_version|continuity_phase|continuity_checkpoint|continuity_lease|finalize_run_continuity_start|activate_run_continuity|resume_run_continuity|save_run_continuity_checkpoint|stage_continuity_game_session_end|complete_free_run_continuity|abandon_run_continuity/i.test(
+  return /start_request_id|start_request_fingerprint|start_manifest|simulation_rules_version|continuity_phase|continuity_checkpoint|continuity_lease|continuity_terminal|finalize_run_continuity_start|activate_run_continuity|resume_run_continuity|save_run_continuity_checkpoint|stage_run_continuity_terminal|stage_continuity_game_session_end|complete_free_run_continuity|abandon_run_continuity/i.test(
     error.message ?? ''
   );
 }
@@ -163,7 +190,7 @@ function asManifest(value: unknown): RunStartManifest | null {
 }
 
 function asPhase(value: unknown): ActiveRunContract['phase'] {
-  return value === 'preparing' || value === 'prepared' || value === 'active'
+  return value === 'preparing' || value === 'prepared' || value === 'active' || value === 'terminal'
     ? value
     : 'legacy';
 }
@@ -177,12 +204,19 @@ function activeContract(
   // Treating a legacy pending result as an abandonable legacy run would let
   // the UI erase a secured Victory Lap while its canonical receipt is still
   // being applied.
+  const storedPhase = asPhase(row.continuity_phase);
   const phase = row.end_reason === 'completed' && row.ended_at === null
     ? 'settling'
+    : storedPhase === 'terminal'
+      // Terminal facts are already immutable server truth. A deploy/rules
+      // bump may prevent replaying an active checkpoint, but it must never
+      // strand or make abandonable an outcome already derived under its
+      // stamped engine version.
+      ? 'terminal'
     : row.start_request_id !== null &&
         row.simulation_rules_version !== SNAKE_RULES_VERSION
       ? 'incompatible'
-      : asPhase(row.continuity_phase);
+      : storedPhase;
   const preparedManifest = asManifest(row.start_manifest);
   const checkpoint =
     (phase === 'active' || phase === 'settling') && row.continuity_checkpoint
@@ -199,7 +233,7 @@ function activeContract(
     activatedAt: row.continuity_activated_at,
     energyCommitted: Math.max(0, Number(row.energy_committed ?? 0)),
     canContinue,
-    requiresAbandon: phase !== 'settling' && !canContinue,
+    requiresAbandon: phase !== 'settling' && phase !== 'terminal' && !canContinue,
     manifest,
     checkpoint,
     checkpointRevision: Math.max(
@@ -209,11 +243,15 @@ function activeContract(
     checkpointSavedAt: row.continuity_checkpoint_saved_at ?? null,
     leaseToken,
     leaseEpoch: Math.max(0, Number(row.continuity_lease_epoch ?? 0) || 0),
+    startIntent:
+      phase === 'preparing' && row.continuity_start_intent
+        ? row.continuity_start_intent
+        : null,
   };
 }
 
 const CONTINUITY_SELECT =
-  'id, dynasty, start_request_id, start_request_fingerprint, start_manifest, start_manifest_draft, continuity_energy_commitment, continuity_exempt, continuity_energy_visible, simulation_rules_version, continuity_phase, continuity_activated_at, continuity_checkpoint, continuity_checkpoint_revision, continuity_checkpoint_saved_at, continuity_checkpoint_digest, continuity_lease_hash, continuity_lease_epoch, continuity_lease_issued_at, started_at, server_started_at, energy_committed, ended_at, end_reason';
+  'id, dynasty, start_request_id, start_request_fingerprint, continuity_start_intent, start_manifest, start_manifest_draft, continuity_energy_commitment, continuity_exempt, continuity_energy_visible, simulation_seed, run_seed, simulation_rules_version, continuity_phase, continuity_activated_at, continuity_checkpoint, continuity_checkpoint_revision, continuity_checkpoint_saved_at, continuity_checkpoint_digest, continuity_lease_hash, continuity_lease_epoch, continuity_lease_issued_at, continuity_terminal_facts, continuity_terminal_digest, continuity_terminal_at, started_at, server_started_at, energy_committed, ended_at, end_reason';
 
 function createRunLease(): { token: string; hash: string } {
   const token = randomBytes(32).toString('base64url');
@@ -357,8 +395,173 @@ function deterministicOpening(
     ladderRung: checkpoint.config.ladderRung,
     simulationSeed: seed,
   });
-  engine.start();
+  engine.prepare();
   return engine.exportCheckpoint();
+}
+
+function isDirection(value: unknown): value is Direction {
+  return ['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(String(value));
+}
+
+function parseReplayTrace(value: unknown): SnakeReplayTrace {
+  const record = objectRecord(value);
+  const ticks = safeInteger(record?.ticks);
+  if (
+    ticks === null ||
+    ticks > 10_000_000 ||
+    !Array.isArray(record?.actions) ||
+    record.actions.length > RUN_REPLAY_MAX_ACTIONS
+  ) {
+    rejectCheckpoint('Run checkpoint contains an invalid replay trace.');
+  }
+  const actions: SnakeReplayAction[] = [];
+  let priorTick = 0;
+  for (const raw of record.actions) {
+    const action = objectRecord(raw);
+    const tick = safeInteger(action?.tick);
+    if (tick === null || tick < priorTick || tick > ticks) {
+      rejectCheckpoint('Run checkpoint contains an out-of-order replay action.');
+    }
+    priorTick = tick;
+    switch (action?.kind) {
+      case 'turn':
+        if (!isDirection(action.direction)) {
+          rejectCheckpoint('Run checkpoint contains an invalid replay turn.');
+        }
+        actions.push({ tick, kind: 'turn', direction: action.direction });
+        break;
+      case 'pause':
+        if (action.hold !== 'tactical' && action.hold !== 'decision') {
+          rejectCheckpoint('Run checkpoint contains an invalid replay hold.');
+        }
+        actions.push({ tick, kind: 'pause', hold: action.hold });
+        break;
+      case 'resume':
+        actions.push({ tick, kind: 'resume' });
+        break;
+      case 'mutation':
+        if (action.choice !== 0 && action.choice !== 1 && action.choice !== 'decline') {
+          rejectCheckpoint('Run checkpoint contains an invalid replay mutation choice.');
+        }
+        actions.push({ tick, kind: 'mutation', choice: action.choice });
+        break;
+      case 'portal':
+        if (!['bank', 'pass', 'infuse'].includes(String(action.choice))) {
+          rejectCheckpoint('Run checkpoint contains an invalid replay portal choice.');
+        }
+        actions.push({
+          tick,
+          kind: 'portal',
+          choice: action.choice as 'bank' | 'pass' | 'infuse',
+        });
+        break;
+      case 'surge':
+        if (!isStrainId(action.strain)) {
+          rejectCheckpoint('Run checkpoint contains an invalid replay surge.');
+        }
+        actions.push({ tick, kind: 'surge', strain: action.strain });
+        break;
+      default:
+        rejectCheckpoint('Run checkpoint contains an unknown replay action.');
+    }
+  }
+  return { ticks, actions };
+}
+
+function parseTerminalReplayProof(value: unknown): SnakeTerminalReplayProof {
+  const record = objectRecord(value);
+  const fromTick = safeInteger(record?.fromTick);
+  const toTick = safeInteger(record?.toTick);
+  const actionOffset = safeInteger(record?.actionOffset);
+  if (
+    fromTick === null ||
+    toTick === null ||
+    toTick < fromTick ||
+    toTick - fromTick > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
+    actionOffset === null ||
+    !Array.isArray(record?.actions) ||
+    record.actions.length > RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
+  ) {
+    rejectCheckpoint('Terminal replay proof exceeds its safe bounds.');
+  }
+  // Reuse the complete action sanitizer by treating the suffix as a trace
+  // over the terminal tick range. Its ticks remain absolute.
+  const parsed = parseReplayTrace({ ticks: toTick, actions: record.actions });
+  if (parsed.actions.some((action) => action.tick < fromTick)) {
+    rejectCheckpoint('Terminal replay proof predates its checkpoint base.');
+  }
+  return { fromTick, toTick, actionOffset, actions: parsed.actions };
+}
+
+function replayComparable(checkpoint: SnakeCheckpointV1): Record<string, unknown> {
+  const clone = JSON.parse(JSON.stringify(checkpoint)) as SnakeCheckpointV1;
+  // Wall time and display-only event timestamps are server-owned on the
+  // canonical snapshot. Every gameplay field remains in the comparison.
+  clone.state.startTime = null;
+  clone.privateState.elapsedMs = 0;
+  clone.privateState.runEvents = [];
+  clone.privateState.runEventsTruncated = false;
+  return clone as unknown as Record<string, unknown>;
+}
+
+function replayEngineFromCheckpoint(checkpoint: SnakeCheckpointV1): SnakeGameLogic {
+  const engine = new SnakeGameLogic({
+    gridSize: checkpoint.config.gridSize,
+    initialLength: checkpoint.config.initialLength,
+    ruleset: RULESETS[checkpoint.config.ruleset],
+    traits: checkpoint.config.traits,
+    mutationPool: checkpoint.config.mutationPool,
+    anomaly: checkpoint.config.anomaly,
+    genome: checkpoint.config.genome,
+    growthProfileId: checkpoint.config.growthProfileId,
+    ladderRung: checkpoint.config.ladderRung,
+    simulationSeed: checkpoint.rng.seed.toString(16),
+  });
+  // `restoreCheckpoint` replaces every seeded field, including the exact RNG
+  // cursor. The constructor seed is only needed to provide a replayable source.
+  engine.prepare();
+  engine.restoreCheckpoint(checkpoint, Date.now(), {
+    replacePreparedOpening: true,
+  });
+  return engine;
+}
+
+function deriveCanonicalReplay(
+  proposed: SnakeCheckpointV1,
+  previous: SnakeCheckpointV1,
+  serverElapsedMs: number
+): SnakeCheckpointV1 {
+  const trace = parseReplayTrace(proposed.privateState.replay);
+  const priorTrace = parseReplayTrace(previous.privateState.replay);
+  if (
+    trace.ticks < priorTrace.ticks ||
+    trace.ticks - priorTrace.ticks > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
+    trace.actions.length < priorTrace.actions.length ||
+    trace.actions.length - priorTrace.actions.length >
+      RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT ||
+    !jsonEquivalent(
+      trace.actions.slice(0, priorTrace.actions.length),
+      priorTrace.actions
+    )
+  ) {
+    rejectCheckpoint('Run checkpoint forks its accepted replay history.');
+  }
+  const engine = replayEngineFromCheckpoint(previous);
+  try {
+    engine.applyReplayTrace(trace, priorTrace.actions.length);
+  } catch {
+    rejectCheckpoint('Run checkpoint contains an impossible replay transition.');
+  }
+  if (engine.getState().isGameOver) {
+    rejectCheckpoint('A terminal replay cannot be stored as a live checkpoint.');
+  }
+  const canonical = engine.exportCheckpoint();
+  canonical.state.startTime = null;
+  canonical.privateState.elapsedMs = serverElapsedMs;
+  if (!jsonEquivalent(replayComparable(proposed), replayComparable(canonical))) {
+    rejectCheckpoint('Run checkpoint does not equal its deterministic replay.');
+  }
+  return canonical;
 }
 
 function validateCheckpointBoard(
@@ -885,11 +1088,9 @@ export function validateRunCheckpoint(
   }
 
   const typed = value as SnakeCheckpointV1;
-  validateCheckpointBoard(typed, context.previous ?? null, expectedDynasty);
-  validateCheckpointGenome(typed, context.previous ?? null, foodEaten);
 
   if (context.opening === true) {
-    if (foodEaten !== 0 || score !== 0 || dnaCollected !== 0 || elapsedMs > 10_000) {
+    if (foodEaten !== 0 || score !== 0 || dnaCollected !== 0 || elapsedMs !== 0) {
       rejectCheckpoint('Run activation must begin from the seeded opening.');
     }
     let expected: SnakeCheckpointV1;
@@ -901,9 +1102,25 @@ export function validateRunCheckpoint(
     if (!jsonEquivalent(normalizedOpening(typed), normalizedOpening(expected!))) {
       rejectCheckpoint('Run activation checkpoint is not the seeded opening.');
     }
+    expected!.state.startTime = null;
+    expected!.privateState.elapsedMs = 0;
+    validateCheckpointBoard(expected!, null, expectedDynasty);
+    validateCheckpointGenome(expected!, null, 0);
+    return expected!;
   }
 
-  return typed;
+  if (!context.previous) {
+    rejectCheckpoint('Run checkpoint has no canonical replay base.');
+  }
+  const canonical = deriveCanonicalReplay(
+    typed,
+    context.previous!,
+    serverElapsedMs
+  );
+  const canonicalFood = canonical.state.foodEaten;
+  validateCheckpointBoard(canonical, context.previous!, expectedDynasty);
+  validateCheckpointGenome(canonical, context.previous!, canonicalFood);
+  return canonical;
 }
 
 export async function findRunByStartRequest(
@@ -1273,13 +1490,19 @@ export async function saveRunCheckpoint(
 
   const checkpoint = validateRunCheckpoint(input.checkpoint, {
     manifest,
-    startedAt: row.server_started_at ?? row.started_at,
+    startedAt:
+      row.continuity_activated_at ?? row.server_started_at ?? row.started_at,
     now: input.now,
     previous: row.continuity_checkpoint ?? null,
     rulesVersion: row.simulation_rules_version,
   });
-  const canonical = JSON.stringify(checkpoint);
-  const digest = createHash('sha256').update(canonical).digest('hex');
+  // Wall-clock elapsed and display-event timestamps advance between an
+  // accepted write and a lost-response retry. Digest the deterministic replay
+  // state instead, so the exact same proposal has one stable idempotency key
+  // while server-side duration bounds are still rechecked on every request.
+  const digest = createHash('sha256')
+    .update(JSON.stringify(replayComparable(checkpoint)))
+    .digest('hex');
   const { data, error } = await supabase.rpc('save_run_continuity_checkpoint', {
     p_player_id: input.playerId,
     p_session_id: input.sessionId,
@@ -1321,6 +1544,190 @@ export async function saveRunCheckpoint(
   return accepted;
 }
 
+export interface TerminalRunIntent {
+  facts: {
+    score: number;
+    dna_earned: number;
+    duration_seconds: number;
+    food_count: number;
+    extracted: boolean;
+    died: boolean;
+    victory: false;
+    mutations: GameOverData['mutations'];
+    phoenix_triggered_at_food: number | null;
+    genome: GameOverData['genome'];
+    death_cause: GameOverData['deathCause'];
+    run_events: ReturnType<SnakeGameLogic['getRunEvents']>;
+  };
+  digest: string;
+}
+
+function deriveTerminalIntent(
+  row: ContinuityRow,
+  proofValue: unknown,
+  now = Date.now()
+): TerminalRunIntent {
+  const checkpoint = row.continuity_checkpoint;
+  const activatedAt = Date.parse(row.continuity_activated_at ?? '');
+  if (!checkpoint || !Number.isFinite(activatedAt)) {
+    throw new RunContinuityError('The run has no canonical terminal base.', 'not_prepared');
+  }
+  const priorTrace = parseReplayTrace(checkpoint.privateState.replay);
+  const proof = parseTerminalReplayProof(proofValue);
+  const overlapCount = priorTrace.actions.length - proof.actionOffset;
+  if (
+    proof.fromTick > priorTrace.ticks ||
+    proof.toTick < priorTrace.ticks ||
+    proof.actionOffset > priorTrace.actions.length ||
+    overlapCount < 0 ||
+    overlapCount > proof.actions.length ||
+    !jsonEquivalent(
+      proof.actions.slice(0, overlapCount),
+      priorTrace.actions.slice(proof.actionOffset)
+    )
+  ) {
+    throw new RunContinuityError('Terminal replay is not based on the accepted checkpoint.', 'checkpoint_conflict');
+  }
+  const trace: SnakeReplayTrace = {
+    ticks: proof.toTick,
+    actions: [...priorTrace.actions, ...proof.actions.slice(overlapCount)],
+  };
+  const elapsedMs = Math.max(0, now - activatedAt);
+  const maxTicks = Math.ceil(elapsedMs / 20) + 16;
+  if (
+    trace.ticks < priorTrace.ticks ||
+    trace.ticks > maxTicks ||
+    trace.ticks - priorTrace.ticks > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
+    trace.actions.length - priorTrace.actions.length >
+      RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
+  ) {
+    throw new RunContinuityError('Terminal replay forks accepted history.', 'invalid_checkpoint');
+  }
+  const engine = replayEngineFromCheckpoint(checkpoint);
+  try {
+    engine.applyReplayTrace(trace, priorTrace.actions.length);
+  } catch {
+    throw new RunContinuityError('Terminal replay is not physically possible.', 'invalid_checkpoint');
+  }
+  const result = engine.getTerminalResult();
+  if (!result || !engine.getState().isGameOver) {
+    throw new RunContinuityError('Terminal replay did not end the run.', 'invalid_checkpoint');
+  }
+  const facts: TerminalRunIntent['facts'] = {
+    score: result.score,
+    dna_earned: result.dnaCollected,
+    duration_seconds: Math.floor(elapsedMs / 1_000),
+    food_count: result.foodEaten,
+    extracted: result.extracted,
+    died: !result.extracted,
+    victory: false,
+    mutations: result.mutations,
+    phoenix_triggered_at_food: result.phoenixTriggeredAtFood,
+    genome: result.genome,
+    death_cause: result.deathCause,
+    run_events: engine.getRunEvents(),
+  };
+  if (Buffer.byteLength(JSON.stringify(facts), 'utf8') > RUN_TERMINAL_FACTS_MAX_BYTES) {
+    throw new RunContinuityError('Terminal settlement facts exceed their safe bound.', 'invalid_checkpoint');
+  }
+  const replayDigest = createHash('sha256')
+    .update(JSON.stringify(trace))
+    .digest('hex');
+  return {
+    facts,
+    // Bind the accepted terminal path without duplicating its potentially
+    // large cumulative transcript in the terminal row. The canonical
+    // checkpoint already retains the replay prefix under its own size cap.
+    digest: createHash('sha256')
+      .update(JSON.stringify({
+        checkpointRevision: row.continuity_checkpoint_revision,
+        replayDigest,
+        facts,
+      }))
+      .digest('hex'),
+  };
+}
+
+/**
+ * Derive and durably lock a terminal outcome under the current lease. Once
+ * this returns, resume/checkpoint/abandon are impossible even if settlement
+ * validation or the browser process stops immediately afterwards.
+ */
+export async function stageRunTerminalIntent(
+  supabase: SupabaseClient,
+  input: {
+    playerId: string;
+    sessionId: string;
+    expectedRevision: number;
+    leaseToken: unknown;
+    replay: unknown;
+    now?: number;
+  }
+): Promise<TerminalRunIntent> {
+  if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1) {
+    throw new RunContinuityError('Invalid terminal checkpoint revision.', 'invalid_checkpoint');
+  }
+  const { data: rowData, error: rowError } = await supabase
+    .from('game_sessions')
+    .select(CONTINUITY_SELECT)
+    .eq('id', input.sessionId)
+    .eq('player_id', input.playerId)
+    .maybeSingle();
+  if (rowError) {
+    throw new RunContinuityError('Could not inspect the terminal run.', 'unavailable');
+  }
+  const row = rowData as ContinuityRow | null;
+  if (!row || row.ended_at !== null) {
+    throw new RunContinuityError('Run session not found.', 'not_found');
+  }
+  if (row.continuity_phase !== 'active' && row.continuity_phase !== 'terminal') {
+    throw new RunContinuityError('The run cannot accept a terminal result.', 'not_prepared');
+  }
+  if (!hashMatchesToken(row.continuity_lease_hash, input.leaseToken)) {
+    throw new RunContinuityError('This run is open in a newer session.', 'lease_conflict');
+  }
+  if (row.continuity_phase === 'terminal') {
+    const storedFacts = objectRecord(row.continuity_terminal_facts);
+    const storedDigest = row.continuity_terminal_digest;
+    if (!storedFacts || typeof storedDigest !== 'string') {
+      throw new RunContinuityError('The secured run outcome is incomplete.', 'unavailable');
+    }
+    return {
+      facts: storedFacts as unknown as TerminalRunIntent['facts'],
+      digest: storedDigest,
+    };
+  }
+  const currentRevision = Number(row.continuity_checkpoint_revision);
+  if (
+    !Number.isSafeInteger(currentRevision) ||
+    currentRevision < input.expectedRevision
+  ) {
+    throw new RunContinuityError('The terminal checkpoint revision is invalid.', 'checkpoint_conflict');
+  }
+  const intent = deriveTerminalIntent(row, input.replay, input.now);
+  const { data, error } = await supabase.rpc('stage_run_continuity_terminal', {
+    p_player_id: input.playerId,
+    p_session_id: input.sessionId,
+    // A checkpoint response may be lost after PostgreSQL commits. The proof
+    // is safely rebased above against the newer canonical prefix under the
+    // unchanged lease, then the row-locked RPC binds the actual revision.
+    p_expected_revision: currentRevision,
+    p_lease_hash: leaseHash(input.leaseToken),
+    p_terminal_facts: intent.facts,
+    p_terminal_digest: intent.digest,
+  });
+  if (error) throw terminalError(error);
+  const receipt = objectRecord(data);
+  if (receipt?.accepted !== true) {
+    throw new RunContinuityError('Terminal intent returned no receipt.', 'unavailable');
+  }
+  return intent;
+}
+
+export function terminalFactsFromRow(row: Record<string, unknown>): Record<string, unknown> | null {
+  return objectRecord(row.continuity_terminal_facts);
+}
+
 function terminalError(error: SupabaseErrorLike): RunContinuityError {
   const message = error.message ?? '';
   if (/run_lease_conflict/i.test(message)) {
@@ -1333,6 +1740,18 @@ function terminalError(error: SupabaseErrorLike): RunContinuityError {
     return new RunContinuityError(
       'This run is not in a terminalizable state.',
       'not_prepared'
+    );
+  }
+  if (/checkpoint_revision_conflict/i.test(message)) {
+    return new RunContinuityError(
+      'A newer run checkpoint already exists.',
+      'checkpoint_conflict'
+    );
+  }
+  if (/invalid_terminal_intent|terminal_intent_conflict/i.test(message)) {
+    return new RunContinuityError(
+      'The terminal run result was rejected.',
+      'invalid_checkpoint'
     );
   }
   if (/session_not_found/i.test(message)) {
@@ -1361,6 +1780,7 @@ export async function stageContinuityRunEnd(
     playerId: string;
     sessionId: string;
     leaseToken: unknown;
+    terminalized?: boolean;
     envelope: Record<string, unknown>;
   }
 ): Promise<unknown> {
@@ -1368,7 +1788,7 @@ export async function stageContinuityRunEnd(
     p_user_id: input.userId,
     p_player_id: input.playerId,
     p_session_id: input.sessionId,
-    p_lease_hash: leaseHash(input.leaseToken),
+    p_lease_hash: input.terminalized === true ? null : leaseHash(input.leaseToken),
     p_envelope: input.envelope,
   });
   if (error) throw terminalError(error);
@@ -1382,13 +1802,14 @@ export async function completeFreeContinuityRun(
     playerId: string;
     sessionId: string;
     leaseToken: unknown;
+    terminalized?: boolean;
     facts: Record<string, unknown>;
   }
 ): Promise<unknown> {
   const { data, error } = await supabase.rpc('complete_free_run_continuity', {
     p_player_id: input.playerId,
     p_session_id: input.sessionId,
-    p_lease_hash: leaseHash(input.leaseToken),
+    p_lease_hash: input.terminalized === true ? null : leaseHash(input.leaseToken),
     p_facts: input.facts,
   });
   if (error) throw terminalError(error);

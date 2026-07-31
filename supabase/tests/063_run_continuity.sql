@@ -29,6 +29,9 @@ DECLARE
   v_saved_retry JSONB;
   v_snapshot JSONB;
   v_envelope JSONB;
+  v_terminal_facts JSONB;
+  v_terminal_intent JSONB;
+  v_terminal_intent_retry JSONB;
   v_terminal JSONB;
   v_terminal_retry JSONB;
   v_energy_before INTEGER;
@@ -48,6 +51,7 @@ BEGIN
     'public.activate_run_continuity(uuid,uuid,jsonb,text,text,text,integer)',
     'public.resume_run_continuity(uuid,uuid,text,text)',
     'public.save_run_continuity_checkpoint(uuid,uuid,integer,jsonb,text,text,integer)',
+    'public.stage_run_continuity_terminal(uuid,uuid,integer,text,jsonb,text)',
     'public.stage_continuity_game_session_end(uuid,uuid,uuid,text,jsonb)',
     'public.complete_free_run_continuity(uuid,uuid,text,jsonb)',
     'public.abandon_run_continuity(uuid,uuid,text,text)'
@@ -86,15 +90,19 @@ BEGIN
     id, player_id, snake_used_id, snake_variant_id, dynasty,
     started_at, server_started_at, start_request_id,
     start_request_fingerprint, simulation_seed, simulation_version,
-    simulation_rules_version, continuity_phase
+    simulation_rules_version, continuity_start_intent, continuity_phase
   ) VALUES (
     v_orphan, v_player, v_snake, v_variant, 'PRIMAL',
     v_started, v_started, '06300000-0000-4000-8000-000000000006',
     repeat('1', 64), '06300000-0000-4000-8000-000000000007', 1,
-    'snake-rules-2026-07-31.1', 'preparing'
+    'snake-rules-2026-07-31.2', jsonb_build_object(
+      'v', 1, 'startRequestId', '06300000-0000-4000-8000-000000000006',
+      'mode', 'earn', 'snakeId', v_snake, 'energyCommitment', 1,
+      'confirmMaxEnergy', FALSE, 'signalObjectiveId', NULL, 'ladderRung', NULL
+    ), 'preparing'
   );
   PERFORM abandon_run_continuity(
-    v_player, v_orphan, NULL, 'snake-rules-2026-07-31.1'
+    v_player, v_orphan, NULL, 'snake-rules-2026-07-31.2'
   );
   IF (SELECT end_reason FROM game_sessions WHERE id = v_orphan) <> 'abandoned'
      OR (SELECT energy_committed FROM game_sessions WHERE id = v_orphan) <> 0
@@ -108,15 +116,19 @@ BEGIN
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
     started_at, server_started_at, start_request_id,
-    start_request_fingerprint, start_manifest_draft,
+    start_request_fingerprint, continuity_start_intent, start_manifest_draft,
     continuity_energy_commitment, continuity_exempt,
     continuity_energy_visible, simulation_seed, simulation_version,
     simulation_rules_version, continuity_phase
   ) VALUES (
     v_session, v_player, v_snake, v_variant, 'PRIMAL',
-    v_started, v_started, v_start_request, repeat('2', 64), v_manifest_base,
+    v_started, v_started, v_start_request, repeat('2', 64), jsonb_build_object(
+      'v', 1, 'startRequestId', v_start_request, 'mode', 'earn',
+      'snakeId', v_snake, 'energyCommitment', 1,
+      'confirmMaxEnergy', FALSE, 'signalObjectiveId', NULL, 'ladderRung', NULL
+    ), v_manifest_base,
     1, FALSE, TRUE, '06300000-0000-4000-8000-000000000008', 1,
-    'snake-rules-2026-07-31.1', 'preparing'
+    'snake-rules-2026-07-31.2', 'preparing'
   );
   SELECT stored_energy INTO v_energy_before FROM players WHERE id = v_player;
   v_manifest := finalize_run_continuity_start(
@@ -144,7 +156,7 @@ BEGIN
   v_opening := jsonb_build_object(
     'version', 1,
     'engineVersion', 'snake-engine-v1',
-    'rulesVersion', 'snake-rules-2026-07-31.1',
+    'rulesVersion', 'snake-rules-2026-07-31.2',
     'config', '{}'::JSONB,
     'state', jsonb_build_object(
       'isPlaying', TRUE, 'isGameOver', FALSE, 'isDeathSequence', FALSE,
@@ -154,7 +166,7 @@ BEGIN
   );
   v_activation := activate_run_continuity(
     v_player, v_session, v_opening, v_opening_digest, v_old_lease,
-    'snake-rules-2026-07-31.1', 1048576
+    'snake-rules-2026-07-31.2', 1048576
   );
   IF v_activation ->> 'continuity_phase' <> 'active'
      OR (v_activation ->> 'continuity_checkpoint_revision')::INTEGER <> 1
@@ -165,7 +177,7 @@ BEGIN
   -- Resume rotates exclusive authority. The stale lease can no longer save a
   -- checkpoint; the new lease owns monotonic compare-and-swap writes.
   v_resume := resume_run_continuity(
-    v_player, v_session, v_current_lease, 'snake-rules-2026-07-31.1'
+    v_player, v_session, v_current_lease, 'snake-rules-2026-07-31.2'
   );
   IF (v_resume ->> 'continuity_lease_epoch')::INTEGER <> 2
      OR (SELECT continuity_lease_hash FROM game_sessions WHERE id = v_session) <> v_current_lease THEN
@@ -208,9 +220,9 @@ BEGIN
     IF POSITION('checkpoint_revision_conflict' IN SQLERRM) = 0 THEN RAISE; END IF;
   END;
 
-  -- Terminal staging produces one immutable settling envelope. An identical
-  -- concurrent/retry call returns that row; a changed payload cannot replace
-  -- it and a settling result cannot be abandoned.
+  -- Replay-derived terminal facts are frozen first. The browser lease may be
+  -- gone after a reload; the service-only terminal→pending fold therefore
+  -- needs no browser capability once this immutable phase exists.
   v_captured := clock_timestamp();
   v_snapshot := jsonb_build_object(
     'v', 1, 'settledAt', v_captured, 'dynasty', 'PRIMAL',
@@ -246,11 +258,59 @@ BEGIN
       'validationErrors', NULL
     )
   );
+  v_terminal_facts := jsonb_build_object(
+    'score', 1, 'dna_earned', 10, 'duration_seconds', 10,
+    'food_count', 1, 'extracted', TRUE, 'died', FALSE,
+    'victory', FALSE, 'mutations', NULL,
+    'phoenix_triggered_at_food', NULL, 'genome', NULL,
+    'death_cause', 'extracted',
+    'run_events', jsonb_build_object(
+      'v', 1, 'events', jsonb_build_array(), 'truncated', FALSE
+    )
+  );
+  BEGIN
+    PERFORM stage_run_continuity_terminal(
+      v_player, v_session, 2, v_current_lease,
+      v_terminal_facts || jsonb_build_object('padding', repeat('x', 262145)),
+      repeat('7', 64)
+    );
+    RAISE EXCEPTION 'oversized terminal facts unexpectedly succeeded';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'oversized terminal facts unexpectedly succeeded' THEN RAISE; END IF;
+    IF POSITION('invalid_terminal_intent' IN SQLERRM) = 0 THEN RAISE; END IF;
+  END;
+  v_terminal_intent := stage_run_continuity_terminal(
+    v_player, v_session, 2, v_current_lease,
+    v_terminal_facts, repeat('9', 64)
+  );
+  v_terminal_intent_retry := stage_run_continuity_terminal(
+    v_player, v_session, 2, v_current_lease,
+    v_terminal_facts, repeat('9', 64)
+  );
+  IF (v_terminal_intent ->> 'inserted')::BOOLEAN IS DISTINCT FROM TRUE
+     OR (v_terminal_intent_retry ->> 'inserted')::BOOLEAN IS DISTINCT FROM FALSE
+     OR (SELECT continuity_phase FROM game_sessions WHERE id = v_session) <> 'terminal' THEN
+    RAISE EXCEPTION 'terminal intent was not immutable/idempotent: %, %',
+      v_terminal_intent, v_terminal_intent_retry;
+  END IF;
+  BEGIN
+    PERFORM stage_run_continuity_terminal(
+      v_player, v_session, 2, v_current_lease,
+      jsonb_set(v_terminal_facts, '{score}', '2'::JSONB), repeat('8', 64)
+    );
+    RAISE EXCEPTION 'changed terminal intent unexpectedly replaced evidence';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'changed terminal intent unexpectedly replaced evidence' THEN RAISE; END IF;
+    IF POSITION('terminal_intent_conflict' IN SQLERRM) = 0 THEN RAISE; END IF;
+  END;
+
+  -- Simulate process/tab loss: no lease is available after reopening, but
+  -- terminal facts are already server-derived and cannot be resumed/changed.
   v_terminal := stage_continuity_game_session_end(
-    v_user, v_player, v_session, v_current_lease, v_envelope
+    v_user, v_player, v_session, NULL, v_envelope
   );
   v_terminal_retry := stage_continuity_game_session_end(
-    v_user, v_player, v_session, v_current_lease, v_envelope
+    v_user, v_player, v_session, NULL, v_envelope
   );
   IF v_terminal ->> 'state' <> 'staged'
      OR (v_terminal ->> 'inserted')::BOOLEAN IS DISTINCT FROM TRUE
@@ -264,7 +324,7 @@ BEGIN
   END IF;
   BEGIN
     PERFORM stage_continuity_game_session_end(
-      v_user, v_player, v_session, v_current_lease,
+      v_user, v_player, v_session, NULL,
       jsonb_set(v_envelope, '{snapshot,score}', '2'::JSONB)
     );
     RAISE EXCEPTION 'changed terminal replay unexpectedly replaced evidence';
@@ -274,7 +334,7 @@ BEGIN
   END;
   BEGIN
     PERFORM abandon_run_continuity(
-      v_player, v_session, v_current_lease, 'snake-rules-2026-07-31.1'
+      v_player, v_session, v_current_lease, 'snake-rules-2026-07-31.2'
     );
     RAISE EXCEPTION 'settling run unexpectedly became abandonable';
   EXCEPTION WHEN OTHERS THEN

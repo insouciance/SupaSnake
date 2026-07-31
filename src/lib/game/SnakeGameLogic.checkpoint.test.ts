@@ -31,7 +31,6 @@ function comparableCheckpoint(
   game: SnakeGameLogic,
   now: number
 ): SnakeCheckpointV1 {
-  expect(game.pause('decision')).toBe(true);
   return game.exportCheckpoint(now);
 }
 
@@ -63,7 +62,7 @@ describe('SnakeGameLogic resumable checkpoints', () => {
 
       // Offline time must not advance the run clock, and stale queued input
       // must never execute when the player returns.
-      expect(resumed.getState().isPaused).toBe(true);
+      expect(resumed.getState().isPaused).toBe(checkpoint.state.isPaused);
       expect(resumed.exportCheckpoint(checkpointAt + 60_000).privateState.elapsedMs)
         .toBe(checkpoint.privateState.elapsedMs);
 

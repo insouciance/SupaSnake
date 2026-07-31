@@ -150,12 +150,38 @@ jest.mock('@supabase/supabase-js', () => ({
         }
         return { data: { accepted: true, state: 'staged' }, error: null };
       }
+      if (fn === 'stage_run_continuity_terminal') {
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (
+          !target ||
+          target.continuity_phase !== 'active' ||
+          target.continuity_lease_hash !== p.p_lease_hash
+        ) {
+          return { data: null, error: { message: 'run_lease_conflict' } };
+        }
+        Object.assign(target, {
+          continuity_phase: 'terminal',
+          continuity_terminal_facts: p.p_terminal_facts,
+          continuity_terminal_digest: p.p_terminal_digest,
+          continuity_terminal_at: new Date().toISOString(),
+        });
+        return {
+          data: { accepted: true, inserted: true, sessionId: target.id },
+          error: null,
+        };
+      }
       if (fn === 'stage_continuity_game_session_end') {
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
-        if (!target || target.continuity_lease_hash !== p.p_lease_hash) {
+        const terminalRecovery =
+          target?.continuity_phase === 'terminal' && p.p_lease_hash === null;
+        if (
+          !target ||
+          (!terminalRecovery && target.continuity_lease_hash !== p.p_lease_hash)
+        ) {
           return { data: null, error: { message: 'run_lease_conflict' } };
         }
         target.end_reason = 'completed';
+        target.continuity_phase = 'settling';
         target.__pendingEnvelope = p.p_envelope;
         return { data: { accepted: true, state: 'staged' }, error: null };
       }
@@ -473,7 +499,10 @@ import {
   normalizeDynastyName,
 } from '@/shared/game/rulesets';
 import { describeSignalDay, signalObjectiveId } from '@/shared/game/signal';
-import { SnakeGameLogic } from '@/lib/game/SnakeGameLogic';
+import {
+  SnakeGameLogic,
+  type SnakeCheckpointV1,
+} from '@/lib/game/SnakeGameLogic';
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
 import { isMutationId } from '@/shared/game/mutations';
 import { sanitizeTraits } from '@/shared/game/traits';
@@ -537,8 +566,28 @@ function openingCheckpoint(manifest: Row) {
   );
   game.setSimulationSeed(String(simulation.seed));
   game.setAnomaly(isAnomalyId(manifest.condition) ? manifest.condition : null);
-  game.start();
+  game.prepare();
   return game.exportCheckpoint();
+}
+
+function terminalReplayProof(checkpointValue: unknown) {
+  const checkpoint = checkpointValue as SnakeCheckpointV1;
+  const accepted = checkpoint.privateState.replay;
+  const game = new SnakeGameLogic();
+  game.restoreCheckpoint(checkpoint);
+  for (let tick = 0; tick < 16 && !game.getState().isGameOver; tick += 1) {
+    game.tick();
+  }
+  if (!game.getState().isGameOver) {
+    throw new Error('condition fixture did not reach a deterministic wall death');
+  }
+  const terminal = game.getReplayTrace();
+  return {
+    fromTick: accepted.ticks,
+    toTick: terminal.ticks,
+    actionOffset: accepted.actions.length,
+    actions: terminal.actions.slice(accepted.actions.length),
+  };
 }
 
 function seedPlayer() {
@@ -822,6 +871,43 @@ describe('server-owned run-start continuity', () => {
       traits: [],
       traitSlots: 1,
     }));
+    expect(
+      rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
+    ).toHaveLength(1);
+  });
+
+  it('repairs a zero-spend preparing shell from the same immutable start intent', async () => {
+    const first = await (await POST(post(startBody))).json();
+    const shell = session();
+    Object.assign(shell, {
+      start_manifest: null,
+      start_manifest_draft: null,
+      continuity_energy_commitment: null,
+      continuity_exempt: null,
+      continuity_energy_visible: null,
+      continuity_phase: 'preparing',
+      energy_committed: null,
+      end_reason: null,
+      ended_at: null,
+    });
+    rpcCalls.length = 0;
+
+    const response = await POST(post(startBody));
+    const repaired = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(repaired.sessionId).toBe(first.sessionId);
+    expect(db.game_sessions).toHaveLength(1);
+    expect(shell.continuity_start_intent).toEqual({
+      v: 1,
+      startRequestId: START_REQUEST_ID,
+      mode: 'earn',
+      snakeId: SNAKE_ID,
+      energyCommitment: 6,
+      confirmMaxEnergy: true,
+      signalObjectiveId: null,
+      ladderRung: null,
+    });
     expect(
       rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
     ).toHaveLength(1);
@@ -1138,16 +1224,13 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
     expect(activation.status).toBe(200);
     const activeRun = (await activation.json()).activeRun;
 
-    const end = await POST(
-      post(
-        endBody(startBody.sessionId, {
-          // The run just started, so keep the claim inside the server's own
-          // elapsed bound; 8s × CYBER's 2.5 foods/s is exactly FOOD_COUNT.
-          duration_seconds: 8,
-          leaseToken: activeRun.leaseToken,
-        })
-      )
-    );
+    const end = await POST(post({
+      action: 'terminal',
+      sessionId: startBody.sessionId,
+      expectedRevision: activeRun.checkpointRevision,
+      leaseToken: activeRun.leaseToken,
+      replay: terminalReplayProof(activeRun.checkpoint),
+    }));
     const endBodyJson = await end.json();
 
     expect(end.status).toBe(200);

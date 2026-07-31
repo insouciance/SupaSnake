@@ -152,11 +152,16 @@ player choices. The server:
 
 A lost response can therefore be recovered without a second Energy spend. The
 player never has to remember or persist the invocation ID in browser storage: an
-authenticated active-run lookup discovers the one open server session.
+authenticated active-run lookup discovers the one open server session. The
+preparing row retains the exact normalized start intent required to finish a
+zero-spend transactional shell; **Check again** replays that server-stored intent
+rather than asking the player to reconstruct it or creating a new invocation.
 
-The board opens held. The first accepted direction is deliberate, and activation
-must establish a server-verifiable initial checkpoint before the first simulation
-tick is allowed to advance.
+The board opens held with zero elapsed simulation time. Preparation may render the
+seeded board, but neither its clock nor its movement loop starts. The first accepted
+direction is deliberate, and activation must establish a server-verifiable initial
+checkpoint before the client activates the prepared engine and permits the first
+simulation tick.
 
 ### 3.3 Play — the protected core
 
@@ -184,9 +189,12 @@ Refresh, route reset, tab closure, browser crash, process crash, device restart,
 temporary network loss are not abandonment. They do not refund the commitment, but
 they also do not erase or silently close the run.
 
-Settlement freezes the validated result, reward ledger, Career impact receipt,
-clan consequence, and permanent moments atomically and idempotently. If the final
-response is lost, Results recovers the same canonical receipt. The client never
+The terminal boundary is two durable, idempotent steps. First, the server replays a
+bounded suffix from the latest accepted checkpoint and freezes the resulting death
+or extraction facts in a terminal phase. Only then may the ordinary settlement path
+freeze the reward ledger, Career impact receipt, clan consequence, and permanent
+moments. If either response is lost, recovery resumes from the already-secured
+terminal or settling phase and produces the same canonical receipt. The client never
 guesses progress from the last number it happened to display.
 
 ### 3.5 Celebrate — the victory lap
@@ -272,9 +280,9 @@ the history that the compact roster omits.
 setup draft
     |
     v
-preparing -> prepared -> active + verified checkpoint -> settling -> settled
+preparing -> prepared -> active + verified checkpoint -> terminal -> settling -> settled
                  |                    |
-                 +------ explicit confirmed abandon ------> abandoned
+                 +------ explicit confirmed abandon ----------------------> abandoned
 ```
 
 `preparing` is a short transactional state while a start is being finalized. It must
@@ -290,6 +298,15 @@ not enough to continue it: replaying that manifest would rewind the run. An acti
 session may truthfully offer **Continue Run** only when the server has accepted a
 validated deterministic-state checkpoint.
 
+`terminal` means deterministic replay has already proved and durably locked the
+run's death or extraction, but its progression settlement may not yet have folded.
+It cannot resume or be abandoned. A reload advances the stored server facts without
+requiring the browser's expired lease or terminal payload.
+
+`settling` means the terminal facts and full settlement envelope have entered the
+durable server queue. A repeated terminal request after a lost response is recognized
+as recovery of that receipt, not treated as a new terminal transition.
+
 No gameplay tick may execute until the first active checkpoint has been accepted.
 During a staged migration, such a legacy session must be described as unrecoverable
 or operator-reviewable; the UI must not call a restart “Continue.” A new run never
@@ -300,11 +317,12 @@ auto-abandons it.
 A checkpoint becomes continuation authority only after the server validates it and
 stores it under the current exclusive lease. Validation binds it to the immutable
 run manifest and simulation seed, enforces the engine/ruleset/grid contract, rejects
-terminal or malformed state, applies server-time and food-rate bounds, and requires
-elapsed time, food, score, DNA, and RNG draws to move monotonically from the prior
-accepted checkpoint. A raw client-uploaded snapshot, hash, or “latest score” is only
-a proposal. It never becomes payout authority: terminal settlement still recomputes
-and validates the run's economic outcome through the existing server path.
+terminal or malformed state, applies server-time and food-rate bounds, and then
+replays the proposed input transcript from the prior canonical checkpoint. The
+resulting engine state—not matching monotonic counters alone—must equal the proposal.
+A raw client-uploaded snapshot, hash, or “latest score” is only a proposal. It never
+becomes payout authority: terminal settlement replays the final bounded transcript
+suffix and sends only the derived facts through the existing server validation path.
 
 The versioned checkpoint package includes at minimum:
 
@@ -316,13 +334,25 @@ The versioned checkpoint package includes at minimum:
 - checkpoint revision, digest, creation/acceptance time, and the lease that owns the
   next write and terminal action.
 
-The server accepts only monotonic checkpoints for the current lease. Resuming issues a
-new lease and invalidates the old client, preventing two tabs from forking one stake.
+The server accepts only replay-valid checkpoints for the current lease. Resuming issues
+a new lease and invalidates the old client, preventing two tabs from forking one stake.
 Critical decision boundaries checkpoint immediately. Routine checkpoints use a
 configurable cadence; the initial target is no more than three seconds of simulation
 between accepted checkpoints. If interruption occurs between them, the UI states the
 bounded rollback honestly. It never duplicates food, rerolls an offer, escapes a
 verified death, or grants unverified provisional harvest.
+
+Checkpoint writes are compare-and-swap and idempotent over a stable gameplay digest.
+Before presenting a terminal result, the client drains its latest-checkpoint barrier.
+If PostgreSQL committed one or more checkpoints whose HTTP responses were lost, the
+server may rebase the bounded terminal suffix over that newer canonical prefix only
+when the overlapping ticks and actions match exactly under the unchanged lease.
+Forked or oversized transcripts are rejected.
+
+Gameplay decision holds are replay facts, not arbitrary client pause claims. The
+engine grants a one-shot decision-hold entitlement when a genuine offer or portal
+decision resolves; only that entitlement may create the corresponding held state.
+Voluntary tactical pauses continue to use their explicit server-replayable budget.
 
 The resume package reconstructs the simulation from the latest accepted checkpoint,
 then opens held for a deliberate direction. A pending gene/portal decision resumes as
@@ -346,6 +376,8 @@ On authenticated entry, before offering Launch, the app reads the one open sessi
   exact committed Energy and consequence;
 - **active with verified checkpoint:** primary **Continue Run**, with checkpoint age
   or bounded rollback disclosed only when materially stale;
+- **terminal:** automatically advance the secured server outcome into settlement;
+  never offer Continue or Abandon;
 - **settling:** automatically advance the durable settlement and open the canonical
   Results receipt when ready; show manual Retry only after a bounded automatic window
   fails;
@@ -651,15 +683,20 @@ Do not advertise active-run recovery until verified checkpoints are live end to 
 - [ ] Refresh or response loss after a six-Energy start recovers the prepared session
       without a second spend.
 - [ ] Activation records the first verified checkpoint before simulation advances.
+- [ ] Preparing and the ready hold advance neither elapsed time nor gameplay ticks;
+      activation occurs only after the opening checkpoint acknowledgement.
 - [ ] Active checkpoints reproduce deterministic future state, including RNG and
       pending choices, after manifest, bound, monotonicity, and lease validation.
+- [ ] A forged snapshot, pause, decision hold, or raw terminal payload cannot become
+      checkpoint or payout authority without deterministic replay.
 - [ ] Resume invalidates the prior lease and cannot fork, reroll, duplicate, or evade a
       verified outcome.
 - [ ] Refresh, closure, route reset, client crash, device restart, and network loss do
       not terminally close a run.
 - [ ] Only verified death, verified bank, or confirmed abandonment creates a terminal
       outcome; duplicate completion/abandonment is idempotent.
-- [ ] Settling and lost-response states recover the same canonical receipt.
+- [ ] Terminal, settling, and lost-response states recover the same canonical receipt,
+      including when checkpoint or terminal HTTP acknowledgements were lost.
 
 ### C. Results and attention
 

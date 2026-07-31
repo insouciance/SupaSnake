@@ -2,12 +2,15 @@ import type { GameSessionStartPayload } from '@/lib/ftue/launchFlow';
 import {
   SNAKE_RULES_VERSION,
   type SnakeCheckpointV1,
+  type SnakeReplayTrace,
+  type SnakeTerminalReplayProof,
 } from '@/lib/game/SnakeGameLogic';
 
 export type RunContinuityPhase =
   | 'preparing'
   | 'prepared'
   | 'active'
+  | 'terminal'
   | 'settling'
   | 'incompatible'
   | 'legacy';
@@ -59,6 +62,18 @@ export interface ActiveRunView {
   checkpointSavedAt: string | null;
   leaseToken: string | null;
   leaseEpoch: number;
+  startIntent: RunStartRetryIntent | null;
+}
+
+export interface RunStartRetryIntent {
+  v: 1;
+  startRequestId: string;
+  mode: 'earn' | 'free' | 'anomaly' | 'signal';
+  snakeId: string;
+  energyCommitment: number;
+  confirmMaxEnergy: boolean;
+  signalObjectiveId: string | null;
+  ladderRung: number | null;
 }
 
 function responseRecord(value: unknown): Record<string, unknown> {
@@ -71,12 +86,13 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
   const row = responseRecord(value);
   if (
     typeof row.sessionId !== 'string' ||
-    !['preparing', 'prepared', 'active', 'settling', 'incompatible', 'legacy'].includes(String(row.phase))
+    !['preparing', 'prepared', 'active', 'terminal', 'settling', 'incompatible', 'legacy'].includes(String(row.phase))
   ) {
     return null;
   }
   const manifest = responseRecord(row.manifest);
   const checkpoint = responseRecord(row.checkpoint);
+  const startIntent = responseRecord(row.startIntent);
   return {
     sessionId: row.sessionId,
     phase: row.phase as RunContinuityPhase,
@@ -100,7 +116,49 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
       typeof row.checkpointSavedAt === 'string' ? row.checkpointSavedAt : null,
     leaseToken: typeof row.leaseToken === 'string' ? row.leaseToken : null,
     leaseEpoch: Math.max(0, Number(row.leaseEpoch) || 0),
+    startIntent:
+      startIntent.v === 1 &&
+      typeof startIntent.startRequestId === 'string' &&
+      ['earn', 'free', 'anomaly', 'signal'].includes(String(startIntent.mode)) &&
+      typeof startIntent.snakeId === 'string' &&
+      Number.isSafeInteger(startIntent.energyCommitment)
+        ? startIntent as unknown as RunStartRetryIntent
+        : null,
   };
+}
+
+export async function retryPreparingRunStart(
+  accessToken: string,
+  intent: RunStartRetryIntent,
+  fetcher: typeof fetch = fetch
+): Promise<GameSessionStartPayload> {
+  const response = await fetcher('/api/game/session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      action: 'start',
+      startRequestId: intent.startRequestId,
+      mode: intent.mode,
+      snake_id: intent.snakeId,
+      energyCommitment: intent.energyCommitment,
+      confirmMaxEnergy: intent.confirmMaxEnergy,
+      ...(intent.signalObjectiveId
+        ? { signalObjectiveId: intent.signalObjectiveId }
+        : {}),
+      ...(intent.ladderRung !== null ? { ladderRung: intent.ladderRung } : {}),
+    }),
+  });
+  const body = await jsonRecord(response);
+  if (!response.ok) {
+    throw responseError(response, body, 'Could not repair the interrupted launch');
+  }
+  if (body.preparing === true || typeof body.sessionId !== 'string') {
+    throw new Error('Run launch is still preparing');
+  }
+  return body as unknown as GameSessionStartPayload;
 }
 
 export function createRunStartRequestId(): string {
@@ -122,6 +180,51 @@ export function createRunStartRequestId(): string {
     hex.slice(8, 10).join(''),
     hex.slice(10).join(''),
   ].join('-');
+}
+
+export function buildTerminalReplayProof(
+  accepted: SnakeReplayTrace,
+  terminal: SnakeReplayTrace
+): SnakeTerminalReplayProof | null {
+  if (
+    !Number.isSafeInteger(accepted.ticks) ||
+    !Number.isSafeInteger(terminal.ticks) ||
+    terminal.ticks < accepted.ticks ||
+    !Array.isArray(accepted.actions) ||
+    !Array.isArray(terminal.actions) ||
+    terminal.actions.length < accepted.actions.length
+  ) return null;
+  return {
+    fromTick: accepted.ticks,
+    toTick: terminal.ticks,
+    actionOffset: accepted.actions.length,
+    actions: terminal.actions.slice(accepted.actions.length),
+  };
+}
+
+export type TerminalRecoveryDisposition = 'settling' | 'completed' | 'retry';
+
+/** Generic HTTP 409 is not an idempotency receipt. Classify only explicit
+ * durable/canonical contracts as safe to leave the terminal recovery state. */
+export function classifyTerminalRecoveryResponse(
+  status: number,
+  value: unknown
+): TerminalRecoveryDisposition {
+  const body = responseRecord(value);
+  const hasImpact = responseRecord(body.impact).sessionId !== undefined;
+  const pending =
+    body.accepted === true &&
+    body.pendingSettlement === true &&
+    body.clientRetryRequired === false;
+  if (status === 202 && pending) return 'settling';
+  if (status >= 200 && status < 300) {
+    if (pending || hasImpact) return 'settling';
+    return 'completed';
+  }
+  if (status === 409 && body.alreadyEnded === true) {
+    return hasImpact ? 'settling' : 'completed';
+  }
+  return 'retry';
 }
 
 async function jsonRecord(response: Response): Promise<Record<string, unknown>> {

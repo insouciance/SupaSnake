@@ -179,6 +179,56 @@ describe('tab-memory settlement retry queue', () => {
     expect(window.sessionStorage.length).toBe(0);
   });
 
+  it('retains and submits a bounded terminal proof without client-authored facts', async () => {
+    const leaseToken = 'l'.repeat(64);
+    const replay = {
+      fromTick: 8,
+      toTick: 10,
+      actionOffset: 2,
+      actions: [{ tick: 9, kind: 'turn' as const, direction: 'UP' as const }],
+    };
+    enqueueReward(makeEntry({
+      leaseToken,
+      replay,
+      expectedRevision: 3,
+    }));
+    expect(readOutbox()).toHaveLength(1);
+    const fetchFn = jest.fn().mockResolvedValue(response(200, { impact }));
+    await replayRewardOutbox('token', fetchFn);
+    const request = fetchFn.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      action: 'terminal',
+      sessionId: 'session-1',
+      replay,
+      expectedRevision: 3,
+      leaseToken,
+    });
+  });
+
+  it('keeps an unacknowledged checkpoint conflict for recovery', async () => {
+    const replay = {
+      fromTick: 8,
+      toTick: 10,
+      actionOffset: 2,
+      actions: [{ tick: 9, kind: 'turn' as const, direction: 'UP' as const }],
+    };
+    enqueueReward(makeEntry({
+      leaseToken: 'l'.repeat(64),
+      replay,
+      expectedRevision: 3,
+    }));
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, { reason: 'checkpoint_conflict' }))
+      .mockResolvedValueOnce(response(404));
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
   it('drops a stale terminal claim when another tab owns the run lease', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
     enqueueReward(makeEntry({ leaseToken: 'l'.repeat(64) }));

@@ -9,6 +9,8 @@ import {
   isValidStartRequestId,
   readActiveRun,
   RunContinuityError,
+  saveRunCheckpoint,
+  stageRunTerminalIntent,
   validateRunCheckpoint,
 } from './runContinuity';
 import {
@@ -161,7 +163,7 @@ describe('run continuity server contract', () => {
       ruleset: RULESETS.PRIMAL,
       simulationSeed: 'activation-seed',
     });
-    game.start();
+    game.prepare();
     const opening = game.exportCheckpoint(now);
     const manifest = {
       sessionId: 'session-1',
@@ -237,7 +239,10 @@ describe('run continuity server contract', () => {
       ruleset: RULESETS.CYBER,
       simulationSeed: 'server-seed',
     });
-    game.start();
+    game.prepare();
+    const previous = game.exportCheckpoint(now - 1_000);
+    game.activatePrepared(now - 1_000);
+    game.tick();
     const checkpoint = game.exportCheckpoint(now);
     const manifest = {
       sessionId: 'session-1',
@@ -254,13 +259,14 @@ describe('run continuity server contract', () => {
         manifest,
         startedAt: new Date(now - 1_000).toISOString(),
         now,
+        previous,
       })
-    ).toBe(checkpoint);
+    ).toMatchObject({ state: { score: checkpoint.state.score } });
 
     expect(() =>
       validateRunCheckpoint(
         { ...checkpoint, rng: { ...checkpoint.rng, seed: checkpoint.rng.seed + 1 } },
-        { manifest, startedAt: new Date(now - 1_000).toISOString(), now }
+        { manifest, startedAt: new Date(now - 1_000).toISOString(), now, previous }
       )
     ).toThrow('does not match its simulation');
 
@@ -273,7 +279,7 @@ describe('run continuity server contract', () => {
             state: (checkpoint.rng.state + 1) >>> 0,
           },
         },
-        { manifest, startedAt: new Date(now - 1_000).toISOString(), now }
+        { manifest, startedAt: new Date(now - 1_000).toISOString(), now, previous }
       )
     ).toThrow('does not match its simulation');
 
@@ -283,7 +289,7 @@ describe('run continuity server contract', () => {
           ...checkpoint,
           config: { ...checkpoint.config, traits: ['patient'] },
         },
-        { manifest, startedAt: new Date(now - 1_000).toISOString(), now }
+        { manifest, startedAt: new Date(now - 1_000).toISOString(), now, previous }
       )
     ).toThrow('does not match its start manifest');
 
@@ -293,9 +299,175 @@ describe('run continuity server contract', () => {
           ...checkpoint,
           privateState: { ...checkpoint.privateState, elapsedMs: 60_000 },
         },
-        { manifest, startedAt: new Date(now - 1_000).toISOString(), now }
+        { manifest, startedAt: new Date(now - 1_000).toISOString(), now, previous }
       )
     ).toThrow('server time bound');
+  });
+
+  it('rejects a forged free decision hold in replay', () => {
+    const now = Date.now();
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'forged-decision-hold',
+    });
+    game.prepare();
+    const previous = game.exportCheckpoint(now);
+    const forged = JSON.parse(JSON.stringify(previous)) as typeof previous;
+    forged.privateState.replay.actions.push({
+      tick: 0,
+      kind: 'pause',
+      hold: 'decision',
+    });
+    expect(() => validateRunCheckpoint(forged, {
+      manifest: {
+        sessionId: 'forged-hold',
+        simulation: {
+          seed: 'forged-decision-hold',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      startedAt: new Date(now).toISOString(),
+      now,
+      previous,
+    })).toThrow('impossible replay transition');
+  });
+
+  it('uses a stable checkpoint digest when an accepted response is lost', async () => {
+    const now = Date.now();
+    const lease = 'checkpoint-response-loss-lease-token-0001';
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'checkpoint-response-loss',
+    });
+    game.prepare();
+    const opening = game.exportCheckpoint(now - 1_000);
+    game.activatePrepared(now - 1_000);
+    game.tick();
+    const proposal = game.exportCheckpoint(now);
+    const manifest = {
+      sessionId: 'session-loss',
+      simulation: {
+        seed: 'checkpoint-response-loss',
+        version: 1,
+        rulesVersion: SNAKE_RULES_VERSION,
+      },
+      runSnake: { dynasty: 'PRIMAL' },
+    };
+    const baseRow = {
+      id: 'session-loss',
+      start_request_id: START_ID,
+      start_manifest: manifest,
+      continuity_phase: 'active',
+      continuity_activated_at: new Date(now - 1_000).toISOString(),
+      continuity_checkpoint: opening,
+      continuity_checkpoint_revision: 1,
+      continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date(now - 2_000).toISOString(),
+      server_started_at: new Date(now - 2_000).toISOString(),
+      ended_at: null,
+      end_reason: null,
+    };
+    const firstRpc = jest.fn().mockImplementation(async (_name, params) => ({
+      data: { revision: 2, savedAt: new Date(now).toISOString(), digest: params.p_checkpoint_digest },
+      error: null,
+    }));
+    await saveRunCheckpoint(clientWithRowAndRpc(baseRow, firstRpc), {
+      playerId: 'player-1',
+      sessionId: 'session-loss',
+      expectedRevision: 1,
+      checkpoint: proposal,
+      leaseToken: lease,
+      now,
+    });
+    const firstArgs = firstRpc.mock.calls[0][1] as Record<string, unknown>;
+    const retryRpc = jest.fn().mockImplementation(async (_name, params) => ({
+      data: { revision: 2, savedAt: new Date(now).toISOString(), digest: params.p_checkpoint_digest },
+      error: null,
+    }));
+    await saveRunCheckpoint(clientWithRowAndRpc({
+      ...baseRow,
+      continuity_checkpoint: firstArgs.p_checkpoint,
+      continuity_checkpoint_revision: 2,
+      continuity_checkpoint_digest: firstArgs.p_checkpoint_digest,
+    }, retryRpc), {
+      playerId: 'player-1',
+      sessionId: 'session-loss',
+      expectedRevision: 1,
+      checkpoint: proposal,
+      leaseToken: lease,
+      now: now + 5_000,
+    });
+    expect(retryRpc.mock.calls[0][1]).toMatchObject({
+      p_expected_revision: 1,
+      p_checkpoint_digest: firstArgs.p_checkpoint_digest,
+    });
+  });
+
+  it('rebases a terminal suffix over a checkpoint whose response was lost', async () => {
+    const now = Date.now();
+    const lease = 'terminal-rebase-lease-token-with-enough-entropy';
+    const game = new SnakeGameLogic({
+      gridSize: 4,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'terminal-rebase',
+    });
+    game.prepare();
+    const opening = game.exportCheckpoint(now - 1_000);
+    game.activatePrepared(now - 1_000);
+    game.tick();
+    const newerCheckpoint = game.exportCheckpoint(now - 500);
+    game.tick();
+    expect(game.getState().isGameOver).toBe(true);
+    const terminalTrace = game.getReplayTrace();
+    const proof = {
+      fromTick: opening.privateState.replay.ticks,
+      toTick: terminalTrace.ticks,
+      actionOffset: opening.privateState.replay.actions.length,
+      actions: terminalTrace.actions.slice(opening.privateState.replay.actions.length),
+    };
+    const rpc = jest.fn().mockResolvedValue({
+      data: { accepted: true, inserted: true },
+      error: null,
+    });
+    const intent = await stageRunTerminalIntent(clientWithRowAndRpc({
+      id: 'terminal-rebase',
+      start_request_id: START_ID,
+      start_manifest: {
+        sessionId: 'terminal-rebase',
+        simulation: {
+          seed: 'terminal-rebase',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      continuity_phase: 'active',
+      continuity_activated_at: new Date(now - 1_000).toISOString(),
+      continuity_checkpoint: newerCheckpoint,
+      continuity_checkpoint_revision: 2,
+      continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date(now - 2_000).toISOString(),
+      ended_at: null,
+      end_reason: null,
+    }, rpc), {
+      playerId: 'player-1',
+      sessionId: 'terminal-rebase',
+      expectedRevision: 1,
+      leaseToken: lease,
+      replay: proof,
+      now,
+    });
+    expect(intent.facts).not.toHaveProperty('replay');
+    expect(Buffer.byteLength(JSON.stringify(intent.facts), 'utf8'))
+      .toBeLessThanOrEqual(262_144);
+    expect(rpc).toHaveBeenCalledWith(
+      'stage_run_continuity_terminal',
+      expect.objectContaining({ p_expected_revision: 2 })
+    );
   });
 
   it('refuses a checkpoint that rewinds accepted progress', () => {
@@ -357,9 +529,7 @@ describe('run continuity server contract', () => {
       genome,
       simulationSeed: 'genome-simulation-seed',
     });
-    genomeGame.start();
-    genomeGame.grantMutation('loan_shark', 0);
-    genomeGame.grantMutation('time_dilation', 0);
+    genomeGame.prepare();
     const genomeCheckpoint = genomeGame.exportCheckpoint(now);
     const genomeManifest = {
       sessionId: 'genome-session',
@@ -377,14 +547,14 @@ describe('run continuity server contract', () => {
       manifest: genomeManifest,
       startedAt: new Date(now - 1_000).toISOString(),
       now,
-    })).toBe(genomeCheckpoint);
+      opening: true,
+    })).toMatchObject({ config: { genome } });
 
     const legacyGame = new SnakeGameLogic({
       ruleset: RULESETS.PRIMAL,
       simulationSeed: 'legacy-simulation-seed',
     });
-    legacyGame.start();
-    legacyGame.grantMutation('overgrowth', 0);
+    legacyGame.prepare();
     const legacyCheckpoint = legacyGame.exportCheckpoint(now);
     expect(legacyCheckpoint.privateState.fusedView).toEqual({
       loose: [],
@@ -404,7 +574,8 @@ describe('run continuity server contract', () => {
       },
       startedAt: new Date(now - 1_000).toISOString(),
       now,
-    })).toBe(legacyCheckpoint);
+      opening: true,
+    })).toMatchObject({ config: { genome: null } });
   });
 
   it.each([
@@ -546,6 +717,48 @@ describe('run continuity server contract', () => {
       p_session_id: 'preparing-session',
       p_lease_hash: null,
     }));
+  });
+
+  it('lets immutable terminal facts outrank a later rules-version bump', async () => {
+    await expect(readActiveRun(clientWithRowAndRpc({
+      id: 'old-terminal',
+      start_request_id: START_ID,
+      start_manifest: { sessionId: 'old-terminal' },
+      simulation_rules_version: 'snake-rules-older',
+      continuity_phase: 'terminal',
+      continuity_checkpoint: { version: 1 },
+      continuity_checkpoint_revision: 3,
+      continuity_terminal_facts: { score: 12 },
+      continuity_terminal_digest: 'a'.repeat(64),
+      continuity_lease_epoch: 1,
+      energy_committed: 6,
+      started_at: '2026-07-31T10:00:00.000Z',
+      ended_at: null,
+      end_reason: null,
+    }, jest.fn()), 'player-1')).resolves.toMatchObject({
+      phase: 'terminal',
+      canContinue: false,
+      requiresAbandon: false,
+    });
+
+    await expect(readActiveRun(clientWithRowAndRpc({
+      id: 'old-active',
+      start_request_id: START_ID,
+      start_manifest: { sessionId: 'old-active' },
+      simulation_rules_version: 'snake-rules-older',
+      continuity_phase: 'active',
+      continuity_checkpoint: { version: 1 },
+      continuity_checkpoint_revision: 3,
+      continuity_lease_epoch: 1,
+      energy_committed: 6,
+      started_at: '2026-07-31T10:00:00.000Z',
+      ended_at: null,
+      end_reason: null,
+    }, jest.fn()), 'player-1')).resolves.toMatchObject({
+      phase: 'incompatible',
+      canContinue: false,
+      requiresAbandon: true,
+    });
   });
 
   it('classifies a legacy open completed row as settling, not abandonable', async () => {
