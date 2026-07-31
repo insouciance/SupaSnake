@@ -322,21 +322,31 @@ socially consequential run even when it falls outside that window.
 
 ## 6. Clan supporter structure
 
-The requested clan package contains two different ideas and only one fits.
+The requested clan package contains two different ideas, and competition is not
+the reason to separate them.
 
-**The good idea:** one purchase can fund a shared clan identity rather than
-asking every member to subscribe. This supports belonging and makes a small
-clan's public artifacts more distinctive.
+**The strong idea:** one purchase can fund a shared clan identity rather than
+asking every member to subscribe. This supports belonging and makes a clan's
+public artifacts more distinctive.
 
-**The harmful idea:** paid tools that let owners quantify, compare, recruit,
-schedule, or pressure members. SupaSnake's clan is deliberately a witness, not
-an employer. The current battle hides teammate fifth-best thresholds and
-individual contribution details for that reason.
+**The free competitive foundation:** verified member contribution, best-five
+Depth, rank, battle history, recruitment state, and Leader/Co-leader governance
+are core game facts. They must be legible to the clan because comparison,
+responsibility, and earned prestige are part of SupaSnake's long-term appeal.
+Putting those facts or ordinary officer controls behind payment would make
+competitive status less credible, not safer.
+
+**The boundary:** payment may improve shared appearance and Chronicle
+presentation, but it cannot buy authority, private surveillance, automated
+personnel judgment, a stronger roster, or an information advantage. That
+boundary follows Constitution §10's product catalog and never-sold list; it is
+not the retired privacy-by-suppression version of Rule 8.
 
 Therefore:
 
 - Core clan creation, capacity, invites, moderation, Discord linking, battle
-  information, aggregate history, and share assets remain free.
+  information, verified member contribution and rank, aggregate history,
+  ordinary reports/exports, and share assets remain free.
 - There is no “Clan Supporter subscription” at launch.
 - A later Clan Patron Commission is a one-time clan-owned visual entitlement
   under Patronage.
@@ -344,8 +354,10 @@ Therefore:
   or a clan wallet initially.
 - Clan ownership is attached to immutable clan ID, not the payer's membership.
 - The product can expand preset heraldry and public presentation, but never
-  capacity, permissions, matchmaking, Energy, Score, Depth, rewards, member
-  telemetry, or visibility into another member's private performance.
+  capacity, permissions, matchmaking, Energy, Score, Depth, rewards, hidden
+  member telemetry, or access to private non-competitive account data. Battle
+  contribution and rank are not private data to suppress; they are free,
+  server-verified competitive proof.
 - Purchase discovery stays in Shop. The clan screen may render an already-owned
   theme but must not solicit payment.
 
