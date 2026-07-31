@@ -6,7 +6,7 @@
  * Uses useCollection hook for state management + gameStore for charges.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -55,7 +55,7 @@ import type {
 // COMPONENT
 // =============================================================================
 
-export default function LabPage() {
+function LabPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedSpecimenId = searchParams.get('specimen');
@@ -791,5 +791,27 @@ export default function LabPage() {
         />
       )}
     </div>
+  );
+}
+
+function LabPageFallback() {
+  return (
+    <div className="app-bg min-h-screen text-bone-white">
+      <Navigation />
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-fade-up text-center">
+          <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-venom-orange border-t-transparent shadow-glow-sm shadow-venom-orange/50" />
+          <p className="font-body text-beige/70">Loading your collection...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LabPage() {
+  return (
+    <Suspense fallback={<LabPageFallback />}>
+      <LabPageContent />
+    </Suspense>
   );
 }
