@@ -13,7 +13,8 @@ describe('pre-run snake selection boundaries', () => {
 
     expect(handlerStart).toBeGreaterThan(-1);
     expect(handler).toContain('await equipSnake(selectedSnake.id)');
-    expect(handler).toContain("router.push('/game')");
+    expect(handler).toContain('router.push(setupReturnPath)');
+    expect(source).toContain('resolveSafeRunSetupReturnPath(returnTo)');
     expect(handler).not.toMatch(/prepareLaunchHandoff|storeLaunchHandoff|api\/game\/session/);
     expect(source).not.toMatch(/from ['"]@\/lib\/ftue\/launchFlow['"]/);
   });

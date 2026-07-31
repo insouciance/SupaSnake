@@ -69,4 +69,8 @@ describe('run setup navigation draft', () => {
       ladderRung: null,
     });
   });
+
+  it('keeps the legacy plain Setup return route safe', () => {
+    expect(resolveSafeRunSetupReturnPath('/game')).toBe('/game');
+  });
 });

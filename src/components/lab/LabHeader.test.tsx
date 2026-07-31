@@ -21,6 +21,18 @@ describe('LabHeader', () => {
     );
 
     rerender(
+      <LabHeader
+        charge={null}
+        dna={100}
+        returnTo="/game?setupMode=anomaly&setupEnergy=4&setupRung=2"
+      />
+    );
+    expect(screen.getByRole('link', { name: /back to setup/i })).toHaveAttribute(
+      'href',
+      '/game?setupMode=anomaly&setupEnergy=4&setupRung=2'
+    );
+
+    rerender(
       <LabHeader charge={null} dna={100} returnTo="https://attacker.example/game" />
     );
     expect(screen.getByRole('link', { name: /back home/i })).toHaveAttribute('href', '/');

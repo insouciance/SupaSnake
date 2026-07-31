@@ -40,6 +40,7 @@ import {
 import { UnlockConfirmModal } from '@/components/lab/UnlockConfirmModal';
 import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
 import { partitionLabVariants } from '@/components/lab/labPresentation';
+import { resolveSafeRunSetupReturnPath } from '@/lib/game/runSetupDraft';
 
 import type {
   SnakeVariant,
@@ -57,6 +58,7 @@ function LabPageContent() {
   const requestedSpecimenId = searchParams.get('specimen');
   const requestedDynasty = searchParams.get('dynasty')?.toUpperCase() ?? null;
   const returnTo = searchParams.get('returnTo');
+  const setupReturnPath = resolveSafeRunSetupReturnPath(returnTo) ?? '/game';
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
@@ -432,12 +434,13 @@ function LabPageContent() {
       if (selectedSnake.id !== equippedSnake?.id) {
         if (!(await equipSnake(selectedSnake.id))) return;
       }
-      router.push('/game');
+      router.push(setupReturnPath);
     } finally {
       setIsLaunchingSnake(false);
     }
   }, [
     selectedSnake,
+    setupReturnPath,
     isLaunchingSnake,
     equippedSnake?.id,
     equipSnake,

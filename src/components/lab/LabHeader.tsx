@@ -15,6 +15,7 @@ import {
   recognitionHref,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
+import { resolveSafeRunSetupReturnPath } from '@/lib/game/runSetupDraft';
 
 interface LabHeaderProps {
   /** Recovering Energy (§8.6); null hides the readout. */
@@ -26,11 +27,12 @@ interface LabHeaderProps {
 }
 
 export function resolveLabBackLink(returnTo: string | null | undefined): {
-  href: '/game' | '/';
+  href: string;
   label: 'Back to Setup' | 'Back Home';
 } {
-  return returnTo === '/game'
-    ? { href: '/game', label: 'Back to Setup' }
+  const safeSetupPath = resolveSafeRunSetupReturnPath(returnTo);
+  return safeSetupPath
+    ? { href: safeSetupPath, label: 'Back to Setup' }
     : { href: '/', label: 'Back Home' };
 }
 

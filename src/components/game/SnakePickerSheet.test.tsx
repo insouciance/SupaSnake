@@ -94,6 +94,8 @@ describe('SnakePickerSheet', () => {
   });
 
   it('keeps full collection management as a contextual secondary route', () => {
+    const labHref =
+      '/lab?returnTo=%2Fgame%3FsetupMode%3Danomaly%26setupEnergy%3D5%26setupRung%3D3';
     render(
       <SnakePickerSheet
         isOpen
@@ -101,6 +103,7 @@ describe('SnakePickerSheet', () => {
         equippedSnakeId="snake-1"
         selectingSnakeId={null}
         error={null}
+        labHref={labHref}
         onSelect={jest.fn()}
         onClose={jest.fn()}
       />
@@ -108,7 +111,7 @@ describe('SnakePickerSheet', () => {
 
     expect(screen.getByRole('link', { name: /Open Snake Lab/i })).toHaveAttribute(
       'href',
-      '/lab?returnTo=%2Fgame'
+      labHref
     );
     expect(screen.getByRole('link', { name: /Open Snake Lab/i })).not.toHaveClass('underline');
   });

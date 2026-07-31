@@ -87,13 +87,15 @@ describe('RunSetupPanel', () => {
 
   it('opens a local snake chooser while keeping full Lab management contextual', () => {
     const onChooseSnake = jest.fn();
-    render(<RunSetupPanel {...props({ onChooseSnake })} />);
+    const labHref =
+      '/lab?returnTo=%2Fgame%3FsetupMode%3Dearn%26setupEnergy%3D4%26setupRung%3D2';
+    render(<RunSetupPanel {...props({ onChooseSnake, labHref })} />);
 
     fireEvent.click(screen.getByTestId('run-setup-snake-picker-trigger'));
     expect(onChooseSnake).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('link', { name: /Snake Lab/i })).toHaveAttribute(
       'href',
-      '/lab?returnTo=%2Fgame'
+      labHref
     );
     expect(screen.getByRole('link', { name: /Snake Lab/i })).not.toHaveClass('underline');
   });

@@ -54,6 +54,8 @@ export interface RunSetupPanelProps {
     favorite: RunSetupSnake | null
   ) => void;
   favoriteBusyId?: string | null;
+  /** Safe Lab doorway carrying only this unsent setup draft. */
+  labHref?: string;
 }
 
 const DYNASTY_STRAIN: Record<SetupDynasty, StrainId> = {
@@ -286,6 +288,7 @@ export function RunSetupPanel({
   favorites = {},
   onFavoriteDock,
   favoriteBusyId = null,
+  labHref = '/lab?returnTo=%2Fgame',
 }: RunSetupPanelProps) {
   const hasAdjustables =
     Boolean(ladderSelector) ||
@@ -361,7 +364,7 @@ export function RunSetupPanel({
                   <span className="sr-only sm:not-sr-only">Change snake</span>
                 </button>
                 <Link
-                  href="/lab?returnTo=%2Fgame"
+                  href={labHref}
                   aria-label="Snake Lab"
                   className="btn-neutral inline-flex h-11 w-11 min-w-0 items-center justify-center gap-1.5 rounded-full p-0 text-[10px] text-cosmic-glow whitespace-nowrap sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-2 sm:py-2"
                 >

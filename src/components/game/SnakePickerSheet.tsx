@@ -34,6 +34,8 @@ export interface SnakePickerSheetProps {
   error: string | null;
   /** When present, this chooser fills that dynasty's empty cockpit dock. */
   favoriteDynasty?: SetupDynasty | null;
+  /** Safe Lab doorway carrying only this unsent setup draft. */
+  labHref?: string;
   onSelect: (snake: OwnedSnake) => void;
   onClose: () => void;
 }
@@ -153,6 +155,7 @@ export function SnakePickerSheet({
   selectingSnakeId,
   error,
   favoriteDynasty = null,
+  labHref = '/lab?returnTo=%2Fgame',
   onSelect,
   onClose,
 }: SnakePickerSheetProps) {
@@ -286,7 +289,7 @@ export function SnakePickerSheet({
 
       <footer className="border-t border-scale-blue-light/30 px-4 py-3 text-center">
         <Link
-          href="/lab?returnTo=%2Fgame"
+          href={labHref}
           className="btn-neutral inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-4 py-2 text-xs whitespace-nowrap sm:w-auto"
         >
           <IconFlask size={16} />

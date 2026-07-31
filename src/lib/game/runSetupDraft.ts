@@ -101,6 +101,7 @@ export function buildLabSetupHref(input: RunSetupReturnInput): string {
  * duplicate values, fragments and non-/game routes fail closed to Home.
  */
 export function resolveSafeRunSetupReturnPath(value: string | null | undefined): string | null {
+  if (value === '/game') return '/game';
   if (
     !value ||
     value.length > MAX_RETURN_PATH_LENGTH ||
