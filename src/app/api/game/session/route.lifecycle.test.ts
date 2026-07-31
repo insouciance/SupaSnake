@@ -204,7 +204,7 @@ jest.mock('@supabase/supabase-js', () => ({
         calls.push([op, ...args]);
         return builder;
       };
-      for (const op of ['select', 'eq', 'is', 'neq', 'lt', 'gte', 'not', 'in', 'order', 'range']) {
+      for (const op of ['select', 'eq', 'is', 'neq', 'lt', 'gte', 'not', 'in', 'order', 'range', 'limit']) {
         builder[op] = push(op);
       }
       builder.update = (payload: Row) => {
@@ -240,14 +240,18 @@ import { computeRunTotals } from '@/shared/game/rulesets';
 import { STALE_OPEN_MINUTES } from '@/lib/session/lifecycle';
 
 const PLAYER_ID = 'player-1';
+const START_REQUEST_ID = '2f515f00-908b-4f7d-86fb-721db70fed83';
 const FOOD_COUNT = 20;
 const EXPECTED = computeRunTotals('CYBER', FOOD_COUNT);
 
 function post(body: Record<string, unknown>) {
+  const requestBody = body.action === 'start'
+    ? { startRequestId: START_REQUEST_ID, ...body }
+    : body;
   return new NextRequest('http://localhost/api/game/session', {
     method: 'POST',
     headers: { authorization: 'Bearer token', 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 }
 
@@ -656,6 +660,20 @@ describe('an expired session awards nothing and cannot be re-ended for value', (
 });
 
 describe('the forfeit path records `abandoned` / `disconnected`', () => {
+  it('cannot overwrite a completed run whose durable settlement is pending', async () => {
+    seedSession({ ended_at: null, end_reason: 'completed' });
+    const response = await POST(
+      post({ action: 'abandon', sessionId: 'session-1' })
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      alreadyEnded: true,
+      endReason: 'completed',
+    });
+    expect(session().end_reason).toBe('completed');
+    expect(session().ended_at).toBeNull();
+  });
+
   it('records the reason the client asked for', async () => {
     const response = await POST(
       post({ action: 'abandon', sessionId: 'session-1', reason: 'disconnected' })
@@ -722,8 +740,8 @@ describe('the forfeit path records `abandoned` / `disconnected`', () => {
   });
 });
 
-describe('the start path records `abandoned` for a superseded run', () => {
-  it('closes only this player’s stale, never-settled runs', async () => {
+describe('the start path preserves an existing run for explicit recovery', () => {
+  it('never auto-abandons stale or fresh sessions on a new start', async () => {
     const stale = new Date(Date.now() - (STALE_OPEN_MINUTES + 30) * 60_000).toISOString();
     const fresh = new Date(Date.now() - 60_000).toISOString();
     db.game_sessions = [
@@ -734,15 +752,16 @@ describe('the start path records `abandoned` for a superseded run', () => {
       { id: 'theirs', player_id: 'player-2', started_at: stale, ended_at: null, end_reason: null },
     ];
 
-    // No snake_id: the handler stops right after the sweep, which is all this
-    // test is about.
-    const response = await POST(post({ action: 'start', snake_id: undefined }));
-    expect(response.status).toBe(400);
+    const response = await POST(post({
+      action: 'start',
+      snake_id: 'snake-1',
+      energyCommitment: 1,
+    }));
+    expect(response.status).toBe(409);
 
     const byId = Object.fromEntries(db.game_sessions.map((row) => [row.id, row]));
-    expect(byId['mine-stale'].end_reason).toBe('abandoned');
-    expect(byId['mine-stale'].ended_at).not.toBeNull();
-    // Still playable.
+    expect(byId['mine-stale'].end_reason).toBeNull();
+    expect(byId['mine-stale'].ended_at).toBeNull();
     expect(byId['mine-fresh'].ended_at).toBeNull();
     // Still owed (Rule 6).
     expect(byId['mine-pending'].ended_at).toBeNull();

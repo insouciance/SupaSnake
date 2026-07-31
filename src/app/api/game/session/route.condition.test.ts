@@ -223,6 +223,77 @@ jest.mock('@supabase/supabase-js', () => ({
         return { data: [attempt], error: null };
       }
 
+      if (fn === 'finalize_run_continuity_start') {
+        const exempt = p.p_exempt === true;
+        const requested = Number(p.p_commitment ?? 0);
+        const commitment = exempt ? 0 : requested;
+        const multipliers = Array.isArray(p.p_commitment_multipliers_bps)
+          ? p.p_commitment_multipliers_bps as number[]
+          : [10_000, 22_000, 36_000, 52_000, 72_000, 100_000];
+        const multiplierBps = exempt
+          ? 10_000
+          : commitment === 0
+            ? 2_500
+            : Number(multipliers[commitment - 1]);
+        const serverNow = new Date().toISOString();
+        const runState = exempt ? 'exempt' : commitment === 0 ? 'lean' : 'charged';
+        const energy = {
+          state: runState,
+          available: 6 - commitment,
+          capacity: 6,
+          recoveryIntervalSeconds: 3600,
+          recoveryStartedAt: serverNow,
+          nextRecoveryAt: commitment > 0 ? serverNow : null,
+          recoveryProgress: commitment > 0 ? 0 : 1,
+          serverNow,
+          remaining: 6 - commitment,
+          perDay: 6,
+          usedToday: commitment,
+          day: serverNow.slice(0, 10),
+          refillsAt: commitment > 0 ? serverNow : null,
+          committed: commitment,
+          commitmentMultiplierBps: multiplierBps,
+          energyAvailableBefore: 6,
+          energyRecoveredAtStart: 0,
+          visible: p.p_energy_visible === true,
+        };
+        const manifest = {
+          ...((p.p_manifest_base as Row | undefined) ?? {}),
+          sessionId: p.p_session_id,
+          energy,
+          charge: energy,
+        };
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (target) {
+          Object.assign(target, {
+            charge_state: runState,
+            energy_committed: commitment,
+            energy_harvest_multiplier_bps: multiplierBps,
+            energy_available_before: 6,
+            energy_recovered_at_start: 0,
+            energy_recovery_anchor_at: serverNow,
+            energy_commitment_locked_at: serverNow,
+            start_manifest: manifest,
+            continuity_phase: 'prepared',
+          });
+        }
+        return { data: manifest, error: null };
+      }
+
+      if (fn === 'activate_run_continuity') {
+        const target = db.game_sessions.find(
+          (row) => row.id === p.p_session_id && row.player_id === p.p_player_id
+        );
+        if (!target) {
+          return { data: null, error: { message: 'session_not_found' } };
+        }
+        if (target.continuity_phase === 'prepared') {
+          target.continuity_phase = 'active';
+          target.continuity_activated_at = new Date().toISOString();
+        }
+        return { data: target, error: null };
+      }
+
       if (fn === 'commit_run_energy') {
         const exempt = p.p_exempt === true;
         const requested = Number(p.p_commitment ?? 0);
@@ -297,7 +368,13 @@ jest.mock('@supabase/supabase-js', () => ({
 
       const settle = () => {
         if (pendingInsert) {
-          const inserted = { id: `${table}-${rows().length + 1}`, ...pendingInsert };
+          const inserted = {
+            id: `${table}-${rows().length + 1}`,
+            ...(table === 'game_sessions'
+              ? { ended_at: null, end_reason: null, continuity_activated_at: null }
+              : {}),
+            ...pendingInsert,
+          };
           rows().push(inserted);
           pendingInsert = null;
           return { data: [inserted], error: null };
@@ -350,7 +427,7 @@ jest.mock('@supabase/supabase-js', () => ({
 
 import { NextRequest } from 'next/server';
 import { describe, expect, it, beforeEach } from '@jest/globals';
-import { POST } from './route';
+import { GET, POST } from './route';
 import {
   ANOMALY_STRAINS,
   anomalyForWeek,
@@ -368,6 +445,7 @@ const VARIANT_ID = 'variant-1';
 const SERPENT_WEEK_ID = 'week-1';
 const SIGNAL_DAY_ID = 'day-1';
 const SIGNAL_ATTEMPT_ID = 'attempt-1';
+const START_REQUEST_ID = '62b1e42c-c74c-43e5-9437-a994166276e6';
 
 /**
  * The condition both stamped paths are pinned to.
@@ -386,10 +464,20 @@ const WEEK_CONDITION: AnomalyId = 'gold_rush';
 const GOLD_RUSH_SIGNAL_DAY = '2026-08-04';
 
 function post(body: Record<string, unknown>) {
+  const requestBody = body.action === 'start'
+    ? { startRequestId: START_REQUEST_ID, ...body }
+    : body;
   return new NextRequest('http://localhost/api/game/session', {
     method: 'POST',
     headers: { authorization: 'Bearer token', 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
+  });
+}
+
+function get() {
+  return new NextRequest('http://localhost/api/game/session', {
+    method: 'GET',
+    headers: { authorization: 'Bearer token' },
   });
 }
 
@@ -591,6 +679,122 @@ describe('the pinned conditions are still the ones the assertions assume', () =>
   });
 });
 
+describe('server-owned run-start continuity', () => {
+  const startBody = {
+    action: 'start',
+    mode: 'earn',
+    snake_id: SNAKE_ID,
+    energyCommitment: 6,
+    confirmMaxEnergy: true,
+  };
+
+  beforeEach(() => {
+    db.game_sessions = [];
+  });
+
+  it('requires authentication for active-run discovery', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/game/session'));
+    expect(response.status).toBe(401);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('returns the exact frozen manifest after a lost six-Energy response', async () => {
+    const firstResponse = await POST(post(startBody));
+    const first = await firstResponse.json();
+    const retryResponse = await POST(post(startBody));
+    const retry = await retryResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(retryResponse.status).toBe(200);
+    expect(retry).toEqual(first);
+    expect(first.energy.committed).toBe(6);
+    expect(first.simulation).toMatchObject({ version: 1 });
+    expect(first.simulation.seed).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(first.runSnake).toEqual(expect.objectContaining({
+      id: SNAKE_ID,
+      name: 'CYBER SPARK',
+      generation: 1,
+      dynasty: 'CYBER',
+      traits: [],
+      traitSlots: 1,
+    }));
+    expect(
+      rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
+    ).toHaveLength(1);
+  });
+
+  it('rejects the same request id when any material setting changes', async () => {
+    expect((await POST(post(startBody))).status).toBe(200);
+    const conflict = await POST(post({ ...startBody, energyCommitment: 5 }));
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ reason: 'request_conflict' });
+    expect(
+      rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
+    ).toHaveLength(1);
+  });
+
+  it('refuses a second intent while exposing the prepared run for Continue Run', async () => {
+    const first = await (await POST(post(startBody))).json();
+    const second = await POST(post({
+      ...startBody,
+      startRequestId: '34d2f613-7cca-4bca-b617-53fc88fced53',
+    }));
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({
+      reason: 'active_run',
+      activeRun: {
+        phase: 'prepared',
+        canContinue: true,
+        requiresAbandon: false,
+        manifest: first,
+      },
+    });
+  });
+
+  it('GET exposes only a prepared manifest and activation prevents rewind', async () => {
+    const manifest = await (await POST(post(startBody))).json();
+
+    const preparedResponse = await GET(get());
+    expect(preparedResponse.status).toBe(200);
+    expect(preparedResponse.headers.get('cache-control')).toBe('private, no-store');
+    expect(await preparedResponse.json()).toMatchObject({
+      activeRun: {
+        phase: 'prepared',
+        canContinue: true,
+        manifest,
+      },
+    });
+
+    const sessionId = String(manifest.sessionId);
+    const activation = await POST(post({ action: 'activate', sessionId }));
+    expect(activation.status).toBe(200);
+    expect(await activation.json()).toMatchObject({
+      activeRun: {
+        phase: 'active',
+        canContinue: false,
+        requiresAbandon: true,
+        manifest: null,
+      },
+    });
+
+    const active = await (await GET(get())).json();
+    expect(active.activeRun).toMatchObject({
+      phase: 'active',
+      manifest: null,
+      requiresAbandon: true,
+    });
+  });
+
+  it('cannot activate a session outside the authenticated player scope', async () => {
+    const response = await POST(post({
+      action: 'activate',
+      sessionId: 'someone-elses-session',
+    }));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ reason: 'not_found' });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Retired Serpent start; historical Serpent settlement
 // ---------------------------------------------------------------------------
@@ -612,7 +816,7 @@ describe('the Serpent cutover preserves history without creating a separate mode
     expect(response.status).toBe(400);
     expect(body.error).toMatch(/confirm.*maximum energy/i);
     expect(db.game_sessions).toHaveLength(0);
-    expect(rpcCalls.some((call) => call.fn === 'commit_run_energy')).toBe(false);
+    expect(rpcCalls.some((call) => call.fn === 'finalize_run_continuity_start')).toBe(false);
   });
 
   it('passes a confirmed six-Energy commitment to the atomic start RPC', async () => {
@@ -633,7 +837,7 @@ describe('the Serpent cutover preserves history without creating a separate mode
     expect(body.energy.committed).toBe(6);
     expect(body.energy.commitmentMultiplierBps).toBe(100_000);
     expect(rpcCalls).toContainEqual(expect.objectContaining({
-      fn: 'commit_run_energy',
+      fn: 'finalize_run_continuity_start',
       params: expect.objectContaining({ p_commitment: 6, p_exempt: false }),
     }));
   });
@@ -653,7 +857,7 @@ describe('the Serpent cutover preserves history without creating a separate mode
     expect(session().anomaly_id ?? null).toBeNull();
     expect(rpcCalls.some((call) => call.fn === 'ensure_serpent_week')).toBe(false);
     expect(rpcCalls).toContainEqual(expect.objectContaining({
-      fn: 'commit_run_energy',
+      fn: 'finalize_run_continuity_start',
       params: expect.objectContaining({ p_commitment: 1, p_exempt: false }),
     }));
   });

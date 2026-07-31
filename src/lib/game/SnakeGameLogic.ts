@@ -40,8 +40,13 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import {
   FOOD_BASE_SCORE,
   RULESETS,
+  type DynastyName,
   type DynastyRuleset,
 } from '@/shared/game/rulesets';
+import {
+  StatefulRng,
+  type StatefulRngSnapshot,
+} from '@/shared/game/statefulRng';
 import {
   ladderCadence,
   ladderHoldBase,
@@ -491,6 +496,13 @@ interface GameOptions {
    */
   rng?: () => number;
   /**
+   * Server-issued seed for a recoverable ordinary run. Unlike an injected
+   * opaque function, this stream can be checkpointed and resumed exactly.
+   * `rng` remains available for focused tests and authored Training runs;
+   * callers must not provide both.
+   */
+  simulationSeed?: string;
+  /**
    * The equipped snake's traits (Design v2 Phase 3A). Usually injected via
    * setTraits once the session-start response arrives - the server reads
    * them from the snake row, so this is display/physics config, never a
@@ -574,6 +586,68 @@ export interface GenomeEngineConfig {
   };
 }
 
+export const SNAKE_CHECKPOINT_VERSION = 1 as const;
+
+/**
+ * Complete continuation state at a resolved simulation boundary.
+ *
+ * This object becomes resumable only after the server validates its immutable
+ * run binding, live-state shape, time/rate bounds, and monotonic progress, then
+ * stores it under the current exclusive lease. A client export is a transport
+ * proposal, never payout proof. The queue and gesture history are intentionally
+ * absent: a resumed run is held and requires a fresh, deliberate direction.
+ */
+export interface SnakeCheckpointV1 {
+  version: typeof SNAKE_CHECKPOINT_VERSION;
+  engineVersion: 'snake-engine-v1';
+  rng: StatefulRngSnapshot;
+  config: {
+    gridSize: number;
+    initialLength: number;
+    ruleset: DynastyName;
+    traits: TraitId[];
+    mutationPool: MutationId[];
+    anomaly: AnomalyId | null;
+    genome: GenomeEngineConfig | null;
+    growthProfileId: GrowthProfileId;
+    ladderRung: number;
+  };
+  state: GameState;
+  privateState: {
+    speed: number;
+    portalIndex: number;
+    portalsMet: number;
+    fusedView: FusedView;
+    activations: StrainActivations | null;
+    lengthTrace: LengthTrace;
+    petrified: number;
+    ouroborosBites: number;
+    drivenRun: boolean;
+    offerIndex: number;
+    offerTrace: Array<OfferTraceEntry & { resolved: boolean }>;
+    recentOffers: GeneId[][];
+    ticksSinceAnyEat: number;
+    slidThisTick: boolean;
+    warpSkinLastRecharge: number;
+    pocketRiftLastRecharge: number;
+    lastSingularityPullAtFood: number;
+    runEvents: RunEvent[];
+    runEventsTruncated: boolean;
+    elapsedMs: number;
+  };
+}
+
+function checkpointClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function checkpointInteger(value: unknown, label: string, minimum = 0): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+    throw new Error(`Invalid checkpoint ${label}`);
+  }
+  return value as number;
+}
+
 const OPPOSITES: Record<Direction, Direction> = {
   UP: 'DOWN',
   DOWN: 'UP',
@@ -600,6 +674,7 @@ export class SnakeGameLogic {
   private speed: number;
   private ruleset: DynastyRuleset;
   private rng: () => number;
+  private replayableRng: StatefulRng | null = null;
   /**
    * Reused occupancy grid for food placement - see `waveBlockedGrid`. Held on
    * the instance so a wave costs no allocation; sized lazily because
@@ -749,10 +824,18 @@ export class SnakeGameLogic {
   private nearWallSinceMs: number | null = null;
 
   constructor(options: GameOptions = {}) {
+    if (options.rng && options.simulationSeed) {
+      throw new Error('Provide rng or simulationSeed, not both');
+    }
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
     this.initialLength = options.initialLength ?? GAME_CONFIG.snake.initialLength;
     this.ruleset = options.ruleset ?? RULESETS.COSMIC;
-    this.rng = options.rng ?? Math.random;
+    if (options.simulationSeed) {
+      this.replayableRng = StatefulRng.fromSeed(options.simulationSeed);
+      this.rng = () => this.replayableRng!.next();
+    } else {
+      this.rng = options.rng ?? Math.random;
+    }
     // Traits before createInitialState: the mutation cadence roll (Patient)
     // and the Iron Scales charge both depend on them.
     this.traits = [...(options.traits ?? [])];
@@ -778,6 +861,21 @@ export class SnakeGameLogic {
     this.clearDirectionalIntent();
 
     this.state = this.createInitialState();
+  }
+
+  /**
+   * Adopt the server-issued simulation seed before the run starts.
+   * `beginRun` rewinds this source immediately before creating the opening,
+   * so pre-run React configuration order cannot consume a hidden draw.
+   */
+  setSimulationSeed(seed: string): void {
+    if (this.state.isPlaying) return;
+    this.replayableRng = StatefulRng.fromSeed(seed);
+    this.rng = () => this.replayableRng!.next();
+  }
+
+  hasReplayableSimulation(): boolean {
+    return this.replayableRng !== null;
   }
 
   /** True while the run plays under genome rules (server capability). */
@@ -1092,6 +1190,11 @@ export class SnakeGameLogic {
 
   private beginRun(opening: DrivenStartState | null): void {
     this.drivenRun = opening !== null;
+    // A session seed describes the opening, not the incidental number of
+    // pre-run setters React happened to call. Rewind at the single boundary
+    // where simulation begins; opaque injected test RNGs retain their existing
+    // behavior.
+    this.replayableRng?.reset();
     const centerX = Math.floor(this.gridSize / 2);
     const centerZ = Math.floor(this.gridSize / 2);
 
@@ -1324,6 +1427,192 @@ export class SnakeGameLogic {
       lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
       pressureEvents: this.state.pressureEvents.map((e) => ({ ...e })),
     };
+  }
+
+  /** Export a complete checkpoint proposal at a safe, non-terminal boundary. */
+  exportCheckpoint(now = Date.now()): SnakeCheckpointV1 {
+    if (!this.replayableRng) {
+      throw new Error('This run has no replayable simulation seed');
+    }
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isDeathSequence
+    ) {
+      throw new Error('Only a live resolved run can be checkpointed');
+    }
+    const startedAt = this.state.startTime ?? now;
+    return {
+      version: SNAKE_CHECKPOINT_VERSION,
+      engineVersion: 'snake-engine-v1',
+      rng: this.replayableRng.snapshot(),
+      config: {
+        gridSize: this.gridSize,
+        initialLength: this.initialLength,
+        ruleset: this.ruleset.id as DynastyName,
+        traits: [...this.traits],
+        mutationPool: [...this.mutationPool],
+        anomaly: this.anomaly,
+        genome: this.genome ? checkpointClone(this.genome) : null,
+        growthProfileId: this.growth.id,
+        ladderRung: this.ladderRung,
+      },
+      state: checkpointClone(this.getState()),
+      privateState: {
+        speed: this.speed,
+        portalIndex: this.portalIndex,
+        portalsMet: this.portalsMet,
+        fusedView: checkpointClone(this.fusedView),
+        activations: this.activations ? checkpointClone(this.activations) : null,
+        lengthTrace: checkpointClone(this.lengthTrace),
+        petrified: this.petrified,
+        ouroborosBites: this.ouroborosBites,
+        drivenRun: this.drivenRun,
+        offerIndex: this.offerIndex,
+        offerTrace: checkpointClone(this.offerTrace),
+        recentOffers: checkpointClone(this.recentOffers),
+        ticksSinceAnyEat: this.ticksSinceAnyEat,
+        slidThisTick: this.slidThisTick,
+        warpSkinLastRecharge: this.warpSkinLastRecharge,
+        pocketRiftLastRecharge: this.pocketRiftLastRecharge,
+        lastSingularityPullAtFood: this.lastSingularityPullAtFood,
+        runEvents: checkpointClone(this.runEvents),
+        runEventsTruncated: this.runEventsTruncated,
+        elapsedMs: Math.max(0, Math.floor(now - startedAt)),
+      },
+    };
+  }
+
+  /**
+   * Restore a server-verified checkpoint and hold it for deliberate input.
+   * Raw input queues are intentionally discarded; physics/progression state
+   * resumes exactly, but an old flick can never fire after reopening.
+   */
+  restoreCheckpoint(
+    checkpoint: SnakeCheckpointV1,
+    now = Date.now(),
+    options: { replacePreparedOpening?: boolean } = {}
+  ): void {
+    const canReplacePreparedOpening =
+      options.replacePreparedOpening === true &&
+      this.state.isPlaying &&
+      !this.state.isGameOver &&
+      !this.state.isDeathSequence &&
+      this.state.foodEaten === 0 &&
+      this.state.score === 0 &&
+      this.state.dnaCollected === 0;
+    if (this.state.isPlaying && !canReplacePreparedOpening) {
+      throw new Error('Cannot restore over a live engine');
+    }
+    if (
+      checkpoint?.version !== SNAKE_CHECKPOINT_VERSION ||
+      checkpoint.engineVersion !== 'snake-engine-v1' ||
+      !checkpoint.config ||
+      !checkpoint.state ||
+      !checkpoint.privateState ||
+      !Object.prototype.hasOwnProperty.call(RULESETS, checkpoint.config.ruleset)
+    ) {
+      throw new Error('Unsupported or malformed snake checkpoint');
+    }
+    const gridSize = checkpointInteger(checkpoint.config.gridSize, 'gridSize', 4);
+    const initialLength = checkpointInteger(
+      checkpoint.config.initialLength,
+      'initialLength',
+      1
+    );
+    if (
+      !Array.isArray(checkpoint.state.snake) ||
+      checkpoint.state.snake.length === 0 ||
+      checkpoint.state.isGameOver ||
+      !checkpoint.state.isPlaying
+    ) {
+      throw new Error('Checkpoint is not a live run');
+    }
+
+    this.gridSize = gridSize;
+    this.initialLength = initialLength;
+    this.ruleset = RULESETS[checkpoint.config.ruleset];
+    this.traits = [...checkpoint.config.traits];
+    this.mutationPool = [...checkpoint.config.mutationPool];
+    this.anomaly = checkpoint.config.anomaly;
+    this.genome = checkpoint.config.genome
+      ? checkpointClone(checkpoint.config.genome)
+      : null;
+    this.growth = resolveGrowthProfile(checkpoint.config.growthProfileId);
+    this.ladderRung = resolveLadderRung(checkpoint.config.ladderRung);
+    this.replayableRng = StatefulRng.restore(checkpoint.rng);
+    this.rng = () => this.replayableRng!.next();
+
+    this.state = checkpointClone(checkpoint.state);
+    this.state.isGameOver = false;
+    this.state.isDeathSequence = false;
+    this.state.deathPosition = null;
+    const decisionPending =
+      this.state.pendingChoice !== null ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice;
+    this.state.isPaused = !decisionPending;
+    const elapsedMs = checkpointInteger(
+      checkpoint.privateState.elapsedMs,
+      'elapsedMs'
+    );
+    this.state.startTime = now - elapsedMs;
+
+    this.speed = checkpoint.privateState.speed;
+    this.portalIndex = checkpointInteger(
+      checkpoint.privateState.portalIndex,
+      'portalIndex'
+    );
+    this.portalsMet = checkpointInteger(
+      checkpoint.privateState.portalsMet,
+      'portalsMet'
+    );
+    this.fusedView = checkpointClone(checkpoint.privateState.fusedView);
+    this.activations = checkpoint.privateState.activations
+      ? checkpointClone(checkpoint.privateState.activations)
+      : null;
+    this.lengthTrace = checkpointClone(checkpoint.privateState.lengthTrace);
+    this.petrified = checkpointInteger(
+      checkpoint.privateState.petrified,
+      'petrified'
+    );
+    this.ouroborosBites = checkpointInteger(
+      checkpoint.privateState.ouroborosBites,
+      'ouroborosBites'
+    );
+    this.drivenRun = checkpoint.privateState.drivenRun === true;
+    this.offerIndex = checkpointInteger(
+      checkpoint.privateState.offerIndex,
+      'offerIndex'
+    );
+    this.offerTrace = checkpointClone(checkpoint.privateState.offerTrace);
+    this.recentOffers = checkpointClone(checkpoint.privateState.recentOffers);
+    this.ticksSinceAnyEat = checkpointInteger(
+      checkpoint.privateState.ticksSinceAnyEat,
+      'ticksSinceAnyEat'
+    );
+    this.slidThisTick = checkpoint.privateState.slidThisTick === true;
+    this.warpSkinLastRecharge = checkpointInteger(
+      checkpoint.privateState.warpSkinLastRecharge,
+      'warpSkinLastRecharge'
+    );
+    this.pocketRiftLastRecharge = checkpointInteger(
+      checkpoint.privateState.pocketRiftLastRecharge,
+      'pocketRiftLastRecharge'
+    );
+    this.lastSingularityPullAtFood = checkpointInteger(
+      checkpoint.privateState.lastSingularityPullAtFood,
+      'lastSingularityPullAtFood'
+    );
+    this.runEvents = checkpointClone(checkpoint.privateState.runEvents);
+    this.runEventsTruncated = checkpoint.privateState.runEventsTruncated === true;
+
+    this.blockedScratch = null;
+    this.spacedScratch = null;
+    this.clearDirectionalIntent();
+    this.deathCause = null;
+    this.pendingDeathCause = null;
+    this.nearWallSinceMs = null;
   }
 
   /**

@@ -109,6 +109,36 @@ describe('tab-memory settlement retry queue', () => {
     );
   });
 
+  it('carries an in-memory run lease into settlement without persisting it', async () => {
+    const leaseToken = 'l'.repeat(64);
+    enqueueReward(makeEntry({ leaseToken }));
+    const fetchFn = jest.fn().mockResolvedValue(response(200, { impact }));
+
+    await replayRewardOutbox('token', fetchFn);
+
+    const request = fetchFn.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({ leaseToken });
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('drops a stale terminal claim when another tab owns the run lease', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    enqueueReward(makeEntry({ leaseToken: 'l'.repeat(64) }));
+    const fetchFn = jest.fn().mockResolvedValue(
+      response(409, { reason: 'lease_conflict' })
+    );
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 1,
+      remaining: 0,
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(readOutbox()).toEqual([]);
+    consoleError.mockRestore();
+  });
+
   it('keeps transient failures and drops permanent rejection', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
     enqueueReward(makeEntry({ sessionId: 'transient' }));

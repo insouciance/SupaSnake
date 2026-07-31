@@ -43,6 +43,8 @@ export interface RewardOutboxEntry {
     max_chain: number;
   };
   genome?: GameOverGenome;
+  /** In-memory exclusive lease for continuity-era runs; never persisted. */
+  leaseToken?: string;
   timestamp: number;
 }
 
@@ -75,7 +77,9 @@ function isValidEntry(value: unknown): value is RewardOutboxEntry {
     (entry.cosmic === undefined ||
       (typeof entry.cosmic === 'object' && entry.cosmic !== null)) &&
     (entry.genome === undefined ||
-      (typeof entry.genome === 'object' && entry.genome !== null))
+      (typeof entry.genome === 'object' && entry.genome !== null)) &&
+    (entry.leaseToken === undefined ||
+      (typeof entry.leaseToken === 'string' && entry.leaseToken.length >= 32))
   );
 }
 
@@ -109,17 +113,32 @@ async function responseImpact(
   entry: RewardOutboxEntry,
   token: string,
   fetchFn: typeof fetch
-): Promise<{ impact: RunImpactEnvelope | null; securedPending: boolean }> {
+): Promise<{
+  impact: RunImpactEnvelope | null;
+  securedPending: boolean;
+  leaseConflict: boolean;
+}> {
   try {
     const body = await response.json();
+    if (
+      body &&
+      typeof body === 'object' &&
+      (body as Record<string, unknown>).reason === 'lease_conflict'
+    ) {
+      // This tab no longer owns the run. Retrying the stale terminal claim can
+      // never succeed and must not be mistaken for an idempotent settlement.
+      return { impact: null, securedPending: false, leaseConflict: true };
+    }
     const direct = parseImpactFromSettlement(body);
-    if (direct) return { impact: direct, securedPending: false };
+    if (direct) {
+      return { impact: direct, securedPending: false, leaseConflict: false };
+    }
     // A 202 with this exact server contract means the immutable result is
     // already in the durable ingress. The browser must stop retrying and, for
     // a retired persisted queue, delete its local copy immediately. Receipt
     // recovery belongs to the server and may not exist until schema 061.
     if (isDurablyPendingSettlement(body)) {
-      return { impact: null, securedPending: true };
+      return { impact: null, securedPending: true, leaseConflict: false };
     }
   } catch {
     // A legacy or empty duplicate response still has a recovery path.
@@ -127,6 +146,7 @@ async function responseImpact(
   return {
     impact: await recoverRunImpact(entry.sessionId, token, fetchFn),
     securedPending: false,
+    leaseConflict: false,
   };
 }
 
@@ -209,14 +229,22 @@ async function submitEntry(
           ? { phoenix_triggered_at_food: entry.phoenix_triggered_at_food }
           : {}),
         ...(entry.genome !== undefined ? { genome: entry.genome } : {}),
+        ...(entry.leaseToken !== undefined ? { leaseToken: entry.leaseToken } : {}),
       }),
     });
 
     if (response.ok || response.status === 409) {
       const impactResult = await responseImpact(response, entry, token, fetchFn);
+      if (impactResult.leaseConflict) {
+        console.error(
+          `Settlement retry lost its run lease; dropping stale session ${entry.sessionId}`
+        );
+        return { status: 'rejected' };
+      }
       return {
         status: 'settled',
-        ...impactResult,
+        impact: impactResult.impact,
+        securedPending: impactResult.securedPending,
       };
     }
     if (response.status === 401 || response.status >= 500) {

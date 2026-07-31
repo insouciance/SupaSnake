@@ -26,7 +26,7 @@ describe('Game Session Logic', () => {
       expect(source).not.toMatch(/player\.energy/);
       expect(source).not.toMatch(/energy_regen_at/);
       expect(source).toMatch(/requestedEnergyCommitment < 0/);
-      expect(source).toMatch(/zero remains a valid lean run/);
+      expect(source).toMatch(/explicit zero-Energy run remains available/);
     });
 
     it('commits Energy through the atomic server wrapper', () => {
@@ -36,10 +36,12 @@ describe('Game Session Logic', () => {
       );
       // One call, to the atomic server RPC wrapper - never an arithmetic
       // read-modify-write on a column in this route.
-      expect(source).toMatch(/commitRunEnergy\(/);
+      expect(source).toMatch(/finalizeRunStart\(/);
+      expect(source).toMatch(/stageRunStartFinalization\(/);
       expect(source).toMatch(/requestedEnergyCommitment/);
       expect(source).toMatch(/confirmMaxEnergy/);
       expect(source).not.toMatch(/energy: newEnergy/);
+      expect(source).not.toMatch(/commitRunEnergy\(/);
     });
 
     it('stamps how the run settles on the session row, at start', () => {
@@ -47,10 +49,11 @@ describe('Game Session Logic', () => {
         path.join(__dirname, 'route.ts'),
         'utf8'
       );
-      expect(source).toMatch(/charge_state: charge\.state/);
-      // The stamp is written after the session insert, so a failed insert
-      // can never burn a charge for a run that did not happen.
-      expect(source.indexOf('charge_state: charge.state')).toBeGreaterThan(
+      expect(source).toMatch(/start_request_id: startRequestId/);
+      expect(source).toMatch(/continuity_phase: 'preparing'/);
+      // Finalization follows the session insert and delegates Energy + the
+      // immutable manifest to one database transaction.
+      expect(source.indexOf('finalizeRunStart(supabase')).toBeGreaterThan(
         source.indexOf('.from(\'game_sessions\')')
       );
     });
