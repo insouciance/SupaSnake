@@ -258,11 +258,21 @@ BEGIN
     (620, v_co_player, v_clan),
     (620, v_applicant_player, v_clan),
     (620, v_invitee_player, v_clan);
+  -- These rows are foreign-key anchors for historical clan results, not live
+  -- earning runs. Insert them open as required by the atomic reward guard,
+  -- then terminalize them before a later fixture reuses the same player.
   INSERT INTO game_sessions(id, player_id)
   VALUES
     ('06200000-0000-0000-0002-000000000001', v_co_player),
     ('06200000-0000-0000-0002-000000000002', v_applicant_player),
     ('06200000-0000-0000-0002-000000000003', v_invitee_player);
+  UPDATE game_sessions
+     SET ended_at = NOW(), end_reason = 'abandoned'
+   WHERE id IN (
+     '06200000-0000-0000-0002-000000000001',
+     '06200000-0000-0000-0002-000000000002',
+     '06200000-0000-0000-0002-000000000003'
+   );
   INSERT INTO clan_energy_contributions(
     battle_id, side_id, clan_id, player_id, session_id, score,
     energy_committed, commitment_multiplier_bps, snake_generation,
@@ -508,6 +518,13 @@ BEGIN
     ('06200000-0000-0000-0002-000000000004', v_co_player),
     ('06200000-0000-0000-0002-000000000005', v_applicant_player),
     ('06200000-0000-0000-0002-000000000006', v_invitee_player);
+  UPDATE game_sessions
+     SET ended_at = NOW(), end_reason = 'abandoned'
+   WHERE id IN (
+     '06200000-0000-0000-0002-000000000004',
+     '06200000-0000-0000-0002-000000000005',
+     '06200000-0000-0000-0002-000000000006'
+   );
   INSERT INTO clan_energy_contributions(
     battle_id, side_id, clan_id, player_id, session_id, score,
     energy_committed, commitment_multiplier_bps, snake_generation,
@@ -606,6 +623,9 @@ BEGIN
   ) VALUES (v_legacy_side, v_legacy_battle, 619, v_clan, 1, 40, 'bye');
   INSERT INTO game_sessions(id, player_id)
   VALUES ('06200000-0000-0000-0002-000000000009', v_applicant_player);
+  UPDATE game_sessions
+     SET ended_at = NOW(), end_reason = 'abandoned'
+   WHERE id = '06200000-0000-0000-0002-000000000009';
   INSERT INTO clan_energy_contributions(
     battle_id, side_id, clan_id, player_id, session_id, score,
     energy_committed, commitment_multiplier_bps, snake_generation,
@@ -647,6 +667,12 @@ BEGIN
   VALUES
     ('06200000-0000-0000-0002-000000000007', v_applicant_player),
     ('06200000-0000-0000-0002-000000000008', v_invitee_player);
+  UPDATE game_sessions
+     SET ended_at = NOW(), end_reason = 'abandoned'
+   WHERE id IN (
+     '06200000-0000-0000-0002-000000000007',
+     '06200000-0000-0000-0002-000000000008'
+   );
   INSERT INTO clan_energy_contributions(
     battle_id, side_id, clan_id, player_id, session_id, score,
     energy_committed, commitment_multiplier_bps, snake_generation,

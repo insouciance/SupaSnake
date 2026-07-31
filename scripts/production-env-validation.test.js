@@ -73,38 +73,141 @@ describe('production environment validation', () => {
     }
   });
 
-  it('uses the reviewed cohesive migration and cron-ownership rollout', () => {
+  it('uses Preview-only preflight and one deliberate Production cutover', () => {
     const workflow = readFileSync(
       join(process.cwd(), '.github/workflows/deploy-production.yml'),
       'utf8'
     );
     const migrationSet =
       '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql';
-    expect(workflow).toContain(`\"$actual\" = \"${migrationSet}\"`);
+    expect(workflow).toContain(`\"$actual\" = '${migrationSet}'`);
     expect(workflow).toContain('rollout=cohesive-ux-initial');
     expect(workflow).toContain('rollout=cohesive-ux-resume');
 
-    const snapshotAt = workflow.indexOf('name: Snapshot production cron ownership');
-    const bridgeAt = workflow.indexOf('name: Apply cohesive UX bridge migrations');
-    const stageAt = workflow.indexOf('name: Build and stage application in Vercel');
-    const stagedCronAt = workflow.indexOf('name: Verify cron definitions after staging');
-    const promotedCronAt = workflow.indexOf(
-      'name: Prove promoted deployment owns the reviewed cron schedule'
+    const snapshotAt = workflow.indexOf('name: Snapshot exact outgoing cron state');
+    const previewAt = workflow.indexOf('name: Build isolated Preview artifact');
+    const previewBoundaryAt = workflow.indexOf(
+      'name: Prove Preview cannot own production cron'
     );
-    const restoreCronAt = workflow.indexOf(
-      'name: Restore outgoing cron ownership after an unpromoted failure'
+    const bridgeAt = workflow.indexOf('name: Apply cohesive UX bridge migrations');
+    const linkedProbeAt = workflow.indexOf(
+      'name: Probe linked cohesive schema read-only'
+    );
+    const bridgeBoundaryAt = workflow.indexOf(
+      'name: Prove bridge push left production cron unchanged'
+    );
+    const previewSmokeAt = workflow.indexOf(
+      'name: Smoke exact Preview on final bridge schema'
+    );
+    const productionAt = workflow.indexOf(
+      'name: Create deliberate Production deployment and cut over'
+    );
+    const productionCronAt = workflow.indexOf(
+      'name: Prove exact Production deployment owns reviewed cron schedule'
+    );
+    const incidentAt = workflow.indexOf(
+      'name: Classify production state after cutover attempt'
     );
     expect(snapshotAt).toBeGreaterThan(-1);
-    expect(bridgeAt).toBeGreaterThan(snapshotAt);
-    expect(stageAt).toBeGreaterThan(bridgeAt);
-    expect(stagedCronAt).toBeGreaterThan(stageAt);
-    expect(promotedCronAt).toBeGreaterThan(stagedCronAt);
-    expect(restoreCronAt).toBeGreaterThan(promotedCronAt);
+    expect(previewAt).toBeGreaterThan(snapshotAt);
+    expect(previewBoundaryAt).toBeGreaterThan(previewAt);
+    expect(bridgeAt).toBeGreaterThan(previewBoundaryAt);
+    expect(linkedProbeAt).toBeGreaterThan(bridgeAt);
+    expect(bridgeBoundaryAt).toBeGreaterThan(linkedProbeAt);
+    expect(previewSmokeAt).toBeGreaterThan(bridgeBoundaryAt);
+    expect(productionAt).toBeGreaterThan(previewSmokeAt);
+    expect(productionCronAt).toBeGreaterThan(productionAt);
+    expect(incidentAt).toBeGreaterThan(productionCronAt);
+
+    const previewBlock = workflow.slice(previewAt, previewBoundaryAt);
+    expect(previewBlock).toContain('npx vercel@56.3.1 deploy');
+    expect(previewBlock).not.toContain('--prod');
+    expect(previewBlock).toContain("deployment_target=$(printf '%s'");
+    expect(previewBlock).toContain("[ \"$deployment_target\" != 'preview' ]");
     expect(workflow).toContain(
-      'https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID'
+      "steps.migration_plan.outputs.rollout == 'standard' || steps.migration_plan.outputs.rollout == 'none'"
     );
-    expect(workflow).toContain('.crons.deploymentId == $deployment');
-    expect(workflow).toContain("failure() && steps.app.outputs.id != ''");
+
+    const productionBlock = workflow.slice(productionAt, productionCronAt);
+    expect(productionBlock).toContain('--prod');
+    expect(workflow).not.toMatch(/^\s+--skip-domain(?:\s|$)/m);
+    expect(workflow).not.toContain('vercel@56.3.1 promote');
+    expect(workflow).not.toContain('Restore outgoing cron ownership');
+    expect(workflow).toContain(
+      "always() && steps.production_attempt.outputs.started == 'true'"
+    );
+  });
+
+  it('runs fixture SQL only on isolated Supabase and a distinct hosted read-only probe', () => {
+    const production = readFileSync(
+      join(process.cwd(), '.github/workflows/deploy-production.yml'),
+      'utf8'
+    );
+    const e2e = readFileSync(
+      join(process.cwd(), '.github/workflows/e2e.yml'),
+      'utf8'
+    );
+    const localHarness = readFileSync(
+      join(process.cwd(), 'scripts/run-local-sql-contracts.sh'),
+      'utf8'
+    );
+    const linkedHarness = readFileSync(
+      join(process.cwd(), 'scripts/probe-linked-cohesive-schema.sh'),
+      'utf8'
+    );
+    const linkedProbe = readFileSync(
+      join(process.cwd(), 'supabase/tests/cohesive_release_read_only.sql'),
+      'utf8'
+    );
+
+    expect(production).toContain(
+      'name: Run isolated SQL contracts, including two-session races'
+    );
+    expect(production).toContain('bash scripts/run-local-sql-contracts.sh');
+    expect(e2e).toContain('sql-contracts:');
+    expect(e2e).toContain('bash scripts/run-local-sql-contracts.sh');
+    expect(e2e).toContain('needs: [sql-contracts, e2e-matrix]');
+
+    expect(localHarness).toContain('127.0.0.1:54322');
+    expect(localHarness).toContain('localhost:54322');
+    expect(localHarness).toContain('supabase/tests/062_competitive_clans.sql');
+    expect(localHarness).toContain('supabase/tests/063_run_continuity.sql');
+    expect(localHarness).toContain('supabase/tests/064_atomic_dynasty_favorites.sql');
+    expect(localHarness).toContain(
+      'supabase/tests/064_atomic_dynasty_favorites_concurrency.sql'
+    );
+    expect(localHarness).not.toContain('supabase/tests/059_energy_commitment.sql');
+    expect(localHarness).not.toContain('supabase/tests/061_career_spine.sql');
+    expect(localHarness).not.toContain('supabase/tests/061_game_reward_concurrency.sql');
+    expect(localHarness).toContain('@supabase_db_${project_id}:5432');
+    expect(localHarness).toContain('-v dblink_conn="$dblink_database_url"');
+
+    expect(linkedHarness).toContain("read_only: true");
+    expect(linkedHarness).toContain('cohesive_release_read_only_v1');
+    expect(linkedHarness).toContain('| length == 1');
+    expect(linkedHarness).toContain(
+      'supabase/tests/cohesive_release_read_only.sql'
+    );
+    expect(linkedHarness).not.toContain('062_competitive_clans.sql');
+    expect(linkedHarness).not.toContain('063_run_continuity.sql');
+    expect(linkedHarness).not.toContain('064_atomic_dynasty_favorites.sql');
+    expect(linkedProbe).toContain('BEGIN TRANSACTION READ ONLY;');
+    expect(linkedProbe).toContain('COMMIT;');
+    expect(linkedProbe).not.toMatch(/^\s*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/im);
+  });
+
+  it('fails closed unless cron definitions, owner, host, and enabled state are exact', () => {
+    const verifier = readFileSync(
+      join(process.cwd(), 'scripts/verify-vercel-cron-state.sh'),
+      'utf8'
+    );
+    expect(verifier).toContain('[.crons[] | {path, schedule}]');
+    expect(verifier).toContain('[.crons.definitions[] | {path, schedule}]');
+    expect(verifier).toContain('.crons.deploymentId == $deployment');
+    expect(verifier).toContain('.crons.enabledAt != null');
+    expect(verifier).toContain('.crons.disabledAt == null');
+    expect(verifier).toContain('all(. == $host)');
+    expect(verifier).toContain('EXPECTED_CRON_DEFINITIONS_SHA');
   });
 
   it('accepts a complete test-mode production contract', () => {
