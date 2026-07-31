@@ -1026,6 +1026,10 @@ describe('SnakeGameLogic', () => {
       const cosmic = new SnakeGameLogic({
         gridSize: 120,
         ruleset: RULESETS.COSMIC,
+        // COSMIC grows deterministic terrain. A fixed RNG keeps this hold
+        // budget assertion about body thresholds rather than a random block
+        // occasionally ending the straight-line fixture first.
+        rng: () => 0.5,
       });
       cosmic.start();
       expect(cosmic.getState().holdBudget).toBe(

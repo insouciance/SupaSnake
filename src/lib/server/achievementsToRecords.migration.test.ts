@@ -230,10 +230,15 @@ describe('Migration 042: earned achievements become Legacy Records (Rule 6)', ()
 // ---------------------------------------------------------------------------
 
 describe('F-6: refresh_player_records is monotonic (Rule 6)', () => {
-  const live = liveFunctionBody('refresh_player_records');
+  const live = liveFunctionBody('refresh_player_records_at_session');
+  const compatibilityWrapper = liveFunctionBody('refresh_player_records');
 
-  it('the live definition is the one this work package ships', () => {
-    expect(live.migration).toBe('042_achievements_to_records.sql');
+  it('the live cutoff-aware definition is the durable settlement version', () => {
+    expect(live.migration).toBe('061_career_spine.sql');
+    expect(compatibilityWrapper.migration).toBe('061_career_spine.sql');
+    expect(compatibilityWrapper.body).toMatch(
+      /refresh_player_records_at_session\(p_player_id, NULL\)/
+    );
   });
 
   it('guards both value and tier with GREATEST on the upsert', () => {
@@ -308,7 +313,7 @@ describe('F-6: refresh_player_records is monotonic (Rule 6)', () => {
 // ---------------------------------------------------------------------------
 
 describe('F-6a: crowned reads a settlement snapshot, not current membership', () => {
-  const live = liveFunctionBody('refresh_player_records');
+  const live = liveFunctionBody('refresh_player_records_at_session');
 
   it('adds the roster snapshot column and fills it at settlement', () => {
     expect(sql).toMatch(
