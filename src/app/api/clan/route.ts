@@ -4,7 +4,7 @@
  * GET ?view=directory&q=&policy=&hasSpace=  searchable factual directory
  * GET ?view=full                              roster/governance/Glory state
  * GET ?view=config                            quoted founding/Glory terms
- * GET ?playerId=                              public clan membership bridge
+ * GET ?playerId=                              authenticated own-membership bridge
  *
  * POST actions: found, apply, join_by_code, invite, approve_application,
  * reject_application, respond_invite, leave, remove_member, set_role,
@@ -38,11 +38,37 @@ import { isMissingDiscordInfra } from '@/lib/server/discord';
 import { isMissingClanRework, loadClanDirectory } from '@/lib/server/clanHunt';
 import { energyBattleCycleAt } from '@/shared/game/clanEnergyBattle';
 import { identityFromRow, type PlayerIdentityRow } from '@/lib/identity/types';
+import {
+  isValidClanBannerId,
+  isValidClanColor,
+  isValidClanEmblemId,
+} from '@/lib/clan/heraldry';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
+/** Public/member-safe clan fields. Authority artifacts such as invite_code
+ * are deliberately absent and are projected separately for recruiters. */
+const CLAN_SAFE_FIELD_NAMES = [
+  'id', 'name', 'tag', 'member_count', 'max_members',
+  'join_policy', 'banner_id', 'emblem_id', 'color_primary',
+  'color_secondary', 'best_week_depth', 'lifetime_depth', 'created_at',
+  'updated_at', 'disbanded_at',
+] as const;
+const CLAN_SAFE_COLUMNS = CLAN_SAFE_FIELD_NAMES.join(',');
+
+function safeClanProjection(value: unknown): Record<string, unknown> | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (!candidate || typeof candidate !== 'object') return null;
+  const row = candidate as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  for (const field of CLAN_SAFE_FIELD_NAMES) {
+    if (Object.prototype.hasOwnProperty.call(row, field)) safe[field] = row[field];
+  }
+  return safe;
+}
 
 interface ErrorLike {
   code?: string;
@@ -96,6 +122,8 @@ const CLAN_RPC_ERRORS: Record<string, { status: number; error: string }> = {
   insufficient_dna: { status: 409, error: 'Not enough DNA to found this clan' },
   heraldry_locked: { status: 403, error: 'Heraldry is not editable yet' },
   glory_source_battle_not_found: { status: 409, error: 'No eligible source battle exists' },
+  glory_source_not_final: { status: 409, error: 'Glory opens after the battle result is final' },
+  glory_boundary_not_open: { status: 409, error: 'Glory opens during the battle intermission' },
   glory_boundary_passed: { status: 409, error: 'That Glory boundary has passed' },
   glory_not_eligible: { status: 409, error: 'That member is not yet Glory-eligible' },
   glory_tenure_required: { status: 409, error: 'That member has not met the Glory tenure term' },
@@ -236,7 +264,7 @@ async function fullClanView(userId: string): Promise<NextResponse> {
   const role = asClanRole(membership.role);
   const { data: clan, error: clanError } = await supabase
     .from('clans')
-    .select('*')
+    .select(CLAN_SAFE_COLUMNS)
     .eq('id', membership.clan_id)
     .single();
   if (clanError || !clan) {
@@ -413,11 +441,25 @@ async function fullClanView(userId: string): Promise<NextResponse> {
     };
   }
 
-  const clanRow = clan as Record<string, unknown>;
-  const inviteCode = (clanRow.invite_code as string | null) ?? null;
+  const clanRow = clan as unknown as Record<string, unknown>;
+  const safeClan = safeClanProjection(clan);
+  const canInvite = CLAN_PERMISSIONS[role].invite;
+  let inviteCode: string | null = null;
+  if (canInvite) {
+    const { data: inviteClan, error: inviteCodeError } = await supabase
+      .from('clans')
+      .select('invite_code')
+      .eq('id', membership.clan_id)
+      .single();
+    if (inviteCodeError) {
+      reportError('invite code read', inviteCodeError, { clanId: membership.clan_id, userId });
+      return NextResponse.json({ error: 'Failed to load clan invitation' }, { status: 503 });
+    }
+    inviteCode = (inviteClan?.invite_code as string | null) ?? null;
+  }
   const ownRoster = roster.find((entry) => entry.userId === userId);
   return NextResponse.json({
-    clan,
+    clan: safeClan,
     membership: {
       clanId: membership.clan_id,
       role,
@@ -496,24 +538,35 @@ export async function GET(request: NextRequest) {
     }
 
     if (playerId) {
+      const auth = await authenticatedUser(request);
+      if (auth.error) return auth.error;
+      if (auth.userId !== playerId) {
+        return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+      }
       const { data: membership, error } = await supabase
         .from('clan_members')
-        .select('clan_id, role, joined_at, clans:clan_id(*)')
-        .eq('player_id', playerId)
+        .select(`clan_id, role, joined_at, clans:clan_id(${CLAN_SAFE_COLUMNS})`)
+        .eq('player_id', auth.userId)
         .maybeSingle();
       if (error && !isMissingClanRework(error)) {
-        reportError('player clan read', error, { playerId });
+        reportError('player clan read', error, { playerId: auth.userId });
         return NextResponse.json({ error: 'Failed to load membership' }, { status: 503 });
       }
       if (!membership) return NextResponse.json({ clan: null });
-      const role = asClanRole(membership.role);
+      const membershipRow = membership as unknown as {
+        clan_id: string;
+        role: unknown;
+        joined_at: string;
+        clans: unknown;
+      };
+      const role = asClanRole(membershipRow.role);
       return NextResponse.json({
-        clan: membership.clans,
+        clan: safeClanProjection(membershipRow.clans),
         membership: {
-          clanId: membership.clan_id,
+          clanId: membershipRow.clan_id,
           role,
           roleLabel: CLAN_ROLE_LABELS[role],
-          joinedAt: membership.joined_at,
+          joinedAt: membershipRow.joined_at,
         },
       });
     }
@@ -575,14 +628,28 @@ export async function POST(request: NextRequest) {
           );
         }
         const optional = (value: unknown) => requiredString(value);
+        const bannerId = optional(body.bannerId);
+        const emblemId = optional(body.emblemId);
+        const colorPrimary = optional(body.colorPrimary)?.toLowerCase() ?? null;
+        const colorSecondary = optional(body.colorSecondary)?.toLowerCase() ?? null;
+        if (bannerId !== null && !isValidClanBannerId(bannerId)) {
+          return NextResponse.json({ error: 'Invalid banner', code: 'invalid_banner' }, { status: 400 });
+        }
+        if (emblemId !== null && !isValidClanEmblemId(emblemId)) {
+          return NextResponse.json({ error: 'Invalid emblem', code: 'invalid_emblem' }, { status: 400 });
+        }
+        if ((colorPrimary !== null && !isValidClanColor(colorPrimary))
+          || (colorSecondary !== null && !isValidClanColor(colorSecondary))) {
+          return NextResponse.json({ error: 'Invalid color', code: 'invalid_color' }, { status: 400 });
+        }
         const { data, error } = await supabase.rpc('found_clan', {
           p_user_id: userId,
           p_name: name,
           p_tag: tag || null,
-          p_banner_id: optional(body.bannerId),
-          p_emblem_id: optional(body.emblemId),
-          p_color_primary: optional(body.colorPrimary),
-          p_color_secondary: optional(body.colorSecondary),
+          p_banner_id: bannerId,
+          p_emblem_id: emblemId,
+          p_color_primary: colorPrimary,
+          p_color_secondary: colorSecondary,
           p_founding_cost: CLAN_ECONOMY_CONFIG.foundingDnaCost,
         });
         if (error) {
@@ -752,14 +819,28 @@ export async function POST(request: NextRequest) {
 
       case 'update_identity': {
         const optional = (value: unknown) => requiredString(value);
+        const bannerId = optional(body.bannerId);
+        const emblemId = optional(body.emblemId);
+        const colorPrimary = optional(body.colorPrimary)?.toLowerCase() ?? null;
+        const colorSecondary = optional(body.colorSecondary)?.toLowerCase() ?? null;
+        if (bannerId !== null && !isValidClanBannerId(bannerId)) {
+          return NextResponse.json({ error: 'Invalid banner', code: 'invalid_banner' }, { status: 400 });
+        }
+        if (emblemId !== null && !isValidClanEmblemId(emblemId)) {
+          return NextResponse.json({ error: 'Invalid emblem', code: 'invalid_emblem' }, { status: 400 });
+        }
+        if ((colorPrimary !== null && !isValidClanColor(colorPrimary))
+          || (colorSecondary !== null && !isValidClanColor(colorSecondary))) {
+          return NextResponse.json({ error: 'Invalid color', code: 'invalid_color' }, { status: 400 });
+        }
         return callClanRpc(
           'set_clan_heraldry',
           {
             p_user_id: userId,
-            p_banner_id: optional(body.bannerId),
-            p_emblem_id: optional(body.emblemId),
-            p_color_primary: optional(body.colorPrimary),
-            p_color_secondary: optional(body.colorSecondary),
+            p_banner_id: bannerId,
+            p_emblem_id: emblemId,
+            p_color_primary: colorPrimary,
+            p_color_secondary: colorSecondary,
           },
           'Clan identity',
           userId

@@ -7,6 +7,7 @@ import type { ClanJoinPolicy } from '@/lib/clan/types';
 import { emblemById } from '@/lib/clan/heraldry';
 import { formatWeekStart } from '@/lib/serpent/briefing';
 import { IconShield } from '@/components/ui/icons';
+import { clanReportHref } from '@/lib/clan/report';
 import type { ClanDirectoryRow as DirectoryRow } from './useClanFull';
 
 export type ClanDirectoryRow = DirectoryRow;
@@ -225,13 +226,20 @@ export function ClanDirectory({
                       </div>
                     </div>
                   </div>
-                  <div className="flex min-h-[44px] shrink-0 items-center sm:justify-end">
+                  <div className="flex min-h-[44px] shrink-0 items-center gap-3 sm:justify-end">
                     <MembershipAction
                       clan={clan}
                       pending={pendingClanIds.has(clan.id)}
                       busy={busyClanId === clan.id}
                       onRequest={onRequestMembership}
                     />
+                    <a
+                      href={clanReportHref(clan.id, clan.name)}
+                      className="inline-flex min-h-[44px] items-center text-xs font-body text-beige/50 hover:text-bone-white"
+                      aria-label={`Report clan ${clan.name}`}
+                    >
+                      Report
+                    </a>
                   </div>
                 </div>
               </article>

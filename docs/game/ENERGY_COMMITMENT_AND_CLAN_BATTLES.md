@@ -45,8 +45,9 @@ readable and settle under their original stamped rules.
 
 ## Configurable launch values
 
-All live values originate in `src/shared/config/game.ts` and are passed into
-the authoritative RPCs:
+Energy/battle timing values originate in `src/shared/config/game.ts`; bounded
+clan economy values originate in `src/lib/clan/config.ts`. The server passes
+both sets into the authoritative RPCs:
 
 | Dial | Launch value |
 |---|---:|
@@ -62,6 +63,10 @@ the authoritative RPCs:
 | Completion grace | 10,800 seconds (3 hours) |
 | Maximum clan-eligible run duration | 10,800 seconds (3 hours) |
 | Cycle epoch | 2026-07-27 00:00 UTC |
+| Eligible contributor participation reward | 100 DNA |
+| Victor outcome bonus | +100 DNA (200 total) |
+| Stalemate outcome bonus | +50 DNA (150 total) |
+| Unmatched-side reward | 100 DNA participation only |
 
 Storage constraints permit a guarded 1–24 range so a reviewed config change
 does not require a destructive schema rewrite. The product limit is six until
@@ -203,12 +208,29 @@ A valid participant receives a permanent history honor:
 - `stalemate` for a tie.
 
 The victor mark is the stronger prestige outcome. Everyone who actually
-contributed receives permanent identity/history. Settlement may also credit a
-bounded DNA participation reward, with a larger victory reward and up to two
-once-per-cycle Glory recognition rewards. All credits use an idempotent reward
-ledger and centrally configured values. They never change Energy, Yield, or the
-same battle's score; repeat-win and progression snowball telemetry governs
-retuning.
+contributed receives permanent identity/history. Settlement credits each
+eligible contributor 100 DNA. A contributor on the winning side receives a
+further 100 DNA (200 total); a contributor in a genuine stalemate receives a
+further 50 DNA (150 total). An unmatched side receives participation only—no
+phantom victory and no victory bonus. The three live dials are independently
+bounded to 0–1,000 DNA in application config and SQL.
+
+One immutable `clan_energy_battle_reward_ledger` row snapshots the exact base,
+bonus, outcome, counted Depth, run counts, Energy committed, side score, and
+opponent score for each eligible player/battle. Its unique player+battle key
+and the linked `economy_transactions` row make retries idempotent; a later tune
+cannot reprice history. Settlement also writes one Career moment and one
+server-backed Compete recognition item keyed to that ledger row. The Energy
+Battle panel shows the exact receipt, and viewing that exact artifact clears
+the badge. Glory rewards use their separate bounded ledger but the same
+discoverable receipt/attention grammar. None of these credits change Energy,
+Yield, the same battle's score, or leaderboard values.
+
+The contract is forward-only. `clan_energy_battles.reward_terms_version = 1`
+is stamped by default only on battles created after the migration cutover;
+pre-cutover rows remain `NULL` and are never back-paid. The settlement repair
+pass therefore covers interrupted rolling-deploy payouts without minting DNA
+for historical outcomes that never promised it.
 
 At settlement, each participant's best-five Depth and each side's clan Depth
 are banked once into the existing monotonic personal/clan Depth history. That
@@ -275,6 +297,11 @@ already persist the analysis facts:
   outcome, and settlement;
 - `clan_energy_cycle_memberships`: membership/switch lock;
 - `clan_energy_honors`: participant/winner history;
+- `clan_energy_battle_reward_ledger`: exact participation/outcome payout,
+  contribution context, economy transaction, and idempotency boundary;
+- `clan_glory_reward_ledger`, `progression_moments`, and
+  `player_attention_items`: exact Glory receipts plus cross-device Compete
+  recognition;
 - breeding/economy history: DNA earned/spent and generation changes by day.
 
 Required live queries answer:
@@ -305,6 +332,9 @@ generation pacing beyond the intended curve.
 - Clan side locking plus top-five re-ranking provides atomic aggregate deltas.
 - Service-only RPC grants and RLS prevent clients from writing balances,
   commitments, battle assignment, or contributions.
+- Battle outcome, contributor reward, economy audit, Career moment, and Compete
+  attention settle atomically for a newly closed battle. The same RPC repairs
+  a previously settled battle with a missing receipt without duplicating DNA.
 - Existing normal run validation, physics, Genome, revives, and progression are
   reused. No speculative queue, second wallet, or battle ruleset exists.
 - The compatibility layer supports a safe app-before-migration deployment:
@@ -330,5 +360,7 @@ generation pacing beyond the intended curve.
 7. Commitment default 1 and two-tap maximum comprehension.
 8. Whether unlocked progression produces material final-day dominance.
 9. Pairing quality once enough clans exist for size/activity bands.
-10. Whether prestige-only victor/participant honors feel meaningful before any
-    bounded cosmetic milestone layer is added.
+10. Whether the 100 / 200 / 150 DNA participation/victor/stalemate totals are
+    large enough to feel consequential without causing repeat-winner
+    progression snowball; tune one bounded differential at a time from live
+    contributor, repeat-win, and generation-velocity cohorts.

@@ -80,29 +80,26 @@ ALTER TABLE clan_invites
 CREATE UNIQUE INDEX IF NOT EXISTS uq_clan_invites_pending
   ON clan_invites(clan_id, player_id) WHERE status = 'pending';
 
--- The old policies named only the owner. Co-leaders may perform ordinary
--- recruitment, while all mutations still travel through service-role RPCs.
+-- Migration 007 exposed all three base tables directly to authenticated
+-- clients. That made the later service-only RPC model illusory: a caller could
+-- create a free clan, self-join with an authority role, overwrite clan facts,
+-- delete history, or read the invite code without using an audited transition.
+-- Competitive clan state is now closed at the table boundary. Public,
+-- membership, invitation, and directory reads are projected by authenticated
+-- server routes/RPCs and never expose authority artifacts accidentally.
+DROP POLICY IF EXISTS clans_select ON clans;
+DROP POLICY IF EXISTS clans_insert ON clans;
+DROP POLICY IF EXISTS clans_update ON clans;
+DROP POLICY IF EXISTS clans_delete ON clans;
+DROP POLICY IF EXISTS clan_members_select ON clan_members;
+DROP POLICY IF EXISTS clan_members_insert ON clan_members;
+DROP POLICY IF EXISTS clan_members_delete ON clan_members;
 DROP POLICY IF EXISTS clan_invites_select ON clan_invites;
-CREATE POLICY clan_invites_select ON clan_invites
-  FOR SELECT TO authenticated
-  USING (
-    player_id = auth.uid() OR invited_by = auth.uid() OR EXISTS (
-      SELECT 1 FROM clan_members cm
-      WHERE cm.clan_id = clan_invites.clan_id
-        AND cm.player_id = auth.uid()
-        AND cm.role IN ('owner', 'co_leader')
-    )
-  );
-
 DROP POLICY IF EXISTS clan_invites_insert ON clan_invites;
-CREATE POLICY clan_invites_insert ON clan_invites
-  FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM clan_members cm
-    WHERE cm.clan_id = clan_invites.clan_id
-      AND cm.player_id = auth.uid()
-      AND cm.role IN ('owner', 'co_leader')
-  ));
+DROP POLICY IF EXISTS clan_invites_update ON clan_invites;
+
+REVOKE ALL ON clans, clan_members, clan_invites FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON clans, clan_members, clan_invites TO service_role;
 
 -- All new tables are service-only. The API returns the bounded public view.
 ALTER TABLE clan_membership_transitions ENABLE ROW LEVEL SECURITY;
@@ -151,8 +148,474 @@ ALTER TABLE economy_transactions ADD CONSTRAINT economy_transactions_source_type
   'streak_bonus', 'battle_pass_reward', 'offline_claim', 'unlock_cost',
   'clan_tithe', 'premium_stipend', 'lineage_reroll', 'codex_discovery',
   'reroll_token_conversion', 'signal_bonus', 'daily_take',
-  'clan_founding', 'clan_glory_reward'
+  'clan_founding', 'clan_battle_reward', 'clan_glory_reward'
 ));
+
+-- One receipt per eligible contributor and settled battle. The outcome
+-- component is snapshotted beside the participation component so the player
+-- sees one exact settlement rather than two noisy wallet events. Neither
+-- component touches battle score, run Yield, Energy, or future eligibility.
+-- Add nullable first: pre-cutover battles stay NULL and can never be
+-- retroactively converted into a faucet. Only battles created after this
+-- default is installed snapshot reward terms v1.
+ALTER TABLE clan_energy_battles
+  ADD COLUMN reward_terms_version SMALLINT
+    CHECK (reward_terms_version IS NULL OR reward_terms_version = 1);
+ALTER TABLE clan_energy_battles
+  ALTER COLUMN reward_terms_version SET DEFAULT 1;
+
+COMMENT ON COLUMN clan_energy_battles.reward_terms_version IS
+  'Forward-only reward contract. NULL means the battle predates bounded contributor DNA and must never be back-paid.';
+
+CREATE TABLE clan_energy_battle_reward_ledger (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  battle_id UUID NOT NULL REFERENCES clan_energy_battles(id) ON DELETE RESTRICT,
+  side_id UUID NOT NULL REFERENCES clan_energy_battle_sides(id) ON DELETE RESTRICT,
+  clan_id UUID NOT NULL REFERENCES clans(id) ON DELETE RESTRICT,
+  cycle_index BIGINT NOT NULL,
+  reward_terms_version SMALLINT NOT NULL CHECK (reward_terms_version = 1),
+  player_id UUID NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+  reward_kind TEXT NOT NULL CHECK (
+    reward_kind IN ('participation', 'victor', 'stalemate')
+  ),
+  outcome TEXT NOT NULL CHECK (
+    outcome IN ('participant', 'victor', 'stalemate', 'bye')
+  ),
+  participation_amount INTEGER NOT NULL CHECK (
+    participation_amount BETWEEN 0 AND 1000
+  ),
+  bonus_amount INTEGER NOT NULL CHECK (bonus_amount BETWEEN 0 AND 1000),
+  amount INTEGER NOT NULL CHECK (
+    amount BETWEEN 0 AND 2000
+    AND amount = participation_amount + bonus_amount
+  ),
+  eligible_run_count INTEGER NOT NULL CHECK (eligible_run_count >= 1),
+  counted_run_count INTEGER NOT NULL CHECK (counted_run_count BETWEEN 1 AND 5),
+  counted_depth BIGINT NOT NULL CHECK (counted_depth >= 0),
+  energy_committed_total INTEGER NOT NULL CHECK (energy_committed_total >= 1),
+  side_score BIGINT NOT NULL CHECK (side_score >= 0),
+  opponent_score BIGINT CHECK (opponent_score IS NULL OR opponent_score >= 0),
+  economy_transaction_id UUID UNIQUE
+    REFERENCES economy_transactions(id) ON DELETE RESTRICT,
+  awarded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (battle_id, player_id),
+  UNIQUE (battle_id, player_id, reward_kind)
+);
+
+CREATE INDEX idx_clan_energy_battle_rewards_player
+  ON clan_energy_battle_reward_ledger(player_id, awarded_at DESC);
+
+ALTER TABLE clan_energy_battle_reward_ledger ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON clan_energy_battle_reward_ledger FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON clan_energy_battle_reward_ledger TO service_role;
+
+CREATE OR REPLACE FUNCTION award_clan_energy_battle_rewards(
+  p_battle_id UUID,
+  p_participation_reward_dna INTEGER,
+  p_victor_bonus_dna INTEGER,
+  p_stalemate_bonus_dna INTEGER
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_battle clan_energy_battles%ROWTYPE;
+  v_contributor RECORD;
+  v_player players%ROWTYPE;
+  v_reward_kind TEXT;
+  v_bonus INTEGER;
+  v_amount INTEGER;
+  v_ledger_id UUID;
+  v_transaction_id UUID;
+  v_moment_id UUID;
+  v_awarded_at TIMESTAMPTZ;
+  v_balance INTEGER;
+  v_headline TEXT;
+  v_detail TEXT;
+  v_settled INTEGER := 0;
+  v_total_dna BIGINT := 0;
+BEGIN
+  IF p_battle_id IS NULL
+     OR p_participation_reward_dna IS NULL
+     OR p_victor_bonus_dna IS NULL
+     OR p_stalemate_bonus_dna IS NULL
+     OR p_participation_reward_dna NOT BETWEEN 0 AND 1000
+     OR p_victor_bonus_dna NOT BETWEEN 0 AND 1000
+     OR p_stalemate_bonus_dna NOT BETWEEN 0 AND 1000 THEN
+    RAISE EXCEPTION 'CLAN_BATTLE_REWARD_DIAL_OUT_OF_RANGE';
+  END IF;
+
+  SELECT * INTO v_battle
+  FROM clan_energy_battles b
+  WHERE b.id = p_battle_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'settled', 0, 'dna_awarded', 0, 'battle_id', p_battle_id,
+      'reason', 'battle_not_found'
+    );
+  END IF;
+  IF v_battle.settled_at IS NULL THEN
+    RETURN jsonb_build_object(
+      'settled', 0, 'dna_awarded', 0, 'battle_id', p_battle_id,
+      'reason', 'battle_not_settled'
+    );
+  END IF;
+  IF v_battle.reward_terms_version IS DISTINCT FROM 1 THEN
+    RETURN jsonb_build_object(
+      'settled', 0, 'dna_awarded', 0, 'battle_id', p_battle_id,
+      'reason', 'reward_terms_not_eligible'
+    );
+  END IF;
+
+  FOR v_contributor IN
+    SELECT
+      c.player_id,
+      c.clan_id,
+      c.side_id,
+      s.outcome,
+      s.score AS side_score,
+      (
+        SELECT rival.score
+        FROM clan_energy_battle_sides rival
+        WHERE rival.battle_id = p_battle_id
+          AND rival.id <> c.side_id
+        ORDER BY rival.slot
+        LIMIT 1
+      ) AS opponent_score,
+      COUNT(*)::INTEGER AS eligible_run_count,
+      (COUNT(*) FILTER (WHERE c.counted IS TRUE))::INTEGER AS counted_run_count,
+      COALESCE(SUM(c.score) FILTER (WHERE c.counted IS TRUE), 0)::BIGINT AS counted_depth,
+      COALESCE(SUM(c.energy_committed), 0)::INTEGER AS energy_committed_total
+    FROM clan_energy_contributions c
+    JOIN clan_energy_battle_sides s ON s.id = c.side_id
+    WHERE c.battle_id = p_battle_id
+    GROUP BY c.player_id, c.clan_id, c.side_id, s.outcome, s.score
+    ORDER BY c.player_id
+  LOOP
+    IF v_contributor.outcome NOT IN ('participant', 'victor', 'stalemate', 'bye') THEN
+      RAISE EXCEPTION 'CLAN_BATTLE_REWARD_OUTCOME_NOT_FINAL';
+    END IF;
+    IF v_contributor.counted_run_count < 1 THEN
+      RAISE EXCEPTION 'CLAN_BATTLE_REWARD_WITHOUT_COUNTED_RUN';
+    END IF;
+
+    v_reward_kind := CASE v_contributor.outcome
+      WHEN 'victor' THEN 'victor'
+      WHEN 'stalemate' THEN 'stalemate'
+      ELSE 'participation'
+    END;
+    v_bonus := CASE v_contributor.outcome
+      WHEN 'victor' THEN p_victor_bonus_dna
+      WHEN 'stalemate' THEN p_stalemate_bonus_dna
+      ELSE 0
+    END;
+    v_amount := p_participation_reward_dna + v_bonus;
+    v_ledger_id := NULL;
+
+    INSERT INTO clan_energy_battle_reward_ledger(
+      battle_id, side_id, clan_id, cycle_index, reward_terms_version, player_id,
+      reward_kind, outcome, participation_amount, bonus_amount, amount,
+      eligible_run_count, counted_run_count, counted_depth,
+      energy_committed_total, side_score, opponent_score
+    ) VALUES (
+      p_battle_id, v_contributor.side_id, v_contributor.clan_id,
+      v_battle.cycle_index, v_battle.reward_terms_version, v_contributor.player_id,
+      v_reward_kind, v_contributor.outcome, p_participation_reward_dna,
+      v_bonus, v_amount, v_contributor.eligible_run_count,
+      v_contributor.counted_run_count, v_contributor.counted_depth,
+      v_contributor.energy_committed_total, v_contributor.side_score,
+      v_contributor.opponent_score
+    )
+    ON CONFLICT (battle_id, player_id) DO NOTHING
+    RETURNING id, awarded_at INTO v_ledger_id, v_awarded_at;
+
+    IF v_ledger_id IS NULL THEN CONTINUE; END IF;
+
+    -- A zeroed live dial still receives an immutable processed receipt, but
+    -- never manufactures a zero-value wallet event or notification.
+    IF v_amount > 0 THEN
+      SELECT * INTO v_player FROM players p
+      WHERE p.id = v_contributor.player_id FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'CLAN_BATTLE_REWARD_PLAYER_NOT_FOUND'; END IF;
+
+      UPDATE players
+      SET dna = COALESCE(dna, 0) + v_amount,
+          total_dna_earned = COALESCE(total_dna_earned, 0) + v_amount,
+          updated_at = NOW()
+      WHERE id = v_contributor.player_id
+      RETURNING dna INTO v_balance;
+
+      INSERT INTO economy_transactions(
+        player_id, resource_type, amount, balance_after,
+        source_type, source_id, metadata
+      ) VALUES (
+        v_contributor.player_id, 'dna', v_amount, v_balance,
+        'clan_battle_reward', v_ledger_id,
+        jsonb_build_object(
+          'battle_id', p_battle_id,
+          'clan_id', v_contributor.clan_id,
+          'cycle_index', v_battle.cycle_index,
+          'reward_terms_version', v_battle.reward_terms_version,
+          'reward_kind', v_reward_kind,
+          'outcome', v_contributor.outcome,
+          'participation_dna', p_participation_reward_dna,
+          'bonus_dna', v_bonus,
+          'counted_depth', v_contributor.counted_depth,
+          'eligible_run_count', v_contributor.eligible_run_count,
+          'counted_run_count', v_contributor.counted_run_count,
+          'energy_committed_total', v_contributor.energy_committed_total,
+          'side_score', v_contributor.side_score,
+          'opponent_score', v_contributor.opponent_score
+        )
+      ) RETURNING id INTO v_transaction_id;
+
+      UPDATE clan_energy_battle_reward_ledger
+      SET economy_transaction_id = v_transaction_id
+      WHERE id = v_ledger_id;
+
+      v_headline := CASE v_reward_kind
+        WHEN 'victor' THEN 'Clan victory reward: ' || v_amount || ' DNA'
+        WHEN 'stalemate' THEN 'Clan stalemate reward: ' || v_amount || ' DNA'
+        ELSE 'Clan battle participation: ' || v_amount || ' DNA'
+      END;
+      v_detail := p_participation_reward_dna || ' participation'
+        || CASE WHEN v_bonus > 0 THEN ' + ' || v_bonus || ' outcome bonus' ELSE '' END
+        || '. Secured from ' || v_contributor.counted_depth || ' counted Depth.';
+
+      INSERT INTO progression_moments(
+        player_id, source_type, source_id, moment_key, pillar, kind,
+        significance, headline, detail, destination, artifact_ref, payload,
+        secured_at
+      ) VALUES (
+        v_contributor.player_id, 'clan_battle_reward', v_ledger_id::TEXT,
+        'settlement', 'clan', 'clan_battle_reward',
+        CASE v_reward_kind WHEN 'victor' THEN 'historic'
+          WHEN 'stalemate' THEN 'milestone' ELSE 'notable' END,
+        v_headline, v_detail, 'clan', 'battle-reward:' || v_ledger_id,
+        jsonb_build_object(
+          'ledgerId', v_ledger_id,
+          'battleId', p_battle_id,
+          'clanId', v_contributor.clan_id,
+          'cycleIndex', v_battle.cycle_index,
+          'rewardTermsVersion', v_battle.reward_terms_version,
+          'rewardKind', v_reward_kind,
+          'outcome', v_contributor.outcome,
+          'participationDna', p_participation_reward_dna,
+          'bonusDna', v_bonus,
+          'amount', v_amount,
+          'countedDepth', v_contributor.counted_depth
+        ),
+        v_awarded_at
+      )
+      ON CONFLICT (player_id, source_type, source_id, moment_key) DO UPDATE
+        SET payload = progression_moments.payload
+      RETURNING id INTO v_moment_id;
+
+      INSERT INTO player_attention_items(
+        player_id, moment_id, source_type, source_id, attention_key,
+        attention_kind, destination, headline, detail, artifact_ref
+      ) VALUES (
+        v_contributor.player_id, v_moment_id, 'clan_battle_reward',
+        v_ledger_id::TEXT, 'settlement', 'recognition', 'clan',
+        v_headline, v_detail, 'battle-reward:' || v_ledger_id
+      )
+      ON CONFLICT (player_id, source_type, source_id, attention_key) DO NOTHING;
+    END IF;
+
+    v_settled := v_settled + 1;
+    v_total_dna := v_total_dna + v_amount;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'settled', v_settled,
+    'dna_awarded', v_total_dna,
+    'battle_id', p_battle_id,
+    'cycle_index', v_battle.cycle_index
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION award_clan_energy_battle_rewards(UUID, INTEGER, INTEGER, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION award_clan_energy_battle_rewards(UUID, INTEGER, INTEGER, INTEGER)
+  TO service_role;
+
+-- Settlement remains the score/outcome authority. The reward receipt is
+-- written in the same transaction for newly settled battles; the final pass
+-- also repairs any settled battle whose payout was interrupted or predates
+-- this migration. Unique ledger keys make both paths converge.
+CREATE OR REPLACE FUNCTION settle_clan_energy_battles(
+  p_completion_grace_seconds INTEGER,
+  p_participation_reward_dna INTEGER,
+  p_victor_bonus_dna INTEGER,
+  p_stalemate_bonus_dna INTEGER
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_battle RECORD;
+  v_side_one RECORD;
+  v_side_two RECORD;
+  v_reward_battle RECORD;
+  v_settled INTEGER := 0;
+BEGIN
+  IF p_participation_reward_dna IS NULL
+     OR p_victor_bonus_dna IS NULL
+     OR p_stalemate_bonus_dna IS NULL
+     OR p_participation_reward_dna NOT BETWEEN 0 AND 1000
+     OR p_victor_bonus_dna NOT BETWEEN 0 AND 1000
+     OR p_stalemate_bonus_dna NOT BETWEEN 0 AND 1000 THEN
+    RAISE EXCEPTION 'CLAN_BATTLE_REWARD_DIAL_OUT_OF_RANGE';
+  END IF;
+
+  FOR v_battle IN
+    SELECT b.* FROM clan_energy_battles b
+     WHERE b.settled_at IS NULL
+       AND b.ends_at + make_interval(
+         secs => GREATEST(0, p_completion_grace_seconds)
+       ) <= NOW()
+     ORDER BY b.ends_at
+     FOR UPDATE
+  LOOP
+    SELECT s.* INTO v_side_one FROM clan_energy_battle_sides s
+     WHERE s.battle_id = v_battle.id ORDER BY s.slot LIMIT 1;
+    SELECT s.* INTO v_side_two FROM clan_energy_battle_sides s
+     WHERE s.battle_id = v_battle.id ORDER BY s.slot OFFSET 1 LIMIT 1;
+
+    IF v_side_one.id IS NULL THEN
+      RAISE EXCEPTION 'CLAN_BATTLE_WITHOUT_SIDE';
+    ELSIF v_side_two.id IS NULL THEN
+      UPDATE clan_energy_battle_sides SET outcome = 'bye'
+      WHERE id = v_side_one.id;
+    ELSIF v_side_one.score = v_side_two.score THEN
+      UPDATE clan_energy_battle_sides SET outcome = 'stalemate'
+      WHERE battle_id = v_battle.id;
+    ELSIF v_side_one.score > v_side_two.score THEN
+      UPDATE clan_energy_battle_sides SET outcome = 'victor'
+      WHERE id = v_side_one.id;
+      UPDATE clan_energy_battle_sides SET outcome = 'participant'
+      WHERE id = v_side_two.id;
+    ELSE
+      UPDATE clan_energy_battle_sides SET outcome = 'participant'
+      WHERE id = v_side_one.id;
+      UPDATE clan_energy_battle_sides SET outcome = 'victor'
+      WHERE id = v_side_two.id;
+    END IF;
+
+    INSERT INTO clan_energy_honors(battle_id, clan_id, player_id, honor)
+    SELECT DISTINCT c.battle_id, c.clan_id, c.player_id,
+      CASE s.outcome
+        WHEN 'victor' THEN 'victor'
+        WHEN 'stalemate' THEN 'stalemate'
+        ELSE 'participant'
+      END
+      FROM clan_energy_contributions c
+      JOIN clan_energy_battle_sides s ON s.id = c.side_id
+     WHERE c.battle_id = v_battle.id
+    ON CONFLICT (battle_id, player_id) DO NOTHING;
+
+    WITH player_depth AS (
+      SELECT c.player_id, COALESCE(SUM(c.score), 0)::BIGINT AS depth
+        FROM clan_energy_contributions c
+       WHERE c.battle_id = v_battle.id AND c.counted IS TRUE
+       GROUP BY c.player_id
+    )
+    UPDATE players p
+       SET lifetime_depth = p.lifetime_depth + d.depth,
+           best_week_depth = GREATEST(p.best_week_depth, d.depth)
+      FROM player_depth d
+     WHERE p.id = d.player_id;
+
+    UPDATE clans c
+       SET lifetime_depth = c.lifetime_depth + s.score,
+           best_week_depth = GREATEST(c.best_week_depth, s.score)
+      FROM clan_energy_battle_sides s
+     WHERE s.battle_id = v_battle.id
+       AND s.clan_id = c.id
+       AND s.score > 0;
+
+    UPDATE clan_energy_battles SET settled_at = NOW()
+    WHERE id = v_battle.id;
+
+    PERFORM award_clan_energy_battle_rewards(
+      v_battle.id,
+      p_participation_reward_dna,
+      p_victor_bonus_dna,
+      p_stalemate_bonus_dna
+    );
+    v_settled := v_settled + 1;
+  END LOOP;
+
+  -- Durable catch-up: a transient payout failure or a battle settled by the
+  -- pre-062 function cannot strand an earned reward.
+  FOR v_reward_battle IN
+    SELECT b.id
+    FROM clan_energy_battles b
+    WHERE b.settled_at IS NOT NULL
+      AND b.reward_terms_version = 1
+      AND EXISTS (
+        SELECT 1 FROM clan_energy_contributions c WHERE c.battle_id = b.id
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM clan_energy_contributions c
+        WHERE c.battle_id = b.id
+          AND NOT EXISTS (
+            SELECT 1 FROM clan_energy_battle_reward_ledger r
+            WHERE r.battle_id = b.id AND r.player_id = c.player_id
+          )
+      )
+    ORDER BY b.settled_at, b.id
+    FOR UPDATE OF b
+  LOOP
+    PERFORM award_clan_energy_battle_rewards(
+      v_reward_battle.id,
+      p_participation_reward_dna,
+      p_victor_bonus_dna,
+      p_stalemate_bonus_dna
+    );
+  END LOOP;
+
+  RETURN v_settled;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION settle_clan_energy_battles(INTEGER, INTEGER, INTEGER, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION settle_clan_energy_battles(INTEGER, INTEGER, INTEGER, INTEGER)
+  TO service_role;
+
+-- Compatibility for a briefly skewed deploy. New application code always
+-- sends all four dials; an older cron receives the same public launch defaults
+-- instead of silently settling an outcome without its reward receipt.
+CREATE OR REPLACE FUNCTION settle_clan_energy_battles(
+  p_completion_grace_seconds INTEGER DEFAULT 10800
+)
+RETURNS INTEGER
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT settle_clan_energy_battles(
+    p_completion_grace_seconds,
+    100,
+    100,
+    50
+  );
+$$;
+
+REVOKE ALL ON FUNCTION settle_clan_energy_battles(INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION settle_clan_energy_battles(INTEGER) TO service_role;
 
 -- -------------------------------------------------------------------------
 -- 3. Searchable directory and authoritative roster contribution
@@ -163,7 +626,8 @@ CREATE OR REPLACE FUNCTION get_competitive_clan_directory(
   p_policy TEXT DEFAULT NULL,
   p_has_space BOOLEAN DEFAULT NULL,
   p_limit INTEGER DEFAULT 50,
-  p_offset INTEGER DEFAULT 0
+  p_offset INTEGER DEFAULT 0,
+  p_alive_weeks INTEGER DEFAULT 2
 )
 RETURNS TABLE (
   id UUID,
@@ -200,6 +664,14 @@ AS $$
     FROM serpent_week_clans swc
     GROUP BY swc.clan_id
   ),
+  membership_activity AS (
+    SELECT t.clan_id, MAX(t.created_at) AS active_at
+    FROM clan_membership_transitions t
+    WHERE t.transition IN (
+      'joined_open', 'joined_code', 'invite_accepted', 'application_approved'
+    )
+    GROUP BY t.clan_id
+  ),
   facts AS (
     SELECT
       c.id, c.name, c.tag, c.banner_id, c.emblem_id, c.color_primary,
@@ -209,16 +681,25 @@ AS $$
         AS exact_available_spots,
       c.join_policy,
       COALESCE(c.best_week_depth, 0)::BIGINT AS best_week_depth,
-      GREATEST(ea.active_at, la.active_at) AS recent_activity_at,
+      GREATEST(c.created_at, ea.active_at, la.active_at, ma.active_at)
+        AS recent_activity_at,
       CASE
-        WHEN ea.active_at IS NULL AND la.active_at IS NULL THEN NULL
-        WHEN la.active_at IS NULL OR ea.active_at >= la.active_at THEN 'energy_battle'
-        ELSE 'legacy_week'
+        WHEN ea.active_at IS NOT NULL
+          AND ea.active_at = GREATEST(c.created_at, ea.active_at, la.active_at, ma.active_at)
+          THEN 'energy_battle'
+        WHEN la.active_at IS NOT NULL
+          AND la.active_at = GREATEST(c.created_at, ea.active_at, la.active_at, ma.active_at)
+          THEN 'legacy_week'
+        WHEN ma.active_at IS NOT NULL
+          AND ma.active_at = GREATEST(c.created_at, ea.active_at, la.active_at, ma.active_at)
+          THEN 'membership'
+        ELSE 'founded'
       END AS recent_activity_kind
     FROM clans c
     LEFT JOIN member_counts mc ON mc.clan_id = c.id
     LEFT JOIN energy_activity ea ON ea.clan_id = c.id
     LEFT JOIN legacy_activity la ON la.clan_id = c.id
+    LEFT JOIN membership_activity ma ON ma.clan_id = c.id
     WHERE c.disbanded_at IS NULL
   )
   SELECT
@@ -234,13 +715,17 @@ AS $$
     )
     AND (p_policy IS NULL OR f.join_policy = p_policy)
     AND (p_has_space IS NULL OR (f.exact_available_spots > 0) = p_has_space)
+    AND f.recent_activity_at IS NOT NULL
+    AND f.recent_activity_at >= NOW() - make_interval(
+      weeks => LEAST(GREATEST(COALESCE(p_alive_weeks, 2), 1), 52)
+    )
   ORDER BY f.recent_activity_at DESC NULLS LAST, lower(f.name), f.id
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100)
   OFFSET LEAST(GREATEST(COALESCE(p_offset, 0), 0), 10000);
 $$;
 
-REVOKE ALL ON FUNCTION get_competitive_clan_directory(TEXT, TEXT, BOOLEAN, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION get_competitive_clan_directory(TEXT, TEXT, BOOLEAN, INTEGER, INTEGER) TO service_role;
+REVOKE ALL ON FUNCTION get_competitive_clan_directory(TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION get_competitive_clan_directory(TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER) TO service_role;
 
 CREATE OR REPLACE FUNCTION get_clan_competitive_roster(
   p_clan_id UUID,
@@ -380,14 +865,25 @@ BEGIN
     v_tag := substr(v_base, 1, 6 - char_length(v_suffix::TEXT)) || v_suffix::TEXT;
   END LOOP;
 
-  IF p_banner_id IS NOT NULL AND p_banner_id !~ '^[a-z0-9_]{1,32}$' THEN
+  IF p_banner_id IS NOT NULL AND p_banner_id NOT IN (
+    'field_standard', 'venom_wake', 'deep_current',
+    'primal_root', 'cosmic_veil', 'iron_march'
+  ) THEN
     RETURN jsonb_build_object('error', 'invalid_banner');
   END IF;
-  IF p_emblem_id IS NOT NULL AND p_emblem_id !~ '^[a-z0-9_]{1,32}$' THEN
+  IF p_emblem_id IS NOT NULL AND p_emblem_id NOT IN (
+    'fang', 'coil', 'helix', 'talon', 'sigil', 'crown'
+  ) THEN
     RETURN jsonb_build_object('error', 'invalid_emblem');
   END IF;
-  IF (p_color_primary IS NOT NULL AND p_color_primary !~ '^#[0-9a-fA-F]{6}$')
-     OR (p_color_secondary IS NOT NULL AND p_color_secondary !~ '^#[0-9a-fA-F]{6}$') THEN
+  IF (p_color_primary IS NOT NULL AND lower(p_color_primary) NOT IN (
+        '#f97316', '#22d3ee', '#4ade80', '#a855f7',
+        '#facc15', '#f43f5e', '#e2e8f0', '#64748b'
+      ))
+     OR (p_color_secondary IS NOT NULL AND lower(p_color_secondary) NOT IN (
+        '#f97316', '#22d3ee', '#4ade80', '#a855f7',
+        '#facc15', '#f43f5e', '#e2e8f0', '#64748b'
+      )) THEN
     RETURN jsonb_build_object('error', 'invalid_color');
   END IF;
 
@@ -440,6 +936,68 @@ $$;
 
 REVOKE ALL ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER) TO service_role;
+
+-- Preset-only heraldry is an integrity/moderation boundary, not merely a
+-- picker constraint. Replace migration 048's format-only validation so a
+-- forged API request cannot introduce arbitrary identifiers or colors.
+CREATE OR REPLACE FUNCTION set_clan_heraldry(
+  p_user_id UUID,
+  p_banner_id TEXT DEFAULT NULL,
+  p_emblem_id TEXT DEFAULT NULL,
+  p_color_primary TEXT DEFAULT NULL,
+  p_color_secondary TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_member clan_members%ROWTYPE;
+BEGIN
+  SELECT * INTO v_member FROM clan_members WHERE player_id = p_user_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('error', 'not_in_clan'); END IF;
+  IF v_member.role <> 'owner' THEN
+    RETURN jsonb_build_object('error', 'not_authorized');
+  END IF;
+
+  IF p_banner_id IS NOT NULL AND p_banner_id NOT IN (
+    'field_standard', 'venom_wake', 'deep_current',
+    'primal_root', 'cosmic_veil', 'iron_march'
+  ) THEN
+    RETURN jsonb_build_object('error', 'invalid_banner');
+  END IF;
+  IF p_emblem_id IS NOT NULL AND p_emblem_id NOT IN (
+    'fang', 'coil', 'helix', 'talon', 'sigil', 'crown'
+  ) THEN
+    RETURN jsonb_build_object('error', 'invalid_emblem');
+  END IF;
+  IF (p_color_primary IS NOT NULL AND lower(p_color_primary) NOT IN (
+        '#f97316', '#22d3ee', '#4ade80', '#a855f7',
+        '#facc15', '#f43f5e', '#e2e8f0', '#64748b'
+      ))
+     OR (p_color_secondary IS NOT NULL AND lower(p_color_secondary) NOT IN (
+        '#f97316', '#22d3ee', '#4ade80', '#a855f7',
+        '#facc15', '#f43f5e', '#e2e8f0', '#64748b'
+      )) THEN
+    RETURN jsonb_build_object('error', 'invalid_color');
+  END IF;
+
+  UPDATE clans
+  SET banner_id = COALESCE(p_banner_id, banner_id),
+      emblem_id = COALESCE(p_emblem_id, emblem_id),
+      color_primary = COALESCE(lower(p_color_primary), color_primary),
+      color_secondary = COALESCE(lower(p_color_secondary), color_secondary),
+      updated_at = NOW()
+  WHERE id = v_member.clan_id;
+
+  RETURN jsonb_build_object('clan_id', v_member.clan_id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION set_clan_heraldry(UUID, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION set_clan_heraldry(UUID, TEXT, TEXT, TEXT, TEXT) TO service_role;
 
 -- -------------------------------------------------------------------------
 -- 5. One audited recruitment model: open, application, and invitation
@@ -1255,6 +1813,8 @@ DECLARE
   v_target clan_members%ROWTYPE;
   v_target_player UUID;
   v_source_battle UUID;
+  v_source_ends_at TIMESTAMPTZ;
+  v_source_settled_at TIMESTAMPTZ;
   v_effective_at TIMESTAMPTZ;
   v_evidence_depth BIGINT;
   v_evidence_rank BIGINT;
@@ -1297,8 +1857,8 @@ BEGIN
   SELECT p.id INTO v_target_player FROM players p WHERE p.user_id = p_target_user_id;
   IF v_target_player IS NULL THEN RETURN jsonb_build_object('error', 'player_not_found'); END IF;
 
-  SELECT b.id, b.intermission_ends_at
-    INTO v_source_battle, v_effective_at
+  SELECT b.id, b.ends_at, b.intermission_ends_at, b.settled_at
+    INTO v_source_battle, v_source_ends_at, v_effective_at, v_source_settled_at
   FROM clan_energy_battle_sides s
   JOIN clan_energy_battles b ON b.id = s.battle_id
   WHERE s.clan_id = v_actor.clan_id
@@ -1309,6 +1869,12 @@ BEGIN
   END IF;
   IF NOW() >= v_effective_at THEN
     RETURN jsonb_build_object('error', 'glory_boundary_passed');
+  END IF;
+  IF v_source_settled_at IS NULL THEN
+    RETURN jsonb_build_object('error', 'glory_source_not_final');
+  END IF;
+  IF NOW() < v_source_ends_at THEN
+    RETURN jsonb_build_object('error', 'glory_boundary_not_open');
   END IF;
 
   WITH totals AS (
@@ -1452,6 +2018,7 @@ DECLARE
   v_count INTEGER;
   v_ledger_id UUID;
   v_transaction_id UUID;
+  v_moment_id UUID;
   v_balance INTEGER;
   v_settled INTEGER := 0;
   v_total_dna BIGINT := 0;
@@ -1528,6 +2095,49 @@ BEGIN
     UPDATE clan_glory_reward_ledger
     SET economy_transaction_id = v_transaction_id
     WHERE id = v_ledger_id;
+
+    IF v_assignment.reward_dna > 0 THEN
+      INSERT INTO progression_moments(
+        player_id, source_type, source_id, moment_key, pillar, kind,
+        significance, headline, detail, destination, artifact_ref, payload,
+        secured_at
+      ) VALUES (
+        v_player.id, 'clan_glory_reward', v_ledger_id::TEXT,
+        'settlement', 'clan', 'clan_glory_reward', 'milestone',
+        'Glory Member reward: ' || v_assignment.reward_dna || ' DNA',
+        'Seat ' || v_assignment.seat || ' · cycle '
+          || v_assignment.effective_cycle_index || ' · '
+          || v_depth || ' eligible Depth. Secured.',
+        'clan', 'glory-reward:' || v_ledger_id,
+        jsonb_build_object(
+          'ledgerId', v_ledger_id,
+          'assignmentId', v_assignment.id,
+          'battleId', v_assignment.effective_battle_id,
+          'clanId', v_assignment.clan_id,
+          'cycleIndex', v_assignment.effective_cycle_index,
+          'seat', v_assignment.seat,
+          'amount', v_assignment.reward_dna,
+          'eligibleDepth', v_depth,
+          'eligibleContributionCount', v_count
+        ),
+        NOW()
+      )
+      ON CONFLICT (player_id, source_type, source_id, moment_key) DO UPDATE
+        SET payload = progression_moments.payload
+      RETURNING id INTO v_moment_id;
+
+      INSERT INTO player_attention_items(
+        player_id, moment_id, source_type, source_id, attention_key,
+        attention_kind, destination, headline, detail, artifact_ref
+      ) VALUES (
+        v_player.id, v_moment_id, 'clan_glory_reward', v_ledger_id::TEXT,
+        'settlement', 'recognition', 'clan',
+        'Glory Member reward: ' || v_assignment.reward_dna || ' DNA',
+        'Your earned clan recognition is secured and recorded here.',
+        'glory-reward:' || v_ledger_id
+      )
+      ON CONFLICT (player_id, source_type, source_id, attention_key) DO NOTHING;
+    END IF;
 
     v_settled := v_settled + 1;
     v_total_dna := v_total_dna + v_assignment.reward_dna;

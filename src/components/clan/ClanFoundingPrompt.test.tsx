@@ -95,7 +95,7 @@ describe('at the ramp beat', () => {
   it('calls the in-place handlers instead of navigating when given them', () => {
     const onFound = jest.fn();
     const onJoin = jest.fn();
-    render(
+    const first = render(
       <ClanFoundingPrompt
         inClan={false}
         bankedRuns={SERPENT_UNLOCK_BANKED_RUNS}
@@ -105,9 +105,22 @@ describe('at the ramp beat', () => {
     );
 
     fireEvent.click(screen.getByTestId('founding-prompt-found'));
-    fireEvent.click(screen.getByTestId('founding-prompt-join'));
     expect(onFound).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('clan-founding-prompt')).not.toBeInTheDocument();
+
+    first.unmount();
+    resetClanFoundingPromptMemory();
+    render(
+      <ClanFoundingPrompt
+        inClan={false}
+        bankedRuns={SERPENT_UNLOCK_BANKED_RUNS}
+        onFound={onFound}
+        onJoin={onJoin}
+      />
+    );
+    fireEvent.click(screen.getByTestId('founding-prompt-join'));
     expect(onJoin).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('clan-founding-prompt')).not.toBeInTheDocument();
   });
 
   it('falls back to links, so the prompt is never a dead end', () => {

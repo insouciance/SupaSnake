@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { IconUser } from '@/components/ui/icons';
+import { clanMemberReportHref } from '@/lib/clan/report';
 import {
   clanAction,
   type ClanFullView,
@@ -224,8 +225,20 @@ export function ClanRoster({ accessToken, view, viewerUserId, onChanged }: ClanR
                     <p className="text-[11px] font-body text-beige/45">
                       Member since {formatSince(member.tenureSince ?? member.joinedAt)}
                     </p>
-                    {hasManagement && (
-                      <details className="relative">
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={clanMemberReportHref(
+                          view.membership?.clanId ?? '',
+                          member.userId,
+                          memberName(member)
+                        )}
+                        className="inline-flex min-h-[44px] items-center px-2 text-xs font-body text-beige/45 hover:text-bone-white"
+                        aria-label={`Report handle ${memberName(member)}`}
+                      >
+                        Report
+                      </a>
+                      {hasManagement && (
+                        <details className="relative">
                         <summary className="flex min-h-[44px] cursor-pointer list-none items-center rounded-arcade border border-scale-blue-light/50 px-3 text-sm font-body text-beige hover:text-bone-white">
                           Manage
                         </summary>
@@ -255,8 +268,9 @@ export function ClanRoster({ accessToken, view, viewerUserId, onChanged }: ClanR
                             </button>
                           )}
                         </div>
-                      </details>
-                    )}
+                        </details>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

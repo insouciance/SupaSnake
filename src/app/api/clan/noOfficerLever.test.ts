@@ -18,6 +18,15 @@ const migration = readFileSync(
 );
 const route = readFileSync(join(__dirname, 'route.ts'), 'utf8');
 const types = readFileSync(join(ROOT, 'src', 'lib', 'clan', 'types.ts'), 'utf8');
+const clanPage = readFileSync(join(ROOT, 'src', 'app', 'clan', 'page.tsx'), 'utf8');
+const directory = readFileSync(
+  join(ROOT, 'src', 'components', 'clan', 'ClanDirectory.tsx'),
+  'utf8'
+);
+const roster = readFileSync(
+  join(ROOT, 'src', 'components', 'clan', 'ClanRoster.tsx'),
+  'utf8'
+);
 
 function functionBody(name: string): string {
   return migration.match(
@@ -77,13 +86,36 @@ describe('economy and factual reads', () => {
     expect(body).toMatch(/founding_dna_cost/);
   });
 
-  it('computes directory membership/spaces and leaves missing activity null', () => {
+  it('computes directory membership/spaces and excludes stale or missing activity', () => {
     const body = functionBody('get_competitive_clan_directory');
     expect(body).toMatch(/COUNT\(\*\)::BIGINT AS member_count/);
     expect(body).toMatch(/exact_available_spots/);
     expect(body).toMatch(/recent_activity_at/);
-    expect(body).toMatch(/ea\.active_at IS NULL AND la\.active_at IS NULL THEN NULL/);
+    expect(body).toMatch(/membership_activity AS/);
+    expect(body).toMatch(/ELSE 'founded'/);
     expect(body).toMatch(/POSITION\(lower\(btrim\(p_search\)\)/);
+    expect(body).toMatch(/f\.recent_activity_at IS NOT NULL/);
+    expect(body).toMatch(/make_interval\(/);
+    expect(body).toMatch(/p_alive_weeks/);
+  });
+
+  it('closes every legacy authenticated base-table path', () => {
+    expect(migration).toMatch(/DROP POLICY IF EXISTS clans_insert ON clans/);
+    expect(migration).toMatch(/DROP POLICY IF EXISTS clans_update ON clans/);
+    expect(migration).toMatch(/DROP POLICY IF EXISTS clans_delete ON clans/);
+    expect(migration).toMatch(/DROP POLICY IF EXISTS clan_members_insert ON clan_members/);
+    expect(migration).toMatch(/DROP POLICY IF EXISTS clan_members_delete ON clan_members/);
+    expect(migration).toMatch(/DROP POLICY IF EXISTS clan_invites_update ON clan_invites/);
+    expect(migration).toMatch(
+      /REVOKE ALL ON clans, clan_members, clan_invites FROM anon, authenticated/
+    );
+  });
+
+  it('enforces the launch heraldry catalog in SQL as well as the picker', () => {
+    expect(functionBody('found_clan')).toMatch(/p_banner_id NOT IN/);
+    expect(functionBody('found_clan')).toMatch(/'field_standard'/);
+    expect(functionBody('set_clan_heraldry')).toMatch(/p_emblem_id NOT IN/);
+    expect(functionBody('set_clan_heraldry')).toMatch(/'#f97316'/);
   });
 
   it('ranks only authoritative counted positive-Energy contributions', () => {
@@ -108,6 +140,9 @@ describe('Glory integrity', () => {
     expect(migration).toMatch(/effective_cycle_index = source_cycle_index \+ 1/);
     expect(body).toMatch(/b\.intermission_ends_at/);
     expect(body).toMatch(/NOW\(\) >= v_effective_at/);
+    expect(body).toMatch(/b\.settled_at/);
+    expect(body).toMatch(/v_source_settled_at IS NULL/);
+    expect(body).toMatch(/NOW\(\) < v_source_ends_at/);
     expect(body).toMatch(/c\.counted IS TRUE/);
     expect(body).toMatch(/c\.energy_committed > 0/);
     expect(body).toMatch(/clan_tenure_since/);
@@ -143,5 +178,69 @@ describe('Glory integrity', () => {
     expect(assignCase).toMatch(/CLAN_ECONOMY_CONFIG\.glory\.rewardDna/);
     expect(assignCase).toMatch(/energyBattleCycleAt\(\)/);
     expect(assignCase).not.toMatch(/body\.(reward|depth|rank|cycle|effective)/i);
+  });
+});
+
+describe('battle reward integrity', () => {
+  it('keeps one bounded, exact receipt per eligible player and battle', () => {
+    expect(migration).toMatch(/ADD COLUMN reward_terms_version SMALLINT/);
+    expect(migration).toMatch(/ALTER COLUMN reward_terms_version SET DEFAULT 1/);
+    expect(migration).toMatch(/b\.reward_terms_version = 1/);
+    expect(migration).toMatch(/CREATE TABLE clan_energy_battle_reward_ledger/);
+    expect(migration).toMatch(/UNIQUE \(battle_id, player_id\)/);
+    expect(migration).toMatch(/participation_amount BETWEEN 0 AND 1000/);
+    expect(migration).toMatch(/bonus_amount BETWEEN 0 AND 1000/);
+    expect(migration).toMatch(/amount = participation_amount \+ bonus_amount/);
+    expect(migration).toMatch(/'clan_battle_reward'/);
+  });
+
+  it('rewards contributors without multiplying score, Yield, or Energy', () => {
+    const body = functionBody('award_clan_energy_battle_rewards');
+    expect(body).toMatch(/FROM clan_energy_contributions/);
+    expect(body).toMatch(/SET dna = COALESCE\(dna, 0\) \+ v_amount/);
+    expect(body).toMatch(/'participation_dna'/);
+    expect(body).toMatch(/'bonus_dna'/);
+    expect(body).not.toMatch(/UPDATE clan_energy_battle_sides/);
+    expect(body).not.toMatch(/UPDATE game_sessions/);
+    expect(body).not.toMatch(/SET energy/);
+  });
+
+  it('ties exact Compete attention to the immutable reward ledger row', () => {
+    const body = functionBody('award_clan_energy_battle_rewards');
+    expect(body).toMatch(/v_ledger_id::TEXT, 'settlement'/);
+    expect(body).toMatch(/'recognition', 'clan'/);
+    expect(body).toMatch(/'battle-reward:' \|\| v_ledger_id/);
+    expect(body).toMatch(/ON CONFLICT \(player_id, source_type, source_id, attention_key\) DO NOTHING/);
+  });
+
+  it('keeps all reward writers service-only and SQL-capped', () => {
+    expect(migration).toMatch(
+      /REVOKE ALL ON FUNCTION award_clan_energy_battle_rewards\(UUID, INTEGER, INTEGER, INTEGER\)[\s\S]+FROM PUBLIC, anon, authenticated/
+    );
+    expect(migration).toMatch(
+      /REVOKE ALL ON FUNCTION settle_clan_energy_battles\(INTEGER, INTEGER, INTEGER, INTEGER\)[\s\S]+FROM PUBLIC, anon, authenticated/
+    );
+    expect(functionBody('settle_clan_energy_battles')).toMatch(
+      /p_participation_reward_dna NOT BETWEEN 0 AND 1000/
+    );
+  });
+});
+
+describe('release surfaces', () => {
+  it('authenticates the legacy membership bridge and never wildcard-selects clan secrets', () => {
+    expect(route).toMatch(/auth\.userId !== playerId/);
+    expect(route).not.toMatch(/clans:clan_id\(\*\)/);
+    expect(route).not.toMatch(/\.from\('clans'\)\s*\.select\('\*'\)/);
+    expect(route).toMatch(/CLAN_PERMISSIONS\[role\]\.invite/);
+  });
+
+  it('mounts the one-time founding prompt on the clan journey', () => {
+    expect(clanPage).toMatch(/import \{ ClanFoundingPrompt \}/);
+    expect(clanPage).toMatch(/<ClanFoundingPrompt/);
+  });
+
+  it('keeps a visible report path on clan names and member handles', () => {
+    expect(directory).toMatch(/clanReportHref\(clan\.id, clan\.name\)/);
+    expect(roster).toMatch(/clanMemberReportHref/);
   });
 });

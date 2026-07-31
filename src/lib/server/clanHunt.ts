@@ -56,6 +56,7 @@ import {
   CLAN_PLAYOFFS_ENABLED,
   CLAN_V2_ENABLED,
   CLAN_DIRECTORY_LIMITS,
+  DIRECTORY_ALIVE_WEEKS,
 } from '@/lib/clan/config';
 import {
   asClanRole,
@@ -185,10 +186,10 @@ export interface ClanDirectoryEntry {
   joinPolicy: ClanJoinPolicy;
   /** The clan's best week, so the entry says something true about it. */
   bestWeekDepth: number;
-  /** Did it hunt this week or last? Only alive clans are listed at all. */
+  /** Did it hunt recently? Null for honest founding/membership activity. */
   lastHuntedWeek: string | null;
   lastHuntKind: 'energy_battle' | 'legacy_week' | null;
-  /** Exact server activity timestamp, or null when the clan has none. */
+  /** Exact server activity timestamp from play, founding, or membership. */
   recentActivityAt: string | null;
 }
 
@@ -201,7 +202,7 @@ export interface ClanDirectoryFilters {
 }
 
 /**
- * Clans that hunted this week or last, and nothing else.
+ * Clans with a real server-authored event this week or last, and nothing else.
  *
  * §9.2: "There is no browse-empty-directory dead end: the directory shows only
  * clans that hunted this week or last, so it is short and alive rather than
@@ -212,10 +213,9 @@ export interface ClanDirectoryFilters {
  * field on the response to put one in. A directory that says "3 of 412 clans"
  * has told a new player the thing §9.2 forbids telling them.
  *
- * A newly founded clan of one that has not hunted yet is deliberately absent —
- * it appears the moment its first week settles. Founding does not need the
- * directory (the founder is already in their clan), and joining needs an
- * invite code, so nothing is lost and the list stays honest.
+ * Founding and audited membership transitions are real activity rather than
+ * fabricated population. They keep a new recruiting clan discoverable during
+ * its first two weeks; after that it must play or recruit again to remain.
  */
 export async function loadClanDirectory(
   supabase: SupabaseClient,
@@ -237,6 +237,7 @@ export async function loadClanDirectory(
     p_has_space: options.hasSpace ?? null,
     p_limit: limit,
     p_offset: offset,
+    p_alive_weeks: DIRECTORY_ALIVE_WEEKS,
   });
 
   if (error) {
@@ -250,6 +251,7 @@ export async function loadClanDirectory(
   return ((data ?? []) as Array<Record<string, unknown>>).map((row) => {
     const recentActivityAt = (row.recent_activity_at as string | null) ?? null;
     const kind = row.recent_activity_kind;
+    const huntKind = kind === 'energy_battle' || kind === 'legacy_week' ? kind : null;
     return {
       id: String(row.id ?? ''),
       name: String(row.name ?? ''),
@@ -263,9 +265,8 @@ export async function loadClanDirectory(
       joinPolicy: row.join_policy as ClanJoinPolicy,
       bestWeekDepth: Number(row.best_week_depth),
       recentActivityAt,
-      lastHuntedWeek: recentActivityAt ? recentActivityAt.slice(0, 10) : null,
-      lastHuntKind:
-        kind === 'energy_battle' || kind === 'legacy_week' ? kind : null,
+      lastHuntedWeek: recentActivityAt && huntKind ? recentActivityAt.slice(0, 10) : null,
+      lastHuntKind: huntKind,
     };
   });
 }

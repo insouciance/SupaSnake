@@ -106,6 +106,31 @@ export const CLAN_ECONOMY_CONFIG = Object.freeze({
     60 * 60,
     30 * 24 * 60 * 60
   ),
+  battleRewards: Object.freeze({
+    /** Every player with at least one validated Energy contribution receives this. */
+    participationDna: boundedInteger(
+      process.env.CLAN_BATTLE_PARTICIPATION_DNA,
+      100,
+      0,
+      1_000
+    ),
+    /** Added to participation for contributors on the victorious side. */
+    victorBonusDna: boundedInteger(
+      process.env.CLAN_BATTLE_VICTOR_BONUS_DNA,
+      100,
+      0,
+      1_000
+    ),
+    /** Added to participation for contributors in a genuine stalemate. */
+    stalemateBonusDna: boundedInteger(
+      process.env.CLAN_BATTLE_STALEMATE_BONUS_DNA,
+      50,
+      0,
+      1_000
+    ),
+    /** Mirrors the independent SQL ceiling on every individual reward dial. */
+    maxComponentDna: 1_000,
+  }),
   glory: Object.freeze({
     /** Schema and Constitution hard-cap this at exactly two seats. */
     maxSeats: 2,

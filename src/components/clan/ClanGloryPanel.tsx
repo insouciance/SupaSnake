@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { IconCrown } from '@/components/ui/icons';
+import { clanMemberReportHref } from '@/lib/clan/report';
 import {
   clanAction,
   type ClanFullView,
@@ -29,6 +30,12 @@ function termDays(seconds: number): string {
   return `${days} day${days === 1 ? '' : 's'} in the clan`;
 }
 
+function meetsTenure(member: ClanRosterEntry, minimumSeconds: number): boolean {
+  if (minimumSeconds <= 0) return true;
+  const since = new Date(member.tenureSince || member.joinedAt).getTime();
+  return Number.isFinite(since) && Date.now() - since >= minimumSeconds * 1000;
+}
+
 export function ClanGloryPanel({
   accessToken,
   viewerUserId,
@@ -39,6 +46,7 @@ export function ClanGloryPanel({
   const terms = view.glory?.terms ?? view.competitiveConfig?.glory;
   const seats = useMemo(() => view.glory?.seats ?? [], [view.glory?.seats]);
   const canAssign = view.membership?.permissions.assignGlory === true;
+  const assignmentWindowOpen = view.cycle?.phase === 'intermission';
   const maxSeats = terms?.maxSeats ?? 2;
   const [chosenSeat, setChosenSeat] = useState<number | null>(null);
   const [chosenUserId, setChosenUserId] = useState('');
@@ -55,9 +63,30 @@ export function ClanGloryPanel({
   );
   const candidates = useMemo(
     () => (view.roster ?? [])
-      .filter((member) => member.contribution.hasEligibleContribution)
+      .filter((member) => {
+        if (!member.contribution.hasEligibleContribution || !terms) return false;
+        if ((member.contribution.bestFiveDepth ?? 0) < terms.minimumContributionDepth) return false;
+        if (!meetsTenure(member, terms.minimumTenureSeconds)) return false;
+        if (member.userId === viewerUserId && !terms.allowOwnerSelfAward) return false;
+        return !seats.some((seat) =>
+          seat.state === 'pending'
+          && seat.holderUserId === member.userId
+          && seat.effectiveCycleIndex === Number(view.cycle?.index ?? -1) + 1
+        );
+      })
       .sort((a, b) => (a.contribution.rank ?? 999) - (b.contribution.rank ?? 999)),
-    [view.roster]
+    [seats, terms, view.cycle?.index, view.roster, viewerUserId]
+  );
+  const availableSeats = useMemo(
+    () => Array.from({ length: maxSeats }, (_, index) => index + 1).filter((seatNumber) => {
+      if (terms?.allowPendingReassignment) return true;
+      return !seats.some((seat) =>
+        seat.seat === seatNumber
+        && seat.state === 'pending'
+        && seat.effectiveCycleIndex === Number(view.cycle?.index ?? -1) + 1
+      );
+    }),
+    [maxSeats, seats, terms?.allowPendingReassignment, view.cycle?.index]
   );
   const selected = candidates.find((candidate) => candidate.userId === chosenUserId) ?? null;
 
@@ -111,6 +140,17 @@ export function ClanGloryPanel({
                   <div className="mt-2">
                     {seat.holderIdentity ? <PlayerCard identity={seat.holderIdentity} variant="row" /> : <p className="font-display text-bone-white">Handler</p>}
                   </div>
+                  <a
+                    href={clanMemberReportHref(
+                      view.membership?.clanId ?? '',
+                      seat.holderUserId,
+                      seat.holderIdentity?.displayHandle ?? 'Handler'
+                    )}
+                    className="inline-flex min-h-[44px] items-center text-[11px] font-body text-beige/45 hover:text-bone-white"
+                    aria-label={`Report handle ${seat.holderIdentity?.displayHandle ?? 'Handler'}`}
+                  >
+                    Report
+                  </a>
                   <p className="mt-2 text-xs font-body text-beige/60">
                     Earned with rank #{seat.evidenceRank} · {seat.evidenceDepth.toLocaleString()} Depth · {seat.evidenceContributionCount}/5 results
                   </p>
@@ -130,7 +170,13 @@ export function ClanGloryPanel({
         </p>
       )}
 
-      {!compact && canAssign && (
+      {!compact && canAssign && !assignmentWindowOpen && (
+        <p className="mt-4 rounded-arcade border border-scale-blue-light/35 bg-void/35 p-3 text-sm font-body text-beige/60" data-testid="glory-window-closed">
+          Assignments open after the battle result is final, during intermission.
+        </p>
+      )}
+
+      {!compact && canAssign && assignmentWindowOpen && (
         <details className="mt-4 rounded-arcade border border-scale-blue-light/40 bg-void/35 p-3">
           <summary className="flex min-h-[44px] cursor-pointer list-none items-center font-display uppercase text-bone-white">
             Assign next battle&apos;s seats
@@ -140,20 +186,23 @@ export function ClanGloryPanel({
               Seat
               <select value={chosenSeat ?? ''} onChange={(event) => setChosenSeat(Number(event.target.value) || null)} className="mt-1 min-h-[44px] w-full rounded-arcade border border-scale-blue-light/60 bg-void/70 px-3 text-bone-white">
                 <option value="">Choose a seat</option>
-                {Array.from({ length: maxSeats }, (_, index) => <option key={index + 1} value={index + 1}>Glory Seat {index + 1}</option>)}
+                {availableSeats.map((seatNumber) => <option key={seatNumber} value={seatNumber}>Glory Seat {seatNumber}</option>)}
               </select>
             </label>
             <label className="block text-sm font-body text-beige">
               Contributor
               <select value={chosenUserId} onChange={(event) => setChosenUserId(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-arcade border border-scale-blue-light/60 bg-void/70 px-3 text-bone-white">
                 <option value="">Choose a verified contributor</option>
-                {candidates.map((candidate) => {
-                  const selfDisabled = candidate.userId === viewerUserId && !terms?.allowOwnerSelfAward;
-                  return <option key={candidate.userId} value={candidate.userId} disabled={selfDisabled}>#{candidate.contribution.rank} · {candidateName(candidate)} · {candidate.contribution.bestFiveDepth?.toLocaleString()} Depth{selfDisabled ? ' · self-award disabled' : ''}</option>;
-                })}
+                {candidates.map((candidate) => <option key={candidate.userId} value={candidate.userId}>#{candidate.contribution.rank} · {candidateName(candidate)} · {candidate.contribution.bestFiveDepth?.toLocaleString()} Depth</option>)}
               </select>
             </label>
-            {candidates.length === 0 && <p className="text-xs font-body text-beige/55">A member needs a verified positive-Energy contribution before they can be considered.</p>}
+            {(candidates.length === 0 || availableSeats.length === 0) && (
+              <p className="text-xs font-body text-beige/55">
+                {availableSeats.length === 0
+                  ? 'Both next-battle seats are already locked.'
+                  : 'No member currently meets the verified contribution, tenure, and assignment terms.'}
+              </p>
+            )}
             <button type="button" disabled={!selected || !chosenSeat} onClick={() => setConfirming(true)} className="btn-go min-h-[44px] px-5">
               Review assignment
             </button>

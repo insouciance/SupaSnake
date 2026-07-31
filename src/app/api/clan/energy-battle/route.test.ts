@@ -80,6 +80,8 @@ describe('GET /api/clan/energy-battle', () => {
   it('reports no clan without exposing a battle surface', async () => {
     installTables({
       players: [{ data: { id: 'player-1' }, error: null }],
+      clan_energy_battle_reward_ledger: [{ data: [], error: null }],
+      clan_glory_reward_ledger: [{ data: [], error: null }],
       clan_members: [{ data: null, error: null }],
     });
 
@@ -95,6 +97,8 @@ describe('GET /api/clan/energy-battle', () => {
   it('marks a member eligible before their clan has created a side', async () => {
     installTables({
       players: [{ data: { id: 'player-1' }, error: null }],
+      clan_energy_battle_reward_ledger: [{ data: [], error: null }],
+      clan_glory_reward_ledger: [{ data: [], error: null }],
       clan_members: [
         {
           data: { clan_id: 'clan-1', clans: { id: 'clan-1', name: 'Coilers', tag: 'COIL' } },
@@ -128,6 +132,48 @@ describe('GET /api/clan/energy-battle', () => {
     };
     installTables({
       players: [{ data: { id: 'player-1' }, error: null }],
+      clan_energy_battle_reward_ledger: [
+        {
+          data: [
+            {
+              id: 'reward-1',
+              battle_id: 'battle-0',
+              clan_id: 'clan-old',
+              cycle_index: 3,
+              reward_kind: 'victor',
+              outcome: 'victor',
+              participation_amount: 100,
+              bonus_amount: 100,
+              amount: 200,
+              counted_depth: 4200,
+              eligible_run_count: 6,
+              counted_run_count: 5,
+              awarded_at: '2026-08-11T01:00:00.000Z',
+              clans: { id: 'clan-old', name: 'Old Clan', tag: 'OLD' },
+            },
+          ],
+          error: null,
+        },
+      ],
+      clan_glory_reward_ledger: [
+        {
+          data: [
+            {
+              id: 'glory-1',
+              battle_id: 'battle-0',
+              clan_id: 'clan-old',
+              cycle_index: 3,
+              seat: 1,
+              amount: 250,
+              eligible_depth: 4200,
+              eligible_contribution_count: 5,
+              awarded_at: '2026-08-11T02:00:00.000Z',
+              clans: { id: 'clan-old', name: 'Old Clan', tag: 'OLD' },
+            },
+          ],
+          error: null,
+        },
+      ],
       clan_members: [
         {
           data: { clan_id: 'clan-new', clans: { id: 'clan-new', name: 'New Clan', tag: 'NEW' } },
@@ -188,6 +234,17 @@ describe('GET /api/clan/energy-battle', () => {
         contribution: 700,
       },
       honors: { total: 1, victories: 1 },
+      rewardHistory: [
+        { id: 'glory-1', type: 'glory', amount: 250, artifactRef: 'glory-reward:glory-1' },
+        {
+          id: 'reward-1',
+          type: 'battle',
+          amount: 200,
+          participationDna: 100,
+          bonusDna: 100,
+          artifactRef: 'battle-reward:reward-1',
+        },
+      ],
     });
     expect(JSON.stringify(body)).not.toContain('clan-new');
   });

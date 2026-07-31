@@ -19,7 +19,21 @@ jest.mock('@sentry/nextjs', () => ({
 import { beforeEach, describe, expect, it } from '@jest/globals';
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
-import { CLAN_ECONOMY_CONFIG } from '@/lib/clan/config';
+import { CLAN_ECONOMY_CONFIG, DIRECTORY_ALIVE_WEEKS } from '@/lib/clan/config';
+
+function thenableChain(result: { data: unknown; error: unknown }) {
+  const chain: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'gt', 'gte', 'is', 'in', 'order', 'limit']) {
+    chain[method] = () => chain;
+  }
+  chain.single = () => Promise.resolve(result);
+  chain.maybeSingle = () => Promise.resolve(result);
+  const promise = Promise.resolve(result);
+  chain.then = promise.then.bind(promise);
+  chain.catch = promise.catch.bind(promise);
+  chain.finally = promise.finally.bind(promise);
+  return chain;
+}
 
 function post(body: Record<string, unknown>, token = 'token') {
   return new NextRequest('https://supasnake.com/api/clan', {
@@ -75,6 +89,15 @@ describe('founding economy', () => {
   it('rejects invalid names before any economy call', async () => {
     const response = await POST(post({ action: 'found', name: '<script>' }));
     expect(response.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects forged heraldry outside the launch presets before spending DNA', async () => {
+    const response = await POST(post({
+      action: 'found', name: 'Elite Snakes', bannerId: 'unreleased_paid_banner',
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'invalid_banner' });
     expect(mockRpc).not.toHaveBeenCalled();
   });
 });
@@ -190,7 +213,7 @@ describe('directory contract', () => {
     expect(response.status).toBe(200);
     expect(mockRpc).toHaveBeenCalledWith('get_competitive_clan_directory', {
       p_search: 'Elite', p_policy: 'application', p_has_space: true,
-      p_limit: 100, p_offset: 4,
+      p_limit: 100, p_offset: 4, p_alive_weeks: DIRECTORY_ALIVE_WEEKS,
     });
     expect((await response.json()).clans[0]).toMatchObject({
       memberCount: 4,
@@ -204,6 +227,45 @@ describe('directory contract', () => {
     expect((await GET(new NextRequest('https://supasnake.com/api/clan?policy=closed'))).status).toBe(400);
     expect((await GET(new NextRequest('https://supasnake.com/api/clan?hasSpace=maybe'))).status).toBe(400);
     expect(mockRpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('authenticated membership bridge', () => {
+  it('requires authentication and never accepts another player identity', async () => {
+    const noAuth = await GET(new NextRequest(
+      'https://supasnake.com/api/clan?playerId=user-1'
+    ));
+    expect(noAuth.status).toBe(401);
+
+    const spoofed = await GET(new NextRequest(
+      'https://supasnake.com/api/clan?playerId=user-2',
+      { headers: { authorization: 'Bearer token' } }
+    ));
+    expect(spoofed.status).toBe(403);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('returns only the authenticated player and a secret-free clan projection', async () => {
+    mockFrom.mockReturnValue(thenableChain({
+      data: {
+        clan_id: 'clan-1', role: 'member', joined_at: '2026-07-01T00:00:00Z',
+        clans: {
+          id: 'clan-1', name: 'Elite Snakes', tag: 'ES', join_policy: 'open',
+          invite_code: 'MUSTHIDE',
+        },
+      },
+      error: null,
+    }));
+    const response = await GET(new NextRequest(
+      'https://supasnake.com/api/clan?playerId=user-1',
+      { headers: { authorization: 'Bearer token' } }
+    ));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.clan).toMatchObject({ id: 'clan-1', name: 'Elite Snakes', tag: 'ES' });
+    expect(body.clan).not.toHaveProperty('invite_code');
+    expect(mockFrom).toHaveBeenCalledWith('clan_members');
   });
 });
 
