@@ -1,11 +1,18 @@
 # SupaSnake Monetization Strategy
 
 **Status:** Authoritative commercial product strategy within
-[`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) v1.5. The Constitution
+[`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) v1.8. The Constitution
 remains design law; this document turns §10 into a repository-grounded product,
 packaging, and implementation plan. The historical
 [`MONETIZATION_DESIGN.md`](./MONETIZATION_DESIGN.md) remains superseded and must
 not be implemented.
+
+**Competitive notice (2026-07-31):** Constitution v1.7 replaced the former
+privacy-by-suppression model. Verified contribution, rank, leadership, Glory,
+and earned progression are visible prestige. The commercial boundary remains
+strict: those facts and the tools needed to understand or administer them are
+free; payment may decorate their presentation but never create, hide, reorder,
+or automate an earned competitive judgment.
 
 **Decision date:** 2026-07-29
 
@@ -49,8 +56,10 @@ Three requested opportunities should be narrowed or rejected:
 - **Do not sell serious-clan workforce management.** Member performance reports,
   participation grading, recruitment scoring, officer tools, and scheduled
   accountability reports would turn a small clan from witness into workplace.
-  The current system deliberately removed officers and teammate contribution
-  detail. Core clan administration and battle facts stay free.
+  The current system deliberately makes verified contribution, ranks,
+  Leader/Co-leader administration, and battle facts visible and free. Paid clan
+  products may organize identity or archives; they may not sell authority over
+  members, exclusive competitive intelligence, or automated personnel grading.
 - **Do not sell gameplay scenarios.** Fixed-seed challenges, puzzles, Dynasty
   trials, and gauntlets can teach routes or builds and therefore create a paid
   practice advantage. They belong in free Training, Mastery, Signals, or
@@ -82,7 +91,7 @@ gameplay or clan number.
 | Account ownership | **Good foundation** | Purchases require a registered Supabase identity; guest-to-account upgrade preserves the player identity, so web ownership can be restored across browsers. |
 | Workbench | **Strong and free** | [`workbench.ts`](../../src/shared/game/workbench.ts) already performs deterministic, account-aware planning with the engine's real formulas. There is no persisted plan library, foldering, or version history. |
 | Analytics | **Strong event substrate** | Consent-gated PostHog events and a purchase funnel exist. The current Premium Stats endpoint paywalls actionable run analytics, which conflicts with the constitutional ban on selling information and must be corrected before live commerce. |
-| Clan ownership | **Not supported** | Entitlements are player-scoped. Clans cap at 12 and deliberately have only owner/member roles; the Energy Battle exposes a player's own best five and aggregate clan totals, not teammate evaluation data. |
+| Clan ownership | **Not supported** | Entitlements are player-scoped. Clans cap at 12 and use Leader/Co-leader/Member roles; verified best-five contributions, ranks, aggregate totals, and Glory evidence are free competitive facts rather than paid evaluation data. |
 | Gifting, passes, bundles, tier upgrades | **Not supported** | No generic entitlement graph, recipient claim, retroactive pass grant, owned-component credit, or pay-the-difference upgrade path exists. |
 | Regional/cross-platform commerce | **Not supported** | The web launch is EUR/Stripe. There is no regional price book or native-platform receipt ingestion. This is acceptable for launch. |
 | Data portability | **Incomplete for commerce** | The GDPR export includes legacy purchases and only 100 recent sessions; it omits subscriptions, cosmetics, entitlements, gifts, and pass ownership. |
@@ -121,8 +130,9 @@ Every paid entitlement must pass all of these tests:
 6. It cannot improve Energy recovery/capacity, DNA, Yield, Score, Depth,
    generation, Genome access, Training, battle eligibility, matchmaking, or
    leaderboard standing.
-7. It creates no paid authority over a clan member and reveals no teammate
-   performance detail that the free clan contract withholds.
+7. It creates no paid authority over a clan member and withholds no competitive
+   fact, contribution proof, or administration capability required by the free
+   clan contract.
 8. It cannot create, elevate, reorder, or imitate an earned Career Spine impact,
    proof slot, attention item, milestone significance, or social honor. Paid
    presentation carries explicit decorative/supporter provenance.
@@ -137,7 +147,7 @@ Every paid entitlement must pass all of these tests:
 | Replays | A useful recent window, PB/record replays, battle-contribution replays, and sharing needed for fair learning | Larger archive, folders, cosmetic overlays, showcase curation, and high-quality export presentation |
 | Identity | Strong earned items in every slot, permanent Records, PBs, lineage, profile, clan identity, and share cards | Direct-purchase cosmetic variants, extra cosmetic loadouts, colorways, presentation themes, and patron marks |
 | Progression | All Mastery, Lineage, Discovery, DNA sinks, genes, variants, challenges, and rewards | Cosmetic/narrative season lane only; paid completion never changes progression power |
-| Clan | Found/join/leave, invite links, roster, moderation, heraldry baseline, Discord link, Energy Battle facts, own best five, aggregate totals, and share cards | At most a later clan-owned visual commission: heraldry expansion and presentation assets. No member analytics, officer tier, recruitment score, extra capacity, or battle benefit |
+| Clan | Found/join/leave, applications and invites, Leader/Co-leader/Member governance, roster ranks and verified best-five facts, moderation, heraldry baseline, Discord link, Energy Battle/Glory evidence, aggregate totals, and share cards | At most a later clan-owned visual commission or archive presentation: heraldry expansion and presentation assets. No exclusive performance facts, automated personnel grading, paid authority, extra capacity, or battle benefit |
 | Organization | Generous limits that support ordinary play; basic filters and sharing | Additional cosmetic loadouts, archival folders/tags/notes, profile showcases, and long-term curation |
 
 The Career Spine is the free factual substrate. Keeper may frame, organize, and

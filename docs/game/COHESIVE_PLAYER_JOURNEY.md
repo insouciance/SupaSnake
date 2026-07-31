@@ -2,7 +2,7 @@
 
 **Status:** Review candidate · awaiting Product Owner UX validation · 31 July 2026
 
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.7 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.8 remains design law. This
 review candidate defines the proposed end-to-end player journey, information
 architecture, run-continuity presentation, and cross-system attention behavior;
 it becomes an authoritative product contract only after Product Owner approval.

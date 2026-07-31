@@ -470,8 +470,10 @@ private).
 7. **Season chapters** — one chapter per season: track level reached,
    archetype earned, anomaly best finishes, gauntlet weeks, championship
    banner if Crowned. Season Recall card (§9.2) embeds here.
-8. **Clan history** — current Energy Battle honors, aggregate battle history,
-   and rivalry memory; no teammate attempt or contribution detail.
+8. **Clan history** — current Energy Battle honors, verified best-five
+   contributions and ranks, aggregate battle history, Glory evidence, and
+   rivalry memory. It distinguishes no eligible result from failure and never
+   exposes a client-editable competitive fact.
 9. **Early Career** — the collapsed legacy-achievements panel (§6.6).
 
 ### 7.2 Empty states (anti-dead-surface)
