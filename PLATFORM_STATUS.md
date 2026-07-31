@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-07-30
+**Updated:** 2026-07-31
 
 **Environment:** operator production, Stripe sandbox
 
@@ -12,23 +12,24 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–059 deployed and aligned |
+| Schema | Migrations 001–061 deployed and aligned |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
 | Energy | Server-time recovery to 6; 1–6 commitment; nonlinear harvest |
 | Clan battle | Automatic positive-Energy eligibility; three days; best five per member |
-| Player-feature baseline | `abf9844` |
-| Control rollout deployment | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` |
-| Control-release app rollback | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` (`61a1936`; same hosted schema) |
+| Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
+| Player-feature baseline | `564dbb7` |
+| Current deployment | `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR` |
+| Outgoing pre-cutover artifact | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`; **not rollback-safe after migration 061** |
 | Payments | Test/sandbox mode only |
 
-The current release passed 389 Jest suites / 5,578 tests with coverage, full
-lint and type checking, a zero-vulnerability production dependency audit, the
-production build, deterministic cockpit fixtures, both isolated-Supabase E2E
-configurations, local migrations 001–059 from zero, SQL integration, protected
-PR and post-main CI, staged health, linked database lint, and focused
-public-production smoke. Detailed evidence is maintained in
+The current release passed protected-PR and post-main Build, Lint, Test, and
+both isolated-Supabase E2E workflows; full type checking, lint, Jest coverage,
+production build, deterministic cockpit fixtures, local migrations 001–061
+from zero, phased 060/061 and concurrency SQL integration, the production
+runtime dependency audit, staged and canonical health, linked database lint,
+and focused public-production smoke. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -36,7 +37,10 @@ public-production smoke. Detailed evidence is maintained in
 - Home Launch authenticates, bootstraps, prepares the run, and reaches the held
   board without a mandatory Lab or second Play action.
 - PRIMAL is the authoritative starter for a genuinely new player.
-- Meta progression uses notification-first, player-pulled discovery.
+- Every accepted earning run is secured before presentation, then feeds one
+  coherent Career Spine: a bounded Results recognition sequence, server-backed
+  attention, Career Pulse, lineage history, milestones, and personal or
+  privacy-safe clan consequence.
 - The arena remains centered and clear of routine HUD elements.
 - CYBER and COSMIC keep +1 normal body growth; PRIMAL owns the degressive
   +4/+3/+2/+1 body-pressure curve, while Genome offers run on their own 4–8-food
@@ -84,6 +88,8 @@ public-production smoke. Detailed evidence is maintained in
 - react-three-fiber / Three.js rendering
 - Zustand client state with deterministic engine logic outside rendering
 - Supabase server-authoritative progress, economy, and session settlement
+- No progress, reward, recovery request, receipt, attention state, or pursuit
+  authority in `localStorage`, `sessionStorage`, IndexedDB, or browser caches
 - Stripe, Sentry, PostHog, Discord, and Analyst integrations with documented
   degraded modes
 - Jest, Playwright, GitHub Actions, Vercel, and isolated Supabase CI
@@ -95,6 +101,7 @@ NEXT_PUBLIC_FTUE_V2=true
 NEXT_PUBLIC_HUD_COCKPIT_V1=true
 NEXT_PUBLIC_GROWTH_LAB_V1=true  # inert legacy environment value; code retired
 NEXT_PUBLIC_LADDER_V1=true
+NEXT_PUBLIC_CAREER_SPINE_V1=true  # presentation only; never gates settlement
 ```
 
 ## Known follow-ups
@@ -112,12 +119,18 @@ These do not invalidate the operator production release:
 - Live clan tuning: best-five replacement cadence, three-day participation,
   low-Energy skill competitiveness, late-cycle clustering, and generation
   progression during a battle
-- Linked database lint reports two non-blocking migration-059 warnings: unused
-  local recovery variables and a conservative UUID-array cast warning. The
-  exercised SQL integration path passed; clean these in a dedicated migration
-  rather than rewriting deployed history.
-- Repair the production workflow's rollback-anchor lookup; it currently sees
-  the newly staged production-target deployment rather than the outgoing alias
+- Live Career tuning: recognition significance and pacing, Results readability,
+  attention noise, lineage-memory usefulness, and clan-consequence clarity
+- Monitor pending-settlement age, recovery latency, quarantine volume, duplicate
+  end requests, and the ratio of accepted run ends that need asynchronous
+  adoption
+- Define a reviewed retention policy for routine Career receipts before
+  enabling any pruning; permanent milestones and earned history remain durable
+- Linked database lint passed with no error and existing non-blocking warnings.
+  Address warnings only through a reviewed forward migration; never rewrite
+  deployed migration history.
+- Migration 061 intentionally closes the retired writer. The outgoing artifact
+  is not rollback-safe; any Career settlement incident requires a forward fix.
 - Final commercial legal review and support-mailbox operating procedures
 - Stripe test-to-live review and a controlled real purchase/refund
 - `RESEND_API_KEY` if weekly digest email becomes a marketed feature
@@ -129,6 +142,7 @@ These do not invalidate the operator production release:
 - Player flow: `docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md`
 - Cockpit: `docs/game/HUD_COCKPIT_REDESIGN.md`
 - Energy and clan battles: `docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md`
+- Career and recognition: `docs/game/CAREER_SPINE.md`
 - Monetization: `docs/game/MONETIZATION_STRATEGY.md`
 - Production QA: `docs/ops/QA_CHECKLIST.md`
 - Environment state: `docs/ops/ENV_MATRIX.md`

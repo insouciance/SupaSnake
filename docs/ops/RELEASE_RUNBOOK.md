@@ -1,21 +1,19 @@
 # Production Release Runbook
 
-Current player-feature baseline: application runtime `abf9844` — the control
-responsiveness and uninterrupted-Cosmic release, deployed 2026-07-30 by workflow
-run 30534158859, deployment `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` — and hosted
-migrations 001–059. The migration preview and apply steps were verified no-ops,
-linked database validation passed, and the canonical application/database health
-check passed. Rollback anchor for this release (precondition 3):
-`dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR`, commit `61a1936`; both runtimes use the same
-hosted schema.
+Current player-feature baseline: Career Spine runtime
+`564dbb71a83198eba796503de3334d8d4d82f48d`, deployed 2026-07-31 by workflow
+run 30608676126 as `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR`, with hosted migrations
+001–061. Canonical health reports the exact release SHA, healthy database,
+Career phase `ready`, bridge version 1, Career version 1, and the presentation
+surface enabled. Stripe remains in sandbox/test mode.
 
-Run 30534158859 exposed a rollback-anchor ordering defect: the workflow queried
-`vercel ls --prod` after creating the staged `--prod --skip-domain` artifact and
-therefore named the new artifact instead of the outgoing canonical deployment.
-The workflow now resolves `supasnake.com` itself with `vercel inspect` before
-staging and blocks release unless that alias names a ready production artifact.
-Confirm the next release summary names the known outgoing deployment before
-treating this correction as operationally proven.
+The independently recorded outgoing deployment is
+`dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`. It is **not** an application rollback
+target after migration 061: the cutover deliberately rejects its retired
+writer. Preserve accepted server debt and forward-fix on the Career-aware
+release line. Run 30608676126 operationally proved the corrected anchor order:
+the workflow resolved the outgoing canonical deployment before staging, then
+proved the promoted canonical alias by exact deployment ID and release SHA.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made

@@ -20,9 +20,11 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
       release plan
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
 - [ ] CI and production builds use `NEXT_PUBLIC_FTUE_V2=true`,
-      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, and `NEXT_PUBLIC_LADDER_V1=true`, unless
-      deliberately testing rollback. `NEXT_PUBLIC_GROWTH_LAB_V1` is retired and
-      must not be required by current behavior.
+      `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, `NEXT_PUBLIC_LADDER_V1=true`, and
+      `NEXT_PUBLIC_CAREER_SPINE_V1=true`, unless deliberately testing a
+      presentation rollback. Career settlement and earned progress must never
+      depend on that flag. `NEXT_PUBLIC_GROWTH_LAB_V1` is retired and must not
+      be required by current behavior.
 - [ ] Production environment presence check passes; Vercel cloud-build value
       validation passes for the selected Stripe mode
 
@@ -46,6 +48,13 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] During an active clan cycle, positive-Energy normal runs attach at start,
       update only the player's best five banked Yields, and expose no teammate
       performance detail or paid advantage
+- [ ] Every accepted earning run survives a dropped response, reload, reconnect,
+      and duplicate completion through server-side recovery; no progress fact,
+      pending request, receipt, attention item, or pursuit is persisted in
+      browser storage
+- [ ] Results presents no more than three meaningful Career recognition beats;
+      destination-specific acknowledgement clears server-backed attention
+      without bell-open or route-open shortcuts
 - [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and Codex
 - [ ] Registered deletion schedules 30 days out; a new sign-in cancels it
 - [ ] Guest deletion requires `DELETE MY ACCOUNT` and erases immediately
