@@ -298,20 +298,30 @@ BEGIN
     id, player_id, snake_variant_id, generation, acquired_method, is_equipped
   ) VALUES (v_snake, v_player, v_variant, 1, 'unlock', TRUE);
 
+  -- Migration 063 permits one open run per player. These are distinct completed
+  -- runs, so fixture them in the same chronological order the server accepts.
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
     score, dna_earned, yield_dna, validated, extracted, died,
     energy_committed, energy_harvest_multiplier_bps
-  ) VALUES
-    (v_session_a, v_player, v_snake, v_variant, 'PRIMAL',
-     1000, 100, 100, TRUE, TRUE, FALSE, 1, 10000),
-    (v_session_b, v_player, v_snake, v_variant, 'PRIMAL',
-     2500, 200, 200, TRUE, TRUE, FALSE, 1, 10000),
-    (v_session_invalid, v_player, v_snake, v_variant, 'PRIMAL',
-     9999, 50, 50, FALSE, FALSE, TRUE, 1, 10000);
-
+  ) VALUES (v_session_a, v_player, v_snake, v_variant, 'PRIMAL',
+            1000, 100, 100, TRUE, TRUE, FALSE, 1, 10000);
   PERFORM pg_temp.complete_atomic_test_session(v_session_a);
+
+  INSERT INTO game_sessions(
+    id, player_id, snake_used_id, snake_variant_id, dynasty,
+    score, dna_earned, yield_dna, validated, extracted, died,
+    energy_committed, energy_harvest_multiplier_bps
+  ) VALUES (v_session_b, v_player, v_snake, v_variant, 'PRIMAL',
+            2500, 200, 200, TRUE, TRUE, FALSE, 1, 10000);
   PERFORM pg_temp.complete_atomic_test_session(v_session_b);
+
+  INSERT INTO game_sessions(
+    id, player_id, snake_used_id, snake_variant_id, dynasty,
+    score, dna_earned, yield_dna, validated, extracted, died,
+    energy_committed, energy_harvest_multiplier_bps
+  ) VALUES (v_session_invalid, v_player, v_snake, v_variant, 'PRIMAL',
+            9999, 50, 50, FALSE, FALSE, TRUE, 1, 10000);
   PERFORM pg_temp.complete_atomic_test_session(v_session_invalid);
   v_first := settle_game_session_reward_from_snapshot(v_player, v_session_a);
   PERFORM settle_game_session_reward_from_snapshot(v_player, v_session_b);
@@ -435,23 +445,35 @@ BEGIN
     dna_earned, yield_dna, energy_committed,
     energy_harvest_multiplier_bps, energy_commitment_locked_at,
     clan_energy_battle_id, clan_energy_battle_side_id, clan_energy_clan_id
-  ) VALUES
-    (v_session_a, v_player, v_snake_a, v_variant, 'PRIMAL',
-     NOW() - INTERVAL '3 minutes', TRUE, TRUE, 100, 100, 100, 1, 10000,
-     NOW() - INTERVAL '3 minutes', v_battle, v_side, v_clan),
-    (v_session_b, v_player, v_snake_b, v_variant, 'PRIMAL',
-     NOW() - INTERVAL '2 minutes', TRUE, TRUE, 200, 200, 200, 1, 10000,
-     NOW() - INTERVAL '2 minutes', v_battle, v_side, v_clan),
-    (v_failed_session, v_player, v_snake_b, v_variant, 'PRIMAL',
-     NOW() - INTERVAL '1 minute', TRUE, FALSE, 300, 0, 0, 6, 100000,
-     NOW() - INTERVAL '1 minute', NULL, NULL, NULL);
-
+  ) VALUES (v_session_a, v_player, v_snake_a, v_variant, 'PRIMAL',
+            NOW() - INTERVAL '3 minutes', TRUE, TRUE, 100, 100, 100, 1, 10000,
+            NOW() - INTERVAL '3 minutes', v_battle, v_side, v_clan);
   PERFORM pg_temp.complete_atomic_test_session(
     v_session_a, NOW() - INTERVAL '2 minutes'
   );
+
+  INSERT INTO game_sessions(
+    id, player_id, snake_used_id, snake_variant_id, dynasty,
+    started_at, validated, extracted, score,
+    dna_earned, yield_dna, energy_committed,
+    energy_harvest_multiplier_bps, energy_commitment_locked_at,
+    clan_energy_battle_id, clan_energy_battle_side_id, clan_energy_clan_id
+  ) VALUES (v_session_b, v_player, v_snake_b, v_variant, 'PRIMAL',
+            NOW() - INTERVAL '2 minutes', TRUE, TRUE, 200, 200, 200, 1, 10000,
+            NOW() - INTERVAL '2 minutes', v_battle, v_side, v_clan);
   PERFORM pg_temp.complete_atomic_test_session(
     v_session_b, NOW() - INTERVAL '1 minute'
   );
+
+  INSERT INTO game_sessions(
+    id, player_id, snake_used_id, snake_variant_id, dynasty,
+    started_at, validated, extracted, score,
+    dna_earned, yield_dna, energy_committed,
+    energy_harvest_multiplier_bps, energy_commitment_locked_at,
+    clan_energy_battle_id, clan_energy_battle_side_id, clan_energy_clan_id
+  ) VALUES (v_failed_session, v_player, v_snake_b, v_variant, 'PRIMAL',
+            NOW() - INTERVAL '1 minute', TRUE, FALSE, 300, 0, 0, 6, 100000,
+            NOW() - INTERVAL '1 minute', NULL, NULL, NULL);
 
   PERFORM record_clan_energy_contribution(v_session_a, 1, 10800, 10800);
   PERFORM record_lineage_specimen_run(v_session_a);

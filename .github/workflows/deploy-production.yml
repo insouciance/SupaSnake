@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: production-deployment
@@ -37,10 +38,6 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
-      NEXT_PUBLIC_FTUE_V2: 'true'
-      NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
-      NEXT_PUBLIC_CAREER_SPINE_V1: 'true'
-      NEXT_PUBLIC_RUN_FLOW_V1: 'true'
     steps:
       - name: Require main branch dispatch
         shell: bash
@@ -52,22 +49,14 @@ jobs:
           fi
       - uses: actions/checkout@v4
       - name: Require the exact current main commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
-          checked_out=$(git rev-parse HEAD)
-          main_head=$(git rev-parse refs/remotes/origin/main)
-          if [ "$checked_out" != "$GITHUB_SHA" ] || [ "$main_head" != "$GITHUB_SHA" ]; then
-            echo "::error::Production dispatch is stale or not the exact current main commit"
-            echo "checked_out=$checked_out main_head=$main_head dispatch=$GITHUB_SHA"
-            exit 1
-          fi
+        run: bash scripts/verify-exact-main.sh
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Arm the exact production public-surface contract
+        run: node scripts/production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -141,22 +130,26 @@ jobs:
           fi
       - uses: actions/checkout@v4
       - name: Require the exact current main commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
-          checked_out=$(git rev-parse HEAD)
-          main_head=$(git rev-parse refs/remotes/origin/main)
-          if [ "$checked_out" != "$GITHUB_SHA" ] || [ "$main_head" != "$GITHUB_SHA" ]; then
-            echo "::error::Production dispatch is stale or not the exact current main commit"
-            echo "checked_out=$checked_out main_head=$main_head dispatch=$GITHUB_SHA"
-            exit 1
-          fi
+        run: bash scripts/verify-exact-main.sh
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+
+      - name: Load exact production public-surface contract
+        id: surface_contract
+        run: |
+          set -euo pipefail
+          node scripts/production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"
+          contract=$(node scripts/production-public-surface-cli.mjs json)
+          echo "hash=$(printf '%s' "$contract" | jq -er '.contractHash')" >> "$GITHUB_OUTPUT"
+          echo "project_ref=$(printf '%s' "$contract" | jq -er '.supabaseProjectRef')" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful exact-SHA push workflows
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/verify-github-sha-workflows.mjs
 
       - name: Pull production environment
         run: npx vercel@56.3.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
@@ -182,21 +175,10 @@ jobs:
             exit 1
           fi
           supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
-          preview_file=$(mktemp)
-          supabase db push --linked --include-all --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee "$preview_file"
-          actual=$(grep -oE '[0-9]{3,}_[A-Za-z0-9._-]+\.sql' "$preview_file" | sort -u | paste -sd, - || true)
-          expected=$(printf '%s' "$EXPECTED_MIGRATIONS" | tr -d '[:space:]')
-          if ! [[ "$expected" =~ ^(none|[0-9]{3,}_[A-Za-z0-9._-]+\.sql(,[0-9]{3,}_[A-Za-z0-9._-]+\.sql)*)$ ]]; then
-            echo "::error::expected_migrations must be 'none' or an exact comma-separated filename list"
-            exit 1
-          fi
-          if [ "$expected" = 'none' ]; then expected=''; fi
-          if [ "$actual" != "$expected" ]; then
-            echo "::error::pending migrations differ: expected '${expected:-none}', got '${actual:-none}'"
-            exit 1
-          fi
+          bash scripts/verify-linked-migration-plan.sh
+          actual=$(grep '^actual=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
 
-          rollout=standard
+          rollout=''
           if [ -z "$actual" ]; then
             rollout=none
           elif [ "$actual" = '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql' ]; then
@@ -209,9 +191,11 @@ jobs:
               || ",$actual," == *",064_atomic_dynasty_favorites.sql,"* ]]; then
             echo "::error::Cohesive UX migrations require the exact initial set or an ordered suffix"
             exit 1
+          else
+            echo "::error::This release workflow rejects migrations without an explicit reviewed rollout contract: $actual"
+            exit 1
           fi
           echo "rollout=$rollout" >> "$GITHUB_OUTPUT"
-          echo "actual=$actual" >> "$GITHUB_OUTPUT"
 
       - name: Record exact outgoing production deployment
         id: outgoing
@@ -226,15 +210,26 @@ jobs:
             echo "::error::canonical alias is not a ready production deployment"
             exit 1
           fi
+          outgoing_health=$(curl --fail --show-error --silent --max-time 20 \
+            https://supasnake.com/api/health)
+          if ! printf '%s' "$outgoing_health" | jq -e \
+            '.status == "healthy"
+              and .checks.database.status == "healthy"
+              and (.release | type == "string" and length > 0 and . != "unknown")' >/dev/null; then
+            echo "::error::canonical outgoing deployment is not exactly healthy"
+            exit 1
+          fi
+          outgoing_release=$(printf '%s' "$outgoing_health" | jq -er '.release')
           {
             echo "id=$outgoing_id"
             echo "host=$outgoing_host"
             echo "url=https://$outgoing_host"
+            echo "release=$outgoing_release"
           } >> "$GITHUB_OUTPUT"
           {
             echo '### Outgoing production anchor'
             echo ''
-            echo "Before cutover: \`$outgoing_id\` (\`https://$outgoing_host\`)"
+            echo "Before cutover: \`$outgoing_id\` (\`https://$outgoing_host\`, release \`$outgoing_release\`)"
             echo ''
             echo 'A rollback is never automatic. Use the supported `vercel rollback <deployment>` command only after checking schema compatibility, then prove alias and cron state independently.'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -246,6 +241,14 @@ jobs:
           EXPECTED_CRON_HOST: ${{ steps.outgoing.outputs.host }}
         run: bash scripts/verify-vercel-cron-state.sh
 
+      - name: Revalidate exact release authority before Preview creation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-exact-main.sh
+          node scripts/verify-github-sha-workflows.mjs
+
       # Preview is an ordinary Preview deployment. Vercel invokes project cron
       # jobs only on Production, so this artifact cannot acquire production
       # cron ownership. It is the sole pre-cutover application artifact.
@@ -253,19 +256,17 @@ jobs:
         id: preview
         run: |
           set -euo pipefail
+          mapfile -t surface_args < <(
+            node scripts/production-public-surface-cli.mjs vercel-args
+          )
           deployment_url=$(npx vercel@56.3.1 deploy \
             --yes \
             --archive=tgz \
             --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
-            --build-env NEXT_PUBLIC_FTUE_V2='true' \
-            --build-env NEXT_PUBLIC_HUD_COCKPIT_V1='true' \
-            --build-env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
-            --build-env NEXT_PUBLIC_RUN_FLOW_V1='true' \
+            --build-env SUPABASE_SERVICE_ROLE_KEY='preview-disabled-no-service-role' \
+            --env SUPABASE_SERVICE_ROLE_KEY='preview-disabled-no-service-role' \
             --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
-            --env NEXT_PUBLIC_FTUE_V2='true' \
-            --env NEXT_PUBLIC_HUD_COCKPIT_V1='true' \
-            --env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
-            --env NEXT_PUBLIC_RUN_FLOW_V1='true' \
+            "${surface_args[@]}" \
             --token="$VERCEL_TOKEN")
           deployment_json=$(npx vercel@56.3.1 inspect "$deployment_url" \
             --format=json --non-interactive --token="$VERCEL_TOKEN")
@@ -304,25 +305,47 @@ jobs:
           EXPECTED_CRON_DEFINITIONS_SHA: ${{ steps.cron_before.outputs.definitions_sha }}
         run: bash scripts/verify-vercel-cron-state.sh
 
-      - name: Smoke Preview against pre-migration schema
-        if: ${{ steps.migration_plan.outputs.rollout == 'standard' || steps.migration_plan.outputs.rollout == 'none' }}
+      - name: Smoke Preview public contract before schema mutation
         run: |
           set -uo pipefail
           payload=''
           for attempt in $(seq 1 12); do
-            if payload=$(npx vercel@56.3.1 curl /api/health \
+            if payload=$(npx vercel@56.3.1 curl /api/release-contract \
                 --deployment "${{ steps.preview.outputs.url }}" --yes -- \
                 --fail --show-error --silent --max-time 20) \
-              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
-                '.status == "healthy" and .release == $release
-                  and .checks.database.status == "healthy"' >/dev/null; then
+              && printf '%s' "$payload" | jq -e \
+                --arg release "${{ github.sha }}" \
+                --arg hash "${{ steps.surface_contract.outputs.hash }}" \
+                --arg project "${{ steps.surface_contract.outputs.project_ref }}" \
+                '.status == "healthy"
+                  and .release == $release
+                  and .checks.database.status == "healthy"
+                  and .checks.publicSurface.status == "healthy"
+                  and .checks.publicSurface.contractHash == $hash
+                  and .checks.publicSurface.declaredHash == $hash
+                  and .checks.publicSurface.projectRef == $project
+                  and .checks.publicSurface.expectedProjectRef == $project
+                  and .checks.publicSurface.enabledFlagCount
+                    == .checks.publicSurface.expectedFlagCount
+                  and (.checks.publicSurface.disabledFlags | length) == 0' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-          echo "::error::Preview is not compatible with the current schema"
+          echo "::error::Preview did not prove the exact public release contract"
           printf '%s\n' "$payload"
           exit 1
+
+      - name: Revalidate exact authority and pending plan before schema mutation
+        if: ${{ steps.migration_plan.outputs.rollout != 'none' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_MIGRATIONS: ${{ steps.migration_plan.outputs.actual || 'none' }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-exact-main.sh
+          node scripts/verify-github-sha-workflows.mjs
+          bash scripts/verify-linked-migration-plan.sh
 
       - name: Apply cohesive UX bridge migrations
         if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
@@ -331,12 +354,10 @@ jobs:
         if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
         run: supabase db lint --linked --level warning --fail-on error
 
-      - name: Apply standard pending database migrations
-        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
-        run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
-      - name: Validate linked database after standard migration
-        if: ${{ steps.migration_plan.outputs.rollout == 'standard' }}
-        run: supabase db lint --linked --level warning --fail-on error
+      - name: Prove the linked migration plan is empty after the reviewed push
+        env:
+          EXPECTED_MIGRATIONS: none
+        run: bash scripts/verify-linked-migration-plan.sh
 
       # This is the only SQL test permitted against hosted production. It has
       # no fixtures and is guarded by both Management API read_only=true and
@@ -371,7 +392,10 @@ jobs:
             if payload=$(curl --fail --show-error --silent --max-time 20 \
                 https://supasnake.com/api/health) \
               && printf '%s' "$payload" | jq -e \
-                '.status == "healthy" and .checks.database.status == "healthy"' >/dev/null; then
+                --arg release "${{ steps.outgoing.outputs.release }}" \
+                '.status == "healthy"
+                  and .release == $release
+                  and .checks.database.status == "healthy"' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
@@ -380,37 +404,46 @@ jobs:
           printf '%s\n' "$payload"
           exit 1
 
-      - name: Smoke exact Preview on final bridge schema
+      - name: Re-prove exact Preview public contract on final bridge schema
         run: |
           set -uo pipefail
           payload=''
           for attempt in $(seq 1 12); do
-            if payload=$(npx vercel@56.3.1 curl /api/health \
+            if payload=$(npx vercel@56.3.1 curl /api/release-contract \
                 --deployment "${{ steps.preview.outputs.url }}" --yes -- \
                 --fail --show-error --silent --max-time 20) \
-              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
+              && printf '%s' "$payload" | jq -e \
+                --arg release "${{ github.sha }}" \
+                --arg hash "${{ steps.surface_contract.outputs.hash }}" \
+                --arg project "${{ steps.surface_contract.outputs.project_ref }}" \
                 '.status == "healthy"
                   and .release == $release
                   and .checks.database.status == "healthy"
-                  and .checks.careerSpine.status == "healthy"
-                  and .checks.careerSpine.phase == "ready"
-                  and .checks.careerSpine.bridgeVersion == 1
-                  and .checks.careerSpine.careerVersion == 1
-                  and .checks.careerSpine.surfaceEnabled == true
-                  and .checks.runFlow.status == "healthy"
-                  and .checks.runFlow.surfaceEnabled == true
-                  and .checks.cohesiveRelease.status == "healthy"
-                  and .checks.cohesiveRelease.version == 1
-                  and .checks.cohesiveRelease.foundingBridgeVersion == 1
-                  and .checks.cohesiveRelease.continuityVersion == 1
-                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1' >/dev/null; then
+                  and .checks.publicSurface.status == "healthy"
+                  and .checks.publicSurface.contractHash == $hash
+                  and .checks.publicSurface.declaredHash == $hash
+                  and .checks.publicSurface.projectRef == $project
+                  and .checks.publicSurface.expectedProjectRef == $project
+                  and .checks.publicSurface.enabledFlagCount
+                    == .checks.publicSurface.expectedFlagCount
+                  and (.checks.publicSurface.disabledFlags | length) == 0' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-          echo "::error::exact Preview did not pass the final capability contract"
+          echo "::error::exact Preview lost the public release contract"
           printf '%s\n' "$payload"
           exit 1
+
+      - name: Revalidate exact authority and empty schema plan before Production
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_MIGRATIONS: none
+        run: |
+          set -euo pipefail
+          bash scripts/verify-exact-main.sh
+          node scripts/verify-github-sha-workflows.mjs
+          bash scripts/verify-linked-migration-plan.sh
 
       # There is deliberately no --prod --skip-domain artifact. Once every
       # preflight has passed, this single supported Production deployment is
@@ -421,20 +454,16 @@ jobs:
         run: |
           set -euo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
+          mapfile -t surface_args < <(
+            node scripts/production-public-surface-cli.mjs vercel-args
+          )
           deployment_url=$(npx vercel@56.3.1 deploy \
             --prod \
             --yes \
             --archive=tgz \
             --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
-            --build-env NEXT_PUBLIC_FTUE_V2='true' \
-            --build-env NEXT_PUBLIC_HUD_COCKPIT_V1='true' \
-            --build-env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
-            --build-env NEXT_PUBLIC_RUN_FLOW_V1='true' \
             --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
-            --env NEXT_PUBLIC_FTUE_V2='true' \
-            --env NEXT_PUBLIC_HUD_COCKPIT_V1='true' \
-            --env NEXT_PUBLIC_CAREER_SPINE_V1='true' \
-            --env NEXT_PUBLIC_RUN_FLOW_V1='true' \
+            "${surface_args[@]}" \
             --token="$VERCEL_TOKEN")
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
@@ -491,10 +520,21 @@ jobs:
           for attempt in $(seq 1 12); do
             if payload=$(curl --fail --show-error --silent --max-time 20 \
                 https://supasnake.com/api/health) \
-              && printf '%s' "$payload" | jq -e --arg release "${{ github.sha }}" \
+              && printf '%s' "$payload" | jq -e \
+                --arg release "${{ github.sha }}" \
+                --arg hash "${{ steps.surface_contract.outputs.hash }}" \
+                --arg project "${{ steps.surface_contract.outputs.project_ref }}" \
                 '.status == "healthy"
                   and .release == $release
                   and .checks.database.status == "healthy"
+                  and .checks.publicSurface.status == "healthy"
+                  and .checks.publicSurface.contractHash == $hash
+                  and .checks.publicSurface.declaredHash == $hash
+                  and .checks.publicSurface.projectRef == $project
+                  and .checks.publicSurface.expectedProjectRef == $project
+                  and .checks.publicSurface.enabledFlagCount
+                    == .checks.publicSurface.expectedFlagCount
+                  and (.checks.publicSurface.disabledFlags | length) == 0
                   and .checks.careerSpine.status == "healthy"
                   and .checks.careerSpine.phase == "ready"
                   and .checks.careerSpine.bridgeVersion == 1
@@ -529,9 +569,16 @@ jobs:
             --format=json --non-interactive --token="$VERCEL_TOKEN" 2>/dev/null || true)
           canonical_id=$(printf '%s' "$canonical_json" | jq -r '.id // empty' 2>/dev/null || true)
           canonical_host=$(printf '%s' "$canonical_json" | jq -r '.url // empty' 2>/dev/null || true)
+          canonical_ready=$(printf '%s' "$canonical_json" | jq -r '.readyState // empty' 2>/dev/null || true)
+          canonical_target=$(printf '%s' "$canonical_json" | jq -r '.target // empty' 2>/dev/null || true)
           health_payload=$(curl --show-error --silent --max-time 20 \
             https://supasnake.com/api/health 2>/dev/null || true)
           live_release=$(printf '%s' "$health_payload" | jq -r '.release // empty' 2>/dev/null || true)
+          health_status=$(printf '%s' "$health_payload" | jq -r '.status // empty' 2>/dev/null || true)
+          database_status=$(printf '%s' "$health_payload" | jq -r '.checks.database.status // empty' 2>/dev/null || true)
+          surface_status=$(printf '%s' "$health_payload" | jq -r '.checks.publicSurface.status // empty' 2>/dev/null || true)
+          surface_hash=$(printf '%s' "$health_payload" | jq -r '.checks.publicSurface.contractHash // empty' 2>/dev/null || true)
+          surface_project=$(printf '%s' "$health_payload" | jq -r '.checks.publicSurface.projectRef // empty' 2>/dev/null || true)
           project_json=$(curl --fail-with-body --show-error --silent --max-time 20 \
             --header "Authorization: Bearer $VERCEL_TOKEN" \
             "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" 2>/dev/null || true)
@@ -546,12 +593,17 @@ jobs:
           cron_enabled=$(printf '%s' "$project_json" \
             | jq -r '.crons.enabledAt != null and .crons.disabledAt == null' 2>/dev/null || true)
 
-          echo "canonical=$canonical_id host=$canonical_host release=$live_release cron=$cron_id cron_host=$cron_host enabled=$cron_enabled"
+          echo "canonical=$canonical_id host=$canonical_host ready=$canonical_ready target=$canonical_target release=$live_release health=$health_status database=$database_status cron=$cron_id cron_host=$cron_host enabled=$cron_enabled"
           if [ "$RELEASE_JOB_STATUS" = 'success' ]; then
             exit 0
           fi
           if [ "$canonical_id" = "${{ steps.outgoing.outputs.id }}" ] \
               && [ "$canonical_host" = "${{ steps.outgoing.outputs.host }}" ] \
+              && [ "$canonical_ready" = 'READY' ] \
+              && [ "$canonical_target" = 'production' ] \
+              && [ "$live_release" = "${{ steps.outgoing.outputs.release }}" ] \
+              && [ "$health_status" = 'healthy' ] \
+              && [ "$database_status" = 'healthy' ] \
               && [ "$cron_id" = "${{ steps.outgoing.outputs.id }}" ] \
               && [ "$cron_host" = "${{ steps.outgoing.outputs.host }}" ] \
               && [ "$cron_defs" = "$expected_defs" ] \
@@ -559,7 +611,17 @@ jobs:
             echo "::warning::Production attempt stopped before cutover; canonical application and cron remain exactly outgoing."
             exit 0
           fi
-          if [ "$live_release" = "${{ github.sha }}" ] \
+          if [ -n "${{ steps.production.outputs.id }}" ] \
+              && [ "$canonical_id" = "${{ steps.production.outputs.id }}" ] \
+              && [ "$canonical_host" = "${{ steps.production.outputs.host }}" ] \
+              && [ "$canonical_ready" = 'READY' ] \
+              && [ "$canonical_target" = 'production' ] \
+              && [ "$live_release" = "${{ github.sha }}" ] \
+              && [ "$health_status" = 'healthy' ] \
+              && [ "$database_status" = 'healthy' ] \
+              && [ "$surface_status" = 'healthy' ] \
+              && [ "$surface_hash" = "${{ steps.surface_contract.outputs.hash }}" ] \
+              && [ "$surface_project" = "${{ steps.surface_contract.outputs.project_ref }}" ] \
               && [ "$cron_id" = "$canonical_id" ] \
               && [ "$cron_host" = "$canonical_host" ] \
               && [ "$cron_defs" = "$expected_defs" ] \

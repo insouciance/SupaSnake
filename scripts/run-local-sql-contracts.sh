@@ -47,19 +47,20 @@ case "$dblink_database_url" in
     ;;
 esac
 
-# The cohesive release boundary is intentionally version-scoped. Historical
-# 059/061 contracts predate migration 063's one-open-run invariant and contain
-# fixtures that were valid at their own migration boundary but are not valid
-# descriptions of the post-064 schema. The release gate proves every contract
-# introduced by the 062-064 bridge against the final schema instead of
-# presenting an obsolete all-history replay as a meaningful safety signal.
+# Every stateful economy/session contract runs against the final migrated
+# schema. Historical fixtures are kept current with later invariants rather
+# than being removed from the release gate when a shared table evolves.
 ordinary_contracts=(
+  supabase/tests/059_energy_commitment.sql
+  supabase/tests/060_pending_game_session_ends.sql
+  supabase/tests/061_career_spine.sql
   supabase/tests/062_competitive_clans.sql
   supabase/tests/063_run_continuity.sql
   supabase/tests/064_atomic_dynasty_favorites.sql
 )
 
 concurrency_contracts=(
+  supabase/tests/061_game_reward_concurrency.sql
   supabase/tests/064_atomic_dynasty_favorites_concurrency.sql
 )
 

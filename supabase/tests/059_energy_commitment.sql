@@ -179,8 +179,19 @@ BEGIN
     RAISE EXCEPTION 'idempotent retry changed Energy: %', row_to_json(v_retry);
   END IF;
 
-  -- A distinct concurrent-style start cannot spend stock reserved by the
-  -- first session. The player-row lock is the serialization boundary.
+  -- Migration 063 permits only one open run per player. Close the first run
+  -- through the same no-refund abandonment state before modelling a distinct
+  -- later start; the player stock remains the concurrency assertion.
+  UPDATE game_sessions
+     SET ended_at = NOW(), end_reason = 'abandoned', validated = TRUE
+   WHERE id = v_session;
+  IF (SELECT stored_energy FROM players WHERE id = v_player) <> 1 THEN
+    RAISE EXCEPTION 'abandonment incorrectly refunded committed Energy';
+  END IF;
+
+  -- A distinct later start cannot spend stock consumed by the first session.
+  -- The player-row lock remains the live concurrency serialization boundary;
+  -- migration 063 independently rejects two simultaneously open runs.
   INSERT INTO game_sessions(id, player_id, snake_used_id, snake_variant_id, dynasty)
   VALUES ('05900000-0000-0000-0000-000000000006', v_player, v_snake, v_variant, 'PRIMAL');
   BEGIN
@@ -209,13 +220,6 @@ BEGIN
     IF SQLERRM = 'immutable commitment update unexpectedly succeeded' THEN RAISE; END IF;
     IF POSITION('energy_commitment_immutable' IN SQLERRM) = 0 THEN RAISE; END IF;
   END;
-
-  UPDATE game_sessions
-     SET ended_at = NOW(), end_reason = 'abandoned', validated = TRUE
-   WHERE id = v_session;
-  IF (SELECT stored_energy FROM players WHERE id = v_player) <> 1 THEN
-    RAISE EXCEPTION 'abandonment incorrectly refunded committed Energy';
-  END IF;
 
   -- A future client-influenced timestamp is clamped to authoritative NOW()
   -- and can never manufacture recovery. Long offline recovery stops at cap.

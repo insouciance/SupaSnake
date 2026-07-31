@@ -18,18 +18,31 @@ its IDs into workflow code.
 Production releases use one safe preflight environment and one deliberate
 cutover:
 
-1. Build an ordinary Vercel **Preview** deployment. Preview deployments cannot
-   own or invoke production cron jobs; Vercel cron requests target the current
-   production deployment.
+1. Build an ordinary Vercel **Preview** deployment. The release Preview has an
+   explicitly disabled service-role value and proves only the public/anonymous
+   contract at `/api/release-contract`: exact Git SHA, exact production
+   Supabase project ref, anonymous connectivity, and the exact checked-in
+   public-surface hash. Preview deployments cannot own or invoke production
+   cron jobs; Vercel cron requests target the current production deployment.
 2. Prove the canonical alias and the complete enabled cron schedule still name
    the exact outgoing production deployment.
-3. Apply only the reviewed, exact migration plan. Validate both outgoing and
-   Preview runtimes on the resulting schema.
+3. Apply only the reviewed, exact migration plan. Re-prove current `main`, the
+   exact SHA's successful push workflows, and the unchanged pending plan
+   immediately before mutation. Validate the outgoing runtime, the hosted
+   read-only schema contract, and the Preview public contract afterward.
 4. Create one ordinary `vercel deploy --prod` deployment. There is no
    `--prod --skip-domain` staging interval and no unsupported attempt to
    re-promote an already-current deployment merely to move cron ownership.
-5. Prove the canonical alias, release SHA, cron owner, cron hosts, cron
-   definitions, and enabled state all name the exact new deployment.
+5. Prove the canonical alias, release SHA, exact Supabase project and public
+   surface contract, full service-only capabilities, cron owner, cron hosts,
+   cron definitions, and enabled state all name the exact new deployment.
+
+`config/production-public-surface.json` is the single release contract for
+every production-on `NEXT_PUBLIC_*` surface and the production Supabase project
+ref. Its deterministic SHA-256 is injected at build and runtime. The E2E
+production leg, Preview, Production build validator, public contract endpoint,
+and final health all consume this same manifest; no workflow carries a second
+hand-maintained flag list.
 
 This cadence follows Vercel's documented distinction between Preview and
 Production deployments and its documented direct production-deploy path:
@@ -49,9 +62,10 @@ only production mutation path; never run a separate hosted `supabase db push`.
 
 ## Preconditions
 
-1. The release commit is the exact current head of `main`; protected Build,
-   Lint, Test, isolated SQL contracts, and E2E are green. Both release jobs
-   re-fetch and prove the main SHA again.
+1. The release commit is the exact current head of `main`; its **push** runs of
+   Build, Lint, Test, and E2E are completed and successful. The release checks
+   the GitHub Actions API fail-closed for this exact SHA before Preview, again
+   before schema mutation, and again before Production.
 2. `docs/ops/LAUNCH_CHECKLIST.md` has no applicable no-go item.
 3. Record the current canonical Vercel deployment ID and confirm Supabase
    backup/PITR.
@@ -66,21 +80,19 @@ only production mutation path; never run a separate hosted `supabase db push`.
 
 The release has two deliberately different database gates:
 
-- `scripts/run-local-sql-contracts.sh` runs the stateful contracts introduced by
-  the 062–064 bridge plus the 064 real two-connection `dblink` race. It rejects
-  any database URL that is not loopback port 54322. CI runs it on a clean local
-  migration replay, and the production verify job repeats it before acquiring
-  production environment authority. This scope is deliberate: historical
-  059/061 fixtures describe their own migration stages and predate 063's
-  one-open-run invariant, so replaying them unchanged against the final schema
-  is not a valid cohesive-release signal.
+- `scripts/run-local-sql-contracts.sh` runs the 059 Energy, 060 durable end,
+  061 Career, 062 clan, 063 continuity, and 064 favorite contracts plus both
+  real two-connection races against the **final** local schema. It rejects any
+  database URL that is not loopback port 54322. Later invariants require fixture
+  maintenance; they never justify deleting an affected economy/session
+  regression contract from the release gate.
 - `supabase/tests/cohesive_release_read_only.sql` is the only SQL contract that
   may run against the linked production project. It creates no fixtures. The
   Supabase Management API request sets `read_only: true`, while the SQL itself
   also begins `TRANSACTION READ ONLY`. It proves the seven-argument non-spending
   founding response, exact function grants, absence of duplicate favorites,
   exact trigger/function binding, validated continuity constraints, required
-  indexes, and cohesive capability JSON.
+  indexes, exact 062/063/064 migration ledger, and cohesive capability JSON.
 
 Never run `062_competitive_clans.sql`, `063_run_continuity.sql`,
 `064_atomic_dynasty_favorites.sql`, or the 064 concurrency test from
@@ -98,8 +110,9 @@ The 062–064 release is allowed only through these observable states.
 - Cron owner and every cron host: exact outgoing deployment.
 - Cron definitions: byte-equivalent normalized `{path, schedule}` set from
   `vercel.json`; enabled.
-- Incoming artifact: Preview target only, exact release SHA; never a production
-  cron owner.
+- Incoming artifact: Preview target only, exact release SHA, exact manifest
+  hash and production Supabase ref through the anonymous contract; service role
+  deliberately disabled; never a production cron owner.
 
 If any check fails here, stop. No hosted migration has been attempted.
 
@@ -109,8 +122,8 @@ If any check fails here, stop. No hosted migration has been attempted.
   failed push is being investigated.
 - Canonical alias and cron state: still exactly outgoing.
 - Outgoing application: healthy on the bridge schema.
-- Preview: healthy with exact release SHA, Career ready, Run Flow on, and all
-  cohesive capability versions at 1.
+- Preview: anonymous contract healthy with exact release SHA, exact public
+  surface hash, exact project ref, and no service-role dependency.
 - Read-only linked structural probe: passed.
 
 Migration 062's seven-argument compatibility function cannot create a clan or
@@ -128,8 +141,9 @@ reverse migrations; forward-fix and retry with the exact ordered pending suffix
 - Hosted schema: 001–064.
 - Canonical alias: exact deployment ID and host returned by the deliberate
   Production deployment.
-- Canonical health: exact Git SHA, database healthy, Career ready, Run Flow on,
-  and cohesive capability versions at 1.
+- Canonical health: exact Git SHA, exact project ref/public-surface hash,
+  database healthy, Career ready, Run Flow on, and cohesive capability versions
+  at 1.
 - Cron owner and every cron host: exact new deployment.
 - Cron definitions: unchanged normalized hash from the outgoing snapshot;
   enabled.
@@ -147,25 +161,32 @@ The workflow performs:
 1. Full Jest coverage, type check, lint, blocking production-dependency audit,
    and reported dev-tool audit.
 2. Clean local Supabase replay and all ordinary/two-session SQL contracts.
-3. Production environment presence and payment-mode validation.
-4. Linked migration dry-run and exact migration classification.
+3. Exact manifest-driven public flags plus Production environment presence,
+   exact project/hash, and payment-mode validation.
+4. Linked migration dry-run and exact release allowlist classification. Unknown
+   migrations stop; there is no inferred generic/additive path.
 5. Exact outgoing canonical deployment and cron snapshot.
-6. Ordinary Preview deployment and target verification (`preview`, never
-   `production`). It then re-proves canonical and cron are unchanged.
-7. For 062–064 initial/resume, exact bridge push and linked lint. For future
-   ordinary additive migrations, Preview is first smoked on the old schema,
-   then the exact migration set is pushed and linted.
-8. Hosted read-only cohesive structural probe.
+6. Ordinary Preview deployment with service role disabled and target
+   verification (`preview`, never `production`). Its anonymous release contract
+   must prove the exact manifest/project/SHA. Canonical and cron are re-proved.
+7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; exact
+   062–064 initial/resume push and linked lint.
+8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.
-10. Outgoing health and exact Preview health on the final schema.
-11. One deliberate `vercel deploy --prod`; production values are decrypted and
+10. Exact outgoing release health and a second Preview anonymous-contract proof
+    on the final schema.
+11. Immediate current-main, exact-SHA CI, and empty-plan proof, then one
+    deliberate `vercel deploy --prod`; production values are decrypted and
     validated in Vercel's cloud build.
 12. Exact new deployment inspection, canonical alias proof, cron owner/host/
     definition/enabled proof, and final health.
-13. An always-on, read-only state classifier. If the CLI result was ambiguous,
-    it records whether production is still exactly outgoing, clearly cut over
-    to the new SHA, or mixed/unknown. It never changes aliases or crons.
+13. A best-effort `always()` read-only state classifier while the job remains
+    alive. If the CLI result was ambiguous, it requires a coherent tuple of
+    deployment ID/host/readiness/target, exact release, health, cron, and—on the
+    new release—public project/hash. It never changes aliases or crons. GitHub
+    cancellation or job timeout can prevent this step and therefore always
+    requires the manual incident procedure below.
 
 ## Failure and recovery
 
@@ -178,6 +199,7 @@ The workflow performs:
 | Production build fails and state classifier proves outgoing alias + outgoing cron | Safe pre-cutover stop. Investigate build and retry; never “restore” what did not move. |
 | Production command returns ambiguously but live health reports the new SHA and cron exactly follows that canonical deployment | Treat as a post-cutover production incident. Freeze releases and inspect logs; do not promote outgoing. |
 | Alias, cron owner, cron hosts, definitions, or enabled state are mixed/unknown | Freeze deployment automation. Record all IDs and hashes, inspect Vercel dashboard/API, and restore one coherent state under operator control. |
+| Deploy job is cancelled or times out after the Production attempt starts | Assume classification did not run. Freeze releases and manually inspect canonical ID/host/readiness/target, `/api/health` release/project/hash, and complete cron state before any retry. |
 | Final new-release health fails | Because 062–064 are reviewed as outgoing-compatible, the operator may use `vercel rollback <outgoing-url>` only after confirming the current failure is application-only. Then independently prove canonical ID/host, health, cron owner/hosts/definitions/enabled. If any proof fails, forward-fix rather than improvising aliases. |
 
 Do not use `vercel promote <outgoing>` as rollback. A deployment that was
@@ -190,6 +212,11 @@ After any rollback, record that Vercel disables automatic production-domain
 assignment until rollback is undone. The next release must explicitly inspect
 that state and may require `vercel promote` to undo rollback before normal
 auto-assignment resumes.
+
+The current release requires the cron definition hash to remain unchanged. A
+future release that deliberately changes `vercel.json` cron definitions needs a
+separate reviewed old→new manifest procedure; do not weaken the outgoing hash
+check or disguise a cron change as an ordinary application release.
 
 ## Repository-only mainline reconciliation
 
@@ -233,7 +260,9 @@ Treat the switch as a separate reviewed release:
 
 ## Hosted development boundary
 
-Vercel Preview intentionally shares the existing hosted Supabase project and
-Stripe sandbox. Use it only for non-destructive release smoke. CI/E2E uses an
-isolated local Supabase stack; never run fixture SQL, destructive resets,
-payment lifecycle automation, or account-erasure E2E against hosted production.
+Vercel Preview uses the hosted Supabase URL and anonymous key for a single
+non-destructive release-contract query. The release command replaces its
+service-role value with an invalid sentinel, and no Preview health step calls a
+service-only capability. CI/E2E uses an isolated local Supabase stack; never run
+fixture SQL, destructive resets, payment lifecycle automation, or
+account-erasure E2E against hosted production.

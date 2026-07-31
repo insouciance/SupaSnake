@@ -26,8 +26,17 @@ DECLARE
     'game_sessions_one_open_nonsettling_per_player',
     'idx_collected_favorited_player'
   ];
+  v_release_versions TEXT[];
   v_signature TEXT;
 BEGIN
+  SELECT ARRAY_AGG(version::TEXT ORDER BY version::TEXT)
+  INTO v_release_versions
+  FROM supabase_migrations.schema_migrations
+  WHERE version::TEXT IN ('062', '063', '064');
+  IF v_release_versions IS DISTINCT FROM ARRAY['062', '063', '064']::TEXT[] THEN
+    RAISE EXCEPTION 'cohesive migration ledger is not exact: %', v_release_versions;
+  END IF;
+
   -- The outgoing seven-argument writer must resolve successfully yet remain
   -- incapable of spending or creating anything. The nonexistent user makes
   -- this call safe even if its implementation regresses; READ ONLY then turns

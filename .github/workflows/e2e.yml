@@ -94,6 +94,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
       # Must run before `npm run build`: NEXT_PUBLIC_* are inlined at build
       # time, so a flag exported after the build has no effect at all.
       - name: Arm feature flags for this leg
@@ -102,44 +108,12 @@ jobs:
             echo 'rollback leg: no NEXT_PUBLIC_* armed, flag-off paths covered'
             exit 0
           fi
-          # EVERY FLAG THAT IS ON IN VERCEL, INCLUDING GROWTH_LAB_V1.
-          #
-          # It was held back one commit. WP-3.11 measured why: with the Growth
-          # Lab selector in Run Setup the panel grows, and at 390x844 the
-          # `mode-free` control ended up underneath the fixed bottom navigation
-          # rail, so the spec's deliberately unforced click landed on the
-          # rail's Leaderboard link and the run never started. That is a
-          # product defect, not a test one, and it was reachable in production
-          # the whole time - the flag is on in Vercel.
-          #
-          # The scroller behind Run Setup now reserves bottom clearance for the
-          # rail (`src/app/game/page.tsx`). Arming the flag here is what proves
-          # it: a leg that mirrors production is the only thing that can, and
-          # if this list drifts from Vercel again the leg stops meaning what
-          # its name says.
-          #
-          # `LADDER_V1` is armed here ahead of Vercel, not behind it: WP-3.12
-          # ships the ladder on, so this leg covers the path the owner will
-          # actually play. Setting it in the Vercel dashboard is an owner-only
-          # action (flag state lives nowhere else and is build-time inlined),
-          # so it is tracked in `docs/ops/QA_CHECKLIST.md`. Until it is set,
-          # this leg is deliberately AHEAD of production by exactly one flag -
-          # a documented difference rather than a silent drift.
-          for flag in \
-            SERPENT_V1 SIGNAL_V1 RUN_FLOW_V1 CLAN_V2 CLAN_GAUNTLET CLAN_PLAYOFFS \
-            DAILY_TAKE_V1 SETTLEMENT_DISPATCH_V1 GROWTH_SURFACES_V1 ASCENSION_V1 \
-            WORLD_REPORT_V1 LEAD_LADDER_V1 SHARE_ARTIFACTS_V1 WORKBENCH_V1 \
-            PWA_V1 PLAYER_CONTRACT_V1 GROWTH_LAB_V1 LADDER_V1 CAREER_SPINE_V1
-          do
-            echo "NEXT_PUBLIC_${flag}=true" >> "$GITHUB_ENV"
-          done
-          echo 'production leg: mirroring the live flag environment'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
+          # This is the same checked-in contract the release workflow injects
+          # into Preview and Production. Adding or removing a live public
+          # surface changes one manifest and its deterministic hash rather than
+          # silently drifting CI from the artifact players receive.
+          node scripts/production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"
+          echo 'production leg: exact checked-in public-surface contract armed'
 
       - name: Install dependencies
         run: npm ci

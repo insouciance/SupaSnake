@@ -6,6 +6,11 @@ const {
 } = require('./production-env-validation.cjs');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
+const {
+  PRODUCTION_PUBLIC_FLAGS,
+  PRODUCTION_PUBLIC_SURFACE_HASH,
+  PRODUCTION_SUPABASE_URL,
+} = require('./production-public-surface.cjs');
 
 /**
  * The fixture deliberately still carries the five retired energy/bundle
@@ -20,7 +25,7 @@ function validEnvironment() {
   );
   return {
     ...environment,
-    NEXT_PUBLIC_SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co',
+    NEXT_PUBLIC_SUPABASE_URL: PRODUCTION_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon_key_with_sufficient_length_123456',
     SUPABASE_SERVICE_ROLE_KEY: 'service_key_with_sufficient_length_654321',
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ['pk', 'test', '1234567890abcdef'].join('_'),
@@ -37,7 +42,8 @@ function validEnvironment() {
     NEXT_PUBLIC_POSTHOG_KEY: 'phc_1234567890abcdef',
     NEXT_PUBLIC_POSTHOG_HOST: 'https://eu.i.posthog.com',
     NEXT_PUBLIC_APP_URL: 'https://supasnake.com',
-    NEXT_PUBLIC_RUN_FLOW_V1: 'true',
+    ...Object.fromEntries(PRODUCTION_PUBLIC_FLAGS.map((name) => [name, 'true'])),
+    SUPASNAKE_PUBLIC_SURFACE_HASH: PRODUCTION_PUBLIC_SURFACE_HASH,
     MIN_AGE_REQUIREMENT: '14',
     DISCORD_CLIENT_ID: '123456789012345678',
     DISCORD_GUILD_ID: '223456789012345678',
@@ -68,8 +74,7 @@ describe('production environment validation', () => {
         /Require main branch dispatch[\s\S]*exit 1[\s\S]*uses: actions\/checkout@v4/
       );
       expect(job).toContain('name: Require the exact current main commit');
-      expect(job).toContain("git rev-parse refs/remotes/origin/main");
-      expect(job).toContain('[ "$main_head" != "$GITHUB_SHA" ]');
+      expect(job).toContain('bash scripts/verify-exact-main.sh');
     }
   });
 
@@ -97,7 +102,7 @@ describe('production environment validation', () => {
       'name: Prove bridge push left production cron unchanged'
     );
     const previewSmokeAt = workflow.indexOf(
-      'name: Smoke exact Preview on final bridge schema'
+      'name: Re-prove exact Preview public contract on final bridge schema'
     );
     const productionAt = workflow.indexOf(
       'name: Create deliberate Production deployment and cut over'
@@ -122,22 +127,28 @@ describe('production environment validation', () => {
     const previewBlock = workflow.slice(previewAt, previewBoundaryAt);
     expect(previewBlock).toContain('npx vercel@56.3.1 deploy');
     expect(previewBlock).not.toContain('--prod');
-    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_FTUE_V2='true'");
-    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_HUD_COCKPIT_V1='true'");
-    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_CAREER_SPINE_V1='true'");
-    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_RUN_FLOW_V1='true'");
+    expect(previewBlock).toContain(
+      'node scripts/production-public-surface-cli.mjs vercel-args'
+    );
+    expect(previewBlock).toContain(
+      "SUPABASE_SERVICE_ROLE_KEY='preview-disabled-no-service-role'"
+    );
     expect(previewBlock).toContain("deployment_target=$(printf '%s'");
     expect(previewBlock).toContain("[ \"$deployment_target\" != 'preview' ]");
-    expect(workflow).toContain(
-      "steps.migration_plan.outputs.rollout == 'standard' || steps.migration_plan.outputs.rollout == 'none'"
-    );
+    expect(workflow).not.toContain('rollout=standard');
+    expect(workflow).toContain('rejects migrations without an explicit reviewed rollout contract');
+    expect(workflow).toContain('name: Revalidate exact authority and pending plan before schema mutation');
+    expect(workflow).toContain('name: Revalidate exact authority and empty schema plan before Production');
+    expect(workflow.match(/node scripts\/verify-github-sha-workflows\.mjs/g)?.length)
+      .toBeGreaterThanOrEqual(3);
+    expect(workflow.match(/bash scripts\/verify-linked-migration-plan\.sh/g)?.length)
+      .toBeGreaterThanOrEqual(4);
 
     const productionBlock = workflow.slice(productionAt, productionCronAt);
     expect(productionBlock).toContain('--prod');
-    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_FTUE_V2='true'");
-    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_HUD_COCKPIT_V1='true'");
-    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_CAREER_SPINE_V1='true'");
-    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_RUN_FLOW_V1='true'");
+    expect(productionBlock).toContain(
+      'node scripts/production-public-surface-cli.mjs vercel-args'
+    );
     expect(workflow).not.toMatch(/^\s+--skip-domain(?:\s|$)/m);
     expect(workflow).not.toContain('vercel@56.3.1 promote');
     expect(workflow).not.toContain('Restore outgoing cron ownership');
@@ -184,9 +195,10 @@ describe('production environment validation', () => {
     expect(localHarness).toContain(
       'supabase/tests/064_atomic_dynasty_favorites_concurrency.sql'
     );
-    expect(localHarness).not.toContain('supabase/tests/059_energy_commitment.sql');
-    expect(localHarness).not.toContain('supabase/tests/061_career_spine.sql');
-    expect(localHarness).not.toContain('supabase/tests/061_game_reward_concurrency.sql');
+    expect(localHarness).toContain('supabase/tests/059_energy_commitment.sql');
+    expect(localHarness).toContain('supabase/tests/060_pending_game_session_ends.sql');
+    expect(localHarness).toContain('supabase/tests/061_career_spine.sql');
+    expect(localHarness).toContain('supabase/tests/061_game_reward_concurrency.sql');
     expect(localHarness).toContain('@supabase_db_${project_id}:5432');
     expect(localHarness).toContain('-v dblink_conn="$dblink_database_url"');
 
@@ -200,6 +212,8 @@ describe('production environment validation', () => {
     expect(linkedHarness).not.toContain('063_run_continuity.sql');
     expect(linkedHarness).not.toContain('064_atomic_dynasty_favorites.sql');
     expect(linkedProbe).toContain('BEGIN TRANSACTION READ ONLY;');
+    expect(linkedProbe).toContain('supabase_migrations.schema_migrations');
+    expect(linkedProbe).toContain("ARRAY['062', '063', '064']");
     expect(linkedProbe).toContain('COMMIT;');
     expect(linkedProbe).not.toMatch(/^\s*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/im);
   });
@@ -247,6 +261,21 @@ describe('production environment validation', () => {
     expect(validateProductionEnvironment(environment, 'test').errors).toEqual(
       expect.arrayContaining([
         expect.stringContaining('NEXT_PUBLIC_RUN_FLOW_V1'),
+      ])
+    );
+  });
+
+  it('rejects another valid-looking Supabase project and any public-surface drift', () => {
+    const environment = validEnvironment();
+    environment.NEXT_PUBLIC_SUPABASE_URL = 'https://abcdefghijklmnopqrst.supabase.co';
+    environment.NEXT_PUBLIC_LADDER_V1 = 'false';
+    environment.SUPASNAKE_PUBLIC_SURFACE_HASH = '0'.repeat(64);
+
+    expect(validateProductionEnvironment(environment, 'test').errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('NEXT_PUBLIC_SUPABASE_URL'),
+        expect.stringContaining('NEXT_PUBLIC_LADDER_V1'),
+        expect.stringContaining('SUPASNAKE_PUBLIC_SURFACE_HASH'),
       ])
     );
   });
