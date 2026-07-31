@@ -46,6 +46,15 @@ const DYNASTY_GLOW: Record<DynastyId, string> = {
   COSMIC: '#a855f7',
 };
 
+export type SpecimenReaction = 'play' | 'lab' | 'compete' | 'you';
+
+const REACTION_GLOW: Record<SpecimenReaction, string> = {
+  play: '#42e0f5',
+  lab: '#a642f5',
+  compete: '#f5c542',
+  you: '#8b5cf6',
+};
+
 const VOID_COLOR = '#06090d';
 
 /** Specimen body plan */
@@ -326,7 +335,13 @@ function CameraRig({ animate }: { animate: boolean }) {
 }
 
 /** Dark void lighting: dynasty key + rim, soft neutral fill. */
-function ChamberLights({ dynasty }: { dynasty: DynastyId }) {
+function ChamberLights({
+  dynasty,
+  reaction,
+}: {
+  dynasty: DynastyId;
+  reaction: SpecimenReaction | null;
+}) {
   const glow = DYNASTY_GLOW[dynasty];
   return (
     <>
@@ -338,6 +353,16 @@ function ChamberLights({ dynasty }: { dynasty: DynastyId }) {
       {/* Cool neutral fill from the off side keeps the dark faces readable
           without flattening the key/rim contrast */}
       <directionalLight position={[-4, 1.5, 5]} intensity={0.35} color="#94a3b8" />
+      {/* A safe additive whole-character cue for the four Home actions. It
+          leaves the cached segment materials untouched and disappears the
+          instant the action loses hover/focus/press. */}
+      <pointLight
+        position={[0, 2.1, 2.5]}
+        intensity={reaction ? 1.35 : 0}
+        distance={7}
+        decay={2}
+        color={reaction ? REACTION_GLOW[reaction] : '#000000'}
+      />
     </>
   );
 }
@@ -389,11 +414,17 @@ function usePrefersReducedMotion(): boolean {
 export interface SpecimenChamberProps {
   /** Dynasty of the equipped snake (PRIMAL specimen for fresh visitors). */
   dynasty: DynastyId;
+  /** Ephemeral Home-action reaction; never persisted or gameplay-affecting. */
+  reaction?: SpecimenReaction | null;
   /** Fired once the WebGL scene is live - drives the page's 600ms fade-in. */
   onReady?: () => void;
 }
 
-export function SpecimenChamber({ dynasty, onReady }: SpecimenChamberProps) {
+export function SpecimenChamber({
+  dynasty,
+  reaction = null,
+  onReady,
+}: SpecimenChamberProps) {
   const reducedMotion = usePrefersReducedMotion();
   const [hidden, setHidden] = useState(false);
 
@@ -419,7 +450,7 @@ export function SpecimenChamber({ dynasty, onReady }: SpecimenChamberProps) {
       <color attach="background" args={[VOID_COLOR]} />
       <fog attach="fog" args={[VOID_COLOR, 7.5, 17]} />
       <CameraRig animate={animate} />
-      <ChamberLights dynasty={dynasty} />
+      <ChamberLights dynasty={dynasty} reaction={reaction} />
       <FloorGrid />
       <Suspense fallback={<SpecimenBody dynasty={dynasty} animate={animate} />}>
         <VoxelSpecimen dynasty={dynasty} animate={animate} />

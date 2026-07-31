@@ -4,10 +4,8 @@ import type { DynastyId } from '@/shared/types/game';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { ArenaUndertray } from '@/components/game/arena/ArenaUndertray';
-import {
-  GAME_SCREEN_COLORS,
-  getDynastyScreenTokens,
-} from '@/components/game/screen/gameScreenTokens';
+import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
+import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 
 interface ArenaAssemblyProps {
   gridSize: number;
@@ -24,7 +22,7 @@ export function ArenaAssembly({
   dynasty,
   torus = false,
 }: ArenaAssemblyProps) {
-  const theme = getDynastyScreenTokens(dynasty);
+  const profile = getGameMaterialProfile(dynasty);
 
   return (
     <group>
@@ -34,25 +32,25 @@ export function ArenaAssembly({
         floorColor={GAME_SCREEN_COLORS.arenaFloor}
         gridColor={GAME_SCREEN_COLORS.gridMinor}
         majorGridColor={GAME_SCREEN_COLORS.gridMajor}
-        accentColor={theme.primary}
+        accentColor={profile.arena.atmosphereColor}
         surfacePreset="cockpit"
-        edgeWashStrength={0.48}
+        edgeWashStrength={profile.arena.edgeWashStrength}
         minorGridOpacity={0.28}
         majorGridOpacity={0.46}
         showCornerMarkers={false}
       />
       <ArenaBorder
         gridSize={gridSize}
-        color={theme.secondary}
-        accentColor={GAME_SCREEN_COLORS.systemCyan}
+        color={profile.arena.rimColor}
+        accentColor={profile.arena.cornerColor}
         emissiveIntensity={0.42}
         torus={torus}
         railHeight={0.13}
         railWidth={0.11}
         glowStrength={0.62}
-        restingEmissiveIntensity={0.18}
-        restingPulseAmplitude={0.05}
-        pylonEmissiveIntensity={0.28}
+        restingEmissiveIntensity={profile.arena.restingEmissiveIntensity}
+        restingPulseAmplitude={profile.arena.restingPulseAmplitude}
+        pylonEmissiveIntensity={profile.arena.pylonEmissiveIntensity}
       />
     </group>
   );

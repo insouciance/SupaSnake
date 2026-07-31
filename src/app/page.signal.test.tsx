@@ -176,9 +176,19 @@ function setupFetch(fixtures: Fixtures = {}) {
     if (u.includes('/api/streaks')) return jsonResponse({ currentStreak: 5 });
     if (u.includes('/api/collection')) {
       return jsonResponse({
-        snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'PRIMAL' }],
+        snakes: [{
+          id: 'snake-1',
+          isEquipped: true,
+          dynastyName: 'PRIMAL',
+          variantName: 'PRIMAL SEED',
+          generation: 7,
+          lineage: { strains: ['FERAL'], strength: 1 },
+        }],
         dnaBalance: 320,
       });
+    }
+    if (u.includes('/api/clan?playerId=')) {
+      return jsonResponse({ clan: { id: 'clan-1', name: 'Apex Coil', tag: 'APEX' } });
     }
     if (u.includes('/api/game/session')) {
       const body = init?.body ? JSON.parse(String(init.body)) : {};

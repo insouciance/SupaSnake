@@ -106,11 +106,18 @@ async function installRunFlowFixtures(
         snakes: [
           {
             id: 'run-flow-snake',
+            playerId: 'run-flow-player',
             isEquipped: true,
+            isFavorited: false,
             generation: 3,
             variantName: 'Ouroboros',
             variantId: 'primal',
+            snakeVariantId: 'run-flow-primal-variant',
             dynastyName: 'PRIMAL',
+            parent1Id: null,
+            parent2Id: null,
+            acquiredAt: '2026-07-01T12:00:00.000Z',
+            acquiredMethod: 'tutorial',
             traits: [],
             lineage: null,
           },
@@ -256,12 +263,11 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
 
     const maximum = page.getByTestId('energy-commit-6');
     await maximum.click();
-    await expect(maximum).toContainText('Confirm 6');
-    await expect(maximum).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('energy-max-confirmation')).toBeVisible();
     await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
 
-    await maximum.click();
-    await expect(maximum).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('energy-max-confirm').click();
+    await expect(page.getByTestId('energy-max-confirmation')).toHaveCount(0);
     await expect(page.getByTestId('energy-summary')).toContainText('Commit 6 Energy');
     await expect(page.getByTestId('energy-summary')).toContainText('×10.0');
 
@@ -273,6 +279,48 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     const payload = (await startRequest).postDataJSON() as Record<string, unknown>;
     expect(payload.energyCommitment).toBe(6);
     expect(payload.confirmMaxEnergy).toBe(true);
+  });
+
+  test('the graphical cockpit stays usable at 320px, 390px, and a short viewport', async ({
+    page,
+  }) => {
+    await installRunFlowFixtures(page);
+    await signInAsGuest(page);
+
+    for (const viewport of [
+      { width: 320, height: 480 },
+      { width: 390, height: 640 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/game', { waitUntil: 'domcontentloaded' });
+      const setup = page.getByTestId('run-setup');
+      await expect(setup).toBeVisible({ timeout: 60_000 });
+
+      const horizontalOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth
+      );
+      expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+      for (const control of [
+        page.getByTestId('energy-commit-6'),
+        page.getByRole('link', { name: 'Snake Lab' }),
+        page.getByTestId('earn-start'),
+      ]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeVisible();
+        await expect(control).toHaveCSS('white-space', 'nowrap');
+        const box = await control.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+      }
+    }
+
+    await page.getByTestId('run-setup-favorite-primal').click();
+    await expect(
+      page.getByRole('heading', { name: 'Choose PRIMAL favorite' })
+    ).toBeVisible();
+    await expect(page.getByTestId('snake-picker-option-run-flow-snake')).toBeVisible();
   });
 
   test('the ladder adds a readout but no tap (WP-3.12, §5)', async ({ page }) => {

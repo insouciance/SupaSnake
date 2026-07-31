@@ -23,9 +23,6 @@ import {
   TAPER_SEGMENTS,
   TAPER_MIN,
   ENERGY_MIN,
-  HEAD_EMISSIVE_INTENSITY,
-  BODY_EMISSIVE_INTENSITY,
-  BASE_COLOR_SCALE,
   TRAIL_FOOTPRINT,
   TRAIL_TONE,
   TRAIL_HEAD_ZONE,
@@ -39,7 +36,7 @@ import {
   getTrailHeight,
   getTrailBreathe,
 } from './SnakeModel';
-import { themeManager } from '@/lib/theme/ThemeManager';
+import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 
 jest.mock('@react-three/drei', () => ({
   useGLTF: Object.assign(jest.fn(), { preload: jest.fn() }),
@@ -268,10 +265,13 @@ describe('getTrailTone (fusion -> brightness)', () => {
   });
 
   it('stays under the bloom threshold once the albedo trim is applied', () => {
-    // The instanced body material multiplies albedo by 0.75 so the moving
-    // trunk never blooms - a blooming trunk is a flicker amplifier in motion.
-    for (const tone of TRAIL_TONE) {
-      expect(tone * 0.75).toBeLessThan(1);
+    // Each material profile keeps the moving trunk below bloom even at full
+    // fusion. A blooming trunk is a flicker amplifier in motion.
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      const scalar = getGameMaterialProfile(dynasty).snake.bodyAlbedoScalar;
+      for (const tone of TRAIL_TONE) {
+        expect(tone * scalar).toBeLessThan(1);
+      }
     }
   });
 
@@ -394,38 +394,43 @@ describe('getSnakeSegmentMaterial', () => {
     expect(primal).not.toBe(a);
   });
 
-  it('uses void-shifted theme primary as base and secondary as emissive', () => {
+  it('uses the renderer-local dynasty surface profile', () => {
     for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
-      const theme = themeManager.getTheme(dynasty);
+      const profile = getGameMaterialProfile(dynasty).snake;
       const material = getSnakeSegmentMaterial(dynasty, false);
-      // Base is primary mixed toward the void (deliberate glow-over-void
-      // read: the emissive carries the identity, not the albedo)
-      const expectedBase = new THREE.Color(theme.primary).multiplyScalar(
-        BASE_COLOR_SCALE
+      expect(material.color.getHexString()).toBe(
+        new THREE.Color(profile.baseColor).getHexString()
       );
-      expect(material.color.getHexString()).toBe(expectedBase.getHexString());
       expect(`#${material.emissive.getHexString()}`).toBe(
-        theme.secondary.toLowerCase()
+        profile.emissiveColor.toLowerCase()
       );
+      expect(material.transparent).toBe(false);
+      expect(material.opacity).toBe(1);
+      expect(material.depthWrite).toBe(true);
     }
   });
 
   it('gives the head a brighter emissive than the body', () => {
     const head = getSnakeSegmentMaterial('COSMIC', true);
     const body = getSnakeSegmentMaterial('COSMIC', false);
-    expect(head.emissiveIntensity).toBe(HEAD_EMISSIVE_INTENSITY);
-    expect(body.emissiveIntensity).toBe(BODY_EMISSIVE_INTENSITY);
+    const profile = getGameMaterialProfile('COSMIC').snake;
+    expect(head.emissiveIntensity).toBe(profile.headEmissiveIntensity);
+    expect(body.emissiveIntensity).toBe(profile.bodyEmissiveIntensity);
     expect(head.emissiveIntensity).toBeGreaterThan(body.emissiveIntensity);
   });
 
   it('keeps the body matte (no traveling specular sparkle) - eye comfort', () => {
-    const head = getSnakeSegmentMaterial('CYBER', true);
-    const body = getSnakeSegmentMaterial('CYBER', false);
-    expect(body.metalness).toBeLessThanOrEqual(0.25);
-    expect(body.roughness).toBeGreaterThanOrEqual(0.5);
-    // The head keeps the glossy premium finish
-    expect(head.metalness).toBe(0.5);
-    expect(head.roughness).toBe(0.3);
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      const head = getSnakeSegmentMaterial(dynasty, true);
+      const body = getSnakeSegmentMaterial(dynasty, false);
+      const profile = getGameMaterialProfile(dynasty).snake;
+      expect(body.metalness).toBe(profile.bodyMetalness);
+      expect(body.metalness).toBeLessThanOrEqual(0.25);
+      expect(body.roughness).toBe(profile.bodyRoughness);
+      expect(body.roughness).toBeGreaterThanOrEqual(0.5);
+      expect(head.metalness).toBe(profile.headMetalness);
+      expect(head.roughness).toBe(profile.headRoughness);
+    }
   });
 });
 

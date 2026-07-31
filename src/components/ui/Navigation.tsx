@@ -1,24 +1,16 @@
 'use client';
 
 /**
- * Navigation - game-style floating icon rail (replaces the web command bar).
+ * Stable application navigation.
  *
- * Desktop (sm+): a vertically-centered rail of glass icon chips on the right
- * edge; labels slide out on hover/focus. Mobile: a safe-area-aware floating
- * rail on the bottom edge, icon-only.
+ * Mobile gets five fixed destinations with real 44px targets: Play, Lab,
+ * Compete, You, and More. Secondary utilities live behind More instead of
+ * shrinking an ever-growing icon row. Desktop uses the same order as a
+ * right-hand rail, so a destination never moves when the current route or a
+ * feature flag changes.
  *
- * Nodes: Home (non-home screens only - on home the wordmark is the identity),
- * Lab, Leaderboard + Clan (feature-flagged), Serpent (flag-gated), Shop,
- * Settings, and the You node hosting the AccountChip (guest save-progress /
- * account menu).
- *
- * THE SERPENT NODE IS THE ONLY THING THE SERPENT FLAG HIDES
- *
- *   `/serpent` itself always resolves — with the flag off it renders an honest
- *   "not surfacing yet" state, because a URL that 404s intermittently is worse
- *   than one that always answers (Rule 14: a Serpent week is linkable, and a
- *   link that dies on a flag flip is not). What the flag gates is this rail
- *   entry, so nobody is led to the hunt before there is one.
+ * `/game` deliberately does not mount this component. Setup, play, and
+ * Results form one immersive run stack with their own single exit affordance.
  */
 
 import Link from 'next/link';
@@ -29,122 +21,195 @@ import { AccountChip } from '@/components/ui/AccountChip';
 import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import { NotificationCenter } from '@/components/ui/NotificationCenter';
 import {
+  attentionBadge,
   destinationBadge,
   recognitionHref,
   useNotificationStore,
   type NotificationDestination,
 } from '@/lib/stores/notificationStore';
 import {
-  IconHome,
-  IconFlask,
-  IconTrophy,
-  IconShield,
   IconCart,
-  IconMedal,
+  IconFlask,
   IconGear,
+  IconMedal,
+  IconPlay,
+  IconShield,
   IconSnake,
+  IconTrophy,
   type IconProps,
 } from '@/components/ui/icons';
 
-interface RailNode {
+interface PrimaryNode {
   href: string;
   label: string;
-  Icon: (p: IconProps) => React.JSX.Element;
+  Icon: (props: IconProps) => React.JSX.Element;
+  isActive: (pathname: string) => boolean;
   notificationDestination?: NotificationDestination;
 }
+
+const PRIMARY_NODES: PrimaryNode[] = [
+  {
+    href: '/',
+    label: 'Play',
+    Icon: IconPlay,
+    isActive: (pathname) => pathname === '/',
+    notificationDestination: 'home',
+  },
+  {
+    href: '/lab',
+    label: 'Lab',
+    Icon: IconFlask,
+    isActive: (pathname) => pathname === '/lab' || pathname.startsWith('/lab/'),
+    notificationDestination: 'lab',
+  },
+  {
+    href: '/leaderboard',
+    label: 'Compete',
+    Icon: IconTrophy,
+    isActive: (pathname) =>
+      pathname === '/leaderboard' ||
+      pathname.startsWith('/leaderboard/') ||
+      pathname === '/clan' ||
+      pathname.startsWith('/clan/') ||
+      pathname === '/serpent' ||
+      pathname.startsWith('/serpent/'),
+    notificationDestination: 'clan',
+  },
+  {
+    href: '/profile',
+    label: 'You',
+    Icon: IconMedal,
+    isActive: (pathname) => pathname === '/profile' || pathname.startsWith('/profile/'),
+    notificationDestination: 'identity',
+  },
+];
+
+const destinationClass = (active: boolean) =>
+  `group relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-arcade border backdrop-blur-xl transition-all sm:h-11 sm:min-h-[44px] sm:w-11 sm:flex-row ${
+    active
+      ? 'border-venom-orange/70 bg-void-deep/90 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
+      : 'border-scale-blue-light/45 bg-void-deep/85 text-beige/70 hover:border-beige/60 hover:text-bone-white'
+  }`;
 
 export function Navigation() {
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
-
-  const nodes: RailNode[] = [
-    ...(pathname === '/'
-      ? []
-      : [{ href: '/', label: 'Home', Icon: IconHome, notificationDestination: 'home' as const }]),
-    { href: '/lab', label: 'Lab', Icon: IconFlask, notificationDestination: 'lab' },
-    ...(GAME_CONFIG.features.leaderboards
-      ? [{ href: '/leaderboard', label: 'Leaderboard', Icon: IconTrophy }]
-      : []),
-    ...(GAME_CONFIG.features.clans
-      ? [{ href: '/clan', label: 'Clan', Icon: IconShield, notificationDestination: 'clan' as const }]
-      : []),
-    ...(SERPENT_V1_ENABLED
-      ? [{ href: '/serpent', label: 'Serpent', Icon: IconSnake }]
-      : []),
-    { href: '/shop', label: 'Shop', Icon: IconCart },
-    { href: '/profile', label: 'Chronicle', Icon: IconMedal, notificationDestination: 'identity' },
-    { href: '/settings', label: 'Settings', Icon: IconGear },
-  ];
+  const moreBadge = attentionBadge(notifications);
+  const moreActive = pathname === '/shop' || pathname.startsWith('/shop/') ||
+    pathname === '/settings' || pathname.startsWith('/settings/');
 
   return (
     <nav aria-label="Primary">
-      {/* The mobile rail is a bottom row; the desktop rail is a right-hand
-          column. With the Serpent node armed the row is nine 40px targets
-          plus gaps - 408px - so on a 320px-wide viewport a centred row hung
-          ~44px off each edge and put its first and last nodes, Lab and the
-          account chip, out of reach: the page cannot scroll sideways to them
-          and `/game` clips them outright with `overflow-hidden`.
+      <div
+        data-testid="primary-navigation-destinations"
+        className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 grid w-[calc(100%_-_1rem)] max-w-md -translate-x-1/2 grid-cols-5 items-center gap-1 rounded-arcade border border-scale-blue-light/35 bg-void-deep/75 p-1 shadow-2xl backdrop-blur-xl sm:bottom-auto sm:left-auto sm:right-3 sm:top-1/2 sm:flex sm:w-auto sm:translate-x-0 sm:-translate-y-1/2 sm:flex-col sm:gap-2 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none"
+      >
+        {PRIMARY_NODES.map(
+          ({ href, label, Icon, isActive: resolveActive, notificationDestination }, index) => {
+            const active = resolveActive(pathname);
+            const badge = notificationDestination
+              ? destinationBadge(notifications, notificationDestination)
+              : { kind: 'hidden' as const };
+            const recognitionTarget =
+              notificationDestination && badge.kind === 'dot'
+                ? recognitionHref(notifications, notificationDestination)
+                : null;
 
-          The rail is scaled down below 425px rather than wrapped. Wrapping
-          was the obvious fix and the wrong one: a second row grows the rail
-          upward into the bottom of whatever is behind it, which on `/game` is
-          Run Setup's own controls. Scaling keeps the rail one row, keeps it
-          shorter than it was, and changes nothing at any width that already
-          fitted. */}
-      <div className="fixed z-50 flex flex-row sm:flex-col items-center gap-1.5 sm:gap-2 max-[425px]:scale-75 bottom-[calc(0.625rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 sm:bottom-auto sm:left-auto sm:translate-x-0 sm:right-3 sm:top-1/2 sm:-translate-y-1/2">
-        {nodes.map(({ href, label, Icon, notificationDestination }, i) => {
-          const isActive = pathname === href;
-          const badge = notificationDestination
-            ? destinationBadge(notifications, notificationDestination)
-            : { kind: 'hidden' as const };
-          const recognitionTarget =
-            notificationDestination && badge.kind === 'dot'
-              ? recognitionHref(notifications, notificationDestination)
-              : null;
-          const targetHref = recognitionTarget ?? href;
-          return (
+            return (
+              <Link
+                key={href}
+                href={recognitionTarget ?? href}
+                aria-label={label}
+                aria-current={active ? 'page' : undefined}
+                className={`${destinationClass(active)} animate-fade-up`}
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <Icon size={19} />
+                <span className="font-display text-[9px] uppercase leading-none tracking-wide sm:hidden">
+                  {label}
+                </span>
+                <NotificationBadge
+                  kind={badge.kind}
+                  count={badge.count}
+                  label={`New ${label} activity`}
+                  className="absolute -right-1 -top-1"
+                />
+                <span className="pointer-events-none absolute right-full top-1/2 mr-3 hidden -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-arcade border border-scale-blue-light/50 bg-void-deep/95 px-2.5 py-1 font-display text-[11px] uppercase tracking-wide-arcade text-bone-white opacity-0 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 sm:block">
+                  {label}
+                </span>
+              </Link>
+            );
+          }
+        )}
+
+        <details className="group/more relative animate-fade-up" style={{ animationDelay: '200ms' }}>
+          <summary
+            aria-label="More"
+            className={`${destinationClass(moreActive)} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+          >
+            <span aria-hidden="true" className="font-mono text-xl leading-none tracking-[-0.18em] pr-[0.18em]">
+              •••
+            </span>
+            <span className="font-display text-[9px] uppercase leading-none tracking-wide sm:hidden">
+              More
+            </span>
+            <NotificationBadge
+              kind={moreBadge.kind}
+              count={moreBadge.count}
+              label="New activity"
+              className="absolute -right-1 -top-1"
+            />
+            <span className="pointer-events-none absolute right-full top-1/2 mr-3 hidden -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-arcade border border-scale-blue-light/50 bg-void-deep/95 px-2.5 py-1 font-display text-[11px] uppercase tracking-wide-arcade text-bone-white opacity-0 transition-all duration-150 group-hover/more:translate-x-0 group-hover/more:opacity-100 group-focus-within/more:translate-x-0 group-focus-within/more:opacity-100 sm:block">
+              More
+            </span>
+          </summary>
+
+          <div
+            data-testid="navigation-more-menu"
+            className="absolute bottom-full right-0 mb-3 w-64 rounded-arcade border border-scale-blue-light/50 bg-void-deep/95 p-2 shadow-2xl backdrop-blur-xl sm:bottom-auto sm:right-full sm:top-1/2 sm:mb-0 sm:mr-3 sm:-translate-y-1/2"
+          >
+            <p className="px-2 pb-1 pt-0.5 font-display text-[10px] uppercase tracking-wide-arcade text-beige/50">
+              Explore
+            </p>
+            {GAME_CONFIG.features.clans && (
+              <Link
+                href="/clan"
+                className="flex min-h-[44px] items-center gap-3 rounded-arcade px-3 py-2 font-body text-sm text-beige transition-colors hover:bg-scale-blue/40 hover:text-bone-white"
+              >
+                <IconShield size={18} /> Clan
+              </Link>
+            )}
+            {SERPENT_V1_ENABLED && (
+              <Link
+                href="/serpent"
+                className="flex min-h-[44px] items-center gap-3 rounded-arcade px-3 py-2 font-body text-sm text-beige transition-colors hover:bg-scale-blue/40 hover:text-bone-white"
+              >
+                <IconSnake size={18} /> Serpent
+              </Link>
+            )}
             <Link
-              key={href}
-              href={targetHref}
-              aria-label={label}
-              aria-current={isActive ? 'page' : undefined}
-              className={`group relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-arcade border backdrop-blur-xl transition-all animate-fade-up ${
-                isActive
-                  ? 'bg-void-deep/80 border-venom-orange/70 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
-                  : 'bg-void-deep/70 border-scale-blue-light/50 text-beige/70 hover:text-bone-white hover:border-beige/60'
-              }`}
-              style={{ animationDelay: `${i * 60}ms` }}
+              href="/shop"
+              className="flex min-h-[44px] items-center gap-3 rounded-arcade px-3 py-2 font-body text-sm text-beige transition-colors hover:bg-scale-blue/40 hover:text-bone-white"
             >
-              <Icon size={19} />
-              <NotificationBadge
-                kind={badge.kind}
-                count={badge.count}
-                label={`New ${label} activity`}
-                className="absolute -right-1 -top-1"
-              />
-              {/* Label flyout - desktop only, slides out on hover/focus */}
-              <span className="pointer-events-none absolute right-full top-1/2 -translate-y-1/2 mr-3 hidden sm:block whitespace-nowrap rounded-arcade border border-scale-blue-light/50 bg-void-deep/90 px-2.5 py-1 font-display text-[11px] uppercase tracking-wide-arcade text-bone-white opacity-0 translate-x-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0 group-focus-visible:opacity-100 group-focus-visible:translate-x-0">
-                {label}
-              </span>
+              <IconCart size={18} /> Shop
             </Link>
-          );
-        })}
+            <Link
+              href="/settings"
+              className="flex min-h-[44px] items-center gap-3 rounded-arcade px-3 py-2 font-body text-sm text-beige transition-colors hover:bg-scale-blue/40 hover:text-bone-white"
+            >
+              <IconGear size={18} /> Settings
+            </Link>
 
-        <div
-          className="animate-fade-up"
-          style={{ animationDelay: `${nodes.length * 60}ms` }}
-        >
-          <NotificationCenter />
-        </div>
-
-        {/* You node - identity chip (guest save-progress / account menu).
-            On the mobile bottom rail the chip's popover must open upward. */}
-        <div
-          className="animate-fade-up sm:mt-1 max-sm:[&_[data-testid=account-chip-menu]]:top-auto max-sm:[&_[data-testid=account-chip-menu]]:bottom-full max-sm:[&_[data-testid=account-chip-menu]]:mt-0 max-sm:[&_[data-testid=account-chip-menu]]:mb-2"
-          style={{ animationDelay: `${(nodes.length + 1) * 60}ms` }}
-        >
-          <AccountChip />
-        </div>
+            <div className="mt-2 flex items-center justify-between gap-3 border-t border-scale-blue-light/25 px-2 pt-2">
+              <span className="font-body text-xs text-beige/60">Inbox</span>
+              <NotificationCenter />
+            </div>
+            <div className="mt-2 flex min-h-[44px] items-center justify-between gap-3 px-2">
+              <span className="font-body text-xs text-beige/60">Account</span>
+              <AccountChip />
+            </div>
+          </div>
+        </details>
       </div>
     </nav>
   );

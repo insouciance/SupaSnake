@@ -4,7 +4,13 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '@/shared/config/game';
 import type { TerrainBlock, TerrainSource } from '@/shared/game/terrain';
+import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { FLOOR_CLEARANCE } from './ArenaFloor';
+import {
+  genomeRuneStrokes,
+  type GenomeRuneStroke,
+} from './screen/gameRuneStrokes';
+import { getTerrainCellGeometry } from './screen/gameRenderGeometry';
 
 /**
  * One terrain physics primitive, one lifecycle, four causal signatures.
@@ -19,7 +25,8 @@ import { FLOOR_CLEARANCE } from './ArenaFloor';
  * collision shape: VOLT lightning for CYBER, a FERAL sprout/claw for Fortress,
  * a broken FLUX portal for COSMIC, and an AURUM-style seal for the ladder.
  * The rune is already present while a cell forms, then lifts with the cell as
- * it locks. Source is distinguished by silhouette rather than dynasty colour.
+ * it locks. Source is distinguished first by silhouette, then reinforced by
+ * the already-learned Genome strain colour (never by the active dynasty).
  * Three instanced meshes cover the whole grammar (forming, solid, rune).
  */
 
@@ -45,9 +52,10 @@ const solidMaterial = new THREE.MeshStandardMaterial({
   emissiveIntensity: 0.18,
 });
 const signatureMaterial = new THREE.MeshBasicMaterial({
-  color: '#e6edf1',
+  color: '#ffffff',
   toneMapped: false,
 });
+const solidGeometry = getTerrainCellGeometry();
 
 // Module scratch: a terrain update allocates no THREE objects.
 const matrix = new THREE.Matrix4();
@@ -56,14 +64,16 @@ const identity = new THREE.Quaternion();
 const rotation = new THREE.Quaternion();
 const yAxis = new THREE.Vector3(0, 1, 0);
 const scale = new THREE.Vector3(1, 1, 1);
+const signatureColor = new THREE.Color();
 
-export interface TerrainRuneStroke {
-  readonly x1: number;
-  readonly z1: number;
-  readonly x2: number;
-  readonly z2: number;
-  readonly width: number;
-}
+export type TerrainRuneStroke = GenomeRuneStroke;
+
+const TERRAIN_RUNE_STRAIN: Record<TerrainSource, StrainId> = {
+  cyber: 'VOLT',
+  fortress: 'FERAL',
+  cosmic: 'FLUX',
+  ladder: 'AURUM',
+};
 
 /**
  * Local-cell linework adapted from the Genome strain glyphs. Exported so the
@@ -72,39 +82,7 @@ export interface TerrainRuneStroke {
 export function terrainRuneStrokes(
   source: TerrainSource
 ): readonly TerrainRuneStroke[] {
-  switch (source) {
-    case 'cyber':
-      // VOLT: a connected three-stroke lightning channel.
-      return [
-        { x1: 0.15, z1: -0.32, x2: -0.09, z2: -0.04, width: 0.075 },
-        { x1: -0.09, z1: -0.04, x2: 0.09, z2: -0.04, width: 0.075 },
-        { x1: 0.09, z1: -0.04, x2: -0.15, z2: 0.32, width: 0.075 },
-      ];
-    case 'fortress':
-      // FERAL: a rooted stem with two protective prongs.
-      return [
-        { x1: 0, z1: -0.3, x2: 0, z2: 0.3, width: 0.07 },
-        { x1: -0.29, z1: -0.08, x2: 0, z2: 0.09, width: 0.07 },
-        { x1: 0.29, z1: -0.08, x2: 0, z2: 0.09, width: 0.07 },
-      ];
-    case 'cosmic':
-      // FLUX: four separated portal arcs. Deliberately not the old X.
-      return [
-        { x1: -0.23, z1: -0.15, x2: -0.06, z2: -0.31, width: 0.065 },
-        { x1: 0.06, z1: -0.31, x2: 0.23, z2: -0.15, width: 0.065 },
-        { x1: 0.23, z1: 0.15, x2: 0.06, z2: 0.31, width: 0.065 },
-        { x1: -0.06, z1: 0.31, x2: -0.23, z2: 0.15, width: 0.065 },
-      ];
-    case 'ladder':
-      // AURUM / Genome socket: a compact five-sided authored seal.
-      return [
-        { x1: 0, z1: -0.31, x2: 0.28, z2: -0.1, width: 0.06 },
-        { x1: 0.28, z1: -0.1, x2: 0.17, z2: 0.28, width: 0.06 },
-        { x1: 0.17, z1: 0.28, x2: -0.17, z2: 0.28, width: 0.06 },
-        { x1: -0.17, z1: 0.28, x2: -0.28, z2: -0.1, width: 0.06 },
-        { x1: -0.28, z1: -0.1, x2: 0, z2: -0.31, width: 0.06 },
-      ];
-  }
+  return genomeRuneStrokes(TERRAIN_RUNE_STRAIN[source]);
 }
 
 function writeInstance(
@@ -169,6 +147,7 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
       formingCount += 1;
     };
     const addStroke = (
+      source: TerrainSource,
       x: number,
       y: number,
       z: number,
@@ -194,6 +173,8 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
         stroke.width * runeScale,
         rotation
       );
+      signatureColor.set(STRAINS[TERRAIN_RUNE_STRAIN[source]].color);
+      signature.setColorAt(signatureCount, signatureColor);
       signatureCount += 1;
     };
     const addRune = (
@@ -203,9 +184,10 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
       z: number,
       runeScale = 1
     ): void => {
-      // Cause is not mapped to a colour: dynasty hues mean player identity.
+      // The silhouette remains the primary cause channel. Its restrained
+      // canonical strain colour is a learned Genome echo, never a new code.
       for (const stroke of terrainRuneStrokes(source)) {
-        addStroke(x, y, z, stroke, runeScale);
+        addStroke(source, x, y, z, stroke, runeScale);
       }
     };
 
@@ -272,6 +254,9 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
     markUpdated(forming);
     markUpdated(solid);
     markUpdated(signature);
+    if (signature.instanceColor) {
+      signature.instanceColor.needsUpdate = true;
+    }
   }, [terrain]);
 
   return (
@@ -283,7 +268,7 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
       />
       <instancedMesh
         ref={solidRef}
-        args={[unitBoxGeometry, solidMaterial, MAX_BLOCKS]}
+        args={[solidGeometry, solidMaterial, MAX_BLOCKS]}
         frustumCulled={false}
         receiveShadow
       />

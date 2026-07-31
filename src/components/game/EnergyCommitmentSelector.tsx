@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { ChargeMeter } from '@/components/ui/ChargeMeter';
+import { ModalDialog } from '@/components/ui/ModalDialog';
+import { IconBolt, IconShield } from '@/components/ui/icons';
+import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import {
   energyCommitmentMultiplier,
   type EnergyStatus,
@@ -18,6 +21,11 @@ interface EnergyCommitmentSelectorProps {
   } | null;
 }
 
+/**
+ * One compact risk control. The rail expresses every commitment without
+ * turning six numbers into six equal buttons; maximum charge remains a
+ * deliberate two-step choice.
+ */
 export function EnergyCommitmentSelector({
   energy,
   value,
@@ -30,118 +38,221 @@ export function EnergyCommitmentSelector({
   useEffect(() => {
     if (!energy) return;
     if (value > energy.available) onChange(energy.available > 0 ? 1 : 0);
-  }, [energy, onChange, value]);
+    if (energy.available < capacity) setConfirmingMax(false);
+  }, [capacity, energy, onChange, value]);
 
   if (!energy) {
-    return <p className="font-body text-sm text-beige/60">Checking recovered Energy…</p>;
+    return (
+      <section
+        className="mx-auto w-full max-w-xl rounded-[20px] border border-rarity-legendary/25 bg-void/65 p-4"
+        data-testid="energy-commitment"
+      >
+        <p className="font-body text-sm text-beige/60">Checking recovered Energy…</p>
+      </section>
+    );
   }
 
+  const available = Math.max(0, Math.min(capacity, energy.available));
   const multiplier = energyCommitmentMultiplier(value);
-  const maxNeedsConfirmation = value === capacity;
+  const railFill = available > 0 ? Math.min(100, Math.max(0, (value / available) * 100)) : 0;
 
-  const choose = (commitment: number) => {
-    if (commitment === capacity) {
-      if (!confirmingMax) {
-        setConfirmingMax(true);
-        return;
-      }
-      setConfirmingMax(false);
-    } else {
-      setConfirmingMax(false);
+  const requestCommitment = (requested: number) => {
+    const next = Math.max(0, Math.min(available, Math.round(requested)));
+    if (next === capacity && value !== capacity) {
+      setConfirmingMax(true);
+      return;
     }
-    onChange(commitment);
+    setConfirmingMax(false);
+    onChange(next);
   };
 
   return (
     <section
-      className="rounded-arcade border border-venom-orange/35 bg-void/55 p-4"
+      className="relative mx-auto w-full max-w-xl overflow-hidden rounded-[22px] border border-rarity-legendary/40 bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.16),transparent_45%),linear-gradient(180deg,rgba(22,32,43,0.94),rgba(6,9,13,0.98))] p-3.5 shadow-glow shadow-rarity-legendary/15 sm:p-4"
       data-testid="energy-commitment"
       aria-label="Energy Commitment"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="label-arcade text-venom-orange">Energy Commitment</p>
-          <p className="mt-1 max-w-lg font-body text-xs text-beige/65">
-            Power this run with recovered Energy. All committed Energy is
-            consumed when the run begins—even if you crash or leave.
+      <div className="relative flex flex-col items-center justify-between gap-2 min-[380px]:flex-row min-[380px]:items-start">
+        <div className="flex items-center gap-2 text-left">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rarity-legendary/35 bg-rarity-legendary/10 text-rarity-legendary">
+            <span className="h-4 w-4"><StrainGlyph id="UMBRA" /></span>
+          </span>
+          <div>
+            <p className="heading-display text-sm text-rarity-legendary">Energy reactor</p>
+            <p className="mt-0.5 font-body text-xs text-beige/65">Choose how much this run carries.</p>
+          </div>
+        </div>
+        <ChargeMeter charge={energy} className="items-center min-[380px]:items-end" />
+      </div>
+
+      {available > 0 ? (
+        <>
+          <div className="relative mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
+            <button
+              type="button"
+              aria-label="Commit one less Energy"
+              onClick={() => requestCommitment(value - 1)}
+              disabled={value <= 0}
+              className="min-h-[44px] rounded-full border border-scale-blue-light/55 bg-void/80 font-display text-xl text-beige transition-colors hover:border-rarity-legendary/60 hover:text-rarity-legendary disabled:opacity-25 whitespace-nowrap"
+              data-testid="energy-decrease"
+            >
+              −
+            </button>
+
+            <div className="text-center" aria-live="polite">
+              <div className="relative mx-auto flex h-[88px] w-[88px] items-center justify-center rounded-full border-2 border-rarity-legendary/65 bg-void-deep shadow-glow-lg shadow-rarity-legendary/25">
+                <span className="absolute inset-2 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.11),transparent_68%)]" aria-hidden="true" />
+                <div className="relative">
+                  <span className="block font-display text-3xl leading-none text-rarity-legendary">
+                    {value > 0 ? value : '0'}
+                  </span>
+                  <span className="mt-1 block font-body text-[9px] uppercase tracking-[0.12em] text-beige/55">
+                    {value > 0 ? 'Energy' : 'Lean'}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-1.5 font-display text-lg text-bone-white">
+                ×{multiplier.toFixed(value === 0 ? 2 : 1)} harvest
+              </p>
+            </div>
+
+            <button
+              type="button"
+              aria-label="Commit one more Energy"
+              onClick={() => requestCommitment(value + 1)}
+              disabled={value >= available}
+              className="min-h-[44px] rounded-full border border-rarity-legendary/55 bg-rarity-legendary/10 font-display text-xl text-rarity-legendary transition-colors hover:bg-rarity-legendary/20 disabled:opacity-25 whitespace-nowrap"
+              data-testid="energy-increase"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="relative mt-2 px-1">
+            <input
+              type="range"
+              min={0}
+              max={available}
+              step={1}
+              value={Math.min(value, available)}
+              onChange={(event) => requestCommitment(Number(event.target.value))}
+              aria-label="Energy commitment"
+              aria-valuetext={
+                value > 0
+                  ? `${value} Energy for ${multiplier.toFixed(1)} times harvest`
+                  : 'Lean run for 0.25 times harvest'
+              }
+              className="relative z-10 h-7 w-full cursor-pointer bg-transparent"
+              style={{ accentColor: '#fbbf24' }}
+              data-testid="energy-commitment-slider"
+            />
+            <div className="pointer-events-none absolute inset-x-3 top-1/2 h-1 -translate-y-1/2 rounded-full bg-scale-blue-light/55">
+              <span
+                className="block h-full rounded-full bg-gradient-to-r from-cyber via-cosmic to-rarity-legendary shadow-glow-sm shadow-rarity-legendary/40 transition-[width] motion-reduce:transition-none"
+                style={{ width: `${railFill}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => requestCommitment(0)}
+              className="min-h-[44px] rounded-full border border-scale-blue-light/45 bg-void/55 px-3 font-body text-xs text-beige/65 transition-colors hover:border-cyber/45 hover:text-bone-white whitespace-nowrap"
+              data-testid="energy-run-lean"
+            >
+              Lean · ×0.25
+            </button>
+            <button
+              type="button"
+              onClick={() => requestCommitment(capacity)}
+              disabled={available < capacity || value === capacity}
+              className="min-h-[44px] rounded-full border border-rarity-legendary/45 bg-rarity-legendary/10 px-3 font-body text-xs font-semibold text-rarity-legendary transition-colors hover:bg-rarity-legendary/20 disabled:opacity-35 whitespace-nowrap"
+              data-testid="energy-commit-6"
+            >
+              Max · ×{energyCommitmentMultiplier(capacity).toFixed(1)}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="mt-3 rounded-[16px] border border-cyber/25 bg-cyber/5 px-3 py-4 text-center">
+          <p className="font-display text-lg text-cyber">Lean run · ×0.25</p>
+          <p className="mt-1 font-body text-xs text-beige/65">
+            No Energy stored. You can still play and one Energy recovers each hour.
           </p>
         </div>
-        <ChargeMeter charge={energy} />
-      </div>
-
-      {energy.available > 0 ? (
-        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {Array.from({ length: energy.available }, (_, index) => index + 1).map(
-            (commitment) => {
-              const selected = value === commitment;
-              const needsConfirm = commitment === capacity && confirmingMax && !selected;
-              return (
-                <button
-                  key={commitment}
-                  type="button"
-                  onClick={() => choose(commitment)}
-                  data-testid={`energy-commit-${commitment}`}
-                  aria-pressed={selected}
-                  className={`min-h-[48px] rounded-arcade border px-2 py-2 font-mono text-sm transition-colors ${
-                    selected
-                      ? 'border-venom-orange bg-venom-orange/20 text-bone-white shadow-glow-sm shadow-venom-orange/35'
-                      : needsConfirm
-                        ? 'border-strike-red bg-strike-red/15 text-strike-red'
-                        : 'border-scale-blue-light/45 bg-void/60 text-beige hover:border-venom-orange/70'
-                  }`}
-                >
-                  <span className="block font-bold">
-                    {needsConfirm ? 'Confirm 6' : `${commitment} Energy`}
-                  </span>
-                  <span className="block text-[11px] opacity-75">
-                    ×{energyCommitmentMultiplier(commitment).toFixed(1)}
-                  </span>
-                </button>
-              );
-            }
-          )}
-        </div>
-      ) : (
-        <p className="mt-4 font-body text-sm text-beige/75">
-          No Energy stored. You can still start a lean run at ×0.25 harvest.
-        </p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="font-body text-sm text-bone-white" data-testid="energy-summary">
-          {value > 0 ? `Commit ${value} Energy` : 'Lean run'} · Harvest multiplier:{' '}
-          <span className="font-mono font-bold text-venom-orange">
-            ×{multiplier.toFixed(value === 0 ? 2 : 1)}
+      <p className="mt-2 text-center font-body text-xs leading-snug text-beige/65" data-testid="energy-summary">
+        {value > 0 ? `Commit ${value} Energy` : 'Lean run'} · Harvest multiplier:{' '}
+        <span className="font-mono font-bold text-rarity-legendary">
+          ×{multiplier.toFixed(value === 0 ? 2 : 1)}
+        </span>
+      </p>
+      <p className="mt-1 text-center font-body text-[11px] leading-snug text-beige/50">
+        {value > 0
+          ? `All ${value} committed Energy is consumed when the run begins. A crash or abandonment does not refund it.`
+          : 'Lean play consumes no Energy.'}
+      </p>
+
+      {clanBattle?.active ? (
+        <div
+          className="mt-3 flex min-h-[52px] items-center gap-2.5 rounded-[14px] border border-cosmic/35 bg-cosmic/10 px-3 py-2 text-left"
+          data-testid="energy-clan-eligible"
+        >
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cosmic/15 text-cosmic-glow">
+            <IconShield size={17} />
           </span>
-        </p>
-        {value > 0 && (
+          <p className="min-w-0 font-body text-xs leading-snug text-beige/70">
+            <span className="font-display text-cosmic-glow">Battle live</span>
+            {' · '}
+            {value > 0
+              ? (clanBattle.fifthBestToBeat ?? 0) > 0
+                ? `This run counts. Beat ${(clanBattle.fifthBestToBeat ?? 0).toLocaleString()} Yield to improve your five.`
+                : 'This run counts. Your strongest five runs contribute.'
+              : 'Lean runs do not count. Commit at least 1 Energy to enter this attempt.'}
+          </p>
+        </div>
+      ) : null}
+
+      {confirmingMax ? (
+        <ModalDialog
+          onClose={() => setConfirmingMax(false)}
+          ariaLabelledBy="energy-max-title"
+          ariaDescribedBy="energy-max-description"
+          testId="energy-max-confirmation"
+          panelClassName="max-w-sm overflow-hidden rounded-[24px] border-2 border-rarity-legendary/65 bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.22),transparent_48%),linear-gradient(180deg,#16202b,#06090d)] p-5 text-center shadow-glow-lg shadow-rarity-legendary/30"
+        >
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-rarity-legendary bg-rarity-legendary/10 text-rarity-legendary shadow-glow shadow-rarity-legendary/45 motion-safe:animate-glow-pulse motion-reduce:animate-none">
+            <IconBolt size={38} />
+          </div>
+          <p className="label-arcade mt-4 text-rarity-legendary">Maximum charge</p>
+          <h2 id="energy-max-title" className="mt-1 heading-display text-2xl text-bone-white">
+            Commit all 6 Energy?
+          </h2>
+          <p id="energy-max-description" className="mt-2 font-body text-sm leading-snug text-beige/70">
+            This powers a ×10 harvest run. All six Energy are consumed when the run begins and are not refunded after a crash or abandonment.
+          </p>
           <button
             type="button"
+            className="btn-go mt-5 min-h-[50px] w-full px-4 py-2 text-sm whitespace-nowrap"
             onClick={() => {
+              onChange(capacity);
               setConfirmingMax(false);
-              onChange(0);
             }}
-            className="min-h-[44px] px-2 font-body text-xs text-beige/60 underline hover:text-bone-white"
-            data-testid="energy-run-lean"
+            data-testid="energy-max-confirm"
           >
-            Save Energy and run lean
+            Arm ×10 run
           </button>
-        )}
-      </div>
-
-      {maxNeedsConfirmation && (
-        <p className="mt-2 font-body text-xs text-strike-red">
-          Maximum commitment selected. Starting will consume all six Energy.
-        </p>
-      )}
-      {clanBattle?.active && value > 0 && (
-        <p className="mt-3 border-t border-scale-blue-light/20 pt-3 font-body text-xs text-cosmic" data-testid="energy-clan-eligible">
-          This Energy run counts toward your clan battle.
-          {(clanBattle.fifthBestToBeat ?? 0) > 0
-            ? ` Beat ${clanBattle.fifthBestToBeat} Yield to improve your five.`
-            : ' Your strongest five runs contribute.'}
-        </p>
-      )}
+          <button
+            type="button"
+            className="btn-neutral mt-2 min-h-[44px] w-full px-4 py-2 text-xs whitespace-nowrap"
+            onClick={() => setConfirmingMax(false)}
+          >
+            Keep {value > 0 ? `${value} Energy` : 'lean run'}
+          </button>
+        </ModalDialog>
+      ) : null}
     </section>
   );
 }

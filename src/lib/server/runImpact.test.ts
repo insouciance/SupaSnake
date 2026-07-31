@@ -160,7 +160,7 @@ describe('Career Spine run impact envelope', () => {
     ]);
   });
 
-  it('keeps a clan top-five improvement notable, not a global badge milestone', () => {
+  it('makes a clan top-five improvement durable Compete recognition', () => {
     const envelope = buildRunImpactEnvelope({
       ...base,
       clan: {
@@ -175,7 +175,7 @@ describe('Career Spine run impact envelope', () => {
     expect(envelope.impacts).toContainEqual(
       expect.objectContaining({
         kind: 'clan_top_five',
-        significance: 'notable',
+        significance: 'milestone',
         delta: 800,
       })
     );

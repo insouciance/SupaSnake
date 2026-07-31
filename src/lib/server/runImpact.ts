@@ -270,7 +270,11 @@ export function buildRunImpactEnvelope(
       key: `clan:top-five:${input.sessionId}`,
       pillar: 'clan',
       kind: 'clan_top_five',
-      significance: 'notable',
+      // A contributing clan result is socially durable, not just a result-card
+      // flourish. Milestone significance creates cross-device Compete attention
+      // keyed to this exact session; the clan surface clears it only when that
+      // contribution is actually visible.
+      significance: 'milestone',
       headline: 'Entered your clan five',
       detail: delta > 0 ? `Clan Depth increased by ${delta.toLocaleString('en-US')}` : undefined,
       delta,

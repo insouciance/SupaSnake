@@ -4,7 +4,7 @@
  * Results has exactly three constitutional layers:
  * 1. outcome, personal best, share, Daily Take
  * 2. Score and Yield/Depth
- * 3. one collapsed server-authored impact digest and one next action
+ * 3. one server-authored, player-collected victory lap and one next action
  *
  * Replay and Setup remain outside the layers and immediately available. No
  * commercial surface, transient build inventory, identity card, or async
@@ -15,22 +15,31 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   IconArrowRight,
+  IconCheck,
   IconDna,
   IconGift,
+  IconFlask,
+  IconLock,
   IconMedal,
   IconPlay,
   IconReset,
+  IconShield,
+  IconTrophy,
+  IconUser,
 } from '@/components/ui/icons';
+import {
+  DnaGlyph,
+  ShieldGlyph,
+  StrainGlyph,
+} from '@/components/game/cockpit/CockpitGlyphs';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { trackEvent } from '@/lib/analytics/posthog';
 import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { ResultsNextAction } from '@/lib/game/resultsNextAction';
 import {
-  groupRunImpacts,
   impactSummary,
   type RunImpact,
   type RunImpactEnvelope,
-  type RunImpactGroup,
 } from '@/lib/game/runImpactClient';
 import {
   formatYieldMultiplier,
@@ -53,6 +62,7 @@ export interface RunResultsClanBattle {
   replacedSessionId?: string | null;
   scoreDelta?: number;
   clanTotal?: number;
+  thresholdBefore?: number;
   fifthBest?: number;
   /** Retained for API compatibility; the full five belongs on the Clan page. */
   topFive?: Array<{
@@ -132,15 +142,9 @@ function takeMessage(state: TakeCollectState, take: DailyTakeSlot): string | nul
   }
 }
 
-function impactTone(group: RunImpactGroup): string {
-  if (group.significance === 'historic') return 'border-[#facc15]/70 bg-[#facc15]/10';
-  if (group.significance === 'milestone') return 'border-cosmic/70 bg-cosmic/10';
-  return 'border-scale-blue-light/40 bg-scale-blue/10';
-}
-
-function ImpactProgress({ impact, animateAfter }: {
+function ImpactProgress({ impact, collected }: {
   impact: RunImpact;
-  animateAfter: boolean;
+  collected: boolean;
 }) {
   if (impact.before === undefined || impact.after === undefined) return null;
   const metadataTarget = impact.metadata?.target;
@@ -150,8 +154,9 @@ function ImpactProgress({ impact, animateAfter }: {
       : Math.max(impact.after, impact.before, 1);
   const width = Math.max(
     0,
-    Math.min(100, ((animateAfter ? impact.after : impact.before) / max) * 100)
+    Math.min(100, ((collected ? impact.after : impact.before) / max) * 100)
   );
+  const displayedValue = collected ? impact.after : impact.before;
   return (
     <div className="mt-2 space-y-1">
       <div
@@ -159,7 +164,7 @@ function ImpactProgress({ impact, animateAfter }: {
         aria-label={`${impact.headline} progress`}
         aria-valuemin={0}
         aria-valuemax={max}
-        aria-valuenow={impact.after}
+        aria-valuenow={displayedValue}
         className="h-1.5 overflow-hidden rounded-full bg-void-deep/80"
       >
         <div
@@ -168,134 +173,529 @@ function ImpactProgress({ impact, animateAfter }: {
         />
       </div>
       <p className="font-mono text-[11px] text-beige/60">
-        {impact.before.toLocaleString()} → {impact.after.toLocaleString()}
+        {collected
+          ? `${impact.before.toLocaleString()} → ${impact.after.toLocaleString()}`
+          : `${impact.before.toLocaleString()} · ready to advance`}
       </p>
     </div>
   );
 }
 
-function ImpactReview({ envelope }: { envelope: RunImpactEnvelope }) {
-  const groups = useMemo(() => groupRunImpacts(envelope), [envelope]);
-  const [index, setIndex] = useState(0);
-  const [finished, setFinished] = useState(false);
-  const [animateAfter, setAnimateAfter] = useState(false);
-  const current = groups[index];
+type ClaimBeatKind = 'dna' | 'career' | 'clan';
 
-  useEffect(() => {
-    if (!current) return;
-    const reduced =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) {
-      setAnimateAfter(true);
-      return;
-    }
-    setAnimateAfter(false);
-    if (typeof window.requestAnimationFrame !== 'function') {
-      setAnimateAfter(true);
-      return;
-    }
-    const frame = window.requestAnimationFrame(() => setAnimateAfter(true));
-    return () => window.cancelAnimationFrame(frame);
-  }, [current]);
+interface ClaimBeat {
+  id: ClaimBeatKind;
+  eyebrow: string;
+  headline: string;
+  detail: string;
+  collectLabel: string;
+  payoff: string;
+  impacts: RunImpact[];
+  tone: string;
+  orb: string;
+  action: string;
+}
 
-  if (groups.length === 0) {
+interface ResultDestinationHighlight {
+  id: 'you' | 'lab' | 'compete';
+  label: string;
+  headline: string;
+  count: number;
+  tone: string;
+  Icon: typeof IconUser;
+}
+
+const DYNASTY_STRAIN = {
+  CYBER: 'VOLT',
+  PRIMAL: 'FERAL',
+  COSMIC: 'FLUX',
+} as const;
+
+const SIGNIFICANCE_RANK: Record<RunImpact['significance'], number> = {
+  routine: 0,
+  notable: 1,
+  milestone: 2,
+  historic: 3,
+};
+
+function formatCommitmentMultiplier(bps: number): string {
+  const multiplier = Math.max(0, bps) / 10_000;
+  return multiplier.toFixed(multiplier < 1 ? 2 : 1);
+}
+
+function claimSource(envelope: RunImpactEnvelope): RunImpact[] {
+  const byKey = new Map(envelope.impacts.map((impact) => [impact.key, impact]));
+  // The server orders featured keys by significance. Reassert that invariant
+  // at the rendering boundary as well, so an older recovered envelope cannot
+  // pair a weaker headline with a stronger reward's action language.
+  const selected = envelope.featuredImpactKeys
+    .map((key, index) => ({ impact: byKey.get(key), index }))
+    .filter(
+      (entry): entry is { impact: RunImpact; index: number } => Boolean(entry.impact)
+    )
+    .sort(
+      (a, b) =>
+        SIGNIFICANCE_RANK[b.impact.significance] -
+          SIGNIFICANCE_RANK[a.impact.significance] || a.index - b.index
+    )
+    .map(({ impact }) => impact);
+  const clan = envelope.impacts.filter(
+    (impact) => impact.pillar === 'clan' && impact.significance !== 'routine'
+  );
+  const merged = new Map<string, RunImpact>();
+  for (const impact of [...selected, ...clan]) merged.set(impact.key, impact);
+  if (merged.size > 0) return Array.from(merged.values());
+
+  // A routine run still deserves one honest progress collection, but its
+  // automatic lineage-history row is not inflated into a prize of its own.
+  return envelope.impacts.filter((impact) => impact.kind !== 'lineage_run');
+}
+
+function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
+  const beats: ClaimBeat[] = [];
+  const credited = envelope.receipt.dnaCredited;
+  if (credited > 0) {
+    const energy = envelope.receipt.energyCommitted;
+    beats.push({
+      id: 'dna',
+      eyebrow: envelope.outcome === 'crashed' ? 'Salvage capsule' : 'Harvest capsule',
+      headline: `+${credited.toLocaleString()} DNA`,
+      detail:
+        energy > 0
+          ? `${energy} Energy committed · ×${formatCommitmentMultiplier(envelope.receipt.commitmentMultiplierBps)} harvest. Your balance is already secured.`
+          : 'The server has already secured this harvest in your balance.',
+      collectLabel: envelope.outcome === 'crashed' ? 'Collect salvage' : 'Collect DNA',
+      payoff: `${credited.toLocaleString()} DNA secured in your vault`,
+      impacts: [],
+      tone: 'border-venom-orange/70 bg-venom-orange/10 text-venom-orange',
+      orb: 'border-venom-orange/80 bg-venom-orange/15 text-venom-orange shadow-[0_0_40px_rgba(250,204,21,0.3)]',
+      action: 'border-venom-orange bg-venom-orange text-void-deep hover:brightness-110',
+    });
+  }
+
+  const source = claimSource(envelope);
+  const career = source.filter((impact) => impact.pillar !== 'clan');
+  const clan = source.filter((impact) => impact.pillar === 'clan');
+
+  if (career.length > 0) {
+    const first = career[0];
+    const primaryIsMastery = first.kind === 'mastery_level';
+    const primaryIsDiscovery =
+      first.kind === 'codex_discovery' || first.kind === 'codex_milestone';
+    beats.push({
+      id: 'career',
+      eyebrow: primaryIsMastery
+        ? 'Mastery promotion'
+        : primaryIsDiscovery
+          ? 'Genome discovery'
+          : 'Progress secured',
+      headline: first.headline,
+      detail:
+        career.length > 1
+          ? `${career.length} connected advances arrived from this run.`
+          : first.detail ?? 'Added to your permanent career record.',
+      collectLabel: primaryIsMastery
+        ? 'Accept mastery'
+        : primaryIsDiscovery
+          ? 'Reveal discovery'
+          : 'Accept progress',
+      payoff: `${first.headline} added to your career`,
+      impacts: career,
+      tone: 'border-cosmic/70 bg-cosmic/10 text-cosmic-glow',
+      orb: 'border-cosmic/80 bg-cosmic/15 text-cosmic-glow shadow-[0_0_40px_rgba(168,85,247,0.32)]',
+      action: 'border-cosmic bg-cosmic text-bone-white hover:brightness-110',
+    });
+  }
+
+  if (clan.length > 0) {
+    const first = clan[0];
+    const trophy = clan.some((impact) => impact.kind === 'clan_top_five');
+    beats.push({
+      id: 'clan',
+      eyebrow: trophy ? 'Clan performance trophy' : 'Clan contribution',
+      headline: first.headline,
+      detail: first.detail ?? 'Your contribution is now visible to your clan.',
+      collectLabel: trophy ? 'Raise trophy' : 'Accept contribution',
+      payoff: `${first.headline} is now visible to your clan`,
+      impacts: clan,
+      tone: 'border-cyber/70 bg-cyber/10 text-cyber',
+      orb: 'border-cyber/80 bg-cyber/15 text-cyber shadow-[0_0_44px_rgba(34,211,238,0.34)]',
+      action: 'border-cyber bg-cyber text-void-deep hover:brightness-110',
+    });
+  }
+
+  return beats;
+}
+
+function BeatRune({ kind, dynasty, compact = false }: {
+  kind: ClaimBeatKind;
+  dynasty: RunImpactEnvelope['dynasty'];
+  compact?: boolean;
+}) {
+  return (
+    <span className={`block ${compact ? 'h-6 w-6' : 'h-12 w-12'}`} aria-hidden="true">
+      {kind === 'dna' ? (
+        <DnaGlyph />
+      ) : kind === 'career' ? (
+        <StrainGlyph id={DYNASTY_STRAIN[dynasty]} />
+      ) : (
+        <ShieldGlyph />
+      )}
+    </span>
+  );
+}
+
+function ActiveClaimBeat({
+  beat,
+  dynasty,
+  onCollect,
+}: {
+  beat: ClaimBeat;
+  dynasty: RunImpactEnvelope['dynasty'];
+  onCollect: () => void;
+}) {
+  return (
+    <article
+      className={`relative overflow-hidden rounded-arcade border p-4 sm:p-6 ${beat.tone} animate-pop-in motion-reduce:animate-none`}
+      data-testid={`impact-beat-${beat.id}`}
+      data-state="ready"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_5%,rgba(255,255,255,0.12),transparent_31%),linear-gradient(115deg,transparent_35%,rgba(255,255,255,0.055)_50%,transparent_65%)]" />
+      <div className="relative grid items-center gap-5 text-center sm:grid-cols-[8rem_1fr] sm:text-left">
+        <div className="relative mx-auto flex h-28 w-28 items-center justify-center" data-testid={`impact-rune-${beat.id}`}>
+          <span className={`absolute inset-1 rotate-45 rounded-[1.4rem] border ${beat.orb}`} />
+          <span className="absolute inset-4 -rotate-6 rounded-full border border-current/45 bg-void-deep/85" />
+          <span className="relative drop-shadow-[0_0_10px_currentColor]">
+            <BeatRune kind={beat.id} dynasty={dynasty} />
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="label-arcade text-current/85">{beat.eyebrow}</p>
+          <h3 className="mt-1 font-display text-2xl text-bone-white sm:text-3xl">{beat.headline}</h3>
+          <p className="mt-2 font-body text-sm leading-relaxed text-beige/75">{beat.detail}</p>
+          {beat.impacts.length > 0 ? (
+            <ul className="mt-3 space-y-3">
+              {beat.impacts.map((impact) => (
+                <li key={impact.key}>
+                  {impact.headline !== beat.headline ? (
+                    <p className="font-body text-sm font-bold text-bone-white">{impact.headline}</p>
+                  ) : null}
+                  {impact.detail && impact.detail !== beat.detail ? (
+                    <p className="font-body text-xs text-beige/70">{impact.detail}</p>
+                  ) : null}
+                  <ImpactProgress impact={impact} collected={false} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <button
+            type="button"
+            onClick={onCollect}
+            className={`mt-5 inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-arcade border px-6 py-3 font-display text-sm uppercase tracking-wide transition-[transform,filter] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bone-white motion-reduce:transform-none sm:w-auto ${beat.action}`}
+            data-testid={`impact-collect-${beat.id}`}
+          >
+            <IconGift size={19} /> {beat.collectLabel}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function CollectedClaimBeat({ beat, dynasty }: {
+  beat: ClaimBeat;
+  dynasty: RunImpactEnvelope['dynasty'];
+}) {
+  return (
+    <article
+      className={`rounded-arcade border p-3 ${beat.tone}`}
+      data-testid={`impact-beat-${beat.id}`}
+      data-state="collected"
+    >
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-arcade border border-current/40 bg-void-deep/65 p-2">
+          <BeatRune kind={beat.id} dynasty={dynasty} compact />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="label-arcade text-current/80">Collected</p>
+          <p className="font-display text-base text-bone-white">{beat.headline}</p>
+          {beat.impacts.map((impact) => (
+            <ImpactProgress key={impact.key} impact={impact} collected />
+          ))}
+        </div>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rarity-uncommon/60 bg-rarity-uncommon/15 text-rarity-uncommon">
+          <IconCheck size={17} />
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function destinationSurface(impact: RunImpact): Omit<ResultDestinationHighlight, 'headline' | 'count'> | null {
+  switch (impact.destination) {
+    case 'chronicle':
+    case 'records':
+      return {
+        id: 'you',
+        label: 'You',
+        Icon: IconUser,
+        tone: 'border-venom-orange/55 text-venom-orange shadow-[0_0_22px_rgba(250,204,21,0.18)]',
+      };
+    case 'mastery':
+    case 'lineage':
+    case 'codex':
+    case 'lab':
+      return {
+        id: 'lab',
+        label: 'Lab',
+        Icon: IconFlask,
+        tone: 'border-cosmic/55 text-cosmic-glow shadow-[0_0_22px_rgba(168,85,247,0.2)]',
+      };
+    case 'clan':
+      return {
+        id: 'compete',
+        label: 'Compete',
+        Icon: IconShield,
+        tone: 'border-cyber/55 text-cyber shadow-[0_0_22px_rgba(34,211,238,0.2)]',
+      };
+    default:
+      return null;
+  }
+}
+
+function destinationHighlights(envelope: RunImpactEnvelope): ResultDestinationHighlight[] {
+  const items = new Map<ResultDestinationHighlight['id'], ResultDestinationHighlight>();
+  const durable = envelope.impacts
+    .filter(
+      (impact) =>
+        SIGNIFICANCE_RANK[impact.significance] >= SIGNIFICANCE_RANK.milestone &&
+        typeof impact.artifactRef === 'string' &&
+        impact.artifactRef.length > 0
+    )
+    .sort(
+      (a, b) => SIGNIFICANCE_RANK[b.significance] - SIGNIFICANCE_RANK[a.significance]
+    );
+  for (const impact of durable) {
+    const surface = destinationSurface(impact);
+    if (!surface) continue;
+    const current = items.get(surface.id);
+    if (current) {
+      current.count += 1;
+    } else {
+      items.set(surface.id, { ...surface, headline: impact.headline, count: 1 });
+    }
+  }
+  return Array.from(items.values());
+}
+
+function DestinationHighlights({ items }: { items: readonly ResultDestinationHighlight[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section
+      className="animate-pop-in space-y-3 rounded-arcade border border-scale-blue-light/30 bg-void-deep/60 p-4 text-left motion-reduce:animate-none"
+      aria-label="Unseen progress destinations"
+      data-testid="results-destination-attention"
+    >
+      <div>
+        <p className="label-arcade text-rarity-legendary">Your world changed</p>
+        <p className="mt-1 font-body text-xs leading-relaxed text-beige/65">
+          These lights stay on until the exact progress is visible in its home.
+        </p>
+      </div>
+      <div className={`grid gap-2 ${items.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}>
+        {items.map((item) => {
+          const Icon = item.Icon;
+          return (
+            <div
+              key={item.id}
+              className={`relative rounded-arcade border bg-black/20 p-3 ${item.tone}`}
+              data-testid={`results-attention-${item.id}`}
+            >
+              <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-current shadow-[0_0_12px_currentColor]" aria-label="Unseen change" />
+              <div className="flex items-center gap-2">
+                <Icon size={18} />
+                <span className="whitespace-nowrap font-display text-sm uppercase text-bone-white">{item.label}</span>
+              </div>
+              <p className="mt-2 font-body text-xs text-beige/70">
+                {item.headline}{item.count > 1 ? ` · +${item.count - 1} more` : ''}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The run has already settled; these taps are ceremony, never authority.
+ * Closing Results cannot revoke value, and replay never waits for collection.
+ */
+function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
+  const beats = useMemo(() => buildClaimBeats(envelope), [envelope]);
+  const attention = useMemo(() => destinationHighlights(envelope), [envelope]);
+  const [collectedCount, setCollectedCount] = useState(0);
+  const [lastPayoff, setLastPayoff] = useState<string | null>(null);
+  const finished = collectedCount >= beats.length;
+  const current = finished ? null : beats[collectedCount];
+
+  if (beats.length === 0) {
     return (
-      <ul className="space-y-2" data-testid="impact-routine-list">
+      <div className="space-y-2" data-testid="impact-routine-list">
+        <p className="label-arcade text-cosmic">Run progress secured</p>
+        <ul className="space-y-2">
         {envelope.impacts.map((impact) => (
           <li key={impact.key} className="font-body text-sm text-beige">
             {impact.headline}
             {impact.detail ? <span className="text-beige/65"> — {impact.detail}</span> : null}
           </li>
         ))}
-      </ul>
+        </ul>
+      </div>
     );
   }
 
-  if (finished || !current) {
-    return (
-      <p className="font-body text-sm text-beige" role="status">
-        Recognition reviewed. Everything shown was secured when the run settled.
-      </p>
-    );
-  }
-
-  const complete = () => {
-    setFinished(true);
-    trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_COMPLETED, {
+  const collect = () => {
+    if (!current) return;
+    const nextCount = Math.min(collectedCount + 1, beats.length);
+    setLastPayoff(current.payoff);
+    setCollectedCount(nextCount);
+    trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_ADVANCED, {
       session_id: envelope.sessionId,
-      beat_count: groups.length,
+      beat_id: current.id,
+      beat_index: collectedCount,
+      beat_count: beats.length,
+      interaction: 'collect',
+      automatic: false,
       category: 'engagement',
     });
+    if (nextCount === beats.length) {
+      trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_COMPLETED, {
+        session_id: envelope.sessionId,
+        beat_count: beats.length,
+        automatic: false,
+        category: 'engagement',
+      });
+    }
   };
 
   return (
-    <div className="space-y-3" data-testid="impact-review">
-      <p className="font-body text-xs uppercase tracking-wide text-beige/60">
-        {index + 1} of {groups.length}
-      </p>
-      <div
-        key={current.id}
-        className={`rounded-arcade border p-3 animate-pop-in motion-reduce:animate-none ${impactTone(current)}`}
-        aria-live="polite"
-        data-testid={`impact-beat-${current.id}`}
-      >
-        <p className="label-arcade text-cosmic">{current.label}</p>
-        <ul className="mt-2 space-y-3">
-          {current.impacts.map((impact) => (
-            <li key={impact.key}>
-              <p className="font-body text-sm font-bold text-bone-white">
-                {impact.headline}
-              </p>
-              {impact.detail ? (
-                <p className="font-body text-xs text-beige/70">{impact.detail}</p>
-              ) : null}
-              <ImpactProgress impact={impact} animateAfter={animateAfter} />
-            </li>
-          ))}
-        </ul>
+    <div className="space-y-3" data-testid="impact-victory-lap" aria-label="Run rewards and progress collection">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="label-arcade text-rarity-uncommon">Victory lap</p>
+          <p className="mt-1 flex items-start gap-1.5 font-body text-xs leading-relaxed text-beige/70">
+            <IconLock size={14} className="mt-0.5 shrink-0 text-rarity-uncommon" />
+            <span>Everything is already yours. Each tap reveals and celebrates it.</span>
+          </p>
+        </div>
+        <p className="shrink-0 whitespace-nowrap font-mono text-[11px] uppercase text-beige/60" aria-live="polite">
+          {finished ? 'Lap complete' : `${collectedCount + 1} of ${beats.length}`}
+        </p>
       </div>
-      <div className="flex flex-wrap justify-end gap-2">
-        {groups.length > 1 && (
-          <button
-            type="button"
-            className="btn-neutral min-h-[44px] px-4 py-2 text-xs"
-            onClick={() => {
-              setFinished(true);
-              trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_SKIPPED, {
-                session_id: envelope.sessionId,
-                stopped_at: index,
-                beat_count: groups.length,
-                category: 'engagement',
-              });
-            }}
-            data-testid="impact-review-skip"
-          >
-            Skip review
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn-neutral min-h-[44px] px-4 py-2 text-xs"
-          onClick={() => {
-            if (index + 1 >= groups.length) {
-              complete();
-            } else {
-              setIndex((value) => value + 1);
-              trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_ADVANCED, {
-                session_id: envelope.sessionId,
-                beat_index: index + 1,
-                beat_count: groups.length,
-                category: 'engagement',
-              });
-            }
-          }}
-          data-testid="impact-review-next"
+      <div className="flex gap-1" aria-hidden="true">
+        {beats.map((beat, index) => (
+          <span
+            key={beat.id}
+            className={`h-1.5 flex-1 rounded-full transition-colors motion-reduce:transition-none ${index < collectedCount ? 'bg-rarity-uncommon' : index === collectedCount ? 'bg-cosmic shadow-[0_0_8px_#a855f7]' : 'bg-scale-blue-light/25'}`}
+          />
+        ))}
+      </div>
+
+      {lastPayoff ? (
+        <div
+          key={lastPayoff}
+          className="flex items-center gap-2 rounded-arcade border border-rarity-uncommon/45 bg-rarity-uncommon/10 px-3 py-2 text-rarity-uncommon animate-pop-in motion-reduce:animate-none"
+          role="status"
+          aria-live="polite"
+          data-testid="impact-collection-payoff"
         >
-          {index + 1 >= groups.length ? 'Done' : 'Next'}
-        </button>
-      </div>
+          <IconCheck size={18} className="shrink-0" />
+          <span className="font-body text-xs font-bold">{lastPayoff}</span>
+        </div>
+      ) : null}
+
+      {current ? (
+        <div aria-live="polite">
+          <ActiveClaimBeat beat={current} dynasty={envelope.dynasty} onCollect={collect} />
+        </div>
+      ) : (
+        <div className="space-y-3" role="status" data-testid="impact-victory-complete">
+          <div className="rounded-arcade border border-rarity-uncommon/45 bg-rarity-uncommon/10 p-4 text-center">
+            <IconTrophy size={34} className="mx-auto text-rarity-legendary drop-shadow-[0_0_12px_currentColor]" />
+            <p className="mt-2 heading-display text-xl text-bone-white">Victory lap complete</p>
+            <p className="mt-1 font-body text-xs text-beige/65">Your prizes are collected. Their story continues in your world.</p>
+          </div>
+          <DestinationHighlights items={attention} />
+        </div>
+      )}
+
+      {collectedCount > 0 ? (
+        <div className="space-y-2" aria-label="Collected prizes">
+          {beats.slice(0, collectedCount).map((beat) => (
+            <CollectedClaimBeat key={beat.id} beat={beat} dynasty={envelope.dynasty} />
+          ))}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function serverNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null;
+}
+
+function CrashConsequences({
+  credited,
+  clanBattle,
+}: {
+  credited: number | null;
+  clanBattle: RunResultsClanBattle | null;
+}) {
+  const salvage = serverNumber(credited);
+  // This reason is returned only after the contribution recorder found an
+  // attached clan battle but rejected the completed run. It proves that no
+  // clan contribution was banked; it does not prove a hypothetical score.
+  const noClanContribution =
+    clanBattle?.eligible === false && clanBattle.reason === 'validation_or_timing';
+  const threshold =
+    serverNumber(clanBattle?.thresholdBefore) ?? serverNumber(clanBattle?.fifthBest);
+
+  if (salvage === null && !noClanContribution && threshold === null) return null;
+
+  return (
+    <section
+      className="mx-auto grid max-w-lg gap-2 rounded-arcade border border-scale-blue-light/35 bg-scale-blue/10 p-3 text-left sm:grid-cols-2"
+      aria-label="Exact crash consequences"
+      data-testid="results-crash-consequences"
+    >
+      {salvage !== null ? (
+        <div>
+          <p className="label-arcade text-venom-orange">Personal</p>
+          <p className="mt-1 font-display text-sm text-bone-white">
+            {salvage.toLocaleString()} DNA salvaged
+          </p>
+        </div>
+      ) : null}
+      {noClanContribution ? (
+        <div className="border-t border-scale-blue-light/20 pt-2 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
+          <p className="label-arcade text-cyber">Clan</p>
+          <p className="mt-1 font-display text-sm text-bone-white">
+            No clan contribution banked
+          </p>
+        </div>
+      ) : null}
+      {threshold !== null && threshold > 0 ? (
+        <div className="border-t border-scale-blue-light/20 pt-2 sm:col-span-2">
+          <p className="label-arcade text-cosmic-glow">Your fifth-best threshold</p>
+          <p className="mt-1 font-display text-sm text-bone-white">
+            {threshold.toLocaleString()} Clan Depth
+          </p>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -323,7 +723,6 @@ export function RunResults({
   replayEnergy,
   shareArtifact,
 }: RunResultsProps) {
-  const [impactReviewStarted, setImpactReviewStarted] = useState(false);
   const head = headline(outcome, practice);
   const receipt = impact?.receipt;
   const settledScore = receipt?.score ?? score;
@@ -332,6 +731,27 @@ export function RunResults({
   const committed = receipt?.energyCommitted ?? energyCommitted;
   const multiplier = receipt?.commitmentMultiplierBps ?? commitmentMultiplierBps;
   const personalBest = receipt?.personalBest.improved === true;
+  const clanThresholdBefore = serverNumber(clanBattle?.thresholdBefore);
+  const clanFifthBest = serverNumber(clanBattle?.fifthBest);
+  const clanDelta = serverNumber(clanBattle?.scoreDelta);
+  const scoreNeeded = clanThresholdBefore !== null && clanThresholdBefore > 0
+    ? clanThresholdBefore + 1
+    : null;
+  const shortBy =
+    scoreNeeded !== null && !clanBattle?.enteredTopFive
+      ? Math.max(0, scoreNeeded - settledYield)
+      : null;
+
+  useEffect(() => {
+    if (!CAREER_SPINE_V1_ENABLED || !impact) return;
+    trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_OPENED, {
+      session_id: impact.sessionId,
+      impact_count: impact.impacts.length,
+      featured_count: impact.featuredImpactKeys.length,
+      automatic: false,
+      category: 'engagement',
+    });
+  }, [impact]);
 
   return (
     <div className="space-y-6" data-testid="run-results">
@@ -423,40 +843,34 @@ export function RunResults({
             <p className="label-arcade text-[#7df9ff]">Clan Energy Battle</p>
             <p className="font-body text-sm text-bone-white">
               {clanBattle.enteredTopFive
-                ? `Entered your five${(clanBattle.scoreDelta ?? 0) > 0 ? ` · +${(clanBattle.scoreDelta ?? 0).toLocaleString()} Clan Depth` : ''}.`
-                : `Did not beat your fifth-best result${(clanBattle.fifthBest ?? 0) > 0 ? ` of ${(clanBattle.fifthBest ?? 0).toLocaleString()} Yield` : ''}.`}
+                ? `Entered your five${clanDelta !== null && clanDelta > 0 ? ` · +${clanDelta.toLocaleString()} Clan Depth` : ''}.`
+                : 'Valid battle result · outside your five.'}
             </p>
             {clanBattle.replacedSessionId ? <p className="font-body text-xs text-beige/65">Replaced a weaker result.</p> : null}
+            {clanBattle.enteredTopFive && clanFifthBest !== null && clanFifthBest > 0 ? (
+              <p className="font-body text-xs text-beige/65">
+                Your fifth-best now stands at {clanFifthBest.toLocaleString()} Clan Depth.
+              </p>
+            ) : null}
+            {!clanBattle.enteredTopFive && scoreNeeded !== null ? (
+              <p className="font-body text-xs text-beige/65" data-testid="results-clan-gap">
+                Needed {scoreNeeded.toLocaleString()} · this run delivered {settledYield.toLocaleString()}
+                {shortBy !== null && shortBy > 0 ? ` · ${shortBy.toLocaleString()} short` : ''}.
+              </p>
+            ) : null}
           </div>
         )}
-        {!settlementPending && !clanBattle?.eligible && clanBattle?.reason === 'validation_or_timing' && outcome === 'crashed' && (
-          <p className="mx-auto max-w-lg font-body text-sm text-strike-red" data-testid="results-clan-battle-lost">The crash salvaged personal DNA, but the potential clan result was not banked.</p>
-        )}
+        {!settlementPending && outcome === 'crashed' && !practice ? (
+          <CrashConsequences credited={credited} clanBattle={clanBattle} />
+        ) : null}
       </section>
 
       <section data-testid="results-layer-3" aria-label="Progression" className="space-y-4">
-        <details
-          className="panel p-3 text-left"
+        <div
+          className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg p-4 text-left"
           data-testid="results-digest"
-          onToggle={(event) => {
-            const open = (event.currentTarget as HTMLDetailsElement).open;
-            if (CAREER_SPINE_V1_ENABLED && open && impact) {
-              trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_OPENED, {
-                session_id: impact.sessionId,
-                impact_count: impact.impacts.length,
-                featured_count: impact.featuredImpactKeys.length,
-                category: 'engagement',
-              });
-            }
-          }}
         >
-          <summary
-            className="label-arcade cursor-pointer text-cosmic"
-            onClick={() => setImpactReviewStarted(true)}
-          >
-            What this run moved
-          </summary>
-          <div className="space-y-3 pt-3">
+          <div className="space-y-3">
             <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
               {CAREER_SPINE_V1_ENABLED
                 ? settlementPending
@@ -470,8 +884,8 @@ export function RunResults({
                   ? 'Practice advances no persistent progress.'
                   : 'Persistent progress was secured by the server.'}
             </p>
-            {CAREER_SPINE_V1_ENABLED && impact && impactReviewStarted ? (
-              <ImpactReview envelope={impact} />
+            {CAREER_SPINE_V1_ENABLED && impact ? (
+              <ImpactVictoryLap key={impact.sessionId} envelope={impact} />
             ) : null}
             {CAREER_SPINE_V1_ENABLED && !impact ? (
               <p className="font-body text-xs text-beige/60">
@@ -483,7 +897,7 @@ export function RunResults({
               </p>
             ) : null}
           </div>
-        </details>
+        </div>
 
         {nextAction.href ? (
           <Link href={nextAction.href} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#22d3ee] mx-auto flex min-h-[44px] max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
@@ -498,11 +912,18 @@ export function RunResults({
         )}
       </section>
 
-      <div className="flex flex-wrap items-center justify-center gap-4">
-        <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[44px] items-center gap-2 px-8 py-4 text-xl ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
+      <p className="mx-auto max-w-lg text-center font-body text-xs leading-relaxed text-beige/55">
+        {practice
+          ? 'Replay or return to Setup at any time. Practice creates no persistent reward.'
+          : impact || settlementPending
+            ? 'Replay or return to Setup at any time. Leaving never forfeits a secured prize.'
+            : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:flex sm:items-center sm:justify-center">
+        <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-4 text-xl sm:w-auto ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
           <IconPlay size={20} /> {replayPending ? 'Starting…' : replayEnergy > 0 ? `Replay · ${replayEnergy} Energy` : 'Replay · Lean'}
         </button>
-        <button type="button" onClick={onSetup} data-testid="results-setup" className="btn-neutral inline-flex min-h-[44px] items-center gap-2 px-6 py-3">
+        <button type="button" onClick={onSetup} data-testid="results-setup" className="btn-neutral inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto">
           <IconReset size={18} /> Setup
         </button>
       </div>

@@ -35,6 +35,7 @@ import {
 } from '@/lib/game/trailCells';
 import {
   COIL_SEAL_DURATION_SECONDS,
+  getInstancedBodyMaterial,
   writeCoilSealInstances,
   writeTrailInstances,
 } from './InstancedSnake';
@@ -42,7 +43,9 @@ import { FLOOR_CLEARANCE, FLOOR_TOP_Y } from './ArenaFloor';
 import {
   TRAIL_HEIGHT_HEAD,
   getTrailFootprint,
+  getSnakeSegmentMaterial,
 } from './SnakeModel';
+import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 
 interface Instance {
   position: THREE.Vector3;
@@ -229,6 +232,21 @@ describe('fusion drives the picture, not just a number', () => {
     const fused = emit(buffer, levels(2)).sink.instances[0];
     expect(1 - free.scale.x).toBeGreaterThan(0.25);
     expect(1 - fused.scale.x).toBeLessThan(0.1);
+  });
+});
+
+describe('ordinary trail material is a solid authored surface', () => {
+  it('is fully opaque and keeps profile albedo under bloom in every dynasty', () => {
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      const material = getInstancedBodyMaterial(dynasty);
+      const shared = getSnakeSegmentMaterial(dynasty, false);
+      const scalar = getGameMaterialProfile(dynasty).snake.bodyAlbedoScalar;
+      const expected = shared.color.clone().multiplyScalar(scalar);
+      expect(material.transparent).toBe(false);
+      expect(material.opacity).toBe(1);
+      expect(material.depthWrite).toBe(true);
+      expect(material.color.getHexString()).toBe(expected.getHexString());
+    }
   });
 });
 

@@ -55,6 +55,7 @@ interface FetchFixtures {
   player?: Record<string, unknown>;
   streaks?: Record<string, unknown>;
   collection?: Record<string, unknown>;
+  clan?: Record<string, unknown>;
   season?: Record<string, unknown>;
 }
 
@@ -140,8 +141,18 @@ function setupFetch(fixtures: FetchFixtures = {}) {
   };
   const streaksBody = fixtures.streaks ?? { currentStreak: 5, longestStreak: 12 };
   const collectionBody = fixtures.collection ?? {
-    snakes: [{ id: 'snake-1', isEquipped: true, dynastyName: 'PRIMAL' }],
+    snakes: [{
+      id: 'snake-1',
+      isEquipped: true,
+      dynastyName: 'PRIMAL',
+      variantName: 'PRIMAL SEED',
+      generation: 7,
+      lineage: { strains: ['FERAL'], strength: 1 },
+    }],
     dnaBalance: 320,
+  };
+  const clanBody = fixtures.clan ?? {
+    clan: { id: 'clan-1', name: 'Apex Coil', tag: 'APEX' },
   };
 
   global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -185,6 +196,7 @@ function setupFetch(fixtures: FetchFixtures = {}) {
     }
     if (u.includes('/api/season')) return jsonResponse(fixtures.season ?? {});
     if (u.includes('/api/collection')) return jsonResponse(collectionBody);
+    if (u.includes('/api/clan?playerId=')) return jsonResponse(clanBody);
     if (u.includes('/api/game/session')) {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       return body.action === 'start'
@@ -240,12 +252,12 @@ describe('Home page', () => {
   });
 
   describe('unauthenticated', () => {
-    it('renders wordmark and Launch without fetching stats', () => {
+    it('renders wordmark and Play without fetching stats', () => {
       setUnauthed();
       render(<Home />);
 
       expect(screen.getByText('SUPASNAKE')).toBeInTheDocument();
-      expect(screen.getByText('Launch')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
       expect(screen.getByText('Where Skill Creates Legacy')).toBeInTheDocument();
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -315,6 +327,26 @@ describe('Home page', () => {
         // `/api/contracts` was in this list until WP-1.03 retired it (§12.2).
         expect(calls).not.toContain('/api/contracts');
       });
+    });
+
+    it('shows factual equipped-snake and clan identity from server responses', async () => {
+      setAuthed();
+      render(<Home />);
+
+      expect(await screen.findByTestId('home-specimen-identity')).toHaveTextContent(
+        'PRIMAL SEED · Gen 7'
+      );
+      expect(screen.getByTestId('home-lineage-rune')).toHaveAttribute(
+        'title',
+        'Feral Genome lineage'
+      );
+      expect(await screen.findByTestId('home-clan-identity')).toHaveTextContent(
+        'Apex Coil'
+      );
+      expect(screen.getAllByTestId('home-wallet')).toHaveLength(1);
+
+      const calls = (global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]));
+      expect(calls).toContain('/api/clan?playerId=user-1');
     });
 
     it('sends the auth token with stat requests', async () => {
@@ -601,12 +633,12 @@ describe('Home page', () => {
       expect(screen.queryByTestId('welcome-back-modal')).not.toBeInTheDocument();
     });
 
-    it('warns once before replacing a lost anonymous session on Launch', () => {
+    it('warns once before replacing a lost anonymous session on Play', () => {
       const { signInAnonymously } = setUnauthed();
       recordLastUser({ id: 'anon-1', is_anonymous: true });
       render(<Home />);
 
-      fireEvent.click(screen.getByText('Launch'));
+      fireEvent.click(screen.getByRole('button', { name: 'Play' }));
 
       expect(screen.getByTestId('progress-loss-notice')).toBeInTheDocument();
       expect(signInAnonymously).not.toHaveBeenCalled();
@@ -617,7 +649,7 @@ describe('Home page', () => {
       recordLastUser({ id: 'anon-1', is_anonymous: true });
       render(<Home />);
 
-      fireEvent.click(screen.getByText('Launch'));
+      fireEvent.click(screen.getByRole('button', { name: 'Play' }));
       fireEvent.click(screen.getByText('Continue as Guest'));
 
       await waitFor(() => {
@@ -629,11 +661,11 @@ describe('Home page', () => {
       expect(window.localStorage.getItem('supasnake-progress-loss-noticed')).toBeNull();
     });
 
-    it('takes a truly fresh guest from one Launch through auth, bootstrap, and run loading', async () => {
+    it('takes a truly fresh guest from one Play through auth, bootstrap, and run loading', async () => {
       const { signInAnonymously } = setUnauthed();
       render(<Home />);
 
-      fireEvent.click(screen.getByText('Launch'));
+      fireEvent.click(screen.getByRole('button', { name: 'Play' }));
 
       await waitFor(() => {
         expect(signInAnonymously).toHaveBeenCalled();

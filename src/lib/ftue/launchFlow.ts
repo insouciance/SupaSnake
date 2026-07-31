@@ -1,4 +1,5 @@
 import type { FtueBootstrapResponse } from './types';
+import { createRunStartRequestId } from '@/lib/game/runContinuityClient';
 
 export type LaunchPhase =
   | 'idle'
@@ -71,6 +72,18 @@ export const LAUNCH_PHASE_LABEL: Record<LaunchPhase, string> = {
 
 export interface GameSessionStartPayload {
   sessionId: string;
+  /** Deterministic run stream issued and persisted by the server. */
+  simulation?: { seed: string; version: 1 };
+  /** Exact snake snapshot for prepared-run recovery; never infer from current equip. */
+  runSnake?: {
+    id: string;
+    name: string;
+    generation: number;
+    dynasty: string;
+    traits: unknown;
+    traitSlots?: number;
+    lineage?: unknown;
+  };
   /** Server-authoritative recovered stock and immutable run commitment. */
   energy?: {
     state: 'charged' | 'lean' | 'exempt';
@@ -112,6 +125,20 @@ export interface LaunchHandoff {
 }
 
 type Fetcher = typeof fetch;
+
+let pendingLaunchStart:
+  | { fingerprint: string; startRequestId: string }
+  | null = null;
+
+function launchStartRequestId(fingerprint: string): string {
+  if (pendingLaunchStart?.fingerprint !== fingerprint) {
+    pendingLaunchStart = {
+      fingerprint,
+      startRequestId: createRunStartRequestId(),
+    };
+  }
+  return pendingLaunchStart.startRequestId;
+}
 
 export class LaunchFlowError extends Error {
   constructor(
@@ -180,7 +207,12 @@ async function startSession(
   // day's one attempt. Miss any of those and it is an ordinary run, which is
   // why nothing here reads the answer back as permission.
   const signalRun = typeof signalObjectiveId === 'string' && signalObjectiveId.length > 0;
-  const response = await fetcher('/api/game/session', {
+  // One UUID names this deliberate start. If the response disappears, the
+  // server returns the persisted manifest instead of spending Energy twice.
+  // It lives only for this request; authenticated recovery is server-held.
+  const startFingerprint = JSON.stringify({ mode, snakeId, signalObjectiveId: signalObjectiveId ?? null });
+  const startRequestId = launchStartRequestId(startFingerprint);
+  const request: RequestInit = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -188,11 +220,25 @@ async function startSession(
     },
     body: JSON.stringify(
       signalRun
-        ? { action: 'start', mode: 'signal', signalObjectiveId, snake_id: snakeId }
-        : { action: 'start', mode, snake_id: snakeId }
+        ? {
+            action: 'start',
+            startRequestId,
+            mode: 'signal',
+            signalObjectiveId,
+            snake_id: snakeId,
+          }
+        : { action: 'start', startRequestId, mode, snake_id: snakeId }
     ),
-  });
-  const body = await responseBody(response);
+  };
+  let response: Response | null = null;
+  let body: Record<string, unknown> = {};
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    response = await fetcher('/api/game/session', request);
+    body = await responseBody(response);
+    if (response.status !== 202 || body.preparing !== true) break;
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  if (!response) throw new LaunchFlowError('Run setup returned no response');
 
   if (!response.ok) {
     throw new LaunchFlowError(
@@ -202,8 +248,14 @@ async function startSession(
     );
   }
   if (typeof body.sessionId !== 'string' || body.sessionId.length === 0) {
-    throw new LaunchFlowError('Run setup returned incomplete data');
+    throw new LaunchFlowError(
+      body.preparing === true
+        ? 'Your run is secured and still preparing. Retry to continue it.'
+        : 'Run setup returned incomplete data'
+    );
   }
+
+  pendingLaunchStart = null;
 
   return body as unknown as GameSessionStartPayload;
 }
