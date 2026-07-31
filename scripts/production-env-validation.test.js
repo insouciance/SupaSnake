@@ -122,6 +122,10 @@ describe('production environment validation', () => {
     const previewBlock = workflow.slice(previewAt, previewBoundaryAt);
     expect(previewBlock).toContain('npx vercel@56.3.1 deploy');
     expect(previewBlock).not.toContain('--prod');
+    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_FTUE_V2='true'");
+    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_HUD_COCKPIT_V1='true'");
+    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_CAREER_SPINE_V1='true'");
+    expect(previewBlock).toContain("--build-env NEXT_PUBLIC_RUN_FLOW_V1='true'");
     expect(previewBlock).toContain("deployment_target=$(printf '%s'");
     expect(previewBlock).toContain("[ \"$deployment_target\" != 'preview' ]");
     expect(workflow).toContain(
@@ -130,6 +134,10 @@ describe('production environment validation', () => {
 
     const productionBlock = workflow.slice(productionAt, productionCronAt);
     expect(productionBlock).toContain('--prod');
+    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_FTUE_V2='true'");
+    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_HUD_COCKPIT_V1='true'");
+    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_CAREER_SPINE_V1='true'");
+    expect(productionBlock).toContain("--build-env NEXT_PUBLIC_RUN_FLOW_V1='true'");
     expect(workflow).not.toMatch(/^\s+--skip-domain(?:\s|$)/m);
     expect(workflow).not.toContain('vercel@56.3.1 promote');
     expect(workflow).not.toContain('Restore outgoing cron ownership');
