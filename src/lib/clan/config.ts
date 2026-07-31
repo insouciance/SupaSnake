@@ -71,6 +71,76 @@ export const CLAN_POPULATION_GATES = {
  */
 export const DIRECTORY_ALIVE_WEEKS = 2;
 
+/**
+ * Competitive-clan economy and integrity dials (Constitution v1.7 §9.2).
+ *
+ * These are server inputs, not client-authored prices or rewards. Each value
+ * is clamped before it reaches an RPC, and migration 062 independently
+ * enforces hard ceilings so a bad deployment value cannot create an unbounded
+ * sink or faucet. The RPC snapshots the accepted values into its audit row;
+ * changing a dial never rewrites an assignment or reward already earned.
+ */
+function boundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  const parsed = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function configuredBoolean(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) return fallback;
+  return raw === 'true';
+}
+
+export const CLAN_ECONOMY_CONFIG = Object.freeze({
+  /** Clearly quoted, atomic DNA sink for founding a clan. */
+  foundingDnaCost: boundedInteger(process.env.CLAN_FOUNDING_DNA_COST, 500, 1, 100_000),
+  /** A direct handle invitation expires; an expired invite never admits. */
+  invitationLifetimeSeconds: boundedInteger(
+    process.env.CLAN_INVITATION_LIFETIME_SECONDS,
+    7 * 24 * 60 * 60,
+    60 * 60,
+    30 * 24 * 60 * 60
+  ),
+  glory: Object.freeze({
+    /** Schema and Constitution hard-cap this at exactly two seats. */
+    maxSeats: 2,
+    /** Once-per-holder/battle recognition, never a score multiplier. */
+    rewardDna: boundedInteger(process.env.CLAN_GLORY_REWARD_DNA, 250, 0, 1_000),
+    /** Veteran recognition defaults to one completed week of tenure. */
+    minimumTenureSeconds: boundedInteger(
+      process.env.CLAN_GLORY_MIN_TENURE_SECONDS,
+      7 * 24 * 60 * 60,
+      0,
+      365 * 24 * 60 * 60
+    ),
+    /** A real positive-Energy result must have moved at least one Depth. */
+    minimumContributionDepth: boundedInteger(
+      process.env.CLAN_GLORY_MIN_CONTRIBUTION_DEPTH,
+      1,
+      1,
+      1_000_000_000
+    ),
+    /** Conservative defaults; both choices are snapshotted in the audit. */
+    allowOwnerSelfAward: configuredBoolean(process.env.CLAN_GLORY_ALLOW_SELF_AWARD, false),
+    allowPendingReassignment: configuredBoolean(
+      process.env.CLAN_GLORY_ALLOW_PENDING_REASSIGNMENT,
+      false
+    ),
+  }),
+});
+
+export const CLAN_DIRECTORY_LIMITS = Object.freeze({
+  defaultPageSize: 50,
+  maxPageSize: 100,
+  maxSearchLength: 40,
+  maxOffset: 10_000,
+});
+
 /** Invite codes: the acquisition artifact (§11.3, Rule 14). */
 export const CLAN_INVITE_CODE_LENGTH = 8;
 

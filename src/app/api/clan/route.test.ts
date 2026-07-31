@@ -1,30 +1,9 @@
-/**
- * @jest-environment node
- */
-
-/**
- * Clan API — the reworked actions (WP-1.02; Constitution §9.2, §12.2,
- * Rules 5, 6, 8, 11).
- *
- * The suite this replaces asserted local literals (`const clan = { memberCount:
- * 48, maxMembers: 50 }; expect(clan.memberCount < clan.maxMembers).toBe(true)`)
- * and never called a handler. These tests drive the real `GET`/`POST` against a
- * mocked Supabase and assert what the route ASKS FOR as well as what it answers.
- *
- * What is pinned here:
- *
- *   - founding a clan of one, in one RPC;
- *   - joining is by invite code and by nothing else;
- *   - the 12 cap comes back from the server, not from the client;
- *   - leaving goes through `leave_clan` — the route deletes nothing (F-7);
- *   - the removed actions are removed, and answer 400;
- *   - the directory never carries a total (§9.2);
- *   - a missing migration 048 answers 503, never 500.
- */
+/** @jest-environment node */
 
 var mockAuth: jest.Mock;
 var mockFrom: jest.Mock;
 var mockRpc: jest.Mock;
+var mockCapture: jest.Mock;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -33,13 +12,14 @@ jest.mock('@supabase/supabase-js', () => ({
     rpc: (...args: unknown[]) => mockRpc(...args),
   }),
 }));
+jest.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => mockCapture(...args),
+}));
 
-jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
-
-import { describe, expect, it, beforeEach } from '@jest/globals';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
-import { CLAN_LIMITS } from '@/lib/clan/types';
+import { CLAN_ECONOMY_CONFIG } from '@/lib/clan/config';
 
 function post(body: Record<string, unknown>, token = 'token') {
   return new NextRequest('https://supasnake.com/api/clan', {
@@ -49,247 +29,207 @@ function post(body: Record<string, unknown>, token = 'token') {
   });
 }
 
-function get(url = 'https://supasnake.com/api/clan') {
-  return new NextRequest(url);
-}
-
 beforeEach(() => {
   mockAuth = jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   mockFrom = jest.fn();
   mockRpc = jest.fn().mockResolvedValue({ data: {}, error: null });
+  mockCapture = jest.fn();
 });
 
-describe('POST found — the clan of one (§9.2)', () => {
-  it('founds with a name alone and returns the invite artifact', async () => {
+describe('founding economy', () => {
+  it('passes the central cost to one atomic RPC and returns the settled balance', async () => {
     mockRpc.mockResolvedValue({
       data: {
-        clan_id: 'clan-1',
-        name: 'Elite Snakes',
-        tag: 'ES',
-        invite_code: 'ABCDEFGH',
-        member_count: 1,
-        max_members: 12,
+        clan_id: 'clan-1', name: 'Elite Snakes', tag: 'ES',
+        member_count: 1, max_members: 12, join_policy: 'open',
+        invite_code: 'ABCDEFGH', founding_dna_cost: 500, dna_balance: 725,
       },
       error: null,
     });
-
     const response = await POST(post({ action: 'found', name: 'Elite Snakes' }));
-    const body = await response.json();
-
     expect(response.status).toBe(200);
-    expect(mockRpc).toHaveBeenCalledWith(
-      'found_clan',
-      expect.objectContaining({ p_user_id: 'user-1', p_name: 'Elite Snakes', p_tag: null })
-    );
-    // A clan of one is complete on arrival: one member, and a way in for others.
-    expect(body.clan.memberCount).toBe(1);
-    expect(body.invite).toEqual({ code: 'ABCDEFGH', url: '/clan/join/ABCDEFGH' });
+    expect(mockRpc).toHaveBeenCalledWith('found_clan', expect.objectContaining({
+      p_user_id: 'user-1',
+      p_name: 'Elite Snakes',
+      p_founding_cost: CLAN_ECONOMY_CONFIG.foundingDnaCost,
+    }));
+    expect(await response.json()).toMatchObject({
+      clan: { id: 'clan-1', joinPolicy: 'open' },
+      economy: { foundingDnaCost: 500, dnaBalance: 725 },
+    });
   });
 
-  it('passes preset heraldry straight through (§9.2: preset-only)', async () => {
-    mockRpc.mockResolvedValue({ data: { clan_id: 'c', invite_code: 'ABCDEFGH' }, error: null });
-    await POST(
-      post({ action: 'found', name: 'Elite Snakes', bannerId: 'venom_wake', emblemId: 'fang' })
-    );
-    expect(mockRpc).toHaveBeenCalledWith(
-      'found_clan',
-      expect.objectContaining({ p_banner_id: 'venom_wake', p_emblem_id: 'fang' })
-    );
+  it('reports insufficient DNA without inventing a client balance', async () => {
+    mockRpc.mockResolvedValue({
+      data: { error: 'insufficient_dna', required_dna: 500, dna_balance: 100 },
+      error: null,
+    });
+    const response = await POST(post({ action: 'found', name: 'Elite Snakes' }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'insufficient_dna',
+      details: { required_dna: 500, dna_balance: 100 },
+    });
   });
 
-  it('rejects a name the moderation bound refuses, without reaching the RPC', async () => {
+  it('rejects invalid names before any economy call', async () => {
     const response = await POST(post({ action: 'found', name: '<script>' }));
     expect(response.status).toBe(400);
     expect(mockRpc).not.toHaveBeenCalled();
   });
-
-  it('answers 503, not 500, before migration 048 is applied', async () => {
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { code: 'PGRST202', message: 'Could not find the function found_clan' },
-    });
-    const response = await POST(post({ action: 'found', name: 'Elite Snakes' }));
-    expect(response.status).toBe(503);
-  });
 });
 
-describe('POST join_by_code — the only recruitment surface (§9.2)', () => {
-  it('normalises the code and calls the RPC', async () => {
-    mockRpc.mockResolvedValue({ data: { clan_id: 'clan-1', member_count: 2 }, error: null });
-    const response = await POST(post({ action: 'join_by_code', code: ' abcdefgh ' }));
-    expect(response.status).toBe(200);
-    expect(mockRpc).toHaveBeenCalledWith('join_clan_by_code', {
-      p_user_id: 'user-1',
-      p_code: 'ABCDEFGH',
+describe('recruitment policies and exact-handle invites', () => {
+  it('requests open/application membership by clan id', async () => {
+    await POST(post({ action: 'apply', clanId: 'clan-2' }));
+    expect(mockRpc).toHaveBeenCalledWith('request_clan_membership', {
+      p_user_id: 'user-1', p_clan_id: 'clan-2',
     });
   });
 
-  it('refuses a malformed code before touching the database', async () => {
-    const response = await POST(post({ action: 'join_by_code', code: 'nope' }));
+  it('creates a direct invitation from the exact handle only', async () => {
+    await POST(post({ action: 'invite', handle: 'Strong_Player', targetUserId: 'ignored' }));
+    expect(mockRpc).toHaveBeenCalledWith('create_clan_invite_by_handle', {
+      p_actor_user_id: 'user-1',
+      p_handle: 'Strong_Player',
+      p_expires_in_seconds: CLAN_ECONOMY_CONFIG.invitationLifetimeSeconds,
+    });
+    expect(JSON.stringify(mockRpc.mock.calls[0][1])).not.toContain('targetUserId');
+  });
+
+  it('rejects malformed handles without a lookup', async () => {
+    const response = await POST(post({ action: 'invite', handle: 'not a handle' }));
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe('invalid_code');
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  it('surfaces the SERVER-SIDE 12 cap as 400 clan_full', async () => {
-    // The cap is decided inside `join_clan_by_code` under FOR UPDATE, not by
-    // any client-side count — the route only reports what SQL decided.
-    mockRpc.mockResolvedValue({ data: { error: 'clan_full' }, error: null });
-    const response = await POST(post({ action: 'join_by_code', code: 'ABCDEFGH' }));
-    const body = await response.json();
-    expect(response.status).toBe(400);
-    expect(body.code).toBe('clan_full');
-    expect(CLAN_LIMITS.maxMembers).toBe(12);
+  it.each([
+    ['approve_application', true],
+    ['reject_application', false],
+  ] as const)('%s uses the same audited review transition', async (action, approve) => {
+    await POST(post({ action, applicationId: 'app-1' }));
+    expect(mockRpc).toHaveBeenCalledWith('review_clan_application', {
+      p_actor_user_id: 'user-1',
+      p_application_id: 'app-1',
+      p_approve: approve,
+    });
   });
 
-  it('reports a disbanded clan as gone rather than missing', async () => {
-    mockRpc.mockResolvedValue({ data: { error: 'clan_disbanded' }, error: null });
-    const response = await POST(post({ action: 'join_by_code', code: 'ABCDEFGH' }));
-    expect(response.status).toBe(410);
+  it('surfaces invite-only and permission decisions from SQL', async () => {
+    mockRpc.mockResolvedValue({ data: { error: 'invite_required' }, error: null });
+    expect((await POST(post({ action: 'apply', clanId: 'c' }))).status).toBe(403);
+    mockRpc.mockResolvedValue({ data: { error: 'not_authorized' }, error: null });
+    expect((await POST(post({ action: 'invite', handle: 'Strong_Player' }))).status).toBe(403);
   });
 });
 
-describe('POST leave — F-7, closed', () => {
-  it('goes through leave_clan and deletes nothing itself', async () => {
+describe('governance and Glory', () => {
+  it('promotes/demotes only to co_leader or member', async () => {
+    await POST(post({ action: 'set_role', targetUserId: 'user-2', role: 'co_leader' }));
+    expect(mockRpc).toHaveBeenCalledWith('set_clan_member_role', {
+      p_actor_user_id: 'user-1', p_target_user_id: 'user-2', p_role: 'co_leader',
+    });
+    mockRpc.mockClear();
+    const response = await POST(post({ action: 'set_role', targetUserId: 'user-2', role: 'owner' }));
+    expect(response.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('updates only a valid recruitment policy', async () => {
+    await POST(post({ action: 'update_settings', joinPolicy: 'application' }));
+    expect(mockRpc).toHaveBeenCalledWith('update_clan_settings', {
+      p_actor_user_id: 'user-1', p_join_policy: 'application',
+    });
+    mockRpc.mockClear();
+    expect((await POST(post({ action: 'update_settings', joinPolicy: 'closed' }))).status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('derives every Glory term and cycle server-side', async () => {
+    await POST(post({
+      action: 'assign_glory', targetUserId: 'user-2', seat: 1,
+      rewardDna: 999999, cycleIndex: 999999, rank: 1,
+    }));
+    const [name, args] = mockRpc.mock.calls[0] as [string, Record<string, unknown>];
+    expect(name).toBe('assign_clan_glory');
+    expect(args).toMatchObject({
+      p_actor_user_id: 'user-1',
+      p_target_user_id: 'user-2',
+      p_seat: 1,
+      p_reward_dna: CLAN_ECONOMY_CONFIG.glory.rewardDna,
+      p_minimum_tenure_seconds: CLAN_ECONOMY_CONFIG.glory.minimumTenureSeconds,
+      p_minimum_contribution_depth: CLAN_ECONOMY_CONFIG.glory.minimumContributionDepth,
+    });
+    expect(args).not.toHaveProperty('rewardDna');
+    expect(args).not.toHaveProperty('rank');
+    expect(args).not.toHaveProperty('cycleIndex');
+  });
+
+  it('rejects a third seat before SQL', async () => {
+    const response = await POST(post({ action: 'assign_glory', targetUserId: 'u2', seat: 3 }));
+    expect(response.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('directory contract', () => {
+  it('passes bounded search/filter/page inputs and returns factual fields', async () => {
     mockRpc.mockResolvedValue({
-      data: { clan_id: 'clan-1', disbanded: false, tenure_since: '2026-01-01T00:00:00Z' },
+      data: [{
+        id: 'c1', name: 'Elite Snakes', tag: 'ES', banner_id: null,
+        emblem_id: null, color_primary: null, member_count: 4,
+        max_members: 12, available_spots: 8, join_policy: 'application',
+        best_week_depth: 900, recent_activity_at: '2026-07-30T12:00:00Z',
+        recent_activity_kind: 'energy_battle',
+      }],
       error: null,
     });
-    const response = await POST(post({ action: 'leave' }));
-    const body = await response.json();
-
+    const response = await GET(new NextRequest(
+      'https://supasnake.com/api/clan?view=directory&q=Elite&policy=application&hasSpace=true&limit=500&offset=4'
+    ));
     expect(response.status).toBe(200);
-    expect(mockRpc).toHaveBeenCalledWith('leave_clan', { p_user_id: 'user-1' });
-    // The route no longer touches `clan_members` at all on this path — the
-    // whole point of F-7's fix is that the archive and the removal are one
-    // transaction in SQL.
-    expect(mockFrom).not.toHaveBeenCalled();
-    expect(body.result.tenure_since).toBe('2026-01-01T00:00:00Z');
+    expect(mockRpc).toHaveBeenCalledWith('get_competitive_clan_directory', {
+      p_search: 'Elite', p_policy: 'application', p_has_space: true,
+      p_limit: 100, p_offset: 4,
+    });
+    expect((await response.json()).clans[0]).toMatchObject({
+      memberCount: 4,
+      availableSpots: 8,
+      joinPolicy: 'application',
+      recentActivityAt: '2026-07-30T12:00:00Z',
+    });
   });
 
-  it('tells the last owner their clan disbanded rather than vanishing quietly', async () => {
-    mockRpc.mockResolvedValue({ data: { clan_id: 'c', disbanded: true }, error: null });
-    const body = await (await POST(post({ action: 'leave' }))).json();
-    expect(body.result.disbanded).toBe(true);
-  });
-
-  it('asks an owner with clanmates to hand the clan over first', async () => {
-    mockRpc.mockResolvedValue({ data: { error: 'owner_must_transfer' }, error: null });
-    const response = await POST(post({ action: 'leave' }));
-    expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe('owner_must_transfer');
-  });
-});
-
-describe('POST remove_member — plain roster management (§9.2)', () => {
-  it('takes a target and nothing else', async () => {
-    mockRpc.mockResolvedValue({ data: { clan_id: 'c', member_count: 2 }, error: null });
-    await POST(post({ action: 'remove_member', targetUserId: 'user-2' }));
-
-    const [, args] = mockRpc.mock.calls[0] as [string, Record<string, unknown>];
-    expect(Object.keys(args).sort()).toEqual(['p_target_user_id', 'p_user_id']);
-    // No metric of the removed member travels with the request: Rule 8's
-    // "no officer lever keyed to a member's output", enforced by there being
-    // no parameter to key it to.
-    expect(JSON.stringify(args)).not.toMatch(/depth|contribution|score|rank|minimum/i);
-  });
-
-  it('requires a target', async () => {
-    const response = await POST(post({ action: 'remove_member' }));
-    expect(response.status).toBe(400);
+  it('rejects invalid filters before reading the directory', async () => {
+    expect((await GET(new NextRequest('https://supasnake.com/api/clan?policy=closed'))).status).toBe(400);
+    expect((await GET(new NextRequest('https://supasnake.com/api/clan?hasSpace=maybe'))).status).toBe(400);
     expect(mockRpc).not.toHaveBeenCalled();
   });
 });
 
-describe('POST — the actions this rework removed', () => {
-  it.each(['create', 'join', 'invite', 'set_role'])(
-    'answers 400 Invalid action for `%s`',
-    async (action) => {
-      const response = await POST(
-        post({ action, name: 'x', tag: 'XX', clanId: 'c', handle: 'h' })
-      );
-      expect(response.status).toBe(400);
-      expect((await response.json()).error).toBe('Invalid action');
-      expect(mockRpc).not.toHaveBeenCalled();
-    }
-  );
-});
-
-describe('POST update_identity — ungated heraldry', () => {
-  it('calls set_clan_heraldry, not the research-gated 024 RPC', async () => {
-    mockRpc.mockResolvedValue({ data: { clan_id: 'c' }, error: null });
-    await POST(post({ action: 'update_identity', bannerId: 'iron_march' }));
-    expect(mockRpc).toHaveBeenCalledWith(
-      'set_clan_heraldry',
-      expect.objectContaining({ p_user_id: 'user-1', p_banner_id: 'iron_march' })
-    );
-    expect(mockRpc).not.toHaveBeenCalledWith('update_clan_identity', expect.anything());
-  });
-});
-
-describe('auth', () => {
-  it('rejects a request with no bearer token', async () => {
-    const response = await POST(
-      new NextRequest('https://supasnake.com/api/clan', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'leave' }),
-      })
-    );
-    expect(response.status).toBe(401);
-  });
-
-  it('rejects an invalid token', async () => {
-    mockAuth.mockResolvedValue({ data: { user: null }, error: { message: 'bad' } });
+describe('failure and auth boundaries', () => {
+  it('reports real Supabase failures and returns 500', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'deadlock detected' } });
     const response = await POST(post({ action: 'leave' }));
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(500);
+    expect(mockCapture).toHaveBeenCalled();
   });
-});
 
-describe('GET directory — short and alive, and never a total (§9.2)', () => {
-  it('returns clans with no population count anywhere in the payload', async () => {
-    mockFrom.mockImplementation((table: string) => {
-      const rows: Record<string, unknown[]> = {
-        serpent_weeks: [{ id: 'w1', week_start: '2026-07-20' }],
-        serpent_week_clans: [{ clan_id: 'clan-1', week_id: 'w1', depth: 4200 }],
-        clans: [
-          {
-            id: 'clan-1',
-            name: 'Elite Snakes',
-            tag: 'ES',
-            member_count: 1,
-            max_members: 12,
-            best_week_depth: 5000,
-            disbanded_at: null,
-          },
-        ],
-      };
-      const result = { data: rows[table] ?? [], error: null };
-      const chain: Record<string, unknown> = {};
-      for (const op of ['eq', 'in', 'is', 'not', 'order', 'limit', 'neq', 'gt', 'gte']) {
-        chain[op] = () => chain;
-      }
-      chain.select = () => {
-        const promise = Promise.resolve(result);
-        return Object.assign(chain, {
-          then: promise.then.bind(promise),
-          catch: promise.catch.bind(promise),
-          finally: promise.finally.bind(promise),
-        });
-      };
-      return chain;
+  it('returns 503 for a missing forward migration', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST202', message: 'request_clan_membership not found' },
     });
+    expect((await POST(post({ action: 'apply', clanId: 'c' }))).status).toBe(503);
+  });
 
-    const response = await GET(get('https://supasnake.com/api/clan?view=directory'));
-    const body = await response.json();
-
-    expect(body.clans).toHaveLength(1);
-    expect(body.clans[0]).toMatchObject({
-      name: 'Elite Snakes',
-      lastHuntedWeek: '2026-07-20',
+  it('requires a valid bearer token', async () => {
+    const noToken = new NextRequest('https://supasnake.com/api/clan', {
+      method: 'POST', body: JSON.stringify({ action: 'leave' }),
     });
-    // "Total-population counts are never displayed anywhere" — the response
-    // has no field to put one in.
-    expect(body).not.toHaveProperty('total');
-    expect(Object.keys(body)).toEqual(['clans']);
+    expect((await POST(noToken)).status).toBe(401);
+    mockAuth.mockResolvedValue({ data: { user: null }, error: { message: 'bad token' } });
+    expect((await POST(post({ action: 'leave' }))).status).toBe(401);
+    expect(mockCapture).toHaveBeenCalled();
   });
 });

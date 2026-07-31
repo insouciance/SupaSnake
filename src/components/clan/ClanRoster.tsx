@@ -1,170 +1,285 @@
 'use client';
 
-/**
- * Clan roster and the invite link (Constitution §9.2, Rule 8).
- *
- * WHAT THIS COMPONENT DELIBERATELY CANNOT DO
- *
- * The acceptance criterion for WP-1.02 is that NO OFFICER LEVER EXISTS — no
- * endpoint, no column, no UI affordance. Three affordances stood here before
- * and all three are gone:
- *
- *   - Promote / Demote buttons. There is no officer rank to move anyone into.
- *   - "Weekly counted DNA" next to every member's name. That was the graded
- *     number Rule 8 forbids: a per-member figure, on the roster, sorted next
- *     to a rank chip, which is a cut line waiting for someone to draw it. The
- *     columns behind it are dropped in migration 048, so it cannot come back
- *     by accident.
- *   - The invite-by-handle console, which was officer-only. §9.2 makes invite
- *     links the only recruitment surface, so the clan's code is shown to
- *     EVERY member instead — recruiting is something a clan does, not
- *     something a rank does.
- *
- * What a member's Depth contributed to the clan's week is shown on the hunt
- * panel, additively ("Sans_Souci fed 2,315 segments"), with no bar beside it.
- *
- * Removal survives, as §9.2's "plain roster management", owner-only, and it
- * carries no number about the person being removed.
- */
+/** Competitive roster: visible verified contribution, earned rank, and roles. */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { IconUser } from '@/components/ui/icons';
-import { clanAction, type ClanFullView } from './useClanFull';
+import {
+  clanAction,
+  type ClanFullView,
+  type ClanRosterEntry,
+} from './useClanFull';
 
 interface ClanRosterProps {
   accessToken?: string;
   view: ClanFullView;
+  viewerUserId?: string;
   onChanged: () => void;
 }
 
 const ROLE_CHIP: Record<string, string> = {
-  owner: 'bg-venom-orange/20 border-venom-orange/70 text-venom-orange',
-  member: 'bg-void/60 border-scale-blue-light/50 text-beige',
+  owner: 'border-venom-orange/70 bg-venom-orange/15 text-venom-orange',
+  co_leader: 'border-cosmic/70 bg-cosmic/15 text-cosmic-glow',
+  member: 'border-scale-blue-light/50 bg-void/60 text-beige',
 };
+
+function memberName(member: ClanRosterEntry): string {
+  return member.identity?.displayHandle ?? 'Handler';
+}
 
 function formatSince(value: string | undefined): string {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
 }
 
-export function ClanRoster({ accessToken, view, onChanged }: ClanRosterProps) {
-  const roster = view.roster ?? [];
-  const role = view.membership?.role ?? 'member';
-  const isOwner = role === 'owner';
-  const invite = view.invite;
+type PendingAction =
+  | { kind: 'remove'; member: ClanRosterEntry }
+  | { kind: 'transfer'; member: ClanRosterEntry }
+  | null;
+
+function ConfirmRosterAction({
+  pending,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  pending: Exclude<PendingAction, null>;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const name = memberName(pending.member);
+  const transfer = pending.kind === 'transfer';
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="roster-confirm-title"
+      aria-describedby="roster-confirm-description"
+      data-testid="roster-confirmation"
+    >
+      <div className="panel-elevated w-full max-w-sm p-6">
+        <h3 id="roster-confirm-title" className="heading-display text-2xl text-bone-white">
+          {transfer ? `Make ${name} Leader?` : `Remove ${name}?`}
+        </h3>
+        <p id="roster-confirm-description" className="mt-2 text-sm font-body text-beige/75">
+          {transfer
+            ? 'They become Leader immediately. You remain in the clan as a Co-leader.'
+            : 'They leave the active roster. Their earned history remains, but future runs no longer contribute here.'}
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button type="button" onClick={onCancel} disabled={busy} className="btn-neutral min-h-[44px] px-4">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className={transfer ? 'btn-go min-h-[44px] px-4' : 'min-h-[44px] rounded-arcade border border-strike-red bg-strike-red/15 px-4 font-display uppercase text-strike-red hover:bg-strike-red/25'}
+          >
+            {busy ? 'Working…' : transfer ? 'Transfer leadership' : 'Remove member'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ClanRoster({ accessToken, view, viewerUserId, onChanged }: ClanRosterProps) {
+  const roster = useMemo(() => view.roster ?? [], [view.roster]);
+  const permissions = view.membership?.permissions;
   const maxMembers = view.limits?.maxMembers ?? 12;
-
-  const [busy, setBusy] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction>(null);
 
-  const act = async (body: Record<string, unknown>, successMessage: string) => {
-    setBusy(true);
+  const ordered = useMemo(
+    () => [...roster].sort((a, b) => {
+      const aRank = a.contribution.rank ?? Number.POSITIVE_INFINITY;
+      const bRank = b.contribution.rank ?? Number.POSITIVE_INFINITY;
+      if (aRank !== bRank) return aRank - bRank;
+      if (a.role === 'owner' && b.role !== 'owner') return -1;
+      if (b.role === 'owner' && a.role !== 'owner') return 1;
+      return memberName(a).localeCompare(memberName(b));
+    }),
+    [roster]
+  );
+
+  const act = async (
+    member: ClanRosterEntry,
+    body: Record<string, unknown>,
+    successMessage: string
+  ) => {
+    setBusyUserId(member.userId);
     setMessage(null);
     const result = await clanAction(accessToken, body);
-    setBusy(false);
+    setBusyUserId(null);
     setMessage(result.ok ? successMessage : result.error ?? 'Request failed');
-    if (result.ok) onChanged();
+    if (result.ok) await onChanged();
+    return result.ok;
   };
 
-  const shareLink = invite?.url
-    ? `${typeof window === 'undefined' ? '' : window.location.origin}${invite.url}`
-    : null;
+  const confirmPending = async () => {
+    if (!pending) return;
+    const { member, kind } = pending;
+    const ok = await act(
+      member,
+      kind === 'transfer'
+        ? { action: 'transfer_ownership', targetUserId: member.userId }
+        : { action: 'remove_member', targetUserId: member.userId },
+      kind === 'transfer' ? `${memberName(member)} is now Leader` : `${memberName(member)} removed`
+    );
+    if (ok) setPending(null);
+  };
 
   return (
-    <section className="mb-10 animate-fade-up" data-testid="clan-roster">
-      <h2 className="heading-display text-2xl text-bone-white mb-4 flex items-center gap-2">
-        <IconUser size={22} />
-        Roster
-        <span className="text-sm font-body text-beige/60">
+    <section className="animate-fade-up" data-testid="clan-roster">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <h2 className="heading-display text-2xl text-bone-white flex items-center gap-2">
+            <IconUser size={22} />
+            Clan standings
+          </h2>
+          <p className="mt-1 text-sm font-body text-beige/65">
+            Rank reflects each member&apos;s verified best five in this battle.
+          </p>
+        </div>
+        <span className="shrink-0 font-display text-sm text-beige">
           {roster.length}/{maxMembers}
         </span>
-      </h2>
-      <div className="panel-elevated p-4 sm:p-6">
-        {roster.length === 0 ? (
-          <p className="text-beige font-body">No members yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {roster.map((member) => (
-              <li
-                key={member.userId}
-                className="flex flex-col sm:flex-row sm:items-center gap-2 bg-void/40 border border-scale-blue-light/40 rounded-arcade p-2"
-                data-testid="roster-row"
-              >
-                <div className="flex-1 min-w-0">
-                  {member.identity ? (
-                    <PlayerCard identity={member.identity} variant="row" />
-                  ) : (
-                    <p className="font-body text-beige px-2">Handler</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0 px-2 sm:px-0">
-                  <span className="text-xs font-body text-beige/70" title="In this clan since">
-                    since {formatSince(member.tenureSince ?? member.joinedAt)}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-arcade border text-xs font-display uppercase ${ROLE_CHIP[member.role] ?? ROLE_CHIP.member}`}
-                  >
-                    {member.role}
-                  </span>
-                  {isOwner && member.role !== 'owner' && (
-                    <button
-                      onClick={() =>
-                        act(
-                          { action: 'remove_member', targetUserId: member.userId },
-                          'Removed from the clan'
-                        )
-                      }
-                      disabled={busy}
-                      className="btn-neutral px-3 py-1 text-xs min-h-[32px]"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* The invite link — every member can share the way in (§9.2) */}
-        {invite?.code && (
-          <div className="mt-5 border-t border-scale-blue-light/30 pt-4" data-testid="invite-link">
-            <p className="label-arcade mb-2">Invite link</p>
-            <p className="font-display text-lg text-bone-white tracking-widest">{invite.code}</p>
-            {shareLink && (
-              <p className="text-xs font-body text-beige/60 break-all mt-1">{shareLink}</p>
-            )}
-            {isOwner && (
-              <button
-                onClick={() =>
-                  act({ action: 'rotate_invite_code' }, 'New invite code issued')
-                }
-                disabled={busy}
-                className="btn-neutral px-4 py-2 text-sm min-h-[40px] mt-3"
-                data-testid="rotate-invite-code"
-              >
-                New code
-              </button>
-            )}
-          </div>
-        )}
-
-        {message && <p className="text-beige text-sm font-body mt-3">{message}</p>}
       </div>
+
+      <div className="space-y-3">
+        {ordered.map((member) => {
+          const contribution = member.contribution;
+          const isSelf = member.userId === viewerUserId;
+          const canChangeRole = Boolean(permissions?.manageCoLeaders) && member.role !== 'owner' && !isSelf;
+          const canTransfer = Boolean(permissions?.transferOwnership) && member.role !== 'owner' && !isSelf;
+          const canRemove = Boolean(permissions?.removeMembers)
+            && member.role !== 'owner'
+            && !isSelf
+            && !(view.membership?.role === 'co_leader' && member.role !== 'member');
+          const hasManagement = canChangeRole || canTransfer || canRemove;
+          return (
+            <article
+              key={member.userId}
+              className="panel p-3 sm:p-4"
+              data-testid="roster-row"
+              data-role={member.role}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-arcade border font-display text-lg ${
+                    contribution.rank === 1
+                      ? 'border-venom-orange bg-venom-orange/15 text-venom-orange'
+                      : 'border-scale-blue-light/50 bg-void/60 text-beige'
+                  }`}
+                  aria-label={contribution.rank ? `Contribution rank ${contribution.rank}` : 'Not ranked yet'}
+                >
+                  {contribution.rank ? `#${contribution.rank}` : '—'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      {member.identity ? (
+                        <PlayerCard identity={member.identity} variant="row" isSelf={isSelf} />
+                      ) : (
+                        <p className="font-display text-bone-white">Handler</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isSelf && <span className="text-xs font-body text-beige/60">You</span>}
+                      <span className={`rounded-arcade border px-2 py-1 text-xs font-display uppercase ${ROLE_CHIP[member.role]}`}>
+                        {member.roleLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  {contribution.hasEligibleContribution ? (
+                    <div className="mt-3 grid grid-cols-3 gap-2" data-testid="member-contribution">
+                      <div className="rounded-arcade bg-void/45 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-beige/50">Best five</p>
+                        <p className="font-display text-bone-white">{contribution.bestFiveDepth?.toLocaleString()} <span className="text-xs text-beige/55">Depth</span></p>
+                      </div>
+                      <div className="rounded-arcade bg-void/45 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-beige/50">Results</p>
+                        <p className="font-display text-bone-white">{contribution.eligibleResults}/5</p>
+                      </div>
+                      <div className="rounded-arcade bg-void/45 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-beige/50">Snake</p>
+                        <p className="font-display text-bone-white">Gen {contribution.bestGeneration ?? '—'}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-arcade border border-dashed border-scale-blue-light/35 px-3 py-2 text-xs font-body text-beige/55" data-testid="no-eligible-result">
+                      No eligible Energy result in this battle yet.
+                    </p>
+                  )}
+
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-body text-beige/45">
+                      Member since {formatSince(member.tenureSince ?? member.joinedAt)}
+                    </p>
+                    {hasManagement && (
+                      <details className="relative">
+                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center rounded-arcade border border-scale-blue-light/50 px-3 text-sm font-body text-beige hover:text-bone-white">
+                          Manage
+                        </summary>
+                        <div className="mt-2 flex flex-wrap justify-end gap-2 sm:absolute sm:right-0 sm:z-20 sm:w-max sm:rounded-arcade sm:border sm:border-scale-blue-light/50 sm:bg-scale-blue-dark sm:p-2 sm:shadow-xl">
+                          {canChangeRole && (
+                            <button
+                              type="button"
+                              disabled={busyUserId === member.userId}
+                              onClick={() => void act(
+                                member,
+                                { action: 'set_role', targetUserId: member.userId, role: member.role === 'co_leader' ? 'member' : 'co_leader' },
+                                member.role === 'co_leader' ? `${memberName(member)} is now a Member` : `${memberName(member)} is now a Co-leader`
+                              )}
+                              className="btn-neutral min-h-[44px] px-4 text-xs"
+                            >
+                              {member.role === 'co_leader' ? 'Make Member' : 'Make Co-leader'}
+                            </button>
+                          )}
+                          {canTransfer && (
+                            <button type="button" onClick={() => setPending({ kind: 'transfer', member })} className="btn-neutral min-h-[44px] px-4 text-xs">
+                              Make Leader
+                            </button>
+                          )}
+                          {canRemove && (
+                            <button type="button" onClick={() => setPending({ kind: 'remove', member })} className="min-h-[44px] rounded-arcade border border-strike-red/60 px-4 text-xs font-display uppercase text-strike-red">
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {roster.length === 0 && <div className="panel p-6 text-center text-beige">No members yet.</div>}
+      {message && <p className="mt-3 text-sm font-body text-beige" role="status">{message}</p>}
+      {pending && (
+        <ConfirmRosterAction
+          pending={pending}
+          busy={busyUserId === pending.member.userId}
+          onCancel={() => setPending(null)}
+          onConfirm={() => void confirmPending()}
+        />
+      )}
     </section>
   );
 }
 
-/**
- * The invite inbox — pending invites issued before this rework.
- *
- * Nothing creates one any more (recruitment is the code), but Rule 5 says a
- * pending invite is not destroyed by a design change, so it stays answerable
- * until it expires on its own.
- */
+/** Pending direct invitations remain visible and answerable. */
 export function InviteInbox({
   accessToken,
   view,
@@ -175,62 +290,38 @@ export function InviteInbox({
   onChanged: () => void;
 }) {
   const invites = view.myInvites ?? [];
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   if (invites.length === 0) return null;
 
   const respond = async (inviteId: string, accept: boolean) => {
-    setBusy(true);
+    setBusyId(inviteId);
     setMessage(null);
-    const result = await clanAction(accessToken, {
-      action: 'respond_invite',
-      inviteId,
-      accept,
-    });
-    setBusy(false);
+    const result = await clanAction(accessToken, { action: 'respond_invite', inviteId, accept });
+    setBusyId(null);
     setMessage(result.ok ? (accept ? 'Welcome to the clan!' : 'Invite declined') : result.error ?? 'Request failed');
     if (result.ok) onChanged();
   };
 
   return (
-    <section className="mb-10 animate-fade-up" data-testid="invite-inbox">
-      <h2 className="heading-display text-2xl text-bone-white mb-4">Clan Invites</h2>
-      <div className="panel-glow [--glow:#f97316] p-4 space-y-2">
+    <section className="panel-glow [--glow:#f97316] p-4" data-testid="invite-inbox">
+      <h2 className="heading-display text-xl text-bone-white">Your invitations</h2>
+      <div className="mt-3 space-y-3">
         {invites.map((invite) => (
-          <div
-            key={invite.id}
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-void/40 border border-scale-blue-light/40 rounded-arcade p-3"
-          >
-            <div>
-              <p className="font-display text-bone-white">
-                {invite.clanName ?? 'A clan'}{' '}
-                {invite.clanTag && <span className="text-beige/70">[{invite.clanTag}]</span>}
-              </p>
-              <p className="text-xs text-beige/60 font-body">
-                Expires {new Date(invite.expiresAt).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => respond(invite.id, true)}
-                disabled={busy}
-                className="btn-go px-5 py-2 min-h-[44px]"
-              >
-                Accept
-              </button>
-              <button
-                onClick={() => respond(invite.id, false)}
-                disabled={busy}
-                className="btn-neutral px-5 py-2 min-h-[44px]"
-              >
-                Decline
-              </button>
+          <div key={invite.id} className="rounded-arcade border border-scale-blue-light/40 bg-void/40 p-3">
+            <p className="font-display text-bone-white">
+              {invite.clanName ?? 'A clan'} {invite.clanTag && <span className="text-beige/70">[{invite.clanTag}]</span>}
+            </p>
+            <p className="mt-1 text-xs font-body text-beige/55">Expires {new Date(invite.expiresAt).toLocaleDateString()}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => void respond(invite.id, true)} disabled={busyId === invite.id} className="btn-go min-h-[44px] px-4">Accept</button>
+              <button type="button" onClick={() => void respond(invite.id, false)} disabled={busyId === invite.id} className="btn-neutral min-h-[44px] px-4">Decline</button>
             </div>
           </div>
         ))}
-        {message && <p className="text-beige text-sm font-body">{message}</p>}
       </div>
+      {message && <p className="mt-3 text-sm font-body text-beige" role="status">{message}</p>}
     </section>
   );
 }

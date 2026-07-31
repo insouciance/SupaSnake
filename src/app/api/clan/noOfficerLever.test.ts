@@ -1,295 +1,147 @@
 /**
- * NO OFFICER LEVER EXISTS — the structural proof (Rule 8, §9.2; WP-1.02's
- * headline acceptance criterion).
+ * Structural contract for Constitution v1.7 competitive clans.
  *
- * Rule 8's third reviewer question is "does any UI give an officer a
- * mechanical reason to evaluate a member?" A behavioural test can only show
- * that today's code does not do it. This file makes the STRUCTURAL claim the
- * acceptance criterion asks for: there is no endpoint, no column, and no UI
- * affordance through which it could be done, so it cannot be reintroduced by
- * a patch that happens to slip past a reviewer.
- *
- * Four claims, each read out of the tree rather than asserted:
- *
- *   1. NO RANK. `ClanRole` is exactly `owner | member`, migration 048 narrows
- *      the CHECK constraint to match, and `set_clan_member_role` is dropped.
- *   2. NO ENDPOINT. No route accepts a `set_role` action or calls the role
- *      RPC, and no clan route names a member metric in a request field.
- *   3. NO COLUMN. `weekly_contribution` and `total_contribution` are dropped
- *      from `clan_members`; `weekly_score` and `total_score` from `clans`.
- *      No source file reads any of the four.
- *   4. NO AFFORDANCE. No clan component renders a promote/demote control, an
- *      officer-only console, or a per-member contribution figure.
- *
- * The scan is deliberately over the whole `src/` tree and the migration, not
- * over the files this work package happened to touch.
+ * The filename is historical: migration 048 proved that no officer lever
+ * existed. The owner amendment deliberately overturns that rule; this suite
+ * now proves that hierarchy exists only behind audited, server-authoritative
+ * permissions and earned contribution evidence.
  */
 
 import { describe, expect, it } from '@jest/globals';
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const SRC = join(REPO_ROOT, 'src');
-const MIGRATION = join(REPO_ROOT, 'supabase', 'migrations', '048_clan_rework.sql');
+const ROOT = join(__dirname, '..', '..', '..', '..');
+const migration = readFileSync(
+  join(ROOT, 'supabase', 'migrations', '062_competitive_clans.sql'),
+  'utf8'
+);
+const route = readFileSync(join(__dirname, 'route.ts'), 'utf8');
+const types = readFileSync(join(ROOT, 'src', 'lib', 'clan', 'types.ts'), 'utf8');
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const abs = join(dir, entry);
-    if (statSync(abs).isDirectory()) walk(abs, out);
-    else if (/\.(ts|tsx)$/.test(entry)) out.push(abs);
-  }
-  return out;
+function functionBody(name: string): string {
+  return migration.match(
+    new RegExp(`CREATE (?:OR REPLACE )?FUNCTION ${name}\\([\\s\\S]+?REVOKE ALL ON FUNCTION ${name}\\(`)
+  )?.[0] ?? '';
 }
 
-/** Blank out comments so prose about the absence of a thing is not the thing. */
-function codeOf(path: string): string {
-  return readFileSync(path, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('//'))
-    .join('\n');
-}
-
-const SOURCE_FILES = walk(SRC).filter((path) => !/\.test\.tsx?$/.test(path));
-const MIGRATION_SQL = readFileSync(MIGRATION, 'utf8');
-const MIGRATION_CODE = MIGRATION_SQL.replace(/\/\*[\s\S]*?\*\//g, ' ')
-  .split('\n')
-  .filter((line) => !line.trimStart().startsWith('--'))
-  .join('\n');
-
-describe('1. no rank', () => {
-  it('leaves exactly two roles in the type', () => {
-    const types = readFileSync(join(SRC, 'lib', 'clan', 'types.ts'), 'utf8');
-    expect(types).toMatch(/export type ClanRole = 'owner' \| 'member';/);
+describe('role and recruitment authority', () => {
+  it('defines owner|co_leader|member and maps owner to Leader', () => {
+    expect(types).toMatch(/ClanRole = 'owner' \| 'co_leader' \| 'member'/);
+    expect(types).toMatch(/owner: 'Leader'/);
+    expect(migration).toMatch(/CHECK \(role IN \('owner', 'co_leader', 'member'\)\)/);
   });
 
-  it('narrows the CHECK constraint to owner|member and converts existing officers', () => {
-    expect(MIGRATION_CODE).toMatch(
-      /ADD CONSTRAINT valid_clan_role\s*\n?\s*CHECK \(role IN \('owner', 'member'\)\)/
-    );
-    expect(MIGRATION_CODE).toMatch(
-      /UPDATE clan_members SET role = 'member' WHERE role = 'officer'/
-    );
-  });
-
-  it('drops the lever itself', () => {
-    expect(MIGRATION_CODE).toMatch(/DROP FUNCTION IF EXISTS set_clan_member_role\(/);
-  });
-
-  it('leaves no live SQL that grants or honours the officer role', () => {
-    // Migration 048 rewrites the two RLS policies that named it. The string
-    // may appear exactly once — in the WHERE clause that converts the last
-    // officers into members — and nowhere that would create or privilege one.
-    expect(MIGRATION_CODE).not.toMatch(/SET\s+role\s*=\s*'officer'/i);
-    expect(MIGRATION_CODE).not.toMatch(/IN\s*\('owner',\s*'officer'\)/i);
-    expect(MIGRATION_CODE).not.toMatch(/VALUES\s*\([^)]*'officer'/i);
-    const mentions = MIGRATION_CODE.match(/'officer'/g) ?? [];
-    expect(mentions).toHaveLength(1);
-  });
-});
-
-describe('2. no endpoint', () => {
-  it('has no route that accepts a set_role action or calls the role RPC', () => {
-    const offenders = SOURCE_FILES.filter((path) => {
-      const code = codeOf(path);
-      return (
-        /['"`]set_clan_member_role['"`]/.test(code) ||
-        /case\s+['"`]set_role['"`]/.test(code) ||
-        /action:\s*['"`]set_role['"`]/.test(code)
-      );
-    });
-    expect(offenders).toEqual([]);
-  });
-
-  it('has no route that recruits by handle — invite links are the only surface', () => {
-    const offenders = SOURCE_FILES.filter((path) => /case\s+['"`]invite['"`]/.test(codeOf(path)));
-    expect(offenders).toEqual([]);
-  });
-
-  it('names no member metric in any clan route request field', () => {
-    const clanRoutes = SOURCE_FILES.filter((path) => /api[\\/]clan[\\/].*route\.ts$/.test(path));
-    expect(clanRoutes.length).toBeGreaterThan(0);
-    for (const path of clanRoutes) {
-      const code = codeOf(path);
-      expect(code).not.toMatch(/minDepth|min_depth|minContribution|min_contribution/i);
-      expect(code).not.toMatch(/weekly_contribution|total_contribution/);
-    }
-  });
-});
-
-describe('3. no column', () => {
-  it('drops the graded-contribution pair and the clan score pair', () => {
-    expect(MIGRATION_CODE).toMatch(/ALTER TABLE clan_members[\s\S]{0,200}DROP COLUMN IF EXISTS weekly_contribution/);
-    expect(MIGRATION_CODE).toMatch(/DROP COLUMN IF EXISTS total_contribution/);
-    expect(MIGRATION_CODE).toMatch(/ALTER TABLE clans[\s\S]{0,200}DROP COLUMN IF EXISTS weekly_score/);
-    expect(MIGRATION_CODE).toMatch(/DROP COLUMN IF EXISTS total_score/);
-  });
-
-  it('drops the functions and the index that fed them', () => {
-    expect(MIGRATION_CODE).toMatch(/DROP FUNCTION IF EXISTS add_clan_contribution\(/);
-    expect(MIGRATION_CODE).toMatch(/DROP FUNCTION IF EXISTS reset_weekly_clan_scores\(/);
-    // A per-clan leaderboard of your own clanmates, waiting for a query.
-    expect(MIGRATION_CODE).toMatch(/DROP INDEX IF EXISTS idx_clan_members_contribution/);
-  });
-
-  it('leaves no source file reading any of the four', () => {
-    const offenders = SOURCE_FILES.filter((path) =>
-      /weekly_contribution|total_contribution|weeklyContribution|totalContribution/.test(
-        codeOf(path)
-      )
-    );
-    expect(offenders).toEqual([]);
-  });
-});
-
-describe('4. no affordance', () => {
-  /**
-   * The LIVE clan surfaces. `GauntletPanel`, `DuelPanel` and `PlayoffBracket`
-   * are excluded deliberately and checked separately below: they belong to the
-   * population-gated layers (§12.1 slot 7), which ship HIDDEN rather than
-   * deleted, and the clan page does not render them at all until their flags
-   * are on. Their own notion of an officer therefore reaches no player, and
-   * the SQL behind it can no longer match anybody — after migration 048 the
-   * role does not exist to be held.
-   */
-  const CLAN_COMPONENTS = walk(join(SRC, 'components', 'clan'))
-    .concat(walk(join(SRC, 'app', 'clan')))
-    .filter((path) => !/\.test\.tsx?$/.test(path))
-    .filter((path) => !/(GauntletPanel|DuelPanel|PlayoffBracket)\.tsx$/.test(path));
-
-  it('renders no promote or demote control', () => {
-    for (const path of CLAN_COMPONENTS) {
-      const code = codeOf(path);
-      expect(code).not.toMatch(/>\s*Promote\s*</);
-      expect(code).not.toMatch(/>\s*Demote\s*</);
-    }
-  });
-
-  it('renders no officer-only console and no officer chip', () => {
-    for (const path of CLAN_COMPONENTS) {
-      const code = codeOf(path);
-      expect(code).not.toMatch(/isOfficer/);
-      expect(code).not.toMatch(/role === 'officer'/);
-      expect(code).not.toMatch(/officer:/);
-    }
-  });
-
-  it('renders no per-member contribution figure on the roster', () => {
-    const roster = codeOf(join(SRC, 'components', 'clan', 'ClanRoster.tsx'));
-    expect(roster).not.toMatch(/Contribution/i);
-    expect(roster).not.toMatch(/DNA/);
-  });
-
-  it('shows the invite link to every member, not only to a rank', () => {
-    const roster = readFileSync(join(SRC, 'components', 'clan', 'ClanRoster.tsx'), 'utf8');
-    // The block is guarded by the code existing, never by the caller's role.
-    expect(roster).toMatch(/\{invite\?\.code && \(/);
-  });
-});
-
-describe('5. the gated layers are hidden, not deleted (§9.3, §12.1 slot 7)', () => {
-  const page = codeOf(join(SRC, 'app', 'clan', 'page.tsx'));
-
-  it('renders the Gauntlet and duel panels only behind CLAN_GAUNTLET_ENABLED', () => {
-    expect(page).toMatch(/\{CLAN_GAUNTLET_ENABLED && \(/);
-    expect(page).toMatch(/<DuelPanel/);
-    expect(page).toMatch(/<GauntletPanel/);
-  });
-
-  it('renders the playoff bracket only behind CLAN_PLAYOFFS_ENABLED', () => {
-    expect(page).toMatch(/\{CLAN_PLAYOFFS_ENABLED && \(/);
-  });
-
-  it('defaults both flags off', () => {
-    const config = readFileSync(join(SRC, 'lib', 'clan', 'config.ts'), 'utf8');
-    expect(config).toMatch(
-      /CLAN_GAUNTLET_ENABLED = process\.env\.NEXT_PUBLIC_CLAN_GAUNTLET === 'true'/
-    );
-    expect(config).toMatch(
-      /CLAN_PLAYOFFS_ENABLED = process\.env\.NEXT_PUBLIC_CLAN_PLAYOFFS === 'true'/
-    );
-  });
-
-  it('drops no gated-layer table, and asserts their rows survive', () => {
-    for (const table of [
-      'clan_duels',
-      'gauntlet_picks',
-      'clan_research',
-      'clan_tithes',
-      'clan_research_progress',
+  it('lets only owners change roles, settings, ownership, and Glory', () => {
+    for (const name of [
+      'set_clan_member_role',
+      'transfer_clan_ownership',
+      'update_clan_settings',
+      'assign_clan_glory',
     ]) {
-      expect(MIGRATION_CODE).not.toMatch(new RegExp(`DROP TABLE[^;]*${table}`, 'i'));
-      expect(MIGRATION_CODE).not.toMatch(new RegExp(`DELETE FROM ${table}`, 'i'));
+      expect(functionBody(name)).toMatch(/role <> 'owner'/);
     }
-    // And the tripwire proves it rather than promising it.
-    expect(MIGRATION_CODE).toMatch(/clan_pre_migration_duels/);
-    expect(MIGRATION_SQL).toMatch(/hiding a layer must not delete its state/);
+  });
+
+  it('lets co-leaders recruit/review and remove only ordinary members', () => {
+    expect(functionBody('create_clan_invite_by_handle')).toMatch(
+      /role NOT IN \('owner', 'co_leader'\)/
+    );
+    expect(functionBody('review_clan_application')).toMatch(
+      /role NOT IN \('owner', 'co_leader'\)/
+    );
+    expect(functionBody('remove_clan_member')).toMatch(
+      /v_actor\.role = 'co_leader' AND v_target\.role <> 'member'/
+    );
+  });
+
+  it('supports all policies through server RPCs and exact-handle invitations', () => {
+    expect(migration).toMatch(/join_policy IN \('open', 'application', 'invite_only'\)/);
+    expect(functionBody('request_clan_membership')).toMatch(/application_pending/);
+    expect(functionBody('request_clan_membership')).toMatch(/joined_open/);
+    expect(functionBody('create_clan_invite_by_handle')).toMatch(
+      /lower\(p\.handle\) = lower\(btrim\(p_handle\)\)/
+    );
+    expect(route).toMatch(/case 'approve_application'/);
+    expect(route).toMatch(/case 'reject_application'/);
   });
 });
 
-describe('and nothing in this migration pays a clan (Rule 8, §9.4)', () => {
-  /**
-   * Rule 8's other half: clans never bill and never pay. The claim is about
-   * WRITES, so it is checked as one.
-   *
-   * An earlier draft of this file banned the mere STRING `total_dna_earned`
-   * from the migration, which is the wrong test in a way worth recording: it
-   * failed on section 14's tripwire, the read-only guard that snapshots every
-   * player's DNA before the migration and aborts the transaction if any of it
-   * moved. That guard is the strongest evidence the rule holds — a test that
-   * forbids naming currency would have forced its deletion and left the rule
-   * merely asserted in prose. So: commerce TABLES may not appear at all, and
-   * the currency COLUMNS may appear only in statements that read them.
-   */
-
-  it('names no commerce, entitlement or purchase surface at all', () => {
-    for (const forbidden of [
-      'economy_transactions',
-      'player_cosmetics',
-      'entitlement',
-      'subscription',
-      'stripe',
-      'checkout',
-      'purchase',
-      'premium',
-      'energy',
-    ]) {
-      expect(MIGRATION_CODE.toLowerCase()).not.toContain(forbidden.toLowerCase());
-    }
+describe('economy and factual reads', () => {
+  it('founds atomically under a player lock with one bounded ledgered spend', () => {
+    const body = functionBody('found_clan');
+    expect(body).toMatch(/p_founding_cost < 1 OR p_founding_cost > 100000/);
+    expect(body).toMatch(/FROM players p WHERE p\.user_id = p_user_id FOR UPDATE/);
+    expect(body).toMatch(/SET dna = dna - p_founding_cost/);
+    expect(body).toMatch(/'clan_founding'/);
+    expect(body).toMatch(/founding_dna_cost/);
   });
 
-  it('writes no player-owned currency: no statement touches players at all', () => {
-    expect(MIGRATION_CODE).not.toMatch(/UPDATE\s+players\b/i);
-    expect(MIGRATION_CODE).not.toMatch(/INSERT\s+INTO\s+players\b/i);
-    expect(MIGRATION_CODE).not.toMatch(/ALTER\s+TABLE\s+players\b/i);
-    expect(MIGRATION_CODE).not.toMatch(/\bdna\s*=/i);
-    expect(MIGRATION_CODE).not.toMatch(/total_dna_earned\s*=/i);
-    // Nor does it hand anyone the ability to: no grant is issued on players.
-    expect(MIGRATION_CODE).not.toMatch(/GRANT[^;]*\bON\s+players\b/i);
+  it('computes directory membership/spaces and leaves missing activity null', () => {
+    const body = functionBody('get_competitive_clan_directory');
+    expect(body).toMatch(/COUNT\(\*\)::BIGINT AS member_count/);
+    expect(body).toMatch(/exact_available_spots/);
+    expect(body).toMatch(/recent_activity_at/);
+    expect(body).toMatch(/ea\.active_at IS NULL AND la\.active_at IS NULL THEN NULL/);
+    expect(body).toMatch(/POSITION\(lower\(btrim\(p_search\)\)/);
   });
 
-  it('every mention of currency is inside the read-only tripwire', () => {
-    const currencyLines = MIGRATION_CODE.split('\n').filter((line) =>
-      /\bdna\b|total_dna_earned/i.test(line)
-    );
-    expect(currencyLines.length).toBeGreaterThan(0);
-    for (const line of currencyLines) {
-      // A snapshot column, a comparison against the snapshot, or the abort
-      // message that names what the comparison caught. Nothing else.
-      expect(line).toMatch(/COALESCE\(|pre\.dna|pre\.total_dna_earned|RAISE\s+EXCEPTION/);
-    }
+  it('ranks only authoritative counted positive-Energy contributions', () => {
+    const body = functionBody('get_clan_competitive_roster');
+    expect(body).toMatch(/clan_energy_contributions/);
+    expect(body).toMatch(/c\.counted IS TRUE AND c\.energy_committed > 0/);
+    expect(body).toMatch(/SUM\(c\.score\)/);
+    expect(body).toMatch(/RANK\(\) OVER/);
+    expect(body).not.toMatch(/dna_earned/);
+  });
+});
+
+describe('Glory integrity', () => {
+  it('hard-caps two seats and 1,000 DNA independent of deployment config', () => {
+    expect(migration).toMatch(/seat SMALLINT NOT NULL CHECK \(seat BETWEEN 1 AND 2\)/);
+    expect(migration).toMatch(/reward_dna INTEGER NOT NULL CHECK \(reward_dna BETWEEN 0 AND 1000\)/);
+    expect(functionBody('assign_clan_glory')).toMatch(/p_reward_dna > 1000/);
   });
 
-  it('the tripwire aborts on ANY movement of DNA, up as well as down', () => {
-    // Downward-only would have let a clan migration pay somebody. Rule 8 bans
-    // both directions, so the guard is exact equality.
-    expect(MIGRATION_CODE).toMatch(
-      /COALESCE\(now_p\.dna, 0\)\s*IS DISTINCT FROM\s*pre\.dna/i
+  it('uses contribution evidence and takes effect only next boundary', () => {
+    const body = functionBody('assign_clan_glory');
+    expect(migration).toMatch(/effective_cycle_index = source_cycle_index \+ 1/);
+    expect(body).toMatch(/b\.intermission_ends_at/);
+    expect(body).toMatch(/NOW\(\) >= v_effective_at/);
+    expect(body).toMatch(/c\.counted IS TRUE/);
+    expect(body).toMatch(/c\.energy_committed > 0/);
+    expect(body).toMatch(/clan_tenure_since/);
+  });
+
+  it('prevents duplicate seat, holder, assignment, and cycle payouts', () => {
+    expect(migration).toMatch(
+      /uq_clan_glory_active_seat[\s\S]+clan_id, effective_cycle_index, seat/
     );
-    expect(MIGRATION_CODE).toMatch(
-      /COALESCE\(now_p\.total_dna_earned, 0\)\s*IS DISTINCT FROM\s*pre\.total_dna_earned/i
+    expect(migration).toMatch(
+      /uq_clan_glory_active_holder[\s\S]+clan_id, effective_cycle_index, holder_user_id/
     );
-    expect(MIGRATION_SQL).toMatch(/neither bills nor pays/i);
+    expect(migration).toMatch(/assignment_id UUID NOT NULL UNIQUE/);
+    expect(migration).toMatch(/UNIQUE \(clan_id, cycle_index, seat\)/);
+    expect(migration).toMatch(/ON CONFLICT DO NOTHING/);
+  });
+
+  it('settles only completed battles through a service-only function', () => {
+    const body = functionBody('settle_clan_glory_rewards');
+    expect(body).toMatch(/b\.settled_at IS NOT NULL/);
+    expect(body).toMatch(/'clan_glory_reward'/);
+    expect(body).not.toMatch(/UPDATE clan_energy_battle_sides/);
+    expect(migration).toMatch(
+      /REVOKE ALL ON FUNCTION settle_clan_glory_rewards\(BIGINT\) FROM PUBLIC, anon, authenticated/
+    );
+    expect(migration).toMatch(
+      /GRANT EXECUTE ON FUNCTION settle_clan_glory_rewards\(BIGINT\) TO service_role/
+    );
+  });
+
+  it('does not accept client-authored competitive or economy facts', () => {
+    const assignCase = route.match(/case 'assign_glory'[\s\S]+?default:/)?.[0] ?? '';
+    expect(assignCase).toMatch(/CLAN_ECONOMY_CONFIG\.glory\.rewardDna/);
+    expect(assignCase).toMatch(/energyBattleCycleAt\(\)/);
+    expect(assignCase).not.toMatch(/body\.(reward|depth|rank|cycle|effective)/i);
   });
 });

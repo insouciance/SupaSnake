@@ -19,13 +19,12 @@
  * with `buildSerpentPanel` rather than re-deriving it, which is also why the
  * hunt panel and the Serpent panel can never disagree about a number.
  *
- * RULE 8, STRUCTURALLY
+ * COMPETITIVE INTEGRITY, STRUCTURALLY
  *
- * Nothing here reads a role to decide what a member may do, returns a per-member
- * threshold, sorts a roster by anything a surface could draw a cut line under
- * without inventing the line itself, or writes any currency. `SerpentPanelMember`
- * carries a handle, a Depth and an attempt count; the display is additive
- * ("Sans_Souci fed 2,315 segments"), which is §9.2's own example.
+ * Clan competition may expose earned contribution, rank, and role, but every
+ * such result comes from server-authoritative play. The legacy weekly hunt
+ * remains an additive record; the Energy Battle and Glory paths add explicit,
+ * auditable prestige without allowing a client or purchase to author it.
  *
  * PRE-MIGRATION-048 SAFE
  *
@@ -56,10 +55,14 @@ import {
   CLAN_GAUNTLET_ENABLED,
   CLAN_PLAYOFFS_ENABLED,
   CLAN_V2_ENABLED,
-  DIRECTORY_ALIVE_WEEKS,
+  CLAN_DIRECTORY_LIMITS,
 } from '@/lib/clan/config';
-import { CLAN_LIMITS } from '@/lib/clan/types';
-import { GAME_CONFIG } from '@/shared/config/game';
+import {
+  asClanRole,
+  CLAN_LIMITS,
+  type ClanJoinPolicy,
+  type ClanRole,
+} from '@/lib/clan/types';
 
 interface SupabaseErrorLike {
   code?: string;
@@ -105,7 +108,7 @@ function report(scope: string, error: unknown, extra: Record<string, unknown>) {
 
 export interface ClanMembership {
   clanId: string;
-  role: 'owner' | 'member';
+  role: ClanRole;
   joinedAt: string;
   /** Earliest membership start across every span, ever (Rule 6: tenure). */
   tenureSince: string;
@@ -159,7 +162,7 @@ export async function loadMembership(
 
   return {
     clanId,
-    role: data.role === 'owner' ? 'owner' : 'member',
+    role: asClanRole(data.role),
     joinedAt,
     tenureSince,
   };
@@ -178,11 +181,23 @@ export interface ClanDirectoryEntry {
   colorPrimary: string | null;
   memberCount: number;
   maxMembers: number;
+  availableSpots: number;
+  joinPolicy: ClanJoinPolicy;
   /** The clan's best week, so the entry says something true about it. */
   bestWeekDepth: number;
   /** Did it hunt this week or last? Only alive clans are listed at all. */
   lastHuntedWeek: string | null;
   lastHuntKind: 'energy_battle' | 'legacy_week' | null;
+  /** Exact server activity timestamp, or null when the clan has none. */
+  recentActivityAt: string | null;
+}
+
+export interface ClanDirectoryFilters {
+  search?: string | null;
+  policy?: ClanJoinPolicy | null;
+  hasSpace?: boolean | null;
+  limit?: number;
+  offset?: number;
 }
 
 /**
@@ -204,131 +219,55 @@ export interface ClanDirectoryEntry {
  */
 export async function loadClanDirectory(
   supabase: SupabaseClient,
-  limit = 50
+  filters: ClanDirectoryFilters | number = {}
 ): Promise<ClanDirectoryEntry[]> {
-  const lastHuntedByClan = new Map<string, string>();
-  const lastHuntKindByClan = new Map<string, 'energy_battle' | 'legacy_week'>();
-  const activeBestByClan = new Map<string, number>();
+  const options: ClanDirectoryFilters =
+    typeof filters === 'number' ? { limit: filters } : filters;
+  const limit = Math.min(
+    Math.max(options.limit ?? CLAN_DIRECTORY_LIMITS.defaultPageSize, 1),
+    CLAN_DIRECTORY_LIMITS.maxPageSize
+  );
+  const offset = Math.min(
+    Math.max(options.offset ?? 0, 0),
+    CLAN_DIRECTORY_LIMITS.maxOffset
+  );
+  const { data, error } = await supabase.rpc('get_competitive_clan_directory', {
+    p_search: options.search?.trim() || null,
+    p_policy: options.policy ?? null,
+    p_has_space: options.hasSpace ?? null,
+    p_limit: limit,
+    p_offset: offset,
+  });
 
-  // v1.5: an Energy Battle becomes visible after its first bank, not only
-  // after settlement. Read the current and previous four-day cycles, then
-  // merge the immutable historical Serpent weeks below. App-before-migration
-  // falls through to the historical source without breaking the directory.
-  const battle = GAME_CONFIG.economy.clanBattle;
-  const cycleSeconds = battle.activeDurationSeconds + battle.intermissionDurationSeconds;
-  const recentBattleCutoff = new Date(Date.now() - cycleSeconds * 2 * 1000).toISOString();
-  const { data: battleSides, error: battleSideError } = await supabase
-    .from('clan_energy_battle_sides')
-    .select('clan_id, score, created_at, clan_energy_battles(starts_at)')
-    .gt('score', 0)
-    .gte('created_at', recentBattleCutoff)
-    .order('created_at', { ascending: false })
-    .limit(Math.max(50, limit * 4));
-
-  if (battleSideError) {
-    const missing =
-      ['42P01', '42703', 'PGRST200', 'PGRST205'].includes(battleSideError.code || '') ||
-      /schema cache.*clan_energy_|relation .*clan_energy_.* does not exist/i.test(
-        battleSideError.message || ''
-      );
-    if (!missing) report('directory Energy Battle scan', battleSideError, {});
-  } else {
-    for (const row of (battleSides ?? []) as Array<Record<string, unknown>>) {
-      const clanId = String(row.clan_id ?? '');
-      if (!clanId) continue;
-      const joined = Array.isArray(row.clan_energy_battles)
-        ? row.clan_energy_battles[0]
-        : row.clan_energy_battles;
-      const startsAt =
-        joined && typeof joined === 'object'
-          ? String((joined as Record<string, unknown>).starts_at ?? '').slice(0, 10)
-          : String(row.created_at ?? '').slice(0, 10);
-      const current = lastHuntedByClan.get(clanId);
-      if (startsAt && (!current || startsAt > current)) {
-        lastHuntedByClan.set(clanId, startsAt);
-        lastHuntKindByClan.set(clanId, 'energy_battle');
-      }
-      activeBestByClan.set(
-        clanId,
-        Math.max(activeBestByClan.get(clanId) ?? 0, Number(row.score ?? 0))
-      );
+  if (error) {
+    if (!isMissingClanRework(error)) {
+      report('competitive directory read', error, { filters: options });
+      throw new Error('Competitive clan directory read failed');
     }
-  }
-
-  const { data: weeks, error: weekError } = await supabase
-    .from('serpent_weeks')
-    .select('id, week_start')
-    .order('week_start', { ascending: false })
-    .limit(DIRECTORY_ALIVE_WEEKS);
-  if (weekError) {
-    if (!isMissingClanRework(weekError)) report('directory week scan', weekError, {});
-  } else {
-    const weekRows = (weeks ?? []) as Array<Record<string, unknown>>;
-    const weekIds = weekRows.map((row) => String(row.id ?? '')).filter(Boolean);
-    const weekStartById = new Map(
-      weekRows.map((row) => [String(row.id ?? ''), String(row.week_start ?? '').slice(0, 10)])
-    );
-    if (weekIds.length > 0) {
-      const { data: hunted, error: huntedError } = await supabase
-        .from('serpent_week_clans')
-        .select('clan_id, week_id, depth')
-        .in('week_id', weekIds);
-      if (huntedError) {
-        if (!isMissingClanRework(huntedError)) report('directory hunt scan', huntedError, {});
-      } else {
-        for (const row of (hunted ?? []) as Array<Record<string, unknown>>) {
-          if (Number(row.depth ?? 0) <= 0) continue;
-          const clanId = String(row.clan_id ?? '');
-          const weekStart = weekStartById.get(String(row.week_id ?? '')) ?? '';
-          const current = lastHuntedByClan.get(clanId);
-          if (!current || weekStart > current) {
-            lastHuntedByClan.set(clanId, weekStart);
-            lastHuntKindByClan.set(clanId, 'legacy_week');
-          }
-        }
-      }
-    }
-  }
-
-  const clanIds = Array.from(lastHuntedByClan.keys());
-  if (clanIds.length === 0) return [];
-
-  const { data: clans, error: clanError } = await supabase
-    .from('clans')
-    .select(
-      'id, name, tag, banner_id, emblem_id, color_primary, member_count, max_members, best_week_depth, disbanded_at'
-    )
-    .in('id', clanIds)
-    .is('disbanded_at', null)
-    .limit(limit);
-  if (clanError) {
-    if (!isMissingClanRework(clanError)) report('directory clan read', clanError, {});
     return [];
   }
 
-  return ((clans ?? []) as Array<Record<string, unknown>>)
-    .map((row) => ({
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => {
+    const recentActivityAt = (row.recent_activity_at as string | null) ?? null;
+    const kind = row.recent_activity_kind;
+    return {
       id: String(row.id ?? ''),
       name: String(row.name ?? ''),
       tag: (row.tag as string | null) ?? null,
       bannerId: (row.banner_id as string | null) ?? null,
       emblemId: (row.emblem_id as string | null) ?? null,
       colorPrimary: (row.color_primary as string | null) ?? null,
-      memberCount: Number(row.member_count ?? 0),
-      maxMembers: Number(row.max_members ?? CLAN_LIMITS.maxMembers),
-      bestWeekDepth: Math.max(
-        Number(row.best_week_depth ?? 0),
-        activeBestByClan.get(String(row.id ?? '')) ?? 0
-      ),
-      lastHuntedWeek: lastHuntedByClan.get(String(row.id ?? '')) ?? null,
-      lastHuntKind: lastHuntKindByClan.get(String(row.id ?? '')) ?? null,
-    }))
-    .sort(
-      (a, b) =>
-        (b.lastHuntedWeek ?? '').localeCompare(a.lastHuntedWeek ?? '') ||
-        b.bestWeekDepth - a.bestWeekDepth ||
-        a.name.localeCompare(b.name)
-    );
+      memberCount: Number(row.member_count),
+      maxMembers: Number(row.max_members),
+      availableSpots: Number(row.available_spots),
+      joinPolicy: row.join_policy as ClanJoinPolicy,
+      bestWeekDepth: Number(row.best_week_depth),
+      recentActivityAt,
+      lastHuntedWeek: recentActivityAt ? recentActivityAt.slice(0, 10) : null,
+      lastHuntKind:
+        kind === 'energy_battle' || kind === 'legacy_week' ? kind : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +484,44 @@ async function settleClanWeek(
   };
 }
 
+export interface ClanGlorySettlementResult {
+  settled: number;
+  dnaAwarded: number;
+  cycleIndex: number | null;
+}
+
+/**
+ * Service-only, idempotent Glory payout pass.
+ *
+ * This intentionally does not run from a player request. The energy-battle
+ * settlement owner must call it after `settle_clan_energy_battles`; migration
+ * 062's unique assignment/seat/holder keys make retries safe. Keeping this
+ * wrapper here avoids editing the shared settlement path until that owner can
+ * sequence both RPCs deliberately.
+ */
+export async function settlePendingClanGloryRewards(
+  supabase: SupabaseClient,
+  cycleIndex: number | null = null
+): Promise<ClanGlorySettlementResult | null> {
+  const { data, error } = await supabase.rpc('settle_clan_glory_rewards', {
+    p_cycle_index: cycleIndex,
+  });
+  if (error) {
+    if (isMissingClanRework(error)) return null;
+    report('Glory reward settlement', error, { cycleIndex });
+    throw new Error(`settle_clan_glory_rewards failed: ${error.message ?? 'unknown error'}`);
+  }
+  const payload = (data ?? {}) as Record<string, unknown>;
+  return {
+    settled: Number(payload.settled ?? 0),
+    dnaAwarded: Number(payload.dna_awarded ?? 0),
+    cycleIndex:
+      payload.cycle_index === null || payload.cycle_index === undefined
+        ? null
+        : Number(payload.cycle_index),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The panel
 // ---------------------------------------------------------------------------
@@ -598,7 +575,7 @@ export interface ClanHuntPanel {
         disbandedAt: string | null;
       }
     | null;
-  you: { role: 'owner' | 'member'; joinedAt: string; tenureSince: string } | null;
+  you: { role: ClanRole; joinedAt: string; tenureSince: string } | null;
   week: { id: string; weekStart: string; startsAt: string; endsAt: string } | null;
   /**
    * §9.4's self-referential primary: the clan against its own best week. It is

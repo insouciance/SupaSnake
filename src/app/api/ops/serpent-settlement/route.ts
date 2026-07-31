@@ -27,13 +27,12 @@
  * the same Depth. The route settles EVERY submerged unsettled week, not just
  * last week's, so a missed run catches up instead of stranding a week.
  *
- * WHY THIS CANNOT PAY ANYTHING
+ * REWARD BOUNDARY
  *
- * Settlement pays records (§7.3: "No DNA settlement bonus — Depth is measured,
- * not farmed"). Neither this route, `settleDueSerpentWeeks`, nor
- * `apply_serpent_week_settlement` writes `players.dna`, `total_dna_earned`,
- * `economy_transactions`, a cosmetic, an entitlement or a charge. The one
- * claim endpoint this game has is the Daily Take's, and it is not this.
+ * Historical Serpent and weekly pairing settlement still pay records only.
+ * Energy Battle settlement is followed by the explicit, server-only Glory
+ * reward ledger introduced by Constitution v1.7. That bounded DNA award is
+ * idempotent and is the only currency mutation owned by this cron path.
  *
  * Response includes historical `settled`/`pairings` plus `energyBattles`.
  * `skipped` is true in the window
@@ -46,7 +45,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isAuthorizedCron } from '@/lib/server/cronAuth';
 import { settleDueSerpentWeeks } from '@/lib/server/serpent';
-import { settleDueClanWeeks } from '@/lib/server/clanHunt';
+import {
+  settleDueClanWeeks,
+  settlePendingClanGloryRewards,
+  type ClanGlorySettlementResult,
+} from '@/lib/server/clanHunt';
 import {
   reconcileClanEnergyContributions,
   settleClanEnergyBattles,
@@ -73,16 +76,22 @@ export async function GET(request: NextRequest) {
    * It is idempotent on the same construction: depths are read, outcomes are
    * a comparison, laurels and Chronicle entries are `ON CONFLICT DO NOTHING`,
    * and rivalry memory is a full recompute over settled pairings. A double
-   * fire converges. It pays no DNA — Rule 8 forbids a clan number that pays,
-   * and there is no statement in that RPC through which it could.
+   * fire converges. Weekly pairing itself pays no DNA; the separate Glory
+   * ledger below may pay only an auditable, earned Energy Battle assignment.
    */
   const pairings = await settleDueClanWeeks(supabase);
   let energyReconciled: number | null = null;
   let energySettled: number | null = null;
+  let glorySettled: ClanGlorySettlementResult | null = null;
   let energyError: string | null = null;
   try {
     energyReconciled = await reconcileClanEnergyContributions(supabase);
     energySettled = await settleClanEnergyBattles(supabase);
+    // Passing null deliberately catches every previously settled-but-unpaid
+    // cycle after a partial cron failure. The ledger makes retries converge.
+    if (energySettled !== null) {
+      glorySettled = await settlePendingClanGloryRewards(supabase, null);
+    }
   } catch (error) {
     energyError = error instanceof Error ? error.message : 'Energy Battle settlement failed';
   }
@@ -106,6 +115,7 @@ export async function GET(request: NextRequest) {
     energyBattles: {
       reconciled: energyReconciled,
       settled: energySettled,
+      glory: glorySettled,
       skipped: energyReconciled === null && energySettled === null,
     },
     skipped: result.skipped,
