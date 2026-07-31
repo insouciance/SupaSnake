@@ -792,16 +792,17 @@ GRANT EXECUTE ON FUNCTION get_clan_competitive_roster(UUID, BIGINT) TO service_r
 -- -------------------------------------------------------------------------
 
 DROP FUNCTION IF EXISTS found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER);
 
 CREATE FUNCTION found_clan(
   p_user_id UUID,
   p_name TEXT,
-  p_tag TEXT DEFAULT NULL,
-  p_banner_id TEXT DEFAULT NULL,
-  p_emblem_id TEXT DEFAULT NULL,
-  p_color_primary TEXT DEFAULT NULL,
-  p_color_secondary TEXT DEFAULT NULL,
-  p_founding_cost INTEGER DEFAULT 500
+  p_tag TEXT,
+  p_banner_id TEXT,
+  p_emblem_id TEXT,
+  p_color_primary TEXT,
+  p_color_secondary TEXT,
+  p_founding_cost INTEGER
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -934,6 +935,39 @@ BEGIN
 END;
 $$;
 
+-- Rolling-release bridge for the outgoing production bundle. That bundle
+-- calls the historical seven-argument signature and has never shown or echoed
+-- a founding price. It must fail closed after this migration: preserving the
+-- call shape prevents a PostgREST overload/cache fault, while this function is
+-- intentionally incapable of creating a clan or touching DNA.
+CREATE FUNCTION found_clan(
+  p_user_id UUID,
+  p_name TEXT,
+  p_tag TEXT,
+  p_banner_id TEXT,
+  p_emblem_id TEXT,
+  p_color_primary TEXT,
+  p_color_secondary TEXT
+)
+RETURNS JSONB
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT jsonb_build_object(
+    'error', 'founding_confirmation_required',
+    'retryable', TRUE
+  );
+$$;
+
+COMMENT ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) IS
+  'Rolling-release compatibility only: rejects legacy unquoted clan founding without mutation.';
+COMMENT ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER) IS
+  'Creates a clan and atomically spends the required server-supplied DNA cost after the API verifies the player-confirmed quote.';
+
+REVOKE ALL ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;
 REVOKE ALL ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION found_clan(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER) TO service_role;
 

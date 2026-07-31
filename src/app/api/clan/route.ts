@@ -11,8 +11,10 @@
  * transfer_ownership, update_settings, rotate_invite_code, update_identity,
  * assign_glory.
  *
- * All mutations are service-role RPCs. The route never accepts a DNA amount,
- * contribution, rank, effective cycle, or reward from the client.
+ * All mutations are service-role RPCs. Founding accepts only an echoed quote
+ * acknowledgment, which must exactly match the current server configuration;
+ * the client never authors the amount passed to Postgres. Contribution, rank,
+ * effective cycle, and reward values are never accepted from the client.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -98,6 +100,7 @@ const CLAN_RPC_ERRORS: Record<string, { status: number; error: string }> = {
   invalid_glory_seat: { status: 400, error: 'Invalid Glory seat' },
   invalid_glory_terms: { status: 500, error: 'Glory configuration is invalid' },
   invalid_founding_cost: { status: 500, error: 'Clan founding configuration is invalid' },
+  founding_confirmation_required: { status: 409, error: 'Review the current founding cost before creating your clan' },
   invalid_invite_lifetime: { status: 500, error: 'Clan invitation configuration is invalid' },
   tag_unavailable: { status: 409, error: 'Could not find a free tag for that name' },
   target_not_in_clan: { status: 404, error: 'That player is not in your clan' },
@@ -641,6 +644,18 @@ export async function POST(request: NextRequest) {
         if ((colorPrimary !== null && !isValidClanColor(colorPrimary))
           || (colorSecondary !== null && !isValidClanColor(colorSecondary))) {
           return NextResponse.json({ error: 'Invalid color', code: 'invalid_color' }, { status: 400 });
+        }
+        const confirmedFoundingDnaCost = body.confirmedFoundingDnaCost;
+        if (!Number.isInteger(confirmedFoundingDnaCost)
+          || confirmedFoundingDnaCost !== CLAN_ECONOMY_CONFIG.foundingDnaCost) {
+          return NextResponse.json(
+            {
+              error: CLAN_RPC_ERRORS.founding_confirmation_required.error,
+              code: 'founding_confirmation_required',
+              economy: { foundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost },
+            },
+            { status: CLAN_RPC_ERRORS.founding_confirmation_required.status }
+          );
         }
         const { data, error } = await supabase.rpc('found_clan', {
           p_user_id: userId,

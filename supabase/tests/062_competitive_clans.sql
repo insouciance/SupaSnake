@@ -83,6 +83,21 @@ BEGIN
 
   -- Founding is a clearly quoted, atomic sink with one durable ledger row.
   -- Heraldry is a server-enforced preset vocabulary, not a client convention.
+  -- The outgoing seven-argument client never presented a price, so its exact
+  -- rolling-release signature must reject without creating or spending.
+  v_result := found_clan(
+    v_leader_user, 'Unquoted Standard', 'OLD', NULL, NULL, NULL, NULL
+  );
+  IF v_result ->> 'error' <> 'founding_confirmation_required'
+     OR (SELECT dna FROM players WHERE id = v_leader_player) <> 1500
+     OR EXISTS (SELECT 1 FROM clan_members WHERE player_id = v_leader_user)
+     OR EXISTS (
+       SELECT 1 FROM economy_transactions
+       WHERE player_id = v_leader_player AND source_type = 'clan_founding'
+     ) THEN
+    RAISE EXCEPTION 'legacy unquoted founding mutated state: %', v_result;
+  END IF;
+
   v_result := found_clan(
     v_leader_user, 'Forged Standard', 'FGD', 'unreleased_banner', NULL,
     NULL, NULL, 500
@@ -751,6 +766,12 @@ BEGIN
   BEGIN
     PERFORM found_clan(auth.uid(), 'RPC Bypass', 'RPC', NULL, NULL, NULL, NULL, 1);
     RAISE EXCEPTION 'authenticated executed the service-only founding RPC';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    PERFORM found_clan(auth.uid(), 'Legacy Bypass', 'OLD', NULL, NULL, NULL, NULL);
+    RAISE EXCEPTION 'authenticated executed the service-only founding bridge';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 END;

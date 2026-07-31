@@ -417,8 +417,11 @@ The live directory supports search and shows server-authored:
 - the action actually available to the viewer.
 
 Empty, stale, or fabricated activity is never used to make the world look larger.
-Founding quotes its current server-configured DNA cost before confirmation and spends
-it atomically with creation. Open joins, applications, and invitations share one
+Founding quotes its current server-configured DNA cost before confirmation. The
+confirmation echoes that exact quote, the API rejects a missing or stale quote
+without mutation, and Postgres spends only the server-supplied current amount
+atomically with creation. An already-loaded pre-quote client fails closed and can
+never found or spend silently. Open joins, applications, and invitations share one
 audited membership transition model.
 
 ### Governance
@@ -674,7 +677,8 @@ Do not advertise active-run recovery until verified checkpoints are live end to 
       atomic, and recoverable.
 - [ ] Leader/Co-leader/Member actions match the role matrix; transfer and removal are
       explicit and audited.
-- [ ] Founding quotes and atomically spends the server-configured DNA cost.
+- [ ] Founding requires the current quote, rejects legacy/stale confirmation without
+      mutation, and atomically spends only the server-configured DNA cost.
 - [ ] Member contribution and rank derive only from valid server results and distinguish
       no-result from failure/absence.
 - [ ] At most two Glory seats can be assigned at a battle boundary to eligible

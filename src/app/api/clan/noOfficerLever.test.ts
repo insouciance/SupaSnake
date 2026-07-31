@@ -86,6 +86,26 @@ describe('economy and factual reads', () => {
     expect(body).toMatch(/founding_dna_cost/);
   });
 
+  it('fails legacy unquoted founding closed and requires the current quoted cost', () => {
+    expect(migration.match(/CREATE FUNCTION found_clan\(/g)).toHaveLength(2);
+    expect(migration).toMatch(
+      /p_color_secondary TEXT,\s*p_founding_cost INTEGER\s*\)\s*RETURNS JSONB/i
+    );
+    expect(migration).toMatch(
+      /CREATE FUNCTION found_clan\([\s\S]*?p_color_secondary TEXT\s*\)[\s\S]*?'founding_confirmation_required'[\s\S]*?Rolling-release compatibility only/i
+    );
+    expect(route).toMatch(
+      /confirmedFoundingDnaCost !== CLAN_ECONOMY_CONFIG\.foundingDnaCost/
+    );
+    expect(route).toMatch(
+      /p_founding_cost: CLAN_ECONOMY_CONFIG\.foundingDnaCost/
+    );
+    expect(clanPage).toMatch(/Founding commitment/);
+    expect(clanPage).toMatch(/Creating this clan spends \{cost\.toLocaleString\(\)\} DNA/);
+    expect(clanPage).toMatch(/confirmedFoundingDnaCost: cost/);
+    expect(clanPage).toMatch(/data-testid="confirm-found-clan"/);
+  });
+
   it('computes directory membership/spaces and excludes stale or missing activity', () => {
     const body = functionBody('get_competitive_clan_directory');
     expect(body).toMatch(/COUNT\(\*\)::BIGINT AS member_count/);

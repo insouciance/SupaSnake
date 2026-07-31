@@ -204,8 +204,18 @@ function FoundClanPanel({
   const cost = view.competitiveConfig?.foundingDnaCost;
 
   const found = async () => {
+    if (typeof cost !== 'number') {
+      setStatus('The current founding cost is still loading. No DNA was spent.', true);
+      return;
+    }
     setBusy(true);
-    const result = await clanAction(accessToken, { action: 'found', name: name.trim(), bannerId, emblemId });
+    const result = await clanAction(accessToken, {
+      action: 'found',
+      name: name.trim(),
+      bannerId,
+      emblemId,
+      confirmedFoundingDnaCost: cost,
+    });
     setBusy(false);
     if (!result.ok) {
       setStatus(result.error ?? 'Could not found clan', true);
@@ -282,7 +292,7 @@ function FoundClanPanel({
             <p id="found-confirm-description" className="mt-2 text-sm font-body text-beige/70">Creating this clan spends {cost.toLocaleString()} DNA. You become Leader and can set recruitment, appoint Co-leaders, and recognize Glory Members.</p>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="btn-neutral min-h-[44px] px-4">Cancel</button>
-              <button type="button" disabled={busy} onClick={() => void found()} className="btn-go min-h-[44px] px-4">{busy ? 'Founding…' : `Spend ${cost.toLocaleString()} DNA`}</button>
+              <button type="button" data-testid="confirm-found-clan" disabled={busy} onClick={() => void found()} className="btn-go min-h-[44px] px-4">{busy ? 'Founding…' : `Spend ${cost.toLocaleString()} DNA`}</button>
             </div>
           </div>
         </div>

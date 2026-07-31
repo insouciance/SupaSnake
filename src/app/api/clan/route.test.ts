@@ -51,6 +51,35 @@ beforeEach(() => {
 });
 
 describe('founding economy', () => {
+  const confirmedFounding = (extra: Record<string, unknown> = {}) => ({
+    action: 'found',
+    name: 'Elite Snakes',
+    confirmedFoundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost,
+    ...extra,
+  });
+
+  it('fails an outgoing unquoted founding request closed before the RPC', async () => {
+    const response = await POST(post({ action: 'found', name: 'Elite Snakes' }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'founding_confirmation_required',
+      economy: { foundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost },
+    });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale or forged founding quote without mutation', async () => {
+    const response = await POST(post(confirmedFounding({
+      confirmedFoundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost + 1,
+    })));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'founding_confirmation_required',
+      economy: { foundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost },
+    });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
   it('passes the central cost to one atomic RPC and returns the settled balance', async () => {
     mockRpc.mockResolvedValue({
       data: {
@@ -60,7 +89,7 @@ describe('founding economy', () => {
       },
       error: null,
     });
-    const response = await POST(post({ action: 'found', name: 'Elite Snakes' }));
+    const response = await POST(post(confirmedFounding()));
     expect(response.status).toBe(200);
     expect(mockRpc).toHaveBeenCalledWith('found_clan', expect.objectContaining({
       p_user_id: 'user-1',
@@ -78,7 +107,7 @@ describe('founding economy', () => {
       data: { error: 'insufficient_dna', required_dna: 500, dna_balance: 100 },
       error: null,
     });
-    const response = await POST(post({ action: 'found', name: 'Elite Snakes' }));
+    const response = await POST(post(confirmedFounding()));
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
       code: 'insufficient_dna',
