@@ -5,10 +5,11 @@ It defines the shared operating rules for concurrent feature development. A
 feature assignment may add stricter requirements, but it must not silently
 weaken these rules.
 
-**Design law outranks this file.** `docs/PRODUCT_CONSTITUTION.md` (v1.3) decides
-*what* may be built; this file and `docs/IMPLEMENTATION_HANDOFF.md` decide *how* it
-is built. Where the handoff's protocol and this file's defaults differ, the handoff
-wins for work-package branches — the differences are marked below.
+**Design law outranks this file.** The current version of
+`docs/PRODUCT_CONSTITUTION.md` decides *what* may be built; this file and
+`docs/IMPLEMENTATION_HANDOFF.md` decide *how* it is built. Where the handoff's
+protocol and this file's defaults differ, the handoff wins for work-package
+branches — the differences are marked below.
 
 ## Clean-context assumption
 
