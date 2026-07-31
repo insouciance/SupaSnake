@@ -47,10 +47,30 @@ describe('Migration 064: atomic dynasty favorites', () => {
 
   it('normalizes legacy duplicate favorites without deleting collection rows', () => {
     expect(sql).toMatch(
+      /LOCK TABLE collected_snakes IN SHARE ROW EXCLUSIVE MODE/i
+    );
+    expect(sql).toMatch(
       /ROW_NUMBER\(\) OVER \([\s\S]*PARTITION BY cs\.player_id, sv\.dynasty_id/i
     );
     expect(sql).toMatch(/SET is_favorited = FALSE[\s\S]*favorite_rank > 1/i);
     expect(sql).not.toMatch(/DELETE\s+FROM\s+collected_snakes/i);
+  });
+
+  it('keeps the invariant intact for the outgoing direct-row writer', () => {
+    const { body } = liveDefinition('enforce_single_dynasty_favorite');
+    expect(body).toMatch(/RETURNS TRIGGER/i);
+    expect(body).toMatch(
+      /SELECT sv\.dynasty_id[\s\S]*WHERE sv\.id = NEW\.snake_variant_id/i
+    );
+    expect(body).toMatch(
+      /pg_advisory_xact_lock\([\s\S]*NEW\.player_id::TEXT[\s\S]*v_dynasty_id::TEXT/i
+    );
+    expect(body).toMatch(
+      /UPDATE collected_snakes cs[\s\S]*cs\.player_id = NEW\.player_id[\s\S]*sv\.dynasty_id = v_dynasty_id[\s\S]*cs\.id IS DISTINCT FROM NEW\.id[\s\S]*cs\.is_favorited = TRUE/i
+    );
+    expect(sql).toMatch(
+      /CREATE TRIGGER trg_single_dynasty_favorite[\s\S]*BEFORE INSERT OR UPDATE OF is_favorited, player_id, snake_variant_id[\s\S]*WHEN \(NEW\.is_favorited = TRUE\)[\s\S]*EXECUTE FUNCTION public\.enforce_single_dynasty_favorite\(\)/i
+    );
   });
 
   it('accepts no caller-authored dynasty and derives it through the catalog join', () => {

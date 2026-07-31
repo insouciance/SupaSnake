@@ -51,14 +51,14 @@ BEGIN
   UPDATE players SET username = 'fav_other_064', handle = 'fav_other_064'
    WHERE id = v_other_player;
 
-  -- Deliberately seed the duplicate legacy state that migration 064 repairs in
-  -- deployed data. Direct fixture writes run as the local database owner; the
-  -- product route cannot perform them.
+  -- Seed one current favorite plus another historical specimen. Migration 064
+  -- has already run in this test database, so its invariant trigger correctly
+  -- prevents recreating the pre-migration duplicate state.
   INSERT INTO collected_snakes(
     id, player_id, snake_variant_id, generation, acquired_method,
     is_equipped, is_favorited
   ) VALUES
-    (v_old_cyber, v_player, v_cyber_variant, 2, 'bred', FALSE, TRUE),
+    (v_old_cyber, v_player, v_cyber_variant, 2, 'bred', FALSE, FALSE),
     (v_older_cyber, v_player, v_cyber_variant, 4, 'bred', FALSE, TRUE),
     (v_new_cyber, v_player, v_cyber_variant, 11, 'bred', TRUE, FALSE),
     (v_primal, v_player, v_primal_variant, 7, 'bred', FALSE, TRUE),
@@ -71,8 +71,7 @@ BEGIN
      OR (v_result ->> 'favorited')::BOOLEAN IS DISTINCT FROM TRUE THEN
     RAISE EXCEPTION 'favorite receipt does not name the selected snake: %', v_result;
   END IF;
-  IF jsonb_array_length(v_result -> 'replaced_snake_ids') <> 2
-     OR NOT (v_result -> 'replaced_snake_ids' ? v_old_cyber::TEXT)
+  IF jsonb_array_length(v_result -> 'replaced_snake_ids') <> 1
      OR NOT (v_result -> 'replaced_snake_ids' ? v_older_cyber::TEXT) THEN
     RAISE EXCEPTION 'favorite receipt omitted replaced historical rows: %', v_result;
   END IF;
@@ -93,6 +92,36 @@ BEGIN
   IF NOT (SELECT is_favorited FROM collected_snakes WHERE id = v_primal) THEN
     RAISE EXCEPTION 'selecting CYBER changed the PRIMAL favorite';
   END IF;
+
+  -- Emulate the already-loaded outgoing production route. It updates only the
+  -- requested row through service role instead of calling the new RPC. The
+  -- trigger must preserve the invariant while leaving other dynasties alone.
+  UPDATE collected_snakes
+  SET is_favorited = TRUE
+  WHERE id = v_old_cyber
+    AND player_id = v_player;
+
+  SELECT COUNT(*) INTO v_count
+  FROM collected_snakes cs
+  JOIN snake_variants sv ON sv.id = cs.snake_variant_id
+  WHERE cs.player_id = v_player
+    AND sv.dynasty_id = (
+      SELECT dynasty_id FROM snake_variants WHERE id = v_cyber_variant
+    )
+    AND cs.is_favorited = TRUE;
+  IF v_count <> 1
+     OR NOT (SELECT is_favorited FROM collected_snakes WHERE id = v_old_cyber)
+     OR (SELECT is_favorited FROM collected_snakes WHERE id = v_new_cyber)
+     OR NOT (SELECT is_favorited FROM collected_snakes WHERE id = v_primal) THEN
+    RAISE EXCEPTION 'outgoing direct writer broke the per-dynasty favorite invariant';
+  END IF;
+
+  -- Restore the selected favorite through that same legacy write shape so the
+  -- unfavorite contract below continues from the intended specimen.
+  UPDATE collected_snakes
+  SET is_favorited = TRUE
+  WHERE id = v_new_cyber
+    AND player_id = v_player;
 
   v_result := set_dynasty_favorite(v_player, v_new_cyber, FALSE);
   IF (v_result ->> 'favorited')::BOOLEAN IS DISTINCT FROM FALSE

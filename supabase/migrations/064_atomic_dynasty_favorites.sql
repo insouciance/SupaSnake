@@ -16,10 +16,19 @@
 -- This migration first normalizes historical duplicates deterministically.
 -- Equipped, higher-generation, then newer specimens win. Runtime changes must
 -- use set_dynasty_favorite; collected_snakes writes are already revoked from
--- anon/authenticated by migration 030.
+-- anon/authenticated by migration 030. A table trigger remains deliberately
+-- compatible with the outgoing service-role writer during promotion: a direct
+-- single-row `is_favorited = TRUE` update releases the previous same-dynasty
+-- favorite before it completes, so the rolling boundary cannot recreate the
+-- duplicate state this migration repairs.
 -- =============================================================================
 
 BEGIN;
+
+-- Keep an outgoing writer from landing between the historical cleanup and the
+-- invariant trigger becoming visible. The lock is held only for this migration
+-- transaction and permits reads while serializing collected_snakes writes.
+LOCK TABLE collected_snakes IN SHARE ROW EXCLUSIVE MODE;
 
 WITH ranked_favorites AS (
   SELECT
@@ -41,6 +50,58 @@ SET is_favorited = FALSE
 FROM ranked_favorites ranked
 WHERE ranked.id = cs.id
   AND ranked.favorite_rank > 1;
+
+CREATE OR REPLACE FUNCTION public.enforce_single_dynasty_favorite()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_dynasty_id UUID;
+BEGIN
+  IF NEW.is_favorited IS DISTINCT FROM TRUE THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT sv.dynasty_id
+  INTO v_dynasty_id
+  FROM snake_variants sv
+  WHERE sv.id = NEW.snake_variant_id;
+
+  IF v_dynasty_id IS NULL THEN
+    RAISE EXCEPTION 'Favorite snake variant is not in the catalog';
+  END IF;
+
+  -- This is the same serialization key used by set_dynasty_favorite. It makes
+  -- the invariant cover both the incoming RPC and the outgoing direct writer.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(NEW.player_id::TEXT || ':' || v_dynasty_id::TEXT, 0)
+  );
+
+  UPDATE collected_snakes cs
+  SET is_favorited = FALSE
+  FROM snake_variants sv
+  WHERE cs.snake_variant_id = sv.id
+    AND cs.player_id = NEW.player_id
+    AND sv.dynasty_id = v_dynasty_id
+    AND cs.id IS DISTINCT FROM NEW.id
+    AND cs.is_favorited = TRUE;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+COMMENT ON FUNCTION public.enforce_single_dynasty_favorite() IS
+  'Database invariant and rolling-release bridge: a direct favorite write atomically releases any previous favorite in the same player dynasty.';
+
+REVOKE EXECUTE ON FUNCTION public.enforce_single_dynasty_favorite() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.enforce_single_dynasty_favorite() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.enforce_single_dynasty_favorite() FROM authenticated;
+
+DROP TRIGGER IF EXISTS trg_single_dynasty_favorite ON collected_snakes;
+CREATE TRIGGER trg_single_dynasty_favorite
+BEFORE INSERT OR UPDATE OF is_favorited, player_id, snake_variant_id
+ON collected_snakes
+FOR EACH ROW
+WHEN (NEW.is_favorited = TRUE)
+EXECUTE FUNCTION public.enforce_single_dynasty_favorite();
 
 CREATE INDEX IF NOT EXISTS idx_collected_favorited_player
   ON collected_snakes(player_id)
@@ -146,7 +207,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION public.set_dynasty_favorite(UUID, UUID, BOOLEAN) IS
-  'Atomically selects at most one collected-snake favorite per player/dynasty; dynasty and ownership are server-derived.';
+  'Atomically selects one collected-snake favorite per player/dynasty with a reconciliation receipt; dynasty and ownership are server-derived and the table trigger enforces the invariant for every writer.';
 
 REVOKE EXECUTE ON FUNCTION public.set_dynasty_favorite(UUID, UUID, BOOLEAN) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.set_dynasty_favorite(UUID, UUID, BOOLEAN) FROM anon;
