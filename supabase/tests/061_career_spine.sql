@@ -1,7 +1,112 @@
--- Local integration contract for migration 060.
+-- Local integration contract for migration 061.
 -- Run only against the isolated local Supabase database.
 
 BEGIN;
+
+-- Test-only server stamp. Production authors the same immutable payload in
+-- the guarded session end request; fixtures must never bypass the protocol by
+-- inserting an already-completed earning row.
+CREATE OR REPLACE FUNCTION pg_temp.complete_atomic_test_session(
+  p_session_id UUID,
+  p_ended_at TIMESTAMPTZ DEFAULT clock_timestamp()
+) RETURNS JSONB AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+  v_user_id UUID;
+  v_generation INTEGER := 1;
+  v_payload JSONB;
+  v_envelope JSONB;
+  v_result JSONB;
+BEGIN
+  SELECT * INTO v_session FROM game_sessions WHERE id = p_session_id;
+  IF NOT FOUND OR v_session.ended_at IS NOT NULL THEN
+    RAISE EXCEPTION 'TEST_SESSION_NOT_OPEN';
+  END IF;
+  SELECT p.user_id INTO v_user_id FROM players p WHERE p.id = v_session.player_id;
+  IF v_session.snake_used_id IS NOT NULL THEN
+    SELECT GREATEST(COALESCE(cs.generation, 1), 1)
+      INTO v_generation
+      FROM collected_snakes cs
+      WHERE cs.id = v_session.snake_used_id;
+    v_generation := COALESCE(v_generation, 1);
+  END IF;
+  v_payload := jsonb_build_object(
+    'v', 1,
+    'settledAt', p_ended_at,
+    'dynasty', v_session.dynasty,
+    'extracted', COALESCE(v_session.extracted, FALSE),
+    'died', COALESCE(v_session.died, FALSE),
+    'validated', COALESCE(v_session.validated, FALSE),
+    'score', GREATEST(COALESCE(v_session.score, 0), 0),
+    'yieldDna', GREATEST(COALESCE(v_session.yield_dna, 0), 0),
+    'dnaCredited', GREATEST(COALESCE(v_session.dna_earned, 0), 0),
+    'energyCommitted', GREATEST(COALESCE(v_session.energy_committed, 0), 0),
+    'commitmentMultiplierBps', GREATEST(
+      COALESCE(v_session.energy_harvest_multiplier_bps, 0), 0
+    ),
+    'generation', v_generation,
+    'snakeId', v_session.snake_used_id,
+    'masteryXp', 0,
+    'ladderRung', 0,
+    'genome', COALESCE(v_session.genome, 'null'::JSONB),
+    'rewardMetadata', '{}'::JSONB,
+    'clan', jsonb_build_object(
+      'bestCount', 5,
+      'completionGraceSeconds', 10800,
+      'maxRunDurationSeconds', 10800
+    )
+  );
+  v_envelope := jsonb_build_object(
+    'kind', 'career_pending_end_v1', 'v', 1,
+    'userId', v_user_id, 'playerId', v_session.player_id,
+    'sessionId', v_session.id, 'capturedAt', p_ended_at,
+    'snapshot', v_payload,
+    'binding', jsonb_build_object(
+      'startedAt', v_session.started_at, 'dynasty', v_session.dynasty,
+      'snakeId', v_session.snake_used_id,
+      'snakeVariantId', v_session.snake_variant_id,
+      'runSeed', v_session.run_seed, 'runContext', v_session.run_context,
+      'energyCommitted', COALESCE(v_session.energy_committed, 0),
+      'commitmentMultiplierBps', COALESCE(v_session.energy_harvest_multiplier_bps, 0),
+      'signalRunId', v_session.signal_objective_run_id,
+      'clanBattleId', v_session.clan_energy_battle_id,
+      'clanBattleSideId', v_session.clan_energy_battle_side_id,
+      'clanId', v_session.clan_energy_clan_id
+    ),
+    'sessionFacts', jsonb_build_object(
+      'durationSeconds', GREATEST(COALESCE(v_session.duration_seconds, 0), 0),
+      'victory', COALESCE(v_session.victory, FALSE),
+      'foodsCollected', GREATEST(COALESCE(v_session.foods_collected, 0), 0),
+      'mutations', v_session.mutations, 'deathCause', v_session.death_cause,
+      'runEvents', v_session.run_events,
+      'validationErrors', v_session.validation_errors
+    )
+  );
+  v_result := stage_pending_game_session_end(
+    v_user_id, v_session.player_id, v_session.id, v_envelope
+  );
+  IF v_result ->> 'state' <> 'staged' THEN
+    RAISE EXCEPTION 'TEST_STAGE_FAILED: %', v_result;
+  END IF;
+  v_result := adopt_pending_game_session_end(v_session.id);
+  IF v_result ->> 'state' <> 'adopted' THEN
+    RAISE EXCEPTION 'TEST_ADOPTION_FAILED: %', v_result;
+  END IF;
+  RETURN v_payload;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pg_temp.capture_test_progression(
+  p_player_id UUID,
+  p_session_id UUID
+) RETURNS VOID AS $$
+BEGIN
+  PERFORM settle_game_session_progression_core(p_player_id, p_session_id);
+  PERFORM prepare_game_session_signal_stage(p_player_id, p_session_id);
+  PERFORM capture_game_session_signal_result(p_player_id, p_session_id);
+  PERFORM capture_game_session_clan_result(p_player_id, p_session_id);
+END;
+$$ LANGUAGE plpgsql;
 
 DO $$
 DECLARE
@@ -39,16 +144,18 @@ BEGIN
 
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
-    score, dna_earned, yield_dna, validated, extracted, ended_at, end_reason,
+    score, dna_earned, yield_dna, validated, extracted,
     energy_committed, energy_harvest_multiplier_bps
   ) VALUES (
     v_session, v_player, v_snake, v_variant, 'PRIMAL',
-    1200, 1760, 800, TRUE, TRUE, NOW(), 'completed', 2, 22000
+    1200, 1760, 800, TRUE, TRUE, 2, 22000
   );
 
-  v_reward := settle_game_session_reward(
-    v_player, v_session, 1760, 1200, TRUE, '{"test":"impact"}'::JSONB
+  PERFORM pg_temp.complete_atomic_test_session(v_session);
+  v_reward := settle_game_session_reward_from_snapshot(
+    v_player, v_session
   );
+  PERFORM pg_temp.capture_test_progression(v_player, v_session);
 
   v_envelope := jsonb_build_object(
     'version', 1,
@@ -192,25 +299,22 @@ BEGIN
 
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
-    score, dna_earned, yield_dna, validated, extracted, ended_at, end_reason,
+    score, dna_earned, yield_dna, validated, extracted, died,
     energy_committed, energy_harvest_multiplier_bps
   ) VALUES
     (v_session_a, v_player, v_snake, v_variant, 'PRIMAL',
-     1000, 100, 100, TRUE, TRUE, NOW(), 'completed', 1, 10000),
+     1000, 100, 100, TRUE, TRUE, FALSE, 1, 10000),
     (v_session_b, v_player, v_snake, v_variant, 'PRIMAL',
-     2500, 200, 200, TRUE, TRUE, NOW(), 'completed', 1, 10000),
+     2500, 200, 200, TRUE, TRUE, FALSE, 1, 10000),
     (v_session_invalid, v_player, v_snake, v_variant, 'PRIMAL',
-     9999, 50, 50, FALSE, FALSE, NOW(), 'completed', 1, 10000);
+     9999, 50, 50, FALSE, FALSE, TRUE, 1, 10000);
 
-  v_first := settle_game_session_reward(
-    v_player, v_session_a, 100, 1000, TRUE, '{"test":"a"}'::JSONB
-  );
-  PERFORM settle_game_session_reward(
-    v_player, v_session_b, 200, 2500, TRUE, '{"test":"b"}'::JSONB
-  );
-  v_replay := settle_game_session_reward(
-    v_player, v_session_a, 100, 1000, TRUE, '{"test":"ignored-on-replay"}'::JSONB
-  );
+  PERFORM pg_temp.complete_atomic_test_session(v_session_a);
+  PERFORM pg_temp.complete_atomic_test_session(v_session_b);
+  PERFORM pg_temp.complete_atomic_test_session(v_session_invalid);
+  v_first := settle_game_session_reward_from_snapshot(v_player, v_session_a);
+  PERFORM settle_game_session_reward_from_snapshot(v_player, v_session_b);
+  v_replay := settle_game_session_reward_from_snapshot(v_player, v_session_a);
 
   IF v_first ->> 'applied' <> 'true' OR v_replay ->> 'applied' <> 'false' THEN
     RAISE EXCEPTION 'same-session reward replay did not preserve exactly-once truth';
@@ -230,9 +334,7 @@ BEGIN
 
   SELECT runs_completed INTO v_lineage_runs
   FROM lineage_specimens WHERE specimen_id = v_snake;
-  PERFORM settle_game_session_reward(
-    v_player, v_session_invalid, 50, 9999, FALSE, '{"test":"invalid"}'::JSONB
-  );
+  PERFORM settle_game_session_reward_from_snapshot(v_player, v_session_invalid);
   IF (SELECT high_score FROM players WHERE id = v_player) <> GREATEST(v_initial_high, 2500) THEN
     RAISE EXCEPTION 'invalid run claimed a personal best';
   END IF;
@@ -255,6 +357,9 @@ BEGIN
     )),
     'featuredImpactKeys', '[]'::JSONB, 'recommendedAction', NULL
   );
+  PERFORM pg_temp.capture_test_progression(v_player, v_session_a);
+  PERFORM pg_temp.capture_test_progression(v_player, v_session_b);
+  PERFORM pg_temp.capture_test_progression(v_player, v_session_invalid);
   BEGIN
     PERFORM persist_run_impact_envelope(
       v_player,
@@ -299,6 +404,7 @@ DECLARE
   v_snake_b UUID := '06000000-0000-0000-0000-000000000406';
   v_session_a UUID := '06000000-0000-0000-0000-000000000407';
   v_session_b UUID := '06000000-0000-0000-0000-000000000408';
+  v_failed_session UUID := '06000000-0000-0000-0000-000000000409';
   v_variant UUID;
 BEGIN
   INSERT INTO auth.users(id, aud, role, email, created_at, updated_at)
@@ -324,19 +430,27 @@ BEGIN
 
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
-    started_at, ended_at, end_reason, validated, extracted, score,
+    started_at, validated, extracted, score,
     dna_earned, yield_dna, energy_committed,
     energy_harvest_multiplier_bps, energy_commitment_locked_at,
     clan_energy_battle_id, clan_energy_battle_side_id, clan_energy_clan_id
   ) VALUES
     (v_session_a, v_player, v_snake_a, v_variant, 'PRIMAL',
-     NOW() - INTERVAL '3 minutes', NOW() - INTERVAL '2 minutes',
-     'completed', TRUE, TRUE, 100, 100, 100, 1, 10000,
+     NOW() - INTERVAL '3 minutes', TRUE, TRUE, 100, 100, 100, 1, 10000,
      NOW() - INTERVAL '3 minutes', v_battle, v_side, v_clan),
     (v_session_b, v_player, v_snake_b, v_variant, 'PRIMAL',
-     NOW() - INTERVAL '2 minutes', NOW() - INTERVAL '1 minute',
-     'completed', TRUE, TRUE, 200, 200, 200, 1, 10000,
-     NOW() - INTERVAL '2 minutes', v_battle, v_side, v_clan);
+     NOW() - INTERVAL '2 minutes', TRUE, TRUE, 200, 200, 200, 1, 10000,
+     NOW() - INTERVAL '2 minutes', v_battle, v_side, v_clan),
+    (v_failed_session, v_player, v_snake_b, v_variant, 'PRIMAL',
+     NOW() - INTERVAL '1 minute', TRUE, FALSE, 300, 0, 0, 6, 100000,
+     NOW() - INTERVAL '1 minute', NULL, NULL, NULL);
+
+  PERFORM pg_temp.complete_atomic_test_session(
+    v_session_a, NOW() - INTERVAL '2 minutes'
+  );
+  PERFORM pg_temp.complete_atomic_test_session(
+    v_session_b, NOW() - INTERVAL '1 minute'
+  );
 
   PERFORM record_clan_energy_contribution(v_session_a, 1, 10800, 10800);
   PERFORM record_lineage_specimen_run(v_session_a);
@@ -352,6 +466,12 @@ BEGIN
      OR (SELECT clan_depth_delivered FROM lineage_specimen_runs WHERE session_id = v_session_b) <> 200
      OR (SELECT score FROM clan_energy_battle_sides WHERE id = v_side) <> 200 THEN
     RAISE EXCEPTION 'cross-specimen replacement diverged from final Clan Depth';
+  END IF;
+
+  PERFORM pg_temp.complete_atomic_test_session(v_failed_session, NOW());
+  PERFORM record_lineage_specimen_run(v_failed_session);
+  IF (SELECT highest_energy FROM lineage_specimens WHERE specimen_id = v_snake_b) <> 1 THEN
+    RAISE EXCEPTION 'failed run inflated extraction-only Energy prestige';
   END IF;
 END;
 $$;
@@ -509,6 +629,30 @@ BEGIN
 END;
 $$;
 
+-- Observation proof is authored only by the matching store→adopt transition.
+-- Even a privileged accidental write cannot pre-stamp an open row.
+DO $$
+DECLARE
+  v_player UUID;
+  v_session UUID := '06100000-0000-0000-0000-000000000099';
+BEGIN
+  SELECT id INTO v_player FROM players ORDER BY created_at, id LIMIT 1;
+  INSERT INTO game_sessions(id, player_id, dynasty)
+  VALUES (v_session, v_player, 'PRIMAL');
+  BEGIN
+    UPDATE game_sessions
+    SET atomic_reward_observed_at = clock_timestamp()
+    WHERE id = v_session;
+    RAISE EXCEPTION 'forged atomic observation was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'forged atomic observation was accepted' THEN RAISE; END IF;
+    IF POSITION('ATOMIC_REWARD_OBSERVATION_TRIGGER_AUTHORED' IN SQLERRM) = 0 THEN
+      RAISE;
+    END IF;
+  END;
+END;
+$$;
+
 -- Runtime privilege checks: browser roles read through RLS but cannot invoke
 -- settlement mutations. The server role retains the rolling API surface.
 DO $$
@@ -518,7 +662,19 @@ BEGIN
   FOREACH v_signature IN ARRAY ARRAY[
     'claim_season_tier(uuid,integer)',
     'secure_reached_season_entitlements(uuid,uuid)',
-    'settle_game_session_reward(uuid,uuid,integer,integer,boolean,jsonb)',
+    'settle_game_session_reward_from_snapshot(uuid,uuid)',
+    'settle_game_session_progression_core(uuid,uuid)',
+    'prepare_game_session_signal_stage(uuid,uuid)',
+    'capture_game_session_signal_result(uuid,uuid)',
+    'capture_game_session_clan_result(uuid,uuid)',
+    'list_pending_game_progression_sessions(integer)',
+    'stage_pending_game_session_end(uuid,uuid,uuid,jsonb)',
+    'list_pending_game_session_ends(integer)',
+    'get_pending_game_session_end(uuid,uuid)',
+    'count_staged_pending_game_session_ends(uuid)',
+    'adopt_pending_game_session_end(uuid)',
+    'get_career_settlement_capability()',
+    'record_game_session_play_day(uuid,uuid)',
     'record_lineage_specimen_run(uuid)',
     'persist_run_impact_envelope(uuid,uuid,jsonb)',
     'transition_player_attention(uuid,uuid,text)'
@@ -531,6 +687,24 @@ BEGIN
       RAISE EXCEPTION 'service role cannot execute server mutation %', v_signature;
     END IF;
   END LOOP;
+  IF has_function_privilege(
+       'service_role',
+       'settle_game_session_reward(uuid,uuid,integer,integer,boolean,jsonb)',
+       'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'service role can bypass the snapshot reward entry point';
+  END IF;
+  IF has_function_privilege(
+       'anon', 'store_pending_game_session_end(uuid,uuid,uuid,jsonb)', 'EXECUTE'
+     )
+     OR has_function_privilege(
+       'authenticated', 'store_pending_game_session_end(uuid,uuid,uuid,jsonb)', 'EXECUTE'
+     )
+     OR has_function_privilege(
+       'service_role', 'store_pending_game_session_end(uuid,uuid,uuid,jsonb)', 'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'internal pending-end store is directly executable';
+  END IF;
 END;
 $$;
 

@@ -4,6 +4,95 @@
 
 BEGIN;
 
+-- Post-061 every earning completion must cross the same durable service
+-- ingress as production. The fixture builds a strict server snapshot, stores
+-- it, commits that transaction boundary logically, and adopts separately.
+CREATE OR REPLACE FUNCTION pg_temp.complete_atomic_test_session(
+  p_session_id UUID,
+  p_ended_at TIMESTAMPTZ DEFAULT clock_timestamp()
+) RETURNS JSONB AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+  v_user_id UUID;
+  v_generation INTEGER := 1;
+  v_snapshot JSONB;
+  v_envelope JSONB;
+  v_result JSONB;
+BEGIN
+  SELECT gs.* INTO v_session
+  FROM game_sessions gs
+  WHERE gs.id = p_session_id;
+  IF NOT FOUND OR v_session.ended_at IS NOT NULL THEN
+    RAISE EXCEPTION 'TEST_SESSION_NOT_OPEN';
+  END IF;
+  SELECT p.user_id INTO v_user_id FROM players p WHERE p.id = v_session.player_id;
+  IF v_session.snake_used_id IS NOT NULL THEN
+    SELECT GREATEST(COALESCE(cs.generation, 1), 1)
+      INTO v_generation
+      FROM collected_snakes cs WHERE cs.id = v_session.snake_used_id;
+    v_generation := COALESCE(v_generation, 1);
+  END IF;
+  v_snapshot := jsonb_build_object(
+    'v', 1, 'settledAt', p_ended_at, 'dynasty', v_session.dynasty,
+    'extracted', COALESCE(v_session.extracted, FALSE),
+    'died', COALESCE(v_session.died, FALSE),
+    'validated', COALESCE(v_session.validated, FALSE),
+    'score', GREATEST(COALESCE(v_session.score, 0), 0),
+    'yieldDna', GREATEST(COALESCE(v_session.yield_dna, 0), 0),
+    'dnaCredited', GREATEST(COALESCE(v_session.dna_earned, 0), 0),
+    'energyCommitted', GREATEST(COALESCE(v_session.energy_committed, 0), 0),
+    'commitmentMultiplierBps', GREATEST(
+      COALESCE(v_session.energy_harvest_multiplier_bps, 0), 0
+    ),
+    'generation', v_generation, 'snakeId', v_session.snake_used_id,
+    'masteryXp', 0, 'ladderRung', 0,
+    'genome', COALESCE(v_session.genome, 'null'::JSONB),
+    'rewardMetadata', '{}'::JSONB,
+    'clan', jsonb_build_object(
+      'bestCount', 5, 'completionGraceSeconds', 10800,
+      'maxRunDurationSeconds', 10800
+    )
+  );
+  v_envelope := jsonb_build_object(
+    'kind', 'career_pending_end_v1', 'v', 1,
+    'userId', v_user_id, 'playerId', v_session.player_id,
+    'sessionId', v_session.id, 'capturedAt', p_ended_at,
+    'snapshot', v_snapshot,
+    'binding', jsonb_build_object(
+      'startedAt', v_session.started_at, 'dynasty', v_session.dynasty,
+      'snakeId', v_session.snake_used_id,
+      'snakeVariantId', v_session.snake_variant_id,
+      'runSeed', v_session.run_seed, 'runContext', v_session.run_context,
+      'energyCommitted', COALESCE(v_session.energy_committed, 0),
+      'commitmentMultiplierBps', COALESCE(v_session.energy_harvest_multiplier_bps, 0),
+      'signalRunId', v_session.signal_objective_run_id,
+      'clanBattleId', v_session.clan_energy_battle_id,
+      'clanBattleSideId', v_session.clan_energy_battle_side_id,
+      'clanId', v_session.clan_energy_clan_id
+    ),
+    'sessionFacts', jsonb_build_object(
+      'durationSeconds', GREATEST(COALESCE(v_session.duration_seconds, 0), 0),
+      'victory', COALESCE(v_session.victory, FALSE),
+      'foodsCollected', GREATEST(COALESCE(v_session.foods_collected, 0), 0),
+      'mutations', v_session.mutations, 'deathCause', v_session.death_cause,
+      'runEvents', v_session.run_events,
+      'validationErrors', v_session.validation_errors
+    )
+  );
+  v_result := stage_pending_game_session_end(
+    v_user_id, v_session.player_id, v_session.id, v_envelope
+  );
+  IF v_result ->> 'state' <> 'staged' THEN
+    RAISE EXCEPTION 'TEST_STAGE_FAILED: %', v_result;
+  END IF;
+  v_result := adopt_pending_game_session_end(v_session.id);
+  IF v_result ->> 'state' <> 'adopted' THEN
+    RAISE EXCEPTION 'TEST_ADOPTION_FAILED: %', v_result;
+  END IF;
+  RETURN v_snapshot;
+END;
+$$ LANGUAGE plpgsql;
+
 DO $$
 DECLARE
   v_user UUID := '05900000-0000-0000-0000-000000000001';
@@ -196,11 +285,12 @@ BEGIN
     END IF;
 
     UPDATE game_sessions
-       SET ended_at = NOW(), end_reason = 'completed', validated = TRUE,
+       SET started_at = NOW() - INTERVAL '60 seconds', validated = TRUE,
            extracted = TRUE,
            duration_seconds = 60, score = v_i * 100,
            yield_dna = v_i * 100, dna_earned = v_i * 100
      WHERE id = v_last_contribution_session;
+    PERFORM pg_temp.complete_atomic_test_session(v_last_contribution_session);
 
     v_result := record_clan_energy_contribution(v_last_contribution_session, 5, 10800, 10800);
     IF COALESCE((v_result ->> 'eligible')::BOOLEAN, FALSE) IS NOT TRUE THEN
@@ -264,9 +354,11 @@ BEGIN
   -- A crash may still pay personal salvage, but it does not preserve the
   -- potential clan result. Banking/extraction is what locks a contribution.
   UPDATE game_sessions
-     SET ended_at = NOW(), end_reason = 'completed', validated = TRUE,
-         extracted = FALSE, yield_dna = 9999, dna_earned = 2499
+     SET started_at = NOW() - INTERVAL '60 seconds', validated = TRUE,
+         extracted = FALSE, yield_dna = 9999, dna_earned = 2499,
+         duration_seconds = 60
    WHERE id = v_last_contribution_session;
+  PERFORM pg_temp.complete_atomic_test_session(v_last_contribution_session);
   v_result := record_clan_energy_contribution(v_last_contribution_session, 5, 10800, 10800);
   IF COALESCE((v_result ->> 'eligible')::BOOLEAN, FALSE) IS TRUE
      OR EXISTS (
@@ -288,10 +380,11 @@ BEGIN
     NOW() - INTERVAL '1 hour', 259200, 86400, 5
   );
   UPDATE game_sessions
-     SET started_at = NOW() - INTERVAL '2 minutes', ended_at = NOW(),
-         end_reason = 'completed', validated = TRUE, extracted = TRUE,
+     SET started_at = NOW() - INTERVAL '2 minutes',
+         validated = TRUE, extracted = TRUE, duration_seconds = 120,
          yield_dna = 10000, dna_earned = 10000
    WHERE id = v_last_contribution_session;
+  PERFORM pg_temp.complete_atomic_test_session(v_last_contribution_session);
   v_result := record_clan_energy_contribution(v_last_contribution_session, 5, 10800, 60);
   IF COALESCE((v_result ->> 'eligible')::BOOLEAN, FALSE) IS TRUE THEN
     RAISE EXCEPTION 'overlong run incorrectly remained clan-eligible: %', v_result;

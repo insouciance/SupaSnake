@@ -21,12 +21,20 @@ jest.mock('@sentry/nextjs', () => ({
 
 const mockFrom = jest.fn();
 const mockRpc = jest.fn();
+const mockListPendingRunProgression = jest.fn();
+const mockResumeOrRecoverRunImpact = jest.fn();
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: (table: string) => mockFrom(table),
     rpc: (fn: string, params: unknown) => mockRpc(fn, params),
   }),
+}));
+jest.mock('@/lib/server/gameProgressionSettlement', () => ({
+  listPendingRunProgression: (...args: unknown[]) =>
+    mockListPendingRunProgression(...args),
+  resumeOrRecoverRunImpact: (...args: unknown[]) =>
+    mockResumeOrRecoverRunImpact(...args),
 }));
 
 import { describe, expect, it, beforeEach } from '@jest/globals';
@@ -164,6 +172,10 @@ beforeEach(() => {
   mockCaptureException.mockClear();
   mockFrom.mockReset();
   mockRpc.mockReset();
+  mockListPendingRunProgression.mockReset();
+  mockResumeOrRecoverRunImpact.mockReset();
+  mockListPendingRunProgression.mockResolvedValue([]);
+  mockResumeOrRecoverRunImpact.mockResolvedValue({ status: 'found', impact: {} });
   db = new FakeSignalDb();
   wire(db);
 });
@@ -186,6 +198,53 @@ describe('authentication', () => {
 });
 
 describe('settlement', () => {
+  it('routes pending atomic sessions through durable preflight before the Signal sweep', async () => {
+    mockListPendingRunProgression.mockResolvedValue([
+      { playerId: 'p1', sessionId: 's1', protocol: 'atomic_v1' },
+    ]);
+
+    const response = await GET(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      progressionScanned: 1,
+      progressionSettled: 1,
+      progressionFailed: 0,
+    });
+    expect(mockResumeOrRecoverRunImpact).toHaveBeenCalledWith(
+      expect.anything(),
+      'p1',
+      's1'
+    );
+    expect(mockResumeOrRecoverRunImpact.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRpc.mock.invocationCallOrder.find(
+        (_order, index) => mockRpc.mock.calls[index]?.[0] === 'settle_signal_objective_run'
+      ) ?? Number.MAX_SAFE_INTEGER
+    );
+  });
+
+  it('does not fail the Signal cron while an ordered durable stage is deferred', async () => {
+    mockListPendingRunProgression.mockResolvedValue([
+      { playerId: 'p1', sessionId: 's1', protocol: 'atomic_v1' },
+    ]);
+    mockResumeOrRecoverRunImpact.mockResolvedValue({
+      status: 'pending',
+      error: new Error('earlier receipt is still settling'),
+    });
+
+    const response = await GET(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      progressionScanned: 1,
+      progressionSettled: 0,
+      progressionDeferred: 1,
+      progressionFailed: 0,
+    });
+  });
+
   it('settles the completed attempt and pays the flat bonus once', async () => {
     const response = await GET(request());
     expect(response.status).toBe(200);

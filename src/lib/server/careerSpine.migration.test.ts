@@ -2,12 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const migration = fs.readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/060_career_spine.sql'),
+  path.join(process.cwd(), 'supabase/migrations/061_career_spine.sql'),
   'utf8'
 );
 const code = migration.replace(/--[^\n]*/g, '');
 
-describe('migration 060 Career Spine', () => {
+describe('migration 061 Career Spine', () => {
   it('folds player rewards and audit history atomically once per session', () => {
     const start = code.indexOf('CREATE OR REPLACE FUNCTION settle_game_session_reward');
     const end = code.indexOf('$$ LANGUAGE plpgsql SECURITY DEFINER', start);

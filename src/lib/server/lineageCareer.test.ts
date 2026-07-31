@@ -102,7 +102,7 @@ describe('lineage dossier projection', () => {
     });
   });
 
-  it('degrades cleanly before migration 060', async () => {
+  it('degrades cleanly before migration 061', async () => {
     const result = await readLineageDossiers(
       client({ dossierError: { code: '42P01', message: 'lineage_dossiers missing' } }) as never,
       'player-1'

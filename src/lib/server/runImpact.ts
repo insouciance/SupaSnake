@@ -103,7 +103,7 @@ export function buildRunImpactEnvelope(
       before: input.personalBest.before,
       after: input.personalBest.after,
       delta: input.personalBest.after - input.personalBest.before,
-      destination: 'records',
+      destination: 'chronicle',
       artifactRef: input.sessionId,
     });
   }
@@ -458,4 +458,14 @@ export async function loadRunImpactEnvelope(
     Sentry.captureException(error, { extra: { playerId, sessionId } });
     return { status: 'unavailable', error };
   }
+}
+
+/** Historical compatibility alias. Recovery is driven only by atomic-v1
+ * server snapshots; protocol-NULL history remains a pure read miss. */
+export async function recoverRunImpactEnvelope(
+  supabase: SupabaseClient,
+  playerId: string,
+  sessionId: string
+): Promise<RunImpactLoadResult> {
+  return loadRunImpactEnvelope(supabase, playerId, sessionId);
 }

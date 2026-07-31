@@ -2,6 +2,7 @@
 
 var mockAuth: jest.Mock;
 var mockFrom: jest.Mock;
+var mockResume: jest.Mock;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -10,9 +11,12 @@ jest.mock('@supabase/supabase-js', () => ({
   }),
 }));
 jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
+jest.mock('@/lib/server/gameProgressionSettlement', () => ({
+  resumeOrRecoverRunImpact: (...args: unknown[]) => mockResume(...args),
+}));
 
 import { NextRequest } from 'next/server';
-import { GET } from './route';
+import { GET, POST } from './route';
 
 const SESSION_ID = '550e8400-e29b-41d4-a716-446655440000';
 const impact = {
@@ -45,6 +49,7 @@ function request(sessionId = SESSION_ID, auth = true) {
 describe('GET /api/progression/impact', () => {
   beforeEach(() => {
     mockAuth = jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    mockResume = jest.fn().mockResolvedValue({ status: 'found', impact });
     mockFrom = jest.fn((table: string) => {
       const result = table === 'players' ? { id: 'player-1' } : { envelope: impact };
       const chain: Record<string, jest.Mock> = {};
@@ -102,6 +107,23 @@ describe('GET /api/progression/impact', () => {
     expect(await response.json()).toEqual({
       error: 'Impact receipt is temporarily unavailable',
       retryable: true,
+    });
+  });
+
+  it('POST acknowledges server-secured pending settlement without client retry', async () => {
+    mockResume.mockResolvedValue({
+      status: 'pending',
+      error: { code: 'PGRST202', message: 'adopter not available on bridge schema' },
+    });
+    const response = await POST(request());
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: SESSION_ID,
     });
   });
 });

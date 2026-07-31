@@ -14,6 +14,10 @@ jest.mock('@supabase/supabase-js', () => ({
         limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
       })),
     })),
+    rpc: jest.fn(() => Promise.resolve({
+      data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+      error: null,
+    })),
   })),
 }));
 
@@ -27,6 +31,8 @@ describe('GET /api/health', () => {
       ...originalEnv,
       NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
+      NEXT_PUBLIC_CAREER_SPINE_V1: 'true',
       NODE_ENV: 'test',
     };
   });
@@ -52,6 +58,63 @@ describe('GET /api/health', () => {
     expect(data.checks).toBeDefined();
     expect(data.checks.database).toBeDefined();
     expect(data.checks.database.status).toBe('healthy');
+    expect(data.checks.careerSpine).toMatchObject({
+      status: 'healthy',
+      surfaceEnabled: true,
+      phase: 'ready',
+      bridgeVersion: 1,
+      careerVersion: 1,
+    });
+  });
+
+  it('accepts additive schema 060 only as an explicit bridge phase', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: { status: 'pending', bridgeVersion: 1, careerVersion: null },
+          error: null,
+        })),
+      }));
+
+    const response = await GET();
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.checks.careerSpine).toMatchObject({
+      status: 'healthy',
+      surfaceEnabled: true,
+      phase: 'bridge',
+      bridgeVersion: 1,
+      careerVersion: null,
+    });
+  });
+
+  it('rejects schema 059 where the server-only bridge capability is absent', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: null,
+          error: { code: 'PGRST202', message: 'function missing' },
+        })),
+      }));
+
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect((await response.json()).checks.careerSpine.status).toBe('unhealthy');
   });
 
   it('should include uptime information', async () => {
