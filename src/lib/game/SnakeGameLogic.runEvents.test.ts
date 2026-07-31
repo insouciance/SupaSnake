@@ -103,12 +103,30 @@ describe('SnakeGameLogic run-event recorder', () => {
   it('stamps a WALL death (terminal x with c=wall after the death sequence)', () => {
     const game = new SnakeGameLogic({ gridSize: 20, ruleset: RULESETS.PRIMAL });
     game.start();
+    let terminalPayload: GameOverData | null = null;
+    let flourishCompleted = false;
+    game.on('gameOver', (data) => {
+      terminalPayload = data as GameOverData;
+    });
+    game.on('deathSequenceComplete', () => {
+      flourishCompleted = true;
+    });
     // March right into the wall
     for (let i = 0; i < 30 && !game.getState().isDeathSequence; i++) {
       game.tick();
     }
+    // Terminal authority is latched synchronously: there is no refresh window
+    // in which the collision remains a resumable live run.
+    expect(terminalPayload).not.toBeNull();
+    expect(game.getState().isGameOver).toBe(true);
     expect(game.getState().isDeathSequence).toBe(true);
-    jest.advanceTimersByTime(800); // death drama -> finalizeRun
+    expect(flourishCompleted).toBe(false);
+    jest.advanceTimersByTime(799);
+    expect(game.getState().isDeathSequence).toBe(true);
+    expect(flourishCompleted).toBe(false);
+    jest.advanceTimersByTime(1);
+    expect(game.getState().isDeathSequence).toBe(false);
+    expect(flourishCompleted).toBe(true);
     expect(game.getDeathCause()).toBe('wall');
     const terminal = game.getRunEvents().events.filter((event) => event.e === 'x');
     expect(terminal).toEqual([expect.objectContaining({ c: 'wall' })]);

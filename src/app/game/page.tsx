@@ -196,6 +196,7 @@ import { getAimSystem, isAimSystemId, type AimSystemId } from '@/lib/game/aimSys
 import {
   advancePendingRunImpact,
   parseImpactFromSettlement,
+  recoverPendingRunImpactBounded,
   recoverRunImpact,
   type RunImpactEnvelope,
 } from '@/lib/game/runImpactClient';
@@ -203,7 +204,10 @@ import {
   activatePreparedRun,
   createRunStartRequestId,
   fetchActiveRun,
+  LatestOnlyAsyncQueue,
+  matchesContinuityAuthority,
   resumeCheckpointedRun,
+  RunContinuityClientError,
   saveActiveRunCheckpoint,
   type ActiveRunView,
 } from '@/lib/game/runContinuityClient';
@@ -233,6 +237,16 @@ const DIRECTION_BY_KEY: Record<string, Direction> = {
 };
 
 const ACTIVE_RUN_CHECKPOINT_INTERVAL_MS = 3_000;
+const ACTIVE_RUN_CONNECTION_HOLD_MS = 10_000;
+
+interface ActiveCheckpointProposal {
+  sessionId: string;
+  accessToken: string;
+  userId: string;
+  leaseToken: string;
+  checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>;
+  keepalive: boolean;
+}
 
 interface EquippedSnakeView {
   id: string;
@@ -488,6 +502,12 @@ export default function GamePage() {
     'none' | 'prepared' | 'activating' | 'active'
   >('none');
   const [interruptedRun, setInterruptedRun] = useState<ActiveRunView | null>(null);
+  const [settlingRecoveryState, setSettlingRecoveryState] = useState<
+    'idle' | 'polling' | 'retry'
+  >('idle');
+  const [continuitySafetyHold, setContinuitySafetyHold] = useState<
+    'connection' | 'stale' | null
+  >(null);
   const [requiresDirectionalStart, setRequiresDirectionalStart] = useState(false);
   const [minimalFirstRunPrompt, setMinimalFirstRunPrompt] = useState(false);
   const [showFirstResultDiscovery, setShowFirstResultDiscovery] = useState(false);
@@ -578,29 +598,43 @@ export default function GamePage() {
   const firstRunAtStartRef = useRef(false);
   const handoffAttemptedRef = useRef(false);
   const continuityCheckedRef = useRef(false);
+  const continuityUserIdRef = useRef<string | null>(null);
   const startRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   // Exclusive server-issued run lease and checkpoint cursor. Both are
   // document-memory only: reload recovery rotates the lease from server truth.
   const runLeaseRef = useRef<string | null>(null);
   const checkpointRevisionRef = useRef(0);
-  const checkpointSaveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const checkpointFailureSinceRef = useRef<number | null>(null);
+  const lastCheckpointAcceptedAtRef = useRef(0);
+  const checkpointWriterRef = useRef<
+    (proposal: ActiveCheckpointProposal) => Promise<void>
+  >(async () => undefined);
+  const checkpointQueueRef = useRef<LatestOnlyAsyncQueue<ActiveCheckpointProposal> | null>(null);
+  if (checkpointQueueRef.current === null) {
+    checkpointQueueRef.current = new LatestOnlyAsyncQueue((proposal) =>
+      checkpointWriterRef.current(proposal)
+    );
+  }
+  // Set synchronously before activation performs any await. React state is a
+  // display mirror, not a mutex: two first inputs in one event turn must share
+  // exactly one prepared→active request and opening checkpoint.
+  const activationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const deathPresentationRef = useRef<{
+    promise: Promise<void>;
+    resolve: () => void;
+  } | null>(null);
   const continuityPhaseRef = useRef(runContinuityPhase);
   const checkpointNowRef = useRef<(
     options?: { required?: boolean; keepalive?: boolean }
   ) => Promise<void>>(() => Promise.resolve());
 
-  // Keep refs in sync with state
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  useEffect(() => {
-    currentSessionIdRef.current = currentSessionId;
-  }, [currentSessionId]);
-
-  useEffect(() => {
-    continuityPhaseRef.current = runContinuityPhase;
-  }, [runContinuityPhase]);
+  // Async gameplay callbacks must see a newly rendered account/session before
+  // passive effects run. Updating latest-value refs during render closes the
+  // render→effect window in which an old settlement could otherwise mutate a
+  // newly signed-in account or a newer run.
+  sessionRef.current = session;
+  currentSessionIdRef.current = currentSessionId;
+  continuityPhaseRef.current = runContinuityPhase;
 
   // Retry an undelivered settlement when this tab regains connectivity. The
   // queue is memory-only; a settled duplicate recovers its canonical receipt.
@@ -608,8 +642,16 @@ export default function GamePage() {
     const token = session?.access_token;
     if (!token) return;
     const replay = () => {
-      void replayRewardOutbox(token)
+      void replayRewardOutbox(token, fetch, session?.user?.id)
         .then((result) => {
+          if (!matchesContinuityAuthority(
+            token,
+            sessionRef.current?.access_token,
+            undefined,
+            undefined,
+            session?.user?.id,
+            sessionRef.current?.user?.id
+          )) return;
           const current = result.impacts.find(
             (impact) => impact.sessionId === currentSessionIdRef.current
           );
@@ -635,7 +677,7 @@ export default function GamePage() {
     };
     window.addEventListener('online', replay);
     return () => window.removeEventListener('online', replay);
-  }, [session?.access_token]);
+  }, [session?.access_token, session?.user?.id]);
 
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
@@ -725,20 +767,60 @@ export default function GamePage() {
     syncChargeFromServer,
   } = useGameStore();
 
+  // A game route may survive sign-out/sign-in without a document reload.
+  // Reset the one-shot recovery gates and every in-memory run capability when
+  // the account id changes; otherwise the second account inherits the first
+  // account's "already checked" bit and can never discover its own run.
+  useEffect(() => {
+    const nextUserId = session?.user?.id ?? null;
+    if (continuityUserIdRef.current === nextUserId) return;
+    continuityUserIdRef.current = nextUserId;
+    continuityCheckedRef.current = false;
+    handoffAttemptedRef.current = false;
+    activationPromiseRef.current = null;
+    runLeaseRef.current = null;
+    checkpointRevisionRef.current = 0;
+    checkpointFailureSinceRef.current = null;
+    lastCheckpointAcceptedAtRef.current = 0;
+    currentSessionIdRef.current = null;
+    continuityPhaseRef.current = 'none';
+    setCurrentSessionId(null);
+    setInterruptedRun(null);
+    setRunContinuityPhase('none');
+    setContinuitySafetyHold(null);
+    setSettlingRecoveryState('idle');
+    setSettlementSecuredPending(false);
+    setStartError(null);
+    setIsStarting(false);
+    resetGame();
+    setRouteInitializing(nextUserId !== null);
+  }, [resetGame, session?.user?.id]);
+
   // A durable 202 transfers all recovery responsibility to the server. Poll
   // only while this Results screen remains open so the recognition can appear
   // as soon as its canonical receipt exists; closing the tab loses nothing.
   useEffect(() => {
     const token = session?.access_token;
+    const userId = session?.user?.id;
     const sessionId = currentSessionId;
-    if (!settlementSecuredPending || !token || !sessionId) return;
+    if (!settlementSecuredPending || !token || !userId || !sessionId) return;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
     const poll = async () => {
       try {
         const recovered = await advancePendingRunImpact(sessionId, token);
-        if (cancelled) return;
+        if (
+          cancelled ||
+          !matchesContinuityAuthority(
+            token,
+            sessionRef.current?.access_token,
+            sessionId,
+            currentSessionIdRef.current,
+            userId,
+            sessionRef.current?.user?.id
+          )
+        ) return;
         if (!recovered) throw new Error('Run impact is still pending');
         setRunImpact(recovered);
         setSettledYield(recovered.receipt.yieldDna);
@@ -758,6 +840,14 @@ export default function GamePage() {
             return response.json();
           })
           .then((data) => {
+            if (!matchesContinuityAuthority(
+              token,
+              sessionRef.current?.access_token,
+              sessionId,
+              currentSessionIdRef.current,
+              userId,
+              sessionRef.current?.user?.id
+            )) return;
             if (typeof data.player?.dna === 'number') {
               useCollectionStore.getState().setDnaBalance(data.player.dna);
             }
@@ -776,7 +866,12 @@ export default function GamePage() {
       cancelled = true;
       if (timeout !== null) clearTimeout(timeout);
     };
-  }, [currentSessionId, session?.access_token, settlementSecuredPending]);
+  }, [
+    currentSessionId,
+    session?.access_token,
+    session?.user?.id,
+    settlementSecuredPending,
+  ]);
 
   /**
    * Bank/crash preview for the HUD chip and game-over screen. Genome
@@ -1416,7 +1511,8 @@ export default function GamePage() {
   // the pause button stay disabled until the active decision resolves.
   const choiceActive =
     choiceOptions !== null || portalChoicePending || surgeChoicePending;
-  const blockingOverlayActive = choiceActive || showAbandonConfirm;
+  const blockingOverlayActive =
+    choiceActive || showAbandonConfirm || continuitySafetyHold !== null;
 
   // The run's world condition (§7.2, §7.3) - shapes the BANK preview and the
   // outcome copy exactly like the server recompute will. Read from the store
@@ -1600,6 +1696,14 @@ export default function GamePage() {
     });
 
     gameRef.current.on('deathSequence', (data: any) => {
+      let resolvePresentation: () => void = () => {};
+      const promise = new Promise<void>((resolve) => {
+        resolvePresentation = resolve;
+      });
+      deathPresentationRef.current = {
+        promise,
+        resolve: resolvePresentation,
+      };
       // Start death sequence effects
       setDeathSequence(true, data.position);
       if (data.position) {
@@ -1610,6 +1714,15 @@ export default function GamePage() {
       audioManager.play('death');
       haptics.death();
       screenShake.heavy();
+    });
+
+    gameRef.current.on('deathSequenceComplete', () => {
+      // Presentation-only timer. The engine already emitted the terminal
+      // gameOver event synchronously at collision so settlement cannot be
+      // escaped by refreshing during this flourish.
+      setDeathSequence(false);
+      setShowDeathExplosion(false);
+      deathPresentationRef.current?.resolve();
     });
 
     gameRef.current.on('extracted', () => {
@@ -1730,9 +1843,24 @@ export default function GamePage() {
 
     gameRef.current.on('gameOver', async (rawData: unknown) => {
       const data = rawData as GameOverData;
+      const presentationReady = data.endReason === 'died'
+        ? deathPresentationRef.current?.promise ?? Promise.resolve()
+        : Promise.resolve();
       // Send results to server first (use refs to avoid stale closure)
       const currentSession = sessionRef.current;
       const sessionId = currentSessionIdRef.current;
+      const settlementUserId = currentSession?.user?.id;
+      const settlementAuthorityCurrent = () =>
+        !currentSession?.access_token || !settlementUserId || !sessionId
+          ? true
+          : matchesContinuityAuthority(
+              currentSession.access_token,
+              sessionRef.current?.access_token,
+              sessionId,
+              currentSessionIdRef.current,
+              settlementUserId,
+              sessionRef.current?.user?.id
+            );
       if (currentSession?.access_token && sessionId) {
         const leaseToken = runLeaseRef.current;
         const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
@@ -1751,6 +1879,7 @@ export default function GamePage() {
           // failed free end is never queued for replay
           if (freeRunRef.current) return;
           enqueueReward({
+            ownerId: currentSession.user.id,
             sessionId,
             score: data.score,
             dna_earned: data.dnaCollected,
@@ -1767,16 +1896,24 @@ export default function GamePage() {
           });
         };
         try {
-          const response = await fetch('/api/game/session', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${currentSession.access_token}`,
-            },
-            // keepalive lets the browser finish this request even if the
-            // tab is closed immediately after death
-            keepalive: true,
-            body: JSON.stringify({
+          const settlementController = new AbortController();
+          const settlementTimeout = window.setTimeout(
+            () => settlementController.abort(),
+            8_000
+          );
+          let response: Response;
+          try {
+            response = await fetch('/api/game/session', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentSession.access_token}`,
+              },
+              // keepalive lets the browser finish this request even if the
+              // tab is closed immediately after death
+              keepalive: true,
+              signal: settlementController.signal,
+              body: JSON.stringify({
               action: 'end',
               sessionId: sessionId,
               score: data.score,
@@ -1797,9 +1934,13 @@ export default function GamePage() {
               ...(runEventRecord && runEventRecord.events.length > 0
                 ? { run_events: runEventRecord }
                 : {}),
-              ...(leaseToken ? { leaseToken } : {}),
-            }),
-          });
+                ...(leaseToken ? { leaseToken } : {}),
+              }),
+            });
+          } finally {
+            window.clearTimeout(settlementTimeout);
+          }
+          if (!settlementAuthorityCurrent()) return;
 
           if (!response.ok) {
             if (response.status === 409) {
@@ -1807,6 +1948,7 @@ export default function GamePage() {
               // to lose its recognition. New servers return `impact` on the
               // duplicate itself; recovery covers older/empty 409 bodies.
               const duplicateBody = await response.json().catch(() => null);
+              if (!settlementAuthorityCurrent()) return;
               const duplicateRecord =
                 duplicateBody && typeof duplicateBody === 'object'
                   ? duplicateBody as Record<string, unknown>
@@ -1821,6 +1963,7 @@ export default function GamePage() {
                 const secured = await fetchActiveRun(
                   currentSession.access_token
                 ).catch(() => null);
+                if (!settlementAuthorityCurrent()) return;
                 if (secured) {
                   setInterruptedRun(secured);
                   setRunContinuityPhase(
@@ -1838,6 +1981,7 @@ export default function GamePage() {
                     console.error('Failed to recover settled run impact:', error);
                     return null;
                   });
+                if (!settlementAuthorityCurrent()) return;
                 if (recovered) {
                   setRunImpact(recovered);
                   setSettledYield(recovered.receipt.yieldDna);
@@ -1859,6 +2003,7 @@ export default function GamePage() {
             }
           } else {
             const result = await response.json();
+            if (!settlementAuthorityCurrent()) return;
             runLeaseRef.current = null;
             checkpointRevisionRef.current = 0;
             if (isDurablyPendingSettlement(result)) {
@@ -1994,10 +2139,13 @@ export default function GamePage() {
             }
           }
         } catch (err) {
+          if (!settlementAuthorityCurrent()) return;
           console.error('Failed to send game results, queueing for replay:', err);
           queueForReplay();
         }
       }
+
+      if (!settlementAuthorityCurrent()) return;
 
       // The first completed result is the earliest point where meta systems
       // may introduce themselves. Keep that discovery contextual here and
@@ -2034,10 +2182,17 @@ export default function GamePage() {
         }
       }
 
+      // The terminal claim can settle while the authored animation plays, but
+      // a fast response never cuts the 800 ms flourish short. The request has
+      // its own timeout above, so a dead connection cannot pin this board.
+      await presentationReady;
+      if (!settlementAuthorityCurrent()) return;
       endGame(data.score, data.dnaCollected, data.endReason);
       setAwaitingResumeInput(false);
-      setDeathSequence(false);
-      setShowDeathExplosion(false);
+      if (data.endReason === 'extracted') {
+        setDeathSequence(false);
+        setShowDeathExplosion(false);
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -2231,6 +2386,11 @@ export default function GamePage() {
     setCurrentSessionId(data.sessionId);
     runLeaseRef.current = null;
     checkpointRevisionRef.current = 0;
+    deathPresentationRef.current?.resolve();
+    deathPresentationRef.current = null;
+    lastCheckpointAcceptedAtRef.current = 0;
+    checkpointFailureSinceRef.current = null;
+    setContinuitySafetyHold(null);
     setInterruptedRun(null);
     gameStartTime.current = Date.now();
     freeRunRef.current = mode === 'free';
@@ -2458,7 +2618,41 @@ export default function GamePage() {
         return;
       }
       if (data.preparing === true || typeof data.sessionId !== 'string') {
-        setStartError('Your run is secured and still preparing. Retry to continue it.');
+        // A process failure can leave only the idempotency shell: no Energy
+        // moved and no browser state may be used to reconstruct the manifest.
+        // Discover that server row now so the player gets explicit Check again
+        // / Abandon controls instead of an endless 202 message.
+        const preparingRun = await fetchActiveRun(session.access_token).catch(
+          (error) => {
+            console.error('Failed to inspect preparing run:', error);
+            return null;
+          }
+        );
+        if (!matchesContinuityAuthority(
+          session.access_token,
+          sessionRef.current?.access_token,
+          undefined,
+          undefined,
+          session.user.id,
+          sessionRef.current?.user?.id
+        )) return;
+        if (
+          preparingRun &&
+          (typeof data.sessionId !== 'string' ||
+            preparingRun.sessionId === data.sessionId)
+        ) {
+          setCurrentSessionId(preparingRun.sessionId);
+          setActiveEnergyCommitted(preparingRun.energyCommitted);
+          setInterruptedRun(preparingRun);
+          setRunContinuityPhase(
+            preparingRun.phase === 'active' ? 'active' : 'none'
+          );
+        }
+        setStartError(
+          preparingRun?.phase === 'preparing'
+            ? 'Launch preparation was interrupted. No Energy was used; check again or release it and launch anew.'
+            : 'Your run is secured and still preparing. Retry to continue it.'
+        );
         return;
       }
 
@@ -2489,23 +2683,128 @@ export default function GamePage() {
     hasCompletedFirstRun,
     isStarting,
     session?.access_token,
+    session?.user?.id,
   ]);
 
-  /**
-   * Serialize checkpoint writes so compare-and-swap revisions cannot race.
-   * The proposal is captured from the deterministic engine, but only the
-   * accepted server copy can later be resumed. Nothing is written to browser
-   * storage, and settlement never trusts this object for payout arithmetic.
-   */
+  const holdForContinuity = useCallback((kind: 'connection' | 'stale') => {
+    if (kind === 'stale') {
+      runLeaseRef.current = null;
+      checkpointRevisionRef.current = 0;
+    }
+    gameRef.current?.pause('decision');
+    setAwaitingResumeInput(false);
+    setContinuitySafetyHold(kind);
+  }, []);
+
+  // One in flight + one replaceable latest snapshot. The same request is
+  // retried after a lost response, allowing the row-locked RPC's digest
+  // idempotency to answer without inventing a new revision.
+  checkpointWriterRef.current = async (proposal) => {
+    if (
+      runLeaseRef.current !== proposal.leaseToken ||
+      !matchesContinuityAuthority(
+        proposal.accessToken,
+        sessionRef.current?.access_token,
+        proposal.sessionId,
+        currentSessionIdRef.current,
+        proposal.userId,
+        sessionRef.current?.user?.id
+      )
+    ) return;
+    const expectedRevision = checkpointRevisionRef.current;
+    const saveOnce = async () => {
+      const controller = proposal.keepalive ? null : new AbortController();
+      const timeout = controller
+        ? window.setTimeout(() => controller.abort(), 4_500)
+        : null;
+      try {
+        return await saveActiveRunCheckpoint(
+          proposal.accessToken,
+          proposal.sessionId,
+          expectedRevision,
+          proposal.checkpoint,
+          proposal.leaseToken,
+          {
+            keepalive: proposal.keepalive,
+            ...(controller ? { signal: controller.signal } : {}),
+          }
+        );
+      } finally {
+        if (timeout !== null) window.clearTimeout(timeout);
+      }
+    };
+    try {
+      let receipt;
+      try {
+        receipt = await saveOnce();
+      } catch (error) {
+        if (
+          error instanceof RunContinuityClientError &&
+          error.reason === 'lease_conflict'
+        ) throw error;
+        receipt = await saveOnce();
+      }
+      if (
+        runLeaseRef.current !== proposal.leaseToken ||
+        !matchesContinuityAuthority(
+          proposal.accessToken,
+          sessionRef.current?.access_token,
+          proposal.sessionId,
+          currentSessionIdRef.current,
+          proposal.userId,
+          sessionRef.current?.user?.id
+        )
+      ) return;
+      checkpointRevisionRef.current = receipt.revision;
+      lastCheckpointAcceptedAtRef.current = Date.now();
+      checkpointFailureSinceRef.current = null;
+      if (continuitySafetyHold === 'connection') {
+        setContinuitySafetyHold(null);
+        setAwaitingResumeInput(true);
+      }
+    } catch (error) {
+      if (
+        runLeaseRef.current !== proposal.leaseToken ||
+        !matchesContinuityAuthority(
+          proposal.accessToken,
+          sessionRef.current?.access_token,
+          proposal.sessionId,
+          currentSessionIdRef.current,
+          proposal.userId,
+          sessionRef.current?.user?.id
+        )
+      ) return;
+      if (
+        error instanceof RunContinuityClientError &&
+        error.reason === 'lease_conflict'
+      ) {
+        holdForContinuity('stale');
+      } else {
+        checkpointFailureSinceRef.current ??= Date.now();
+        const lastAccepted = lastCheckpointAcceptedAtRef.current;
+        if (
+          lastAccepted > 0 &&
+          Date.now() - lastAccepted >= ACTIVE_RUN_CONNECTION_HOLD_MS
+        ) {
+          holdForContinuity('connection');
+        }
+      }
+      throw error;
+    }
+  };
+
+  /** Capture one bounded latest proposal; no browser persistence is used. */
   const queueActiveCheckpoint = useCallback((options: {
     required?: boolean;
     keepalive?: boolean;
   } = {}): Promise<void> => {
     const game = gameRef.current;
-    const token = sessionRef.current?.access_token;
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
     const sessionId = currentSessionIdRef.current;
     const leaseToken = runLeaseRef.current;
-    if (!game || !token || !sessionId || !leaseToken) {
+    if (!game || !token || !userId || !sessionId || !leaseToken) {
       return options.required
         ? Promise.reject(new Error('The active run has no checkpoint lease'))
         : Promise.resolve();
@@ -2517,56 +2816,15 @@ export default function GamePage() {
     } catch (error) {
       return options.required ? Promise.reject(error) : Promise.resolve();
     }
-    const keepalive = options.keepalive === true &&
-      JSON.stringify(checkpoint).length < 55_000;
-    const queuedSession = sessionId;
-    const queuedLease = leaseToken;
-    const task = checkpointSaveChainRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        if (
-          currentSessionIdRef.current !== queuedSession ||
-          runLeaseRef.current !== queuedLease
-        ) return;
-        const expectedRevision = checkpointRevisionRef.current;
-        try {
-          const receipt = await saveActiveRunCheckpoint(
-            token,
-            queuedSession,
-            expectedRevision,
-            checkpoint,
-            queuedLease,
-            { keepalive }
-          );
-          checkpointRevisionRef.current = receipt.revision;
-        } catch (error) {
-          // The checkpoint may have committed even when its HTTP response was
-          // lost. Recover the server cursor once and advance this newer
-          // captured boundary from it; otherwise every later CAS would remain
-          // permanently one revision behind.
-          const active = await fetchActiveRun(token).catch(() => null);
-          if (
-            active?.sessionId !== queuedSession ||
-            active.phase !== 'active' ||
-            active.checkpointRevision <= expectedRevision ||
-            currentSessionIdRef.current !== queuedSession ||
-            runLeaseRef.current !== queuedLease
-          ) {
-            throw error;
-          }
-          checkpointRevisionRef.current = active.checkpointRevision;
-          const recoveredReceipt = await saveActiveRunCheckpoint(
-            token,
-            queuedSession,
-            active.checkpointRevision,
-            checkpoint,
-            queuedLease,
-            { keepalive }
-          );
-          checkpointRevisionRef.current = recoveredReceipt.revision;
-        }
-      });
-    checkpointSaveChainRef.current = task;
+    const task = checkpointQueueRef.current!.enqueue({
+      sessionId,
+      accessToken: token,
+      userId,
+      leaseToken,
+      checkpoint,
+      keepalive:
+        options.keepalive === true && JSON.stringify(checkpoint).length < 55_000,
+    });
     if (!options.required) {
       void task.catch((error) => {
         // The prior accepted checkpoint remains valid. A lease conflict means
@@ -2586,6 +2844,56 @@ export default function GamePage() {
       checkpointNowRef.current = () => Promise.resolve();
     };
   }, [queueActiveCheckpoint]);
+
+  const retryContinuityCheckpoint = useCallback(() => {
+    if (continuitySafetyHold === 'stale') {
+      window.location.reload();
+      return;
+    }
+    void queueActiveCheckpoint({ required: true }).catch((error) => {
+      console.error('Run continuity retry deferred:', error);
+    });
+  }, [continuitySafetyHold, queueActiveCheckpoint]);
+
+  useEffect(() => {
+    if (continuitySafetyHold !== 'connection') return;
+    window.addEventListener('online', retryContinuityCheckpoint);
+    return () => window.removeEventListener('online', retryContinuityCheckpoint);
+  }, [continuitySafetyHold, retryContinuityCheckpoint]);
+
+  // The safety bound is measured from the last server receipt, independent of
+  // an individual fetch timeout or retry. A hung pair of HTTP attempts must
+  // not let the board continue beyond the promised ten-second rollback cap.
+  useEffect(() => {
+    if (
+      runContinuityPhase !== 'active' ||
+      !isPlaying ||
+      isGameOver ||
+      continuitySafetyHold !== null ||
+      !runLeaseRef.current ||
+      lastCheckpointAcceptedAtRef.current <= 0
+    ) return;
+    let timer: number | null = null;
+    const watch = () => {
+      const remaining = ACTIVE_RUN_CONNECTION_HOLD_MS -
+        (Date.now() - lastCheckpointAcceptedAtRef.current);
+      if (remaining <= 0) {
+        holdForContinuity('connection');
+        return;
+      }
+      timer = window.setTimeout(watch, remaining);
+    };
+    watch();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    continuitySafetyHold,
+    holdForContinuity,
+    isGameOver,
+    isPlaying,
+    runContinuityPhase,
+  ]);
 
   // A bounded cadence limits rollback after a browser or device failure.
   // Critical gameplay decisions additionally checkpoint through the event
@@ -2625,60 +2933,94 @@ export default function GamePage() {
    * seeded opening is rebuilt, so a stale queued gesture can never fire on a
    * later retry.
    */
-  const releaseReadyBoard = useCallback(async (): Promise<boolean> => {
-    if (runContinuityPhase === 'activating') return false;
-    const game = gameRef.current;
-    if (!game) return false;
+  const releaseReadyBoard = useCallback((): Promise<boolean> => {
+    if (activationPromiseRef.current) return activationPromiseRef.current;
+    const task = (async (): Promise<boolean> => {
+      const game = gameRef.current;
+      if (!game) return false;
 
-    if (runContinuityPhase === 'prepared') {
-      const token = sessionRef.current?.access_token;
-      const sessionId = currentSessionIdRef.current;
-      if (!token || !sessionId) {
-        setStartError('The prepared run could not be verified.');
-        return false;
-      }
-      setRunContinuityPhase('activating');
-      try {
-        const activated = await activatePreparedRun(token, sessionId);
-        if (!activated.leaseToken) {
-          throw new Error('Run activation returned no exclusive lease');
-        }
-        runLeaseRef.current = activated.leaseToken;
-        checkpointRevisionRef.current = activated.checkpointRevision;
-        // Movement cannot begin until checkpoint 1 is accepted. If this request
-        // fails, the opening is rebuilt and a retry rotates the empty-run lease;
-        // Energy is never spent again.
-        await queueActiveCheckpoint({ required: true });
-        setRunContinuityPhase('active');
-      } catch (error) {
-        console.error('Failed to activate prepared run:', error);
-        const secured = await fetchActiveRun(token).catch(() => null);
-        if (
-          secured?.phase === 'active' &&
-          secured.canContinue &&
-          secured.checkpoint
-        ) {
-          setInterruptedRun(secured);
-          setRunContinuityPhase('active');
-          setReady(false);
+      if (continuityPhaseRef.current === 'prepared') {
+        const authority = sessionRef.current;
+        const token = authority?.access_token;
+        const userId = authority?.user?.id;
+        const sessionId = currentSessionIdRef.current;
+        if (!token || !userId || !sessionId) {
+          setStartError('The prepared run could not be verified.');
           return false;
         }
-        runLeaseRef.current = null;
-        checkpointRevisionRef.current = 0;
-        setRunContinuityPhase('prepared');
-        setStartError('The run is still secured. Check the connection and try again.');
-        game.start();
-        syncState();
-        setReady(true);
-        return false;
+        const stillOwnsActivation = () => matchesContinuityAuthority(
+          token,
+          sessionRef.current?.access_token,
+          sessionId,
+          currentSessionIdRef.current,
+          userId,
+          sessionRef.current?.user?.id
+        );
+        let openingCheckpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>;
+        try {
+          openingCheckpoint = game.exportCheckpoint();
+        } catch {
+          setStartError('The prepared opening could not be secured.');
+          return false;
+        }
+        continuityPhaseRef.current = 'activating';
+        setRunContinuityPhase('activating');
+        try {
+          const activated = await activatePreparedRun(
+            token,
+            sessionId,
+            openingCheckpoint
+          );
+          if (!stillOwnsActivation()) return false;
+          if (!activated.leaseToken || !activated.checkpoint) {
+            throw new Error('Run activation returned no secured opening lease');
+          }
+          runLeaseRef.current = activated.leaseToken;
+          checkpointRevisionRef.current = activated.checkpointRevision;
+          lastCheckpointAcceptedAtRef.current = Date.now();
+          checkpointFailureSinceRef.current = null;
+          setContinuitySafetyHold(null);
+          continuityPhaseRef.current = 'active';
+          setRunContinuityPhase('active');
+        } catch (error) {
+          if (!stillOwnsActivation()) return false;
+          console.error('Failed to activate prepared run:', error);
+          const secured = await fetchActiveRun(token).catch(() => null);
+          if (!stillOwnsActivation()) return false;
+          if (
+            secured?.phase === 'active' &&
+            secured.canContinue &&
+            secured.checkpoint
+          ) {
+            setInterruptedRun(secured);
+            continuityPhaseRef.current = 'active';
+            setRunContinuityPhase('active');
+            setReady(false);
+            return false;
+          }
+          runLeaseRef.current = null;
+          checkpointRevisionRef.current = 0;
+          continuityPhaseRef.current = 'prepared';
+          setRunContinuityPhase('prepared');
+          setStartError('The run is still secured. Check the connection and try again.');
+          game.start();
+          syncState();
+          setReady(true);
+          return false;
+        }
       }
-    }
 
-    setRequiresDirectionalStart(false);
-    setReady(false);
-    startGameLoop();
-    return true;
-  }, [queueActiveCheckpoint, runContinuityPhase, setReady, startGameLoop, syncState]);
+      setRequiresDirectionalStart(false);
+      setReady(false);
+      startGameLoop();
+      return true;
+    })();
+    activationPromiseRef.current = task;
+    void task.finally(() => {
+      if (activationPromiseRef.current === task) activationPromiseRef.current = null;
+    });
+    return task;
+  }, [setReady, startGameLoop, syncState]);
 
   const applyCheckpointedRun = useCallback((active: ActiveRunView): void => {
     if (!active.manifest || !active.checkpoint || !active.leaseToken) {
@@ -2706,6 +3048,9 @@ export default function GamePage() {
     const state = game.getState();
     runLeaseRef.current = active.leaseToken;
     checkpointRevisionRef.current = active.checkpointRevision;
+    lastCheckpointAcceptedAtRef.current = Date.now();
+    checkpointFailureSinceRef.current = null;
+    setContinuitySafetyHold(null);
     gameStartTime.current = Date.now() - active.checkpoint.privateState.elapsedMs;
     setCurrentSessionId(active.sessionId);
     setActiveEnergyCommitted(active.energyCommitted);
@@ -2744,18 +3089,46 @@ export default function GamePage() {
   ]);
 
   const continueInterruptedRun = useCallback(async (): Promise<void> => {
-    const token = sessionRef.current?.access_token;
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
     const run = interruptedRun;
-    if (!token || !run) throw new Error('No interrupted run is available');
+    if (!token || !userId || !run) {
+      throw new Error('No interrupted run is available');
+    }
     const resumed = await resumeCheckpointedRun(token, run.sessionId);
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      run.sessionId,
+      currentSessionIdRef.current,
+      userId,
+      sessionRef.current?.user?.id
+    )) return;
     applyCheckpointedRun(resumed);
   }, [applyCheckpointedRun, interruptedRun]);
 
   const recoverServerRun = useCallback(async (): Promise<boolean> => {
-    const token = sessionRef.current?.access_token;
-    if (!token || !gameRef.current) return false;
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    if (!token || !userId || !gameRef.current) return false;
     const active = await fetchActiveRun(token);
-    if (!active) return false;
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      undefined,
+      undefined,
+      userId,
+      sessionRef.current?.user?.id
+    )) {
+      return false;
+    }
+    if (!active) {
+      setInterruptedRun(null);
+      setRunContinuityPhase('none');
+      return false;
+    }
 
     setCurrentSessionId(active.sessionId);
     setActiveEnergyCommitted(active.energyCommitted);
@@ -2785,6 +3158,144 @@ export default function GamePage() {
     return true;
   }, [applyStartedRun]);
 
+  const refreshRecoveredWallet = useCallback(async (
+    token: string,
+    userId: string,
+    sessionId: string
+  ): Promise<void> => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch('/api/player', {
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error(`/api/player responded ${response.status}`);
+      }
+      const data = await response.json();
+      if (!matchesContinuityAuthority(
+        token,
+        sessionRef.current?.access_token,
+        sessionId,
+        currentSessionIdRef.current,
+        userId,
+        sessionRef.current?.user?.id
+      )) return;
+      if (typeof data.player?.dna === 'number') {
+        useCollectionStore.getState().setDnaBalance(data.player.dna);
+      }
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, []);
+
+  const applyRecoveredSettlingResult = useCallback((
+    impact: RunImpactEnvelope,
+    authority?: { token: string; userId: string }
+  ): void => {
+    setRunImpact(impact);
+    setSettledYield(impact.receipt.yieldDna);
+    setSettledCredited(impact.receipt.dnaCredited);
+    setActiveEnergyCommitted(impact.receipt.energyCommitted);
+    setActiveEnergyMultiplierBps(impact.receipt.commitmentMultiplierBps);
+    setSettlementSecuredPending(false);
+    setInterruptedRun(null);
+    endGame(
+      impact.receipt.score,
+      impact.receipt.dnaCredited,
+      impact.outcome === 'crashed' ? 'died' : 'extracted'
+    );
+    requestAttentionRefresh();
+    if (authority) {
+      void refreshRecoveredWallet(
+        authority.token,
+        authority.userId,
+        impact.sessionId
+      ).catch((error) => {
+        console.error('Failed to refresh recovered run wallet:', error);
+      });
+    }
+  }, [endGame, refreshRecoveredWallet]);
+
+  const recoverSettlingResult = useCallback(async (): Promise<boolean> => {
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    const run = interruptedRun;
+    if (!token || !userId || !run || run.phase !== 'settling') return false;
+    const impact = await advancePendingRunImpact(run.sessionId, token);
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      run.sessionId,
+      currentSessionIdRef.current,
+      userId,
+      sessionRef.current?.user?.id
+    )) return false;
+    if (!impact) return false;
+    applyRecoveredSettlingResult(impact, { token, userId });
+    return true;
+  }, [applyRecoveredSettlingResult, interruptedRun]);
+
+  // Reopening after a durable 202 should feel like returning to the Results
+  // ceremony, not like landing in a maintenance screen. Give the server a
+  // bounded automatic window, then reveal a manual retry only if it remains
+  // unavailable. The secured run itself never becomes abandonable here.
+  useEffect(() => {
+    const run = interruptedRun;
+    const token = session?.access_token;
+    const userId = session?.user?.id;
+    if (!run || run.phase !== 'settling' || !token || !userId) {
+      setSettlingRecoveryState('idle');
+      return;
+    }
+    const controller = new AbortController();
+    setStartError(null);
+    setSettlingRecoveryState('polling');
+    void recoverPendingRunImpactBounded(run.sessionId, token, {
+      signal: controller.signal,
+    })
+      .then((impact) => {
+        if (controller.signal.aborted) return;
+        if (!matchesContinuityAuthority(
+          token,
+          sessionRef.current?.access_token,
+          run.sessionId,
+          currentSessionIdRef.current,
+          userId,
+          sessionRef.current?.user?.id
+        )) return;
+        if (impact) {
+          applyRecoveredSettlingResult(impact, { token, userId });
+          return;
+        }
+        setSettlingRecoveryState('retry');
+      })
+      .catch((error) => {
+        if (
+          controller.signal.aborted ||
+          !matchesContinuityAuthority(
+            token,
+            sessionRef.current?.access_token,
+            run.sessionId,
+            currentSessionIdRef.current,
+            userId,
+            sessionRef.current?.user?.id
+          )
+        ) return;
+        console.error('Automatic result recovery failed:', error);
+        setSettlingRecoveryState('retry');
+      });
+    return () => controller.abort();
+  }, [
+    applyRecoveredSettlingResult,
+    interruptedRun,
+    session?.access_token,
+    session?.user?.id,
+  ]);
+
   // Consume Home/Lab's prepared run once. This effect is declared after the
   // engine initialization effect, so the local board exists before the
   // handoff is applied. Invalid/expired handoffs remain on this screen with a
@@ -2801,6 +3312,7 @@ export default function GamePage() {
       }
       continuityCheckedRef.current = true;
       let cancelled = false;
+      let settled = false;
       void recoverServerRun()
         .catch((error) => {
           if (cancelled) return;
@@ -2808,10 +3320,15 @@ export default function GamePage() {
           setStartError('Could not check for an interrupted run. Retry in a moment.');
         })
         .finally(() => {
+          settled = true;
           if (!cancelled) setRouteInitializing(false);
         });
       return () => {
         cancelled = true;
+        // React StrictMode deliberately tears down and replays effects. Do not
+        // leave the replay believing a cancelled request completed the one
+        // continuity check responsible for releasing "Preparing board…".
+        if (!settled) continuityCheckedRef.current = false;
       };
     }
     if (handoffAttemptedRef.current) {
@@ -2835,6 +3352,7 @@ export default function GamePage() {
       // the run. Ask the server for the same prepared manifest before ever
       // presenting a second Play action.
       let cancelled = false;
+      let settled = false;
       void recoverServerRun()
         .then((recovered) => {
           if (!cancelled && !recovered) {
@@ -2847,10 +3365,15 @@ export default function GamePage() {
           setStartError('Could not recover the prepared run. Retry in a moment.');
         })
         .finally(() => {
+          settled = true;
           if (!cancelled) setRouteInitializing(false);
         });
       return () => {
         cancelled = true;
+        if (!settled) {
+          handoffAttemptedRef.current = false;
+          continuityCheckedRef.current = false;
+        }
       };
     }
 
@@ -3037,9 +3560,10 @@ export default function GamePage() {
           // The read-only recovery envelope never exposes a lease. A deliberate
           // confirmed abandonment first claims the same exclusive authority a
           // continuation would claim, so a stale tab cannot end the run later.
-          const claimed = interruptedRun.canContinue
-            ? await resumeCheckpointedRun(token, sessionId)
-            : await activatePreparedRun(token, sessionId);
+          if (!interruptedRun.canContinue) {
+            throw new Error('The active run has no resumable checkpoint');
+          }
+          const claimed = await resumeCheckpointedRun(token, sessionId);
           leaseToken = claimed.leaseToken;
           runLeaseRef.current = leaseToken;
           checkpointRevisionRef.current = claimed.checkpointRevision;
@@ -3098,6 +3622,7 @@ export default function GamePage() {
     cancelPauseRearm();
     runLeaseRef.current = null;
     checkpointRevisionRef.current = 0;
+    startRequestRef.current = null;
     setCurrentSessionId(null);
     setInterruptedRun(null);
     setRunContinuityPhase('none');
@@ -3419,6 +3944,28 @@ export default function GamePage() {
   };
   const cockpitDecisionDock: ReactNode = !HUD_COCKPIT_V1_ENABLED
     ? undefined
+    : continuitySafetyHold !== null && isPlaying && !isGameOver
+      ? (
+          <div
+            className="mx-auto max-w-md space-y-3 rounded-arcade border border-venom-orange/70 bg-void-deep/95 p-4 text-center shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+            role="alert"
+            data-testid="continuity-safety-hold"
+          >
+            <p className="label-arcade text-venom-orange">Run held safely</p>
+            <p className="font-body text-sm text-beige/80">
+              {continuitySafetyHold === 'stale'
+                ? 'This run continued in another window. This copy cannot move or settle.'
+                : 'The latest position is still being secured. Movement will stay held until the connection returns.'}
+            </p>
+            <button
+              type="button"
+              className="btn-go min-h-[44px] px-5"
+              onClick={retryContinuityCheckpoint}
+            >
+              {continuitySafetyHold === 'stale' ? 'Load secured run' : 'Try connection'}
+            </button>
+          </div>
+        )
     : showAbandonConfirm && isPlaying && !isGameOver
       ? (
           <AbandonRunDialog
@@ -4097,11 +4644,20 @@ export default function GamePage() {
                 <div className="space-y-2">
                   <p className="label-arcade text-[#7df9ff]">Run secured</p>
                   <h2 className="heading-display text-3xl text-bone-white">
-                    Continue your run
+                    {interruptedRun.phase === 'settling'
+                      ? 'Result secured'
+                      : interruptedRun.phase === 'incompatible'
+                        ? 'Run needs an update'
+                        : 'Continue your run'}
                   </h2>
                   <p className="font-body text-beige/75">
-                    This unfinished run still owns its committed Energy. A new run
-                    cannot replace it, and nothing has been silently forfeited.
+                    {interruptedRun.phase === 'settling'
+                      ? 'The server has locked this outcome and is finishing its progression rewards.'
+                      : interruptedRun.phase === 'preparing'
+                        ? 'Launch preparation stopped before Energy was committed. The server kept the request receipt so retrying could never charge twice.'
+                      : interruptedRun.phase === 'incompatible'
+                        ? 'This run belongs to an older gameplay version and cannot be resumed safely. Its committed Energy remains attached until you explicitly release it.'
+                        : 'This unfinished run still owns its committed Energy. A new run cannot replace it, and nothing has been silently forfeited.'}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 rounded-arcade border border-scale-blue-light/40 bg-void/55 p-4">
@@ -4114,17 +4670,36 @@ export default function GamePage() {
                   <div>
                     <p className="label-arcade">State</p>
                     <p className="font-display uppercase text-bone-white">
-                      {interruptedRun.canContinue ? 'Ready to continue' : 'Securing checkpoint'}
+                      {interruptedRun.phase === 'settling'
+                        ? settlingRecoveryState === 'retry'
+                          ? 'Safe · retry ready'
+                          : 'Opening results'
+                        : interruptedRun.phase === 'incompatible'
+                          ? 'Update required'
+                          : interruptedRun.phase === 'legacy'
+                          ? 'Legacy run open'
+                          : interruptedRun.canContinue
+                            ? 'Ready to continue'
+                            : 'Securing checkpoint'}
                     </p>
                   </div>
                 </div>
-                {!interruptedRun.canContinue && (
+                {!interruptedRun.canContinue &&
+                  interruptedRun.phase !== 'settling' &&
+                  interruptedRun.phase !== 'incompatible' && (
                   <p className="font-body text-sm text-beige/60">
                     The latest server-verified continuation is not available yet.
                     Retry when the connection is stable, or explicitly abandon the run.
                   </p>
                 )}
-                {showInterruptedAbandonConfirm ? (
+                {interruptedRun.phase === 'settling' && (
+                  <p className="font-body text-sm text-beige/70">
+                    Your result is locked on the server. It cannot be abandoned
+                    or replayed while progression finishes. Results will open
+                    automatically when its canonical receipt is ready.
+                  </p>
+                )}
+                {showInterruptedAbandonConfirm && interruptedRun.phase !== 'settling' ? (
                   <div
                     role="alertdialog"
                     aria-modal="true"
@@ -4135,8 +4710,9 @@ export default function GamePage() {
                       Abandon this run?
                     </p>
                     <p className="font-body text-sm text-beige/70">
-                      This is the only action that forfeits the unfinished run. Committed
-                      Energy is not refunded.
+                      {interruptedRun.phase === 'preparing'
+                        ? 'No Energy was consumed. This releases only the interrupted launch receipt so you can launch anew.'
+                        : 'This is the only action that forfeits the unfinished run. Committed Energy is not refunded.'}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" className="btn-danger min-h-[44px] px-5" onClick={handleQuit}>
@@ -4156,14 +4732,30 @@ export default function GamePage() {
                     <button
                       type="button"
                       className="btn-go min-h-[44px] px-6"
-                      disabled={isStarting}
+                      disabled={
+                        isStarting ||
+                        (interruptedRun.phase === 'settling' &&
+                          settlingRecoveryState !== 'retry')
+                      }
                       onClick={() => {
                         setIsStarting(true);
                         setStartError(null);
-                        const continueAction = interruptedRun.canContinue
-                          ? continueInterruptedRun()
-                          : recoverServerRun();
+                        const continueAction = interruptedRun.phase === 'settling'
+                          ? recoverSettlingResult()
+                          : interruptedRun.canContinue
+                            ? continueInterruptedRun()
+                            : recoverServerRun();
                         void continueAction
+                          .then((resolved) => {
+                            if (
+                              interruptedRun.phase === 'settling' &&
+                              resolved === false
+                            ) {
+                              setStartError(
+                                'The result is still secured. Retry in a moment.'
+                              );
+                            }
+                          })
                           .catch((error) => {
                             console.error('Failed to retry run recovery:', error);
                             setStartError('The run is still secured. Retry when the connection returns.');
@@ -4173,17 +4765,23 @@ export default function GamePage() {
                     >
                       {isStarting
                         ? 'Checking…'
-                        : interruptedRun.canContinue
+                        : interruptedRun.phase === 'settling'
+                          ? settlingRecoveryState === 'retry'
+                            ? 'Retry result'
+                            : 'Opening results…'
+                          : interruptedRun.canContinue
                           ? 'Continue run'
                           : 'Check again'}
                     </button>
-                    <button
-                      type="button"
-                      className="min-h-[44px] px-4 font-body text-sm text-strike-red"
-                      onClick={() => setShowInterruptedAbandonConfirm(true)}
-                    >
-                      Abandon…
-                    </button>
+                    {interruptedRun.phase !== 'settling' && (
+                      <button
+                        type="button"
+                        className="min-h-[44px] px-4 font-body text-sm text-strike-red"
+                        onClick={() => setShowInterruptedAbandonConfirm(true)}
+                      >
+                        Abandon…
+                      </button>
+                    )}
                   </div>
                 )}
                 {startError && <p className="font-body text-sm text-strike-red">{startError}</p>}
@@ -4698,6 +5296,22 @@ export default function GamePage() {
         isOpen={showSaveProgress}
         onClose={() => setShowSaveProgress(false)}
       />
+
+      {!HUD_COCKPIT_V1_ENABLED && continuitySafetyHold !== null && isPlaying && !isGameOver && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-void-deep/70 p-4 backdrop-blur-sm">
+          <div className="max-w-sm space-y-3 rounded-arcade border border-venom-orange/70 bg-void-deep p-5 text-center">
+            <p className="font-display text-venom-orange">Run held safely</p>
+            <p className="font-body text-sm text-beige/80">
+              {continuitySafetyHold === 'stale'
+                ? 'This run continued in another window.'
+                : 'Securing the latest position before play continues.'}
+            </p>
+            <button type="button" className="btn-go min-h-[44px] px-5" onClick={retryContinuityCheckpoint}>
+              {continuitySafetyHold === 'stale' ? 'Load secured run' : 'Try connection'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Handle claim ceremony (Identity v1 section 3.3): offered after
           the first banked run while the name is still generated */}

@@ -343,8 +343,9 @@ describe('the session route wires the Signal, tightly', () => {
 
   it('passes the claim result as the exemption fact, never a request value', () => {
     expect(code).toMatch(/signalObjectiveRunId:\s*signalClaim\?\.exemptRunId \?\? null,/);
-    // The only occurrence of the fact in the whole route is that one.
-    expect([...code.matchAll(/signalObjectiveRunId/g)]).toHaveLength(1);
+    // Exactly one assignment creates the fact. Later reads may derive the
+    // Energy exemption from that immutable server-owned object.
+    expect([...code.matchAll(/signalObjectiveRunId\s*:/g)]).toHaveLength(1);
     // And nothing from the request body can reach it.
     expect(code).not.toMatch(/signalObjectiveRunId:\s*(body|signalRunId|signal_objective_run_id)/);
   });

@@ -81,6 +81,7 @@ let careerCapability: Row = {
   careerVersion: 1,
 };
 let pendingAdoptionError: Row | null = null;
+let pendingLookupError: Row | null = null;
 
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
@@ -121,6 +122,7 @@ jest.mock('@supabase/supabase-js', () => ({
         return { data: { accepted: true, state: 'staged' }, error: null };
       }
       if (fn === 'get_pending_game_session_end') {
+        if (pendingLookupError) return { data: null, error: pendingLookupError };
         const p = (params ?? {}) as Row;
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         if (!target?.__pendingEnvelope) return { data: null, error: null };
@@ -322,6 +324,7 @@ beforeEach(() => {
     careerVersion: 1,
   };
   pendingAdoptionError = null;
+  pendingLookupError = null;
   seedPlayer();
   seedSession();
   mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
@@ -533,6 +536,32 @@ describe('a settled run records `completed`', () => {
     });
   });
 
+  it('keeps a continuity settlement retryable when its pending receipt lookup fails', async () => {
+    const leaseToken = 'continuity-terminal-lease-token-with-enough-entropy';
+    const { createHash } = await import('crypto');
+    seedSession({
+      start_request_id: START_REQUEST_ID,
+      continuity_phase: 'active',
+      continuity_checkpoint: { version: 1 },
+      continuity_checkpoint_revision: 1,
+      continuity_lease_hash: createHash('sha256').update(leaseToken).digest('hex'),
+      ended_at: null,
+      end_reason: 'completed',
+    });
+    pendingLookupError = { code: '08006', message: 'connection failure' };
+
+    const response = await POST(post(endBody({ leaseToken })));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      retryable: true,
+    });
+    expect(session().end_reason).toBe('completed');
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+  });
+
   it('does not call an unpersisted impact envelope successful', async () => {
     impactPersistError = { code: '08006', message: 'connection failure' };
     const response = await POST(post(endBody()));
@@ -659,7 +688,7 @@ describe('an expired session awards nothing and cannot be re-ended for value', (
   });
 });
 
-describe('the forfeit path records `abandoned` / `disconnected`', () => {
+describe('the explicit abandonment path', () => {
   it('cannot overwrite a completed run whose durable settlement is pending', async () => {
     seedSession({ ended_at: null, end_reason: 'completed' });
     const response = await POST(
@@ -674,15 +703,15 @@ describe('the forfeit path records `abandoned` / `disconnected`', () => {
     expect(session().ended_at).toBeNull();
   });
 
-  it('records the reason the client asked for', async () => {
+  it('never interprets disconnection copy as consent to forfeit implicitly', async () => {
     const response = await POST(
       post({ action: 'abandon', sessionId: 'session-1', reason: 'disconnected' })
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ success: true, endReason: 'disconnected' });
-    expect(session().end_reason).toBe('disconnected');
+    expect(body).toEqual({ success: true, endReason: 'abandoned' });
+    expect(session().end_reason).toBe('abandoned');
     expect(session().ended_at).not.toBeNull();
   });
 

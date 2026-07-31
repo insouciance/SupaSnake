@@ -15,9 +15,8 @@
  *   abandoned     the player started a new run while an older one of theirs
  *                 had been open past the stale window. Server-observed at
  *                 session start; the client makes no claim.
- *   disconnected  the client forfeited a run it can no longer finish. The
- *                 forfeit endpoint has no branch that grants anything, so
- *                 this is a pure surrender.
+ *   disconnected  historical server data only. Reloads, lost networks and
+ *                 closed tabs never imply consent to forfeit a continuity run.
  *   expired       the sweep found the row open past the stale window. Writes
  *                 two columns and touches nothing else.
  *
@@ -47,12 +46,11 @@ export type SessionEndReason = (typeof SESSION_END_REASONS)[number];
 export const SETTLED_END_REASON: SessionEndReason = 'completed';
 
 /**
- * The reasons a client may ask for when forfeiting its own run. Both close
- * the session for zero; neither can be used to end a run for value, and
- * `completed` and `expired` are deliberately absent — those two are written
- * by the server alone.
+ * The only reason a client may ask for when deliberately forfeiting its own
+ * run. Disconnection is not consent and therefore remains historical data,
+ * not a request option.
  */
-export const CLIENT_FORFEIT_REASONS = ['abandoned', 'disconnected'] as const;
+export const CLIENT_FORFEIT_REASONS = ['abandoned'] as const;
 
 export type ClientForfeitReason = (typeof CLIENT_FORFEIT_REASONS)[number];
 
@@ -138,6 +136,8 @@ export interface OpenSessionRow {
   started_at: string | null;
   ended_at: string | null;
   end_reason: string | null;
+  /** Present on every durable run created by the continuity protocol. */
+  start_request_id?: string | null;
 }
 
 /**
@@ -151,6 +151,9 @@ export function isStaleOpenSession(
   now: Date = new Date()
 ): boolean {
   if (row.ended_at !== null && row.ended_at !== undefined) return false;
+  // Continuity sessions have no expiry horizon. They remain recoverable until
+  // verified settlement or an explicit player abandonment.
+  if (row.start_request_id != null) return false;
   if (!row.started_at) return false;
 
   const cutoffs = staleSessionCutoffs(now);

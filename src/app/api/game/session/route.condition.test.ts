@@ -150,6 +150,15 @@ jest.mock('@supabase/supabase-js', () => ({
         }
         return { data: { accepted: true, state: 'staged' }, error: null };
       }
+      if (fn === 'stage_continuity_game_session_end') {
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (!target || target.continuity_lease_hash !== p.p_lease_hash) {
+          return { data: null, error: { message: 'run_lease_conflict' } };
+        }
+        target.end_reason = 'completed';
+        target.__pendingEnvelope = p.p_envelope;
+        return { data: { accepted: true, state: 'staged' }, error: null };
+      }
       if (fn === 'adopt_pending_game_session_end') {
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         const envelope = target?.__pendingEnvelope as Row | undefined;
@@ -287,11 +296,34 @@ jest.mock('@supabase/supabase-js', () => ({
         if (!target) {
           return { data: null, error: { message: 'session_not_found' } };
         }
-        if (target.continuity_phase === 'prepared') {
-          target.continuity_phase = 'active';
-          target.continuity_activated_at = new Date().toISOString();
+        if (target.continuity_phase !== 'prepared') {
+          return { data: null, error: { message: 'run_not_prepared' } };
         }
+        target.continuity_phase = 'active';
+        target.continuity_activated_at = new Date().toISOString();
+        target.continuity_checkpoint = p.p_checkpoint;
+        target.continuity_checkpoint_revision = 1;
+        target.continuity_checkpoint_saved_at = new Date().toISOString();
+        target.continuity_checkpoint_digest = p.p_checkpoint_digest;
+        target.continuity_lease_hash = p.p_lease_hash;
+        target.continuity_lease_epoch = 1;
+        target.continuity_lease_issued_at = new Date().toISOString();
         return { data: target, error: null };
+      }
+
+      if (fn === 'abandon_run_continuity') {
+        const target = db.game_sessions.find(
+          (row) => row.id === p.p_session_id && row.player_id === p.p_player_id
+        );
+        if (!target) {
+          return { data: null, error: { message: 'session_not_found' } };
+        }
+        target.ended_at = new Date().toISOString();
+        target.end_reason = 'abandoned';
+        return {
+          data: { accepted: true, sessionId: target.id, endReason: 'abandoned' },
+          error: null,
+        };
       }
 
       if (fn === 'commit_run_energy') {
@@ -431,13 +463,20 @@ import { GET, POST } from './route';
 import {
   ANOMALY_STRAINS,
   anomalyForWeek,
+  isAnomalyId,
   type AnomalyId,
 } from '@/shared/game/anomalies';
 import {
   applyOutcomeWithMutations,
   computeRunTotals,
+  getRuleset,
+  normalizeDynastyName,
 } from '@/shared/game/rulesets';
 import { describeSignalDay, signalObjectiveId } from '@/shared/game/signal';
+import { SnakeGameLogic } from '@/lib/game/SnakeGameLogic';
+import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
+import { isMutationId } from '@/shared/game/mutations';
+import { sanitizeTraits } from '@/shared/game/traits';
 
 const PLAYER_ID = 'player-1';
 const SNAKE_ID = 'snake-1';
@@ -479,6 +518,27 @@ function get() {
     method: 'GET',
     headers: { authorization: 'Bearer token' },
   });
+}
+
+function openingCheckpoint(manifest: Row) {
+  const simulation = manifest.simulation as Row;
+  const runSnake = manifest.runSnake as Row;
+  const ladder = manifest.ladder as Row | undefined;
+  const game = new SnakeGameLogic();
+  game.setRuleset(getRuleset(normalizeDynastyName(String(runSnake.dynasty))));
+  game.setTraits(sanitizeTraits(manifest.traits));
+  game.setGrowthProfile(manifest.growthProfile);
+  game.setLadderRung(ladder?.rung);
+  game.setGenome(sanitizeGenomeCapability(manifest.genome));
+  game.setMutationPool(
+    Array.isArray(manifest.mutationPool)
+      ? manifest.mutationPool.filter(isMutationId)
+      : []
+  );
+  game.setSimulationSeed(String(simulation.seed));
+  game.setAnomaly(isAnomalyId(manifest.condition) ? manifest.condition : null);
+  game.start();
+  return game.exportCheckpoint();
 }
 
 function seedPlayer() {
@@ -698,6 +758,50 @@ describe('server-owned run-start continuity', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
+  it('fails a pre-continuity tab closed before any Energy or session write', async () => {
+    const response = await POST(new NextRequest('http://localhost/api/game/session', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'start',
+        mode: 'earn',
+        snake_id: SNAKE_ID,
+        energyCommitment: 6,
+        confirmMaxEnergy: true,
+      }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reason: 'client_upgrade_required',
+      reloadRequired: true,
+      error: expect.stringMatching(/Reload once.*No Energy was used/i),
+    });
+    expect(db.game_sessions).toHaveLength(0);
+    expect(rpcCalls.some((call) =>
+      call.fn === 'finalize_run_continuity_start' || call.fn === 'commit_run_energy'
+    )).toBe(false);
+  });
+
+  it('rejects zero Energy for a rewarded run before creating a preparing shell', async () => {
+    const response = await POST(post({
+      ...startBody,
+      energyCommitment: 0,
+      confirmMaxEnergy: false,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: expect.stringMatching(/whole number from 1 to 6/i),
+    });
+    expect(db.game_sessions).toHaveLength(0);
+    expect(rpcCalls.some((call) =>
+      call.fn === 'finalize_run_continuity_start' || call.fn === 'commit_run_energy'
+    )).toBe(false);
+  });
+
   it('returns the exact frozen manifest after a lost six-Energy response', async () => {
     const firstResponse = await POST(post(startBody));
     const first = await firstResponse.json();
@@ -766,23 +870,40 @@ describe('server-owned run-start continuity', () => {
     });
 
     const sessionId = String(manifest.sessionId);
-    const activation = await POST(post({ action: 'activate', sessionId }));
+    const activation = await POST(post({
+      action: 'activate',
+      sessionId,
+      checkpoint: openingCheckpoint(manifest),
+    }));
     expect(activation.status).toBe(200);
-    expect(await activation.json()).toMatchObject({
+    const activationBody = await activation.json();
+    expect(activationBody).toMatchObject({
       activeRun: {
         phase: 'active',
-        canContinue: false,
-        requiresAbandon: true,
-        manifest: null,
+        canContinue: true,
+        requiresAbandon: false,
+        manifest,
+        checkpointRevision: 1,
+        leaseToken: expect.any(String),
       },
     });
 
     const active = await (await GET(get())).json();
     expect(active.activeRun).toMatchObject({
       phase: 'active',
-      manifest: null,
-      requiresAbandon: true,
+      manifest,
+      canContinue: true,
+      requiresAbandon: false,
+      checkpointRevision: 1,
     });
+    expect(active.activeRun.leaseToken).toBeNull();
+
+    const rewind = await POST(post({
+      action: 'activate',
+      sessionId,
+      checkpoint: openingCheckpoint(manifest),
+    }));
+    expect(rewind.status).toBe(409);
   });
 
   it('cannot activate a session outside the authenticated player scope', async () => {
@@ -792,6 +913,24 @@ describe('server-owned run-start continuity', () => {
     }));
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ reason: 'not_found' });
+  });
+
+  it('abandons a prepared run directly without fake activation or a lease', async () => {
+    const manifest = await (await POST(post(startBody))).json();
+    const response = await POST(post({
+      action: 'abandon',
+      sessionId: manifest.sessionId,
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      endReason: 'abandoned',
+    });
+    expect(rpcCalls.some((call) => call.fn === 'activate_run_continuity')).toBe(false);
+    expect(rpcCalls.find((call) => call.fn === 'abandon_run_continuity'))
+      .toEqual(expect.objectContaining({
+        params: expect.objectContaining({ p_lease_hash: null }),
+      }));
   });
 });
 
@@ -991,12 +1130,21 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
     const startBody = await start.json();
     expect(startBody.condition).toBeTruthy();
 
+    const activation = await POST(post({
+      action: 'activate',
+      sessionId: startBody.sessionId,
+      checkpoint: openingCheckpoint(startBody),
+    }));
+    expect(activation.status).toBe(200);
+    const activeRun = (await activation.json()).activeRun;
+
     const end = await POST(
       post(
         endBody(startBody.sessionId, {
           // The run just started, so keep the claim inside the server's own
           // elapsed bound; 8s × CYBER's 2.5 foods/s is exactly FOOD_COUNT.
           duration_seconds: 8,
+          leaseToken: activeRun.leaseToken,
         })
       )
     );

@@ -15,8 +15,10 @@ function uint32(value: number): number {
 }
 
 /** Mulberry32 advances its internal cursor by this constant on every draw. */
-const MULBERRY32_INCREMENT = 0x6d2b79f5n;
-const UINT32_MASK = 0xffff_ffffn;
+// Constructor syntax keeps the production ES5 emit target compatible; both
+// source numbers are exactly representable 32-bit integers.
+const MULBERRY32_INCREMENT = BigInt(0x6d2b79f5);
+const UINT32_MASK = BigInt(0xffff_ffff);
 
 function expectedState(seed: number, draws: number): number {
   return Number(

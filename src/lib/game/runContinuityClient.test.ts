@@ -3,10 +3,12 @@ import {
   activatePreparedRun,
   createRunStartRequestId,
   fetchActiveRun,
+  LatestOnlyAsyncQueue,
+  matchesContinuityAuthority,
   resumeCheckpointedRun,
   saveActiveRunCheckpoint,
 } from './runContinuityClient';
-import type { SnakeCheckpointV1 } from './SnakeGameLogic';
+import { SNAKE_RULES_VERSION, type SnakeCheckpointV1 } from './SnakeGameLogic';
 
 function response(body: unknown, status = 200): Response {
   return {
@@ -21,6 +23,38 @@ describe('run continuity client', () => {
     expect(createRunStartRequestId()).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
+  });
+
+  it('rejects late recovery from another auth or run session', () => {
+    expect(matchesContinuityAuthority('token-a', 'token-a')).toBe(true);
+    expect(matchesContinuityAuthority('token-a', 'token-b')).toBe(false);
+    expect(matchesContinuityAuthority('token-a', null)).toBe(false);
+    expect(
+      matchesContinuityAuthority('token-a', 'token-a', 'run-a', 'run-a')
+    ).toBe(true);
+    expect(
+      matchesContinuityAuthority('token-a', 'token-a', 'run-a', 'run-b')
+    ).toBe(false);
+    expect(
+      matchesContinuityAuthority(
+        'expired-token',
+        'refreshed-token',
+        'run-a',
+        'run-a',
+        'user-a',
+        'user-a'
+      )
+    ).toBe(true);
+    expect(
+      matchesContinuityAuthority(
+        'token-a',
+        'token-b',
+        'run-a',
+        'run-a',
+        'user-a',
+        'user-b'
+      )
+    ).toBe(false);
   });
 
   it('reads a prepared server manifest', async () => {
@@ -54,10 +88,16 @@ describe('run continuity client', () => {
   });
 
   it('activates immediately before first movement', async () => {
+    const opening = {
+      version: 1,
+      engineVersion: 'snake-engine-v1',
+      rulesVersion: SNAKE_RULES_VERSION,
+    } as SnakeCheckpointV1;
     const fetcher = jest.fn(async (_url, init) => {
       expect(JSON.parse(String(init?.body))).toEqual({
         action: 'activate',
         sessionId: 'run-1',
+        checkpoint: opening,
       });
       return response({
         activeRun: {
@@ -66,19 +106,19 @@ describe('run continuity client', () => {
           startedAt: '2026-07-31T08:00:00Z',
           activatedAt: '2026-07-31T08:00:02Z',
           energyCommitted: 6,
-          canContinue: false,
-          requiresAbandon: true,
-          manifest: null,
-          checkpoint: null,
-          checkpointRevision: 0,
-          checkpointSavedAt: null,
+          canContinue: true,
+          requiresAbandon: false,
+          manifest: { sessionId: 'run-1' },
+          checkpoint: opening,
+          checkpointRevision: 1,
+          checkpointSavedAt: '2026-07-31T08:00:02Z',
           leaseToken: 'lease-token-that-is-long-enough-for-a-run',
           leaseEpoch: 1,
         },
       });
     }) as unknown as typeof fetch;
 
-    await expect(activatePreparedRun('token', 'run-1', fetcher)).resolves.toMatchObject({
+    await expect(activatePreparedRun('token', 'run-1', opening, fetcher)).resolves.toMatchObject({
       sessionId: 'run-1',
       phase: 'active',
     });
@@ -97,6 +137,7 @@ describe('run continuity client', () => {
     const checkpoint = {
       version: 1,
       engineVersion: 'snake-engine-v1',
+      rulesVersion: SNAKE_RULES_VERSION,
     } as SnakeCheckpointV1;
     const fetcher = jest.fn(async (_url, init) => {
       expect(init?.keepalive).toBe(true);
@@ -139,7 +180,11 @@ describe('run continuity client', () => {
           canContinue: true,
           requiresAbandon: false,
           manifest: { sessionId: 'run-1' },
-          checkpoint: { version: 1, engineVersion: 'snake-engine-v1' },
+          checkpoint: {
+            version: 1,
+            engineVersion: 'snake-engine-v1',
+            rulesVersion: SNAKE_RULES_VERSION,
+          },
           checkpointRevision: 4,
           checkpointSavedAt: '2026-07-31T08:05:00Z',
           leaseToken: 'new-exclusive-lease-token-that-is-long-enough',
@@ -151,5 +196,26 @@ describe('run continuity client', () => {
       checkpointRevision: 4,
       leaseEpoch: 2,
     });
+  });
+
+  it('coalesces a burst to one in-flight and one latest full snapshot', async () => {
+    const releases: Array<() => void> = [];
+    const writes: number[] = [];
+    const queue = new LatestOnlyAsyncQueue<number>(async (value) => {
+      writes.push(value);
+      await new Promise<void>((resolve) => releases.push(resolve));
+    });
+
+    const first = queue.enqueue(1);
+    await Promise.resolve();
+    const second = queue.enqueue(2);
+    const third = queue.enqueue(3);
+    expect(writes).toEqual([1]);
+    releases.shift()?.();
+    await first;
+    await Promise.resolve();
+    expect(writes).toEqual([1, 3]);
+    releases.shift()?.();
+    await expect(Promise.all([second, third])).resolves.toEqual([undefined, undefined]);
   });
 });

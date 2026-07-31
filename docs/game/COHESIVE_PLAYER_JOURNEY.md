@@ -330,6 +330,14 @@ that same decision, not a reroll. A checkpoint rejected by validation leaves the
 valid checkpoint available and raises an integrity event; it does not silently erase
 the session.
 
+`SNAKE_RULES_VERSION` is therefore a release gate, not a routine cache key. The first
+continuity release has no older-version continuity rows. Before any later rules-version
+bump, release engineering must inventory open runs and ship one of two explicit paths:
+retain the prior deterministic interpreter until those runs resolve, or provide a
+server-authoritative compatibility/cancellation policy that preserves the player's
+secured stake and any already-secured outcome. Stranding an open run behind a
+no-refund **Abandon** action is not a compatibility policy and blocks the bump.
+
 ### 5.3 Recovery surface
 
 On authenticated entry, before offering Launch, the app reads the one open session:
@@ -338,8 +346,9 @@ On authenticated entry, before offering Launch, the app reads the one open sessi
   exact committed Energy and consequence;
 - **active with verified checkpoint:** primary **Continue Run**, with checkpoint age
   or bounded rollback disclosed only when materially stale;
-- **settling:** **Recover result**, which opens the canonical Results receipt when
-  ready;
+- **settling:** automatically advance the durable settlement and open the canonical
+  Results receipt when ready; show manual Retry only after a bounded automatic window
+  fails;
 - **no open session:** ordinary Launch;
 - **integrity failure:** stay in context with Retry and support/reference data; never
   replace the session with a new anonymous run.
