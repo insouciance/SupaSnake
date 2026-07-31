@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import type { ClanJoinPolicy } from '@/lib/clan/types';
 import { CLAN_BANNERS, CLAN_EMBLEMS, bannerById, emblemById } from '@/lib/clan/heraldry';
 import { CLAN_GAUNTLET_ENABLED, CLAN_PLAYOFFS_ENABLED } from '@/lib/clan/config';
+import { clanMemberReportHref, clanReportHref } from '@/lib/clan/report';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { NavBar } from '@/components/ui/NavBar';
 import { IconShield, IconUser } from '@/components/ui/icons';
@@ -21,6 +22,7 @@ import { ClanDiscordPanel } from '@/components/clan/ClanDiscordPanel';
 import { ClanDirectory } from '@/components/clan/ClanDirectory';
 import { ClanGovernancePanel } from '@/components/clan/ClanGovernancePanel';
 import { ClanGloryPanel } from '@/components/clan/ClanGloryPanel';
+import { ClanFoundingPrompt } from '@/components/clan/ClanFoundingPrompt';
 import { ClanRoster, InviteInbox } from '@/components/clan/ClanRoster';
 import {
   clanAction,
@@ -104,9 +106,18 @@ function ClanHero({ view }: { view: ClanFullView }) {
               <h1 className="truncate heading-display text-3xl text-bone-white">{readString(clan, 'name')}</h1>
               <span className="rounded-arcade border border-white/25 bg-void/35 px-2 py-1 font-display text-xs text-bone-white">[{readString(clan, 'tag')}]</span>
             </div>
-            <p className="mt-1 font-body text-sm text-bone-white/70">
-              You are {view.membership?.roleLabel ?? 'Member'} · {view.settings?.joinPolicy === 'open' ? 'Open clan' : view.settings?.joinPolicy === 'application' ? 'Applications' : 'Invite only'}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="font-body text-sm text-bone-white/70">
+                You are {view.membership?.roleLabel ?? 'Member'} · {view.settings?.joinPolicy === 'open' ? 'Open clan' : view.settings?.joinPolicy === 'application' ? 'Applications' : 'Invite only'}
+              </p>
+              <a
+                href={clanReportHref(readString(clan, 'id'), readString(clan, 'name'))}
+                className="inline-flex min-h-[44px] items-center text-xs font-body text-bone-white/55 hover:text-bone-white"
+                aria-label={`Report clan ${readString(clan, 'name')}`}
+              >
+                Report clan
+              </a>
+            </div>
           </div>
         </div>
 
@@ -149,6 +160,17 @@ function StandingsPreview({ view }: { view: ClanFullView }) {
             <li key={member.userId} className="flex items-center gap-3 rounded-arcade bg-void/45 px-3 py-2">
               <span className="w-8 shrink-0 font-display text-venom-orange">#{member.contribution.rank}</span>
               <span className="min-w-0 flex-1 truncate font-body text-bone-white">{member.identity?.displayHandle ?? 'Handler'}</span>
+              <a
+                href={clanMemberReportHref(
+                  view.membership?.clanId ?? '',
+                  member.userId,
+                  member.identity?.displayHandle ?? 'Handler'
+                )}
+                className="inline-flex min-h-[44px] shrink-0 items-center text-[11px] font-body text-beige/45 hover:text-bone-white"
+                aria-label={`Report handle ${member.identity?.displayHandle ?? 'Handler'}`}
+              >
+                Report
+              </a>
               <span className="shrink-0 font-display text-bone-white">{member.contribution.bestFiveDepth?.toLocaleString()}</span>
             </li>
           ))}
@@ -422,6 +444,12 @@ export default function ClanPage() {
         ) : view ? (
           <div className="space-y-5">
             <InviteInbox accessToken={session?.access_token} view={view} onChanged={() => void refreshAll()} />
+            <ClanFoundingPrompt
+              accessToken={session?.access_token}
+              inClan={false}
+              onFound={() => setSoloTab('found')}
+              onJoin={() => setSoloTab('found')}
+            />
             <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Join or found a clan">
               <TabButton active={soloTab === 'discover'} onClick={() => setSoloTab('discover')}>Discover</TabButton>
               <TabButton active={soloTab === 'found'} onClick={() => setSoloTab('found')}>Found or invite</TabButton>

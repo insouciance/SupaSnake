@@ -14,6 +14,23 @@ interface BattleView {
   team?: { score: number; outcome: string };
   honors?: { total: number; victories: number; stalemates: number; participations: number };
   opponent?: { clan?: { name?: string; tag?: string }; score: number; outcome: string } | null;
+  rewardHistory?: Array<{
+    id: string;
+    artifactRef: string;
+    type: 'battle' | 'glory';
+    clan?: { name?: string; tag?: string } | null;
+    cycleIndex: number;
+    rewardKind?: string;
+    outcome?: string;
+    participationDna?: number;
+    bonusDna?: number;
+    amount: number;
+    countedDepth: number;
+    eligibleRunCount?: number;
+    countedRunCount: number;
+    seat?: number;
+    awardedAt: string;
+  }>;
   you?: {
     topFive: Array<{
       sessionId: string;
@@ -41,13 +58,80 @@ function countdownLabel(iso: string | undefined): string {
   return `${hours}h ${minutes}m`;
 }
 
+function artifactDomId(artifactRef: string): string {
+  return `clan-run-${artifactRef.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+}
+
+function RewardHistory({
+  rewards,
+  compact,
+}: {
+  rewards: NonNullable<BattleView['rewardHistory']>;
+  compact: boolean;
+}) {
+  const visible = rewards.slice(0, compact ? 2 : 6);
+  if (visible.length === 0) return null;
+  return (
+    <div className="space-y-2" data-testid="clan-reward-history">
+      <div>
+        <p className="label-arcade text-venom-orange">Secured battle rewards</p>
+        <p className="font-body text-xs text-beige/60">
+          Exact server receipts. These rewards are already in your DNA balance.
+        </p>
+      </div>
+      <ol className="space-y-1.5">
+        {visible.map((reward) => (
+          <li
+            key={`${reward.type}:${reward.id}`}
+            id={artifactDomId(reward.artifactRef)}
+            className="rounded-arcade border border-venom-orange/25 bg-venom-orange/5 px-3 py-2"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="font-display text-sm uppercase text-bone-white">
+                {reward.type === 'glory'
+                  ? `Glory seat ${reward.seat ?? ''}`
+                  : reward.rewardKind === 'victor'
+                    ? 'Victory'
+                    : reward.rewardKind === 'stalemate'
+                      ? 'Stalemate'
+                      : reward.outcome === 'bye'
+                        ? 'Unmatched participation'
+                        : 'Participation'}
+              </p>
+              <p className="shrink-0 font-mono font-bold text-venom-orange">
+                +{reward.amount.toLocaleString()} DNA
+              </p>
+            </div>
+            <p className="mt-0.5 font-body text-xs text-beige/65">
+              {reward.type === 'battle'
+                ? `${reward.participationDna ?? 0} participation${(reward.bonusDna ?? 0) > 0 ? ` + ${reward.bonusDna} outcome bonus` : ''}`
+                : `${reward.countedDepth.toLocaleString()} eligible Depth`}
+              {' · '}
+              {reward.clan?.tag ? `[${reward.clan.tag}] ` : ''}
+              {reward.clan?.name ?? `Cycle ${reward.cycleIndex}`}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattlePanelProps) {
   const [view, setView] = useState<BattleView | null>(null);
   const [error, setError] = useState(false);
   const [, setClock] = useState(0);
   const topFive = view?.you?.topFive ?? [];
-  useRecognitionSeen('clan', view !== null && !error, accessToken, {
-    artifactRefs: topFive.map((result) => result.sessionId),
+  const rewards = view?.rewardHistory ?? [];
+  const visibleRewards = rewards.slice(0, compact ? 2 : 6);
+  const isUndeployed = view?.live === false && view.reason === 'not_deployed';
+  const rendersBattleSurface = view !== null && !error && !isUndeployed;
+  const rendersTopFive = rendersBattleSurface && view.reason !== 'no_clan' && view.live !== false && !compact;
+  useRecognitionSeen('clan', rendersBattleSurface, accessToken, {
+    artifactRefs: [
+      ...(rendersTopFive ? topFive.map((result) => result.sessionId) : []),
+      ...visibleRewards.map((reward) => reward.artifactRef),
+    ],
   });
 
   useEffect(() => {
@@ -79,9 +163,41 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
   if (error) return <p className="font-body text-sm text-beige/60">Battle status is unavailable.</p>;
   if (!view) return <p className="font-body text-sm text-beige/60">Reading battle…</p>;
   if (view.reason === 'no_clan') {
-    return <p className="font-body text-sm text-beige/70">Join or found a clan to make Energy runs count socially.</p>;
+    return (
+      <section className="panel-elevated space-y-4 p-5 text-left">
+        <p className="font-body text-sm text-beige/70">
+          Join or found a clan to make Energy runs count socially.
+        </p>
+        <RewardHistory rewards={rewards} compact={compact} />
+      </section>
+    );
   }
-  if (view.live === false) return null;
+  if (isUndeployed) return null;
+  if (view.live === false) {
+    const nextCycle = view.cycle?.intermissionEndsAt;
+    return (
+      <section
+        className="panel-elevated space-y-3 p-4 text-left"
+        data-testid="clan-energy-battle-intermission"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="label-arcade text-cosmic">Clan Energy Battle</p>
+            <h2 className="heading-display text-xl text-bone-white">Results secured</h2>
+          </div>
+          {nextCycle && (
+            <p className="font-mono text-xs text-beige/65">
+              Next cycle in {countdownLabel(nextCycle)}
+            </p>
+          )}
+        </div>
+        <p className="font-body text-sm text-beige/70">
+          The battle is settling. Secured DNA receipts remain visible during intermission.
+        </p>
+        <RewardHistory rewards={rewards} compact={compact} />
+      </section>
+    );
+  }
 
   const end = view.active
     ? view.battle?.endsAt ?? view.cycle?.endsAt
@@ -140,6 +256,8 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
           )}
         </div>
       )}
+
+      <RewardHistory rewards={rewards} compact={compact} />
 
       {!compact && (
         <div className="space-y-2">

@@ -84,6 +84,9 @@ describe('ClanRoster competitive truth', () => {
     expect(rows[0]).toHaveTextContent('Gen 20');
     expect(screen.getByTestId('no-eligible-result')).toHaveTextContent(/No eligible Energy result/i);
     expect(screen.getByText('You')).toBeInTheDocument();
+    const reportLinks = screen.getAllByRole('link', { name: 'Report handle Handler' });
+    expect(reportLinks).toHaveLength(3);
+    expect(reportLinks[0].getAttribute('href')).toContain('owner-user');
   });
 
   it('gives a Member no governance controls', () => {

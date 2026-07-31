@@ -96,6 +96,9 @@ describe('ClanDirectory discovery controls', () => {
     expect(row).toHaveTextContent('Open');
     expect(row).toHaveTextContent('4,320');
     expect(within(row).getByTestId('directory-week-link')).toHaveAttribute('href', '/serpent');
+    const report = within(row).getByRole('link', { name: 'Report clan Lone Coil' });
+    expect(report.getAttribute('href')).toContain('mailto:support@supasnake.com?');
+    expect(report.getAttribute('href')).toContain('open-clan');
   });
 
   it('provides a useful empty-search recovery', () => {

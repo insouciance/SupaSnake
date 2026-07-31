@@ -48,6 +48,7 @@ function gloryView(canAssign = true): ClanFullView {
       joinedAt: '2026-07-01T00:00:00Z',
     },
     roster: [contributor()],
+    cycle: { index: 8, phase: 'intermission' },
     glory: {
       terms: {
         maxSeats: 2,
@@ -118,5 +119,14 @@ describe('ClanGloryPanel', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual({ action: 'assign_glory', targetUserId: 'ace-user', seat: 2 });
+  });
+
+  it('keeps assignment unavailable until the finalized intermission boundary', () => {
+    const view = gloryView();
+    view.cycle = { index: 8, phase: 'active' };
+    render(<ClanGloryPanel accessToken="token" viewerUserId="leader-user" view={view} onChanged={jest.fn()} />);
+
+    expect(screen.getByTestId('glory-window-closed')).toHaveTextContent(/after the battle result is final/i);
+    expect(screen.queryByText(/Assign next battle/)).not.toBeInTheDocument();
   });
 });

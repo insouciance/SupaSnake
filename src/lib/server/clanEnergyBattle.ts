@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { CLAN_ECONOMY_CONFIG } from '@/lib/clan/config';
 
 export interface ClanContributionResult {
   eligible: boolean;
@@ -57,8 +58,12 @@ export async function recordClanEnergyContribution(
 export async function settleClanEnergyBattles(
   supabase: SupabaseClient
 ): Promise<number | null> {
+  const rewards = CLAN_ECONOMY_CONFIG.battleRewards;
   const { data, error } = await supabase.rpc('settle_clan_energy_battles', {
     p_completion_grace_seconds: GAME_CONFIG.economy.clanBattle.completionGraceSeconds,
+    p_participation_reward_dna: rewards.participationDna,
+    p_victor_bonus_dna: rewards.victorBonusDna,
+    p_stalemate_bonus_dna: rewards.stalemateBonusDna,
   });
   if (error) {
     if (isMissingBattleInfra(error)) return null;

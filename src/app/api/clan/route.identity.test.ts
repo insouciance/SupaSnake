@@ -4,6 +4,7 @@ var mockAuth: jest.Mock;
 var mockFrom: jest.Mock;
 var mockRpc: jest.Mock;
 var mockCapture: jest.Mock;
+var mockViewerRole: 'owner' | 'co_leader' | 'member';
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -43,6 +44,7 @@ function fullRequest() {
 beforeEach(() => {
   mockAuth = jest.fn().mockResolvedValue({ data: { user: { id: 'co-1' } }, error: null });
   mockCapture = jest.fn();
+  mockViewerRole = 'co_leader';
 
   const calls = new Map<string, number>();
   mockFrom = jest.fn((table: string) => {
@@ -50,7 +52,7 @@ beforeEach(() => {
     calls.set(table, index + 1);
     const results: Record<string, Array<{ data: unknown; error: unknown }>> = {
       clan_members: [
-        { data: { clan_id: 'clan-1', role: 'co_leader', joined_at: '2026-07-01T00:00:00Z' }, error: null },
+        { data: { clan_id: 'clan-1', role: mockViewerRole, joined_at: '2026-07-01T00:00:00Z' }, error: null },
         { data: [
           { player_id: 'owner-1', role: 'owner', joined_at: '2026-06-01T00:00:00Z' },
           { player_id: 'co-1', role: 'co_leader', joined_at: '2026-07-01T00:00:00Z' },
@@ -62,11 +64,14 @@ beforeEach(() => {
         { data: [], error: null },
         { data: [{ id: 'app-1', applicant_id: 'applicant-1', status: 'pending', created_at: '2026-07-30T00:00:00Z' }], error: null },
       ],
-      clans: [{ data: {
-        id: 'clan-1', name: 'Elite Snakes', tag: 'ES', owner_id: 'owner-1',
-        member_count: 3, max_members: 12, join_policy: 'application',
-        invite_code: 'ABCDEFGH', disbanded_at: null,
-      }, error: null }],
+      clans: [
+        { data: {
+          id: 'clan-1', name: 'Elite Snakes', tag: 'ES', owner_id: 'owner-1',
+          member_count: 3, max_members: 12, join_policy: 'application',
+          invite_code: 'LEAKTEST', disbanded_at: null,
+        }, error: null },
+        { data: { invite_code: 'ABCDEFGH' }, error: null },
+      ],
       clan_membership_history: [{ data: [
         { player_id: 'co-1', joined_at: '2026-06-15T00:00:00Z' },
       ], error: null }],
@@ -124,6 +129,23 @@ describe('full competitive clan view', () => {
     expect(body.applications[0]).toMatchObject({
       id: 'app-1', applicantUserId: 'applicant-1', status: 'pending',
     });
+    expect(body.clan).not.toHaveProperty('invite_code');
+    expect(body.invite).toEqual({
+      code: 'ABCDEFGH',
+      url: '/clan/join/ABCDEFGH',
+    });
+  });
+
+  it('does not expose the authority invite code to an ordinary member', async () => {
+    mockViewerRole = 'member';
+    mockAuth.mockResolvedValue({ data: { user: { id: 'member-1' } }, error: null });
+    const response = await GET(fullRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.membership.role).toBe('member');
+    expect(body.clan).not.toHaveProperty('invite_code');
+    expect(body.invite).toEqual({ code: null, url: null });
   });
 
   it('returns authoritative best-five ranks and distinguishes no result from zero', async () => {

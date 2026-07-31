@@ -44,11 +44,28 @@ export const CLAN_EMBLEMS: readonly ClanEmblemOption[] = [
   { id: 'crown', name: 'Crown', glyph: '♛' },
 ] as const;
 
-/** Curated color swatches (any #RRGGBB passes the RPC; these guide). */
+/** Curated color swatches; the route and SQL accept only these launch presets. */
 export const CLAN_COLORS: readonly string[] = [
   '#f97316', '#22d3ee', '#4ade80', '#a855f7',
   '#facc15', '#f43f5e', '#e2e8f0', '#64748b',
 ] as const;
+
+/**
+ * Heraldry is intentionally a small preset vocabulary at launch. These
+ * guards are shared by every server-facing clan route; SQL repeats the same
+ * allowlist so a forged request cannot create an unmoderated identity.
+ */
+export function isValidClanBannerId(value: unknown): value is string {
+  return typeof value === 'string' && CLAN_BANNERS.some((banner) => banner.id === value);
+}
+
+export function isValidClanEmblemId(value: unknown): value is string {
+  return typeof value === 'string' && CLAN_EMBLEMS.some((emblem) => emblem.id === value);
+}
+
+export function isValidClanColor(value: unknown): value is string {
+  return typeof value === 'string' && CLAN_COLORS.includes(value.toLowerCase());
+}
 
 export function bannerById(id: string | null | undefined): ClanBannerOption {
   return CLAN_BANNERS.find((b) => b.id === id) ?? CLAN_BANNERS[0];
