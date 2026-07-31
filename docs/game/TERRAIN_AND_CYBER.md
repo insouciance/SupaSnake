@@ -85,14 +85,16 @@ on it. All causes share the same categorical safety language:
   carries the three-stroke **VOLT bolt**, Fortress the rooted three-prong
   **FERAL claw**, COSMIC the four-stroke broken **FLUX portal**, and ladder
   terrain the five-sided **AURUM socket/seal**. These marks explain *why* a cell
-  transformed; their rotation has no gameplay meaning. Cause may alter rune
-  silhouette/orientation, never collision shape, height, or lifecycle. It does
-  not require a separate colour family.
+  transformed; their rotation has no gameplay meaning. The curved DOM glyph is
+  the canonical alphabet; terrain uses a bounded low-poly engraving that keeps
+  its recognition primitive. Cause may alter rune silhouette/orientation,
+  never collision shape, height, or lifecycle.
 
 Forming fill/rails, solid bases, and all source reliefs use three instanced
-meshes—not one material/mesh family per cause. Source is carried by relief
-silhouette rather than colour, so none of it borrows the active snake's dynasty
-glow; player identity and board restriction do not compete.
+meshes—not one material/mesh family per cause. Silhouette remains the primary
+channel; a restrained canonical strain hue reinforces it. That hue follows the
+terrain source, never the active snake dynasty, so player identity and board
+restriction do not compete.
 
 ### 1.3 Determinism — replayability, not payout
 

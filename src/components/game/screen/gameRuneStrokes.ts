@@ -1,8 +1,12 @@
 import type { StrainId } from '@/shared/game/strains';
 
-/** Local-cell linework shared by gameplay terrain and the arena orientation
- * mark. These are the canonical Genome silhouettes, not decorative aliases. */
-export interface GenomeRuneStroke {
+/**
+ * Low-poly engravings derived from the canonical curved `StrainGlyph` marks.
+ * WebGL terrain and chassis need a tiny bounded line budget, so these preserve
+ * each rune's recognition primitive (bolt, claw, broken portal, seal, crescent)
+ * without pretending to be a second canonical alphabet.
+ */
+export interface GenomeRuneEngravingStroke {
   readonly x1: number;
   readonly z1: number;
   readonly x2: number;
@@ -10,7 +14,7 @@ export interface GenomeRuneStroke {
   readonly width: number;
 }
 
-const GAME_RUNE_STROKES: Record<StrainId, readonly GenomeRuneStroke[]> = {
+const GAME_RUNE_STROKES: Record<StrainId, readonly GenomeRuneEngravingStroke[]> = {
   VOLT: [
     { x1: 0.15, z1: -0.32, x2: -0.09, z2: -0.04, width: 0.075 },
     { x1: -0.09, z1: -0.04, x2: 0.09, z2: -0.04, width: 0.075 },
@@ -42,8 +46,8 @@ const GAME_RUNE_STROKES: Record<StrainId, readonly GenomeRuneStroke[]> = {
   ],
 };
 
-export function genomeRuneStrokes(
+export function genomeRuneEngravingStrokes(
   strain: StrainId
-): readonly GenomeRuneStroke[] {
+): readonly GenomeRuneEngravingStroke[] {
   return GAME_RUNE_STROKES[strain];
 }

@@ -288,7 +288,6 @@ export function RunSetupPanel({
   favoriteBusyId = null,
 }: RunSetupPanelProps) {
   const hasAdjustables =
-    Boolean(modeToggle) ||
     Boolean(ladderSelector) ||
     Boolean(anomalyPanel) ||
     Boolean(aimSelector) ||
@@ -298,15 +297,15 @@ export function RunSetupPanel({
 
   return (
     <section
-      className="relative isolate mx-auto w-full max-w-[46rem] overflow-hidden rounded-[30px] border border-cyber/35 bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%),linear-gradient(180deg,rgba(22,32,43,0.96),rgba(6,9,13,0.99))] p-3 text-center shadow-glow-lg shadow-cyber/15 sm:p-5"
+      className="relative isolate mx-auto w-full max-w-[46rem] overflow-hidden rounded-[30px] border border-cyber/35 bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%),linear-gradient(180deg,rgba(22,32,43,0.96),rgba(6,9,13,0.99))] p-2.5 text-center shadow-glow-lg shadow-cyber/15 sm:p-5"
       data-testid="run-setup"
     >
       <header className="relative mx-auto max-w-xl">
         <p className="label-arcade text-pulse">Run cockpit</p>
-        <h2 className="mt-1 heading-display text-2xl text-bone-white sm:text-3xl">
+        <h2 className="heading-display text-xl text-bone-white sm:mt-1 sm:text-3xl">
           Ready to launch
         </h2>
-        <p className="mt-1 font-body text-xs text-beige/60">
+        <p className="hidden font-body text-xs text-beige/60 sm:mt-1 sm:block">
           Choose your snake. Set the stakes. Play.
         </p>
       </header>
@@ -314,10 +313,10 @@ export function RunSetupPanel({
       {snake ? (
         <>
           <section
-            className={`relative mx-auto mt-4 max-w-2xl overflow-hidden rounded-[24px] border ${visual.border} bg-[radial-gradient(circle_at_50%_35%,rgba(230,237,243,0.05),transparent_42%),linear-gradient(180deg,rgba(22,32,43,0.55),rgba(6,9,13,0.9))] shadow-glow-lg ${visual.shadow}`}
+            className={`relative mx-auto mt-2 max-w-2xl overflow-hidden rounded-[20px] border ${visual.border} bg-[radial-gradient(circle_at_50%_35%,rgba(230,237,243,0.05),transparent_42%),linear-gradient(180deg,rgba(22,32,43,0.55),rgba(6,9,13,0.9))] shadow-glow-lg sm:mt-4 sm:rounded-[24px] ${visual.shadow}`}
             aria-label="Selected snake launch chamber"
           >
-            <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
+            <div className="absolute left-3 top-3 z-10 hidden max-w-[calc(100%-1.5rem)] items-center gap-1.5 sm:flex">
               <span className={`rounded-full border ${visual.border} ${visual.wash} px-2 py-1 font-mono text-[8px] ${visual.text} whitespace-nowrap`}>
                 {selectedDynasty}
               </span>
@@ -326,43 +325,94 @@ export function RunSetupPanel({
               </span>
             </div>
 
-            <div className="h-[152px] px-1 pt-5 sm:h-[205px] sm:px-4">
+            <div className="hidden h-[205px] px-4 pt-5 sm:block">
               <LaunchSnake snake={snake} />
             </div>
 
-            <div className="relative border-t border-scale-blue-light/30 bg-void-deep/75 px-3 py-3 sm:px-5">
-              <p className={`label-arcade text-[9px] ${visual.text}`}>Selected lineage</p>
-              <h3 className="mt-0.5 truncate heading-display text-xl text-bone-white sm:text-2xl">
-                {snake.name}
-              </h3>
-              <p className="mt-0.5 font-body text-xs text-beige/65">
-                Generation {snake.generation}
-                <span data-testid="run-setup-yield-multiplier">
-                  {' '}· Yield ×{formatAscendanceYieldMultiplier(snake.generation)}
-                </span>
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="relative grid min-h-[78px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2 bg-void-deep/75 px-2.5 py-2.5 text-left sm:block sm:border-t sm:border-scale-blue-light/30 sm:px-5 sm:py-3 sm:text-center">
+              <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full border ${visual.border} ${visual.wash} p-2 ${visual.text} shadow-glow sm:hidden`} aria-hidden="true">
+                <StrainGlyph id={DYNASTY_STRAIN[selectedDynasty!]} />
+              </span>
+              <div className="min-w-0">
+                <p className={`label-arcade text-[8px] sm:text-[9px] ${visual.text}`}>
+                  <span className="sm:hidden">{selectedDynasty} · Gen {snake.generation}</span>
+                  <span className="hidden sm:inline">Selected lineage</span>
+                </p>
+                <h3 className="truncate heading-display text-lg text-bone-white sm:mt-0.5 sm:text-2xl">
+                  {snake.name}
+                </h3>
+                <p className="truncate font-body text-[10px] text-beige/65 sm:mt-0.5 sm:text-xs">
+                  <span className="hidden sm:inline">Generation {snake.generation} · </span>
+                  <span data-testid="run-setup-yield-multiplier">
+                    Yield ×{formatAscendanceYieldMultiplier(snake.generation)}
+                  </span>
+                </p>
+              </div>
+              <div className="flex gap-1.5 sm:mt-3 sm:grid sm:grid-cols-2 sm:gap-2">
                 <button
                   type="button"
                   onClick={onChooseSnake}
                   disabled={!onChooseSnake}
                   data-testid="run-setup-snake-picker-trigger"
-                  className="btn-neutral inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-[10px] whitespace-nowrap"
+                  className="btn-neutral inline-flex h-11 w-11 min-w-0 items-center justify-center gap-1.5 rounded-full p-0 text-[10px] whitespace-nowrap sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-2 sm:py-2"
                   aria-label={`Choose snake. Current: ${snake.name}, generation ${snake.generation}`}
                 >
                   <IconSnake size={15} className="shrink-0 text-cyber" />
-                  Change snake
+                  <span className="sr-only sm:not-sr-only">Change snake</span>
                 </button>
                 <Link
                   href="/lab?returnTo=%2Fgame"
-                  className="btn-neutral inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-[10px] text-cosmic-glow whitespace-nowrap"
+                  aria-label="Snake Lab"
+                  className="btn-neutral inline-flex h-11 w-11 min-w-0 items-center justify-center gap-1.5 rounded-full p-0 text-[10px] text-cosmic-glow whitespace-nowrap sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-2 sm:py-2"
                 >
                   <IconFlask size={15} className="shrink-0" />
-                  Snake Lab
+                  <span className="sr-only sm:not-sr-only">Snake Lab</span>
                 </Link>
               </div>
             </div>
           </section>
+
+          {modeToggle ? (
+            <section
+              className="mx-auto mt-2 max-w-2xl rounded-[18px] border border-cosmic/25 bg-cosmic/5 px-2 py-1 [&_.label-arcade]:text-[8px] [&_button]:rounded-full [&_button]:whitespace-nowrap sm:py-1.5"
+              aria-label="Choose run mode"
+              data-testid="run-setup-mode-control"
+            >
+              {modeToggle}
+            </section>
+          ) : null}
+
+          {energySelector ? <div className="mt-2 sm:mt-3">{energySelector}</div> : null}
+
+          {challengeNote && (
+            <p
+              className="mx-auto mt-2 max-w-xl rounded-[16px] border border-cosmic/40 bg-cosmic/10 px-3 py-1.5 font-body text-xs text-cosmic-glow sm:mt-3 sm:px-4 sm:py-2 sm:text-sm"
+              data-testid="challenge-note"
+            >
+              {challengeNote}
+            </p>
+          )}
+
+          {startError && (
+            <div className="mx-auto mt-2 max-w-xl animate-fade-up rounded-[16px] border border-strike-red/70 bg-strike-red/15 px-4 py-2" role="alert">
+              <p className="font-body text-strike-red">{startError}</p>
+            </div>
+          )}
+
+          <div className="mx-auto mt-2 max-w-2xl rounded-[18px] border border-cyber/30 bg-void-deep/60 p-1.5 sm:mt-3 sm:p-2.5">
+            <button
+              type="button"
+              onClick={onStart}
+              disabled={isStarting}
+              data-testid={startTestId}
+              className={`btn-go inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[14px] px-4 py-2.5 text-base whitespace-nowrap sm:min-h-[56px] sm:py-3 sm:text-lg ${
+                isStarting ? 'cursor-wait' : 'animate-glow-pulse shadow-cyber/45'
+              }`}
+            >
+              <IconPlay size={21} className="shrink-0" />
+              <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
+            </button>
+          </div>
 
           <section className="mx-auto mt-3 max-w-2xl" aria-labelledby="run-favorites-title">
             <div className="mb-2 flex items-center justify-center gap-2">
@@ -413,8 +463,6 @@ export function RunSetupPanel({
             </p>
           </section>
 
-          {energySelector ? <div className="mt-3">{energySelector}</div> : null}
-
           {heirloom ? <div className="mt-3">{heirloom}</div> : null}
         </>
       ) : noSnakeAvailable ? (
@@ -429,7 +477,7 @@ export function RunSetupPanel({
         </div>
       )}
 
-      {challengeNote && (
+      {!snake && challengeNote && (
         <p
           className="mx-auto mt-3 max-w-xl rounded-[16px] border border-cosmic/40 bg-cosmic/10 px-4 py-2 font-body text-sm text-cosmic-glow"
           data-testid="challenge-note"
@@ -438,13 +486,13 @@ export function RunSetupPanel({
         </p>
       )}
 
-      {startError && (
+      {!snake && startError && (
         <div className="mx-auto mt-3 max-w-xl animate-fade-up rounded-[16px] border border-strike-red/70 bg-strike-red/15 px-4 py-2" role="alert">
           <p className="font-body text-strike-red">{startError}</p>
         </div>
       )}
 
-      <div className="mx-auto mt-3 max-w-2xl rounded-[18px] border border-cyber/30 bg-void-deep/60 p-2.5">
+      {!snake && <div className="mx-auto mt-3 max-w-2xl rounded-[18px] border border-cyber/30 bg-void-deep/60 p-2.5">
         {noSnakeAvailable ? (
           <Link
             href="/"
@@ -468,7 +516,7 @@ export function RunSetupPanel({
             <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
           </button>
         )}
-      </div>
+      </div>}
 
       {!noSnakeAvailable && hasAdjustables && (
         <details
@@ -479,7 +527,6 @@ export function RunSetupPanel({
             Tune run
           </summary>
           <div className="space-y-4 overflow-x-auto pt-4 text-center [&_button]:whitespace-nowrap">
-            {modeToggle}
             {ladderSelector}
             {anomalyPanel}
             {aimSelector}

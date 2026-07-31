@@ -46,6 +46,7 @@ const REQUIRED_VARIABLES = [
   'NEXT_PUBLIC_POSTHOG_KEY',
   'NEXT_PUBLIC_POSTHOG_HOST',
   'NEXT_PUBLIC_APP_URL',
+  'NEXT_PUBLIC_RUN_FLOW_V1',
   'MIN_AGE_REQUIREMENT',
   'DISCORD_CLIENT_ID',
   'DISCORD_CLIENT_SECRET',
@@ -161,6 +162,7 @@ function validateProductionEnvironment(
   );
   assertExact('NEXT_PUBLIC_POSTHOG_HOST', 'https://eu.i.posthog.com');
   assertExact('NEXT_PUBLIC_APP_URL', 'https://supasnake.com');
+  assertExact('NEXT_PUBLIC_RUN_FLOW_V1', 'true');
   assertExact('MIN_AGE_REQUIREMENT', '14');
   assertExact('DISCORD_REDIRECT_URI', 'https://supasnake.com/api/discord/callback');
 

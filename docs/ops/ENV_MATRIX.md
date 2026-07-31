@@ -16,7 +16,7 @@ inside its cloud build/runtime.
 | Stripe catalog | Legacy one-time `NEXT_PUBLIC_STRIPE_*` names plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured for sandbox compatibility; the one-time source catalog is empty and the old Premium name/prices are not approved for live sale. Founding Keeper requires its own reviewed price mapping |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
-| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1`, `NEXT_PUBLIC_CAREER_SPINE_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit, Ladder, and Career presentation enabled; Career settlement is not flag-gated |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1`, `NEXT_PUBLIC_CAREER_SPINE_V1`, `NEXT_PUBLIC_RUN_FLOW_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit, Ladder, Career presentation, cockpit Setup, and Victory Lap enabled; Career settlement is not flag-gated |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
 | Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |

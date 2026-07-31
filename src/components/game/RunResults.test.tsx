@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RunResults, type RunResultsProps } from './RunResults';
 import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { RunImpactEnvelope } from '@/lib/game/runImpactClient';
@@ -341,17 +341,19 @@ describe('Layer 3 recognition', () => {
     ).toBeNull();
   });
 
-  it('moves an accessible progress bar from before to after only when collected', () => {
+  it('moves an accessible progress bar from before to after only when collected', async () => {
     render(<RunResults {...props()} />);
     fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
     const progress = screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i });
     expect(progress).toHaveAttribute('aria-valuenow', '5');
     expect(progress).toHaveAttribute('aria-valuemax', '10');
     fireEvent.click(screen.getByRole('button', { name: /Reveal discovery/i }));
-    expect(screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i })).toHaveAttribute(
-      'aria-valuenow',
-      '6'
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i })).toHaveAttribute(
+        'aria-valuenow',
+        '6'
+      );
+    });
   });
 
   it('leaves only durable exact destination lights after collection', () => {
@@ -414,7 +416,7 @@ describe('Layer 3 recognition', () => {
     expect(screen.queryByText(/pending server recovery/i)).toBeNull();
   });
 
-  it('groups routine progress into one collection instead of manufacturing several prizes', () => {
+  it('shows routine progress as already secured without manufacturing a claim tap', () => {
     const routine = {
       ...impact,
       impacts: [{
@@ -423,9 +425,44 @@ describe('Layer 3 recognition', () => {
       featuredImpactKeys: [],
     };
     render(<RunResults {...props({ impact: routine })} />);
+    expect(screen.getByTestId('impact-routine-summary')).toHaveTextContent(
+      '+80 CYBER Mastery XP'
+    );
     fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
-    expect(screen.getByTestId('impact-beat-career')).toHaveTextContent('+80 CYBER Mastery XP');
-    expect(screen.getAllByRole('button', { name: /Accept progress/i })).toHaveLength(1);
+    expect(screen.getByTestId('impact-victory-complete')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Accept progress/i })).toBeNull();
+  });
+
+  it('can collect every remaining secured prize with one action', () => {
+    render(<RunResults {...props()} />);
+    fireEvent.click(screen.getByTestId('impact-collect-remaining'));
+    expect(screen.getByTestId('impact-victory-complete')).toBeInTheDocument();
+    expect(screen.queryByTestId('impact-collect-remaining')).toBeNull();
+    expect(screen.getAllByText(/Collected/i).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('shows the complete static reward order without claim controls for reduced motion', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = jest.fn().mockReturnValue({
+      matches: true,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    });
+    try {
+      render(<RunResults {...props()} />);
+      await waitFor(() => {
+        expect(screen.getByTestId('impact-reduced-summary')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('impact-reduced-summary')).toHaveTextContent('572 DNA');
+      expect(screen.getByTestId('impact-reduced-summary')).toHaveTextContent(
+        'World-first splice documented'
+      );
+      expect(screen.queryByTestId('impact-collect-remaining')).toBeNull();
+      expect(screen.queryByRole('button', { name: /Collect DNA/i })).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it('stacks mobile actions and prevents action-label wrapping', () => {

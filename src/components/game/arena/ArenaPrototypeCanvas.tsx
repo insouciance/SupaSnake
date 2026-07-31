@@ -21,12 +21,22 @@ import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import {
+  InstancedSnake,
+  InstancedSnakeFallback,
+} from '@/components/game/InstancedSnake';
+import {
   SnakeModel,
   SnakeSegmentFallback,
 } from '@/components/game/SnakeModel';
+import { TerrainBlocks } from '@/components/game/TerrainBlocks';
+import type { TerrainBlock, TerrainSource } from '@/shared/game/terrain';
 import { AimRenderer } from '@/components/game/AimRenderer';
 import type { AimTarget } from '@/components/game/aimUtils';
-import type { InterpolationBuffer } from '@/lib/game/interpolationBuffer';
+import {
+  createInterpolationBuffer,
+  recordTick,
+  type InterpolationBuffer,
+} from '@/lib/game/interpolationBuffer';
 import {
   GAME_SCREEN_COLORS,
   getDynastyScreenTokens,
@@ -39,6 +49,7 @@ interface ArenaPrototypeCanvasProps {
   state: PrototypeState;
   arenaVariant?: 'released' | 'cockpit';
   effectsEnabled?: boolean;
+  density?: 'standard' | 'extreme';
 }
 
 const GRID = GAME_CONFIG.board.gridSize;
@@ -56,6 +67,46 @@ const STATIC_SNAKE: readonly Position[] = [
 const FOOD = { x: 14, y: 0, z: 6 } as const;
 const MUTATION = { x: 16, y: 0, z: 13 } as const;
 const PORTAL = { x: 4, y: 0, z: 3 } as const;
+
+function buildDenseSnake(): readonly Position[] {
+  const cells: Position[] = [];
+  for (let z = 3; z <= 15; z += 1) {
+    if (z % 2 === 1) {
+      for (let x = 3; x <= 16; x += 1) cells.push({ x, y: 0, z });
+    } else {
+      for (let x = 16; x >= 3; x -= 1) cells.push({ x, y: 0, z });
+    }
+  }
+  return cells;
+}
+
+const DENSE_SNAKE = buildDenseSnake();
+const TERRAIN_SOURCES: readonly TerrainSource[] = [
+  'cyber',
+  'fortress',
+  'cosmic',
+  'ladder',
+];
+const DENSE_TERRAIN: readonly TerrainBlock[] = (() => {
+  const cells: TerrainBlock[] = [];
+  let index = 0;
+  for (let z = 0; z < GRID; z += 1) {
+    for (let x = 0; x < GRID; x += 1) {
+      const ring = Math.min(x, z, GRID - 1 - x, GRID - 1 - z);
+      if (ring > 1 || (ring === 1 && (x + z) % 2 !== 0)) continue;
+      cells.push({
+        x,
+        z,
+        source: TERRAIN_SOURCES[index % TERRAIN_SOURCES.length],
+        formingTicks: index % 5 === 0 ? 8 : 0,
+        formingTotal: 12,
+        solid: index % 5 !== 0,
+      });
+      index += 1;
+    }
+  }
+  return cells;
+})();
 
 function StaticSnake({ dynasty }: { dynasty: DynastyId }) {
   return (
@@ -85,9 +136,19 @@ function PrototypeScene({
   isMobile,
   arenaVariant = 'cockpit',
   effectsEnabled = true,
+  density = 'standard',
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
-  const bufferRef = useRef<InterpolationBuffer | null>(null);
+  const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
+  const interpolation = useMemo(() => {
+    if (density !== 'extreme') return null;
+    const buffer = createInterpolationBuffer(DENSE_SNAKE.length);
+    recordTick(buffer, DENSE_SNAKE, 100, 1);
+    recordTick(buffer, DENSE_SNAKE, 100, 2);
+    return buffer;
+  }, [density]);
+  const bufferRef = useRef<InterpolationBuffer | null>(interpolation);
+  bufferRef.current = interpolation;
   const portalLive = state === 'portal' || state === 'apex';
   const aimTargets = useMemo<AimTarget[]>(
     () => [
@@ -149,10 +210,10 @@ function PrototypeScene({
         </>
       )}
       <AimRenderer
-        headPosition={STATIC_SNAKE[0]}
-        direction="UP"
+        headPosition={snake[0]}
+        direction={density === 'extreme' ? 'RIGHT' : 'UP'}
         queuedDirections={[]}
-        snake={STATIC_SNAKE}
+        snake={snake}
         gridSize={GRID}
         aimSystem="deadeye"
         targets={aimTargets}
@@ -160,7 +221,30 @@ function PrototypeScene({
         color={GAME_SCREEN_COLORS.systemCyan}
         laneColor={theme.primary}
       />
-      <StaticSnake dynasty={dynasty} />
+      {density === 'extreme' ? (
+        <Suspense
+          fallback={
+            <InstancedSnakeFallback
+              bufferRef={bufferRef}
+              dynasty={dynasty}
+              direction="RIGHT"
+              terrain={DENSE_TERRAIN}
+              wrapActive={dynasty === 'COSMIC'}
+            />
+          }
+        >
+          <InstancedSnake
+            bufferRef={bufferRef}
+            dynasty={dynasty}
+            direction="RIGHT"
+            terrain={DENSE_TERRAIN}
+            wrapActive={dynasty === 'COSMIC'}
+          />
+        </Suspense>
+      ) : (
+        <StaticSnake dynasty={dynasty} />
+      )}
+      {density === 'extreme' ? <TerrainBlocks terrain={DENSE_TERRAIN} /> : null}
       <FoodBeacon
         position={[FOOD.x + 0.5, 0, FOOD.z + 0.5]}
         color={GAME_SCREEN_COLORS.systemCyan}
@@ -223,6 +307,7 @@ export function ArenaPrototypeCanvas({
   state,
   arenaVariant = 'cockpit',
   effectsEnabled = true,
+  density = 'standard',
 }: ArenaPrototypeCanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -238,6 +323,9 @@ export function ArenaPrototypeCanvas({
   return (
     <div
       data-testid="cockpit-webgl-board"
+      data-fixture-density={density}
+      data-fixture-snake-cells={density === 'extreme' ? DENSE_SNAKE.length : STATIC_SNAKE.length}
+      data-fixture-terrain-cells={density === 'extreme' ? DENSE_TERRAIN.length : 0}
       style={{ width: '100%', height: '100%', overflow: 'hidden' }}
     >
       <Canvas
@@ -259,6 +347,7 @@ export function ArenaPrototypeCanvas({
           isMobile={isMobile}
           arenaVariant={arenaVariant}
           effectsEnabled={effectsEnabled}
+          density={density}
         />
         <RenderStatsProbe />
       </Canvas>

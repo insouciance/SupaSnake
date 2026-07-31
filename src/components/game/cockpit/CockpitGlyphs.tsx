@@ -183,6 +183,8 @@ export function GeneGlyph({ id }: { id: GeneId }) {
   return <Svg>{GENE_GLYPHS[id]}</Svg>;
 }
 
+/** Canonical, curve-capable Genome alphabet. Board/chassis WebGL reliefs use
+ * documented low-poly engravings derived from these exact silhouettes. */
 export function StrainGlyph({ id }: { id: StrainId }) {
   if (id === 'AURUM') {
     return <Svg><path d="m12 3 7 5-2.5 10h-9L5 8l7-5Z" /><path d="m5 8 7 4 7-4M12 12v6" /></Svg>;

@@ -23,6 +23,9 @@ jest.mock('@supabase/supabase-js', () => ({
 jest.mock('@/lib/features/careerSpine', () => ({
   CAREER_SPINE_V1_ENABLED: true,
 }));
+jest.mock('@/lib/features/runFlow', () => ({
+  RUN_FLOW_V1_ENABLED: true,
+}));
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -69,6 +72,10 @@ describe('GET /api/health', () => {
       phase: 'ready',
       bridgeVersion: 1,
       careerVersion: 1,
+    });
+    expect(data.checks.runFlow).toMatchObject({
+      status: 'healthy',
+      surfaceEnabled: true,
     });
   });
 

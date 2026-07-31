@@ -52,10 +52,9 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
 /**
  * Reveal the Run Setup page's adjustable controls.
  *
- * WP-1.06 (Constitution §5) folds the mode toggle, the aim system, and the
- * Build Seed into a single closed disclosure so that a
- * first-time player sees START as the only emphasised action. Specs that
- * exercise those controls call this first; it is a no-op with
+ * Run Setup keeps the ordinary mode choice directly in the cockpit, while
+ * Aim, Ladder, anomaly detail, and Build Seed live in one closed disclosure.
+ * Specs that exercise those advanced controls call this first; it is a no-op with
  * NEXT_PUBLIC_RUN_FLOW_V1 off, where the controls are already laid out flat.
  */
 export async function openRunSetupControls(page: Page): Promise<void> {
@@ -154,13 +153,23 @@ export async function signInAsGuest(page: Page): Promise<void> {
   // Authenticated /game renders either the HUD or the ready-to-play setup
   // surface. The setup surface intentionally obscures the pre-run HUD, so it
   // is the stronger marker on slower production/WebGL boots.
-  const authedMarker = page.getByText(/^score$/i)
-    .or(page.getByRole('heading', { name: /ready to play/i }));
+  const scoreMarker = page.getByText(/^score$/i).first();
+  const setupMarker = page
+    .getByRole('heading', { name: /ready to (?:play|launch)/i })
+    .first();
   const signInPrompt = page.getByText(/sign in to play and save/i);
-  await authedMarker
-    .or(signInPrompt)
-    .first()
-    .waitFor({ state: 'visible', timeout: 20000 });
+  // Do not combine these locators with `.or(...).first()`: the pre-run HUD
+  // keeps a visually hidden Score label before the visible Setup heading in
+  // DOM order, so `.first()` can wait on the wrong branch forever.
+  await expect
+    .poll(
+      async () =>
+        (await scoreMarker.isVisible().catch(() => false)) ||
+        (await setupMarker.isVisible().catch(() => false)) ||
+        (await signInPrompt.first().isVisible().catch(() => false)),
+      { timeout: 20_000 }
+    )
+    .toBe(true);
 
   if (await signInPrompt.isVisible().catch(() => false)) {
     test.skip(

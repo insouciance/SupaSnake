@@ -35,6 +35,7 @@ function validEnvironment() {
     NEXT_PUBLIC_POSTHOG_KEY: 'phc_1234567890abcdef',
     NEXT_PUBLIC_POSTHOG_HOST: 'https://eu.i.posthog.com',
     NEXT_PUBLIC_APP_URL: 'https://supasnake.com',
+    NEXT_PUBLIC_RUN_FLOW_V1: 'true',
     MIN_AGE_REQUIREMENT: '14',
     DISCORD_CLIENT_ID: '123456789012345678',
     DISCORD_GUILD_ID: '223456789012345678',
@@ -63,6 +64,17 @@ describe('production environment validation', () => {
         expect.stringContaining('STRIPE_SECRET_KEY'),
         expect.stringContaining('NEXT_PUBLIC_APP_URL'),
         expect.stringContaining('MIN_AGE_REQUIREMENT'),
+      ])
+    );
+  });
+
+  it('rejects a production artifact that would compile the rollback Run Flow', () => {
+    const environment = validEnvironment();
+    environment.NEXT_PUBLIC_RUN_FLOW_V1 = 'false';
+
+    expect(validateProductionEnvironment(environment, 'test').errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('NEXT_PUBLIC_RUN_FLOW_V1'),
       ])
     );
   });

@@ -40,6 +40,7 @@ jobs:
       NEXT_PUBLIC_FTUE_V2: 'true'
       NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
       NEXT_PUBLIC_CAREER_SPINE_V1: 'true'
+      NEXT_PUBLIC_RUN_FLOW_V1: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -95,6 +96,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      NEXT_PUBLIC_RUN_FLOW_V1: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -252,8 +254,10 @@ jobs:
             --archive=tgz \
             --build-env EXPECTED_PAYMENTS_MODE="${{ inputs.payments_mode }}" \
             --build-env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
+            --build-env NEXT_PUBLIC_RUN_FLOW_V1="true" \
             --env SUPASNAKE_RELEASE_SHA="${{ github.sha }}" \
             --env NEXT_PUBLIC_CAREER_SPINE_V1="true" \
+            --env NEXT_PUBLIC_RUN_FLOW_V1="true" \
             --token="$VERCEL_TOKEN")
           deployment_json=$(npx vercel@56.3.1 inspect "$deployment_url" \
             --format=json --non-interactive --token="$VERCEL_TOKEN")
@@ -292,6 +296,8 @@ jobs:
                   and .checks.database.status == "healthy"
                   and .checks.careerSpine.status == "healthy"
                   and .checks.careerSpine.surfaceEnabled == true
+                  and .checks.runFlow.status == "healthy"
+                  and .checks.runFlow.surfaceEnabled == true
                   and .checks.careerSpine.bridgeVersion == 1
                   and .checks.careerSpine.phase == $phase
                   and (($career == "null" and .checks.careerSpine.careerVersion == null)
@@ -330,6 +336,8 @@ jobs:
                   and .checks.careerSpine.bridgeVersion == 1
                   and .checks.careerSpine.careerVersion == 1
                   and .checks.careerSpine.surfaceEnabled == true
+                  and .checks.runFlow.status == "healthy"
+                  and .checks.runFlow.surfaceEnabled == true
                   and .release == $release' >/dev/null; then
               exit 0
             fi
@@ -400,7 +408,9 @@ jobs:
                   and .checks.careerSpine.phase == "bridge"
                   and .checks.careerSpine.bridgeVersion == 1
                   and .checks.careerSpine.careerVersion == null
-                  and .checks.careerSpine.surfaceEnabled == true' >/dev/null; then
+                  and .checks.careerSpine.surfaceEnabled == true
+                  and .checks.runFlow.status == "healthy"
+                  and .checks.runFlow.surfaceEnabled == true' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi
@@ -452,6 +462,8 @@ jobs:
                   and .checks.careerSpine.bridgeVersion == 1
                   and .checks.careerSpine.careerVersion == 1
                   and .checks.careerSpine.surfaceEnabled == true
+                  and .checks.runFlow.status == "healthy"
+                  and .checks.runFlow.surfaceEnabled == true
                   and .release == $release' >/dev/null; then
               exit 0
             fi
