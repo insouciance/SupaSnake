@@ -115,7 +115,7 @@ describe('Navigation', () => {
     expect(screen.getByRole('status', { name: 'New Lab activity' })).toBeInTheDocument();
   });
 
-  it('makes a quiet Lab recognition dot open its exact artifact', () => {
+  it('makes a quiet Mastery recognition dot open its exact artifact in You', () => {
     useNotificationStore.getState().replaceServerItems([{
       id: 'mastery-moment',
       kind: 'recognition',
@@ -129,9 +129,10 @@ describe('Navigation', () => {
     }]);
 
     render(<Navigation />);
-    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'You' })).toHaveAttribute(
       'href',
-      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+      '/profile#mastery-PRIMAL'
     );
+    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute('href', '/lab');
   });
 });

@@ -83,9 +83,10 @@ describe('attention and recognition store', () => {
         createdAt: '2026-07-30T12:00:00.000Z',
       },
     ]);
-    expect(recognitionHref(useNotificationStore.getState().notifications, 'lab')).toBe(
-      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+    expect(recognitionHref(useNotificationStore.getState().notifications, 'identity')).toBe(
+      '/profile#mastery-PRIMAL'
     );
+    expect(recognitionHref(useNotificationStore.getState().notifications, 'lab')).toBeNull();
   });
 
   it('maps legacy progression opportunities to memory-only recognition', () => {

@@ -361,6 +361,15 @@ describe('Layer 3 recognition', () => {
       ...impact,
       impacts: [
         {
+          key: 'mastery',
+          pillar: 'mastery',
+          kind: 'mastery_level',
+          significance: 'historic',
+          headline: 'CYBER Mastery M6',
+          destination: 'mastery',
+          artifactRef: 'CYBER',
+        },
+        {
           key: 'record',
           pillar: 'mastery',
           kind: 'record_tier',
@@ -388,15 +397,16 @@ describe('Layer 3 recognition', () => {
           artifactRef: 'session-1',
         },
       ],
-      featuredImpactKeys: ['record', 'codex', 'clan'],
+      featuredImpactKeys: ['mastery', 'record', 'codex', 'clan'],
     };
     render(<RunResults {...props({ impact: attentionImpact })} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Reveal discovery/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Accept mastery/i }));
     fireEvent.click(screen.getByRole('button', { name: /Raise trophy/i }));
 
-    expect(screen.getByTestId('results-attention-you')).toHaveTextContent('Perfect coils reached Tier 3');
+    expect(screen.getByTestId('results-attention-you')).toHaveTextContent('CYBER Mastery M6');
+    expect(screen.getByTestId('results-attention-you')).toHaveTextContent('+1 more');
     expect(screen.getByTestId('results-attention-lab')).toHaveTextContent('World-first splice documented');
     expect(screen.getByTestId('results-attention-compete')).toHaveTextContent('Entered your clan five');
     expect(screen.getByText(/stay on until the exact progress is visible/i)).toBeInTheDocument();

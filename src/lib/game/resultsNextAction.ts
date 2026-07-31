@@ -71,7 +71,7 @@ const IMPACT_DESTINATION: Record<ProgressionDestination, {
   label: string;
 }> = {
   chronicle: { href: '/profile', label: 'Chronicle' },
-  mastery: { href: '/lab#mastery', label: 'Mastery' },
+  mastery: { href: '/profile#mastery', label: 'Mastery' },
   records: { href: '/profile#records', label: 'Records' },
   codex: { href: '/codex', label: 'Codex' },
   signal: { href: '/#signal', label: 'World Signal' },

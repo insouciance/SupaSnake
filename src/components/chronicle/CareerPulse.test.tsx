@@ -51,7 +51,7 @@ const PULSE: CareerPulseData = {
       headline: 'PRIMAL M4 reached',
       securedAt: '2026-07-30T12:00:00.000Z',
       destination: 'mastery',
-      artifactRef: 'PRIMAL:M4',
+      artifactRef: 'PRIMAL',
       source: { type: 'session', id: 'session-1' },
     },
   ],
@@ -87,7 +87,15 @@ it('renders one quiet private view of the three pillars and own clan threshold',
   render(<CareerPulse accessToken="token" />);
 
   expect(await screen.findByTestId('career-pulse')).toBeInTheDocument();
-  expect(screen.getByText('PRIMAL M4')).toBeInTheDocument();
+  expect(screen.getByText('Peak · PRIMAL M4')).toBeInTheDocument();
+  expect(screen.getByTestId('mastery-summary-primal')).toHaveTextContent('PRIMAL');
+  expect(screen.getByTestId('mastery-summary-primal')).toHaveTextContent('M4');
+  expect(document.getElementById('mastery-CYBER')).not.toBeNull();
+  expect(document.getElementById('mastery-PRIMAL')).not.toBeNull();
+  expect(document.getElementById('mastery-COSMIC')).not.toBeNull();
+  expect(
+    screen.getByRole('link', { name: 'Open verified artifact for PRIMAL M4 reached' })
+  ).toHaveAttribute('href', '/profile#mastery-PRIMAL');
   expect(screen.getByText('Gen 11')).toBeInTheDocument();
   expect(screen.getByText('12 Codex entries')).toBeInTheDocument();
   expect(screen.getByText(/Beat 600 Yield to improve your five/)).toBeInTheDocument();
@@ -96,6 +104,58 @@ it('renders one quiet private view of the three pillars and own clan threshold',
   expect(document.getElementById('career-artifact-ladder-PRIMAL-3')).not.toBeNull();
   expect(document.getElementById('career-artifact-clan-battle-550e8400-e29b-41d4-a716-446655440000')).not.toBeNull();
   expect(screen.queryByText(/member|teammate|rank/i)).not.toBeInTheDocument();
+});
+
+it('marks only a Mastery artifact that is visibly rendered in You as seen', async () => {
+  const masteryRecognition = {
+    id: 'mastery-primal',
+    kind: 'recognition' as const,
+    status: 'unseen' as const,
+    destination: 'mastery',
+    headline: 'PRIMAL M4 reached',
+    momentId: 'moment-primal',
+    artifactRef: 'PRIMAL',
+    source: { type: 'run', id: 'session-1' },
+    createdAt: '2026-07-30T12:00:00.000Z',
+  };
+  const unknownRecognition = {
+    ...masteryRecognition,
+    id: 'mastery-unknown',
+    momentId: 'moment-unknown',
+    artifactRef: 'UNKNOWN',
+  };
+  useNotificationStore.getState().replaceServerItems([
+    masteryRecognition,
+    unknownRecognition,
+  ]);
+  fetchMock
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ careerPulse: PULSE }) })
+    .mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        item: {
+          ...masteryRecognition,
+          status: 'seen',
+          seenAt: '2026-07-30T12:01:00.000Z',
+        },
+      }),
+    });
+
+  render(<CareerPulse accessToken="token" />);
+
+  expect(await screen.findByTestId('mastery-summary-primal')).toBeVisible();
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/progression/attention',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ id: 'mastery-primal', transition: 'seen' }),
+      })
+    );
+  });
+  expect(useNotificationStore.getState().notifications['mastery-primal']).toBeUndefined();
+  expect(useNotificationStore.getState().notifications['mastery-unknown']).toBeDefined();
 });
 
 it('pins only an id supplied by the authoritative candidate list', async () => {

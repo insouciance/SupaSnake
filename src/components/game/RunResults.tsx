@@ -476,6 +476,7 @@ function CollectedClaimBeat({ beat, dynasty }: {
 function destinationSurface(impact: RunImpact): Omit<ResultDestinationHighlight, 'headline' | 'count'> | null {
   switch (impact.destination) {
     case 'chronicle':
+    case 'mastery':
     case 'records':
       return {
         id: 'you',
@@ -483,7 +484,6 @@ function destinationSurface(impact: RunImpact): Omit<ResultDestinationHighlight,
         Icon: IconUser,
         tone: 'border-venom-orange/55 text-venom-orange shadow-[0_0_22px_rgba(250,204,21,0.18)]',
       };
-    case 'mastery':
     case 'lineage':
     case 'codex':
     case 'lab':

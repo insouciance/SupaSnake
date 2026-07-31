@@ -3,14 +3,14 @@ import { progressionArtifactHref } from './destinations';
 describe('progressionArtifactHref', () => {
   it('keeps generic destinations stable when no exact artifact exists', () => {
     expect(progressionArtifactHref('chronicle')).toBe('/profile');
-    expect(progressionArtifactHref('mastery')).toBe('/lab#mastery');
+    expect(progressionArtifactHref('mastery')).toBe('/profile#mastery');
     expect(progressionArtifactHref('records')).toBe('/profile#records');
     expect(progressionArtifactHref('lineage')).toBe('/lab#lineage');
   });
 
   it('routes server-authored artifacts to the exact rendered proof', () => {
     expect(progressionArtifactHref('mastery', 'mastery:primal')).toBe(
-      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+      '/profile#mastery-PRIMAL'
     );
     expect(progressionArtifactHref('records', 'tight coil')).toBe(
       '/profile#record-tight-coil'
