@@ -711,6 +711,7 @@ describe('Home page', () => {
     it('replays queued game rewards on load with the auth token', async () => {
       setAuthed();
       enqueueReward({
+        ownerId: 'user-1',
         sessionId: 'lost-session',
         score: 9,
         dna_earned: 90,

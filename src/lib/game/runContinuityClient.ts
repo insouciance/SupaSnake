@@ -1,11 +1,49 @@
 import type { GameSessionStartPayload } from '@/lib/ftue/launchFlow';
-import type { SnakeCheckpointV1 } from '@/lib/game/SnakeGameLogic';
+import {
+  SNAKE_RULES_VERSION,
+  type SnakeCheckpointV1,
+} from '@/lib/game/SnakeGameLogic';
 
 export type RunContinuityPhase =
   | 'preparing'
   | 'prepared'
   | 'active'
+  | 'settling'
+  | 'incompatible'
   | 'legacy';
+
+export class RunContinuityClientError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: string | null,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = 'RunContinuityClientError';
+  }
+}
+
+/**
+ * Async recovery belongs to the auth/session identity that started it. A late
+ * response from a signed-out or switched account must never enter the board.
+ */
+export function matchesContinuityAuthority(
+  expectedToken: string,
+  currentToken: string | null | undefined,
+  expectedSessionId?: string,
+  currentSessionId?: string | null,
+  expectedUserId?: string,
+  currentUserId?: string | null
+): boolean {
+  // User identity is the stable authority across an ordinary access-token
+  // refresh. Callers that do not have the user id retain the stricter token
+  // comparison. In both cases a switched account is rejected.
+  const authMatches = expectedUserId === undefined
+    ? expectedToken.length > 0 && currentToken === expectedToken
+    : expectedUserId.length > 0 && currentUserId === expectedUserId;
+  return authMatches &&
+    (expectedSessionId === undefined || currentSessionId === expectedSessionId);
+}
 
 export interface ActiveRunView {
   sessionId: string;
@@ -33,7 +71,7 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
   const row = responseRecord(value);
   if (
     typeof row.sessionId !== 'string' ||
-    !['preparing', 'prepared', 'active', 'legacy'].includes(String(row.phase))
+    !['preparing', 'prepared', 'active', 'settling', 'incompatible', 'legacy'].includes(String(row.phase))
   ) {
     return null;
   }
@@ -52,7 +90,9 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
         ? (manifest as GameSessionStartPayload)
         : null,
     checkpoint:
-      checkpoint.version === 1 && checkpoint.engineVersion === 'snake-engine-v1'
+      checkpoint.version === 1 &&
+      checkpoint.engineVersion === 'snake-engine-v1' &&
+      checkpoint.rulesVersion === SNAKE_RULES_VERSION
         ? (checkpoint as unknown as SnakeCheckpointV1)
         : null,
     checkpointRevision: Math.max(0, Number(row.checkpointRevision) || 0),
@@ -92,6 +132,18 @@ async function jsonRecord(response: Response): Promise<Record<string, unknown>> 
   }
 }
 
+function responseError(
+  response: Response,
+  body: Record<string, unknown>,
+  fallback: string
+): RunContinuityClientError {
+  return new RunContinuityClientError(
+    typeof body.error === 'string' ? body.error : fallback,
+    typeof body.reason === 'string' ? body.reason : null,
+    response.status
+  );
+}
+
 export async function fetchActiveRun(
   accessToken: string,
   fetcher: typeof fetch = fetch
@@ -102,9 +154,7 @@ export async function fetchActiveRun(
   });
   const body = await jsonRecord(response);
   if (!response.ok) {
-    throw new Error(
-      typeof body.error === 'string' ? body.error : 'Could not read the active run'
-    );
+    throw responseError(response, body, 'Could not read the active run');
   }
   return parseActiveRun(body.activeRun);
 }
@@ -112,6 +162,7 @@ export async function fetchActiveRun(
 export async function activatePreparedRun(
   accessToken: string,
   sessionId: string,
+  openingCheckpoint: SnakeCheckpointV1,
   fetcher: typeof fetch = fetch
 ): Promise<ActiveRunView> {
   const response = await fetcher('/api/game/session', {
@@ -120,13 +171,15 @@ export async function activatePreparedRun(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ action: 'activate', sessionId }),
+    body: JSON.stringify({
+      action: 'activate',
+      sessionId,
+      checkpoint: openingCheckpoint,
+    }),
   });
   const body = await jsonRecord(response);
   if (!response.ok) {
-    throw new Error(
-      typeof body.error === 'string' ? body.error : 'Could not activate the run'
-    );
+    throw responseError(response, body, 'Could not activate the run');
   }
   const activeRun = parseActiveRun(body.activeRun);
   if (!activeRun || activeRun.phase !== 'active') {
@@ -150,9 +203,7 @@ export async function resumeCheckpointedRun(
   });
   const body = await jsonRecord(response);
   if (!response.ok) {
-    throw new Error(
-      typeof body.error === 'string' ? body.error : 'Could not resume the run'
-    );
+    throw responseError(response, body, 'Could not resume the run');
   }
   const activeRun = parseActiveRun(body.activeRun);
   if (
@@ -172,6 +223,56 @@ export interface CheckpointReceipt {
   savedAt: string;
 }
 
+/**
+ * One in-flight write plus one replaceable latest proposal. Every caller gets
+ * a completion promise, but bursts never retain an unbounded chain of full
+ * board snapshots in memory.
+ */
+export class LatestOnlyAsyncQueue<T> {
+  private active = false;
+  private pending: {
+    value: T;
+    waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }>;
+  } | null = null;
+
+  constructor(private readonly write: (value: T) => Promise<void>) {}
+
+  enqueue(value: T): Promise<void> {
+    const promise = new Promise<void>((resolve, reject) => {
+      if (this.pending) {
+        this.pending.value = value;
+        this.pending.waiters.push({ resolve, reject });
+      } else {
+        this.pending = { value, waiters: [{ resolve, reject }] };
+      }
+    });
+    void this.drain();
+    return promise;
+  }
+
+  private async drain(): Promise<void> {
+    if (this.active) return;
+    this.active = true;
+    try {
+      while (this.pending) {
+        const proposal = this.pending;
+        this.pending = null;
+        try {
+          await this.write(proposal.value);
+          proposal.waiters.forEach(({ resolve }) => resolve());
+        } catch (error) {
+          proposal.waiters.forEach(({ reject }) => reject(error));
+        }
+      }
+    } finally {
+      this.active = false;
+      // A proposal can arrive after the loop observes null but before this
+      // finally runs. Re-enter rather than leaving it stranded.
+      if (this.pending) void this.drain();
+    }
+  }
+}
+
 export async function saveActiveRunCheckpoint(
   accessToken: string,
   sessionId: string,
@@ -181,6 +282,7 @@ export async function saveActiveRunCheckpoint(
   options: {
     fetcher?: typeof fetch;
     keepalive?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<CheckpointReceipt> {
   const response = await (options.fetcher ?? fetch)('/api/game/session', {
@@ -190,6 +292,7 @@ export async function saveActiveRunCheckpoint(
       Authorization: `Bearer ${accessToken}`,
     },
     keepalive: options.keepalive === true,
+    signal: options.signal,
     body: JSON.stringify({
       action: 'checkpoint',
       sessionId,
@@ -200,9 +303,7 @@ export async function saveActiveRunCheckpoint(
   });
   const body = await jsonRecord(response);
   if (!response.ok) {
-    throw new Error(
-      typeof body.error === 'string' ? body.error : 'Could not secure the run checkpoint'
-    );
+    throw responseError(response, body, 'Could not secure the run checkpoint');
   }
   const receipt = responseRecord(body.checkpoint);
   const revision = Number(receipt.revision);

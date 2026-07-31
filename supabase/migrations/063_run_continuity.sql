@@ -19,6 +19,7 @@ ALTER TABLE game_sessions
   ADD COLUMN continuity_energy_visible BOOLEAN,
   ADD COLUMN simulation_seed UUID,
   ADD COLUMN simulation_version SMALLINT,
+  ADD COLUMN simulation_rules_version TEXT,
   ADD COLUMN continuity_phase TEXT,
   ADD COLUMN continuity_activated_at TIMESTAMPTZ,
   ADD COLUMN continuity_checkpoint JSONB,
@@ -65,7 +66,8 @@ ALTER TABLE game_sessions
     ),
   ADD CONSTRAINT game_sessions_continuity_checkpoint_shape
     CHECK (
-      (continuity_checkpoint IS NULL
+      (continuity_phase IS DISTINCT FROM 'active'
+       AND continuity_checkpoint IS NULL
        AND continuity_checkpoint_revision = 0
        AND continuity_checkpoint_saved_at IS NULL
        AND continuity_checkpoint_digest IS NULL)
@@ -91,9 +93,13 @@ ALTER TABLE game_sessions
     ),
   ADD CONSTRAINT game_sessions_simulation_version_valid
     CHECK (
-      (simulation_seed IS NULL AND simulation_version IS NULL)
+      (simulation_seed IS NULL
+       AND simulation_version IS NULL
+       AND simulation_rules_version IS NULL)
       OR
-      (simulation_seed IS NOT NULL AND simulation_version = 1)
+      (simulation_seed IS NOT NULL
+       AND simulation_version = 1
+       AND simulation_rules_version ~ '^snake-rules-[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+$')
     ),
   ADD CONSTRAINT game_sessions_continuity_shape
     CHECK (
@@ -103,6 +109,7 @@ ALTER TABLE game_sessions
        AND start_manifest_draft IS NULL
        AND simulation_seed IS NULL
        AND simulation_version IS NULL
+       AND simulation_rules_version IS NULL
        AND continuity_activated_at IS NULL)
       OR
       (continuity_phase = 'preparing'
@@ -110,6 +117,7 @@ ALTER TABLE game_sessions
        AND start_manifest IS NULL
        AND simulation_seed IS NOT NULL
        AND simulation_version = 1
+       AND simulation_rules_version IS NOT NULL
        AND continuity_activated_at IS NULL)
       OR
       (continuity_phase = 'prepared'
@@ -118,6 +126,7 @@ ALTER TABLE game_sessions
        AND start_manifest_draft IS NOT NULL
        AND simulation_seed IS NOT NULL
        AND simulation_version = 1
+       AND simulation_rules_version IS NOT NULL
        AND continuity_activated_at IS NULL)
       OR
       (continuity_phase = 'active'
@@ -126,6 +135,9 @@ ALTER TABLE game_sessions
        AND start_manifest_draft IS NOT NULL
        AND simulation_seed IS NOT NULL
        AND simulation_version = 1
+       AND simulation_rules_version IS NOT NULL
+       AND continuity_checkpoint IS NOT NULL
+       AND continuity_checkpoint_revision > 0
        AND continuity_activated_at IS NOT NULL)
     );
 
@@ -141,6 +153,8 @@ COMMENT ON COLUMN game_sessions.simulation_seed IS
   'Server-issued seed for the complete deterministic client simulation. Immutable and domain-separated from the genome offer seed.';
 COMMENT ON COLUMN game_sessions.simulation_version IS
   'Version of the deterministic simulation contract used by this run.';
+COMMENT ON COLUMN game_sessions.simulation_rules_version IS
+  'Immutable rules/content version required to interpret and resume the deterministic simulation safely.';
 COMMENT ON COLUMN game_sessions.continuity_phase IS
   'preparing before atomic Energy+manifest finalization, prepared while safely continuable before first input, active after explicit activation.';
 COMMENT ON COLUMN game_sessions.continuity_checkpoint IS
@@ -165,6 +179,40 @@ CREATE UNIQUE INDEX game_sessions_one_open_nonsettling_per_player
     AND end_reason IS NULL
     AND start_request_id IS NOT NULL;
 
+-- The partial index above serializes two continuity writers, but a stale
+-- application artifact could otherwise insert a legacy-shaped open row beside
+-- a continuity run.  Serialize every future open insert per player and refuse
+-- the second row without rewriting historical sessions.
+CREATE OR REPLACE FUNCTION guard_one_open_game_session()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.ended_at IS NOT NULL OR NEW.end_reason IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.player_id::TEXT, 0));
+  IF EXISTS (
+    SELECT 1
+      FROM game_sessions gs
+     WHERE gs.player_id = NEW.player_id
+       AND gs.ended_at IS NULL
+       AND gs.end_reason IS NULL
+       AND gs.id IS DISTINCT FROM NEW.id
+  ) THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'active_run_exists',
+      ERRCODE = '23505';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER game_sessions_one_open_insert
+BEFORE INSERT ON game_sessions
+FOR EACH ROW EXECUTE FUNCTION guard_one_open_game_session();
+
 CREATE OR REPLACE FUNCTION protect_run_continuity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -176,6 +224,7 @@ BEGIN
     OR NEW.start_request_fingerprint IS DISTINCT FROM OLD.start_request_fingerprint
     OR NEW.simulation_seed IS DISTINCT FROM OLD.simulation_seed
     OR NEW.simulation_version IS DISTINCT FROM OLD.simulation_version
+    OR NEW.simulation_rules_version IS DISTINCT FROM OLD.simulation_rules_version
   ) THEN
     RAISE EXCEPTION 'run_continuity_start_intent_immutable';
   END IF;
@@ -406,7 +455,11 @@ GRANT EXECUTE ON FUNCTION finalize_run_continuity_start(
 CREATE OR REPLACE FUNCTION activate_run_continuity(
   p_player_id UUID,
   p_session_id UUID,
-  p_lease_hash TEXT
+  p_checkpoint JSONB,
+  p_checkpoint_digest TEXT,
+  p_lease_hash TEXT,
+  p_rules_version TEXT,
+  p_max_bytes INTEGER
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -414,10 +467,24 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_session RECORD;
+  v_session game_sessions%ROWTYPE;
+  v_max_bytes INTEGER := GREATEST(65536, LEAST(COALESCE(p_max_bytes, 1048576), 1048576));
 BEGIN
-  IF p_lease_hash !~ '^[0-9a-f]{64}$' THEN
-    RAISE EXCEPTION 'invalid_run_lease';
+  IF p_lease_hash !~ '^[0-9a-f]{64}$'
+     OR p_checkpoint_digest !~ '^[0-9a-f]{64}$'
+     OR p_checkpoint IS NULL
+     OR jsonb_typeof(p_checkpoint) <> 'object'
+     OR octet_length(p_checkpoint::TEXT) > v_max_bytes
+     OR (p_checkpoint->>'version') IS DISTINCT FROM '1'
+     OR (p_checkpoint->>'engineVersion') IS DISTINCT FROM 'snake-engine-v1'
+     OR (p_checkpoint->>'rulesVersion') IS DISTINCT FROM p_rules_version
+     OR jsonb_typeof(p_checkpoint->'config') IS DISTINCT FROM 'object'
+     OR jsonb_typeof(p_checkpoint->'state') IS DISTINCT FROM 'object'
+     OR jsonb_typeof(p_checkpoint->'privateState') IS DISTINCT FROM 'object'
+     OR (p_checkpoint->'state'->>'isPlaying') IS DISTINCT FROM 'true'
+     OR (p_checkpoint->'state'->>'isGameOver') IS DISTINCT FROM 'false'
+     OR (p_checkpoint->'state'->>'isDeathSequence') IS DISTINCT FROM 'false' THEN
+    RAISE EXCEPTION 'invalid_checkpoint';
   END IF;
   SELECT gs.* INTO v_session
     FROM game_sessions gs
@@ -429,34 +496,32 @@ BEGIN
     RAISE EXCEPTION 'session_not_found';
   END IF;
   IF v_session.start_manifest IS NULL
-     OR v_session.continuity_phase NOT IN ('prepared', 'active') THEN
+     OR v_session.continuity_phase IS DISTINCT FROM 'prepared' THEN
     RAISE EXCEPTION 'run_not_prepared';
   END IF;
-
-  IF v_session.continuity_phase = 'prepared' THEN
-    UPDATE game_sessions
-       SET continuity_phase = 'active',
-           continuity_activated_at = NOW(),
-           continuity_lease_hash = p_lease_hash,
-           continuity_lease_epoch = 1,
-           continuity_lease_issued_at = NOW()
-     WHERE id = p_session_id;
-  ELSIF v_session.continuity_checkpoint IS NULL THEN
-    -- The activation response may have disappeared before the client could
-    -- save checkpoint 1. A retry rotates the empty-run lease; no physics state
-    -- exists to fork yet, and the newest response becomes the sole holder.
-    UPDATE game_sessions
-       SET continuity_lease_hash = p_lease_hash,
-           continuity_lease_epoch = continuity_lease_epoch + 1,
-           continuity_lease_issued_at = NOW()
-     WHERE id = p_session_id;
-  ELSIF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
-    RAISE EXCEPTION 'run_lease_conflict';
+  IF v_session.simulation_rules_version IS DISTINCT FROM p_rules_version THEN
+    RAISE EXCEPTION 'run_rules_version_mismatch';
   END IF;
 
-  SELECT gs.* INTO STRICT v_session
-    FROM game_sessions gs
-   WHERE gs.id = p_session_id;
+  -- The opening snapshot and exclusive lease become authoritative together.
+  -- There is no observable active/no-checkpoint state, including when the HTTP
+  -- response disappears after commit.
+  UPDATE game_sessions
+     SET continuity_phase = 'active',
+         continuity_activated_at = NOW(),
+         continuity_checkpoint = p_checkpoint,
+         continuity_checkpoint_revision = 1,
+         continuity_checkpoint_saved_at = NOW(),
+         continuity_checkpoint_digest = p_checkpoint_digest,
+         continuity_lease_hash = p_lease_hash,
+         continuity_lease_epoch = 1,
+         continuity_lease_issued_at = NOW()
+   WHERE id = p_session_id
+     AND continuity_phase = 'prepared'
+   RETURNING * INTO v_session;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'run_activation_race';
+  END IF;
 
   RETURN jsonb_build_object(
     'id', v_session.id,
@@ -470,6 +535,7 @@ BEGIN
     'continuity_checkpoint_saved_at', v_session.continuity_checkpoint_saved_at,
     'continuity_checkpoint_digest', v_session.continuity_checkpoint_digest,
     'continuity_lease_epoch', v_session.continuity_lease_epoch,
+    'simulation_rules_version', v_session.simulation_rules_version,
     'started_at', v_session.started_at,
     'server_started_at', v_session.server_started_at,
     'energy_committed', v_session.energy_committed
@@ -477,15 +543,16 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION activate_run_continuity(UUID, UUID, TEXT) FROM PUBLIC;
-REVOKE ALL ON FUNCTION activate_run_continuity(UUID, UUID, TEXT) FROM anon;
-REVOKE ALL ON FUNCTION activate_run_continuity(UUID, UUID, TEXT) FROM authenticated;
-GRANT EXECUTE ON FUNCTION activate_run_continuity(UUID, UUID, TEXT) TO service_role;
+REVOKE ALL ON FUNCTION activate_run_continuity(UUID, UUID, JSONB, TEXT, TEXT, TEXT, INTEGER) FROM PUBLIC;
+REVOKE ALL ON FUNCTION activate_run_continuity(UUID, UUID, JSONB, TEXT, TEXT, TEXT, INTEGER) FROM anon;
+REVOKE ALL ON FUNCTION activate_run_continuity(UUID, UUID, JSONB, TEXT, TEXT, TEXT, INTEGER) FROM authenticated;
+GRANT EXECUTE ON FUNCTION activate_run_continuity(UUID, UUID, JSONB, TEXT, TEXT, TEXT, INTEGER) TO service_role;
 
 CREATE OR REPLACE FUNCTION resume_run_continuity(
   p_player_id UUID,
   p_session_id UUID,
-  p_lease_hash TEXT
+  p_lease_hash TEXT,
+  p_rules_version TEXT
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -510,6 +577,10 @@ BEGIN
      OR v_session.continuity_checkpoint IS NULL THEN
     RAISE EXCEPTION 'run_not_resumable';
   END IF;
+  IF v_session.simulation_rules_version IS DISTINCT FROM p_rules_version
+     OR (v_session.continuity_checkpoint->>'rulesVersion') IS DISTINCT FROM p_rules_version THEN
+    RAISE EXCEPTION 'run_rules_version_mismatch';
+  END IF;
 
   UPDATE game_sessions
      SET continuity_lease_hash = p_lease_hash,
@@ -528,6 +599,7 @@ BEGIN
     'continuity_checkpoint_saved_at', v_session.continuity_checkpoint_saved_at,
     'continuity_checkpoint_digest', v_session.continuity_checkpoint_digest,
     'continuity_lease_epoch', v_session.continuity_lease_epoch,
+    'simulation_rules_version', v_session.simulation_rules_version,
     'started_at', v_session.started_at,
     'server_started_at', v_session.server_started_at,
     'energy_committed', v_session.energy_committed
@@ -535,10 +607,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION resume_run_continuity(UUID, UUID, TEXT) FROM PUBLIC;
-REVOKE ALL ON FUNCTION resume_run_continuity(UUID, UUID, TEXT) FROM anon;
-REVOKE ALL ON FUNCTION resume_run_continuity(UUID, UUID, TEXT) FROM authenticated;
-GRANT EXECUTE ON FUNCTION resume_run_continuity(UUID, UUID, TEXT) TO service_role;
+REVOKE ALL ON FUNCTION resume_run_continuity(UUID, UUID, TEXT, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION resume_run_continuity(UUID, UUID, TEXT, TEXT) FROM anon;
+REVOKE ALL ON FUNCTION resume_run_continuity(UUID, UUID, TEXT, TEXT) FROM authenticated;
+GRANT EXECUTE ON FUNCTION resume_run_continuity(UUID, UUID, TEXT, TEXT) TO service_role;
 
 CREATE OR REPLACE FUNCTION save_run_continuity_checkpoint(
   p_player_id UUID,
@@ -566,6 +638,7 @@ BEGIN
      OR p_lease_hash !~ '^[0-9a-f]{64}$'
      OR (p_checkpoint->>'version') IS DISTINCT FROM '1'
      OR (p_checkpoint->>'engineVersion') IS DISTINCT FROM 'snake-engine-v1'
+     OR (p_checkpoint->>'rulesVersion') IS NULL
      OR jsonb_typeof(p_checkpoint->'config') IS DISTINCT FROM 'object'
      OR jsonb_typeof(p_checkpoint->'state') IS DISTINCT FROM 'object'
      OR jsonb_typeof(p_checkpoint->'privateState') IS DISTINCT FROM 'object'
@@ -586,6 +659,9 @@ BEGIN
   END IF;
   IF v_session.continuity_phase IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'run_not_active';
+  END IF;
+  IF (p_checkpoint->>'rulesVersion') IS DISTINCT FROM v_session.simulation_rules_version THEN
+    RAISE EXCEPTION 'run_rules_version_mismatch';
   END IF;
   IF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
     RAISE EXCEPTION 'run_lease_conflict';
@@ -634,5 +710,324 @@ REVOKE ALL ON FUNCTION save_run_continuity_checkpoint(
 GRANT EXECUTE ON FUNCTION save_run_continuity_checkpoint(
   UUID, UUID, INTEGER, JSONB, TEXT, TEXT, INTEGER
 ) TO service_role;
+
+-- Terminal transitions share the checkpoint lease's row lock. The HTTP
+-- handler performs expensive validation first, so an application-only lease
+-- check is a TOCTOU bug: another tab can resume during that work. This wrapper
+-- holds the row lock while the immutable pending envelope is staged.
+CREATE OR REPLACE FUNCTION stage_continuity_game_session_end(
+  p_user_id UUID,
+  p_player_id UUID,
+  p_session_id UUID,
+  p_lease_hash TEXT,
+  p_envelope JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+  v_pending pending_game_session_ends%ROWTYPE;
+BEGIN
+  IF p_lease_hash !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'run_lease_conflict';
+  END IF;
+
+  SELECT gs.* INTO v_session
+    FROM game_sessions gs
+   WHERE gs.id = p_session_id
+     AND gs.player_id = p_player_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'session_not_found';
+  END IF;
+  IF v_session.ended_at IS NOT NULL
+     OR (v_session.end_reason IS NOT NULL
+         AND v_session.end_reason IS DISTINCT FROM 'completed')
+     OR v_session.continuity_phase IS DISTINCT FROM 'active'
+     OR v_session.continuity_checkpoint IS NULL
+     OR v_session.continuity_checkpoint_revision < 1 THEN
+    RAISE EXCEPTION 'run_not_terminalizable';
+  END IF;
+  IF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+    RAISE EXCEPTION 'run_lease_conflict';
+  END IF;
+
+  -- The first store changes the row to `completed` before adoption. A second
+  -- request that was already waiting on this lock must receive the exact
+  -- durable receipt instead of a spurious 409. `completed` without the
+  -- matching immutable envelope is an invariant failure, never permission to
+  -- manufacture a replacement terminal claim.
+  IF v_session.end_reason = 'completed' THEN
+    SELECT pending.* INTO v_pending
+      FROM pending_game_session_ends pending
+     WHERE pending.session_id = p_session_id
+     FOR UPDATE;
+    IF NOT FOUND
+       OR v_pending.user_id IS DISTINCT FROM p_user_id
+       OR v_pending.player_id IS DISTINCT FROM p_player_id
+       OR v_pending.envelope IS DISTINCT FROM p_envelope THEN
+      RAISE EXCEPTION 'run_not_terminalizable';
+    END IF;
+    RETURN jsonb_build_object(
+      'accepted', TRUE,
+      'inserted', FALSE,
+      'sessionId', p_session_id,
+      'state', v_pending.state,
+      'receivedAt', v_pending.received_at
+    );
+  END IF;
+
+  -- The inner function locks this same row again in this transaction. The
+  -- outer lock remains held, making lease validation and the pending terminal
+  -- transition indivisible to resume and abandon.
+  RETURN store_pending_game_session_end(
+    p_user_id, p_player_id, p_session_id, p_envelope
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION stage_continuity_game_session_end(
+  UUID, UUID, UUID, TEXT, JSONB
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION stage_continuity_game_session_end(
+  UUID, UUID, UUID, TEXT, JSONB
+) TO service_role;
+
+-- Rewardless practice does not enter the durable Career queue, but it still
+-- needs the same lease/terminal atomicity.
+CREATE OR REPLACE FUNCTION complete_free_run_continuity(
+  p_player_id UUID,
+  p_session_id UUID,
+  p_lease_hash TEXT,
+  p_facts JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+BEGIN
+  IF p_lease_hash !~ '^[0-9a-f]{64}$'
+     OR p_facts IS NULL
+     OR jsonb_typeof(p_facts) <> 'object'
+     OR octet_length(p_facts::TEXT) > 65536
+     OR (p_facts->>'score') !~ '^[0-9]+$'
+     OR (p_facts->>'dnaEarned') !~ '^0$'
+     OR (p_facts->>'yieldDna') !~ '^[0-9]+$'
+     OR (p_facts->>'durationSeconds') !~ '^[0-9]+$'
+     OR (p_facts->>'foodsCollected') !~ '^[0-9]+$'
+     OR jsonb_typeof(p_facts->'died') IS DISTINCT FROM 'boolean'
+     OR jsonb_typeof(p_facts->'victory') IS DISTINCT FROM 'boolean'
+     OR jsonb_typeof(p_facts->'extracted') IS DISTINCT FROM 'boolean'
+     OR jsonb_typeof(p_facts->'validated') IS DISTINCT FROM 'boolean'
+     OR jsonb_typeof(p_facts->'endedAt') IS DISTINCT FROM 'string'
+     OR (p_facts->>'endedAt')::TIMESTAMPTZ > clock_timestamp() + INTERVAL '5 minutes' THEN
+    RAISE EXCEPTION 'invalid_free_run_facts';
+  END IF;
+
+  SELECT gs.* INTO v_session
+    FROM game_sessions gs
+   WHERE gs.id = p_session_id
+     AND gs.player_id = p_player_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'session_not_found';
+  END IF;
+  IF v_session.ended_at IS NOT NULL OR v_session.end_reason IS NOT NULL
+     OR v_session.continuity_phase IS DISTINCT FROM 'active'
+     OR v_session.continuity_checkpoint IS NULL
+     OR v_session.continuity_checkpoint_revision < 1
+     OR NOT COALESCE(v_session.is_free_play, FALSE) THEN
+    RAISE EXCEPTION 'run_not_terminalizable';
+  END IF;
+  IF v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+    RAISE EXCEPTION 'run_lease_conflict';
+  END IF;
+
+  UPDATE game_sessions gs
+     SET score = (p_facts->>'score')::INTEGER,
+         dna_earned = 0,
+         yield_dna = (p_facts->>'yieldDna')::INTEGER,
+         duration_seconds = (p_facts->>'durationSeconds')::INTEGER,
+         died = (p_facts->>'died')::BOOLEAN,
+         victory = (p_facts->>'victory')::BOOLEAN,
+         extracted = (p_facts->>'extracted')::BOOLEAN,
+         ended_at = (p_facts->>'endedAt')::TIMESTAMPTZ,
+         validated = (p_facts->>'validated')::BOOLEAN,
+         validation_errors = NULLIF(p_facts->'validationErrors', 'null'::JSONB),
+         foods_collected = (p_facts->>'foodsCollected')::INTEGER,
+         mutations = NULLIF(p_facts->'mutations', 'null'::JSONB),
+         genome = NULLIF(p_facts->'genome', 'null'::JSONB),
+         end_reason = 'completed'
+   WHERE gs.id = p_session_id
+   RETURNING gs.* INTO v_session;
+
+  RETURN jsonb_build_object(
+    'accepted', TRUE,
+    'sessionId', v_session.id,
+    'endReason', v_session.end_reason
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION complete_free_run_continuity(UUID, UUID, TEXT, JSONB)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION complete_free_run_continuity(UUID, UUID, TEXT, JSONB)
+  TO service_role;
+
+-- Explicit abandonment is the only player-requested zero-reward terminal
+-- transition. Disconnection, reload and tab closure retain the open row.
+CREATE OR REPLACE FUNCTION abandon_run_continuity(
+  p_player_id UUID,
+  p_session_id UUID,
+  p_lease_hash TEXT,
+  p_rules_version TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_session game_sessions%ROWTYPE;
+BEGIN
+  SELECT gs.* INTO v_session
+    FROM game_sessions gs
+   WHERE gs.id = p_session_id
+     AND gs.player_id = p_player_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'session_not_found';
+  END IF;
+  IF v_session.ended_at IS NOT NULL OR v_session.end_reason IS NOT NULL THEN
+    RAISE EXCEPTION 'run_not_terminalizable';
+  END IF;
+
+  IF v_session.continuity_phase = 'preparing' THEN
+    -- The service may stop after inserting the idempotency shell but before
+    -- staging its manifest draft. No Energy has moved in `preparing`, so the
+    -- player can explicitly release that orphan without a fabricated lease.
+    IF v_session.start_manifest IS NOT NULL
+       OR v_session.continuity_checkpoint IS NOT NULL
+       OR v_session.continuity_checkpoint_revision <> 0
+       OR v_session.continuity_lease_hash IS NOT NULL
+       OR COALESCE(v_session.energy_committed, 0) <> 0
+       OR p_lease_hash IS NOT NULL THEN
+      RAISE EXCEPTION 'run_not_terminalizable';
+    END IF;
+  ELSIF v_session.continuity_phase = 'prepared' THEN
+    -- A prepared run has spent Energy but has never moved. Explicitly
+    -- abandoning it must not require manufacturing an opening tick or lease.
+    IF v_session.continuity_checkpoint IS NOT NULL
+       OR v_session.continuity_checkpoint_revision <> 0
+       OR v_session.continuity_lease_hash IS NOT NULL
+       OR p_lease_hash IS NOT NULL THEN
+      RAISE EXCEPTION 'run_not_terminalizable';
+    END IF;
+  ELSIF v_session.continuity_phase = 'active' THEN
+    IF v_session.continuity_checkpoint IS NULL
+       OR v_session.continuity_checkpoint_revision < 1 THEN
+      RAISE EXCEPTION 'run_not_terminalizable';
+    END IF;
+    IF v_session.simulation_rules_version IS DISTINCT FROM p_rules_version THEN
+      -- This deployment cannot resume an older rules contract. The owner can
+      -- still deliberately release it without a fake lease; no other terminal
+      -- action or implicit navigation reaches this branch.
+      IF p_lease_hash IS NOT NULL THEN
+        RAISE EXCEPTION 'run_not_terminalizable';
+      END IF;
+    ELSIF p_lease_hash !~ '^[0-9a-f]{64}$'
+          OR v_session.continuity_lease_hash IS DISTINCT FROM p_lease_hash THEN
+      RAISE EXCEPTION 'run_lease_conflict';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'run_not_terminalizable';
+  END IF;
+
+  UPDATE game_sessions gs
+     SET ended_at = clock_timestamp(),
+         end_reason = 'abandoned'
+   WHERE gs.id = p_session_id
+   RETURNING gs.* INTO v_session;
+
+  RETURN jsonb_build_object(
+    'accepted', TRUE,
+    'sessionId', v_session.id,
+    'endReason', v_session.end_reason
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION abandon_run_continuity(UUID, UUID, TEXT, TEXT)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION abandon_run_continuity(UUID, UUID, TEXT, TEXT)
+  TO service_role;
+
+-- Continuity sessions are durable player state, not stale analytics rows. The
+-- legacy sweep remains useful for pre-063 artifacts; continuity rows have no
+-- age horizon and require verified completion or explicit abandonment.
+CREATE OR REPLACE FUNCTION expire_stale_game_sessions(
+  p_open_max_minutes INTEGER DEFAULT 180,
+  p_pending_max_minutes INTEGER DEFAULT 11520,
+  p_batch_limit INTEGER DEFAULT 5000
+) RETURNS INTEGER AS $$
+DECLARE
+  v_expired INTEGER;
+BEGIN
+  IF p_open_max_minutes IS NULL OR p_open_max_minutes < 1 THEN
+    RAISE EXCEPTION 'expire_stale_game_sessions: p_open_max_minutes must be >= 1';
+  END IF;
+  IF p_pending_max_minutes IS NULL OR p_pending_max_minutes < p_open_max_minutes THEN
+    RAISE EXCEPTION 'expire_stale_game_sessions: p_pending_max_minutes must be >= p_open_max_minutes';
+  END IF;
+  IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
+    RAISE EXCEPTION 'expire_stale_game_sessions: p_batch_limit must be >= 1';
+  END IF;
+
+  WITH stale AS (
+    SELECT gs.id
+      FROM game_sessions gs
+     WHERE gs.ended_at IS NULL
+       AND gs.start_request_id IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM pending_game_session_ends pending
+          WHERE pending.session_id = gs.id
+            AND pending.state IN ('staged', 'quarantined')
+       )
+       AND (
+         (gs.end_reason IS NULL
+          AND gs.started_at < NOW() - make_interval(mins => p_open_max_minutes))
+         OR
+         (gs.end_reason IS NOT NULL
+          AND gs.started_at < NOW() - make_interval(mins => p_pending_max_minutes))
+       )
+     ORDER BY gs.started_at
+     LIMIT p_batch_limit
+     FOR UPDATE SKIP LOCKED
+  )
+  UPDATE game_sessions gs
+     SET ended_at = NOW(), end_reason = 'expired'
+    FROM stale
+   WHERE gs.id = stale.id AND gs.ended_at IS NULL;
+  GET DIAGNOSTICS v_expired = ROW_COUNT;
+  RETURN v_expired;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public;
+
+REVOKE ALL ON FUNCTION expire_stale_game_sessions(INTEGER, INTEGER, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION expire_stale_game_sessions(INTEGER, INTEGER, INTEGER)
+  TO service_role;
+
+COMMENT ON FUNCTION expire_stale_game_sessions(INTEGER, INTEGER, INTEGER) IS
+  'Closes stale legacy rows only. Continuity runs never age-expire; they require verified completion or explicit abandonment.';
 
 COMMIT;

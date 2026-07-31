@@ -163,14 +163,14 @@ export default function Home() {
   // canonical server impact receipt and refreshes server-owned attention.
   useEffect(() => {
     if (!token) return;
-    replayRewardOutbox(token)
+    replayRewardOutbox(token, fetch, session?.user?.id)
       .then((result) => {
         if (result.impacts.length > 0) requestAttentionRefresh();
       })
       .catch((err) => {
         console.error('Settlement retry failed:', err);
       });
-  }, [token]);
+  }, [session?.user?.id, token]);
 
   // Real home stats from server authority: /api/player + /api/streaks
   useEffect(() => {

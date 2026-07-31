@@ -433,6 +433,7 @@ type GameEvent =
   | 'pause'
   | 'resume'
   | 'deathSequence'
+  | 'deathSequenceComplete'
   | 'exitSpawned'
   | 'exitDespawned'
   | 'foodDespawned'
@@ -587,6 +588,16 @@ export interface GenomeEngineConfig {
 }
 
 export const SNAKE_CHECKPOINT_VERSION = 1 as const;
+export const DEATH_SEQUENCE_DURATION_MS = 800;
+/**
+ * Immutable gameplay/content contract carried by every resumable run.
+ *
+ * Engine serialization and product rules change on different cadences.  A
+ * checkpoint may therefore be structurally readable while belonging to rules
+ * this deployment must not continue.  Bump this value whenever a change can
+ * alter deterministic board evolution or the meaning of persisted state.
+ */
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.1' as const;
 
 /**
  * Complete continuation state at a resolved simulation boundary.
@@ -600,6 +611,7 @@ export const SNAKE_CHECKPOINT_VERSION = 1 as const;
 export interface SnakeCheckpointV1 {
   version: typeof SNAKE_CHECKPOINT_VERSION;
   engineVersion: 'snake-engine-v1';
+  rulesVersion: typeof SNAKE_RULES_VERSION;
   rng: StatefulRngSnapshot;
   config: {
     gridSize: number;
@@ -820,6 +832,8 @@ export class SnakeGameLogic {
   private deathCause: RunDeathCause | null = null;
   /** Death cause staged by the collision that started the death sequence. */
   private pendingDeathCause: Exclude<RunDeathCause, 'extracted'> | null = null;
+  /** Prevent an old presentation timer from touching a later run. */
+  private deathSequenceToken = 0;
   /** Near-wall episode tracking (1-cell wall margin). */
   private nearWallSinceMs: number | null = null;
 
@@ -1189,6 +1203,7 @@ export class SnakeGameLogic {
   }
 
   private beginRun(opening: DrivenStartState | null): void {
+    this.deathSequenceToken += 1;
     this.drivenRun = opening !== null;
     // A session seed describes the opening, not the incidental number of
     // pre-run setters React happened to call. Rewind at the single boundary
@@ -1445,6 +1460,7 @@ export class SnakeGameLogic {
     return {
       version: SNAKE_CHECKPOINT_VERSION,
       engineVersion: 'snake-engine-v1',
+      rulesVersion: SNAKE_RULES_VERSION,
       rng: this.replayableRng.snapshot(),
       config: {
         gridSize: this.gridSize,
@@ -1507,6 +1523,7 @@ export class SnakeGameLogic {
     if (
       checkpoint?.version !== SNAKE_CHECKPOINT_VERSION ||
       checkpoint.engineVersion !== 'snake-engine-v1' ||
+      checkpoint.rulesVersion !== SNAKE_RULES_VERSION ||
       !checkpoint.config ||
       !checkpoint.state ||
       !checkpoint.privateState ||
@@ -4486,19 +4503,24 @@ export class SnakeGameLogic {
       dnaCollected: this.state.dnaCollected,
     });
 
-    // After slow-motion delay, trigger actual game over
+    // Commit terminal state and emit gameOver in the same turn as collision.
+    // The death flag remains alive for presentation only: reload can no longer
+    // race an 800 ms non-terminal window, while the authored flourish survives.
+    const token = ++this.deathSequenceToken;
+    this.finalizeRun('died', true);
     setTimeout(() => {
-      this.finalizeRun('died');
-    }, 800); // 800ms for dramatic effect
+      if (this.deathSequenceToken !== token) return;
+      this.state.isDeathSequence = false;
+      this.emit('deathSequenceComplete');
+    }, DEATH_SEQUENCE_DURATION_MS);
   }
 
   /**
-   * End the run - one path for both endings. Death arrives here through
-   * the 800ms death sequence; extraction calls it synchronously (no death
-   * drama when you leave on your own terms).
+   * End the run - one path for both endings. Death and extraction both commit
+   * synchronously; presentation may outlive this state transition.
    */
-  private finalizeRun(reason: EndReason): void {
-    this.state.isDeathSequence = false;
+  private finalizeRun(reason: EndReason, retainDeathPresentation = false): void {
+    this.state.isDeathSequence = retainDeathPresentation;
     this.state.isGameOver = true;
     this.state.isPlaying = false;
 

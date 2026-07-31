@@ -1,21 +1,44 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import {
+  abandonContinuityRun,
   activateRun,
   assertTerminalRunLease,
   finalizeRunStart,
   fingerprintStartRequest,
   isValidStartRequestId,
+  readActiveRun,
   RunContinuityError,
   validateRunCheckpoint,
 } from './runContinuity';
-import { SnakeGameLogic } from '@/lib/game/SnakeGameLogic';
+import {
+  SNAKE_RULES_VERSION,
+  SnakeGameLogic,
+} from '@/lib/game/SnakeGameLogic';
+import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
 import { RULESETS } from '@/shared/game/rulesets';
 
 const START_ID = '7a604a42-9f57-4f50-9a36-a7c7e85dbb28';
 
 function clientWithRpc(rpc: jest.Mock): SupabaseClient {
   return { rpc } as unknown as SupabaseClient;
+}
+
+function clientWithRowAndRpc(row: Record<string, unknown>, rpc: jest.Mock): SupabaseClient {
+  const query = {
+    select: jest.fn(),
+    eq: jest.fn(),
+    is: jest.fn(),
+    order: jest.fn(),
+    limit: jest.fn(),
+    maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  query.is.mockReturnValue(query);
+  query.order.mockReturnValue(query);
+  query.limit.mockReturnValue(query);
+  return { from: jest.fn(() => query), rpc } as unknown as SupabaseClient;
 }
 
 describe('run continuity server contract', () => {
@@ -132,16 +155,36 @@ describe('run continuity server contract', () => {
     });
   });
 
-  it('activates only through the service RPC and returns a non-resumable active run', async () => {
+  it('atomically activates with checkpoint one and an exclusive lease', async () => {
+    const now = Date.now();
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'activation-seed',
+    });
+    game.start();
+    const opening = game.exportCheckpoint(now);
+    const manifest = {
+      sessionId: 'session-1',
+      simulation: {
+        seed: 'activation-seed',
+        version: 1,
+        rulesVersion: SNAKE_RULES_VERSION,
+      },
+      runSnake: { dynasty: 'PRIMAL' },
+    };
     const rpc = jest.fn().mockResolvedValue({
       data: {
         id: 'session-1',
         start_request_id: START_ID,
         start_request_fingerprint: 'd'.repeat(64),
-        start_manifest: { sessionId: 'session-1' },
+        start_manifest: manifest,
         continuity_phase: 'active',
         continuity_activated_at: '2026-07-31T10:00:01.000Z',
         continuity_lease_epoch: 1,
+        continuity_checkpoint: opening,
+        continuity_checkpoint_revision: 1,
+        continuity_checkpoint_saved_at: new Date(now).toISOString(),
+        simulation_rules_version: SNAKE_RULES_VERSION,
         started_at: '2026-07-31T10:00:00.000Z',
         server_started_at: '2026-07-31T10:00:00.000Z',
         energy_committed: 6,
@@ -150,12 +193,29 @@ describe('run continuity server contract', () => {
     });
 
     await expect(
-      activateRun(clientWithRpc(rpc), 'player-1', 'session-1')
+      activateRun(
+        clientWithRowAndRpc({
+          id: 'session-1',
+          start_request_id: START_ID,
+          start_manifest: manifest,
+          continuity_phase: 'prepared',
+          simulation_rules_version: SNAKE_RULES_VERSION,
+          started_at: new Date(now - 1_000).toISOString(),
+          server_started_at: new Date(now - 1_000).toISOString(),
+          ended_at: null,
+          end_reason: null,
+        }, rpc),
+        'player-1',
+        'session-1',
+        opening,
+        now
+      )
     ).resolves.toMatchObject({
       phase: 'active',
       energyCommitted: 6,
-      canContinue: false,
-      requiresAbandon: true,
+      canContinue: true,
+      requiresAbandon: false,
+      checkpointRevision: 1,
       leaseEpoch: 1,
     });
     expect(rpc).toHaveBeenCalledWith(
@@ -163,7 +223,10 @@ describe('run continuity server contract', () => {
       expect.objectContaining({
         p_player_id: 'player-1',
         p_session_id: 'session-1',
+        p_checkpoint: opening,
+        p_checkpoint_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
         p_lease_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        p_rules_version: SNAKE_RULES_VERSION,
       })
     );
   });
@@ -178,7 +241,11 @@ describe('run continuity server contract', () => {
     const checkpoint = game.exportCheckpoint(now);
     const manifest = {
       sessionId: 'session-1',
-      simulation: { seed: 'server-seed', version: 1 },
+      simulation: {
+        seed: 'server-seed',
+        version: 1,
+        rulesVersion: SNAKE_RULES_VERSION,
+      },
       runSnake: { dynasty: 'CYBER' },
     };
 
@@ -247,7 +314,11 @@ describe('run continuity server contract', () => {
       validateRunCheckpoint(rewind, {
         manifest: {
           sessionId: 'session-1',
-          simulation: { seed: 'monotonic-seed', version: 1 },
+          simulation: {
+            seed: 'monotonic-seed',
+            version: 1,
+            rulesVersion: SNAKE_RULES_VERSION,
+          },
           runSnake: { dynasty: 'PRIMAL' },
         },
         startedAt: new Date(now - 1_000).toISOString(),
@@ -260,11 +331,130 @@ describe('run continuity server contract', () => {
     ).toThrow('rewind accepted progress');
   });
 
+  it('accepts genome-only genes and keeps legacy length derivation separate', () => {
+    const now = Date.now();
+    const genome = sanitizeGenomeCapability({
+      runSeed: 'genome-run-seed',
+      heirloom: {},
+      genePool: ['loan_shark', 'overgrowth', 'time_dilation'],
+      lineage: null,
+      anomalyStrain: null,
+      suppressedStrains: [],
+      strainThresholdDelta: {},
+      prevRunDied: false,
+      ftue: {
+        bankedRuns: 20,
+        strainTagsUnlocked: true,
+        expressionsUnlocked: true,
+        infuseUnlocked: true,
+        spawnPointsUnlocked: true,
+        splicesUnlocked: true,
+        apexesUnlocked: true,
+      },
+    })!;
+    const genomeGame = new SnakeGameLogic({
+      ruleset: RULESETS.COSMIC,
+      genome,
+      simulationSeed: 'genome-simulation-seed',
+    });
+    genomeGame.start();
+    genomeGame.grantMutation('loan_shark', 0);
+    genomeGame.grantMutation('time_dilation', 0);
+    const genomeCheckpoint = genomeGame.exportCheckpoint(now);
+    const genomeManifest = {
+      sessionId: 'genome-session',
+      simulation: {
+        seed: 'genome-simulation-seed',
+        version: 1,
+        rulesVersion: SNAKE_RULES_VERSION,
+      },
+      runSnake: { dynasty: 'COSMIC' },
+      traits: genomeCheckpoint.config.traits,
+      mutationPool: genomeCheckpoint.config.mutationPool,
+      genome: genomeCheckpoint.config.genome,
+    };
+    expect(validateRunCheckpoint(genomeCheckpoint, {
+      manifest: genomeManifest,
+      startedAt: new Date(now - 1_000).toISOString(),
+      now,
+    })).toBe(genomeCheckpoint);
+
+    const legacyGame = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'legacy-simulation-seed',
+    });
+    legacyGame.start();
+    legacyGame.grantMutation('overgrowth', 0);
+    const legacyCheckpoint = legacyGame.exportCheckpoint(now);
+    expect(legacyCheckpoint.privateState.fusedView).toEqual({
+      loose: [],
+      splices: [],
+    });
+    expect(validateRunCheckpoint(legacyCheckpoint, {
+      manifest: {
+        sessionId: 'legacy-session',
+        simulation: {
+          seed: 'legacy-simulation-seed',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+        traits: legacyCheckpoint.config.traits,
+        mutationPool: legacyCheckpoint.config.mutationPool,
+      },
+      startedAt: new Date(now - 1_000).toISOString(),
+      now,
+    })).toBe(legacyCheckpoint);
+  });
+
+  it.each([
+    ['disconnected body', (checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>) => {
+      checkpoint.state.snake[1] = { x: 0, y: 0, z: 0 };
+    }],
+    ['food on the body', (checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>) => {
+      checkpoint.state.food = { ...checkpoint.state.snake[0] };
+      checkpoint.state.foods = [{ ...checkpoint.state.snake[0] }];
+    }],
+    ['authored run state', (checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>) => {
+      checkpoint.privateState.drivenRun = true;
+    }],
+    ['forged slow tick speed', (checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>) => {
+      checkpoint.privateState.speed = 10_000;
+    }],
+    ['forged tactical hold budget', (checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>) => {
+      checkpoint.state.holdBudget += 100;
+    }],
+  ])('rejects checkpoint tampering with %s', (_label, tamper) => {
+    const now = Date.now();
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'tamper-seed',
+    });
+    game.start();
+    const checkpoint = game.exportCheckpoint(now);
+    tamper(checkpoint);
+    expect(() => validateRunCheckpoint(checkpoint, {
+      manifest: {
+        sessionId: 'tamper-session',
+        simulation: {
+          seed: 'tamper-seed',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      startedAt: new Date(now - 1_000).toISOString(),
+      now,
+    })).toThrow(RunContinuityError);
+  });
+
   it('lets only the newest in-memory lease terminalize an activated run', () => {
     const lease = 'exclusive-run-lease-token-with-enough-entropy';
     const row = {
       start_request_id: START_ID,
       continuity_phase: 'active',
+      continuity_checkpoint: { version: 1 },
+      continuity_checkpoint_revision: 1,
       continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
     };
     expect(() => assertTerminalRunLease(row, lease)).not.toThrow();
@@ -277,5 +467,106 @@ describe('run continuity server contract', () => {
         null
       )
     ).not.toThrow();
+  });
+
+  it('surfaces a durable terminal envelope as settling and never abandonable', async () => {
+    const rpc = jest.fn();
+    const row = {
+      id: 'session-1',
+      start_request_id: START_ID,
+      start_manifest: { sessionId: 'session-1' },
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      continuity_phase: 'active',
+      continuity_checkpoint: { version: 1 },
+      continuity_checkpoint_revision: 4,
+      continuity_lease_epoch: 1,
+      energy_committed: 6,
+      started_at: '2026-07-31T10:00:00.000Z',
+      server_started_at: '2026-07-31T10:00:00.000Z',
+      ended_at: null,
+      end_reason: 'completed',
+    };
+    await expect(readActiveRun(clientWithRowAndRpc(row, rpc), 'player-1'))
+      .resolves.toMatchObject({
+        sessionId: 'session-1',
+        phase: 'settling',
+        canContinue: false,
+        requiresAbandon: false,
+      });
+
+    await expect(abandonContinuityRun(clientWithRpc(rpc), {
+      playerId: 'player-1',
+      sessionId: 'session-1',
+      phase: 'settling',
+      leaseToken: 'exclusive-run-lease-token-with-enough-entropy',
+    })).rejects.toMatchObject<Partial<RunContinuityError>>({
+      reason: 'not_prepared',
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('surfaces an interrupted preparing shell for explicit zero-spend release', async () => {
+    const row = {
+      id: 'preparing-session',
+      start_request_id: START_ID,
+      start_manifest: null,
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      continuity_phase: 'preparing',
+      continuity_checkpoint: null,
+      continuity_checkpoint_revision: 0,
+      continuity_lease_epoch: 0,
+      energy_committed: 0,
+      started_at: '2026-07-31T10:00:00.000Z',
+      server_started_at: '2026-07-31T10:00:00.000Z',
+      ended_at: null,
+      end_reason: null,
+    };
+    await expect(readActiveRun(
+      clientWithRowAndRpc(row, jest.fn()),
+      'player-1'
+    )).resolves.toMatchObject({
+      sessionId: 'preparing-session',
+      phase: 'preparing',
+      energyCommitted: 0,
+      canContinue: false,
+      requiresAbandon: true,
+    });
+
+    const rpc = jest.fn().mockResolvedValue({
+      data: { accepted: true, endReason: 'abandoned' },
+      error: null,
+    });
+    await abandonContinuityRun(clientWithRpc(rpc), {
+      playerId: 'player-1',
+      sessionId: 'preparing-session',
+      phase: 'preparing',
+      leaseToken: null,
+    });
+    expect(rpc).toHaveBeenCalledWith('abandon_run_continuity', expect.objectContaining({
+      p_session_id: 'preparing-session',
+      p_lease_hash: null,
+    }));
+  });
+
+  it('classifies a legacy open completed row as settling, not abandonable', async () => {
+    await expect(readActiveRun(clientWithRowAndRpc({
+      id: 'legacy-pending',
+      start_request_id: null,
+      start_manifest: null,
+      simulation_rules_version: null,
+      continuity_phase: null,
+      continuity_checkpoint: null,
+      continuity_checkpoint_revision: 0,
+      continuity_lease_epoch: 0,
+      energy_committed: 1,
+      started_at: '2026-07-31T10:00:00.000Z',
+      server_started_at: '2026-07-31T10:00:00.000Z',
+      ended_at: null,
+      end_reason: 'completed',
+    }, jest.fn()), 'player-1')).resolves.toMatchObject({
+      phase: 'settling',
+      canContinue: false,
+      requiresAbandon: false,
+    });
   });
 });

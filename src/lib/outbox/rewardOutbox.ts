@@ -29,6 +29,8 @@ export const REWARD_OUTBOX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const LEGACY_REWARD_OUTBOX_KEY = 'supasnake-reward-outbox';
 
 export interface RewardOutboxEntry {
+  /** Account authority that produced this tab-memory claim. */
+  ownerId?: string;
   sessionId: string;
   score: number;
   dna_earned: number;
@@ -58,6 +60,11 @@ export interface ReplayResult {
 
 let memoryQueue: RewardOutboxEntry[] = [];
 let legacyDrainInFlight: { token: string; promise: Promise<ReplayResult> } | null = null;
+// All tab-memory replays share one writer. Home, Game, `online`, and React
+// Strict Mode may request a drain together; serializing the snapshot/reconcile
+// section prevents an older replay from replacing entries queued while its
+// network request was in flight.
+let memoryReplayTail: Promise<void> = Promise.resolve();
 
 function isValidEntry(value: unknown): value is RewardOutboxEntry {
   if (!value || typeof value !== 'object') return false;
@@ -65,6 +72,8 @@ function isValidEntry(value: unknown): value is RewardOutboxEntry {
   return (
     typeof entry.sessionId === 'string' &&
     entry.sessionId.length > 0 &&
+    (entry.ownerId === undefined ||
+      (typeof entry.ownerId === 'string' && entry.ownerId.length > 0)) &&
     typeof entry.score === 'number' &&
     typeof entry.dna_earned === 'number' &&
     typeof entry.duration_seconds === 'number' &&
@@ -88,17 +97,27 @@ export function readOutbox(): RewardOutboxEntry[] {
   return memoryQueue.map((entry) => ({ ...entry }));
 }
 
-export function pruneOutbox(now: number = Date.now()): RewardOutboxEntry[] {
+function pruneMemoryQueue(now: number = Date.now()): void {
   memoryQueue = memoryQueue.filter(
     (entry) => now - entry.timestamp <= REWARD_OUTBOX_MAX_AGE_MS
   );
+}
+
+export function pruneOutbox(now: number = Date.now()): RewardOutboxEntry[] {
+  pruneMemoryQueue(now);
   return readOutbox();
+}
+
+function entryAuthorityKey(entry: RewardOutboxEntry): string {
+  return `${entry.ownerId ?? 'legacy'}:${entry.sessionId}`;
 }
 
 export function enqueueReward(entry: RewardOutboxEntry): void {
   if (!isValidEntry(entry)) return;
-  memoryQueue = pruneOutbox().filter(
-    (queued) => queued.sessionId !== entry.sessionId
+  pruneMemoryQueue();
+  const key = entryAuthorityKey(entry);
+  memoryQueue = memoryQueue.filter(
+    (queued) => entryAuthorityKey(queued) !== key
   );
   memoryQueue.push({ ...entry });
   while (memoryQueue.length > REWARD_OUTBOX_MAX_ENTRIES) memoryQueue.shift();
@@ -195,7 +214,8 @@ function removeLegacyOutbox(storage?: Storage): void {
 async function submitEntry(
   entry: RewardOutboxEntry,
   token: string,
-  fetchFn: typeof fetch
+  fetchFn: typeof fetch,
+  options: { preserveOwnershipMismatch?: boolean } = {}
 ): Promise<
   | {
       status: 'settled';
@@ -247,7 +267,12 @@ async function submitEntry(
         securedPending: impactResult.securedPending,
       };
     }
-    if (response.status === 401 || response.status >= 500) {
+    if (
+      response.status === 401 ||
+      response.status >= 500 ||
+      (options.preserveOwnershipMismatch === true &&
+        (response.status === 403 || response.status === 404))
+    ) {
       return { status: 'transient' };
     }
     console.error(
@@ -301,7 +326,12 @@ async function drainLegacyRewardOutboxOnce(
   const impacts: RunImpactEnvelope[] = [];
   const securedPendingSessionIds: string[] = [];
   for (const entry of legacy.entries) {
-    const result = await submitEntry(entry, token, fetchFn);
+    // A retired queue predates account ownership metadata. A 403/404 under
+    // account B therefore cannot prove account A's claim is invalid; retain
+    // it so switching back to the originating account can complete recovery.
+    const result = await submitEntry(entry, token, fetchFn, {
+      preserveOwnershipMismatch: true,
+    });
     if (result.status === 'settled') {
       replayed += 1;
       if (result.impact) impacts.push(result.impact);
@@ -343,16 +373,30 @@ export function drainLegacyRewardOutbox(
  * Retry this tab's queued settlements. 2xx and already-settled 409 responses
  * both recover the canonical receipt. Only transient failures remain queued.
  */
-export async function replayRewardOutbox(
+async function replayRewardOutboxOnce(
   token: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  ownerId?: string
 ): Promise<ReplayResult> {
-  const entries = pruneOutbox();
+  pruneMemoryQueue();
+  // Preserve object identity for the final compare-and-reconcile. An entry
+  // enqueued while these requests are in flight is a different object and is
+  // therefore never removed by this replay's outcome.
+  const allEntries = [...memoryQueue];
+  // New claims are account-keyed. When an authority is supplied, never send
+  // another account's terminal payload under this token and never remove it
+  // because that expected ownership check answered 404. Ownerless entries are
+  // retained for the old in-memory bundle to lose naturally on reload; the
+  // separately handled legacy-storage migration has its own explicit drain.
+  const entries = allEntries.filter((entry) =>
+    ownerId === undefined ? entry.ownerId === undefined : entry.ownerId === ownerId
+  );
+  const untouched = allEntries.filter((entry) => !entries.includes(entry));
   if (entries.length === 0) {
     return {
       replayed: 0,
       dropped: 0,
-      remaining: 0,
+      remaining: untouched.length,
       impacts: [],
       securedPendingSessionIds: [],
     };
@@ -362,27 +406,46 @@ export async function replayRewardOutbox(
   let dropped = 0;
   const impacts: RunImpactEnvelope[] = [];
   const securedPendingSessionIds: string[] = [];
-  const keep: RewardOutboxEntry[] = [];
+  const outcomes = new Map<RewardOutboxEntry, 'remove' | 'keep'>();
 
   for (const entry of entries) {
     const result = await submitEntry(entry, token, fetchFn);
     if (result.status === 'settled') {
       replayed += 1;
+      outcomes.set(entry, 'remove');
       if (result.impact) impacts.push(result.impact);
       if (result.securedPending) securedPendingSessionIds.push(entry.sessionId);
     } else if (result.status === 'rejected') {
       dropped += 1;
+      outcomes.set(entry, 'remove');
     } else {
-      keep.push(entry);
+      outcomes.set(entry, 'keep');
     }
   }
 
-  memoryQueue = keep;
+  pruneMemoryQueue();
+  memoryQueue = memoryQueue.filter((entry) => outcomes.get(entry) !== 'remove');
   return {
     replayed,
     dropped,
-    remaining: keep.length,
+    remaining: memoryQueue.length,
     impacts,
     securedPendingSessionIds,
   };
+}
+
+export function replayRewardOutbox(
+  token: string,
+  fetchFn: typeof fetch = fetch,
+  ownerId?: string
+): Promise<ReplayResult> {
+  const run = memoryReplayTail.then(
+    () => replayRewardOutboxOnce(token, fetchFn, ownerId),
+    () => replayRewardOutboxOnce(token, fetchFn, ownerId)
+  );
+  memoryReplayTail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
 }
