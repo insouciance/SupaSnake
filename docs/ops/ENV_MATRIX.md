@@ -17,7 +17,7 @@ inside its cloud build/runtime.
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
 | Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1`, `NEXT_PUBLIC_CAREER_SPINE_V1`, `NEXT_PUBLIC_RUN_FLOW_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit, Ladder, Career presentation, cockpit Setup, and Victory Lap enabled; Career settlement is not flag-gated |
-| Optional clan tuning | `CLAN_BATTLE_PARTICIPATION_DNA`, `CLAN_BATTLE_VICTOR_BONUS_DNA`, `CLAN_BATTLE_STALEMATE_BONUS_DNA` | Optional; absence uses reviewed 100 / +100 / +50 defaults. Every component is clamped to 0–1,000 in config and SQL |
+| Optional clan tuning | `CLAN_FOUNDING_DNA_COST`, `CLAN_INVITATION_LIFETIME_SECONDS`, `CLAN_BATTLE_*`, `CLAN_GLORY_*` | Optional; absence uses reviewed launch defaults. Founding defaults to 500 DNA and rejects a stale quote; battle/Glory rewards and timing are bounded in config and SQL. Exact names and defaults live in `.env.example` |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
 | Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |
