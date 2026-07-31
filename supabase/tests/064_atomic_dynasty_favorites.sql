@@ -156,6 +156,26 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'service_role cannot execute favorite RPC';
   END IF;
+
+  v_result := get_cohesive_release_capability();
+  IF v_result ->> 'status' <> 'ready'
+     OR (v_result ->> 'version')::INTEGER <> 1
+     OR (v_result ->> 'foundingBridgeVersion')::INTEGER <> 1
+     OR (v_result ->> 'continuityVersion')::INTEGER <> 1
+     OR (v_result ->> 'favoriteInvariantVersion')::INTEGER <> 1 THEN
+    RAISE EXCEPTION 'cohesive release capability is incomplete: %', v_result;
+  END IF;
+  IF has_function_privilege(
+    'authenticated',
+    'public.get_cohesive_release_capability()',
+    'EXECUTE'
+  ) OR NOT has_function_privilege(
+    'service_role',
+    'public.get_cohesive_release_capability()',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'cohesive release capability privilege boundary is wrong';
+  END IF;
 END;
 $$;
 

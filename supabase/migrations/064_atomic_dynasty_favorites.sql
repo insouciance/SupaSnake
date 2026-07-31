@@ -214,4 +214,67 @@ REVOKE EXECUTE ON FUNCTION public.set_dynasty_favorite(UUID, UUID, BOOLEAN) FROM
 REVOKE EXECUTE ON FUNCTION public.set_dynasty_favorite(UUID, UUID, BOOLEAN) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.set_dynasty_favorite(UUID, UUID, BOOLEAN) TO service_role;
 
+-- Public health never infers a release boundary from a successful `players`
+-- query. This service-only, read-only capability proves the three cohesive UX
+-- bridge contracts that must exist together before the incoming artifact can
+-- be promoted.
+CREATE OR REPLACE FUNCTION public.get_cohesive_release_capability()
+RETURNS JSONB AS $$
+DECLARE
+  v_founding_ready BOOLEAN;
+  v_continuity_ready BOOLEAN;
+  v_favorite_ready BOOLEAN;
+BEGIN
+  v_founding_ready :=
+    to_regprocedure('public.found_clan(uuid,text,text,text,text,text,text)') IS NOT NULL
+    AND to_regprocedure('public.found_clan(uuid,text,text,text,text,text,text,integer)') IS NOT NULL;
+
+  SELECT COUNT(*) = 3
+  INTO v_continuity_ready
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'game_sessions'
+    AND column_name IN (
+      'start_request_id',
+      'continuity_phase',
+      'continuity_checkpoint'
+    );
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_trigger trigger_row
+    JOIN pg_class table_row ON table_row.oid = trigger_row.tgrelid
+    JOIN pg_namespace schema_row ON schema_row.oid = table_row.relnamespace
+    WHERE schema_row.nspname = 'public'
+      AND table_row.relname = 'collected_snakes'
+      AND trigger_row.tgname = 'trg_single_dynasty_favorite'
+      AND trigger_row.tgenabled <> 'D'
+      AND NOT trigger_row.tgisinternal
+  ) AND to_regprocedure(
+    'public.set_dynasty_favorite(uuid,uuid,boolean)'
+  ) IS NOT NULL
+  INTO v_favorite_ready;
+
+  RETURN jsonb_build_object(
+    'status', CASE
+      WHEN v_founding_ready AND v_continuity_ready AND v_favorite_ready
+        THEN 'ready'
+      ELSE 'invalid'
+    END,
+    'version', 1,
+    'foundingBridgeVersion', CASE WHEN v_founding_ready THEN 1 ELSE 0 END,
+    'continuityVersion', CASE WHEN v_continuity_ready THEN 1 ELSE 0 END,
+    'favoriteInvariantVersion', CASE WHEN v_favorite_ready THEN 1 ELSE 0 END
+  );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+COMMENT ON FUNCTION public.get_cohesive_release_capability() IS
+  'Read-only deployment capability for the quoted-founding bridge, run continuity columns, and database-enforced dynasty favorite invariant.';
+
+REVOKE EXECUTE ON FUNCTION public.get_cohesive_release_capability() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_cohesive_release_capability() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.get_cohesive_release_capability() FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.get_cohesive_release_capability() TO service_role;
+
 COMMIT;

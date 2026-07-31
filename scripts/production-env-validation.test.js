@@ -67,7 +67,44 @@ describe('production environment validation', () => {
       expect(job).toMatch(
         /Require main branch dispatch[\s\S]*exit 1[\s\S]*uses: actions\/checkout@v4/
       );
+      expect(job).toContain('name: Require the exact current main commit');
+      expect(job).toContain("git rev-parse refs/remotes/origin/main");
+      expect(job).toContain('[ "$main_head" != "$GITHUB_SHA" ]');
     }
+  });
+
+  it('uses the reviewed cohesive migration and cron-ownership rollout', () => {
+    const workflow = readFileSync(
+      join(process.cwd(), '.github/workflows/deploy-production.yml'),
+      'utf8'
+    );
+    const migrationSet =
+      '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql';
+    expect(workflow).toContain(`\"$actual\" = \"${migrationSet}\"`);
+    expect(workflow).toContain('rollout=cohesive-ux-initial');
+    expect(workflow).toContain('rollout=cohesive-ux-resume');
+
+    const snapshotAt = workflow.indexOf('name: Snapshot production cron ownership');
+    const bridgeAt = workflow.indexOf('name: Apply cohesive UX bridge migrations');
+    const stageAt = workflow.indexOf('name: Build and stage application in Vercel');
+    const stagedCronAt = workflow.indexOf('name: Verify cron definitions after staging');
+    const promotedCronAt = workflow.indexOf(
+      'name: Prove promoted deployment owns the reviewed cron schedule'
+    );
+    const restoreCronAt = workflow.indexOf(
+      'name: Restore outgoing cron ownership after an unpromoted failure'
+    );
+    expect(snapshotAt).toBeGreaterThan(-1);
+    expect(bridgeAt).toBeGreaterThan(snapshotAt);
+    expect(stageAt).toBeGreaterThan(bridgeAt);
+    expect(stagedCronAt).toBeGreaterThan(stageAt);
+    expect(promotedCronAt).toBeGreaterThan(stagedCronAt);
+    expect(restoreCronAt).toBeGreaterThan(promotedCronAt);
+    expect(workflow).toContain(
+      'https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID'
+    );
+    expect(workflow).toContain('.crons.deploymentId == $deployment');
+    expect(workflow).toContain("failure() && steps.app.outputs.id != ''");
   });
 
   it('accepts a complete test-mode production contract', () => {

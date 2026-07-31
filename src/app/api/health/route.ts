@@ -45,6 +45,12 @@ interface HealthResponse {
     runFlow: HealthCheck & {
       surfaceEnabled: boolean;
     };
+    cohesiveRelease: HealthCheck & {
+      version?: number;
+      foundingBridgeVersion?: number;
+      continuityVersion?: number;
+      favoriteInvariantVersion?: number;
+    };
   };
 }
 
@@ -156,6 +162,63 @@ async function checkCareerSpine(): Promise<HealthResponse['checks']['careerSpine
   }
 }
 
+async function checkCohesiveRelease(): Promise<
+  HealthResponse['checks']['cohesiveRelease']
+> {
+  const start = Date.now();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return {
+      status: 'unhealthy',
+      responseTime: Date.now() - start,
+      error: 'Cohesive release capability configuration missing',
+    };
+  }
+
+  try {
+    const client = createClient(supabaseUrl, serviceKey);
+    const { data, error } = await client.rpc('get_cohesive_release_capability');
+    const capability =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : null;
+    const version = Number(capability?.version);
+    const foundingBridgeVersion = Number(capability?.foundingBridgeVersion);
+    const continuityVersion = Number(capability?.continuityVersion);
+    const favoriteInvariantVersion = Number(capability?.favoriteInvariantVersion);
+    if (
+      error ||
+      capability?.status !== 'ready' ||
+      version !== 1 ||
+      foundingBridgeVersion !== 1 ||
+      continuityVersion !== 1 ||
+      favoriteInvariantVersion !== 1
+    ) {
+      return {
+        status: 'unhealthy',
+        responseTime: Date.now() - start,
+        error: error?.message ?? 'Cohesive release capability invalid',
+      };
+    }
+
+    return {
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      version,
+      foundingBridgeVersion,
+      continuityVersion,
+      favoriteInvariantVersion,
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      responseTime: Date.now() - start,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 /**
  * GET /api/health
  * Returns comprehensive health status
@@ -165,9 +228,10 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   const uptime = Math.floor((Date.now() - startTime) / 1000);
 
   // Perform health checks
-  const [databaseCheck, careerSpineCheck] = await Promise.all([
+  const [databaseCheck, careerSpineCheck, cohesiveReleaseCheck] = await Promise.all([
     checkDatabase(),
     checkCareerSpine(),
+    checkCohesiveRelease(),
   ]);
 
   // Get memory usage
@@ -183,7 +247,8 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   // Determine overall health
   const isHealthy =
     databaseCheck.status === 'healthy' &&
-    careerSpineCheck.status === 'healthy';
+    careerSpineCheck.status === 'healthy' &&
+    cohesiveReleaseCheck.status === 'healthy';
 
   const response: HealthResponse = {
     status: isHealthy ? 'healthy' : 'unhealthy',
@@ -209,6 +274,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
       database: databaseCheck,
       careerSpine: careerSpineCheck,
       runFlow: runFlowCheck,
+      cohesiveRelease: cohesiveReleaseCheck,
     },
   };
 

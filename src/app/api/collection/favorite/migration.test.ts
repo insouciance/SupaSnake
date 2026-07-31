@@ -138,4 +138,26 @@ describe('Migration 064: atomic dynasty favorites', () => {
       /GRANT EXECUTE ON FUNCTION public\.set_dynasty_favorite\(UUID, UUID, BOOLEAN\) TO service_role/i
     );
   });
+
+  it('publishes one service-only read-only cohesive release capability', () => {
+    const { body } = liveDefinition('get_cohesive_release_capability');
+    expect(body).toMatch(/foundingBridgeVersion/i);
+    expect(body).toMatch(/continuityVersion/i);
+    expect(body).toMatch(/favoriteInvariantVersion/i);
+    expect(body).toMatch(/trg_single_dynasty_favorite/i);
+    expect(sql).toMatch(
+      /LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public/i
+    );
+    for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+      expect(sql).toMatch(
+        new RegExp(
+          `REVOKE EXECUTE ON FUNCTION public\\.get_cohesive_release_capability\\(\\) FROM ${role}`,
+          'i'
+        )
+      );
+    }
+    expect(sql).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.get_cohesive_release_capability\(\) TO service_role/i
+    );
+  });
 });
