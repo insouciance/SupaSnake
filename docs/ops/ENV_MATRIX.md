@@ -1,6 +1,6 @@
 # Environment & Credentials Matrix
 
-Status: 2026-07-29. Values are never recorded in this file.
+Status: 2026-07-31. Values are never recorded in this file.
 
 ## Production
 
@@ -16,7 +16,7 @@ inside its cloud build/runtime.
 | Stripe catalog | Legacy one-time `NEXT_PUBLIC_STRIPE_*` names plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured for sandbox compatibility; the one-time source catalog is empty and the old Premium name/prices are not approved for live sale. Founding Keeper requires its own reviewed price mapping |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
-| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit and Ladder enabled |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1`, `NEXT_PUBLIC_CAREER_SPINE_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit, Ladder, and Career presentation enabled; Career settlement is not flag-gated |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
 | Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |
@@ -39,9 +39,10 @@ Sensitive values are available.
 
 - Linked production project: `gmpwyzqafoyowndbvlma` (`supasnake`,
   `eu-central-1`).
-- Production has migrations 001–059. Migration 059's Energy Commitment and Clan
-  Energy Battle schema was applied by production workflow 30523606603; the
-  post-apply application/database health check passed.
+- Production has migrations 001–061. Production workflow 30608676126 applied
+  Career bridge migration 060, promoted the exact Career-aware runtime, waited
+  through the retired invocation bound, then applied cutover migration 061;
+  final application/database/Career health passed.
 - Future pending migrations must be named in the release evidence and applied
   through the reviewed production workflow only.
 - Local and CI E2E use `supabase/config.toml` and a disposable Supabase stack;
@@ -60,7 +61,7 @@ credentials:
 
 Application secrets remain in Vercel rather than being duplicated in GitHub.
 The production workflow is manual and requires the literal confirmation
-`DEPLOY` plus an expected Stripe mode.
+`DEPLOY`, an expected Stripe mode, and the exact pending migration set.
 
 ## Hosted development policy
 

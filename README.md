@@ -11,9 +11,9 @@ Production: <https://supasnake.com>
 
 - Next.js 15 App Router, React, TypeScript, react-three-fiber, and Zustand
 - Supabase Auth/Postgres with server-authoritative economy and progression
-- Migrations 001–059 deployed and aligned
-- FTUE v2, the refined Run Cockpit, the Training Lab, and Energy Commitment
-  enabled in production
+- Migrations 001–061 deployed and aligned
+- FTUE v2, the refined Run Cockpit, the Training Lab, Energy Commitment, and
+  Career Spine enabled in production
 - Stripe sandbox/test mode until the commercial-launch checklist is complete
 
 Energy recovers server-side to a six-unit cap. A rewarded run commits 1–6
@@ -29,6 +29,12 @@ telemetry decks, presents consequential Genome/portal decisions as dominant
 engine-frozen dialogs, and turns Pause into a board-visible tactical hold.
 The Training Lab adds deterministic, rewardless practice without spending
 Energy or advancing the economy.
+
+Every accepted earning-run result now enters a durable server-side Career
+Spine before the client receives completion. Settlement, progression, personal
+bests, career memory, recognition, and attention survive dropped responses,
+reloads, reconnects, and duplicate completion attempts without storing progress
+or recovery work in browser storage.
 
 ## Local development
 

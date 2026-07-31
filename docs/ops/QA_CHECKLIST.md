@@ -1,10 +1,11 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-07-30_
+_Last updated: 2026-07-31_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
-Commitment/Clan Energy Battle release, plus the control-responsiveness follow-up.
+Commitment/Clan Energy Battle release, control responsiveness, and the Career
+Spine release.
 Work from top to bottom when doing a broad playtest; use the focused matrices
 near the end when verifying a fix.
 
@@ -13,6 +14,7 @@ Design references:
 - [Game Design v2](../game/GAME_DESIGN_V2.md)
 - [Buildcraft: The Genome](../game/BUILDCRAFT_GENOME_DESIGN.md)
 - [Energy Commitment and Clan Battles](../game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
+- [Career Spine](../game/CAREER_SPINE.md)
 - [Monetization Strategy](../game/MONETIZATION_STRATEGY.md)
 - [Player Flow & Interruption Policy](../game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
 - [Supporter billing QA](../game/QA_PREMIUM_BILLING.md)
@@ -23,26 +25,71 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `abf9844` — control responsiveness and uninterrupted COSMIC (`8810223` behavior; `abf9844` test hardening) |
-| Control rollout deployment | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` |
-| Control-release rollback | `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR` — `61a1936`; same hosted schema |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–059 deployed and aligned |
+| Production behavior commit | `564dbb7` — durable Career Spine and metagame recognition |
+| Current deployment | `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR` |
+| Outgoing pre-cutover artifact | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`; not rollback-safe after migration 061 |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–061 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
+| Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; latest behavior rollout workflow `30534158859` at `abf9844` |
+| Canonical source | `main`; production workflow `30608676126` at `564dbb7` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
-Commitment/Clan Energy Battle system, and control-responsiveness follow-up are
-live. The current release carried no migration; preview and apply both verified
-that hosted migrations 001–059 were already aligned. The recorded pre-release
-application therefore remains a schema-compatible emergency app rollback.
+Commitment/Clan Energy Battle system, control responsiveness, and Career Spine
+are live. The current release applied the reviewed additive 060 bridge and 061
+atomic-settlement cutover. The pre-cutover application is intentionally
+incompatible with the final schema and must not be used as an app rollback.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
 mailbox monitoring are commercial-launch gates, not blockers for this
 operator-only deployment.
+
+### Career Spine production evidence
+
+- PR 48 merged to `main` as `564dbb71a83198eba796503de3334d8d4d82f48d`.
+  Production workflow `30608676126` promoted
+  `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR` in Stripe test mode. The independently
+  recorded outgoing deployment is `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`.
+- Protected PR checks and post-main Build, Lint, Test, and both isolated-Supabase
+  E2E workflows passed. The release also passed TypeScript, full ESLint, Jest
+  coverage, the production-target build, deterministic cockpit checks,
+  credential scanning, and the production runtime dependency audit with zero
+  vulnerabilities.
+- A clean local database applied migrations 001–061. Phased 060-only bridge,
+  061 cutover, legacy-writer rejection, duplicate settlement, recovery, and SQL
+  concurrency paths passed before release.
+- Production applied 060 while the outgoing app remained canonical, verified
+  outgoing and staged health, promoted the exact incoming deployment, proved
+  canonical alias identity, drained retired invocations for 360 seconds, then
+  applied 061. The hosted migration history is aligned through 061 and database
+  lint passed without error.
+- Canonical `/api/health` reports release `564dbb71a83198eba796503de3334d8d4d82f48d`,
+  healthy database, Career phase `ready`, bridge version 1, Career version 1,
+  and `surfaceEnabled: true`.
+- Earned progress is secured and recovered on the server. Browser storage is
+  not an authority for progress, rewards, pending settlement, receipts,
+  attention, or pursuits.
+- After migration 061 the outgoing artifact cannot safely write earning
+  results. Preserve pending envelopes and forward-fix; do not trade earned-data
+  integrity for a fast artifact rollback.
+
+### Career Spine — post-production manual rechecks
+
+- Complete an earning run and confirm Results presents at most three meaningful
+  recognition beats before offering exact routes into affected systems.
+- During a dropped-response or reload scenario, confirm the accepted result
+  settles or remains honestly pending without asking the player to resubmit or
+  keep the tab open; no progress fact or recovery request may appear in browser
+  storage.
+- Confirm opening the notification bell or a destination does not silently
+  clear unrelated attention. Clear only through the destination's deliberate
+  acknowledgement rule.
+- Confirm Career Pulse, personal bests, milestones, lineage history, and the
+  player's own clan consequence agree with the settled run and reveal no other
+  member's private productivity.
 
 ### Redesign Wave — completed release preconditions
 
