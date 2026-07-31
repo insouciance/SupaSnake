@@ -4,6 +4,8 @@ const {
   RETIRED_PRICE_VARIABLES,
   validateProductionEnvironment,
 } = require('./production-env-validation.cjs');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 
 /**
  * The fixture deliberately still carries the five retired energy/bundle
@@ -46,6 +48,28 @@ function validEnvironment() {
 }
 
 describe('production environment validation', () => {
+  it('fails closed off main before either production workflow job proceeds', () => {
+    const workflow = readFileSync(
+      join(process.cwd(), '.github/workflows/deploy-production.yml'),
+      'utf8'
+    );
+    const verifyAt = workflow.indexOf('  verify:');
+    const deployAt = workflow.indexOf('  deploy:');
+    expect(verifyAt).toBeGreaterThan(-1);
+    expect(deployAt).toBeGreaterThan(verifyAt);
+
+    for (const job of [
+      workflow.slice(verifyAt, deployAt),
+      workflow.slice(deployAt),
+    ]) {
+      expect(job).toContain('name: Require main branch dispatch');
+      expect(job).toContain('if [ "$GITHUB_REF" != "refs/heads/main" ]');
+      expect(job).toMatch(
+        /Require main branch dispatch[\s\S]*exit 1[\s\S]*uses: actions\/checkout@v4/
+      );
+    }
+  });
+
   it('accepts a complete test-mode production contract', () => {
     const result = validateProductionEnvironment(validEnvironment(), 'test');
     expect(result.errors).toEqual([]);
