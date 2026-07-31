@@ -1,17 +1,16 @@
 /**
- * Favorite API - pin a snake inside its variant's roster
+ * Favorite API — choose one collection representative per dynasty
  * POST /api/collection/favorite
  *
- * The Lab's heart control existed since the collection shipped and never
- * persisted anything: it toggled a `useState` that died with the sheet. It is
- * load-bearing now — `src/lib/collection/roster.ts` ranks favorited snakes
- * second, so the heart chooses which snake represents a variant on its card.
+ * The request names only an owned collected-snake row and the desired state.
+ * `set_dynasty_favorite` derives ownership and dynasty in Postgres, serializes
+ * same-player/same-dynasty writers, clears every replaced historical favorite,
+ * and returns the exact mutation receipt. The route deliberately has no direct
+ * UPDATE fallback: without that RPC, cross-tab writes would not be atomic.
  *
- * `is_favorited` has existed on `collected_snakes` since migration 006, so
- * there is no migration here. It is a display preference, not economy or
- * progress, so it is a scoped column write rather than an RPC — but the write
- * is still service-role and still filtered by `player_id`, so one player can
- * never touch another's row.
+ * Favoriting selects this snake as the dynasty's sole favorite. Unfavoriting
+ * clears only this snake. This is persistent identity state, so every response
+ * is private/no-store and every successful value comes from the database.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -26,13 +25,31 @@ const supabase = createClient(
 
 /** PostgREST "no rows returned by .single()" — an absence, not a fault. */
 const NO_ROWS = 'PGRST116';
+/** plpgsql ownership refusal from set_dynasty_favorite. */
+const EXPECTED_RULE_ERROR = 'P0001';
+/** Deploy-before-migration / stale PostgREST schema-cache failures. */
+const MISSING_RPC_CODES = new Set(['42883', 'PGRST202']);
+const NO_STORE = 'private, no-store';
 
 const FavoriteRequestSchema = z.object({
   snakeId: z.string().uuid('snakeId must be a valid UUID'),
   favorited: z.boolean(),
 });
 
+const FavoriteRpcResultSchema = z.object({
+  snake_id: z.string().uuid(),
+  favorited: z.boolean(),
+  favorite_snake_id: z.string().uuid().nullable(),
+  replaced_snake_ids: z.array(z.string().uuid()),
+});
+
 export type FavoriteRequestInput = z.infer<typeof FavoriteRequestSchema>;
+
+function favoriteJson<T>(body: T, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Cache-Control', NO_STORE);
+  return NextResponse.json(body, { ...init, headers });
+}
 
 function reportError(
   scope: string,
@@ -50,7 +67,7 @@ export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return favoriteJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.replace('Bearer ', '');
@@ -60,7 +77,7 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return favoriteJson({ error: 'Invalid token' }, { status: 401 });
     }
 
     const { data: player, error: playerError } = await supabase
@@ -69,23 +86,27 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .single();
 
-    if (playerError || !player) {
-      if (playerError && playerError.code && playerError.code !== NO_ROWS) {
-        reportError('player lookup', playerError, { userId: user.id });
+    if (playerError) {
+      if (playerError.code === NO_ROWS) {
+        return favoriteJson({ error: 'Player not found' }, { status: 404 });
       }
-      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+      reportError('player lookup', playerError, { userId: user.id });
+      return favoriteJson({ error: 'Failed to read player' }, { status: 500 });
+    }
+    if (!player) {
+      return favoriteJson({ error: 'Player not found' }, { status: 404 });
     }
 
     let body: unknown;
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+      return favoriteJson({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
     const parseResult = FavoriteRequestSchema.safeParse(body);
     if (!parseResult.success) {
-      return NextResponse.json(
+      return favoriteJson(
         {
           error: 'Validation failed',
           details: parseResult.error.issues.map((issue) => ({
@@ -98,38 +119,72 @@ export async function POST(request: NextRequest) {
     }
 
     const { snakeId, favorited } = parseResult.data;
+    const { data, error } = await supabase.rpc('set_dynasty_favorite', {
+      p_player_id: player.id,
+      p_snake_id: snakeId,
+      p_favorited: favorited,
+    });
 
-    // The player_id filter is the ownership check: a row that is not theirs
-    // matches nothing and the `.select().single()` returns no rows.
-    const { data: updated, error: updateError } = await supabase
-      .from('collected_snakes')
-      .update({ is_favorited: favorited })
-      .eq('id', snakeId)
-      .eq('player_id', player.id)
-      .select('id, is_favorited')
-      .single();
-
-    if (updateError || !updated) {
-      if (updateError && updateError.code && updateError.code !== NO_ROWS) {
-        reportError('update', updateError, { playerId: player.id, snakeId });
-        return NextResponse.json(
-          { error: 'Failed to update favorite' },
-          { status: 500 }
+    if (error) {
+      if (MISSING_RPC_CODES.has(error.code ?? '')) {
+        return favoriteJson(
+          { error: 'Favorites are temporarily unavailable', retryable: true },
+          { status: 503 }
         );
       }
-      return NextResponse.json(
-        { error: 'Snake not found in your collection' },
-        { status: 404 }
+
+      if (error.code === EXPECTED_RULE_ERROR) {
+        return favoriteJson(
+          { error: 'Snake not found in your collection' },
+          { status: 404 }
+        );
+      }
+
+      reportError('RPC', error, {
+        playerId: player.id,
+        snakeId,
+        favorited,
+        code: error.code,
+      });
+      return favoriteJson(
+        { error: 'Failed to update favorite' },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    const result = FavoriteRpcResultSchema.safeParse(data);
+    const receipt = result.success ? result.data : null;
+    const receiptIsConsistent = Boolean(
+      receipt &&
+        receipt.snake_id === snakeId &&
+        receipt.favorited === favorited &&
+        receipt.favorite_snake_id === (favorited ? snakeId : null) &&
+        !receipt.replaced_snake_ids.includes(snakeId) &&
+        new Set(receipt.replaced_snake_ids).size ===
+          receipt.replaced_snake_ids.length
+    );
+    if (!result.success || !receiptIsConsistent || !receipt) {
+      reportError('response validation', result.success ? data : result.error, {
+        playerId: player.id,
+        snakeId,
+        favorited,
+        data,
+      });
+      return favoriteJson(
+        { error: 'Favorite update returned incomplete data' },
+        { status: 500 }
+      );
+    }
+
+    return favoriteJson({
       success: true,
-      snakeId: updated.id,
-      favorited: updated.is_favorited === true,
+      snakeId: receipt.snake_id,
+      favorited: receipt.favorited,
+      favoriteSnakeId: receipt.favorite_snake_id,
+      replacedSnakeIds: receipt.replaced_snake_ids,
     });
   } catch (err) {
     reportError('handler', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return favoriteJson({ error: 'Server error' }, { status: 500 });
   }
 }

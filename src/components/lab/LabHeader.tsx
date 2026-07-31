@@ -7,7 +7,7 @@
  */
 
 import Link from 'next/link';
-import { IconBolt, IconDna, IconHome } from '@/components/ui/icons';
+import { IconArrowRight, IconBolt, IconDna, IconFlask } from '@/components/ui/icons';
 import type { ChargeStatus } from '@/shared/game/energyEnvelope';
 import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import {
@@ -21,6 +21,17 @@ interface LabHeaderProps {
   charge: ChargeStatus | null;
   /** Current DNA balance */
   dna: number;
+  /** Untrusted route context. Only the exact Run Setup route is accepted. */
+  returnTo?: string | null;
+}
+
+export function resolveLabBackLink(returnTo: string | null | undefined): {
+  href: '/game' | '/';
+  label: 'Back to Setup' | 'Back Home';
+} {
+  return returnTo === '/game'
+    ? { href: '/game', label: 'Back to Setup' }
+    : { href: '/', label: 'Back Home' };
 }
 
 /**
@@ -39,8 +50,9 @@ function formatWithCommas(num: number): string {
  * them. The discovery archive inside it is still progressive; the door is
  * not.
  */
-export function LabHeader({ charge, dna }: LabHeaderProps) {
+export function LabHeader({ charge, dna, returnTo = null }: LabHeaderProps) {
   const notifications = useNotificationStore((state) => state.notifications);
+  const backLink = resolveLabBackLink(returnTo);
   const codexBadge = destinationBadge(notifications, 'codex');
   const codexHref = codexBadge.kind === 'dot'
     ? recognitionHref(notifications, 'codex') ?? '/codex'
@@ -48,68 +60,71 @@ export function LabHeader({ charge, dna }: LabHeaderProps) {
 
   return (
     <header
-      className="sticky top-0 z-40 w-full border-b border-scale-blue-light/40 bg-void/85 backdrop-blur-sm"
+      className="sticky top-0 z-40 w-full bg-void/80 backdrop-blur-md"
       role="banner"
       aria-label="Lab header with resources"
     >
-      <div className="h-[60px] px-4 flex items-center justify-between max-w-6xl mx-auto">
-        {/* Title - Left side */}
-        <div className="flex items-center gap-3">
+      <div className="mx-auto flex h-[62px] max-w-6xl items-center justify-between gap-2 px-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           <Link
-            href="/"
-            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-arcade text-beige transition-colors hover:bg-bone-white/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
-            aria-label="Back Home"
+            href={backLink.href}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-beige/70 transition-colors hover:bg-bone-white/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+            aria-label={backLink.label}
           >
-            <IconHome size={19} />
+            <IconArrowRight size={19} className="rotate-180" />
           </Link>
-          <h1 className="heading-display text-glow-orange text-bone-white text-lg sm:text-xl">
-            Supasnake <span className="text-venom-orange">Lab</span>
+          <h1 className="heading-display truncate text-base text-bone-white sm:text-xl">
+            Snake <span className="text-cyber text-glow">Lab</span>
           </h1>
           <Link
             href={codexHref}
-            className="relative inline-flex min-h-[44px] items-center text-xs font-display uppercase tracking-wide text-cyber hover:text-bone-white"
+            className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cosmic-glow transition-[color,background-color] hover:bg-cosmic/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cosmic"
+            aria-label="Genome Codex"
+            title="Genome Codex"
           >
-            <span className="sm:hidden">Codex</span>
-            <span className="hidden sm:inline">Genome Codex</span>
+            <IconFlask size={18} />
             <NotificationBadge
               kind={codexBadge.kind}
               count={codexBadge.count}
               label="New Codex activity"
-              className="absolute right-[-8px] top-1"
+              className="absolute right-1 top-1"
             />
           </Link>
         </div>
 
         {/* Resources - Right side */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Recovered Energy (§8.6). Absent until the server syncs. */}
-          {charge && (
-            <div
-              className="panel flex items-center gap-1.5 px-2.5 py-1.5"
-              aria-label={`Energy: ${charge.available} of ${charge.capacity}`}
-              title={`Energy: ${charge.available}/${charge.capacity}`}
-            >
-              <IconBolt
-                size={16}
-                className={charge.available > 0 ? 'text-venom-orange' : 'text-venom-orange/50'}
-              />
-              <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
-                {charge.available}
-              </span>
-            </div>
-          )}
-
-          {/* DNA Display */}
+        <div
+          className="flex min-h-9 shrink-0 items-center overflow-hidden rounded-full border border-scale-blue-light/40 bg-void-deep/60 px-2.5 shadow-panel"
+          aria-label="Lab wallet"
+        >
           <div
-            className="panel flex items-center gap-1.5 px-2.5 py-1.5"
+            className="flex items-center gap-1"
             aria-label={`DNA balance: ${formatWithCommas(dna)}`}
             title={`DNA: ${formatWithCommas(dna)}`}
           >
-            <IconDna size={16} className="text-cyber" />
-            <span className="font-mono font-bold text-bone-white text-sm sm:text-base">
+            <IconDna size={14} className="text-rarity-uncommon" />
+            <span className="whitespace-nowrap font-mono text-[10px] font-bold text-bone-white sm:text-xs">
               {formatWithCommas(dna)}
             </span>
           </div>
+          {charge && (
+            <>
+              <span className="mx-2 h-4 w-px bg-scale-blue-light/55" aria-hidden="true" />
+              <div
+                className="flex items-center gap-1"
+                aria-label={`Energy: ${charge.available} of ${charge.capacity}`}
+                title={`Energy: ${charge.available}/${charge.capacity}`}
+              >
+                <IconBolt
+                  size={14}
+                  className={charge.available > 0 ? 'text-venom-orange' : 'text-venom-orange/50'}
+                />
+                <span className="whitespace-nowrap font-mono text-[10px] font-bold text-bone-white sm:text-xs">
+                  {charge.available}/{charge.capacity}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </header>

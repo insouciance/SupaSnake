@@ -11,6 +11,21 @@ describe('LabHeader', () => {
     expect(screen.getByRole('link', { name: /back home/i })).toHaveAttribute('href', '/');
   });
 
+  it('returns to Run Setup only for the exact safe route context', () => {
+    const { rerender } = render(
+      <LabHeader charge={null} dna={100} returnTo="/game" />
+    );
+    expect(screen.getByRole('link', { name: /back to setup/i })).toHaveAttribute(
+      'href',
+      '/game'
+    );
+
+    rerender(
+      <LabHeader charge={null} dna={100} returnTo="https://attacker.example/game" />
+    );
+    expect(screen.getByRole('link', { name: /back home/i })).toHaveAttribute('href', '/');
+  });
+
   /**
    * REWRITTEN (WP-2.07a). This test used to assert the opposite — that the
    * Codex link stayed invisible until the server's 15-bank gate opened. The

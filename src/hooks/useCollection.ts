@@ -124,6 +124,22 @@ async function fetchCollection(token: string): Promise<{
   };
 }
 
+/**
+ * Collection responses normally carry dynastyName. The variant lookup keeps
+ * optimistic favorite reconciliation correct for older fixtures or partial
+ * rows without trusting a dynasty sent in the mutation request.
+ */
+function ownedDynastyKey(
+  snake: OwnedSnake,
+  variants: SnakeVariant[]
+): string | null {
+  if (snake.dynastyName) return snake.dynastyName.toUpperCase();
+  return (
+    variants.find((variant) => variant.id === snake.snakeVariantId)?.dynastyId ??
+    null
+  );
+}
+
 // =============================================================================
 // HOOK
 // =============================================================================
@@ -502,19 +518,32 @@ export function useCollection(): UseCollectionReturn {
   );
 
   /**
-   * Favoriting is a display preference, but not a cosmetic one: the roster
-   * rule ranks favorited snakes second, so the heart decides which snake
-   * represents its variant on the collection card. It persists.
+   * The server enforces one favorite per dynasty. Optimistically mirror that
+   * invariant, then reconcile the exact rows displaced by the atomic receipt.
+   * On any unavailable/malformed response, restore the complete prior roster.
    */
   const toggleFavorite = useCallback(
     async (snakeId: string, favorited: boolean): Promise<boolean> => {
       const previousOwnedSnakes = [...ownedSnakes];
+      const target = ownedSnakes.find((snake) => snake.id === snakeId);
+      const targetDynasty = target
+        ? ownedDynastyKey(target, variants)
+        : null;
+      const optimisticOwnedSnakes = ownedSnakes.map((snake) => {
+        if (snake.id === snakeId) {
+          return { ...snake, isFavorited: favorited };
+        }
+        if (
+          favorited &&
+          targetDynasty !== null &&
+          ownedDynastyKey(snake, variants) === targetDynasty
+        ) {
+          return { ...snake, isFavorited: false };
+        }
+        return snake;
+      });
 
-      setOwnedSnakes(
-        ownedSnakes.map((snake) =>
-          snake.id === snakeId ? { ...snake, isFavorited: favorited } : snake
-        )
-      );
+      setOwnedSnakes(optimisticOwnedSnakes);
 
       try {
         const response = await fetch('/api/collection/favorite', {
@@ -530,13 +559,34 @@ export function useCollection(): UseCollectionReturn {
         if (!response.ok || !data.success) {
           throw new Error(data.error ?? 'Failed to update favorite');
         }
+        if (
+          data.snakeId !== snakeId ||
+          data.favorited !== favorited ||
+          !Array.isArray(data.replacedSnakeIds) ||
+          data.favoriteSnakeId !== (favorited ? snakeId : null)
+        ) {
+          throw new Error('Favorite update returned incomplete data');
+        }
+
+        const replacedSnakeIds = new Set(data.replacedSnakeIds);
+        setOwnedSnakes(
+          optimisticOwnedSnakes.map((snake) => {
+            if (snake.id === snakeId) {
+              return { ...snake, isFavorited: favorited };
+            }
+            if (replacedSnakeIds.has(snake.id)) {
+              return { ...snake, isFavorited: false };
+            }
+            return snake;
+          })
+        );
         return true;
       } catch {
         setOwnedSnakes(previousOwnedSnakes);
         return false;
       }
     },
-    [session?.access_token, ownedSnakes, setOwnedSnakes]
+    [session?.access_token, ownedSnakes, setOwnedSnakes, variants]
   );
 
   // ===========================================================================

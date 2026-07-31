@@ -8,7 +8,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Dynasty } from '@/shared/types/snake-data-model';
-import { useDynastyTheme, dynastyThemes } from '@/hooks/useDynastyTheme';
+import { useDynastyTheme } from '@/hooks/useDynastyTheme';
+import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
 
 interface DynastyTabsProps {
   /** Array of dynasty objects to display as tabs */
@@ -29,8 +30,8 @@ interface TabProps {
 }
 
 /**
- * Individual dynasty tab - segment of the glowing segmented control.
- * The active segment lights up in its dynasty's emissive color.
+ * Individual dynasty seal. The canonical Genome rune makes the selector read
+ * as part of the game world while the name keeps it immediately understandable.
  */
 function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
   const theme = useDynastyTheme(dynasty.name);
@@ -44,42 +45,45 @@ function Tab({ dynasty, isActive, completion, onSelect }: TabProps) {
       aria-label={`${dynasty.name} dynasty, ${completion.owned} of ${completion.total} owned`}
       role="tab"
       className={`
-        flex-1 flex flex-col items-center justify-center
-        min-h-[44px] px-2 py-2 rounded-arcade border
-        transition-all duration-200 ease-out
+        group flex min-h-[52px] min-w-0 items-center justify-center gap-1.5
+        rounded-[16px] border px-1.5 py-1.5
+        transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out
         focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
         focus-visible:ring-offset-void
-        ${isActive ? 'bg-scale-blue/70' : 'border-transparent bg-transparent hover:bg-bone-white/5'}
+        ${isActive ? 'bg-scale-blue/70' : 'border-transparent bg-transparent text-beige/55 hover:bg-bone-white/5'}
       `}
       style={
         isActive
           ? {
               borderColor: theme.glow,
-              boxShadow: `0 0 16px -4px ${theme.glow}, inset 0 0 10px -6px ${theme.glow}`,
+              background: `radial-gradient(circle at 30% 20%, ${theme.glow}24, rgba(14,20,28,.88) 68%)`,
+              boxShadow: `0 0 16px -7px ${theme.glow}, inset 0 0 14px -10px ${theme.glow}`,
             }
           : undefined
       }
     >
-      {/* Dynasty name */}
       <span
-        className="font-display uppercase tracking-wide-arcade text-sm transition-colors duration-200 ease-out"
+        className="h-6 w-6 shrink-0 transition-transform duration-200 group-active:scale-90"
         style={{
-          color: isActive ? theme.glow : 'rgba(148, 163, 184, 0.6)',
-          textShadow: isActive ? `0 0 12px ${theme.glow}` : undefined,
+          color: isActive ? theme.glow : 'rgba(148, 163, 184, 0.55)',
+          filter: isActive ? `drop-shadow(0 0 5px ${theme.glow})` : undefined,
         }}
       >
-        {dynasty.name}
+        <LabDynastyRune dynastyName={dynasty.name} className="h-full w-full" />
       </span>
-
-      {/* Completion count */}
-      <span
-        className="font-mono text-xs mt-0.5 transition-colors duration-200 ease-out"
-        style={{
-          color: isActive ? theme.glow : 'rgba(148, 163, 184, 0.6)',
-          opacity: isActive ? 0.9 : 0.7,
-        }}
-      >
-        {completion.owned}/{completion.total}
+      <span className="min-w-0 text-left leading-none">
+        <span
+          className="block truncate font-display text-[11px] uppercase tracking-[0.08em] sm:text-xs"
+          style={{
+            color: isActive ? theme.glow : undefined,
+            textShadow: isActive ? `0 0 10px ${theme.glow}` : undefined,
+          }}
+        >
+          {dynasty.name}
+        </span>
+        <span className="mt-1 block whitespace-nowrap font-mono text-[9px] text-beige/55 sm:text-[10px]">
+          {completion.owned}/{completion.total}
+        </span>
       </span>
     </button>
   );
@@ -176,12 +180,12 @@ export function DynastyTabs({
     <nav
       role="tablist"
       aria-label="Dynasty selection"
-      className="w-full px-4 pt-3"
+      className="w-full px-3 pt-2 sm:px-4"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      <div className="panel flex gap-1 p-1 max-w-6xl mx-auto">
+      <div className="mx-auto grid max-w-xl grid-cols-3 gap-1 rounded-[20px] border border-scale-blue-light/35 bg-void-deep/55 p-1 shadow-panel backdrop-blur-sm">
         {dynasties.map((dynasty) => (
           <Tab
             key={dynasty.id}

@@ -13,6 +13,8 @@ import type { SnakeVariant, Dynasty } from '@/shared/types/snake-data-model';
 import { normalizeDynastyName, rulesetExplainer } from '@/shared/game/rulesets';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconCheck, IconDna, IconX } from '@/components/ui/icons';
+import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
+import { SnakeArt } from '@/components/lab/SnakeArt';
 
 export interface UnlockConfirmModalProps {
   variant: SnakeVariant;
@@ -114,9 +116,6 @@ export function UnlockConfirmModal({
   const dnaNeeded = variant.unlockCostDna - currentDna;
   const afterBalance = currentDna - variant.unlockCostDna;
 
-  // Gradient placeholder for art
-  const gradientPlaceholder = `linear-gradient(135deg, ${hexToRgba(theme.primary, 0.6)} 0%, ${hexToRgba(theme.secondary, 0.6)} 100%)`;
-
   // Handle escape key to close
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -156,7 +155,7 @@ export function UnlockConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-void-deep/85"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-void-deep/85 sm:items-center sm:p-4"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -164,29 +163,32 @@ export function UnlockConfirmModal({
       data-testid="unlock-confirm-modal"
     >
       <div
-        className="panel-elevated animate-pop-in relative w-full max-w-md overflow-hidden rounded-arcade"
+        className="animate-pop-in relative w-full max-w-md overflow-hidden rounded-t-[26px] border bg-void shadow-2xl sm:rounded-[26px]"
         style={{
           borderColor: hexToRgba(theme.glow, 0.55),
-          boxShadow: `0 0 24px -6px ${hexToRgba(theme.glow, 0.6)}, 0 4px 24px rgba(0,0,0,0.5)`,
+          boxShadow: `0 22px 70px rgba(0,0,0,.7), 0 0 32px -16px ${hexToRgba(theme.glow, 0.7)}`,
         }}
       >
         {/* Title */}
         <div
-          className="px-6 py-4 text-center border-b"
+          className="border-b px-4 py-3 text-center"
           style={{ borderColor: hexToRgba(theme.glow, 0.3) }}
         >
           <h2
             id="unlock-modal-title"
-            className="heading-display text-xl text-bone-white"
+            className="heading-display truncate text-lg text-bone-white sm:text-xl"
           >
-            Unlock &amp; equip {variant.name}?
+            Unlock {variant.name}?
           </h2>
+          <p className="mt-1 font-body text-xs text-beige/60">
+            It joins your active deck and becomes your next snake.
+          </p>
         </div>
 
         {/* Preview Art Section - rarity glow frame */}
-        <div className="px-6 pt-4">
+        <div className="px-4 pt-4">
           <div
-            className="relative w-full rounded-arcade overflow-hidden border-2"
+            className="relative w-full overflow-hidden rounded-[20px] border"
             style={{
               aspectRatio: '16 / 9',
               borderColor: hexToRgba(rarity.color, 0.7),
@@ -196,7 +198,7 @@ export function UnlockConfirmModal({
                   : undefined,
             }}
           >
-            <div className="absolute inset-0 opacity-60">
+            <div className="absolute inset-0">
               {variant.artUrl ? (
                 <Image
                   src={variant.artUrl}
@@ -206,17 +208,26 @@ export function UnlockConfirmModal({
                   sizes="(max-width: 768px) 100vw, 640px"
                 />
               ) : (
-                <div
-                  className="absolute inset-0 w-full h-full"
-                  style={{
-                    background: gradientPlaceholder,
-                  }}
-                  aria-label="Artwork placeholder"
+                <SnakeArt
+                  seed={variant.id}
+                  name={variant.name}
+                  dynasty={dynasty.name}
+                  primaryColor={theme.primary}
+                  secondaryColor={theme.secondary}
+                  rarity={variant.rarity}
+                  className="absolute inset-0 h-full w-full"
                 />
               )}
             </div>
+            <span
+              className="absolute left-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full border bg-void-deep/80 p-2 backdrop-blur-sm"
+              style={{ color: theme.glow, borderColor: hexToRgba(theme.glow, 0.55) }}
+              aria-hidden="true"
+            >
+              <LabDynastyRune dynastyName={dynasty.name} className="h-full w-full" />
+            </span>
             {/* Variant name overlay */}
-            <div className="absolute bottom-0 left-0 right-0 py-2 text-center bg-void-deep/80">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-void-deep via-void-deep/85 to-transparent px-4 pb-3 pt-8 text-center">
               <span
                 className="heading-display text-lg"
                 style={{ color: theme.glow, textShadow: `0 0 12px ${hexToRgba(theme.glow, 0.6)}` }}
@@ -228,89 +239,64 @@ export function UnlockConfirmModal({
         </div>
 
         {/* Lore Text */}
-        {variant.loreText && (
-          <div className="px-6 pt-4">
-            <p className="text-sm italic text-center font-body text-beige/80">
-              &ldquo;{variant.loreText}&rdquo;
-            </p>
-          </div>
-        )}
-
-        {/* Info Section */}
-        <div className="px-6 pt-4">
+        {/* One readable commitment block, with optional flavor beneath. */}
+        <div className="px-4 pt-3">
           <div
-            className="rounded-arcade p-4 border bg-void-deep/60"
+            className="rounded-[18px] border bg-void-deep/60 p-3"
             style={{ borderColor: hexToRgba(theme.glow, 0.25) }}
           >
-            {/* Rarity */}
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-body text-beige/70">Rarity:</span>
-              <span
-                className="text-sm font-body font-medium"
-                style={{
-                  color: rarity.color,
-                  textShadow:
-                    rarity.glowSpread > 0
-                      ? `0 0 10px ${hexToRgba(rarity.color, 0.55)}`
-                      : undefined,
-                }}
-              >
-                {capitalizeRarity(variant.rarity)}
+            <div className="flex items-start justify-between gap-3">
+              <span>
+                <span className="block font-body text-[10px] font-bold uppercase tracking-[0.1em] text-beige/55">
+                  Unlock cost
+                </span>
+                <DnaAmount
+                  value={variant.unlockCostDna}
+                  className="mt-1 font-display text-xl text-bone-white"
+                />
+              </span>
+              <span className="text-right">
+                <span className="block font-body text-[10px] font-bold uppercase tracking-[0.1em] text-beige/55">
+                  Balance after
+                </span>
+                <DnaAmount
+                  value={canAfford ? afterBalance : currentDna}
+                  className={`mt-1 font-mono text-sm font-semibold ${
+                    canAfford ? 'text-rarity-uncommon' : 'text-strike-red'
+                  }`}
+                />
               </span>
             </div>
 
-            {/* Dynasty */}
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-sm font-body text-beige/70">Dynasty:</span>
-              <span className="text-sm font-body font-medium" style={{ color: theme.glow }}>
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-scale-blue-light/20 pt-2">
+              <span className="truncate font-body text-xs font-semibold" style={{ color: rarity.color }}>
+                {capitalizeRarity(variant.rarity)}
+              </span>
+              <span className="truncate text-right font-body text-xs font-semibold" style={{ color: theme.glow }}>
                 {dynasty.name}
               </span>
             </div>
+          </div>
 
-            {/* Ruleset identity (Design v2: dynasties differ by rules, not stats) */}
-            <p className="text-xs font-body text-beige/60 text-right mb-3">
+          <details className="group mt-2 rounded-[16px] bg-scale-blue-dark/35 px-3 py-2">
+            <summary className="cursor-pointer list-none font-body text-xs font-semibold text-beige/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber [&::-webkit-details-marker]:hidden">
+              How this dynasty plays
+            </summary>
+            <p className="mt-2 font-body text-xs leading-relaxed text-beige/60">
               {rulesetExplainer[normalizeDynastyName(dynasty.name)]}
             </p>
+          </details>
 
-            {/* Divider */}
-            <div className="divider-glow my-3" />
-
-            {/* Cost */}
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-body text-beige/70">Cost:</span>
-              <DnaAmount
-                value={variant.unlockCostDna}
-                className="text-sm font-semibold text-bone-white"
-              />
-            </div>
-
-            {/* Your DNA */}
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-body text-beige/70">Your DNA:</span>
-              <DnaAmount
-                value={currentDna}
-                className={`text-sm font-semibold ${
-                  canAfford ? 'text-rarity-uncommon' : 'text-strike-red'
-                }`}
-              />
-            </div>
-
-            {/* After Balance */}
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-body text-beige/70">After:</span>
-              <DnaAmount
-                value={canAfford ? afterBalance : currentDna}
-                className={`text-sm font-semibold ${
-                  canAfford ? 'text-rarity-uncommon' : 'text-strike-red'
-                }`}
-              />
-            </div>
-          </div>
+          {variant.loreText && (
+            <p className="mt-2 text-center font-body text-xs italic leading-relaxed text-beige/65">
+              &ldquo;{variant.loreText}&rdquo;
+            </p>
+          )}
         </div>
 
         {/* Insufficient DNA Warning */}
         {!canAfford && (
-          <div className="px-6 pt-3">
+          <div className="px-4 pt-3">
             <p className="text-sm text-center font-body font-medium text-strike-red">
               Need {formatNumber(dnaNeeded)} more DNA
             </p>
@@ -319,7 +305,7 @@ export function UnlockConfirmModal({
 
         {/* Error Message */}
         {error && (
-          <div className="px-6 pt-3">
+          <div className="px-4 pt-3">
             <p
               className="text-sm text-center font-body font-medium text-strike-red"
               role="alert"
@@ -330,13 +316,13 @@ export function UnlockConfirmModal({
         )}
 
         {/* Action Buttons */}
-        <div className="px-6 py-5 flex gap-3">
+        <div className="flex gap-2 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
           {/* Unlock Button */}
           <button
             type="button"
             onClick={onConfirm}
             disabled={!canAfford || isUnlocking}
-            className="btn-go flex-1 flex items-center justify-center gap-2 py-3 px-4 text-sm min-h-[44px]"
+            className="btn-go flex min-h-[46px] flex-[1.6] items-center justify-center gap-2 rounded-full px-3 py-3 text-sm"
             aria-label={`Unlock and equip ${variant.name} for ${variant.unlockCostDna} DNA`}
             data-testid="unlock-confirm-button"
           >
@@ -358,7 +344,7 @@ export function UnlockConfirmModal({
             type="button"
             onClick={onClose}
             disabled={isUnlocking}
-            className="btn-neutral flex-1 flex items-center justify-center gap-2 py-3 px-4 text-sm min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-neutral flex min-h-[46px] flex-1 items-center justify-center gap-2 rounded-full px-3 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Cancel unlock"
             data-testid="unlock-cancel-button"
           >

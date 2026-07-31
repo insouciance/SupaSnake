@@ -17,12 +17,6 @@ import {
   NOTIFICATION_TARGETS,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
-import {
-  bootstrapForLaunch,
-  launchHandoffStorageAvailable,
-  prepareLaunchHandoff,
-  storeLaunchHandoff,
-} from '@/lib/ftue/launchFlow';
 import { useGameStore } from '@/lib/store/gameStore';
 import { useDynastyTheme } from '@/hooks/useDynastyTheme';
 import { useToast } from '@/components/ui/Toast';
@@ -32,7 +26,7 @@ import { sanitizeLineage } from '@/shared/game/lineage';
 import type { StrainId } from '@/shared/game/strains';
 
 import { Navigation } from '@/components/ui/Navigation';
-import { IconEgg } from '@/components/ui/icons';
+import { IconArrowRight, IconEgg } from '@/components/ui/icons';
 import { LabHeader } from '@/components/lab/LabHeader';
 import { DynastyTabs } from '@/components/lab/DynastyTabs';
 import { CollectionProgress } from '@/components/lab/CollectionProgress';
@@ -44,6 +38,8 @@ import {
   type LineageDossierData,
 } from '@/components/lab/LineageDossier';
 import { UnlockConfirmModal } from '@/components/lab/UnlockConfirmModal';
+import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
+import { partitionLabVariants } from '@/components/lab/labPresentation';
 
 import type {
   SnakeVariant,
@@ -60,7 +56,8 @@ function LabPageContent() {
   const searchParams = useSearchParams();
   const requestedSpecimenId = searchParams.get('specimen');
   const requestedDynasty = searchParams.get('dynasty')?.toUpperCase() ?? null;
-  const { user, session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
+  const returnTo = searchParams.get('returnTo');
+  const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
   const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState(false);
   const publishNotification = useNotificationStore((state) => state.publish);
@@ -225,6 +222,7 @@ function LabPageContent() {
   // Get active dynasty object for modals
   const activeDynasty = dynasties.find((d) => d.id === activeDynastyId);
   const activeMasteryKey = activeDynasty?.name?.toUpperCase?.() ?? '';
+  const [deepToolsOpen, setDeepToolsOpen] = useState(false);
 
   useEffect(() => {
     if (dynasties.length === 0 || typeof window === 'undefined') return;
@@ -241,10 +239,17 @@ function LabPageContent() {
     }
     const id = window.location.hash.slice(1);
     if (id !== `mastery-${activeMasteryKey}`) return;
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById(id)?.scrollIntoView({ block: 'center' });
+    setDeepToolsOpen(true);
+    let secondFrame: number | null = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ block: 'center' });
+      });
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
   }, [activeMasteryKey, masteryByDynasty]);
 
   useRecognitionSeen(
@@ -261,6 +266,16 @@ function LabPageContent() {
   const currentCompletion = activeDynastyId
     ? completionByDynasty[activeDynastyId] ?? { owned: 0, total: 0, snakes: 0 }
     : { owned: 0, total: 0, snakes: 0 };
+
+  /**
+   * The everyday deck contains only playable lineage representatives. Locked
+   * catalog entries remain one disclosure away, so discovery survives without
+   * turning normal snake choice into a wall of unavailable cards.
+   */
+  const { active: activeLineageVariants, undiscovered: undiscoveredVariants } = useMemo(
+    () => partitionLabVariants(currentDynastyVariants, currentDynastyOwned),
+    [currentDynastyOwned, currentDynastyVariants]
+  );
 
   /**
    * The open sheet's highest-generation roster, resolved against the LIVE
@@ -404,62 +419,29 @@ function LabPageContent() {
     [toggleFavorite, showToast]
   );
 
-  /** Equip when needed, create the run, then hand the ready board to game. */
+  /**
+   * Equip the selected lineage for the next run, then return to Run Setup.
+   * This path never creates a game session: commitment, mode, aim and Play
+   * remain deliberate choices on the consolidated setup surface.
+   */
   const handlePlayWithSnake = useCallback(async () => {
-    if (
-      !selectedSnake ||
-      !session?.access_token ||
-      !user?.id ||
-      isLaunchingSnake
-    ) {
-      return;
-    }
-
-    if (!launchHandoffStorageAvailable()) {
-      // Storage-restricted browsers retain the safe legacy pre-run screen;
-      // no paid session is created without a reliable consume-once handoff.
-      const equipped =
-        selectedSnake.id === equippedSnake?.id ||
-        (await equipSnake(selectedSnake.id));
-      if (equipped) router.push('/game');
-      return;
-    }
+    if (!selectedSnake || isLaunchingSnake) return;
 
     setIsLaunchingSnake(true);
     try {
       if (selectedSnake.id !== equippedSnake?.id) {
-        // An equip failure already reports itself through the sheet's own
-        // equipError channel. Rethrowing it here is what made one failure
-        // surface twice, under two different messages.
         if (!(await equipSnake(selectedSnake.id))) return;
       }
-      const bootstrap = await bootstrapForLaunch(session.access_token);
-      const handoff = await prepareLaunchHandoff(
-        session.access_token,
-        user.id,
-        bootstrap
-      );
-      if (!storeLaunchHandoff(handoff)) {
-        throw new Error('Could not transfer the prepared run');
-      }
-      router.push('/game?launch=ftue-v2&source=lab');
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : 'Could not prepare the run',
-        'error'
-      );
+      router.push('/game');
     } finally {
       setIsLaunchingSnake(false);
     }
   }, [
     selectedSnake,
-    session?.access_token,
-    user?.id,
     isLaunchingSnake,
     equippedSnake?.id,
     equipSnake,
     router,
-    showToast,
   ]);
 
   /**
@@ -643,13 +625,13 @@ function LabPageContent() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-28 sm:pb-0 sm:pr-16">
+    <div className="app-bg min-h-screen flex flex-col text-bone-white pb-28 sm:pb-8 sm:pr-16">
       {/* Global navigation rail (right edge desktop / bottom mobile) */}
       <Navigation />
 
       {/* Header with charges and DNA */}
-      <div className="pt-4 animate-fade-up">
-        <LabHeader charge={charge} dna={dnaBalance} />
+      <div className="animate-fade-up">
+        <LabHeader charge={charge} dna={dnaBalance} returnTo={returnTo} />
       </div>
 
       {/* Dynasty tabs - glowing segmented control */}
@@ -661,45 +643,6 @@ function LabPageContent() {
             onSelect={setActiveDynasty}
             completionByDynasty={completionByDynasty}
           />
-        </div>
-      )}
-
-      {/* Collection progress indicator + Breeding Lab entry */}
-      {activeDynasty && (
-        <div className="px-4 py-3 animate-fade-up" style={{ animationDelay: '120ms' }}>
-          <div className="panel max-w-6xl mx-auto flex items-center gap-4 px-4 py-3">
-            <div className="flex-1 min-w-0">
-              <CollectionProgress
-                owned={currentCompletion.owned}
-                total={currentCompletion.total}
-                snakes={currentCompletion.snakes}
-                dynastyTheme={dynastyTheme}
-              />
-            </div>
-            <Link
-              href="/lab/breed"
-              className="btn-go shrink-0 flex items-center gap-2 px-4 py-2 text-sm min-h-[44px]"
-              aria-label="Open Breeding Lab"
-              data-testid="breed-entry-link"
-            >
-              <IconEgg size={18} />
-              <span>Breed</span>
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* Per-dynasty Mastery track (Design v2 §7.1) */}
-      {activeDynasty && masteryByDynasty[activeDynasty.name?.toUpperCase?.() ?? ''] && (
-        <div id="mastery" className="px-4 pb-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
-          <div className="max-w-6xl mx-auto">
-            <div id={`mastery-${activeMasteryKey}`}>
-              <MasteryPanel
-                mastery={masteryByDynasty[activeDynasty.name.toUpperCase()]}
-                dynastyTheme={dynastyTheme}
-              />
-            </div>
-          </div>
         </div>
       )}
 
@@ -720,20 +663,154 @@ function LabPageContent() {
         </div>
       )}
 
-      {/* Collection grid */}
-      <div className="flex-1 animate-fade-up" style={{ animationDelay: '180ms' }}>
-        <div className="max-w-6xl mx-auto">
-          <CollectionGrid
-            variants={currentDynastyVariants}
-            ownedSnakes={currentDynastyOwned}
-            dynastyTheme={dynastyTheme}
-            onSelectVariant={handleSelectVariant}
-            isLoading={isLoading}
-            equippedSnakeId={equippedSnake?.id}
-            justUnlockedVariantId={justUnlockedVariantId}
-          />
-        </div>
-      </div>
+      {activeDynasty && (
+        <main className="mx-auto w-full max-w-6xl flex-1 px-3 pb-4 pt-3 sm:px-4">
+          {/*
+            The living deck is the Lab's glance layer: choose a dynasty, see
+            the snakes that can actually be used, and inspect one. The rune is
+            a semantic dynasty seal; it never repeats as wallpaper.
+          */}
+          <section
+            className="relative isolate overflow-hidden rounded-[26px] border border-scale-blue-light/35 bg-void-deep/75 shadow-panel animate-fade-up"
+            style={{
+              animationDelay: '110ms',
+              background: `radial-gradient(circle at 88% 5%, ${dynastyTheme.glow}22, rgba(6,9,13,.94) 42%), linear-gradient(145deg, rgba(22,32,43,.72), rgba(6,9,13,.96))`,
+              boxShadow: `0 18px 48px rgba(0,0,0,.38), 0 0 28px -18px ${dynastyTheme.glow}`,
+            }}
+            data-testid="active-lineage-deck"
+          >
+            <div
+              className="pointer-events-none absolute -right-5 -top-7 h-28 w-28 rotate-12 opacity-[0.08] sm:h-36 sm:w-36"
+              style={{ color: dynastyTheme.glow }}
+              aria-hidden="true"
+            >
+              <LabDynastyRune dynastyName={activeDynasty.name} className="h-full w-full" />
+            </div>
+
+            <div className="relative flex items-center justify-between gap-3 px-4 pb-1 pt-4 sm:px-5 sm:pt-5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-void/70 p-2"
+                  style={{
+                    color: dynastyTheme.glow,
+                    borderColor: `${dynastyTheme.glow}66`,
+                    boxShadow: `0 0 14px -5px ${dynastyTheme.glow}`,
+                  }}
+                >
+                  <LabDynastyRune dynastyName={activeDynasty.name} className="h-full w-full" />
+                </span>
+                <span className="min-w-0">
+                  <h2 className="truncate font-display text-sm uppercase tracking-[0.08em] text-bone-white sm:text-base">
+                    Active lineages
+                  </h2>
+                  <p className="truncate font-body text-[11px] text-beige/60 sm:text-xs">
+                    {currentCompletion.snakes} playable {currentCompletion.snakes === 1 ? 'branch' : 'branches'}
+                  </p>
+                </span>
+              </div>
+              <Link
+                href="/lab/breed"
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-rarity-legendary/55 bg-rarity-legendary/10 px-3 font-display text-[11px] uppercase tracking-[0.06em] text-rarity-legendary transition-[background-color,box-shadow,transform] hover:bg-rarity-legendary/15 hover:shadow-glow-sm hover:shadow-rarity-legendary/30 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-rarity-legendary sm:px-4 sm:text-xs"
+                aria-label="Open Breeding Lab"
+                data-testid="breed-entry-link"
+              >
+                <IconEgg size={17} />
+                <span>Breed</span>
+              </Link>
+            </div>
+
+            <CollectionGrid
+              variants={activeLineageVariants}
+              ownedSnakes={currentDynastyOwned}
+              dynastyTheme={dynastyTheme}
+              onSelectVariant={handleSelectVariant}
+              isLoading={isLoading}
+              equippedSnakeId={equippedSnake?.id}
+              justUnlockedVariantId={justUnlockedVariantId}
+              ariaLabel={`${activeDynasty.name} active lineages`}
+              emptyTitle="No active lineage"
+              emptyDescription="Open Collection & Mastery below to choose one."
+            />
+          </section>
+
+          {/* Deep collection, Mastery, and discovery stay available on demand. */}
+          <details
+            className="group mt-3 overflow-hidden rounded-[22px] border border-scale-blue-light/35 bg-void-deep/55 shadow-panel animate-fade-up"
+            style={{ animationDelay: '160ms' }}
+            open={deepToolsOpen}
+            onToggle={(event) => setDeepToolsOpen(event.currentTarget.open)}
+            data-testid="lab-deep-tools"
+          >
+            <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 px-4 py-3 marker:hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyber [&::-webkit-details-marker]:hidden">
+              <div className="min-w-0 flex-1">
+                <CollectionProgress
+                  owned={currentCompletion.owned}
+                  total={currentCompletion.total}
+                  snakes={currentCompletion.snakes}
+                  dynastyTheme={dynastyTheme}
+                />
+              </div>
+              {masteryByDynasty[activeMasteryKey] && (
+                <span
+                  className="shrink-0 rounded-full border px-2 py-1 font-display text-xs"
+                  style={{ color: dynastyTheme.glow, borderColor: `${dynastyTheme.glow}55` }}
+                >
+                  M{masteryByDynasty[activeMasteryKey].level}
+                </span>
+              )}
+              <IconArrowRight
+                size={17}
+                className="shrink-0 text-beige/55 transition-transform duration-200 group-open:rotate-90"
+              />
+            </summary>
+
+            <div className="space-y-4 border-t border-scale-blue-light/25 px-3 pb-4 pt-3 sm:px-4">
+              {masteryByDynasty[activeMasteryKey] && (
+                <div id="mastery">
+                  <div id={`mastery-${activeMasteryKey}`}>
+                    <MasteryPanel
+                      mastery={masteryByDynasty[activeMasteryKey]}
+                      dynastyTheme={dynastyTheme}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <section aria-labelledby="discover-variants-title">
+                <div className="flex items-end justify-between gap-2 px-1">
+                  <div>
+                    <h3 id="discover-variants-title" className="font-display text-xs uppercase tracking-[0.08em] text-bone-white">
+                      Discover variants
+                    </h3>
+                    <p className="mt-0.5 font-body text-[11px] text-beige/55">
+                      Unlocks join the active deck above.
+                    </p>
+                  </div>
+                  <span className="whitespace-nowrap font-mono text-[10px] text-beige/55">
+                    {undiscoveredVariants.length} left
+                  </span>
+                </div>
+                {undiscoveredVariants.length > 0 ? (
+                  <CollectionGrid
+                    variants={undiscoveredVariants}
+                    ownedSnakes={currentDynastyOwned}
+                    dynastyTheme={dynastyTheme}
+                    onSelectVariant={handleSelectVariant}
+                    isLoading={isLoading}
+                    equippedSnakeId={equippedSnake?.id}
+                    justUnlockedVariantId={justUnlockedVariantId}
+                    ariaLabel={`${activeDynasty.name} undiscovered variants`}
+                  />
+                ) : (
+                  <p className="mt-3 rounded-[16px] bg-rarity-legendary/10 px-4 py-4 text-center font-body text-sm text-rarity-legendary">
+                    Dynasty collection complete.
+                  </p>
+                )}
+              </section>
+            </div>
+          </details>
+        </main>
+      )}
 
       {/* Variant Detail Modal - for owned snakes */}
       {selectedVariant && selectedSnake && activeDynasty && (

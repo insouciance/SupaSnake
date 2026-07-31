@@ -35,9 +35,9 @@ export function EmptySlot({ dynastyTheme }: EmptySlotProps): React.ReactElement<
 
   return (
     <div
-      className="relative flex flex-col items-center justify-center rounded-arcade border-2 border-dashed bg-void-deep/50"
+      className="relative flex flex-col items-center justify-center rounded-[20px] border bg-void-deep/50"
       style={{
-        aspectRatio: '3 / 4',
+        aspectRatio: '4 / 5',
         minHeight: '44px',
         minWidth: '44px',
         borderColor: hexToRgba(glow, 0.3),

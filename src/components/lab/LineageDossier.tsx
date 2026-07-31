@@ -136,7 +136,7 @@ function LineageDossierEnabled({
 
   if (loading) {
     return (
-      <div className="rounded-arcade border border-scale-blue-light/25 bg-void-deep/55 p-3" data-testid="lineage-dossier-loading">
+      <div className="rounded-[16px] border border-scale-blue-light/25 bg-void-deep/55 p-3" data-testid="lineage-dossier-loading">
         <p className="font-body text-xs text-beige/55 animate-pulse">Opening lineage dossier…</p>
       </div>
     );
@@ -152,7 +152,7 @@ function LineageDossierEnabled({
   return (
     <section
       id="lineage"
-      className="rounded-arcade border border-scale-blue-light/30 bg-void-deep/60 p-3"
+      className="rounded-[18px] border border-scale-blue-light/30 bg-void-deep/60 p-3"
       aria-labelledby="lineage-dossier-title"
       data-testid="lineage-dossier"
     >
@@ -164,18 +164,18 @@ function LineageDossierEnabled({
           </h3>
         </div>
         {dossier.highestActiveGeneration === null ? (
-          <span className="rounded-arcade border border-scale-blue-light/25 bg-void/45 px-2 py-1 font-body text-xs text-beige/55">
+          <span className="rounded-full border border-scale-blue-light/25 bg-void/45 px-2 py-1 font-body text-xs text-beige/55">
             No active specimen
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-arcade border border-cosmic/35 bg-cosmic/10 px-2 py-1 font-mono text-xs text-cosmic">
+          <span className="inline-flex items-center gap-1 rounded-full border border-cosmic/35 bg-cosmic/10 px-2 py-1 font-mono text-xs text-cosmic">
             <IconEgg size={13} /> Gen {dossier.highestActiveGeneration}
           </span>
         )}
       </div>
 
       {current && (
-        <div className="mt-3 rounded-arcade border border-venom-orange/20 bg-void/45 p-3" data-testid="lineage-current-passport">
+        <div className="mt-3 rounded-[15px] border border-venom-orange/20 bg-void/45 p-3" data-testid="lineage-current-passport">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-body text-sm text-bone-white">Gen {current.generation} passport</p>
             {current.status === 'active' && current.owned ? (
@@ -198,16 +198,19 @@ function LineageDossierEnabled({
       )}
 
       {specimens.length > 0 && (
-        <div className="mt-3">
-          <p className="label-arcade text-beige/55">Pedigree chapters</p>
-          <ol className="mt-2 space-y-1.5">
+        <details className="group mt-3 overflow-hidden rounded-[15px] border border-scale-blue-light/20 bg-void/30">
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-body text-xs font-semibold text-beige/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber [&::-webkit-details-marker]:hidden">
+            <span>Pedigree chapters</span>
+            <span className="font-mono text-beige/50">{specimens.length}</span>
+          </summary>
+          <ol className="space-y-1.5 border-t border-scale-blue-light/15 p-2">
             {specimens.map((specimen) => {
               const retired = specimen.status === 'retired_refunded';
               return (
                 <li
                   key={`${specimen.status}-${specimen.id}`}
                   id={`lineage-specimen-${specimen.id}`}
-                  className="flex items-center justify-between gap-3 rounded-arcade border border-scale-blue-light/15 bg-void/35 px-3 py-2"
+                  className="flex items-center justify-between gap-3 rounded-[12px] border border-scale-blue-light/15 bg-void/35 px-3 py-2"
                   data-specimen-status={specimen.status}
                   data-owned={specimen.owned ? 'true' : 'false'}
                   data-equippable={specimen.equippable ? 'true' : 'false'}
@@ -229,7 +232,7 @@ function LineageDossierEnabled({
               );
             })}
           </ol>
-        </div>
+        </details>
       )}
     </section>
   );

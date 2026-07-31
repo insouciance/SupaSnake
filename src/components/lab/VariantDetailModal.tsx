@@ -31,6 +31,7 @@ import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconArrowRight, IconBolt, IconCheck, IconDna, IconEgg, IconSnake } from '@/components/ui/icons';
+import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -260,9 +261,75 @@ export function VariantDetailModal({
     return null;
   }
 
+  const downgradePanel =
+    owned.generation > 1 && downgradeRefundDna !== null && onDowngrade ? (
+      <div
+        className="rounded-[16px] border border-scale-blue-light/25 bg-void-deep/70 p-3"
+        data-testid="variant-downgrade"
+      >
+        {confirmingDowngrade ? (
+          <div className="space-y-3">
+            <div>
+              <p className="font-body text-sm font-semibold text-bone-white">
+                Refund Gen {owned.generation}?
+              </p>
+              <p className="mt-1 font-body text-xs leading-relaxed text-beige/70">
+                This build leaves the active roster and its full breeding receipt
+                returns.{' '}
+                {downgradeToGeneration === owned.generation
+                  ? `Another Gen ${owned.generation} build remains available.`
+                  : `Gen ${downgradeToGeneration ?? Math.max(1, owned.generation - 1)} becomes this variant’s highest available generation.`}{' '}
+                Pedigree history remains intact.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-neutral min-h-[44px] flex-1 px-3 py-2 text-sm"
+                onClick={() => setConfirmingDowngrade(false)}
+                disabled={isDowngrading}
+              >
+                Keep build
+              </button>
+              <button
+                type="button"
+                className="btn-go inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3 py-2 text-sm"
+                onClick={onDowngrade}
+                disabled={isDowngrading}
+                aria-label={`Confirm downgrade and refund ${downgradeRefundDna} DNA`}
+              >
+                {isDowngrading ? <Spinner /> : <IconDna size={16} />}
+                {isDowngrading
+                  ? 'Refunding…'
+                  : `+${downgradeRefundDna.toLocaleString()} DNA`}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn-neutral inline-flex min-h-[44px] w-full items-center justify-center gap-2 px-3 py-2 text-sm"
+              onClick={() => setConfirmingDowngrade(true)}
+              disabled={Boolean(downgradeBlockedReason) || isDowngrading}
+              aria-label={`Downgrade generation and refund ${downgradeRefundDna} DNA`}
+            >
+              <IconDna size={16} />
+              <span>Downgrade · +{downgradeRefundDna.toLocaleString()} DNA</span>
+            </button>
+            {downgradeBlockedReason && (
+              <p className="mt-2 font-body text-xs text-beige/60">
+                {downgradeBlockedReason}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    ) : null;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-void-deep/85"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-void-deep/85 sm:items-center sm:p-4"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -273,17 +340,18 @@ export function VariantDetailModal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="panel-elevated animate-pop-in relative w-full max-w-lg h-full max-h-[95vh] flex flex-col overflow-hidden rounded-arcade focus:outline-none"
+        className="animate-pop-in relative flex h-full max-h-[96dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-[26px] border border-scale-blue-light/45 bg-void shadow-2xl focus:outline-none sm:h-auto sm:max-h-[92dvh] sm:rounded-[26px]"
+        style={{ boxShadow: `0 22px 80px rgba(0,0,0,.72), 0 0 42px -22px ${theme.glow}` }}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-4 py-3 border-b"
+          className="flex items-center justify-between border-b px-3 py-2"
           style={{ borderColor: hexToRgba(theme.glow, 0.3) }}
         >
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-2 p-2 -ml-2 rounded-arcade hover:bg-bone-white/10 transition-colors focus:outline-none focus-visible:ring-2 min-w-[44px] min-h-[44px]"
+            className="-ml-1 flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-full p-2 transition-colors hover:bg-bone-white/10 focus:outline-none focus-visible:ring-2"
             aria-label="Back to collection"
           >
             <IconArrowRight size={20} className="rotate-180" style={{ color: theme.glow }} />
@@ -291,7 +359,7 @@ export function VariantDetailModal({
           </button>
           <h1
             id="modal-title"
-            className="heading-display text-lg truncate flex-1 text-right pl-4"
+            className="heading-display flex-1 truncate pl-3 text-right text-base sm:text-lg"
             style={{ color: theme.glow, textShadow: `0 0 14px ${hexToRgba(theme.glow, 0.55)}` }}
           >
             {variant.name}
@@ -300,13 +368,11 @@ export function VariantDetailModal({
 
         {/* Scrollable content area */}
         <div className="flex-1 overflow-y-auto">
-          {/* Art display area - rarity glow frame */}
-          <div className="px-4 pt-4">
+          {/* Character-first identity: art and the only run-critical facts. */}
+          <div className="grid grid-cols-[minmax(112px,0.85fr)_minmax(0,1.15fr)] gap-3 px-3 pt-3 sm:grid-cols-[190px_minmax(0,1fr)] sm:px-4 sm:pt-4">
             <div
-              className="relative w-full overflow-hidden rounded-arcade border-2 bg-void-deep/70"
+              className="relative aspect-square w-full overflow-hidden rounded-[20px] border bg-void-deep/70"
               style={{
-                aspectRatio: '1 / 1',
-                maxHeight: '50vh',
                 borderColor: hexToRgba(rarity.color, 0.8),
                 boxShadow:
                   rarity.glowSpread > 0
@@ -333,6 +399,39 @@ export function VariantDetailModal({
                   className="absolute inset-0 w-full h-full"
                 />
               )}
+            </div>
+            <div className="flex min-w-0 flex-col justify-center rounded-[20px] bg-scale-blue-dark/55 px-3 py-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border p-2"
+                  style={{ color: theme.glow, borderColor: hexToRgba(theme.glow, 0.45) }}
+                >
+                  <LabDynastyRune dynastyName={dynasty.name} className="h-full w-full" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-body text-[10px] font-bold uppercase tracking-[0.1em] text-beige/60">
+                    {dynasty.displayName}
+                  </span>
+                  <span
+                    className="block truncate font-body text-xs font-semibold"
+                    style={{ color: rarity.color }}
+                  >
+                    {capitalizeRarity(variant.rarity)}
+                  </span>
+                </span>
+              </div>
+              <div className="mt-3" data-testid="variant-generation">
+                <span className="block font-display text-2xl text-bone-white sm:text-3xl">
+                  Gen {owned.generation}
+                </span>
+                <span
+                  className="mt-0.5 block whitespace-nowrap font-mono text-xs font-semibold sm:text-sm"
+                  style={{ color: theme.glow }}
+                  data-testid="variant-yield-multiplier"
+                >
+                  Yield ×{formatAscendanceYieldMultiplier(owned.generation)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -414,53 +513,17 @@ export function VariantDetailModal({
             </div>
           )}
 
-          {/* Stats section */}
-          <div className="px-4 py-4">
-            {/* Primary stats row */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div>
-                <span className="label-arcade block">Rarity</span>
-                <span
-                  className="text-sm font-body font-semibold"
-                  style={{
-                    color: rarity.color,
-                    textShadow:
-                      rarity.glowSpread > 0
-                        ? `0 0 10px ${hexToRgba(rarity.color, 0.6)}`
-                        : undefined,
-                  }}
-                >
-                  {capitalizeRarity(variant.rarity)}
-                </span>
-              </div>
-              <div>
-                <span className="label-arcade block">Dynasty</span>
-                <span className="text-sm font-body font-semibold" style={{ color: theme.glow }}>
-                  {dynasty.displayName}
-                </span>
-              </div>
-              <div>
-                <span className="label-arcade block">Generation</span>
-                <div data-testid="variant-generation">
-                  <span className="block text-sm font-body font-semibold text-bone-white">
-                    Gen {owned.generation}
-                  </span>
-                  <span
-                    className="block text-xs font-mono font-semibold"
-                    style={{ color: theme.glow }}
-                    data-testid="variant-yield-multiplier"
-                  >
-                    Yield ×{formatAscendanceYieldMultiplier(owned.generation)}
-                  </span>
-                </div>
-              </div>
-              <div>
-                <span className="label-arcade block">Rules</span>
-                <span className="text-sm font-body font-semibold" style={{ color: theme.glow }}>
-                  {dynasty.name}
-                </span>
-              </div>
-            </div>
+          {/* Progressive detail: build first, history and reversal second. */}
+          <div className="space-y-2 px-3 py-3 sm:px-4 sm:py-4">
+            <details
+              open
+              className="group overflow-hidden rounded-[18px] border border-scale-blue-light/30 bg-void-deep/55"
+            >
+              <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-display text-xs uppercase tracking-[0.08em] text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyber [&::-webkit-details-marker]:hidden">
+                <span>Build &amp; Genome</span>
+                <IconArrowRight size={15} className="text-beige/55 transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="border-t border-scale-blue-light/20 px-3 pb-3 pt-3">
 
             {/* Traits (Design v2 Phase 3A): permanent snake-bound
                 sidegrades. Each filled chip is tappable — this section is
@@ -560,21 +623,40 @@ export function VariantDetailModal({
               </div>
             )}
 
-            {lineageDossierSlot && (
-              <div className="mb-4">{lineageDossierSlot}</div>
-            )}
+              </div>
+            </details>
 
-            {/* Ruleset identity - how this dynasty actually plays */}
-            <div>
-              <span className="label-arcade block mb-2">Playstyle</span>
-              <p
-                className="text-sm font-body leading-relaxed rounded-arcade px-3 py-2 border bg-void-deep/60 text-beige"
-                style={{ borderColor: hexToRgba(theme.glow, 0.35) }}
-                data-testid="variant-ruleset-explainer"
-              >
-                {rulesetExplainer[normalizeDynastyName(dynasty.name)]}
-              </p>
-            </div>
+            <details className="group overflow-hidden rounded-[18px] border border-scale-blue-light/30 bg-void-deep/55">
+              <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-display text-xs uppercase tracking-[0.08em] text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyber [&::-webkit-details-marker]:hidden">
+                <span>Lineage, history &amp; rules</span>
+                <IconArrowRight size={15} className="text-beige/55 transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="space-y-3 border-t border-scale-blue-light/20 px-3 pb-3 pt-3">
+                {lineageDossierSlot && <div>{lineageDossierSlot}</div>}
+
+                <div>
+                  <span className="label-arcade block mb-2">Playstyle</span>
+                  <p
+                    className="rounded-[14px] border bg-void-deep/60 px-3 py-2 font-body text-sm leading-relaxed text-beige"
+                    style={{ borderColor: hexToRgba(theme.glow, 0.35) }}
+                    data-testid="variant-ruleset-explainer"
+                  >
+                    {rulesetExplainer[normalizeDynastyName(dynasty.name)]}
+                  </p>
+                </div>
+
+                {downgradeError && (
+                  <p
+                    className="font-body text-sm text-strike-red"
+                    role="alert"
+                    data-testid="variant-downgrade-error"
+                  >
+                    {downgradeError}
+                  </p>
+                )}
+                {downgradePanel}
+              </div>
+            </details>
           </div>
         </div>
 
@@ -598,93 +680,16 @@ export function VariantDetailModal({
             </p>
           )}
 
-          {downgradeError && (
-            <p
-              className="basis-full text-sm font-body text-strike-red"
-              role="alert"
-              data-testid="variant-downgrade-error"
-            >
-              {downgradeError}
-            </p>
-          )}
-
-          {owned.generation > 1 && downgradeRefundDna !== null && onDowngrade && (
-            <div
-              className="basis-full rounded-arcade border border-scale-blue-light/25 bg-void-deep/70 p-3"
-              data-testid="variant-downgrade"
-            >
-              {confirmingDowngrade ? (
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm font-body font-semibold text-bone-white">
-                      Refund Gen {owned.generation}?
-                    </p>
-                    <p className="mt-1 text-xs font-body leading-relaxed text-beige/70">
-                      This build leaves the active roster and its full breeding
-                      receipt returns.{' '}
-                      {downgradeToGeneration === owned.generation
-                        ? `Another Gen ${owned.generation} build remains available.`
-                        : `Gen ${downgradeToGeneration ?? Math.max(1, owned.generation - 1)} becomes this variant’s highest available generation.`}{' '}
-                      Pedigree history remains intact.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-neutral flex-1 min-h-[44px] px-3 py-2 text-sm"
-                      onClick={() => setConfirmingDowngrade(false)}
-                      disabled={isDowngrading}
-                    >
-                      Keep build
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-go flex-1 min-h-[44px] px-3 py-2 text-sm inline-flex items-center justify-center gap-2"
-                      onClick={onDowngrade}
-                      disabled={isDowngrading}
-                      aria-label={`Confirm downgrade and refund ${downgradeRefundDna} DNA`}
-                    >
-                      {isDowngrading ? <Spinner /> : <IconDna size={16} />}
-                      {isDowngrading
-                        ? 'Refunding…'
-                        : `+${downgradeRefundDna.toLocaleString()} DNA`}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="btn-neutral w-full min-h-[44px] px-3 py-2 text-sm inline-flex items-center justify-center gap-2"
-                    onClick={() => setConfirmingDowngrade(true)}
-                    disabled={Boolean(downgradeBlockedReason) || isDowngrading}
-                    aria-label={`Downgrade generation and refund ${downgradeRefundDna} DNA`}
-                  >
-                    <IconDna size={16} />
-                    <span>
-                      Downgrade · +{downgradeRefundDna.toLocaleString()} DNA
-                    </span>
-                  </button>
-                  {downgradeBlockedReason && (
-                    <p className="mt-2 text-xs font-body text-beige/60">
-                      {downgradeBlockedReason}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
           {onPlay && (
             <button
               type="button"
               onClick={onPlay}
               disabled={isLaunching || isEquipping}
               className="btn-go flex basis-full items-center justify-center gap-2 px-4 py-3 text-sm min-h-[44px] disabled:cursor-not-allowed disabled:opacity-60"
-              aria-label={`Play with ${variant.name}`}
+              aria-label={`Use ${variant.name} for next run`}
             >
               {isLaunching ? <Spinner /> : <IconSnake size={18} />}
-              <span>{isLaunching ? 'Preparing run…' : 'Play with this Snake'}</span>
+              <span>{isLaunching ? 'Equipping…' : 'Use for next run'}</span>
             </button>
           )}
 
