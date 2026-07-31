@@ -254,7 +254,7 @@ function LabPageContent() {
 
   useRecognitionSeen(
     'mastery',
-    Boolean(activeMasteryKey && masteryByDynasty[activeMasteryKey]),
+    Boolean(deepToolsOpen && activeMasteryKey && masteryByDynasty[activeMasteryKey]),
     session?.access_token,
     { artifactRefs: activeMasteryKey ? [activeMasteryKey] : [] }
   );
