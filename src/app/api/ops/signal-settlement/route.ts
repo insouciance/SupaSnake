@@ -46,6 +46,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isAuthorizedCron } from '@/lib/server/cronAuth';
 import { autoSettleSignalAttempts } from '@/lib/server/signal';
+import {
+  listPendingRunProgression,
+  resumeOrRecoverRunImpact,
+} from '@/lib/server/gameProgressionSettlement';
+
+export const maxDuration = 60;
+const PROGRESSION_BATCH_LIMIT = 20;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -55,6 +62,28 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   if (!isAuthorizedCron(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Atomic sessions must pass the ordered durable Signal preflight before the
+  // legacy-compatible sweep may touch their attempt. The database enforces
+  // this too; doing the recovery first lets this cron remain a useful second
+  // worker without becoming an ordering bypass.
+  const pending = await listPendingRunProgression(supabase, PROGRESSION_BATCH_LIMIT);
+  if (pending === null) {
+    return NextResponse.json({ error: 'Progression scan failed' }, { status: 500 });
+  }
+  let progressionSettled = 0;
+  let progressionDeferred = 0;
+  let progressionFailed = 0;
+  for (const item of pending) {
+    const recovered = await resumeOrRecoverRunImpact(
+      supabase,
+      item.playerId,
+      item.sessionId
+    );
+    if (recovered.status === 'found') progressionSettled += 1;
+    else if (recovered.status === 'pending') progressionDeferred += 1;
+    else progressionFailed += 1;
   }
 
   const result = await autoSettleSignalAttempts(supabase);
@@ -76,9 +105,13 @@ export async function GET(request: NextRequest) {
     // idempotency property, reported rather than assumed.
     bonusDnaPaid: result.bonusDnaPaid,
     skipped: result.skipped,
+    progressionScanned: pending.length,
+    progressionSettled,
+    progressionDeferred,
+    progressionFailed,
   };
 
-  if (result.failed) {
+  if (result.failed || progressionFailed > 0) {
     // The engine already reported it to Sentry; the cron needs a non-200 so a
     // permanently failing settlement is visible on the platform.
     return NextResponse.json({ ...body, error: 'Settlement failed' }, { status: 500 });

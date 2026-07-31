@@ -19,18 +19,12 @@ interface HealthCheck {
   error?: string;
 }
 
-interface CapabilityCheck {
-  status: 'healthy' | 'pending' | 'unhealthy';
-  surfaceEnabled: boolean;
-  version?: number;
-  error?: string;
-}
-
 interface HealthResponse {
   status: 'healthy' | 'unhealthy';
   release: string;
   timestamp: string;
   version: string;
+  releaseSha: string | null;
   environment: string;
   uptime: number;
   memory: {
@@ -41,54 +35,13 @@ interface HealthResponse {
   };
   checks: {
     database: HealthCheck;
-    careerSpine: CapabilityCheck;
+    careerSpine: HealthCheck & {
+      surfaceEnabled: boolean;
+      phase?: 'bridge' | 'ready';
+      bridgeVersion?: number;
+      careerVersion?: number | null;
+    };
   };
-}
-
-async function checkCareerSpine(): Promise<CapabilityCheck> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    return {
-      status: 'unhealthy',
-      surfaceEnabled: CAREER_SPINE_V1_ENABLED,
-      error: 'Career capability configuration missing',
-    };
-  }
-  try {
-    const supabase = createClient(supabaseUrl, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { data, error } = await supabase.rpc('get_career_spine_capability');
-    if (error) {
-      if (['42883', 'PGRST202'].includes(error.code ?? '')) {
-        return {
-          status: 'pending',
-          surfaceEnabled: CAREER_SPINE_V1_ENABLED,
-          error: 'Career Spine migration pending',
-        };
-      }
-      return {
-        status: 'unhealthy',
-        surfaceEnabled: CAREER_SPINE_V1_ENABLED,
-        error: error.message,
-      };
-    }
-    const version = Number((data as { version?: unknown } | null)?.version);
-    return version === 1
-      ? { status: 'healthy', surfaceEnabled: CAREER_SPINE_V1_ENABLED, version }
-      : {
-          status: 'unhealthy',
-          surfaceEnabled: CAREER_SPINE_V1_ENABLED,
-          error: 'Unexpected Career Spine capability version',
-        };
-  } catch (error) {
-    return {
-      status: 'unhealthy',
-      surfaceEnabled: CAREER_SPINE_V1_ENABLED,
-      error: error instanceof Error ? error.message : 'Unknown capability error',
-    };
-  }
 }
 
 // Track process start time for uptime calculation
@@ -144,6 +97,61 @@ async function checkDatabase(): Promise<HealthCheck> {
   }
 }
 
+async function checkCareerSpine(): Promise<HealthResponse['checks']['careerSpine']> {
+  const start = Date.now();
+  const surfaceEnabled = CAREER_SPINE_V1_ENABLED;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return {
+      status: 'unhealthy',
+      surfaceEnabled,
+      responseTime: Date.now() - start,
+      error: 'Career settlement configuration missing',
+    };
+  }
+  try {
+    const client = createClient(supabaseUrl, serviceKey);
+    const { data, error } = await client.rpc('get_career_settlement_capability');
+    const capability =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : null;
+    const bridgeVersion = Number(capability?.bridgeVersion);
+    const careerVersion = capability?.careerVersion;
+    const phase = capability?.status;
+    if (
+      error ||
+      bridgeVersion !== 1 ||
+      (phase !== 'pending' && phase !== 'ready') ||
+      (phase === 'pending' && careerVersion !== null) ||
+      (phase === 'ready' && Number(careerVersion) !== 1)
+    ) {
+      return {
+        status: 'unhealthy',
+        surfaceEnabled,
+        responseTime: Date.now() - start,
+        error: error?.message ?? 'Career settlement capability invalid',
+      };
+    }
+    return {
+      status: 'healthy',
+      surfaceEnabled,
+      responseTime: Date.now() - start,
+      phase: phase === 'ready' ? 'ready' : 'bridge',
+      bridgeVersion,
+      careerVersion: careerVersion === null ? null : Number(careerVersion),
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      surfaceEnabled,
+      responseTime: Date.now() - start,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 /**
  * GET /api/health
  * Returns comprehensive health status
@@ -153,21 +161,30 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   const uptime = Math.floor((Date.now() - startTime) / 1000);
 
   // Perform health checks
-  const databaseCheck = await checkDatabase();
-  const careerSpineCheck = await checkCareerSpine();
+  const [databaseCheck, careerSpineCheck] = await Promise.all([
+    checkDatabase(),
+    checkCareerSpine(),
+  ]);
 
   // Get memory usage
   const memoryUsage = process.memoryUsage();
 
   // Determine overall health
   const isHealthy =
-    databaseCheck.status === 'healthy' && careerSpineCheck.status !== 'unhealthy';
+    databaseCheck.status === 'healthy' && careerSpineCheck.status === 'healthy';
 
   const response: HealthResponse = {
     status: isHealthy ? 'healthy' : 'unhealthy',
-    release: process.env.SUPASNAKE_RELEASE_SHA || 'unknown',
     timestamp,
     version: process.env.npm_package_version || '1.0.0',
+    release:
+      process.env.SUPASNAKE_RELEASE_SHA ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      'unknown',
+    releaseSha:
+      process.env.SUPASNAKE_RELEASE_SHA ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      null,
     environment: process.env.NODE_ENV || 'development',
     uptime,
     memory: {

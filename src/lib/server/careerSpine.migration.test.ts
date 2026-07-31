@@ -2,12 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const migration = fs.readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/060_career_spine.sql'),
+  path.join(process.cwd(), 'supabase/migrations/061_career_spine.sql'),
   'utf8'
 );
 const code = migration.replace(/--[^\n]*/g, '');
 
-describe('migration 060 Career Spine', () => {
+describe('migration 061 Career Spine', () => {
   it('folds player rewards and audit history atomically once per session', () => {
     const start = code.indexOf('CREATE OR REPLACE FUNCTION settle_game_session_reward');
     const end = code.indexOf('$$ LANGUAGE plpgsql SECURITY DEFINER', start);
@@ -147,7 +147,7 @@ describe('migration 060 Career Spine', () => {
     expect(code).toMatch(/specimen_id UUID NOT NULL REFERENCES lineage_specimens\(specimen_id\) ON DELETE CASCADE/);
     expect(code).toMatch(/ON CONFLICT \(session_id\) DO NOTHING/);
     expect(code).toMatch(/IF v_inserted IS NULL THEN RETURN FALSE/);
-    expect(code).toMatch(/WHEN v_run\.extracted THEN GREATEST\(highest_energy/);
+    expect(code).toMatch(/WHEN v_run\.extracted THEN\s+GREATEST\(highest_energy/);
     expect(code).toMatch(/MAX\(energy_committed\) FILTER \(WHERE extracted\)/);
     expect(code).toMatch(/gs\.validated IS TRUE/);
     expect(code).toMatch(/CREATE TRIGGER clan_contribution_sync_lineage_depth/);
