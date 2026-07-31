@@ -33,18 +33,12 @@ import {
   getSnakeGeometries,
   getSnakeSegmentMaterial,
 } from '@/components/game/SnakeModel';
+import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
+import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 
 // -----------------------------------------------------------------------------
 // Look constants
 // -----------------------------------------------------------------------------
-
-/** Bright per-dynasty glow used for the key/rim lights (DB primaries are too
- *  dark for the void - same values the home UI uses for dynasty glow). */
-const DYNASTY_GLOW: Record<DynastyId, string> = {
-  CYBER: '#00FFFF',
-  PRIMAL: '#86efac',
-  COSMIC: '#a855f7',
-};
 
 export type SpecimenReaction = 'play' | 'lab' | 'compete' | 'you';
 
@@ -149,8 +143,8 @@ const POSE_BOUNDS = (() => {
 // Materials / geometry - shared caches, no per-render allocation
 // -----------------------------------------------------------------------------
 
-/** Hero-boosted clones of the game's shared segment materials. The game's
- *  cache is never mutated; one clone per dynasty+role lives here. */
+/** Portrait-local clones of the game's shared segment materials. The game's
+ * cache is never mutated; one identical clone per dynasty+role lives here. */
 const heroMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
 
 function getHeroMaterial(
@@ -161,17 +155,18 @@ function getHeroMaterial(
   let material = heroMaterialCache.get(key);
   if (!material) {
     material = getSnakeSegmentMaterial(dynasty, isHead).clone();
-    // Emissive balanced: low enough that key/rim lights still shade the
-    // faces (full blast = flat silhouette), high enough that the specimen
-    // reads bright and premium against the void.
-    material.emissiveIntensity = isHead ? 0.62 : 0.42;
+    // The Home hero and in-game creature intentionally share one physical
+    // material profile. Scale/framing make this a portrait; a second set of
+    // ad-hoc emissive values would make the same snake change identity when
+    // Play is pressed.
     heroMaterialCache.set(key, material);
   }
   return material;
 }
 
-/** Procedural stand-in while (or in case) the GLB streams in. */
-const fallbackBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+/** Rounded procedural stand-ins are the same silhouettes used in-game. */
+const fallbackHeadGeometry = getSnakeRoundedGeometry('head');
+const fallbackBodyGeometry = getSnakeRoundedGeometry('body');
 
 /** Eye geometry/materials - shared across renders. */
 const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -256,7 +251,11 @@ function SpecimenBody({
             position={[x, y, z]}
             rotation={isHead ? [0, HEAD_YAW, 0] : undefined}
             scale={isHead ? SPECIMEN_HEAD_SCALE : SPECIMEN_BODY_SCALE}
-            geometry={(isHead ? headGeometry : bodyGeometry) ?? fallbackBoxGeometry}
+            geometry={
+              isHead
+                ? headGeometry ?? fallbackHeadGeometry
+                : bodyGeometry ?? fallbackBodyGeometry
+            }
             material={getHeroMaterial(dynasty, isHead)}
           >
             {isHead && <SpecimenEyes />}
@@ -342,7 +341,7 @@ function ChamberLights({
   dynasty: DynastyId;
   reaction: SpecimenReaction | null;
 }) {
-  const glow = DYNASTY_GLOW[dynasty];
+  const glow = getGameMaterialProfile(dynasty).lighting.keyColor;
   return (
     <>
       <ambientLight intensity={0.16} color="#2b3b4d" />

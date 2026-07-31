@@ -102,6 +102,7 @@ NEXT_PUBLIC_HUD_COCKPIT_V1=true
 NEXT_PUBLIC_GROWTH_LAB_V1=true  # inert legacy environment value; code retired
 NEXT_PUBLIC_LADDER_V1=true
 NEXT_PUBLIC_CAREER_SPINE_V1=true  # presentation only; never gates settlement
+NEXT_PUBLIC_RUN_FLOW_V1=true  # cockpit Setup and Victory Lap
 ```
 
 ## Known follow-ups

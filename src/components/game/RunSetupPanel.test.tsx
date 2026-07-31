@@ -60,16 +60,18 @@ describe('RunSetupPanel', () => {
     expect(screen.getByTestId('earn-start')).toBeEnabled();
   });
 
-  it('folds every adjustable control into one closed disclosure', () => {
+  it('keeps ordinary mode direct while folding advanced controls into one disclosure', () => {
     const { container } = render(<RunSetupPanel {...props()} />);
     const disclosures = container.querySelectorAll(
       '[data-testid="run-setup-adjust"]'
     );
     expect(disclosures).toHaveLength(1);
     expect((disclosures[0] as HTMLDetailsElement).open).toBe(false);
-    for (const id of ['mode-toggle', 'aim-selector']) {
-      expect(disclosures[0]).toContainElement(screen.getByTestId(id));
-    }
+    expect(screen.getByTestId('run-setup-mode-control')).toContainElement(
+      screen.getByTestId('mode-toggle')
+    );
+    expect(disclosures[0]).not.toContainElement(screen.getByTestId('mode-toggle'));
+    expect(disclosures[0]).toContainElement(screen.getByTestId('aim-selector'));
   });
 
   it('names the equipped snake, its dynasty and its ruleset', () => {

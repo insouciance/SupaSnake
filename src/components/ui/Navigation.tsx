@@ -85,10 +85,10 @@ const PRIMARY_NODES: PrimaryNode[] = [
 ];
 
 const destinationClass = (active: boolean) =>
-  `group relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-arcade border backdrop-blur-xl transition-all sm:h-11 sm:min-h-[44px] sm:w-11 sm:flex-row ${
+  `group relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-full transition-[color,background-color,filter,transform] sm:h-11 sm:min-h-[44px] sm:w-11 sm:flex-row ${
     active
-      ? 'border-venom-orange/70 bg-void-deep/90 text-venom-orange shadow-glow-sm shadow-venom-orange/40'
-      : 'border-scale-blue-light/45 bg-void-deep/85 text-beige/70 hover:border-beige/60 hover:text-bone-white'
+      ? 'bg-[radial-gradient(circle,rgba(250,204,21,0.16),transparent_66%)] text-venom-orange drop-shadow-[0_0_7px_rgba(250,204,21,0.65)] after:absolute after:bottom-1 after:h-1 after:w-1 after:rotate-45 after:bg-venom-orange sm:after:bottom-0'
+      : 'text-beige/65 hover:-translate-y-0.5 hover:bg-cyber/5 hover:text-bone-white motion-reduce:hover:translate-y-0'
   }`;
 
 export function Navigation() {
@@ -102,7 +102,7 @@ export function Navigation() {
     <nav aria-label="Primary">
       <div
         data-testid="primary-navigation-destinations"
-        className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 grid w-[calc(100%_-_1rem)] max-w-md -translate-x-1/2 grid-cols-5 items-center gap-1 rounded-arcade border border-scale-blue-light/35 bg-void-deep/75 p-1 shadow-2xl backdrop-blur-xl sm:bottom-auto sm:left-auto sm:right-3 sm:top-1/2 sm:flex sm:w-auto sm:translate-x-0 sm:-translate-y-1/2 sm:flex-col sm:gap-2 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none"
+        className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 grid w-[calc(100%_-_1rem)] max-w-md -translate-x-1/2 grid-cols-5 items-center gap-0.5 rounded-full border border-scale-blue-light/25 bg-void-deep/72 px-1 py-0.5 shadow-[0_12px_38px_rgba(0,0,0,0.48)] backdrop-blur-xl sm:bottom-auto sm:left-auto sm:right-3 sm:top-1/2 sm:flex sm:w-auto sm:translate-x-0 sm:-translate-y-1/2 sm:flex-col sm:gap-1 sm:border-scale-blue-light/15 sm:bg-void-deep/45 sm:p-1 sm:shadow-none"
       >
         {PRIMARY_NODES.map(
           ({ href, label, Icon, isActive: resolveActive, notificationDestination }, index) => {

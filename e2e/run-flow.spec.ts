@@ -127,6 +127,13 @@ async function installRunFlowFixtures(
   });
 
   await page.route('**/api/game/session', async (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: { activeRun: null },
+      });
+    }
     const body = route.request().postDataJSON() as {
       action?: string;
       energyCommitment?: number;
@@ -156,6 +163,10 @@ async function installRunFlowFixtures(
       });
     }
     if (body?.action === 'end') {
+      const sessionId =
+        typeof (body as Record<string, unknown>).sessionId === 'string'
+          ? String((body as Record<string, unknown>).sessionId)
+          : 'run-flow-session-settled';
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -172,6 +183,57 @@ async function installRunFlowFixtures(
             extracted: false,
             yieldDna: 120,
             chargeState: 'charged',
+          },
+          impact: {
+            version: 1,
+            sessionId,
+            settledAt: '2026-07-29T08:45:00.000Z',
+            outcome: 'crashed',
+            dynasty: 'PRIMAL',
+            receipt: {
+              validated: true,
+              score: 40,
+              yieldDna: 120,
+              dnaCredited: 96,
+              energyCommitted: 1,
+              commitmentMultiplierBps: 10_000,
+              generation: 3,
+              personalBest: {
+                eligible: true,
+                before: 10_000,
+                after: 10_000,
+                improved: false,
+              },
+            },
+            impacts: [
+              {
+                key: 'mastery-xp',
+                pillar: 'mastery',
+                kind: 'mastery_xp',
+                significance: 'routine',
+                headline: '+40 PRIMAL Mastery XP',
+                before: 220,
+                after: 260,
+                destination: 'mastery',
+              },
+              {
+                key: 'record-tier',
+                pillar: 'mastery',
+                kind: 'record_tier',
+                significance: 'milestone',
+                headline: 'Coil discipline reached Tier 2',
+                before: 1,
+                after: 2,
+                metadata: { target: 5 },
+                destination: 'records',
+                artifactRef: 'coil_discipline',
+              },
+            ],
+            featuredImpactKeys: ['record-tier'],
+            recommendedAction: {
+              headline: 'Review Coil discipline Tier 2',
+              destination: 'records',
+            },
           },
           ...(options.withTake
             ? {
@@ -228,9 +290,12 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     // Run Setup: fully preset, START the only emphasised action.
     const setup = page.getByTestId('run-setup');
     await expect(setup).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/Preparing board/i)).toHaveCount(0);
     await expect(page.getByTestId('run-setup-summary')).toBeVisible();
-    // The one sanctioned extra tap adds no required configuration: every
-    // control is behind a single closed disclosure.
+    // Mode is an ordinary cockpit choice; advanced tuning stays behind one
+    // closed disclosure and neither requires a tap before launch.
+    await expect(page.getByTestId('run-setup-mode-control')).toBeVisible();
+    await expect(page.getByTestId('mode-earn')).toBeVisible();
     await expect(page.getByTestId('run-setup-adjust')).toHaveJSProperty(
       'open',
       false
@@ -281,15 +346,16 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     expect(payload.confirmMaxEnergy).toBe(true);
   });
 
-  test('the graphical cockpit stays usable at 320px, 390px, and a short viewport', async ({
+  test('the Energy reactor is in the initial mobile cockpit at supported short viewports', async ({
     page,
   }) => {
     await installRunFlowFixtures(page);
     await signInAsGuest(page);
 
     for (const viewport of [
-      { width: 320, height: 480 },
-      { width: 390, height: 640 },
+      { width: 320, height: 568 },
+      { width: 375, height: 667 },
+      { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport);
       await page.goto('/game', { waitUntil: 'domcontentloaded' });
@@ -301,6 +367,26 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
       );
       expect(horizontalOverflow).toBeLessThanOrEqual(1);
 
+      const reactor = page.getByTestId('energy-commitment');
+      const reactorBox = await reactor.boundingBox();
+      const lineageBox = await page
+        .getByRole('region', { name: 'Selected snake launch chamber' })
+        .boundingBox();
+      const modeBox = await page.getByTestId('run-setup-mode-control').boundingBox();
+      const startBox = await page.getByTestId('earn-start').boundingBox();
+      expect(lineageBox).not.toBeNull();
+      expect(modeBox).not.toBeNull();
+      expect(reactorBox).not.toBeNull();
+      expect(startBox).not.toBeNull();
+      expect(lineageBox!.y + lineageBox!.height).toBeLessThanOrEqual(modeBox!.y + 1);
+      expect(modeBox!.y + modeBox!.height).toBeLessThanOrEqual(reactorBox!.y + 1);
+      expect(startBox!.y).toBeGreaterThanOrEqual(reactorBox!.y + reactorBox!.height - 1);
+      expect(reactorBox!.y).toBeGreaterThanOrEqual(0);
+      expect(reactorBox!.y + reactorBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+      await expect(page.getByRole('heading', { name: /ready to launch/i })).toBeVisible();
+      await expect(page.getByTestId('energy-summary')).toBeVisible();
+      await expect(page.getByTestId('earn-start')).toBeVisible();
+
       for (const control of [
         page.getByTestId('energy-commit-6'),
         page.getByRole('link', { name: 'Snake Lab' }),
@@ -311,6 +397,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
         await expect(control).toHaveCSS('white-space', 'nowrap');
         const box = await control.boundingBox();
         expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
         expect(box!.x).toBeGreaterThanOrEqual(0);
         expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
       }
@@ -417,11 +504,12 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     // Cap §12.2: exactly one recommended next action.
     await expect(results.getByTestId('results-next-action')).toHaveCount(1);
 
-    // Layer 3 is a single collapsed digest.
+    // Layer 3 is one visible recognition digest, not a hidden menu.
     const digest = results.getByTestId('results-digest');
     if (await digest.count()) {
       await expect(digest).toHaveCount(1);
-      await expect(digest).toHaveJSProperty('open', false);
+      await expect(digest).toBeVisible();
+      expect(await digest.evaluate((element) => element.tagName)).toBe('DIV');
     }
 
     // Layer 2 carries the two numbers.
@@ -498,6 +586,38 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await page.getByTestId('results-setup').click({ force: true });
     await expect(page.getByTestId('run-setup')).toBeVisible();
     await expect(page.getByTestId('run-results')).toHaveCount(0);
+  });
+
+  test('mobile Results keeps Replay and Setup immediately accessible while progress stays ceremonial', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await installRunFlowFixtures(page);
+    await signInAsGuest(page);
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('earn-start').click({ force: true });
+    await releaseHeldBoard(page);
+    await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
+
+    const dock = page.getByTestId('results-action-dock');
+    const dockBox = await dock.boundingBox();
+    expect(dockBox).not.toBeNull();
+    expect(dockBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(569);
+    for (const control of [
+      page.getByTestId('results-replay'),
+      page.getByTestId('results-setup'),
+    ]) {
+      await expect(control).toBeVisible();
+      await expect(control).toBeEnabled();
+      await expect(control).toHaveCSS('white-space', 'nowrap');
+    }
+
+    await page.getByTestId('impact-victory-lap').scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('impact-routine-summary')).toContainText(
+      '+40 PRIMAL Mastery XP'
+    );
+    await expect(page.getByRole('button', { name: /Accept progress/i })).toHaveCount(0);
+    await expect(page.getByTestId('impact-collect-remaining')).toBeVisible();
   });
 });
 

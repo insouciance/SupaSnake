@@ -15,6 +15,7 @@
  * - ?renderer=static|webgl
  * - ?arena=released|cockpit (WebGL renderer only)
  * - ?effects=off (raw scene-cost comparison)
+ * - ?density=extreme (actual long coiled snake + dense causal terrain)
  *
  * Production: notFound() - this page never ships to players.
  */
@@ -73,6 +74,7 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
       arenaRenderer={first(params.renderer) === 'webgl' ? 'webgl' : 'static'}
       arenaVariant={first(params.arena) === 'released' ? 'released' : 'cockpit'}
       arenaEffects={first(params.effects) !== 'off'}
+      arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
     />
   );
 }

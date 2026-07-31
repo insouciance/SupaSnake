@@ -7,8 +7,8 @@ import type { TerrainBlock, TerrainSource } from '@/shared/game/terrain';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { FLOOR_CLEARANCE } from './ArenaFloor';
 import {
-  genomeRuneStrokes,
-  type GenomeRuneStroke,
+  genomeRuneEngravingStrokes,
+  type GenomeRuneEngravingStroke,
 } from './screen/gameRuneStrokes';
 import { getTerrainCellGeometry } from './screen/gameRenderGeometry';
 
@@ -66,7 +66,7 @@ const yAxis = new THREE.Vector3(0, 1, 0);
 const scale = new THREE.Vector3(1, 1, 1);
 const signatureColor = new THREE.Color();
 
-export type TerrainRuneStroke = GenomeRuneStroke;
+export type TerrainRuneStroke = GenomeRuneEngravingStroke;
 
 const TERRAIN_RUNE_STRAIN: Record<TerrainSource, StrainId> = {
   cyber: 'VOLT',
@@ -82,7 +82,7 @@ const TERRAIN_RUNE_STRAIN: Record<TerrainSource, StrainId> = {
 export function terrainRuneStrokes(
   source: TerrainSource
 ): readonly TerrainRuneStroke[] {
-  return genomeRuneStrokes(TERRAIN_RUNE_STRAIN[source]);
+  return genomeRuneEngravingStrokes(TERRAIN_RUNE_STRAIN[source]);
 }
 
 function writeInstance(

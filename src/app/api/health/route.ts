@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 
 interface HealthCheck {
   status: 'healthy' | 'unhealthy';
@@ -40,6 +41,9 @@ interface HealthResponse {
       phase?: 'bridge' | 'ready';
       bridgeVersion?: number;
       careerVersion?: number | null;
+    };
+    runFlow: HealthCheck & {
+      surfaceEnabled: boolean;
     };
   };
 }
@@ -168,10 +172,18 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
 
   // Get memory usage
   const memoryUsage = process.memoryUsage();
+  const runFlowCheck: HealthResponse['checks']['runFlow'] = {
+    // Flag-off is a valid rollback artifact, not a broken process. Production
+    // promotion separately requires `surfaceEnabled == true`, while ordinary
+    // rollback builds can still report healthy dependencies.
+    status: 'healthy',
+    surfaceEnabled: RUN_FLOW_V1_ENABLED,
+  };
 
   // Determine overall health
   const isHealthy =
-    databaseCheck.status === 'healthy' && careerSpineCheck.status === 'healthy';
+    databaseCheck.status === 'healthy' &&
+    careerSpineCheck.status === 'healthy';
 
   const response: HealthResponse = {
     status: isHealthy ? 'healthy' : 'unhealthy',
@@ -196,6 +208,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     checks: {
       database: databaseCheck,
       careerSpine: careerSpineCheck,
+      runFlow: runFlowCheck,
     },
   };
 

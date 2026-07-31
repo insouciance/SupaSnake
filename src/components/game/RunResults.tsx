@@ -142,21 +142,62 @@ function takeMessage(state: TakeCollectState, take: DailyTakeSlot): string | nul
   }
 }
 
+function motionIsReduced(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+  return reduced;
+}
+
 function ImpactProgress({ impact, collected }: {
   impact: RunImpact;
   collected: boolean;
 }) {
-  if (impact.before === undefined || impact.after === undefined) return null;
+  const hasProgress = impact.before !== undefined && impact.after !== undefined;
+  const before = impact.before ?? 0;
+  const after = impact.after ?? before;
+  // Deterministic for SSR/hydration. Reduced-motion clients switch to the
+  // final value in the effect below without animating the transition.
+  const [displayedValue, setDisplayedValue] = useState(before);
+  useEffect(() => {
+    if (!collected) {
+      setDisplayedValue(before);
+      return;
+    }
+    const reduced = motionIsReduced();
+    if (reduced) {
+      setDisplayedValue(after);
+      return;
+    }
+    setDisplayedValue(before);
+    if (typeof window.requestAnimationFrame !== 'function') {
+      setDisplayedValue(after);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setDisplayedValue(after));
+    return () => window.cancelAnimationFrame(frame);
+  }, [after, before, collected]);
+  if (!hasProgress) return null;
   const metadataTarget = impact.metadata?.target;
   const max =
     typeof metadataTarget === 'number' && Number.isFinite(metadataTarget)
-      ? Math.max(metadataTarget, impact.after, 1)
-      : Math.max(impact.after, impact.before, 1);
-  const width = Math.max(
-    0,
-    Math.min(100, ((collected ? impact.after : impact.before) / max) * 100)
-  );
-  const displayedValue = collected ? impact.after : impact.before;
+      ? Math.max(metadataTarget, after, 1)
+      : Math.max(after, before, 1);
+  const width = Math.max(0, Math.min(100, (displayedValue / max) * 100));
   return (
     <div className="mt-2 space-y-1">
       <div
@@ -174,8 +215,8 @@ function ImpactProgress({ impact, collected }: {
       </div>
       <p className="font-mono text-[11px] text-beige/60">
         {collected
-          ? `${impact.before.toLocaleString()} → ${impact.after.toLocaleString()}`
-          : `${impact.before.toLocaleString()} · ready to advance`}
+          ? `${before.toLocaleString()} → ${after.toLocaleString()}`
+          : `${before.toLocaleString()} · ready to advance`}
       </p>
     </div>
   );
@@ -246,23 +287,24 @@ function claimSource(envelope: RunImpactEnvelope): RunImpact[] {
   for (const impact of [...selected, ...clan]) merged.set(impact.key, impact);
   if (merged.size > 0) return Array.from(merged.values());
 
-  // A routine run still deserves one honest progress collection, but its
-  // automatic lineage-history row is not inflated into a prize of its own.
-  return envelope.impacts.filter((impact) => impact.kind !== 'lineage_run');
+  // Routine movement is visible in the secured summary below, but never asks
+  // for a second ceremonial tap. Claiming is reserved for a real prize,
+  // milestone, discovery, or social achievement.
+  return [];
 }
 
 function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
   const beats: ClaimBeat[] = [];
   const credited = envelope.receipt.dnaCredited;
   if (credited > 0) {
-    const energy = envelope.receipt.energyCommitted;
+    const committedUnits = envelope.receipt.energyCommitted;
     beats.push({
       id: 'dna',
       eyebrow: envelope.outcome === 'crashed' ? 'Salvage capsule' : 'Harvest capsule',
       headline: `+${credited.toLocaleString()} DNA`,
       detail:
-        energy > 0
-          ? `${energy} Energy committed · ×${formatCommitmentMultiplier(envelope.receipt.commitmentMultiplierBps)} harvest. Your balance is already secured.`
+        committedUnits > 0
+          ? `${committedUnits} Energy committed · ×${formatCommitmentMultiplier(envelope.receipt.commitmentMultiplierBps)} harvest. Your balance is already secured.`
           : 'The server has already secured this harvest in your balance.',
       collectLabel: envelope.outcome === 'crashed' ? 'Collect salvage' : 'Collect DNA',
       payoff: `${credited.toLocaleString()} DNA secured in your vault`,
@@ -534,8 +576,21 @@ function DestinationHighlights({ items }: { items: readonly ResultDestinationHig
 function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
   const beats = useMemo(() => buildClaimBeats(envelope), [envelope]);
   const attention = useMemo(() => destinationHighlights(envelope), [envelope]);
+  const routine = useMemo(
+    () => envelope.impacts.filter((impact) => impact.significance === 'routine'),
+    [envelope]
+  );
+  const routineSummary = useMemo(() => {
+    const headlines = Array.from(new Set(routine.map((impact) => impact.headline)));
+    if (headlines.length === 0) return null;
+    if (headlines.length === 1) return headlines[0];
+    return `${headlines[0]} · ${headlines.length - 1} other progress ${
+      headlines.length === 2 ? 'update' : 'updates'
+    } secured`;
+  }, [routine]);
   const [collectedCount, setCollectedCount] = useState(0);
   const [lastPayoff, setLastPayoff] = useState<string | null>(null);
+  const reducedMotion = useReducedMotion();
   const finished = collectedCount >= beats.length;
   const current = finished ? null : beats[collectedCount];
 
@@ -579,6 +634,32 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
     }
   };
 
+  const collectRemaining = () => {
+    if (finished) return;
+    const remaining = beats.length - collectedCount;
+    setLastPayoff(
+      remaining === 1
+        ? beats[collectedCount].payoff
+        : `${remaining} secured prizes collected`
+    );
+    setCollectedCount(beats.length);
+    trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_SKIPPED, {
+      session_id: envelope.sessionId,
+      beat_index: collectedCount,
+      beat_count: beats.length,
+      remaining_count: remaining,
+      interaction: 'collect_remaining',
+      automatic: false,
+      category: 'engagement',
+    });
+    trackEvent(AnalyticsEvents.RUN_IMPACT_REVIEW_COMPLETED, {
+      session_id: envelope.sessionId,
+      beat_count: beats.length,
+      automatic: false,
+      category: 'engagement',
+    });
+  };
+
   return (
     <div className="space-y-3" data-testid="impact-victory-lap" aria-label="Run rewards and progress collection">
       <div className="flex items-start justify-between gap-3">
@@ -589,19 +670,32 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
             <span>Everything is already yours. Each tap reveals and celebrates it.</span>
           </p>
         </div>
-        <p className="shrink-0 whitespace-nowrap font-mono text-[11px] uppercase text-beige/60" aria-live="polite">
-          {finished ? 'Lap complete' : `${collectedCount + 1} of ${beats.length}`}
+        <p className={`shrink-0 whitespace-nowrap font-mono text-[11px] uppercase ${reducedMotion ? 'text-rarity-uncommon' : 'text-beige/60'}`} aria-live="polite">
+          {reducedMotion || finished ? 'Lap complete' : `${collectedCount + 1} of ${beats.length}`}
         </p>
       </div>
       <div className="flex gap-1" aria-hidden="true">
         {beats.map((beat, index) => (
           <span
             key={beat.id}
-            className={`h-1.5 flex-1 rounded-full transition-colors motion-reduce:transition-none ${index < collectedCount ? 'bg-rarity-uncommon' : index === collectedCount ? 'bg-cosmic shadow-[0_0_8px_#a855f7]' : 'bg-scale-blue-light/25'}`}
+            className={`h-1.5 flex-1 rounded-full transition-colors motion-reduce:transition-none ${reducedMotion || index < collectedCount ? 'bg-rarity-uncommon' : index === collectedCount ? 'bg-cosmic shadow-[0_0_8px_#a855f7]' : 'bg-scale-blue-light/25'}`}
           />
         ))}
       </div>
 
+      {routineSummary ? (
+        <div
+          className="rounded-arcade border border-scale-blue-light/25 bg-void-deep/45 px-3 py-2 text-left"
+          data-testid="impact-routine-summary"
+        >
+          <p className="label-arcade text-beige/55">Also secured automatically</p>
+          <p className="mt-1 font-body text-xs text-beige/70">
+            {routineSummary}
+          </p>
+        </div>
+      ) : null}
+
+      {!reducedMotion ? <div>
       {lastPayoff ? (
         <div
           key={lastPayoff}
@@ -637,6 +731,24 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
           ))}
         </div>
       ) : null}
+      {!finished && beats.length - collectedCount > 1 ? (
+        <button
+          type="button"
+          onClick={collectRemaining}
+          className="min-h-[44px] w-full rounded-full px-4 font-body text-xs font-bold text-beige/65 transition-colors hover:bg-scale-blue/25 hover:text-bone-white sm:w-auto"
+          data-testid="impact-collect-remaining"
+        >
+          Collect all remaining prizes
+        </button>
+      ) : null}
+      </div> : null}
+
+      {reducedMotion ? <div className="space-y-2" data-testid="impact-reduced-summary">
+        {beats.map((beat) => (
+          <CollectedClaimBeat key={beat.id} beat={beat} dynasty={envelope.dynasty} />
+        ))}
+        <DestinationHighlights items={attention} />
+      </div> : null}
     </div>
   );
 }
@@ -919,7 +1031,7 @@ export function RunResults({
             ? 'Replay or return to Setup at any time. Leaving never forfeits a secured prize.'
             : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
       </p>
-      <div className="grid grid-cols-1 gap-3 sm:flex sm:items-center sm:justify-center">
+      <div className="sticky bottom-0 z-20 -mx-2 grid grid-cols-2 gap-2 border-t border-scale-blue-light/25 bg-void-deep/90 px-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-2 backdrop-blur-md sm:mx-0 sm:flex sm:items-center sm:justify-center sm:rounded-full sm:border sm:px-3 sm:pb-3 sm:pt-3" data-testid="results-action-dock">
         <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-4 text-xl sm:w-auto ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
           <IconPlay size={20} /> {replayPending ? 'Starting…' : replayEnergy > 0 ? `Replay · ${replayEnergy} Energy` : 'Replay · Lean'}
         </button>

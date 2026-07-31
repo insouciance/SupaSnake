@@ -58,8 +58,9 @@ performs:
    to the dispatch's exact `expected_migrations` filenames (`none` for a no-op).
 4. A production-target cloud build. `next.config.js` validates the decrypted
    environment values and fails on wrong URL, Stripe mode, Price IDs or keys.
-   The workflow explicitly compiles `NEXT_PUBLIC_CAREER_SPINE_V1=true`; the
-   flag is presentation-only and never gates settlement or earned progress.
+   The workflow explicitly compiles `NEXT_PUBLIC_CAREER_SPINE_V1=true` and
+   `NEXT_PUBLIC_RUN_FLOW_V1=true`. The former is presentation-only and never
+   gates settlement; the latter selects cockpit Setup and the Victory Lap.
 5. For the reviewed Career pair only, application of additive migration 060
    while the outgoing application remains canonical, followed by database lint
    and an outgoing-application health check. If a previous attempt already
@@ -75,7 +76,7 @@ performs:
 9. A canonical-alias identity check proving that Vercel resolves
    `supasnake.com` to the staged deployment ID—not merely another artifact from
    the same commit. During the Career cutover, the subsequent canonical smoke
-   also proves the exact release SHA, bridge phase and presentation flag before
+   also proves the exact release SHA, bridge phase and presentation flags before
    the drain clock starts.
 10. A 360-second drain of retired settlement invocations, followed by a second
     dry-run that must name only `061_career_spine.sql`.
@@ -83,7 +84,8 @@ performs:
     the bridge are durable server debt and are adopted by the migration/runtime
     recovery path; the browser is never part of recovery.
 12. Final canonical health check requiring the promoted release SHA, database
-    health, ready Career/bridge capability versions, and the presentation flag.
+    health, ready Career/bridge capability versions, and both required
+    presentation flags.
 
 The protected staged-health command consumes `VERCEL_TOKEN` from the job
 environment. With Vercel CLI 56, do not repeat that credential as an explicit

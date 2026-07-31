@@ -75,6 +75,7 @@ describe('Navigation', () => {
           ? screen.getByLabelText('More')
           : screen.getByRole('link', { name });
       expect(target).toHaveClass('min-w-[44px]');
+      expect(target).not.toHaveClass('border');
     }
   });
 

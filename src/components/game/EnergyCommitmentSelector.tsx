@@ -68,26 +68,26 @@ export function EnergyCommitmentSelector({
 
   return (
     <section
-      className="relative mx-auto w-full max-w-xl overflow-hidden rounded-[22px] border border-rarity-legendary/40 bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.16),transparent_45%),linear-gradient(180deg,rgba(22,32,43,0.94),rgba(6,9,13,0.98))] p-3.5 shadow-glow shadow-rarity-legendary/15 sm:p-4"
+      className="relative mx-auto w-full max-w-xl overflow-hidden rounded-[22px] border border-rarity-legendary/40 bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.16),transparent_45%),linear-gradient(180deg,rgba(22,32,43,0.94),rgba(6,9,13,0.98))] p-2.5 shadow-glow shadow-rarity-legendary/15 sm:p-4"
       data-testid="energy-commitment"
       aria-label="Energy Commitment"
     >
-      <div className="relative flex flex-col items-center justify-between gap-2 min-[380px]:flex-row min-[380px]:items-start">
+      <div className="relative flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 text-left">
           <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rarity-legendary/35 bg-rarity-legendary/10 text-rarity-legendary">
             <span className="h-4 w-4"><StrainGlyph id="UMBRA" /></span>
           </span>
           <div>
             <p className="heading-display text-sm text-rarity-legendary">Energy reactor</p>
-            <p className="mt-0.5 font-body text-xs text-beige/65">Choose how much this run carries.</p>
+            <p className="mt-0.5 hidden font-body text-xs text-beige/65 sm:block">Choose how much this run carries.</p>
           </div>
         </div>
-        <ChargeMeter charge={energy} className="items-center min-[380px]:items-end" />
+        <ChargeMeter charge={energy} className="shrink-0 items-end scale-[0.86] origin-top-right min-[380px]:scale-100" />
       </div>
 
       {available > 0 ? (
         <>
-          <div className="relative mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
+          <div className="relative mt-1.5 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 sm:mt-3">
             <button
               type="button"
               aria-label="Commit one less Energy"
@@ -100,10 +100,10 @@ export function EnergyCommitmentSelector({
             </button>
 
             <div className="text-center" aria-live="polite">
-              <div className="relative mx-auto flex h-[88px] w-[88px] items-center justify-center rounded-full border-2 border-rarity-legendary/65 bg-void-deep shadow-glow-lg shadow-rarity-legendary/25">
+              <div className="relative mx-auto flex h-[62px] w-[62px] items-center justify-center rounded-full border-2 border-rarity-legendary/65 bg-void-deep shadow-glow-lg shadow-rarity-legendary/25 sm:h-[88px] sm:w-[88px]">
                 <span className="absolute inset-2 rounded-full bg-[radial-gradient(circle,rgba(251,191,36,0.11),transparent_68%)]" aria-hidden="true" />
                 <div className="relative">
-                  <span className="block font-display text-3xl leading-none text-rarity-legendary">
+                  <span className="block font-display text-2xl leading-none text-rarity-legendary sm:text-3xl">
                     {value > 0 ? value : '0'}
                   </span>
                   <span className="mt-1 block font-body text-[9px] uppercase tracking-[0.12em] text-beige/55">
@@ -111,7 +111,7 @@ export function EnergyCommitmentSelector({
                   </span>
                 </div>
               </div>
-              <p className="mt-1.5 font-display text-lg text-bone-white">
+              <p className="mt-1 font-display text-sm text-bone-white sm:mt-1.5 sm:text-lg">
                 ×{multiplier.toFixed(value === 0 ? 2 : 1)} harvest
               </p>
             </div>
@@ -128,7 +128,7 @@ export function EnergyCommitmentSelector({
             </button>
           </div>
 
-          <div className="relative mt-2 px-1">
+          <div className="relative mt-0.5 px-1 sm:mt-2">
             <input
               type="range"
               min={0}
@@ -142,7 +142,7 @@ export function EnergyCommitmentSelector({
                   ? `${value} Energy for ${multiplier.toFixed(1)} times harvest`
                   : 'Lean run for 0.25 times harvest'
               }
-              className="relative z-10 h-7 w-full cursor-pointer bg-transparent"
+              className="relative z-10 h-6 w-full cursor-pointer bg-transparent sm:h-7"
               style={{ accentColor: '#fbbf24' }}
               data-testid="energy-commitment-slider"
             />
@@ -154,7 +154,7 @@ export function EnergyCommitmentSelector({
             </div>
           </div>
 
-          <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 sm:mt-1">
             <button
               type="button"
               onClick={() => requestCommitment(0)}
@@ -183,13 +183,13 @@ export function EnergyCommitmentSelector({
         </div>
       )}
 
-      <p className="mt-2 text-center font-body text-xs leading-snug text-beige/65" data-testid="energy-summary">
+      <p className="mt-1.5 text-center font-body text-[11px] leading-snug text-beige/65 sm:mt-2 sm:text-xs" data-testid="energy-summary">
         {value > 0 ? `Commit ${value} Energy` : 'Lean run'} · Harvest multiplier:{' '}
         <span className="font-mono font-bold text-rarity-legendary">
           ×{multiplier.toFixed(value === 0 ? 2 : 1)}
         </span>
       </p>
-      <p className="mt-1 text-center font-body text-[11px] leading-snug text-beige/50">
+      <p className="mt-0.5 text-center font-body text-[10px] leading-snug text-beige/50 sm:mt-1 sm:text-[11px]">
         {value > 0
           ? `All ${value} committed Energy is consumed when the run begins. A crash or abandonment does not refund it.`
           : 'Lean play consumes no Energy.'}
@@ -197,20 +197,29 @@ export function EnergyCommitmentSelector({
 
       {clanBattle?.active ? (
         <div
-          className="mt-3 flex min-h-[52px] items-center gap-2.5 rounded-[14px] border border-cosmic/35 bg-cosmic/10 px-3 py-2 text-left"
+          className="mt-1.5 flex min-h-[36px] items-center gap-2 rounded-full border border-cosmic/35 bg-cosmic/10 px-2.5 py-1.5 text-left sm:mt-3 sm:min-h-[52px] sm:rounded-[14px] sm:px-3 sm:py-2"
           data-testid="energy-clan-eligible"
         >
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cosmic/15 text-cosmic-glow">
+          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cosmic/15 text-cosmic-glow sm:h-8 sm:w-8">
             <IconShield size={17} />
           </span>
-          <p className="min-w-0 font-body text-xs leading-snug text-beige/70">
+          <p className="min-w-0 flex-1 truncate font-body text-[10px] leading-snug text-beige/70 sm:whitespace-normal sm:text-xs">
             <span className="font-display text-cosmic-glow">Battle live</span>
             {' · '}
-            {value > 0
-              ? (clanBattle.fifthBestToBeat ?? 0) > 0
-                ? `This run counts. Beat ${(clanBattle.fifthBestToBeat ?? 0).toLocaleString()} Yield to improve your five.`
-                : 'This run counts. Your strongest five runs contribute.'
-              : 'Lean runs do not count. Commit at least 1 Energy to enter this attempt.'}
+            <span className="sm:hidden">
+              {value > 0
+                ? (clanBattle.fifthBestToBeat ?? 0) > 0
+                  ? `Counts · beat ${(clanBattle.fifthBestToBeat ?? 0).toLocaleString()}`
+                  : 'Counts toward your five'
+                : 'Commit 1+ to enter'}
+            </span>
+            <span className="hidden sm:inline">
+              {value > 0
+                ? (clanBattle.fifthBestToBeat ?? 0) > 0
+                  ? `This run counts. Beat ${(clanBattle.fifthBestToBeat ?? 0).toLocaleString()} Yield to improve your five.`
+                  : 'This run counts. Your strongest five runs contribute.'
+                : 'Lean runs do not count. Commit at least 1 Energy to enter this attempt.'}
+            </span>
           </p>
         </div>
       ) : null}

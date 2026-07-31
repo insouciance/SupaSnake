@@ -22,6 +22,7 @@ interface CockpitPrototypeProps {
   arenaRenderer?: 'static' | 'webgl';
   arenaVariant?: 'released' | 'cockpit';
   arenaEffects?: boolean;
+  arenaDensity?: 'standard' | 'extreme';
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -198,12 +199,14 @@ function ArenaPreview({
   renderer,
   arenaVariant,
   arenaEffects,
+  arenaDensity,
 }: {
   state: CockpitPrototypeState;
   dynasty: DynastyId;
   renderer: 'static' | 'webgl';
   arenaVariant: 'released' | 'cockpit';
   arenaEffects: boolean;
+  arenaDensity: 'standard' | 'extreme';
 }) {
   const portalLive = state === 'portal' || state === 'apex';
   return (
@@ -217,6 +220,7 @@ function ArenaPreview({
               state={state}
               arenaVariant={arenaVariant}
               effectsEnabled={arenaEffects}
+              density={arenaDensity}
             />
           </div>
         ) : (
@@ -279,6 +283,7 @@ export function CockpitPrototype({
   arenaRenderer = 'static',
   arenaVariant = 'cockpit',
   arenaEffects = true,
+  arenaDensity = 'standard',
 }: CockpitPrototypeProps) {
   const theme = getDynastyScreenTokens(dynasty);
   const normalizedGeneCount = Math.max(0, Math.min(6, Math.floor(geneCount)));
@@ -411,6 +416,7 @@ export function CockpitPrototype({
             renderer={arenaRenderer}
             arenaVariant={arenaVariant}
             arenaEffects={arenaEffects}
+            arenaDensity={arenaDensity}
           />
         </div>
       </div>

@@ -4212,7 +4212,7 @@ export default function GamePage() {
                   onReplay={handleReplay}
                   onSetup={handleOpenSetup}
                   replayPending={isStarting}
-                  replayDisabled={isStarting || !equippedSnake || settlementSecuredPending}
+                  replayDisabled={isStarting || !equippedSnake}
                   replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null

@@ -6,7 +6,7 @@ import type { DynastyId } from '@/shared/types/game';
 import type { StrainId } from '@/shared/game/strains';
 import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
-import { genomeRuneStrokes } from '@/components/game/screen/gameRuneStrokes';
+import { genomeRuneEngravingStrokes } from '@/components/game/screen/gameRuneStrokes';
 
 interface ArenaUndertrayProps {
   gridSize: number;
@@ -41,7 +41,7 @@ export function arenaOrientationRuneLayout(
   const center = gridSize / 2;
   const runeScale = 1.15;
   const runeZ = -0.84;
-  return genomeRuneStrokes(DYNASTY_ORIENTATION_RUNE[dynasty]).map((stroke) => {
+  return genomeRuneEngravingStrokes(DYNASTY_ORIENTATION_RUNE[dynasty]).map((stroke) => {
     const dx = (stroke.x2 - stroke.x1) * runeScale;
     const dz = (stroke.z2 - stroke.z1) * runeScale;
     return {
