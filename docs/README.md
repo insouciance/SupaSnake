@@ -7,7 +7,7 @@ documents remain useful context but do not override the files listed here.
 
 | Need | Document |
 |---|---|
-| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.5) |
+| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.7) |
 | What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
 | The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
 | The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |
@@ -41,6 +41,14 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Monetization, catalog, and commerce sequencing | [Monetization Strategy](game/MONETIZATION_STRATEGY.md) |
 | Deliberate practice | [Training Lab](game/TRAINING_LAB_DESIGN.md) |
 | Player identity | [Player Identity v1](game/PLAYER_IDENTITY_V1.md) |
+
+## Approved player-journey contract
+
+- [Cohesive Player Journey](game/COHESIVE_PLAYER_JOURNEY.md) — approved 31 July
+  2026; implementation and production validation tracked in this release.
+  end-to-end journey, information architecture, continuity UX, and attention
+  hierarchy. It becomes authoritative only after the owner validates the local
+  review build.
 
 **Superseded:** `game/MONETIZATION_DESIGN.md` — replaced by Constitution §10, with
 the ruling recorded in its §15 Overturn Record. It is kept as the historical v1.0

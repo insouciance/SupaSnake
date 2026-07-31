@@ -1,7 +1,7 @@
 # SupaSnake Career Spine
 
-**Status:** Owner-approved product contract · 30 July 2026
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.6 remains design law. This
+**Status:** Owner-approved product contract · amended 31 July 2026
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.7 remains design law. This
 contract defines the recognition, attention, career-memory, and social-witness
 projection of its three progression pillars. Where an older identity or flow
 document conflicts, this contract wins.
@@ -39,16 +39,19 @@ The emotional sequence is:
    the witness, not a fourth pillar. Calendar systems provide context, not a
    second account progression graph.
 3. Rewards and progress secure immediately and server-authoritatively. A reveal
-   may never hold value hostage. Daily Take remains the only literal collect.
+   may never hold value hostage. Results may offer up to three tactile collection
+   acknowledgements; Daily Take remains the only tap that performs an economic
+   collect.
 4. Training remains rewardless. A run may leave an honest receipt without
    advancing a bar; activity is not disguised as achievement.
 5. Results stays three layers, contains exactly one recommended next action,
    keeps Replay immediately available, and contains no commerce.
 6. Recognition has a budget: at most three grouped beats after one run. It is
    optional, skippable, reduced-motion safe, and never interrupts live play.
-7. Other clan members' attempts, Energy, generations, thresholds, absences,
-   contribution totals, and ranks remain private. Social proof is earned,
-   event-based, and voluntarily shared.
+7. Competitive proof is meant to be visible. Clan contribution, ranks, relevant
+   run context, Glory recognition, and earned status may appear wherever they
+   help players understand excellence and responsibility. Every fact is
+   server-authored and contextual; payment cannot mint, improve, or imitate it.
 8. Free players receive every career fact and every conclusion needed to
    improve. Keeper may alter archive depth, organization, and presentation;
    Atelier may alter appearance. Neither may mint or imitate earned proof.
@@ -178,16 +181,19 @@ Score and full-strength Yield are primary. Credited DNA, Energy commitment, and
 the settlement multiplier form one compact receipt. Detailed harvest arithmetic
 is a disclosure rather than permanent visual weight.
 
-For an eligible Clan Energy Battle run, Results states only the player's
-consequence: entered/replaced, own fifth-best relation, and clan-total delta.
-The full private five remains on the clan page.
+For an eligible Clan Energy Battle run, Results leads with the player's
+consequence: entered/replaced, own fifth-best relation, clan-total delta, and
+current roster position when it changed. The clan page carries the durable
+member and rival comparison rather than crowding Results with a live table.
 
 ### Layer 3: run impact
 
-The collapsed summary states what moved. If at least one notable-or-greater
-impact exists, one optional **Review run impact** disclosure reveals the bounded
-sequence. This is presentation, not claiming. Replay and Setup remain visible
-throughout and never wait for it.
+The collapsed summary states what moved. If at least one meaningful impact exists,
+Results offers a bounded Victory Lap of up to three grouped collection beats:
+harvest, personal progression/unlock, and clan consequence where applicable. Each
+tap raises an already-secured trophy; it performs no grant RPC and cannot duplicate
+or strand value. One action may complete the remaining ceremony. Replay and Setup
+remain visible throughout and never wait for it.
 
 Transient run genes, a duplicate Player Card, commercial content, and
 asynchronously arriving Analyst narration do not belong in this digest. Analyst
@@ -282,15 +288,19 @@ from chosen, understandable proof.
 
 Clan recognition uses:
 
-- the player's private five and exact result delta;
+- each player's five and exact result delta;
+- visible member contribution and rank with generation/commitment context;
 - aggregate clan and rival Depth;
-- equal participant/stalemate/victor honors;
+- participant/stalemate/victor honors and bounded battle rewards;
+- two auditable Glory Member seats assigned at battle boundaries;
 - clan battle history and rivalry memory;
-- voluntary server-verified run, snake, milestone, and clan artifacts.
+- server-verified run, snake, milestone, rank, and clan artifacts.
 
-There is no member KPI, minimum, absence count, contribution rank, officer
-output control, or automatic public comparison. Discord posts are rare,
-non-commercial, non-comparative, current-system events and are rate-limited.
+The system distinguishes no eligible result from absence or failure, and a
+leader cannot type a score, rewrite a run, or manufacture eligibility. Manual
+recognition is recorded with actor, recipient, battle boundary, and source
+evidence. Discord posts remain rare, non-commercial, server-verified events and
+are rate-limited; high-value competitive moments may be comparative.
 
 ## 10. Monetization boundary
 
@@ -310,8 +320,9 @@ layout can frame earned proof; it cannot become proof.
 
 ## 11. Telemetry and validation
 
-Consent-gated telemetry records presentation behavior, never private teammate
-facts:
+Consent-gated telemetry records presentation behavior. Teammate competitive
+facts may be rendered from server authority but are not copied into unrelated
+client analytics payloads:
 
 - receipt recovered after response loss;
 - impact summary shown;

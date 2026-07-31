@@ -156,7 +156,9 @@ Consequences:
   has no lock for another clan in that cycle.
 - Switching clans cannot redirect attempts or score twice; the new clan is
   available next cycle.
-- Abandonment and disconnect close with no refund and no contribution.
+- Confirmed abandonment closes with no refund and no contribution. Refresh,
+  disconnect, tab/browser closure, or client failure leave the run recoverable from
+  its latest accepted server checkpoint and are never interpreted as abandonment.
 - Revives do not change commitment or eligibility; only the eventual bank does.
 - Duplicate completion is idempotent. The hourly reconciler catches a valid
   settled session if the non-fatal clan overlay failed after personal payout.
@@ -188,11 +190,12 @@ economic exposure, scarcity, confidence, and banking behavior. An exceptional
 
 The player sees their five, fifth-best line (zero until all five slots are
 filled), commitment and generation for each result, replacement, and clan
-delta. Other members' attempt-level data is never returned by the API.
+delta. Clan members also see the roster's server-verified best-five totals,
+ranks, and relevant run context so contribution and improvement are legible.
+No leader or client can edit those facts.
 
 ## Settlement rewards
 
-The first release deliberately avoids DNA rewards and future-power compounding.
 A valid participant receives a permanent history honor:
 
 - `victor` for a winning paired side;
@@ -200,9 +203,12 @@ A valid participant receives a permanent history honor:
 - `stalemate` for a tie.
 
 The victor mark is the stronger prestige outcome. Everyone who actually
-contributed receives useful permanent identity/history. No outcome changes
-Energy, DNA, Yield, generation, or later battle score. This is intentionally
-conservative until repeat-win and snowball telemetry exists.
+contributed receives permanent identity/history. Settlement may also credit a
+bounded DNA participation reward, with a larger victory reward and up to two
+once-per-cycle Glory recognition rewards. All credits use an idempotent reward
+ledger and centrally configured values. They never change Energy, Yield, or the
+same battle's score; repeat-win and progression snowball telemetry governs
+retuning.
 
 At settlement, each participant's best-five Depth and each side's clan Depth
 are banked once into the existing monotonic personal/clan Depth history. That

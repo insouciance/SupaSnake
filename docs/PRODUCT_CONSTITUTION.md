@@ -1,6 +1,34 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.6 · amended 30 July 2026
+**Version:** 1.8 · amended 31 July 2026
+**v1.8 amendment (explicit owner ruling, 31 July 2026):** Results may use a
+bounded tactile **Victory Lap** of up to three meaningful collection taps. The
+economic fact remains unchanged: settlement secures every reward and progression
+transition first, server-side and idempotently; a collection tap only accepts its
+presentation and can never grant, duplicate, withhold, expire, or recover value.
+Replay and Setup remain available throughout, and one action may complete or skip
+the remaining ceremony. This overturns v1.6's “review, never claim” presentation
+ban while preserving its no-claim-debt architecture. Daily Take remains the only
+tap that performs an economic collect RPC. Exact destination attention may remain
+after Results until the player views the changed content. The owner approved this
+inside the greenlit cohesive UX implementation; the cooling period is waived and
+the overturn is recorded in §15.
+
+**v1.7 amendment (explicit owner ruling, 31 July 2026):** SupaSnake welcomes
+competition as a core product force. Strong play, mastery, deliberate risk,
+sustained contribution, and earned progression are meant to create visible
+prestige; a developed account is a credible status symbol in the game world.
+Rule 8's former privacy-by-suppression and “clans never payroll” prohibitions are
+overturned. Contribution, comparison, ranks, competitive hierarchy, co-leadership,
+and bounded earned clan rewards may now be shown and used when their rules are
+transparent and abuse-resistant. The permanent guardrail is **competitive
+integrity, not competitive silence**: money may never buy Score, Depth, rank,
+qualification, matchmaking position, gameplay power, exclusive tactical
+information, or an imitation of earned proof. Sections 6 and 9 and the Career
+Spine are amended accordingly. The owner explicitly ordered the constitutional
+change during the greenlit UX rework; the cooling period is waived and the
+overturn is recorded in §15.
+
 **v1.6 amendment (explicit owner ruling, 30 July 2026):** the metagame becomes
 one **Career Spine** from authoritative settlement to Results, attention, and
 permanent memory (`docs/game/CAREER_SPINE.md`). It introduces no Account Level,
@@ -12,8 +40,8 @@ Attention and recognition become separate server-held states with exact clearing
 The owner Chronicle gains a private Career Pulse and one organizing pursuit drawn
 from existing goals; Lineage gains active/retired specimen history; public status
 uses curated, provenance-labelled proof rather than an opaque Legacy Score
-headline. Social proof stays own-result, equal-honor, and opt-in: Rule 8 privacy
-does not bend.
+headline. Its original own-result, equal-honor social boundary is superseded by
+the v1.7 competitive-integrity amendment above.
 
 Rule 11 is strengthened: no progress-related fact, receipt, pending settlement,
 attention state, pursuit, or career projection may persist in `localStorage`,
@@ -39,11 +67,13 @@ The World Serpent becomes an **automatic Clan Energy Battle layered over normal
 play** (§7.3, §9): 3 days active + 1 day intermission [H], positive-Energy runs
 assigned immutably at start, and each member's five strongest valid Yields summed
 into clan Depth. There is no battle queue, second Energy pool, special physics, or
-progression lock. Only the viewer's own five and replacement threshold are exposed;
-teammates remain aggregate-only. Energy multiplies personal harvest, never the clan
-contribution, so a brilliant 1-Energy run can beat a cautious 6-Energy run. Both
-sides earn permanent non-power participation history; victory earns the stronger
-honor, never DNA or future scoring power. This owner order amends Rules 8–10 and the
+progression lock. Energy multiplies personal harvest, never the clan contribution,
+so a brilliant 1-Energy run can beat a cautious 6-Energy run. Both sides earn
+permanent participation history and a bounded DNA result reward; victory receives
+the stronger reward and prestige without buying future scoring power. The original
+v1.5 aggregate-only roster and no-DNA clauses were expressly superseded by v1.7:
+verified member contribution, rank, and Glory recognition are visible (§9). This
+owner order amends Rules 8–10 and the
 §12.2 rhythm/mode caps where the retired separate Serpent mode previously bound.
 The required cooling period is waived by the owner order for this greenlit
 implementation; the cost is recorded in §15.
@@ -278,15 +308,18 @@ the preamble.
    email, or badge is ever commercial. *Reviewer: count the commercial surfaces on
    every screen; check the notification feed.*
 
-8. **Clans create responsibility, never payroll.** The player may see their own five
-   contributing results and the personal score needed to replace their fifth; other
-   members' attempts, absences, thresholds, and ranks stay private. Clan outcomes
-   grant the same bounded non-power honor to every eligible participant on a side,
-   with a stronger victory honor; there are no intra-clan reward tiers, minimums,
-   officer levers keyed to output, DNA rewards, or purchasable clan numbers.
-   *Reviewer: can a member inspect or economically punish another member's output?
-   Can money change any clan number? Is the fifth-best threshold clearly the viewer's
-   private replacement line rather than a participation demand?*
+8. **Competition creates prestige; integrity makes it credible.** SupaSnake openly
+   celebrates comparison, rivalry, ranks, exceptional performance, reliable clan
+   contribution, and earned hierarchy. Strong players and developed accounts should
+   be visible status symbols because of what they achieved, risked, mastered, and
+   contributed. Competitive facts may be public when they are accurate, contextual,
+   and useful; leadership may recognize contributors and clan outcomes may grant
+   bounded earned rewards. Money may never buy Score, Depth, rank, qualification,
+   matchmaking position, gameplay power, exclusive tactical information, or visual
+   proof that impersonates an earned distinction. *Reviewer: does the surface make
+   real achievement legible? Can the status be earned under clear rules? Can payment,
+   favoritism without an auditable act, manipulation, or unverifiable client data move
+   the competitive result?*
 
 9. **Three pillars, two numbers, one calendar.** New work lands inside Mastery, Lineage,
    or Discovery; surfaces on Score or Depth; and schedules on the Signal (including its
@@ -407,8 +440,9 @@ Layer 2, the two numbers — Score, and Yield with its Depth contribution during
 active Serpent battle. Layer 3, one collapsed progression digest backed by the
 server's canonical impact receipt, with exactly **one** recommended next action.
 Routine movement is one compact sentence; notable-or-greater movement may offer one
-optional, skippable review of at most three grouped beats. Review is presentation,
-never a claim, and Replay never waits for it. Everything else routes to the
+  optional, skippable Victory Lap of at most three grouped collection beats. Each
+  tap acknowledges already-secured presentation; Replay never waits for it and one
+  action may complete the remaining ceremony. Everything else routes to the
 Chronicle. No commerce (Rule 7). The share prompt is Layer 1, because the share
 artifact is product, not marketing (§11.3).
 
@@ -502,18 +536,21 @@ Rules that keep the two numbers honest:
 
 - Yield never appears on the Score ladder; Score never appears on Serpent surfaces.
   Different names, different units (points vs segments), different screens.
-- Depth is compared to **your own five first**, the clan total second, and the paired
-  rival total third. Other members' individual attempts remain private (§9.4).
+- Depth is compared to **your own five first**, the clan roster second, the clan total
+  third, and the paired rival total fourth. Member contribution is visible with run
+  context so excellence, improvement, and reliability can be recognized rather than
+  inferred from an opaque aggregate (§9.4).
 - Money cannot reach Depth. This is load-bearing and is *only* true because §10 bans
   selling DNA, variants, genes, and anything else build-adjacent. The convergence
   metric and the monetization ruling are one decision wearing two hats — reverse
   either and the other collapses. This dependency is stated here so nobody "just adds
   a small DNA pack" in 2028.
-- Depth has **one private replacement threshold and no participation threshold**.
-  Until five slots are filled, every valid attempt contributes. After that, the
-  viewer sees the Yield needed to replace their own fifth result; it never changes
-  eligibility, rewards, or another member's treatment. No minimum contribution,
-  officer bar, or per-member public ranking may be derived from it (Rule 8).
+- Depth has one personal replacement threshold. Until five slots are filled, every
+  valid attempt contributes. After that, the player sees the Yield needed to replace
+  their own fifth result. Roster contribution and rank may be shown, but absence is
+  never falsified as failure and no leader-entered quota can rewrite a valid run.
+  Status and bounded rewards derive from server-verified participation and results,
+  never from a purchased or manually typed number (Rule 8).
 
 ---
 
@@ -557,9 +594,10 @@ Adopted from the audit's Model B, minimally, with contracts merged in at birth:
 - Opening the Signal offers **one choice from up to three objectives** — survival,
   extraction, or build execution — equal reward value, so every playstyle has a door
   in (research: objectives respect playstyle choice) [H, §17.5].
-- Rewards settle automatically — no claim *cascades*, ever. The single sanctioned
-  collect moment in the game is the Daily Take (below). The Signal reports what
-  happened; the notification clears when *viewed*.
+- Rewards settle automatically — no economic claim *cascades*, ever. Results may
+  stage up to three already-secured collection acknowledgements (§8.7); the single
+  tap that actually performs an economic collect is the Daily Take (below). The
+  Signal reports what happened; the notification clears when *viewed*.
 - Pays: normal run rewards, a modest flat first-completion bonus (150 DNA [H]), and
   progress on **cumulative, non-consecutive** cosmetic milestones (30 Signals, 100,
   365 — a "365 Signals" mark means devotion, and *never* requires them consecutive).
@@ -626,22 +664,27 @@ banking reduction, collision change, or arbitrary debuff.
   Energy mathematically mandatory. Score never enters this surface.
 - The viewer sees their five, Energy committed and generation on each, whether the
   new result entered, what it replaced, the clan-total increase, and—only once all
-  five slots are filled—the fifth-best Yield to beat. Teammates' individual attempts,
-  absences, and thresholds are not exposed.
+  five slots are filled—the fifth-best Yield to beat. The clan roster shows each
+  member's verified best-five contribution, rank, generation context, and recent
+  eligible participation. A contributing result may expose its Yield, generation,
+  Energy commitment, and battle timestamp because those facts explain the feat;
+  private account or economy data does not become clan data.
 - Ordinary progression stays live throughout: earn/spend DNA, breed, and use a later
   generation in later attempts. There is no hidden battle snapshot at launch; any
   last-day generation concentration is measured before restrictions are considered.
-- Settlement grants no DNA. Every player with a valid contribution receives a
-  permanent participant (or stalemate) honor; the winning side receives the distinct
-  victor honor. Honors are identity/history, cannot improve later scoring, and never
-  expire. Each side's achieved battle Depth is banked once into existing monotonic
-  personal/clan Depth history regardless of outcome. An unmatched side receives
-  participation history, not an economic walkover.
+- Settlement grants one bounded, idempotent participation reward to every eligible
+  contributor and a stronger bounded reward to the winning side; losing still advances
+  progression. Victor, participant, stalemate, rank, and Glory honors become permanent
+  identity/history, cannot improve later scoring, and never expire. Each side's achieved
+  battle Depth is banked once into existing monotonic personal/clan Depth history
+  regardless of outcome. An unmatched side receives participation history, never a
+  fabricated victory or winner payout.
 
-**The privacy boundary.** Social responsibility is deliberate; public performance
-management is not. The clan card shows both clan totals and the viewer's own five.
-No roster row carries another member's attempt count, zero, fifth-best line, Energy
-commitment, or ranking. Officers receive no stat-gated kick/recruitment control.
+**The competitive-integrity boundary.** Comparison is deliberate. Contribution and
+rank come only from server-verified eligible results; leaders cannot type, purchase,
+erase, or substitute a score, and a manually stated clan target cannot invalidate
+earned play. Roster states say “no eligible result yet” rather than inventing failure
+or activity. Leadership permissions govern the clan; they never rewrite battle math.
 
 **Operating cost.** Pairing is lazy and deterministic at start, contribution
 reconciliation and settlement are one hourly idempotent job, and the system authors
@@ -729,7 +772,8 @@ implementation contradicts it three times with `random()` (GT §4). Rulings:
   From Gen4, every generation permanently raises that snake's **Yield** — increments
   start near +2% and shrink toward an asymptote of roughly +30% total [H], so
   upgrading never stops paying but a veteran's snake stays ~1.3× a newcomer's, never
-  10× — a clanmate fresh to the hunt is never dead weight (Rule 8's spirit). Every
+  10× — a clanmate fresh to the hunt is never dead weight. Competitive prestige
+  must remain an invitation to improve, not a mechanism that erases participation. Every
   fifth generation the snake **visibly evolves** (pattern and aura stages), and
   pedigree compounds in the Chronicle. The breeding cost curve steepens through
   Ascendance so the lane spans months, not day one [H] — the previous economy's
@@ -847,11 +891,10 @@ inflation risk in exchange for honest stakes and frequent recovery.
 
 Mastery answers *how good am I with this dynasty*, and until now it had no ceiling
 to be measured against. A build system needs something to defeat; a skill number
-needs a wall. The ladder is that wall, and it is the retention structure this
-audience actually responds to — competition interest declines faster with age than
-any other motivation measured, while **Strategy is the most age-stable**
-(Quantic Foundry, n > 140,000), so the climb belongs on the build and the
-execution rather than on ranking players against each other.
+needs a wall. The ladder is that wall, and it is a legible competitive credential:
+fixed rules let players compare like with like while the clan battle tests whether
+the same build and execution can deliver under social stakes. Strategy and rivalry
+reinforce one another here; neither is hidden to protect the other.
 
 **Fixed, ordered, cumulative.** Rung *n* adds one **named rule** and means the same
 thing for every player. Not a pick-your-own modifier budget: a summed handicap is
@@ -903,11 +946,12 @@ Four states stay separate:
 4. **Memory** retains selected milestone/historic moments in Chronicle, Lineage, and
    clan history.
 
-Daily Take remains the only collect. Everything else is an optional reveal or review,
-not a claim cascade. Significance is deterministic and bounded: routine, notable,
-milestone, historic; Results groups it into at most three beats. A failed or practice
-run is reported honestly and does not receive fake progress merely because it
-happened.
+Daily Take remains the only economic collect. Everything else is an optional,
+already-secured Victory Lap acknowledgement—not claim debt. Significance is
+deterministic and bounded: routine, notable, milestone, historic; Results groups it
+into at most three beats and always leaves Replay/Setup available. A failed or
+practice run is reported honestly and does not receive fake progress merely because
+it happened.
 
 The owner Chronicle begins with a private Career Pulse: a quiet three-pillar
 snapshot, one optional pinned pursuit selected from existing systems, recent
@@ -951,20 +995,31 @@ elaboration on being noticed.
   rival forms, its run history remains real and settlement records participation rather
   than fabricating a win.
 - **Founding flow:** at Serpent unlock (8 banks), one skippable prompt: found your
-  clan (name it, pick preset heraldry) or join by invite code/link. Founding is one
-  tap plus a name. There is no browse-empty-directory dead end: the directory shows
-  only recently active clans, so it is short and alive rather than long
-  and dead. Total-population counts are never displayed anywhere.
-- **Roster mechanics:** invite links are the only recruitment surface (§11.3 — the
-  invite is the acquisition artifact). A run stays attached to the clan snapshot at
-  start; one cycle lock prevents switching for double credit. Personal historical
-  honors stay with the player; clan records stay with the clan. Kicking remains plain
-  roster management with no stat-gated tool, minimum-Depth field, or officer output
-  lever (Rule 8).
-- **Contribution display:** the player sees their own strongest five and the two clan
-  aggregates. Nobody sees another member's attempt list, zero, Energy amount,
-  generation, fifth-best line, or intra-clan rank. The witness is the shared number
-  and the run-result celebration, not a manager dashboard.
+  clan (name it, pick preset heraldry) or discover one through the live directory.
+  Founding costs a single, clearly quoted, server-authoritative DNA amount [H]; the
+  price is a commitment to the institution, not a monetized gate. The directory is
+  searchable and shows current size, open/application/invite-only policy, available
+  places, and recent activity without fabricating population or activity.
+- **Recruitment and roles:** clans use **Leader, Co-leader, Member**. Leaders manage
+  settings, applications, invitations, removals, co-leaders, and leadership transfer;
+  co-leaders handle ordinary recruitment and roster care but cannot transfer or
+  disband the clan. Open, application, and invite-only policies share one audited
+  membership transition model. A run stays attached to the clan snapshot at start;
+  one cycle lock prevents switching for double credit. Personal historical honors
+  stay with the player; clan records stay with the clan.
+- **Contribution display:** each member's current best-five Depth contribution, rank,
+  generation context, and recent battle participation may be visible inside the clan.
+  The surface must distinguish “no eligible result yet” from absence or failure and
+  must never imply that a manually assigned quota invalidates earned play. The roster,
+  battle, and Chronicle use the same server-authored facts.
+- **Glory Members:** each clan has up to two public Glory seats assigned by the Leader
+  from eligible contributors. Assignment is a recognition act, not an editable score:
+  it takes effect only at a battle boundary, is recorded in clan history, remains
+  locked for that cycle, and cannot pay two holders for the same seat/cycle. A bounded
+  DNA recognition reward may settle once per eligible holder and battle through an
+  idempotent server ledger [H]. Eligibility, tenure, self-award, and reassignment dials
+  are centrally configured and telemetry-audited to prevent alt rotation and favoritism
+  from becoming the optimal economy.
 - **Moderation surface (solo-dev bound):** clan names filtered, heraldry preset-only,
   no free-text descriptions at launch, report path on every clan and handle. UGC
   surface stays this small until there is a population that earns more.
@@ -1000,20 +1055,23 @@ current population supports a rating algorithm. It creates three safeguards:
   refinements opened only when observed clan count supports them [H]. They may change
   opponents, never scoring, Energy, or rewards.
 
-Paired outcomes grant victor/participant/stalemate honors and Chronicle history—never
-DNA, multipliers, Energy, or future battle power. The shipped clan-duel ×1.05 DNA
-multiplier remains deleted (§13).
+Paired outcomes grant victor/participant/stalemate honors and Chronicle history.
+Battle participation and victory may also grant bounded, server-ledgered DNA [H]: a
+winner receives more, a loser still receives useful progression, and an unmatched side
+does not farm a victory. Rewards never multiply future battle score, Energy, or Yield.
+The shipped perpetual clan-duel ×1.05 DNA multiplier remains deleted (§13) because it
+was transferable future power rather than a bounded result reward.
 
 ### 9.5 Why the Hunt can never become the pressure to spend
 
 The Survivor.io failure the owner named is closed at every commercial link: money
 cannot buy DNA, Energy, recovery, variants, genes, traits, analysis unavailable to
 free players, or anything else that feeds Yield (§10); therefore money cannot move
-Depth (Rule 3), and a member's wallet is invisible in the battle. Best-five bounds
-what can contribute while allowing practice/replacement. The private replacement
-line creates self-pressure without handing officers a quota. A clan can pressure you
-to *play well* and the game deliberately allows that social responsibility; it cannot
-pressure you to pay, because payment has no route to the shared number.
+Depth (Rule 3), and a member's wallet is irrelevant to the battle. Best-five bounds
+what can contribute while allowing practice and replacement. Visible ranks, Glory
+recognition, leadership, rivalry, and bounded DNA rewards deliberately create social
+pressure to *play well*. They may never create pressure to pay, because payment has
+no route to the shared number, earned rank, or reward eligibility.
 
 ### 9.6 SupaSnake's Harvard — the smallest population we can saturate
 
@@ -1040,9 +1098,9 @@ same problem, solved by the same act:
   one self-sustaining clan (four weeks of settled hunts without founder prompting)
   [H]. Saturation before breadth — the entire Facebook lesson.
 
-No bots, no fake players, no fabricated activity, ever — the research found zero
-successful precedent and this document forbids it (Rule 8's spirit; a witness that
-turns out to be cardboard poisons the only asset this design has).
+No bots, no fake players, no fabricated activity, ever — competition only motivates
+when the opponent, contribution, and prestige are credible (Rule 8). A witness that
+turns out to be cardboard poisons the game's most valuable social asset.
 
 ---
 
@@ -1671,8 +1729,10 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 22 | **World Serpent as a separate weekly, no-Energy, cooperative best-three mode** (v1.3–1.4) | **v1.5:** Serpent is a 3-day Clan Energy Battle automatically fed by positive-Energy normal runs; best five per member; 1-day intermission; historical weeks remain immutable | The universal cooperative boss, a calendar-week artifact, unlimited unrationed attempts, and full participation in three runs. Gained: one coherent normal-run loop where personal economic stakes and clan responsibility are the same decision |
 | 23 | **Rule 8 forbids all thresholds and clan-vs-clan reward mathematics** | **v1.5 narrow amendment:** a player may privately see their own fifth-best replacement line; paired aggregate outcomes grant victor vs participant/stalemate honors. No teammate detail, officer lever, economy reward, minimum, or paid route is introduced | The absolute “no thresholds anywhere” sentence and purely self-referential clan outcome; accepted to create the owner-directed mastery pressure while preserving privacy and non-power rewards |
 | 24 | **Progress acknowledgement through client-local notification state and a local reward outbox** | **v1.6:** every impact, attention state, pursuit, receipt, and pending settlement recovery is server-held; progress-related browser persistence is forbidden. Explicit owner ruling, 30 July 2026; cooling period waived for the greenlit build | The offline convenience of replaying an unsent settlement from one browser and cheap per-device notification state. Gained: one authoritative cross-device truth and no hidden progress-shaped data on the device |
-| 25 | **Active collection as the default emotional grammar for earned rewards** | **v1.6:** rewards secure immediately; optional Review/Reveal supplies the lap of applause; only Daily Take remains a literal collect | The repeated tactile claim moment. Gained: no stranded rewards, claim debt, cascade, or manipulative notification backlog |
+| 25 | **Active collection as the default emotional grammar for earned rewards** | **v1.6:** rewards secure immediately; optional Review/Reveal supplies the lap of applause; only Daily Take remains a literal collect | Superseded by v1.8 below; v1.6 established the server-secured foundation that makes tactile presentation safe |
 | 26 | **Legacy Score as the full Player Card's public prestige headline** | **v1.6:** underlying Records remain permanent, but the opaque aggregate retires from the public headline in favor of three curated, provenance-labelled proofs | The convenience of one summary number. Gained: status that says what was earned and cannot be confused with Score, Depth, or paid decoration |
+| 27 | **Rule 8 privacy-by-suppression: no teammate comparison, officer rank, differentiated recognition, or clan DNA reward** | **v1.7:** competition is a product pillar and earned progression is visible status. Leader/Co-leader/Member hierarchy, contribution ranks, two auditable Glory seats, and bounded server-ledgered battle/Glory DNA rewards are permitted. Explicit owner ruling, 31 July 2026; cooling period waived for the greenlit UX rework | The belief that hiding comparison prevents harmful pressure. Gained: credible esports hierarchy, stronger social motivation, visible excellence, and clan responsibility. The permanent guardrail is competitive integrity: no paid power, purchased rank, fabricated activity, client-authored result, or reward without an auditable earned event |
+| 28 | **Results recognition must auto-play and may not use claim language or repeated taps** | **v1.8:** up to three meaningful, optional Victory Lap collection taps may stage rewards already secured by settlement. Replay/Setup never wait; one action may complete the ceremony; only Daily Take may perform an economic collect RPC. Explicit owner ruling, 31 July 2026; cooling period waived for the approved cohesive UX implementation | The pure zero-tap recap. Gained: tactile trophy-raising payoff without stranded value, duplicate grants, claim debt, or notification farming |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -1714,6 +1774,12 @@ recognition, and understandable curated public proof. The owner explicitly appro
 the complete phased implementation and production release; the cooling period was
 waived in that order. No cap grows: this is the projection and subtraction layer for
 the three existing pillars.
+
+**v1.7 owner ruling (31 July 2026):** row 27 replaces the former Rule 8 in
+full. Historical migrations and superseded research remain an honest record of
+what was removed under the old rule; they are not current product authority.
+Forward-only schema and current surfaces implement the new competitive-integrity
+rule without rewriting deployed migration history.
 
 **Where this document rules against the audit** (recorded for honesty): energy is
 deleted outright rather than A/B-tested first (§15.2); clans launch as clan-of-one
@@ -1887,7 +1953,7 @@ deliberately undecided pending data.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.6 on 30 July 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.7 on 31 July 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*
