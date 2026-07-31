@@ -235,10 +235,12 @@ export default function PrivacyPolicyPage() {
                 (eu.i.posthog.com), to understand how the Game is used. We use
                 a curated event set (page views, gameplay, economy, purchases,
                 engagement and social events) with autocapture and session
-                recording disabled. PostHog sets cookies and localStorage
-                entries and assigns a device/session ID; after sign-in, events
-                are linked to your account ID. Revoking consent stops all
-                capture.
+                recording disabled. Its device ID, analytics session, and
+                person properties remain in page memory only and disappear
+                when the page closes; browser storage retains only your
+                analytics opt-in or opt-out choice. After sign-in, transmitted
+                events are linked to your account ID. Revoking consent stops
+                all capture.
               </p>
               <p>
                 Legal basis: Art. 6(1)(a) GDPR and §165(3) TKG 2021 (consent).

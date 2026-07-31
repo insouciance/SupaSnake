@@ -12,6 +12,9 @@
 const mockRpc = jest.fn();
 const mockFrom = jest.fn();
 const mockCaptureException = jest.fn();
+const mockListPendingRunProgression = jest.fn();
+const mockResumeOrRecoverRunImpact = jest.fn();
+const mockAdoptPendingGameSessionEnds = jest.fn();
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -22,6 +25,14 @@ jest.mock('@supabase/supabase-js', () => ({
     rpc: (...args: unknown[]) => mockRpc(...args),
     from: (...args: unknown[]) => mockFrom(...args),
   }),
+}));
+jest.mock('@/lib/server/gameProgressionSettlement', () => ({
+  adoptPendingGameSessionEnds: (...args: unknown[]) =>
+    mockAdoptPendingGameSessionEnds(...args),
+  listPendingRunProgression: (...args: unknown[]) =>
+    mockListPendingRunProgression(...args),
+  resumeOrRecoverRunImpact: (...args: unknown[]) =>
+    mockResumeOrRecoverRunImpact(...args),
 }));
 
 import { NextRequest } from 'next/server';
@@ -42,6 +53,16 @@ function request(authorization?: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.CRON_SECRET = SECRET;
+  mockListPendingRunProgression.mockResolvedValue([]);
+  mockAdoptPendingGameSessionEnds.mockResolvedValue({
+    phase: 'ready',
+    scanned: 0,
+    adopted: 0,
+    superseded: 0,
+    failed: 0,
+    failures: [],
+  });
+  mockResumeOrRecoverRunImpact.mockResolvedValue({ status: 'found', impact: {} });
   mockFrom.mockImplementation((table: string) => {
     throw new Error(`the sweep must not touch ${table}`);
   });
@@ -76,7 +97,22 @@ describe('the sweep', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ ok: true, expired: 72, skipped: false });
+    expect(body).toEqual({
+      ok: true,
+      expired: 72,
+      skipped: false,
+      pendingEndPhase: 'ready',
+      pendingEndsScanned: 0,
+      pendingEndsAdopted: 0,
+      pendingEndsSuperseded: 0,
+      pendingEndsFailed: 0,
+      pendingEndFailures: [],
+      progressionScanned: 0,
+      progressionSettled: 0,
+      progressionDeferred: 0,
+      progressionFailed: 0,
+      progressionFailures: [],
+    });
     expect(mockRpc).toHaveBeenCalledWith('expire_stale_game_sessions', {
       p_open_max_minutes: STALE_OPEN_MINUTES,
       p_pending_max_minutes: STALE_PENDING_SETTLEMENT_MINUTES,
@@ -84,7 +120,7 @@ describe('the sweep', () => {
     });
   });
 
-  it('awards nothing: it writes no table at all', async () => {
+  it('keeps expiry table-free when no completed progression is pending', async () => {
     mockRpc.mockResolvedValue({ data: 5, error: null });
 
     await GET(request(`Bearer ${SECRET}`));
@@ -111,7 +147,22 @@ describe('the sweep', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ ok: true, expired: 0, skipped: true });
+    expect(body).toEqual({
+      ok: true,
+      expired: 0,
+      skipped: true,
+      pendingEndPhase: 'ready',
+      pendingEndsScanned: 0,
+      pendingEndsAdopted: 0,
+      pendingEndsSuperseded: 0,
+      pendingEndsFailed: 0,
+      pendingEndFailures: [],
+      progressionScanned: 0,
+      progressionSettled: 0,
+      progressionDeferred: 0,
+      progressionFailed: 0,
+      progressionFailures: [],
+    });
     expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
@@ -125,5 +176,69 @@ describe('the sweep', () => {
 
     expect(response.status).toBe(500);
     expect(mockCaptureException).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes a bounded ordered progression batch', async () => {
+    mockRpc.mockResolvedValue({ data: 0, error: null });
+    mockListPendingRunProgression.mockResolvedValue([
+      { playerId: 'player-1', sessionId: 'session-1', protocol: 'atomic_v1' },
+      { playerId: 'player-1', sessionId: 'session-2', protocol: 'atomic_v1' },
+    ]);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      progressionScanned: 2,
+      progressionSettled: 2,
+      progressionFailed: 0,
+    });
+    expect(mockResumeOrRecoverRunImpact).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports each unexpected recovery failure', async () => {
+    mockRpc.mockResolvedValue({ data: 0, error: null });
+    mockListPendingRunProgression.mockResolvedValue([
+      { playerId: 'player-1', sessionId: 'session-1', protocol: 'atomic_v1' },
+    ]);
+    mockResumeOrRecoverRunImpact.mockResolvedValue({
+      status: 'unavailable',
+      error: new Error('database unavailable'),
+    });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.progressionFailures).toEqual([
+      {
+        playerId: 'player-1',
+        sessionId: 'session-1',
+        protocol: 'atomic_v1',
+        status: 'unavailable',
+      },
+    ]);
+  });
+
+  it('treats ordered durable debt as deferred rather than a failed cron', async () => {
+    mockRpc.mockResolvedValue({ data: 0, error: null });
+    mockListPendingRunProgression.mockResolvedValue([
+      { playerId: 'player-1', sessionId: 'session-1', protocol: 'atomic_v1' },
+    ]);
+    mockResumeOrRecoverRunImpact.mockResolvedValue({
+      status: 'pending',
+      error: new Error('earlier receipt is still settling'),
+    });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      progressionSettled: 0,
+      progressionDeferred: 1,
+      progressionFailed: 0,
+    });
   });
 });

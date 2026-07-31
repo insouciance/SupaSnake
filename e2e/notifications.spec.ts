@@ -1,62 +1,91 @@
 import { expect, test, type Page } from '@playwright/test';
-import { seedConsent } from './helpers';
+import { seedConsent, signInAsGuest } from './helpers';
 
-interface StoredAttention {
+const CAREER_SPINE_ENABLED =
+  process.env.NEXT_PUBLIC_CAREER_SPINE_V1 === 'true';
+
+interface ServerAttention {
   id: string;
-  title: string;
-  description: string;
+  kind: 'action';
+  status: 'unseen' | 'seen';
   destination: 'lab';
-  badgeKind: 'exclamation';
-  attentionReason: 'progression-opportunity';
-  href: '/lab';
-  actionLabel: 'Visit the Lab';
-  persistent: true;
-  createdAt: number;
-  updatedAt: number;
+  headline: string;
+  detail: string;
+  source: { type: 'test'; id: string };
+  createdAt: string;
+  seenAt?: string;
 }
 
-async function seedNotifications(page: Page, count: number): Promise<void> {
-  const notifications = Object.fromEntries(
-    Array.from({ length: count }, (_, index) => {
-      const id = index === 0 ? 'lab-discovery' : `lab-attention-${index}`;
-      const notification: StoredAttention = {
-        id,
-        title: index === 0 ? 'The Lab is ready' : `Lab opportunity ${index + 1}`,
-        description: 'Discover more snakes when you want to change your run.',
-        destination: 'lab',
-        badgeKind: 'exclamation',
-        attentionReason: 'progression-opportunity',
-        href: '/lab',
-        actionLabel: 'Visit the Lab',
-        persistent: true,
-        createdAt: index + 1,
-        updatedAt: index + 1,
-      };
-      return [id, notification];
+async function serveNotifications(page: Page, count: number): Promise<void> {
+  const notifications: ServerAttention[] = Array.from(
+    { length: count },
+    (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      kind: 'action',
+      status: 'unseen',
+      destination: 'lab',
+      headline: index === 0 ? 'The Lab is ready' : `Lab opportunity ${index + 1}`,
+      detail: 'Discover more snakes when you want to change your run.',
+      source: { type: 'test', id: `lab-attention-${index}` },
+      createdAt: new Date(Date.UTC(2026, 6, 30, 12, 0, index)).toISOString(),
     })
   );
 
-  await page.addInitScript((storedNotifications) => {
-    window.localStorage.setItem(
-      'supasnake-ui-notifications-v1',
-      JSON.stringify({ state: { notifications: storedNotifications }, version: 1 })
-    );
-  }, notifications);
+  await page.route('**/api/progression/attention**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as { id?: string };
+      const notification = notifications.find((item) => item.id === body.id);
+      if (!notification) {
+        await route.fulfill({ status: 404, json: { error: 'Attention item not found' } });
+        return;
+      }
+      notification.status = 'seen';
+      notification.seenAt = new Date().toISOString();
+      await route.fulfill({ json: { item: notification } });
+      return;
+    }
+    await route.fulfill({ json: { items: notifications, nextOffset: null } });
+  });
+
+  // The production notification hierarchy is server-authoritative and only
+  // fetched for an authenticated account. Exercise that path directly; no
+  // progress fixture may be placed in browser storage, even in E2E.
+  await signInAsGuest(page);
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
 }
 
 test.describe('notification attention dialog', () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  test('flag-off does not read or display server recognition', async ({ page }) => {
+    test.skip(CAREER_SPINE_ENABLED, 'rollback-only assertion');
+    await seedConsent(page);
+    let attentionRequests = 0;
+    await page.route('**/api/progression/attention**', async (route) => {
+      attentionRequests += 1;
+      await route.fulfill({ json: { items: [], nextOffset: null } });
+    });
+    await signInAsGuest(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible();
+    expect(attentionRequests).toBe(0);
+  });
+
   test('stays inside desktop and mobile viewports with a long internal scroll list', async ({
     page,
   }) => {
+    test.skip(!CAREER_SPINE_ENABLED, 'Career Spine presentation is off');
     await seedConsent(page);
-    await seedNotifications(page, 30);
+    await serveNotifications(page, 30);
 
     for (const viewport of [
       { width: 1280, height: 720 },
       { width: 320, height: 568 },
     ]) {
       await page.setViewportSize(viewport);
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page
         .getByRole('button', { name: 'Notifications, 30 actions available' })
         .click();
@@ -84,9 +113,9 @@ test.describe('notification attention dialog', () => {
   test('opening and closing does not clear attention, while its action reaches the Lab', async ({
     page,
   }) => {
+    test.skip(!CAREER_SPINE_ENABLED, 'Career Spine presentation is off');
     await seedConsent(page);
-    await seedNotifications(page, 1);
-    await page.goto('/');
+    await serveNotifications(page, 1);
 
     const trigger = page.getByRole('button', {
       name: 'Notifications, 1 action available',
@@ -96,7 +125,7 @@ test.describe('notification attention dialog', () => {
     await expect(trigger).toHaveAccessibleName('Notifications, 1 action available');
 
     await trigger.click();
-    await page.getByText('Visit the Lab').click();
+    await page.getByRole('link', { name: /The Lab is ready/i }).click();
     await expect(page).toHaveURL(/\/lab(?:$|[?#])/);
   });
 });

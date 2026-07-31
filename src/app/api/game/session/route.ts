@@ -28,7 +28,7 @@ import {
   masteryXpForRun,
   unlockedMutationPool,
 } from '@/shared/game/mastery';
-import { getMasteryXpStrict, grantMasteryXp } from '@/lib/server/mastery';
+import { getMasteryXpStrict } from '@/lib/server/mastery';
 import { getGauntletBan } from '@/lib/server/gauntlet';
 import {
   getSeasonalGeneIds,
@@ -61,7 +61,6 @@ import {
   type ChargeExemptionFacts,
   type ChargeState,
 } from '@/shared/game/energyEnvelope';
-import { recordClanEnergyContribution } from '@/lib/server/clanEnergyBattle';
 import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
@@ -106,7 +105,6 @@ import type { LineageBias } from '@/shared/game/offerGravity';
 import { ANOMALY_STRAINS } from '@/shared/game/anomalies';
 import type { GenomeValidationContext } from '@/lib/server/gameValidator';
 import { randomUUID } from 'crypto';
-import { refreshPlayerRecords } from '@/lib/server/records';
 import {
   enqueueMasteryLevelup,
   refreshLinkedRolesForPlayer,
@@ -115,11 +113,9 @@ import {
 // multiplier stack (removed by WP-0.02) and the achievement checker (retired
 // into the Legacy Records by WP-0.04). Neither name is spelled out, because a
 // WP-0.02 test asserts this file's source cannot mention the former at all.
-import { recordCodexDiscoveries } from '@/lib/server/codex';
 import { FTUE_V2_ENABLED } from '@/lib/ftue/config';
 import {
   claimSignalObjectiveRun,
-  settleSignalAttemptForSession,
 } from '@/lib/server/signal';
 import { resolveSessionWorldCondition } from '@/lib/server/worldCondition';
 import {
@@ -132,11 +128,45 @@ import {
 } from '@/shared/game/worldCondition';
 import type { StrainId } from '@/shared/game/strains';
 import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
+import { progressionJson } from '@/lib/server/noStoreResponse';
+import {
+  resumeOrRecoverRunImpact,
+  settleDurableRunProgression,
+} from '@/lib/server/gameProgressionSettlement';
+
+// Preserve the proven production budget: settlement now contains multiple
+// independent durable stages. The cutover drains the outgoing canonical
+// artifact's separately inspected 300-second bound plus a 60-second margin.
+export const maxDuration = 300;
+const CAREER_PENDING_END_KIND = 'career_pending_end_v1';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+function pendingSettlementJson(sessionId: string) {
+  return progressionJson(
+    {
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId,
+    },
+    { status: 202 }
+  );
+}
+
+function isMissingRewardProtocolInfra(error: {
+  code?: string;
+  message?: string;
+} | null): boolean {
+  if (!error) return false;
+  return (
+    ['42703', 'PGRST204'].includes(error.code ?? '') &&
+    /reward_protocol|progression_settlement_payload/i.test(error.message ?? '')
+  );
+}
 
 // ---------------------------------------------------------------------------
 // WP-2.05: 503, NEVER 404 — and the run keeps its long window
@@ -335,6 +365,79 @@ export async function POST(request: NextRequest) {
     const isSignalRun = mode === 'signal';
 
     if (action === 'start') {
+      // Rewarded starts require the durable Career ingress. Schema 060 may
+      // accept new play safely: a completed run is stored server-side even
+      // before 061 can adopt it. Schema 059 still fails closed. Free Play is
+      // rewardless and remains available on every phase.
+      if (!isFreePlay) {
+        const { data: careerCapability, error: careerCapabilityError } =
+          await supabase.rpc('get_career_settlement_capability');
+        const capability =
+          careerCapability && typeof careerCapability === 'object' &&
+          !Array.isArray(careerCapability)
+            ? (careerCapability as Record<string, unknown>)
+            : null;
+        const capabilityStatus = capability?.status;
+        const bridgeVersion = Number(capability?.bridgeVersion);
+        const careerVersion = capability?.careerVersion;
+        const capabilityValid =
+          bridgeVersion === 1 &&
+          ((capabilityStatus === 'pending' && careerVersion === null) ||
+            (capabilityStatus === 'ready' && Number(careerVersion) === 1));
+        if (careerCapabilityError || !capabilityValid) {
+          if (careerCapabilityError && !isMissingRewardProtocolInfra(careerCapabilityError)) {
+            console.error('Atomic settlement capability check failed:', {
+              playerId: player.id,
+              error: careerCapabilityError,
+            });
+            Sentry.captureException(careerCapabilityError, {
+              tags: { progression_stage: 'start_capability' },
+              extra: { playerId: player.id },
+            });
+          }
+          return progressionJson(
+            {
+              error: 'Rewarded runs are briefly unavailable during maintenance',
+              retryable: true,
+              maintenance: true,
+            },
+            { status: 503 }
+          );
+        }
+
+        // An accepted earlier end (including quarantined operator debt) is a
+        // chronology barrier. Do not let a new run overtake it and corrupt PB,
+        // Codex, Records, or streak attribution.
+        const { data: pendingEndCount, error: pendingEndCountError } =
+          await supabase.rpc('count_staged_pending_game_session_ends', {
+            p_player_id: player.id,
+          });
+        if (
+          pendingEndCountError ||
+          typeof pendingEndCount !== 'number' ||
+          pendingEndCount > 0
+        ) {
+          if (pendingEndCountError) {
+            console.error('Pending end chronology check failed:', {
+              playerId: player.id,
+              error: pendingEndCountError,
+            });
+            Sentry.captureException(pendingEndCountError, {
+              tags: { progression_stage: 'start_pending_end' },
+              extra: { playerId: player.id },
+            });
+          }
+          return progressionJson(
+            {
+              error: 'Your previous run is still securing its progress',
+              retryable: true,
+              maintenance: true,
+            },
+            { status: 503 }
+          );
+        }
+      }
+
       const rateCheck = await checkRateLimit(supabase, player.id, 'game_start');
       if (!rateCheck.allowed) {
         return NextResponse.json(
@@ -1116,6 +1219,73 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 });
       }
 
+      // During the 060→061 cutover, a fully validated end may already be in
+      // the dedicated service-only pending table while the session remains
+      // open. A replay acknowledges that durable handoff; no browser queue or
+      // browser persistence is part of the settlement guarantee.
+      if (
+        !session.ended_at &&
+        (session as Record<string, unknown>).end_reason === SETTLED_END_REASON
+      ) {
+        const { data: pendingEnd, error: pendingEndError } = await supabase.rpc(
+          'get_pending_game_session_end',
+          { p_player_id: player.id, p_session_id: sessionId }
+        );
+        const pendingState =
+          pendingEnd && typeof pendingEnd === 'object' && !Array.isArray(pendingEnd)
+            ? (pendingEnd as Record<string, unknown>).state
+            : null;
+        let replayAdopted = pendingState === 'adopted';
+        if (!pendingEndError && pendingState === 'staged') {
+          const { data: adoptionResult, error: adoptionError } = await supabase.rpc(
+            'adopt_pending_game_session_end',
+            { p_session_id: sessionId }
+          );
+          const adoption =
+            adoptionResult && typeof adoptionResult === 'object' &&
+            !Array.isArray(adoptionResult)
+              ? (adoptionResult as Record<string, unknown>)
+              : null;
+          replayAdopted = !adoptionError && adoption?.state === 'adopted';
+          if (!replayAdopted) {
+            if (adoption?.state === 'quarantined') {
+              return await settlementUnavailable(
+                'quarantined pending end adoption',
+                new Error('pending run settlement requires operator recovery'),
+                { playerId: player.id, sessionId }
+              );
+            }
+            return pendingSettlementJson(sessionId);
+          }
+        }
+        if (!pendingEndError && replayAdopted) {
+          const recovered = await resumeOrRecoverRunImpact(
+            supabase,
+            player.id,
+            sessionId
+          );
+          if (recovered.status !== 'found') {
+            return pendingSettlementJson(sessionId);
+          }
+          return progressionJson(
+            {
+              error: 'Session already ended',
+              alreadyEnded: true,
+              endReason: SETTLED_END_REASON,
+              impact: recovered.impact,
+            },
+            { status: 409 }
+          );
+        }
+        if (!pendingEndError && pendingState === 'quarantined') {
+          return await settlementUnavailable(
+            'quarantined pending end',
+            new Error('pending run settlement requires operator recovery'),
+            { playerId: player.id, sessionId }
+          );
+        }
+      }
+
       // Idempotency guard: a session can only be ended once. Duplicate
       // 'end' calls (offline outbox replay, double-fire at death) must not
       // grant DNA again - return 409 with the current authoritative state.
@@ -1126,10 +1296,33 @@ export async function POST(request: NextRequest) {
       // The reason travels in the response so the client can tell "you
       // already banked this" from "that run timed out and paid nothing".
       if (session.ended_at) {
-        // WP-2.05: reported, but deliberately NOT fatal. This is the 409
-        // "you already banked this" response; the run settled long ago and
-        // the player block is a convenience echo, so a read failure costs
-        // nothing that a refresh does not fix.
+        const priorReason = (session as Record<string, unknown>).end_reason;
+        let impact: Awaited<ReturnType<typeof resumeOrRecoverRunImpact>> | null = null;
+        if (
+          priorReason === SETTLED_END_REASON &&
+          (session as Record<string, unknown>).is_free_play !== true &&
+          typeof (session as Record<string, unknown>).atomic_reward_observed_at === 'string'
+        ) {
+          impact = await resumeOrRecoverRunImpact(supabase, player.id, sessionId);
+          if (impact.status === 'pending') {
+            return pendingSettlementJson(sessionId);
+          }
+          if (impact.status !== 'found') {
+            return progressionJson(
+              {
+                error: 'Run settled; its impact receipt is still pending',
+                alreadyEnded: true,
+                impactPending: true,
+                retryable: true,
+              },
+              { status: 503 }
+            );
+          }
+        }
+
+        // Read after recovery: a stamp->process-death retry may just have
+        // secured base or Signal DNA. The response must echo the same final
+        // authoritative aggregate as the receipt, never the pre-recovery row.
         const { data: currentPlayer, error: currentPlayerError } = await supabase
           .from('players')
           .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
@@ -1146,14 +1339,13 @@ export async function POST(request: NextRequest) {
             { extra: { playerId: player.id, sessionId } }
           );
         }
-
-        const priorReason = (session as Record<string, unknown>).end_reason;
-        return NextResponse.json(
+        return progressionJson(
           {
             error: 'Session already ended',
             alreadyEnded: true,
             ...(typeof priorReason === 'string' ? { endReason: priorReason } : {}),
             player: currentPlayer ?? null,
+            ...(impact?.status === 'found' ? { impact: impact.impact } : {}),
           },
           { status: 409 }
         );
@@ -1615,10 +1807,84 @@ export async function POST(request: NextRequest) {
             }
           : null;
 
+      // Identity telemetry is server-sanitized before the critical stamp so
+      // the 060 bridge envelope and a normal 061 completion preserve exactly
+      // the same Chronicle evidence.
+      const serverDeathCause: RunDeathCause | null = validation.extracted
+        ? 'extracted'
+        : isRunDeathCause(death_cause) && death_cause !== 'extracted'
+          ? death_cause
+          : null;
+      const runEventEnvelope = validateRunEvents(run_events, {
+        durationSeconds: validation.durationSeconds,
+        foodCount: validation.foodCount,
+        died: (died ?? true) === true && !validation.extracted,
+        extracted: validation.extracted,
+        mutationIds: validation.genome
+          ? validation.genome.picks.map((p) => p.id)
+          : validation.mutations.map((m) => m.id),
+      });
+
       // Mark the session ended BEFORE granting rewards - this is the
       // idempotency anchor. Guard on ended_at IS NULL so two concurrent
       // 'end' calls can't both pass the check above and double-grant.
-      const settlementUpdate: Record<string, unknown> = {
+      const settledAt = new Date().toISOString();
+      const settledRung = runContext?.ladderRung ?? DEFAULT_LADDER_RUNG;
+      const progressionSettlementPayload = {
+        v: 1,
+        settledAt,
+        dynasty: endDynasty,
+        extracted: validation.extracted,
+        died: died ?? true,
+        validated: validation.valid,
+        score: validation.adjustedScore,
+        yieldDna,
+        dnaCredited: isFreeSession ? 0 : finalDna,
+        energyCommitted,
+        commitmentMultiplierBps,
+        generation: ascendanceGeneration,
+        snakeId:
+          typeof (session as Record<string, unknown>).snake_used_id === 'string'
+            ? ((session as Record<string, unknown>).snake_used_id as string)
+            : null,
+        masteryXp: validation.extracted
+          ? masteryXpForRun(validation.masteryRawDna, true)
+          : 0,
+        ladderRung: settledRung,
+        genome: validation.valid ? validation.genome : null,
+        rewardMetadata: {
+          food_count: validation.foodCount,
+          extracted: validation.extracted,
+          original_dna_claimed: dna_earned || 0,
+          base_dna: validation.adjustedDna,
+          yield_dna: yieldDna,
+          energy_available_before: Number(
+            (session as Record<string, unknown>).energy_available_before ?? 0
+          ),
+          energy_committed: energyCommitted,
+          energy_commitment_multiplier_bps: commitmentMultiplierBps,
+          energy_recovered_at_start: Number(
+            (session as Record<string, unknown>).energy_recovered_at_start ?? 0
+          ),
+          clan_eligible:
+            typeof (session as Record<string, unknown>).clan_energy_battle_id === 'string',
+          ...(validation.mutations.length > 0
+            ? { mutations: validation.mutations }
+            : {}),
+          ...(validation.phoenixTriggeredAtFood !== null
+            ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
+            : {}),
+          ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
+        },
+        clan: {
+          bestCount: GAME_CONFIG.economy.clanBattle.contributingRunsPerMember,
+          completionGraceSeconds:
+            GAME_CONFIG.economy.clanBattle.completionGraceSeconds,
+          maxRunDurationSeconds:
+            GAME_CONFIG.economy.clanBattle.maxEligibleRunDurationSeconds,
+        },
+      };
+      const settlementFacts: Record<string, unknown> = {
         score: validation.adjustedScore,
         // Free sessions never earn - the row records a zero payout
         dna_earned: isFreeSession ? 0 : finalDna,
@@ -1634,32 +1900,188 @@ export async function POST(request: NextRequest) {
         died: died ?? true,
         victory: victory ?? false,
         extracted: validation.extracted,
-        ended_at: new Date().toISOString(),
+        ended_at: settledAt,
         validated: validation.valid,
         validation_errors: validation.errors.length > 0 ? validation.errors : null,
         foods_collected: validation.foodCount,
         mutations: mutationsRecord,
         end_reason: SETTLED_END_REASON,
+        // Atomic recovery and Signal recomputation read the same accepted
+        // genome after a process death. It belongs in the guarded end stamp,
+        // not only in the later best-effort replay/analytics capture.
+        genome: validation.valid ? validation.genome : null,
+      };
+      const pendingEnvelope = {
+          kind: CAREER_PENDING_END_KIND,
+          v: 1,
+          userId: user.id,
+          playerId: player.id,
+          sessionId,
+          capturedAt: settledAt,
+          snapshot: progressionSettlementPayload,
+          binding: {
+            startedAt: (session as Record<string, unknown>).started_at,
+            dynasty: (session as Record<string, unknown>).dynasty,
+            snakeId: (session as Record<string, unknown>).snake_used_id ?? null,
+            snakeVariantId:
+              (session as Record<string, unknown>).snake_variant_id ?? null,
+            runSeed: (session as Record<string, unknown>).run_seed ?? null,
+            runContext: (session as Record<string, unknown>).run_context ?? null,
+            energyCommitted,
+            commitmentMultiplierBps,
+            signalRunId:
+              (session as Record<string, unknown>).signal_objective_run_id ?? null,
+            clanBattleId:
+              (session as Record<string, unknown>).clan_energy_battle_id ?? null,
+            clanBattleSideId:
+              (session as Record<string, unknown>).clan_energy_battle_side_id ?? null,
+            clanId:
+              (session as Record<string, unknown>).clan_energy_clan_id ?? null,
+          },
+          sessionFacts: {
+            durationSeconds: validation.durationSeconds,
+            victory: victory ?? false,
+            foodsCollected: validation.foodCount,
+            mutations: mutationsRecord,
+            deathCause: serverDeathCause,
+            runEvents: runEventEnvelope,
+            validationErrors:
+              validation.errors.length > 0 ? validation.errors : null,
+          },
       };
 
-      const endSession = () =>
-        supabase
-          .from('game_sessions')
-          .update(settlementUpdate)
-          .eq('id', sessionId)
-          .eq('player_id', player.id)
-          .is('ended_at', null)
-          .select('id');
+      let endedRows: Array<{ id: string }> | null = null;
+      let endSessionError: { code?: string; message?: string } | null = null;
 
-      // WP-0.06: this is the ONE path that may stamp `completed` - the reason
-      // that marks a run as settled everywhere else (boards, Anomaly board,
-      // Yield). Pre-045 the column is missing, so the settlement retries
-      // without it rather than failing a run the player actually finished;
-      // a NULL reason reads as settled, which is what it was.
-      let { data: endedRows, error: endSessionError } = await endSession();
-      if (endSessionError && isMissingLifecycleInfra(endSessionError)) {
-        delete settlementUpdate.end_reason;
-        ({ data: endedRows, error: endSessionError } = await endSession());
+      if (isFreeSession) {
+        // Rewardless practice has no durable progression debt. It records its
+        // validated result directly and never enters the Career queue.
+        const endFreeSession = () =>
+          supabase
+            .from('game_sessions')
+            .update(settlementFacts)
+            .eq('id', sessionId)
+            .eq('player_id', player.id)
+            .is('ended_at', null)
+            .select('id');
+        ({ data: endedRows, error: endSessionError } = await endFreeSession());
+        if (endSessionError && isMissingLifecycleInfra(endSessionError)) {
+          delete settlementFacts.end_reason;
+          ({ data: endedRows, error: endSessionError } = await endFreeSession());
+        }
+      } else {
+        // Universal authoritative ingress: every validated earning result is
+        // committed to the service-only queue before any completion stamp or
+        // progression mutation. Adoption and settlement are deliberately
+        // separate transactions, so process death can only delay progress.
+        const { data: pendingResult, error: pendingError } = await supabase.rpc(
+          'stage_pending_game_session_end',
+          {
+            p_user_id: user.id,
+            p_player_id: player.id,
+            p_session_id: sessionId,
+            p_envelope: pendingEnvelope,
+          }
+        );
+        if (pendingError) {
+          return await settlementUnavailable('pending end envelope', pendingError, {
+            playerId: player.id,
+            sessionId,
+          });
+        }
+        if (
+          !pendingResult ||
+          typeof pendingResult !== 'object' ||
+          Array.isArray(pendingResult) ||
+          (pendingResult as Record<string, unknown>).accepted !== true
+        ) {
+          return await settlementUnavailable(
+            'pending end envelope response',
+            new Error('pending end RPC returned invalid data'),
+            { playerId: player.id, sessionId }
+          );
+        }
+        const pendingState = (pendingResult as Record<string, unknown>).state;
+        if (pendingState === 'quarantined') {
+          return await settlementUnavailable(
+            'quarantined pending end',
+            new Error('pending run settlement requires operator recovery'),
+            { playerId: player.id, sessionId }
+          );
+        }
+        if (pendingState === 'superseded_legacy') {
+          return progressionJson(
+            {
+              error: 'Session already ended',
+              alreadyEnded: true,
+              endReason: SETTLED_END_REASON,
+            },
+            { status: 409 }
+          );
+        }
+
+        if (pendingState === 'staged') {
+          const { data: adoptionResult, error: adoptionError } = await supabase.rpc(
+            'adopt_pending_game_session_end',
+            { p_session_id: sessionId }
+          );
+          if (adoptionError) {
+            // Schema 060 and transient/order failures are safe after the store
+            // commit. The server sweep will adopt in canonical receipt order;
+            // no browser outbox or progress storage is required.
+            if (!/adopt_pending_game_session_end|GAME_REWARD_EARLIER_PENDING_END/i.test(
+              adoptionError.message ?? ''
+            )) {
+              console.error('Pending end adoption deferred:', {
+                playerId: player.id,
+                sessionId,
+                error: adoptionError,
+              });
+              Sentry.captureException(adoptionError, {
+                tags: { progression_stage: 'pending_end_adopt' },
+                extra: { playerId: player.id, sessionId },
+              });
+            }
+            return pendingSettlementJson(sessionId);
+          }
+          const adoption =
+            adoptionResult && typeof adoptionResult === 'object' &&
+            !Array.isArray(adoptionResult)
+              ? (adoptionResult as Record<string, unknown>)
+              : null;
+          if (adoption?.state === 'quarantined') {
+            return await settlementUnavailable(
+              'quarantined pending end adoption',
+              new Error('pending run settlement requires operator recovery'),
+              { playerId: player.id, sessionId }
+            );
+          }
+          if (adoption?.state === 'superseded_legacy') {
+            return progressionJson(
+              {
+                error: 'Session already ended',
+                alreadyEnded: true,
+                endReason: SETTLED_END_REASON,
+              },
+              { status: 409 }
+            );
+          }
+          if (adoption?.state !== 'adopted') {
+            console.error('Pending end adoption returned an unexpected state:', {
+              playerId: player.id,
+              sessionId,
+              adoptionResult,
+            });
+            return pendingSettlementJson(sessionId);
+          }
+        } else if (pendingState !== 'adopted') {
+          return await settlementUnavailable(
+            'pending end envelope state',
+            new Error('pending end RPC returned an invalid state'),
+            { playerId: player.id, sessionId }
+          );
+        }
+        endedRows = [{ id: sessionId }];
       }
 
       if (endSessionError) {
@@ -1673,8 +2095,61 @@ export async function POST(request: NextRequest) {
 
       if (!endedRows || endedRows.length === 0) {
         // Lost the race: another request ended this session first
-        return NextResponse.json(
-          { error: 'Session already ended', alreadyEnded: true },
+        const { data: racedSession, error: racedSessionError } = await supabase
+          .from('game_sessions')
+          .select(
+            'ended_at, end_reason, is_free_play, atomic_reward_observed_at'
+          )
+          .eq('id', sessionId)
+          .eq('player_id', player.id)
+          .maybeSingle();
+        if (racedSessionError || !racedSession) {
+          return progressionJson(
+            { error: 'Session race state is temporarily unavailable', retryable: true },
+            { status: 503 }
+          );
+        }
+        const racedReason = (racedSession as Record<string, unknown>).end_reason;
+        const careerApplicable =
+          typeof (racedSession as Record<string, unknown>).atomic_reward_observed_at === 'string';
+        if (
+          (racedSession as Record<string, unknown>).is_free_play === true ||
+          racedReason !== SETTLED_END_REASON ||
+          !careerApplicable
+        ) {
+          return progressionJson(
+            {
+              error: 'Session already ended',
+              alreadyEnded: true,
+              ...(typeof racedReason === 'string' ? { endReason: racedReason } : {}),
+              ...((racedSession as Record<string, unknown>).is_free_play === true
+                ? { freePlay: true }
+                : {}),
+            },
+            { status: 409 }
+          );
+        }
+        const impact = await resumeOrRecoverRunImpact(supabase, player.id, sessionId);
+        if (impact.status === 'pending') {
+          return pendingSettlementJson(sessionId);
+        }
+        if (impact.status !== 'found') {
+          return progressionJson(
+            {
+              error: 'Run settlement is finishing; retry for its impact receipt',
+              alreadyEnded: true,
+              impactPending: true,
+              retryable: true,
+            },
+            { status: 503 }
+          );
+        }
+        return progressionJson(
+          {
+            error: 'Session already ended',
+            alreadyEnded: true,
+            impact: impact.impact,
+          },
           { status: 409 }
         );
       }
@@ -1686,37 +2161,12 @@ export async function POST(request: NextRequest) {
       // death claim is accepted only from the known cause list. The
       // envelope is bounds-validated; a bad payload stores nothing.
       // NEVER an input to payouts/records/leaderboards.
-      const serverDeathCause: RunDeathCause | null = validation.extracted
-        ? 'extracted'
-        : isRunDeathCause(death_cause) && death_cause !== 'extracted'
-          ? death_cause
-          : null;
-      const runEventEnvelope = validateRunEvents(run_events, {
-        // WP-2.05: the same clamped number the row stores, so a run-event
-        // envelope cannot be bounds-checked against time that did not pass.
-        durationSeconds: validation.durationSeconds,
-        foodCount: validation.foodCount,
-        died: (died ?? true) === true && !validation.extracted,
-        extracted: validation.extracted,
-        // Genome runs: m-events may name ANY accepted gene pick
-        mutationIds: validation.genome
-          ? validation.genome.picks.map((p) => p.id)
-          : validation.mutations.map((m) => m.id),
-      });
-      if (
-        serverDeathCause !== null ||
-        runEventEnvelope !== null ||
-        validation.genome !== null
-      ) {
+      if (serverDeathCause !== null || runEventEnvelope !== null) {
         const { error: captureError } = await supabase
           .from('game_sessions')
           .update({
             ...(serverDeathCause !== null ? { death_cause: serverDeathCause } : {}),
             ...(runEventEnvelope !== null ? { run_events: runEventEnvelope } : {}),
-            // Genome record (migration 029) - best-effort like run_events:
-            // pre-029 the column is missing and this update just fails
-            // non-fatally (the critical end path above never names it).
-            ...(validation.genome !== null ? { genome: validation.genome } : {}),
           })
           .eq('id', sessionId)
           .eq('player_id', player.id);
@@ -1746,7 +2196,7 @@ export async function POST(request: NextRequest) {
       // pays out - no DNA credit, no total_dna_earned, no streak
       // (record_daily_play NOT called), no economy transactions and no
       // records refresh. The response carries what the run WOULD have earned
-      // so the player sees the stakes they practiced for.
+      // so the player sees the value they practiced for.
       if (isFreeSession) {
         // WP-2.05: reported, not fatal. Free Play pays nothing, so this echo
         // risks nothing - failing the request would refuse a practice run
@@ -1796,357 +2246,38 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const newDna = player.dna + finalDna;
-      // WP-2.05 — PRIORITY 1: this read is the Rule 6 violation the CI gate
-      // cannot see.
-      //
-      // It was `const { data: currentPlayer } = await ...` with no error
-      // check. On a transient failure `currentPlayer` is null, and the three
-      // expressions below then evaluate to `total_games_played: 1`,
-      // `total_dna_earned: finalDna` and `high_score: max(0, thisRunScore)` —
-      // a player with 300 runs, 90k lifetime DNA and a 12,000 record is
-      // written back to 1 run, one run's DNA, and this run's score. Three
-      // player-owned scalars, all written DOWNWARD, permanently.
-      //
-      // `verify:constitution`'s owned-row-downward gate cannot catch it
-      // because no payload field is literally decremented: every one of them
-      // is an addition or a `Math.max` over a value that silently became
-      // zero. The only defence is checking the error, so the error is
-      // checked, and the run is retried rather than settled from a blank.
-      const { data: currentPlayer, error: currentPlayerError } = await supabase
-        .from('players')
-        .select('total_games_played, high_score, total_dna_earned')
-        .eq('id', player.id)
-        .single();
-      if (currentPlayerError || !currentPlayer) {
-        return await settlementUnavailable(
-          'player scalars',
-          currentPlayerError ?? new Error('player row missing at settlement'),
-          { playerId: player.id, sessionId, alreadyStampedEnd: true }
-        );
-      }
-
-      // FINDING F-1 (WP-0.06): this write had no `validation.valid` gate, so a
-      // run that FAILED server validation still set a permanent personal
-      // record. WP-0.05 made the leaderboard immune by filtering at read time,
-      // but `players.high_score` is read by other surfaces and stayed poisoned
-      // for good.
-      //
-      // The fix stops an invalid run writing UP. It never writes DOWN: the
-      // rejected branch re-writes the value that is already there, so an
-      // existing record - however it was set - is preserved exactly (Rule 6:
-      // what a player has is permanent, and this route is not the place to
-      // decide a past record was undeserved).
-      //
-      // WP-2.05 changes what "invalid" means here, and this is the whole
-      // point of the package. `validation.valid` now means NO FATAL ERROR —
-      // the server could bound the run's physics — rather than "no finding at
-      // all". A run that merely diverged from its own claim, or had a claim
-      // clamped, or offered a pick the client legally showed, keeps its
-      // record. Only a run the server cannot bound is refused one.
-      //
-      // The reads below are no longer `?.` fallbacks: the 503 above
-      // guarantees `currentPlayer`, so none of these three can silently
-      // evaluate from zero.
-      const priorHighScore = currentPlayer.high_score || 0;
-      const newHighScore = validation.valid
-        ? Math.max(priorHighScore, validation.adjustedScore)
-        : priorHighScore;
-      const gamesPlayedCount = (currentPlayer.total_games_played || 0) + 1;
-      const newTotalDnaEarned = (currentPlayer.total_dna_earned || 0) + finalDna;
-
-      const { error: rewardUpdateError } = await supabase
-        .from('players')
-        .update({
-          dna: newDna,
-          total_games_played: gamesPlayedCount,
-          total_dna_earned: newTotalDnaEarned,
-          high_score: newHighScore,
-        })
-        .eq('id', player.id);
-
-      if (rewardUpdateError) {
-        // Primary state write failed - the player would silently lose the
-        // run's DNA. Re-open the session (best effort) so a client replay
-        // can retry, then fail the request.
-        //
-        // WP-0.06: `end_reason` is deliberately LEFT at 'completed' here. The
-        // pair (ended_at IS NULL, end_reason = 'completed') is the marker for
-        // "this run settled, the reward write failed, an outbox replay still
-        // owes the player DNA" - and it is what buys the row the long sweep
-        // window instead of the 3-hour one, so expiry cannot destroy a payout
-        // the player earned (Rule 6).
-        console.error('Failed to grant game rewards:', {
-          playerId: player.id,
-          sessionId,
-          dna: finalDna,
-          error: rewardUpdateError,
-        });
-        const { error: reopenError } = await supabase
-          .from('game_sessions')
-          .update({ ended_at: null })
-          .eq('id', sessionId)
-          .eq('player_id', player.id);
-        if (reopenError) {
-          console.error('Failed to re-open session after reward failure:', {
-            sessionId,
-            error: reopenError,
-          });
-        }
-        return NextResponse.json({ error: 'Failed to grant rewards' }, { status: 500 });
-      }
-
-      if (finalDna > 0) {
-        const { error: rewardTxError } = await supabase.from('economy_transactions').insert({
-          player_id: player.id,
-          resource_type: 'dna',
-          amount: finalDna,
-          balance_after: newDna,
-          source_type: 'game_reward',
-          source_id: sessionId,
-          metadata: {
-            score: validation.adjustedScore,
-            food_count: validation.foodCount,
-            extracted: validation.extracted,
-            original_dna_claimed: dna_earned || 0,
-            validated: validation.valid,
-            base_dna: validation.adjustedDna,
-            yield_dna: yieldDna,
-            energy_available_before: Number(
-              (session as Record<string, unknown>).energy_available_before ?? 0
-            ),
-            energy_committed: energyCommitted,
-            energy_commitment_multiplier_bps: commitmentMultiplierBps,
-            energy_recovered_at_start: Number(
-              (session as Record<string, unknown>).energy_recovered_at_start ?? 0
-            ),
-            clan_eligible:
-              typeof (session as Record<string, unknown>).clan_energy_battle_id === 'string',
-            ...(validation.mutations.length > 0
-              ? { mutations: validation.mutations }
-              : {}),
-            ...(validation.phoenixTriggeredAtFood !== null
-              ? { phoenix_triggered_at_food: validation.phoenixTriggeredAtFood }
-              : {}),
-            ...(sessionCondition.anomaly ? { anomaly: sessionCondition.anomaly } : {}),
-          },
-        });
-
-        if (rewardTxError) {
-          // Audit log only - rewards were already granted above
-          console.error('Failed to log game_reward DNA transaction:', {
-            playerId: player.id,
-            sessionId,
-            dna: finalDna,
-            error: rewardTxError,
-          });
-        }
-      }
-
-      // Genome Codex (migration 031): only validator-accepted earning runs
-      // reach this point. Discovery grants are atomic/idempotent in the RPC
-      // and deliberately non-fatal to the completed run payout.
-      const codex = validation.valid && validation.genome
-        ? await recordCodexDiscoveries(
-            supabase,
-            player.id,
-            sessionId,
-            validation.genome
-          )
-        : null;
-
-      // WP-2.05: reported, not fatal, and this one is load-bearing that it
-      // stays that way. The rewards have ALREADY been granted above, so
-      // answering 5xx here would make the outbox replay a settled run into
-      // the 409 wall and show the player an error for a payout that landed.
-      const { data: updatedPlayer, error: updatedPlayerError } = await supabase
-        .from('players')
-        .select('dna, total_games_played, high_score, total_dna_earned, breeds_completed')
-        .eq('id', player.id)
-        .maybeSingle();
-      if (updatedPlayerError) {
-        console.error('Post-settlement player echo read failed:', {
-          playerId: player.id,
-          sessionId,
-          error: updatedPlayerError,
-        });
-        Sentry.captureException(
-          new Error(`Post-settlement player echo failed: ${updatedPlayerError.message}`),
-          { extra: { playerId: player.id, sessionId } }
-        );
-      }
-
-      // Per-dynasty mastery XP (section 7.1): EXTRACTED earning runs only
-      // (free sessions returned above; deaths grant nothing). The XP is
-      // floor(raw x 1.25) - the banked payout BEFORE Mirror Wager /
-      // Compound Interest outcome shaping, so nothing about the account
-      // can inflate mastery (the account multiplier stack that used to
-      // sit here was deleted outright by WP-0.02). Non-fatal:
-      // pre-019 (missing table/RPC) or any grant failure just omits the
-      // mastery block from the response.
-      let mastery: {
-        dynasty: string;
-        xpGained: number;
-        xp: number;
-        level: number;
-        leveledUp: boolean;
-        unlocks: { level: number; kind: string; label: string }[];
-      } | null = null;
-      if (validation.extracted) {
-        // Mastery XP base: the DETERMINISTIC recompute only - genome
-        // bounded-trust claims never feed mastery (§9).
-        const xpGained = masteryXpForRun(validation.masteryRawDna, true);
-        if (xpGained > 0) {
-          const granted = await grantMasteryXp(
-            supabase,
-            player.id,
-            endDynasty,
-            xpGained
-          );
-          if (granted) {
-            const levelBefore = levelForXp(masteryXpBefore);
-            const levelAfter = levelForXp(granted.xpAfter);
-            const unlocks: { level: number; kind: string; label: string }[] = [];
-            for (let lvl = levelBefore + 1; lvl <= levelAfter; lvl++) {
-              unlocks.push({
-                level: lvl,
-                kind: MASTERY_UNLOCK_TRACK[lvl - 1].kind,
-                label: masteryUnlockLabel(endDynasty, lvl),
-              });
-            }
-            mastery = {
-              dynasty: endDynasty,
-              xpGained,
-              xp: granted.xpAfter,
-              level: levelAfter,
-              leveledUp: levelAfter > levelBefore,
-              unlocks,
-            };
-          }
-        }
-      }
-
-      // ---------------------------------------------------------------
-      // The ladder record (WP-3.12, migration 057)
-      // ---------------------------------------------------------------
-      // WHAT BEATS A RUNG: banking one. Extraction is the game's central verb,
-      // so "I climbed rung 5" means "I got out at rung 5" — a death at rung 5
-      // is an attempt, not a record. [H] and the one rule of the ladder that is
-      // not a dial.
-      //
-      // FREE PLAY IS EXCLUDED, deliberately. §7.4 practice validates against the
-      // full pool with everything unlocked, so a rung banked there would not be
-      // the same rung an earning run climbs. The player may still PLAY any
-      // unlocked rung in practice; it simply does not set the record.
-      //
-      // The rung comes from `run_context` — the run's own permanent stamp —
-      // never from the settlement request. A run with no stored context was
-      // necessarily Ground, and `record_ladder_rung` treats that as a no-op.
-      //
-      // NEVER BLOCKS THE PAYOUT. `recordLadderRung` reports its own failures and
-      // returns null; a lost difficulty record is a lost record, and refusing to
-      // pay a banked run over one would be the far larger failure.
-      let ladderRecord: { rung: number; best: number } | null = null;
-      const settledRung = runContext?.ladderRung ?? DEFAULT_LADDER_RUNG;
-      if (validation.extracted && !isFreeSession && settledRung > DEFAULT_LADDER_RUNG) {
-        const best = await recordLadderRung(
-          supabase,
-          player.id,
-          endDynasty,
-          settledRung
-        );
-        if (best !== null) ladderRecord = { rung: settledRung, best };
-      }
-
-      // Record daily play streak (non-fatal if it errors). The streak is a
-      // COUNT, never a payout factor: WP-0.02 deleted the tier multiplier,
-      // so nothing here re-enters settlement.
-      let streak: {
-        current: number;
-        longest: number;
-        graceConsumed: boolean;
-      } | null = null;
-      try {
-        const { data: streakRows, error: streakRpcError } = await supabase.rpc(
-          'record_daily_play',
-          { p_player_id: player.id }
-        );
-
-        if (streakRpcError) {
-          console.error('record_daily_play error:', streakRpcError);
-          Sentry.captureException(
-            new Error(`record_daily_play failed: ${streakRpcError.message}`),
-            { extra: { playerId: player.id, sessionId } }
-          );
-        } else {
-          const row = Array.isArray(streakRows) ? streakRows[0] : streakRows;
-          if (row) {
-            streak = {
-              current: row.current_streak,
-              longest: row.longest_streak,
-              graceConsumed: row.grace_consumed,
-            };
-          }
-        }
-      } catch (streakError) {
-        console.error('record_daily_play error:', streakError);
-        Sentry.captureException(streakError, {
-          extra: { playerId: player.id, sessionId },
-        });
-      }
-
-      // WP-0.04: the achievement checker used to run here, writing an
-      // 18-row parallel progression table on every settled run. The
-      // mechanism is retired (migration 042) and every quantity it counted
-      // is measured by the Legacy Records, which the refresh below
-      // recomputes from the same aggregates -- monotonically, so a record
-      // it banks can never be written back down (Rule 6, finding F-6).
-
-      // Records refresh (Identity v1 section 6.3): idempotent
-      // recompute-from-aggregates after all rewards land - like mastery,
-      // strictly non-fatal (pre-023 or any failure just skips it; the
-      // helper never throws).
-      await refreshPlayerRecords(supabase, player.id);
-
-      // The World Signal settles itself (§7.2: "rewards settle automatically -
-      // no claim cascades, ever"). Called after the run's own rewards land, so
-      // the session row it recomputes from is complete. Null on every run that
-      // is not the day's Signal attempt, which is nearly all of them, and a
-      // no-op before migration 049.
-      //
-      // Safe to reach twice: settlement is a RECOMPUTE clamped with GREATEST
-      // and a compare-and-set, so an outbox replay of this same session
-      // converges instead of paying the flat bonus again. A failure is
-      // reported by the helper and picked up by the next sweep - it can never
-      // strand a Signal the player completed (Rule 6).
-      const signalSettlement = await settleSignalAttemptForSession(
+      // The frozen session snapshot is now sufficient to complete every
+      // player-owned progression write without this request or browser tab.
+      // The core SQL transaction is session-idempotent (including additive
+      // Mastery and exact Codex output); Signal is then recomputed and its
+      // canonical DB result captured before the receipt becomes visible.
+      const progressionResult = await settleDurableRunProgression(
         supabase,
-        sessionId,
-        player.id
-      );
-      const signal =
-        signalSettlement && !signalSettlement.skipped
-          ? {
-              runId: signalSettlement.runId,
-              completed: signalSettlement.completed,
-              progress: signalSettlement.progress,
-              target: signalSettlement.target,
-              // What THIS settlement paid: the flat first-completion bonus on
-              // the first pass, and 0 on every pass after it.
-              bonusDna: signalSettlement.bonusDna,
-              signalsCompleted: signalSettlement.signalsCompleted,
-              newMilestones: signalSettlement.newMilestones,
-            }
-          : null;
-
-      // Automatic clan layer: any valid Energy-funded ordinary run stamped
-      // into an active battle at START is offered to the atomic best-five
-      // recorder. Personal DNA has already landed; a clan outage can never
-      // undo or delay it, and the settlement cron can reconcile the session.
-      const clanBattleResult = await recordClanEnergyContribution(
-        supabase,
+        player.id,
         sessionId
       );
+      if (!progressionResult.ok) {
+        console.error('Durable run progression remains pending:', {
+          playerId: player.id,
+          sessionId,
+          error: progressionResult.error,
+        });
+        Sentry.captureException(progressionResult.error, {
+          extra: { playerId: player.id, sessionId },
+        });
+        return pendingSettlementJson(sessionId);
+      }
+      const {
+        player: updatedPlayer,
+        codex,
+        mastery,
+        ladder: ladderRecord,
+        streak,
+        records: recordsAfter,
+        signal,
+        clan: clanBattleResult,
+        impact,
+      } = progressionResult.settlement;
 
       // Discord feed + Linked Roles (Identity v1 section 8.4) - both
       // strictly non-fatal, both no-ops pre-024 / without a link:
@@ -2188,7 +2319,7 @@ export async function POST(request: NextRequest) {
       // Results layer's default is simply that the Take is not offered.
       const takeSlot = await describeDailyTakeSlot(supabase, player.id);
 
-      return NextResponse.json({
+      return progressionJson({
         success: true,
         player: updatedPlayer,
         validation: {
@@ -2226,6 +2357,7 @@ export async function POST(request: NextRequest) {
         ...(takeSlot?.firstRunOfDay ? { dailyTake: takeSlot } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
+        impact,
       });
     }
 

@@ -62,6 +62,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SIGNAL_V1_ENABLED } from '@/lib/signal/config';
 import { signalDayIndex, signalDayKeyToDate } from '@/shared/game/signal';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
+import { NotificationBadge } from '@/components/ui/NotificationBadge';
+import {
+  destinationBadge,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 // ---------------------------------------------------------------------------
 // The shape `GET /api/signal/panel` publishes (see that route's contract)
@@ -143,6 +149,31 @@ export function SignalSurface({
   const [state, setState] = useState<LoadState>('loading');
   const [open, setOpen] = useState(false);
   const [reloads, setReloads] = useState(0);
+  const notifications = useNotificationStore((store) => store.notifications);
+  const signalBadge = destinationBadge(notifications, 'signal');
+
+  // The Signal's recognition clears when the player opens the loaded daily
+  // card, not when Home happens to mount its collapsed chip.
+  useRecognitionSeen('signal', open && state === 'ready' && view !== null, token, {
+    artifactRefs: view?.marks.reached.map((mark) => `signals:${mark}`) ?? [],
+  });
+
+  useEffect(() => {
+    if (state !== 'ready' || typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('signal') === 'open') {
+      setOpen(true);
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    const id = window.location.hash.slice(1);
+    if (!id.startsWith('signal-mark-')) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     if (!SIGNAL_V1_ENABLED || !token) return;
@@ -151,6 +182,7 @@ export function SignalSurface({
     const load = async () => {
       try {
         const response = await fetch('/api/signal/panel', {
+          cache: 'no-store',
           headers: { Authorization: `Bearer ${token}` },
         });
         // Rule 11 / the repo's known `.then(res => res.json())` defect: a 500
@@ -203,14 +235,14 @@ export function SignalSurface({
             : `${dayLabel} · ${day!.condition.name}`;
 
   return (
-    <div className="flex flex-col items-center gap-3" data-testid="signal-surface">
+    <div id="signal" className="flex flex-col items-center gap-3" data-testid="signal-surface">
       <button
         type="button"
         onClick={() => setOpen((wasOpen) => !wasOpen)}
         aria-expanded={open}
         aria-controls="signal-card"
         data-testid="signal-chip"
-        className="label-arcade flex items-center gap-2 rounded-full border border-bone-white/20 px-3 py-1 text-bone-white/80 transition-colors hover:text-venom-orange-light"
+        className="label-arcade relative flex items-center gap-2 rounded-full border border-bone-white/20 px-3 py-1 text-bone-white/80 transition-colors hover:text-venom-orange-light"
       >
         {/* A beacon, never a badge with a number counting down. The day is
             open; nothing about it is running out on the player (Rule 5). */}
@@ -221,6 +253,12 @@ export function SignalSurface({
           />
         )}
         <span>{chipText}</span>
+        <NotificationBadge
+          kind={signalBadge.kind}
+          count={signalBadge.count}
+          label="New World Signal activity"
+          className="absolute -right-1 -top-1"
+        />
       </button>
 
       {open && (
@@ -335,15 +373,32 @@ export function SignalSurface({
                 </section>
               )}
 
-              {/* Cumulative and non-consecutive (§7.2). A total, never a
-                  streak, and never a number that can fall. */}
-              <footer className="font-body text-xs text-beige/70">
-                {view!.marks.signalsCompleted} Signals completed in total
-                {view!.marks.next !== null
-                  ? ` · next mark at ${view!.marks.next}`
-                  : ''}
-              </footer>
             </>
+          )}
+
+          {/* Permanent account proof belongs to the Signal card even on a
+              quiet day. That keeps every exact recognition target visible
+              without pretending a daily objective is live. */}
+          {state === 'ready' && view && (
+            <footer className="space-y-2 font-body text-xs text-beige/70">
+              <p>
+                {view.marks.signalsCompleted} Signals completed in total
+                {view.marks.next !== null ? ` · next mark at ${view.marks.next}` : ''}
+              </p>
+              {view.marks.reached.length > 0 && (
+                <div className="flex flex-wrap gap-1.5" aria-label="Signal marks reached">
+                  {view.marks.reached.map((mark) => (
+                    <span
+                      key={mark}
+                      id={`signal-mark-${mark}`}
+                      className="rounded-full border border-cosmic/35 bg-cosmic/10 px-2 py-0.5 font-mono text-cosmic"
+                    >
+                      Mark {mark}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </footer>
           )}
         </div>
       )}

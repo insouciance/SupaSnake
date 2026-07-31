@@ -103,9 +103,10 @@ export default function ShopPage() {
       {isAnonymous && (
         <div className="panel-glow [--glow:#22d3ee] p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-up">
           <div>
-            <p className="text-venom-orange font-display uppercase">Save your progress!</p>
+            <p className="text-venom-orange font-display uppercase">Protect your account</p>
             <p className="text-beige text-sm font-body">
-              Purchases need an account so they can never be lost with this device.
+              Your progress is already server-secured. Add email recovery before a
+              purchase so account access and entitlements can be restored.
             </p>
           </div>
           <button

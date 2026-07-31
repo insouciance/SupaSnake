@@ -2,8 +2,8 @@
 
 /**
  * ChronicleView (Player Identity v1 section 7): the career surface,
- * section order per section 7.1 - full Player Card header (Legacy Score
- * rides on the card), PB timeline, records cabinet, collection log,
+ * section order per section 7.1 - full Player Card header, the private
+ * Career Pulse when this is the owner, PB timeline, records cabinet, collection log,
  * season chapters, clan history, trivia, then any private extras the own
  * page injects. The records cabinet is the ONE progression display: the
  * separate achievements panel that used to ride in `extras` was retired
@@ -27,13 +27,15 @@ function Section({
   title,
   children,
   testId,
+  id,
 }: {
   title: string;
   children: React.ReactNode;
   testId: string;
+  id?: string;
 }) {
   return (
-    <section className="space-y-3 animate-fade-up" data-testid={testId}>
+    <section id={id} className="space-y-3 animate-fade-up" data-testid={testId}>
       <h2 className="heading-display text-xl text-venom-orange text-glow-orange">
         {title}
       </h2>
@@ -47,6 +49,8 @@ export interface ChronicleViewProps {
   isSelf?: boolean;
   /** Private extras - own page only. */
   extras?: React.ReactNode;
+  /** Private server-backed career orientation - own page only. */
+  careerPulseSlot?: React.ReactNode;
   /** Analyst artifacts (Identity v1 I4) - own page only, all optional. */
   archetypeSlot?: React.ReactNode;
   digestSlot?: React.ReactNode;
@@ -57,14 +61,17 @@ export function ChronicleView({
   payload,
   isSelf = false,
   extras,
+  careerPulseSlot,
   archetypeSlot,
   digestSlot,
   recallSlot,
 }: ChronicleViewProps): React.ReactElement {
   return (
     <div className="space-y-8" data-testid="chronicle-view">
-      {/* Header: the full Player Card (Legacy Score + founder line) */}
+      {/* Header: identity and no synthetic account-level score. */}
       <PlayerCard identity={payload.identity} variant="full" isSelf={isSelf} />
+
+      {isSelf && careerPulseSlot}
 
       {/* Seasonal archetype (section 9.6): identity-level, header-adjacent */}
       {archetypeSlot}
@@ -94,7 +101,7 @@ export function ChronicleView({
             )}
           </Section>
 
-          <Section title="Records" testId="section-records">
+          <Section id="records" title="Records" testId="section-records">
             {payload.records ? (
               <RecordsCabinet data={payload.records} />
             ) : (

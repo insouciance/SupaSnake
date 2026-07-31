@@ -47,6 +47,7 @@ export function useWalletSync(): WalletState {
 
     try {
       const response = await fetch('/api/player', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 

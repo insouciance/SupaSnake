@@ -23,7 +23,13 @@ import React from 'react';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { dynastyThemes } from '@/hooks/useDynastyTheme';
 import { IconCrown, IconEdit, IconEgg, IconMedal, IconSnake } from '@/components/ui/icons';
-import type { BannerRender, IdentityBadge, PlayerIdentity } from '@/lib/identity/types';
+import {
+  badgeProvenance,
+  type BannerRender,
+  type IdentityBadge,
+  type IdentityProvenance,
+  type PlayerIdentity,
+} from '@/lib/identity/types';
 import type { Rarity } from '@/shared/types/snake-data-model';
 
 export type PlayerCardVariant = 'row' | 'card' | 'full';
@@ -134,12 +140,33 @@ function Avatar({
   );
 }
 
-function Badge({ badge, size = 13 }: { badge: IdentityBadge; size?: number }) {
+const PROVENANCE_LABEL: Record<IdentityProvenance, string> = {
+  earned: 'Earned',
+  lineage: 'Lineage',
+  discovery: 'Discovery',
+  clan: 'Clan',
+  supporter: 'Supporter · decorative',
+  unverified: 'Source unverified',
+};
+
+function Badge({
+  badge,
+  size = 13,
+  showProvenance = true,
+}: {
+  badge: IdentityBadge;
+  size?: number;
+  showProvenance?: boolean;
+}) {
   const isFounder = badge.id === 'badge_founder';
+  const provenance = badgeProvenance(badge);
+  const competitiveProof = provenance !== 'supporter' && provenance !== 'unverified';
   return (
     <span
       data-testid="player-card-badge"
-      title={badge.name}
+      data-provenance={provenance}
+      data-competitive-proof={competitiveProof ? 'true' : 'false'}
+      title={`${badge.name} — ${PROVENANCE_LABEL[provenance]}`}
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-arcade border text-xs font-body ${
         BADGE_RARITY_TEXT[badge.rarity] ?? 'text-beige/80'
       } ${
@@ -149,7 +176,14 @@ function Badge({ badge, size = 13 }: { badge: IdentityBadge; size?: number }) {
       }`}
     >
       {isFounder ? <IconEgg size={size} /> : <IconMedal size={size} />}
-      <span className="truncate max-w-[9rem]">{badge.name}</span>
+      <span className="min-w-0">
+        <span className="block truncate max-w-[9rem]">{badge.name}</span>
+        {showProvenance && (
+          <span className="block text-[9px] uppercase tracking-wide opacity-65">
+            {PROVENANCE_LABEL[provenance]}
+          </span>
+        )}
+      </span>
     </span>
   );
 }
@@ -189,7 +223,9 @@ function HandleText({
       {identity.isPremium && (
         <span
           data-testid="player-card-premium"
-          title="SupaSnake Premium supporter"
+          title="SupaSnake supporter — decorative, not competitive proof"
+          data-provenance="supporter"
+          data-competitive-proof="false"
           className="inline-flex text-amber-300"
         >
           <IconCrown size={13} />
@@ -243,7 +279,7 @@ export function PlayerCard({
         {identity.clanTag && <ClanTag tag={identity.clanTag} />}
         {topBadge && (
           <span className="hidden sm:inline-flex">
-            <Badge badge={topBadge} size={12} />
+            <Badge badge={topBadge} size={12} showProvenance={false} />
           </span>
         )}
       </div>
@@ -317,18 +353,6 @@ export function PlayerCard({
                 </span>
               ))}
             </div>
-          )}
-          {variant === 'full' && identity.legacyScore > 0 && (
-            <p
-              data-testid="player-card-legacy"
-              className="font-body text-xs text-beige/80 flex items-center gap-1.5 pt-1"
-            >
-              <IconMedal size={13} className="text-venom-orange" />
-              Legacy Score{' '}
-              <span className="text-venom-orange font-bold">
-                {identity.legacyScore.toLocaleString()}
-              </span>
-            </p>
           )}
           {variant === 'full' && identity.isFounder && (
             <p

@@ -6,15 +6,23 @@ import {
 } from '@/lib/stores/notificationStore';
 import { NotificationCenter } from './NotificationCenter';
 
-function publishContracts() {
+jest.mock('@/lib/auth/AuthProvider', () => ({
+  useAuth: () => ({ session: null }),
+}));
+
+jest.mock('@/lib/analytics/posthog', () => ({
+  trackEvent: jest.fn(),
+}));
+
+function publishAccountRecovery() {
   useNotificationStore.getState().publish({
-    id: 'contracts',
-    title: 'Daily Contracts ready',
-    description: 'Choose two contracts when you are ready.',
-    ...NOTIFICATION_TARGETS.contracts,
+    id: 'save-progress',
+    title: 'Protect account access',
+    description: 'Add a sign-in method to recover this guest account.',
+    ...NOTIFICATION_TARGETS.saveProgress,
     badgeKind: 'exclamation',
     attentionReason: 'action-required',
-    actionLabel: 'Choose Contracts',
+    actionLabel: 'Protect Account',
   });
 }
 
@@ -25,7 +33,7 @@ describe('NotificationCenter', () => {
   });
 
   it('opens a viewport-fixed, internally scrollable dialog without clearing attention', () => {
-    publishContracts();
+    publishAccountRecovery();
     render(<NotificationCenter />);
 
     const trigger = screen.getByRole('button', {
@@ -42,11 +50,11 @@ describe('NotificationCenter', () => {
       'overscroll-contain'
     );
     expect(screen.getByRole('button', { name: 'Close notifications' })).toBeInTheDocument();
-    expect(useNotificationStore.getState().notifications.contracts).toBeDefined();
+    expect(useNotificationStore.getState().notifications['save-progress']).toBeDefined();
   });
 
   it('closes explicitly or with Escape and restores trigger focus', () => {
-    publishContracts();
+    publishAccountRecovery();
     render(<NotificationCenter />);
 
     const trigger = screen.getByRole('button', { name: /Notifications, 1 action/ });
@@ -64,15 +72,15 @@ describe('NotificationCenter', () => {
 
   it('dispatches the semantic destination action and preserves unresolved attention', () => {
     const listener = jest.fn();
-    const unsubscribe = subscribeNotificationAction('open-contracts', listener);
-    publishContracts();
+    const unsubscribe = subscribeNotificationAction('open-save-progress', listener);
+    publishAccountRecovery();
     render(<NotificationCenter />);
 
     fireEvent.click(screen.getByRole('button', { name: /Notifications, 1 action/ }));
-    fireEvent.click(screen.getByText('Choose Contracts'));
+    fireEvent.click(screen.getByText('Protect Account'));
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(useNotificationStore.getState().notifications.contracts).toBeDefined();
+    expect(useNotificationStore.getState().notifications['save-progress']).toBeDefined();
     expect(screen.queryByRole('dialog', { name: 'Notifications' })).not.toBeInTheDocument();
     unsubscribe();
   });
@@ -86,7 +94,7 @@ describe('NotificationCenter', () => {
         description: 'A progression opportunity is available.',
         ...NOTIFICATION_TARGETS.lab,
         badgeKind: 'exclamation',
-        attentionReason: 'progression-opportunity',
+        attentionReason: 'action-required',
         actionLabel: 'Visit the Lab',
       });
     }
@@ -100,5 +108,22 @@ describe('NotificationCenter', () => {
       'flex-1',
       'overflow-y-auto'
     );
+  });
+
+  it('keeps recognition out of the global action inbox', () => {
+    useNotificationStore.getState().publish({
+      id: 'record-gold',
+      title: 'Record reached Gold',
+      description: 'See it in the Chronicle.',
+      destination: 'records',
+      href: '/profile#records',
+      badgeKind: 'exclamation',
+      attentionReason: 'progression-opportunity',
+    });
+    render(<NotificationCenter />);
+    expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
+    expect(screen.queryByText('Record reached Gold')).toBeNull();
   });
 });

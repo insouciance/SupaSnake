@@ -1,18 +1,31 @@
 'use client';
 
 /**
- * OverlayHint - One-time dismissible FTUE hint banner
+ * OverlayHint - Page-lifecycle dismissible FTUE hint banner
  *
- * Shows a hint message until dismissed; the dismissal is remembered in
- * localStorage per hint id, so each hint appears at most once.
+ * Shows a hint message until dismissed. Hint state can imply what a player has
+ * encountered, so it is deliberately memory-only rather than browser-persisted.
  * Styled as a small glowing chip floating over the void.
  */
 
 import { useEffect, useState } from 'react';
 import { IconBolt, IconX } from '@/components/ui/icons';
 
-export function hintStorageKey(id: string): string {
-  return `hint-dismissed-${id}`;
+const dismissedHintsThisPage = new Set<string>();
+
+export function isHintDismissed(id: string): boolean {
+  return dismissedHintsThisPage.has(id);
+}
+
+export function dismissHint(id: string): void {
+  dismissedHintsThisPage.add(id);
+}
+
+/** Atomically reserve a hint so sibling renderers cannot show it twice. */
+export function claimHint(id: string): boolean {
+  if (dismissedHintsThisPage.has(id)) return false;
+  dismissedHintsThisPage.add(id);
+  return true;
 }
 
 interface OverlayHintProps {
@@ -26,21 +39,11 @@ export function OverlayHint({ id, message }: OverlayHintProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    try {
-      if (!window.localStorage.getItem(hintStorageKey(id))) {
-        setVisible(true);
-      }
-    } catch {
-      // localStorage unavailable (private mode) - skip the hint
-    }
+    setVisible(!isHintDismissed(id));
   }, [id]);
 
   const handleDismiss = () => {
-    try {
-      window.localStorage.setItem(hintStorageKey(id), '1');
-    } catch {
-      // Ignore storage failures; hide for this session anyway
-    }
+    dismissHint(id);
     setVisible(false);
   };
 

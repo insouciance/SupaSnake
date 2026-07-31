@@ -115,6 +115,17 @@ describe('Game Session Logic', () => {
   });
 
   describe('Session End', () => {
+    it('stages immutable result truth before durable server progression', () => {
+      const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+      const durableStage = source.indexOf("'stage_pending_game_session_end'");
+      const progression = source.indexOf(
+        'const progressionResult = await settleDurableRunProgression'
+      );
+      expect(durableStage).toBeGreaterThan(-1);
+      expect(progression).toBeGreaterThan(durableStage);
+      expect(source).not.toMatch(/settle_game_session_reward['"]/);
+    });
+
     it('should record final stats', () => {
       const sessionResult = {
         score: 42,
@@ -398,13 +409,17 @@ describe('Game Session Logic', () => {
       const path = require('path');
       const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
 
-      const freeReturn = source.indexOf('if (isFreeSession) {');
+      const freeReturn = source.lastIndexOf('if (isFreeSession) {');
       expect(freeReturn).toBeGreaterThan(-1);
-      // Reward-side writes all appear only after the free-session return
-      expect(source.indexOf("'record_daily_play'")).toBeGreaterThan(freeReturn);
-      expect(source.indexOf('total_dna_earned: newTotalDnaEarned')).toBeGreaterThan(freeReturn);
-      expect(source.indexOf("source_type: 'game_reward'")).toBeGreaterThan(freeReturn);
-      expect(source.indexOf('refreshPlayerRecords(')).toBeGreaterThan(freeReturn);
+      // Staging is guarded as earning-only; progression happens after the free
+      // result has returned.
+      const earningGuard = source.lastIndexOf('if (!isFreeSession)', freeReturn);
+      expect(earningGuard).toBeGreaterThan(-1);
+      expect(source.indexOf("'stage_pending_game_session_end'", earningGuard)).toBeLessThan(
+        freeReturn
+      );
+      expect(source.indexOf('settleDurableRunProgression(')).toBeGreaterThan(freeReturn);
+      expect(source).not.toMatch(/\.from\('economy_transactions'\)/);
       // The free start writes no economy transaction at all. A charge is
       // not a currency (§8.6), so nothing is logged to the ledger for it -
       // the session row's charge_state IS the audit record.

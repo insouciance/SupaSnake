@@ -30,6 +30,9 @@
  */
 
 const mockCaptureException = jest.fn();
+var mockSettleSessionReward: jest.Mock;
+var mockSettleDurableRunProgression: jest.Mock;
+var mockResumeOrRecoverRunImpact: jest.Mock;
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -69,6 +72,12 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+jest.mock('@/lib/server/gameProgressionSettlement', () => ({
+  settleDurableRunProgression: (...args: unknown[]) =>
+    mockSettleDurableRunProgression(...args),
+  resumeOrRecoverRunImpact: (...args: unknown[]) =>
+    mockResumeOrRecoverRunImpact(...args),
+}));
 
 // Historical Serpent settlement helpers remain armed; new starts no longer
 // consult the flag. Signal still uses its explicit ritual flag.
@@ -123,6 +132,51 @@ jest.mock('@supabase/supabase-js', () => ({
     rpc: async (fn: string, params: Row) => {
       rpcCalls.push({ fn, params: params ?? {} });
       const p = (params ?? {}) as Row;
+
+      if (fn === 'get_career_settlement_capability') {
+        return {
+          data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+          error: null,
+        };
+      }
+      if (fn === 'count_staged_pending_game_session_ends') {
+        return { data: 0, error: null };
+      }
+      if (fn === 'stage_pending_game_session_end') {
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (target) {
+          target.end_reason = 'completed';
+          target.__pendingEnvelope = p.p_envelope;
+        }
+        return { data: { accepted: true, state: 'staged' }, error: null };
+      }
+      if (fn === 'adopt_pending_game_session_end') {
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        const envelope = target?.__pendingEnvelope as Row | undefined;
+        const snapshot = envelope?.snapshot as Row | undefined;
+        const facts = envelope?.sessionFacts as Row | undefined;
+        if (target && snapshot && facts) {
+          Object.assign(target, {
+            score: snapshot.score,
+            dna_earned: snapshot.dnaCredited,
+            yield_dna: snapshot.yieldDna,
+            duration_seconds: facts.durationSeconds,
+            died: snapshot.died,
+            victory: facts.victory,
+            extracted: snapshot.extracted,
+            ended_at: snapshot.settledAt,
+            validated: snapshot.validated,
+            validation_errors: facts.validationErrors,
+            foods_collected: facts.foodsCollected,
+            mutations: facts.mutations,
+            genome: snapshot.genome,
+            reward_protocol: 'atomic_v1',
+            atomic_reward_observed_at: new Date().toISOString(),
+            progression_settlement_payload: snapshot,
+          });
+        }
+        return { data: { accepted: true, state: 'adopted' }, error: null };
+      }
 
       if (fn === 'ensure_serpent_week') {
         // Migration 046: the row wins. A week created under `gold_rush` keeps
@@ -226,6 +280,10 @@ jest.mock('@supabase/supabase-js', () => ({
           ],
           error: null,
         };
+      }
+
+      if (fn === 'persist_run_impact_envelope') {
+        return { data: p.p_envelope ?? null, error: null };
       }
 
       return { data: null, error: null };
@@ -432,6 +490,90 @@ beforeEach(() => {
   seedPlayer();
   seedSnake();
   seedSession();
+  mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
+    const input = rawInput as {
+      finalDna: number;
+      score: number;
+      validated: boolean;
+      sessionId: string;
+      metadata: Record<string, unknown>;
+    };
+    const row = db.players[0];
+    const before = Number(row.high_score ?? 0);
+    const after = input.validated ? Math.max(before, input.score) : before;
+    row.dna = Number(row.dna ?? 0) + input.finalDna;
+    row.total_games_played = Number(row.total_games_played ?? 0) + 1;
+    row.total_dna_earned = Number(row.total_dna_earned ?? 0) + input.finalDna;
+    row.high_score = after;
+    if (input.finalDna > 0) {
+      db.economy_transactions.push({
+        source_type: 'game_reward',
+        source_id: input.sessionId,
+        amount: input.finalDna,
+        metadata: { ...input.metadata, score: input.score, validated: input.validated },
+      });
+    }
+    return {
+      ok: true,
+      settlement: {
+        applied: true,
+        player: {
+          dna: row.dna,
+          totalGamesPlayed: row.total_games_played,
+          highScore: row.high_score,
+          totalDnaEarned: row.total_dna_earned,
+          breedsCompleted: row.breeds_completed,
+        },
+        personalBest: {
+          eligible: input.validated,
+          before,
+          after,
+          improved: input.validated && after > before,
+        },
+      },
+    };
+  });
+  mockSettleDurableRunProgression = jest.fn(async () => {
+    const serpentCondition = db.serpent_weeks.find(
+      (week) => week.id === session().serpent_week_id
+    )?.modifiers;
+    const resolvedCondition =
+      session().anomaly_id ??
+      (Array.isArray(serpentCondition) ? serpentCondition[0] : null) ??
+      (session().signal_objective_run_id ? WEEK_CONDITION : null);
+    const settled = await mockSettleSessionReward(null, {
+      finalDna: Number(session().dna_earned ?? 0),
+      score: Number(session().score ?? 0),
+      validated: session().validated === true,
+      sessionId: String(session().id),
+      metadata: {
+        ...(resolvedCondition ? { anomaly: resolvedCondition } : {}),
+      },
+    });
+    const rewardPlayer = settled.settlement.player;
+    return {
+      ok: true,
+      settlement: {
+        player: {
+          dna: rewardPlayer.dna,
+          total_games_played: rewardPlayer.totalGamesPlayed,
+          high_score: rewardPlayer.highScore,
+          total_dna_earned: rewardPlayer.totalDnaEarned,
+          breeds_completed: rewardPlayer.breedsCompleted,
+        },
+        personalBest: settled.settlement.personalBest,
+        codex: null,
+        mastery: null,
+        ladder: null,
+        streak: null,
+        records: null,
+        signal: null,
+        clan: null,
+        impact: { version: 1, sessionId: String(session().id) },
+      },
+    };
+  });
+  mockResumeOrRecoverRunImpact = jest.fn().mockResolvedValue({ status: 'absent' });
 });
 
 // ---------------------------------------------------------------------------

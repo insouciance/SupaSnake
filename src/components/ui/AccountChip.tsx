@@ -5,7 +5,7 @@
  *
  * Answers "am I logged in?" at a glance from every screen:
  * - Signed out entirely -> icon opens viewport-level sign-in choices
- * - Guest (anonymous session) -> subtle GUEST chip + "Save progress"
+ * - Guest (anonymous session) -> subtle GUEST chip + "Add recovery"
  *   affordance that opens the existing AccountUpgradeModal
  * - Registered -> email-derived initial in a small avatar square; tap
  *   opens a popover with the full email, Settings link and Sign out
@@ -21,6 +21,7 @@ import { NotificationBadge } from '@/components/ui/NotificationBadge';
 import {
   destinationBadge,
   subscribeNotificationAction,
+  transitionServerNotification,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 
@@ -29,7 +30,7 @@ interface AccountChipProps {
 }
 
 export function AccountChip({ className = '' }: AccountChipProps) {
-  const { user, isAnonymous, isLoading, signOut } = useAuth();
+  const { user, session, isAnonymous, isLoading, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -40,9 +41,26 @@ export function AccountChip({ className = '' }: AccountChipProps) {
 
   useEffect(() => {
     if (notificationsHydrated && !isLoading && !isAnonymous) {
-      clearNotification('save-progress');
+      const item = useNotificationStore.getState().notifications['save-progress'];
+      if (item?.serverManaged && session?.access_token) {
+        void transitionServerNotification(
+          item.id,
+          'resolved',
+          session.access_token
+        ).catch((error) => {
+          console.error('Failed to resolve save-progress attention:', error);
+        });
+      } else {
+        clearNotification('save-progress');
+      }
     }
-  }, [isAnonymous, isLoading, notificationsHydrated, clearNotification]);
+  }, [
+    isAnonymous,
+    isLoading,
+    notificationsHydrated,
+    clearNotification,
+    session?.access_token,
+  ]);
 
   useEffect(() => {
     if (!isAnonymous) return;
@@ -150,8 +168,8 @@ export function AccountChip({ className = '' }: AccountChipProps) {
               id="account-auth-dialog-description"
               className="mt-3 text-[11px] leading-snug text-beige/60 font-body"
             >
-              Or just hit Launch - you can play instantly as a guest and save
-              your progress later.
+              Or just hit Launch — guest play is already secured. Add a
+              recovery email later if you want to sign in on another device.
             </p>
           </ModalDialog>
         )}
@@ -159,7 +177,7 @@ export function AccountChip({ className = '' }: AccountChipProps) {
     );
   }
 
-  // Guest identity is always visible. Save-progress emphasis is notification-
+  // Guest identity is always visible. Account-recovery emphasis is notification-
   // driven only after gameplay has established value; the chip remains an
   // explicit, voluntary way to open account creation at any time.
   if (isAnonymous) {
@@ -168,7 +186,7 @@ export function AccountChip({ className = '' }: AccountChipProps) {
         <button
           onClick={() => setShowUpgrade(true)}
           data-testid="account-chip"
-          aria-label={accountBadge.kind === 'hidden' ? 'Playing as guest' : 'Playing as guest - save progress available'}
+          aria-label={accountBadge.kind === 'hidden' ? 'Playing as guest' : 'Playing as guest - account recovery available'}
           className="relative flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-arcade border border-scale-blue-light/60 bg-scale-blue/50 hover:border-venom-orange/60 transition-all"
         >
           <span className="flex items-center justify-center w-6 h-6 rounded-arcade border border-scale-blue-light/70 bg-void/70 text-beige">
@@ -180,14 +198,14 @@ export function AccountChip({ className = '' }: AccountChipProps) {
             </span>
             {accountBadge.kind !== 'hidden' && (
               <span className="hidden sm:block font-body text-[10px] font-semibold text-venom-orange">
-                Save progress
+                Add recovery
               </span>
             )}
           </span>
           <NotificationBadge
             kind={accountBadge.kind}
             count={accountBadge.count}
-            label="Save progress available"
+            label="Account recovery available"
             className="absolute -right-1 -top-1"
           />
         </button>

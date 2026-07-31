@@ -94,10 +94,10 @@ export function SaveProgressBanner({
           onClick={() => setShowModal(true)}
           className="fixed bottom-24 sm:bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2.5 min-h-[44px] bg-void-deep/90 border-2 border-venom-orange/60 rounded-arcade text-xs font-body font-semibold text-venom-orange hover:border-venom-orange transition-all shadow-glow-sm shadow-venom-orange/40"
           data-testid="save-progress-chip"
-          aria-label="Save your progress - create an account"
+          aria-label="Protect your account - add recovery"
         >
           <IconShield size={14} />
-          <span>Save progress</span>
+          <span>Protect account</span>
         </button>
       ) : (
         <div
@@ -107,10 +107,10 @@ export function SaveProgressBanner({
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-beige text-sm font-body">
               <span className="label-arcade text-venom-orange mr-2">
-                Save your progress
+                Protect your account
               </span>
-              You are playing as a guest - create an account to keep your snakes if this
-              device is lost.
+              Your progress is secured on the server. Add email recovery so you can
+              sign back in if this device or session is lost.
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <button
@@ -122,7 +122,7 @@ export function SaveProgressBanner({
               <button
                 onClick={handleDismiss}
                 className="px-3 py-2.5 min-h-[44px] text-beige/60 hover:text-beige text-xs font-body transition-colors"
-                aria-label="Dismiss save progress banner"
+                aria-label="Dismiss account recovery banner"
               >
                 Later
               </button>

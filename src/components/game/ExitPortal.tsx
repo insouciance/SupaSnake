@@ -21,9 +21,8 @@
  * beam flicker, color lerp to white (precomputed Colors - the ArenaBorder
  * pattern, no per-frame allocation).
  *
- * First-run FTUE: a floating "EXTRACT" sprite over the beam, once per
- * device via hintStorageKey('portal-extract') (OverlayHint's storage
- * helper), fading out over 6 seconds.
+ * First-run FTUE: a floating "EXTRACT" sprite over the beam, once per page
+ * lifecycle via OverlayHint's memory-only claim, fading out over 6 seconds.
  *
  * Cost: 5 draws desktop, 3 mobile (isMobile drops decal + arcs). All
  * geometries, the decal/sprite textures, and materials are module-scope
@@ -34,7 +33,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { hintStorageKey } from '@/components/ftue/OverlayHint';
+import { claimHint } from '@/components/ftue/OverlayHint';
 
 interface ExitPortalProps {
   /** Portal position (cell-centered x/z, y ignored) */
@@ -262,20 +261,12 @@ export function ExitPortal({
   const spawnTimeRef = useRef<number | null>(null);
   const hintShownAtRef = useRef<number | null>(null);
 
-  // First-time EXTRACT hint: claim the once-per-device slot at mount (the
+  // First-time EXTRACT hint: claim the page-lifecycle slot at mount (the
   // claim is immediate so a Twin Exits pair never shows it twice)
   const [showHint, setShowHint] = useState(false);
   useEffect(() => {
     if (!showExtractHint) return;
-    try {
-      const key = hintStorageKey(EXTRACT_HINT_ID);
-      if (!window.localStorage.getItem(key)) {
-        window.localStorage.setItem(key, '1');
-        setShowHint(true);
-      }
-    } catch {
-      // Storage unavailable (private mode) - skip the hint
-    }
+    if (claimHint(EXTRACT_HINT_ID)) setShowHint(true);
   }, [showExtractHint]);
 
   const decalMaterial = !isMobile ? getDecalMaterial() : null;

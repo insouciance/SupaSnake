@@ -30,6 +30,7 @@ describe('codexStore', () => {
     );
     await useCodexStore.getState().fetchCodex('token');
     expect(mockFetch).toHaveBeenCalledWith('/api/codex', {
+      cache: 'no-store',
       headers: { Authorization: 'Bearer token' },
     });
     expect(useCodexStore.getState()).toMatchObject({

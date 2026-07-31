@@ -44,6 +44,46 @@ export function isMissingRecordsInfra(
 export interface RecordsRefreshResult {
   legacyScore: number;
   records: Record<string, { value: number; tier: number }>;
+  previousRecords: Record<string, { value: number; tier: number }> | null;
+}
+
+/**
+ * Read the exact pre-refresh record state so settlement can report tier/value
+ * transitions rather than silently replacing them. Missing infrastructure and
+ * read failures remain non-fatal, matching `refreshPlayerRecords`.
+ */
+export async function readPlayerRecords(
+  supabase: SupabaseClient,
+  playerId: string
+): Promise<Record<string, { value: number; tier: number }> | null> {
+  try {
+    const { data, error } = await supabase
+      .from('player_records')
+      .select('record_id, value, tier')
+      .eq('player_id', playerId);
+    if (error) {
+      if (!isMissingRecordsInfra(error)) {
+        console.error('player_records read error:', { playerId, error });
+      }
+      return null;
+    }
+    const records: Record<string, { value: number; tier: number }> = {};
+    for (const row of data ?? []) {
+      if (typeof row.record_id !== 'string') continue;
+      const value = Number(row.value ?? 0);
+      const tier = Number(row.tier ?? 0);
+      records[row.record_id] = {
+        value: Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0,
+        tier: Number.isFinite(tier)
+          ? Math.max(0, Math.min(5, Math.floor(tier)))
+          : 0,
+      };
+    }
+    return records;
+  } catch (error) {
+    console.error('player_records read error:', { playerId, error });
+    return null;
+  }
 }
 
 /**
@@ -57,6 +97,7 @@ export async function refreshPlayerRecords(
   playerId: string
 ): Promise<RecordsRefreshResult | null> {
   try {
+    const previousRecords = await readPlayerRecords(supabase, playerId);
     const { data, error } = await supabase.rpc('refresh_player_records', {
       p_player_id: playerId,
     });
@@ -81,6 +122,7 @@ export async function refreshPlayerRecords(
     return {
       legacyScore: result.legacy_score ?? 0,
       records: result.records ?? {},
+      previousRecords,
     };
   } catch (err) {
     console.error('refresh_player_records error:', { playerId, err });

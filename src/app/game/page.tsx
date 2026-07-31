@@ -122,10 +122,12 @@ import {
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import { useToast } from '@/components/ui/Toast';
-import { enqueueReward } from '@/lib/outbox/rewardOutbox';
+import { enqueueReward, replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
+import { isDurablyPendingSettlement } from '@/lib/game/settlementResponse';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import {
   NOTIFICATION_TARGETS,
+  requestAttentionRefresh,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 import {
@@ -135,6 +137,7 @@ import {
 import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
+import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import {
   DEFAULT_LADDER_RUNG,
   LADDER_RUNGS,
@@ -180,6 +183,12 @@ import {
 } from '@/lib/share/genomeCardImage';
 import { getAimSystem, isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import {
+  advancePendingRunImpact,
+  parseImpactFromSettlement,
+  recoverRunImpact,
+  type RunImpactEnvelope,
+} from '@/lib/game/runImpactClient';
+import {
   IconBolt,
   IconDna,
   IconFlame,
@@ -191,12 +200,6 @@ import {
   IconUser,
 } from '@/components/ui/icons';
 
-/**
- * First-extraction claim prompt bookkeeping (Identity v1 section 3.3):
- * device-scoped UI state ONLY (never game progress) - shown at most once
- * per device until claimed or dismissed twice.
- */
-const HANDLE_PROMPT_KEY = 'handle-claim-prompt-dismissals';
 const DIRECTION_BY_KEY: Record<string, Direction> = {
   ArrowUp: 'UP',
   ArrowDown: 'DOWN',
@@ -331,18 +334,6 @@ function parseAscendanceBreakdown(
 
 function directionCanRelease(result: SetDirectionResult): boolean {
   return result === 'accepted' || result === 'duplicate';
-}
-
-function recordHandlePromptDismissal(claimed: boolean): void {
-  try {
-    const current = Number(window.localStorage.getItem(HANDLE_PROMPT_KEY) ?? '0');
-    window.localStorage.setItem(
-      HANDLE_PROMPT_KEY,
-      claimed ? '99' : String(current + 1)
-    );
-  } catch {
-    // Storage unavailable - the prompt simply may repeat
-  }
 }
 
 export default function GamePage() {
@@ -495,12 +486,8 @@ export default function GamePage() {
   // WP-1.06 / Constitution §5: Results state. All of it is inert with
   // RUN_FLOW_V1 off - the shipped game-over screen reads none of it.
   // ---------------------------------------------------------------------
-  // Layer 1: personal-best status. Computed against the high score the
-  // account held BEFORE this run, which is why the prior value is kept in a
-  // ref rather than re-read from the settlement (the settlement has already
-  // written the new one).
-  const priorHighScoreRef = useRef(0);
-  const [personalBest, setPersonalBest] = useState(false);
+  // Layer 1 personal-best truth comes only from the immutable server receipt.
+  // The client never compares account snapshots to manufacture recognition.
   // Layer 1: the Daily Take slot. `null` until WP-1.04's settlement says
   // this was the day's first run (see lib/game/dailyTake.ts).
   const [dailyTake, setDailyTake] = useState<DailyTakeSlot | null>(null);
@@ -512,6 +499,8 @@ export default function GamePage() {
   const [settledCredited, setSettledCredited] = useState<number | null>(null);
   const [settledYieldBreakdown, setSettledYieldBreakdown] =
     useState<AscendanceYieldBreakdown | null>(null);
+  const [runImpact, setRunImpact] = useState<RunImpactEnvelope | null>(null);
+  const [settlementSecuredPending, setSettlementSecuredPending] = useState(false);
   // Results → SETUP reopens the setup page over a finished run (§5). REPLAY
   // skips it entirely.
   const [setupReopened, setSetupReopened] = useState(false);
@@ -531,6 +520,41 @@ export default function GamePage() {
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
+
+  // Retry an undelivered settlement when this tab regains connectivity. The
+  // queue is memory-only; a settled duplicate recovers its canonical receipt.
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) return;
+    const replay = () => {
+      void replayRewardOutbox(token)
+        .then((result) => {
+          const current = result.impacts.find(
+            (impact) => impact.sessionId === currentSessionIdRef.current
+          );
+          if (current) {
+            setRunImpact(current);
+            setSettledYield(current.receipt.yieldDna);
+            setSettledCredited(current.receipt.dnaCredited);
+          }
+          if (
+            currentSessionIdRef.current &&
+            result.securedPendingSessionIds.includes(currentSessionIdRef.current)
+          ) {
+            setSettlementSecuredPending(true);
+            setRunImpact(null);
+            setSettledYield(null);
+            setSettledCredited(null);
+            setSettledYieldBreakdown(null);
+            setClanBattleResult(null);
+          }
+          if (result.impacts.length > 0) requestAttentionRefresh();
+        })
+        .catch((error) => console.error('Settlement retry failed:', error));
+    };
+    window.addEventListener('online', replay);
+    return () => window.removeEventListener('online', replay);
+  }, [session?.access_token]);
 
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
@@ -619,6 +643,59 @@ export default function GamePage() {
     setReady,
     syncChargeFromServer,
   } = useGameStore();
+
+  // A durable 202 transfers all recovery responsibility to the server. Poll
+  // only while this Results screen remains open so the recognition can appear
+  // as soon as its canonical receipt exists; closing the tab loses nothing.
+  useEffect(() => {
+    const token = session?.access_token;
+    const sessionId = currentSessionId;
+    if (!settlementSecuredPending || !token || !sessionId) return;
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const poll = async () => {
+      try {
+        const recovered = await advancePendingRunImpact(sessionId, token);
+        if (cancelled) return;
+        if (!recovered) throw new Error('Run impact is still pending');
+        setRunImpact(recovered);
+        setSettledYield(recovered.receipt.yieldDna);
+        setSettledCredited(recovered.receipt.dnaCredited);
+        setActiveEnergyCommitted(recovered.receipt.energyCommitted);
+        setActiveEnergyMultiplierBps(recovered.receipt.commitmentMultiplierBps);
+        setSettlementSecuredPending(false);
+        requestAttentionRefresh();
+        void fetch('/api/player', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`/api/player responded ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            if (typeof data.player?.dna === 'number') {
+              useCollectionStore.getState().setDnaBalance(data.player.dna);
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to refresh player after settlement:', error);
+          });
+      } catch {
+        if (cancelled) return;
+        attempt += 1;
+        timeout = setTimeout(poll, Math.min(30_000, 2_000 * (2 ** attempt)));
+      }
+    };
+    timeout = setTimeout(poll, 2_000);
+    return () => {
+      cancelled = true;
+      if (timeout !== null) clearTimeout(timeout);
+    };
+  }, [currentSessionId, session?.access_token, settlementSecuredPending]);
 
   /**
    * Bank/crash preview for the HUD chip and game-over screen. Genome
@@ -792,11 +869,6 @@ export default function GamePage() {
           setHasCompletedFirstRun(
             data.hasCompletedFirstRun === true ||
               Number(data.player.total_games_played ?? 0) > 0
-          );
-          // The record to beat, captured BEFORE the next run settles it.
-          priorHighScoreRef.current = Math.max(
-            priorHighScoreRef.current,
-            Number(data.player.high_score ?? 0) || 0
           );
         }
         setNeedsStarterSelection(Boolean(data.needsStarterSelection));
@@ -1420,9 +1492,12 @@ export default function GamePage() {
         // it ended. Display/Analyst input only - the server stores it
         // separately from the payout path and validates every bound.
         const runEventRecord = gameRef.current?.getRunEvents() ?? null;
-        // If the reward POST can't be delivered, queue it for replay on the
-        // next app load so a tab close at death never loses the run's DNA.
-        // Phase 2 payload fields shared by the live POST and the outbox
+        // If the settlement POST cannot be delivered, keep a tab-memory retry
+        // while this runtime survives. No progress payload is written to
+        // browser storage. Durable recovery begins once the server accepts
+        // and freezes this result; an undelivered client claim is not yet an
+        // earned settlement and cannot be reconstructed authoritatively.
+        // Phase 2 payload fields shared by the live POST and retry queue.
         const queueForReplay = () => {
           // Free runs pay nothing - there is no reward to protect, so a
           // failed free end is never queued for replay
@@ -1477,13 +1552,49 @@ export default function GamePage() {
           });
 
           if (!response.ok) {
-            // 409 = session already ended (duplicate) - nothing to retry
-            if (response.status !== 409) {
+            if (response.status === 409) {
+              // A delivered settlement whose response was lost is not allowed
+              // to lose its recognition. New servers return `impact` on the
+              // duplicate itself; recovery covers older/empty 409 bodies.
+              const duplicateBody = await response.json().catch(() => null);
+              const recovered =
+                parseImpactFromSettlement(duplicateBody) ??
+                await recoverRunImpact(
+                  sessionId,
+                  currentSession.access_token
+                ).catch((error) => {
+                  console.error('Failed to recover settled run impact:', error);
+                  return null;
+                });
+              if (recovered) {
+                setRunImpact(recovered);
+                setSettledYield(recovered.receipt.yieldDna);
+                setSettledCredited(recovered.receipt.dnaCredited);
+                setActiveEnergyCommitted(recovered.receipt.energyCommitted);
+                setActiveEnergyMultiplierBps(
+                  recovered.receipt.commitmentMultiplierBps
+                );
+                requestAttentionRefresh();
+              }
+            } else {
               console.error(`Game end rejected (status ${response.status}), queueing for replay`);
               queueForReplay();
             }
           } else {
             const result = await response.json();
+            if (isDurablyPendingSettlement(result)) {
+              // The immutable server envelope is now the recovery authority.
+              // Do not display predicted DNA or retain a client retry copy.
+              setSettlementSecuredPending(true);
+              setRunImpact(null);
+              setSettledYield(null);
+              setSettledCredited(null);
+              setSettledYieldBreakdown(null);
+              setClanBattleResult(null);
+            } else {
+            const impactEnvelope = parseImpactFromSettlement(result);
+            setRunImpact(impactEnvelope);
+            if (impactEnvelope) requestAttentionRefresh();
 
             // Sync DNA balance to collection store (server authority)
             if (result.player?.dna !== undefined) {
@@ -1516,22 +1627,6 @@ export default function GamePage() {
                 ? (result.clanBattle as RunResultsClanBattle)
                 : null
             );
-            const settledScore =
-              typeof validation.score === 'number' ? validation.score : data.score;
-            // A record only counts if the server accepted the run and it was
-            // not rewardless practice - the same gate `players.high_score`
-            // uses, so the badge can never disagree with the record.
-            const beatsRecord =
-              !freeRunRef.current &&
-              validation.valid === true &&
-              settledScore > priorHighScoreRef.current;
-            setPersonalBest(beatsRecord);
-            if (!freeRunRef.current && validation.valid === true) {
-              priorHighScoreRef.current = Math.max(
-                priorHighScoreRef.current,
-                settledScore
-              );
-            }
             // The Take slot: present only when the server says this was the
             // day's first run. WP-1.04 owns that answer; until it ships the
             // field is absent and the slot never renders.
@@ -1617,6 +1712,7 @@ export default function GamePage() {
                 actionLabel: 'View player card',
               });
             }
+            }
           }
         } catch (err) {
           console.error('Failed to send game results, queueing for replay:', err);
@@ -1648,12 +1744,12 @@ export default function GamePage() {
           if (currentSession?.user?.is_anonymous === true) {
             notifications.publish({
               id: 'save-progress',
-              title: 'Keep your progress',
-              description: 'Add an email whenever you want to play on another device.',
+              title: 'Protect your account',
+              description: 'Your progress is secured. Add an email to recover this account on another device.',
               ...NOTIFICATION_TARGETS.saveProgress,
               badgeKind: 'exclamation',
               attentionReason: 'action-required',
-              actionLabel: 'Save progress',
+              actionLabel: 'Add recovery',
             });
           }
         }
@@ -1867,13 +1963,14 @@ export default function GamePage() {
     // WP-1.06: Results state belongs to the run that just ended. A new run
     // clears all of it before the board appears (Rule 1 - nothing from the
     // last run renders over this one).
-    setPersonalBest(false);
     setDailyTake(null);
     setTakeState('idle');
     setSettledYield(null);
     setSettledCredited(null);
     setSettledYieldBreakdown(null);
     setClanBattleResult(null);
+    setRunImpact(null);
+    setSettlementSecuredPending(false);
     setSetupReopened(false);
 
     // Trait config comes from the server-owned equipped snake row.
@@ -2348,6 +2445,9 @@ export default function GamePage() {
         isFirstCompletedRun: showFirstResultDiscovery,
         codexDiscoveries: codexDiscoveries.length,
         practice: lastRunFree,
+        impactAction: CAREER_SPINE_V1_ENABLED
+          ? runImpact?.recommendedAction ?? null
+          : null,
       }),
     [
       codexDiscoveries.length,
@@ -2355,6 +2455,7 @@ export default function GamePage() {
       isAnonymous,
       lastRunFree,
       ownIdentity?.isGenerated,
+      runImpact?.recommendedAction,
       showFirstResultDiscovery,
     ]
   );
@@ -2482,7 +2583,7 @@ export default function GamePage() {
       <div className="consent-safe-viewport w-screen h-dvh app-bg flex items-center justify-center p-4">
         <div className="panel-elevated p-8 text-center space-y-6 w-full max-w-sm animate-pop-in">
           <h1 className="heading-display text-3xl text-venom-orange text-glow-orange">SupaSnake</h1>
-          <p className="text-beige font-body">Sign in to play and save your progress</p>
+          <p className="text-beige font-body">Sign in to play and access your account</p>
           <Link
             href="/login"
             className="btn-go inline-block px-8 py-3 text-lg min-h-[44px]"
@@ -3270,7 +3371,6 @@ export default function GamePage() {
                 <RunResults
                   outcome={endReason === 'extracted' ? 'extracted' : 'crashed'}
                   practice={lastRunFree}
-                  personalBest={personalBest}
                   score={score}
                   dnaCredited={settledCredited}
                   yieldDna={settledYield ?? hypotheticalDna}
@@ -3278,56 +3378,22 @@ export default function GamePage() {
                   energyCommitted={activeEnergyCommitted}
                   commitmentMultiplierBps={activeEnergyMultiplierBps}
                   clanBattle={clanBattleResult}
-                  serpent={null}
                   take={dailyTake}
                   takeState={takeState}
                   onCollectTake={() => {
                     void handleCollectTake();
                   }}
-                  digest={{
-                    mastery: masteryResult,
-                    codex: codexDiscoveries.map((discovery) => ({
-                      key: `${discovery.type}:${discovery.entryId}`,
-                      label: `${codexEntryName(discovery.type, discovery.entryId)}${
-                        discovery.worldFirst ? ' · WORLD FIRST' : ''
-                      }${discovery.rewardDna > 0 ? ` · +${discovery.rewardDna} DNA` : ''}`,
-                    })),
-                    streakDays: streakInfo?.current ?? null,
-                    genes: heldMutations.map(
-                      (pick) =>
-                        `${GENES[pick.id].name}${
-                          pick.id === 'phoenix' && phoenixTriggered ? ' (spent)' : ''
-                        }`
-                    ),
-                  }}
+                  impact={runImpact}
+                  settlementPending={settlementSecuredPending}
                   nextAction={resultsNextAction}
                   onNextAction={handleResultsNextAction}
                   onReplay={handleReplay}
                   onSetup={handleOpenSetup}
                   replayPending={isStarting}
-                  replayDisabled={isStarting || !equippedSnake}
+                  replayDisabled={isStarting || !equippedSnake || settlementSecuredPending}
                   replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
-                  }
-                  analyst={
-                    currentSessionId && session?.access_token && !lastRunFree ? (
-                      <RunInsightCard
-                        sessionId={currentSessionId}
-                        accessToken={session.access_token}
-                      />
-                    ) : null
-                  }
-                  playerCard={
-                    ownIdentity ? (
-                      <PlayerCard
-                        identity={ownIdentity}
-                        variant="card"
-                        isSelf
-                        onClaim={() => setShowHandleClaim(true)}
-                        className="text-left"
-                      />
-                    ) : null
                   }
                 />
               ) : (
@@ -3427,6 +3493,18 @@ export default function GamePage() {
                     </p>
                   </div>
                 )}
+                {settlementSecuredPending && !lastRunFree ? (
+                  <div
+                    className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg px-5 py-4 text-left"
+                    data-testid="legacy-results-settlement-pending"
+                    role="status"
+                  >
+                    <p className="label-arcade text-[#7df9ff]">Run secured</p>
+                    <p className="mt-1 font-body text-sm text-beige/85">
+                      DNA and Career progress are finalizing on the server. You can safely leave this screen.
+                    </p>
+                  </div>
+                ) : null}
                 {/* Identity v1 (section 4.3): your card at the moment of
                     judgment - claim affordance while the name is generated */}
                 {ownIdentity && (
@@ -3445,7 +3523,9 @@ export default function GamePage() {
                   <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
                     <IconDna size={22} className="text-venom-orange" />
                     DNA:{' '}
-                    {lastRunFree ? (
+                    {settlementSecuredPending && !lastRunFree ? (
+                      <span className="font-bold text-[#7df9ff]">Finalizing…</span>
+                    ) : lastRunFree ? (
                       // The stakes they practiced for: server-priced when the
                       // end POST succeeded, local recompute as the fallback
                       <span
@@ -3483,7 +3563,7 @@ export default function GamePage() {
                       ))}
                     </div>
                   )}
-                  {streakInfo && (
+                  {!settlementSecuredPending && streakInfo && (
                     <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                       <IconFlame size={18} className="text-venom-orange" />
                       Day <span className="font-bold text-venom-orange">{streakInfo.current}</span> streak
@@ -3491,7 +3571,7 @@ export default function GamePage() {
                   )}
                   {/* Mastery XP (Design v2 §7.1) - banked XP from this
                       extraction + the level-up moment when a rung falls */}
-                  {masteryResult && (
+                  {!settlementSecuredPending && masteryResult && (
                     <div className="space-y-2 pt-1" data-testid="gameover-mastery">
                       <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                         <span className="font-bold text-[#7df9ff]">
@@ -3541,7 +3621,11 @@ export default function GamePage() {
                     data-testid="first-result-discovery"
                   >
                     <p className="heading-display text-xl text-[#7df9ff]">
-                      {lastRunFree ? 'Your first run is complete.' : 'You earned DNA.'}
+                      {lastRunFree
+                        ? 'Your first run is complete.'
+                        : settlementSecuredPending
+                          ? 'Your first run is secured.'
+                          : 'You earned DNA.'}
                     </p>
                     <p className="font-body text-sm text-beige/80">
                       Visit the Lab to discover more snakes, or keep playing with{' '}
@@ -3580,7 +3664,7 @@ export default function GamePage() {
                 {/* The Analyst's post-run insight (Identity v1 section 9.2):
                     lazy, additive, never blocks the game-over flow —
                     pre-025/disabled/guest states render nothing */}
-                {currentSessionId && session?.access_token && !lastRunFree && (
+                {currentSessionId && session?.access_token && !lastRunFree && !settlementSecuredPending && (
                   <RunInsightCard
                     sessionId={currentSessionId}
                     accessToken={session.access_token}
@@ -3688,10 +3772,10 @@ export default function GamePage() {
                    ModeToggle says so above. */
                 <button
                   onClick={() => handleStart(gameMode === 'anomaly' ? 'anomaly' : 'earn')}
-                  disabled={isStarting || !equippedSnake}
+                  disabled={isStarting || !equippedSnake || settlementSecuredPending}
                   data-testid={gameMode === 'anomaly' ? 'anomaly-start' : 'earn-start'}
                   className={`btn-go inline-flex items-center gap-2 px-8 py-4 text-xl min-h-[44px] ${
-                    isStarting || !equippedSnake
+                    isStarting || !equippedSnake || settlementSecuredPending
                       ? 'cursor-wait'
                       : 'animate-glow-pulse shadow-venom-orange/50'
                   }`}
@@ -3752,15 +3836,15 @@ export default function GamePage() {
               )}
             </div>
 
-            {/* Guests: secondary post-run CTA to secure the DNA they just
-                earned - never shown before or during a run */}
+            {/* Guests: secondary post-run CTA for account recovery — progress
+                is already server-secured, and this never interrupts a run. */}
             {isGameOver && isAnonymous && (
               <button
                 onClick={() => setShowSaveProgress(true)}
                 data-testid="gameover-save-progress"
                 className="block mx-auto text-sm font-body text-venom-orange underline hover:text-venom-orange-light transition-colors min-h-[44px]"
               >
-                Playing as guest - save this progress with a free account
+                Playing as guest — add recovery for this account
               </button>
             )}
               </>
@@ -3769,7 +3853,7 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Save-progress modal (opened from the game-over screen) */}
+      {/* Account-recovery modal (internal legacy ID: save-progress). */}
       <AccountUpgradeModal
         isOpen={showSaveProgress}
         onClose={() => setShowSaveProgress(false)}
@@ -3780,11 +3864,9 @@ export default function GamePage() {
       <HandleClaimModal
         isOpen={showHandleClaim}
         onClose={() => {
-          recordHandlePromptDismissal(false);
           setShowHandleClaim(false);
         }}
         onClaimed={(handle) => {
-          recordHandlePromptDismissal(true);
           setOwnIdentity((prev) =>
             prev ? { ...prev, handle, displayHandle: handle, isGenerated: false } : prev
           );

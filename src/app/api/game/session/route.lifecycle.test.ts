@@ -14,6 +14,9 @@
  */
 
 const mockCaptureException = jest.fn();
+var mockSettleSessionReward: jest.Mock;
+var mockSettleDurableRunProgression: jest.Mock;
+var mockResumeOrRecoverRunImpact: jest.Mock;
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -53,6 +56,12 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+jest.mock('@/lib/server/gameProgressionSettlement', () => ({
+  settleDurableRunProgression: (...args: unknown[]) =>
+    mockSettleDurableRunProgression(...args),
+  resumeOrRecoverRunImpact: (...args: unknown[]) =>
+    mockResumeOrRecoverRunImpact(...args),
+}));
 
 type Row = Record<string, unknown>;
 type Call = [string, ...unknown[]];
@@ -64,6 +73,14 @@ const db: { players: Row[]; game_sessions: Row[]; economy_transactions: Row[] } 
 };
 
 const rpcCalls: Array<{ fn: string; params: unknown }> = [];
+let impactPersistError: Row | null = null;
+let careerCapabilityError: Row | null = null;
+let careerCapability: Row = {
+  status: 'ready',
+  bridgeVersion: 1,
+  careerVersion: 1,
+};
+let pendingAdoptionError: Row | null = null;
 
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
@@ -85,6 +102,72 @@ jest.mock('@supabase/supabase-js', () => ({
     },
     rpc: async (fn: string, params: unknown) => {
       rpcCalls.push({ fn, params });
+      if (fn === 'get_career_settlement_capability') {
+        if (careerCapabilityError) {
+          return { data: null, error: careerCapabilityError };
+        }
+        return { data: careerCapability, error: null };
+      }
+      if (fn === 'count_staged_pending_game_session_ends') {
+        return { data: 0, error: null };
+      }
+      if (fn === 'stage_pending_game_session_end') {
+        const p = (params ?? {}) as Row;
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (target) {
+          target.end_reason = 'completed';
+          target.__pendingEnvelope = p.p_envelope;
+        }
+        return { data: { accepted: true, state: 'staged' }, error: null };
+      }
+      if (fn === 'get_pending_game_session_end') {
+        const p = (params ?? {}) as Row;
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (!target?.__pendingEnvelope) return { data: null, error: null };
+        return {
+          data: {
+            state: target.atomic_reward_observed_at ? 'adopted' : 'staged',
+          },
+          error: null,
+        };
+      }
+      if (fn === 'adopt_pending_game_session_end') {
+        if (pendingAdoptionError) return { data: null, error: pendingAdoptionError };
+        const p = (params ?? {}) as Row;
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        const envelope = target?.__pendingEnvelope as Row | undefined;
+        const snapshot = envelope?.snapshot as Row | undefined;
+        const facts = envelope?.sessionFacts as Row | undefined;
+        if (target && snapshot && facts) {
+          Object.assign(target, {
+            score: snapshot.score,
+            dna_earned: snapshot.dnaCredited,
+            yield_dna: snapshot.yieldDna,
+            duration_seconds: facts.durationSeconds,
+            died: snapshot.died,
+            victory: facts.victory,
+            extracted: snapshot.extracted,
+            ended_at: snapshot.settledAt,
+            end_reason: 'completed',
+            validated: snapshot.validated,
+            validation_errors: facts.validationErrors,
+            foods_collected: facts.foodsCollected,
+            mutations: facts.mutations,
+            genome: snapshot.genome,
+            reward_protocol: 'atomic_v1',
+            atomic_reward_observed_at: new Date().toISOString(),
+            progression_settlement_payload: snapshot,
+          });
+        }
+        return { data: { accepted: true, state: 'adopted' }, error: null };
+      }
+      if (fn === 'persist_run_impact_envelope') {
+        if (impactPersistError) return { data: null, error: impactPersistError };
+        return {
+          data: (params as { p_envelope?: unknown })?.p_envelope ?? null,
+          error: null,
+        };
+      }
       return { data: null, error: null };
     },
     from: (table: string) => {
@@ -95,6 +178,13 @@ jest.mock('@supabase/supabase-js', () => ({
       const rows = () => (db[table as keyof typeof db] ?? []) as Row[];
 
       const settle = () => {
+        if (
+          table === 'game_sessions' &&
+          careerCapabilityError &&
+          calls.some(([op, selected]) => op === 'select' && selected === 'reward_protocol')
+        ) {
+          return { data: [], error: careerCapabilityError };
+        }
         if (pendingInsert) {
           const inserted = { id: `${table}-${rows().length + 1}`, ...pendingInsert };
           rows().push(inserted);
@@ -220,8 +310,145 @@ beforeEach(() => {
   jest.clearAllMocks();
   db.economy_transactions = [];
   rpcCalls.length = 0;
+  impactPersistError = null;
+  careerCapabilityError = null;
+  careerCapability = {
+    status: 'ready',
+    bridgeVersion: 1,
+    careerVersion: 1,
+  };
+  pendingAdoptionError = null;
   seedPlayer();
   seedSession();
+  mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
+    const input = rawInput as {
+      finalDna: number;
+      score: number;
+      validated: boolean;
+      sessionId: string;
+    };
+    const row = player();
+    const before = Number(row.high_score ?? 0);
+    const after = input.validated ? Math.max(before, input.score) : before;
+    row.dna = Number(row.dna ?? 0) + input.finalDna;
+    row.total_games_played = Number(row.total_games_played ?? 0) + 1;
+    row.total_dna_earned = Number(row.total_dna_earned ?? 0) + input.finalDna;
+    row.high_score = after;
+    if (input.finalDna > 0) {
+      db.economy_transactions.push({
+        source_type: 'game_reward',
+        source_id: input.sessionId,
+        amount: input.finalDna,
+      });
+    }
+    return {
+      ok: true,
+      settlement: {
+        applied: true,
+        player: {
+          dna: row.dna,
+          totalGamesPlayed: row.total_games_played,
+          highScore: row.high_score,
+          totalDnaEarned: row.total_dna_earned,
+          breedsCompleted: row.breeds_completed,
+        },
+        personalBest: {
+          eligible: input.validated,
+          before,
+          after,
+          improved: input.validated && after > before,
+        },
+      },
+    };
+  });
+  mockSettleDurableRunProgression = jest.fn(async () => {
+    const settled = await mockSettleSessionReward(null, {
+      finalDna: Number(session().dna_earned ?? 0),
+      score: Number(session().score ?? 0),
+      validated: session().validated === true,
+      sessionId: String(session().id),
+      metadata: {},
+    });
+    if (!settled.ok) return settled;
+    if (impactPersistError) return { ok: false, error: impactPersistError };
+    const rewardPlayer = settled.settlement.player;
+    return {
+      ok: true,
+      settlement: {
+        player: {
+          dna: rewardPlayer.dna,
+          total_games_played: rewardPlayer.totalGamesPlayed,
+          high_score: rewardPlayer.highScore,
+          total_dna_earned: rewardPlayer.totalDnaEarned,
+          breeds_completed: rewardPlayer.breedsCompleted,
+        },
+        personalBest: settled.settlement.personalBest,
+        codex: null,
+        mastery: null,
+        ladder: null,
+        streak: null,
+        records: null,
+        signal: null,
+        clan: null,
+        impact: { version: 1, sessionId: String(session().id) },
+      },
+    };
+  });
+  mockResumeOrRecoverRunImpact = jest.fn().mockResolvedValue({ status: 'absent' });
+});
+
+describe('the migration-060 earning-start gate', () => {
+  it('accepts the durable bridge capability and proceeds past maintenance', async () => {
+    db.game_sessions = [];
+    careerCapability = {
+      status: 'pending',
+      bridgeVersion: 1,
+      careerVersion: null,
+    };
+
+    const response = await POST(
+      post({ action: 'start', mode: 'earn', snake_id: 'missing-snake', energyCommitment: 1 })
+    );
+
+    expect(response.status).toBe(400);
+    expect(rpcCalls.map((call) => call.fn)).toContain(
+      'count_staged_pending_game_session_ends'
+    );
+  });
+
+  it('fails before session or Energy mutation when atomic settlement is unavailable', async () => {
+    db.game_sessions = [];
+    careerCapabilityError = {
+      code: '42703',
+      message: 'column game_sessions.reward_protocol does not exist',
+    };
+
+    const beforePlayer = { ...player() };
+    const response = await POST(
+      post({ action: 'start', mode: 'earn', snake_id: 'snake-1', energyCommitment: 1 })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({ retryable: true, maintenance: true });
+    expect(db.game_sessions).toHaveLength(0);
+    expect(player()).toEqual(beforePlayer);
+    expect(rpcCalls.map((call) => call.fn)).not.toContain('commit_run_energy');
+  });
+
+  it('reports a non-capability database error without mutating gameplay state', async () => {
+    db.game_sessions = [];
+    careerCapabilityError = { code: '08006', message: 'connection failure' };
+
+    const response = await POST(
+      post({ action: 'start', mode: 'earn', snake_id: 'snake-1', energyCommitment: 1 })
+    );
+
+    expect(response.status).toBe(503);
+    expect(db.game_sessions).toHaveLength(0);
+    expect(rpcCalls.map((call) => call.fn)).not.toContain('commit_run_energy');
+    expect(mockCaptureException).toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -231,10 +458,139 @@ describe('a settled run records `completed`', () => {
     const response = await POST(post(endBody()));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(session().end_reason).toBe('completed');
     expect(session().ended_at).not.toBeNull();
     expect(session().validated).toBe(true);
     expect(player().dna).toBeGreaterThan(0);
+  });
+
+  it('acknowledges secured pending progress when the atomic reward fold defers', async () => {
+    mockSettleSessionReward.mockResolvedValueOnce({
+      ok: false,
+      error: { code: '40001', message: 'serialization failure' },
+    });
+    const response = await POST(post(endBody()));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'session-1',
+    });
+    expect(session().ended_at).not.toBeNull();
+    expect(session().end_reason).toBe('completed');
+    expect(session().reward_protocol).toBe('atomic_v1');
+    expect(session().progression_settlement_payload).toMatchObject({ v: 1 });
+    expect(player().dna).toBe(0);
+    expect(player().total_games_played).toBe(0);
+  });
+
+  it('makes a concurrent completed-before-receipt response retryable', async () => {
+    seedSession({
+      ended_at: new Date().toISOString(),
+      end_reason: 'completed',
+      validated: true,
+      atomic_reward_observed_at: new Date().toISOString(),
+    });
+    mockResumeOrRecoverRunImpact.mockResolvedValueOnce({
+      status: 'unavailable',
+      error: new Error('still settling'),
+    });
+    const response = await POST(post(endBody()));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      alreadyEnded: true,
+      impactPending: true,
+      retryable: true,
+    });
+    expect(mockSettleDurableRunProgression).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges a duplicate while its server receipt remains pending', async () => {
+    seedSession({
+      ended_at: new Date().toISOString(),
+      end_reason: 'completed',
+      validated: true,
+      atomic_reward_observed_at: new Date().toISOString(),
+    });
+    mockResumeOrRecoverRunImpact.mockResolvedValueOnce({
+      status: 'pending',
+      error: new Error('ordered stage deferred'),
+    });
+    const response = await POST(post(endBody()));
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'session-1',
+    });
+  });
+
+  it('does not call an unpersisted impact envelope successful', async () => {
+    impactPersistError = { code: '08006', message: 'connection failure' };
+    const response = await POST(post(endBody()));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'session-1',
+    });
+    // The atomic reward succeeded; only its durable presentation is pending.
+    expect(player().dna).toBeGreaterThan(0);
+    expect(session().ended_at).not.toBeNull();
+  });
+});
+
+describe('durable earning-end ingress', () => {
+  it('returns durable 202 on schema 060 and a replay adopts the same result on 061', async () => {
+    pendingAdoptionError = {
+      code: 'PGRST202',
+      message: 'Could not find adopt_pending_game_session_end',
+    };
+    const first = await POST(post(endBody()));
+    const firstBody = await first.json();
+
+    expect(first.status).toBe(202);
+    expect(firstBody).toEqual({
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'session-1',
+    });
+    expect(session().ended_at).toBeNull();
+    expect(session().end_reason).toBe('completed');
+    expect(player().dna).toBe(0);
+    expect(rpcCalls.map((call) => call.fn)).toEqual(
+      expect.arrayContaining([
+        'stage_pending_game_session_end',
+        'adopt_pending_game_session_end',
+      ])
+    );
+
+    pendingAdoptionError = null;
+    mockResumeOrRecoverRunImpact.mockResolvedValue({
+      status: 'found',
+      impact: { version: 1, sessionId: 'session-1' },
+    });
+    const replay = await POST(post(endBody()));
+    const replayBody = await replay.json();
+
+    expect(replay.status).toBe(409);
+    expect(replayBody).toMatchObject({
+      alreadyEnded: true,
+      impact: { sessionId: 'session-1' },
+    });
+    expect(session().reward_protocol).toBe('atomic_v1');
+    expect(session().ended_at).not.toBeNull();
+    expect(mockResumeOrRecoverRunImpact).toHaveBeenCalledWith(
+      expect.anything(),
+      PLAYER_ID,
+      'session-1'
+    );
   });
 });
 

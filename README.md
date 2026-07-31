@@ -89,6 +89,7 @@ Start with [the documentation index](docs/README.md). The primary references
 are:
 
 - [Game Design v2](docs/game/GAME_DESIGN_V2.md)
+- [Career Spine](docs/game/CAREER_SPINE.md)
 - [Player Flow & Interruption Policy](docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
 - [Genome design](docs/game/BUILDCRAFT_GENOME_DESIGN.md)
 - [Energy Commitment & Clan Battles](docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)

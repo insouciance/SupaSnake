@@ -18,6 +18,7 @@
 
 import { render, screen } from '@testing-library/react';
 import CodexPage from './page';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
 
 const mockSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -62,6 +63,8 @@ beforeEach(() => {
     error: null,
     fetchCodex: jest.fn(),
   });
+  useNotificationStore.setState({ notifications: {}, hasHydrated: true });
+  global.fetch = jest.fn() as jest.Mock;
 });
 
 describe('the archive is the default view', () => {
@@ -97,6 +100,42 @@ describe('?view=workbench opens the Workbench, in place', () => {
     render(<CodexPage />);
     expect(screen.getByTestId('workbench-view')).toBeInTheDocument();
     expect(screen.queryByTestId('codex-rules')).not.toBeInTheDocument();
+  });
+
+  it('does not clear an archive recognition while its exact artifact is hidden', () => {
+    useNotificationStore.getState().replaceServerItems([{
+      id: 'codex-recognition',
+      kind: 'recognition',
+      status: 'unseen',
+      destination: 'codex',
+      headline: 'Phase Shift discovered',
+      momentId: 'moment-1',
+      artifactRef: 'gene:phase_shift',
+      source: { type: 'run', id: 'session-1' },
+      createdAt: '2026-07-30T12:00:00.000Z',
+    }]);
+    mockUseCodexStore.mockReturnValue({
+      live: true,
+      unlocked: true,
+      bankedRuns: 20,
+      unlockAt: 15,
+      data: {
+        genes: [{ id: 'phase_shift', discovered: true }],
+        splices: [],
+        strains: [],
+        progress: { genomeWeaverUnlocked: false },
+      },
+      isLoading: false,
+      error: null,
+      fetchCodex: jest.fn(),
+    });
+    mockSearchParams.mockReturnValue(params('workbench'));
+
+    render(<CodexPage />);
+
+    expect(screen.getByTestId('workbench-view')).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(useNotificationStore.getState().notifications['codex-recognition']).toBeDefined();
   });
 
   it('keeps both views one tap apart, and marks which one is open', () => {

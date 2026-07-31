@@ -36,6 +36,7 @@ async function openCase({ kind, viewport, consent }) {
   page.on('pageerror', (error) => errors.push(error.message));
   if (!consent) {
     await page.addInitScript(() => {
+      // constitution-allow: local-progress  isolated test consent fixture contains no player state
       localStorage.setItem('cookie-consent', JSON.stringify({
         essential: true,
         functional: false,

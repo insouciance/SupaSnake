@@ -73,7 +73,10 @@ export default function ClanPage() {
   const [joinCode, setJoinCode] = useState('');
   const joinCodeInput = useRef<HTMLInputElement | null>(null);
 
-  const { view: fullView, refresh: refreshFullView } = useClanFull(
+  const {
+    view: fullView,
+    refresh: refreshFullView,
+  } = useClanFull(
     session?.access_token
   );
 

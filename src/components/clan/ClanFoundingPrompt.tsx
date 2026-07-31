@@ -15,11 +15,10 @@
  *   there is something they have not reached, because being told is exactly
  *   what would turn a ramp into a cut line (Rule 8).
  *
- *   Above it, the prompt appears once. "Not now" dismisses it permanently and
- *   the clan page is still reachable from navigation forever after, with the
- *   same founding form on it. Dismissal is a UI preference and lives in
- *   `localStorage`; it is not progress, nothing depends on it, and losing it
- *   costs the player one prompt they can dismiss again.
+ *   Above it, the prompt appears once per page lifecycle. "Not now" dismisses
+ *   it without hiding the clan page or founding form. The dismissal is
+ *   memory-only because a durable browser marker would reveal that the player
+ *   crossed the banked-run ramp; player progress has no browser ledger.
  *
  * WHY IT IS NOT ON RESULTS
  *
@@ -36,7 +35,12 @@ import Link from 'next/link';
 import { SERPENT_UNLOCK_BANKED_RUNS } from '@/lib/serpent/config';
 import { IconShield } from '@/components/ui/icons';
 
-export const FOUNDING_PROMPT_DISMISSED_KEY = 'supasnake.clanFoundingPrompt.dismissed';
+let foundingPromptDismissedThisPage = false;
+
+/** Reset the lifecycle-only prompt guard between isolated runtimes or tests. */
+export function resetClanFoundingPromptMemory(): void {
+  foundingPromptDismissedThisPage = false;
+}
 
 export interface ClanFoundingPromptProps {
   accessToken?: string | null;
@@ -55,14 +59,6 @@ export interface ClanFoundingPromptProps {
   onJoin?: () => void;
 }
 
-function readDismissed(): boolean {
-  try {
-    return window.localStorage.getItem(FOUNDING_PROMPT_DISMISSED_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
 export function ClanFoundingPrompt({
   accessToken,
   inClan,
@@ -74,13 +70,14 @@ export function ClanFoundingPrompt({
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
-    setDismissed(readDismissed());
+    setDismissed(foundingPromptDismissedThisPage);
   }, []);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
       const response = await fetch('/api/player', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) return;
@@ -102,12 +99,8 @@ export function ClanFoundingPrompt({
   const banked = bankedRuns !== undefined ? bankedRuns : fetchedBankedRuns;
 
   const dismiss = () => {
+    foundingPromptDismissedThisPage = true;
     setDismissed(true);
-    try {
-      window.localStorage.setItem(FOUNDING_PROMPT_DISMISSED_KEY, 'true');
-    } catch {
-      // A browser refusing storage costs the player one repeat of one prompt.
-    }
   };
 
   if (inClan || dismissed) return null;

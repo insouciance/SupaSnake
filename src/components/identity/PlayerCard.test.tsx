@@ -91,19 +91,56 @@ describe('PlayerCard', () => {
       expect(screen.queryByTestId('player-card-founder')).not.toBeInTheDocument();
     });
 
-    it('shows the Legacy Score on the full card (section 6.2)', () => {
+    it('does not headline the retired synthetic Legacy Score', () => {
       render(<PlayerCard identity={identity({ legacyScore: 1230 })} variant="full" />);
-      expect(screen.getByTestId('player-card-legacy')).toHaveTextContent('1,230');
+      expect(screen.queryByTestId('player-card-legacy')).not.toBeInTheDocument();
+      expect(screen.queryByText('Legacy Score')).not.toBeInTheDocument();
     });
 
-    it('hides the Legacy Score at 0 (empty-state rule: never a 0-count)', () => {
-      render(<PlayerCard identity={identity({ legacyScore: 0 })} variant="full" />);
-      expect(screen.queryByTestId('player-card-legacy')).not.toBeInTheDocument();
+    it('labels every curated mark by provenance and never calls supporter flair proof', () => {
+      render(
+        <PlayerCard
+          identity={identity({
+            isPremium: true,
+            badges: [
+              { id: 'record_vault_t3', name: 'Vault Gold', rarity: 'rare' },
+              { id: 'badge_premium_supporter', name: 'Lab Patron', rarity: 'epic' },
+              { id: 'solstice_gilded_badge', name: 'Gilded Badge', rarity: 'rare' },
+            ],
+          })}
+          variant="full"
+        />
+      );
+      const [record, supporter, gilded] = screen.getAllByTestId('player-card-badge');
+      expect(record).toHaveAttribute('data-provenance', 'discovery');
+      expect(record).toHaveAttribute('data-competitive-proof', 'true');
+      expect(supporter).toHaveAttribute('data-provenance', 'supporter');
+      expect(supporter).toHaveAttribute('data-competitive-proof', 'false');
+      expect(gilded).toHaveAttribute('data-provenance', 'supporter');
+      expect(gilded).toHaveAttribute('data-competitive-proof', 'false');
+      expect(screen.getByTestId('player-card-premium')).toHaveAttribute(
+        'data-competitive-proof',
+        'false'
+      );
     });
 
-    it('keeps the Legacy Score off the card/row variants (full only)', () => {
-      render(<PlayerCard identity={identity({ legacyScore: 1230 })} variant="card" />);
-      expect(screen.queryByTestId('player-card-legacy')).not.toBeInTheDocument();
+    it('does not call a badge competitive proof when its source is unknown', () => {
+      render(
+        <PlayerCard
+          identity={identity({
+            badges: [{ id: 'mystery_badge', name: 'Unknown Origin', rarity: 'rare' }],
+          })}
+          variant="full"
+        />
+      );
+      expect(screen.getByTestId('player-card-badge')).toHaveAttribute(
+        'data-provenance',
+        'unverified'
+      );
+      expect(screen.getByTestId('player-card-badge')).toHaveAttribute(
+        'data-competitive-proof',
+        'false'
+      );
     });
   });
 

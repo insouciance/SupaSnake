@@ -41,12 +41,14 @@ import { PWA_V1_ENABLED } from '@/lib/pwa/config';
 import { InstallOffer } from '@/components/pwa/InstallOffer';
 import {
   canOfferInstall,
+  INSTALL_RECORD_KEY,
   isCalmSurface,
   readInstallRecord,
   recordDismissal,
   recordInstalled,
   recordOfferShown,
   recordRunCompleted,
+  type InstallRecord,
   type RecordStorage,
 } from '@/lib/pwa/installPrompt';
 
@@ -56,12 +58,56 @@ interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-function localStorageOrNull(): RecordStorage | null {
-  try {
-    return typeof window === 'undefined' ? null : window.localStorage;
-  } catch {
-    return null;
-  }
+const INSTALL_DEVICE_RECORD_KEY = `${INSTALL_RECORD_KEY}.device`;
+let runsCompletedThisPage = 0;
+
+/**
+ * Keep the completed-run gate in memory while persisting only device UI facts
+ * (offer count, dismissal, installation). The adapter deliberately cannot
+ * write `runsCompleted` to browser storage.
+ */
+function installRecordStorage(): RecordStorage | null {
+  if (typeof window === 'undefined') return null;
+  return {
+    getItem(key) {
+      if (key !== INSTALL_RECORD_KEY) return null;
+      try {
+        // constitution-allow: local-progress  PWA device preference excludes completed-run and progression data
+        const raw = window.localStorage.getItem(INSTALL_DEVICE_RECORD_KEY);
+        const device = raw ? (JSON.parse(raw) as Partial<InstallRecord>) : {};
+        return JSON.stringify({
+          runsCompleted: runsCompletedThisPage,
+          offers: device.offers ?? 0,
+          dismissedAt: device.dismissedAt ?? null,
+          installedAt: device.installedAt ?? null,
+        });
+      } catch {
+        // The record parser treats unreadable data as already dismissed, the
+        // quiet direction for an optional install offer.
+        return '{';
+      }
+    },
+    setItem(key, value) {
+      if (key !== INSTALL_RECORD_KEY) return;
+      try {
+        const record = JSON.parse(value) as InstallRecord;
+        runsCompletedThisPage = Number.isFinite(record.runsCompleted)
+          ? Math.max(0, Math.floor(record.runsCompleted))
+          : 0;
+        // constitution-allow: local-progress  PWA device preference excludes completed-run and progression data
+        window.localStorage.setItem(
+          INSTALL_DEVICE_RECORD_KEY,
+          JSON.stringify({
+            offers: record.offers,
+            dismissedAt: record.dismissedAt,
+            installedAt: record.installedAt,
+          })
+        );
+      } catch {
+        // A restricted browser quietly suppresses the optional install offer.
+      }
+    },
+  };
 }
 
 function isStandalone(): boolean {
@@ -142,7 +188,7 @@ export function PwaSurface() {
       // The rising edge of "run finished". `isGameOver` latches, so the edge
       // fires exactly once per run.
       if (state.isGameOver && !previous.isGameOver) {
-        recordRunCompleted(localStorageOrNull());
+        recordRunCompleted(installRecordStorage());
       }
     });
 
@@ -163,7 +209,7 @@ export function PwaSurface() {
       setPromptEvent(event as InstallPromptEvent);
     };
     const onInstalled = () => {
-      recordInstalled(localStorageOrNull());
+      recordInstalled(installRecordStorage());
       setPromptEvent(null);
       setVisible(false);
     };
@@ -191,7 +237,7 @@ export function PwaSurface() {
       runActive,
       promptAvailable: promptEvent !== null,
       displayStandalone: isStandalone(),
-      record: readInstallRecord(localStorageOrNull()),
+      record: readInstallRecord(installRecordStorage()),
       offersThisSession: offersThisSession.current,
     });
 
@@ -203,12 +249,12 @@ export function PwaSurface() {
     }
 
     offersThisSession.current += 1;
-    recordOfferShown(localStorageOrNull());
+    recordOfferShown(installRecordStorage());
     setVisible(true);
   }, [pathname, runActive, promptEvent, visible]);
 
   const dismiss = useCallback(() => {
-    recordDismissal(localStorageOrNull());
+    recordDismissal(installRecordStorage());
     setVisible(false);
     setPromptEvent(null);
   }, []);
@@ -222,14 +268,14 @@ export function PwaSurface() {
       await event.prompt();
       const choice = await event.userChoice;
       if (choice.outcome === 'accepted') {
-        recordInstalled(localStorageOrNull());
+        recordInstalled(installRecordStorage());
       } else {
         // Declining the browser's own dialog is a dismissal. It is not asked
         // again on the strength of "they only said no to the OS prompt".
-        recordDismissal(localStorageOrNull());
+        recordDismissal(installRecordStorage());
       }
     } catch {
-      recordDismissal(localStorageOrNull());
+      recordDismissal(installRecordStorage());
     }
   }, [promptEvent]);
 

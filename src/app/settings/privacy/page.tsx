@@ -33,6 +33,7 @@ export default function PrivacySettingsPage() {
 
   // Load preferences from localStorage
   useEffect(() => {
+    // constitution-allow: local-progress  legal consent preference contains no gameplay or progression fact
     const stored = localStorage.getItem('cookie-consent');
     if (stored) {
       try {
@@ -51,6 +52,7 @@ export default function PrivacySettingsPage() {
       essential: true,
       timestamp: new Date().toISOString(),
     };
+    // constitution-allow: local-progress  legal consent preference contains no gameplay or progression fact
     localStorage.setItem('cookie-consent', JSON.stringify(withTimestamp));
     window.dispatchEvent(new CustomEvent('consent-updated', { detail: withTimestamp }));
     setMessage({ type: 'success', text: 'Preferences saved successfully' });

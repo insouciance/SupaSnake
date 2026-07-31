@@ -324,6 +324,13 @@ describe('the session route wires the Signal, tightly', () => {
     'utf8'
   );
   const code = routeSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const settlementSource = fs.readFileSync(
+    path.join(process.cwd(), 'src/lib/server/gameProgressionSettlement.ts'),
+    'utf8'
+  );
+  const settlementCode = settlementSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
 
   it('claims the day against the SERVER clock and the session it just created', () => {
     expect(code).toMatch(
@@ -345,6 +352,7 @@ describe('the session route wires the Signal, tightly', () => {
   it('never lets the request name a day, a target, a seed or a run id', () => {
     // `signalObjectiveId` is the one Signal field on the request, and it is a
     // lookup key the engine resolves against the derived day.
+    const requestFields = code.match(/const\s*\{([\s\S]*?)\}\s*=\s*body;/)?.[1] ?? '';
     const signalBodyFields = [
       'signalDay',
       'signal_day',
@@ -355,15 +363,20 @@ describe('the session route wires the Signal, tightly', () => {
       'signal_objective_run_id',
     ];
     for (const field of signalBodyFields) {
-      expect(code).not.toContain(field);
+      expect(requestFields).not.toContain(field);
     }
   });
 
-  it('settles the attempt at the end of the run — there is no claim step', () => {
+  it('settles the attempt through the durable end pipeline — there is no claim step', () => {
     expect(code).toMatch(
-      /settleSignalAttemptForSession\(\s*supabase,\s*sessionId,\s*player\.id\s*\)/
+      /settleDurableRunProgression\(\s*supabase,\s*player\.id,\s*sessionId\s*\)/
     );
-    // Settlement is the ONLY Signal write on the end path.
+    expect(settlementCode).toMatch(/prepare_game_session_signal_stage/);
+    expect(settlementCode).toMatch(
+      /settleSignalAttemptForSession\(\s*supabase,\s*sessionId,\s*playerId\s*\)/
+    );
+    expect(settlementCode).toMatch(/capture_game_session_signal_result/);
+    // The route cannot bypass the durable preflight/capture sequence.
     expect(code).not.toMatch(/settle_signal_objective_run/);
     expect(code).not.toMatch(/claimSignal[A-Za-z]*\(.*sessionId/);
   });

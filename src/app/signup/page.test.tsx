@@ -57,7 +57,7 @@ describe('SignupPage journey fork', () => {
     expect(
       screen.getByText(/progress will be attached to this account/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/save your progress/i)).toBeInTheDocument();
+    expect(screen.getByText(/protect your account/i)).toBeInTheDocument();
 
     // The plain signup form must NOT render for guests
     expect(

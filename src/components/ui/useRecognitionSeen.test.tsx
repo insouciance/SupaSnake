@@ -1,0 +1,88 @@
+import { render, waitFor } from '@testing-library/react';
+import { useRecognitionSeen } from './useRecognitionSeen';
+import { useNotificationStore, type ServerAttentionItem } from '@/lib/stores/notificationStore';
+
+jest.mock('@/lib/analytics/posthog', () => ({ trackEvent: jest.fn() }));
+jest.mock('@/lib/features/careerSpine', () => ({
+  CAREER_SPINE_V1_ENABLED: true,
+}));
+
+const recognition: ServerAttentionItem = {
+  id: 'codex-moment',
+  kind: 'recognition',
+  status: 'unseen',
+  destination: 'codex',
+  headline: 'New splice',
+  momentId: 'm1',
+  artifactRef: 'splice:helix-bloom',
+  source: { type: 'moment', id: 'm1' },
+  createdAt: '2026-07-30T10:00:00.000Z',
+};
+
+function Harness({
+  visible,
+  token = 'token',
+  artifactRefs = ['splice:helix-bloom'],
+}: {
+  visible: boolean;
+  token?: string;
+  artifactRefs?: string[];
+}) {
+  useRecognitionSeen('codex', visible, token, { artifactRefs });
+  return null;
+}
+
+describe('useRecognitionSeen', () => {
+  beforeEach(() => {
+    useNotificationStore.setState({ notifications: {}, hasHydrated: true });
+    useNotificationStore.getState().replaceServerItems([recognition]);
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ item: { ...recognition, status: 'seen' } }),
+    }) as jest.Mock;
+  });
+
+  it('does nothing until destination content is actually visible', () => {
+    render(<Harness visible={false} />);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(useNotificationStore.getState().notifications[recognition.id]).toBeDefined();
+  });
+
+  it('transitions exactly the matching recognition to seen', async () => {
+    render(<Harness visible />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
+      '/api/progression/attention',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ id: recognition.id, transition: 'seen' }),
+      })
+    ));
+    await waitFor(() => {
+      expect(useNotificationStore.getState().notifications[recognition.id]).toBeUndefined();
+    });
+  });
+
+  it('does not clear another artifact merely because the destination is open', async () => {
+    const other = {
+      ...recognition,
+      id: 'other-codex-moment',
+      artifactRef: 'gene:second-wind',
+    };
+    useNotificationStore.getState().replaceServerItems([recognition, other]);
+    render(<Harness visible />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/progression/attention',
+      expect.objectContaining({
+        body: JSON.stringify({ id: recognition.id, transition: 'seen' }),
+      })
+    );
+    expect(useNotificationStore.getState().notifications[other.id]).toBeDefined();
+  });
+
+  it('keeps artifact-scoped recognition when no matching artifact rendered', () => {
+    render(<Harness visible artifactRefs={[]} />);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

@@ -70,6 +70,7 @@ export function ConsentBanner() {
   useEffect(() => {
     let stored: string | null = null;
     try {
+      // constitution-allow: local-progress  legal consent preference contains no gameplay or progression fact
       stored = localStorage.getItem(CONSENT_KEY);
     } catch {
       // Storage-restricted browsers still receive a usable legal choice.
@@ -128,6 +129,7 @@ export function ConsentBanner() {
       timestamp: new Date().toISOString(),
     };
     try {
+      // constitution-allow: local-progress  legal consent preference contains no gameplay or progression fact
       localStorage.setItem(CONSENT_KEY, JSON.stringify(withTimestamp));
     } catch {
       // The decision applies for this page lifetime even if persistence is
@@ -319,6 +321,7 @@ export function useConsent(): ConsentPreferences | null {
   useEffect(() => {
     let stored: string | null = null;
     try {
+      // constitution-allow: local-progress  legal consent preference contains no gameplay or progression fact
       stored = localStorage.getItem(CONSENT_KEY);
     } catch {
       // Storage-restricted browsers remain on essential-only behavior.

@@ -127,23 +127,15 @@ describe('WP-0.03: no unreachable faucet responds', () => {
   });
 
   it('exposes no second claim endpoint anywhere (§12.2)', () => {
-    // The Daily Take's collect (WP-1.04) is to be the game's only claim.
-    // Until it exists, the count of claim-shaped route directories that
-    // grant a currency must not grow. Contracts and the season track are
-    // the two pre-Constitution claims still standing, and both are retired
-    // by WP-1.03/WP-1.04; nothing new may join them.
+    // Daily Take is the game's only literal Collect. No reward, claim, bonus,
+    // or stipend route may survive beside it.
     const routeDirs = walk(API, (f) => /[\\/]route\.tsx?$/.test(f)).map((f) =>
       path.relative(API, path.dirname(f))
     );
     const claimish = routeDirs
       .filter((d) => /reward|claim|bonus|stipend/i.test(d))
       .sort();
-    // FOUND, NOT FIXED (outside this WP): /api/player/claim-offline still
-    // grants passive DNA on a wall-clock timer. WP-0.01 stripped its energy
-    // restore but left the DNA faucet standing, and no work package owns it
-    // yet. It is pinned here rather than waved through: this list may only
-    // ever shrink, so nothing new can join it while it waits for a decision.
-    expect(claimish).toEqual(['player/claim-offline']);
+    expect(claimish).toEqual([]);
   });
 });
 

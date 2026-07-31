@@ -184,9 +184,9 @@ export function AccountUpgrade({ onClose, onSuccess, className = '' }: AccountUp
       className={`panel-glow p-6 ${className}`}
       style={{ '--glow': '#22d3ee' } as React.CSSProperties}
     >
-      <h3 className="heading-display text-xl text-venom-orange mb-2">Save Your Progress</h3>
+      <h3 className="heading-display text-xl text-venom-orange mb-2">Protect Your Account</h3>
       <p className="text-beige/70 text-sm font-body mb-6">
-        Create an account to keep your collection across devices
+        Add a sign-in so this server-secured collection is recoverable across devices
       </p>
 
       {error && (

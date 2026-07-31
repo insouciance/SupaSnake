@@ -56,9 +56,7 @@ import {
   transitionLaunch,
 } from '@/lib/ftue/launchFlow';
 import {
-  NOTIFICATION_TARGETS,
-  subscribeNotificationAction,
-  useNotificationStore,
+  requestAttentionRefresh,
 } from '@/lib/stores/notificationStore';
 
 // The chamber is WebGL-heavy: lazy-mount client-side only, with the styled
@@ -117,26 +115,8 @@ export default function Home() {
   // run must stay one tap away whatever the Signal did (§5, Rule 10).
   const [signalTaking, setSignalTaking] = useState(false);
   const [signalTakeError, setSignalTakeError] = useState<string | null>(null);
-  const publishNotification = useNotificationStore((state) => state.publish);
-  const clearNotification = useNotificationStore((state) => state.clear);
-  const notificationsHydrated = useNotificationStore((state) => state.hasHydrated);
 
   const token = session?.access_token;
-
-  // Persisted attention belongs only to an eligible signed-in player. Clear
-  // stale meta links once auth or first-run authority proves them unavailable.
-  useEffect(() => {
-    if (!FTUE_V2_ENABLED || !notificationsHydrated || isLoading) return;
-    if (!isAuthenticated || stats?.hasCompletedFirstRun === false) {
-      clearNotification('season');
-    }
-  }, [
-    clearNotification,
-    isAuthenticated,
-    isLoading,
-    notificationsHydrated,
-    stats?.hasCompletedFirstRun,
-  ]);
 
   // No silent new identity: if a registered account previously used this
   // device and the session is gone, surface "Welcome back" instead of
@@ -167,13 +147,18 @@ export default function Home() {
     });
   }, []);
 
-  // Replay any queued game rewards that failed to send (tab closed at
-  // death, network drop). Server dedupes by sessionId.
+  // Retry any settlement requests held in this tab's memory. Progress never
+  // enters browser persistence; a delivered/duplicate request recovers the
+  // canonical server impact receipt and refreshes server-owned attention.
   useEffect(() => {
     if (!token) return;
-    replayRewardOutbox(token).catch((err) => {
-      console.error('Reward outbox replay failed:', err);
-    });
+    replayRewardOutbox(token)
+      .then((result) => {
+        if (result.impacts.length > 0) requestAttentionRefresh();
+      })
+      .catch((err) => {
+        console.error('Settlement retry failed:', err);
+      });
   }, [token]);
 
   // Real home stats from server authority: /api/player + /api/streaks
@@ -262,28 +247,13 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  // Contracts were retired by WP-1.03 (Constitution §7.2, §12.2, §13): the
-  // World Signal is the one daily surface, `/api/contracts` is gone and the
-  // RPCs behind it are tombstones. Nothing here fetches a contract board.
-  //
-  // What remains is cleanup for players who still carry a persisted
-  // "Daily Contracts ready" entry in local notification state: it points at
-  // `/#contracts`, which no longer opens anything. Clear it once, on mount,
-  // so nobody is left tapping a dead link. Claimed contract HISTORY is
-  // untouched — it lives server-side in `player_contracts` (Rule 6).
-  useEffect(() => {
-    if (!notificationsHydrated) return;
-    clearNotification('contracts');
-  }, [clearNotification, notificationsHydrated]);
-
-  // Season track (§7.2): fetch the live season + the player's free track.
+  // Season track (§7.2): fetch the live season + the player's read-only track.
   // { live: false } (pre-migration-021) or no live season simply keeps the
   // season surfaces hidden - non-fatal like every engagement fetch here.
   useEffect(() => {
     if (
       !isAuthenticated ||
       !token ||
-      !notificationsHydrated ||
       (FTUE_V2_ENABLED && stats?.hasCompletedFirstRun !== true)
     ) return;
     let cancelled = false;
@@ -300,7 +270,6 @@ export default function Home() {
           setSeasonState({ season: data.season, track: data.track });
         } else {
           setSeasonState(null);
-          clearNotification('season');
         }
       } catch {
         // Season UI simply stays hidden on failure
@@ -312,103 +281,23 @@ export default function Home() {
       cancelled = true;
     };
   }, [
-    clearNotification,
     isAuthenticated,
-    notificationsHydrated,
     token,
     stats?.hasCompletedFirstRun,
   ]);
 
-
-  useEffect(() => {
-    if (
-      !FTUE_V2_ENABLED ||
-      !notificationsHydrated ||
-      !seasonState ||
-      !stats?.hasCompletedFirstRun
-    ) return;
-    const claimableCount = seasonState.track.tiers.filter(
-      (tier) =>
-        !tier.claimed &&
-        seasonState.track.level >= tier.level &&
-        (tier.is_premium !== true ||
-          seasonState.track.premium?.is_premium === true ||
-          seasonState.track.premium?.season_locked_in === true)
-    ).length;
-    if (claimableCount === 0) {
-      clearNotification('season');
-      return;
-    }
-    publishNotification({
-      id: 'season',
-      title: `${seasonState.season.name} milestone ready`,
-      description: `${claimableCount} seasonal reward${claimableCount === 1 ? '' : 's'} available.`,
-      ...NOTIFICATION_TARGETS.season,
-      badgeKind: 'numeric',
-      attentionReason: 'reward-available',
-      count: claimableCount,
-      actionLabel: 'Review rewards',
-    });
-  }, [
-    clearNotification,
-    notificationsHydrated,
-    seasonState,
-    stats?.hasCompletedFirstRun,
-    publishNotification,
-  ]);
-
-  // Hash destinations represent an explicit inbox/mission action. Merely
+  // A hash destination represents an explicit player action. Merely
   // loading Home never opens these overlays.
   useEffect(() => {
     const syncExplicitDestination = () => {
       if (window.location.hash === '#season') setShowSeasonTrack(true);
     };
-    const unsubscribeSeason = subscribeNotificationAction(
-      'open-season',
-      () => setShowSeasonTrack(true)
-    );
     syncExplicitDestination();
     window.addEventListener('hashchange', syncExplicitDestination);
     return () => {
-      unsubscribeSeason();
       window.removeEventListener('hashchange', syncExplicitDestination);
     };
   }, []);
-
-  const handleSeasonClaim = useCallback(
-    async (level: number): Promise<boolean> => {
-      if (!token) return false;
-      try {
-        const res = await fetch('/api/season', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ action: 'claim', level }),
-        });
-        if (!res.ok) return false;
-        const data = await res.json();
-
-        setSeasonState((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            track: {
-              ...prev.track,
-              tiers: prev.track.tiers.map((t) =>
-                t.level === level ? { ...t, claimed: true } : t
-              ),
-            },
-          };
-        });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [token]
-  );
 
   const runLaunch = useCallback(async (
     skipIdentityGate = false,
@@ -614,15 +503,9 @@ export default function Home() {
     }
     const items: MissionItem[] = [];
     if (seasonState) {
-      const claimable = seasonState.track.tiers.some(
-        (t) => !t.claimed && seasonState.track.level >= t.level
-      );
       items.push({
         id: 'season',
-        text: claimable
-          ? `${seasonState.season.name} · milestone ready`
-          : `${seasonState.season.name} · week ${seasonState.season.week} of ${seasonState.season.weeks}`,
-        beacon: claimable,
+        text: `${seasonState.season.name} · week ${seasonState.season.week} of ${seasonState.season.weeks}`,
         onSelect: () => setShowSeasonTrack(true),
       });
     }
@@ -768,7 +651,7 @@ export default function Home() {
       {/* Rollback-only legacy path. FTUE v2 never exposes starter selection. */}
       {needsStarter && <StarterSelection />}
 
-      {/* Season track (§7.2): free milestones - cosmetics and titles.
+      {/* Season track (§7.2): read-only milestones - cosmetics and titles.
           Opened from the mission line. The contracts board that used to
           contend for this slot was retired with the mechanism (§12.2). */}
       {seasonState && !needsStarter && (
@@ -776,7 +659,6 @@ export default function Home() {
           isVisible={showSeasonTrack}
           season={seasonState.season}
           track={seasonState.track}
-          onClaim={handleSeasonClaim}
           onDismiss={() => {
             if (window.location.hash === '#season') {
               window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 
 interface BattleView {
   live?: boolean;
@@ -44,10 +45,15 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
   const [view, setView] = useState<BattleView | null>(null);
   const [error, setError] = useState(false);
   const [, setClock] = useState(0);
+  const topFive = view?.you?.topFive ?? [];
+  useRecognitionSeen('clan', view !== null && !error, accessToken, {
+    artifactRefs: topFive.map((result) => result.sessionId),
+  });
 
   useEffect(() => {
     let cancelled = false;
     fetch('/api/clan/energy-battle', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then(async (response) => {
@@ -77,7 +83,6 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
   }
   if (view.live === false) return null;
 
-  const topFive = view.you?.topFive ?? [];
   const end = view.active
     ? view.battle?.endsAt ?? view.cycle?.endsAt
     : view.battle?.intermissionEndsAt ?? view.cycle?.intermissionEndsAt;
@@ -155,6 +160,7 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
             {topFive.map((result) => (
               <li
                 key={result.sessionId}
+                id={`clan-run-${result.sessionId}`}
                 className="flex items-center justify-between rounded-arcade bg-void/45 px-3 py-2 font-mono text-sm"
               >
                 <span className="text-beige/65">

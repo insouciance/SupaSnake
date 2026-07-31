@@ -5,13 +5,10 @@
 
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
-import { recordLastUser, readLastUser, PROGRESS_LOSS_NOTICE_KEY } from '@/lib/auth/lastUser';
+import { clearLastUser, recordLastUser, readLastUser } from '@/lib/auth/lastUser';
 import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
-import {
-  dispatchNotificationAction,
-  useNotificationStore,
-} from '@/lib/stores/notificationStore';
-import { LAUNCH_HANDOFF_KEY } from '@/lib/ftue/launchFlow';
+import { useNotificationStore } from '@/lib/stores/notificationStore';
+import { clearLaunchHandoff, peekLaunchHandoff } from '@/lib/ftue/launchFlow';
 
 // The 3D chamber is dynamically imported (WebGL); stub the dynamic loader
 jest.mock('next/dynamic', () => ({
@@ -77,7 +74,13 @@ function jsonResponse(body: unknown): Response {
  */
 let contractRequests: string[] = [];
 
-function buildSeason({ premiumTier = false }: { premiumTier?: boolean } = {}) {
+function buildSeason({
+  premiumTier = false,
+  claimed = true,
+}: {
+  premiumTier?: boolean;
+  claimed?: boolean;
+} = {}) {
   return {
     live: true,
     season: {
@@ -99,10 +102,10 @@ function buildSeason({ premiumTier = false }: { premiumTier?: boolean } = {}) {
         {
           level: 1,
           is_premium: premiumTier,
-          reward_type: 'reroll_token',
-          reward_id: null,
-          reward_amount: 1,
-          claimed: false,
+          reward_type: 'cosmetic',
+          reward_id: 'solstice_trail_1',
+          reward_amount: null,
+          claimed,
         },
       ],
     },
@@ -227,8 +230,10 @@ async function waitForStats() {
 describe('Home page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearLaunchHandoff();
     window.localStorage.clear();
     window.sessionStorage.clear();
+    clearLastUser();
     window.history.replaceState(null, '', '/');
     useNotificationStore.setState({ notifications: {}, hasHydrated: true });
     setupFetch();
@@ -497,43 +502,6 @@ describe('Home page', () => {
       expect(contractRequests).toEqual([]);
     });
 
-    it('ignores the retired open-contracts notification action', async () => {
-      setAuthed();
-      render(<Home />);
-
-      await waitForStats();
-      act(() => dispatchNotificationAction('open-contracts'));
-
-      expect(screen.queryByTestId('contracts-board')).not.toBeInTheDocument();
-    });
-
-    it('clears a contracts badge left in persisted notification state', async () => {
-      setAuthed();
-      // A player who was mid-loop when the cutover shipped still carries this
-      // in local storage. It points at /#contracts, which now opens nothing.
-      useNotificationStore.setState({
-        notifications: {
-          contracts: {
-            id: 'contracts',
-            title: 'Daily Contracts ready',
-            description: 'Choose 2 contracts when you\u2019re ready.',
-            destination: 'contracts',
-            href: '/#contracts',
-            action: 'open-contracts',
-            badgeKind: 'exclamation',
-            attentionReason: 'action-required',
-            actionLabel: 'Choose Contracts',
-          },
-        },
-        hasHydrated: true,
-      });
-      render(<Home />);
-
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
-      });
-    });
-
     it('never publishes a contracts notification of its own', async () => {
       setAuthed();
       render(<Home />);
@@ -547,55 +515,52 @@ describe('Home page', () => {
     });
   });
 
-  describe('notification-first season rewards', () => {
-    it('opens the existing season track for its semantic notification action', async () => {
+  describe('automatically secured season history', () => {
+    it('opens the read-only season track from the explicit mission line', async () => {
       setAuthed();
       setupFetch({ season: buildSeason() });
       render(<Home />);
 
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.season).toMatchObject({
-          badgeKind: 'numeric',
-          action: 'open-season',
-        });
-      });
-      act(() => dispatchNotificationAction('open-season'));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Solstice · week 1 of 8' })
+      );
 
       expect(screen.getByTestId('season-track')).toBeInTheDocument();
+      expect(screen.getByTestId('season-tier-1')).toHaveAttribute('data-state', 'secured');
+      expect(screen.queryByRole('button', { name: /claim/i })).not.toBeInTheDocument();
     });
 
-    it('does not advertise a premium reward the player cannot claim', async () => {
+    it('never advertises an unentitled premium reward as an action', async () => {
       setAuthed();
-      setupFetch({ season: buildSeason({ premiumTier: true }) });
+      setupFetch({ season: buildSeason({ premiumTier: true, claimed: false }) });
       render(<Home />);
 
-      await waitForStats();
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.season).toBeUndefined();
-      });
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Solstice · week 1 of 8' })
+      );
+      expect(screen.getByTestId('season-tier-1-premium')).toHaveAttribute(
+        'data-state',
+        'locked'
+      );
+      expect(screen.queryByRole('button', { name: /claim/i })).not.toBeInTheDocument();
     });
 
-    it('clears the season badge immediately after the final reward is claimed', async () => {
+    it('shows a brief server-settlement state without posting a client claim', async () => {
       setAuthed();
-      setupFetch({ season: buildSeason() });
-      const fallbackFetch = global.fetch;
-      global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-        if (String(url).includes('/api/season') && init?.method === 'POST') {
-          return jsonResponse({ reward: { reroll_tokens: 1 } });
-        }
-        return fallbackFetch(url, init);
-      }) as jest.Mock;
+      setupFetch({ season: buildSeason({ claimed: false }) });
       render(<Home />);
 
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.season).toBeDefined();
-      });
-      act(() => dispatchNotificationAction('open-season'));
-      fireEvent.click(screen.getByTestId('season-claim-1'));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Solstice · week 1 of 8' })
+      );
 
-      await waitFor(() => {
-        expect(useNotificationStore.getState().notifications.season).toBeUndefined();
-      });
+      expect(screen.getByTestId('season-tier-1')).toHaveAttribute('data-state', 'settling');
+      expect(screen.getByText('Securing…')).toBeInTheDocument();
+      expect(
+        (global.fetch as jest.Mock).mock.calls.some(
+          ([url, init]) => String(url).includes('/api/season') && init?.method === 'POST'
+        )
+      ).toBe(false);
     });
   });
 
@@ -661,7 +626,7 @@ describe('Home page', () => {
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith('/game?launch=ftue-v2');
       });
-      expect(window.localStorage.getItem(PROGRESS_LOSS_NOTICE_KEY)).toBe('1');
+      expect(window.localStorage.getItem('supasnake-progress-loss-noticed')).toBeNull();
     });
 
     it('takes a truly fresh guest from one Launch through auth, bootstrap, and run loading', async () => {
@@ -680,7 +645,7 @@ describe('Home page', () => {
       expect(urls.indexOf('/api/player/bootstrap')).toBeLessThan(
         urls.indexOf('/api/game/session')
       );
-      expect(JSON.parse(String(sessionStorage.getItem(LAUNCH_HANDOFF_KEY)))).toMatchObject({
+      expect(peekLaunchHandoff()).toMatchObject({
         mode: 'earn',
         bootstrap: { equippedSnake: { name: 'PRIMAL SEED', dynasty: 'PRIMAL' } },
         run: { sessionId: 'session-1' },

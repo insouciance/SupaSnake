@@ -48,6 +48,7 @@ export default function SignupPage() {
   // Skip the gate if this browser already passed verification
   useEffect(() => {
     try {
+      // constitution-allow: local-progress  legal age-verification status contains no player progress
       const verified = window.localStorage.getItem('age_verified') === 'true';
       setAgeStatus(verified ? 'verified' : 'unverified');
     } catch {

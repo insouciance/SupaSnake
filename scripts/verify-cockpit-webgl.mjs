@@ -29,6 +29,7 @@ async function measure(testCase, arena) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => {
+    // constitution-allow: local-progress  isolated test consent fixture contains no player state
     localStorage.setItem(
       'cookie-consent',
       JSON.stringify({

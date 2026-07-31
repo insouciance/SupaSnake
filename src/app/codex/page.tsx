@@ -24,7 +24,7 @@
  * it is absent from the JSON rather than masked here.
  */
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -32,6 +32,7 @@ import { WorkbenchView } from '@/components/workbench/WorkbenchView';
 import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import { NavBar } from '@/components/ui/NavBar';
+import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconDna, IconFlask } from '@/components/ui/icons';
 import { GENES } from '@/shared/game/genes';
@@ -232,6 +233,42 @@ function CodexShell({ view }: { view: CodexView }) {
     if (session?.access_token) void fetchCodex(session.access_token);
   }, [session?.access_token, fetchCodex]);
 
+  const renderedDiscoveryArtifacts = useMemo(() => {
+    if (!data) return [];
+    const refs: string[] = [];
+    for (const gene of data.genes) {
+      if (gene.discovered) refs.push(`gene:${gene.id}`);
+    }
+    for (const splice of data.splices) {
+      if (splice.discovered) refs.push(`splice:${splice.id}`);
+    }
+    for (const strain of data.strains) {
+      if (strain.expression.discovered) refs.push(`expression:${strain.strain}`);
+      if (strain.apex.discovered) refs.push(`apex:${strain.strain}`);
+    }
+    if (data.progress.genomeWeaverUnlocked) refs.push('genome_weaver');
+    return refs;
+  }, [data]);
+
+  // The Codex dot clears only when this player's discovery layer has actually
+  // loaded. Merely navigating to the public rules reference is not enough.
+  useRecognitionSeen(
+    'codex',
+    view === 'archive' && Boolean(session?.access_token) && !isLoading && data !== null,
+    session?.access_token,
+    { artifactRefs: renderedDiscoveryArtifacts }
+  );
+
+  useEffect(() => {
+    if (view !== 'archive' || !data || typeof window === 'undefined') return;
+    const id = window.location.hash.slice(1);
+    if (!id.startsWith('codex-')) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [data, view]);
+
   return (
     <div className="app-bg min-h-screen text-bone-white px-4 sm:px-6 pt-8 pb-28 sm:pb-8 sm:pr-16">
       <NavBar />
@@ -332,7 +369,7 @@ function CodexShell({ view }: { view: CodexView }) {
                 </p>
               )}
 
-              <section className="panel-elevated p-5" aria-label="Codex completion">
+              <section id="codex-genome-weaver" className="panel-elevated p-5" aria-label="Codex completion">
                 <div className="flex items-end justify-between gap-4 mb-3">
                   <div>
                     <p className="font-display text-xl text-bone-white">Archive completion</p>
@@ -360,13 +397,21 @@ function CodexShell({ view }: { view: CodexView }) {
                 <h3 className="heading-display text-xl mb-4">Strain milestones</h3>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   {data.strains.map((entry) => (
-                    <article key={entry.strain} className="panel p-4">
+                    <article
+                      key={entry.strain}
+                      id={`codex-strain-${entry.strain}`}
+                      className="panel p-4"
+                    >
                       <StrainChip strain={entry.strain} size="md" />
                       <div className="mt-4 space-y-3 text-sm">
                         {(['expression', 'apex'] as const).map((tier) => {
                           const milestone = entry[tier];
                           return (
-                            <div key={tier} className={milestone.discovered ? '' : 'opacity-45'}>
+                            <div
+                              key={tier}
+                              id={`codex-${tier}-${entry.strain}`}
+                              className={milestone.discovered ? '' : 'opacity-45'}
+                            >
                               <div className="flex justify-between gap-2">
                                 <span className="font-display capitalize">{tier}</span>
                                 <span className="inline-flex items-center gap-1 font-mono text-cyber">
@@ -394,6 +439,7 @@ function CodexShell({ view }: { view: CodexView }) {
                   {data.splices.map((splice) => (
                     <article
                       key={splice.id}
+                      id={`codex-splice-${splice.id}`}
                       className={`panel p-5 ${splice.discovered ? '' : 'opacity-75'}`}
                       data-testid={`codex-splice-${splice.id}`}
                     >
@@ -438,6 +484,7 @@ function CodexShell({ view }: { view: CodexView }) {
                   {data.genes.map((gene) => (
                     <article
                       key={gene.id}
+                      id={`codex-gene-${gene.id}`}
                       className={`panel p-4 ${gene.discovered ? '' : 'opacity-75'}`}
                       data-testid={`codex-gene-${gene.id}`}
                     >

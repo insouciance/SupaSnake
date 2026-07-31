@@ -9,13 +9,13 @@ check passed. Rollback anchor for this release (precondition 3):
 `dpl_6T3zHoNvoHNWZG2fEMoAwkxT7bQR`, commit `61a1936`; both runtimes use the same
 hosted schema.
 
-The workflow's rollback-anchor step is currently unreliable. Run 30534158859
-executed it after creating the staged `--prod --skip-domain` deployment, and
-`vercel ls --prod` therefore selected the new
-`dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e` artifact rather than the outgoing canonical
-one. Its summary named the staged deployment instead of the independent outgoing
-anchor above. Until the step is moved before staging or resolves the canonical
-alias directly, do not trust the generated summary as rollback evidence.
+Run 30534158859 exposed a rollback-anchor ordering defect: the workflow queried
+`vercel ls --prod` after creating the staged `--prod --skip-domain` artifact and
+therefore named the new artifact instead of the outgoing canonical deployment.
+The workflow now resolves `supasnake.com` itself with `vercel inspect` before
+staging and blocks release unless that alias names a ready production artifact.
+Confirm the next release summary names the known outgoing deployment before
+treating this correction as operationally proven.
 
 Keep this paragraph current. It sat fourteen migrations stale — claiming
 001–038 while Phases 0, 1 and 2 had shipped through 052 — which would have made
@@ -24,9 +24,16 @@ a check if the expected list is true. Update it in the same change that
 dispatches a release, and record the rollback deployment id from the Vercel
 dashboard at that time (precondition 3).
 
-Future releases stage and verify the application before applying any named
-forward-only migration. The manual GitHub workflow encodes this order; do not
-run `supabase db push` independently. A repository-only merge that reconciles
+Ordinary backward-compatible releases stage and verify the application before
+applying any named forward-only migration, then prove both the staged application
+and the outgoing canonical application against the migrated schema before
+promotion. The Career settlement cutover is the reviewed exception: migration
+060 first installs a store-only bridge that is compatible with the outgoing
+application; the exact incoming build is then promoted and proven on that
+bridge; only after the retired 300-second settlement invocation bound plus a
+60-second margin may migration 061 reject the old writer and activate atomic
+settlement. The manual GitHub workflow encodes both orders; do not run
+`supabase db push` independently. A repository-only merge that reconciles
 `main` with an already-live artifact is not a production deployment.
 
 ## Preconditions
@@ -42,30 +49,57 @@ run `supabase db push` independently. A repository-only merge that reconciles
 
 ## Automated sequence
 
-Dispatch **Deploy to Production** on `main`, type `DEPLOY`, and select the Stripe
-mode. The workflow performs:
+Dispatch **Deploy to Production** on `main`, type `DEPLOY`, select the Stripe
+mode, and enter the exact comma-separated pending migration filenames in
+`expected_migrations` (`none` only when the dry-run must be empty). The workflow
+performs:
 
 1. Unit tests, type check, lint and high-severity dependency audit.
 2. Vercel Sensitive-variable presence validation.
-3. Supabase link and migration dry-run (no state change).
+3. Supabase link and migration dry-run (no state change), mechanically matched
+   to the dispatch's exact `expected_migrations` filenames (`none` for a no-op).
 4. A production-target cloud build. `next.config.js` validates the decrypted
    environment values and fails on wrong URL, Stripe mode, Price IDs or keys.
-5. A staged `--prod --skip-domain` deployment and authenticated health check
-   against the current schema. Deployment protection must remain enabled.
-6. Promotion of that capability-aware build to `supasnake.com`.
-7. Application of pending Supabase migrations and linked database lint.
-8. Canonical production health check after the migration step, including when
-   that step is a no-op.
+   The workflow explicitly compiles `NEXT_PUBLIC_CAREER_SPINE_V1=true`; the
+   flag is presentation-only and never gates settlement or earned progress.
+5. For the reviewed Career pair only, application of additive migration 060
+   while the outgoing application remains canonical, followed by database lint
+   and an outgoing-application health check. If a previous attempt already
+   committed 060, an exact `061_career_spine.sql` pending set enters the same
+   flow at the bridge-resume point.
+6. A staged `--prod --skip-domain` deployment and authenticated health check
+   against the current schema. Deployment protection remains enabled. The
+   health contract requires the exact release SHA and either `bridge` capability
+   version 1 during the Career cutover or `ready` Career version 1 otherwise.
+7. For ordinary backward-compatible migrations, application and lint of the
+   exact pending set, followed by staged and outgoing compatibility smokes.
+8. Promotion of the staged build to `supasnake.com`.
+9. A canonical-alias identity check proving that Vercel resolves
+   `supasnake.com` to the staged deployment ID—not merely another artifact from
+   the same commit. During the Career cutover, the subsequent canonical smoke
+   also proves the exact release SHA, bridge phase and presentation flag before
+   the drain clock starts.
+10. A 360-second drain of retired settlement invocations, followed by a second
+    dry-run that must name only `061_career_spine.sql`.
+11. Application and lint of migration 061. New earning results accepted during
+    the bridge are durable server debt and are adopted by the migration/runtime
+    recovery path; the browser is never part of recovery.
+12. Final canonical health check requiring the promoted release SHA, database
+    health, ready Career/bridge capability versions, and the presentation flag.
 
 The protected staged-health command consumes `VERCEL_TOKEN` from the job
 environment. With Vercel CLI 56, do not repeat that credential as an explicit
 `vercel curl --token` option: the subcommand forwards it to raw curl instead of
 using it for CLI authentication.
 
-This closes the unsafe window in a capability-changing release: an older
-application never serves a schema it cannot understand. Every release with a
-pending migration must document compatibility on both sides of the boundary.
-If no migration is pending, the database step must remain a verified no-op.
+This closes both settlement-boundary windows. No new earning result can reach an
+application without its durable ingress; no retired absolute writer can overlap
+the atomic guard; and the hard migration is never attempted until the canonical
+alias proves it is serving the expected bridge-aware SHA. Feature-level rolling
+compatibility still requires focused local/integration tests; these health
+smokes do not claim to exercise every API. Every release with a pending migration
+must document compatibility on both sides of the boundary. If no migration is
+pending, the database step remains a verified no-op.
 
 ## Repository-only mainline reconciliation
 
@@ -97,17 +131,25 @@ updated:
 | Failure point | Safe response |
 |---|---|
 | Verification, env validation, dry-run or staged build fails | Stop. Production is unchanged. |
-| Staged health fails | Do not promote or migrate. Inspect Vercel logs. |
-| Promotion fails | Do not migrate. Production remains on the previous alias. |
-| Migration fails before any migration commits | Keep the compatible staged application only when the release plan proves that state safe; repair and rerun the forward migration. |
-| Migration partially applies | Do not promote an incompatible build. Assess migration table/state, take a backup, and forward-fix. |
-| Post-migration app regression | Deploy a schema-compatible fix/revert based on the current release line; do not assume an older artifact is database-compatible. |
+| Migration 060 or its outgoing health/lint check fails | Do not stage or promote. The outgoing application remains canonical; assess the additive migration and forward-fix. |
+| Staged health fails after 060 | Do not promote. The outgoing application remains compatible with the bridge; fix and rerun with exact pending migration 061. |
+| Either post-migration compatibility smoke fails | Do not promote. Keep the outgoing application canonical and forward-fix the additive schema/application boundary. |
+| Promotion fails | The migrated schema and outgoing application have already passed compatibility smoke; retry promotion or investigate Vercel without reverting schema. |
+| Career bridge canonical smoke or drain fails | Do not apply 061. Server-accepted ends remain durable in the bridge; forward-fix or resume with exact pending migration 061. |
+| Migration 061 fails or partially applies | Do not promote an old artifact. Preserve pending evidence, inspect migration history/state, take a backup, and forward-fix on the bridge-aware release line. |
+| Final ready-phase smoke fails | Forward-fix from the schema-compatible release line; do not assume the outgoing artifact can safely settle on 061. |
 
 Database migrations are forward-only unless a separately reviewed restoration
 plan proves reversal is lossless. `git revert`, Vercel Instant Rollback and a
 database rollback are different operations; never assume one reverses the
 others. Also note that Vercel Instant Rollback does not update cron definitions,
 so verify cron state explicitly after any rollback.
+
+The recorded outgoing artifact is not an automatic rollback target once the
+new Career build has accepted bridge traffic, and it is categorically
+incompatible after migration 061. Accepted pending envelopes are earned server
+debt: preserve them and forward-fix rather than exchanging data safety for a
+fast artifact rollback.
 
 ## Stripe test-to-live transition
 

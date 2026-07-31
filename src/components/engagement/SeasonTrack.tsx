@@ -1,23 +1,21 @@
 'use client';
 
 /**
- * Season Track (Design v2 §7.2) - the seasonal reward track carried by
- * the battle pass structure: contract completions feed ~150 XP each
- * (§7.3), milestones grant cosmetics and titles, the capstone
- * is a title. Seasons add and never wipe.
+ * Season Track (Constitution v1.6 §7.2) - a read-only view of the legacy
+ * seasonal chapter. Milestones grant cosmetics and titles, and reached
+ * entitlements are secured automatically by server authority. Seasons add
+ * and never wipe.
  *
  * SupaSnake Premium (migration 028): premium tiers (cosmetics only)
- * render in the same list - claimable while subscribed (or when this
- * season was locked in while subscribed), locked with a shop hint
- * otherwise. Entitlement is enforced server-side by claim_season_tier.
+ * render in the same list - entitled while subscribed (or when this season
+ * was locked in while subscribed), locked with a shop hint otherwise.
  *
  * Rendered as a modal in the shared overlay pattern (previously shared with
- * the contracts board, retired by WP-1.03 §12.2); data comes
- * from GET /api/season (fetched by the host page), claims go back through
- * the onClaim callback (POST /api/season { action: 'claim', level }).
+ * the contracts board, retired by WP-1.03 §12.2); data comes from the
+ * read-only GET /api/season endpoint. Daily Take is the only literal Collect
+ * action; this surface never creates a second reward inbox.
  */
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { IconCrown, IconTrophy } from '@/components/ui/icons';
 
@@ -69,7 +67,6 @@ interface SeasonTrackProps {
   isVisible: boolean;
   season: SeasonView;
   track: SeasonTrackView;
-  onClaim: (level: number) => Promise<boolean>;
   onDismiss: () => void;
 }
 
@@ -77,11 +74,8 @@ export function SeasonTrack({
   isVisible,
   season,
   track,
-  onClaim,
   onDismiss,
 }: SeasonTrackProps) {
-  const [claimingLevel, setClaimingLevel] = useState<number | null>(null);
-
   if (!isVisible) return null;
 
   const intoLevel = track.level > 0 ? track.xp % track.xp_per_level : track.xp;
@@ -89,16 +83,6 @@ export function SeasonTrack({
   const progressPct = levelDone
     ? 100
     : Math.min(100, Math.round((intoLevel / track.xp_per_level) * 100));
-
-  const handleClaim = async (level: number) => {
-    if (claimingLevel !== null) return;
-    setClaimingLevel(level);
-    try {
-      await onClaim(level);
-    } finally {
-      setClaimingLevel(null);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
@@ -144,7 +128,7 @@ export function SeasonTrack({
           </div>
         )}
 
-        {/* Track progress: level + XP bar (contracts feed it, §7.3) */}
+        {/* Track progress: server-owned level + XP history. */}
         <div className="mb-4 space-y-1.5">
           <div className="flex items-center justify-between text-sm font-body">
             <span className="text-bone-white font-bold" data-testid="season-level">
@@ -162,7 +146,7 @@ export function SeasonTrack({
             />
           </div>
           <p className="text-beige/50 text-xs font-body">
-            Contracts pay the track — 150 XP each
+            Reached milestones are secured automatically
           </p>
         </div>
 
@@ -175,7 +159,10 @@ export function SeasonTrack({
               track.premium?.is_premium === true ||
               track.premium?.season_locked_in === true;
             const reached = track.level >= tier.level;
-            const claimable = reached && !tier.claimed && entitled;
+            // A reached, entitled but not-yet-reflected row can appear briefly
+            // while the server migration/settlement catches up. It is never a
+            // client claim opportunity.
+            const settling = reached && !tier.claimed && entitled;
             const testId = isPremiumTier
               ? `season-tier-${tier.level}-premium`
               : `season-tier-${tier.level}`;
@@ -183,9 +170,9 @@ export function SeasonTrack({
               <div
                 key={`${tier.level}-${isPremiumTier ? 'p' : 'f'}`}
                 data-testid={testId}
-                data-state={tier.claimed ? 'claimed' : claimable ? 'claimable' : 'locked'}
+                data-state={tier.claimed ? 'secured' : settling ? 'settling' : 'locked'}
                 className={`flex items-center justify-between gap-3 rounded-arcade border px-3 py-2 ${
-                  claimable
+                  settling
                     ? isPremiumTier
                       ? 'border-amber-300 bg-amber-300/10'
                       : 'border-venom-orange bg-venom-orange/10'
@@ -210,17 +197,12 @@ export function SeasonTrack({
                 </div>
                 {tier.claimed ? (
                   <span className="text-rarity-uncommon text-xs font-body uppercase tracking-wide">
-                    Claimed
+                    Secured
                   </span>
-                ) : claimable ? (
-                  <button
-                    onClick={() => handleClaim(tier.level)}
-                    disabled={claimingLevel !== null}
-                    data-testid={`season-claim-${tier.level}${isPremiumTier ? '-premium' : ''}`}
-                    className="btn-go px-4 py-1.5 text-sm"
-                  >
-                    {claimingLevel === tier.level ? 'Claiming…' : 'Claim'}
-                  </button>
+                ) : settling ? (
+                  <span className="text-venom-orange text-xs font-body uppercase tracking-wide">
+                    Securing…
+                  </span>
                 ) : isPremiumTier && !entitled ? (
                   <Link
                     href="/shop"

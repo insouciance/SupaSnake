@@ -138,11 +138,8 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
       'const ascendance = ascendanceYieldBreakdown(',
       'const yieldDna = ascendance.totalYield;',
       'const finalDna = applyEnergyHarvestMultiplier(',
-      'const settlementUpdate: Record<string, unknown> = {',
-      'dna: newDna,',
-      "source_type: 'game_reward',",
-      'await refreshPlayerRecords(supabase, player.id);',
-      'await settleSignalAttemptForSession(',
+      'const settlementFacts: Record<string, unknown> = {',
+      'const progressionResult = await settleDurableRunProgression(',
     ]) {
       expect(ROUTE.indexOf(earlier)).toBeGreaterThan(-1);
       expect(call).toBeGreaterThan(ROUTE.indexOf(earlier));
@@ -164,8 +161,8 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
 
   it('keeps the Take out of the session row and out of the validation block', () => {
     const settlementUpdate = ROUTE.slice(
-      ROUTE.indexOf('const settlementUpdate: Record<string, unknown> = {'),
-      ROUTE.indexOf('const endSession = ()')
+      ROUTE.indexOf('const settlementFacts: Record<string, unknown> = {'),
+      ROUTE.indexOf('let endedRows:')
     );
     expect(settlementUpdate).not.toMatch(/take/i);
 
@@ -185,9 +182,10 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
   });
 
   it('never lets the Take reach the Free Play response either', () => {
+    const freePlayStart = ROUTE.indexOf('if (isFreeSession) {');
     const freePlay = ROUTE.slice(
-      ROUTE.indexOf('if (isFreeSession) {'),
-      ROUTE.indexOf('const newDna = player.dna + finalDna;')
+      freePlayStart,
+      ROUTE.indexOf('const progressionResult = await settleDurableRunProgression(', freePlayStart)
     );
     expect(freePlay.length).toBeGreaterThan(100);
     // Free Play pays nothing, so it offers nothing (§7.4).

@@ -46,19 +46,6 @@ export const ENGAGEMENT_CONFIG = {
    * that restates them can only drift again.
    */
 
-  /**
-   * Passive Progress System (Tamagotchi-style)
-   * Rewards players for time away from the game
-   */
-  passiveProgress: {
-    /** DNA generated per snake per hour while offline */
-    dnaPerSnakePerHour: 1,
-    /** Maximum hours of offline progress to accumulate */
-    maxOfflineHours: 24,
-    /** Minimum minutes offline before showing Welcome Back modal */
-    minOfflineMinutes: 5,
-    /** Energy regeneration is handled separately by energyRegen.ts */
-  },
 } as const;
 
 /**

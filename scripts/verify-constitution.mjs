@@ -10,6 +10,7 @@
  *   owned-row-downward   R6      §4.6   no path writes a player-owned row downward
  *   breeding-random      §8.2           no random() in a live breeding/lineage path
  *   energy-commerce      §10.4          energy is never sold, gifted, or stipended
+ *   local-progress       R11     §4.11  browser persistence never stores player progress
  *   todo-fixme           project rule   no unfinished-work markers in committed code
  *
  * Exit codes: 0 clean · 1 one or more gates failed · 2 the script itself broke.
@@ -908,6 +909,42 @@ function gateEnergyCommerce(files) {
 }
 
 // ---------------------------------------------------------------------------
+// Gate: local-progress (Constitution Rule 11, §4.11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Browser persistence is not a second player database. Every runtime use of a
+ * durable browser store is review-visible: progress paths must remove the use;
+ * narrowly non-progress uses (for example legal consent or a visual setting)
+ * require an inline explanation that this gate can verify.
+ *
+ * The pattern covers the browser-owned durable stores available to application
+ * code. Authenticated progress belongs on the server; unauthenticated progress
+ * is memory-only and deliberately disappears with the page lifecycle.
+ */
+const BROWSER_PERSISTENCE =
+  /\b(?:localStorage|sessionStorage)\s*(?:\.|\)|,|;|}|:)|\bpersistence\s*:\s*['"]localStorage(?:\+cookie)?['"]|\bindexedDB\s*\.|\bCacheStorage\b|\bcaches\s*\.\s*(?:open|match|keys|delete)\s*\(|\bnavigator\s*\.\s*storage\s*\.\s*getDirectory\s*\(|\bdocument\s*\.\s*cookie\b/;
+
+function gateLocalProgress(files) {
+  const report = makeReport('local-progress', { honourBaseline: false });
+
+  for (const file of files) {
+    if (file.isTest || file.isScanner) continue;
+    for (const { line, code } of codeMatches(file, BROWSER_PERSISTENCE)) {
+      report.flag(
+        file,
+        line,
+        'browser-persistent storage requires an explicit non-progress exemption — ' +
+          'Rule 11: player progress is server-authoritative or guest-memory-only',
+        code
+      );
+    }
+  }
+
+  return report;
+}
+
+// ---------------------------------------------------------------------------
 // Gate: todo-fixme (project rule — complete implementations only)
 // ---------------------------------------------------------------------------
 
@@ -971,6 +1008,12 @@ const GATES = [
     rule: '§10.4',
     title: 'no energy grant/consume path reachable from a purchase or perk',
     run: gateEnergyCommerce,
+  },
+  {
+    id: 'local-progress',
+    rule: 'R11',
+    title: 'no player progress in browser-persistent storage',
+    run: gateLocalProgress,
   },
   {
     id: 'todo-fixme',

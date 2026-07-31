@@ -113,7 +113,7 @@ describe('the route WP-1.06 was already pointed at', () => {
 
   it('is not named like a claim, so §12.2 s pinned list cannot grow', () => {
     // `faucetPurge.test.ts` pins every route directory matching
-    // /reward|claim|bonus|stipend/ to exactly ['player/claim-offline'].
+    // /reward|claim|bonus|stipend/ to an empty list.
     expect(/reward|claim|bonus|stipend/i.test('daily-take/collect')).toBe(false);
   });
 });

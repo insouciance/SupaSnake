@@ -65,6 +65,7 @@ export function marketingConsentGranted(
 
 function defaultConsentReader(): string | null {
   if (typeof window === 'undefined') return null;
+  // constitution-allow: local-progress  legal marketing consent contains no gameplay or progression fact
   return window.localStorage.getItem(CONSENT_KEY);
 }
 
@@ -132,6 +133,7 @@ export function parseAttribution(
 function sessionStore(): Storage | null {
   if (typeof window === 'undefined') return null;
   try {
+    // constitution-allow: local-progress  acquisition labels contain campaign data only, never player progress
     return window.sessionStorage;
   } catch {
     return null;

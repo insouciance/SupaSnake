@@ -4,10 +4,11 @@
 
 import {
   INITIAL_LAUNCH_STATE,
-  LAUNCH_HANDOFF_KEY,
   bootstrapForLaunch,
+  clearLaunchHandoff,
   consumeLaunchHandoff,
   launchHandoffStorageAvailable,
+  peekLaunchHandoff,
   prepareLaunchHandoff,
   storeLaunchHandoff,
   transitionLaunch,
@@ -52,7 +53,11 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe('FTUE v2 launch flow', () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => {
+    clearLaunchHandoff();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   it('moves through every prerequisite and ignores stale completion events', () => {
     let state = transitionLaunch(INITIAL_LAUNCH_STATE, {
@@ -205,24 +210,16 @@ describe('FTUE v2 launch flow', () => {
       run: { sessionId: 'session-1' },
     };
 
-    expect(storeLaunchHandoff(handoff, sessionStorage)).toBe(true);
-    expect(consumeLaunchHandoff('user-1', sessionStorage, 2_000)).toEqual(handoff);
-    expect(consumeLaunchHandoff('user-1', sessionStorage, 2_000)).toBeNull();
+    expect(storeLaunchHandoff(handoff)).toBe(true);
+    expect(peekLaunchHandoff()).toEqual(handoff);
+    expect(consumeLaunchHandoff('user-1', 2_000)).toEqual(handoff);
+    expect(consumeLaunchHandoff('user-1', 2_000)).toBeNull();
   });
 
-  it('checks transient storage before creating a server run', () => {
-    expect(launchHandoffStorageAvailable(sessionStorage)).toBe(true);
-    const blocked = {
-      getItem: jest.fn(),
-      removeItem: jest.fn(),
-      setItem: jest.fn(() => {
-        throw new Error('blocked');
-      }),
-      clear: jest.fn(),
-      key: jest.fn(),
-      length: 0,
-    } satisfies Storage;
-    expect(launchHandoffStorageAvailable(blocked)).toBe(false);
+  it('uses a page-memory channel without browser storage', () => {
+    expect(launchHandoffStorageAvailable()).toBe(true);
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it('discards stale or wrong-identity handoffs before they can start a board', () => {
@@ -234,11 +231,11 @@ describe('FTUE v2 launch flow', () => {
       bootstrap,
       run: { sessionId: 'session-1' },
     };
-    sessionStorage.setItem(LAUNCH_HANDOFF_KEY, JSON.stringify(handoff));
-    expect(consumeLaunchHandoff('user-2', sessionStorage, 2_000)).toBeNull();
-    expect(sessionStorage.getItem(LAUNCH_HANDOFF_KEY)).toBeNull();
+    storeLaunchHandoff(handoff);
+    expect(consumeLaunchHandoff('user-2', 2_000)).toBeNull();
+    expect(peekLaunchHandoff()).toBeNull();
 
-    sessionStorage.setItem(LAUNCH_HANDOFF_KEY, JSON.stringify(handoff));
-    expect(consumeLaunchHandoff('user-1', sessionStorage, 400_000)).toBeNull();
+    storeLaunchHandoff(handoff);
+    expect(consumeLaunchHandoff('user-1', 400_000)).toBeNull();
   });
 });

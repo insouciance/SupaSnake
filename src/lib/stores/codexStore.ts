@@ -40,6 +40,7 @@ export const useCodexStore = create<CodexState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await fetch('/api/codex', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const payload = await response.json();

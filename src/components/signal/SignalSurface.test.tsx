@@ -236,6 +236,28 @@ describe('SignalSurface (flag on)', () => {
     expect(screen.getByText(/quiet right now/i)).toBeInTheDocument();
   });
 
+  it('keeps permanent Signal marks visible on a quiet day', async () => {
+    mockPanel({
+      live: false,
+      day: null,
+      you: {
+        chosen: false,
+        objectiveId: null,
+        objective: null,
+        progress: 0,
+        target: 0,
+        completed: false,
+        bonusPaid: false,
+      },
+      marks: { signalsCompleted: 30, reached: [10, 30], next: 100 },
+    });
+    render(<SignalSurface token="test-token" onTake={jest.fn()} />);
+
+    await openCard();
+    expect(document.getElementById('signal-mark-30')).toHaveTextContent('Mark 30');
+    expect(screen.getByText(/30 Signals completed in total/)).toBeInTheDocument();
+  });
+
   it('surfaces a non-ok panel response as an error rather than rendering undefined', async () => {
     // The repo's known defect is a bare `.then(res => res.json())` swallowing
     // a 500 and rendering `undefined`. `!response.ok` is checked, so a 500 is

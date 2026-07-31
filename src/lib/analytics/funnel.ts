@@ -10,7 +10,7 @@
  * |------------|--------------------------------------------|-----------------------------|
  * | reach      | The channel portfolio (§11.6)              | landing, attributed arrival |
  * | arrive     | Every URL lands playing                    | landing page mount          |
- * | activate   | The aha: first BANKED extraction           | portal BANK, once/browser   |
+ * | activate   | The aha: first BANKED extraction           | portal BANK, once/page life |
  * | identify   | Claiming a handle / attaching an email     | signup + handle claim       |
  * | habituate  | Signal ritual, World Report, Dispatch      | WP-1.03 / WP-1.04           |
  * | belong     | Clan founding and joining (§9)             | WP-1.02 / WP-1.07           |
@@ -106,31 +106,31 @@ export function attachAttributionToPerson(
 }
 
 /**
- * Once-per-browser stage marker for stages that describe a threshold
- * crossed rather than an action repeated (Activate, Identify). The guard
- * lives in localStorage alongside PostHog's own persistence and is only
- * written once analytics is initialised, so it never appears for a visitor
- * who declined analytics consent.
+ * Once-per-page-lifecycle stage marker for stages that describe a threshold
+ * crossed rather than an action repeated (Activate, Identify). Durable
+ * deduplication belongs in analytics, not in a browser copy of a progression
+ * fact. This memory guard is only populated after analytics is initialised,
+ * so it never appears for a visitor who declined analytics consent.
  *
- * Returns true when this call was the crossing.
+ * Returns true when this call was the first crossing in this page lifecycle.
  */
+const crossedStagesThisPage = new Set<FunnelStage>();
+
 export function trackFunnelStageOnce(
   stage: FunnelStage,
   properties: FunnelProperties = {}
 ): boolean {
   if (!isAnalyticsInitialized()) return false;
-
-  const key = `supasnake-funnel-${stage}`;
-  try {
-    if (window.localStorage.getItem(key) === '1') return false;
-    window.localStorage.setItem(key, '1');
-  } catch {
-    // Storage-restricted browsers report the stage every time rather than
-    // never; an over-count is more honest than a silent gap.
-  }
+  if (crossedStagesThisPage.has(stage)) return false;
+  crossedStagesThisPage.add(stage);
 
   trackFunnelStage(stage, properties);
   return true;
+}
+
+/** Clear lifecycle-only guards when a runtime lifecycle or a test starts. */
+export function resetFunnelStageMemory(): void {
+  crossedStagesThisPage.clear();
 }
 
 /**
@@ -140,7 +140,7 @@ export function trackFunnelStageOnce(
  * eight stages above, and each rung's stage event is ALREADY fired by the
  * mechanism that crosses it:
  *
- *   named      → HandleClaimModal fires IDENTIFY once per browser on a
+ *   named      → HandleClaimModal fires IDENTIFY once per page lifecycle on a
  *                successful first claim.
  *   reachable  → the settings email opt-in.
  *   belonging  → clan founding / joining fires BELONG.

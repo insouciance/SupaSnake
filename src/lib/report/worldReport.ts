@@ -1,92 +1,18 @@
 /**
  * The World Report — return without debt (Constitution §7.5).
  *
- * "When a player comes back after three or more absent days, one screen —
- * never blocking Launch, Rule 1 and the two-tap law intact — reports what
- * moved... It is written as news ('HOLLOW FANG reached Depth 51,000 without
- * you — they left the door open'), never as debt: no claims, no catch-up
- * tasks, nothing owed."
+ * This pure composer now reads the current World Serpent truth: aggregate
+ * three-day Clan Energy Battle outcomes, the player's monotonic Depth, and
+ * today's Signal. It contains no teammate attempt facts and creates no state,
+ * reward, claim, task, or balance. Historical weekly-Serpent inputs remain a
+ * compatibility path so already-authored tests and archived readings do not
+ * lose their meaning; production supplies `energyContext`.
  *
- * This module is the pure half. A last-seen timestamp, the player's Serpent
- * panel and the world's settled weeks go in; a reading comes out. It is pure
- * so the cases that matter — three days, a month, a season, a world with two
- * players in it — can be asserted without a DOM and without a database.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * IT COMPOSES HISTORY. IT DOES NOT PRODUCE ANY.
- *
- *   Every fact here is already written, already settled and already readable
- *   at its own URL: a Serpent week's roll-up, the player's standing numbers,
- *   today's Signal from the shipped calendar. Nothing in this file reads a new
- *   table, and nothing in this file can write one — it takes data and returns
- *   strings. §12.2 says the World Report is "not a new daily or weekly
- *   surface, not a new currency, not a new claim"; the way that is guaranteed
- *   is that there is nothing here for a claim to be attached to.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * HOW IT IS KEPT DEBT-FREE — FOUR DEVICES, NOT ONE
- *
- *   1. NOTHING IT READS CAN GO DOWN. `bestWeekDepth` and `lifetimeDepth` are
- *      monotonic by construction (§7.3, Rule 6); a week's roll-up is a record
- *      of what was ADDED. There is no subtractive number in this module's
- *      inputs, so there is no subtractive number it could render even by
- *      mistake. This is the load-bearing one: the others are belt and braces.
- *
- *   2. IT NEVER ENUMERATES BEYOND `WORLD_REPORT_WEEK_LIMIT`. A season away is
- *      thirteen submerged weeks. Thirteen lines is a punch-list, and a
- *      punch-list is a backlog with better typography — so past four, the
- *      report SUMMARISES and stops. A longer absence produces a report of the
- *      same length, not a longer one.
- *
- *   3. IT ALWAYS SAYS WHAT STILL STANDS. `standing` is the one section that
- *      cannot be omitted at any population or any absence length, and its last
- *      line is the invariant stated outright: nothing of yours moved. R5 is
- *      not merely obeyed here, it is reported.
- *
- *   4. IT SWEEPS ITS OWN COPY. `sweepReturn` refuses the whole report on a
- *      loss, expiry, backlog, debt, claim or currency word — the same loud
- *      refusal `composeSettlementPost` uses for Rule 7, for the same reason:
- *      a bad edit must fail, not ship. Foreign strings (clan names, shipped
- *      engine copy) are redacted first, because this is a lint over the copy
- *      the product authors, not over what a player named their clan.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * IT DOES NOT INVENT A SECOND AGGREGATOR OR A SECOND VOICE
- *
- *   The world's weeks come from `readWorldRollup` and are read through
- *   `composeWorldSettlementPost` (WP-1.09), so a week the operator published
- *   and the same week in a returning player's report cannot disagree about
- *   conditions or clans. The phrasing — `segments`, `formatWeekStart` — is
- *   WP-1.07's Monday briefing, because §7.5 is that briefing over a longer
- *   span, and the day is `describeSignalDay`, the one authoritative derivation
- *   (§7.2). No calendar, no aggregator and no vocabulary is re-declared here.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * N = 1 IS THE DEFAULT CASE, NOT THE EDGE
- *
- *   This game has two real players. A return screen that needs a crowd is a
- *   return screen that never works, so the spine of the report is THE
- *   CALENDAR, NOT THE POPULATION. Weeks surfaced and submerged under named
- *   conditions whether or not anyone hunted them; a Signal is up today
- *   whether or not anyone took it; the player's own records still stand
- *   whether or not anyone passed them. Every one of those is real news at
- *   N = 1, and all three sections survive an empty world. The crowd-dependent
- *   material — other clans, record counts — is additive: present when there is
- *   a world to report, silently absent when there is not. Nothing apologises
- *   for a small world and nothing renders an empty roster.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * RULE 8, RULE 14
- *
- *   Clans are named and never graded. No position, no rank number, no cut
- *   line, no "top", no bar: the deepest clans of a week are printed in some
- *   order because a sentence has an order, exactly as §11.6's post prints
- *   them. And every fact carries the canonical URL it came from — a Serpent
- *   week at `/w/[week]`, a Signal day at `/s/[day]`, both of which already
- *   have OG images and a way in. The report itself mints no URL: it is a
- *   reading of one player's absence, and a private timeline is not a
- *   "meaningful artifact" in R14's sense — it is personal data. R14 is
- *   satisfied by every line being linkable, not by publishing the person.
+ * Both paths are bounded to four named events, always state what still
+ * stands, and sweep product-authored copy for loss, expiry, backlog, debt,
+ * claim, and currency language. Foreign clan names and calendar copy are
+ * redacted before that sweep. Current battle lines link to the clan artifact;
+ * historical week lines retain their immutable week artifact links.
  */
 
 import {
@@ -103,7 +29,11 @@ import {
 } from '@/lib/report/config';
 import { redact, sweepReturn } from '@/lib/report/returnLanguage';
 import type { SerpentPanel, SerpentPanelClan } from '@/lib/server/serpent';
-import { serpentWeekArtifactUrl, signalArtifactUrl } from '@/lib/share/artifactUrls';
+import {
+  clanArtifactUrl,
+  serpentWeekArtifactUrl,
+  signalArtifactUrl,
+} from '@/lib/share/artifactUrls';
 import {
   describeSerpentWeek,
   serpentWeekEnd,
@@ -124,7 +54,38 @@ const MAX_WEEK_WALK = 520;
 /** How long the world ran. A description of a calendar, never a tier. */
 export type WorldReportSpan = 'days' | 'week' | 'month' | 'season';
 
-export type WorldReportSectionId = 'weeks' | 'clan' | 'records' | 'standing' | 'today';
+export type WorldReportSectionId =
+  | 'battles'
+  | 'weeks'
+  | 'clan'
+  | 'records'
+  | 'standing'
+  | 'today';
+
+export interface WorldReportEnergyBattle {
+  battleId: string;
+  settledAt: string;
+  outcome: 'victor' | 'participant' | 'stalemate' | 'bye';
+  clan: {
+    id: string;
+    name: string;
+    tag: string | null;
+    depth: number;
+  };
+  opponent: {
+    name: string;
+    tag: string | null;
+    depth: number;
+  } | null;
+}
+
+export interface WorldReportEnergyContext {
+  standing: {
+    bestBattleDepth: number;
+    lifetimeDepth: number;
+  };
+  battles: readonly WorldReportEnergyBattle[];
+}
 
 /** One sentence, and the canonical artifact it came from (Rule 14). */
 export interface WorldReportLine {
@@ -153,6 +114,8 @@ export interface WorldReport {
   span: WorldReportSpan;
   /** How many Serpent weeks submerged while they were away. */
   weeksSubmerged: number;
+  /** Current Energy-Battle cycles named by this report. */
+  battleCyclesSettled: number;
   headline: string;
   sections: WorldReportSection[];
   /** Every canonical URL the report cites, deduped, in reading order. */
@@ -165,14 +128,20 @@ export interface WorldReportInput {
    * never played — a first visit is not a return, and gets no report.
    */
   lastSeenAt: string | null;
-  /** Their standings. Read, never written. */
-  panel: SerpentPanel;
+  /**
+   * Current Clan Energy Battle history and monotonic Depth standing. When
+   * present, this is the production path. It contains aggregate clan facts
+   * only—never another member's attempts, commitment, threshold, or rank.
+   */
+  energyContext?: WorldReportEnergyContext;
+  /** Historical weekly-Serpent compatibility input. */
+  panel?: SerpentPanel;
   /**
    * The world's settled weeks, from `readWorldRollup`. Only the weeks the
    * report will actually name need be supplied; a week with no entry still
    * reads, on its conditions alone.
    */
-  weeks: readonly WorldSettlement[];
+  weeks?: readonly WorldSettlement[];
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +239,70 @@ const SPAN_CLAUSE: Record<WorldReportSpan, string> = {
   month: 'A month of the world ran without you.',
   season: 'A season of the world ran without you.',
 };
+
+function battleDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'A recent cycle';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+function battleLine(
+  battle: WorldReportEnergyBattle,
+  quoted: string[]
+): WorldReportLine {
+  const mine = battle.clan.name.toUpperCase();
+  quoted.push(mine);
+  const href = battle.clan.tag ? clanArtifactUrl(battle.clan.tag) : undefined;
+  const when = battleDate(battle.settledAt);
+
+  if (!battle.opponent) {
+    return {
+      text: `${when} · ${mine} reached Depth ${segments(battle.clan.depth)} in an unmatched battle.`,
+      href,
+    };
+  }
+
+  const rival = battle.opponent.name.toUpperCase();
+  quoted.push(rival);
+  const difference = Math.abs(battle.clan.depth - battle.opponent.depth);
+  const result =
+    battle.outcome === 'victor'
+      ? `${mine} took the victor honor.`
+      : battle.outcome === 'stalemate'
+        ? 'The battle settled level.'
+        : `${rival} took the victor honor.`;
+
+  return {
+    text: `${when} · ${mine} reached Depth ${segments(battle.clan.depth)}; ${rival} reached Depth ${segments(battle.opponent.depth)}. Depth difference: ${segments(difference)}. ${result}`,
+    href,
+  };
+}
+
+function battlesSection(
+  battles: readonly WorldReportEnergyBattle[],
+  quoted: string[]
+): WorldReportSection {
+  if (battles.length === 0) {
+    return {
+      id: 'battles',
+      title: 'Clan battles',
+      lines: [{ text: 'No Clan Battle settled while you were away.' }],
+    };
+  }
+
+  return {
+    id: 'battles',
+    title: 'Clan battles',
+    lines: battles.slice(0, WORLD_REPORT_WEEK_LIMIT).map((battle) =>
+      battleLine(battle, quoted)
+    ),
+  };
+}
 
 /**
  * The sentence the whole feature exists to be allowed to say.
@@ -402,7 +435,29 @@ function standingSection(panel: SerpentPanel): WorldReportSection {
   return { id: 'standing', title: 'What still stands', lines };
 }
 
-function todaySection(now: Date | number, quoted: string[]): WorldReportSection {
+function energyStandingSection(
+  standing: WorldReportEnergyContext['standing']
+): WorldReportSection {
+  const lines: WorldReportLine[] = [
+    {
+      text:
+        standing.bestBattleDepth > 0
+          ? `Your deepest Clan Battle contribution still stands at ${segments(standing.bestBattleDepth)}.`
+          : 'Your first Clan Battle contribution is still ahead.',
+    },
+  ];
+  if (standing.lifetimeDepth > 0) {
+    lines.push({ text: `Lifetime Depth: ${segments(standing.lifetimeDepth)}.` });
+  }
+  lines.push({ text: STANDING_INVARIANT });
+  return { id: 'standing', title: 'What still stands', lines };
+}
+
+function todaySection(
+  now: Date | number,
+  quoted: string[],
+  includeHistoricalSerpent = true
+): WorldReportSection {
   const day = describeSignalDay(now);
   quoted.push(day.condition.effect);
 
@@ -418,7 +473,7 @@ function todaySection(now: Date | number, quoted: string[]): WorldReportSection 
       href: signalArtifactUrl(signalDayIndex(now)),
     },
   ];
-  if (week) {
+  if (includeHistoricalSerpent && week) {
     lines.push({
       text: `The Serpent is up. This week: ${week.conditions}.`,
       href: serpentWeekArtifactUrl(weekKey),
@@ -447,7 +502,7 @@ export function composeWorldReport(
   input: WorldReportInput,
   now: Date | number = Date.now()
 ): WorldReport | null {
-  const { lastSeenAt, panel, weeks } = input;
+  const { lastSeenAt, energyContext } = input;
   if (!lastSeenAt) return null;
   const last = new Date(lastSeenAt).getTime();
   if (Number.isNaN(last)) return null;
@@ -456,28 +511,42 @@ export function composeWorldReport(
   if (awayDays < WORLD_REPORT_MIN_ABSENT_DAYS) return null;
 
   const span = absenceSpan(awayDays);
-  const weekKeys = submergedWeeksWhileAway(lastSeenAt, now);
-  const byKey = new Map(weeks.map((week) => [week.weekKey, week]));
-  // Only the weeks the report names can contribute a record count, so the
-  // numbers a player reads always match the weeks printed above them.
-  const namedWeeks = weekKeys
-    .slice(0, WORLD_REPORT_WEEK_LIMIT)
-    .map((key) => byKey.get(key))
-    .filter((week): week is WorldSettlement => week !== undefined);
-
   /** Foreign strings, redacted before the sweep. See `returnLanguage`. */
   const quoted: string[] = [];
+  let sections: WorldReportSection[];
+  let weekCount = 0;
+  let battleCount = 0;
 
-  const sections: WorldReportSection[] = [weeksSection(weekKeys, byKey, now, quoted)];
+  if (energyContext) {
+    const recentBattles = energyContext.battles.slice(0, WORLD_REPORT_WEEK_LIMIT);
+    battleCount = recentBattles.length;
+    sections = [
+      battlesSection(recentBattles, quoted),
+      energyStandingSection(energyContext.standing),
+      todaySection(now, quoted, false),
+    ];
+  } else {
+    const panel = input.panel;
+    if (!panel) return null;
+    const weeks = input.weeks ?? [];
+    const weekKeys = submergedWeeksWhileAway(lastSeenAt, now);
+    weekCount = weekKeys.length;
+    const byKey = new Map(weeks.map((week) => [week.weekKey, week]));
+    // Only the weeks the report names can contribute a record count, so the
+    // numbers a player reads always match the weeks printed above them.
+    const namedWeeks = weekKeys
+      .slice(0, WORLD_REPORT_WEEK_LIMIT)
+      .map((key) => byKey.get(key))
+      .filter((week): week is WorldSettlement => week !== undefined);
 
-  const clan = clanWhileAway(panel.clan, namedWeeks);
-  if (clan) sections.push(clanSection(clan, quoted));
-
-  const records = recordsSection(namedWeeks);
-  if (records) sections.push(records);
-
-  sections.push(standingSection(panel));
-  sections.push(todaySection(now, quoted));
+    sections = [weeksSection(weekKeys, byKey, now, quoted)];
+    const clan = clanWhileAway(panel.clan, namedWeeks);
+    if (clan) sections.push(clanSection(clan, quoted));
+    const records = recordsSection(namedWeeks);
+    if (records) sections.push(records);
+    sections.push(standingSection(panel));
+    sections.push(todaySection(now, quoted));
+  }
 
   const headline = `${awayDays} days away. ${SPAN_CLAUSE[span]}`;
 
@@ -491,7 +560,8 @@ export function composeWorldReport(
   const report: WorldReport = {
     awayDays,
     span,
-    weeksSubmerged: weekKeys.length,
+    weeksSubmerged: weekCount,
+    battleCyclesSettled: battleCount,
     headline,
     sections,
     links,

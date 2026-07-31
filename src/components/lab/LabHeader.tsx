@@ -9,6 +9,12 @@
 import Link from 'next/link';
 import { IconBolt, IconDna, IconHome } from '@/components/ui/icons';
 import type { ChargeStatus } from '@/shared/game/energyEnvelope';
+import { NotificationBadge } from '@/components/ui/NotificationBadge';
+import {
+  destinationBadge,
+  recognitionHref,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
 
 interface LabHeaderProps {
   /** Recovering Energy (§8.6); null hides the readout. */
@@ -34,6 +40,11 @@ function formatWithCommas(num: number): string {
  * not.
  */
 export function LabHeader({ charge, dna }: LabHeaderProps) {
+  const notifications = useNotificationStore((state) => state.notifications);
+  const codexBadge = destinationBadge(notifications, 'codex');
+  const codexHref = codexBadge.kind === 'dot'
+    ? recognitionHref(notifications, 'codex') ?? '/codex'
+    : '/codex';
 
   return (
     <header
@@ -55,10 +66,17 @@ export function LabHeader({ charge, dna }: LabHeaderProps) {
             Supasnake <span className="text-venom-orange">Lab</span>
           </h1>
           <Link
-            href="/codex"
-            className="hidden sm:inline-flex text-xs font-display uppercase tracking-wide text-cyber hover:text-bone-white"
+            href={codexHref}
+            className="relative inline-flex min-h-[44px] items-center text-xs font-display uppercase tracking-wide text-cyber hover:text-bone-white"
           >
-            Genome Codex
+            <span className="sm:hidden">Codex</span>
+            <span className="hidden sm:inline">Genome Codex</span>
+            <NotificationBadge
+              kind={codexBadge.kind}
+              count={codexBadge.count}
+              label="New Codex activity"
+              className="absolute right-[-8px] top-1"
+            />
           </Link>
         </div>
 

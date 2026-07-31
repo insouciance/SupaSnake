@@ -1,14 +1,15 @@
 /**
  * Public profile /p/[handle] (Player Identity v1 section 7): the
- * read-only Chronicle - no auth, server-rendered, ISR-cached 60s (the
- * same freshness as the /api/profile/[handle] s-maxage). Serves only
- * player_identity_view + Chronicle aggregates - nothing private.
+ * read-only Chronicle - no auth and server-rendered on demand. The payload is
+ * public, but it is still player progress, so neither HTML nor RSC responses
+ * may enter browser, framework, or shared caches.
  *
  * handler-NNNN derived names never resolve here (section 3.2): real
  * handles cannot contain '-', so the format gate 404s them.
  */
 
 import { notFound } from 'next/navigation';
+import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import { HANDLE_REGEX } from '@/lib/identity/handle';
 import { isMissingIdentityInfra } from '@/lib/server/identity';
@@ -16,13 +17,15 @@ import { buildChronicle, type ChroniclePlayerRow } from '@/lib/server/chronicle'
 import { ChronicleView } from '@/components/chronicle/ChronicleView';
 import { NavBar } from '@/components/ui/NavBar';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface PageProps {
   params: Promise<{ handle: string }>;
 }
 
 async function loadProfile(handle: string) {
+  noStore();
   if (!handle || !HANDLE_REGEX.test(handle)) return null;
 
   const supabase = createClient(

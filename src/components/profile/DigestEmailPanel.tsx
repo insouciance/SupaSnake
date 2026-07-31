@@ -21,6 +21,7 @@ export function DigestEmailPanel() {
     let cancelled = false;
 
     fetch('/api/player', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${session.access_token}` },
     })
       .then((res) => res.json())

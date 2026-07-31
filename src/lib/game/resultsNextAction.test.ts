@@ -10,6 +10,7 @@ const base: ResultsNextActionContext = {
   isFirstCompletedRun: false,
   codexDiscoveries: 0,
   practice: false,
+  impactAction: null,
 };
 
 function ctx(overrides: Partial<ResultsNextActionContext> = {}) {
@@ -58,6 +59,29 @@ describe('chooseNextAction', () => {
 
   it('introduces the Lab on the first completed run', () => {
     expect(chooseNextAction(ctx({ isFirstCompletedRun: true })).id).toBe('visit-lab');
+  });
+
+  it('uses the server-authored impact destination after account-integrity actions', () => {
+    const action = chooseNextAction(ctx({
+      impactAction: {
+        headline: 'Review PRIMAL Mastery M4',
+        destination: 'mastery',
+        artifactRef: 'PRIMAL',
+      },
+    }));
+    expect(action).toEqual({
+      id: 'run-impact',
+      label: 'Review PRIMAL Mastery M4',
+      description: 'Continue in Mastery.',
+      href: '/lab?dynasty=PRIMAL#mastery-PRIMAL',
+    });
+  });
+
+  it('keeps account recovery ahead of a server impact recommendation', () => {
+    expect(chooseNextAction(ctx({
+      isAnonymous: true,
+      impactAction: { headline: 'Review a record', destination: 'records' },
+    })).id).toBe('save-progress');
   });
 
   it('sends a discovering player to the Codex', () => {

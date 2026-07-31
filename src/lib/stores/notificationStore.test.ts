@@ -1,198 +1,159 @@
-/**
- * @jest-environment jsdom
- */
-
 import {
   attentionBadge,
-  dispatchNotificationAction,
   destinationBadge,
-  NOTIFICATION_TARGETS,
   notificationList,
-  subscribeNotificationAction,
+  parseServerAttentionItem,
+  recognitionHref,
+  transitionServerNotification,
   useNotificationStore,
-  type NotificationInput,
+  type ServerAttentionItem,
 } from './notificationStore';
 
-describe('notificationStore', () => {
+const action: ServerAttentionItem = {
+  id: 'save-account',
+  kind: 'action',
+  status: 'unseen',
+  destination: 'account',
+  headline: 'Keep your progress',
+  detail: 'Add an email.',
+  source: { type: 'account', id: 'user-1' },
+  createdAt: '2026-07-30T10:00:00.000Z',
+};
+
+const recognition: ServerAttentionItem = {
+  id: 'record-tier',
+  kind: 'recognition',
+  status: 'unseen',
+  destination: 'records',
+  headline: 'Risk Carrier reached Gold',
+  source: { type: 'moment', id: 'moment-1' },
+  momentId: 'moment-1',
+  artifactRef: 'risk_carrier',
+  createdAt: '2026-07-30T11:00:00.000Z',
+};
+
+describe('attention and recognition store', () => {
   beforeEach(() => {
-    localStorage.clear();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     useNotificationStore.setState({ notifications: {}, hasHydrated: false });
   });
 
-  it('publishes exclamation and numeric notifications from one source of truth', () => {
-    const { publish } = useNotificationStore.getState();
-    publish({
+  it('loads server items without browser persistence', () => {
+    useNotificationStore.getState().replaceServerItems([action, recognition]);
+    expect(useNotificationStore.getState().hasHydrated).toBe(true);
+    expect(Object.keys(useNotificationStore.getState().notifications)).toEqual([
+      'save-account',
+      'record-tier',
+    ]);
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('globally badges actions but not recognition', () => {
+    useNotificationStore.getState().replaceServerItems([action, recognition]);
+    const notifications = useNotificationStore.getState().notifications;
+    expect(attentionBadge(notifications)).toEqual({ kind: 'exclamation' });
+    expect(notificationList(notifications, 'attention').map((item) => item.id)).toEqual([
+      'save-account',
+    ]);
+    expect(destinationBadge(notifications, 'records')).toEqual({ kind: 'dot' });
+    expect(destinationBadge(notifications, 'identity')).toEqual({ kind: 'dot' });
+    expect(destinationBadge(notifications, 'account')).toEqual({ kind: 'exclamation' });
+  });
+
+  it('gives action attention priority over a destination recognition dot', () => {
+    useNotificationStore.getState().replaceServerItems([
+      action,
+      { ...recognition, id: 'account-milestone', destination: 'account' },
+    ]);
+    expect(destinationBadge(useNotificationStore.getState().notifications, 'account')).toEqual({
+      kind: 'exclamation',
+    });
+  });
+
+  it('exposes the newest exact recognition route for a destination family', () => {
+    useNotificationStore.getState().replaceServerItems([
+      recognition,
+      {
+        ...recognition,
+        id: 'newer-mastery',
+        destination: 'mastery',
+        artifactRef: 'PRIMAL',
+        createdAt: '2026-07-30T12:00:00.000Z',
+      },
+    ]);
+    expect(recognitionHref(useNotificationStore.getState().notifications, 'lab')).toBe(
+      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+    );
+  });
+
+  it('maps legacy progression opportunities to memory-only recognition', () => {
+    useNotificationStore.getState().publish({
       id: 'lab-discovery',
       title: 'The Lab is ready',
-      description: 'Discover more snakes when you want to.',
-      ...NOTIFICATION_TARGETS.lab,
-      badgeKind: 'exclamation',
-      attentionReason: 'progression-opportunity',
-    });
-    publish({
-      id: 'contracts',
-      title: 'Contracts',
-      description: 'Two rewards are ready.',
-      ...NOTIFICATION_TARGETS.contracts,
-      badgeKind: 'numeric',
-      attentionReason: 'reward-available',
-      count: 2.9,
-    });
-
-    const state = useNotificationStore.getState().notifications;
-    expect(state.contracts.count).toBe(2);
-    expect(destinationBadge(state, 'lab')).toEqual({ kind: 'exclamation' });
-    expect(destinationBadge(state, 'contracts')).toEqual({ kind: 'numeric', count: 2 });
-  });
-
-  it('treats hidden and zero-count updates as clearing behavior', () => {
-    const { publish } = useNotificationStore.getState();
-    const base = {
-      id: 'contracts',
-      title: 'Contracts',
-      description: 'Ready',
-      destination: 'contracts' as const,
-      attentionReason: 'reward-available' as const,
-      href: '/#contracts',
-      action: 'open-contracts' as const,
-    };
-
-    publish({ ...base, badgeKind: 'numeric', count: 3 });
-    publish({ ...base, badgeKind: 'numeric', count: 0 });
-    expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
-
-    publish({ ...base, badgeKind: 'exclamation' });
-    publish({
-      id: base.id,
-      title: base.title,
-      description: base.description,
-      destination: base.destination,
-      badgeKind: 'hidden',
-    });
-    expect(useNotificationStore.getState().notifications.contracts).toBeUndefined();
-  });
-
-  it('clears individual items and destinations without affecting other systems', () => {
-    const store = useNotificationStore.getState();
-    store.publish({
-      id: 'lab',
-      title: 'Lab',
-      description: 'Ready',
+      description: 'A discovery waits.',
       destination: 'lab',
+      href: '/lab',
       badgeKind: 'exclamation',
       attentionReason: 'progression-opportunity',
-      href: '/lab',
     });
-    store.publish({
-      id: 'save',
-      title: 'Save progress',
-      description: 'Optional',
-      destination: 'account',
-      badgeKind: 'exclamation',
-      attentionReason: 'action-required',
-      href: '/#save-progress',
-      action: 'open-save-progress',
-    });
+    const item = useNotificationStore.getState().notifications['lab-discovery'];
+    expect(item.notificationClass).toBe('recognition');
+    expect(item.badgeKind).toBe('dot');
+    expect(attentionBadge(useNotificationStore.getState().notifications)).toEqual({ kind: 'hidden' });
+  });
 
-    useNotificationStore.getState().clearDestination('lab');
-    expect(Object.keys(useNotificationStore.getState().notifications)).toEqual(['save']);
-    useNotificationStore.getState().clear('save');
+  it('does not let a route mount clear a server-owned item', () => {
+    useNotificationStore.getState().replaceServerItems([recognition]);
+    useNotificationStore.getState().clear('record-tier');
+    expect(useNotificationStore.getState().notifications['record-tier']).toBeDefined();
+  });
+
+  it('applies an exact server transition after success', async () => {
+    useNotificationStore.getState().replaceServerItems([recognition]);
+    const seen = { ...recognition, status: 'seen' as const, seenAt: '2026-07-30T12:00:00.000Z' };
+    const fetchFn = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ item: seen }),
+    });
+    await transitionServerNotification('record-tier', 'seen', 'token', fetchFn);
+    expect(fetchFn).toHaveBeenCalledWith('/api/progression/attention', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+      },
+      body: JSON.stringify({ id: 'record-tier', transition: 'seen' }),
+    });
+    expect(useNotificationStore.getState().notifications['record-tier']).toBeUndefined();
+  });
+
+  it('keeps a seen action unresolved', async () => {
+    useNotificationStore.getState().replaceServerItems([action]);
+    const seen = { ...action, status: 'seen' as const, seenAt: '2026-07-30T12:00:00.000Z' };
+    await transitionServerNotification(
+      action.id,
+      'seen',
+      'token',
+      jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ item: seen }) })
+    );
+    expect(useNotificationStore.getState().notifications[action.id]).toMatchObject({
+      serverStatus: 'seen',
+      notificationClass: 'attention',
+    });
+  });
+
+  it('validates server data and refuses dead destinations', () => {
+    expect(parseServerAttentionItem({ ...action, source: null })).toBeNull();
+    expect(parseServerAttentionItem({ ...action, artifactRef: 42 })).toBeNull();
+    expect(parseServerAttentionItem({ ...recognition, artifactRef: '   ' })).toBeNull();
+    expect(parseServerAttentionItem({ ...recognition, momentId: undefined })).toBeNull();
+    expect(parseServerAttentionItem({ ...recognition, artifactRef: undefined })).toBeNull();
+    useNotificationStore.getState().replaceServerItems([
+      { ...recognition, destination: 'unknown-system' },
+    ]);
     expect(useNotificationStore.getState().notifications).toEqual({});
-  });
-
-  it('sorts dynamic updates by recency while preserving original creation time', () => {
-    jest.spyOn(Date, 'now').mockReturnValueOnce(100).mockReturnValueOnce(200).mockReturnValueOnce(300);
-    const { publish } = useNotificationStore.getState();
-    publish({
-      id: 'a',
-      title: 'A',
-      description: 'A',
-      destination: 'global',
-      badgeKind: 'exclamation',
-      attentionReason: 'progression-opportunity',
-      href: '/lab',
-    });
-    publish({
-      id: 'b',
-      title: 'B',
-      description: 'B',
-      destination: 'global',
-      badgeKind: 'exclamation',
-      attentionReason: 'progression-opportunity',
-      href: '/profile',
-    });
-    publish({
-      id: 'a',
-      title: 'A updated',
-      description: 'A',
-      destination: 'global',
-      badgeKind: 'exclamation',
-      attentionReason: 'progression-opportunity',
-      href: '/lab',
-    });
-
-    const list = notificationList(useNotificationStore.getState().notifications);
-    expect(list.map((item) => item.id)).toEqual(['a', 'b']);
-    expect(list[0].createdAt).toBe(100);
-    jest.restoreAllMocks();
-  });
-
-  it('deduplicates unresolved attention by semantic id and aggregates all attention units', () => {
-    const { publish } = useNotificationStore.getState();
-    publish({
-      id: 'contracts',
-      title: 'Contracts ready',
-      description: 'Choose two.',
-      ...NOTIFICATION_TARGETS.contracts,
-      badgeKind: 'exclamation',
-      attentionReason: 'action-required',
-    });
-    publish({
-      id: 'contracts',
-      title: 'Contract rewards ready',
-      description: 'Two can be claimed.',
-      ...NOTIFICATION_TARGETS.contracts,
-      badgeKind: 'numeric',
-      attentionReason: 'reward-available',
-      count: 2,
-    });
-    publish({
-      id: 'lab-discovery',
-      title: 'Lab ready',
-      description: 'Visit the Lab.',
-      ...NOTIFICATION_TARGETS.lab,
-      badgeKind: 'exclamation',
-      attentionReason: 'progression-opportunity',
-    });
-
-    const notifications = useNotificationStore.getState().notifications;
-    expect(Object.keys(notifications)).toEqual(['contracts', 'lab-discovery']);
-    expect(attentionBadge(notifications)).toEqual({ kind: 'numeric', count: 3 });
-  });
-
-  it('suppresses records without a working target', () => {
-    useNotificationStore.getState().publish({
-      id: 'dead-end',
-      title: 'Dead end',
-      description: 'No destination.',
-      destination: 'global',
-      badgeKind: 'exclamation',
-      attentionReason: 'action-required',
-      href: '',
-    } as NotificationInput);
-
-    expect(useNotificationStore.getState().notifications['dead-end']).toBeUndefined();
-  });
-
-  it('dispatches semantic actions to existing destination interfaces', () => {
-    const listener = jest.fn();
-    const unsubscribe = subscribeNotificationAction('open-contracts', listener);
-
-    dispatchNotificationAction('open-contracts');
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    unsubscribe();
-    dispatchNotificationAction('open-contracts');
-    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

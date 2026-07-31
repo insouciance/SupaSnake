@@ -1,71 +1,37 @@
 /**
- * Upgrade prompt gating - each high-investment trigger fires the full
- * AccountUpgrade modal at most once per device (BM-004: prompt after
- * engagement, never nag).
+ * Upgrade prompt gating for the current page lifecycle.
+ *
+ * A first unlock or first breed is progression. Persisting that fact in the
+ * browser would create a client-side progress ledger, so these soft prompt
+ * guards are intentionally memory-only. The server remains the authority for
+ * the underlying unlock/breed; losing this UI state can only make an optional
+ * account invitation available again after a full reload.
  */
-
-export const UPGRADE_PROMPTED_KEY = 'upgrade-prompted';
-export const UPGRADE_BANNER_DISMISSED_KEY = 'upgrade-banner-dismissed';
 
 export type UpgradePromptTrigger = 'first-unlock' | 'first-breed';
 
-function getStorage(storage?: Storage): Storage | null {
-  if (storage) return storage;
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
-  } catch {
-    return null;
-  }
+const promptedThisPage = new Set<UpgradePromptTrigger>();
+let bannerDismissedThisPage = false;
+
+/** True when this trigger has not fired in the current page lifecycle. */
+export function shouldShowUpgradePrompt(trigger: UpgradePromptTrigger): boolean {
+  return !promptedThisPage.has(trigger);
 }
 
-function readPrompted(store: Storage): Record<string, boolean> {
-  try {
-    const raw = store.getItem(UPGRADE_PROMPTED_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
+export function markUpgradePrompted(trigger: UpgradePromptTrigger): void {
+  promptedThisPage.add(trigger);
 }
 
-/** True when this trigger has not fired before on this device. */
-export function shouldShowUpgradePrompt(
-  trigger: UpgradePromptTrigger,
-  storage?: Storage
-): boolean {
-  const store = getStorage(storage);
-  if (!store) return false;
-  return !readPrompted(store)[trigger];
+export function isUpgradeBannerDismissed(): boolean {
+  return bannerDismissedThisPage;
 }
 
-export function markUpgradePrompted(trigger: UpgradePromptTrigger, storage?: Storage): void {
-  const store = getStorage(storage);
-  if (!store) return;
-  try {
-    const prompted = readPrompted(store);
-    prompted[trigger] = true;
-    store.setItem(UPGRADE_PROMPTED_KEY, JSON.stringify(prompted));
-  } catch {
-    // best-effort
-  }
+export function dismissUpgradeBanner(): void {
+  bannerDismissedThisPage = true;
 }
 
-export function isUpgradeBannerDismissed(storage?: Storage): boolean {
-  const store = getStorage(storage);
-  if (!store) return false;
-  try {
-    return store.getItem(UPGRADE_BANNER_DISMISSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function dismissUpgradeBanner(storage?: Storage): void {
-  const store = getStorage(storage);
-  try {
-    store?.setItem(UPGRADE_BANNER_DISMISSED_KEY, '1');
-  } catch {
-    // best-effort
-  }
+/** Reset lifecycle-only UI guards for an explicit lifecycle reset or isolated test. */
+export function resetUpgradePromptMemory(): void {
+  promptedThisPage.clear();
+  bannerDismissedThisPage = false;
 }

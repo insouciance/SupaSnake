@@ -16,7 +16,6 @@ const fontBody = Rajdhani({
   display: 'swap',
 });
 import { AuthProvider } from '@/lib/auth/AuthProvider';
-import { OfflineProgressProvider } from '@/components/engagement/OfflineProgressProvider';
 import { ToastProvider } from '@/components/ui/Toast';
 import { AnalyticsProvider } from '@/components/analytics/AnalyticsProvider';
 import { ConsentBanner } from '@/components/legal/ConsentBanner';
@@ -108,14 +107,12 @@ export default function RootLayout({
         <AuthProvider>
           <ToastProvider>
             <NotificationProvider>
-              <OfflineProgressProvider>
-                <AnalyticsProvider>
-                  {children}
-                  <Footer />
-                  <ConsentBanner />
-                  <PwaSurface />
-                </AnalyticsProvider>
-              </OfflineProgressProvider>
+              <AnalyticsProvider>
+                {children}
+                <Footer />
+                <ConsentBanner />
+                <PwaSurface />
+              </AnalyticsProvider>
             </NotificationProvider>
           </ToastProvider>
         </AuthProvider>

@@ -4,11 +4,15 @@ import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { AnalyticsEvents } from '@/lib/analytics/events';
+import { trackEvent } from '@/lib/analytics/posthog';
 import {
   attentionBadge,
   dispatchNotificationAction,
   notificationActionForHref,
   notificationList,
+  transitionServerNotification,
   useNotificationStore,
   type GameNotification,
 } from '@/lib/stores/notificationStore';
@@ -43,9 +47,11 @@ function CloseIcon() {
 
 function NotificationItem({
   notification,
+  token,
   onAction,
 }: {
   notification: GameNotification;
+  token?: string;
   onAction: () => void;
 }) {
   const action = notification.action ?? notificationActionForHref(notification.href);
@@ -57,6 +63,21 @@ function NotificationItem({
         className="flex min-h-[72px] gap-3 px-4 py-3 text-left transition-colors hover:bg-scale-blue/20 focus:outline-none focus-visible:bg-scale-blue/30"
         onClick={() => {
           if (action) dispatchNotificationAction(action);
+          trackEvent(AnalyticsEvents.NOTIFICATION_OPENED, {
+            notification_id: notification.id,
+            notification_class: notification.notificationClass,
+            destination: notification.destination,
+            category: 'engagement',
+          });
+          if (notification.serverManaged && token) {
+            void transitionServerNotification(
+              notification.id,
+              'seen',
+              token
+            ).catch((error) => {
+              console.error('Failed to mark attention seen:', error);
+            });
+          }
           onAction();
         }}
       >
@@ -87,9 +108,11 @@ function NotificationItem({
 
 function NotificationDialog({
   notifications,
+  token,
   onClose,
 }: {
   notifications: GameNotification[];
+  token?: string;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
@@ -159,6 +182,7 @@ function NotificationDialog({
               <NotificationItem
                 key={notification.id}
                 notification={notification}
+                token={token}
                 onAction={onClose}
               />
             ))}
@@ -171,10 +195,14 @@ function NotificationDialog({
 }
 
 export function NotificationCenter() {
+  const { session } = useAuth();
   const [open, setOpen] = useState(false);
   const notifications = useNotificationStore((state) => state.notifications);
   const hasHydrated = useNotificationStore((state) => state.hasHydrated);
-  const ordered = useMemo(() => notificationList(notifications), [notifications]);
+  const ordered = useMemo(
+    () => notificationList(notifications, 'attention'),
+    [notifications]
+  );
   const badge = useMemo(() => attentionBadge(notifications), [notifications]);
 
   return (
@@ -212,6 +240,7 @@ export function NotificationCenter() {
       {open && (
         <NotificationDialog
           notifications={ordered}
+          token={session?.access_token}
           onClose={() => setOpen(false)}
         />
       )}

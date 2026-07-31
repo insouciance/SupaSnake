@@ -12,6 +12,7 @@ import {
   FunnelStages,
   attachAttributionToPerson,
   funnelEventName,
+  resetFunnelStageMemory,
   trackFunnelStage,
   trackFunnelStageOnce,
 } from './funnel';
@@ -39,6 +40,7 @@ describe('funnel taxonomy', () => {
     mockTrackEvent.mockClear();
     mockSetUserProperties.mockClear();
     analyticsInitialized = true;
+    resetFunnelStageMemory();
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
@@ -106,7 +108,7 @@ describe('funnel taxonomy', () => {
   });
 
   describe('trackFunnelStageOnce', () => {
-    it('reports a threshold crossing exactly once per browser', () => {
+    it('reports a threshold crossing exactly once per page lifecycle', () => {
       expect(trackFunnelStageOnce(FunnelStages.ACTIVATE)).toBe(true);
       expect(trackFunnelStageOnce(FunnelStages.ACTIVATE)).toBe(false);
       expect(mockTrackEvent).toHaveBeenCalledTimes(1);

@@ -68,8 +68,10 @@ test.describe('Anonymous purchase gating', () => {
     await signInAsGuest(page);
     await page.goto('/shop');
 
-    // Save-progress notice for anonymous players
-    await expect(page.getByText(/save your progress/i).first()).toBeVisible({
+    // Progress is already durable for a guest. Commerce asks for account
+    // recovery before purchase; it must not imply that browser-local progress
+    // still needs to be saved.
+    await expect(page.getByText(/your progress is already server-secured/i)).toBeVisible({
       timeout: 15000,
     });
 

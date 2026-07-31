@@ -15,12 +15,17 @@ describe('NotificationBadge', () => {
 
     expect(
       screen.getByRole('status', { name: '120 items need attention' })
-    ).toHaveTextContent('99+');
+    ).toHaveTextContent('9+');
   });
 
   it('supports an accessible exclamation indicator', () => {
     render(<NotificationBadge kind="exclamation" label="New Lab discovery" />);
 
     expect(screen.getByRole('status', { name: 'New Lab discovery' })).toHaveTextContent('!');
+  });
+
+  it('renders recognition as a quiet accessible dot', () => {
+    render(<NotificationBadge kind="dot" />);
+    expect(screen.getByRole('status', { name: 'New recognition' })).toHaveTextContent('');
   });
 });

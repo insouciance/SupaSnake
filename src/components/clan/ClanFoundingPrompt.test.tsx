@@ -11,12 +11,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   ClanFoundingPrompt,
-  FOUNDING_PROMPT_DISMISSED_KEY,
+  resetClanFoundingPromptMemory,
 } from './ClanFoundingPrompt';
 import { SERPENT_UNLOCK_BANKED_RUNS } from '@/lib/serpent/config';
 
 beforeEach(() => {
-  window.localStorage.clear();
+  resetClanFoundingPromptMemory();
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
     status: 200,
@@ -120,7 +120,7 @@ describe('at the ramp beat', () => {
 });
 
 describe('skipping costs nothing', () => {
-  it('dismisses permanently and says the page stays reachable', () => {
+  it('dismisses for the page lifecycle and says the page stays reachable', () => {
     render(
       <ClanFoundingPrompt inClan={false} bankedRuns={SERPENT_UNLOCK_BANKED_RUNS} />
     );
@@ -129,11 +129,14 @@ describe('skipping costs nothing', () => {
     fireEvent.click(screen.getByTestId('founding-prompt-dismiss'));
 
     expect(screen.queryByTestId('clan-founding-prompt')).not.toBeInTheDocument();
-    expect(window.localStorage.getItem(FOUNDING_PROMPT_DISMISSED_KEY)).toBe('true');
   });
 
   it('stays dismissed on the next render', () => {
-    window.localStorage.setItem(FOUNDING_PROMPT_DISMISSED_KEY, 'true');
+    const first = render(
+      <ClanFoundingPrompt inClan={false} bankedRuns={SERPENT_UNLOCK_BANKED_RUNS} />
+    );
+    fireEvent.click(screen.getByTestId('founding-prompt-dismiss'));
+    first.unmount();
     render(
       <ClanFoundingPrompt inClan={false} bankedRuns={SERPENT_UNLOCK_BANKED_RUNS} />
     );

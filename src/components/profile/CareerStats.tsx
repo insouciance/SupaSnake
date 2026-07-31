@@ -57,6 +57,7 @@ export function CareerStats() {
         }
 
         const response = await fetch('/api/player/stats', {
+          cache: 'no-store',
           headers: {
             Authorization: `Bearer ${token}`,
           },

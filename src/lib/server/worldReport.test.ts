@@ -22,22 +22,13 @@ jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
-const mockBuildSerpentPanel = jest.fn();
-jest.mock('@/lib/server/serpent', () => ({
-  ...jest.requireActual('@/lib/server/serpent'),
-  buildSerpentPanel: (...args: unknown[]) => mockBuildSerpentPanel(...args),
-}));
-
-const mockReadWorldRollup = jest.fn();
-jest.mock('@/lib/server/worldRollup', () => ({
-  ...jest.requireActual('@/lib/server/worldRollup'),
-  readWorldRollup: (...args: unknown[]) => mockReadWorldRollup(...args),
+const mockReadWorldReportEnergyContext = jest.fn();
+jest.mock('@/lib/server/worldReportEnergy', () => ({
+  readWorldReportEnergyContext: (...args: unknown[]) =>
+    mockReadWorldReportEnergyContext(...args),
 }));
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-
-import { emptySerpentPanel } from '@/lib/server/serpent';
-import { WORLD_REPORT_WEEK_LIMIT } from '@/lib/report/config';
 
 type ServerModule = typeof import('@/lib/server/worldReport');
 
@@ -114,12 +105,9 @@ function spyClient(
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockBuildSerpentPanel.mockResolvedValue(emptySerpentPanel());
-  mockReadWorldRollup.mockResolvedValue({
-    clans: [],
-    personalRecords: 0,
-    clanRecords: 0,
-    clanFirsts: 0,
+  mockReadWorldReportEnergyContext.mockResolvedValue({
+    standing: { bestBattleDepth: 0, lifetimeDepth: 0 },
+    battles: [],
   });
 });
 
@@ -132,8 +120,7 @@ describe('the flag', () => {
 
     expect(await buildWorldReport(spy.client, 'player-1', NOW)).toBeNull();
     expect(spy.tables).toEqual([]);
-    expect(mockBuildSerpentPanel).not.toHaveBeenCalled();
-    expect(mockReadWorldRollup).not.toHaveBeenCalled();
+    expect(mockReadWorldReportEnergyContext).not.toHaveBeenCalled();
   });
 });
 
@@ -160,11 +147,10 @@ describe('what it costs (Rule 13)', () => {
     const spy = spyClient({ data: { started_at: YESTERDAY }, error: null });
 
     expect(await buildWorldReport(spy.client, 'player-1', NOW)).toBeNull();
-    // The day-count gate runs before the panel read, so the overwhelmingly
+    // The day-count gate runs before the social read, so the overwhelmingly
     // common visitor costs one small query and stops.
     expect(spy.tables).toEqual(['game_sessions']);
-    expect(mockBuildSerpentPanel).not.toHaveBeenCalled();
-    expect(mockReadWorldRollup).not.toHaveBeenCalled();
+    expect(mockReadWorldReportEnergyContext).not.toHaveBeenCalled();
   });
 
   it('costs a two-year absence exactly what a two-week one costs', async () => {
@@ -175,20 +161,20 @@ describe('what it costs (Rule 13)', () => {
       'player-1',
       NOW
     );
-    const month = mockReadWorldRollup.mock.calls.length;
+    const month = mockReadWorldReportEnergyContext.mock.calls.length;
 
-    mockReadWorldRollup.mockClear();
+    mockReadWorldReportEnergyContext.mockClear();
     await buildWorldReport(
       spyClient({ data: { started_at: TWO_YEARS_AGO }, error: null }).client,
       'player-1',
       NOW
     );
 
-    expect(month).toBe(WORLD_REPORT_WEEK_LIMIT);
-    expect(mockReadWorldRollup.mock.calls.length).toBe(WORLD_REPORT_WEEK_LIMIT);
+    expect(month).toBe(1);
+    expect(mockReadWorldReportEnergyContext).toHaveBeenCalledTimes(1);
   });
 
-  it('reads the most recent weeks, newest first', async () => {
+  it('bounds the current social read by passing one absence interval', async () => {
     const { buildWorldReport } = loadServer(true);
     await buildWorldReport(
       spyClient({ data: { started_at: A_MONTH_AGO }, error: null }).client,
@@ -196,12 +182,12 @@ describe('what it costs (Rule 13)', () => {
       NOW
     );
 
-    expect(mockReadWorldRollup.mock.calls.map((call) => call[1])).toEqual([
-      '2026-07-13',
-      '2026-07-06',
-      '2026-06-29',
-      '2026-06-22',
-    ]);
+    expect(mockReadWorldReportEnergyContext).toHaveBeenCalledWith(
+      expect.anything(),
+      'player-1',
+      A_MONTH_AGO,
+      NOW
+    );
   });
 });
 
@@ -214,7 +200,7 @@ describe('when a read fails (Rule 11)', () => {
     expect(mockCaptureException).toHaveBeenCalledTimes(1);
     // Not "never played" and not "away forever": a failed read is neither, and
     // guessing either way would withhold a real report or fabricate one.
-    expect(mockBuildSerpentPanel).not.toHaveBeenCalled();
+    expect(mockReadWorldReportEnergyContext).not.toHaveBeenCalled();
   });
 
   it('distinguishes a failed read from a player who has never played', async () => {
@@ -236,10 +222,9 @@ describe('when a read fails (Rule 11)', () => {
     expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
-  it('keeps a week whose roll-up could not be read, on its conditions alone', async () => {
+  it('renders nothing when the current battle history cannot be read', async () => {
     const { buildWorldReport } = loadServer(true);
-    // Every roll-up unavailable — pre-migration, or three failed reads.
-    mockReadWorldRollup.mockResolvedValue(null);
+    mockReadWorldReportEnergyContext.mockResolvedValue(undefined);
 
     const report = await buildWorldReport(
       spyClient({ data: { started_at: A_MONTH_AGO }, error: null }).client,
@@ -247,19 +232,14 @@ describe('when a read fails (Rule 11)', () => {
       NOW
     );
 
-    // Omitting the weeks would understate the world; inventing clans for them
-    // would overstate it. They submerged, and they are read as such.
-    expect(report).not.toBeNull();
-    expect(report!.weeksSubmerged).toBe(5);
-    const weeks = report!.sections.find((section) => section.id === 'weeks')!;
-    expect(weeks.lines[1].text).toContain('the Serpent surfaced and submerged unhunted.');
+    expect(report).toBeNull();
   });
 
-  it('yields no report and reports to Sentry if the copy ever trips the Rule 5 sweep', async () => {
+  it('does not hide an unexpected current-history exception', async () => {
     const { buildWorldReport } = loadServer(true);
-    // A clan name cannot trip the sweep — it is redacted — so the only way to
-    // reach this path is a genuine composition failure. Simulate one.
-    mockBuildSerpentPanel.mockRejectedValueOnce(new Error('panel exploded'));
+    mockReadWorldReportEnergyContext.mockRejectedValueOnce(
+      new Error('battle reader exploded')
+    );
 
     await expect(
       buildWorldReport(
@@ -267,18 +247,24 @@ describe('when a read fails (Rule 11)', () => {
         'player-1',
         NOW
       )
-    ).rejects.toThrow('panel exploded');
+    ).rejects.toThrow('battle reader exploded');
   });
 });
 
 describe('what it composes', () => {
   it('reads a month away into a report with the standing section intact', async () => {
     const { buildWorldReport } = loadServer(true);
-    mockReadWorldRollup.mockResolvedValue({
-      clans: [{ name: 'Hollow Fang', tag: 'HFG', depth: 51000, contributingMembers: 4 }],
-      personalRecords: 2,
-      clanRecords: 1,
-      clanFirsts: 0,
+    mockReadWorldReportEnergyContext.mockResolvedValue({
+      standing: { bestBattleDepth: 12000, lifetimeDepth: 48000 },
+      battles: [
+        {
+          battleId: 'battle-1',
+          settledAt: '2026-07-25T03:00:00.000Z',
+          outcome: 'victor',
+          clan: { id: 'clan-1', name: 'Hollow Fang', tag: 'HFG', depth: 51000 },
+          opponent: { name: 'Quiet Scale', tag: 'QTS', depth: 47000 },
+        },
+      ],
     });
 
     const report = await buildWorldReport(
@@ -290,6 +276,8 @@ describe('what it composes', () => {
     expect(report!.span).toBe('month');
     expect(report!.awayDays).toBe(36);
     expect(report!.sections.map((section) => section.id)).toContain('standing');
+    expect(report!.sections.map((section) => section.id)).toContain('battles');
+    expect(report!.sections.map((section) => section.id)).not.toContain('weeks');
     expect(report!.links.length).toBeGreaterThan(0);
   });
 

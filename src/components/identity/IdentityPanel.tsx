@@ -81,6 +81,7 @@ export function IdentityPanel(): React.ReactElement {
         return;
       }
       const response = await fetch('/api/player/identity', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {

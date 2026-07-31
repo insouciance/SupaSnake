@@ -9,7 +9,7 @@
  *
  * Request:  GET /api/report
  *           Authorization: Bearer <supabase access token>   (required)
- *           No query parameters. The absence, the weeks and the day are all
+ *           No query parameters. The absence, battle cycles and day are all
  *           derived from the server's clock and the player's own rows — there
  *           is no parameter through which a client could assert how long it
  *           was away or what the world did (Rule 11).
@@ -20,10 +20,11 @@
  *   report: {
  *     awayDays: number,
  *     span: 'days' | 'week' | 'month' | 'season',
- *     weeksSubmerged: number,
+ *     weeksSubmerged: number,       // historical compatibility; current path = 0
+ *     battleCyclesSettled: number,
  *     headline: string,
  *     sections: Array<{
- *       id: 'weeks' | 'clan' | 'records' | 'standing' | 'today',
+ *       id: 'battles' | 'weeks' | 'clan' | 'records' | 'standing' | 'today',
  *       title: string,
  *       lines: Array<{ text: string, href?: string }>
  *     }>,
