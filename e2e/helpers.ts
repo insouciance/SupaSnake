@@ -9,6 +9,8 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
+const RUN_FLOW_ENABLED = process.env.NEXT_PUBLIC_RUN_FLOW_V1 === 'true';
+
 export interface ConsentSeed {
   essential: boolean;
   functional: boolean;
@@ -78,8 +80,12 @@ export async function openRunSetupControls(page: Page): Promise<void> {
  * flag-off flow and had never once run in the configuration players get.
  */
 export async function startRunIfSetupPresent(page: Page): Promise<void> {
+  // Do not infer the flag from one immediate DOM read. Home navigation can
+  // commit `/game` before the Setup client tree mounts; returning on a
+  // momentary count of zero leaves the test on Setup and falsely treats it as
+  // the rollback board. CI builds each matrix leg with this exact flag.
+  if (!RUN_FLOW_ENABLED) return;
   const start = page.getByTestId('earn-start');
-  if ((await start.count()) === 0) return; // flag off: already on the board
   await expect(start).toBeVisible({ timeout: 30_000 });
   await start.click();
   // The board replaces the setup page; `run-setup` disappearing is the

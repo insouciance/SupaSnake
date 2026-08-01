@@ -64,9 +64,12 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
 
     await page.waitForURL(/\/game/, { timeout: 45000 });
     await startRunIfSetupPresent(page);
-    await expect(page.getByTestId('first-movement-prompt')).toHaveText(
-      'Swipe or press an arrow to move'
-    );
+    // Fresh-account copy can be the minimal FTUE line or the normal cockpit
+    // instruction depending on when bootstrap facts settle. In both cases
+    // the authoritative board must be visibly held for deliberate input.
+    const launchGate = page.getByTestId('resume-gate');
+    await expect(launchGate).toBeVisible();
+    await expect(launchGate).toContainText(/swipe|arrow|direction|board held/i);
     await expect(page.getByTestId('starter-PRIMAL')).not.toBeVisible();
     await expect(page.getByRole('heading', { name: /choose your snake/i })).not.toBeVisible();
   });
@@ -88,19 +91,22 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await expect(
       page.getByRole('heading', { name: /ready to (?:play|launch)/i })
     ).not.toBeVisible();
-    await expect(page.getByTestId('first-movement-prompt')).toBeVisible();
+    await expect(page.getByTestId('resume-gate')).toBeVisible();
   });
 
   test('lab unlock attempt on a paid variant shows insufficient DNA', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
     await page.goto('/lab');
 
-    // Collection grid renders
+    // Everyday lineages stay compact. Unlocks live in the deliberate deep
+    // collection disclosure rather than competing with the active deck.
+    const deepTools = page.getByTestId('lab-deep-tools');
+    await expect(deepTools).toBeVisible({ timeout: 20000 });
+    await expect(deepTools).toHaveJSProperty('open', false);
+    await deepTools.locator('summary').click();
     await expect(
-      page.getByRole('region', { name: /snake variant collection/i }).or(
-        page.locator('[aria-label="Snake variant collection"]')
-      )
-    ).toBeVisible({ timeout: 20000 });
+      deepTools.getByRole('list', { name: /undiscovered variants/i })
+    ).toBeVisible();
 
     // Prefer the classic 500-DNA variant; fall back to any locked card
     const fiveHundred = page.locator('[aria-label*="Locked, 500 DNA"]').first();
