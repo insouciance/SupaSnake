@@ -88,7 +88,7 @@ import {
 } from '@/lib/game/trailCells';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
-import { FLOOR_CLEARANCE } from './ArenaFloor';
+import { centerYFromBase, FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
   ENERGY_MIN,
@@ -140,6 +140,64 @@ const _scale = new THREE.Vector3();
 const _identityQuaternion = new THREE.Quaternion();
 const _matrix = new THREE.Matrix4();
 const _energyColor = new THREE.Color();
+const _whiteColor = new THREE.Color(1, 1, 1);
+
+const TRAIL_BASE_COLORS: Record<DynastyId, THREE.Color> = {
+  CYBER: new THREE.Color(getGameMaterialProfile('CYBER').snake.baseColor),
+  PRIMAL: new THREE.Color(getGameMaterialProfile('PRIMAL').snake.baseColor),
+  COSMIC: new THREE.Color(getGameMaterialProfile('COSMIC').snake.baseColor),
+};
+
+const TRAIL_STRAIN_COLORS: Record<StrainId, THREE.Color> = {
+  AURUM: new THREE.Color(STRAINS.AURUM.color),
+  VOLT: new THREE.Color(STRAINS.VOLT.color),
+  FERAL: new THREE.Color(STRAINS.FERAL.color),
+  FLUX: new THREE.Color(STRAINS.FLUX.color),
+  UMBRA: new THREE.Color(STRAINS.UMBRA.color),
+};
+
+/** Strain bands remain visible without repainting the creature completely. */
+export const TRAIL_STRAIN_BLEND = 0.38;
+/** A band may never fall below this share of its Dynasty base luminance. */
+export const TRAIL_STRAIN_LUMINANCE_FLOOR = 0.92;
+
+function linearLuminance(color: THREE.Color): number {
+  return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
+}
+
+/**
+ * Write the final semantic instance colour without allocating.
+ *
+ * Instance colour multiplies a material in Three.js. The old renderer put the
+ * Dynasty colour on the material and the Strain colour on the instance, so a
+ * cyan creature with a red/violet band lost most RGB channels and became
+ * almost black. The body material is now neutral and this function authors the
+ * final colour directly: a controlled blend whose luminance is protected.
+ */
+export function writeSnakeTrailColor(
+  target: THREE.Color,
+  dynasty: DynastyId,
+  strain: StrainId | null,
+  tone = 1
+): THREE.Color {
+  const base = TRAIL_BASE_COLORS[dynasty];
+  target.copy(base);
+
+  if (strain) {
+    target.lerp(TRAIL_STRAIN_COLORS[strain], TRAIL_STRAIN_BLEND);
+    const floor = linearLuminance(base) * TRAIL_STRAIN_LUMINANCE_FLOOR;
+    const mixed = linearLuminance(target);
+    if (mixed > 0 && mixed < floor) {
+      // Lift toward white rather than multiplying channels. Multiplication
+      // clips the already-bright channels first and can still miss the target
+      // luminance; interpolation reaches the requested luminance exactly while
+      // preserving the mixed hue as far as the available gamut permits.
+      target.lerp(_whiteColor, (floor - mixed) / (1 - mixed));
+    }
+  }
+
+  return target.multiplyScalar(Math.max(0, tone));
+}
 
 const GRID_SIZE = GAME_CONFIG.board.gridSize;
 
@@ -175,7 +233,15 @@ export function getInstancedBodyMaterial(
   if (!material) {
     const surface = getGameMaterialProfile(dynasty).snake;
     material = getSnakeSegmentMaterial(dynasty, false).clone();
-    material.color.multiplyScalar(surface.bodyAlbedoScalar);
+    // The instance now carries the authored final Dynasty/Strain colour. A
+    // neutral material avoids the destructive RGB × RGB tint multiplication
+    // that made complementary Strain bands muddy or nearly black.
+    material.color.setRGB(
+      surface.bodyAlbedoScalar,
+      surface.bodyAlbedoScalar,
+      surface.bodyAlbedoScalar
+    );
+    material.emissive.setRGB(1, 1, 1);
     // Ordinary body cells are categorical solids. Explicitly pinning these
     // flags protects that read if the shared material ever gains a semantic
     // transparent variant for portals, revive ghosts, or forming terrain.
@@ -186,8 +252,11 @@ export function getInstancedBodyMaterial(
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <emissivemap_fragment>',
         '#include <emissivemap_fragment>\n' +
-          '#ifdef USE_INSTANCING_COLOR\n' +
-          '\ttotalEmissiveRadiance *= vColor;\n' +
+          // WebGLProgram maps instance colours to USE_COLOR in the fragment
+          // stage; USE_INSTANCING_COLOR exists only in the vertex stage.
+          // Testing the latter left emissive white and washed dense coils out.
+          '#ifdef USE_COLOR\n' +
+          '\ttotalEmissiveRadiance *= vColor.rgb;\n' +
           '#endif'
       );
     };
@@ -212,6 +281,14 @@ const revivePhaseMaterial = new THREE.MeshBasicMaterial({
   wireframe: true,
   depthWrite: false,
 });
+const REVIVE_PHASE_HEAD_SCALE = HEAD_SIZE * 1.14;
+const REVIVE_PHASE_HEAD_Y = (REVIVE_PHASE_HEAD_SCALE - HEAD_SIZE) / 2;
+
+/** Shared head centre; its base is exactly the same render plane as the body. */
+export const SNAKE_HEAD_CENTER_Y = centerYFromBase(
+  FLOOR_CLEARANCE,
+  HEAD_SIZE
+);
 
 /** A rare one-shot contact highlight, not a second persistent body layer. */
 export const COIL_SEAL_DURATION_SECONDS = 0.52;
@@ -257,6 +334,7 @@ const YAW_DAMP = 14;
 function writeCellColor(
   index: number,
   level: number,
+  dynasty: DynastyId,
   strainBands: readonly StrainId[],
   bandPhase: number
 ): void {
@@ -264,12 +342,10 @@ function writeCellColor(
   // high-contrast value; no 150-cell gradient crawls through a stationary coil.
   const energy = index <= TRAIL_HEAD_ZONE ? 1 : ENERGY_MIN;
   const tone = getTrailTone(level) * energy;
-  if (strainBands.length > 0) {
-    const band = bandPhase % strainBands.length;
-    _energyColor.set(STRAINS[strainBands[band]].color).multiplyScalar(tone);
-  } else {
-    _energyColor.setScalar(tone);
-  }
+  const strain = strainBands.length > 0
+    ? strainBands[bandPhase % strainBands.length]
+    : null;
+  writeSnakeTrailColor(_energyColor, dynasty, strain, tone);
 }
 
 /**
@@ -297,6 +373,7 @@ function writeTrailCell(
   transition: number,
   fusion: TrailFusionState,
   cells: TrailCellState,
+  dynasty: DynastyId,
   strainBands: readonly StrainId[],
   elapsed: number
 ): number {
@@ -314,7 +391,7 @@ function writeTrailCell(
     transition;
   _position.set(
     trailCellX(cells, cell) + 0.5,
-    FLOOR_CLEARANCE + height / 2,
+    centerYFromBase(FLOOR_CLEARANCE, height),
     trailCellZ(cells, cell) + 0.5
   );
   _scale.set(footprint, height, footprint);
@@ -323,6 +400,7 @@ function writeTrailCell(
   writeCellColor(
     representative,
     level,
+    dynasty,
     strainBands,
     cells.bandPhase[cell]
   );
@@ -347,6 +425,7 @@ export function writeTrailInstances(
   alpha: number,
   fusion: TrailFusionState,
   cells: TrailCellState,
+  dynasty: DynastyId,
   strainBands: readonly StrainId[],
   elapsed: number
 ): number {
@@ -383,6 +462,7 @@ export function writeTrailInstances(
       transition,
       fusion,
       cells,
+      dynasty,
       strainBands,
       elapsed
     );
@@ -401,6 +481,7 @@ export function writeTrailInstances(
       1 - eased,
       fusion,
       cells,
+      dynasty,
       strainBands,
       elapsed
     );
@@ -656,6 +737,7 @@ function InstancedSnakeCore({
       alpha,
       fusion,
       cells,
+      dynasty,
       strainBands,
       elapsed
     );
@@ -678,7 +760,7 @@ function InstancedSnakeCore({
       head.visible = true;
       head.position.set(
         getInterpolatedX(buffer, 0, alpha) + 0.5,
-        0.5,
+        SNAKE_HEAD_CENTER_Y,
         getInterpolatedZ(buffer, 0, alpha) + 0.5
       );
       const target = HEAD_FACE_YAW[direction];
@@ -715,7 +797,8 @@ function InstancedSnakeCore({
         <mesh
           geometry={headGeometry}
           material={revivePhaseMaterial}
-          scale={HEAD_SIZE * 1.14}
+          scale={REVIVE_PHASE_HEAD_SCALE}
+          position={[0, REVIVE_PHASE_HEAD_Y, 0]}
           visible={revivePhaseActive}
         />
         <mesh

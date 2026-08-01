@@ -21,9 +21,9 @@ describe('renderer material profiles', () => {
         profile.snake.bodyEmissiveIntensity
       );
       expect(profile.snake.bodyAlbedoScalar).toBeGreaterThanOrEqual(0.8);
-      // Fusion tone tops out at 1.1. The body remains under bloom even when
+      // Fusion tone tops out at 1.08. The body remains under bloom even when
       // fully fused, while no longer reading as a translucent light volume.
-      expect(profile.snake.bodyAlbedoScalar * 1.1).toBeLessThan(1);
+      expect(profile.snake.bodyAlbedoScalar * 1.08).toBeLessThan(1);
       expect(profile.arena.edgeWashStrength).toBeLessThanOrEqual(0.5);
       expect(profile.lighting.objectiveColor).toBeTruthy();
     }

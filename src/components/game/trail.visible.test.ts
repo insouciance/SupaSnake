@@ -166,7 +166,10 @@ describe('the failure modes the design named explicitly', () => {
     // looked at by a human - it would have shipped the same banding on CYBER.
     const renderer = read(RENDERER);
     expect(renderer).toContain('FLOOR_CLEARANCE');
-    expect(renderer).toMatch(/FLOOR_CLEARANCE \+ height \/ 2/);
+    expect(renderer).toContain(
+      'centerYFromBase(FLOOR_CLEARANCE, height)'
+    );
+    expect(renderer).toContain('SNAKE_HEAD_CENTER_Y');
     const terrain = read('src/components/game/TerrainBlocks.tsx');
     expect(terrain).toContain('FLOOR_CLEARANCE');
   });
@@ -217,7 +220,7 @@ describe('the failure modes the design named explicitly', () => {
     // ones on the board to see - backwards, because those are exactly the
     // cells a player routes through.
     const shape = read(SHAPE);
-    expect(shape).toMatch(/export const ENERGY_MIN = 0\.88/);
+    expect(shape).toMatch(/export const ENERGY_MIN = 0\.94/);
     expect(shape).toContain('TRAIL_HEIGHT_TRUNK');
     expect(shape).toContain('TRAIL_HEIGHT_HEAD');
   });

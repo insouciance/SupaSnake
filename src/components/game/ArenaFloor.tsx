@@ -55,12 +55,87 @@ const MAJOR_EVERY = 5;
  * stable. Same defect either way - only one of them shimmers.
  *
  * CLEARANCE, NOT BIAS. Lifting by a hair removes the tie outright rather than
- * asking the depth buffer to break it, and it is invisible: 0.02 of a cell is a
- * fifth of a millimetre at the board's scale. `polygonOffset` would only pick a
- * winner, and would still be wrong on a different GPU.
+ * asking the depth buffer to break it. The shared base below also clears the
+ * raised major-grid plane; `polygonOffset` would only pick a winner and would
+ * still be wrong on a different GPU.
  */
 export const FLOOR_TOP_Y = 0;
-export const FLOOR_CLEARANCE = 0.02;
+
+/** The tallest decorative floor primitive is the major grid at y=0.02. */
+export const FLOOR_GRAPHICS_TOP_Y = 0.02;
+
+/**
+ * Shared render base for anything that stands on the arena.
+ *
+ * This used to equal the major grid's y=0.02 plane. That removed the floor
+ * z-fight while leaving the bottom face of every snake segment coplanar with
+ * a major grid line. The defect therefore survived on the exact rows and
+ * columns players use most for routing, especially on mobile depth buffers.
+ * A further 0.02-cell separation is visually imperceptible but geometrically
+ * decisive. This is rendering clearance only; logical cells and collisions
+ * remain on y=0 in the engine.
+ */
+export const FLOOR_CLEARANCE = FLOOR_GRAPHICS_TOP_Y + 0.02;
+
+/**
+ * Convert a rendered object's base and full height into its mesh centre.
+ * Three.js positions centred geometry, so assigning the desired base directly
+ * puts half the object through the floor. Every snake head/body placement uses
+ * this one rule.
+ */
+export function centerYFromBase(baseY: number, height: number): number {
+  return baseY + height / 2;
+}
+
+export const ARENA_EDGE_WASH_VERTEX_SHADER = /* glsl */ `
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+export const ARENA_EDGE_WASH_FRAGMENT_SHADER = /* glsl */ `
+  uniform vec3 uAccent;
+  uniform float uStrength;
+  varying vec2 vUv;
+
+  void main() {
+    // Analytic distance keeps the wash smooth at every canvas size and DPR.
+    // The previous 256px CanvasTexture was enlarged across the whole board,
+    // exposing its raster grain/banding around this circular transition.
+    float radius = length(vUv - vec2(0.5)) / 0.70710678;
+    float edge = smoothstep(0.28, 1.0, radius);
+    float alpha = edge * 0.70 * uStrength;
+    gl_FragColor = vec4(uAccent, alpha);
+  }
+`;
+
+/** Build the one-draw, resolution-independent arena edge wash. */
+export function createArenaEdgeWashMaterial(
+  accentColor: string,
+  strength: number
+): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uAccent: { value: new THREE.Color(accentColor) },
+      uStrength: {
+        value: THREE.MathUtils.clamp(
+          Number.isFinite(strength) ? strength : 0,
+          0,
+          1.5
+        ),
+      },
+    },
+    vertexShader: ARENA_EDGE_WASH_VERTEX_SHADER,
+    fragmentShader: ARENA_EDGE_WASH_FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+}
 
 export function ArenaFloor({
   gridSize = 20,
@@ -82,7 +157,7 @@ export function ArenaFloor({
     const minor: number[] = [];
     const major: number[] = [];
     const yMinor = 0.015;
-    const yMajor = 0.02;
+    const yMajor = FLOOR_GRAPHICS_TOP_Y;
 
     for (let i = 0; i <= gridSize; i++) {
       const isMajor = i % MAJOR_EVERY === 0;
@@ -102,43 +177,20 @@ export function ArenaFloor({
 
   // Dynasty-tinted emissive wash: transparent at center, faint glow toward
   // the edges, so the board participates in the dynasty theme and its edge
-  // reads as lit rather than cut out. Generated once per accent color.
-  const edgeWashTexture = useMemo(() => {
-    if (typeof document === 'undefined') return null;
-    const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-
-    const c = new THREE.Color(accentColor);
-    const r = Math.round(c.r * 255);
-    const g = Math.round(c.g * 255);
-    const b = Math.round(c.b * 255);
-
-    const grad = ctx.createRadialGradient(
-      size / 2, size / 2, size * 0.2,
-      size / 2, size / 2, size * 0.71
-    );
-    grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
-    grad.addColorStop(0.7, `rgba(${r},${g},${b},${0.1 * edgeWashStrength})`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},${0.35 * edgeWashStrength})`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, size, size);
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  }, [accentColor, edgeWashStrength]);
+  // reads as lit rather than cut out. The gradient is analytic in the fragment
+  // shader: there is no bitmap resolution to reveal when the viewport grows.
+  const edgeWashMaterial = useMemo(
+    () => createArenaEdgeWashMaterial(accentColor, edgeWashStrength),
+    [accentColor, edgeWashStrength]
+  );
 
   const cockpitSurface = surfacePreset === 'cockpit';
 
   useEffect(() => {
     return () => {
-      edgeWashTexture?.dispose();
+      edgeWashMaterial.dispose();
     };
-  }, [edgeWashTexture]);
+  }, [edgeWashMaterial]);
 
   return (
     <group>
@@ -157,17 +209,13 @@ export function ArenaFloor({
       </mesh>
 
       {/* Dynasty edge wash - additive so it glows over the void surface */}
-      {edgeWashTexture && (
-        <mesh position={[center, 0.006, center]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[gridSize, gridSize]} />
-          <meshBasicMaterial
-            map={edgeWashTexture}
-            transparent
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
-        </mesh>
-      )}
+      <mesh
+        position={[center, 0.006, center]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        material={edgeWashMaterial}
+      >
+        <planeGeometry args={[gridSize, gridSize]} />
+      </mesh>
 
       {/* Minor grid lines - thin, quiet cell boundaries */}
       <lineSegments>
