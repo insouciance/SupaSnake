@@ -12,6 +12,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   IconBolt,
   IconCheck,
@@ -64,24 +65,36 @@ interface ToastProps {
   message: string;
   type: ToastType;
   onDismiss: (id: string) => void;
+  interactive?: boolean;
 }
 
-export function Toast({ id, message, type, onDismiss }: ToastProps) {
+export function Toast({
+  id,
+  message,
+  type,
+  onDismiss,
+  interactive = true,
+}: ToastProps) {
   const Icon = TYPE_ICONS[type];
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 panel-glow ${TYPE_STYLES[type]} text-bone-white animate-slide-in-right`}
+      className={`flex items-center gap-3 px-4 py-3 panel-glow ${TYPE_STYLES[type]} text-bone-white animate-slide-in-right ${
+        interactive ? 'pointer-events-auto' : 'pointer-events-none select-none'
+      }`}
       role="alert"
+      data-input-transparent={interactive ? undefined : 'true'}
     >
       <Icon size={20} className={`shrink-0 ${TYPE_ICON_COLOR[type]}`} />
       <span className="flex-1 font-body font-semibold">{message}</span>
-      <button
-        onClick={() => onDismiss(id)}
-        className="p-1 -m-1 text-beige/60 hover:text-bone-white transition-colors"
-        aria-label="Dismiss"
-      >
-        <IconX size={16} />
-      </button>
+      {interactive && (
+        <button
+          onClick={() => onDismiss(id)}
+          className="p-1 -m-1 text-beige/60 hover:text-bone-white transition-colors"
+          aria-label="Dismiss"
+        >
+          <IconX size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -91,6 +104,8 @@ interface ToastProviderProps {
 }
 
 export function ToastProvider({ children }: ToastProviderProps) {
+  const pathname = usePathname();
+  const isLiveRun = pathname === '/game' || pathname.startsWith('/game/');
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
   const showToast = useCallback((message: string, type: ToastType = 'info', duration = 5000) => {
@@ -116,7 +131,10 @@ export function ToastProvider({ children }: ToastProviderProps) {
       {children}
       {/* Toast container */}
       {/* bottom-20 on mobile clears the fixed bottom tab bar */}
-      <div className="fixed bottom-20 sm:bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      <div
+        className="pointer-events-none fixed bottom-20 sm:bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"
+        data-live-run={isLiveRun ? 'true' : 'false'}
+      >
         {toasts.map(toast => (
           <Toast
             key={toast.id}
@@ -124,6 +142,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
             message={toast.message}
             type={toast.type}
             onDismiss={dismissToast}
+            interactive={!isLiveRun}
           />
         ))}
       </div>
