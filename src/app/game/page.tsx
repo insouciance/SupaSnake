@@ -161,6 +161,10 @@ import {
   type ChallengeRun,
 } from '@/lib/game/challengeRun';
 import {
+  buildLabSetupHref,
+  readRunSetupDraft,
+} from '@/lib/game/runSetupDraft';
+import {
   RunResults,
   type RunResultsClanBattle,
 } from '@/components/game/RunResults';
@@ -426,6 +430,10 @@ export default function GamePage() {
   const [challengeRun] = useState<ChallengeRun | null>(() =>
     typeof window === 'undefined' ? null : readChallengeRun(window.location.search)
   );
+  // Navigation-only Setup choices live in the URL while the player visits the
+  // Lab. They are never run, reward, or economy authority; the session start
+  // endpoint revalidates every choice when Play is pressed.
+  const [setupCurrentSearch, setSetupCurrentSearch] = useState('');
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startGameLoopRef = useRef<() => void>(() => {});
@@ -774,6 +782,31 @@ export default function GamePage() {
     syncChargeFromServer,
   } = useGameStore();
 
+  const setupLabHref = buildLabSetupHref({
+    currentSearch: setupCurrentSearch,
+    mode: gameMode,
+    energyCommitment,
+    ladderRung,
+  });
+
+  // Apply the URL draft only after hydration so the server and first client
+  // render share one stable Setup shell. The fresh player read below then
+  // clamps Energy and Ladder against current server authority.
+  useEffect(() => {
+    const currentSearch = window.location.search;
+    setSetupCurrentSearch(currentSearch);
+    const initialSetupDraft = readRunSetupDraft(window.location.search);
+    if (initialSetupDraft.mode !== null) {
+      setGameMode(initialSetupDraft.mode);
+    }
+    if (initialSetupDraft.energyCommitment !== null) {
+      setEnergyCommitment(initialSetupDraft.energyCommitment);
+    }
+    if (initialSetupDraft.ladderRung !== null) {
+      setLadderRung(initialSetupDraft.ladderRung);
+    }
+  }, [setGameMode]);
+
   // A game route may survive sign-out/sign-in without a document reload.
   // Reset the one-shot recovery gates and every in-memory run capability when
   // the account id changes; otherwise the second account inherits the first
@@ -1069,11 +1102,11 @@ export default function GamePage() {
         // has not applied here, and the selector stays dark - the ladder is
         // never offered on a promise the server cannot keep.
         const ladderInfo = data.ladder as Record<string, unknown> | undefined;
-        setLadderAttemptable(
-          ladderInfo?.available === true
-            ? resolveLadderRung(ladderInfo.attemptable)
-            : DEFAULT_LADDER_RUNG
-        );
+        const attemptable = ladderInfo?.available === true
+          ? resolveLadderRung(ladderInfo.attemptable)
+          : DEFAULT_LADDER_RUNG;
+        setLadderAttemptable(attemptable);
+        setLadderRung((current) => Math.min(current, attemptable));
       })
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, isPlaying, syncChargeFromServer, setAimSystem]);
@@ -4654,6 +4687,7 @@ export default function GamePage() {
         selectingSnakeId={selectingSnakeId}
         error={snakePickerError}
         favoriteDynasty={favoritePickerDynasty}
+        labHref={setupLabHref}
         onSelect={(snake) => {
           if (favoritePickerDynasty) {
             void handleChooseSetupFavorite(snake);
@@ -5010,6 +5044,7 @@ export default function GamePage() {
                 />
               ) : (
                 <RunSetupPanel
+                  labHref={setupLabHref}
                   snake={
                     equippedSnake
                       ? {
