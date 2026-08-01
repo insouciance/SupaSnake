@@ -78,6 +78,25 @@ describe('production environment validation', () => {
     }
   });
 
+  it('keeps rollback-path unit tests isolated from the production flag manifest', () => {
+    const workflow = readFileSync(
+      join(process.cwd(), '.github/workflows/deploy-production.yml'),
+      'utf8'
+    );
+    const verifyAt = workflow.indexOf('  verify:');
+    const deployAt = workflow.indexOf('  deploy:');
+    const verifyJob = workflow.slice(verifyAt, deployAt);
+
+    expect(verifyJob).toContain("NEXT_PUBLIC_FTUE_V2: 'true'");
+    expect(verifyJob).toContain("NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'");
+    expect(verifyJob).not.toContain(
+      'production-public-surface-cli.mjs github-env'
+    );
+    expect(workflow.slice(deployAt)).toContain(
+      'production-public-surface-cli.mjs github-env'
+    );
+  });
+
   it('uses Preview-only preflight and one deliberate Production cutover', () => {
     const workflow = readFileSync(
       join(process.cwd(), '.github/workflows/deploy-production.yml'),

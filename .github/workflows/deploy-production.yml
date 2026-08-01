@@ -38,6 +38,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
+      NEXT_PUBLIC_FTUE_V2: 'true'
+      NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
     steps:
       - name: Require main branch dispatch
         shell: bash
@@ -55,8 +57,6 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Arm the exact production public-surface contract
-        run: node scripts/production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:

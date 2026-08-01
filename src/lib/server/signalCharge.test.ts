@@ -334,7 +334,7 @@ describe('the session route wires the Signal, tightly', () => {
 
   it('claims the day against the SERVER clock and the session it just created', () => {
     expect(code).toMatch(
-      /claimSignalObjectiveRun\(\s*supabase,\s*player\.id,\s*session\.id,\s*signalObjectiveId,\s*startedAtDate\s*\)/
+      /claimSignalObjectiveRun\(\s*supabase,\s*player\.id,\s*createdSessionId,\s*signalObjectiveId,\s*startedAtDate\s*\)/
     );
     // `mode: 'signal'` is a request, not a grant: no claim without it.
     expect(code).toMatch(/const isSignalRun = mode === 'signal';/);
