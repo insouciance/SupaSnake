@@ -161,7 +161,7 @@ test.describe('Run Cockpit v1', () => {
     await installReturningPlayerFixtures(page);
     await signInAsGuest(page);
 
-    await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /ready to (?:play|launch)/i })).toBeVisible({
       timeout: 60_000,
     });
     await openRunSetupControls(page);

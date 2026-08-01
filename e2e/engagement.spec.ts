@@ -71,20 +71,23 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await expect(page.getByRole('heading', { name: /choose your snake/i })).not.toBeVisible();
   });
 
-  test('game page shows the equipped snake name and the day\'s charges', async () => {
+  test('game page exposes the authoritative run Energy state', async () => {
     test.skip(!guestReady, 'Requires the guest session from step 1 (anonymous sign-ins disabled)');
-    // The cockpit exposes an accessible charge reading; the rollback layout
-    // retains its numeric ChargeMeter. Select the visible signal so a hidden
-    // responsive duplicate cannot mask the one the player actually sees.
-    const chargeReadout = page.getByLabel(/^Charges \d+ of \d+$/i)
+    // The production cockpit exposes the immutable commitment attached to
+    // this run; the rollback layout retains its stored-Charge meter. Either
+    // surface must provide one visible, accessible Energy fact after launch.
+    const energyState = page.getByTestId('energy-stake')
+      .or(page.getByLabel(/^Charges \d+ of \d+$/i))
       .or(page.getByText(/^\d+\/\d+$/))
       .filter({ visible: true })
       .first();
-    await expect(chargeReadout).toBeVisible();
+    await expect(energyState).toBeVisible();
 
     // The one-click route has no second Play screen and remains held until
     // the player's deliberate first direction.
-    await expect(page.getByRole('heading', { name: /ready to play/i })).not.toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
+    ).not.toBeVisible();
     await expect(page.getByTestId('first-movement-prompt')).toBeVisible();
   });
 

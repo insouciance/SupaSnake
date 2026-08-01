@@ -74,7 +74,9 @@ test.describe('Home page', () => {
     await expect(page.getByTestId('first-movement-prompt')).toHaveText(
       'Swipe or press an arrow to move'
     );
-    await expect(page.getByRole('heading', { name: /ready to play/i })).not.toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
+    ).not.toBeVisible();
     await expect(page.getByTestId('contracts-board')).not.toBeVisible();
     await expect(page.getByTestId('account-upgrade-modal')).not.toBeVisible();
 
@@ -92,7 +94,7 @@ test.describe('Equipped-snake game flow', () => {
     await signInAsGuest(page);
 
     await expect(page.getByText(/you need a snake before you can play/i)).not.toBeVisible();
-    await expect(page.getByRole('heading', { name: /ready to play/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /ready to (?:play|launch)/i })).toBeVisible({
       timeout: 30000,
     });
     await expect(page.getByText(/primal/i).first()).toBeVisible();
@@ -105,7 +107,7 @@ test.describe('Equipped-snake game flow', () => {
 
     // Pre-game screen: ready state with the equipped snake
     await expect(
-      page.getByRole('heading', { name: /ready to play/i })
+      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/gen \d+/i).first()).toBeVisible();
     // /^play\b/ matches the Play button ("Play" / "Play Again") but
