@@ -360,8 +360,8 @@ jobs:
         run: bash scripts/verify-linked-migration-plan.sh
 
       # This is the only SQL test permitted against hosted production. It has
-      # no fixtures and is guarded by both Management API read_only=true and
-      # BEGIN TRANSACTION READ ONLY in the SQL file.
+      # no fixtures and is one structural SELECT executed through Supabase's
+      # dedicated read-only Management API endpoint.
       - name: Probe linked cohesive schema read-only
         run: bash scripts/probe-linked-cohesive-schema.sh
 

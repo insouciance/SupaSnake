@@ -87,12 +87,13 @@ The release has two deliberately different database gates:
   maintenance; they never justify deleting an affected economy/session
   regression contract from the release gate.
 - `supabase/tests/cohesive_release_read_only.sql` is the only SQL contract that
-  may run against the linked production project. It creates no fixtures. The
-  Supabase Management API request sets `read_only: true`, while the SQL itself
-  also begins `TRANSACTION READ ONLY`. It proves the seven-argument non-spending
-  founding response, exact function grants, absence of duplicate favorites,
-  exact trigger/function binding, validated continuity constraints, required
-  indexes, exact 062/063/064 migration ledger, and cohesive capability JSON.
+  may run against the linked production project. It creates no fixtures and is
+  one structural `SELECT` executed as `supabase_read_only_user` through the
+  Management API's dedicated read-only endpoint. It proves exact function
+  signatures and service-role grants without invoking those functions, absence
+  of duplicate favorites, exact trigger/function binding, validated continuity
+  constraints, and required indexes. The immediately preceding empty linked
+  migration-plan proof remains the authority for the 062/063/064 ledger.
 
 Never run `062_competitive_clans.sql`, `063_run_continuity.sql`,
 `064_atomic_dynasty_favorites.sql`, or the 064 concurrency test from

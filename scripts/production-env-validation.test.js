@@ -228,19 +228,36 @@ describe('production environment validation', () => {
     expect(localHarness).toContain('@supabase_db_${project_id}:5432');
     expect(localHarness).toContain('-v dblink_conn="$dblink_database_url"');
 
-    expect(linkedHarness).toContain("read_only: true");
+    expect(linkedHarness).toContain('database/query/read-only');
+    expect(linkedHarness).toContain("'{query: $query}'");
+    expect(linkedHarness).not.toContain('read_only: true');
+    expect(linkedHarness).toContain("--write-out '%{http_code}'");
+    expect(linkedHarness).toContain('returned HTTP $http_status');
     expect(linkedHarness).toContain('cohesive_release_read_only_v1');
-    expect(linkedHarness).toContain('| length == 1');
+    expect(linkedHarness).toContain('and length == 1');
     expect(linkedHarness).toContain(
       'supabase/tests/cohesive_release_read_only.sql'
     );
     expect(linkedHarness).not.toContain('062_competitive_clans.sql');
     expect(linkedHarness).not.toContain('063_run_continuity.sql');
     expect(linkedHarness).not.toContain('064_atomic_dynasty_favorites.sql');
-    expect(linkedProbe).toContain('BEGIN TRANSACTION READ ONLY;');
-    expect(linkedProbe).toContain('supabase_migrations.schema_migrations');
-    expect(linkedProbe).toContain("ARRAY['062', '063', '064']");
-    expect(linkedProbe).toContain('COMMIT;');
+    expect(linkedProbe).toContain('supabase_read_only_user');
+    expect(linkedProbe).toContain('public.collected_snakes');
+    expect(linkedProbe).toContain('pg_catalog.pg_constraint');
+    expect(linkedProbe).toContain('pg_catalog.pg_trigger');
+    expect(linkedProbe).toContain('pg_catalog.pg_indexes');
+    expect(linkedProbe).toContain('pg_catalog.has_function_privilege');
+    expect(linkedProbe).toContain("CURRENT_USER = 'supabase_read_only_user'");
+    expect(linkedProbe).toContain("current_setting('transaction_read_only')");
+    expect(linkedProbe).toContain('founding_bridge_safe');
+    expect(linkedProbe).toContain("language_row.lanname = 'sql'");
+    expect(linkedProbe).toContain("procedure_row.provolatile = 'v'");
+    expect(linkedProbe).toContain('procedure_row.prosecdef');
+    expect(linkedProbe).toContain("'founding_confirmation_required'");
+    expect(linkedProbe).not.toContain('BEGIN TRANSACTION READ ONLY;');
+    expect(linkedProbe).not.toContain('supabase_migrations.schema_migrations');
+    expect(linkedProbe).not.toContain('v_result := found_clan');
+    expect(linkedProbe).not.toContain('get_cohesive_release_capability();');
     expect(linkedProbe).not.toMatch(/^\s*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/im);
   });
 
