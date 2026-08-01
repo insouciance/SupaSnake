@@ -15,9 +15,11 @@ DECLARE
     'game_sessions_start_request_pair',
     'game_sessions_start_manifest_object',
     'game_sessions_start_manifest_draft_shape',
+    'game_sessions_start_intent_shape',
     'game_sessions_continuity_phase_valid',
     'game_sessions_continuity_checkpoint_shape',
     'game_sessions_continuity_lease_shape',
+    'game_sessions_continuity_terminal_shape',
     'game_sessions_simulation_version_valid',
     'game_sessions_continuity_shape'
   ];
@@ -64,6 +66,7 @@ BEGIN
     'public.activate_run_continuity(uuid,uuid,jsonb,text,text,text,integer)',
     'public.resume_run_continuity(uuid,uuid,text,text)',
     'public.save_run_continuity_checkpoint(uuid,uuid,integer,jsonb,text,text,integer)',
+    'public.stage_run_continuity_terminal(uuid,uuid,integer,text,jsonb,text)',
     'public.stage_continuity_game_session_end(uuid,uuid,uuid,text,jsonb)',
     'public.complete_free_run_continuity(uuid,uuid,text,jsonb)',
     'public.abandon_run_continuity(uuid,uuid,text,text)'

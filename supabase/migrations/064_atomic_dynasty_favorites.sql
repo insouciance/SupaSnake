@@ -229,15 +229,38 @@ BEGIN
     to_regprocedure('public.found_clan(uuid,text,text,text,text,text,text)') IS NOT NULL
     AND to_regprocedure('public.found_clan(uuid,text,text,text,text,text,text,integer)') IS NOT NULL;
 
-  SELECT COUNT(*) = 3
+  SELECT COUNT(*) = 8
   INTO v_continuity_ready
   FROM information_schema.columns
   WHERE table_schema = 'public'
     AND table_name = 'game_sessions'
     AND column_name IN (
       'start_request_id',
+      'continuity_start_intent',
       'continuity_phase',
-      'continuity_checkpoint'
+      'continuity_checkpoint',
+      'simulation_rules_version',
+      'continuity_terminal_facts',
+      'continuity_terminal_digest',
+      'continuity_terminal_at'
+    );
+
+  v_continuity_ready := v_continuity_ready
+    AND to_regprocedure(
+      'public.stage_run_continuity_terminal(uuid,uuid,integer,text,jsonb,text)'
+    ) IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM pg_constraint constraint_row
+      WHERE constraint_row.conrelid = 'public.game_sessions'::REGCLASS
+        AND constraint_row.conname IN (
+          'game_sessions_start_intent_shape',
+          'game_sessions_continuity_terminal_shape'
+        )
+        AND constraint_row.contype = 'c'
+        AND constraint_row.convalidated
+      GROUP BY constraint_row.conrelid
+      HAVING COUNT(*) = 2
     );
 
   SELECT EXISTS (

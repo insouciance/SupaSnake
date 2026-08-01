@@ -107,12 +107,14 @@ BEGIN
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
     started_at, server_started_at, energy_committed,
-    energy_harvest_multiplier_bps
+    energy_harvest_multiplier_bps, end_reason
   ) VALUES
     ('06100000-0000-0000-0000-000000000303', v_player, v_snake, v_variant,
-     'PRIMAL', NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000),
+     'PRIMAL', NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000,
+     'completed'),
     ('06100000-0000-0000-0000-000000000304', v_player, v_snake, v_variant,
-     'PRIMAL', NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000);
+     'PRIMAL', NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000,
+     'completed');
 END;
 $$;
 
@@ -268,12 +270,14 @@ BEGIN
   INSERT INTO game_sessions(
     id, player_id, snake_used_id, snake_variant_id, dynasty,
     started_at, server_started_at, energy_committed,
-    energy_harvest_multiplier_bps
+    energy_harvest_multiplier_bps, end_reason
   ) VALUES
     (v_c, v_player, v_snake, v_variant, 'CYBER',
-     NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000),
+     NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000,
+     'completed'),
     (v_d, v_player, v_snake, v_variant, 'CYBER',
-     NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000);
+     NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes', 1, 10000,
+     'completed');
 
   -- C's capturedAt is earlier, but D reaches the server first.
   PERFORM public.test_stage_career_end(
