@@ -1,0 +1,70 @@
+'use client';
+
+import Link from 'next/link';
+import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { NotificationBadge } from '@/components/ui/NotificationBadge';
+import {
+  destinationBadge,
+  recognitionHref,
+  useNotificationStore,
+} from '@/lib/stores/notificationStore';
+import { STRAIN_IDS, STRAINS } from '@/shared/game/strains';
+
+const RUNE_POSITIONS = [
+  'left-1/2 top-0 -translate-x-1/2',
+  'right-0 top-[31%]',
+  'bottom-0 right-[15%]',
+  'bottom-0 left-[15%]',
+  'left-0 top-[31%]',
+] as const;
+
+/**
+ * The Codex is part of the chamber's world, not a fifth primary command. Its
+ * five runes advertise the vocabulary the player will use in the Loom.
+ */
+export function HomeCodexRelic() {
+  const notifications = useNotificationStore((state) => state.notifications);
+  const badge = destinationBadge(notifications, 'codex');
+  const href =
+    badge.kind === 'dot'
+      ? recognitionHref(notifications, 'codex') ?? '/codex'
+      : '/codex';
+
+  return (
+    <Link
+      href={href}
+      aria-label="Genome Codex"
+      title="Genome Codex"
+      data-testid="home-codex-relic"
+      className="group absolute right-[max(0.6rem,env(safe-area-inset-right,0px))] top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic-glow sm:right-5 sm:h-14 sm:w-14"
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-[7px] rotate-45 rounded-[0.55rem] border border-cosmic-glow/25 bg-void-deep/55 shadow-[0_0_18px_rgba(166,66,245,0.16)] backdrop-blur-sm transition-[border-color,box-shadow,transform] duration-300 group-hover:rotate-[135deg] group-hover:border-cosmic-glow/65 group-hover:shadow-[0_0_24px_rgba(166,66,245,0.38)]"
+      />
+      <span aria-hidden="true" className="absolute inset-0">
+        {STRAIN_IDS.map((strain, index) => (
+          <span
+            key={strain}
+            className={`absolute flex h-3.5 w-3.5 items-center justify-center transition-transform duration-300 group-hover:scale-110 ${RUNE_POSITIONS[index]}`}
+            style={{ color: STRAINS[strain].color }}
+          >
+            <StrainGlyph id={strain} />
+          </span>
+        ))}
+      </span>
+      <span
+        aria-hidden="true"
+        className="relative h-2.5 w-2.5 rotate-45 border border-bone-white/70 bg-cosmic-glow/30 shadow-[0_0_10px_rgba(166,66,245,0.8)]"
+      />
+      <NotificationBadge
+        kind={badge.kind}
+        count={badge.count}
+        label="New Codex activity"
+        className="absolute -right-0.5 -top-0.5"
+      />
+    </Link>
+  );
+}
+
+export default HomeCodexRelic;

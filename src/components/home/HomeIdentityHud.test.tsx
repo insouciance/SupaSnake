@@ -27,6 +27,9 @@ describe('HomeIdentityHud', () => {
     expect(screen.getByTestId('home-wallet')).toHaveTextContent('6/6');
     expect(screen.getAllByTestId('home-wallet')).toHaveLength(1);
     expect(screen.getByTestId('home-settings')).toHaveAttribute('href', '/settings');
+    const header = screen.getByRole('banner');
+    expect(header).toHaveAttribute('data-home-identity-hud');
+    expect(header.firstElementChild).toHaveClass('flex-col');
   });
 
   it('never invents identity or Energy while authoritative values are absent', () => {

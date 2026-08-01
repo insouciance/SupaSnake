@@ -35,6 +35,11 @@ import {
 } from '@/components/game/SnakeModel';
 import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
+import {
+  measureHomeSafeStage,
+  specimenCameraDistance,
+  type HomeSafeStage,
+} from '@/components/home/specimenCameraFit';
 
 // -----------------------------------------------------------------------------
 // Look constants
@@ -75,11 +80,8 @@ const CAMERA_ELEVATION = 0.46; // ~26 degrees above the specimen plane
 const CAMERA_AZIMUTH = 0.32; // slight three-quarter offset
 /** Fit margin: bounding radius is padded so the whole coil breathes */
 const FIT_MARGIN = 1.22;
-/** Distance clamps: the near bound keeps the coil from cropping hard on
- *  wide screens; the far bound guarantees phone-portrait framing never
- *  shrinks the specimen into invisibility. */
+/** The near bound keeps the chamber portrait-like on very wide screens. */
 const MIN_CAMERA_DISTANCE = 5.5;
-const MAX_CAMERA_DISTANCE = 10.5;
 
 // -----------------------------------------------------------------------------
 // Base pose - a coiled serpentine S the eye instantly parses as a snake:
@@ -290,23 +292,20 @@ function CameraRig({ animate }: { animate: boolean }) {
 
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
-    const aspect = size.width / Math.max(1, size.height);
     const vFov = THREE.MathUtils.degToRad(persp.fov);
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-
-    // Per-axis fit: width against the horizontal fov, the elevation-
-    // projected depth+height against the vertical fov. Clamped so portrait
-    // never pushes the specimen away into a speck (the mobile-invisible
-    // bug) and ultrawide never crops it hard.
     const cosE = Math.cos(CAMERA_ELEVATION);
     const sinE = Math.sin(CAMERA_ELEVATION);
-    const dh = (POSE_BOUNDS.halfX * FIT_MARGIN) / Math.tan(hFov / 2);
-    const projectedVertical =
-      POSE_BOUNDS.halfZ * sinE + POSE_BOUNDS.halfY * cosE;
-    const dv = (projectedVertical * FIT_MARGIN) / Math.tan(vFov / 2);
-    const distance = Math.min(
-      MAX_CAMERA_DISTANCE,
-      Math.max(MIN_CAMERA_DISTANCE, Math.max(dh, dv))
+    const distance = Math.max(
+      MIN_CAMERA_DISTANCE,
+      specimenCameraDistance(
+        POSE_BOUNDS,
+        size.width,
+        size.height,
+        vFov,
+        CAMERA_ELEVATION,
+        CAMERA_AZIMUTH,
+        FIT_MARGIN
+      )
     );
 
     const dir = new THREE.Vector3(
@@ -410,6 +409,64 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+const EMPTY_SAFE_STAGE: HomeSafeStage = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
+
+/** Measure the real HUD/dock rather than guessing their breakpoint heights. */
+function useHomeSafeStage(): HomeSafeStage {
+  const [stage, setStage] = useState<HomeSafeStage>(EMPTY_SAFE_STAGE);
+
+  useEffect(() => {
+    const root = document.querySelector<HTMLElement>('[data-home-chamber-root]');
+    const header = document.querySelector<HTMLElement>('[data-home-identity-hud]');
+    const dock = document.querySelector<HTMLElement>('[data-home-command-dock]');
+    const sync = () => {
+      const rootRect = root?.getBoundingClientRect() ?? {
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        left: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+      const relativeRect = (element: HTMLElement | null) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return {
+          top: rect.top - rootRect.top,
+          right: rect.right - rootRect.left,
+          bottom: rect.bottom - rootRect.top,
+          left: rect.left - rootRect.left,
+        };
+      };
+      setStage(
+        measureHomeSafeStage(
+          rootRect.width,
+          rootRect.height,
+          relativeRect(header),
+          relativeRect(dock)
+        )
+      );
+    };
+    sync();
+    window.addEventListener('resize', sync);
+    const observer = new ResizeObserver(sync);
+    if (root) observer.observe(root);
+    if (header) observer.observe(header);
+    if (dock) observer.observe(dock);
+    return () => {
+      window.removeEventListener('resize', sync);
+      observer.disconnect();
+    };
+  }, []);
+
+  return stage;
+}
+
 export interface SpecimenChamberProps {
   /** Dynasty of the equipped snake (PRIMAL specimen for fresh visitors). */
   dynasty: DynastyId;
@@ -425,6 +482,7 @@ export function SpecimenChamber({
   onReady,
 }: SpecimenChamberProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const safeStage = useHomeSafeStage();
   const [hidden, setHidden] = useState(false);
 
   // Pause the render loop entirely while the tab is hidden
@@ -439,22 +497,27 @@ export function SpecimenChamber({
   const frameloop = hidden ? 'never' : reducedMotion ? 'demand' : 'always';
 
   return (
-    <Canvas
-      frameloop={frameloop}
-      dpr={[1, 2]}
-      gl={{ antialias: true, alpha: false, powerPreference: 'low-power' }}
-      camera={{ fov: 38, near: 0.1, far: 40 }}
-      onCreated={() => onReady?.()}
+    <div
+      className="absolute"
+      data-testid="home-specimen-safe-stage"
+      style={safeStage}
     >
-      <color attach="background" args={[VOID_COLOR]} />
-      <fog attach="fog" args={[VOID_COLOR, 7.5, 17]} />
-      <CameraRig animate={animate} />
-      <ChamberLights dynasty={dynasty} reaction={reaction} />
-      <FloorGrid />
-      <Suspense fallback={<SpecimenBody dynasty={dynasty} animate={animate} />}>
-        <VoxelSpecimen dynasty={dynasty} animate={animate} />
-      </Suspense>
-    </Canvas>
+      <Canvas
+        frameloop={frameloop}
+        dpr={[1, 2]}
+        gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
+        camera={{ fov: 38, near: 0.1, far: 48 }}
+        onCreated={() => onReady?.()}
+      >
+        <fog attach="fog" args={[VOID_COLOR, 7.5, 28]} />
+        <CameraRig animate={animate} />
+        <ChamberLights dynasty={dynasty} reaction={reaction} />
+        <FloorGrid />
+        <Suspense fallback={<SpecimenBody dynasty={dynasty} animate={animate} />}>
+          <VoxelSpecimen dynasty={dynasty} animate={animate} />
+        </Suspense>
+      </Canvas>
+    </div>
   );
 }
 

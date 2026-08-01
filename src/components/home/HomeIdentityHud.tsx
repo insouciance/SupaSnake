@@ -43,12 +43,16 @@ export function HomeIdentityHud({
   energy,
 }: HomeIdentityHudProps) {
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 px-4 pt-4 text-center sm:pt-5">
-      <h1 className="heading-display text-lg text-venom-orange text-glow-accent sm:text-xl">
-        SUPASNAKE
-      </h1>
+    <header
+      className="pointer-events-none absolute inset-x-0 top-0 z-10 px-14 pt-[max(1rem,env(safe-area-inset-top,0px))] text-center sm:px-16 sm:pt-5"
+      data-home-identity-hud
+    >
+      <div className="mx-auto flex w-fit max-w-full flex-col items-center">
+        <h1 className="heading-display text-lg text-venom-orange text-glow-accent sm:text-xl">
+          SUPASNAKE
+        </h1>
 
-      {specimen ? (
+        {specimen ? (
         <p
           className="mt-2 inline-flex items-center gap-1.5 whitespace-nowrap font-display text-sm uppercase text-bone-white text-glow sm:text-base"
           data-testid="home-specimen-identity"
@@ -65,9 +69,9 @@ export function HomeIdentityHud({
           ) : null}
           {specimen.variantName} · Gen {specimen.generation}
         </p>
-      ) : null}
+        ) : null}
 
-      {clan ? (
+        {clan ? (
         <Link
           href="/clan"
           className="pointer-events-auto mt-1 inline-flex min-h-5 items-center gap-1.5 text-rarity-legendary transition-colors hover:text-rarity-legendary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rarity-legendary"
@@ -79,9 +83,9 @@ export function HomeIdentityHud({
             {clan.name}
           </span>
         </Link>
-      ) : null}
+        ) : null}
 
-      {authenticated ? (
+        {authenticated ? (
         <div
           className="pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden rounded-full border border-scale-blue-light/40 bg-void-deep/55 px-3 shadow-panel backdrop-blur-sm"
           aria-label={`Wallet: ${dna === null ? 'DNA loading' : `${dna.toLocaleString('en-US')} DNA`}${energy?.visible ? ` and ${energy.available} of ${energy.capacity} Energy` : ''}`}
@@ -105,7 +109,8 @@ export function HomeIdentityHud({
             </>
           ) : null}
         </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <Link
         href="/settings"
