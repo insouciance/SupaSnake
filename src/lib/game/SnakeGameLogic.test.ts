@@ -1024,7 +1024,14 @@ describe('SnakeGameLogic', () => {
       const thresholds = GAME_CONFIG.session.holds.bonusAtLengths;
       const target = Math.max(...thresholds);
       // A board wide enough to eat in a straight line past the last threshold.
-      const roomy = new SnakeGameLogic({ gridSize: 120, ruleset: RULESETS.PRIMAL });
+      // Fix the opportunity-placement RNG so a random portal or mutation tile
+      // cannot land on the forced straight-line fixture and end the run before
+      // the hold threshold this test is actually exercising.
+      const roomy = new SnakeGameLogic({
+        gridSize: 120,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.5,
+      });
       roomy.start();
       const seen: number[] = [];
       while (roomy.getState().snake.length < target && !roomy.getState().isGameOver) {
