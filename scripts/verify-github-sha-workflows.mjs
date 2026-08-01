@@ -21,6 +21,7 @@ for (const workflow of REQUIRED_PUSH_WORKFLOWS) {
   );
   url.searchParams.set('head_sha', sha);
   url.searchParams.set('event', 'push');
+  url.searchParams.set('branch', 'main');
   url.searchParams.set('per_page', '20');
 
   let response;
@@ -47,10 +48,10 @@ for (const workflow of REQUIRED_PUSH_WORKFLOWS) {
   const result = classifyExactPushRun(await response.json(), sha);
   if (!result.ok) {
     const runId = result.run?.id ? ` run=${result.run.id}` : '';
-    console.error(`::error::${workflow} is not a completed successful push workflow for ${sha}: ${result.reason}${runId}`);
+    console.error(`::error::${workflow} is not the newest completed successful main push workflow for ${sha}: ${result.reason}${runId}`);
     failed = true;
   } else {
-    console.log(`${workflow}: exact push run ${result.run.id} completed successfully for ${sha}`);
+    console.log(`${workflow}: newest exact main push run ${result.run.id} completed successfully for ${sha}`);
   }
 }
 
