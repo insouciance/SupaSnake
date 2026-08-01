@@ -229,6 +229,53 @@ describe('tab-memory settlement retry queue', () => {
     expect(readOutbox()).toHaveLength(1);
   });
 
+  it.each([
+    ['a start-state race', { reason: 'not_prepared' }],
+    ['an unknown conflict', { reason: 'future_conflict' }],
+    ['an empty conflict', {}],
+    ['an abandoned run', { alreadyEnded: true, endReason: 'abandoned' }],
+  ])('keeps terminal proof after %s without canonical settlement', async (_label, body) => {
+    enqueueReward(makeEntry({
+      leaseToken: 'l'.repeat(64),
+      replay: {
+        fromTick: 8,
+        toTick: 10,
+        actionOffset: 2,
+        actions: [],
+      },
+      expectedRevision: 3,
+    }));
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, body))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it('accepts an explicit completed end even while its impact is unavailable', async () => {
+    enqueueReward(makeEntry());
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, {
+        alreadyEnded: true,
+        endReason: 'completed',
+      }))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 1,
+      dropped: 0,
+      remaining: 0,
+    });
+    expect(readOutbox()).toEqual([]);
+  });
+
   it('drops a stale terminal claim when another tab owns the run lease', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
     enqueueReward(makeEntry({ leaseToken: 'l'.repeat(64) }));

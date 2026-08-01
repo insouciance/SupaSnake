@@ -2036,6 +2036,10 @@ export default function GamePage() {
                 duplicateBody && typeof duplicateBody === 'object'
                   ? duplicateBody as Record<string, unknown>
                   : {};
+              const duplicateDisposition = classifyTerminalRecoveryResponse(
+                response.status,
+                duplicateBody
+              );
               if (duplicateRecord.reason === 'lease_conflict') {
                 // Another tab explicitly resumed this run and now owns its
                 // terminal authority. This stale simulation cannot settle or
@@ -2075,18 +2079,15 @@ export default function GamePage() {
                   );
                   requestAttentionRefresh();
                 }
-                if (duplicateRecord.alreadyEnded === true || recovered) {
+                if (duplicateDisposition === 'completed' || recovered) {
                   runLeaseRef.current = null;
                   checkpointRevisionRef.current = 0;
                   terminalAcknowledged = true;
-                } else if (
-                  duplicateRecord.reason === 'checkpoint_conflict' ||
-                  duplicateRecord.reason === 'terminal_intent_required'
-                ) {
+                } else {
                   // No canonical terminal acknowledgement exists. Retain the
-                  // proof in tab memory and keep Results closed; recovery will
-                  // re-read the server base instead of treating a generic 409
-                  // as an idempotent completion.
+                  // proof in tab memory and keep Results closed. A generic
+                  // 409, including an abandoned run observed by a stale tab,
+                  // is not an idempotent settlement receipt.
                   queueForReplay();
                 }
               }

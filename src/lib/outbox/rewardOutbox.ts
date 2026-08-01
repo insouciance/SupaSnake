@@ -7,7 +7,10 @@ import {
   recoverRunImpact,
   type RunImpactEnvelope,
 } from '@/lib/game/runImpactClient';
-import { isDurablyPendingSettlement } from '@/lib/game/settlementResponse';
+import {
+  isCanonicalCompletedSettlement,
+  isDurablyPendingSettlement,
+} from '@/lib/game/settlementResponse';
 
 /**
  * Tab-memory retry queue for unsent settlement requests.
@@ -169,14 +172,14 @@ async function responseImpact(
   reason: string | null;
 }> {
   let reason: string | null = null;
-  let alreadyEnded = false;
+  let completed = false;
   try {
     const body = await response.json();
     const bodyRecord = body && typeof body === 'object'
       ? body as Record<string, unknown>
       : null;
     reason = typeof bodyRecord?.reason === 'string' ? bodyRecord.reason : null;
-    alreadyEnded = bodyRecord?.alreadyEnded === true;
+    completed = isCanonicalCompletedSettlement(bodyRecord);
     if (
       reason === 'lease_conflict'
     ) {
@@ -221,7 +224,7 @@ async function responseImpact(
     impact: recovered,
     securedPending: false,
     leaseConflict: false,
-    canonical: alreadyEnded || recovered !== null,
+    canonical: completed || recovered !== null,
     reason,
   };
 }
@@ -327,13 +330,10 @@ async function submitEntry(
         return { status: 'rejected' };
       }
       if (response.status === 409 && !impactResult.canonical) {
-        if (
-          impactResult.reason === 'checkpoint_conflict' ||
-          impactResult.reason === 'terminal_intent_required'
-        ) {
-          return { status: 'transient' };
-        }
-        return { status: 'rejected' };
+        // A generic conflict is not an idempotency receipt. Start-state races,
+        // deploy skew and unknown future 409 reasons must retain the terminal
+        // proof; only the explicit lease-conflict branch above can discard it.
+        return { status: 'transient' };
       }
       return {
         status: 'settled',

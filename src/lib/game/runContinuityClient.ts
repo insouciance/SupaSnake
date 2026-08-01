@@ -5,6 +5,7 @@ import {
   type SnakeReplayTrace,
   type SnakeTerminalReplayProof,
 } from '@/lib/game/SnakeGameLogic';
+import { isCanonicalCompletedSettlement } from '@/lib/game/settlementResponse';
 
 export type RunContinuityPhase =
   | 'preparing'
@@ -222,7 +223,8 @@ export function classifyTerminalRecoveryResponse(
     return 'completed';
   }
   if (status === 409 && body.alreadyEnded === true) {
-    return hasImpact ? 'settling' : 'completed';
+    if (hasImpact) return 'settling';
+    return isCanonicalCompletedSettlement(body) ? 'completed' : 'retry';
   }
   return 'retry';
 }

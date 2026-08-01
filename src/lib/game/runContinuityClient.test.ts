@@ -58,6 +58,17 @@ describe('run continuity client', () => {
       alreadyEnded: true,
       impact: { sessionId: 'run-1' },
     })).toBe('settling');
+    expect(classifyTerminalRecoveryResponse(409, {
+      alreadyEnded: true,
+      endReason: 'completed',
+    })).toBe('completed');
+    expect(classifyTerminalRecoveryResponse(409, {
+      alreadyEnded: true,
+      endReason: 'abandoned',
+    })).toBe('retry');
+    expect(classifyTerminalRecoveryResponse(409, {
+      alreadyEnded: true,
+    })).toBe('retry');
     expect(classifyTerminalRecoveryResponse(200, { validation: {} }))
       .toBe('completed');
     expect(classifyTerminalRecoveryResponse(409, {
