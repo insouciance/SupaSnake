@@ -36,7 +36,9 @@
  *
  * Dismissal follows `AccountChip`: outside `mousedown` **and** `touchstart`
  * against a root ref, `Escape` restoring focus to the trigger, and a second
- * tap on the trigger closing it.
+ * tap on the trigger closing it. Placement and entrance animation use nested
+ * elements: both need `transform`, and combining them would let the animation
+ * override an above-trigger `translateY(-100%)` and cover the trigger.
  */
 
 import {
@@ -206,27 +208,29 @@ export function InfoPopover({
               // announcing the panel too would say everything twice.
               aria-hidden="true"
               data-testid={testId ? `info-panel-${testId}` : 'info-panel'}
-              className="panel-elevated fixed z-[110] max-w-[min(20rem,calc(100vw-2rem))] animate-pop-in p-3 text-left shadow-lg"
+              className="fixed z-[110] max-w-[min(20rem,calc(100vw-2rem))] text-left"
               style={{
                 top: position.top,
                 left: position.left,
                 transform: position.above ? 'translateY(-100%)' : undefined,
               }}
             >
-              <p className="font-display text-sm text-bone-white">{title}</p>
-              <p className="mt-1 font-body text-xs leading-snug text-beige/80">
-                {effect}
-              </p>
-              {cost ? (
-                <p className="mt-1 font-body text-xs leading-snug text-strike-red/80">
-                  {cost}
+              <div className="panel-elevated animate-pop-in p-3 shadow-lg">
+                <p className="font-display text-sm text-bone-white">{title}</p>
+                <p className="mt-1 font-body text-xs leading-snug text-beige/80">
+                  {effect}
                 </p>
-              ) : null}
-              {notice ? (
-                <p className="mt-1 font-body text-xs leading-snug text-cosmic">
-                  {notice}
-                </p>
-              ) : null}
+                {cost ? (
+                  <p className="mt-1 font-body text-xs leading-snug text-strike-red/80">
+                    {cost}
+                  </p>
+                ) : null}
+                {notice ? (
+                  <p className="mt-1 font-body text-xs leading-snug text-cosmic">
+                    {notice}
+                  </p>
+                ) : null}
+              </div>
             </div>,
             document.body
           )

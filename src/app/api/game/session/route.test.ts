@@ -16,7 +16,7 @@ import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 
 describe('Game Session Logic', () => {
   describe('Session Start', () => {
-    it('keeps zero-Energy lean play available without old balance clocks', () => {
+    it('keeps rewardless Free Play available while rewarded runs commit Energy', () => {
       const source = fs.readFileSync(
         path.join(__dirname, 'route.ts'),
         'utf8'
@@ -25,8 +25,9 @@ describe('Game Session Logic', () => {
       expect(source).not.toMatch(/costPerGame/);
       expect(source).not.toMatch(/player\.energy/);
       expect(source).not.toMatch(/energy_regen_at/);
-      expect(source).toMatch(/requestedEnergyCommitment < 0/);
-      expect(source).toMatch(/zero remains a valid lean run/);
+      expect(source).toMatch(/const minimumEnergyCommitment = isFreePlay \? 0 : 1/);
+      expect(source).toMatch(/requestedEnergyCommitment < minimumEnergyCommitment/);
+      expect(source).toMatch(/rewardless Free Play remains available at zero/);
     });
 
     it('commits Energy through the atomic server wrapper', () => {
@@ -36,10 +37,12 @@ describe('Game Session Logic', () => {
       );
       // One call, to the atomic server RPC wrapper - never an arithmetic
       // read-modify-write on a column in this route.
-      expect(source).toMatch(/commitRunEnergy\(/);
+      expect(source).toMatch(/finalizeRunStart\(/);
+      expect(source).toMatch(/stageRunStartFinalization\(/);
       expect(source).toMatch(/requestedEnergyCommitment/);
       expect(source).toMatch(/confirmMaxEnergy/);
       expect(source).not.toMatch(/energy: newEnergy/);
+      expect(source).not.toMatch(/commitRunEnergy\(/);
     });
 
     it('stamps how the run settles on the session row, at start', () => {
@@ -47,10 +50,11 @@ describe('Game Session Logic', () => {
         path.join(__dirname, 'route.ts'),
         'utf8'
       );
-      expect(source).toMatch(/charge_state: charge\.state/);
-      // The stamp is written after the session insert, so a failed insert
-      // can never burn a charge for a run that did not happen.
-      expect(source.indexOf('charge_state: charge.state')).toBeGreaterThan(
+      expect(source).toMatch(/start_request_id: startRequestId/);
+      expect(source).toMatch(/continuity_phase: 'preparing'/);
+      // Finalization follows the session insert and delegates Energy + the
+      // immutable manifest to one database transaction.
+      expect(source.indexOf('finalizeRunStart(supabase')).toBeGreaterThan(
         source.indexOf('.from(\'game_sessions\')')
       );
     });
@@ -234,7 +238,7 @@ describe('Game Session Logic', () => {
   describe('Free Play (mode: free, Design v2 §7.4)', () => {
     const startedAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
 
-    it('free play is explicitly exempt while zero remains a valid earning commitment', () => {
+    it('free play is explicitly exempt while rewarded runs require at least one Energy', () => {
       const source = fs.readFileSync(
         path.join(__dirname, 'route.ts'),
         'utf8'
@@ -244,8 +248,10 @@ describe('Game Session Logic', () => {
         source.indexOf("if (action === 'end')")
       );
       expect(startAction).toMatch(/const requestedEnergyCommitment = isFreePlay\s*\? 0/);
-      expect(startAction).toMatch(/requestedEnergyCommitment < 0/);
-      expect(startAction).not.toMatch(/requestedEnergyCommitment <= 0/);
+      expect(startAction).toMatch(/const minimumEnergyCommitment = isFreePlay \? 0 : 1/);
+      expect(startAction).toMatch(
+        /requestedEnergyCommitment < minimumEnergyCommitment/
+      );
     });
 
     it('start marks the free session and exempts it from the envelope', () => {

@@ -12,6 +12,7 @@ import {
   type DirectionInputTiming,
   type DirectionInputSource,
   type SetDirectionResult,
+  type SnakeReplayTrace,
 } from '@/lib/game/SnakeGameLogic';
 import {
   applyGenomeOutcome,
@@ -54,7 +55,6 @@ import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
-import { AccountChip } from '@/components/ui/AccountChip';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { HandleClaimModal } from '@/components/identity/HandleClaimModal';
 import type { PlayerIdentity } from '@/lib/identity/types';
@@ -70,6 +70,7 @@ import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
+import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
 import type { RunCockpitModel } from '@/components/game/cockpit/types';
 import { AimRenderer } from '@/components/game/AimRenderer';
@@ -160,10 +161,19 @@ import {
   type ChallengeRun,
 } from '@/lib/game/challengeRun';
 import {
+  buildLabSetupHref,
+  readRunSetupDraft,
+} from '@/lib/game/runSetupDraft';
+import {
   RunResults,
   type RunResultsClanBattle,
 } from '@/components/game/RunResults';
 import { RunSetupPanel } from '@/components/game/RunSetupPanel';
+import {
+  favoriteSetupSnakesByDynasty,
+  SnakePickerSheet,
+  type SetupDynasty,
+} from '@/components/game/SnakePickerSheet';
 import { HeirloomSummary } from '@/components/game/HeirloomSummary';
 import {
   collectDailyTake,
@@ -172,6 +182,12 @@ import {
 } from '@/lib/game/dailyTake';
 import { chooseNextAction } from '@/lib/game/resultsNextAction';
 import type { FtueBootstrapSnake } from '@/lib/ftue/types';
+import type {
+  CollectionResponse,
+  EquipResponse,
+  FavoriteResponse,
+  OwnedSnake,
+} from '@/shared/types/snake-data-model';
 import {
   ascendanceYieldBreakdown,
   type AscendanceYieldBreakdown,
@@ -185,9 +201,24 @@ import { getAimSystem, isAimSystemId, type AimSystemId } from '@/lib/game/aimSys
 import {
   advancePendingRunImpact,
   parseImpactFromSettlement,
+  recoverPendingRunImpactBounded,
   recoverRunImpact,
   type RunImpactEnvelope,
 } from '@/lib/game/runImpactClient';
+import {
+  activatePreparedRun,
+  buildTerminalReplayProof,
+  classifyTerminalRecoveryResponse,
+  createRunStartRequestId,
+  fetchActiveRun,
+  LatestOnlyAsyncQueue,
+  matchesContinuityAuthority,
+  resumeCheckpointedRun,
+  retryPreparingRunStart,
+  RunContinuityClientError,
+  saveActiveRunCheckpoint,
+  type ActiveRunView,
+} from '@/lib/game/runContinuityClient';
 import {
   IconBolt,
   IconDna,
@@ -196,8 +227,6 @@ import {
   IconHome,
   IconReset,
   IconSnake,
-  IconTrophy,
-  IconUser,
 } from '@/components/ui/icons';
 
 const DIRECTION_BY_KEY: Record<string, Direction> = {
@@ -215,6 +244,18 @@ const DIRECTION_BY_KEY: Record<string, Direction> = {
   D: 'RIGHT',
 };
 
+const ACTIVE_RUN_CHECKPOINT_INTERVAL_MS = 3_000;
+const ACTIVE_RUN_CONNECTION_HOLD_MS = 10_000;
+
+interface ActiveCheckpointProposal {
+  sessionId: string;
+  accessToken: string;
+  userId: string;
+  leaseToken: string;
+  checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>;
+  keepalive: boolean;
+}
+
 interface EquippedSnakeView {
   id: string;
   name: string;
@@ -224,6 +265,43 @@ interface EquippedSnakeView {
   /** Slots the snake's rarity + generation unlock (API-derived, §6.1). */
   traitSlots?: number;
   lineage: Lineage | null;
+}
+
+function equippedViewFromOwnedSnake(snake: OwnedSnake): EquippedSnakeView {
+  return {
+    id: snake.id,
+    name: snake.variantName ?? snake.variantId ?? 'Snake',
+    generation: snake.generation,
+    dynasty: (snake.dynastyName ?? 'PRIMAL').toUpperCase(),
+    traits: sanitizeTraits(snake.traits),
+    traitSlots: snake.traitSlots,
+    lineage: sanitizeLineage(snake.lineage),
+  };
+}
+
+function equippedViewFromRunManifest(
+  payload: GameSessionStartPayload
+): EquippedSnakeView | null {
+  const snake = payload.runSnake;
+  if (
+    !snake ||
+    typeof snake.id !== 'string' ||
+    typeof snake.dynasty !== 'string' ||
+    !Number.isInteger(snake.generation)
+  ) {
+    return null;
+  }
+  return {
+    id: snake.id,
+    name: typeof snake.name === 'string' && snake.name.length > 0
+      ? snake.name
+      : 'Snake',
+    generation: snake.generation,
+    dynasty: snake.dynasty.toUpperCase(),
+    traits: sanitizeTraits(snake.traits),
+    traitSlots: Number.isInteger(snake.traitSlots) ? snake.traitSlots : undefined,
+    lineage: sanitizeLineage(snake.lineage),
+  };
 }
 
 interface BoardViewportShellProps {
@@ -352,8 +430,13 @@ export default function GamePage() {
   const [challengeRun] = useState<ChallengeRun | null>(() =>
     typeof window === 'undefined' ? null : readChallengeRun(window.location.search)
   );
+  // Navigation-only Setup choices live in the URL while the player visits the
+  // Lab. They are never run, reward, or economy authority; the session start
+  // endpoint revalidates every choice when Play is pressed.
+  const [setupCurrentSearch, setSetupCurrentSearch] = useState('');
   const gameRef = useRef<SnakeGameLogic | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const startGameLoopRef = useRef<() => void>(() => {});
   const [particlePos, setParticlePos] = useState<[number, number, number] | null>(null);
   /**
    * The D2 ladder rung the player asked for (WP-3.12). A REQUEST only: the
@@ -381,6 +464,7 @@ export default function GamePage() {
   // engine stays frozen until the player's next deliberate direction input.
   const [awaitingResumeInput, setAwaitingResumeInput] = useState(false);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
+  const [showInterruptedAbandonConfirm, setShowInterruptedAbandonConfirm] = useState(false);
   const [pauseRearming, setPauseRearming] = useState(false);
   // The run's tactical-hold budget, mirrored from the engine (which owns it).
   // Two plain numbers rather than an object so the per-tick sync bails out on
@@ -427,6 +511,16 @@ export default function GamePage() {
   // before rendering a second Play action. Direct navigation resolves to the
   // existing voluntary pre-run screen; FTUE launch proceeds straight to board.
   const [routeInitializing, setRouteInitializing] = useState(true);
+  const [runContinuityPhase, setRunContinuityPhase] = useState<
+    'none' | 'prepared' | 'activating' | 'active'
+  >('none');
+  const [interruptedRun, setInterruptedRun] = useState<ActiveRunView | null>(null);
+  const [settlingRecoveryState, setSettlingRecoveryState] = useState<
+    'idle' | 'polling' | 'retry'
+  >('idle');
+  const [continuitySafetyHold, setContinuitySafetyHold] = useState<
+    'connection' | 'stale' | null
+  >(null);
   const [requiresDirectionalStart, setRequiresDirectionalStart] = useState(false);
   const [minimalFirstRunPrompt, setMinimalFirstRunPrompt] = useState(false);
   const [showFirstResultDiscovery, setShowFirstResultDiscovery] = useState(false);
@@ -435,7 +529,12 @@ export default function GamePage() {
   // a game - account nudges belong after a run, not before it)
   const [showSaveProgress, setShowSaveProgress] = useState(false);
   const [equippedSnake, setEquippedSnake] = useState<EquippedSnakeView | null>(null);
+  const [collectionSnakes, setCollectionSnakes] = useState<OwnedSnake[]>([]);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
+  const [snakePickerOpen, setSnakePickerOpen] = useState(false);
+  const [favoritePickerDynasty, setFavoritePickerDynasty] = useState<SetupDynasty | null>(null);
+  const [selectingSnakeId, setSelectingSnakeId] = useState<string | null>(null);
+  const [snakePickerError, setSnakePickerError] = useState<string | null>(null);
   const [needsStarterSelection, setNeedsStarterSelection] = useState(false);
   const [streakInfo, setStreakInfo] = useState<{
     current: number;
@@ -511,15 +610,46 @@ export default function GamePage() {
   const equippedSnakeRef = useRef(equippedSnake);
   const firstRunAtStartRef = useRef(false);
   const handoffAttemptedRef = useRef(false);
+  const continuityCheckedRef = useRef(false);
+  const continuityUserIdRef = useRef<string | null>(null);
+  const startRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
+  // Exclusive server-issued run lease and checkpoint cursor. Both are
+  // document-memory only: reload recovery rotates the lease from server truth.
+  const runLeaseRef = useRef<string | null>(null);
+  const checkpointRevisionRef = useRef(0);
+  const acceptedReplayRef = useRef<SnakeReplayTrace | null>(null);
+  const checkpointBarrierRef = useRef<Promise<void>>(Promise.resolve());
+  const checkpointFailureSinceRef = useRef<number | null>(null);
+  const lastCheckpointAcceptedAtRef = useRef(0);
+  const checkpointWriterRef = useRef<
+    (proposal: ActiveCheckpointProposal) => Promise<void>
+  >(async () => undefined);
+  const checkpointQueueRef = useRef<LatestOnlyAsyncQueue<ActiveCheckpointProposal> | null>(null);
+  if (checkpointQueueRef.current === null) {
+    checkpointQueueRef.current = new LatestOnlyAsyncQueue((proposal) =>
+      checkpointWriterRef.current(proposal)
+    );
+  }
+  // Set synchronously before activation performs any await. React state is a
+  // display mirror, not a mutex: two first inputs in one event turn must share
+  // exactly one prepared→active request and opening checkpoint.
+  const activationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const deathPresentationRef = useRef<{
+    promise: Promise<void>;
+    resolve: () => void;
+  } | null>(null);
+  const continuityPhaseRef = useRef(runContinuityPhase);
+  const checkpointNowRef = useRef<(
+    options?: { required?: boolean; keepalive?: boolean }
+  ) => Promise<void>>(() => Promise.resolve());
 
-  // Keep refs in sync with state
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  useEffect(() => {
-    currentSessionIdRef.current = currentSessionId;
-  }, [currentSessionId]);
+  // Async gameplay callbacks must see a newly rendered account/session before
+  // passive effects run. Updating latest-value refs during render closes the
+  // render→effect window in which an old settlement could otherwise mutate a
+  // newly signed-in account or a newer run.
+  sessionRef.current = session;
+  currentSessionIdRef.current = currentSessionId;
+  continuityPhaseRef.current = runContinuityPhase;
 
   // Retry an undelivered settlement when this tab regains connectivity. The
   // queue is memory-only; a settled duplicate recovers its canonical receipt.
@@ -527,8 +657,16 @@ export default function GamePage() {
     const token = session?.access_token;
     if (!token) return;
     const replay = () => {
-      void replayRewardOutbox(token)
+      void replayRewardOutbox(token, fetch, session?.user?.id)
         .then((result) => {
+          if (!matchesContinuityAuthority(
+            token,
+            sessionRef.current?.access_token,
+            undefined,
+            undefined,
+            session?.user?.id,
+            sessionRef.current?.user?.id
+          )) return;
           const current = result.impacts.find(
             (impact) => impact.sessionId === currentSessionIdRef.current
           );
@@ -554,7 +692,7 @@ export default function GamePage() {
     };
     window.addEventListener('online', replay);
     return () => window.removeEventListener('online', replay);
-  }, [session?.access_token]);
+  }, [session?.access_token, session?.user?.id]);
 
   useEffect(() => {
     equippedSnakeRef.current = equippedSnake;
@@ -644,20 +782,87 @@ export default function GamePage() {
     syncChargeFromServer,
   } = useGameStore();
 
+  const setupLabHref = buildLabSetupHref({
+    currentSearch: setupCurrentSearch,
+    mode: gameMode,
+    energyCommitment,
+    ladderRung,
+  });
+
+  // Apply the URL draft only after hydration so the server and first client
+  // render share one stable Setup shell. The fresh player read below then
+  // clamps Energy and Ladder against current server authority.
+  useEffect(() => {
+    const currentSearch = window.location.search;
+    setSetupCurrentSearch(currentSearch);
+    const initialSetupDraft = readRunSetupDraft(window.location.search);
+    if (initialSetupDraft.mode !== null) {
+      setGameMode(initialSetupDraft.mode);
+    }
+    if (initialSetupDraft.energyCommitment !== null) {
+      setEnergyCommitment(initialSetupDraft.energyCommitment);
+    }
+    if (initialSetupDraft.ladderRung !== null) {
+      setLadderRung(initialSetupDraft.ladderRung);
+    }
+  }, [setGameMode]);
+
+  // A game route may survive sign-out/sign-in without a document reload.
+  // Reset the one-shot recovery gates and every in-memory run capability when
+  // the account id changes; otherwise the second account inherits the first
+  // account's "already checked" bit and can never discover its own run.
+  useEffect(() => {
+    const nextUserId = session?.user?.id ?? null;
+    if (continuityUserIdRef.current === nextUserId) return;
+    continuityUserIdRef.current = nextUserId;
+    continuityCheckedRef.current = false;
+    handoffAttemptedRef.current = false;
+    activationPromiseRef.current = null;
+    runLeaseRef.current = null;
+    checkpointRevisionRef.current = 0;
+    acceptedReplayRef.current = null;
+    checkpointBarrierRef.current = Promise.resolve();
+    checkpointFailureSinceRef.current = null;
+    lastCheckpointAcceptedAtRef.current = 0;
+    currentSessionIdRef.current = null;
+    continuityPhaseRef.current = 'none';
+    setCurrentSessionId(null);
+    setInterruptedRun(null);
+    setRunContinuityPhase('none');
+    setContinuitySafetyHold(null);
+    setSettlingRecoveryState('idle');
+    setSettlementSecuredPending(false);
+    setStartError(null);
+    setIsStarting(false);
+    resetGame();
+    setRouteInitializing(nextUserId !== null);
+  }, [resetGame, session?.user?.id]);
+
   // A durable 202 transfers all recovery responsibility to the server. Poll
   // only while this Results screen remains open so the recognition can appear
   // as soon as its canonical receipt exists; closing the tab loses nothing.
   useEffect(() => {
     const token = session?.access_token;
+    const userId = session?.user?.id;
     const sessionId = currentSessionId;
-    if (!settlementSecuredPending || !token || !sessionId) return;
+    if (!settlementSecuredPending || !token || !userId || !sessionId) return;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
     const poll = async () => {
       try {
         const recovered = await advancePendingRunImpact(sessionId, token);
-        if (cancelled) return;
+        if (
+          cancelled ||
+          !matchesContinuityAuthority(
+            token,
+            sessionRef.current?.access_token,
+            sessionId,
+            currentSessionIdRef.current,
+            userId,
+            sessionRef.current?.user?.id
+          )
+        ) return;
         if (!recovered) throw new Error('Run impact is still pending');
         setRunImpact(recovered);
         setSettledYield(recovered.receipt.yieldDna);
@@ -677,6 +882,14 @@ export default function GamePage() {
             return response.json();
           })
           .then((data) => {
+            if (!matchesContinuityAuthority(
+              token,
+              sessionRef.current?.access_token,
+              sessionId,
+              currentSessionIdRef.current,
+              userId,
+              sessionRef.current?.user?.id
+            )) return;
             if (typeof data.player?.dna === 'number') {
               useCollectionStore.getState().setDnaBalance(data.player.dna);
             }
@@ -695,7 +908,12 @@ export default function GamePage() {
       cancelled = true;
       if (timeout !== null) clearTimeout(timeout);
     };
-  }, [currentSessionId, session?.access_token, settlementSecuredPending]);
+  }, [
+    currentSessionId,
+    session?.access_token,
+    session?.user?.id,
+    settlementSecuredPending,
+  ]);
 
   /**
    * Bank/crash preview for the HUD chip and game-over screen. Genome
@@ -884,11 +1102,11 @@ export default function GamePage() {
         // has not applied here, and the selector stays dark - the ladder is
         // never offered on a promise the server cannot keep.
         const ladderInfo = data.ladder as Record<string, unknown> | undefined;
-        setLadderAttemptable(
-          ladderInfo?.available === true
-            ? resolveLadderRung(ladderInfo.attemptable)
-            : DEFAULT_LADDER_RUNG
-        );
+        const attemptable = ladderInfo?.available === true
+          ? resolveLadderRung(ladderInfo.attemptable)
+          : DEFAULT_LADDER_RUNG;
+        setLadderAttemptable(attemptable);
+        setLadderRung((current) => Math.min(current, attemptable));
       })
       .catch(err => console.error('Failed to fetch player data:', err));
   }, [session?.access_token, isPlaying, syncChargeFromServer, setAimSystem]);
@@ -1036,59 +1254,201 @@ export default function GamePage() {
       .catch(err => console.error('Failed to fetch mastery:', err));
   }, [session?.access_token]);
 
-  // Fetch collection to find the equipped snake (game always uses it)
+  /** Adopt one server collection snapshot for both setup summary and chooser. */
+  const applyCollectionSnapshot = useCallback((snakes: OwnedSnake[]) => {
+    setCollectionSnakes(snakes);
+    const equipped = snakes.find((snake) => snake.isEquipped) ?? null;
+    setEquippedSnake(equipped ? equippedViewFromOwnedSnake(equipped) : null);
+    if (equipped) {
+      const dynastyName = (equipped.dynastyName ?? 'PRIMAL').toUpperCase();
+      if (dynastyName === 'CYBER' || dynastyName === 'PRIMAL' || dynastyName === 'COSMIC') {
+        setSelectedDynasty(dynastyName as DynastyId);
+      }
+    }
+    setCollectionLoaded(true);
+  }, [setSelectedDynasty]);
+
+  // Fetch the server-owned collection. The picker filters this snapshot to
+  // active top generations; lower generations remain pedigree, never setup
+  // choices.
   useEffect(() => {
-    if (!session?.access_token) return;
+    const token = session?.access_token;
+    if (!token) return;
+    let cancelled = false;
 
     fetch('/api/collection', {
-      headers: { 'Authorization': `Bearer ${session.access_token}` }
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` },
     })
       // FINDING F-24 (WP-1.06): unguarded `res.json()` turned a 500 into an
       // empty collection, which reads on screen as "no snake available".
-      .then(res => {
-        if (!res.ok) throw new Error(`/api/collection responded ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        const snakes: Array<{
-          id: string;
-          isEquipped: boolean;
-          generation: number;
-          variantName?: string | null;
-          variantId?: string;
-          dynastyName?: string | null;
-          traits?: unknown;
-          traitSlots?: unknown;
-          lineage?: unknown;
-        }> = data.snakes ?? [];
-
-        const equipped = snakes.find((s) => s.isEquipped) ?? null;
-        if (equipped) {
-          const dynastyName = (equipped.dynastyName ?? 'PRIMAL').toUpperCase();
-          setEquippedSnake({
-            id: equipped.id,
-            name: equipped.variantName ?? equipped.variantId ?? 'Snake',
-            generation: equipped.generation,
-            dynasty: dynastyName,
-            traits: sanitizeTraits(equipped.traits),
-            traitSlots:
-              typeof equipped.traitSlots === 'number'
-                ? equipped.traitSlots
-                : undefined,
-            lineage: sanitizeLineage(equipped.lineage),
-          });
-          // Theme follows the equipped snake's dynasty
-          if (dynastyName === 'CYBER' || dynastyName === 'PRIMAL' || dynastyName === 'COSMIC') {
-            setSelectedDynasty(dynastyName as DynastyId);
-          }
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`/api/collection responded ${response.status}`);
         }
-        setCollectionLoaded(true);
+        return response.json() as Promise<CollectionResponse>;
       })
-      .catch(err => {
-        console.error('Failed to fetch collection:', err);
-        setCollectionLoaded(true);
+      .then((data) => {
+        if (!cancelled) applyCollectionSnapshot(data.snakes ?? []);
+      })
+      .catch((error) => {
+        console.error('Failed to fetch collection:', error);
+        if (!cancelled) setCollectionLoaded(true);
       });
-  }, [session?.access_token, setSelectedDynasty]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyCollectionSnapshot, session?.access_token]);
+
+  /**
+   * Equip from Run Setup without creating or charging a run. The collection
+   * endpoint is the only mutation here; `/api/game/session` remains owned by
+   * the explicit Play action below.
+   */
+  const handleChooseSetupSnake = useCallback(async (snake: OwnedSnake) => {
+    const token = session?.access_token;
+    if (!token || selectingSnakeId !== null) return;
+    setSnakePickerError(null);
+
+    if (snake.id === equippedSnake?.id) {
+      setSnakePickerOpen(false);
+      return;
+    }
+
+    setSelectingSnakeId(snake.id);
+    try {
+      const response = await fetch('/api/collection/equip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ snakeId: snake.id }),
+      });
+      const data = await response.json() as EquipResponse;
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? 'Could not equip that snake');
+      }
+
+      if (data.equippedSnake) {
+        const serverSnake = data.equippedSnake;
+        applyCollectionSnapshot(
+          collectionSnakes.map((owned) =>
+            owned.id === serverSnake.id
+              ? serverSnake
+              : { ...owned, isEquipped: false }
+          )
+        );
+      } else {
+        // A successful mutation with no returned row is unusual but valid;
+        // re-read instead of inventing authoritative equipment client-side.
+        const collectionResponse = await fetch('/api/collection', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!collectionResponse.ok) {
+          throw new Error('Snake equipped, but the collection could not refresh');
+        }
+        const collection = await collectionResponse.json() as CollectionResponse;
+        applyCollectionSnapshot(collection.snakes ?? []);
+      }
+      setSnakePickerOpen(false);
+    } catch (error) {
+      setSnakePickerError(
+        error instanceof Error ? error.message : 'Could not equip that snake'
+      );
+    } finally {
+      setSelectingSnakeId(null);
+    }
+  }, [
+    applyCollectionSnapshot,
+    collectionSnakes,
+    equippedSnake?.id,
+    selectingSnakeId,
+    session?.access_token,
+  ]);
+
+  /**
+   * Fill an empty dynasty dock through the existing server-backed favourite
+   * preference, then equip that same authoritative collection row. The run is
+   * still created only by Play; choosing a favourite can never spend Energy.
+   */
+  const handleChooseSetupFavorite = useCallback(async (snake: OwnedSnake) => {
+    const token = session?.access_token;
+    if (!token || selectingSnakeId !== null || favoritePickerDynasty === null) return;
+    setSnakePickerError(null);
+    setSelectingSnakeId(snake.id);
+
+    const refreshCollection = async () => {
+      const response = await fetch('/api/collection', {
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error('Favorite saved, but the collection could not refresh');
+      }
+      const collection = await response.json() as CollectionResponse;
+      applyCollectionSnapshot(collection.snakes ?? []);
+    };
+
+    let favoriteSaved = false;
+    try {
+      const favoriteResponse = await fetch('/api/collection/favorite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ snakeId: snake.id, favorited: true }),
+      });
+      const favorite = await favoriteResponse.json() as FavoriteResponse;
+      if (!favoriteResponse.ok || !favorite.success || favorite.favorited !== true) {
+        throw new Error(favorite.error ?? 'Could not save that favorite');
+      }
+      favoriteSaved = true;
+
+      if (snake.id !== equippedSnake?.id) {
+        const equipResponse = await fetch('/api/collection/equip', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ snakeId: snake.id }),
+        });
+        const equipped = await equipResponse.json() as EquipResponse;
+        if (!equipResponse.ok || !equipped.success) {
+          throw new Error(equipped.error ?? 'Favorite saved, but the snake could not equip');
+        }
+      }
+
+      await refreshCollection();
+      setFavoritePickerDynasty(null);
+      setSnakePickerOpen(false);
+    } catch (error) {
+      // If the first mutation committed, re-read rather than hiding the saved
+      // preference behind stale client state after a later request failed.
+      if (favoriteSaved) {
+        try {
+          await refreshCollection();
+        } catch (refreshError) {
+          console.error('Failed to refresh collection after favorite:', refreshError);
+        }
+      }
+      setSnakePickerError(
+        error instanceof Error ? error.message : 'Could not save that favorite'
+      );
+    } finally {
+      setSelectingSnakeId(null);
+    }
+  }, [
+    applyCollectionSnapshot,
+    equippedSnake?.id,
+    favoritePickerDynasty,
+    selectingSnakeId,
+    session?.access_token,
+  ]);
 
   // Splice hints reveal names only after the player has discovered them.
   // The Codex remains free, but its in-run integration follows the FTUE
@@ -1193,7 +1553,8 @@ export default function GamePage() {
   // the pause button stay disabled until the active decision resolves.
   const choiceActive =
     choiceOptions !== null || portalChoicePending || surgeChoicePending;
-  const blockingOverlayActive = choiceActive || showAbandonConfirm;
+  const blockingOverlayActive =
+    choiceActive || showAbandonConfirm || continuitySafetyHold !== null;
 
   // The run's world condition (§7.2, §7.3) - shapes the BANK preview and the
   // outcome copy exactly like the server recompute will. Read from the store
@@ -1255,6 +1616,7 @@ export default function GamePage() {
     if (!dir) game.resume();
     if (game.isPaused) return result;
     setAwaitingResumeInput(false);
+    startGameLoopRef.current();
     beginPauseRearm();
     return result;
   }, [awaitingResumeInput, beginPauseRearm, withTickTiming]);
@@ -1305,6 +1667,11 @@ export default function GamePage() {
       setPortalChoicePending(false);
       audioManager.play('uiClick');
       armResumeAfterDecision();
+      if (choice !== 'bank') {
+        queueMicrotask(() => {
+          void checkpointNowRef.current();
+        });
+      }
     }
   }, [armResumeAfterDecision, setPortalChoicePending]);
 
@@ -1335,6 +1702,17 @@ export default function GamePage() {
       ...(challengeRun ? { rng: challengeRunRng(challengeRun) } : {}),
     });
 
+    // Events fire from inside a simulation mutation. Defer the capture to the
+    // following microtask so the checkpoint always observes the fully resolved
+    // boundary, never the middle of a tick. The ref is wired once the
+    // continuity writer is declared further below in this component.
+    const secureRunBoundary = () => {
+      if (continuityPhaseRef.current !== 'active') return;
+      queueMicrotask(() => {
+        void checkpointNowRef.current();
+      });
+    };
+
     const mirrorGenomeState = () => {
       const state = gameRef.current?.getState();
       if (!state) return;
@@ -1357,9 +1735,18 @@ export default function GamePage() {
       // Audio and haptic feedback
       audioManager.play('collect');
       haptics.medium();
+      secureRunBoundary();
     });
 
     gameRef.current.on('deathSequence', (data: any) => {
+      let resolvePresentation: () => void = () => {};
+      const promise = new Promise<void>((resolve) => {
+        resolvePresentation = resolve;
+      });
+      deathPresentationRef.current = {
+        promise,
+        resolve: resolvePresentation,
+      };
       // Start death sequence effects
       setDeathSequence(true, data.position);
       if (data.position) {
@@ -1370,6 +1757,15 @@ export default function GamePage() {
       audioManager.play('death');
       haptics.death();
       screenShake.heavy();
+    });
+
+    gameRef.current.on('deathSequenceComplete', () => {
+      // Presentation-only timer. The engine already emitted the terminal
+      // gameOver event synchronously at collision so settlement cannot be
+      // escaped by refreshing during this flourish.
+      setDeathSequence(false);
+      setShowDeathExplosion(false);
+      deathPresentationRef.current?.resolve();
     });
 
     gameRef.current.on('extracted', () => {
@@ -1389,6 +1785,7 @@ export default function GamePage() {
       setChoicePityStrain(gameRef.current?.getState().pendingChoicePity ?? null);
       audioManager.play('pause');
       haptics.medium();
+      secureRunBoundary();
     });
 
     gameRef.current.on('mutationPicked', (data: any) => {
@@ -1397,12 +1794,14 @@ export default function GamePage() {
       mirrorGenomeState();
       audioManager.play('uiClick');
       armResumeAfterDecision();
+      secureRunBoundary();
     });
 
     gameRef.current.on('mutationDeclined', () => {
       setChoiceOptions(null);
       audioManager.play('uiClick');
       armResumeAfterDecision();
+      secureRunBoundary();
     });
 
     gameRef.current.on('portalChoice', (data: any) => {
@@ -1411,22 +1810,26 @@ export default function GamePage() {
       setPortalChoicePending(true);
       audioManager.play('pause');
       haptics.medium();
+      secureRunBoundary();
     });
 
     gameRef.current.on('infused', () => {
       setPortalChoicePending(false);
       mirrorGenomeState();
       showToast('Portal infused — body became build power', 'triumph', 2600);
+      secureRunBoundary();
     });
 
     gameRef.current.on('surgeChoice', () => {
       setAwaitingResumeInput(false);
       setSurgeChoicePending(true);
+      secureRunBoundary();
     });
 
     gameRef.current.on('surged', () => {
       setSurgeChoicePending(false);
       mirrorGenomeState();
+      secureRunBoundary();
     });
 
     gameRef.current.on('spliceFused', (data: any) => {
@@ -1483,10 +1886,56 @@ export default function GamePage() {
 
     gameRef.current.on('gameOver', async (rawData: unknown) => {
       const data = rawData as GameOverData;
+      // The terminal tick is final locally. Cancel the interval immediately;
+      // any checkpoint already queued is allowed to finish below, but no new
+      // simulation boundary can be scheduled behind terminalization.
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      const presentationReady = data.endReason === 'died'
+        ? deathPresentationRef.current?.promise ?? Promise.resolve()
+        : Promise.resolve();
       // Send results to server first (use refs to avoid stale closure)
       const currentSession = sessionRef.current;
       const sessionId = currentSessionIdRef.current;
+      const settlementUserId = currentSession?.user?.id;
+      const settlementAuthorityCurrent = () =>
+        !currentSession?.access_token || !settlementUserId || !sessionId
+          ? true
+          : matchesContinuityAuthority(
+              currentSession.access_token,
+              sessionRef.current?.access_token,
+              sessionId,
+              currentSessionIdRef.current,
+              settlementUserId,
+              sessionRef.current?.user?.id
+            );
       if (currentSession?.access_token && sessionId) {
+        // Serialize terminal proof construction behind every checkpoint that
+        // was already captured. The accepted revision/prefix read below is
+        // therefore the exact database base, not a stale render-time cursor.
+        await checkpointBarrierRef.current;
+        if (!settlementAuthorityCurrent()) return;
+        const leaseToken = runLeaseRef.current;
+        const expectedRevision = checkpointRevisionRef.current;
+        const acceptedReplay = acceptedReplayRef.current;
+        const terminalTrace = gameRef.current?.getReplayTrace() ?? null;
+        const terminalReplay = acceptedReplay && terminalTrace
+          ? buildTerminalReplayProof(acceptedReplay, terminalTrace)
+          : null;
+        const requiresReplayTerminal = continuityPhaseRef.current === 'active';
+        const replayTerminal =
+          requiresReplayTerminal &&
+          leaseToken !== null &&
+          expectedRevision >= 1 &&
+          terminalReplay !== null;
+        let terminalAcknowledged = !requiresReplayTerminal;
+        if (requiresReplayTerminal && !replayTerminal) {
+          setContinuitySafetyHold('connection');
+          setStartError('The terminal run proof could not be secured. Reload to recover the last server checkpoint.');
+          return;
+        }
         const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
         // Identity v1 section 9.5: the run's compact event stream + how
         // it ended. Display/Analyst input only - the server stores it
@@ -1501,8 +1950,9 @@ export default function GamePage() {
         const queueForReplay = () => {
           // Free runs pay nothing - there is no reward to protect, so a
           // failed free end is never queued for replay
-          if (freeRunRef.current) return;
+          if (freeRunRef.current && !replayTerminal) return;
           enqueueReward({
+            ownerId: currentSession.user.id,
             sessionId,
             score: data.score,
             dna_earned: data.dnaCollected,
@@ -1514,42 +1964,66 @@ export default function GamePage() {
               ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
               : {}),
             ...(data.genome ? { genome: data.genome } : {}),
+            ...(leaseToken ? { leaseToken } : {}),
+            ...(replayTerminal && terminalReplay
+              ? { replay: terminalReplay, expectedRevision }
+              : {}),
             timestamp: Date.now(),
           });
         };
         try {
-          const response = await fetch('/api/game/session', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${currentSession.access_token}`,
-            },
-            // keepalive lets the browser finish this request even if the
-            // tab is closed immediately after death
-            keepalive: true,
-            body: JSON.stringify({
-              action: 'end',
-              sessionId: sessionId,
-              score: data.score,
-              dna_earned: data.dnaCollected,
-              duration_seconds: gameDuration,
-              food_count: data.foodEaten,
-              extracted: data.extracted,
-              died: !data.extracted,
-              victory: false,
-              // Design v2 Phase 2: mutation picks + Phoenix
-              mutations: data.mutations,
-              ...(data.phoenixTriggeredAtFood !== null
-                ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
-                : {}),
-                ...(data.genome ? { genome: data.genome } : {}),
-              // Identity v1 section 9.5: death cause + run events
-              ...(data.deathCause ? { death_cause: data.deathCause } : {}),
-              ...(runEventRecord && runEventRecord.events.length > 0
-                ? { run_events: runEventRecord }
-                : {}),
-            }),
-          });
+          const settlementController = new AbortController();
+          const settlementTimeout = window.setTimeout(
+            () => settlementController.abort(),
+            8_000
+          );
+          let response: Response;
+          try {
+            const requestPayload = replayTerminal && terminalReplay
+              ? {
+                  action: 'terminal',
+                  sessionId,
+                  replay: terminalReplay,
+                  expectedRevision,
+                  leaseToken,
+                }
+              : {
+                  action: 'end',
+                  sessionId,
+                  score: data.score,
+                  dna_earned: data.dnaCollected,
+                  duration_seconds: gameDuration,
+                  food_count: data.foodEaten,
+                  extracted: data.extracted,
+                  died: !data.extracted,
+                  victory: false,
+                  mutations: data.mutations,
+                  ...(data.phoenixTriggeredAtFood !== null
+                    ? { phoenix_triggered_at_food: data.phoenixTriggeredAtFood }
+                    : {}),
+                  ...(data.genome ? { genome: data.genome } : {}),
+                  ...(data.deathCause ? { death_cause: data.deathCause } : {}),
+                  ...(runEventRecord && runEventRecord.events.length > 0
+                    ? { run_events: runEventRecord }
+                    : {}),
+                  ...(leaseToken ? { leaseToken } : {}),
+                };
+            response = await fetch('/api/game/session', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentSession.access_token}`,
+              },
+              // keepalive lets the browser finish this request even if the
+              // tab is closed immediately after death
+              keepalive: true,
+              signal: settlementController.signal,
+              body: JSON.stringify(requestPayload),
+            });
+          } finally {
+            window.clearTimeout(settlementTimeout);
+          }
+          if (!settlementAuthorityCurrent()) return;
 
           if (!response.ok) {
             if (response.status === 409) {
@@ -1557,24 +2031,65 @@ export default function GamePage() {
               // to lose its recognition. New servers return `impact` on the
               // duplicate itself; recovery covers older/empty 409 bodies.
               const duplicateBody = await response.json().catch(() => null);
-              const recovered =
-                parseImpactFromSettlement(duplicateBody) ??
-                await recoverRunImpact(
-                  sessionId,
+              if (!settlementAuthorityCurrent()) return;
+              const duplicateRecord =
+                duplicateBody && typeof duplicateBody === 'object'
+                  ? duplicateBody as Record<string, unknown>
+                  : {};
+              const duplicateDisposition = classifyTerminalRecoveryResponse(
+                response.status,
+                duplicateBody
+              );
+              if (duplicateRecord.reason === 'lease_conflict') {
+                // Another tab explicitly resumed this run and now owns its
+                // terminal authority. This stale simulation cannot settle or
+                // overwrite it; route the player back to the accepted server
+                // checkpoint instead of pretending this death counted.
+                runLeaseRef.current = null;
+                checkpointRevisionRef.current = 0;
+                const secured = await fetchActiveRun(
                   currentSession.access_token
-                ).catch((error) => {
-                  console.error('Failed to recover settled run impact:', error);
-                  return null;
-                });
-              if (recovered) {
-                setRunImpact(recovered);
-                setSettledYield(recovered.receipt.yieldDna);
-                setSettledCredited(recovered.receipt.dnaCredited);
-                setActiveEnergyCommitted(recovered.receipt.energyCommitted);
-                setActiveEnergyMultiplierBps(
-                  recovered.receipt.commitmentMultiplierBps
-                );
-                requestAttentionRefresh();
+                ).catch(() => null);
+                if (!settlementAuthorityCurrent()) return;
+                if (secured) {
+                  setInterruptedRun(secured);
+                  setRunContinuityPhase(
+                    secured.phase === 'active' ? 'active' : 'none'
+                  );
+                }
+                setStartError('This run continued in another window. Resume the secured version here.');
+              } else {
+                const recovered =
+                  parseImpactFromSettlement(duplicateBody) ??
+                  await recoverRunImpact(
+                    sessionId,
+                    currentSession.access_token
+                  ).catch((error) => {
+                    console.error('Failed to recover settled run impact:', error);
+                    return null;
+                  });
+                if (!settlementAuthorityCurrent()) return;
+                if (recovered) {
+                  setRunImpact(recovered);
+                  setSettledYield(recovered.receipt.yieldDna);
+                  setSettledCredited(recovered.receipt.dnaCredited);
+                  setActiveEnergyCommitted(recovered.receipt.energyCommitted);
+                  setActiveEnergyMultiplierBps(
+                    recovered.receipt.commitmentMultiplierBps
+                  );
+                  requestAttentionRefresh();
+                }
+                if (duplicateDisposition === 'completed' || recovered) {
+                  runLeaseRef.current = null;
+                  checkpointRevisionRef.current = 0;
+                  terminalAcknowledged = true;
+                } else {
+                  // No canonical terminal acknowledgement exists. Retain the
+                  // proof in tab memory and keep Results closed. A generic
+                  // 409, including an abandoned run observed by a stale tab,
+                  // is not an idempotent settlement receipt.
+                  queueForReplay();
+                }
               }
             } else {
               console.error(`Game end rejected (status ${response.status}), queueing for replay`);
@@ -1582,6 +2097,10 @@ export default function GamePage() {
             }
           } else {
             const result = await response.json();
+            if (!settlementAuthorityCurrent()) return;
+            terminalAcknowledged = true;
+            runLeaseRef.current = null;
+            checkpointRevisionRef.current = 0;
             if (isDurablyPendingSettlement(result)) {
               // The immutable server envelope is now the recovery authority.
               // Do not display predicted DNA or retain a client retry copy.
@@ -1715,10 +2234,27 @@ export default function GamePage() {
             }
           }
         } catch (err) {
+          if (!settlementAuthorityCurrent()) return;
           console.error('Failed to send game results, queueing for replay:', err);
           queueForReplay();
         }
+
+        if (replayTerminal && !terminalAcknowledged) {
+          // Never turn an unacknowledged local collision/bank into Results.
+          // The in-memory replay queue keeps retrying; a delivered keepalive
+          // can also be rediscovered as terminal/settling after reload.
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          setAwaitingResumeInput(false);
+          setContinuitySafetyHold('connection');
+          setStartError('Securing this outcome with the server. Retry when the connection returns.');
+          return;
+        }
       }
+
+      if (!settlementAuthorityCurrent()) return;
 
       // The first completed result is the earliest point where meta systems
       // may introduce themselves. Keep that discovery contextual here and
@@ -1755,10 +2291,17 @@ export default function GamePage() {
         }
       }
 
+      // The terminal claim can settle while the authored animation plays, but
+      // a fast response never cuts the 800 ms flourish short. The request has
+      // its own timeout above, so a dead connection cannot pin this board.
+      await presentationReady;
+      if (!settlementAuthorityCurrent()) return;
       endGame(data.score, data.dnaCollected, data.endReason);
       setAwaitingResumeInput(false);
-      setDeathSequence(false);
-      setShowDeathExplosion(false);
+      if (data.endReason === 'extracted') {
+        setDeathSequence(false);
+        setShowDeathExplosion(false);
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -1769,10 +2312,12 @@ export default function GamePage() {
       setPaused(true);
       setQueuedDirections([]);
       audioManager.play('pause');
+      secureRunBoundary();
     });
 
     gameRef.current.on('resume', () => {
       setPaused(false);
+      secureRunBoundary();
     });
 
     return () => {
@@ -1907,6 +2452,7 @@ export default function GamePage() {
 
     intervalRef.current = setInterval(tick, gameRef.current?.getSpeed() || 200);
   }, [syncState]);
+  startGameLoopRef.current = startGameLoop;
 
   // NOTE: the effect that used to demote EARN/ANOMALY to FREE at zero
   // energy is deliberately gone (Constitution §8.6). Running out of the
@@ -1948,7 +2494,17 @@ export default function GamePage() {
     setActiveEnergyMultiplierBps(multiplierBps);
     setEnergyCommitment((startedEnergy?.available ?? 0) > 0 ? 1 : 0);
     setCurrentSessionId(data.sessionId);
-    gameStartTime.current = Date.now();
+    runLeaseRef.current = null;
+    checkpointRevisionRef.current = 0;
+    acceptedReplayRef.current = null;
+    checkpointBarrierRef.current = Promise.resolve();
+    deathPresentationRef.current?.resolve();
+    deathPresentationRef.current = null;
+    lastCheckpointAcceptedAtRef.current = 0;
+    checkpointFailureSinceRef.current = null;
+    setContinuitySafetyHold(null);
+    setInterruptedRun(null);
+    gameStartTime.current = 0;
     freeRunRef.current = mode === 'free';
     setLastRunFree(mode === 'free');
     setHypotheticalDna(null);
@@ -1957,6 +2513,7 @@ export default function GamePage() {
     setCodexDiscoveries([]);
     setExpressionFlourish(null);
     setShowAbandonConfirm(false);
+    setShowInterruptedAbandonConfirm(false);
     setPortalChoicePending(false);
     setSurgeChoicePending(false);
     setShowFirstResultDiscovery(false);
@@ -2007,6 +2564,15 @@ export default function GamePage() {
         ? data.mutationPool.filter(isMutationId)
         : []
     );
+
+    const simulation = data.simulation;
+    const hasRecoverableOpening =
+      simulation?.version === 1 &&
+      typeof simulation.seed === 'string' &&
+      simulation.seed.length > 0;
+    if (hasRecoverableOpening) {
+      game.setSimulationSeed(simulation.seed);
+    }
 
     const anomalyData =
       data.anomaly && typeof data.anomaly === 'object'
@@ -2061,7 +2627,13 @@ export default function GamePage() {
     storeStartGame();
     setAwaitingResumeInput(false);
     setReady(true);
-    game.start();
+    if (hasRecoverableOpening) {
+      game.prepare();
+    } else {
+      game.start();
+      gameStartTime.current = Date.now();
+    }
+    setRunContinuityPhase(hasRecoverableOpening ? 'prepared' : 'active');
     syncState();
   }, [
     setAnomalyRun,
@@ -2078,8 +2650,8 @@ export default function GamePage() {
     syncState,
   ]);
 
-  // Start game from the voluntary pre-run screen. Home/Lab handoffs bypass
-  // this request because their server session already exists.
+  // Start game from the voluntary pre-run screen. Choosing a snake never
+  // enters this path; only the explicit Play action creates a session.
   const handleStart = useCallback(async (
     modeOverride?: GameMode,
     commitmentOverride?: number
@@ -2103,38 +2675,105 @@ export default function GamePage() {
     setIsStarting(true);
     setStartError(null);
 
-    try {
-      const response = await fetch('/api/game/session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          action: 'start',
-          mode, // 'free' = rewardless practice run (§7.4)
-          snake_id: equippedSnake.id, // Server validates ownership + equipped
-          energyCommitment: commitment,
-          ...(commitment === GAME_CONFIG.economy.energy.capacity
-            ? { confirmMaxEnergy: true }
-            : {}),
-          // WP-3.12: a REQUEST, never a decision. The server checks the ask
-          // against `player_ladders`, clamps it to what this player has
-          // unlocked, stamps it and echoes back the rung it chose.
-          ...(LADDER_ENABLED ? { ladderRung } : {}),
-        }),
-      });
+    const startFingerprint = JSON.stringify({
+      mode,
+      snakeId: equippedSnake.id,
+      commitment,
+      ladderRung: LADDER_ENABLED ? ladderRung : null,
+    });
+    if (startRequestRef.current?.fingerprint !== startFingerprint) {
+      startRequestRef.current = {
+        fingerprint: startFingerprint,
+        id: createRunStartRequestId(),
+      };
+    }
+    const startRequestId = startRequestRef.current.id;
 
-      const data = await response.json();
+    try {
+      const requestBody = JSON.stringify({
+        action: 'start',
+        startRequestId,
+        mode, // 'free' = rewardless practice run (§7.4)
+        snake_id: equippedSnake.id, // Server validates ownership + equipped
+        energyCommitment: commitment,
+        ...(commitment === GAME_CONFIG.economy.energy.capacity
+          ? { confirmMaxEnergy: true }
+          : {}),
+        // WP-3.12: a REQUEST, never a decision. The server checks the ask
+        // against `player_ladders`, clamps it to what this player has
+        // unlocked, stamps it and echoes back the rung it chose.
+        ...(LADDER_ENABLED ? { ladderRung } : {}),
+      });
+      let response: Response | null = null;
+      let data: Record<string, unknown> = {};
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        response = await fetch('/api/game/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: requestBody,
+        });
+        data = await response.json();
+        if (response.status !== 202 || data.preparing !== true) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+      }
+      if (!response) throw new Error('Run start returned no response');
 
       if (!response.ok) {
         if (response.status === 429) {
-          setStartError(`Rate limited. Wait ${Math.ceil((data.retryAfterMs || 5000) / 1000)}s`);
+          const retryAfterMs = typeof data.retryAfterMs === 'number'
+            ? data.retryAfterMs
+            : 5_000;
+          setStartError(`Rate limited. Wait ${Math.ceil(retryAfterMs / 1000)}s`);
         } else {
-          setStartError(data.error || 'Failed to start game');
+          setStartError(
+            typeof data.error === 'string' ? data.error : 'Failed to start game'
+          );
         }
         return;
       }
+      if (data.preparing === true || typeof data.sessionId !== 'string') {
+        // A process failure can leave only the idempotency shell: no Energy
+        // moved and no browser state may be used to reconstruct the manifest.
+        // Discover that server row now so the player gets explicit Check again
+        // / Abandon controls instead of an endless 202 message.
+        const preparingRun = await fetchActiveRun(session.access_token).catch(
+          (error) => {
+            console.error('Failed to inspect preparing run:', error);
+            return null;
+          }
+        );
+        if (!matchesContinuityAuthority(
+          session.access_token,
+          sessionRef.current?.access_token,
+          undefined,
+          undefined,
+          session.user.id,
+          sessionRef.current?.user?.id
+        )) return;
+        if (
+          preparingRun &&
+          (typeof data.sessionId !== 'string' ||
+            preparingRun.sessionId === data.sessionId)
+        ) {
+          setCurrentSessionId(preparingRun.sessionId);
+          setActiveEnergyCommitted(preparingRun.energyCommitted);
+          setInterruptedRun(preparingRun);
+          setRunContinuityPhase(
+            preparingRun.phase === 'active' ? 'active' : 'none'
+          );
+        }
+        setStartError(
+          preparingRun?.phase === 'preparing'
+            ? 'Launch preparation was interrupted. No Energy was used; check again or release it and launch anew.'
+            : 'Your run is secured and still preparing. Retry to continue it.'
+        );
+        return;
+      }
+
+      startRequestRef.current = null;
 
       const firstRun = !hasCompletedFirstRun;
       firstRunAtStartRef.current = firstRun;
@@ -2161,6 +2800,715 @@ export default function GamePage() {
     hasCompletedFirstRun,
     isStarting,
     session?.access_token,
+    session?.user?.id,
+  ]);
+
+  const holdForContinuity = useCallback((kind: 'connection' | 'stale') => {
+    if (kind === 'stale') {
+      runLeaseRef.current = null;
+      checkpointRevisionRef.current = 0;
+    }
+    // This is a transport safety gate, not a player/engine decision and not a
+    // tactical hold. Stop scheduling ticks without mutating the canonical
+    // engine pause state; recovery will require a fresh direction and start a
+    // new interval through the UI-owned resume gate.
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setAwaitingResumeInput(false);
+    setContinuitySafetyHold(kind);
+  }, []);
+
+  // One in flight + one replaceable latest snapshot. The same request is
+  // retried after a lost response, allowing the row-locked RPC's digest
+  // idempotency to answer without inventing a new revision.
+  checkpointWriterRef.current = async (proposal) => {
+    if (
+      runLeaseRef.current !== proposal.leaseToken ||
+      !matchesContinuityAuthority(
+        proposal.accessToken,
+        sessionRef.current?.access_token,
+        proposal.sessionId,
+        currentSessionIdRef.current,
+        proposal.userId,
+        sessionRef.current?.user?.id
+      )
+    ) return;
+    const expectedRevision = checkpointRevisionRef.current;
+    const saveOnce = async () => {
+      const controller = proposal.keepalive ? null : new AbortController();
+      const timeout = controller
+        ? window.setTimeout(() => controller.abort(), 4_500)
+        : null;
+      try {
+        return await saveActiveRunCheckpoint(
+          proposal.accessToken,
+          proposal.sessionId,
+          expectedRevision,
+          proposal.checkpoint,
+          proposal.leaseToken,
+          {
+            keepalive: proposal.keepalive,
+            ...(controller ? { signal: controller.signal } : {}),
+          }
+        );
+      } finally {
+        if (timeout !== null) window.clearTimeout(timeout);
+      }
+    };
+    try {
+      let receipt;
+      try {
+        receipt = await saveOnce();
+      } catch (error) {
+        if (
+          error instanceof RunContinuityClientError &&
+          error.reason === 'lease_conflict'
+        ) throw error;
+        receipt = await saveOnce();
+      }
+      if (
+        runLeaseRef.current !== proposal.leaseToken ||
+        !matchesContinuityAuthority(
+          proposal.accessToken,
+          sessionRef.current?.access_token,
+          proposal.sessionId,
+          currentSessionIdRef.current,
+          proposal.userId,
+          sessionRef.current?.user?.id
+        )
+      ) return;
+      checkpointRevisionRef.current = receipt.revision;
+      acceptedReplayRef.current = proposal.checkpoint.privateState.replay;
+      lastCheckpointAcceptedAtRef.current = Date.now();
+      checkpointFailureSinceRef.current = null;
+      if (continuitySafetyHold === 'connection') {
+        setContinuitySafetyHold(null);
+        setAwaitingResumeInput(true);
+      }
+    } catch (error) {
+      if (
+        runLeaseRef.current !== proposal.leaseToken ||
+        !matchesContinuityAuthority(
+          proposal.accessToken,
+          sessionRef.current?.access_token,
+          proposal.sessionId,
+          currentSessionIdRef.current,
+          proposal.userId,
+          sessionRef.current?.user?.id
+        )
+      ) return;
+      if (
+        error instanceof RunContinuityClientError &&
+        error.reason === 'lease_conflict'
+      ) {
+        holdForContinuity('stale');
+      } else {
+        checkpointFailureSinceRef.current ??= Date.now();
+        const lastAccepted = lastCheckpointAcceptedAtRef.current;
+        if (
+          lastAccepted > 0 &&
+          Date.now() - lastAccepted >= ACTIVE_RUN_CONNECTION_HOLD_MS
+        ) {
+          holdForContinuity('connection');
+        }
+      }
+      throw error;
+    }
+  };
+
+  /** Capture one bounded latest proposal; no browser persistence is used. */
+  const queueActiveCheckpoint = useCallback((options: {
+    required?: boolean;
+    keepalive?: boolean;
+  } = {}): Promise<void> => {
+    const game = gameRef.current;
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    const sessionId = currentSessionIdRef.current;
+    const leaseToken = runLeaseRef.current;
+    if (!game || !token || !userId || !sessionId || !leaseToken) {
+      return options.required
+        ? Promise.reject(new Error('The active run has no checkpoint lease'))
+        : Promise.resolve();
+    }
+
+    let checkpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>;
+    try {
+      checkpoint = game.exportCheckpoint();
+    } catch (error) {
+      return options.required ? Promise.reject(error) : Promise.resolve();
+    }
+    const task = checkpointQueueRef.current!.enqueue({
+      sessionId,
+      accessToken: token,
+      userId,
+      leaseToken,
+      checkpoint,
+      keepalive:
+        options.keepalive === true && JSON.stringify(checkpoint).length < 55_000,
+    });
+    // Terminalization awaits this barrier before reading its revision/base.
+    // A checkpoint already accepted by PostgreSQL can therefore never race a
+    // stale terminal proof, and no queued proposal remains after the barrier.
+    checkpointBarrierRef.current = task.catch(() => undefined);
+    if (!options.required) {
+      void task.catch((error) => {
+        // The prior accepted checkpoint remains valid. A lease conflict means
+        // another tab deliberately resumed this run; its next terminal request
+        // is the only one the server will accept.
+        console.error('Run checkpoint deferred:', error);
+      });
+    }
+    return task;
+  }, []);
+
+  // Make the current writer available to simulation event handlers without
+  // coupling the engine-initialization effect to a later callback declaration.
+  useEffect(() => {
+    checkpointNowRef.current = queueActiveCheckpoint;
+    return () => {
+      checkpointNowRef.current = () => Promise.resolve();
+    };
+  }, [queueActiveCheckpoint]);
+
+  const retryContinuityCheckpoint = useCallback(() => {
+    if (continuitySafetyHold === 'stale') {
+      window.location.reload();
+      return;
+    }
+    if (gameRef.current?.getState().isGameOver) {
+      const authority = sessionRef.current;
+      if (!authority?.access_token) return;
+      void replayRewardOutbox(
+        authority.access_token,
+        fetch,
+        authority.user?.id
+      )
+        .then(() => window.location.reload())
+        .catch((error) => {
+          console.error('Terminal continuity retry deferred:', error);
+        });
+      return;
+    }
+    void queueActiveCheckpoint({ required: true }).catch((error) => {
+      console.error('Run continuity retry deferred:', error);
+    });
+  }, [continuitySafetyHold, queueActiveCheckpoint]);
+
+  useEffect(() => {
+    if (continuitySafetyHold !== 'connection') return;
+    window.addEventListener('online', retryContinuityCheckpoint);
+    return () => window.removeEventListener('online', retryContinuityCheckpoint);
+  }, [continuitySafetyHold, retryContinuityCheckpoint]);
+
+  // The safety bound is measured from the last server receipt, independent of
+  // an individual fetch timeout or retry. A hung pair of HTTP attempts must
+  // not let the board continue beyond the promised ten-second rollback cap.
+  useEffect(() => {
+    if (
+      runContinuityPhase !== 'active' ||
+      !isPlaying ||
+      isGameOver ||
+      continuitySafetyHold !== null ||
+      !runLeaseRef.current ||
+      lastCheckpointAcceptedAtRef.current <= 0
+    ) return;
+    let timer: number | null = null;
+    const watch = () => {
+      const remaining = ACTIVE_RUN_CONNECTION_HOLD_MS -
+        (Date.now() - lastCheckpointAcceptedAtRef.current);
+      if (remaining <= 0) {
+        holdForContinuity('connection');
+        return;
+      }
+      timer = window.setTimeout(watch, remaining);
+    };
+    watch();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    continuitySafetyHold,
+    holdForContinuity,
+    isGameOver,
+    isPlaying,
+    runContinuityPhase,
+  ]);
+
+  // A bounded cadence limits rollback after a browser or device failure.
+  // Critical gameplay decisions additionally checkpoint through the event
+  // handlers above. `pagehide`/hidden writes are best-effort and small enough
+  // for keepalive only when the browser's payload budget allows it.
+  useEffect(() => {
+    if (
+      runContinuityPhase !== 'active' ||
+      !isPlaying ||
+      isGameOver ||
+      !runLeaseRef.current
+    ) return;
+
+    const intervalId = window.setInterval(() => {
+      void queueActiveCheckpoint();
+    }, ACTIVE_RUN_CHECKPOINT_INTERVAL_MS);
+    const secureBeforeLeaving = () => {
+      void queueActiveCheckpoint({ keepalive: true });
+    };
+    const secureWhenHidden = () => {
+      if (document.visibilityState === 'hidden') secureBeforeLeaving();
+    };
+
+    window.addEventListener('pagehide', secureBeforeLeaving);
+    document.addEventListener('visibilitychange', secureWhenHidden);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('pagehide', secureBeforeLeaving);
+      document.removeEventListener('visibilitychange', secureWhenHidden);
+    };
+  }, [isGameOver, isPlaying, queueActiveCheckpoint, runContinuityPhase]);
+
+  /**
+   * Cross the prepared→active boundary immediately before movement begins.
+   * A direction may already be queued in the held engine, but no tick is
+   * scheduled until this authoritative transition succeeds. On failure the
+   * seeded opening is rebuilt, so a stale queued gesture can never fire on a
+   * later retry.
+   */
+  const releaseReadyBoard = useCallback((): Promise<boolean> => {
+    if (activationPromiseRef.current) return activationPromiseRef.current;
+    const task = (async (): Promise<boolean> => {
+      const game = gameRef.current;
+      if (!game) return false;
+
+      if (continuityPhaseRef.current === 'prepared') {
+        const authority = sessionRef.current;
+        const token = authority?.access_token;
+        const userId = authority?.user?.id;
+        const sessionId = currentSessionIdRef.current;
+        if (!token || !userId || !sessionId) {
+          setStartError('The prepared run could not be verified.');
+          return false;
+        }
+        const stillOwnsActivation = () => matchesContinuityAuthority(
+          token,
+          sessionRef.current?.access_token,
+          sessionId,
+          currentSessionIdRef.current,
+          userId,
+          sessionRef.current?.user?.id
+        );
+        let openingCheckpoint: ReturnType<SnakeGameLogic['exportCheckpoint']>;
+        try {
+          openingCheckpoint = game.exportCheckpoint();
+        } catch {
+          setStartError('The prepared opening could not be secured.');
+          return false;
+        }
+        continuityPhaseRef.current = 'activating';
+        setRunContinuityPhase('activating');
+        try {
+          const activated = await activatePreparedRun(
+            token,
+            sessionId,
+            openingCheckpoint
+          );
+          if (!stillOwnsActivation()) return false;
+          if (!activated.leaseToken || !activated.checkpoint) {
+            throw new Error('Run activation returned no secured opening lease');
+          }
+          runLeaseRef.current = activated.leaseToken;
+          checkpointRevisionRef.current = activated.checkpointRevision;
+          acceptedReplayRef.current = activated.checkpoint.privateState.replay;
+          lastCheckpointAcceptedAtRef.current = Date.now();
+          checkpointFailureSinceRef.current = null;
+          setContinuitySafetyHold(null);
+          game.activatePrepared();
+          gameStartTime.current = Date.now();
+          continuityPhaseRef.current = 'active';
+          setRunContinuityPhase('active');
+        } catch (error) {
+          if (!stillOwnsActivation()) return false;
+          console.error('Failed to activate prepared run:', error);
+          const secured = await fetchActiveRun(token).catch(() => null);
+          if (!stillOwnsActivation()) return false;
+          if (
+            secured?.phase === 'active' &&
+            secured.canContinue &&
+            secured.checkpoint
+          ) {
+            setInterruptedRun(secured);
+            continuityPhaseRef.current = 'active';
+            setRunContinuityPhase('active');
+            setReady(false);
+            return false;
+          }
+          runLeaseRef.current = null;
+          checkpointRevisionRef.current = 0;
+          continuityPhaseRef.current = 'prepared';
+          setRunContinuityPhase('prepared');
+          setStartError('The run is still secured. Check the connection and try again.');
+          game.prepare();
+          syncState();
+          setReady(true);
+          return false;
+        }
+      }
+
+      setRequiresDirectionalStart(false);
+      setReady(false);
+      startGameLoop();
+      return true;
+    })();
+    activationPromiseRef.current = task;
+    void task.finally(() => {
+      if (activationPromiseRef.current === task) activationPromiseRef.current = null;
+    });
+    return task;
+  }, [setReady, startGameLoop, syncState]);
+
+  const applyCheckpointedRun = useCallback((active: ActiveRunView): void => {
+    if (!active.manifest || !active.checkpoint || !active.leaseToken) {
+      throw new Error('Run resume is missing its secured state');
+    }
+    const snakeMeta = equippedViewFromRunManifest(active.manifest);
+    if (!snakeMeta) throw new Error('Run resume is missing its snake snapshot');
+    const mode: GameMode = active.manifest.freePlay
+      ? 'free'
+      : active.manifest.anomaly
+        ? 'anomaly'
+        : 'earn';
+
+    setEquippedSnake(snakeMeta);
+    equippedSnakeRef.current = snakeMeta;
+    setCollectionLoaded(true);
+    setNeedsStarterSelection(false);
+    applyStartedRun(active.manifest, mode, snakeMeta);
+
+    const game = gameRef.current;
+    if (!game) throw new Error('The game board is not ready');
+    game.restoreCheckpoint(active.checkpoint, Date.now(), {
+      replacePreparedOpening: true,
+    });
+    const state = game.getState();
+    runLeaseRef.current = active.leaseToken;
+    checkpointRevisionRef.current = active.checkpointRevision;
+    acceptedReplayRef.current = active.checkpoint.privateState.replay;
+    lastCheckpointAcceptedAtRef.current = Date.now();
+    checkpointFailureSinceRef.current = null;
+    setContinuitySafetyHold(null);
+    gameStartTime.current = Date.now() - active.checkpoint.privateState.elapsedMs;
+    setCurrentSessionId(active.sessionId);
+    setActiveEnergyCommitted(active.energyCommitted);
+    setChoiceOptions(state.pendingChoice, state.choiceSource);
+    setHeldMutations(state.heldMutations);
+    setPortalCanInfuse(state.pendingPortalChoice?.canInfuse === true);
+    setPortalChoicePending(state.pendingPortalChoice !== null);
+    setSurgeChoicePending(state.pendingSurgeChoice);
+    setChoicePityStrain(state.pendingChoicePity);
+    setPaused(state.isPaused);
+    setReady(false);
+    setRequiresDirectionalStart(false);
+    setMinimalFirstRunPrompt(false);
+    setInterruptedRun(null);
+    setRunContinuityPhase('active');
+    syncState();
+
+    const decisionPending =
+      state.pendingChoice !== null ||
+      state.pendingPortalChoice !== null ||
+      state.pendingSurgeChoice;
+    setAwaitingResumeInput(!decisionPending);
+    // The resume gate is UI-owned. Preserve the canonical engine pause bit
+    // exactly and do not create a dormant interval: the first deliberate
+    // direction both releases this gate and starts the loop, so not one
+    // pre-accept simulation tick can occur after reload.
+  }, [
+    applyStartedRun,
+    setChoiceOptions,
+    setHeldMutations,
+    setPaused,
+    setPortalChoicePending,
+    setReady,
+    setSurgeChoicePending,
+    syncState,
+  ]);
+
+  const continueInterruptedRun = useCallback(async (): Promise<void> => {
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    const run = interruptedRun;
+    if (!token || !userId || !run) {
+      throw new Error('No interrupted run is available');
+    }
+    const resumed = await resumeCheckpointedRun(token, run.sessionId);
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      run.sessionId,
+      currentSessionIdRef.current,
+      userId,
+      sessionRef.current?.user?.id
+    )) return;
+    applyCheckpointedRun(resumed);
+  }, [applyCheckpointedRun, interruptedRun]);
+
+  const repairInterruptedStart = useCallback(async (): Promise<boolean> => {
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    const run = interruptedRun;
+    if (!token || !userId || !run?.startIntent) return false;
+    const manifest = await retryPreparingRunStart(
+      token,
+      run.startIntent
+    );
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      run.sessionId,
+      currentSessionIdRef.current,
+      userId,
+      sessionRef.current?.user?.id
+    )) return false;
+    const snakeMeta = equippedViewFromRunManifest(manifest);
+    if (!snakeMeta) throw new Error('Repaired run is missing its snake snapshot');
+    const mode: GameMode = manifest.freePlay
+      ? 'free'
+      : manifest.anomaly
+        ? 'anomaly'
+        : 'earn';
+    setEquippedSnake(snakeMeta);
+    equippedSnakeRef.current = snakeMeta;
+    setCollectionLoaded(true);
+    setNeedsStarterSelection(false);
+    applyStartedRun(manifest, mode, snakeMeta);
+    return true;
+  }, [applyStartedRun, interruptedRun]);
+
+  const recoverServerRun = useCallback(async (): Promise<boolean> => {
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    if (!token || !userId || !gameRef.current) return false;
+    const active = await fetchActiveRun(token);
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      undefined,
+      undefined,
+      userId,
+      sessionRef.current?.user?.id
+    )) {
+      return false;
+    }
+    if (!active) {
+      setInterruptedRun(null);
+      setRunContinuityPhase('none');
+      return false;
+    }
+
+    let recoveredActive = active;
+    let terminalCompletedWithoutImpact = false;
+    if (active.phase === 'terminal') {
+      // The replay-derived outcome is already immutable. Re-enter the normal
+      // settlement fold without any client-authored facts; a process/tab loss
+      // between terminalization and the pending envelope can only delay it.
+      try {
+        const response = await fetch('/api/game/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: 'end', sessionId: active.sessionId }),
+        });
+        const responseBody = await response.json().catch(() => null);
+        const disposition = classifyTerminalRecoveryResponse(
+          response.status,
+          responseBody
+        );
+        if (disposition === 'settling') {
+          recoveredActive = { ...active, phase: 'settling' };
+        } else if (disposition === 'completed') {
+          terminalCompletedWithoutImpact = true;
+        }
+      } catch (error) {
+        console.error('Terminal run settlement remains secured:', error);
+      }
+    }
+
+    setCurrentSessionId(recoveredActive.sessionId);
+    setActiveEnergyCommitted(recoveredActive.energyCommitted);
+    if (terminalCompletedWithoutImpact) {
+      setInterruptedRun(null);
+      setRunContinuityPhase('none');
+      return false;
+    }
+    if (recoveredActive.phase === 'prepared' && recoveredActive.canContinue && recoveredActive.manifest) {
+      const snakeMeta = equippedViewFromRunManifest(recoveredActive.manifest);
+      if (!snakeMeta) {
+        throw new Error('Prepared run is missing its snake snapshot');
+      }
+      setEquippedSnake(snakeMeta);
+      equippedSnakeRef.current = snakeMeta;
+      setCollectionLoaded(true);
+      setNeedsStarterSelection(false);
+      const mode: GameMode = recoveredActive.manifest.freePlay
+        ? 'free'
+        : recoveredActive.manifest.anomaly
+          ? 'anomaly'
+          : 'earn';
+      applyStartedRun(recoveredActive.manifest, mode, snakeMeta);
+      return true;
+    }
+
+    // An activated run is never resumed merely because a route mounted. The
+    // player sees its stake, then Continue rotates an exclusive server lease
+    // before the accepted checkpoint enters the engine.
+    setInterruptedRun(recoveredActive);
+    setRunContinuityPhase(recoveredActive.phase === 'active' ? 'active' : 'none');
+    return true;
+  }, [applyStartedRun]);
+
+  const refreshRecoveredWallet = useCallback(async (
+    token: string,
+    userId: string,
+    sessionId: string
+  ): Promise<void> => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch('/api/player', {
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error(`/api/player responded ${response.status}`);
+      }
+      const data = await response.json();
+      if (!matchesContinuityAuthority(
+        token,
+        sessionRef.current?.access_token,
+        sessionId,
+        currentSessionIdRef.current,
+        userId,
+        sessionRef.current?.user?.id
+      )) return;
+      if (typeof data.player?.dna === 'number') {
+        useCollectionStore.getState().setDnaBalance(data.player.dna);
+      }
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, []);
+
+  const applyRecoveredSettlingResult = useCallback((
+    impact: RunImpactEnvelope,
+    authority?: { token: string; userId: string }
+  ): void => {
+    setRunImpact(impact);
+    setSettledYield(impact.receipt.yieldDna);
+    setSettledCredited(impact.receipt.dnaCredited);
+    setActiveEnergyCommitted(impact.receipt.energyCommitted);
+    setActiveEnergyMultiplierBps(impact.receipt.commitmentMultiplierBps);
+    setSettlementSecuredPending(false);
+    setInterruptedRun(null);
+    endGame(
+      impact.receipt.score,
+      impact.receipt.dnaCredited,
+      impact.outcome === 'crashed' ? 'died' : 'extracted'
+    );
+    requestAttentionRefresh();
+    if (authority) {
+      void refreshRecoveredWallet(
+        authority.token,
+        authority.userId,
+        impact.sessionId
+      ).catch((error) => {
+        console.error('Failed to refresh recovered run wallet:', error);
+      });
+    }
+  }, [endGame, refreshRecoveredWallet]);
+
+  const recoverSettlingResult = useCallback(async (): Promise<boolean> => {
+    const authority = sessionRef.current;
+    const token = authority?.access_token;
+    const userId = authority?.user?.id;
+    const run = interruptedRun;
+    if (!token || !userId || !run || run.phase !== 'settling') return false;
+    const impact = await advancePendingRunImpact(run.sessionId, token);
+    if (!matchesContinuityAuthority(
+      token,
+      sessionRef.current?.access_token,
+      run.sessionId,
+      currentSessionIdRef.current,
+      userId,
+      sessionRef.current?.user?.id
+    )) return false;
+    if (!impact) return false;
+    applyRecoveredSettlingResult(impact, { token, userId });
+    return true;
+  }, [applyRecoveredSettlingResult, interruptedRun]);
+
+  // Reopening after a durable 202 should feel like returning to the Results
+  // ceremony, not like landing in a maintenance screen. Give the server a
+  // bounded automatic window, then reveal a manual retry only if it remains
+  // unavailable. The secured run itself never becomes abandonable here.
+  useEffect(() => {
+    const run = interruptedRun;
+    const token = session?.access_token;
+    const userId = session?.user?.id;
+    if (!run || run.phase !== 'settling' || !token || !userId) {
+      setSettlingRecoveryState('idle');
+      return;
+    }
+    const controller = new AbortController();
+    setStartError(null);
+    setSettlingRecoveryState('polling');
+    void recoverPendingRunImpactBounded(run.sessionId, token, {
+      signal: controller.signal,
+    })
+      .then((impact) => {
+        if (controller.signal.aborted) return;
+        if (!matchesContinuityAuthority(
+          token,
+          sessionRef.current?.access_token,
+          run.sessionId,
+          currentSessionIdRef.current,
+          userId,
+          sessionRef.current?.user?.id
+        )) return;
+        if (impact) {
+          applyRecoveredSettlingResult(impact, { token, userId });
+          return;
+        }
+        setSettlingRecoveryState('retry');
+      })
+      .catch((error) => {
+        if (
+          controller.signal.aborted ||
+          !matchesContinuityAuthority(
+            token,
+            sessionRef.current?.access_token,
+            run.sessionId,
+            currentSessionIdRef.current,
+            userId,
+            sessionRef.current?.user?.id
+          )
+        ) return;
+        console.error('Automatic result recovery failed:', error);
+        setSettlingRecoveryState('retry');
+      });
+    return () => controller.abort();
+  }, [
+    applyRecoveredSettlingResult,
+    interruptedRun,
+    session?.access_token,
+    session?.user?.id,
   ]);
 
   // Consume Home/Lab's prepared run once. This effect is declared after the
@@ -2172,16 +3520,42 @@ export default function GamePage() {
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('launch') !== 'ftue-v2') {
-      setRouteInitializing(false);
+      if (continuityCheckedRef.current) return;
+      if (!session?.access_token || !gameRef.current) {
+        setRouteInitializing(false);
+        return;
+      }
+      continuityCheckedRef.current = true;
+      let cancelled = false;
+      let settled = false;
+      void recoverServerRun()
+        .catch((error) => {
+          if (cancelled) return;
+          console.error('Failed to inspect active run:', error);
+          setStartError('Could not check for an interrupted run. Retry in a moment.');
+        })
+        .finally(() => {
+          settled = true;
+          if (!cancelled) setRouteInitializing(false);
+        });
+      return () => {
+        cancelled = true;
+        // React StrictMode deliberately tears down and replays effects. Do not
+        // leave the replay believing a cancelled request completed the one
+        // continuity check responsible for releasing "Preparing board…".
+        if (!settled) continuityCheckedRef.current = false;
+      };
+    }
+    if (handoffAttemptedRef.current) {
       return;
     }
-    if (handoffAttemptedRef.current) return;
     if (!session?.user?.id || !gameRef.current) {
       setRouteInitializing(false);
       return;
     }
 
     handoffAttemptedRef.current = true;
+    continuityCheckedRef.current = true;
     const handoff = consumeLaunchHandoff(session.user.id);
     params.delete('launch');
     params.delete('source');
@@ -2189,9 +3563,33 @@ export default function GamePage() {
     window.history.replaceState(null, '', cleanUrl);
 
     if (!handoff) {
-      setStartError('The prepared run expired. Retry when you are ready.');
-      setRouteInitializing(false);
-      return;
+      // Reload/navigation can erase the page-memory handoff without erasing
+      // the run. Ask the server for the same prepared manifest before ever
+      // presenting a second Play action.
+      let cancelled = false;
+      let settled = false;
+      void recoverServerRun()
+        .then((recovered) => {
+          if (!cancelled && !recovered) {
+            setStartError('The prepared run expired. Retry when you are ready.');
+          }
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error('Failed to recover prepared run:', error);
+          setStartError('Could not recover the prepared run. Retry in a moment.');
+        })
+        .finally(() => {
+          settled = true;
+          if (!cancelled) setRouteInitializing(false);
+        });
+      return () => {
+        cancelled = true;
+        if (!settled) {
+          handoffAttemptedRef.current = false;
+          continuityCheckedRef.current = false;
+        }
+      };
     }
 
     const bootstrapSnake: FtueBootstrapSnake = handoff.bootstrap.equippedSnake;
@@ -2221,7 +3619,13 @@ export default function GamePage() {
     } finally {
       setRouteInitializing(false);
     }
-  }, [applyStartedRun, authLoading, session?.user?.id]);
+  }, [
+    applyStartedRun,
+    authLoading,
+    recoverServerRun,
+    session?.access_token,
+    session?.user?.id,
+  ]);
 
   // Keyboard controls
   useEffect(() => {
@@ -2244,6 +3648,10 @@ export default function GamePage() {
 
       // Handle ready state - first input starts movement
       if ((isReady && !intervalRef.current) || awaitingResumeInput) {
+        if (runContinuityPhase === 'activating') {
+          e.preventDefault();
+          return;
+        }
         const dir = DIRECTION_BY_KEY[e.key];
         // FTUE's opening board requires an intentional movement direction;
         // Space remains a convenience on later ready/resume screens.
@@ -2256,16 +3664,13 @@ export default function GamePage() {
               : gameRef.current.setDirection(dir, 'standard', withTickTiming(timing));
             if (!result || !directionCanRelease(result)) return;
             if (!awaitingResumeInput) {
-              setRequiresDirectionalStart(false);
-              setReady(false);
-              startGameLoop();
+              void releaseReadyBoard();
             }
             syncAim();
           } else if (awaitingResumeInput) {
             releaseResumeGate();
           } else {
-            setReady(false);
-            startGameLoop();
+            void releaseReadyBoard();
           }
           return;
         }
@@ -2301,7 +3706,7 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, handlePause, releaseResumeGate, requiresDirectionalStart, startGameLoop, setReady, syncAim, withTickTiming]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, handlePause, releaseReadyBoard, releaseResumeGate, requiresDirectionalStart, runContinuityPhase, syncAim, withTickTiming]);
 
   // FlickSurface delegates every direction here. Ready/resume admission is
   // atomic, and active flicks use the two-unresolved-turn mobile buffer while
@@ -2310,6 +3715,7 @@ export default function GamePage() {
     dir: Direction,
     timing: DirectionInputTiming
   ): SetDirectionResult => {
+    if (runContinuityPhase === 'activating') return 'inactive';
     if (awaitingResumeInput) {
       return releaseResumeGate(dir, 'flick', timing) ?? 'inactive';
     }
@@ -2317,12 +3723,10 @@ export default function GamePage() {
     if (!game) return 'inactive';
     const result = game.setDirection(dir, 'flick', withTickTiming(timing));
     if (isReady && directionCanRelease(result)) {
-      setRequiresDirectionalStart(false);
-      setReady(false);
-      startGameLoop();
+      void releaseReadyBoard();
     }
     return result;
-  }, [awaitingResumeInput, isReady, releaseResumeGate, setReady, startGameLoop, withTickTiming]);
+  }, [awaitingResumeInput, isReady, releaseReadyBoard, releaseResumeGate, runContinuityPhase, withTickTiming]);
 
   // Select an aim system - optimistic with rollback. Nothing to authorize:
   // the server validates the id only (§6.1, §15 overturn 10).
@@ -2354,50 +3758,107 @@ export default function GamePage() {
     setAwaitingResumeInput(true);
   }, []);
 
-  const handleQuit = useCallback(() => {
+  const handleQuit = useCallback(async () => {
     const token = sessionRef.current?.access_token;
     const sessionId = currentSessionIdRef.current;
     if (token && sessionId) {
       // Energy was consumed at START, so this request never decides a refund.
       // It closes the authoritative session promptly for telemetry and makes
       // it impossible for an abandoned attempt to be submitted later.
-      void fetch('/api/game/session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        keepalive: true,
-        body: JSON.stringify({ action: 'abandon', sessionId, reason: 'abandoned' }),
-      })
-        .then((response) => {
-          if (!response.ok && response.status !== 409) {
-            console.error(`Failed to close abandoned run: ${response.status}`);
+      try {
+        let leaseToken = runLeaseRef.current;
+        if (
+          !leaseToken &&
+          interruptedRun?.sessionId === sessionId &&
+          interruptedRun.phase === 'active'
+        ) {
+          // The read-only recovery envelope never exposes a lease. A deliberate
+          // confirmed abandonment first claims the same exclusive authority a
+          // continuation would claim, so a stale tab cannot end the run later.
+          if (!interruptedRun.canContinue) {
+            throw new Error('The active run has no resumable checkpoint');
           }
-        })
-        .catch((error) => console.error('Failed to close abandoned run:', error));
+          const claimed = await resumeCheckpointedRun(token, sessionId);
+          leaseToken = claimed.leaseToken;
+          runLeaseRef.current = leaseToken;
+          checkpointRevisionRef.current = claimed.checkpointRevision;
+        }
+
+        const response = await fetch('/api/game/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          keepalive: true,
+          body: JSON.stringify({
+            action: 'abandon',
+            sessionId,
+            reason: 'abandoned',
+            ...(leaseToken ? { leaseToken } : {}),
+          }),
+        });
+        const body = await response.json().catch(() => null);
+        const record = body && typeof body === 'object'
+          ? body as Record<string, unknown>
+          : {};
+        if (!response.ok && !(response.status === 409 && record.alreadyEnded === true)) {
+          if (record.reason === 'lease_conflict') {
+            const secured = await fetchActiveRun(token).catch(() => null);
+            if (secured) {
+              setInterruptedRun(secured);
+              setRunContinuityPhase(
+                secured.phase === 'active' ? 'active' : 'none'
+              );
+            }
+            setStartError('This run is active in another window. Continue its secured state before abandoning it here.');
+          } else {
+            setStartError('The run is still secured. Abandonment was not confirmed; retry when connected.');
+          }
+          setShowAbandonConfirm(false);
+          setShowInterruptedAbandonConfirm(false);
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to close abandoned run:', error);
+        setStartError('The run is still secured. Abandonment was not confirmed; retry when connected.');
+        setShowAbandonConfirm(false);
+        setShowInterruptedAbandonConfirm(false);
+        return;
+      }
     }
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
     setShowAbandonConfirm(false);
+    setShowInterruptedAbandonConfirm(false);
     setAwaitingResumeInput(false);
     cancelPauseRearm();
+    runLeaseRef.current = null;
+    checkpointRevisionRef.current = 0;
+    startRequestRef.current = null;
     setCurrentSessionId(null);
+    setInterruptedRun(null);
+    setRunContinuityPhase('none');
     resetGame();
-  }, [cancelPauseRearm, resetGame]);
+  }, [cancelPauseRearm, interruptedRun, resetGame]);
 
   // Restart
   const handleRestart = useCallback(() => {
     resetGame();
+    runLeaseRef.current = null;
+    checkpointRevisionRef.current = 0;
     setCurrentSessionId(null);
+    setInterruptedRun(null);
+    setRunContinuityPhase('none');
     setStreakInfo(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
     setMinimalFirstRunPrompt(false);
     setRequiresDirectionalStart(false);
     setShowAbandonConfirm(false);
+    setShowInterruptedAbandonConfirm(false);
     setAwaitingResumeInput(false);
     cancelPauseRearm();
     if (intervalRef.current) {
@@ -2618,7 +4079,9 @@ export default function GamePage() {
     : lastRunFree
       ? 'free'
       : 'standard';
-  const cockpitStatus = minimalFirstRunPrompt && isReady
+  const cockpitStatus = runContinuityPhase === 'activating'
+    ? 'Securing Energy commitment · direction held'
+    : minimalFirstRunPrompt && isReady
     ? 'Swipe or press an arrow to move'
     : awaitingResumeInput
       ? isMobile
@@ -2640,7 +4103,9 @@ export default function GamePage() {
     state: cockpitState,
     mode: cockpitMode,
     modeLabel: anomalyRun?.name ?? (lastRunFree ? 'Free play' : selectedDynasty),
-    modeDetail: awaitingResumeInput
+    modeDetail: runContinuityPhase === 'activating'
+      ? 'Verifying run'
+      : awaitingResumeInput
         ? 'Tactical hold'
       : isReady
         ? 'Board held'
@@ -2694,6 +4159,28 @@ export default function GamePage() {
   };
   const cockpitDecisionDock: ReactNode = !HUD_COCKPIT_V1_ENABLED
     ? undefined
+    : continuitySafetyHold !== null && isPlaying && !isGameOver
+      ? (
+          <div
+            className="mx-auto max-w-md space-y-3 rounded-arcade border border-venom-orange/70 bg-void-deep/95 p-4 text-center shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+            role="alert"
+            data-testid="continuity-safety-hold"
+          >
+            <p className="label-arcade text-venom-orange">Run held safely</p>
+            <p className="font-body text-sm text-beige/80">
+              {continuitySafetyHold === 'stale'
+                ? 'This run continued in another window. This copy cannot move or settle.'
+                : 'The latest position is still being secured. Movement will stay held until the connection returns.'}
+            </p>
+            <button
+              type="button"
+              className="btn-go min-h-[44px] px-5"
+              onClick={retryContinuityCheckpoint}
+            >
+              {continuitySafetyHold === 'stale' ? 'Load secured run' : 'Try connection'}
+            </button>
+          </div>
+        )
     : showAbandonConfirm && isPlaying && !isGameOver
       ? (
           <AbandonRunDialog
@@ -2954,6 +4441,22 @@ export default function GamePage() {
   // Run Flow v1 shows Results until the player asks for SETUP.
   const showResultsLayers = RUN_FLOW_V1_ENABLED && isGameOver && !setupReopened;
 
+  const setupFavoriteRows = favoriteSetupSnakesByDynasty(
+    collectionSnakes,
+    equippedSnake?.id ?? null
+  );
+  const setupFavorites: Record<SetupDynasty, EquippedSnakeView | null> = {
+    CYBER: setupFavoriteRows.CYBER
+      ? equippedViewFromOwnedSnake(setupFavoriteRows.CYBER)
+      : null,
+    PRIMAL: setupFavoriteRows.PRIMAL
+      ? equippedViewFromOwnedSnake(setupFavoriteRows.PRIMAL)
+      : null,
+    COSMIC: setupFavoriteRows.COSMIC
+      ? equippedViewFromOwnedSnake(setupFavoriteRows.COSMIC)
+      : null,
+  };
+
   return (
     <div
       className={`consent-safe-viewport w-screen h-dvh flex flex-col overflow-hidden app-bg ${
@@ -3156,24 +4659,15 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Equipped Snake (the game always uses the equipped snake) */}
-        {equippedSnake && !isPlaying && (
-          <div className="inline-flex items-center gap-2 mt-4 px-3 py-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/70 backdrop-blur-sm font-body text-sm">
-            <IconSnake size={15} className="text-beige" />
-            <span className="text-beige">Snake:</span>
-            <span className="font-bold text-bone-white">{equippedSnake.name}</span>
-            <span className="text-beige/70">Gen {equippedSnake.generation}</span>
-          </div>
-        )}
         </div>
         </div>
       )}
 
-      {/* Navigation (when not playing) - z-30 so it stays clickable above
-          the start/game-over overlay (z-20): no dead end on those screens */}
+      {/* The run stack is immersive. One stable exit remains available above
+          Setup and Results; the application-wide rail never enters `/game`. */}
       {!isPlaying && (
         <div
-          className="absolute right-4 z-30 flex items-center gap-2"
+          className="absolute right-4 z-30"
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
         >
           <Link
@@ -3184,25 +4678,32 @@ export default function GamePage() {
           >
             <IconHome size={20} />
           </Link>
-          <Link
-            href="/leaderboard"
-            className="flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
-            title="Leaderboard"
-            aria-label="Leaderboard"
-          >
-            <IconTrophy size={20} />
-          </Link>
-          <Link
-            href="/settings"
-            className="flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
-            title="Profile"
-            aria-label="Profile"
-          >
-            <IconUser size={20} />
-          </Link>
-          <AccountChip />
         </div>
       )}
+
+      <SnakePickerSheet
+        isOpen={snakePickerOpen}
+        snakes={collectionSnakes}
+        equippedSnakeId={equippedSnake?.id ?? null}
+        selectingSnakeId={selectingSnakeId}
+        error={snakePickerError}
+        favoriteDynasty={favoritePickerDynasty}
+        labHref={setupLabHref}
+        onSelect={(snake) => {
+          if (favoritePickerDynasty) {
+            void handleChooseSetupFavorite(snake);
+          } else {
+            void handleChooseSetupSnake(snake);
+          }
+        }}
+        onClose={() => {
+          if (selectingSnakeId === null) {
+            setSnakePickerError(null);
+            setFavoritePickerDynasty(null);
+            setSnakePickerOpen(false);
+          }
+        }}
+      />
 
       {/* Pause Button (in-game) - hidden during the mutation choice hold */}
       {!HUD_COCKPIT_V1_ENABLED && isPlaying && !isGameOver && !isReady && (!isPaused || awaitingResumeInput) && !choiceActive && (
@@ -3338,24 +4839,9 @@ export default function GamePage() {
 
       {/* Game Over / Start Screen */}
       {!isPlaying && (
-        /*
-         * The bottom padding clears the fixed navigation rail (WP-3.11).
-         *
-         * On mobile that rail is a bottom row pinned at
-         * `0.625rem + safe-area-inset-bottom`, and it overlays this scroller.
-         * Run Setup grew during the Redesign Wave, and the e2e repair measured
-         * the consequence at 390x844: the `mode-free` control
-         * ended up underneath the rail, so an honest unforced click landed on
-         * the rail's Leaderboard link and the run never started.
-         *
-         * Padding a scroll container is monotone: it can only give content
-         * more room to clear the rail, never take room from a layout that
-         * already fitted. Desktop keeps `p-4` because there the rail is a
-         * right-hand column, not a bottom row.
-         */
-        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-void-deep/85 backdrop-blur-sm p-4 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:pb-4">
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-void-deep/85 p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur-sm sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
           <div
-            className={`panel-elevated my-auto w-full p-8 text-center space-y-6 min-w-[320px] max-w-2xl animate-pop-in ${
+            className={`panel-elevated my-auto min-w-0 w-full max-w-3xl space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
               isGameOver
                 ? endReason === 'extracted'
                   ? '[--glow:#4ade80]'
@@ -3366,7 +4852,168 @@ export default function GamePage() {
             {/* Constitution §5 / WP-1.06: one consolidated Run Setup page and
                 a three-layer Results screen. The shipped screen below is the
                 rollback path and is reached with NEXT_PUBLIC_RUN_FLOW_V1 off. */}
-            {RUN_FLOW_V1_ENABLED ? (
+            {interruptedRun ? (
+              <section
+                className="space-y-5 text-left"
+                data-testid="interrupted-run-recovery"
+              >
+                <div className="space-y-2">
+                  <p className="label-arcade text-[#7df9ff]">Run secured</p>
+                  <h2 className="heading-display text-3xl text-bone-white">
+                    {interruptedRun.phase === 'settling' || interruptedRun.phase === 'terminal'
+                      ? 'Result secured'
+                      : interruptedRun.phase === 'incompatible'
+                        ? 'Run needs an update'
+                        : 'Continue your run'}
+                  </h2>
+                  <p className="font-body text-beige/75">
+                    {interruptedRun.phase === 'settling' || interruptedRun.phase === 'terminal'
+                      ? 'The server has locked this outcome and is finishing its progression rewards.'
+                      : interruptedRun.phase === 'preparing'
+                        ? 'Launch preparation stopped before Energy was committed. The server kept the request receipt so retrying could never charge twice.'
+                      : interruptedRun.phase === 'incompatible'
+                        ? 'This run belongs to an older gameplay version and cannot be resumed safely. Its committed Energy remains attached until you explicitly release it.'
+                        : 'This unfinished run still owns its committed Energy. A new run cannot replace it, and nothing has been silently forfeited.'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 rounded-arcade border border-scale-blue-light/40 bg-void/55 p-4">
+                  <div>
+                    <p className="label-arcade">Committed</p>
+                    <p className="font-mono text-xl text-venom-orange">
+                      {interruptedRun.energyCommitted} Energy
+                    </p>
+                  </div>
+                  <div>
+                    <p className="label-arcade">State</p>
+                    <p className="font-display uppercase text-bone-white">
+                      {interruptedRun.phase === 'settling' || interruptedRun.phase === 'terminal'
+                        ? settlingRecoveryState === 'retry'
+                          ? 'Safe · retry ready'
+                          : 'Opening results'
+                        : interruptedRun.phase === 'incompatible'
+                          ? 'Update required'
+                          : interruptedRun.phase === 'legacy'
+                          ? 'Legacy run open'
+                          : interruptedRun.canContinue
+                            ? 'Ready to continue'
+                            : 'Securing checkpoint'}
+                    </p>
+                  </div>
+                </div>
+                {!interruptedRun.canContinue &&
+                  interruptedRun.phase !== 'settling' &&
+                  interruptedRun.phase !== 'terminal' &&
+                  interruptedRun.phase !== 'incompatible' && (
+                  <p className="font-body text-sm text-beige/60">
+                    The latest server-verified continuation is not available yet.
+                    Retry when the connection is stable, or explicitly abandon the run.
+                  </p>
+                )}
+                {(interruptedRun.phase === 'settling' || interruptedRun.phase === 'terminal') && (
+                  <p className="font-body text-sm text-beige/70">
+                    Your result is locked on the server. It cannot be abandoned
+                    or replayed while progression finishes. Results will open
+                    automatically when its canonical receipt is ready.
+                  </p>
+                )}
+                {showInterruptedAbandonConfirm &&
+                interruptedRun.phase !== 'settling' &&
+                interruptedRun.phase !== 'terminal' ? (
+                  <div
+                    role="alertdialog"
+                    aria-modal="true"
+                    aria-labelledby="interrupted-abandon-title"
+                    className="space-y-3 rounded-arcade border border-strike-red/70 bg-strike-red/10 p-4"
+                  >
+                    <p id="interrupted-abandon-title" className="font-display text-bone-white">
+                      Abandon this run?
+                    </p>
+                    <p className="font-body text-sm text-beige/70">
+                      {interruptedRun.phase === 'preparing'
+                        ? 'No Energy was consumed. This releases only the interrupted launch receipt so you can launch anew.'
+                        : 'This is the only action that forfeits the unfinished run. Committed Energy is not refunded.'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-danger min-h-[44px] px-5" onClick={handleQuit}>
+                        Abandon run
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-neutral min-h-[44px] px-5"
+                        onClick={() => setShowInterruptedAbandonConfirm(false)}
+                      >
+                        Keep run
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      className="btn-go min-h-[44px] px-6"
+                      disabled={
+                        isStarting ||
+                        (interruptedRun.phase === 'settling' &&
+                          settlingRecoveryState !== 'retry')
+                      }
+                      onClick={() => {
+                        setIsStarting(true);
+                        setStartError(null);
+                        const continueAction = interruptedRun.phase === 'settling'
+                          ? recoverSettlingResult()
+                          : interruptedRun.phase === 'terminal'
+                            ? recoverServerRun()
+                          : interruptedRun.phase === 'preparing' && interruptedRun.startIntent
+                            ? repairInterruptedStart()
+                          : interruptedRun.canContinue
+                            ? continueInterruptedRun()
+                            : recoverServerRun();
+                        void continueAction
+                          .then((resolved) => {
+                            if (
+                              (interruptedRun.phase === 'settling' ||
+                                interruptedRun.phase === 'terminal') &&
+                              resolved === false
+                            ) {
+                              setStartError(
+                                'The result is still secured. Retry in a moment.'
+                              );
+                            }
+                          })
+                          .catch((error) => {
+                            console.error('Failed to retry run recovery:', error);
+                            setStartError('The run is still secured. Retry when the connection returns.');
+                          })
+                          .finally(() => setIsStarting(false));
+                      }}
+                    >
+                      {isStarting
+                        ? 'Checking…'
+                        : interruptedRun.phase === 'settling'
+                          ? settlingRecoveryState === 'retry'
+                            ? 'Retry result'
+                            : 'Opening results…'
+                          : interruptedRun.phase === 'terminal'
+                            ? 'Retry result'
+                          : interruptedRun.canContinue
+                          ? 'Continue run'
+                          : 'Check again'}
+                    </button>
+                    {interruptedRun.phase !== 'settling' &&
+                    interruptedRun.phase !== 'terminal' && (
+                      <button
+                        type="button"
+                        className="min-h-[44px] px-4 font-body text-sm text-strike-red"
+                        onClick={() => setShowInterruptedAbandonConfirm(true)}
+                      >
+                        Abandon…
+                      </button>
+                    )}
+                  </div>
+                )}
+                {startError && <p className="font-body text-sm text-strike-red">{startError}</p>}
+              </section>
+            ) : RUN_FLOW_V1_ENABLED ? (
               showResultsLayers ? (
                 <RunResults
                   outcome={endReason === 'extracted' ? 'extracted' : 'crashed'}
@@ -3390,7 +5037,7 @@ export default function GamePage() {
                   onReplay={handleReplay}
                   onSetup={handleOpenSetup}
                   replayPending={isStarting}
-                  replayDisabled={isStarting || !equippedSnake || settlementSecuredPending}
+                  replayDisabled={isStarting || !equippedSnake}
                   replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
@@ -3398,9 +5045,11 @@ export default function GamePage() {
                 />
               ) : (
                 <RunSetupPanel
+                  labHref={setupLabHref}
                   snake={
                     equippedSnake
                       ? {
+                          id: equippedSnake.id,
                           name: equippedSnake.name,
                           generation: equippedSnake.generation,
                           dynasty: normalizeDynastyName(equippedSnake.dynasty),
@@ -3436,6 +5085,23 @@ export default function GamePage() {
                   }
                   startTestId={startTestId}
                   isStarting={isStarting}
+                  onChooseSnake={() => {
+                    setSnakePickerError(null);
+                    setFavoritePickerDynasty(null);
+                    setSnakePickerOpen(true);
+                  }}
+                  favorites={setupFavorites}
+                  favoriteBusyId={selectingSnakeId}
+                  onFavoriteDock={(dynasty, favorite) => {
+                    if (favorite?.id) {
+                      const owned = collectionSnakes.find((row) => row.id === favorite.id);
+                      if (owned) void handleChooseSetupSnake(owned);
+                      return;
+                    }
+                    setSnakePickerError(null);
+                    setFavoritePickerDynasty(dynasty);
+                    setSnakePickerOpen(true);
+                  }}
                   onStart={() => {
                     void handleStart(gameMode);
                   }}
@@ -3859,6 +5525,22 @@ export default function GamePage() {
         onClose={() => setShowSaveProgress(false)}
       />
 
+      {!HUD_COCKPIT_V1_ENABLED && continuitySafetyHold !== null && isPlaying && !isGameOver && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-void-deep/70 p-4 backdrop-blur-sm">
+          <div className="max-w-sm space-y-3 rounded-arcade border border-venom-orange/70 bg-void-deep p-5 text-center">
+            <p className="font-display text-venom-orange">Run held safely</p>
+            <p className="font-body text-sm text-beige/80">
+              {continuitySafetyHold === 'stale'
+                ? 'This run continued in another window.'
+                : 'Securing the latest position before play continues.'}
+            </p>
+            <button type="button" className="btn-go min-h-[44px] px-5" onClick={retryContinuityCheckpoint}>
+              {continuitySafetyHold === 'stale' ? 'Load secured run' : 'Try connection'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Handle claim ceremony (Identity v1 section 3.3): offered after
           the first banked run while the name is still generated */}
       <HandleClaimModal
@@ -3919,7 +5601,16 @@ export default function GamePage() {
               className="mx-4 rounded-arcade border border-scale-blue-light/40 bg-void-deep/75 px-6 py-5 text-center shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md space-y-3 animate-fade-up"
               data-testid="resume-gate"
             >
-              {minimalFirstRunPrompt ? (
+              {runContinuityPhase === 'activating' ? (
+                <>
+                  <h2 className="heading-display text-3xl text-[#7df9ff] sm:text-5xl">
+                    Securing run…
+                  </h2>
+                  <p className="text-beige/70 text-sm font-body">
+                    Your direction is held until the Energy commitment is verified.
+                  </p>
+                </>
+              ) : minimalFirstRunPrompt ? (
                 <p
                   className="text-bone-white text-lg font-body"
                   data-testid="first-movement-prompt"
@@ -4135,12 +5826,15 @@ function GameBoard({
   cameraShake,
 }: GameBoardProps) {
   const theme = themeManager.getTheme(dynasty);
+  const materialProfile = getGameMaterialProfile(dynasty);
   // COSMIC foods carry their constellation glyph color; other dynasties
   // keep the dynasty accent
   const foodColor =
     constellationGlyph !== null
       ? GLYPH_COLORS[constellationGlyph % GLYPH_COLORS.length]
-      : theme.accent;
+      : HUD_COCKPIT_V1_ENABLED
+        ? materialProfile.lighting.objectiveColor
+        : theme.accent;
 
   // Target-bearing cells for the aim systems, rebuilt per tick (Gridlock
   // alignment + Firefly pursuit). Food outranks portal outranks mutation
@@ -4198,8 +5892,12 @@ function GameBoard({
         aimSystem={aimSystem}
         targets={aimTargets}
         bufferRef={bufferRef}
-        color={theme.accent}
-        laneColor={theme.primary}
+        color={HUD_COCKPIT_V1_ENABLED
+          ? materialProfile.lighting.objectiveColor
+          : theme.accent}
+        laneColor={HUD_COCKPIT_V1_ENABLED
+          ? materialProfile.arena.rimColor
+          : theme.primary}
       />
 
       <GenomeBoardEffects gildedCells={gildedCells} />

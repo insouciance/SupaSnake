@@ -1,11 +1,4 @@
-/**
- * Navigation Rail Tests
- * Verifies rail nodes, feature-flagged social links (Leaderboard, Clan),
- * the flag-gated Serpent node (off by default), the contextual Home node and
- * the You node (AccountChip).
- */
-
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { Navigation } from './Navigation';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { SERPENT_V1_ENABLED } from '@/lib/serpent/config';
@@ -19,10 +12,10 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
 }));
 
-// The You node hosts the AccountChip (identity indicator)
 jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({
     user: { id: 'user-1', is_anonymous: true },
+    session: null,
     isAuthenticated: true,
     isAnonymous: true,
     isLoading: false,
@@ -36,81 +29,79 @@ describe('Navigation', () => {
     useNotificationStore.setState({ notifications: {}, hasHydrated: true });
   });
 
-  it('renders the core rail nodes with game aria labels', () => {
-    render(<Navigation />);
+  it('keeps the same four primary destinations on every route', () => {
+    const { rerender } = render(<Navigation />);
+    const expected = [
+      ['Play', '/'],
+      ['Lab', '/lab'],
+      ['Compete', '/leaderboard'],
+      ['You', '/profile'],
+    ] as const;
 
-    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute('href', '/lab');
-    expect(screen.getByRole('link', { name: 'Shop' })).toHaveAttribute('href', '/shop');
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
-      'href',
-      '/settings'
-    );
-  });
+    for (const [name, href] of expected) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
+    }
 
-  it('omits the Home node on the home screen (the wordmark is home)', () => {
-    render(<Navigation />);
-
-    expect(screen.queryByRole('link', { name: 'Home' })).not.toBeInTheDocument();
-  });
-
-  it('shows a Home node on non-home screens', () => {
     mockPathname = '/lab';
-    render(<Navigation />);
-
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
+    rerender(<Navigation />);
+    for (const [name, href] of expected) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
+    }
   });
 
-  it('renders Leaderboard link when leaderboards flag is enabled', () => {
-    expect(GAME_CONFIG.features.leaderboards).toBe(true);
-
+  it('marks grouped competition routes as Compete without moving the destination', () => {
+    mockPathname = '/clan/battle';
     render(<Navigation />);
 
-    expect(screen.getByRole('link', { name: 'Leaderboard' })).toHaveAttribute(
-      'href',
-      '/leaderboard'
-    );
-  });
-
-  it('renders Clan link when clans flag is enabled', () => {
-    expect(GAME_CONFIG.features.clans).toBe(true);
-
-    render(<Navigation />);
-
-    expect(screen.getByRole('link', { name: 'Clan' })).toHaveAttribute('href', '/clan');
-  });
-
-  it('omits the Serpent node while NEXT_PUBLIC_SERPENT_V1 is off (the default)', () => {
-    // The rollback path is tested, never inferred from an omitted flag. With
-    // the flag down the rail must not signpost the hunt — while /serpent
-    // itself still resolves, because Rule 14 makes a Serpent week a linkable
-    // artifact and a link that dies on a flag flip is not one.
-    expect(SERPENT_V1_ENABLED).toBe(false);
-
-    render(<Navigation />);
-
-    expect(screen.queryByRole('link', { name: 'Serpent' })).not.toBeInTheDocument();
-  });
-
-  it('marks the active node with aria-current', () => {
-    mockPathname = '/lab';
-    render(<Navigation />);
-
-    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Compete' })).toHaveAttribute(
       'aria-current',
       'page'
     );
-    expect(screen.getByRole('link', { name: 'Shop' })).not.toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Play' })).not.toHaveAttribute(
       'aria-current'
     );
   });
 
-  it('mounts the account identity chip (You node)', () => {
+  it('uses five fixed, unscaled mobile cells with at least 44px targets', () => {
     render(<Navigation />);
 
+    const destinations = screen.getByTestId('primary-navigation-destinations');
+    expect(destinations).toHaveClass('grid-cols-5');
+    expect(destinations.className).not.toMatch(/scale-(?:75|\[)/);
+
+    for (const name of ['Play', 'Lab', 'Compete', 'You', 'More']) {
+      const target =
+        name === 'More'
+          ? screen.getByLabelText('More')
+          : screen.getByRole('link', { name });
+      expect(target).toHaveClass('min-w-[44px]');
+      expect(target).not.toHaveClass('border');
+    }
+  });
+
+  it('keeps secondary utilities and social shortcuts inside More', () => {
+    expect(GAME_CONFIG.features.clans).toBe(true);
+    render(<Navigation />);
+
+    fireEvent.click(screen.getByLabelText('More'));
+    expect(screen.getByTestId('navigation-more-menu')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Clan/i })).toHaveAttribute('href', '/clan');
+    expect(screen.getByRole('link', { name: /Shop/i })).toHaveAttribute('href', '/shop');
+    expect(screen.getByRole('link', { name: /Settings/i })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
     expect(screen.getByTestId('account-chip')).toBeInTheDocument();
   });
 
-  it('renders Lab activity from the shared notification state', () => {
+  it('does not signpost Serpent from More while its flag is off', () => {
+    expect(SERPENT_V1_ENABLED).toBe(false);
+    render(<Navigation />);
+    fireEvent.click(screen.getByLabelText('More'));
+    expect(screen.queryByRole('link', { name: /Serpent/i })).not.toBeInTheDocument();
+  });
+
+  it('renders Lab attention from the shared notification state', () => {
     useNotificationStore.getState().publish({
       id: 'lab-discovery',
       title: 'Lab ready',
@@ -121,11 +112,10 @@ describe('Navigation', () => {
     });
 
     render(<Navigation />);
-
-    expect(screen.getByRole('status', { name: 'New Lab activity' })).toHaveTextContent('');
+    expect(screen.getByRole('status', { name: 'New Lab activity' })).toBeInTheDocument();
   });
 
-  it('makes a quiet recognition dot open its newest exact artifact', () => {
+  it('makes a quiet Mastery recognition dot open its exact artifact in You', () => {
     useNotificationStore.getState().replaceServerItems([{
       id: 'mastery-moment',
       kind: 'recognition',
@@ -139,10 +129,10 @@ describe('Navigation', () => {
     }]);
 
     render(<Navigation />);
-
-    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'You' })).toHaveAttribute(
       'href',
-      '/lab?dynasty=PRIMAL#mastery-PRIMAL'
+      '/profile#mastery-PRIMAL'
     );
+    expect(screen.getByRole('link', { name: 'Lab' })).toHaveAttribute('href', '/lab');
   });
 });

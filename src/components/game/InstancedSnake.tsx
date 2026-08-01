@@ -86,7 +86,8 @@ import {
   updateTrailCells,
   type TrailCellState,
 } from '@/lib/game/trailCells';
-import { getDynastyScreenTokens } from './screen/gameScreenTokens';
+import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
+import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
 import { FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
@@ -167,11 +168,20 @@ const TRAIL_INSTANCE_CAPACITY = GRID_SIZE * GRID_SIZE;
  */
 const instancedBodyMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
 
-function getInstancedBodyMaterial(dynasty: DynastyId): THREE.MeshStandardMaterial {
+export function getInstancedBodyMaterial(
+  dynasty: DynastyId
+): THREE.MeshStandardMaterial {
   let material = instancedBodyMaterialCache.get(dynasty);
   if (!material) {
+    const surface = getGameMaterialProfile(dynasty).snake;
     material = getSnakeSegmentMaterial(dynasty, false).clone();
-    material.color.multiplyScalar(0.75);
+    material.color.multiplyScalar(surface.bodyAlbedoScalar);
+    // Ordinary body cells are categorical solids. Explicitly pinning these
+    // flags protects that read if the shared material ever gains a semantic
+    // transparent variant for portals, revive ghosts, or forming terrain.
+    material.transparent = false;
+    material.opacity = 1;
+    material.depthWrite = true;
     material.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <emissivemap_fragment>',
@@ -188,6 +198,8 @@ function getInstancedBodyMaterial(dynasty: DynastyId): THREE.MeshStandardMateria
 
 /** Shared unit box for the pre-GLB fallback (same idea as SnakeModel's). */
 const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+const fallbackHeadGeometry = getSnakeRoundedGeometry('head');
+const fallbackBodyGeometry = getSnakeRoundedGeometry('body');
 
 /** Eye pieces - the SpecimenChamber pattern, shared across mounts. */
 const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -210,7 +222,7 @@ function getCoilSealMaterial(dynasty: DynastyId): THREE.MeshBasicMaterial {
   let material = coilSealMaterialCache.get(dynasty);
   if (!material) {
     material = new THREE.MeshBasicMaterial({
-      color: getDynastyScreenTokens(dynasty).secondary,
+      color: getGameMaterialProfile(dynasty).snake.coilSealColor,
       transparent: true,
       opacity: 0.88,
       blending: THREE.AdditiveBlending,
@@ -731,8 +743,8 @@ export function InstancedSnake(props: InstancedSnakeProps) {
   return (
     <InstancedSnakeCore
       {...props}
-      headGeometry={head ?? unitBoxGeometry}
-      bodyGeometry={body ?? unitBoxGeometry}
+      headGeometry={head ?? fallbackHeadGeometry}
+      bodyGeometry={body ?? fallbackBodyGeometry}
     />
   );
 }
@@ -743,8 +755,8 @@ export function InstancedSnakeFallback(props: InstancedSnakeProps) {
   return (
     <InstancedSnakeCore
       {...props}
-      headGeometry={unitBoxGeometry}
-      bodyGeometry={unitBoxGeometry}
+      headGeometry={fallbackHeadGeometry}
+      bodyGeometry={fallbackBodyGeometry}
     />
   );
 }

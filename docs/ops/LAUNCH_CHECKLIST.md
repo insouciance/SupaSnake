@@ -21,10 +21,13 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
 - [ ] CI and production builds use `NEXT_PUBLIC_FTUE_V2=true`,
       `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, `NEXT_PUBLIC_LADDER_V1=true`, and
-      `NEXT_PUBLIC_CAREER_SPINE_V1=true`, unless deliberately testing a
-      presentation rollback. Career settlement and earned progress must never
-      depend on that flag. `NEXT_PUBLIC_GROWTH_LAB_V1` is retired and must not
-      be required by current behavior.
+      `NEXT_PUBLIC_CAREER_SPINE_V1=true`. The production workflow and its E2E
+      matrix additionally compile `NEXT_PUBLIC_RUN_FLOW_V1=true` and prove it
+      through `/api/health`; the ordinary Build workflow may retain its
+      deliberate flag-off rollback compile. Career settlement and earned
+      progress must never depend on either presentation flag.
+      `NEXT_PUBLIC_GROWTH_LAB_V1` is retired and must not be required by
+      current behavior.
 - [ ] Production environment presence check passes; Vercel cloud-build value
       validation passes for the selected Stripe mode
 

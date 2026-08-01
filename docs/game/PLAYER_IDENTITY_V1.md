@@ -4,13 +4,17 @@
 **Version:** 1.1
 **Date:** 2026-07-30
 **Status:** APPROVED — Identity v1 remains the substrate; the owner-approved
-Career Spine (`CAREER_SPINE.md`, Constitution v1.6) supersedes the public Legacy
+Career Spine (`CAREER_SPINE.md`, Constitution v1.7) supersedes the public Legacy
 Score headline, Chronicle order, clan-contribution visibility, recognition,
 attention, and client-persistence rules below where they conflict.
 **Companion docs:** `GAME_DESIGN_V2.md` (the game these identities are earned in), `systems/CLAN_DUELS_spec.md`, migrations 019–021 (mastery, gauntlet, seasons — the systems this doc makes *visible*)
 **Current-rules notice (2026-07-29):** Product Constitution v1.5 §10 and
 `ENERGY_COMMITMENT_AND_CLAN_BATTLES.md` supersede this document's historical
 Energy-commerce statement. Energy and recovery are never sold.
+**Competitive notice (2026-07-31):** Constitution v1.7 supersedes privacy-by-
+suppression and equal-honor-only clan language below. SupaSnake welcomes
+competition; earned progression and strong play are visible prestige, while
+payment remains unable to buy competitive power or proof.
 **Career notice (2026-07-30):** all progress, receipts, attention, pursuits,
 lineage history, and seen state are server-authoritative. None persists in any
 browser storage. Rewards auto-secure; Daily Take is the only collect.
@@ -466,8 +470,10 @@ private).
 7. **Season chapters** — one chapter per season: track level reached,
    archetype earned, anomaly best finishes, gauntlet weeks, championship
    banner if Crowned. Season Recall card (§9.2) embeds here.
-8. **Clan history** — current Energy Battle honors, aggregate battle history,
-   and rivalry memory; no teammate attempt or contribution detail.
+8. **Clan history** — current Energy Battle honors, verified best-five
+   contributions and ranks, aggregate battle history, Glory evidence, and
+   rivalry memory. It distinguishes no eligible result from failure and never
+   exposes a client-editable competitive fact.
 9. **Early Career** — the collapsed legacy-achievements panel (§6.6).
 
 ### 7.2 Empty states (anti-dead-surface)

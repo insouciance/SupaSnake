@@ -5,7 +5,7 @@
  * than inspected: every interaction goes through `taps()`, which increments a
  * counter, and the assertions are on the counter.
  *
- *   §5 / cap §12.2:  open → LAUNCH → START → board   ≤ 3 taps
+ *   §5 / cap §12.2:  open → PLAY → START → board     ≤ 3 taps
  *                    Results → REPLAY → next run     ≤ 2 taps
  *
  * The suite splits on NEXT_PUBLIC_RUN_FLOW_V1: the flag-on describe asserts
@@ -15,7 +15,14 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { releaseHeldBoard, seedConsent, signInAsGuest } from './helpers';
+import {
+  openRunSetupControls,
+  releaseHeldBoard,
+  seedConsent,
+  signInAsGuest,
+} from './helpers';
+import { SnakeGameLogic } from '../src/lib/game/SnakeGameLogic';
+import { RULESETS } from '../src/shared/game/rulesets';
 
 const RUN_FLOW_ENABLED = process.env.NEXT_PUBLIC_RUN_FLOW_V1 === 'true';
 
@@ -28,7 +35,7 @@ class Taps {
     // The WebGL canvas repaints under the overlay; the shipped specs click
     // start controls forced for exactly this reason. `force` skips the
     // actionability wait, and a DISABLED button fires no onClick at all, so
-    // the enabled check has to be made explicitly: LAUNCH is disabled while
+    // the enabled check has to be made explicitly: PLAY is disabled while
     // Home's first load settles, and a forced tap in that window is swallowed
     // in silence.
     const control = page.getByTestId(testId);
@@ -67,6 +74,11 @@ const ENERGY = {
 interface SettlementOptions {
   /** Include WP-1.04's `dailyTake` block (the day's first run). */
   withTake?: boolean;
+  /** Mutable server truth used to prove stale Setup drafts are re-clamped. */
+  authority?: {
+    available: number;
+    attemptable: number;
+  };
 }
 
 /**
@@ -77,6 +89,7 @@ async function installRunFlowFixtures(
   page: Page,
   options: SettlementOptions = {}
 ): Promise<void> {
+  const authority = options.authority ?? { available: ENERGY.available, attemptable: 3 };
   await page.route('**/api/player', async (route) => {
     if (route.request().method() !== 'GET') return route.continue();
     await route.fulfill({
@@ -88,8 +101,17 @@ async function installRunFlowFixtures(
           total_games_played: 20,
           high_score: 10_000,
         },
-        energy: ENERGY,
-        charge: ENERGY,
+        energy: {
+          ...ENERGY,
+          available: authority.available,
+          remaining: authority.available,
+        },
+        charge: {
+          ...ENERGY,
+          available: authority.available,
+          remaining: authority.available,
+        },
+        ladder: { available: true, attemptable: authority.attemptable },
         needsStarterSelection: false,
         hasCompletedFirstRun: true,
         aimSystem: 'deadeye',
@@ -103,14 +125,22 @@ async function installRunFlowFixtures(
       status: 200,
       contentType: 'application/json',
       json: {
+        dnaBalance: 2_500,
         snakes: [
           {
             id: 'run-flow-snake',
+            playerId: 'run-flow-player',
             isEquipped: true,
+            isFavorited: false,
             generation: 3,
             variantName: 'Ouroboros',
             variantId: 'primal',
+            snakeVariantId: 'run-flow-primal-variant',
             dynastyName: 'PRIMAL',
+            parent1Id: null,
+            parent2Id: null,
+            acquiredAt: '2026-07-01T12:00:00.000Z',
+            acquiredMethod: 'tutorial',
             traits: [],
             lineage: null,
           },
@@ -119,36 +149,188 @@ async function installRunFlowFixtures(
     });
   });
 
+  await page.route('**/api/dynasties', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: {
+        dynasties: [
+          {
+            id: 'run-flow-primal-dynasty',
+            name: 'PRIMAL',
+            displayName: 'Primal Dynasty',
+            description: 'Pressure through living length.',
+            colorPrimary: '#facc15',
+            colorSecondary: '#a855f7',
+            statBonusType: 'size',
+            statBonusValue: 0,
+            sortOrder: 1,
+            isActive: true,
+            createdAt: '2026-07-01T12:00:00.000Z',
+            updatedAt: '2026-07-01T12:00:00.000Z',
+          },
+        ],
+      },
+    });
+  });
+
+  await page.route('**/api/variants', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: {
+        variants: [
+          {
+            id: 'run-flow-primal-variant',
+            dynastyId: 'run-flow-primal-dynasty',
+            name: 'Ouroboros',
+            rarity: 'common',
+            loreText: 'A patient wall-coiler.',
+            artUrl: null,
+            baseStats: { speed: 10, size: 5, hp: 100 },
+            unlockCostDna: 0,
+            isStarter: true,
+            sortOrder: 1,
+            isActive: true,
+            createdAt: '2026-07-01T12:00:00.000Z',
+            updatedAt: '2026-07-01T12:00:00.000Z',
+          },
+        ],
+      },
+    });
+  });
+
+  await page.route('**/api/mastery', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: {
+        mastery: [],
+      },
+    });
+  });
+
+  await page.route('**/api/progression/lineage', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      json: { live: true, dossiers: [] },
+    });
+  });
+
+  let sessionSequence = 0;
+  let currentManifest: Record<string, unknown> | null = null;
+  let currentCommitment = 1;
+  let checkpointRevision = 0;
   await page.route('**/api/game/session', async (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: { activeRun: null },
+      });
+    }
     const body = route.request().postDataJSON() as {
       action?: string;
+      mode?: string;
       energyCommitment?: number;
+      ladderRung?: number;
+      sessionId?: string;
+      expectedRevision?: number;
+      checkpoint?: unknown;
     } | null;
     if (body?.action === 'start') {
       const committed = Math.max(0, Math.min(6, body.energyCommitment ?? 1));
       const multiplierBps = [2_500, 10_000, 22_000, 36_000, 52_000, 72_000, 100_000][committed];
+      sessionSequence += 1;
+      currentCommitment = committed;
+      checkpointRevision = 0;
+      const sessionId = `run-flow-session-${sessionSequence}`;
+      const energy = {
+        state: committed > 0 ? 'charged' : body.mode === 'free' ? 'exempt' : 'lean',
+        ...ENERGY,
+        available: Math.max(0, authority.available - committed),
+        remaining: Math.max(0, authority.available - committed),
+        committed,
+        commitmentMultiplierBps: multiplierBps,
+        energyAvailableBefore: authority.available,
+        energyRecoveredAtStart: 0,
+      };
+      currentManifest = {
+        sessionId,
+        simulation: { seed: `run-flow-seed-${sessionSequence}`, version: 1 },
+        runSnake: {
+          id: 'run-flow-snake',
+          name: 'Ouroboros',
+          generation: 3,
+          dynasty: 'PRIMAL',
+          traits: [],
+          lineage: null,
+        },
+        energy,
+        freePlay: body.mode === 'free',
+        traits: [],
+        mutationPool: [],
+        growthProfile: 'dynasty',
+        ladder: { rung: body.ladderRung ?? 0 },
+        mastery: { dynasty: 'PRIMAL', xp: 0, level: 2 },
+      };
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: currentManifest,
+      });
+    }
+
+    if (body?.action === 'activate' && currentManifest && body.checkpoint) {
+      checkpointRevision = 1;
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         json: {
-          sessionId: `run-flow-session-${Date.now()}`,
-          energy: {
-            state: committed > 0 ? 'charged' : 'lean',
-            ...ENERGY,
-            available: ENERGY.available - committed,
-            remaining: ENERGY.remaining - committed,
-            committed,
-            commitmentMultiplierBps: multiplierBps,
-            energyAvailableBefore: ENERGY.available,
-            energyRecoveredAtStart: 0,
+          activeRun: {
+            sessionId: currentManifest.sessionId,
+            phase: 'active',
+            startedAt: '2026-07-29T08:30:00.000Z',
+            activatedAt: '2026-07-29T08:30:01.000Z',
+            energyCommitted: currentCommitment,
+            canContinue: true,
+            requiresAbandon: false,
+            manifest: currentManifest,
+            checkpoint: body.checkpoint,
+            checkpointRevision,
+            checkpointSavedAt: '2026-07-29T08:30:01.000Z',
+            leaseToken: 'run-flow-exclusive-lease-token',
+            leaseEpoch: 1,
+            startIntent: null,
           },
-          traits: [],
-          mutationPool: [],
-          mastery: { dynasty: 'PRIMAL', xp: 0, level: 2 },
         },
       });
     }
-    if (body?.action === 'end') {
+
+    if (body?.action === 'checkpoint') {
+      checkpointRevision = Math.max(
+        checkpointRevision + 1,
+        Number(body.expectedRevision ?? 0) + 1
+      );
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          checkpoint: {
+            revision: checkpointRevision,
+            savedAt: '2026-07-29T08:30:03.000Z',
+          },
+        },
+      });
+    }
+
+    if (body?.action === 'terminal' || body?.action === 'end') {
+      const sessionId = body.sessionId ?? 'run-flow-session-settled';
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -165,6 +347,58 @@ async function installRunFlowFixtures(
             extracted: false,
             yieldDna: 120,
             chargeState: 'charged',
+          },
+          impact: {
+            version: 1,
+            sessionId,
+            settledAt: '2026-07-29T08:45:00.000Z',
+            outcome: 'crashed',
+            dynasty: 'PRIMAL',
+            receipt: {
+              validated: true,
+              score: 40,
+              yieldDna: 120,
+              dnaCredited: 96,
+              energyCommitted: currentCommitment,
+              commitmentMultiplierBps:
+                [2_500, 10_000, 22_000, 36_000, 52_000, 72_000, 100_000][currentCommitment],
+              generation: 3,
+              personalBest: {
+                eligible: true,
+                before: 10_000,
+                after: 10_000,
+                improved: false,
+              },
+            },
+            impacts: [
+              {
+                key: 'mastery-xp',
+                pillar: 'mastery',
+                kind: 'mastery_xp',
+                significance: 'routine',
+                headline: '+40 PRIMAL Mastery XP',
+                before: 220,
+                after: 260,
+                destination: 'mastery',
+              },
+              {
+                key: 'record-tier',
+                pillar: 'mastery',
+                kind: 'record_tier',
+                significance: 'milestone',
+                headline: 'Coil discipline reached Tier 2',
+                before: 1,
+                after: 2,
+                metadata: { target: 5 },
+                destination: 'records',
+                artifactRef: 'coil_discipline',
+              },
+            ],
+            featuredImpactKeys: ['record-tier'],
+            recommendedAction: {
+              headline: 'Review Coil discipline Tier 2',
+              destination: 'records',
+            },
           },
           ...(options.withTake
             ? {
@@ -203,7 +437,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await seedConsent(page);
   });
 
-  test('open → LAUNCH → START → board in at most 3 taps (§5, cap §12.2)', async ({
+  test('open → PLAY → START → board in at most 3 taps (§5, cap §12.2)', async ({
     page,
   }) => {
     await installRunFlowFixtures(page);
@@ -214,16 +448,19 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     // Tap 0 is not a tap: arriving on the site.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    // Tap 1 — LAUNCH. It opens Run Setup; it does not start a run.
+    // Tap 1 — PLAY. It opens Run Setup; it does not start a run.
     await taps.click(page, 'launch-cta');
     await page.waitForURL(/\/game/, { timeout: 60_000 });
 
     // Run Setup: fully preset, START the only emphasised action.
     const setup = page.getByTestId('run-setup');
     await expect(setup).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/Preparing board/i)).toHaveCount(0);
     await expect(page.getByTestId('run-setup-summary')).toBeVisible();
-    // The one sanctioned extra tap adds no required configuration: every
-    // control is behind a single closed disclosure.
+    // Mode is an ordinary cockpit choice; advanced tuning stays behind one
+    // closed disclosure and neither requires a tap before launch.
+    await expect(page.getByTestId('run-setup-mode-control')).toBeVisible();
+    await expect(page.getByTestId('mode-earn')).toBeVisible();
     await expect(page.getByTestId('run-setup-adjust')).toHaveJSProperty(
       'open',
       false
@@ -256,12 +493,11 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
 
     const maximum = page.getByTestId('energy-commit-6');
     await maximum.click();
-    await expect(maximum).toContainText('Confirm 6');
-    await expect(maximum).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('energy-max-confirmation')).toBeVisible();
     await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
 
-    await maximum.click();
-    await expect(maximum).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('energy-max-confirm').click();
+    await expect(page.getByTestId('energy-max-confirmation')).toHaveCount(0);
     await expect(page.getByTestId('energy-summary')).toContainText('Commit 6 Energy');
     await expect(page.getByTestId('energy-summary')).toContainText('×10.0');
 
@@ -273,6 +509,294 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     const payload = (await startRequest).postDataJSON() as Record<string, unknown>;
     expect(payload.energyCommitment).toBe(6);
     expect(payload.confirmMaxEnergy).toBe(true);
+  });
+
+  test('the Energy reactor is in the initial mobile cockpit at supported short viewports', async ({
+    page,
+  }) => {
+    await installRunFlowFixtures(page);
+    await signInAsGuest(page);
+
+    for (const viewport of [
+      { width: 320, height: 568 },
+      { width: 375, height: 667 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/game', { waitUntil: 'domcontentloaded' });
+      const setup = page.getByTestId('run-setup');
+      await expect(setup).toBeVisible({ timeout: 60_000 });
+      // The containing panel has a 350ms decorative pop-in. Measure the
+      // settled cockpit, not a cubic-bezier overshoot between paint frames.
+      await page.waitForTimeout(400);
+
+      const horizontalOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth
+      );
+      expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+      const reactor = page.getByTestId('energy-commitment');
+      const reactorBox = await reactor.boundingBox();
+      const lineageBox = await page
+        .getByRole('region', { name: 'Selected snake launch chamber' })
+        .boundingBox();
+      const modeBox = await page.getByTestId('run-setup-mode-control').boundingBox();
+      const startBox = await page.getByTestId('earn-start').boundingBox();
+      expect(lineageBox).not.toBeNull();
+      expect(modeBox).not.toBeNull();
+      expect(reactorBox).not.toBeNull();
+      expect(startBox).not.toBeNull();
+      expect(lineageBox!.y + lineageBox!.height).toBeLessThanOrEqual(modeBox!.y + 1);
+      expect(modeBox!.y + modeBox!.height).toBeLessThanOrEqual(reactorBox!.y + 1);
+      expect(startBox!.y).toBeGreaterThanOrEqual(reactorBox!.y + reactorBox!.height - 1);
+      expect(reactorBox!.y).toBeGreaterThanOrEqual(0);
+      expect(reactorBox!.y + reactorBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+      await expect(page.getByRole('heading', { name: /ready to launch/i })).toBeVisible();
+      await expect(page.getByTestId('energy-summary')).toBeVisible();
+      await expect(page.getByTestId('earn-start')).toBeVisible();
+
+      for (const control of [
+        page.getByTestId('energy-commit-6'),
+        page.getByRole('link', { name: 'Snake Lab' }),
+        page.getByTestId('earn-start'),
+      ]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeVisible();
+        await expect(control).toHaveCSS('white-space', 'nowrap');
+        const box = await control.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+      }
+    }
+
+    await page.getByTestId('run-setup-favorite-primal').click();
+    await expect(
+      page.getByRole('heading', { name: 'Choose PRIMAL favorite' })
+    ).toBeVisible();
+    await expect(page.getByTestId('snake-picker-option-run-flow-snake')).toBeVisible();
+  });
+
+  test('Setup survives a Lab detour while current server limits remain authoritative', async ({
+    page,
+  }) => {
+    const authority = { available: 6, attemptable: 3 };
+    await installRunFlowFixtures(page, { authority });
+    await signInAsGuest(page);
+
+    let startRequests = 0;
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/api/game/session' &&
+        (request.postDataJSON() as { action?: string } | null)?.action === 'start'
+      ) {
+        startRequests += 1;
+      }
+    });
+
+    await page.goto(
+      '/game?seed=e2eSetupSeed&target=4200&challenge=signal%3A214&by=CoilAce',
+      { waitUntil: 'domcontentloaded' }
+    );
+    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('energy-commitment-slider').fill('4');
+    await expect(page.getByTestId('energy-summary')).toContainText('Commit 4 Energy');
+    await openRunSetupControls(page);
+    await page.getByTestId('ladder-rung-2').click();
+    await expect(page.getByTestId('ladder-readout')).toContainText('Rung 2');
+    await page.getByTestId('mode-free').click();
+    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('link', { name: 'Snake Lab' }).click();
+    await page.waitForURL(/\/lab\?/, { timeout: 60_000 });
+    const labUrl = new URL(page.url());
+    expect(labUrl.searchParams.get('returnTo')).toBe(
+      '/game?seed=e2eSetupSeed&target=4200&challenge=signal%3A214&by=CoilAce&setupMode=free&setupEnergy=4&setupRung=2'
+    );
+    const backToSetup = page.getByRole('link', { name: 'Back to Setup' });
+    await expect(backToSetup).toBeVisible({ timeout: 60_000 });
+
+    // The URL carries navigation intent, never authority. A lower balance and
+    // Ladder ceiling discovered in the Lab must win when Setup is restored.
+    authority.available = 2;
+    authority.attemptable = 1;
+    await backToSetup.click();
+    await page.waitForURL(/\/game\?/, { timeout: 60_000 });
+    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('ladder-readout')).toContainText('Rung 1');
+    await page.getByTestId('mode-earn').click();
+    await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
+
+    const restoredUrl = new URL(page.url());
+    expect(restoredUrl.searchParams.get('seed')).toBe('e2eSetupSeed');
+    expect(restoredUrl.searchParams.get('target')).toBe('4200');
+    expect(restoredUrl.searchParams.get('challenge')).toBe('signal:214');
+    expect(restoredUrl.searchParams.get('by')).toBe('CoilAce');
+    expect(restoredUrl.searchParams.get('setupEnergy')).toBe('4');
+    expect(restoredUrl.searchParams.get('setupRung')).toBe('2');
+
+    const setupStorageKeys = await page.evaluate(() => [
+      ...Object.keys(window.localStorage),
+      ...Object.keys(window.sessionStorage),
+    ].filter((key) => /setup/i.test(key)));
+    expect(setupStorageKeys).toEqual([]);
+    expect(startRequests).toBe(0);
+  });
+
+  test('reload preserves a committed run and Continue restores its held checkpoint', async ({
+    page,
+  }) => {
+    await installRunFlowFixtures(page);
+
+    const simulationSeed = 'e2e-resume-seed';
+    const activatedAt = Date.parse('2026-07-31T08:00:00.000Z');
+    const engine = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed,
+    });
+    engine.setGrowthProfile('dynasty');
+    engine.setLadderRung(0);
+    engine.setTraits([]);
+    engine.setMutationPool([]);
+    engine.prepare();
+    engine.activatePrepared(activatedAt);
+    const beforeFood = engine.getState();
+    const step = {
+      UP: { x: 0, z: -1 },
+      DOWN: { x: 0, z: 1 },
+      LEFT: { x: -1, z: 0 },
+      RIGHT: { x: 1, z: 0 },
+    }[beforeFood.direction];
+    engine.placeFood({
+      x: beforeFood.snake[0].x + step.x,
+      y: 0,
+      z: beforeFood.snake[0].z + step.z,
+    });
+    engine.tick();
+    const checkpoint = engine.exportCheckpoint(activatedAt + 2_000);
+    expect(checkpoint.state.score).toBeGreaterThan(0);
+    expect(checkpoint.state.dnaCollected).toBeGreaterThan(0);
+    const manifest = {
+      sessionId: 'resume-session',
+      simulation: { seed: simulationSeed, version: 1 as const },
+      runSnake: {
+        id: 'resume-snake',
+        name: 'Ouroboros',
+        generation: 3,
+        dynasty: 'PRIMAL',
+        traits: [],
+        lineage: null,
+      },
+      energy: {
+        state: 'charged' as const,
+        ...ENERGY,
+        available: 4,
+        remaining: 4,
+        committed: 2,
+        commitmentMultiplierBps: 22_000,
+      },
+      traits: [],
+      mutationPool: [],
+      growthProfile: 'dynasty',
+      ladder: { rung: 0 },
+      mastery: { dynasty: 'PRIMAL', xp: 0, level: 2 },
+    };
+    const activeRun = {
+      sessionId: 'resume-session',
+      phase: 'active' as const,
+      startedAt: '2026-07-31T08:00:00.000Z',
+      activatedAt: '2026-07-31T08:00:00.000Z',
+      energyCommitted: 2,
+      canContinue: true,
+      requiresAbandon: false,
+      manifest,
+      checkpoint,
+      checkpointRevision: 4,
+      checkpointSavedAt: '2026-07-31T08:00:02.000Z',
+      leaseToken: null,
+      leaseEpoch: 1,
+      startIntent: null,
+    };
+
+    let exposeActiveRun = false;
+    let startRequests = 0;
+    let resumeRequests = 0;
+    await page.route('**/api/game/session', async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          json: { activeRun: exposeActiveRun ? activeRun : null },
+        });
+      }
+      const body = request.postDataJSON() as {
+        action?: string;
+        sessionId?: string;
+      } | null;
+      if (body?.action === 'start') {
+        startRequests += 1;
+        return route.fulfill({ status: 409, json: { error: 'unexpected start' } });
+      }
+      if (body?.action === 'resume') {
+        resumeRequests += 1;
+        expect(body.sessionId).toBe('resume-session');
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          json: {
+            activeRun: {
+              ...activeRun,
+              leaseToken: 'e2e-exclusive-lease-token-long-enough',
+              leaseEpoch: 2,
+            },
+          },
+        });
+      }
+      if (body?.action === 'checkpoint') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          json: {
+            checkpoint: {
+              revision: 5,
+              savedAt: '2026-07-31T08:00:03.000Z',
+            },
+          },
+        });
+      }
+      return route.continue();
+    });
+
+    await signInAsGuest(page);
+    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
+    exposeActiveRun = true;
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const recovery = page.getByTestId('interrupted-run-recovery');
+    await expect(recovery).toBeVisible({ timeout: 60_000 });
+    await expect(recovery.getByRole('heading', { name: 'Continue your run' })).toBeVisible();
+    await expect(recovery).toContainText('2 Energy');
+    const continueRun = recovery.getByRole('button', { name: 'Continue run' });
+    await expect(continueRun).toBeVisible();
+    await continueRun.click();
+
+    await expect(recovery).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByTestId('game-board-viewport')).toBeVisible();
+    const resumeGate = page.getByTestId('resume-gate');
+    await expect(resumeGate).toBeVisible();
+    await expect(resumeGate).toContainText(/direction.*resume|tactical hold/i);
+    await expect(
+      page.getByLabel(`Score ${checkpoint.state.score.toLocaleString('en-US')}`)
+    ).toBeVisible();
+    await expect(
+      page.getByLabel(`Run DNA ${checkpoint.state.dnaCollected.toLocaleString('en-US')}`)
+    ).toBeVisible();
+    expect(resumeRequests).toBe(1);
+    expect(startRequests).toBe(0);
   });
 
   test('the ladder adds a readout but no tap (WP-3.12, §5)', async ({ page }) => {
@@ -369,11 +893,12 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     // Cap §12.2: exactly one recommended next action.
     await expect(results.getByTestId('results-next-action')).toHaveCount(1);
 
-    // Layer 3 is a single collapsed digest.
+    // Layer 3 is one visible recognition digest, not a hidden menu.
     const digest = results.getByTestId('results-digest');
     if (await digest.count()) {
       await expect(digest).toHaveCount(1);
-      await expect(digest).toHaveJSProperty('open', false);
+      await expect(digest).toBeVisible();
+      expect(await digest.evaluate((element) => element.tagName)).toBe('DIV');
     }
 
     // Layer 2 carries the two numbers.
@@ -450,6 +975,38 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await page.getByTestId('results-setup').click({ force: true });
     await expect(page.getByTestId('run-setup')).toBeVisible();
     await expect(page.getByTestId('run-results')).toHaveCount(0);
+  });
+
+  test('mobile Results keeps Replay and Setup immediately accessible while progress stays ceremonial', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await installRunFlowFixtures(page);
+    await signInAsGuest(page);
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('earn-start').click({ force: true });
+    await releaseHeldBoard(page);
+    await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
+
+    const dock = page.getByTestId('results-action-dock');
+    const dockBox = await dock.boundingBox();
+    expect(dockBox).not.toBeNull();
+    expect(dockBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(569);
+    for (const control of [
+      page.getByTestId('results-replay'),
+      page.getByTestId('results-setup'),
+    ]) {
+      await expect(control).toBeVisible();
+      await expect(control).toBeEnabled();
+      await expect(control).toHaveCSS('white-space', 'nowrap');
+    }
+
+    await page.getByTestId('impact-victory-lap').scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('impact-routine-summary')).toContainText(
+      '+40 PRIMAL Mastery XP'
+    );
+    await expect(page.getByRole('button', { name: /Accept progress/i })).toHaveCount(0);
+    await expect(page.getByTestId('impact-collect-remaining')).toBeVisible();
   });
 });
 

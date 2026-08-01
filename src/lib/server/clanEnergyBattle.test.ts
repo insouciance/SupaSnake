@@ -10,6 +10,7 @@ import {
   settleClanEnergyBattles,
 } from './clanEnergyBattle';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { CLAN_ECONOMY_CONFIG } from '@/lib/clan/config';
 
 function client(result: { data?: unknown; error?: unknown }) {
   return {
@@ -50,6 +51,24 @@ describe('Clan Energy Battle server overlay', () => {
     const supabase = client({ error: { code: '40001', message: 'serialization failure' } });
     await expect(recordClanEnergyContribution(supabase, 'session-1')).resolves.toBeNull();
     expect(captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles with the centralized bounded battle reward dials', async () => {
+    const supabase = client({ data: 2 });
+    await expect(settleClanEnergyBattles(supabase)).resolves.toBe(2);
+    expect((supabase as { rpc: jest.Mock }).rpc).toHaveBeenCalledWith(
+      'settle_clan_energy_battles',
+      {
+        p_completion_grace_seconds:
+          GAME_CONFIG.economy.clanBattle.completionGraceSeconds,
+        p_participation_reward_dna:
+          CLAN_ECONOMY_CONFIG.battleRewards.participationDna,
+        p_victor_bonus_dna:
+          CLAN_ECONOMY_CONFIG.battleRewards.victorBonusDna,
+        p_stalemate_bonus_dna:
+          CLAN_ECONOMY_CONFIG.battleRewards.stalemateBonusDna,
+      }
+    );
   });
 
   it('keeps reconcile and settlement failures operator-visible', async () => {

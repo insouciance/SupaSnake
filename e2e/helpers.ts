@@ -9,6 +9,8 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
+const RUN_FLOW_ENABLED = process.env.NEXT_PUBLIC_RUN_FLOW_V1 === 'true';
+
 export interface ConsentSeed {
   essential: boolean;
   functional: boolean;
@@ -52,17 +54,16 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
 /**
  * Reveal the Run Setup page's adjustable controls.
  *
- * WP-1.06 (Constitution §5) folds the mode toggle, the aim system, and the
- * Build Seed into a single closed disclosure so that a
- * first-time player sees START as the only emphasised action. Specs that
- * exercise those controls call this first; it is a no-op with
+ * Run Setup keeps the ordinary mode choice directly in the cockpit, while
+ * Aim, Ladder, anomaly detail, and Build Seed live in one closed disclosure.
+ * Specs that exercise those advanced controls call this first; it is a no-op with
  * NEXT_PUBLIC_RUN_FLOW_V1 off, where the controls are already laid out flat.
  */
 export async function openRunSetupControls(page: Page): Promise<void> {
   const adjust = page.getByTestId('run-setup-adjust');
   if ((await adjust.count()) === 0) return;
   if (await adjust.evaluate((node) => (node as HTMLDetailsElement).open)) return;
-  await adjust.getByText(/adjust this run/i).click();
+  await adjust.getByText(/tune run|adjust this run/i).click();
   await expect(adjust).toHaveJSProperty('open', true);
 }
 
@@ -79,8 +80,12 @@ export async function openRunSetupControls(page: Page): Promise<void> {
  * flag-off flow and had never once run in the configuration players get.
  */
 export async function startRunIfSetupPresent(page: Page): Promise<void> {
+  // Do not infer the flag from one immediate DOM read. Home navigation can
+  // commit `/game` before the Setup client tree mounts; returning on a
+  // momentary count of zero leaves the test on Setup and falsely treats it as
+  // the rollback board. CI builds each matrix leg with this exact flag.
+  if (!RUN_FLOW_ENABLED) return;
   const start = page.getByTestId('earn-start');
-  if ((await start.count()) === 0) return; // flag off: already on the board
   await expect(start).toBeVisible({ timeout: 30_000 });
   await start.click();
   // The board replaces the setup page; `run-setup` disappearing is the
@@ -154,13 +159,23 @@ export async function signInAsGuest(page: Page): Promise<void> {
   // Authenticated /game renders either the HUD or the ready-to-play setup
   // surface. The setup surface intentionally obscures the pre-run HUD, so it
   // is the stronger marker on slower production/WebGL boots.
-  const authedMarker = page.getByText(/^score$/i)
-    .or(page.getByRole('heading', { name: /ready to play/i }));
+  const scoreMarker = page.getByText(/^score$/i).first();
+  const setupMarker = page
+    .getByRole('heading', { name: /ready to (?:play|launch)/i })
+    .first();
   const signInPrompt = page.getByText(/sign in to play and save/i);
-  await authedMarker
-    .or(signInPrompt)
-    .first()
-    .waitFor({ state: 'visible', timeout: 20000 });
+  // Do not combine these locators with `.or(...).first()`: the pre-run HUD
+  // keeps a visually hidden Score label before the visible Setup heading in
+  // DOM order, so `.first()` can wait on the wrong branch forever.
+  await expect
+    .poll(
+      async () =>
+        (await scoreMarker.isVisible().catch(() => false)) ||
+        (await setupMarker.isVisible().catch(() => false)) ||
+        (await signInPrompt.first().isVisible().catch(() => false)),
+      { timeout: 20_000 }
+    )
+    .toBe(true);
 
   if (await signInPrompt.isVisible().catch(() => false)) {
     test.skip(

@@ -10,9 +10,9 @@
  * identity. §9.2 makes preset heraldry part of FOUNDING, and identity is
  * never a reward for reaching a population threshold.
  *
- * Only the owner may save (`set_clan_heraldry` enforces it again in SQL).
- * There is no officer to also allow: Rule 8, and this work package's
- * acceptance criterion, leave exactly two roles.
+ * Only the Leader may save (`set_clan_heraldry` enforces it again in SQL).
+ * Co-leaders recruit and care for the roster; they do not rewrite the clan's
+ * public identity.
  */
 
 import { useState } from 'react';

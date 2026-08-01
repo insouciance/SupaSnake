@@ -4,9 +4,9 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
-import { themeManager } from '@/lib/theme/ThemeManager';
 import { COSMIC_CONSTELLATION } from '@/shared/game/rulesets';
 import { MUTATION_PHYSICS } from '@/shared/game/mutations';
+import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 
 interface DynamicLightsProps {
   dynasty: DynastyId;
@@ -47,7 +47,7 @@ export function DynamicLights({
 }: DynamicLightsProps) {
   const pointLightRef = useRef<THREE.PointLight>(null);
   const foodSpotRefs = useRef<(THREE.SpotLight | null)[]>([]);
-  const theme = themeManager.getTheme(dynasty);
+  const lighting = getGameMaterialProfile(dynasty).lighting;
   const center = gridSize / 2;
   const lit = (foodPositions ?? []).slice(0, MAX_FOOD_SPOTLIGHTS);
 
@@ -87,7 +87,7 @@ export function DynamicLights({
         ref={pointLightRef}
         position={[center, 15, center]}
         intensity={0.7}
-        color={theme.primary}
+        color={lighting.keyColor}
         distance={50}
         decay={2}
       />
@@ -110,7 +110,7 @@ export function DynamicLights({
           angle={0.4}
           penumbra={0.6}
           intensity={0.6 * intensityScale}
-          color={theme.accent}
+          color={lighting.objectiveColor}
           distance={15}
           decay={2}
         />

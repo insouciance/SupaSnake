@@ -33,17 +33,20 @@ import {
   getSnakeGeometries,
   getSnakeSegmentMaterial,
 } from '@/components/game/SnakeModel';
+import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
+import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 
 // -----------------------------------------------------------------------------
 // Look constants
 // -----------------------------------------------------------------------------
 
-/** Bright per-dynasty glow used for the key/rim lights (DB primaries are too
- *  dark for the void - same values the home UI uses for dynasty glow). */
-const DYNASTY_GLOW: Record<DynastyId, string> = {
-  CYBER: '#00FFFF',
-  PRIMAL: '#86efac',
-  COSMIC: '#a855f7',
+export type SpecimenReaction = 'play' | 'lab' | 'compete' | 'you';
+
+const REACTION_GLOW: Record<SpecimenReaction, string> = {
+  play: '#42e0f5',
+  lab: '#a642f5',
+  compete: '#f5c542',
+  you: '#8b5cf6',
 };
 
 const VOID_COLOR = '#06090d';
@@ -140,8 +143,8 @@ const POSE_BOUNDS = (() => {
 // Materials / geometry - shared caches, no per-render allocation
 // -----------------------------------------------------------------------------
 
-/** Hero-boosted clones of the game's shared segment materials. The game's
- *  cache is never mutated; one clone per dynasty+role lives here. */
+/** Portrait-local clones of the game's shared segment materials. The game's
+ * cache is never mutated; one identical clone per dynasty+role lives here. */
 const heroMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
 
 function getHeroMaterial(
@@ -152,17 +155,18 @@ function getHeroMaterial(
   let material = heroMaterialCache.get(key);
   if (!material) {
     material = getSnakeSegmentMaterial(dynasty, isHead).clone();
-    // Emissive balanced: low enough that key/rim lights still shade the
-    // faces (full blast = flat silhouette), high enough that the specimen
-    // reads bright and premium against the void.
-    material.emissiveIntensity = isHead ? 0.62 : 0.42;
+    // The Home hero and in-game creature intentionally share one physical
+    // material profile. Scale/framing make this a portrait; a second set of
+    // ad-hoc emissive values would make the same snake change identity when
+    // Play is pressed.
     heroMaterialCache.set(key, material);
   }
   return material;
 }
 
-/** Procedural stand-in while (or in case) the GLB streams in. */
-const fallbackBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+/** Rounded procedural stand-ins are the same silhouettes used in-game. */
+const fallbackHeadGeometry = getSnakeRoundedGeometry('head');
+const fallbackBodyGeometry = getSnakeRoundedGeometry('body');
 
 /** Eye geometry/materials - shared across renders. */
 const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -247,7 +251,11 @@ function SpecimenBody({
             position={[x, y, z]}
             rotation={isHead ? [0, HEAD_YAW, 0] : undefined}
             scale={isHead ? SPECIMEN_HEAD_SCALE : SPECIMEN_BODY_SCALE}
-            geometry={(isHead ? headGeometry : bodyGeometry) ?? fallbackBoxGeometry}
+            geometry={
+              isHead
+                ? headGeometry ?? fallbackHeadGeometry
+                : bodyGeometry ?? fallbackBodyGeometry
+            }
             material={getHeroMaterial(dynasty, isHead)}
           >
             {isHead && <SpecimenEyes />}
@@ -326,8 +334,14 @@ function CameraRig({ animate }: { animate: boolean }) {
 }
 
 /** Dark void lighting: dynasty key + rim, soft neutral fill. */
-function ChamberLights({ dynasty }: { dynasty: DynastyId }) {
-  const glow = DYNASTY_GLOW[dynasty];
+function ChamberLights({
+  dynasty,
+  reaction,
+}: {
+  dynasty: DynastyId;
+  reaction: SpecimenReaction | null;
+}) {
+  const glow = getGameMaterialProfile(dynasty).lighting.keyColor;
   return (
     <>
       <ambientLight intensity={0.16} color="#2b3b4d" />
@@ -338,6 +352,16 @@ function ChamberLights({ dynasty }: { dynasty: DynastyId }) {
       {/* Cool neutral fill from the off side keeps the dark faces readable
           without flattening the key/rim contrast */}
       <directionalLight position={[-4, 1.5, 5]} intensity={0.35} color="#94a3b8" />
+      {/* A safe additive whole-character cue for the four Home actions. It
+          leaves the cached segment materials untouched and disappears the
+          instant the action loses hover/focus/press. */}
+      <pointLight
+        position={[0, 2.1, 2.5]}
+        intensity={reaction ? 1.35 : 0}
+        distance={7}
+        decay={2}
+        color={reaction ? REACTION_GLOW[reaction] : '#000000'}
+      />
     </>
   );
 }
@@ -389,11 +413,17 @@ function usePrefersReducedMotion(): boolean {
 export interface SpecimenChamberProps {
   /** Dynasty of the equipped snake (PRIMAL specimen for fresh visitors). */
   dynasty: DynastyId;
+  /** Ephemeral Home-action reaction; never persisted or gameplay-affecting. */
+  reaction?: SpecimenReaction | null;
   /** Fired once the WebGL scene is live - drives the page's 600ms fade-in. */
   onReady?: () => void;
 }
 
-export function SpecimenChamber({ dynasty, onReady }: SpecimenChamberProps) {
+export function SpecimenChamber({
+  dynasty,
+  reaction = null,
+  onReady,
+}: SpecimenChamberProps) {
   const reducedMotion = usePrefersReducedMotion();
   const [hidden, setHidden] = useState(false);
 
@@ -419,7 +449,7 @@ export function SpecimenChamber({ dynasty, onReady }: SpecimenChamberProps) {
       <color attach="background" args={[VOID_COLOR]} />
       <fog attach="fog" args={[VOID_COLOR, 7.5, 17]} />
       <CameraRig animate={animate} />
-      <ChamberLights dynasty={dynasty} />
+      <ChamberLights dynasty={dynasty} reaction={reaction} />
       <FloorGrid />
       <Suspense fallback={<SpecimenBody dynasty={dynasty} animate={animate} />}>
         <VoxelSpecimen dynasty={dynasty} animate={animate} />

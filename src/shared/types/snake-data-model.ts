@@ -231,6 +231,10 @@ export interface FavoriteResponse {
   error?: string;
   snakeId?: string;
   favorited?: boolean;
+  /** The selected dynasty favorite after this mutation; null on unfavorite. */
+  favoriteSnakeId?: string | null;
+  /** Exact same-dynasty favorites atomically displaced by this selection. */
+  replacedSnakeIds?: string[];
 }
 
 export interface DowngradeSnakeRequest {

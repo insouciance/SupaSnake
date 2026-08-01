@@ -41,7 +41,11 @@ function request() {
     },
     // Omitting snake_id gives the handler a deterministic stop immediately
     // after player repair and the rate check, before unrelated start queries.
-    body: JSON.stringify({ action: 'start', mode: 'free' }),
+    body: JSON.stringify({
+      action: 'start',
+      mode: 'free',
+      startRequestId: '29e13f53-0da1-452d-95e2-e7215407ded5',
+    }),
   });
 }
 
@@ -103,11 +107,7 @@ describe('POST /api/game/session start repair', () => {
       p_user_id: 'user-1',
     });
     expect(playerLookups()).toBe(2);
-    expect(mockCheckRateLimit).toHaveBeenCalledWith(
-      expect.any(Object),
-      REPAIRED_PLAYER.id,
-      'game_start'
-    );
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
     expect(response.status).toBe(400);
     expect(body).toEqual({ error: 'snake_id is required' });
   });

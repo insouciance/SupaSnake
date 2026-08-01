@@ -988,17 +988,36 @@ describe('SnakeGameLogic', () => {
       expect(game.getState().holdsUsed).toBe(BASE);
     });
 
-    it('never charges a decision hold, even with the budget exhausted', () => {
+    it('refuses a free decision hold without an engine-authored decision', () => {
       for (let i = 0; i < BASE; i++) {
         game.pause();
         game.resume();
       }
-      // The run's own decisions are Rule 1 territory: always free, always
-      // granted. This is the re-arm the page performs after a gene, portal
-      // or surge choice resolves.
-      expect(game.pause('decision')).toBe(true);
-      expect(game.isPaused).toBe(true);
+      expect(game.pause('decision')).toBe(false);
+      expect(game.isPaused).toBe(false);
       expect(game.getState().holdsUsed).toBe(BASE);
+    });
+
+    it('grants exactly one same-tick free re-arm after a real choice', () => {
+      const head = game.getState().snake[0];
+      game.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+      game.tick();
+      expect(game.getState().pendingChoice).not.toBeNull();
+      expect(game.chooseMutation(0)).toBe(true);
+      expect(game.pause('decision')).toBe(true);
+      expect(game.getState().holdsUsed).toBe(0);
+      game.resume();
+      expect(game.pause('decision')).toBe(false);
+      expect(game.getState().holdsUsed).toBe(0);
+    });
+
+    it('expires an unused decision re-arm at the next movement tick', () => {
+      const head = game.getState().snake[0];
+      game.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+      game.tick();
+      expect(game.chooseMutation(0)).toBe(true);
+      game.tick();
+      expect(game.pause('decision')).toBe(false);
     });
 
     it('grants a hold at each length threshold and never takes one back', () => {

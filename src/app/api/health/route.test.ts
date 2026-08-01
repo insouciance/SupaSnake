@@ -14,14 +14,38 @@ jest.mock('@supabase/supabase-js', () => ({
         limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
       })),
     })),
-    rpc: jest.fn(() => Promise.resolve({
-      data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+    rpc: jest.fn((name: string) => Promise.resolve({
+      data: name === 'get_cohesive_release_capability'
+        ? {
+            status: 'ready',
+            version: 1,
+            foundingBridgeVersion: 1,
+            continuityVersion: 1,
+            favoriteInvariantVersion: 1,
+          }
+        : { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
       error: null,
     })),
   })),
 }));
 jest.mock('@/lib/features/careerSpine', () => ({
   CAREER_SPINE_V1_ENABLED: true,
+}));
+jest.mock('@/lib/features/runFlow', () => ({
+  RUN_FLOW_V1_ENABLED: true,
+}));
+jest.mock('@/lib/server/productionPublicSurface', () => ({
+  inspectProductionPublicSurface: jest.fn(() => ({
+    healthy: true,
+    version: 1,
+    contractHash: 'contract-hash',
+    declaredHash: 'contract-hash',
+    projectRef: 'gmpwyzqafoyowndbvlma',
+    expectedProjectRef: 'gmpwyzqafoyowndbvlma',
+    enabledFlagCount: 21,
+    expectedFlagCount: 21,
+    disabledFlags: [],
+  })),
 }));
 
 // Mock environment variables
@@ -69,6 +93,23 @@ describe('GET /api/health', () => {
       phase: 'ready',
       bridgeVersion: 1,
       careerVersion: 1,
+    });
+    expect(data.checks.runFlow).toMatchObject({
+      status: 'healthy',
+      surfaceEnabled: true,
+    });
+    expect(data.checks.publicSurface).toMatchObject({
+      status: 'healthy',
+      contractHash: 'contract-hash',
+      projectRef: 'gmpwyzqafoyowndbvlma',
+      enabledFlagCount: 21,
+    });
+    expect(data.checks.cohesiveRelease).toMatchObject({
+      status: 'healthy',
+      version: 1,
+      foundingBridgeVersion: 1,
+      continuityVersion: 1,
+      favoriteInvariantVersion: 1,
     });
   });
 
@@ -151,6 +192,41 @@ describe('GET /api/health', () => {
     const data = await response.json();
     expect(response.status).toBe(503);
     expect(data.checks.careerSpine.status).toBe('unhealthy');
+    expect(data.checks.cohesiveRelease.status).toBe('unhealthy');
+  });
+
+  it('fails health when a cohesive release bridge is absent', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'invalid',
+            version: 1,
+            foundingBridgeVersion: 1,
+            continuityVersion: 1,
+            favoriteInvariantVersion: 0,
+          },
+          error: null,
+        })),
+      }));
+
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(503);
+    expect(data.checks.cohesiveRelease.status).toBe('unhealthy');
   });
 
   it('does not disguise a permission failure as a pending migration', async () => {

@@ -81,6 +81,7 @@ let careerCapability: Row = {
   careerVersion: 1,
 };
 let pendingAdoptionError: Row | null = null;
+let pendingLookupError: Row | null = null;
 
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
@@ -120,7 +121,40 @@ jest.mock('@supabase/supabase-js', () => ({
         }
         return { data: { accepted: true, state: 'staged' }, error: null };
       }
+      if (fn === 'stage_run_continuity_terminal') {
+        const p = (params ?? {}) as Row;
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (!target) return { data: null, error: { message: 'session_not_found' } };
+        target.continuity_phase = 'terminal';
+        target.continuity_terminal_facts = p.p_terminal_facts;
+        target.continuity_terminal_digest = p.p_terminal_digest;
+        target.continuity_terminal_at = new Date().toISOString();
+        return {
+          data: { accepted: true, inserted: true, sessionId: target.id },
+          error: null,
+        };
+      }
+      if (fn === 'stage_continuity_game_session_end') {
+        const p = (params ?? {}) as Row;
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (target) {
+          target.end_reason = 'completed';
+          target.continuity_phase = 'settling';
+          target.__pendingEnvelope = p.p_envelope;
+        }
+        return { data: { accepted: true, state: 'staged' }, error: null };
+      }
+      if (fn === 'complete_free_run_continuity') {
+        const p = (params ?? {}) as Row;
+        const target = db.game_sessions.find((row) => row.id === p.p_session_id);
+        if (target) {
+          target.ended_at = new Date().toISOString();
+          target.end_reason = 'completed';
+        }
+        return { data: { accepted: true }, error: null };
+      }
       if (fn === 'get_pending_game_session_end') {
+        if (pendingLookupError) return { data: null, error: pendingLookupError };
         const p = (params ?? {}) as Row;
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         if (!target?.__pendingEnvelope) return { data: null, error: null };
@@ -204,7 +238,7 @@ jest.mock('@supabase/supabase-js', () => ({
         calls.push([op, ...args]);
         return builder;
       };
-      for (const op of ['select', 'eq', 'is', 'neq', 'lt', 'gte', 'not', 'in', 'order', 'range']) {
+      for (const op of ['select', 'eq', 'is', 'neq', 'lt', 'gte', 'not', 'in', 'order', 'range', 'limit']) {
         builder[op] = push(op);
       }
       builder.update = (payload: Row) => {
@@ -238,16 +272,26 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { computeRunTotals } from '@/shared/game/rulesets';
 import { STALE_OPEN_MINUTES } from '@/lib/session/lifecycle';
+import {
+  SNAKE_RULES_VERSION,
+  SnakeGameLogic,
+} from '@/lib/game/SnakeGameLogic';
+import { RULESETS } from '@/shared/game/rulesets';
+import { createHash } from 'crypto';
 
 const PLAYER_ID = 'player-1';
+const START_REQUEST_ID = '2f515f00-908b-4f7d-86fb-721db70fed83';
 const FOOD_COUNT = 20;
 const EXPECTED = computeRunTotals('CYBER', FOOD_COUNT);
 
 function post(body: Record<string, unknown>) {
+  const requestBody = body.action === 'start'
+    ? { startRequestId: START_REQUEST_ID, ...body }
+    : body;
   return new NextRequest('http://localhost/api/game/session', {
     method: 'POST',
     headers: { authorization: 'Bearer token', 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 }
 
@@ -306,6 +350,90 @@ function endBody(overrides: Record<string, unknown> = {}) {
 const session = () => db.game_sessions[0];
 const player = () => db.players[0];
 
+function seedContinuityTerminalRun(options: {
+  phase?: 'active' | 'terminal';
+  freePlay?: boolean;
+  rulesVersion?: string;
+} = {}) {
+  const now = Date.now();
+  const leaseToken = 'route-terminal-lease-token-with-enough-entropy';
+  const game = new SnakeGameLogic({
+    gridSize: 4,
+    ruleset: RULESETS.PRIMAL,
+    simulationSeed: 'route-terminal-seed',
+  });
+  game.prepare();
+  const opening = game.exportCheckpoint(now - 1_000);
+  game.activatePrepared(now - 1_000);
+  game.tick();
+  game.tick();
+  const trace = game.getReplayTrace();
+  const result = game.getTerminalResult();
+  if (!result) throw new Error('terminal fixture did not collide');
+  const terminalFacts = {
+    score: result.score,
+    dna_earned: result.dnaCollected,
+    duration_seconds: 1,
+    food_count: result.foodEaten,
+    extracted: result.extracted,
+    died: !result.extracted,
+    victory: false,
+    mutations: result.mutations,
+    phoenix_triggered_at_food: result.phoenixTriggeredAtFood,
+    genome: result.genome,
+    death_cause: result.deathCause,
+    run_events: game.getRunEvents(),
+  };
+  const manifest = {
+    sessionId: 'session-1',
+    simulation: {
+      seed: 'route-terminal-seed',
+      version: 1,
+      rulesVersion: options.rulesVersion ?? SNAKE_RULES_VERSION,
+    },
+    runSnake: { dynasty: 'PRIMAL', generation: 1 },
+  };
+  seedSession({
+    dynasty: 'PRIMAL',
+    start_request_id: START_REQUEST_ID,
+    start_request_fingerprint: 'a'.repeat(64),
+    start_manifest: manifest,
+    simulation_rules_version: options.rulesVersion ?? SNAKE_RULES_VERSION,
+    continuity_phase: options.phase ?? 'active',
+    continuity_activated_at: new Date(now - 1_000).toISOString(),
+    continuity_checkpoint: opening,
+    continuity_checkpoint_revision: 1,
+    continuity_lease_hash: createHash('sha256').update(leaseToken).digest('hex'),
+    continuity_lease_epoch: 1,
+    energy_committed: options.freePlay ? 0 : 1,
+    commitment_multiplier_bps: 10_000,
+    is_free_play: options.freePlay === true,
+    ...(options.phase === 'terminal'
+      ? {
+          continuity_terminal_facts: terminalFacts,
+          continuity_terminal_digest: 'b'.repeat(64),
+          continuity_terminal_at: new Date(now).toISOString(),
+        }
+      : {}),
+  });
+  return {
+    leaseToken,
+    terminalFacts,
+    request: {
+      action: 'terminal',
+      sessionId: 'session-1',
+      expectedRevision: 1,
+      leaseToken,
+      replay: {
+        fromTick: opening.privateState.replay.ticks,
+        toTick: trace.ticks,
+        actionOffset: opening.privateState.replay.actions.length,
+        actions: trace.actions.slice(opening.privateState.replay.actions.length),
+      },
+    },
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   db.economy_transactions = [];
@@ -318,6 +446,7 @@ beforeEach(() => {
     careerVersion: 1,
   };
   pendingAdoptionError = null;
+  pendingLookupError = null;
   seedPlayer();
   seedSession();
   mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
@@ -529,6 +658,32 @@ describe('a settled run records `completed`', () => {
     });
   });
 
+  it('keeps a continuity settlement retryable when its pending receipt lookup fails', async () => {
+    const leaseToken = 'continuity-terminal-lease-token-with-enough-entropy';
+    const { createHash } = await import('crypto');
+    seedSession({
+      start_request_id: START_REQUEST_ID,
+      continuity_phase: 'active',
+      continuity_checkpoint: { version: 1 },
+      continuity_checkpoint_revision: 1,
+      continuity_lease_hash: createHash('sha256').update(leaseToken).digest('hex'),
+      ended_at: null,
+      end_reason: 'completed',
+    });
+    pendingLookupError = { code: '08006', message: 'connection failure' };
+
+    const response = await POST(post(endBody({ leaseToken })));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      retryable: true,
+    });
+    expect(session().end_reason).toBe('completed');
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+  });
+
   it('does not call an unpersisted impact envelope successful', async () => {
     impactPersistError = { code: '08006', message: 'connection failure' };
     const response = await POST(post(endBody()));
@@ -546,6 +701,152 @@ describe('a settled run records `completed`', () => {
 });
 
 describe('durable earning-end ingress', () => {
+  it('stages replay-derived terminal facts before entering earning settlement', async () => {
+    const fixture = seedContinuityTerminalRun();
+
+    const response = await POST(post(fixture.request));
+
+    expect([200, 202]).toContain(response.status);
+    const terminalCall = rpcCalls.find(
+      (call) => call.fn === 'stage_run_continuity_terminal'
+    );
+    const settlementCall = rpcCalls.find(
+      (call) => call.fn === 'stage_continuity_game_session_end'
+    );
+    expect(terminalCall).toBeDefined();
+    expect(terminalCall?.params).toMatchObject({
+      p_session_id: 'session-1',
+      p_expected_revision: 1,
+      p_terminal_facts: expect.objectContaining({
+        score: fixture.terminalFacts.score,
+        food_count: fixture.terminalFacts.food_count,
+        death_cause: fixture.terminalFacts.death_cause,
+      }),
+    });
+    expect(settlementCall).toBeDefined();
+    expect(settlementCall?.params).toMatchObject({
+      p_session_id: 'session-1',
+      // The terminal phase is the durable authority after the first RPC, so
+      // settlement recovery no longer depends on a browser-held lease token.
+      p_lease_hash: null,
+    });
+    expect(session().continuity_phase).toBe('settling');
+    expect(session().end_reason).toBe('completed');
+  });
+
+  it('recognizes a terminal-to-settling commit when its first response was lost', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+    Object.assign(session(), {
+      continuity_phase: 'settling',
+      end_reason: 'completed',
+      __pendingEnvelope: { v: 1, sessionId: 'session-1' },
+    });
+
+    // This is the exact browser retry after stage_continuity_game_session_end
+    // committed but its HTTP acknowledgement disappeared.
+    const response = await POST(
+      post({
+        action: 'terminal',
+        sessionId: 'session-1',
+        expectedRevision: 1,
+        leaseToken: 'stale-browser-token-is-not-consulted-here',
+        replay: { fromTick: 0, toTick: 0, actionOffset: 0, actions: [] },
+      })
+    );
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'session-1',
+    });
+    expect(rpcCalls.map((call) => call.fn)).toEqual(
+      expect.arrayContaining([
+        'get_pending_game_session_end',
+        'adopt_pending_game_session_end',
+      ])
+    );
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_run_continuity_terminal'
+    );
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+  });
+
+  it('folds a stored terminal outcome after reload without a lease token', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+
+    const response = await POST(
+      post({ action: 'end', sessionId: 'session-1' })
+    );
+
+    expect([200, 202]).toContain(response.status);
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_run_continuity_terminal'
+    );
+    expect(
+      rpcCalls.find((call) => call.fn === 'stage_continuity_game_session_end')
+        ?.params
+    ).toMatchObject({
+      p_session_id: 'session-1',
+      p_lease_hash: null,
+    });
+    expect(session().end_reason).toBe('completed');
+  });
+
+  it('completes a free terminal run without entering Career settlement', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal', freePlay: true });
+
+    const response = await POST(
+      post({ action: 'end', sessionId: 'session-1' })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ success: true, freePlay: true });
+    expect(
+      rpcCalls.find((call) => call.fn === 'complete_free_run_continuity')
+        ?.params
+    ).toMatchObject({
+      p_session_id: 'session-1',
+      p_lease_hash: null,
+    });
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_pending_game_session_end'
+    );
+    expect(mockSettleDurableRunProgression).not.toHaveBeenCalled();
+    expect(session().ended_at).not.toBeNull();
+  });
+
+  it('never lets an older continuity rules stamp fall back to raw end facts', async () => {
+    const fixture = seedContinuityTerminalRun({
+      rulesVersion: 'snake-rules-older-release',
+    });
+
+    const response = await POST(
+      post(endBody({ leaseToken: fixture.leaseToken }))
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      reason: 'terminal_intent_required',
+      retryable: true,
+    });
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_pending_game_session_end'
+    );
+    expect(session().end_reason).toBeNull();
+  });
+
   it('returns durable 202 on schema 060 and a replay adopts the same result on 061', async () => {
     pendingAdoptionError = {
       code: 'PGRST202',
@@ -655,16 +956,30 @@ describe('an expired session awards nothing and cannot be re-ended for value', (
   });
 });
 
-describe('the forfeit path records `abandoned` / `disconnected`', () => {
-  it('records the reason the client asked for', async () => {
+describe('the explicit abandonment path', () => {
+  it('cannot overwrite a completed run whose durable settlement is pending', async () => {
+    seedSession({ ended_at: null, end_reason: 'completed' });
+    const response = await POST(
+      post({ action: 'abandon', sessionId: 'session-1' })
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      alreadyEnded: true,
+      endReason: 'completed',
+    });
+    expect(session().end_reason).toBe('completed');
+    expect(session().ended_at).toBeNull();
+  });
+
+  it('never interprets disconnection copy as consent to forfeit implicitly', async () => {
     const response = await POST(
       post({ action: 'abandon', sessionId: 'session-1', reason: 'disconnected' })
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ success: true, endReason: 'disconnected' });
-    expect(session().end_reason).toBe('disconnected');
+    expect(body).toEqual({ success: true, endReason: 'abandoned' });
+    expect(session().end_reason).toBe('abandoned');
     expect(session().ended_at).not.toBeNull();
   });
 
@@ -722,8 +1037,8 @@ describe('the forfeit path records `abandoned` / `disconnected`', () => {
   });
 });
 
-describe('the start path records `abandoned` for a superseded run', () => {
-  it('closes only this player’s stale, never-settled runs', async () => {
+describe('the start path preserves an existing run for explicit recovery', () => {
+  it('never auto-abandons stale or fresh sessions on a new start', async () => {
     const stale = new Date(Date.now() - (STALE_OPEN_MINUTES + 30) * 60_000).toISOString();
     const fresh = new Date(Date.now() - 60_000).toISOString();
     db.game_sessions = [
@@ -734,15 +1049,16 @@ describe('the start path records `abandoned` for a superseded run', () => {
       { id: 'theirs', player_id: 'player-2', started_at: stale, ended_at: null, end_reason: null },
     ];
 
-    // No snake_id: the handler stops right after the sweep, which is all this
-    // test is about.
-    const response = await POST(post({ action: 'start', snake_id: undefined }));
-    expect(response.status).toBe(400);
+    const response = await POST(post({
+      action: 'start',
+      snake_id: 'snake-1',
+      energyCommitment: 1,
+    }));
+    expect(response.status).toBe(409);
 
     const byId = Object.fromEntries(db.game_sessions.map((row) => [row.id, row]));
-    expect(byId['mine-stale'].end_reason).toBe('abandoned');
-    expect(byId['mine-stale'].ended_at).not.toBeNull();
-    // Still playable.
+    expect(byId['mine-stale'].end_reason).toBeNull();
+    expect(byId['mine-stale'].ended_at).toBeNull();
     expect(byId['mine-fresh'].ended_at).toBeNull();
     // Still owed (Rule 6).
     expect(byId['mine-pending'].ended_at).toBeNull();

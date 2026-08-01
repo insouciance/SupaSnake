@@ -215,6 +215,15 @@ describe('VariantDetailModal reads the selected sibling', () => {
 
     expect(screen.getByLabelText('Already equipped')).toBeDisabled();
   });
+
+  it('describes the pre-run action honestly instead of implying an immediate start', () => {
+    const onPlay = jest.fn();
+    renderModal({ onPlay });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use PRIMAL SEED for next run' }));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Use for next run')).toBeInTheDocument();
+  });
 });
 
 describe('VariantDetailModal favorite persistence', () => {

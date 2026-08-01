@@ -1,61 +1,82 @@
 /**
- * Clan API (Constitution §9.2–9.4, Rules 5, 6, 8, 11).
+ * Competitive clan API (Product Constitution v1.7 §9).
  *
- * GET  ?view=full        the authed clan surface — clan, heraldry, roster,
- *                        tenure, invite code, discord summary, invite inbox
- * GET  ?view=directory   clans that hunted this week or last. No totals, ever.
- * GET  ?playerId=<uid>   one player's clan (unauthed read, used by the page)
- * GET                    same as ?view=directory
+ * GET ?view=directory&q=&policy=&hasSpace=  searchable factual directory
+ * GET ?view=full                              roster/governance/Glory state
+ * GET ?view=config                            quoted founding/Glory terms
+ * GET ?playerId=                              authenticated own-membership bridge
  *
- * POST actions
- *   found              found a clan of one: name + preset heraldry
- *   join_by_code       the ONLY way into someone else's clan (§9.2)
- *   leave              ends a membership; tenure survives it (F-7)
- *   remove_member      plain roster management, owner only
- *   transfer_ownership hand the clan over
- *   rotate_invite_code owner rotates the way in
- *   update_identity    preset heraldry, owner only
- *   respond_invite     answers an invite issued before this rework
+ * POST actions: found, apply, join_by_code, invite, approve_application,
+ * reject_application, respond_invite, leave, remove_member, set_role,
+ * transfer_ownership, update_settings, rotate_invite_code, update_identity,
+ * assign_glory.
  *
- * WHAT IS NOT HERE, AND WHY THAT IS THE POINT (Rule 8)
- *
- *   `set_role`  — there is no officer rank to grant, so there is no endpoint
- *                 to grant it with. `set_clan_member_role` is dropped in
- *                 migration 048 and no route calls it.
- *   `invite`    — inviting by handle was the officer's recruitment lever.
- *                 §9.2 makes invite links the only recruitment surface, so a
- *                 code replaces it and every member can share one.
- *   `create` / `join` by clan id — replaced by `found` and `join_by_code`,
- *                 both of which are single-transaction RPCs that enforce the
- *                 12 cap in SQL rather than in a route somebody could race.
- *
- * There is no request field on any action below through which a member's
- * Depth, contribution, attendance or rank could travel, because there is no
- * such field left on `clan_members` to travel to.
- *
- * PRE-MIGRATION-048 SAFE: a missing RPC answers 503 "not live yet" rather
- * than 500, exactly as the Identity v1 actions already did.
+ * All mutations are service-role RPCs. Founding accepts only an echoed quote
+ * acknowledgment, which must exactly match the current server configuration;
+ * the client never authors the amount passed to Postgres. Contribution, rank,
+ * effective cycle, and reward values are never accepted from the client.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
-import { CLAN_LIMITS, isValidClanName, isValidClanTag } from '@/lib/clan/types';
-import { clanInviteUrl, isValidClanInviteCode } from '@/lib/clan/config';
+import {
+  CLAN_LIMITS,
+  CLAN_PERMISSIONS,
+  CLAN_ROLE_LABELS,
+  asClanRole,
+  isClanJoinPolicy,
+  isValidClanName,
+  isValidClanTag,
+  type ClanRole,
+} from '@/lib/clan/types';
+import {
+  CLAN_DIRECTORY_LIMITS,
+  CLAN_ECONOMY_CONFIG,
+  clanInviteUrl,
+  isValidClanInviteCode,
+} from '@/lib/clan/config';
 import { isMissingDiscordInfra } from '@/lib/server/discord';
 import { isMissingClanRework, loadClanDirectory } from '@/lib/server/clanHunt';
+import { energyBattleCycleAt } from '@/shared/game/clanEnergyBattle';
+import { identityFromRow, type PlayerIdentityRow } from '@/lib/identity/types';
 import {
-  identityFromRow,
-  type PlayerIdentityRow,
-} from '@/lib/identity/types';
+  isValidClanBannerId,
+  isValidClanColor,
+  isValidClanEmblemId,
+} from '@/lib/clan/heraldry';
 
-// Server-side Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-/** Rule 11: every Supabase error is checked AND reported. */
+/** Public/member-safe clan fields. Authority artifacts such as invite_code
+ * are deliberately absent and are projected separately for recruiters. */
+const CLAN_SAFE_FIELD_NAMES = [
+  'id', 'name', 'tag', 'member_count', 'max_members',
+  'join_policy', 'banner_id', 'emblem_id', 'color_primary',
+  'color_secondary', 'best_week_depth', 'lifetime_depth', 'created_at',
+  'updated_at', 'disbanded_at',
+] as const;
+const CLAN_SAFE_COLUMNS = CLAN_SAFE_FIELD_NAMES.join(',');
+
+function safeClanProjection(value: unknown): Record<string, unknown> | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (!candidate || typeof candidate !== 'object') return null;
+  const row = candidate as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  for (const field of CLAN_SAFE_FIELD_NAMES) {
+    if (Object.prototype.hasOwnProperty.call(row, field)) safe[field] = row[field];
+  }
+  return safe;
+}
+
+interface ErrorLike {
+  code?: string;
+  message?: string;
+}
+
 function reportError(scope: string, error: unknown, extra: Record<string, unknown> = {}) {
   console.error(`Clan ${scope} error:`, { ...extra, error });
   Sentry.captureException(
@@ -64,29 +85,72 @@ function reportError(scope: string, error: unknown, extra: Record<string, unknow
   );
 }
 
-/** Map RPC error payloads to HTTP statuses. */
 const CLAN_RPC_ERRORS: Record<string, { status: number; error: string }> = {
   not_in_clan: { status: 404, error: 'Not in a clan' },
   not_authorized: { status: 403, error: 'Not authorized' },
   invalid_name: { status: 400, error: 'That name will not do' },
+  invalid_tag: { status: 400, error: 'That tag will not do' },
   invalid_code: { status: 400, error: 'That is not an invite code' },
+  invalid_handle: { status: 400, error: 'That is not a valid handle' },
   invalid_banner: { status: 400, error: 'Invalid banner' },
   invalid_emblem: { status: 400, error: 'Invalid emblem' },
   invalid_color: { status: 400, error: 'Invalid color' },
+  invalid_policy: { status: 400, error: 'Invalid clan policy' },
+  invalid_role: { status: 400, error: 'Invalid clan role' },
+  invalid_glory_seat: { status: 400, error: 'Invalid Glory seat' },
+  invalid_glory_terms: { status: 500, error: 'Glory configuration is invalid' },
+  invalid_founding_cost: { status: 500, error: 'Clan founding configuration is invalid' },
+  founding_confirmation_required: { status: 409, error: 'Review the current founding cost before creating your clan' },
+  invalid_invite_lifetime: { status: 500, error: 'Clan invitation configuration is invalid' },
   tag_unavailable: { status: 409, error: 'Could not find a free tag for that name' },
   target_not_in_clan: { status: 404, error: 'That player is not in your clan' },
-  cannot_change_owner: { status: 400, error: 'Ownership does not transfer here' },
+  target_already_in_clan: { status: 409, error: 'That player is already in a clan' },
+  applicant_already_in_clan: { status: 409, error: 'That applicant already joined a clan' },
+  cannot_change_owner: { status: 400, error: 'Transfer leadership instead' },
+  protected_role: { status: 403, error: 'That role is protected from this action' },
   owner_must_transfer: { status: 400, error: 'Hand the clan over before you leave' },
   use_leave: { status: 400, error: 'Use leave to leave your own clan' },
   invite_not_found: { status: 404, error: 'Invite not found' },
   invite_not_pending: { status: 409, error: 'Invite already answered' },
   invite_expired: { status: 410, error: 'Invite expired' },
-  already_in_clan: { status: 400, error: 'Already in a clan' },
-  clan_full: { status: 400, error: 'Clan is full' },
+  invite_required: { status: 403, error: 'This clan is invite-only' },
+  handle_not_found: { status: 404, error: 'No player has that exact handle' },
+  cannot_invite_self: { status: 400, error: 'You cannot invite yourself' },
+  application_not_found: { status: 404, error: 'Application not found' },
+  already_in_clan: { status: 409, error: 'Already in a clan' },
+  clan_full: { status: 409, error: 'Clan is full' },
   clan_disbanded: { status: 410, error: 'That clan has disbanded' },
   clan_not_found: { status: 404, error: 'Clan not found' },
+  player_not_found: { status: 404, error: 'Player not found' },
+  insufficient_dna: { status: 409, error: 'Not enough DNA to found this clan' },
   heraldry_locked: { status: 403, error: 'Heraldry is not editable yet' },
+  glory_source_battle_not_found: { status: 409, error: 'No eligible source battle exists' },
+  glory_source_not_final: { status: 409, error: 'Glory opens after the battle result is final' },
+  glory_boundary_not_open: { status: 409, error: 'Glory opens during the battle intermission' },
+  glory_boundary_passed: { status: 409, error: 'That Glory boundary has passed' },
+  glory_not_eligible: { status: 409, error: 'That member is not yet Glory-eligible' },
+  glory_tenure_required: { status: 409, error: 'That member has not met the Glory tenure term' },
+  glory_self_award_disabled: { status: 403, error: 'Leader self-awards are disabled' },
+  glory_holder_already_assigned: { status: 409, error: 'That member already holds a Glory seat' },
+  glory_seat_taken: { status: 409, error: 'That Glory seat is already assigned' },
 };
+
+function competitiveConfig() {
+  return {
+    foundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost,
+    policies: ['open', 'application', 'invite_only'] as const,
+    roleLabels: CLAN_ROLE_LABELS,
+    permissions: CLAN_PERMISSIONS,
+    glory: {
+      maxSeats: CLAN_ECONOMY_CONFIG.glory.maxSeats,
+      rewardDna: CLAN_ECONOMY_CONFIG.glory.rewardDna,
+      minimumTenureSeconds: CLAN_ECONOMY_CONFIG.glory.minimumTenureSeconds,
+      minimumContributionDepth: CLAN_ECONOMY_CONFIG.glory.minimumContributionDepth,
+      allowOwnerSelfAward: CLAN_ECONOMY_CONFIG.glory.allowOwnerSelfAward,
+      allowPendingReassignment: CLAN_ECONOMY_CONFIG.glory.allowPendingReassignment,
+    },
+  };
+}
 
 function mapRpcResult(data: unknown): NextResponse {
   const payload = (data ?? {}) as { error?: string } & Record<string, unknown>;
@@ -94,30 +158,54 @@ function mapRpcResult(data: unknown): NextResponse {
     const mapped = CLAN_RPC_ERRORS[payload.error];
     if (mapped) {
       return NextResponse.json(
-        { error: mapped.error, code: payload.error },
+        { error: mapped.error, code: payload.error, details: payload },
         { status: mapped.status }
       );
     }
-    reportError('rpc payload', new Error(`Unmapped clan RPC error: ${payload.error}`));
+    reportError('RPC payload', new Error(`Unmapped clan RPC error: ${payload.error}`), {
+      payload,
+    });
     return NextResponse.json({ error: 'Request failed' }, { status: 500 });
   }
   return NextResponse.json({ success: true, result: payload });
 }
 
-/** The one place "migration 048 is not applied here" becomes a response. */
 function notLiveYet(subject: string): NextResponse {
   return NextResponse.json({ error: `${subject} is not live yet` }, { status: 503 });
 }
 
-/**
- * The full clan surface: everything the clan page renders in one authed read.
- * Non-members get their invite inbox.
- *
- * The roster is ADDITIVE (§9.2). Each entry carries a handle, a role of two
- * values and a tenure date. It carries no contribution, no weekly total, no
- * rank within the clan and no field a surface could render as a cut line —
- * those columns are gone from the schema, not merely omitted here.
- */
+async function callClanRpc(
+  name: string,
+  args: Record<string, unknown>,
+  subject: string,
+  userId: string
+): Promise<NextResponse> {
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) {
+    if (isMissingClanRework(error)) return notLiveYet(subject);
+    reportError(`${name} RPC`, error, { userId });
+    return NextResponse.json({ error: 'Request failed' }, { status: 500 });
+  }
+  return mapRpcResult(data);
+}
+
+async function authenticatedUser(request: NextRequest): Promise<
+  | { userId: string; error: null }
+  | { userId: null; error: NextResponse }
+> {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader) {
+    return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error) reportError('authentication', error);
+  if (error || !user) {
+    return { userId: null, error: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
+  }
+  return { userId: user.id, error: null };
+}
+
 async function fullClanView(userId: string): Promise<NextResponse> {
   const { data: membership, error: membershipError } = await supabase
     .from('clan_members')
@@ -126,40 +214,65 @@ async function fullClanView(userId: string): Promise<NextResponse> {
     .maybeSingle();
   if (membershipError && !isMissingClanRework(membershipError)) {
     reportError('membership read', membershipError, { userId });
+    return NextResponse.json({ error: 'Failed to load membership' }, { status: 503 });
   }
 
-  // Invite inbox rides along in both states (accepting needs no clan). No new
-  // invites are issued by this rework; the inbox exists so an invite sent
-  // before it can still be answered (Rule 5: absence is never destructive).
   const { data: inbox, error: inboxError } = await supabase
     .from('clan_invites')
-    .select('id, clan_id, status, created_at, expires_at, clans:clan_id(name, tag)')
+    .select('id, clan_id, invited_by, status, created_at, expires_at, clans:clan_id(name, tag)')
     .eq('player_id', userId)
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString());
   if (inboxError && !isMissingClanRework(inboxError)) {
     reportError('invite inbox read', inboxError, { userId });
+    return NextResponse.json({ error: 'Failed to load invitations' }, { status: 503 });
   }
   const myInvites = (inbox ?? []).map((invite) => ({
     id: invite.id,
     clanId: invite.clan_id,
+    invitedByUserId: invite.invited_by,
     clanName: (invite.clans as unknown as { name?: string } | null)?.name ?? null,
     clanTag: (invite.clans as unknown as { tag?: string } | null)?.tag ?? null,
     expiresAt: invite.expires_at,
   }));
 
+  const { data: ownApplications, error: ownApplicationsError } = await supabase
+    .from('clan_applications')
+    .select('id, clan_id, status, created_at, clans:clan_id(name, tag)')
+    .eq('applicant_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  if (ownApplicationsError && !isMissingClanRework(ownApplicationsError)) {
+    reportError('own application read', ownApplicationsError, { userId });
+    return NextResponse.json({ error: 'Failed to load applications' }, { status: 503 });
+  }
+  const myApplications = (ownApplications ?? []).map((application) => ({
+    id: application.id,
+    clanId: application.clan_id,
+    status: application.status,
+    createdAt: application.created_at,
+    clanName: (application.clans as unknown as { name?: string } | null)?.name ?? null,
+    clanTag: (application.clans as unknown as { tag?: string } | null)?.tag ?? null,
+  }));
+
   if (!membership) {
-    return NextResponse.json({ clan: null, myInvites });
+    return NextResponse.json({
+      clan: null,
+      myInvites,
+      myApplications,
+      competitiveConfig: competitiveConfig(),
+    });
   }
 
+  const role = asClanRole(membership.role);
   const { data: clan, error: clanError } = await supabase
     .from('clans')
-    .select('*')
+    .select(CLAN_SAFE_COLUMNS)
     .eq('id', membership.clan_id)
     .single();
   if (clanError || !clan) {
     reportError('full clan read', clanError, { clanId: membership.clan_id });
-    return NextResponse.json({ error: 'Failed to load clan' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to load clan' }, { status: 503 });
   }
 
   const { data: members, error: membersError } = await supabase
@@ -167,41 +280,100 @@ async function fullClanView(userId: string): Promise<NextResponse> {
     .select('player_id, role, joined_at')
     .eq('clan_id', membership.clan_id)
     .order('joined_at', { ascending: true });
-  if (membersError && !isMissingClanRework(membersError)) {
+  if (membersError) {
     reportError('roster read', membersError, { clanId: membership.clan_id });
+    return NextResponse.json({ error: 'Failed to load roster' }, { status: 503 });
   }
-  const memberIds = (members ?? []).map((m) => m.player_id as string);
 
-  // Tenure per member (Rule 6): the earliest span start this clan has of them,
-  // so a member who left and came back reads as the veteran they are.
-  const tenureByUser = new Map<string, string>();
   const { data: spans, error: spansError } = await supabase
     .from('clan_membership_history')
     .select('player_id, joined_at')
     .eq('clan_id', membership.clan_id);
-  if (spansError) {
-    if (!isMissingClanRework(spansError)) {
-      reportError('tenure read', spansError, { clanId: membership.clan_id });
-    }
-  } else {
-    for (const row of (spans ?? []) as Array<Record<string, unknown>>) {
-      const id = String(row.player_id ?? '');
-      const at = String(row.joined_at ?? '');
-      const current = tenureByUser.get(id);
-      if (!current || at < current) tenureByUser.set(id, at);
-    }
+  if (spansError && !isMissingClanRework(spansError)) {
+    reportError('tenure read', spansError, { clanId: membership.clan_id });
+    return NextResponse.json({ error: 'Failed to load tenure' }, { status: 503 });
+  }
+  const tenureByUser = new Map<string, string>();
+  for (const row of (spans ?? []) as Array<Record<string, unknown>>) {
+    const id = String(row.player_id ?? '');
+    const at = String(row.joined_at ?? '');
+    const current = tenureByUser.get(id);
+    if (id && at && (!current || at < current)) tenureByUser.set(id, at);
   }
 
+  let applications: Array<Record<string, unknown>> = [];
+  if (role === 'owner' || role === 'co_leader') {
+    const { data, error } = await supabase
+      .from('clan_applications')
+      .select('id, applicant_id, status, created_at')
+      .eq('clan_id', membership.clan_id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (error) {
+      reportError('pending applications read', error, { clanId: membership.clan_id });
+      return NextResponse.json({ error: 'Failed to load applications' }, { status: 503 });
+    }
+    applications = (data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  const cycle = energyBattleCycleAt();
+  const { data: contributionRows, error: contributionError } = await supabase.rpc(
+    'get_clan_competitive_roster',
+    { p_clan_id: membership.clan_id, p_cycle_index: cycle.index }
+  );
+  if (contributionError && !isMissingClanRework(contributionError)) {
+    reportError('competitive roster read', contributionError, {
+      clanId: membership.clan_id,
+      cycleIndex: cycle.index,
+    });
+    return NextResponse.json({ error: 'Failed to load contribution ranks' }, { status: 503 });
+  }
+  const contributionByUser = new Map<string, Record<string, unknown>>(
+    ((contributionRows ?? []) as Array<Record<string, unknown>>).map((row) => [
+      String(row.user_id ?? ''),
+      row,
+    ])
+  );
+
+  const { data: gloryRows, error: gloryError } = await supabase
+    .from('clan_glory_assignments')
+    .select('id, seat, holder_user_id, assigned_by_user_id, source_cycle_index, effective_cycle_index, effective_at, evidence_depth, evidence_rank, evidence_contribution_count, reward_dna, assigned_at')
+    .eq('clan_id', membership.clan_id)
+    .is('superseded_at', null)
+    .gte('effective_cycle_index', cycle.index - 1)
+    .order('effective_cycle_index', { ascending: false })
+    .order('seat', { ascending: true });
+  if (gloryError && !isMissingClanRework(gloryError)) {
+    reportError('Glory assignment read', gloryError, { clanId: membership.clan_id });
+    return NextResponse.json({ error: 'Failed to load Glory seats' }, { status: 503 });
+  }
+  const gloryAssignmentIds = (gloryRows ?? []).map((row) => row.id as string);
+  let rewardedAssignments = new Set<string>();
+  if (gloryAssignmentIds.length > 0) {
+    const { data: rewardRows, error: rewardError } = await supabase
+      .from('clan_glory_reward_ledger')
+      .select('assignment_id')
+      .in('assignment_id', gloryAssignmentIds);
+    if (rewardError && !isMissingClanRework(rewardError)) {
+      reportError('Glory reward read', rewardError, { clanId: membership.clan_id });
+      return NextResponse.json({ error: 'Failed to load Glory rewards' }, { status: 503 });
+    }
+    rewardedAssignments = new Set((rewardRows ?? []).map((row) => String(row.assignment_id)));
+  }
+
+  const identityIds = new Set<string>((members ?? []).map((member) => String(member.player_id)));
+  for (const application of applications) identityIds.add(String(application.applicant_id));
+  for (const glory of gloryRows ?? []) identityIds.add(String(glory.holder_user_id));
   const identities = new Map<string, ReturnType<typeof identityFromRow>>();
-  if (memberIds.length > 0) {
+  if (identityIds.size > 0) {
     const { data: identityRows, error: identityError } = await supabase.rpc(
       'get_player_identities',
-      { p_ids: memberIds }
+      { p_ids: Array.from(identityIds) }
     );
     if (identityError) {
-      // Pre-022: roster renders without identity cards
       if (!/get_player_identities/i.test(identityError.message || '')) {
         reportError('roster identity read', identityError, { clanId: membership.clan_id });
+        return NextResponse.json({ error: 'Failed to load player identities' }, { status: 503 });
       }
     } else {
       for (const row of (identityRows ?? []) as PlayerIdentityRow[]) {
@@ -210,20 +382,42 @@ async function fullClanView(userId: string): Promise<NextResponse> {
     }
   }
 
-  const roster = (members ?? []).map((m) => {
-    const userKey = m.player_id as string;
-    const joinedAt = m.joined_at as string;
+  const roster = (members ?? []).map((member) => {
+    const userKey = String(member.player_id);
+    const joinedAt = String(member.joined_at);
     const earlier = tenureByUser.get(userKey);
+    const memberRole = asClanRole(member.role);
+    const contribution = contributionByUser.get(userKey);
+    const eligibleResults = Number(contribution?.eligible_results ?? 0);
+    const hasEligibleContribution = eligibleResults > 0;
     return {
       userId: userKey,
-      role: m.role === 'owner' ? 'owner' : 'member',
+      role: memberRole,
+      roleLabel: CLAN_ROLE_LABELS[memberRole],
+      permissions: CLAN_PERMISSIONS[memberRole],
       joinedAt,
       tenureSince: earlier && earlier < joinedAt ? earlier : joinedAt,
       identity: identities.get(userKey) ?? null,
+      contribution: {
+        cycleIndex: cycle.index,
+        hasEligibleContribution,
+        bestFiveDepth: hasEligibleContribution
+          ? Number(contribution?.best_five_depth)
+          : null,
+        rank: hasEligibleContribution
+          ? Number(contribution?.contribution_rank)
+          : null,
+        eligibleResults,
+        bestGeneration: hasEligibleContribution
+          ? Number(contribution?.best_generation)
+          : null,
+        lastContributedAt: hasEligibleContribution
+          ? (contribution?.last_contributed_at as string | null) ?? null
+          : null,
+      },
     };
   });
 
-  // Discord link summary (no secrets: ids + invite url only)
   let discord: {
     linked: boolean;
     model?: string;
@@ -236,11 +430,11 @@ async function fullClanView(userId: string): Promise<NextResponse> {
     .select('model, guild_id, channel_id, invite_url')
     .eq('clan_id', membership.clan_id)
     .maybeSingle();
-  if (discordError) {
-    if (!isMissingDiscordInfra(discordError)) {
-      reportError('clan discord link read', discordError, { clanId: membership.clan_id });
-    }
-  } else if (discordLink) {
+  if (discordError && !isMissingDiscordInfra(discordError)) {
+    reportError('Discord link read', discordError, { clanId: membership.clan_id });
+    return NextResponse.json({ error: 'Failed to load clan link' }, { status: 503 });
+  }
+  if (discordLink) {
     discord = {
       linked: true,
       model: discordLink.model,
@@ -250,95 +444,157 @@ async function fullClanView(userId: string): Promise<NextResponse> {
     };
   }
 
-  const clanRow = clan as Record<string, unknown>;
-  const inviteCode = (clanRow.invite_code as string | null) ?? null;
+  const clanRow = clan as unknown as Record<string, unknown>;
+  const safeClan = safeClanProjection(clan);
+  const canInvite = CLAN_PERMISSIONS[role].invite;
+  let inviteCode: string | null = null;
+  if (canInvite) {
+    const { data: inviteClan, error: inviteCodeError } = await supabase
+      .from('clans')
+      .select('invite_code')
+      .eq('id', membership.clan_id)
+      .single();
+    if (inviteCodeError) {
+      reportError('invite code read', inviteCodeError, { clanId: membership.clan_id, userId });
+      return NextResponse.json({ error: 'Failed to load clan invitation' }, { status: 503 });
+    }
+    inviteCode = (inviteClan?.invite_code as string | null) ?? null;
+  }
   const ownRoster = roster.find((entry) => entry.userId === userId);
-
   return NextResponse.json({
-    clan,
+    clan: safeClan,
     membership: {
       clanId: membership.clan_id,
-      role: membership.role === 'owner' ? 'owner' : 'member',
+      role,
+      roleLabel: CLAN_ROLE_LABELS[role],
+      permissions: CLAN_PERMISSIONS[role],
       joinedAt: membership.joined_at,
       tenureSince: ownRoster?.tenureSince ?? membership.joined_at,
     },
+    settings: { joinPolicy: clanRow.join_policy },
     identity: {
       bannerId: clanRow.banner_id ?? null,
       emblemId: clanRow.emblem_id ?? null,
       colorPrimary: clanRow.color_primary ?? null,
       colorSecondary: clanRow.color_secondary ?? null,
     },
-    invite: {
-      code: inviteCode,
-      url: inviteCode ? clanInviteUrl(inviteCode) : null,
-    },
+    invite: { code: inviteCode, url: inviteCode ? clanInviteUrl(inviteCode) : null },
     limits: {
       maxMembers: CLAN_LIMITS.maxMembers,
       softFullMembers: CLAN_LIMITS.softFullMembers,
+      availableSpots: Math.max(0, CLAN_LIMITS.maxMembers - roster.length),
     },
+    cycle,
     roster,
+    applications: applications.map((application) => ({
+      id: application.id,
+      applicantUserId: application.applicant_id,
+      status: application.status,
+      createdAt: application.created_at,
+      identity: identities.get(String(application.applicant_id)) ?? null,
+    })),
+    glory: {
+      terms: competitiveConfig().glory,
+      seats: (gloryRows ?? []).map((assignment) => ({
+        id: assignment.id,
+        seat: assignment.seat,
+        holderUserId: assignment.holder_user_id,
+        holderIdentity: identities.get(String(assignment.holder_user_id)) ?? null,
+        assignedByUserId: assignment.assigned_by_user_id,
+        sourceCycleIndex: assignment.source_cycle_index,
+        effectiveCycleIndex: assignment.effective_cycle_index,
+        effectiveAt: assignment.effective_at,
+        evidenceDepth: Number(assignment.evidence_depth),
+        evidenceRank: Number(assignment.evidence_rank),
+        evidenceContributionCount: Number(assignment.evidence_contribution_count),
+        rewardDna: Number(assignment.reward_dna),
+        assignedAt: assignment.assigned_at,
+        state:
+          Number(assignment.effective_cycle_index) > cycle.index
+            ? 'pending'
+            : Number(assignment.effective_cycle_index) === cycle.index
+              ? 'active'
+              : 'completed',
+        rewarded: rewardedAssignments.has(String(assignment.id)),
+      })),
+    },
     myInvites,
+    myApplications,
     discord,
+    competitiveConfig: competitiveConfig(),
   });
 }
 
-/**
- * GET - the directory, one player's clan, or the full authed surface.
- */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const playerId = searchParams.get('playerId');
     const view = searchParams.get('view');
 
+    if (view === 'config') {
+      return NextResponse.json({ competitiveConfig: competitiveConfig() });
+    }
     if (view === 'full') {
-      const authHeader = request.headers.get('authorization');
-      if (!authHeader) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !user) {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-      }
-      return fullClanView(user.id);
+      const auth = await authenticatedUser(request);
+      if (auth.error) return auth.error;
+      return fullClanView(auth.userId);
     }
 
-    // One player's clan.
     if (playerId) {
-      const { data: membership, error: membershipError } = await supabase
+      const auth = await authenticatedUser(request);
+      if (auth.error) return auth.error;
+      if (auth.userId !== playerId) {
+        return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+      }
+      const { data: membership, error } = await supabase
         .from('clan_members')
-        .select(`
-          clan_id,
-          role,
-          joined_at,
-          clans:clan_id(*)
-        `)
-        .eq('player_id', playerId)
+        .select(`clan_id, role, joined_at, clans:clan_id(${CLAN_SAFE_COLUMNS})`)
+        .eq('player_id', auth.userId)
         .maybeSingle();
-      if (membershipError && !isMissingClanRework(membershipError)) {
-        reportError('player clan read', membershipError, { playerId });
+      if (error && !isMissingClanRework(error)) {
+        reportError('player clan read', error, { playerId: auth.userId });
+        return NextResponse.json({ error: 'Failed to load membership' }, { status: 503 });
       }
-
-      if (!membership) {
-        return NextResponse.json({ clan: null });
-      }
-
+      if (!membership) return NextResponse.json({ clan: null });
+      const membershipRow = membership as unknown as {
+        clan_id: string;
+        role: unknown;
+        joined_at: string;
+        clans: unknown;
+      };
+      const role = asClanRole(membershipRow.role);
       return NextResponse.json({
-        clan: membership.clans,
+        clan: safeClanProjection(membershipRow.clans),
         membership: {
-          clanId: membership.clan_id,
-          role: membership.role === 'owner' ? 'owner' : 'member',
-          joinedAt: membership.joined_at,
+          clanId: membershipRow.clan_id,
+          role,
+          roleLabel: CLAN_ROLE_LABELS[role],
+          joinedAt: membershipRow.joined_at,
         },
       });
     }
 
-    // The directory: alive clans only, and NO TOTAL. §9.2 forbids displaying
-    // total-population counts anywhere, so the response has no field to put
-    // one in and the query never asks for a count.
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
-    const clans = await loadClanDirectory(supabase, limit);
+    const search = (searchParams.get('q') ?? searchParams.get('search') ?? '').trim();
+    if (search.length > CLAN_DIRECTORY_LIMITS.maxSearchLength) {
+      return NextResponse.json({ error: 'Search is too long' }, { status: 400 });
+    }
+    const policyValue = searchParams.get('policy');
+    if (policyValue !== null && !isClanJoinPolicy(policyValue)) {
+      return NextResponse.json({ error: 'Invalid clan policy' }, { status: 400 });
+    }
+    const hasSpaceValue = searchParams.get('hasSpace');
+    if (hasSpaceValue !== null && hasSpaceValue !== 'true' && hasSpaceValue !== 'false') {
+      return NextResponse.json({ error: 'hasSpace must be true or false' }, { status: 400 });
+    }
+    const parsedLimit = Number.parseInt(searchParams.get('limit') ?? '', 10);
+    const parsedOffset = Number.parseInt(searchParams.get('offset') ?? '', 10);
+    const clans = await loadClanDirectory(supabase, {
+      search: search || null,
+      policy: policyValue,
+      hasSpace: hasSpaceValue === null ? null : hasSpaceValue === 'true',
+      limit: Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+      offset: Number.isFinite(parsedOffset) ? parsedOffset : undefined,
+    });
     return NextResponse.json({ clans });
   } catch (error) {
     reportError('GET', error);
@@ -346,82 +602,78 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST - found, join, leave, and the roster acts that are not levers.
- */
+function requiredString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { action } = body as { action?: string };
+    const auth = await authenticatedUser(request);
+    if (auth.error) return auth.error;
+    const userId = auth.userId;
+    const body = (await request.json()) as Record<string, unknown>;
+    const action = body.action;
 
     switch (action) {
-      /**
-       * Found a clan of one (§9.2). Name, optional tag, preset heraldry — one
-       * RPC, one transaction, and the clan exists complete: it hunts, it holds
-       * records, it appears in the directory once it has hunted, and it is
-       * paired the week a symmetric rival exists. Nobody else has to arrive.
-       */
       case 'found': {
-        const { name, tag, bannerId, emblemId, colorPrimary, colorSecondary } = body as {
-          name?: unknown;
-          tag?: unknown;
-          bannerId?: unknown;
-          emblemId?: unknown;
-          colorPrimary?: unknown;
-          colorSecondary?: unknown;
-        };
-
-        if (typeof name !== 'string' || !isValidClanName(name.trim())) {
+        const name = requiredString(body.name);
+        const tag = typeof body.tag === 'string' ? body.tag.trim().toUpperCase() : '';
+        if (!name || !isValidClanName(name)) {
           return NextResponse.json(
-            {
-              error: `Name must be ${CLAN_LIMITS.minNameLength}-${CLAN_LIMITS.maxNameLength} characters, letters and digits`,
-              code: 'invalid_name',
-            },
+            { error: `Name must be ${CLAN_LIMITS.minNameLength}-${CLAN_LIMITS.maxNameLength} characters`, code: 'invalid_name' },
             { status: 400 }
           );
         }
-        if (typeof tag === 'string' && tag.length > 0 && !isValidClanTag(tag.toUpperCase())) {
+        if (tag && !isValidClanTag(tag)) {
           return NextResponse.json(
-            {
-              error: `Tag must be ${CLAN_LIMITS.minTagLength}-${CLAN_LIMITS.maxTagLength} uppercase letters/numbers`,
-              code: 'invalid_tag',
-            },
+            { error: `Tag must be ${CLAN_LIMITS.minTagLength}-${CLAN_LIMITS.maxTagLength} uppercase letters/numbers`, code: 'invalid_tag' },
             { status: 400 }
           );
         }
-
-        const asOptionalString = (value: unknown) =>
-          typeof value === 'string' && value.length > 0 ? value : null;
-
+        const optional = (value: unknown) => requiredString(value);
+        const bannerId = optional(body.bannerId);
+        const emblemId = optional(body.emblemId);
+        const colorPrimary = optional(body.colorPrimary)?.toLowerCase() ?? null;
+        const colorSecondary = optional(body.colorSecondary)?.toLowerCase() ?? null;
+        if (bannerId !== null && !isValidClanBannerId(bannerId)) {
+          return NextResponse.json({ error: 'Invalid banner', code: 'invalid_banner' }, { status: 400 });
+        }
+        if (emblemId !== null && !isValidClanEmblemId(emblemId)) {
+          return NextResponse.json({ error: 'Invalid emblem', code: 'invalid_emblem' }, { status: 400 });
+        }
+        if ((colorPrimary !== null && !isValidClanColor(colorPrimary))
+          || (colorSecondary !== null && !isValidClanColor(colorSecondary))) {
+          return NextResponse.json({ error: 'Invalid color', code: 'invalid_color' }, { status: 400 });
+        }
+        const confirmedFoundingDnaCost = body.confirmedFoundingDnaCost;
+        if (!Number.isInteger(confirmedFoundingDnaCost)
+          || confirmedFoundingDnaCost !== CLAN_ECONOMY_CONFIG.foundingDnaCost) {
+          return NextResponse.json(
+            {
+              error: CLAN_RPC_ERRORS.founding_confirmation_required.error,
+              code: 'founding_confirmation_required',
+              economy: { foundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost },
+            },
+            { status: CLAN_RPC_ERRORS.founding_confirmation_required.status }
+          );
+        }
         const { data, error } = await supabase.rpc('found_clan', {
-          p_user_id: user.id,
-          p_name: name.trim(),
-          p_tag: typeof tag === 'string' && tag.length > 0 ? tag.toUpperCase() : null,
-          p_banner_id: asOptionalString(bannerId),
-          p_emblem_id: asOptionalString(emblemId),
-          p_color_primary: asOptionalString(colorPrimary),
-          p_color_secondary: asOptionalString(colorSecondary),
+          p_user_id: userId,
+          p_name: name,
+          p_tag: tag || null,
+          p_banner_id: bannerId,
+          p_emblem_id: emblemId,
+          p_color_primary: colorPrimary,
+          p_color_secondary: colorSecondary,
+          p_founding_cost: CLAN_ECONOMY_CONFIG.foundingDnaCost,
         });
         if (error) {
           if (isMissingClanRework(error)) return notLiveYet('Founding a clan');
-          reportError('found_clan RPC', error, { userId: user.id });
+          reportError('found_clan RPC', error, { userId });
           return NextResponse.json({ error: 'Request failed' }, { status: 500 });
         }
-
         const payload = (data ?? {}) as Record<string, unknown>;
-        if (payload.error) return mapRpcResult(data);
+        if (payload.error) return mapRpcResult(payload);
         const code = (payload.invite_code as string | null) ?? null;
         return NextResponse.json({
           success: true,
@@ -431,179 +683,209 @@ export async function POST(request: NextRequest) {
             tag: payload.tag,
             memberCount: payload.member_count,
             maxMembers: payload.max_members,
+            joinPolicy: payload.join_policy,
+          },
+          economy: {
+            foundingDnaCost: payload.founding_dna_cost,
+            dnaBalance: payload.dna_balance,
           },
           invite: { code, url: code ? clanInviteUrl(code) : null },
         });
       }
 
-      /**
-       * Join by invite code — the only way into someone else's clan (§9.2:
-       * "invite links are the only recruitment surface"). The 12 cap is
-       * enforced inside the RPC under `FOR UPDATE`, so twelve people pasting
-       * the same link at once cannot produce a thirteenth member.
-       */
+      case 'apply':
+      case 'request_membership': {
+        const clanId = requiredString(body.clanId);
+        if (!clanId) return NextResponse.json({ error: 'clanId is required' }, { status: 400 });
+        return callClanRpc(
+          'request_clan_membership',
+          { p_user_id: userId, p_clan_id: clanId },
+          'Clan applications',
+          userId
+        );
+      }
+
       case 'join_by_code': {
-        const { code } = body as { code?: unknown };
-        const normalised = typeof code === 'string' ? code.trim().toUpperCase() : '';
-        if (!isValidClanInviteCode(normalised)) {
-          return NextResponse.json(
-            { error: 'That is not an invite code', code: 'invalid_code' },
-            { status: 400 }
-          );
+        const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+        if (!isValidClanInviteCode(code)) {
+          return NextResponse.json({ error: 'That is not an invite code', code: 'invalid_code' }, { status: 400 });
         }
-
-        const { data, error } = await supabase.rpc('join_clan_by_code', {
-          p_user_id: user.id,
-          p_code: normalised,
-        });
-        if (error) {
-          if (isMissingClanRework(error)) return notLiveYet('Joining by code');
-          reportError('join_clan_by_code RPC', error, { userId: user.id });
-          return NextResponse.json({ error: 'Request failed' }, { status: 500 });
-        }
-        return mapRpcResult(data);
+        return callClanRpc(
+          'join_clan_by_code',
+          { p_user_id: userId, p_code: code },
+          'Joining by code',
+          userId
+        );
       }
 
-      /**
-       * Leave. F-7's fix: `leave_clan` archives the membership span into
-       * `clan_membership_history` and only then ends the membership, in one
-       * transaction. Tenure — which Rule 6 names as permanent — survives, and
-       * rejoining later restores it rather than restarting it.
-       */
-      case 'leave': {
-        const { data, error } = await supabase.rpc('leave_clan', { p_user_id: user.id });
-        if (error) {
-          if (isMissingClanRework(error)) return notLiveYet('Leaving a clan');
-          reportError('leave_clan RPC', error, { userId: user.id });
-          return NextResponse.json({ error: 'Request failed' }, { status: 500 });
+      case 'invite': {
+        const handle = requiredString(body.handle);
+        if (!handle || !/^[A-Za-z0-9_]{3,16}$/.test(handle)) {
+          return NextResponse.json({ error: 'A valid exact handle is required', code: 'invalid_handle' }, { status: 400 });
         }
-        return mapRpcResult(data);
+        return callClanRpc(
+          'create_clan_invite_by_handle',
+          {
+            p_actor_user_id: userId,
+            p_handle: handle,
+            p_expires_in_seconds: CLAN_ECONOMY_CONFIG.invitationLifetimeSeconds,
+          },
+          'Direct invitations',
+          userId
+        );
       }
 
-      /**
-       * Remove a member — plain roster management (§9.2), owner only.
-       *
-       * The request carries a target and nothing else: no reason, no threshold,
-       * no metric. There is no number about the target anywhere in this
-       * handler, the RPC, or the row it deletes, which is what makes it roster
-       * management rather than the officer lever Rule 8 forbids. Their tenure
-       * is archived first, exactly as if they had left.
-       */
+      case 'approve_application':
+      case 'reject_application': {
+        const applicationId = requiredString(body.applicationId);
+        if (!applicationId) {
+          return NextResponse.json({ error: 'applicationId is required' }, { status: 400 });
+        }
+        return callClanRpc(
+          'review_clan_application',
+          {
+            p_actor_user_id: userId,
+            p_application_id: applicationId,
+            p_approve: action === 'approve_application',
+          },
+          'Clan applications',
+          userId
+        );
+      }
+
+      case 'respond_invite': {
+        const inviteId = requiredString(body.inviteId);
+        if (!inviteId) return NextResponse.json({ error: 'inviteId is required' }, { status: 400 });
+        if (typeof body.accept !== 'boolean') {
+          return NextResponse.json({ error: 'accept must be boolean' }, { status: 400 });
+        }
+        return callClanRpc(
+          'respond_clan_invite',
+          { p_user_id: userId, p_invite_id: inviteId, p_accept: body.accept },
+          'Invitations',
+          userId
+        );
+      }
+
+      case 'leave':
+        return callClanRpc('leave_clan', { p_user_id: userId }, 'Leaving a clan', userId);
+
       case 'remove_member': {
-        const { targetUserId } = body as { targetUserId?: unknown };
-        if (typeof targetUserId !== 'string' || !targetUserId) {
-          return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        const targetUserId = requiredString(body.targetUserId);
+        if (!targetUserId) return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        return callClanRpc(
+          'remove_clan_member',
+          { p_user_id: userId, p_target_user_id: targetUserId },
+          'Roster management',
+          userId
+        );
+      }
+
+      case 'set_role': {
+        const targetUserId = requiredString(body.targetUserId);
+        const role = body.role;
+        if (!targetUserId) return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        if (role !== 'co_leader' && role !== 'member') {
+          return NextResponse.json({ error: 'role must be co_leader or member', code: 'invalid_role' }, { status: 400 });
         }
-        const { data, error } = await supabase.rpc('remove_clan_member', {
-          p_user_id: user.id,
-          p_target_user_id: targetUserId,
-        });
-        if (error) {
-          if (isMissingClanRework(error)) return notLiveYet('Roster management');
-          reportError('remove_clan_member RPC', error, { userId: user.id });
-          return NextResponse.json({ error: 'Request failed' }, { status: 500 });
-        }
-        return mapRpcResult(data);
+        return callClanRpc(
+          'set_clan_member_role',
+          { p_actor_user_id: userId, p_target_user_id: targetUserId, p_role: role },
+          'Clan roles',
+          userId
+        );
       }
 
       case 'transfer_ownership': {
-        const { targetUserId } = body as { targetUserId?: unknown };
-        if (typeof targetUserId !== 'string' || !targetUserId) {
-          return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        const targetUserId = requiredString(body.targetUserId);
+        if (!targetUserId) return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        return callClanRpc(
+          'transfer_clan_ownership',
+          { p_user_id: userId, p_target_user_id: targetUserId },
+          'Transferring a clan',
+          userId
+        );
+      }
+
+      case 'update_settings': {
+        if (!isClanJoinPolicy(body.joinPolicy)) {
+          return NextResponse.json({ error: 'Invalid clan policy', code: 'invalid_policy' }, { status: 400 });
         }
-        const { data, error } = await supabase.rpc('transfer_clan_ownership', {
-          p_user_id: user.id,
-          p_target_user_id: targetUserId,
-        });
-        if (error) {
-          if (isMissingClanRework(error)) return notLiveYet('Transferring a clan');
-          reportError('transfer_clan_ownership RPC', error, { userId: user.id });
-          return NextResponse.json({ error: 'Request failed' }, { status: 500 });
-        }
-        return mapRpcResult(data);
+        return callClanRpc(
+          'update_clan_settings',
+          { p_actor_user_id: userId, p_join_policy: body.joinPolicy },
+          'Clan settings',
+          userId
+        );
       }
 
       case 'rotate_invite_code': {
-        const { data, error } = await supabase.rpc('rotate_clan_invite_code', {
-          p_user_id: user.id,
-        });
+        const { data, error } = await supabase.rpc('rotate_clan_invite_code', { p_user_id: userId });
         if (error) {
           if (isMissingClanRework(error)) return notLiveYet('Invite codes');
-          reportError('rotate_clan_invite_code RPC', error, { userId: user.id });
+          reportError('rotate_clan_invite_code RPC', error, { userId });
           return NextResponse.json({ error: 'Request failed' }, { status: 500 });
         }
         const payload = (data ?? {}) as Record<string, unknown>;
-        if (payload.error) return mapRpcResult(data);
+        if (payload.error) return mapRpcResult(payload);
         const code = (payload.invite_code as string | null) ?? null;
-        return NextResponse.json({
-          success: true,
-          invite: { code, url: code ? clanInviteUrl(code) : null },
-        });
+        return NextResponse.json({ success: true, invite: { code, url: code ? clanInviteUrl(code) : null } });
       }
 
-      /**
-       * Preset heraldry, owner only.
-       *
-       * `set_clan_heraldry` (048) replaces `update_clan_identity` (024), which
-       * gated every edit behind the `heraldry_1` research node. That node lives
-       * inside the Gauntlet, and the Gauntlet is behind a population gate that
-       * will not open for a long time (§9.3) — so under 024 a clan's identity
-       * would have been permanently locked. Identity is not a reward for
-       * reaching a population threshold.
-       */
       case 'update_identity': {
-        const { bannerId, emblemId, colorPrimary, colorSecondary } = body as {
-          bannerId?: unknown;
-          emblemId?: unknown;
-          colorPrimary?: unknown;
-          colorSecondary?: unknown;
-        };
-        const asOptionalString = (value: unknown) =>
-          typeof value === 'string' && value.length > 0 ? value : null;
-
-        const { data, error } = await supabase.rpc('set_clan_heraldry', {
-          p_user_id: user.id,
-          p_banner_id: asOptionalString(bannerId),
-          p_emblem_id: asOptionalString(emblemId),
-          p_color_primary: asOptionalString(colorPrimary),
-          p_color_secondary: asOptionalString(colorSecondary),
-        });
-        if (error) {
-          if (isMissingClanRework(error) || isMissingDiscordInfra(error)) {
-            return notLiveYet('Clan identity');
-          }
-          reportError('set_clan_heraldry RPC', error, { userId: user.id });
-          return NextResponse.json({ error: 'Request failed' }, { status: 500 });
+        const optional = (value: unknown) => requiredString(value);
+        const bannerId = optional(body.bannerId);
+        const emblemId = optional(body.emblemId);
+        const colorPrimary = optional(body.colorPrimary)?.toLowerCase() ?? null;
+        const colorSecondary = optional(body.colorSecondary)?.toLowerCase() ?? null;
+        if (bannerId !== null && !isValidClanBannerId(bannerId)) {
+          return NextResponse.json({ error: 'Invalid banner', code: 'invalid_banner' }, { status: 400 });
         }
-        return mapRpcResult(data);
+        if (emblemId !== null && !isValidClanEmblemId(emblemId)) {
+          return NextResponse.json({ error: 'Invalid emblem', code: 'invalid_emblem' }, { status: 400 });
+        }
+        if ((colorPrimary !== null && !isValidClanColor(colorPrimary))
+          || (colorSecondary !== null && !isValidClanColor(colorSecondary))) {
+          return NextResponse.json({ error: 'Invalid color', code: 'invalid_color' }, { status: 400 });
+        }
+        return callClanRpc(
+          'set_clan_heraldry',
+          {
+            p_user_id: userId,
+            p_banner_id: bannerId,
+            p_emblem_id: emblemId,
+            p_color_primary: colorPrimary,
+            p_color_secondary: colorSecondary,
+          },
+          'Clan identity',
+          userId
+        );
       }
 
-      /**
-       * Answer an invite issued before this rework. No path in this route
-       * creates one any more — recruitment is the invite code — but Rule 5
-       * says a pending one is not destroyed by the change.
-       */
-      case 'respond_invite': {
-        const { inviteId, accept } = body as { inviteId?: unknown; accept?: unknown };
-        if (typeof inviteId !== 'string' || !inviteId) {
-          return NextResponse.json({ error: 'inviteId is required' }, { status: 400 });
+      case 'assign_glory': {
+        const targetUserId = requiredString(body.targetUserId);
+        const seat = Number(body.seat);
+        if (!targetUserId) return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        if (!Number.isInteger(seat) || seat < 1 || seat > CLAN_ECONOMY_CONFIG.glory.maxSeats) {
+          return NextResponse.json({ error: 'seat must be 1 or 2', code: 'invalid_glory_seat' }, { status: 400 });
         }
-        if (typeof accept !== 'boolean') {
-          return NextResponse.json({ error: 'accept must be boolean' }, { status: 400 });
-        }
-        const { data, error } = await supabase.rpc('respond_clan_invite', {
-          p_user_id: user.id,
-          p_invite_id: inviteId,
-          p_accept: accept,
-        });
-        if (error) {
-          if (isMissingClanRework(error) || isMissingDiscordInfra(error)) {
-            return notLiveYet('Invites');
-          }
-          reportError('respond_clan_invite RPC', error, { userId: user.id });
-          return NextResponse.json({ error: 'Request failed' }, { status: 500 });
-        }
-        return mapRpcResult(data);
+        const cycle = energyBattleCycleAt();
+        return callClanRpc(
+          'assign_clan_glory',
+          {
+            p_actor_user_id: userId,
+            p_target_user_id: targetUserId,
+            p_source_cycle_index: cycle.index,
+            p_seat: seat,
+            p_reward_dna: CLAN_ECONOMY_CONFIG.glory.rewardDna,
+            p_minimum_tenure_seconds: CLAN_ECONOMY_CONFIG.glory.minimumTenureSeconds,
+            p_minimum_contribution_depth: CLAN_ECONOMY_CONFIG.glory.minimumContributionDepth,
+            p_allow_self_award: CLAN_ECONOMY_CONFIG.glory.allowOwnerSelfAward,
+            p_allow_reassignment: CLAN_ECONOMY_CONFIG.glory.allowPendingReassignment,
+          },
+          'Glory assignment',
+          userId
+        );
       }
 
       default:

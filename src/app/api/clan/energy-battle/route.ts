@@ -12,10 +12,81 @@ function missingBattleSchema(error: { code?: string; message?: string } | null):
   return Boolean(
     error &&
       (['42P01', '42703', 'PGRST200', 'PGRST202', 'PGRST205'].includes(error.code || '') ||
-        /schema cache.*clan_energy_|relation .*clan_energy_.* does not exist/i.test(
+        /schema cache.*clan_(?:energy|glory)_|relation .*clan_(?:energy|glory)_.* does not exist/i.test(
           error.message || ''
         ))
   );
+}
+
+function embeddedClan(value: unknown): { id?: string; name?: string; tag?: string } | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return candidate && typeof candidate === 'object'
+    ? (candidate as { id?: string; name?: string; tag?: string })
+    : null;
+}
+
+async function rewardHistory(playerId: string) {
+  const { data: battleRows, error: battleError } = await supabase
+    .from('clan_energy_battle_reward_ledger')
+    .select('id, battle_id, clan_id, cycle_index, reward_kind, outcome, participation_amount, bonus_amount, amount, counted_depth, eligible_run_count, counted_run_count, awarded_at, clans:clan_id(id, name, tag)')
+    .eq('player_id', playerId)
+    .order('awarded_at', { ascending: false })
+    .limit(12);
+  if (battleError && !missingBattleSchema(battleError)) {
+    return { error: battleError };
+  }
+
+  const { data: gloryRows, error: gloryError } = await supabase
+    .from('clan_glory_reward_ledger')
+    .select('id, battle_id, clan_id, cycle_index, seat, amount, eligible_depth, eligible_contribution_count, awarded_at, clans:clan_id(id, name, tag)')
+    .eq('player_id', playerId)
+    .order('awarded_at', { ascending: false })
+    .limit(12);
+  if (gloryError && !missingBattleSchema(gloryError)) {
+    return { error: gloryError };
+  }
+
+  const battleRewards = ((battleRows ?? []) as Array<Record<string, unknown>>)
+    .filter((row) => Number(row.amount) > 0)
+    .map((row) => ({
+      id: String(row.id),
+      artifactRef: `battle-reward:${String(row.id)}`,
+      type: 'battle' as const,
+      battleId: String(row.battle_id),
+      clanId: String(row.clan_id),
+      clan: embeddedClan(row.clans),
+      cycleIndex: Number(row.cycle_index),
+      rewardKind: String(row.reward_kind),
+      outcome: String(row.outcome),
+      participationDna: Number(row.participation_amount),
+      bonusDna: Number(row.bonus_amount),
+      amount: Number(row.amount),
+      countedDepth: Number(row.counted_depth),
+      eligibleRunCount: Number(row.eligible_run_count),
+      countedRunCount: Number(row.counted_run_count),
+      awardedAt: String(row.awarded_at),
+    }));
+  const gloryRewards = ((gloryRows ?? []) as Array<Record<string, unknown>>)
+    .filter((row) => Number(row.amount) > 0)
+    .map((row) => ({
+      id: String(row.id),
+      artifactRef: `glory-reward:${String(row.id)}`,
+      type: 'glory' as const,
+      battleId: String(row.battle_id),
+      clanId: String(row.clan_id),
+      clan: embeddedClan(row.clans),
+      cycleIndex: Number(row.cycle_index),
+      seat: Number(row.seat),
+      amount: Number(row.amount),
+      countedDepth: Number(row.eligible_depth),
+      countedRunCount: Number(row.eligible_contribution_count),
+      awardedAt: String(row.awarded_at),
+    }));
+  return {
+    history: [...battleRewards, ...gloryRewards]
+      .sort((a, b) => Date.parse(b.awardedAt) - Date.parse(a.awardedAt))
+      .slice(0, 12),
+  };
 }
 
 function reportBattleRead(
@@ -53,6 +124,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Player not found' }, { status: 404 });
   }
 
+  const rewards = await rewardHistory(player.id as string);
+  if ('error' in rewards && rewards.error) {
+    reportBattleRead('reward history lookup', rewards.error, { playerId: player.id });
+    return NextResponse.json({ error: 'Could not read battle rewards' }, { status: 503 });
+  }
+  const rewardRows = 'history' in rewards ? rewards.history : [];
+
   const { data: membership, error: membershipError } = await supabase
     .from('clan_members')
     .select('clan_id, clans(id, name, tag)')
@@ -65,7 +143,12 @@ export async function GET(request: NextRequest) {
 
   const cycle = energyBattleCycleAt();
   if (!membership) {
-    return NextResponse.json({ active: false, reason: 'no_clan', cycle });
+    return NextResponse.json({
+      active: false,
+      reason: 'no_clan',
+      cycle,
+      rewardHistory: rewardRows,
+    });
   }
 
   const clan = Array.isArray(membership.clans)
@@ -213,6 +296,7 @@ export async function GET(request: NextRequest) {
       outcome: side?.outcome ?? 'pending',
     },
     honors,
+    rewardHistory: rewardRows,
     opponent,
     you: {
       topFive,

@@ -55,6 +55,20 @@ async function serveNotifications(page: Page, count: number): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 }
 
+async function openNotificationCenter(page: Page, count: number) {
+  // Home now communicates attention directly on its four destination marks;
+  // the full inbox is progressive disclosure inside the stable Lab rail.
+  await page.goto('/lab/breed', { waitUntil: 'domcontentloaded' });
+  const more = page.locator('summary[aria-label="More"]');
+  await expect(more).toBeVisible({ timeout: 60_000 });
+  await more.click();
+  const trigger = page.getByRole('button', {
+    name: `Notifications, ${count} action${count === 1 ? '' : 's'} available`,
+  });
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  return trigger;
+}
+
 test.describe('notification attention dialog', () => {
   test.describe.configure({ timeout: 120_000 });
 
@@ -69,7 +83,10 @@ test.describe('notification attention dialog', () => {
     await signInAsGuest(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible();
+    await expect(page.getByLabel(/new lab activity/i)).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: /notifications, \d+ actions? available/i })
+    ).toHaveCount(0);
     expect(attentionRequests).toBe(0);
   });
 
@@ -85,10 +102,8 @@ test.describe('notification attention dialog', () => {
       { width: 320, height: 568 },
     ]) {
       await page.setViewportSize(viewport);
-      await page.goto('/', { waitUntil: 'domcontentloaded' });
-      await page
-        .getByRole('button', { name: 'Notifications, 30 actions available' })
-        .click();
+      const trigger = await openNotificationCenter(page, 30);
+      await trigger.click();
 
       const dialog = page.getByRole('dialog', { name: 'Notifications' });
       await expect(dialog).toBeVisible();
@@ -117,9 +132,8 @@ test.describe('notification attention dialog', () => {
     await seedConsent(page);
     await serveNotifications(page, 1);
 
-    const trigger = page.getByRole('button', {
-      name: 'Notifications, 1 action available',
-    });
+    await expect(page.getByLabel('New Lab activity')).toBeVisible();
+    const trigger = await openNotificationCenter(page, 1);
     await trigger.click();
     await page.getByRole('button', { name: 'Close notifications' }).click();
     await expect(trigger).toHaveAccessibleName('Notifications, 1 action available');

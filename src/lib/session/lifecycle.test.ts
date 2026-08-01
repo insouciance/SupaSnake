@@ -44,10 +44,10 @@ describe('end reasons', () => {
     }
   });
 
-  it('lets a client ask only for the two forfeit reasons', () => {
-    expect([...CLIENT_FORFEIT_REASONS]).toEqual(['abandoned', 'disconnected']);
+  it('lets a client ask only for explicit abandonment', () => {
+    expect([...CLIENT_FORFEIT_REASONS]).toEqual(['abandoned']);
     expect(isClientForfeitReason('abandoned')).toBe(true);
-    expect(isClientForfeitReason('disconnected')).toBe(true);
+    expect(isClientForfeitReason('disconnected')).toBe(false);
     // The two the server writes for itself are not requestable.
     expect(isClientForfeitReason('completed')).toBe(false);
     expect(isClientForfeitReason('expired')).toBe(false);
@@ -147,6 +147,21 @@ describe('staleness windows', () => {
           started_at: minutesBefore(STALE_PENDING_SETTLEMENT_MINUTES * 10),
           ended_at: minutesBefore(1),
           end_reason: 'completed',
+        },
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it('never age-expires a continuity run', () => {
+    expect(
+      isStaleOpenSession(
+        {
+          id: 'continuity',
+          start_request_id: '7a604a42-9f57-4f50-9a36-a7c7e85dbb28',
+          started_at: minutesBefore(STALE_PENDING_SETTLEMENT_MINUTES * 10),
+          ended_at: null,
+          end_reason: null,
         },
         NOW
       )

@@ -16,7 +16,8 @@ inside its cloud build/runtime.
 | Stripe catalog | Legacy one-time `NEXT_PUBLIC_STRIPE_*` names plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured for sandbox compatibility; the one-time source catalog is empty and the old Premium name/prices are not approved for live sale. Founding Keeper requires its own reviewed price mapping |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
-| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, `NEXT_PUBLIC_FTUE_V2`, `NEXT_PUBLIC_HUD_COCKPIT_V1`, `NEXT_PUBLIC_LADDER_V1`, `NEXT_PUBLIC_CAREER_SPINE_V1` | `https://supasnake.com`, age 14, FTUE v2, refined cockpit, Ladder, and Career presentation enabled; Career settlement is not flag-gated |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, manifest flags, `SUPASNAKE_PUBLIC_SURFACE_HASH` | `https://supasnake.com`, age 14; exact production-on flag set, Supabase project ref, and deterministic hash are defined once in `config/production-public-surface.json` and explicitly injected into build/runtime by the release workflow |
+| Optional clan tuning | `CLAN_FOUNDING_DNA_COST`, `CLAN_INVITATION_LIFETIME_SECONDS`, `CLAN_BATTLE_*`, `CLAN_GLORY_*` | Optional; absence uses reviewed launch defaults. Founding defaults to 500 DNA and rejects a stale quote; battle/Glory rewards and timing are bounded in config and SQL. Exact names and defaults live in `.env.example` |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
 | Analyst | `OPENAI_API_KEY`; optional budget/kill-switch variables | Configured |
@@ -31,9 +32,9 @@ npm run verify:production-env -- \
   --payments-mode test
 ```
 
-This proves every required name is present. Exact URL, key mode, price-ID and
-key-shape validation runs again inside the Vercel production build, where the
-Sensitive values are available.
+This proves every required name is present. Exact Supabase URL/project, public
+surface hash and flags, key mode, price-ID and key-shape validation runs again
+inside the Vercel production build, where Sensitive values are available.
 
 ## Supabase
 
@@ -65,10 +66,11 @@ The production workflow is manual and requires the literal confirmation
 
 ## Hosted development policy
 
-Vercel Preview intentionally points at the existing hosted Supabase project
-and Stripe sandbox so development receives hosted-environment feedback. The
-project currently contains operator test data only. Preserve it: never reset,
-truncate, reseed, or run destructive E2E/account-deletion flows there.
+Release Preview points at the hosted Supabase project through its public URL and
+anonymous key, but the workflow explicitly replaces the service-role value with
+an invalid sentinel and probes only `/api/release-contract`. The project
+currently contains operator test data only. Preserve it: never reset, truncate,
+reseed, or run destructive E2E/account-deletion flows there.
 Automated E2E remains isolated in the disposable local Supabase stack.
 
 ## Local development

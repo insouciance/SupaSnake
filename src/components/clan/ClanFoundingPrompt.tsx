@@ -128,7 +128,10 @@ export function ClanFoundingPrompt({
         {onFound ? (
           <button
             type="button"
-            onClick={onFound}
+            onClick={() => {
+              dismiss();
+              onFound();
+            }}
             data-testid="founding-prompt-found"
             className="btn-go px-6 py-2 min-h-[44px]"
           >
@@ -147,7 +150,10 @@ export function ClanFoundingPrompt({
         {onJoin ? (
           <button
             type="button"
-            onClick={onJoin}
+            onClick={() => {
+              dismiss();
+              onJoin();
+            }}
             data-testid="founding-prompt-join"
             className="btn-neutral px-6 py-2 min-h-[44px]"
           >

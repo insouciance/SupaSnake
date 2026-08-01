@@ -393,6 +393,7 @@ describe('step 0 — migrations 046-051 are live in Postgres', () => {
         p_emblem_id: null,
         p_color_primary: null,
         p_color_secondary: null,
+        p_founding_cost: null,
       },
     ],
     ['join_clan_by_code', { p_user_id: null, p_code: null }],
@@ -438,6 +439,12 @@ describe('step 1 — the clan of one', () => {
   let clanId: string;
 
   it('founds a clan with one member through found_clan', async () => {
+    const { error: fundingError } = await supabase
+      .from('players')
+      .update({ dna: 500 })
+      .eq('id', solo.playerId);
+    expect(fundingError).toBeNull();
+
     const { data, error } = await supabase.rpc('found_clan', {
       p_user_id: solo.userId,
       p_name: 'Gate Hollow',
@@ -446,6 +453,7 @@ describe('step 1 — the clan of one', () => {
       p_emblem_id: null,
       p_color_primary: null,
       p_color_secondary: null,
+      p_founding_cost: 500,
     });
     expect(error).toBeNull();
     const result = data as Record<string, unknown>;
@@ -467,6 +475,7 @@ describe('step 1 — the clan of one', () => {
       p_emblem_id: null,
       p_color_primary: null,
       p_color_secondary: null,
+      p_founding_cost: 500,
     });
     expect((data as Record<string, unknown>).error).toBe('already_in_clan');
   });

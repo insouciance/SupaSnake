@@ -8,3 +8,12 @@ export function isDurablyPendingSettlement(value: unknown): boolean {
   const response = value as Record<string, unknown>;
   return response.accepted === true && response.pendingSettlement === true;
 }
+
+/** A generic `alreadyEnded` response is not proof that a run paid. Only the
+ * lifecycle's explicit completed reason may acknowledge settlement without an
+ * impact receipt; abandonment, expiry and disconnection are zero-reward ends. */
+export function isCanonicalCompletedSettlement(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const response = value as Record<string, unknown>;
+  return response.alreadyEnded === true && response.endReason === 'completed';
+}

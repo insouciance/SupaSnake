@@ -24,7 +24,7 @@ jest.mock('next/link', () => ({
 
 function props(overrides: Partial<RunSetupPanelProps> = {}): RunSetupPanelProps {
   return {
-    snake: { name: 'Ouro', generation: 1, dynasty: 'CYBER' },
+    snake: { id: 'cyber-active', name: 'Ouro', generation: 1, dynasty: 'CYBER' },
     noSnakeAvailable: false,
     rulesetExplainer: 'CYBER accelerates as you eat.',
     masteryLevel: 2,
@@ -34,6 +34,7 @@ function props(overrides: Partial<RunSetupPanelProps> = {}): RunSetupPanelProps 
     startTestId: 'earn-start',
     isStarting: false,
     onStart: jest.fn(),
+    onChooseSnake: jest.fn(),
     startError: null,
     modeToggle: <div data-testid="mode-toggle" />,
     aimSelector: <div data-testid="aim-selector" />,
@@ -59,16 +60,18 @@ describe('RunSetupPanel', () => {
     expect(screen.getByTestId('earn-start')).toBeEnabled();
   });
 
-  it('folds every adjustable control into one closed disclosure', () => {
+  it('keeps ordinary mode direct while folding advanced controls into one disclosure', () => {
     const { container } = render(<RunSetupPanel {...props()} />);
     const disclosures = container.querySelectorAll(
       '[data-testid="run-setup-adjust"]'
     );
     expect(disclosures).toHaveLength(1);
     expect((disclosures[0] as HTMLDetailsElement).open).toBe(false);
-    for (const id of ['mode-toggle', 'aim-selector']) {
-      expect(disclosures[0]).toContainElement(screen.getByTestId(id));
-    }
+    expect(screen.getByTestId('run-setup-mode-control')).toContainElement(
+      screen.getByTestId('mode-toggle')
+    );
+    expect(disclosures[0]).not.toContainElement(screen.getByTestId('mode-toggle'));
+    expect(disclosures[0]).toContainElement(screen.getByTestId('aim-selector'));
   });
 
   it('names the equipped snake, its dynasty and its ruleset', () => {
@@ -80,6 +83,21 @@ describe('RunSetupPanel', () => {
     expect(screen.getByTestId('run-setup-yield-multiplier')).toHaveTextContent(
       'Yield ×1.00'
     );
+  });
+
+  it('opens a local snake chooser while keeping full Lab management contextual', () => {
+    const onChooseSnake = jest.fn();
+    const labHref =
+      '/lab?returnTo=%2Fgame%3FsetupMode%3Dearn%26setupEnergy%3D4%26setupRung%3D2';
+    render(<RunSetupPanel {...props({ onChooseSnake, labHref })} />);
+
+    fireEvent.click(screen.getByTestId('run-setup-snake-picker-trigger'));
+    expect(onChooseSnake).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('link', { name: /Snake Lab/i })).toHaveAttribute(
+      'href',
+      labHref
+    );
+    expect(screen.getByRole('link', { name: /Snake Lab/i })).not.toHaveClass('underline');
   });
 
   it('starts through its callback', () => {
@@ -143,5 +161,61 @@ describe('RunSetupPanel', () => {
       />
     );
     expect(screen.queryByTestId('heirloom-summary')).toBeNull();
+  });
+
+  it('is character-first and exposes exactly one compact favorite dock per dynasty', () => {
+    render(
+      <RunSetupPanel
+        {...props({
+          favorites: {
+            CYBER: { id: 'cyber-active', name: 'Ouro', generation: 1, dynasty: 'CYBER' },
+            PRIMAL: { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' },
+            COSMIC: null,
+          },
+          onFavoriteDock: jest.fn(),
+        })}
+      />
+    );
+
+    expect(screen.getByRole('img', { name: /Ouro, Generation 1, ready to launch/i })).toBeInTheDocument();
+    expect(screen.getByTestId('run-setup-favorites').children).toHaveLength(3);
+    expect(screen.getByTestId('run-setup-favorite-cyber')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('run-setup-favorite-cosmic')).toHaveAccessibleName(
+      'Choose COSMIC favorite snake'
+    );
+  });
+
+  it('uses favorite docks for direct equip and an empty-dock pick flow', () => {
+    const onFavoriteDock = jest.fn();
+    const primal = { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' };
+    render(
+      <RunSetupPanel
+        {...props({
+          favorites: { PRIMAL: primal, COSMIC: null },
+          onFavoriteDock,
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('run-setup-favorite-primal'));
+    fireEvent.click(screen.getByTestId('run-setup-favorite-cosmic'));
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(1, 'PRIMAL', primal);
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(2, 'COSMIC', null);
+  });
+
+  it('places the Energy reactor before inherited build detail and protects narrow labels', () => {
+    render(
+      <RunSetupPanel
+        {...props({
+          energySelector: <div data-testid="energy-reactor" />,
+          heirloom: <div data-testid="heirloom-summary" />,
+        })}
+      />
+    );
+    const energy = screen.getByTestId('energy-reactor');
+    const heirloom = screen.getByTestId('heirloom-summary');
+    expect(energy.compareDocumentPosition(heirloom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('earn-start')).toHaveClass('whitespace-nowrap');
+    expect(screen.getByRole('link', { name: 'Snake Lab' })).toHaveClass('whitespace-nowrap');
   });
 });

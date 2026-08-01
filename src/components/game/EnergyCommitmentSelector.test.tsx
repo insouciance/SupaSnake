@@ -26,13 +26,14 @@ describe('EnergyCommitmentSelector', () => {
     expect(screen.getByText(/consumed when the run begins/i)).toBeInTheDocument();
   });
 
-  it('requires two deliberate taps before selecting all six', () => {
+  it('uses a clear deliberate confirmation before selecting all six', () => {
     const onChange = jest.fn();
     render(<EnergyCommitmentSelector energy={full} value={1} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('energy-commit-6'));
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByTestId('energy-commit-6')).toHaveTextContent('Confirm 6');
-    fireEvent.click(screen.getByTestId('energy-commit-6'));
+    expect(screen.getByRole('heading', { name: 'Commit all 6 Energy?' })).toBeInTheDocument();
+    expect(screen.getByTestId('energy-max-confirmation')).toHaveTextContent('×10 harvest run');
+    fireEvent.click(screen.getByTestId('energy-max-confirm'));
     expect(onChange).toHaveBeenCalledWith(6);
   });
 
@@ -53,7 +54,30 @@ describe('EnergyCommitmentSelector', () => {
       />
     );
     expect(screen.getByTestId('energy-clan-eligible')).toHaveTextContent(
-      'Beat 1200 Yield'
+      'Beat 1,200 Yield'
     );
+  });
+
+  it('uses one compact reactor instead of six equal commitment buttons', () => {
+    const { container } = render(
+      <EnergyCommitmentSelector energy={full} value={2} onChange={jest.fn()} />
+    );
+    expect(screen.getByTestId('energy-commitment-slider')).toHaveAttribute('max', '6');
+    expect(container.querySelectorAll('button[data-testid^="energy-commit-"]')).toHaveLength(1);
+  });
+
+  it('keeps Energy primary and the battle context subordinate in DOM order', () => {
+    render(
+      <EnergyCommitmentSelector
+        energy={full}
+        value={2}
+        onChange={jest.fn()}
+        clanBattle={{ active: true, fifthBestToBeat: 900 }}
+      />
+    );
+    const summary = screen.getByTestId('energy-summary');
+    const battle = screen.getByTestId('energy-clan-eligible');
+    expect(summary.compareDocumentPosition(battle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('energy-commit-6')).toHaveClass('whitespace-nowrap');
   });
 });

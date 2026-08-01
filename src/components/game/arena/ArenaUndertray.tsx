@@ -3,10 +3,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
-import {
-  GAME_SCREEN_COLORS,
-  getDynastyScreenTokens,
-} from '@/components/game/screen/gameScreenTokens';
+import type { StrainId } from '@/shared/game/strains';
+import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
+import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
+import { genomeRuneEngravingStrokes } from '@/components/game/screen/gameRuneStrokes';
 
 interface ArenaUndertrayProps {
   gridSize: number;
@@ -15,17 +15,58 @@ interface ArenaUndertrayProps {
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 const cornerGeometry = new THREE.BoxGeometry(1, 1, 1);
+const orientationGeometry = new THREE.BoxGeometry(1, 1, 1);
+const MAX_ORIENTATION_STROKES = 5;
+
+const DYNASTY_ORIENTATION_RUNE: Record<DynastyId, StrainId> = {
+  CYBER: 'VOLT',
+  PRIMAL: 'FERAL',
+  COSMIC: 'FLUX',
+};
+
+export interface ArenaOrientationStrokeLayout {
+  readonly x: number;
+  readonly z: number;
+  readonly length: number;
+  readonly width: number;
+  readonly yaw: number;
+}
+
+/** Pure layout contract for the functional north marker. Every point remains
+ * outside the playable z >= 0 rectangle and inside the undertray silhouette. */
+export function arenaOrientationRuneLayout(
+  gridSize: number,
+  dynasty: DynastyId
+): readonly ArenaOrientationStrokeLayout[] {
+  const center = gridSize / 2;
+  const runeScale = 1.15;
+  const runeZ = -0.84;
+  return genomeRuneEngravingStrokes(DYNASTY_ORIENTATION_RUNE[dynasty]).map((stroke) => {
+    const dx = (stroke.x2 - stroke.x1) * runeScale;
+    const dz = (stroke.z2 - stroke.z1) * runeScale;
+    return {
+      x: center + ((stroke.x1 + stroke.x2) / 2) * runeScale,
+      z: runeZ + ((stroke.z1 + stroke.z2) / 2) * runeScale,
+      length: Math.hypot(dx, dz),
+      width: stroke.width * runeScale,
+      yaw: Math.atan2(-dz, dx),
+    };
+  });
+}
 
 /**
  * Low-cost physical chassis beneath the exact playable board.
  *
  * Seven added draws: base, four shared-material outer rails, one instanced set
- * of corner nodes, and one north orientation notch. No lights and no per-frame
- * work. The geometry stays outside the 20×20 gameplay bounds.
+ * of corner nodes, and one instanced north rune. The rune replaces the generic
+ * notch with the dynasty's already-learned Genome mark, using it for actual
+ * orientation rather than wallpaper. No lights or per-frame work; all geometry
+ * stays outside the 20×20 gameplay bounds.
  */
 export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
   const cornersRef = useRef<THREE.InstancedMesh>(null);
-  const theme = getDynastyScreenTokens(dynasty);
+  const orientationRef = useRef<THREE.InstancedMesh>(null);
+  const profile = getGameMaterialProfile(dynasty);
   const center = gridSize / 2;
 
   const materials = useMemo(() => {
@@ -36,25 +77,25 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
     });
     const rail = new THREE.MeshStandardMaterial({
       color: GAME_SCREEN_COLORS.graphiteLifted,
-      emissive: theme.primary,
+      emissive: profile.arena.undertrayRailColor,
       emissiveIntensity: 0.06,
       metalness: 0.5,
       roughness: 0.52,
     });
     const corner = new THREE.MeshStandardMaterial({
       color: GAME_SCREEN_COLORS.graphiteEdge,
-      emissive: theme.secondary,
+      emissive: profile.arena.undertrayCornerColor,
       emissiveIntensity: 0.22,
       metalness: 0.58,
       roughness: 0.4,
     });
     const orientation = new THREE.MeshBasicMaterial({
-      color: theme.secondary,
+      color: profile.arena.undertrayCornerColor,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.78,
     });
     return { base, rail, corner, orientation };
-  }, [theme.primary, theme.secondary]);
+  }, [profile.arena.undertrayCornerColor, profile.arena.undertrayRailColor]);
 
   useLayoutEffect(() => {
     const mesh = cornersRef.current;
@@ -76,6 +117,27 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
     });
     mesh.instanceMatrix.needsUpdate = true;
   }, [gridSize]);
+
+  useLayoutEffect(() => {
+    const mesh = orientationRef.current;
+    if (!mesh) return;
+    const rune = arenaOrientationRuneLayout(gridSize, dynasty);
+    const transform = new THREE.Matrix4();
+    const rotation = new THREE.Quaternion();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    const position = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+
+    rune.forEach((stroke, index) => {
+      rotation.setFromAxisAngle(yAxis, stroke.yaw);
+      position.set(stroke.x, 0.125, stroke.z);
+      scale.set(stroke.length, 0.025, stroke.width);
+      transform.compose(position, rotation, scale);
+      mesh.setMatrixAt(index, transform);
+    });
+    mesh.count = rune.length;
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [dynasty, gridSize]);
 
   useEffect(() => {
     return () => {
@@ -130,11 +192,14 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
         frustumCulled={false}
       />
 
-      <mesh
-        geometry={unitBox}
-        material={materials.orientation}
-        position={[center, 0.125, -railOffset - 0.145]}
-        scale={[2.1, 0.025, 0.045]}
+      <instancedMesh
+        ref={orientationRef}
+        args={[
+          orientationGeometry,
+          materials.orientation,
+          MAX_ORIENTATION_STROKES,
+        ]}
+        frustumCulled={false}
       />
     </group>
   );

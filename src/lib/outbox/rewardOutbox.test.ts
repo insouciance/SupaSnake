@@ -91,6 +91,63 @@ describe('tab-memory settlement retry queue', () => {
     expect(readOutbox()).toEqual([]);
   });
 
+  it('never submits or drops account A claims while account B is active', async () => {
+    enqueueReward(makeEntry({ ownerId: 'user-a' }));
+    const fetchFn = jest.fn().mockResolvedValue(response(404));
+
+    await expect(
+      replayRewardOutbox('token-b', fetchFn, 'user-b')
+    ).resolves.toMatchObject({ replayed: 0, dropped: 0, remaining: 1 });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(readOutbox()).toEqual([
+      expect.objectContaining({ ownerId: 'user-a', sessionId: 'session-1' }),
+    ]);
+
+    fetchFn.mockResolvedValue(response(200, { impact }));
+    await expect(
+      replayRewardOutbox('token-a', fetchFn, 'user-a')
+    ).resolves.toMatchObject({ replayed: 1, dropped: 0, remaining: 0 });
+    expect(readOutbox()).toEqual([]);
+  });
+
+  it('preserves claims queued while an older replay is in flight', async () => {
+    enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'session-old' }));
+    let resolveFirst: ((value: Response) => void) | undefined;
+    const fetchFn = jest.fn().mockImplementationOnce(
+      () => new Promise<Response>((resolve) => { resolveFirst = resolve; })
+    );
+
+    const replay = replayRewardOutbox('token-a', fetchFn, 'user-a');
+    await Promise.resolve();
+    enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'session-new' }));
+    resolveFirst?.(response(200, {
+      impact: { ...impact, sessionId: 'session-old' },
+    }));
+
+    await expect(replay).resolves.toMatchObject({ replayed: 1, remaining: 1 });
+    expect(readOutbox()).toEqual([
+      expect.objectContaining({ ownerId: 'user-a', sessionId: 'session-new' }),
+    ]);
+  });
+
+  it('serializes concurrent replay requests so a claim is submitted once', async () => {
+    enqueueReward(makeEntry({ ownerId: 'user-a' }));
+    let resolveFirst: ((value: Response) => void) | undefined;
+    const fetchFn = jest.fn().mockImplementation(
+      () => new Promise<Response>((resolve) => { resolveFirst = resolve; })
+    );
+
+    const first = replayRewardOutbox('token-a', fetchFn, 'user-a');
+    const second = replayRewardOutbox('token-a', fetchFn, 'user-a');
+    await Promise.resolve();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    resolveFirst?.(response(200, { impact }));
+    await expect(first).resolves.toMatchObject({ replayed: 1, remaining: 0 });
+    await expect(second).resolves.toMatchObject({ replayed: 0, remaining: 0 });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   it('recovers impact after an already-settled response', async () => {
     enqueueReward(makeEntry());
     const fetchFn = jest
@@ -107,6 +164,133 @@ describe('tab-memory settlement retry queue', () => {
         headers: { Authorization: 'Bearer token' },
       }
     );
+  });
+
+  it('carries an in-memory run lease into settlement without persisting it', async () => {
+    const leaseToken = 'l'.repeat(64);
+    enqueueReward(makeEntry({ leaseToken }));
+    const fetchFn = jest.fn().mockResolvedValue(response(200, { impact }));
+
+    await replayRewardOutbox('token', fetchFn);
+
+    const request = fetchFn.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({ leaseToken });
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('retains and submits a bounded terminal proof without client-authored facts', async () => {
+    const leaseToken = 'l'.repeat(64);
+    const replay = {
+      fromTick: 8,
+      toTick: 10,
+      actionOffset: 2,
+      actions: [{ tick: 9, kind: 'turn' as const, direction: 'UP' as const }],
+    };
+    enqueueReward(makeEntry({
+      leaseToken,
+      replay,
+      expectedRevision: 3,
+    }));
+    expect(readOutbox()).toHaveLength(1);
+    const fetchFn = jest.fn().mockResolvedValue(response(200, { impact }));
+    await replayRewardOutbox('token', fetchFn);
+    const request = fetchFn.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      action: 'terminal',
+      sessionId: 'session-1',
+      replay,
+      expectedRevision: 3,
+      leaseToken,
+    });
+  });
+
+  it('keeps an unacknowledged checkpoint conflict for recovery', async () => {
+    const replay = {
+      fromTick: 8,
+      toTick: 10,
+      actionOffset: 2,
+      actions: [{ tick: 9, kind: 'turn' as const, direction: 'UP' as const }],
+    };
+    enqueueReward(makeEntry({
+      leaseToken: 'l'.repeat(64),
+      replay,
+      expectedRevision: 3,
+    }));
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, { reason: 'checkpoint_conflict' }))
+      .mockResolvedValueOnce(response(404));
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it.each([
+    ['a start-state race', { reason: 'not_prepared' }],
+    ['an unknown conflict', { reason: 'future_conflict' }],
+    ['an empty conflict', {}],
+    ['an abandoned run', { alreadyEnded: true, endReason: 'abandoned' }],
+  ])('keeps terminal proof after %s without canonical settlement', async (_label, body) => {
+    enqueueReward(makeEntry({
+      leaseToken: 'l'.repeat(64),
+      replay: {
+        fromTick: 8,
+        toTick: 10,
+        actionOffset: 2,
+        actions: [],
+      },
+      expectedRevision: 3,
+    }));
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, body))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it('accepts an explicit completed end even while its impact is unavailable', async () => {
+    enqueueReward(makeEntry());
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, {
+        alreadyEnded: true,
+        endReason: 'completed',
+      }))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 1,
+      dropped: 0,
+      remaining: 0,
+    });
+    expect(readOutbox()).toEqual([]);
+  });
+
+  it('drops a stale terminal claim when another tab owns the run lease', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    enqueueReward(makeEntry({ leaseToken: 'l'.repeat(64) }));
+    const fetchFn = jest.fn().mockResolvedValue(
+      response(409, { reason: 'lease_conflict' })
+    );
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 1,
+      remaining: 0,
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(readOutbox()).toEqual([]);
+    consoleError.mockRestore();
   });
 
   it('keeps transient failures and drops permanent rejection', async () => {
@@ -181,6 +365,23 @@ describe('tab-memory settlement retry queue', () => {
       drainLegacyRewardOutbox('token', window.localStorage, fetchFn)
     ).resolves.toMatchObject({ replayed: 0, dropped: 0, remaining: 1 });
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBe(serialized);
+  });
+
+  it('retains an ownerless legacy claim under the wrong signed-in account', async () => {
+    const serialized = JSON.stringify([makeEntry()]);
+    window.localStorage.setItem(LEGACY_REWARD_OUTBOX_KEY, serialized);
+    const wrongAccount = jest.fn().mockResolvedValue(response(404));
+
+    await expect(
+      drainLegacyRewardOutbox('token-b', window.localStorage, wrongAccount)
+    ).resolves.toMatchObject({ replayed: 0, dropped: 0, remaining: 1 });
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBe(serialized);
+
+    const originatingAccount = jest.fn().mockResolvedValue(response(200, { impact }));
+    await expect(
+      drainLegacyRewardOutbox('token-a', window.localStorage, originatingAccount)
+    ).resolves.toMatchObject({ replayed: 1, dropped: 0, remaining: 0 });
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
   });
 
   it('deletes an unreadable retired queue without creating replacement storage', async () => {

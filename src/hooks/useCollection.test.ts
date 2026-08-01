@@ -1211,7 +1211,13 @@ describe('useCollection', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
-          Promise.resolve({ success: true, snakeId: 'owned-1', favorited: true }),
+          Promise.resolve({
+            success: true,
+            snakeId: 'owned-1',
+            favorited: true,
+            favoriteSnakeId: 'owned-1',
+            replacedSnakeIds: [],
+          }),
       });
 
       const { result } = renderHook(() => useCollection());
@@ -1241,6 +1247,48 @@ describe('useCollection', () => {
       ]);
     });
 
+    it('clears same-dynasty favorites from the exact atomic receipt', async () => {
+      const olderCyber: OwnedSnake = {
+        ...mockOwnedSnakes[0],
+        id: 'owned-cyber-history',
+        snakeVariantId: 'variant-2',
+        variantId: 'CYBER SURGE',
+        isEquipped: false,
+        isFavorited: true,
+      };
+      const roster = [mockOwnedSnakes[0], olderCyber, mockOwnedSnakes[1]];
+      const storeWithData = createMockStore({
+        variants: mockVariants,
+        ownedSnakes: roster,
+      });
+      primeFavoriteHook(storeWithData);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            snakeId: 'owned-1',
+            favorited: true,
+            favoriteSnakeId: 'owned-1',
+            replacedSnakeIds: ['owned-cyber-history'],
+          }),
+      });
+
+      const { result } = renderHook(() => useCollection());
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+
+      await act(async () => {
+        expect(await result.current.toggleFavorite('owned-1', true)).toBe(true);
+      });
+
+      expect(storeWithData.setOwnedSnakes).toHaveBeenLastCalledWith([
+        { ...mockOwnedSnakes[0], isFavorited: true },
+        { ...olderCyber, isFavorited: false },
+        // A favorite in another dynasty is never displaced.
+        mockOwnedSnakes[1],
+      ]);
+    });
+
     it('rolls the optimistic flag back when the write fails', async () => {
       const storeWithData = createMockStore({ ownedSnakes: mockOwnedSnakes });
       primeFavoriteHook(storeWithData);
@@ -1260,6 +1308,27 @@ describe('useCollection', () => {
       });
 
       expect(succeeded).toBe(false);
+      expect(storeWithData.setOwnedSnakes).toHaveBeenLastCalledWith(
+        mockOwnedSnakes
+      );
+    });
+
+    it('rolls back when a nominal success omits the atomic receipt', async () => {
+      const storeWithData = createMockStore({ ownedSnakes: mockOwnedSnakes });
+      primeFavoriteHook(storeWithData);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ success: true, snakeId: 'owned-1', favorited: true }),
+      });
+
+      const { result } = renderHook(() => useCollection());
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+
+      await act(async () => {
+        expect(await result.current.toggleFavorite('owned-1', true)).toBe(false);
+      });
+
       expect(storeWithData.setOwnedSnakes).toHaveBeenLastCalledWith(
         mockOwnedSnakes
       );

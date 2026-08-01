@@ -4,9 +4,10 @@
  * Server authority: results validated and recomputed server-side; Energy is
  * recovered, committed and stamped server-side (Constitution §8.6).
  *
- * Energy never gates a run. There is no start check: every run starts,
- * Scores, ranks and counts. A commitment multiplies only credited harvest;
- * an explicit zero-Energy run remains available at the lean factor.
+ * Energy never gates play: rewardless Free Play remains available at zero.
+ * A rewarded run deliberately commits 1–6 Energy and multiplies only its
+ * credited harvest; a malformed zero-commitment rewarded start is rejected
+ * before a session can become an unresolvable preparing orphan.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,7 +20,7 @@ import {
   validationCodeOf,
 } from '@/lib/server/gameValidator';
 import { computeRunTotals, normalizeDynastyName } from '@/shared/game/rulesets';
-import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
+import { getTraitSlots, sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import {
   MASTERY_UNLOCK_TRACK,
   fullMutationPool,
@@ -48,11 +49,6 @@ import {
 } from '@/shared/game/anomalies';
 import * as Sentry from '@sentry/nextjs';
 import {
-  commitRunEnergy,
-  EnergyCommitmentError,
-  isMissingEnvelopeInfra,
-} from '@/lib/server/energyEnvelope';
-import {
   applyEnergyHarvestMultiplier,
   energyCommitmentMultiplierBps,
   isChargeMeterVisible,
@@ -64,14 +60,9 @@ import {
 import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
-import {
-  abandonStalePlayerSessions,
-  isMissingLifecycleInfra,
-} from '@/lib/server/sessionLifecycle';
-import {
-  isClientForfeitReason,
-  SETTLED_END_REASON,
-} from '@/lib/session/lifecycle';
+import { isMissingLifecycleInfra } from '@/lib/server/sessionLifecycle';
+import { SETTLED_END_REASON } from '@/lib/session/lifecycle';
+import { SNAKE_RULES_VERSION } from '@/lib/game/SnakeGameLogic';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
 import {
   composeGenePool,
@@ -133,6 +124,29 @@ import {
   resumeOrRecoverRunImpact,
   settleDurableRunProgression,
 } from '@/lib/server/gameProgressionSettlement';
+import {
+  abandonContinuityRun,
+  activateRun,
+  assertTerminalRunLease,
+  completeFreeContinuityRun,
+  finalizeRunStart,
+  findRunByStartRequest,
+  fingerprintStartRequest,
+  isMissingRunContinuityInfra,
+  isValidStartRequestId,
+  readActiveRun,
+  resolveExistingStart,
+  resumePreparingRunStart,
+  resumeRun,
+  RUN_CONTINUITY_VERSION,
+  RunContinuityError,
+  saveRunCheckpoint,
+  stageContinuityRunEnd,
+  stageRunTerminalIntent,
+  stageRunStartFinalization,
+  terminalFactsFromRow,
+  type ContinuityRow,
+} from '@/lib/server/runContinuity';
 
 // Preserve the proven production budget: settlement now contains multiple
 // independent durable stages. The cutover drains the outgoing canonical
@@ -178,17 +192,17 @@ function isMissingRewardProtocolInfra(error: {
 // outbox entry, and with it a settled run's DNA, permanently. A 503 is
 // retried, so the run survives the blip.
 //
-// The second half matters just as much. An unsettled row whose `end_reason` is
-// NULL is swept `abandoned` after STALE_OPEN_MINUTES (3 hours). Writing
-// `end_reason = 'completed'` while leaving `ended_at` NULL is the marker
-// WP-0.06 already uses for "this run is owed a settlement" — the opportunistic
-// sweep skips it (`.is('end_reason', null)`) and the cron's
-// STALE_PENDING_SETTLEMENT_MINUTES window (8 days) owns it instead. So a
-// player who is offline for a day still gets paid.
+// The second half matters just as much for LEGACY sessions. An unsettled
+// legacy row whose `end_reason` is NULL can be swept after the old open-run
+// window. Writing `end_reason = 'completed'` while leaving `ended_at` NULL is
+// the pre-continuity marker for "this run is owed a settlement".
 //
-// This does NOT settle anything: it writes one column. No payout, no record,
-// no `ended_at`, so the settlement path's own idempotency guard is untouched
-// and the replay that follows runs the whole settlement normally.
+// Continuity rows are different: migration 063 never age-expires them. Before
+// an immutable pending envelope exists they MUST stay active and resumable.
+// Marking one completed after a transient pre-stage read failure fabricates a
+// settling state that the terminal RPC cannot adopt. The conditional update
+// below therefore reserves only legacy rows; current rows enter `completed`
+// solely inside the row-locked durable-ingress RPC.
 async function reserveSettlementRetry(
   sessionId: string,
   playerId: string,
@@ -204,12 +218,28 @@ async function reserveSettlementRetry(
   const marker = reopen
     ? { ended_at: null, end_reason: SETTLED_END_REASON }
     : { end_reason: SETTLED_END_REASON };
-  const query = supabase
-    .from('game_sessions')
-    .update(marker)
-    .eq('id', sessionId)
-    .eq('player_id', playerId);
-  const { error } = reopen ? await query : await query.is('ended_at', null);
+  const reserveLegacyOnly = () => {
+    const query = supabase
+      .from('game_sessions')
+      .update(marker)
+      .eq('id', sessionId)
+      .eq('player_id', playerId)
+      .is('start_request_id', null);
+    return reopen ? query : query.is('ended_at', null);
+  };
+  let { error } = await reserveLegacyOnly();
+  if (error && isMissingRunContinuityInfra(error)) {
+    // During the deploy-before-migrate window the column does not exist, so
+    // every row is necessarily legacy and retains the old reservation path.
+    const legacySchemaQuery = supabase
+      .from('game_sessions')
+      .update(marker)
+      .eq('id', sessionId)
+      .eq('player_id', playerId);
+    ({ error } = reopen
+      ? await legacySchemaQuery
+      : await legacySchemaQuery.is('ended_at', null));
+  }
   if (error && !isMissingLifecycleInfra(error)) {
     console.error('Failed to reserve the pending-settlement window:', {
       playerId,
@@ -254,6 +284,51 @@ async function settlementUnavailable(
   );
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return progressionJson({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return progressionJson({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    const { data: player, error: playerError } = await supabase
+      .from('players')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (playerError) {
+      console.error('Active run player lookup failed:', { userId: user.id, error: playerError });
+      Sentry.captureException(
+        new Error(`Active run player lookup failed: ${playerError.message}`),
+        { extra: { userId: user.id } }
+      );
+      return progressionJson({ error: 'Could not read active run' }, { status: 503 });
+    }
+    if (!player) {
+      return progressionJson({ activeRun: null });
+    }
+
+    const activeRun = await readActiveRun(supabase, player.id);
+    return progressionJson({ activeRun });
+  } catch (error) {
+    if (error instanceof RunContinuityError) {
+      return progressionJson(
+        { error: error.message, reason: error.reason, retryable: true },
+        { status: 503 }
+      );
+    }
+    console.error('Active run lookup failed:', error);
+    Sentry.captureException(error);
+    return progressionJson({ error: 'Could not read active run' }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -269,10 +344,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
+    let {
       action,
       mode,
       sessionId,
+      startRequestId,
       // Constitution §7.2: the objective the player took, as a LOOKUP KEY
       // among the day's server-derived three. Never a definition — there is
       // deliberately no day, target, seed or condition field beside it.
@@ -292,7 +368,28 @@ export async function POST(request: NextRequest) {
       genome,
       death_cause,
       run_events,
+      expectedRevision,
+      checkpoint,
+      leaseToken,
+      replay,
     } = body;
+
+    // Rolling-deploy boundary: a tab loaded before continuity support cannot
+    // name an idempotent start intent. Never invent one server-side (a lost
+    // response could then spend twice). Fail before profile repair, session
+    // creation, or Energy consumption and tell the player exactly what fixes
+    // the stale client.
+    if (action === 'start' && startRequestId === undefined) {
+      return progressionJson(
+        {
+          error:
+            'SupaSnake updated while this tab was open. Reload once to start safely. No Energy was used.',
+          reason: 'client_upgrade_required',
+          reloadRequired: true,
+        },
+        { status: 409 }
+      );
+    }
 
     let { data: player, error: playerError } = await supabase
       .from('players')
@@ -364,7 +461,243 @@ export async function POST(request: NextRequest) {
     // charged run.
     const isSignalRun = mode === 'signal';
 
+    if (action === 'activate') {
+      if (typeof sessionId !== 'string' || sessionId.length === 0) {
+        return progressionJson({ error: 'Session ID required' }, { status: 400 });
+      }
+      try {
+        const activeRun = await activateRun(
+          supabase,
+          player.id,
+          sessionId,
+          checkpoint
+        );
+        return progressionJson({ activeRun });
+      } catch (error) {
+        if (error instanceof RunContinuityError) {
+          const status = error.reason === 'not_found' ? 404
+            : error.reason === 'invalid_checkpoint' ? 400
+            : error.reason === 'not_prepared' ? 409
+              : 503;
+          return progressionJson(
+            {
+              error: error.message,
+              reason: error.reason,
+              retryable: status === 503,
+            },
+            { status }
+          );
+        }
+        throw error;
+      }
+    }
+
+    if (action === 'resume') {
+      if (typeof sessionId !== 'string' || sessionId.length === 0) {
+        return progressionJson({ error: 'Session ID required' }, { status: 400 });
+      }
+      try {
+        const activeRun = await resumeRun(supabase, player.id, sessionId);
+        return progressionJson({ activeRun });
+      } catch (error) {
+        if (error instanceof RunContinuityError) {
+          const status = error.reason === 'not_found' ? 404
+            : error.reason === 'not_prepared' ? 409
+              : 503;
+          return progressionJson(
+            {
+              error: error.message,
+              reason: error.reason,
+              retryable: status === 503,
+            },
+            { status }
+          );
+        }
+        throw error;
+      }
+    }
+
+    if (action === 'checkpoint') {
+      if (typeof sessionId !== 'string' || sessionId.length === 0) {
+        return progressionJson({ error: 'Session ID required' }, { status: 400 });
+      }
+      try {
+        const receipt = await saveRunCheckpoint(supabase, {
+          playerId: player.id,
+          sessionId,
+          expectedRevision,
+          checkpoint,
+          leaseToken,
+        });
+        return progressionJson({ checkpoint: receipt });
+      } catch (error) {
+        if (error instanceof RunContinuityError) {
+          const status = error.reason === 'not_found' ? 404
+            : error.reason === 'invalid_checkpoint' ? 400
+              : error.reason === 'not_prepared' ||
+                  error.reason === 'checkpoint_conflict' ||
+                  error.reason === 'lease_conflict'
+                ? 409
+                : 503;
+          return progressionJson(
+            {
+              error: error.message,
+              reason: error.reason,
+              retryable: status === 503,
+            },
+            { status }
+          );
+        }
+        throw error;
+      }
+    }
+
     if (action === 'start') {
+      // A client-generated UUID names one deliberate click/tap. It is stored
+      // only on the server: same id + same normalized intent returns the same
+      // prepared manifest; changing any material setting under that id is a
+      // conflict. A reload discovers the row through GET, not browser state.
+      if (!isValidStartRequestId(startRequestId)) {
+        return progressionJson(
+          { error: 'startRequestId must be a UUID', reason: 'invalid_request_id' },
+          { status: 400 }
+        );
+      }
+
+      const requestedEnergyCommitment = isFreePlay
+        ? 0
+        : energyCommitment === undefined
+          ? 1
+          : energyCommitment;
+      const minimumEnergyCommitment = isFreePlay ? 0 : 1;
+      if (
+        typeof requestedEnergyCommitment !== 'number' ||
+        !Number.isInteger(requestedEnergyCommitment) ||
+        requestedEnergyCommitment < minimumEnergyCommitment ||
+        requestedEnergyCommitment > GAME_CONFIG.economy.energy.capacity
+      ) {
+        return progressionJson(
+          {
+            error: isFreePlay
+              ? 'Free Play does not commit Energy'
+              : `Energy commitment must be a whole number from 1 to ${GAME_CONFIG.economy.energy.capacity}`,
+          },
+          { status: 400 }
+        );
+      }
+      if (
+        requestedEnergyCommitment === GAME_CONFIG.economy.energy.capacity &&
+        confirmMaxEnergy !== true
+      ) {
+        return progressionJson(
+          { error: 'Confirm the maximum Energy commitment before starting' },
+          { status: 400 }
+        );
+      }
+      if (typeof snake_id !== 'string' || snake_id.length === 0) {
+        return progressionJson({ error: 'snake_id is required' }, { status: 400 });
+      }
+
+      const continuityMode = isFreePlay
+        ? 'free'
+        : isAnomalyRun
+          ? 'anomaly'
+          : isSignalRun
+            ? 'signal'
+            : 'earn';
+      const requestedLadderRung = isLadderRung(
+        (body as Record<string, unknown>).ladderRung
+      )
+        ? ((body as Record<string, unknown>).ladderRung as number)
+        : null;
+      const startFingerprint = fingerprintStartRequest({
+        mode: continuityMode,
+        snakeId: snake_id,
+        energyCommitment: requestedEnergyCommitment,
+        confirmMaxEnergy: confirmMaxEnergy === true,
+        signalObjectiveId:
+          typeof signalObjectiveId === 'string' ? signalObjectiveId : null,
+        ladderRung: requestedLadderRung,
+      });
+      let preparingShell: ContinuityRow | null = null;
+
+      try {
+        const existing = await findRunByStartRequest(
+          supabase,
+          player.id,
+          startRequestId
+        );
+        if (existing) {
+          const manifest = resolveExistingStart(existing, startFingerprint);
+          if (existing.ended_at !== null || existing.end_reason !== null) {
+            return progressionJson(
+              {
+                error: 'This start request is already closed',
+                reason: existing.end_reason ?? 'closed',
+              },
+              { status: 409 }
+            );
+          }
+          if (existing.continuity_phase === 'active') {
+            return progressionJson(
+              {
+                error: 'This run has already started',
+                reason: 'active_run',
+                activeRun: await readActiveRun(supabase, player.id),
+              },
+              { status: 409 }
+            );
+          }
+          if (manifest) {
+            return progressionJson(manifest);
+          }
+          const resumedManifest = await resumePreparingRunStart(
+            supabase,
+            player.id,
+            existing
+          );
+          if (resumedManifest) {
+            return progressionJson(resumedManifest);
+          }
+          // A zero-spend shell with no draft is reconstructable from its
+          // immutable start intent. Continue through the ordinary derivation
+          // and stage/finalize this same row; "Check again" must repair it,
+          // not loop forever on a 202 receipt.
+          preparingShell = existing;
+        }
+
+        const activeRun = preparingShell
+          ? null
+          : await readActiveRun(supabase, player.id);
+        if (activeRun) {
+          return progressionJson(
+            {
+              error: 'A run is already in progress',
+              reason: 'active_run',
+              activeRun,
+            },
+            { status: 409 }
+          );
+        }
+      } catch (error) {
+        if (error instanceof RunContinuityError) {
+          const status =
+            error.reason === 'request_conflict' ||
+            error.reason === 'insufficient_energy'
+              ? 409
+              : 503;
+          return progressionJson(
+            {
+              error: error.message,
+              reason: error.reason,
+              retryable: status === 503,
+            },
+            { status }
+          );
+        }
+        throw error;
+      }
+
       // Rewarded starts require the durable Career ingress. Schema 060 may
       // accept new play safely: a completed run is stored server-side even
       // before 061 can adopt it. Schema 059 still fails closed. Free Play is
@@ -446,56 +779,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // WP-0.06 (GT §9.6): before opening a new run, close this player's own
-      // runs that have been open past the stale window. Starting another run
-      // is the evidence - those were left behind, so they close as
-      // `abandoned`. This is about the player, not about the request, so it
-      // runs before the request is validated.
-      //
-      // The sweep writes `ended_at` and `end_reason` only; it cannot grant
-      // DNA, Yield or a record, and it never touches a row that settled and is
-      // waiting for an outbox replay (Rule 6). Non-fatal: a failed sweep
-      // leaves the row open, which is exactly the status quo it fixes.
-      await abandonStalePlayerSessions(supabase, player.id);
-
-      // Old clients default to the conservative one-Energy commitment. Zero
-      // is an explicit lean run; 1..6 is a stored-Energy run. A maximum
-      // commitment requires an extra acknowledgement so a stale tap or replay
-      // cannot silently expose the full stock.
-      const requestedEnergyCommitment = isFreePlay
-        ? 0
-        : energyCommitment === undefined
-          ? 1
-          : energyCommitment;
-      if (
-        typeof requestedEnergyCommitment !== 'number' ||
-        !Number.isInteger(requestedEnergyCommitment) ||
-        requestedEnergyCommitment < 0 ||
-        requestedEnergyCommitment > GAME_CONFIG.economy.energy.capacity
-      ) {
-        return NextResponse.json(
-          { error: 'Energy commitment must be a whole number from 0 to 6' },
-          { status: 400 }
-        );
-      }
-      if (
-        requestedEnergyCommitment === GAME_CONFIG.economy.energy.capacity &&
-        confirmMaxEnergy !== true
-      ) {
-        return NextResponse.json(
-          { error: 'Confirm the maximum Energy commitment before starting' },
-          { status: 400 }
-        );
-      }
-
-      // Energy never gates playing: zero remains a valid lean run. A positive
-      // commitment can be rejected only when that requested stock is not
-      // available; the player can immediately choose a smaller amount or zero.
-
-      if (!snake_id) {
-        return NextResponse.json({ error: 'snake_id is required' }, { status: 400 });
-      }
-
       // Load the snake with its variant + dynasty; validate ownership.
       // select('*') on the row itself so the traits column (migration 018)
       // rides along when it exists without erroring pre-018.
@@ -551,7 +834,14 @@ export async function POST(request: NextRequest) {
 
       // Joined variant/dynasty rows (supabase returns object for FK joins)
       const variantJoin = snake.snake_variants as unknown as
-        | { id: string; name: string; dynasties: { name: string } | null }
+        | {
+            id: string;
+            name: string;
+            rarity?: string | null;
+            lineage_strain?: unknown;
+            affinity_strength?: unknown;
+            dynasties: { name: string } | null;
+          }
         | null;
       const dynastyName = variantJoin?.dynasties?.name;
 
@@ -563,6 +853,14 @@ export async function POST(request: NextRequest) {
       // read from the snake ROW - the client never asserts its own traits
       const snakeTraits = sanitizeTraits(
         (snake as Record<string, unknown>).traits
+      );
+      const snakeGeneration =
+        typeof (snake as Record<string, unknown>).generation === 'number'
+          ? ((snake as Record<string, unknown>).generation as number)
+          : 1;
+      const runLineage = lineageFromRows(
+        snake as Record<string, unknown>,
+        (snake.snake_variants as Record<string, unknown> | null) ?? null
       );
 
       // Per-dynasty mastery (section 7.1): the offer pool the engine may
@@ -639,7 +937,7 @@ export async function POST(request: NextRequest) {
       let startRunContext: RunStartContext | null = null;
       let startGenomeContext: RunStartGenomeContext | null = null;
       if (GAME_CONFIG.features.genome) {
-        genomeSeed = randomUUID();
+        genomeSeed = preparingShell?.run_seed ?? randomUUID();
         // WP-2.05: refused rather than absorbed. `bankedRuns = 0` from a
         // swallowed error hands the engine tier cap 1 and an empty heirloom,
         // and the context persisted below would then make that wrong answer
@@ -664,12 +962,8 @@ export async function POST(request: NextRequest) {
         }
         const { bankedRuns, prevRunDied, ownedVariants } = runFacts;
         const ftue = deriveFtue(bankedRuns, masteryLevel, ownedVariants);
-        const lineage = lineageFromRows(
-          snake as Record<string, unknown>,
-          (snake.snake_variants as Record<string, unknown> | null) ?? null
-        );
         const { heirloom, lineageBias } = deriveHeirloom(
-          lineage,
+          runLineage,
           snakeTraits,
           ftue
         );
@@ -764,10 +1058,7 @@ export async function POST(request: NextRequest) {
         v: RUN_CONTEXT_VERSION,
         snake: {
           id: snake.id,
-          generation:
-            typeof (snake as Record<string, unknown>).generation === 'number'
-              ? ((snake as Record<string, unknown>).generation as number)
-              : 1,
+          generation: snakeGeneration,
           traits: snakeTraits,
         },
         mutationPool,
@@ -777,7 +1068,9 @@ export async function POST(request: NextRequest) {
         genome: startGenomeContext,
       };
 
-      const serverStartedAt = new Date().toISOString();
+      const serverStartedAt =
+        preparingShell?.server_started_at ?? new Date().toISOString();
+      const simulationSeed = preparingShell?.simulation_seed ?? randomUUID();
 
       // Anomaly stamp (section 7.2): the week's modifier, derived from the
       // deterministic rotation - the client never asserts it
@@ -793,6 +1086,23 @@ export async function POST(request: NextRequest) {
         snake_variant_id: snake.snake_variant_id,
         dynasty: dynastyName,
         server_started_at: serverStartedAt,
+        start_request_id: startRequestId,
+        start_request_fingerprint: startFingerprint,
+        continuity_start_intent: {
+          v: 1,
+          startRequestId,
+          mode: continuityMode,
+          snakeId: snake_id,
+          energyCommitment: requestedEnergyCommitment,
+          confirmMaxEnergy: confirmMaxEnergy === true,
+          signalObjectiveId:
+            typeof signalObjectiveId === 'string' ? signalObjectiveId : null,
+          ladderRung: requestedLadderRung,
+        },
+        simulation_seed: simulationSeed,
+        simulation_version: RUN_CONTINUITY_VERSION,
+        simulation_rules_version: SNAKE_RULES_VERSION,
+        continuity_phase: 'preparing',
         // Free-play marker (migration 016) - only sent when true so the
         // insert stays compatible with the pre-016 schema until it applies
         ...(isFreePlay ? { is_free_play: true } : {}),
@@ -822,47 +1132,123 @@ export async function POST(request: NextRequest) {
       const contextInsert = startRunContext
         ? { run_context: serializeRunStartContext(startRunContext) }
         : {};
-      let { data: session, error: sessionError } = await supabase
-        .from('game_sessions')
-        .insert({
-          ...sessionInsert,
-          ...(genomeSeed ? { run_seed: genomeSeed } : {}),
-          ...contextInsert,
-        })
-        .select()
-        .single();
-      if (
-        sessionError &&
-        startRunContext &&
-        /run_context/i.test(sessionError.message || '')
-      ) {
-        startRunContext = null;
+      let session: ContinuityRow | Record<string, unknown> | null = preparingShell;
+      let sessionError: { code?: string; message?: string } | null = null;
+      if (!preparingShell) {
         ({ data: session, error: sessionError } = await supabase
           .from('game_sessions')
           .insert({
             ...sessionInsert,
             ...(genomeSeed ? { run_seed: genomeSeed } : {}),
+            ...contextInsert,
           })
           .select()
           .single());
-      }
-      if (
-        sessionError &&
-        genomeSeed &&
-        /run_seed/i.test(sessionError.message || '')
-      ) {
-        genomeSeed = null;
-        genomeBlock = null;
-        startRunContext = null;
-        ({ data: session, error: sessionError } = await supabase
-          .from('game_sessions')
-          .insert(sessionInsert)
-          .select()
-          .single());
+        if (
+          sessionError &&
+          startRunContext &&
+          /run_context/i.test(sessionError.message || '')
+        ) {
+          startRunContext = null;
+          ({ data: session, error: sessionError } = await supabase
+            .from('game_sessions')
+            .insert({
+              ...sessionInsert,
+              ...(genomeSeed ? { run_seed: genomeSeed } : {}),
+            })
+            .select()
+            .single());
+        }
+        if (
+          sessionError &&
+          genomeSeed &&
+          /run_seed/i.test(sessionError.message || '')
+        ) {
+          genomeSeed = null;
+          genomeBlock = null;
+          startRunContext = null;
+          ({ data: session, error: sessionError } = await supabase
+            .from('game_sessions')
+            .insert(sessionInsert)
+            .select()
+            .single());
+        }
       }
 
       if (sessionError) {
+        if (sessionError.code === '23505') {
+          try {
+            const racedRequest = await findRunByStartRequest(
+              supabase,
+              player.id,
+              startRequestId
+            );
+            if (racedRequest) {
+              const manifest = resolveExistingStart(
+                racedRequest,
+                startFingerprint
+              );
+              if (
+                racedRequest.ended_at === null &&
+                racedRequest.end_reason === null &&
+                racedRequest.continuity_phase !== 'active' &&
+                manifest
+              ) {
+                return progressionJson(manifest);
+              }
+              if (
+                racedRequest.ended_at === null &&
+                racedRequest.end_reason === null &&
+                racedRequest.continuity_phase === 'preparing'
+              ) {
+                return progressionJson(
+                  {
+                    accepted: true,
+                    preparing: true,
+                    retryable: true,
+                    sessionId: racedRequest.id,
+                  },
+                  { status: 202 }
+                );
+              }
+            }
+            const racedActive = await readActiveRun(supabase, player.id);
+            if (racedActive) {
+              return progressionJson(
+                {
+                  error: 'A run is already in progress',
+                  reason: 'active_run',
+                  activeRun: racedActive,
+                },
+                { status: 409 }
+              );
+            }
+          } catch (error) {
+            if (error instanceof RunContinuityError) {
+              const status = error.reason === 'request_conflict' ? 409 : 503;
+              return progressionJson(
+                {
+                  error: error.message,
+                  reason: error.reason,
+                  retryable: status === 503,
+                },
+                { status }
+              );
+            }
+            throw error;
+          }
+        }
         console.error('Session creation error:', sessionError);
+        if (isMissingRunContinuityInfra(sessionError)) {
+          return progressionJson(
+            {
+              error: 'Run continuity is being prepared',
+              reason: 'unavailable',
+              retryable: true,
+            },
+            { status: 503 }
+          );
+        }
         // Pre-migration-016 window: the is_free_play column doesn't exist
         // yet - refuse free mode with a clear signal instead of a raw 500.
         // Earning runs are unaffected (the marker is omitted from their
@@ -884,6 +1270,22 @@ export async function POST(request: NextRequest) {
         }
         return NextResponse.json({ error: 'Failed to create session', details: sessionError.message }, { status: 500 });
       }
+
+      // Supabase can theoretically return no row and no transport error. Never
+      // let that ambiguous response flow into Signal claiming or start
+      // finalization; a preparing shell is useful only when its durable id is
+      // known and the same id is used through the whole transaction repair.
+      if (!session || typeof session.id !== 'string') {
+        return progressionJson(
+          {
+            error: 'Run launch could not confirm its secured session',
+            reason: 'unavailable',
+            retryable: true,
+          },
+          { status: 503 }
+        );
+      }
+      const createdSessionId = session.id;
 
       // Anomaly board context for the HUD (name + modifier + week timer)
       const anomalyInfo =
@@ -922,7 +1324,7 @@ export async function POST(request: NextRequest) {
         ? await claimSignalObjectiveRun(
             supabase,
             player.id,
-            session.id,
+            createdSessionId,
             signalObjectiveId,
             startedAtDate
           )
@@ -1023,125 +1425,25 @@ export async function POST(request: NextRequest) {
         signalObjectiveRunId: signalClaim?.exemptRunId ?? null,
         serpentWeekId: null,
       };
-      let charge;
-      try {
-        charge = await commitRunEnergy(
-          supabase,
-          player.id,
-          session.id,
-          requestedEnergyCommitment,
-          exemptionFacts
-        );
-      } catch (error) {
-        // The session row exists, but gameplay has not begun. Close it without
-        // reward so it cannot later settle, while preserving the audit trail.
-        const { error: closeError } = await supabase
-          .from('game_sessions')
-          .update({ ended_at: new Date().toISOString(), end_reason: 'abandoned' })
-          .eq('id', session.id)
-          .eq('player_id', player.id)
-          .is('ended_at', null);
-        if (closeError && !isMissingLifecycleInfra(closeError)) {
-          console.error('Failed to close rejected Energy session:', {
-            sessionId: session.id,
-            error: closeError,
-          });
-        }
-        if (error instanceof EnergyCommitmentError) {
-          const status = error.reason === 'invalid' ? 400 : error.reason === 'insufficient' ? 409 : 503;
-          return NextResponse.json(
-            { error: error.message, reason: error.reason },
-            { status }
-          );
-        }
-        throw error;
-      }
-
-      // Migration-overlap compatibility. Post-059 the RPC already stamped the
-      // complete immutable snapshot; this same-value write is harmless. On
-      // the brief app-before-migration window it preserves the old one-Energy
-      // settlement label.
-      const { error: chargeStampError } = await supabase
-        .from('game_sessions')
-        .update({ charge_state: charge.state })
-        .eq('id', session.id)
-        .eq('player_id', player.id);
-      if (chargeStampError && !isMissingEnvelopeInfra(chargeStampError)) {
-        console.error('Failed to stamp charge state on session:', {
-          playerId: player.id,
-          sessionId: session.id,
-          chargeState: charge.state,
-          error: chargeStampError,
-        });
-        Sentry.captureException(
-          new Error(`charge_state stamp failed: ${chargeStampError.message}`),
-          { extra: { playerId: player.id, sessionId: session.id } }
-        );
-      }
-
-      // No economy_transactions row: Energy is a non-purchasable pacing
-      // resource, not the game's economy currency. The immutable session
-      // snapshot is the consumption and telemetry record.
-
-      // `visible` carries the §8.6 ramp so the HUD hides the meter for a
-      // player who has not met the game yet - the same rule /api/player
-      // applies, so the two never disagree mid-session.
-      const chargeBlock = {
-        state: charge.state,
-        ...charge.status,
-        committed: charge.energyCommitted,
-        commitmentMultiplierBps: charge.commitmentMultiplierBps,
-        energyAvailableBefore: charge.energyAvailableBefore,
-        energyRecoveredAtStart: charge.energyRecoveredAtStart,
-        visible: isChargeMeterVisible(player.total_games_played ?? 0),
-      };
-
-      if (isFreePlay) {
-        return NextResponse.json({
-          sessionId: session.id,
-          freePlay: true,
-          energy: chargeBlock,
-          charge: chargeBlock,
+      const manifestBase: Record<string, unknown> = {
+        ...(isFreePlay ? { freePlay: true } : {}),
+        runSnake: {
+          id: snake.id,
+          name: variantJoin?.name ?? 'Snake',
+          generation: snakeGeneration,
+          dynasty: startDynasty,
           traits: snakeTraits,
-          mutationPool,
-          mastery: masteryInfo,
-          // WP-3.02: the profile the SERVER stamped, echoed so the engine
-          // plays exactly what settlement will recompute. The client never
-          // decides this - it only learns it.
-          ...(growthProfileId ? { growthProfile: growthProfileId } : {}),
-          // WP-3.12: the rung the SERVER resolved, with the rule it adds, so
-          // the HUD can name what this run is playing under without deriving
-          // it. Same contract as the profile above - the client never decides
-          // this, it only learns it.
-          ...(ladderRung !== DEFAULT_LADDER_RUNG
-            ? {
-                ladder: {
-                  rung: ladderRung,
-                  name: ladderRungDefinition(ladderRung).name,
-                  rule: ladderRungDefinition(ladderRung).rule,
-                },
-              }
-            : {}),
-          ...(genomeBlock ? { genome: genomeBlock } : {}),
-        });
-      }
-
-      return NextResponse.json({
-        sessionId: session.id,
-        energy: chargeBlock,
-        // Compatibility alias for clients deployed before migration 059.
-        charge: chargeBlock,
-        ...(charge.clanBattle
-          ? {
-              clanBattle: {
-                eligible: true,
-                battleId: charge.clanBattle.battleId,
-                clanId: charge.clanBattle.clanId,
-                endsAt: charge.clanBattle.endsAt,
-                fifthBestToBeat: charge.clanBattle.fifthBestToBeat,
-              },
-            }
-          : {}),
+          traitSlots: getTraitSlots(
+            variantJoin?.rarity ?? 'common',
+            snakeGeneration
+          ),
+          ...(runLineage ? { lineage: runLineage } : {}),
+        },
+        simulation: {
+          seed: simulationSeed,
+          version: RUN_CONTINUITY_VERSION,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
         traits: snakeTraits,
         mutationPool,
         mastery: masteryInfo,
@@ -1155,17 +1457,19 @@ export async function POST(request: NextRequest) {
               },
             }
           : {}),
-        ...(gauntletBan ? { gauntletBan } : {}),
+        ...(!isFreePlay && gauntletBan ? { gauntletBan } : {}),
         // The run's world condition: the ONE id the engine plays under and
         // settlement recomputes with. Present on every run the server resolved
         // one for, so the client never has to infer it from its own `mode`.
-        ...(runCondition.anomaly ? { condition: runCondition.anomaly } : {}),
-        ...(anomalyInfo ? { anomaly: anomalyInfo } : {}),
+        ...(!isFreePlay && runCondition.anomaly
+          ? { condition: runCondition.anomaly }
+          : {}),
+        ...(!isFreePlay && anomalyInfo ? { anomaly: anomalyInfo } : {}),
         // Signal context for the HUD (§7.2): the day's condition and the
         // objective this run is playing for. Present only on a run the server
         // accepted as the day's attempt - its presence IS the confirmation
         // that the exemption was granted, so the client never has to infer it.
-        ...(signalClaim?.exemptRunId && signalClaim.day && signalClaim.objective
+        ...(!isFreePlay && signalClaim?.exemptRunId && signalClaim.day && signalClaim.objective
           ? {
               signal: {
                 runId: signalClaim.exemptRunId,
@@ -1178,10 +1482,103 @@ export async function POST(request: NextRequest) {
             }
           : {}),
         ...(genomeBlock ? { genome: genomeBlock } : {}),
-      });
+      };
+
+      const energyVisible = isChargeMeterVisible(
+        player.total_games_played ?? 0
+      );
+      const energyExempt =
+        exemptionFacts.rewardless ||
+        exemptionFacts.signalObjectiveRunId !== null ||
+        exemptionFacts.serpentWeekId !== null;
+
+      try {
+        // Stage only server-derived, client-safe presentation data. If this
+        // write or any later RPC fails, no Energy has moved yet. The staged
+        // row lets an exact same-request retry finish without asking the
+        // browser to remember progress.
+        await stageRunStartFinalization(supabase, {
+          playerId: player.id,
+          sessionId: createdSessionId,
+          requestedCommitment: requestedEnergyCommitment,
+          exempt: energyExempt,
+          energyVisible,
+          manifestBase,
+        });
+
+        // This RPC calls commit_run_energy and writes the immutable final
+        // manifest inside one PostgreSQL transaction. A lost response can be
+        // recovered by request id or GET; a failed transaction spends zero.
+        const manifest = await finalizeRunStart(supabase, {
+          playerId: player.id,
+          sessionId: createdSessionId,
+          startRequestId,
+          fingerprint: startFingerprint,
+          requestedCommitment: requestedEnergyCommitment,
+          exemptionFacts,
+          energyVisible,
+          manifestBase,
+        });
+        return progressionJson(manifest);
+      } catch (error) {
+        if (error instanceof RunContinuityError) {
+          // Insufficient stock is a final rejection of this deliberate start
+          // intent. The finalization transaction rolled back, so closing the
+          // preparing row cannot discard Energy or earned progress.
+          if (error.reason === 'insufficient_energy') {
+            const { error: closeError } = await supabase
+              .from('game_sessions')
+              .update({
+                ended_at: new Date().toISOString(),
+                end_reason: 'abandoned',
+              })
+              .eq('id', createdSessionId)
+              .eq('player_id', player.id)
+              .eq('continuity_phase', 'preparing')
+              .is('start_manifest', null)
+              .is('ended_at', null);
+            if (closeError && !isMissingLifecycleInfra(closeError)) {
+              console.error('Failed to close rejected Energy session:', {
+                sessionId: createdSessionId,
+                error: closeError,
+              });
+            }
+          }
+
+          const status =
+            error.reason === 'insufficient_energy' ||
+            error.reason === 'request_conflict' ||
+            error.reason === 'active_run'
+              ? 409
+              : error.reason === 'not_found'
+                ? 404
+                : 503;
+          if (status >= 500) {
+            console.error('Run continuity finalization failed:', {
+              playerId: player.id,
+              sessionId: createdSessionId,
+              reason: error.reason,
+            });
+            Sentry.captureException(error, {
+              tags: { progression_stage: 'run_start_continuity' },
+              extra: { playerId: player.id, sessionId: createdSessionId },
+            });
+          }
+          return progressionJson(
+            {
+              error: error.message,
+              reason: error.reason,
+              retryable: status === 503,
+              ...(status === 503 ? { sessionId: createdSessionId } : {}),
+            },
+            { status }
+          );
+        }
+        throw error;
+      }
     }
 
-    if (action === 'end') {
+    if (action === 'end' || action === 'terminal') {
       if (!sessionId) {
         return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
       }
@@ -1219,10 +1616,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 });
       }
 
-      // During the 060→061 cutover, a fully validated end may already be in
-      // the dedicated service-only pending table while the session remains
-      // open. A replay acknowledges that durable handoff; no browser queue or
-      // browser persistence is part of the settlement guarantee.
+      const continuitySession =
+        (session as Record<string, unknown>).start_request_id != null;
+
+      // A terminal request can be replayed after the terminal->settling RPC
+      // committed but before its HTTP response reached the browser. Recognize
+      // that durable handoff before attempting to terminalize again: the
+      // settling row no longer accepts a lease-bound terminal transition, and
+      // treating its 409 as a fresh gameplay conflict would strand the outbox.
+      // This is also the migration-060 -> 061 replay bridge for legacy rows.
       if (
         !session.ended_at &&
         (session as Record<string, unknown>).end_reason === SETTLED_END_REASON
@@ -1235,6 +1637,23 @@ export async function POST(request: NextRequest) {
           pendingEnd && typeof pendingEnd === 'object' && !Array.isArray(pendingEnd)
             ? (pendingEnd as Record<string, unknown>).state
             : null;
+        if (pendingEndError && continuitySession) {
+          // A continuity run reaches `completed` only through the atomic
+          // ingress. Never fall through and try to validate/restage it after a
+          // transient receipt lookup failure.
+          return await settlementUnavailable(
+            'pending end replay',
+            pendingEndError,
+            { playerId: player.id, sessionId }
+          );
+        }
+        if (!pendingEndError && pendingState === null && continuitySession) {
+          return await settlementUnavailable(
+            'pending end replay invariant',
+            new Error('continuity settling row has no durable pending envelope'),
+            { playerId: player.id, sessionId }
+          );
+        }
         let replayAdopted = pendingState === 'adopted';
         if (!pendingEndError && pendingState === 'staged') {
           const { data: adoptionResult, error: adoptionError } = await supabase.rpc(
@@ -1283,6 +1702,100 @@ export async function POST(request: NextRequest) {
             new Error('pending run settlement requires operator recovery'),
             { playerId: player.id, sessionId }
           );
+        }
+        if (continuitySession) {
+          return await settlementUnavailable(
+            'pending end replay state',
+            new Error('continuity pending end returned an unknown state'),
+            { playerId: player.id, sessionId }
+          );
+        }
+      }
+
+      let terminalIntentAccepted = false;
+      if (!session.ended_at && continuitySession) {
+        const continuityPhase =
+          (session as Record<string, unknown>).continuity_phase;
+        let terminalFacts: Record<string, unknown> | null = null;
+        if (action === 'terminal') {
+          try {
+            const intent = await stageRunTerminalIntent(supabase, {
+              playerId: player.id,
+              sessionId,
+              expectedRevision,
+              leaseToken,
+              replay,
+            });
+            terminalFacts = intent.facts;
+            terminalIntentAccepted = true;
+          } catch (error) {
+            if (error instanceof RunContinuityError) {
+              const status = error.reason === 'not_found' ? 404
+                : error.reason === 'invalid_checkpoint' ? 400
+                  : error.reason === 'lease_conflict' ||
+                      error.reason === 'checkpoint_conflict' ||
+                      error.reason === 'not_prepared'
+                    ? 409
+                    : 503;
+              return progressionJson(
+                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { status }
+              );
+            }
+            throw error;
+          }
+        } else if (continuityPhase === 'terminal') {
+          terminalFacts = terminalFactsFromRow(
+            session as Record<string, unknown>
+          );
+          terminalIntentAccepted = terminalFacts !== null;
+        } else {
+          // Every continuity row is replay-authoritative. A later rules bump
+          // makes an unfinished row incompatible; it must never downgrade to
+          // the legacy client-authored settlement path merely because its
+          // stamped rules version differs from this deployment.
+          return progressionJson(
+            {
+              error: 'Secure the replay-derived terminal outcome first.',
+              reason: 'terminal_intent_required',
+              retryable: true,
+            },
+            { status: 409 }
+          );
+        }
+
+        if (terminalIntentAccepted && terminalFacts) {
+          score = terminalFacts.score;
+          dna_earned = terminalFacts.dna_earned;
+          duration_seconds = terminalFacts.duration_seconds;
+          food_count = terminalFacts.food_count;
+          extracted = terminalFacts.extracted;
+          died = terminalFacts.died;
+          victory = terminalFacts.victory;
+          mutations = terminalFacts.mutations;
+          phoenix_triggered_at_food = terminalFacts.phoenix_triggered_at_food;
+          genome = terminalFacts.genome;
+          death_cause = terminalFacts.death_cause;
+          run_events = terminalFacts.run_events;
+        }
+      }
+
+      if (!session.ended_at) {
+        try {
+          if (!terminalIntentAccepted) {
+            assertTerminalRunLease(
+              session as Record<string, unknown>,
+              leaseToken
+            );
+          }
+        } catch (error) {
+          if (error instanceof RunContinuityError) {
+            return progressionJson(
+              { error: error.message, reason: error.reason },
+              { status: 409 }
+            );
+          }
+          throw error;
         }
       }
 
@@ -1956,33 +2469,102 @@ export async function POST(request: NextRequest) {
       if (isFreeSession) {
         // Rewardless practice has no durable progression debt. It records its
         // validated result directly and never enters the Career queue.
-        const endFreeSession = () =>
-          supabase
-            .from('game_sessions')
-            .update(settlementFacts)
-            .eq('id', sessionId)
-            .eq('player_id', player.id)
-            .is('ended_at', null)
-            .select('id');
-        ({ data: endedRows, error: endSessionError } = await endFreeSession());
-        if (endSessionError && isMissingLifecycleInfra(endSessionError)) {
-          delete settlementFacts.end_reason;
+        if ((session as Record<string, unknown>).start_request_id != null) {
+          try {
+            await completeFreeContinuityRun(supabase, {
+              playerId: player.id,
+              sessionId,
+              leaseToken,
+              terminalized: terminalIntentAccepted,
+              facts: {
+                score: validation.adjustedScore,
+                dnaEarned: 0,
+                yieldDna,
+                durationSeconds: validation.durationSeconds,
+                died: died ?? true,
+                victory: victory ?? false,
+                extracted: validation.extracted,
+                endedAt: settledAt,
+                validated: validation.valid,
+                validationErrors:
+                  validation.errors.length > 0 ? validation.errors : null,
+                foodsCollected: validation.foodCount,
+                mutations: mutationsRecord ?? null,
+                genome: validation.valid ? validation.genome : null,
+              },
+            });
+            endedRows = [{ id: sessionId }];
+          } catch (error) {
+            if (error instanceof RunContinuityError) {
+              const status = error.reason === 'not_found' ? 404
+                : error.reason === 'lease_conflict' || error.reason === 'not_prepared'
+                  ? 409
+                  : 503;
+              return progressionJson(
+                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { status }
+              );
+            }
+            throw error;
+          }
+        } else {
+          const endFreeSession = () =>
+            supabase
+              .from('game_sessions')
+              .update(settlementFacts)
+              .eq('id', sessionId)
+              .eq('player_id', player.id)
+              .is('ended_at', null)
+              .select('id');
           ({ data: endedRows, error: endSessionError } = await endFreeSession());
+          if (endSessionError && isMissingLifecycleInfra(endSessionError)) {
+            delete settlementFacts.end_reason;
+            ({ data: endedRows, error: endSessionError } = await endFreeSession());
+          }
         }
       } else {
         // Universal authoritative ingress: every validated earning result is
         // committed to the service-only queue before any completion stamp or
         // progression mutation. Adoption and settlement are deliberately
         // separate transactions, so process death can only delay progress.
-        const { data: pendingResult, error: pendingError } = await supabase.rpc(
-          'stage_pending_game_session_end',
-          {
-            p_user_id: user.id,
-            p_player_id: player.id,
-            p_session_id: sessionId,
-            p_envelope: pendingEnvelope,
+        let pendingResult: unknown;
+        let pendingError: { code?: string; message?: string } | null = null;
+        if ((session as Record<string, unknown>).start_request_id != null) {
+          try {
+            pendingResult = await stageContinuityRunEnd(supabase, {
+              userId: user.id,
+              playerId: player.id,
+              sessionId,
+              leaseToken,
+              terminalized: terminalIntentAccepted,
+              envelope: pendingEnvelope,
+            });
+          } catch (error) {
+            if (error instanceof RunContinuityError) {
+              const status = error.reason === 'not_found' ? 404
+                : error.reason === 'lease_conflict' || error.reason === 'not_prepared'
+                  ? 409
+                  : 503;
+              return progressionJson(
+                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { status }
+              );
+            }
+            throw error;
           }
-        );
+        } else {
+          const pendingResponse = await supabase.rpc(
+            'stage_pending_game_session_end',
+            {
+              p_user_id: user.id,
+              p_player_id: player.id,
+              p_session_id: sessionId,
+              p_envelope: pendingEnvelope,
+            }
+          );
+          pendingResult = pendingResponse.data;
+          pendingError = pendingResponse.error;
+        }
         if (pendingError) {
           return await settlementUnavailable('pending end envelope', pendingError, {
             playerId: player.id,
@@ -2364,13 +2946,14 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------
     // WP-0.06: forfeit an open run (GT §9.6)
     // -----------------------------------------------------------------
-    // POST { action: 'abandon', sessionId, reason?: 'abandoned' | 'disconnected' }
+    // POST { action: 'abandon', sessionId }
     //   -> 200 { success: true, endReason }
     //   -> 404 the session is not this player's
     //   -> 409 { alreadyEnded: true, endReason } it is already closed
     //
-    // The client uses this to surrender a run it cannot finish - a quit, a
-    // lost connection, a reload mid-run. It CANNOT be used to end a run for
+    // The client uses this only after a deliberate confirmation. A lost
+    // connection, reload or closed tab leaves continuity recoverable. It
+    // CANNOT be used to end a run for
     // value: the handler writes `ended_at` and `end_reason` on `game_sessions`
     // and has no other statement in it. No validator runs, no payout is
     // computed, `players` is not read or written, no economy transaction is
@@ -2378,22 +2961,18 @@ export async function POST(request: NextRequest) {
     // forfeited run can never afterwards re-enter settlement (the 'end'
     // idempotency guard above rejects it), so surrendering is strictly a loss.
     //
-    // `reason` is bounded to the two forfeit values. A client asking for
-    // 'completed' or 'expired' - the two the server writes for itself - is
-    // silently given 'abandoned'; there is no request that lets a client
-    // claim its run settled.
+    // The end reason is constant; the request has no field capable of naming
+    // a server-owned or implicit-disconnection terminal state.
     if (action === 'abandon') {
       if (!sessionId) {
         return NextResponse.json({ error: 'Session ID required' }, { status: 400 });
       }
 
-      const forfeitReason = isClientForfeitReason(body.reason)
-        ? body.reason
-        : 'abandoned';
+      const forfeitReason = 'abandoned' as const;
 
       const { data: openSession, error: openSessionError } = await supabase
         .from('game_sessions')
-        .select('id, ended_at')
+        .select('*')
         .eq('id', sessionId)
         .eq('player_id', player.id)
         .maybeSingle();
@@ -2415,11 +2994,44 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 });
       }
 
-      if (openSession.ended_at) {
+      if (openSession.ended_at || openSession.end_reason) {
         return NextResponse.json(
-          { error: 'Session already ended', alreadyEnded: true },
+          {
+            error: 'Session already ended',
+            alreadyEnded: true,
+            endReason: openSession.end_reason ?? null,
+          },
           { status: 409 }
         );
+      }
+
+      if ((openSession as Record<string, unknown>).start_request_id != null) {
+        try {
+          const continuityPhase =
+            (openSession as Record<string, unknown>).simulation_rules_version !==
+              SNAKE_RULES_VERSION
+              ? 'incompatible'
+              : (openSession as Record<string, unknown>).continuity_phase;
+          await abandonContinuityRun(supabase, {
+            playerId: player.id,
+            sessionId,
+            phase: continuityPhase,
+            leaseToken,
+          });
+          return NextResponse.json({ success: true, endReason: forfeitReason });
+        } catch (error) {
+          if (error instanceof RunContinuityError) {
+            const status = error.reason === 'not_found' ? 404
+              : error.reason === 'lease_conflict' || error.reason === 'not_prepared'
+                ? 409
+                : 503;
+            return progressionJson(
+              { error: error.message, reason: error.reason, retryable: status === 503 },
+              { status }
+            );
+          }
+          throw error;
+        }
       }
 
       const { data: forfeited, error: forfeitError } = await supabase
@@ -2433,6 +3045,7 @@ export async function POST(request: NextRequest) {
         // Lost-race guard, identical in spirit to the settlement path: a
         // concurrent 'end' that got there first keeps its result.
         .is('ended_at', null)
+        .is('end_reason', null)
         .select('id');
 
       if (forfeitError) {

@@ -5,9 +5,8 @@
  *
  * A premium game menu, not a web dashboard: the player's equipped snake
  * lives as a 3D character in a full-viewport chamber behind the UI. Over
- * it, a minimal hierarchy - small wordmark up top, ambient DNA/Energy
- * counters top-right, one rotating mission line, and a single obvious
- * primary action: LAUNCH.
+ * it, a minimal hierarchy - identity and wallet up top, one rotating mission
+ * line, and four compact player destinations below the character.
  */
 
 import { useState, useEffect, useCallback, useMemo, useReducer, useRef } from 'react';
@@ -25,10 +24,18 @@ import {
 import { replayRewardOutbox } from '@/lib/outbox/rewardOutbox';
 import { MVP_DYNASTIES } from '@/shared/types/snake-data-model';
 import type { DynastyId } from '@/shared/types/game';
-import { Navigation } from '@/components/ui/Navigation';
 import { ChamberPlaceholder } from '@/components/home/ChamberPlaceholder';
-import { IconDna, IconBolt, IconPlay } from '@/components/ui/icons';
+import {
+  HomeIdentityHud,
+  type HomeClanIdentity,
+  type HomeSpecimenIdentity,
+} from '@/components/home/HomeIdentityHud';
+import {
+  HomeCommandRail,
+  type HomeCommand,
+} from '@/components/home/HomeCommandRail';
 import type { ChargeSnapshot } from '@/lib/store/gameStore';
+import { isStrainId } from '@/shared/game/strains';
 import {
   SeasonTrack,
   type SeasonView,
@@ -103,6 +110,10 @@ export default function Home() {
   const [welcomeBack, setWelcomeBack] = useState<LastUserMarker | null>(null);
   const [showLossNotice, setShowLossNotice] = useState(false);
   const [dynasty, setDynasty] = useState<DynastyId>('PRIMAL');
+  const [specimenIdentity, setSpecimenIdentity] =
+    useState<HomeSpecimenIdentity | null>(null);
+  const [clanIdentity, setClanIdentity] = useState<HomeClanIdentity | null>(null);
+  const [chamberReaction, setChamberReaction] = useState<HomeCommand | null>(null);
   const [chamberReady, setChamberReady] = useState(false);
   const [missionIndex, setMissionIndex] = useState(0);
   const [launchState, dispatchLaunch] = useReducer(
@@ -152,14 +163,14 @@ export default function Home() {
   // canonical server impact receipt and refreshes server-owned attention.
   useEffect(() => {
     if (!token) return;
-    replayRewardOutbox(token)
+    replayRewardOutbox(token, fetch, session?.user?.id)
       .then((result) => {
         if (result.impacts.length > 0) requestAttentionRefresh();
       })
       .catch((err) => {
         console.error('Settlement retry failed:', err);
       });
-  }, [token]);
+  }, [session?.user?.id, token]);
 
   // Real home stats from server authority: /api/player + /api/streaks
   useEffect(() => {
@@ -214,10 +225,14 @@ export default function Home() {
     };
   }, [isAuthenticated, token]);
 
-  // The chamber presents the EQUIPPED snake: resolve its dynasty from the
-  // collection. Fresh visitors (or failures) get the PRIMAL specimen.
+  // The chamber presents the EQUIPPED snake. The art scene may retain its
+  // PRIMAL fallback while loading, but the identity label remains absent
+  // until the authoritative collection response supplies factual values.
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (!isAuthenticated || !token) {
+      setSpecimenIdentity(null);
+      return;
+    }
     let cancelled = false;
 
     const load = async () => {
@@ -229,15 +244,37 @@ export default function Home() {
         const data = await res.json();
         if (cancelled) return;
 
-        const snakes: { isEquipped?: boolean; dynastyName?: string | null }[] =
-          data.snakes ?? [];
+        const snakes: {
+          isEquipped?: boolean;
+          dynastyName?: string | null;
+          variantName?: string | null;
+          generation?: number;
+          lineage?: { strains?: unknown } | null;
+        }[] = Array.isArray(data.snakes) ? data.snakes : [];
         const specimen = snakes.find((s) => s.isEquipped) ?? snakes[0];
         const name = specimen?.dynastyName?.toUpperCase();
         if (name && (MVP_DYNASTIES as readonly string[]).includes(name)) {
           setDynasty(name as DynastyId);
         }
+        const variantName = specimen?.variantName?.trim();
+        const generation = Number(specimen?.generation);
+        const rawStrains = specimen?.lineage?.strains;
+        const lineageStrain =
+          Array.isArray(rawStrains) && isStrainId(rawStrains[0])
+            ? rawStrains[0]
+            : null;
+        if (
+          variantName &&
+          Number.isSafeInteger(generation) &&
+          generation > 0
+        ) {
+          setSpecimenIdentity({ variantName, generation, lineageStrain });
+        } else {
+          setSpecimenIdentity(null);
+        }
       } catch {
-        // PRIMAL specimen fallback
+        // The visual fallback remains, but no factual identity is invented.
+        if (!cancelled) setSpecimenIdentity(null);
       }
     };
 
@@ -246,6 +283,45 @@ export default function Home() {
       cancelled = true;
     };
   }, [isAuthenticated, token]);
+
+  // Clan identity is optional and likewise server-fed. Home only needs the
+  // small membership bridge, never the full governance/roster payload.
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!isAuthenticated || !token || !userId) {
+      setClanIdentity(null);
+      return;
+    }
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/clan?playerId=${encodeURIComponent(userId)}`, {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          if (!cancelled) setClanIdentity(null);
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const clan = data.clan as Record<string, unknown> | null | undefined;
+        const name = typeof clan?.name === 'string' ? clan.name.trim() : '';
+        const tag = typeof clan?.tag === 'string' && clan.tag.trim()
+          ? clan.tag.trim()
+          : null;
+        setClanIdentity(name ? { name, tag } : null);
+      } catch {
+        if (!cancelled) setClanIdentity(null);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, session?.user.id, token]);
 
   // Season track (§7.2): fetch the live season + the player's read-only track.
   // { live: false } (pre-migration-021) or no live season simply keeps the
@@ -391,7 +467,7 @@ export default function Home() {
     if (!launchHandoffStorageAvailable()) {
       dispatchLaunch({
         type: 'FAIL',
-        error: 'This browser cannot safely prepare a run. Enable session storage and Retry.',
+        error: 'This browser cannot safely prepare a run. Please Retry.',
       });
       return false;
     }
@@ -463,7 +539,7 @@ export default function Home() {
         const launched = await runLaunch(false, objectiveId);
         if (!launched) {
           setSignalTakeError(
-            'The Signal run did not start. Try again, or just LAUNCH — an ordinary run is unaffected.'
+            'The Signal run did not start. Try again, or just Play — an ordinary run is unaffected.'
           );
         }
         return launched;
@@ -491,7 +567,7 @@ export default function Home() {
     stats?.needsStarterSelection === true;
 
   // ---------------------------------------------------------------------------
-  // Mission line - one contextual line above Launch, rotating every 6s
+  // Mission line - one contextual line above the Home actions, rotating every 6s
   // ---------------------------------------------------------------------------
 
   const missionItems = useMemo<MissionItem[]>(() => {
@@ -562,12 +638,13 @@ export default function Home() {
             chamberReady ? 'opacity-100' : 'opacity-0'
           }`}
         >
-          <SpecimenChamber dynasty={dynasty} onReady={() => setChamberReady(true)} />
+          <SpecimenChamber
+            dynasty={dynasty}
+            reaction={chamberReaction}
+            onReady={() => setChamberReady(true)}
+          />
         </div>
       </div>
-
-      {/* Navigation rail */}
-      <Navigation />
 
       {/* Welcome back: a registered account used this device but the
           session is gone - never silently create a new anonymous identity */}
@@ -668,43 +745,17 @@ export default function Home() {
         />
       )}
 
-      {/* Wordmark - small and confident; the character below is the hero */}
-      <header
-        className="absolute top-0 inset-x-0 z-10 pt-5 flex justify-center pointer-events-none animate-fade-up"
-        style={{ animationDelay: '120ms' }}
-      >
-        <h1 className="heading-display text-venom-orange text-glow-accent text-xl sm:text-2xl">
-          SUPASNAKE
-        </h1>
-      </header>
+      <HomeIdentityHud
+        specimen={specimenIdentity}
+        clan={clanIdentity}
+        authenticated={isAuthenticated}
+        dna={stats?.dna ?? null}
+        energy={stats?.charge ?? null}
+      />
 
-      {/* Ambient counters - icon + number only, top-right */}
-      {isAuthenticated && (
-        <div
-          className="absolute top-5 right-4 sm:right-5 z-10 flex items-center gap-4 animate-fade-up"
-          style={{ animationDelay: '240ms' }}
-        >
-          <span className="flex items-center gap-1.5" title="DNA">
-            <IconDna size={16} className="text-rarity-uncommon" />
-            <span className="font-mono font-bold text-sm">
-              {stats ? stats.dna.toLocaleString('en-US') : '—'}
-            </span>
-          </span>
-          {/* Energy appears only once the §8.6 ramp says so - a new player
-              never meets scarcity before they have met the game. */}
-          {stats?.charge?.visible && (
-            <span className="flex items-center gap-1.5" title="Recovered Energy">
-              <IconBolt size={16} className="text-venom-orange" />
-              <span className="font-mono font-bold text-sm">
-                {stats.charge.available}/{stats.charge.capacity}
-              </span>
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Mission line + LAUNCH - the one obvious primary action */}
-      <div className="home-launch-dock absolute inset-x-0 z-10 flex flex-col items-center gap-4 px-4">
+      {/* Context and four equal player destinations. The dock stays clear of
+          phone safe areas and the measured desktop consent surface. */}
+      <div className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]">
         {/* The World Signal (§7.2) — the ONE daily surface, standing in the
             slot the retired Contracts board occupied (§12.2, §13). The dock is
             bottom-anchored, so this grows UPWARD: LAUNCH does not move and
@@ -772,31 +823,33 @@ export default function Home() {
             ))}
         </div>
 
-        <div className="animate-fade-up" style={{ animationDelay: '480ms' }}>
-          <button
-            type="button"
-            onClick={() => void runLaunch()}
-            disabled={
-              isLoading ||
-              (launchState.phase !== 'idle' && launchState.phase !== 'failed')
-            }
-            className="btn-go px-16 sm:px-20 py-5 text-2xl min-h-[64px] inline-flex items-center justify-center gap-3 animate-glow-pulse shadow-venom-orange/70 disabled:cursor-wait disabled:opacity-70"
-            aria-describedby={launchState.error ? 'launch-error' : undefined}
-            data-launch-phase={launchState.phase}
-            data-testid="launch-cta"
-          >
-            <IconPlay size={26} />
-            <span>{LAUNCH_PHASE_LABEL[launchState.phase]}</span>
-          </button>
+        <div className="flex w-full flex-col items-center animate-fade-up" style={{ animationDelay: '480ms' }}>
           {launchState.error && (
             <p
               id="launch-error"
               role="alert"
-              className="mt-2 max-w-sm text-center font-body text-sm text-strike-red"
+              className="mb-1 max-w-sm text-center font-body text-sm text-strike-red"
             >
               {launchState.error}
             </p>
           )}
+          <HomeCommandRail
+            onPlay={() => void runLaunch()}
+            playDisabled={
+              isLoading ||
+              (launchState.phase !== 'idle' && launchState.phase !== 'failed')
+            }
+            playLabel={
+              launchState.phase === 'idle'
+                ? 'Play'
+                : launchState.phase === 'failed'
+                  ? 'Retry Play'
+                  : LAUNCH_PHASE_LABEL[launchState.phase]
+            }
+            playPhase={launchState.phase}
+            playErrorId={launchState.error ? 'launch-error' : undefined}
+            onReactionChange={setChamberReaction}
+          />
         </div>
       </div>
     </main>

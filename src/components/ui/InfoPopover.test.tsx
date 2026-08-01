@@ -83,6 +83,32 @@ describe('InfoPopover', () => {
     expect(panel.className).toContain('max-w-[min(20rem,calc(100vw-2rem))]');
   });
 
+  it('keeps above-placement translation separate from the entrance animation', () => {
+    renderPopover();
+    const trigger = screen.getByTestId('info-popover-scavenger');
+    Object.defineProperty(trigger, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        x: 120,
+        y: 680,
+        top: 680,
+        left: 120,
+        right: 200,
+        bottom: 724,
+        width: 80,
+        height: 44,
+        toJSON: () => ({}),
+      }),
+    });
+
+    fireEvent.click(trigger);
+    const positioner = screen.getByTestId('info-panel-scavenger');
+    const animatedPanel = positioner.firstElementChild;
+    expect(positioner).toHaveStyle({ transform: 'translateY(-100%)' });
+    expect(positioner).not.toHaveClass('animate-pop-in');
+    expect(animatedPanel).toHaveClass('animate-pop-in');
+  });
+
   it('puts nothing focusable in the panel', () => {
     renderPopover({ notice: 'Ascetic: no mutation foods this run.' });
     fireEvent.click(screen.getByTestId('info-popover-scavenger'));

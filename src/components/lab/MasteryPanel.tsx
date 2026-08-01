@@ -19,6 +19,7 @@ import {
 } from '@/shared/game/mastery';
 import type { DynastyName } from '@/shared/game/rulesets';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
+import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
 
 export interface MasteryTrackRung {
   level: number;
@@ -61,11 +62,20 @@ export function MasteryPanel({
     toNext === null ? 100 : Math.min(100, (intoLevel / levelSpan) * 100);
 
   return (
-    <div className="panel p-4 space-y-3" data-testid="mastery-panel">
+    <div
+      className="overflow-hidden rounded-[20px] border border-scale-blue-light/35 bg-void-deep/55 p-3 shadow-panel sm:p-4"
+      data-testid="mastery-panel"
+      style={{ background: `radial-gradient(circle at 92% 0%, ${hexToRgba(glow, 0.13)}, rgba(6,9,13,.78) 42%)` }}
+    >
       {/* Header: dynasty + level */}
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="label-arcade whitespace-nowrap">
-          {mastery.dynasty} Mastery
+      <div className="flex items-center justify-between gap-3">
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <span className="h-7 w-7 shrink-0" style={{ color: glow }}>
+            <LabDynastyRune dynastyName={mastery.dynasty} className="h-full w-full" />
+          </span>
+          <span className="truncate font-display text-xs uppercase tracking-[0.08em] text-bone-white">
+            {mastery.dynasty} Mastery
+          </span>
         </span>
         <span
           className="heading-display text-lg"
@@ -77,9 +87,9 @@ export function MasteryPanel({
       </div>
 
       {/* XP bar to next level */}
-      <div className="space-y-1">
+      <div className="mt-3 space-y-1">
         <div
-          className="relative h-2 w-full rounded-arcade overflow-hidden border border-scale-blue-light/50 bg-void-deep/80"
+          className="relative h-1.5 w-full overflow-hidden rounded-full bg-scale-blue-light/35"
           role="progressbar"
           aria-valuenow={intoLevel}
           aria-valuemin={0}
@@ -91,7 +101,7 @@ export function MasteryPanel({
           }
         >
           <div
-            className="absolute top-0 left-0 h-full rounded-arcade transition-all duration-300 ease-out"
+            className="absolute left-0 top-0 h-full rounded-full transition-all duration-300 ease-out"
             style={{
               width: `${fillWidth}%`,
               background: `linear-gradient(90deg, ${hexToRgba(glow, 0.65)} 0%, ${glow} 100%)`,
@@ -99,10 +109,10 @@ export function MasteryPanel({
             }}
           />
         </div>
-        <div className="flex items-center justify-between text-[11px] font-body text-beige/60">
-          <span className="inline-flex items-center gap-1">
+        <div className="flex items-center justify-between gap-2 font-body text-[10px] text-beige/60 sm:text-[11px]">
+          <span className="hidden items-center gap-1 sm:inline-flex">
             <IconDna size={11} />
-            banked XP feeds mastery — extractions only
+            Banked XP
           </span>
           <span data-testid="mastery-to-next">
             {toNext === null
@@ -113,7 +123,7 @@ export function MasteryPanel({
       </div>
 
       {/* M1-M10 unlock track */}
-      <ol className="grid grid-cols-2 sm:grid-cols-5 gap-1.5" data-testid="mastery-track">
+      <ol className="mt-3 grid grid-cols-5 gap-1" data-testid="mastery-track">
         {mastery.track.map((rung) => {
           const isMutation = rung.kind === 'mutation';
           const mutationId = isMutation
@@ -130,7 +140,7 @@ export function MasteryPanel({
               key={rung.level}
               title={tooltip}
               data-testid={`mastery-rung-${rung.level}`}
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-arcade border text-[11px] font-body leading-tight ${
+              className={`flex min-h-[42px] flex-col items-center justify-center gap-0.5 rounded-[10px] border px-1 py-1 text-center font-body text-[9px] leading-tight sm:text-[10px] ${
                 rung.unlocked
                   ? 'bg-void/60'
                   : 'border-scale-blue-light/40 bg-void-deep/60 text-beige/50'
@@ -150,9 +160,9 @@ export function MasteryPanel({
               ) : (
                 <IconLock size={11} className="shrink-0" />
               )}
-              <span className="font-bold shrink-0">M{rung.level}</span>
+              <span className="shrink-0 font-bold">M{rung.level}</span>
               <span
-                className={`truncate ${
+                className={`hidden w-full truncate sm:block ${
                   isMutation && !rung.unlocked ? 'text-[#c4b5fd]' : ''
                 }`}
               >

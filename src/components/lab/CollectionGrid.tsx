@@ -34,6 +34,11 @@ export interface CollectionGridProps {
   emptySlotCount?: number;
   /** Variant that was just unlocked - its card gets a brief shimmer */
   justUnlockedVariantId?: string | null;
+  /** Accessible label when this projection is active-only or discovery-only. */
+  ariaLabel?: string;
+  /** Context-specific copy when this projection has no cards. */
+  emptyTitle?: string;
+  emptyDescription?: string;
 }
 
 /**
@@ -65,7 +70,15 @@ function SkeletonCard(): React.ReactElement<any> {
 /**
  * Empty state component for when no variants exist
  */
-function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.ReactElement<any> {
+function EmptyState({
+  dynastyTheme,
+  title = 'No variants yet',
+  description = 'Check back soon for new additions',
+}: {
+  dynastyTheme: DynastyTheme;
+  title?: string;
+  description?: string;
+}): React.ReactElement<any> {
   return (
     <div
       className="flex flex-col items-center justify-center py-12 px-4 animate-fade-up"
@@ -88,10 +101,10 @@ function EmptyState({ dynastyTheme }: { dynastyTheme: DynastyTheme }): React.Rea
         className="label-arcade text-center"
         style={{ color: dynastyTheme.glow, opacity: 0.8 }}
       >
-        No variants yet
+        {title}
       </p>
       <p className="text-xs font-body text-beige/60 mt-1 text-center">
-        Check back soon for new additions
+        {description}
       </p>
     </div>
   );
@@ -126,6 +139,9 @@ export function CollectionGrid({
   equippedSnakeId,
   emptySlotCount = 0,
   justUnlockedVariantId = null,
+  ariaLabel = 'Snake variant collection',
+  emptyTitle,
+  emptyDescription,
 }: CollectionGridProps): React.ReactElement<any> {
   /**
    * Sort variants by sortOrder (if available) or name
@@ -165,7 +181,7 @@ export function CollectionGrid({
         aria-busy="true"
         aria-label="Loading collection"
       >
-        <div className="grid grid-cols-3 gap-4 p-4">
+        <div className="grid grid-cols-2 gap-2.5 p-3 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5">
           {Array.from({ length: 6 }).map((_, index) => (
             <SkeletonCard key={`skeleton-${index}`} />
           ))}
@@ -176,7 +192,13 @@ export function CollectionGrid({
 
   // Empty state - no variants available
   if (variants.length === 0 && emptySlotCount === 0) {
-    return <EmptyState dynastyTheme={dynastyTheme} />;
+    return (
+      <EmptyState
+        dynastyTheme={dynastyTheme}
+        title={emptyTitle}
+        description={emptyDescription}
+      />
+    );
   }
 
   return (
@@ -186,8 +208,8 @@ export function CollectionGrid({
         gridcell descendants, which this never had. It is a list of cards.
       */}
       <ul
-        className="grid grid-cols-3 gap-3 p-4 list-none"
-        aria-label="Snake variant collection"
+        className="grid list-none grid-cols-2 gap-2.5 p-3 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5"
+        aria-label={ariaLabel}
       >
         {/* Render variant cards - staggered fade-up entrance */}
         {sortedVariants.map((variant, index) => {

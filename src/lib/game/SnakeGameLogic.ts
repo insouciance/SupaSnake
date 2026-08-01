@@ -40,8 +40,13 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import {
   FOOD_BASE_SCORE,
   RULESETS,
+  type DynastyName,
   type DynastyRuleset,
 } from '@/shared/game/rulesets';
+import {
+  StatefulRng,
+  type StatefulRngSnapshot,
+} from '@/shared/game/statefulRng';
 import {
   ladderCadence,
   ladderHoldBase,
@@ -428,6 +433,7 @@ type GameEvent =
   | 'pause'
   | 'resume'
   | 'deathSequence'
+  | 'deathSequenceComplete'
   | 'exitSpawned'
   | 'exitDespawned'
   | 'foodDespawned'
@@ -490,6 +496,13 @@ interface GameOptions {
    * for scoring.
    */
   rng?: () => number;
+  /**
+   * Server-issued seed for a recoverable ordinary run. Unlike an injected
+   * opaque function, this stream can be checkpointed and resumed exactly.
+   * `rng` remains available for focused tests and authored Training runs;
+   * callers must not provide both.
+   */
+  simulationSeed?: string;
   /**
    * The equipped snake's traits (Design v2 Phase 3A). Usually injected via
    * setTraits once the session-start response arrives - the server reads
@@ -574,6 +587,113 @@ export interface GenomeEngineConfig {
   };
 }
 
+export const SNAKE_CHECKPOINT_VERSION = 1 as const;
+export const DEATH_SEQUENCE_DURATION_MS = 800;
+/**
+ * Immutable gameplay/content contract carried by every resumable run.
+ *
+ * Engine serialization and product rules change on different cadences.  A
+ * checkpoint may therefore be structurally readable while belonging to rules
+ * this deployment must not continue.  Bump this value whenever a change can
+ * alter deterministic board evolution or the meaning of persisted state.
+ */
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.2' as const;
+
+/**
+ * Compact, deterministic evidence for every player-authored state change.
+ * Turns are recorded when they are actually consumed by a movement tick, not
+ * when a keyboard/touch heuristic first queues them. That keeps device input
+ * timing out of the authority contract while preserving the exact physics.
+ */
+export type SnakeReplayAction =
+  | { tick: number; kind: 'turn'; direction: Direction }
+  | { tick: number; kind: 'pause'; hold: HoldKind }
+  | { tick: number; kind: 'resume' }
+  | { tick: number; kind: 'mutation'; choice: 0 | 1 | 'decline' }
+  | { tick: number; kind: 'portal'; choice: 'bank' | 'pass' | 'infuse' }
+  | { tick: number; kind: 'surge'; strain: StrainId };
+
+export interface SnakeReplayTrace {
+  ticks: number;
+  actions: SnakeReplayAction[];
+}
+
+/**
+ * Bounded terminal suffix anchored to the last server-accepted checkpoint.
+ * Unlike a cumulative trace, this remains safely below browser keepalive
+ * payload limits even in a very long run.
+ */
+export interface SnakeTerminalReplayProof {
+  fromTick: number;
+  toTick: number;
+  actionOffset: number;
+  actions: SnakeReplayAction[];
+}
+
+/**
+ * Complete continuation state at a resolved simulation boundary.
+ *
+ * This object becomes resumable only after the server validates its immutable
+ * run binding, live-state shape, time/rate bounds, and monotonic progress, then
+ * stores it under the current exclusive lease. A client export is a transport
+ * proposal, never payout proof. The queue and gesture history are intentionally
+ * absent: a resumed run is held and requires a fresh, deliberate direction.
+ */
+export interface SnakeCheckpointV1 {
+  version: typeof SNAKE_CHECKPOINT_VERSION;
+  engineVersion: 'snake-engine-v1';
+  rulesVersion: typeof SNAKE_RULES_VERSION;
+  rng: StatefulRngSnapshot;
+  config: {
+    gridSize: number;
+    initialLength: number;
+    ruleset: DynastyName;
+    traits: TraitId[];
+    mutationPool: MutationId[];
+    anomaly: AnomalyId | null;
+    genome: GenomeEngineConfig | null;
+    growthProfileId: GrowthProfileId;
+    ladderRung: number;
+  };
+  state: GameState;
+  privateState: {
+    speed: number;
+    portalIndex: number;
+    portalsMet: number;
+    fusedView: FusedView;
+    activations: StrainActivations | null;
+    lengthTrace: LengthTrace;
+    petrified: number;
+    ouroborosBites: number;
+    drivenRun: boolean;
+    offerIndex: number;
+    offerTrace: Array<OfferTraceEntry & { resolved: boolean }>;
+    recentOffers: GeneId[][];
+    ticksSinceAnyEat: number;
+    slidThisTick: boolean;
+    warpSkinLastRecharge: number;
+    pocketRiftLastRecharge: number;
+    lastSingularityPullAtFood: number;
+    /** One same-tick free hold earned by resolving a real engine decision. */
+    decisionHoldEntitled: boolean;
+    runEvents: RunEvent[];
+    runEventsTruncated: boolean;
+    elapsedMs: number;
+    replay: SnakeReplayTrace;
+  };
+}
+
+function checkpointClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function checkpointInteger(value: unknown, label: string, minimum = 0): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+    throw new Error(`Invalid checkpoint ${label}`);
+  }
+  return value as number;
+}
+
 const OPPOSITES: Record<Direction, Direction> = {
   UP: 'DOWN',
   DOWN: 'UP',
@@ -600,6 +720,7 @@ export class SnakeGameLogic {
   private speed: number;
   private ruleset: DynastyRuleset;
   private rng: () => number;
+  private replayableRng: StatefulRng | null = null;
   /**
    * Reused occupancy grid for food placement - see `waveBlockedGrid`. Held on
    * the instance so a wave costs no allocation; sized lazily because
@@ -743,16 +864,38 @@ export class SnakeGameLogic {
   private runEventsTruncated = false;
   /** How the run ended - null until finalizeRun. */
   private deathCause: RunDeathCause | null = null;
+  private terminalResult: GameOverData | null = null;
   /** Death cause staged by the collision that started the death sequence. */
   private pendingDeathCause: Exclude<RunDeathCause, 'extracted'> | null = null;
+  /** Prevent an old presentation timer from touching a later run. */
+  private deathSequenceToken = 0;
   /** Near-wall episode tracking (1-cell wall margin). */
   private nearWallSinceMs: number | null = null;
+  /** Server-replayable player decisions plus number of resolved movement ticks. */
+  private replayTicks = 0;
+  private replayActions: SnakeReplayAction[] = [];
+  /** Prevent replaying an accepted trace from recording a second copy. */
+  private applyingReplay = false;
+  /**
+   * Resolving an engine-authored choice grants exactly one same-tick free
+   * re-arm. It expires before the next movement tick, so a replay cannot
+   * forge unlimited `decision` pauses at otherwise ordinary board states.
+   */
+  private decisionHoldEntitled = false;
 
   constructor(options: GameOptions = {}) {
+    if (options.rng && options.simulationSeed) {
+      throw new Error('Provide rng or simulationSeed, not both');
+    }
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
     this.initialLength = options.initialLength ?? GAME_CONFIG.snake.initialLength;
     this.ruleset = options.ruleset ?? RULESETS.COSMIC;
-    this.rng = options.rng ?? Math.random;
+    if (options.simulationSeed) {
+      this.replayableRng = StatefulRng.fromSeed(options.simulationSeed);
+      this.rng = () => this.replayableRng!.next();
+    } else {
+      this.rng = options.rng ?? Math.random;
+    }
     // Traits before createInitialState: the mutation cadence roll (Patient)
     // and the Iron Scales charge both depend on them.
     this.traits = [...(options.traits ?? [])];
@@ -778,6 +921,21 @@ export class SnakeGameLogic {
     this.clearDirectionalIntent();
 
     this.state = this.createInitialState();
+  }
+
+  /**
+   * Adopt the server-issued simulation seed before the run starts.
+   * `beginRun` rewinds this source immediately before creating the opening,
+   * so pre-run React configuration order cannot consume a hidden draw.
+   */
+  setSimulationSeed(seed: string): void {
+    if (this.state.isPlaying) return;
+    this.replayableRng = StatefulRng.fromSeed(seed);
+    this.rng = () => this.replayableRng!.next();
+  }
+
+  hasReplayableSimulation(): boolean {
+    return this.replayableRng !== null;
   }
 
   /** True while the run plays under genome rules (server capability). */
@@ -1087,11 +1245,39 @@ export class SnakeGameLogic {
    * Start or restart the game
    */
   start(): void {
-    this.beginRun(null);
+    this.beginRun(null, true);
   }
 
-  private beginRun(opening: DrivenStartState | null): void {
+  /**
+   * Build the deterministic opening without starting the run clock. The board
+   * may remain on Ready for any length of time; no simulation tick is legal
+   * until the server accepts activation and `activatePrepared` is called.
+   */
+  prepare(): void {
+    this.beginRun(null, false);
+  }
+
+  /** Begin time only after the prepared→active server acknowledgement. */
+  activatePrepared(now = Date.now()): void {
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isDeathSequence ||
+      this.state.startTime !== null
+    ) {
+      throw new Error('Only a prepared opening can be activated');
+    }
+    this.state.startTime = now;
+  }
+
+  private beginRun(opening: DrivenStartState | null, startClock: boolean): void {
+    this.deathSequenceToken += 1;
     this.drivenRun = opening !== null;
+    // A session seed describes the opening, not the incidental number of
+    // pre-run setters React happened to call. Rewind at the single boundary
+    // where simulation begins; opaque injected test RNGs retain their existing
+    // behavior.
+    this.replayableRng?.reset();
     const centerX = Math.floor(this.gridSize / 2);
     const centerZ = Math.floor(this.gridSize / 2);
 
@@ -1103,15 +1289,20 @@ export class SnakeGameLogic {
     this.state = this.createInitialState();
     this.state.snake = snake;
     this.state.isPlaying = true;
-    this.state.startTime = Date.now();
+    this.state.startTime = startClock ? Date.now() : null;
 
     this.clearDirectionalIntent();
     this.lastSingularityPullAtFood = 0;
     this.runEvents = [];
     this.runEventsTruncated = false;
     this.deathCause = null;
+    this.terminalResult = null;
     this.pendingDeathCause = null;
     this.nearWallSinceMs = null;
+    this.replayTicks = 0;
+    this.replayActions = [];
+    this.applyingReplay = false;
+    this.decisionHoldEntitled = false;
     // Genome derived state
     this.fusedView = { loose: [], splices: [] };
     this.activations = null;
@@ -1209,7 +1400,7 @@ export class SnakeGameLogic {
       foodCells.add(key);
     }
 
-    this.beginRun(opening);
+    this.beginRun(opening, true);
   }
 
   /**
@@ -1324,6 +1515,306 @@ export class SnakeGameLogic {
       lossEvents: this.state.lossEvents.map((e) => ({ ...e })),
       pressureEvents: this.state.pressureEvents.map((e) => ({ ...e })),
     };
+  }
+
+  /** Export a complete checkpoint proposal at a safe, non-terminal boundary. */
+  exportCheckpoint(now = Date.now()): SnakeCheckpointV1 {
+    if (!this.replayableRng) {
+      throw new Error('This run has no replayable simulation seed');
+    }
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isDeathSequence
+    ) {
+      throw new Error('Only a live resolved run can be checkpointed');
+    }
+    const startedAt = this.state.startTime ?? now;
+    return {
+      version: SNAKE_CHECKPOINT_VERSION,
+      engineVersion: 'snake-engine-v1',
+      rulesVersion: SNAKE_RULES_VERSION,
+      rng: this.replayableRng.snapshot(),
+      config: {
+        gridSize: this.gridSize,
+        initialLength: this.initialLength,
+        ruleset: this.ruleset.id as DynastyName,
+        traits: [...this.traits],
+        mutationPool: [...this.mutationPool],
+        anomaly: this.anomaly,
+        genome: this.genome ? checkpointClone(this.genome) : null,
+        growthProfileId: this.growth.id,
+        ladderRung: this.ladderRung,
+      },
+      state: checkpointClone(this.getState()),
+      privateState: {
+        speed: this.speed,
+        portalIndex: this.portalIndex,
+        portalsMet: this.portalsMet,
+        fusedView: checkpointClone(this.fusedView),
+        activations: this.activations ? checkpointClone(this.activations) : null,
+        lengthTrace: checkpointClone(this.lengthTrace),
+        petrified: this.petrified,
+        ouroborosBites: this.ouroborosBites,
+        drivenRun: this.drivenRun,
+        offerIndex: this.offerIndex,
+        offerTrace: checkpointClone(this.offerTrace),
+        recentOffers: checkpointClone(this.recentOffers),
+        ticksSinceAnyEat: this.ticksSinceAnyEat,
+        slidThisTick: this.slidThisTick,
+        warpSkinLastRecharge: this.warpSkinLastRecharge,
+        pocketRiftLastRecharge: this.pocketRiftLastRecharge,
+        lastSingularityPullAtFood: this.lastSingularityPullAtFood,
+        decisionHoldEntitled: this.decisionHoldEntitled,
+        runEvents: checkpointClone(this.runEvents),
+        runEventsTruncated: this.runEventsTruncated,
+        elapsedMs: Math.max(0, Math.floor(now - startedAt)),
+        replay: {
+          ticks: this.replayTicks,
+          actions: checkpointClone(this.replayActions),
+        },
+      },
+    };
+  }
+
+  /**
+   * Restore a server-verified checkpoint and hold it for deliberate input.
+   * Raw input queues are intentionally discarded; physics/progression state
+   * resumes exactly, but an old flick can never fire after reopening.
+   */
+  restoreCheckpoint(
+    checkpoint: SnakeCheckpointV1,
+    now = Date.now(),
+    options: { replacePreparedOpening?: boolean } = {}
+  ): void {
+    const canReplacePreparedOpening =
+      options.replacePreparedOpening === true &&
+      this.state.isPlaying &&
+      !this.state.isGameOver &&
+      !this.state.isDeathSequence &&
+      this.state.foodEaten === 0 &&
+      this.state.score === 0 &&
+      this.state.dnaCollected === 0;
+    if (this.state.isPlaying && !canReplacePreparedOpening) {
+      throw new Error('Cannot restore over a live engine');
+    }
+    if (
+      checkpoint?.version !== SNAKE_CHECKPOINT_VERSION ||
+      checkpoint.engineVersion !== 'snake-engine-v1' ||
+      checkpoint.rulesVersion !== SNAKE_RULES_VERSION ||
+      !checkpoint.config ||
+      !checkpoint.state ||
+      !checkpoint.privateState ||
+      !Object.prototype.hasOwnProperty.call(RULESETS, checkpoint.config.ruleset)
+    ) {
+      throw new Error('Unsupported or malformed snake checkpoint');
+    }
+    const gridSize = checkpointInteger(checkpoint.config.gridSize, 'gridSize', 4);
+    const initialLength = checkpointInteger(
+      checkpoint.config.initialLength,
+      'initialLength',
+      1
+    );
+    if (
+      !Array.isArray(checkpoint.state.snake) ||
+      checkpoint.state.snake.length === 0 ||
+      checkpoint.state.isGameOver ||
+      !checkpoint.state.isPlaying
+    ) {
+      throw new Error('Checkpoint is not a live run');
+    }
+
+    this.gridSize = gridSize;
+    this.initialLength = initialLength;
+    this.ruleset = RULESETS[checkpoint.config.ruleset];
+    this.traits = [...checkpoint.config.traits];
+    this.mutationPool = [...checkpoint.config.mutationPool];
+    this.anomaly = checkpoint.config.anomaly;
+    this.genome = checkpoint.config.genome
+      ? checkpointClone(checkpoint.config.genome)
+      : null;
+    this.growth = resolveGrowthProfile(checkpoint.config.growthProfileId);
+    this.ladderRung = resolveLadderRung(checkpoint.config.ladderRung);
+    this.replayableRng = StatefulRng.restore(checkpoint.rng);
+    this.rng = () => this.replayableRng!.next();
+
+    this.state = checkpointClone(checkpoint.state);
+    this.state.isGameOver = false;
+    this.state.isDeathSequence = false;
+    this.state.deathPosition = null;
+    const elapsedMs = checkpointInteger(
+      checkpoint.privateState.elapsedMs,
+      'elapsedMs'
+    );
+    this.state.startTime = now - elapsedMs;
+
+    this.speed = checkpoint.privateState.speed;
+    this.portalIndex = checkpointInteger(
+      checkpoint.privateState.portalIndex,
+      'portalIndex'
+    );
+    this.portalsMet = checkpointInteger(
+      checkpoint.privateState.portalsMet,
+      'portalsMet'
+    );
+    this.fusedView = checkpointClone(checkpoint.privateState.fusedView);
+    this.activations = checkpoint.privateState.activations
+      ? checkpointClone(checkpoint.privateState.activations)
+      : null;
+    this.lengthTrace = checkpointClone(checkpoint.privateState.lengthTrace);
+    this.petrified = checkpointInteger(
+      checkpoint.privateState.petrified,
+      'petrified'
+    );
+    this.ouroborosBites = checkpointInteger(
+      checkpoint.privateState.ouroborosBites,
+      'ouroborosBites'
+    );
+    this.drivenRun = checkpoint.privateState.drivenRun === true;
+    this.offerIndex = checkpointInteger(
+      checkpoint.privateState.offerIndex,
+      'offerIndex'
+    );
+    this.offerTrace = checkpointClone(checkpoint.privateState.offerTrace);
+    this.recentOffers = checkpointClone(checkpoint.privateState.recentOffers);
+    this.ticksSinceAnyEat = checkpointInteger(
+      checkpoint.privateState.ticksSinceAnyEat,
+      'ticksSinceAnyEat'
+    );
+    this.slidThisTick = checkpoint.privateState.slidThisTick === true;
+    this.warpSkinLastRecharge = checkpointInteger(
+      checkpoint.privateState.warpSkinLastRecharge,
+      'warpSkinLastRecharge'
+    );
+    this.pocketRiftLastRecharge = checkpointInteger(
+      checkpoint.privateState.pocketRiftLastRecharge,
+      'pocketRiftLastRecharge'
+    );
+    this.lastSingularityPullAtFood = checkpointInteger(
+      checkpoint.privateState.lastSingularityPullAtFood,
+      'lastSingularityPullAtFood'
+    );
+    this.decisionHoldEntitled =
+      checkpoint.privateState.decisionHoldEntitled === true;
+    this.runEvents = checkpointClone(checkpoint.privateState.runEvents);
+    this.runEventsTruncated = checkpoint.privateState.runEventsTruncated === true;
+    this.replayTicks = checkpointInteger(
+      checkpoint.privateState.replay?.ticks,
+      'replay ticks'
+    );
+    if (!Array.isArray(checkpoint.privateState.replay?.actions)) {
+      throw new Error('Invalid checkpoint replay actions');
+    }
+    this.replayActions = checkpointClone(checkpoint.privateState.replay.actions);
+    this.applyingReplay = false;
+
+    this.blockedScratch = null;
+    this.spacedScratch = null;
+    this.clearDirectionalIntent();
+    this.deathCause = null;
+    this.terminalResult = null;
+    this.pendingDeathCause = null;
+    this.nearWallSinceMs = null;
+  }
+
+  /** Immutable evidence view used by checkpoint and terminal requests. */
+  getReplayTrace(): SnakeReplayTrace {
+    return {
+      ticks: this.replayTicks,
+      actions: checkpointClone(this.replayActions),
+    };
+  }
+
+  getTerminalResult(): GameOverData | null {
+    return this.terminalResult ? checkpointClone(this.terminalResult) : null;
+  }
+
+  /**
+   * Replay the suffix of a full trace from the currently restored canonical
+   * checkpoint. This is deliberately public only as a deterministic engine
+   * primitive; the server validates prefix/revision/bounds before calling it.
+   */
+  applyReplayTrace(trace: SnakeReplayTrace, fromActionIndex: number): void {
+    if (
+      !Number.isSafeInteger(trace?.ticks) ||
+      trace.ticks < this.replayTicks ||
+      !Array.isArray(trace?.actions) ||
+      !Number.isSafeInteger(fromActionIndex) ||
+      fromActionIndex < 0 ||
+      fromActionIndex > trace.actions.length
+    ) {
+      throw new Error('Invalid replay trace bounds');
+    }
+    this.applyingReplay = true;
+    try {
+      for (let index = fromActionIndex; index < trace.actions.length; index += 1) {
+        const action = trace.actions[index];
+        if (
+          !action ||
+          !Number.isSafeInteger(action.tick) ||
+          action.tick < this.replayTicks ||
+          action.tick > trace.ticks
+        ) {
+          throw new Error('Invalid replay action position');
+        }
+        while (this.replayTicks < action.tick) {
+          if (this.state.isGameOver) throw new Error('Replay continues after terminal state');
+          this.tick();
+        }
+        this.applyReplayAction(action);
+      }
+      while (this.replayTicks < trace.ticks) {
+        if (this.state.isGameOver) throw new Error('Replay continues after terminal state');
+        this.tick();
+      }
+      if (this.replayTicks !== trace.ticks) {
+        throw new Error('Replay did not reach its target tick');
+      }
+      this.replayActions = checkpointClone(trace.actions);
+    } finally {
+      this.applyingReplay = false;
+    }
+  }
+
+  private applyReplayAction(action: SnakeReplayAction): void {
+    switch (action.kind) {
+      case 'turn': {
+        const result = this.setDirection(action.direction, 'standard');
+        if (result !== 'accepted') throw new Error('Replay contains an illegal turn');
+        return;
+      }
+      case 'pause':
+        if (!this.pause(action.hold)) throw new Error('Replay contains an illegal hold');
+        return;
+      case 'resume':
+        if (!this.state.isPaused) throw new Error('Replay resumes a running board');
+        this.resume();
+        return;
+      case 'mutation':
+        if (action.choice === 'decline') {
+          if (!this.state.pendingChoice) throw new Error('Replay declines no offer');
+          this.declineMutation();
+        } else if (!this.chooseMutation(action.choice)) {
+          throw new Error('Replay chooses no offer');
+        }
+        return;
+      case 'portal':
+        if (!this.resolvePortalChoice(action.choice)) {
+          throw new Error('Replay resolves no portal');
+        }
+        return;
+      case 'surge':
+        if (!this.chooseSurge(action.strain)) {
+          throw new Error('Replay resolves no surge');
+        }
+        return;
+      default:
+        throw new Error('Replay contains an unknown action');
+    }
+  }
+
+  private recordReplayAction(action: SnakeReplayAction): void {
+    if (!this.applyingReplay) this.replayActions.push(checkpointClone(action));
   }
 
   /**
@@ -1602,13 +2093,12 @@ export class SnakeGameLogic {
    * think - spends one of the run's holds and is REFUSED once the budget is
    * gone; that refusal is the bound that replaced `session.maxDuration`.
    *
-   * A `'decision'` hold is free, always. It is how the page re-arms the
+   * A `'decision'` hold is free exactly once after the engine resolves one of
+   * its own choices. It is how the page re-arms the
    * resume gate after a gene, portal or surge decision resolves: the run's
    * own decisions are protected by Inviolable Rule 1 and must never cost
-   * the player a resource. The engine cannot infer which is which - the
-   * choice flags are already cleared by the time the re-arm runs - so the
-   * caller states it, and `'tactical'` is the default so a new call site
-   * has to opt OUT of paying rather than remember to opt in.
+   * the player a resource. The engine grants and consumes the entitlement;
+   * a caller cannot manufacture one by naming the hold kind.
    *
    * Driven runs (Training) are never metered: a tutorial that runs out of
    * holds teaches nothing, and no Training pause reaches a leaderboard.
@@ -1627,13 +2117,20 @@ export class SnakeGameLogic {
     ) {
       return false;
     }
-    if (kind === 'tactical' && !this.drivenRun) {
-      this.refreshHoldBudget();
-      if (this.state.holdsUsed >= this.state.holdBudget) return false;
-      this.state.holdsUsed += 1;
+    if (kind === 'decision') {
+      if (!this.decisionHoldEntitled) return false;
+      this.decisionHoldEntitled = false;
+    } else {
+      this.decisionHoldEntitled = false;
+      if (!this.drivenRun) {
+        this.refreshHoldBudget();
+        if (this.state.holdsUsed >= this.state.holdBudget) return false;
+        this.state.holdsUsed += 1;
+      }
     }
     this.clearDirectionalIntent();
     this.state.isPaused = true;
+    this.recordReplayAction({ tick: this.replayTicks, kind: 'pause', hold: kind });
     this.emit('pause');
     return true;
   }
@@ -1669,6 +2166,7 @@ export class SnakeGameLogic {
   resume(): void {
     if (!this.state.isPaused) return;
     this.state.isPaused = false;
+    this.recordReplayAction({ tick: this.replayTicks, kind: 'resume' });
     this.emit('resume');
   }
 
@@ -1697,6 +2195,7 @@ export class SnakeGameLogic {
     if (
       !this.state.isPlaying ||
       this.state.isGameOver ||
+      this.state.startTime === null ||
       this.state.isPaused ||
       this.state.isDeathSequence ||
       this.state.pendingChoice !== null ||
@@ -1706,11 +2205,23 @@ export class SnakeGameLogic {
       return;
     }
 
+    // A decision re-arm belongs only to the exact resolution boundary. Once
+    // movement advances, it cannot be claimed later as a free tactical hold.
+    this.decisionHoldEntitled = false;
+
     // Consume exactly one buffered input per tick
     const queued = this.directionQueue.shift();
     if (queued) {
       this.state.direction = queued.direction;
+      this.recordReplayAction({
+        tick: this.replayTicks,
+        kind: 'turn',
+        direction: queued.direction,
+      });
     }
+    // Count the attempted movement boundary before resolving its physics so a
+    // terminal collision belongs to this trace and can be replayed exactly.
+    this.replayTicks += 1;
     // The movement boundary just freed one real queue slot. Promote the
     // fractional-tick intention now; it can execute no earlier than the next
     // tick, exactly as if the player had entered it just after this boundary.
@@ -2150,6 +2661,12 @@ export class SnakeGameLogic {
     const id = offer[index];
     if (!id) return false;
 
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'mutation',
+      choice: index,
+    });
+
     const pick: GenePick = { id, atFood: this.state.foodEaten };
     this.state.pendingChoice = null;
     this.state.choiceSource = null;
@@ -2158,6 +2675,7 @@ export class SnakeGameLogic {
       this.resolveOfferTrace(id);
     }
     this.applyPick(pick);
+    this.decisionHoldEntitled = true;
 
     this.emit('mutationPicked', {
       id,
@@ -2216,12 +2734,18 @@ export class SnakeGameLogic {
   /** Decline the offer (take neither) - clears the choice hold. */
   declineMutation(): void {
     if (!this.state.pendingChoice) return;
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'mutation',
+      choice: 'decline',
+    });
     this.state.pendingChoice = null;
     this.state.choiceSource = null;
     this.state.pendingChoicePity = null;
     if (this.genomeActive()) {
       this.resolveOfferTrace(null);
     }
+    this.decisionHoldEntitled = true;
     this.emit('mutationDeclined');
   }
 
@@ -2304,9 +2828,15 @@ export class SnakeGameLogic {
   resolvePortalChoice(action: 'bank' | 'pass' | 'infuse'): boolean {
     const pending = this.state.pendingPortalChoice;
     if (!pending) return false;
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'portal',
+      choice: action,
+    });
     this.state.pendingPortalChoice = null;
     if (action === 'pass') {
       this.consumePassedPortal();
+      this.decisionHoldEntitled = true;
       return true;
     }
     if (action === 'bank' || !pending.canInfuse) {
@@ -2314,6 +2844,7 @@ export class SnakeGameLogic {
       return true;
     }
     this.performInfuse();
+    this.decisionHoldEntitled = true;
     return true;
   }
 
@@ -2379,7 +2910,13 @@ export class SnakeGameLogic {
   chooseSurge(strain: StrainId): boolean {
     if (!this.state.pendingSurgeChoice) return false;
     if (!this.heldGeneStrains().includes(strain)) return false;
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'surge',
+      strain,
+    });
     this.state.pendingSurgeChoice = false;
+    this.decisionHoldEntitled = true;
     this.state.surges.push({ strain, atFood: this.state.foodEaten });
     this.refreshGenomeDerived();
     this.emit('surged', { strain, atFood: this.state.foodEaten });
@@ -4197,19 +4734,24 @@ export class SnakeGameLogic {
       dnaCollected: this.state.dnaCollected,
     });
 
-    // After slow-motion delay, trigger actual game over
+    // Commit terminal state and emit gameOver in the same turn as collision.
+    // The death flag remains alive for presentation only: reload can no longer
+    // race an 800 ms non-terminal window, while the authored flourish survives.
+    const token = ++this.deathSequenceToken;
+    this.finalizeRun('died', true);
     setTimeout(() => {
-      this.finalizeRun('died');
-    }, 800); // 800ms for dramatic effect
+      if (this.deathSequenceToken !== token) return;
+      this.state.isDeathSequence = false;
+      this.emit('deathSequenceComplete');
+    }, DEATH_SEQUENCE_DURATION_MS);
   }
 
   /**
-   * End the run - one path for both endings. Death arrives here through
-   * the 800ms death sequence; extraction calls it synchronously (no death
-   * drama when you leave on your own terms).
+   * End the run - one path for both endings. Death and extraction both commit
+   * synchronously; presentation may outlive this state transition.
    */
-  private finalizeRun(reason: EndReason): void {
-    this.state.isDeathSequence = false;
+  private finalizeRun(reason: EndReason, retainDeathPresentation = false): void {
+    this.state.isDeathSequence = retainDeathPresentation;
     this.state.isGameOver = true;
     this.state.isPlaying = false;
 
@@ -4274,6 +4816,7 @@ export class SnakeGameLogic {
           }
         : null,
     };
+    this.terminalResult = checkpointClone(payload);
     this.emit('gameOver', payload);
   }
 

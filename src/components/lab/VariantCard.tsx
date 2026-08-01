@@ -15,10 +15,11 @@ import type { DynastyTheme } from '@/hooks/useDynastyTheme';
 import type { SnakeVariant, OwnedSnake } from '@/shared/types/snake-data-model';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
-import { StrainChip } from '@/components/traits/StrainChip';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
 import { describe as describeEntry } from '@/shared/game/lexicon';
 import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
+import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { STRAINS } from '@/shared/game/strains';
 
 export interface VariantCardProps {
   variant: SnakeVariant;
@@ -150,18 +151,19 @@ export function VariantCard({
   return (
     <button
       type="button"
-      className={`relative flex flex-col w-full rounded-arcade overflow-hidden cursor-pointer bg-panel-gradient border-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-void ${
+      className={`group relative flex w-full cursor-pointer flex-col overflow-hidden rounded-[20px] border focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-void ${
         pulseLegendary ? 'animate-glow-pulse' : ''
       }`}
       style={
         {
-          aspectRatio: '3 / 4',
+          aspectRatio: '4 / 5',
           minHeight: '44px',
           minWidth: '44px',
           borderColor,
           boxShadow: pulseLegendary ? undefined : glowParts.join(', '),
           transform: isPressed ? 'scale(0.95)' : 'scale(1)',
-          transition: 'transform 150ms ease-out',
+          transition: 'transform 150ms ease-out, box-shadow 180ms ease-out',
+          background: `radial-gradient(circle at 75% 18%, ${hexToRgba(dynastyTheme.glow, 0.16)}, rgba(6,9,13,.96) 62%)`,
           // Focus ring + glow-pulse color track the rarity
           '--tw-ring-color': rarity.color,
           '--tw-shadow-color': hexToRgba(rarity.color, 0.75),
@@ -189,7 +191,7 @@ export function VariantCard({
     >
       {/* Art container - takes most of the card space */}
       <div
-        className={`relative flex-1 w-full ${isOwned ? '' : 'grayscale-[0.5]'}`}
+        className={`relative w-full flex-1 overflow-hidden ${isOwned ? '' : 'grayscale-[0.5]'}`}
         style={{
           opacity: isOwned ? 1 : 0.4,
         }}
@@ -199,7 +201,7 @@ export function VariantCard({
             src={variant.artUrl}
             alt={`${variant.name} artwork`}
             fill
-            className="object-cover"
+            className="object-cover transition-transform duration-300 group-hover:scale-[1.025]"
             sizes="(max-width: 768px) 50vw, 25vw"
           />
         ) : (
@@ -214,6 +216,11 @@ export function VariantCard({
           />
         )}
       </div>
+
+      <span
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-void-deep via-void-deep/92 to-transparent"
+        aria-hidden="true"
+      />
 
       {/* Lock overlay for locked variants */}
       {!isOwned && (
@@ -233,7 +240,7 @@ export function VariantCard({
       {/* Roster size (top-left corner) - this card stands for N snakes */}
       {hasSiblings && (
         <div
-          className="absolute top-2 left-2 flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full border bg-void-deep/85 font-mono text-xs font-semibold"
+          className="absolute left-2 top-2 flex h-7 min-w-[28px] items-center justify-center rounded-full border bg-void-deep/85 px-1.5 font-mono text-xs font-semibold backdrop-blur-sm"
           style={{ borderColor: hexToRgba(dynastyTheme.glow, 0.55), color: dynastyTheme.glow }}
           aria-hidden="true"
           data-testid="variant-card-roster-count"
@@ -260,23 +267,25 @@ export function VariantCard({
         />
       )}
 
-      {/* Trait chips (Design v2 Phase 3A) - owned snakes with traits only */}
+      {/* Canonical Genome marks: functional lineage identity, never wallpaper. */}
       {isOwned && owned.lineage && (
         <div
-          className="w-full px-2 py-1 flex justify-center gap-1 bg-void-deep/70"
+          className="absolute bottom-[48px] left-2 z-10 flex items-center gap-1"
           data-testid="variant-card-lineage"
         >
           {owned.lineage.strains.map((strain) => (
-            <StrainChip
+            <span
               key={strain}
-              strain={strain}
-              points={
-                owned.lineage?.strains.length === 1 ||
-                owned.lineage?.primary === strain
-                  ? owned.lineage.strength
-                  : 0
-              }
-            />
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-void-deep/80 p-1.5 backdrop-blur-sm [&_svg]:h-full [&_svg]:w-full"
+              style={{
+                color: STRAINS[strain].color,
+                borderColor: hexToRgba(STRAINS[strain].color, 0.55),
+                boxShadow: `0 0 9px -4px ${STRAINS[strain].color}`,
+              }}
+              title={`${STRAINS[strain].name} lineage`}
+            >
+              <StrainGlyph id={strain} />
+            </span>
           ))}
         </div>
       )}
@@ -284,7 +293,7 @@ export function VariantCard({
       {/* Trait chips (Design v2 Phase 3A) - owned snakes with traits only */}
       {isOwned && (owned.traits?.length ?? 0) > 0 && (
         <div
-          className="w-full px-2 py-1 flex justify-center bg-void-deep/70"
+          className="absolute bottom-[49px] right-2 z-10 flex max-w-[52%] justify-end overflow-hidden rounded-full bg-void-deep/70 px-1.5 py-1 backdrop-blur-sm"
           data-testid="variant-card-traits"
         >
           <TraitChipRow traits={owned.traits} size="sm" />
@@ -292,10 +301,10 @@ export function VariantCard({
       )}
 
       {/* Info bar at bottom */}
-      <div className="w-full px-2 py-1.5 flex items-center justify-between gap-1 min-h-[42px] bg-void-deep/70 border-t border-scale-blue-light/30">
+      <div className="relative z-10 flex min-h-[46px] w-full items-center justify-between gap-1.5 px-2.5 py-1.5">
         {/* Variant name - truncate with ellipsis */}
         <span
-          className="text-xs font-body font-semibold text-bone-white truncate flex-1 text-left"
+          className="min-w-0 flex-1 truncate text-left font-body text-xs font-bold text-bone-white sm:text-sm"
           title={variant.name}
         >
           {variant.name}
@@ -304,7 +313,7 @@ export function VariantCard({
         {/* Badge: Generation for owned, DNA cost chip for locked */}
         {isOwned ? (
           <span
-            className="flex flex-col items-end px-1.5 py-0.5 rounded-arcade whitespace-nowrap font-mono font-semibold leading-tight"
+            className="flex shrink-0 flex-col items-end whitespace-nowrap rounded-[9px] px-1.5 py-0.5 font-mono font-semibold leading-tight"
             style={{
               backgroundColor: hexToRgba(dynastyTheme.glow, 0.15),
               color: dynastyTheme.glow,

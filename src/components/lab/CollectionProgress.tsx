@@ -2,8 +2,7 @@
 
 /**
  * CollectionProgress - Shows dynasty collection completion progress
- * Displays "Collection: X/Y (Z%)" with a glowing progress bar and a
- * set-bonus hint. Dynasty-themed: the fill glows in the dynasty color.
+ * Compact glance summary for the Lab's secondary collection disclosure.
  */
 
 import React from 'react';
@@ -59,13 +58,12 @@ export function CollectionProgress({
   const fillWidth = total === 0 ? 0 : (safeOwned / total) * 100;
 
   const glowColor = dynastyTheme.glow;
-  const isComplete = total > 0 && safeOwned >= total;
   const snakeCount = snakes ?? 0;
   const showSnakeCount = snakeCount > safeOwned;
 
   return (
     <div
-      className="flex flex-col gap-1.5 min-w-0"
+      className="min-w-0"
       role="progressbar"
       aria-valuenow={safeOwned}
       aria-valuemin={0}
@@ -76,25 +74,21 @@ export function CollectionProgress({
       }
     >
       {/* Text label */}
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="label-arcade whitespace-nowrap">
-          Collection: {safeOwned}/{total} ({percentage}%)
+      <div className="flex items-center justify-between gap-2">
+        <span className="whitespace-nowrap font-display text-[11px] uppercase tracking-[0.08em] text-bone-white">
+          Collection {safeOwned}/{total}
         </span>
-        {showSnakeCount && (
-          <span
-            className="text-[11px] font-mono whitespace-nowrap text-beige/60"
-            data-testid="collection-snake-count"
-          >
-            {snakeCount} snakes
-          </span>
-        )}
+        <span className="whitespace-nowrap font-mono text-[10px] text-beige/60">
+          {showSnakeCount && <span data-testid="collection-snake-count">{snakeCount} active · </span>}
+          {percentage}%
+        </span>
       </div>
 
       {/* Progress bar track */}
-      <div className="relative h-2 w-full rounded-arcade overflow-hidden border border-scale-blue-light/50 bg-void-deep/80">
+      <div className="relative mt-2 h-1.5 w-full overflow-hidden rounded-full bg-scale-blue-light/35">
         {/* Filled portion - emissive dynasty glow */}
         <div
-          className="absolute top-0 left-0 h-full rounded-arcade transition-all duration-300 ease-out"
+          className="absolute left-0 top-0 h-full rounded-full transition-all duration-300 ease-out"
           style={{
             width: `${fillWidth}%`,
             background: `linear-gradient(90deg, ${hexToRgba(glowColor, 0.65)} 0%, ${glowColor} 100%)`,
@@ -103,15 +97,6 @@ export function CollectionProgress({
         />
       </div>
 
-      {/* Set-bonus hint */}
-      <span
-        className="text-[11px] font-body leading-tight"
-        style={{ color: isComplete ? glowColor : 'rgba(148, 163, 184, 0.55)' }}
-      >
-        {isComplete
-          ? 'Set complete - dynasty bonus active'
-          : 'Complete the set to earn the dynasty set bonus'}
-      </span>
     </div>
   );
 }

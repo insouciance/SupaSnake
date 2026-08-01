@@ -5,9 +5,10 @@
  * geometry from assets/3D/snake_voxel.glb.
  *
  * Performance / correctness contract:
- * - The GLB is loaded once via drei's useGLTF cache and NEVER mutated.
- *   Geometry is cloned exactly once per loaded scene (WeakMap cache) and
- *   shared by every segment mesh.
+ * - The GLB is loaded once via drei's useGLTF cache and NEVER mutated. Its
+ *   named meshes gate the renderer, then one exact-unit low-segment rounded
+ *   geometry per role is cloned into the scene WeakMap and shared by every
+ *   segment mesh (and therefore by the Home specimen).
  * - Materials are built per dynasty + role (head/body) and cached at module
  *   level, so ~100 segments share 2 material instances.
  * - No per-frame allocations: this component allocates nothing after the
@@ -15,16 +16,17 @@
  *
  * LOD note: snake_voxel_lod1/lod2.glb exist but ship POSITION-only vertex
  * data (no NORMAL attribute), which shades incorrectly under our lit
- * MeshStandardMaterial. The base mesh is a 24-vertex cube, so even ~100
- * segments stay under ~2.5k vertices - LOD switching would cost more than
- * it saves. We intentionally use the base mesh only.
+ * MeshStandardMaterial. The authored replacement is a single 324-vertex
+ * geometry instanced up to 400 times (~43k triangles at the absolute board
+ * cap), rather than DPR inflation or a high-subdivision per-segment model.
  */
 
 import { useMemo, type Ref } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
-import { themeManager } from '@/lib/theme/ThemeManager';
+import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
+import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
 
 export const SNAKE_MODEL_URL = '/assets/3D/snake_voxel.glb';
 
@@ -231,15 +233,6 @@ export function getTrailBreathe(index: number, elapsedSeconds: number): number {
   return 1 + TRAIL_BREATHE_AMPLITUDE * decay * Math.sin(phase);
 }
 
-/** Head glows brighter than the body for at-a-glance orientation. Crisper
- *  emissive presence against the darker arena floor (#0b1016). */
-export const HEAD_EMISSIVE_INTENSITY = 0.7;
-export const BODY_EMISSIVE_INTENSITY = 0.45;
-
-/** Base color sits slightly toward the void so the emissive reads as the
- *  identity (glow over void, not painted plastic). */
-export const BASE_COLOR_SCALE = 0.85;
-
 export interface SnakeSegmentMeshProps {
   position: [number, number, number];
   isHead: boolean;
@@ -271,24 +264,19 @@ function findMeshGeometry(
 }
 
 /**
- * Clone the source geometry (never mutate the GLTF cache), center it on the
- * origin, and scale it to a unit cube so callers size it via mesh scale.
+ * The named source mesh remains the asset-availability contract, but the
+ * renderer uses a cached low-segment rounded cube for its final silhouette.
+ * This gives the Home specimen and the in-run creature the same soft edge
+ * highlights without mutating the GLTF cache or increasing canvas DPR. The
+ * returned clone remains an exact centred unit, so all gameplay footprint and
+ * height authority stays in the caller's existing mesh scale.
  */
 function toUnitGeometry(
-  source: THREE.BufferGeometry | null
+  source: THREE.BufferGeometry | null,
+  role: 'head' | 'body'
 ): THREE.BufferGeometry | null {
   if (!source) return null;
-  const geometry = source.clone();
-  geometry.center();
-  geometry.computeBoundingBox();
-  const size = new THREE.Vector3();
-  geometry.boundingBox!.getSize(size);
-  const maxDimension = Math.max(size.x, size.y, size.z);
-  if (maxDimension > 0) {
-    const s = 1 / maxDimension;
-    geometry.scale(s, s, s);
-  }
-  return geometry;
+  return getSnakeRoundedGeometry(role).clone();
 }
 
 export function getSnakeGeometries(scene: THREE.Object3D): {
@@ -298,8 +286,8 @@ export function getSnakeGeometries(scene: THREE.Object3D): {
   let cached = geometryCache.get(scene);
   if (!cached) {
     cached = {
-      head: toUnitGeometry(findMeshGeometry(scene, 'snake_head')),
-      body: toUnitGeometry(findMeshGeometry(scene, 'snake_segment_1')),
+      head: toUnitGeometry(findMeshGeometry(scene, 'snake_head'), 'head'),
+      body: toUnitGeometry(findMeshGeometry(scene, 'snake_segment_1'), 'body'),
     };
     geometryCache.set(scene, cached);
   }
@@ -319,26 +307,29 @@ export function getSnakeSegmentMaterial(
   const key = `${dynasty}:${isHead ? 'head' : 'body'}`;
   let material = materialCache.get(key);
   if (!material) {
-    const theme = themeManager.getTheme(dynasty);
+    const surface = getGameMaterialProfile(dynasty).snake;
     material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(theme.primary).multiplyScalar(BASE_COLOR_SCALE),
-      emissive: new THREE.Color(theme.secondary),
+      color: surface.baseColor,
+      emissive: surface.emissiveColor,
       emissiveIntensity: isHead
-        ? HEAD_EMISSIVE_INTENSITY
-        : BODY_EMISSIVE_INTENSITY,
-      // Head keeps a glossy premium finish; the BODY is deliberately matte
-      // (low metalness, higher roughness) so moving lights never race
-      // specular glints down the trunk - the segment-shimmer eye-comfort fix
-      metalness: isHead ? 0.5 : 0.2,
-      roughness: isHead ? 0.3 : 0.55,
+        ? surface.headEmissiveIntensity
+        : surface.bodyEmissiveIntensity,
+      // Physical response distinguishes dynasties. Every body stays calmer
+      // than its head so a moving light never races down a 400-cell coil.
+      metalness: isHead ? surface.headMetalness : surface.bodyMetalness,
+      roughness: isHead ? surface.headRoughness : surface.bodyRoughness,
+      transparent: false,
+      opacity: 1,
+      depthWrite: true,
     });
     materialCache.set(key, material);
   }
   return material;
 }
 
-/** Shared unit box used as fallback while (or in case) the GLB is unavailable. */
-const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+/** Rounded procedural stand-ins used while (or if) the GLB is unavailable. */
+const fallbackHeadGeometry = getSnakeRoundedGeometry('head');
+const fallbackBodyGeometry = getSnakeRoundedGeometry('body');
 
 /**
  * Voxel snake segment. Suspends while the GLB loads - wrap in <Suspense>
@@ -354,7 +345,8 @@ export function SnakeModel({
 
   const geometry = useMemo(() => {
     const { head, body } = getSnakeGeometries(scene);
-    return (isHead ? head : body) ?? unitBoxGeometry;
+    return (isHead ? head : body) ??
+      (isHead ? fallbackHeadGeometry : fallbackBodyGeometry);
   }, [scene, isHead]);
 
   const material = useMemo(
@@ -394,7 +386,7 @@ export function SnakeSegmentFallback({
       ref={meshRef}
       position={position}
       scale={isHead ? HEAD_SIZE : BODY_SIZE}
-      geometry={unitBoxGeometry}
+      geometry={isHead ? fallbackHeadGeometry : fallbackBodyGeometry}
       material={material}
       castShadow
     />

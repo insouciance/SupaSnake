@@ -1,48 +1,10 @@
-/**
- * @jest-environment node
- */
-
-/**
- * Clan identity, invite artifact and ownership — the RPC error->HTTP matrix
- * (WP-1.02; Constitution §9.2, Rules 5, 8, 11).
- *
- * WHAT THIS SUITE USED TO ASSERT, AND WHY IT NO LONGER CAN
- *
- * It was written for Identity v1 and pinned three things this rework removed
- * on purpose. Each is replaced here by the surface that took its place, not
- * dropped:
- *
- *   `update_clan_identity` -> `set_clan_heraldry`. The 024 RPC gated every
- *      heraldry edit behind the `heraldry_1` research node, which lives inside
- *      the Gauntlet — now behind a population gate that will not open for a
- *      long time (§9.3). Under 024 a clan's identity would have been
- *      permanently locked. Identity is not a reward for reaching a population
- *      threshold, so 048 replaces the RPC and this suite follows it.
- *
- *   `set_role` (owner-only promote/demote) -> GONE, with nothing in its place,
- *      because Rule 8 forbids the rank it granted. `ClanRole` is `owner |
- *      member`; migration 048 narrows the CHECK constraint and drops
- *      `set_clan_member_role`. The only thing that still moves between members
- *      is the WHOLE clan — `transfer_ownership`, pinned below — which is not a
- *      lever because it leaves no ladder to stand on. The structural proof that
- *      no such endpoint, column or affordance exists anywhere in `src/` is
- *      `noOfficerLever.test.ts`.
- *
- *   `invite` by handle (officer-only recruitment) -> `rotate_invite_code` and
- *      `join_by_code`. §9.2 makes invite links the only recruitment surface and
- *      every member can share one, so the officer's recruitment lever became an
- *      artifact with a URL (Rule 14). `join_by_code` is pinned in
- *      `route.test.ts`; the code's own lifecycle is pinned below.
- *
- * What is unchanged is `respond_invite`: no path in this route issues an invite
- * any more, but Rule 5 says a pending one is not destroyed by the change, so
- * answering it must keep working exactly as it did.
- */
+/** @jest-environment node */
 
 var mockAuth: jest.Mock;
 var mockFrom: jest.Mock;
 var mockRpc: jest.Mock;
-var mockCaptureException: jest.Mock;
+var mockCapture: jest.Mock;
+var mockViewerRole: 'owner' | 'co_leader' | 'member';
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -51,265 +13,182 @@ jest.mock('@supabase/supabase-js', () => ({
     rpc: (...args: unknown[]) => mockRpc(...args),
   }),
 }));
-
 jest.mock('@sentry/nextjs', () => ({
-  captureException: (...args: unknown[]) => mockCaptureException(...args),
+  captureException: (...args: unknown[]) => mockCapture(...args),
 }));
 
-import { POST } from './route';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 import { NextRequest } from 'next/server';
+import { GET } from './route';
 
-function request(body: Record<string, unknown>) {
-  return new NextRequest('https://supasnake.com/api/clan', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer token',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(body),
+function thenableChain(result: { data: unknown; error: unknown }) {
+  const chain: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'gt', 'gte', 'is', 'in', 'order', 'limit']) {
+    chain[method] = () => chain;
+  }
+  chain.single = () => Promise.resolve(result);
+  chain.maybeSingle = () => Promise.resolve(result);
+  const promise = Promise.resolve(result);
+  chain.then = promise.then.bind(promise);
+  chain.catch = promise.catch.bind(promise);
+  chain.finally = promise.finally.bind(promise);
+  return chain;
+}
+
+function fullRequest() {
+  return new NextRequest('https://supasnake.com/api/clan?view=full', {
+    headers: { authorization: 'Bearer token' },
   });
 }
 
 beforeEach(() => {
-  mockAuth = jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
-  mockFrom = jest.fn();
-  mockRpc = jest.fn();
-  mockCaptureException = jest.fn();
-});
+  mockAuth = jest.fn().mockResolvedValue({ data: { user: { id: 'co-1' } }, error: null });
+  mockCapture = jest.fn();
+  mockViewerRole = 'co_leader';
 
-describe('POST update_identity — heraldry, ungated (§9.2)', () => {
-  it('passes nullable fields through to set_clan_heraldry', async () => {
-    mockRpc.mockResolvedValue({
-      data: { success: true, banner_id: 'venom_wake' },
-      error: null,
-    });
-    const response = await POST(
-      request({ action: 'update_identity', bannerId: 'venom_wake', colorPrimary: '#f97316' })
-    );
-    expect(response.status).toBe(200);
-    // The five parameters are exact: an omitted field travels as an explicit
-    // null, so a caller clearing a colour is distinguishable from one that
-    // never mentioned it.
-    expect(mockRpc).toHaveBeenCalledWith('set_clan_heraldry', {
-      p_user_id: 'user-1',
-      p_banner_id: 'venom_wake',
-      p_emblem_id: null,
-      p_color_primary: '#f97316',
-      p_color_secondary: null,
-    });
+  const calls = new Map<string, number>();
+  mockFrom = jest.fn((table: string) => {
+    const index = calls.get(table) ?? 0;
+    calls.set(table, index + 1);
+    const results: Record<string, Array<{ data: unknown; error: unknown }>> = {
+      clan_members: [
+        { data: { clan_id: 'clan-1', role: mockViewerRole, joined_at: '2026-07-01T00:00:00Z' }, error: null },
+        { data: [
+          { player_id: 'owner-1', role: 'owner', joined_at: '2026-06-01T00:00:00Z' },
+          { player_id: 'co-1', role: 'co_leader', joined_at: '2026-07-01T00:00:00Z' },
+          { player_id: 'member-1', role: 'member', joined_at: '2026-07-15T00:00:00Z' },
+        ], error: null },
+      ],
+      clan_invites: [{ data: [], error: null }],
+      clan_applications: [
+        { data: [], error: null },
+        { data: [{ id: 'app-1', applicant_id: 'applicant-1', status: 'pending', created_at: '2026-07-30T00:00:00Z' }], error: null },
+      ],
+      clans: [
+        { data: {
+          id: 'clan-1', name: 'Elite Snakes', tag: 'ES', owner_id: 'owner-1',
+          member_count: 3, max_members: 12, join_policy: 'application',
+          invite_code: 'LEAKTEST', disbanded_at: null,
+        }, error: null },
+        { data: { invite_code: 'ABCDEFGH' }, error: null },
+      ],
+      clan_membership_history: [{ data: [
+        { player_id: 'co-1', joined_at: '2026-06-15T00:00:00Z' },
+      ], error: null }],
+      clan_glory_assignments: [{ data: [], error: null }],
+      discord_clan_links: [{ data: null, error: null }],
+    };
+    return thenableChain(results[table]?.[index] ?? { data: [], error: null });
   });
 
-  it('never calls the research-gated 024 RPC', async () => {
-    mockRpc.mockResolvedValue({ data: { success: true }, error: null });
-    await POST(request({ action: 'update_identity', bannerId: 'venom_wake' }));
-    expect(mockRpc).not.toHaveBeenCalledWith('update_clan_identity', expect.anything());
-  });
-
-  it('maps heraldry_locked -> 403, invalid_* -> 400, not_in_clan -> 404', async () => {
-    for (const [code, status] of [
-      ['heraldry_locked', 403],
-      ['invalid_color', 400],
-      ['invalid_banner', 400],
-      ['invalid_emblem', 400],
-      ['not_in_clan', 404],
-      ['not_authorized', 403],
-    ] as const) {
-      mockRpc.mockResolvedValue({ data: { error: code }, error: null });
-      const response = await POST(request({ action: 'update_identity', bannerId: 'x' }));
-      expect(response.status).toBe(status);
-      expect((await response.json()).code).toBe(code);
+  mockRpc = jest.fn((name: string) => {
+    if (name === 'get_clan_competitive_roster') {
+      return Promise.resolve({
+        data: [
+          { user_id: 'owner-1', best_five_depth: 900, contribution_rank: 1, eligible_results: 5, best_generation: 8, last_contributed_at: '2026-07-30T12:00:00Z' },
+          { user_id: 'co-1', best_five_depth: 700, contribution_rank: 2, eligible_results: 4, best_generation: 6, last_contributed_at: '2026-07-30T11:00:00Z' },
+          { user_id: 'member-1', best_five_depth: null, contribution_rank: null, eligible_results: 0, best_generation: null, last_contributed_at: null },
+        ],
+        error: null,
+      });
     }
-  });
-
-  it('503s before migration 048, and does not report a missing migration as a fault', async () => {
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { code: 'PGRST202', message: 'function set_clan_heraldry not found' },
-    });
-    expect((await POST(request({ action: 'update_identity' }))).status).toBe(503);
-    expect(mockCaptureException).not.toHaveBeenCalled();
-  });
-
-  it('500s and reports a real RPC failure (Rule 11)', async () => {
-    mockRpc.mockResolvedValue({ data: null, error: { message: 'deadlock detected' } });
-    const response = await POST(request({ action: 'update_identity', bannerId: 'x' }));
-    expect(response.status).toBe(500);
-    expect(mockCaptureException).toHaveBeenCalled();
+    if (name === 'get_player_identities') {
+      return Promise.resolve({
+        data: [
+          { user_id: 'owner-1', display_handle: 'LeaderOne' },
+          { user_id: 'co-1', display_handle: 'StrongCo' },
+          { user_id: 'member-1', display_handle: 'NewMember' },
+          { user_id: 'applicant-1', display_handle: 'Applicant' },
+        ],
+        error: null,
+      });
+    }
+    return Promise.resolve({ data: {}, error: null });
   });
 });
 
-describe('POST rotate_invite_code — the surface that replaced the officer invite', () => {
-  it('returns the new code AND its shareable URL (Rule 14: if it matters it has a URL)', async () => {
-    mockRpc.mockResolvedValue({ data: { invite_code: 'ABCDEFGH' }, error: null });
-    const response = await POST(request({ action: 'rotate_invite_code' }));
+describe('full competitive clan view', () => {
+  it('returns UI-ready role labels and the co-leader permission matrix', async () => {
+    const response = await GET(fullRequest());
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.membership).toMatchObject({
+      role: 'co_leader',
+      roleLabel: 'Co-leader',
+      permissions: {
+        invite: true,
+        reviewApplications: true,
+        removeMembers: true,
+        manageSettings: false,
+        transferOwnership: false,
+        assignGlory: false,
+      },
+      tenureSince: '2026-06-15T00:00:00Z',
+    });
+    expect(body.settings.joinPolicy).toBe('application');
+    expect(body.applications[0]).toMatchObject({
+      id: 'app-1', applicantUserId: 'applicant-1', status: 'pending',
+    });
+    expect(body.clan).not.toHaveProperty('invite_code');
+    expect(body.invite).toEqual({
+      code: 'ABCDEFGH',
+      url: '/clan/join/ABCDEFGH',
+    });
+  });
+
+  it('does not expose the authority invite code to an ordinary member', async () => {
+    mockViewerRole = 'member';
+    mockAuth.mockResolvedValue({ data: { user: { id: 'member-1' } }, error: null });
+    const response = await GET(fullRequest());
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mockRpc).toHaveBeenCalledWith('rotate_clan_invite_code', { p_user_id: 'user-1' });
-    expect(body.invite).toEqual({ code: 'ABCDEFGH', url: '/clan/join/ABCDEFGH' });
+    expect(body.membership.role).toBe('member');
+    expect(body.clan).not.toHaveProperty('invite_code');
+    expect(body.invite).toEqual({ code: null, url: null });
   });
 
-  it('carries no target and no recipient: rotation is not addressed at a person', async () => {
-    mockRpc.mockResolvedValue({ data: { invite_code: 'ABCDEFGH' }, error: null });
-    await POST(
-      request({ action: 'rotate_invite_code', handle: 'Souci', targetUserId: 'user-9' })
-    );
-    const [, args] = mockRpc.mock.calls[0] as [string, Record<string, unknown>];
-    // The old lever was "an officer picks who gets in". The replacement has no
-    // parameter to name anyone with — the extra fields above are ignored.
-    expect(Object.keys(args)).toEqual(['p_user_id']);
-  });
-
-  it('maps not_authorized -> 403 and not_in_clan -> 404', async () => {
-    for (const [code, status] of [
-      ['not_authorized', 403],
-      ['not_in_clan', 404],
-    ] as const) {
-      mockRpc.mockResolvedValue({ data: { error: code }, error: null });
-      const response = await POST(request({ action: 'rotate_invite_code' }));
-      expect(response.status).toBe(status);
-      expect((await response.json()).code).toBe(code);
-    }
-  });
-
-  it('503s before migration 048', async () => {
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { code: '42883', message: 'function rotate_clan_invite_code does not exist' },
+  it('returns authoritative best-five ranks and distinguishes no result from zero', async () => {
+    const body = await (await GET(fullRequest())).json();
+    expect(body.roster[0].contribution).toMatchObject({
+      hasEligibleContribution: true,
+      bestFiveDepth: 900,
+      rank: 1,
+      eligibleResults: 5,
+      bestGeneration: 8,
     });
-    expect((await POST(request({ action: 'rotate_invite_code' }))).status).toBe(503);
-  });
-});
-
-describe('POST transfer_ownership — the whole clan moves, or nothing does', () => {
-  it('requires a target and reaches no RPC without one', async () => {
-    const response = await POST(request({ action: 'transfer_ownership' }));
-    expect(response.status).toBe(400);
-    expect(mockRpc).not.toHaveBeenCalled();
-  });
-
-  it('takes a target and nothing else — no rank, no reason, no metric', async () => {
-    mockRpc.mockResolvedValue({ data: { clan_id: 'clan-1' }, error: null });
-    await POST(request({ action: 'transfer_ownership', targetUserId: 'user-2', role: 'officer' }));
-
-    const [name, args] = mockRpc.mock.calls[0] as [string, Record<string, unknown>];
-    expect(name).toBe('transfer_clan_ownership');
-    // `role` above is ignored because there is no rank to send. Handing the
-    // clan over is the only thing that can change a member's standing, and it
-    // is all-or-nothing rather than a ladder to be climbed (Rule 8).
-    expect(Object.keys(args).sort()).toEqual(['p_target_user_id', 'p_user_id']);
-    expect(JSON.stringify(args)).not.toMatch(/role|officer|depth|contribution|rank/i);
-  });
-
-  it('maps not_authorized -> 403, target_not_in_clan -> 404, use_leave -> 400', async () => {
-    for (const [code, status] of [
-      ['not_authorized', 403],
-      ['target_not_in_clan', 404],
-      ['use_leave', 400],
-    ] as const) {
-      mockRpc.mockResolvedValue({ data: { error: code }, error: null });
-      const response = await POST(
-        request({ action: 'transfer_ownership', targetUserId: 'user-2' })
-      );
-      expect(response.status).toBe(status);
-    }
-  });
-
-  it('503s before migration 048', async () => {
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { code: '42883', message: 'function transfer_clan_ownership does not exist' },
+    expect(body.roster[2].contribution).toMatchObject({
+      hasEligibleContribution: false,
+      bestFiveDepth: null,
+      rank: null,
+      eligibleResults: 0,
     });
-    expect(
-      (await POST(request({ action: 'transfer_ownership', targetUserId: 'user-2' }))).status
-    ).toBe(503);
-  });
-});
-
-describe('POST respond_invite — Rule 5: a pending invite outlives the rework', () => {
-  it('maps the accept path result codes', async () => {
-    for (const [code, status] of [
-      ['invite_not_found', 404],
-      ['invite_not_pending', 409],
-      ['invite_expired', 410],
-      ['already_in_clan', 400],
-      ['clan_full', 400],
-    ] as const) {
-      mockRpc.mockResolvedValue({ data: { error: code }, error: null });
-      const response = await POST(
-        request({ action: 'respond_invite', inviteId: 'inv-1', accept: true })
-      );
-      expect(response.status).toBe(status);
-    }
+    expect(mockRpc).toHaveBeenCalledWith('get_clan_competitive_roster', expect.objectContaining({
+      p_clan_id: 'clan-1',
+    }));
   });
 
-  it('accepts and declines through the RPC', async () => {
-    mockRpc.mockResolvedValue({
-      data: { success: true, accepted: true, clan_name: 'Elite' },
-      error: null,
+  it('quotes founding and Glory terms for the consuming UI', async () => {
+    const response = await GET(new NextRequest('https://supasnake.com/api/clan?view=config'));
+    const body = await response.json();
+    expect(body.competitiveConfig).toMatchObject({
+      foundingDnaCost: expect.any(Number),
+      policies: ['open', 'application', 'invite_only'],
+      roleLabels: { owner: 'Leader', co_leader: 'Co-leader', member: 'Member' },
+      glory: { maxSeats: 2, rewardDna: expect.any(Number) },
     });
-    const accept = await POST(
-      request({ action: 'respond_invite', inviteId: 'inv-1', accept: true })
-    );
-    expect(accept.status).toBe(200);
-    expect(mockRpc).toHaveBeenCalledWith('respond_clan_invite', {
-      p_user_id: 'user-1',
-      p_invite_id: 'inv-1',
-      p_accept: true,
+  });
+
+  it('reports a contribution RPC failure instead of fabricating empty ranks', async () => {
+    mockRpc.mockImplementation((name: string) => {
+      if (name === 'get_clan_competitive_roster') {
+        return Promise.resolve({ data: null, error: { message: 'read failed' } });
+      }
+      return Promise.resolve({ data: [], error: null });
     });
-
-    mockRpc.mockResolvedValue({ data: { success: true, accepted: false }, error: null });
-    const decline = await POST(
-      request({ action: 'respond_invite', inviteId: 'inv-1', accept: false })
-    );
-    expect((await decline.json()).result.accepted).toBe(false);
-  });
-
-  it('lands against the 12 cap that is current, not the one it was issued under', async () => {
-    mockRpc.mockResolvedValue({ data: { error: 'clan_full' }, error: null });
-    const response = await POST(
-      request({ action: 'respond_invite', inviteId: 'inv-1', accept: true })
-    );
-    expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe('clan_full');
-  });
-
-  it('validates inputs and 503s pre-048', async () => {
-    expect((await POST(request({ action: 'respond_invite', accept: true }))).status).toBe(400);
-    expect(
-      (await POST(request({ action: 'respond_invite', inviteId: 'inv-1', accept: 'yes' }))).status
-    ).toBe(400);
-    expect(mockRpc).not.toHaveBeenCalled();
-
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { code: '42883', message: 'function respond_clan_invite does not exist' },
-    });
-    expect(
-      (await POST(request({ action: 'respond_invite', inviteId: 'inv-1', accept: true }))).status
-    ).toBe(503);
-  });
-});
-
-describe('the levers this suite used to test are unreachable, not merely unused', () => {
-  /**
-   * `route.test.ts` pins the plain 400 for each removed action and
-   * `noOfficerLever.test.ts` pins the structural absence across the whole tree.
-   * What is checked here is the specific claim THIS file once made: that the
-   * removed actions cannot reach the database through any argument shape it
-   * used to send them.
-   */
-  it.each([
-    { action: 'set_role', targetUserId: 'user-2', role: 'officer' },
-    { action: 'set_role', targetUserId: 'user-2', role: 'owner' },
-    { action: 'set_role', targetUserId: 'user-2', role: 'member' },
-    { action: 'invite', handle: 'Souci' },
-    { action: 'invite', targetUserId: 'user-9' },
-  ])('answers 400 and touches nothing for %o', async (body) => {
-    const response = await POST(request(body));
-    expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe('Invalid action');
-    expect(mockRpc).not.toHaveBeenCalled();
-    expect(mockFrom).not.toHaveBeenCalled();
+    const response = await GET(fullRequest());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: 'Failed to load contribution ranks' });
+    expect(mockCapture).toHaveBeenCalled();
   });
 });

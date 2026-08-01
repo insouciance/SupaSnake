@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { RunResults, type RunResultsProps } from './RunResults';
 
@@ -75,6 +75,5 @@ it('keeps settlement visible but suppresses the recognition ceremony when off', 
   expect(screen.getByTestId('impact-summary')).toHaveTextContent(
     'Persistent progress was secured by the server.'
   );
-  fireEvent.click(screen.getByText('What this run moved'));
-  expect(screen.queryByTestId('impact-review')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('impact-victory-lap')).not.toBeInTheDocument();
 });

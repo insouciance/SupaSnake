@@ -2,7 +2,7 @@
  * Authentication E2E Tests
  *
  * Real flows as of Sprint 1:
- * - Home offers player-pulled sign-in choices; Launch starts an anonymous session.
+ * - Home offers player-pulled sign-in choices; Play starts an anonymous session.
  * - /login: email/password + Google/Apple OAuth + "Play as Guest".
  * - /signup: age gate (14+) shown before the account form.
  * - /game and /lab prompt for sign-in when there is no session.
@@ -30,61 +30,54 @@ test.describe('Consent banner', () => {
 /**
  * One test per viewport, not one test over four.
  *
- * The assertions are unchanged; only the budget is. As a single test this
- * loaded Home four times inside one 60s allowance, and with the growth
- * surfaces armed - which is how production runs - Home is a heavier page with
- * more client fetches, so the fourth load was routinely paying for the first
- * three. A per-viewport test also names the viewport that failed instead of
- * making every failure read "the dialog test".
+ * A separate case per viewport keeps each Home → Settings account journey
+ * inside one navigation budget and names the exact responsive profile when a
+ * control escapes the viewport.
  */
-const HOME_DIALOG_VIEWPORTS = [
+const HOME_ACCOUNT_VIEWPORTS = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
   { width: 844, height: 390 },
   { width: 1280, height: 720 },
 ];
 
-test.describe('Home authentication dialog', () => {
-  for (const viewport of HOME_DIALOG_VIEWPORTS) {
-    test(`stays above Home controls and within the ${viewport.width}x${viewport.height} viewport`, async ({
+test.describe('Home account path', () => {
+  for (const viewport of HOME_ACCOUNT_VIEWPORTS) {
+    test(`keeps Settings and sign-in usable within the ${viewport.width}x${viewport.height} viewport`, async ({
       page,
     }) => {
       await seedConsent(page);
       await page.setViewportSize(viewport);
       await page.goto('/');
 
-      const trigger = page.getByTestId('account-chip');
-      await expect(trigger).toBeVisible();
-      // With the growth surfaces armed the landing page is taller, and at
-      // 375px portrait the chip sits outside the initial viewport: Playwright
-      // reports it visible, then fails the click with "element is outside of
-      // the viewport" because its own auto-scroll does not reach it. Scroll
-      // deliberately rather than forcing the click, so a genuinely
-      // unreachable control still fails - which is what this caught on the
-      // flag-on leg: the bottom nav rail overflowed 320px-wide viewports and
-      // pushed the chip off screen entirely (fixed in `Navigation.tsx`).
-      await trigger.scrollIntoViewIfNeeded();
-      await trigger.click();
+      // The approved Home chamber keeps account chrome out of its quiet top
+      // hierarchy. Settings is the stable account route and must remain an
+      // obvious 44px target without colliding with the wordmark or wallet.
+      const settings = page.getByTestId('home-settings');
+      await expect(settings).toBeVisible();
+      const settingsBox = await settings.boundingBox();
+      expect(settingsBox).not.toBeNull();
+      expect(settingsBox!.width).toBeGreaterThanOrEqual(44);
+      expect(settingsBox!.height).toBeGreaterThanOrEqual(44);
+      expect(settingsBox!.x).toBeGreaterThanOrEqual(0);
+      expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(viewport.width);
+      await settings.click();
 
-      const dialog = page.getByRole('dialog', { name: /join the run/i });
-      const layer = page.locator('[data-modal-layer="true"]');
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole('link', { name: /^sign in$/i })).toBeVisible();
+      await expect(page).toHaveURL(/\/settings/);
+      const signIn = page.getByRole('link', { name: /^sign in$/i });
+      await expect(signIn).toBeVisible();
 
       const metrics = await page.evaluate(() => {
-        const panel = document.querySelector<HTMLElement>('[data-testid="account-auth-dialog"]');
-        const modalLayer = document.querySelector<HTMLElement>('[data-modal-layer="true"]');
-        const accountTrigger = document.querySelector<HTMLElement>('[data-testid="account-chip"]');
-        if (!panel || !modalLayer || !accountTrigger) {
-          throw new Error('Authentication dialog elements did not mount');
+        const heading = [...document.querySelectorAll<HTMLElement>('h1')]
+          .find((node) => /please sign in/i.test(node.textContent ?? ''));
+        const panel = heading?.closest<HTMLElement>('.panel-elevated');
+        const signInLink = panel?.querySelector<HTMLElement>('a[href="/login"]');
+        if (!panel || !signInLink) {
+          throw new Error('Settings sign-in surface did not mount');
         }
 
         const panelRect = panel.getBoundingClientRect();
-        const triggerRect = accountTrigger.getBoundingClientRect();
-        const topAtTrigger = document.elementFromPoint(
-          triggerRect.left + triggerRect.width / 2,
-          triggerRect.top + triggerRect.height / 2
-        );
+        const signInRect = signInLink.getBoundingClientRect();
 
         return {
           panel: {
@@ -93,15 +86,12 @@ test.describe('Home authentication dialog', () => {
             right: panelRect.right,
             bottom: panelRect.bottom,
           },
-          layerIsBodyChild: modalLayer.parentElement === document.body,
-          layerPosition: getComputedStyle(modalLayer).position,
-          layerZIndex: Number(getComputedStyle(modalLayer).zIndex),
-          triggerZIndex: Number(
-            getComputedStyle(accountTrigger.closest('nav')?.querySelector('.fixed') ?? accountTrigger)
-              .zIndex || 0
-          ),
-          triggerIsTopmost: accountTrigger.contains(topAtTrigger),
-          focusIsInside: panel.contains(document.activeElement),
+          signIn: {
+            width: signInRect.width,
+            height: signInRect.height,
+          },
+          horizontalOverflow:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
         };
       });
 
@@ -109,16 +99,9 @@ test.describe('Home authentication dialog', () => {
       expect(metrics.panel.top).toBeGreaterThanOrEqual(0);
       expect(metrics.panel.right).toBeLessThanOrEqual(viewport.width);
       expect(metrics.panel.bottom).toBeLessThanOrEqual(viewport.height);
-      expect(metrics.layerIsBodyChild).toBe(true);
-      expect(metrics.layerPosition).toBe('fixed');
-      expect(metrics.layerZIndex).toBeGreaterThan(metrics.triggerZIndex);
-      expect(metrics.triggerIsTopmost).toBe(false);
-      expect(metrics.focusIsInside).toBe(true);
-
-      await page.keyboard.press('Escape');
-      await expect(dialog).not.toBeVisible();
-      await expect(trigger).toBeFocused();
-      await expect(layer).toHaveCount(0);
+      expect(metrics.signIn.width).toBeGreaterThanOrEqual(44);
+      expect(metrics.signIn.height).toBeGreaterThanOrEqual(44);
+      expect(metrics.horizontalOverflow).toBe(false);
     });
   }
 });

@@ -59,6 +59,7 @@ export default function SettingsPage() {
           </div>
           <Link
             href="/game"
+            aria-label="Play a run"
             className="btn-go self-start px-6 py-3 min-h-[44px] inline-flex items-center"
           >
             Play

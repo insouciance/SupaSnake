@@ -1,5 +1,11 @@
 'use strict';
 
+const {
+  PRODUCTION_PUBLIC_FLAGS,
+  PRODUCTION_PUBLIC_SURFACE_HASH,
+  PRODUCTION_SUPABASE_URL,
+} = require('./production-public-surface.cjs');
+
 /**
  * Stripe Price IDs the build REQUIRES. Only the two subscription prices are
  * left: WP-0.09 deleted every one-time SKU (Constitution §10.4), so no other
@@ -46,6 +52,8 @@ const REQUIRED_VARIABLES = [
   'NEXT_PUBLIC_POSTHOG_KEY',
   'NEXT_PUBLIC_POSTHOG_HOST',
   'NEXT_PUBLIC_APP_URL',
+  ...PRODUCTION_PUBLIC_FLAGS,
+  'SUPASNAKE_PUBLIC_SURFACE_HASH',
   'MIN_AGE_REQUIREMENT',
   'DISCORD_CLIENT_ID',
   'DISCORD_CLIENT_SECRET',
@@ -105,11 +113,7 @@ function validateProductionEnvironment(
     }
   };
 
-  assertPattern(
-    'NEXT_PUBLIC_SUPABASE_URL',
-    /^https:\/\/[a-z0-9]+\.supabase\.co$/,
-    'must be the HTTPS URL of the production Supabase project'
-  );
+  assertExact('NEXT_PUBLIC_SUPABASE_URL', PRODUCTION_SUPABASE_URL);
   if (
     canInspect('NEXT_PUBLIC_SUPABASE_ANON_KEY') &&
     value('NEXT_PUBLIC_SUPABASE_ANON_KEY').length < 20
@@ -161,6 +165,13 @@ function validateProductionEnvironment(
   );
   assertExact('NEXT_PUBLIC_POSTHOG_HOST', 'https://eu.i.posthog.com');
   assertExact('NEXT_PUBLIC_APP_URL', 'https://supasnake.com');
+  for (const name of PRODUCTION_PUBLIC_FLAGS) {
+    assertExact(name, 'true');
+  }
+  assertExact(
+    'SUPASNAKE_PUBLIC_SURFACE_HASH',
+    PRODUCTION_PUBLIC_SURFACE_HASH
+  );
   assertExact('MIN_AGE_REQUIREMENT', '14');
   assertExact('DISCORD_REDIRECT_URI', 'https://supasnake.com/api/discord/callback');
 

@@ -4,6 +4,7 @@ import {
   hasRecognitionCeremony,
   impactSummary,
   parseRunImpactEnvelope,
+  recoverPendingRunImpactBounded,
   recoverRunImpact,
   type RunImpactEnvelope,
 } from './runImpactClient';
@@ -181,5 +182,50 @@ describe('Run Impact client contract', () => {
         status: 202,
       }))
     ).resolves.toBeNull();
+  });
+
+  it('automatically resolves a reopened settling run into its canonical receipt', async () => {
+    const canonical = envelope({ sessionId: 'settling-run' });
+    const fetchFn = jest.fn()
+      .mockResolvedValueOnce({ ok: true, status: 202 })
+      .mockRejectedValueOnce(new Error('temporary network loss'))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ impact: canonical }),
+      });
+
+    await expect(recoverPendingRunImpactBounded(
+      'settling-run',
+      'token',
+      { fetchFn, delaysMs: [0, 0, 0] }
+    )).resolves.toEqual(canonical);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('bounds automatic settling recovery and leaves a manual retry path', async () => {
+    const fetchFn = jest.fn().mockResolvedValue({ ok: true, status: 202 });
+    await expect(recoverPendingRunImpactBounded(
+      'still-pending',
+      'token',
+      { fetchFn, delaysMs: [0, 0] }
+    )).resolves.toBeNull();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('times out a hung recovery request and still reaches the manual path', async () => {
+    const fetchFn = jest.fn().mockImplementation(
+      (_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        });
+      })
+    );
+    await expect(recoverPendingRunImpactBounded(
+      'hung-pending',
+      'token',
+      { fetchFn, delaysMs: [0], attemptTimeoutMs: 1 }
+    )).resolves.toBeNull();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });

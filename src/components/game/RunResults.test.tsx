@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RunResults, type RunResultsProps } from './RunResults';
 import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { RunImpactEnvelope } from '@/lib/game/runImpactClient';
@@ -231,41 +231,185 @@ describe('Layer 2', () => {
         enteredTopFive: true,
         scoreDelta: 12_400,
         replacedSessionId: 'old',
+        fifthBest: 19_820,
         topFive: [{ sessionId: 'secret-row', score: 999_999, rank: 1, energyCommitted: 6, generation: 11 }],
       },
     })} />);
     expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('+12,400 Clan Depth');
     expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('Replaced a weaker result');
+    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('fifth-best now stands at 19,820');
     expect(screen.queryByText('999,999 Yield')).toBeNull();
+  });
+
+  it('shows an exact shortfall only when the server supplied the comparable threshold', () => {
+    render(<RunResults {...props({
+      clanBattle: {
+        eligible: true,
+        enteredTopFive: false,
+        thresholdBefore: 500,
+        fifthBest: 500,
+      },
+    })} />);
+
+    expect(screen.getByTestId('results-clan-gap')).toHaveTextContent(
+      'Needed 501 · this run delivered 260 · 241 short'
+    );
+  });
+
+  it('states proven crash consequences without inventing a potential score or threshold', () => {
+    const crashedImpact: RunImpactEnvelope = {
+      ...impact,
+      outcome: 'crashed',
+      receipt: {
+        ...impact.receipt,
+        score: 31_740,
+        yieldDna: 317,
+        dnaCredited: 1_902,
+        energyCommitted: 6,
+        commitmentMultiplierBps: 100_000,
+        personalBest: { eligible: true, before: 40_000, after: 40_000, improved: false },
+      },
+      impacts: [],
+      featuredImpactKeys: [],
+      recommendedAction: null,
+    };
+    render(<RunResults {...props({
+      outcome: 'crashed',
+      impact: crashedImpact,
+      clanBattle: { eligible: false, reason: 'validation_or_timing' },
+    })} />);
+
+    const consequences = screen.getByTestId('results-crash-consequences');
+    expect(consequences).toHaveTextContent('1,902 DNA salvaged');
+    expect(consequences).toHaveTextContent('No clan contribution banked');
+    expect(consequences).not.toHaveTextContent(/potential|fifth-best|short|gap/i);
+    expect(screen.queryByTestId('results-clan-battle-lost')).toBeNull();
+  });
+
+  it('omits a clan crash claim when no authoritative clan result exists', () => {
+    const crashedWithoutClan: RunImpactEnvelope = {
+      ...impact,
+      outcome: 'crashed',
+      impacts: [],
+      featuredImpactKeys: [],
+      recommendedAction: null,
+    };
+    render(<RunResults {...props({
+      outcome: 'crashed',
+      impact: crashedWithoutClan,
+      clanBattle: null,
+    })} />);
+
+    const consequences = screen.getByTestId('results-crash-consequences');
+    expect(consequences).toHaveTextContent('572 DNA salvaged');
+    expect(consequences).not.toHaveTextContent(/clan|fifth-best|threshold/i);
   });
 });
 
 describe('Layer 3 recognition', () => {
-  it('starts as one closed digest with a compact summary', () => {
+  it('starts with a secured graphical DNA prize while keeping run actions available', () => {
     render(<RunResults {...props()} />);
-    const digest = screen.getByTestId('results-digest') as HTMLDetailsElement;
-    expect(digest.open).toBe(false);
+    expect(screen.getByTestId('results-digest')).toBeVisible();
     expect(screen.getByTestId('impact-summary')).toHaveTextContent('CYBER Mastery M6');
+    expect(screen.getByTestId('impact-victory-lap')).toBeVisible();
+    expect(screen.getByText(/Everything is already yours/i)).toBeInTheDocument();
+    expect(screen.getByTestId('impact-beat-dna')).toHaveAttribute('data-state', 'ready');
+    expect(screen.getByTestId('impact-rune-dna').querySelector('svg')).toBeTruthy();
+    expect(screen.getByTestId('results-replay')).toBeEnabled();
+    expect(screen.getByTestId('results-setup')).toBeEnabled();
+    expect(screen.getByText(/Leaving never forfeits a secured prize/i)).toBeInTheDocument();
   });
 
-  it('sequences no more than three grouped, skippable beats', () => {
+  it('collects DNA, connected career progress, and the clan trophy through three meaningful taps', () => {
     render(<RunResults {...props()} />);
-    fireEvent.click(screen.getByText('What this run moved'));
-    expect(screen.getByTestId('impact-beat-discovery')).toBeInTheDocument();
     expect(screen.getByText('1 of 3')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('impact-review-next'));
-    expect(screen.getByTestId('impact-beat-growth')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('impact-review-skip'));
-    expect(screen.getByText(/Recognition reviewed/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    expect(screen.getByTestId('impact-collection-payoff')).toHaveTextContent('572 DNA secured');
+    expect(screen.getByTestId('impact-beat-dna')).toHaveAttribute('data-state', 'collected');
+    expect(screen.getByTestId('impact-rune-career').querySelector('svg')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Reveal discovery/i }));
+    expect(screen.getByTestId('impact-collection-payoff')).toHaveTextContent(
+      'World-first splice documented'
+    );
+    expect(screen.getByTestId('impact-beat-clan')).toHaveAttribute('data-state', 'ready');
+
+    fireEvent.click(screen.getByRole('button', { name: /Raise trophy/i }));
+    expect(screen.getByTestId('impact-victory-complete')).toHaveTextContent('Victory lap complete');
+    expect(
+      screen.queryByRole('button', { name: /Collect DNA|Reveal discovery|Raise trophy/i })
+    ).toBeNull();
   });
 
-  it('announces visual progress without relying on animation', () => {
+  it('moves an accessible progress bar from before to after only when collected', async () => {
     render(<RunResults {...props()} />);
-    fireEvent.click(screen.getByText('What this run moved'));
-    fireEvent.click(screen.getByTestId('impact-review-next'));
+    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
     const progress = screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i });
-    expect(progress).toHaveAttribute('aria-valuenow', '6');
+    expect(progress).toHaveAttribute('aria-valuenow', '5');
     expect(progress).toHaveAttribute('aria-valuemax', '10');
+    fireEvent.click(screen.getByRole('button', { name: /Reveal discovery/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i })).toHaveAttribute(
+        'aria-valuenow',
+        '6'
+      );
+    });
+  });
+
+  it('leaves only durable exact destination lights after collection', () => {
+    const attentionImpact: RunImpactEnvelope = {
+      ...impact,
+      impacts: [
+        {
+          key: 'mastery',
+          pillar: 'mastery',
+          kind: 'mastery_level',
+          significance: 'historic',
+          headline: 'CYBER Mastery M6',
+          destination: 'mastery',
+          artifactRef: 'CYBER',
+        },
+        {
+          key: 'record',
+          pillar: 'mastery',
+          kind: 'record_tier',
+          significance: 'milestone',
+          headline: 'Perfect coils reached Tier 3',
+          destination: 'records',
+          artifactRef: 'perfect_coils',
+        },
+        {
+          key: 'codex',
+          pillar: 'discovery',
+          kind: 'codex_discovery',
+          significance: 'historic',
+          headline: 'World-first splice documented',
+          destination: 'codex',
+          artifactRef: 'splice:vector_bloom',
+        },
+        {
+          key: 'clan',
+          pillar: 'clan',
+          kind: 'clan_top_five',
+          significance: 'milestone',
+          headline: 'Entered your clan five',
+          destination: 'clan',
+          artifactRef: 'session-1',
+        },
+      ],
+      featuredImpactKeys: ['mastery', 'record', 'codex', 'clan'],
+    };
+    render(<RunResults {...props({ impact: attentionImpact })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Accept mastery/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Raise trophy/i }));
+
+    expect(screen.getByTestId('results-attention-you')).toHaveTextContent('CYBER Mastery M6');
+    expect(screen.getByTestId('results-attention-you')).toHaveTextContent('+1 more');
+    expect(screen.getByTestId('results-attention-lab')).toHaveTextContent('World-first splice documented');
+    expect(screen.getByTestId('results-attention-compete')).toHaveTextContent('Entered your clan five');
+    expect(screen.getByText(/stay on until the exact progress is visible/i)).toBeInTheDocument();
   });
 
   it('states pending recovery instead of constructing client progress', () => {
@@ -282,7 +426,7 @@ describe('Layer 3 recognition', () => {
     expect(screen.queryByText(/pending server recovery/i)).toBeNull();
   });
 
-  it('shows routine progress without manufacturing a ceremony', () => {
+  it('shows routine progress as already secured without manufacturing a claim tap', () => {
     const routine = {
       ...impact,
       impacts: [{
@@ -291,8 +435,50 @@ describe('Layer 3 recognition', () => {
       featuredImpactKeys: [],
     };
     render(<RunResults {...props({ impact: routine })} />);
-    fireEvent.click(screen.getByText('What this run moved'));
-    expect(screen.getByTestId('impact-routine-list')).toHaveTextContent('+80 CYBER Mastery XP');
-    expect(screen.queryByTestId('impact-review-next')).toBeNull();
+    expect(screen.getByTestId('impact-routine-summary')).toHaveTextContent(
+      '+80 CYBER Mastery XP'
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    expect(screen.getByTestId('impact-victory-complete')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Accept progress/i })).toBeNull();
+  });
+
+  it('can collect every remaining secured prize with one action', () => {
+    render(<RunResults {...props()} />);
+    fireEvent.click(screen.getByTestId('impact-collect-remaining'));
+    expect(screen.getByTestId('impact-victory-complete')).toBeInTheDocument();
+    expect(screen.queryByTestId('impact-collect-remaining')).toBeNull();
+    expect(screen.getAllByText(/Collected/i).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('shows the complete static reward order without claim controls for reduced motion', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = jest.fn().mockReturnValue({
+      matches: true,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    });
+    try {
+      render(<RunResults {...props()} />);
+      await waitFor(() => {
+        expect(screen.getByTestId('impact-reduced-summary')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('impact-reduced-summary')).toHaveTextContent('572 DNA');
+      expect(screen.getByTestId('impact-reduced-summary')).toHaveTextContent(
+        'World-first splice documented'
+      );
+      expect(screen.queryByTestId('impact-collect-remaining')).toBeNull();
+      expect(screen.queryByRole('button', { name: /Collect DNA/i })).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it('stacks mobile actions and prevents action-label wrapping', () => {
+    render(<RunResults {...props()} />);
+    expect(screen.getByRole('button', { name: /Collect DNA/i })).toHaveClass('whitespace-nowrap');
+    expect(screen.getByTestId('results-replay')).toHaveClass('whitespace-nowrap');
+    expect(screen.getByTestId('results-setup')).toHaveClass('whitespace-nowrap');
   });
 });

@@ -110,6 +110,7 @@ describe('FTUE v2 launch flow', () => {
     expect(handoff.mode).toBe('earn');
     expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
       action: 'start',
+      startRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       mode: 'earn',
       snake_id: 'snake-1',
     });
@@ -134,6 +135,7 @@ describe('FTUE v2 launch flow', () => {
     // charge on the run the Constitution makes exempt.
     expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
       action: 'start',
+      startRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       mode: 'signal',
       signalObjectiveId: 'signal_extract',
       snake_id: 'snake-1',
@@ -154,7 +156,12 @@ describe('FTUE v2 launch flow', () => {
     // did not derive would be refused by the server anyway, but an ordinary
     // LAUNCH must not even ask.
     const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
-    expect(body).toEqual({ action: 'start', mode: 'earn', snake_id: 'snake-1' });
+    expect(body).toEqual({
+      action: 'start',
+      startRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      mode: 'earn',
+      snake_id: 'snake-1',
+    });
     expect(body).not.toHaveProperty('signalObjectiveId');
   });
 
@@ -198,6 +205,52 @@ describe('FTUE v2 launch flow', () => {
       prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher)
     ).rejects.toThrow();
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses one page-memory request ID after a lost start response', async () => {
+    const fetcher = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('connection closed'))
+      .mockResolvedValueOnce(jsonResponse({ sessionId: 'session-recovered' }));
+
+    await expect(
+      prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher, 'signal_bank')
+    ).rejects.toThrow('connection closed');
+    await expect(
+      prepareLaunchHandoff('token', 'user-1', bootstrap, fetcher, 'signal_bank')
+    ).resolves.toMatchObject({ run: { sessionId: 'session-recovered' } });
+
+    const first = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    const retry = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
+    expect(retry.startRequestId).toBe(first.startRequestId);
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('polls the same preparing start instead of opening an incomplete board', async () => {
+    const fetcher = jest
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ accepted: true, preparing: true, sessionId: 'session-preparing' }, 202)
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sessionId: 'session-preparing',
+          simulation: { seed: 'simulation-seed', version: 1 },
+        })
+      );
+
+    const handoff = await prepareLaunchHandoff(
+      'token',
+      'user-1',
+      bootstrap,
+      fetcher,
+      'signal_survive'
+    );
+    expect(handoff.run.simulation).toEqual({ seed: 'simulation-seed', version: 1 });
+    const first = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    const retry = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
+    expect(retry.startRequestId).toBe(first.startRequestId);
   });
 
   it('stores transient initialization and consumes it exactly once', () => {

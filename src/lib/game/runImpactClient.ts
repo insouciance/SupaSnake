@@ -316,7 +316,8 @@ export async function recoverRunImpact(
 export async function advancePendingRunImpact(
   sessionId: string,
   token: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<RunImpactEnvelope | null> {
   const response = await fetchFn(
     `/api/progression/impact?sessionId=${encodeURIComponent(sessionId)}`,
@@ -324,6 +325,7 @@ export async function advancePendingRunImpact(
       method: 'POST',
       cache: 'no-store',
       headers: { Authorization: `Bearer ${token}` },
+      ...(signal ? { signal } : {}),
     }
   );
   if (response.status === 202 || response.status === 404) return null;
@@ -331,6 +333,71 @@ export async function advancePendingRunImpact(
     throw new Error(`Impact recovery failed (${response.status})`);
   }
   return parseImpactFromSettlement(await response.json());
+}
+
+/**
+ * A reopened run whose terminal envelope is already durable should flow into
+ * Results without asking the player to babysit settlement. Poll a deliberately
+ * small, bounded window; authority stays with the canonical server receipt and
+ * callers can expose a manual retry after this window expires.
+ */
+export const SETTLING_RECOVERY_DELAYS_MS = [300, 700, 1_400, 2_600] as const;
+export const SETTLING_RECOVERY_ATTEMPT_TIMEOUT_MS = 2_000;
+
+function waitForRecoveryAttempt(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const abort = () => {
+      clearTimeout(timer);
+      finish();
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+export async function recoverPendingRunImpactBounded(
+  sessionId: string,
+  token: string,
+  options: {
+    signal?: AbortSignal;
+    fetchFn?: typeof fetch;
+    delaysMs?: readonly number[];
+    attemptTimeoutMs?: number;
+  } = {}
+): Promise<RunImpactEnvelope | null> {
+  const delays = options.delaysMs ?? SETTLING_RECOVERY_DELAYS_MS;
+  for (const delayMs of delays) {
+    await waitForRecoveryAttempt(delayMs, options.signal);
+    if (options.signal?.aborted) return null;
+    const attemptController = new AbortController();
+    const relayAbort = () => attemptController.abort();
+    options.signal?.addEventListener('abort', relayAbort, { once: true });
+    const timeout = setTimeout(
+      () => attemptController.abort(),
+      Math.max(1, options.attemptTimeoutMs ?? SETTLING_RECOVERY_ATTEMPT_TIMEOUT_MS)
+    );
+    try {
+      const impact = await advancePendingRunImpact(
+        sessionId,
+        token,
+        options.fetchFn ?? fetch,
+        attemptController.signal
+      );
+      if (impact) return impact;
+    } catch {
+      // A transient network/server failure consumes only this bounded attempt.
+      // The run is already secured, so the caller can safely retry later.
+    } finally {
+      clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', relayAbort);
+    }
+  }
+  return null;
 }
 
 function maxSignificance(impacts: RunImpact[]): RunImpactSignificance {

@@ -1,31 +1,59 @@
-/**
- * Clan types (Constitution §9.2–9.4, Rule 8).
- *
- * WHAT WP-1.02 TOOK OUT OF THIS FILE, AND WHY
- *
- *   `ClanRole` no longer has an `officer`. §9.2 allows plain roster
- *   management and forbids "any officer lever keyed to output"; the
- *   acceptance criterion for this work package is the stronger, structural
- *   one — *no officer lever exists*. A rank that can be given and taken is
- *   the affordance that makes evaluation feel available, so the rank is
- *   gone: `owner | member`, and the owner's only roster powers are removal
- *   and handing the clan over. Neither reads a number about the person.
- *
- *   `ClanMember.weeklyContribution` / `.totalContribution` are gone with the
- *   columns behind them (migration 048). They were the pre-Constitution
- *   graded-contribution pair — the exact shape Rule 8 forbids, and the shape
- *   a "minimum weekly DNA" cut line would have been built on. What a member
- *   gives the clan is their Depth, which is additive, uncapped and displayed
- *   without a bar (§9.2's "additive, not evaluative").
- *
- *   `Clan.weeklyScore` / `.totalScore` are gone for the same reason plus one
- *   more: §12.2 caps public numbers at TWO — Score and Depth. A third clan
- *   number that ranked clans against each other was over that cap.
- */
+/** Clan contracts (Constitution v1.7 §9.2–9.5). */
 
 import { CLAN_INVITE_CODE_PATTERN } from './config';
 
-export type ClanRole = 'owner' | 'member';
+/** `owner` is the internal authority key; player-facing copy says Leader. */
+export type ClanRole = 'owner' | 'co_leader' | 'member';
+export type ClanRoleLabel = 'Leader' | 'Co-leader' | 'Member';
+export type ClanJoinPolicy = 'open' | 'application' | 'invite_only';
+
+export const CLAN_ROLE_LABELS: Readonly<Record<ClanRole, ClanRoleLabel>> = Object.freeze({
+  owner: 'Leader',
+  co_leader: 'Co-leader',
+  member: 'Member',
+});
+
+export const CLAN_PERMISSIONS = Object.freeze({
+  owner: Object.freeze({
+    invite: true,
+    reviewApplications: true,
+    removeMembers: true,
+    manageCoLeaders: true,
+    manageSettings: true,
+    transferOwnership: true,
+    assignGlory: true,
+  }),
+  co_leader: Object.freeze({
+    invite: true,
+    reviewApplications: true,
+    removeMembers: true,
+    manageCoLeaders: false,
+    manageSettings: false,
+    transferOwnership: false,
+    assignGlory: false,
+  }),
+  member: Object.freeze({
+    invite: false,
+    reviewApplications: false,
+    removeMembers: false,
+    manageCoLeaders: false,
+    manageSettings: false,
+    transferOwnership: false,
+    assignGlory: false,
+  }),
+} satisfies Readonly<Record<ClanRole, Readonly<Record<string, boolean>>>>);
+
+export function clanRoleLabel(role: ClanRole): ClanRoleLabel {
+  return CLAN_ROLE_LABELS[role];
+}
+
+export function asClanRole(value: unknown): ClanRole {
+  return value === 'owner' || value === 'co_leader' ? value : 'member';
+}
+
+export function isClanJoinPolicy(value: unknown): value is ClanJoinPolicy {
+  return value === 'open' || value === 'application' || value === 'invite_only';
+}
 
 export interface Clan {
   id: string;
@@ -35,6 +63,7 @@ export interface Clan {
   ownerId: string;
   memberCount: number;
   maxMembers: number; // 1-12 (§12.2)
+  joinPolicy: ClanJoinPolicy;
   /** Weekly Depth carried: the clan's best week, and its lifetime sum. */
   bestWeekDepth?: number;
   lifetimeDepth?: number;
@@ -49,6 +78,33 @@ export interface ClanMember {
   clanId: string;
   role: ClanRole;
   joinedAt: string;
+  /** Null means no eligible positive-Energy battle result, never a fabricated zero. */
+  currentBestFiveDepth?: number | null;
+  currentContributionRank?: number | null;
+}
+
+export interface ClanApplication {
+  id: string;
+  clanId: string;
+  applicantId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+  createdAt: string;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+}
+
+export interface ClanGlorySeat {
+  id: string;
+  clanId: string;
+  seat: 1 | 2;
+  holderUserId: string;
+  assignedByUserId: string;
+  sourceCycleIndex: number;
+  effectiveCycleIndex: number;
+  effectiveAt: string;
+  evidenceDepth: number;
+  evidenceRank: number;
+  rewardDna: number;
 }
 
 export interface ClanInvite {

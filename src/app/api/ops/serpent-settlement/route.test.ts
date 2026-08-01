@@ -219,6 +219,23 @@ describe('authentication', () => {
 });
 
 describe('settlement', () => {
+  it('settles Glory only after Energy Battles and exposes the idempotent payout summary', async () => {
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+
+    const calls = mockRpc.mock.calls.map(([name]) => name);
+    expect(calls.indexOf('settle_clan_energy_battles')).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf('settle_clan_glory_rewards')).toBeGreaterThan(
+      calls.indexOf('settle_clan_energy_battles')
+    );
+    expect(await response.json()).toMatchObject({
+      energyBattles: {
+        settled: 0,
+        glory: { settled: 0, dnaAwarded: 0, cycleIndex: null },
+      },
+    });
+  });
+
   it('settles the submerged week: best-3 per member, clan sum, lifetime', async () => {
     const response = await GET(request());
     expect(response.status).toBe(200);

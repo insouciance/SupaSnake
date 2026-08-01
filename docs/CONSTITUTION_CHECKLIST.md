@@ -1,7 +1,7 @@
 # Constitution Compliance Checklist
 
 Run on **every PR**. Copy into the PR description and check each line. A `[ ]` left
-unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.6) §4.
+unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.8) §4.
 Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer reads.
 
 ## The 15 Rules
@@ -22,10 +22,11 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   in full and immutable pedigree history retained.
 - [ ] **R7 — Commerce in its district.** Zero commercial surfaces in-run and on
   Results; ≤1 per screen elsewhere; no commercial notification/email/badge.
-- [ ] **R8 — Clans create responsibility, never payroll.** No intra-clan reward
-  tiers or minimums, no officer lever keyed to member output, no purchasable clan
-  number, and no visibility into another member's attempts, absence, threshold,
-  contribution, or rank.
+- [ ] **R8 — Competition creates prestige; integrity makes it credible.** The
+  change makes real, server-verified achievement legible; payment cannot buy
+  Score, Depth, rank, qualification, matchmaking, gameplay power, exclusive
+  tactical information, or earned-proof styling. Any manually assigned honor or
+  reward has auditable eligibility, timing, and idempotency rules.
 - [ ] **R9 — Pillars/numbers/calendar.** The change lands in Mastery, Lineage, or
   Discovery; surfaces on Score or Depth; schedules on Signal/Ascension, Serpent, or
   season — or an amendment is attached.
@@ -46,8 +47,9 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   slice, or "costs N segments". Anything that costs the player costs **growth**.
   *If a cost is written as "segments removed," it is pricing a reward with a
   reward — send it back.*
-- [ ] **R8 addendum (v1.5) — no member is individually visible.** No clan surface
-  ships another member's attempt count, absence, or per-member contribution.
+- [ ] **R8 competitive proof (v1.7).** Public/member contribution facts identify
+  their authoritative run or settlement source, distinguish no-result from
+  failure, and cannot be edited into a competitive number by a leader or client.
 
 ## Mechanical gates ⚙ (run before review)
 
@@ -63,6 +65,8 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   parity test written first. A divergence silently invalidates honest runs.
 - [ ] No energy grant/consume path reachable from any purchase or perk.
 - [ ] No new claim RPC beyond the Daily Take's collect.
+- [ ] Victory Lap collection taps only acknowledge already-secured presentation;
+      Replay/Setup remain available and one action can complete the ceremony.
 - [ ] **No local progress ⚙ (R11).** `npm run verify:constitution` finds no
   progress-related `localStorage`, `sessionStorage`, IndexedDB, Cache Storage, or
   equivalent browser-persistent state, including reward outboxes and notifications.

@@ -97,7 +97,7 @@ describe('landing page — growth surfaces flag', () => {
     it('still renders the protected fold', () => {
       renderHome(false);
       expect(screen.getByText('SUPASNAKE')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /launch/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
     });
   });
 
@@ -117,7 +117,7 @@ describe('landing page — growth surfaces flag', () => {
       expect(
         main!.compareDocumentPosition(pitch) & Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();
-      expect(screen.getByRole('button', { name: /launch/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /play/i })).toBeInTheDocument();
     });
 
     it('shows a signed-in player the game, not the pitch', () => {
