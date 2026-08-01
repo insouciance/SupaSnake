@@ -31,16 +31,16 @@ test.describe('Home page', () => {
     ).toBeVisible();
   });
 
-  test('displays Launch and Lab entry points', async ({ page }) => {
+  test('displays Play and Lab entry points', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('button', { name: /^launch$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^play$/i })).toBeVisible();
     await expect(
       page.getByRole('link', { name: /lab/i }).first()
     ).toBeVisible();
   });
 
-  test('one Launch bootstraps Primal and opens the held board', async ({ page }) => {
+  test('one Play bootstraps Primal and opens the held board', async ({ page }) => {
     await page.goto('/');
 
     const bootstrapResponse = page.waitForResponse(
@@ -49,15 +49,15 @@ test.describe('Home page', () => {
         new URL(response.url()).pathname === '/api/player/bootstrap',
       { timeout: 60000 }
     ).catch(() => null);
-    await page.getByRole('button', { name: /^launch$/i }).click();
+    await page.getByRole('button', { name: /^play$/i }).click();
 
     const bootstrap = await bootstrapResponse;
     if (!bootstrap) {
-      const launchError = await page.getByRole('alert').textContent().catch(() => '');
-      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(launchError ?? '')) {
+      const playError = await page.getByRole('alert').textContent().catch(() => '');
+      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(playError ?? '')) {
         test.skip(true, 'Anonymous sign-ins are disabled in the Supabase project.');
       }
-      throw new Error(`Bootstrap request did not run: ${launchError || 'no launch error shown'}`);
+      throw new Error(`Bootstrap request did not run: ${playError || 'no Play error shown'}`);
     }
     if (!bootstrap.ok()) {
       const body = await bootstrap.text();
@@ -224,7 +224,7 @@ test.describe('Responsive design', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    await expect(page.getByRole('button', { name: /^launch$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^play$/i })).toBeVisible();
   });
 
   test('home has no horizontal scroll on tablet', async ({ page }) => {
@@ -239,7 +239,7 @@ test.describe('Responsive design', () => {
 });
 
 test.describe('Responsive consent containment', () => {
-  test('consent never overlaps Launch or game recovery actions', async ({ page }) => {
+  test('consent never overlaps Play or game recovery actions', async ({ page }) => {
     const expectNoOverlap = async (
       first: ReturnType<typeof page.getByRole>,
       second: ReturnType<typeof page.getByRole>
@@ -265,10 +265,10 @@ test.describe('Responsive consent containment', () => {
       await page.setViewportSize(viewport);
       await page.goto('/');
       const banner = page.getByRole('region', { name: /cookie consent/i });
-      const launch = page.getByRole('button', { name: /^launch$/i });
+      const play = page.getByRole('button', { name: /^play$/i });
       await expect(banner).toBeVisible();
-      await expect(launch).toBeVisible();
-      await expectNoOverlap(banner, launch);
+      await expect(play).toBeVisible();
+      await expectNoOverlap(banner, play);
 
       await page.goto('/game');
       const gameBanner = page.getByRole('region', { name: /cookie consent/i });

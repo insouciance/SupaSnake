@@ -2,7 +2,7 @@
  * Engagement Loop E2E Test
  *
  * Full hook loop for a brand-new player, driven end to end against the real
- * server: one-click anonymous launch -> authoritative PRIMAL bootstrap -> held
+ * server: one-click anonymous Play -> authoritative PRIMAL bootstrap -> held
  * game board -> voluntary Lab -> Breeding Lab. It also proves the retired
  * contracts surface stays gone (WP-1.03 cutover, Constitution §7.2/§12.2/§13).
  *
@@ -39,7 +39,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
     await page.context().close();
   });
 
-  test('one Launch authenticates, bootstraps PRIMAL, and lands on the board', async () => {
+  test('one Play authenticates, bootstraps PRIMAL, and lands on the board', async () => {
     await page.goto('/');
     const bootstrapPromise = page.waitForResponse(
       (response) =>
@@ -47,14 +47,14 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
         new URL(response.url()).pathname === '/api/player/bootstrap',
       { timeout: 45000 }
     ).catch(() => null);
-    await page.getByRole('button', { name: /^launch$/i }).click();
+    await page.getByRole('button', { name: /^play$/i }).click();
     const response = await bootstrapPromise;
     if (!response) {
-      const launchError = await page.getByRole('alert').textContent().catch(() => '');
-      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(launchError ?? '')) {
+      const playError = await page.getByRole('alert').textContent().catch(() => '');
+      if (/anonymous.+disabled|anonymous_provider_disabled/i.test(playError ?? '')) {
         test.skip(true, 'Anonymous sign-ins are disabled in the Supabase project.');
       }
-      throw new Error(`Bootstrap request did not run: ${launchError || 'no launch error shown'}`);
+      throw new Error(`Bootstrap request did not run: ${playError || 'no Play error shown'}`);
     }
     expect(response.ok()).toBe(true);
     const bootstrap = await response.json();

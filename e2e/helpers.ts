@@ -61,7 +61,7 @@ export async function openRunSetupControls(page: Page): Promise<void> {
   const adjust = page.getByTestId('run-setup-adjust');
   if ((await adjust.count()) === 0) return;
   if (await adjust.evaluate((node) => (node as HTMLDetailsElement).open)) return;
-  await adjust.getByText(/adjust this run/i).click();
+  await adjust.getByText(/tune run|adjust this run/i).click();
   await expect(adjust).toHaveJSProperty('open', true);
 }
 

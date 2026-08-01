@@ -2,7 +2,7 @@
  * Authentication E2E Tests
  *
  * Real flows as of Sprint 1:
- * - Home offers player-pulled sign-in choices; Launch starts an anonymous session.
+ * - Home offers player-pulled sign-in choices; Play starts an anonymous session.
  * - /login: email/password + Google/Apple OAuth + "Play as Guest".
  * - /signup: age gate (14+) shown before the account form.
  * - /game and /lab prompt for sign-in when there is no session.
