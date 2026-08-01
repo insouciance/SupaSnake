@@ -103,17 +103,17 @@ describe('production environment validation', () => {
       'utf8'
     );
     const migrationSet =
-      '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql';
+      '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql,065_genome_v2.sql';
     expect(workflow).toContain(`\"$actual\" = '${migrationSet}'`);
-    expect(workflow).toContain('rollout=cohesive-ux-initial');
-    expect(workflow).toContain('rollout=cohesive-ux-resume');
+    expect(workflow).toContain('rollout=genome-v2-initial');
+    expect(workflow).toContain('rollout=genome-v2-resume');
 
     const snapshotAt = workflow.indexOf('name: Snapshot exact outgoing cron state');
     const previewAt = workflow.indexOf('name: Build isolated Preview artifact');
     const previewBoundaryAt = workflow.indexOf(
       'name: Prove Preview cannot own production cron'
     );
-    const bridgeAt = workflow.indexOf('name: Apply cohesive UX bridge migrations');
+    const bridgeAt = workflow.indexOf('name: Apply reviewed Genome v2 bridge migrations');
     const linkedProbeAt = workflow.indexOf(
       'name: Probe linked cohesive schema read-only'
     );
@@ -218,6 +218,7 @@ describe('production environment validation', () => {
     expect(localHarness).toContain('supabase/tests/062_competitive_clans.sql');
     expect(localHarness).toContain('supabase/tests/063_run_continuity.sql');
     expect(localHarness).toContain('supabase/tests/064_atomic_dynasty_favorites.sql');
+    expect(localHarness).toContain('supabase/tests/065_genome_v2.sql');
     expect(localHarness).toContain(
       'supabase/tests/064_atomic_dynasty_favorites_concurrency.sql'
     );

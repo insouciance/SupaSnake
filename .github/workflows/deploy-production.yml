@@ -181,15 +181,17 @@ jobs:
           rollout=''
           if [ -z "$actual" ]; then
             rollout=none
-          elif [ "$actual" = '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql' ]; then
-            rollout=cohesive-ux-initial
-          elif [ "$actual" = '063_run_continuity.sql,064_atomic_dynasty_favorites.sql' ] \
-              || [ "$actual" = '064_atomic_dynasty_favorites.sql' ]; then
-            rollout=cohesive-ux-resume
+          elif [ "$actual" = '062_competitive_clans.sql,063_run_continuity.sql,064_atomic_dynasty_favorites.sql,065_genome_v2.sql' ]; then
+            rollout=genome-v2-initial
+          elif [ "$actual" = '063_run_continuity.sql,064_atomic_dynasty_favorites.sql,065_genome_v2.sql' ] \
+              || [ "$actual" = '064_atomic_dynasty_favorites.sql,065_genome_v2.sql' ] \
+              || [ "$actual" = '065_genome_v2.sql' ]; then
+            rollout=genome-v2-resume
           elif [[ ",$actual," == *",062_competitive_clans.sql,"* \
               || ",$actual," == *",063_run_continuity.sql,"* \
-              || ",$actual," == *",064_atomic_dynasty_favorites.sql,"* ]]; then
-            echo "::error::Cohesive UX migrations require the exact initial set or an ordered suffix"
+              || ",$actual," == *",064_atomic_dynasty_favorites.sql,"* \
+              || ",$actual," == *",065_genome_v2.sql,"* ]]; then
+            echo "::error::Genome v2 migrations require the exact reviewed chain or an ordered suffix"
             exit 1
           else
             echo "::error::This release workflow rejects migrations without an explicit reviewed rollout contract: $actual"
@@ -347,11 +349,11 @@ jobs:
           node scripts/verify-github-sha-workflows.mjs
           bash scripts/verify-linked-migration-plan.sh
 
-      - name: Apply cohesive UX bridge migrations
-        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
+      - name: Apply reviewed Genome v2 bridge migrations
+        if: ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial' || steps.migration_plan.outputs.rollout == 'genome-v2-resume' }}
         run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
-      - name: Validate cohesive UX bridge schema
-        if: ${{ steps.migration_plan.outputs.rollout == 'cohesive-ux-initial' || steps.migration_plan.outputs.rollout == 'cohesive-ux-resume' }}
+      - name: Validate reviewed Genome v2 bridge schema
+        if: ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial' || steps.migration_plan.outputs.rollout == 'genome-v2-resume' }}
         run: supabase db lint --linked --level warning --fail-on error
 
       - name: Prove the linked migration plan is empty after the reviewed push
