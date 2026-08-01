@@ -556,9 +556,10 @@ jobs:
           exit 1
 
       # Read-only diagnostics run even when the Production CLI command returns
-      # ambiguously. They never mutate aliases or cron configuration. An
-      # outgoing/outgoing result is a safe pre-cutover stop; a new or mixed
-      # result is an explicit operator incident, not an unsupported auto-fix.
+      # ambiguously. They never mutate aliases or cron configuration. Once the
+      # Production command started, even an outgoing/outgoing snapshot is not
+      # proof that an accepted deployment will not converge later: every
+      # failed/ambiguous result is an operator incident, never an auto-fix.
       - name: Classify production state after cutover attempt
         if: ${{ always() && steps.production_attempt.outputs.started == 'true' }}
         env:
@@ -608,8 +609,8 @@ jobs:
               && [ "$cron_host" = "${{ steps.outgoing.outputs.host }}" ] \
               && [ "$cron_defs" = "$expected_defs" ] \
               && [ "$cron_enabled" = 'true' ]; then
-            echo "::warning::Production attempt stopped before cutover; canonical application and cron remain exactly outgoing."
-            exit 0
+            echo "::error::Production currently appears outgoing, but the started Production command may still converge after an ambiguous response. Freeze releases and inspect release-SHA Production candidates before any retry."
+            exit 1
           fi
           if [ -n "${{ steps.production.outputs.id }}" ] \
               && [ "$canonical_id" = "${{ steps.production.outputs.id }}" ] \

@@ -174,6 +174,13 @@ describe('production environment validation', () => {
     expect(workflow).toContain(
       "always() && steps.production_attempt.outputs.started == 'true'"
     );
+    const incidentBlock = workflow.slice(incidentAt);
+    expect(incidentBlock).toContain(
+      'Production currently appears outgoing, but the started Production command may still converge'
+    );
+    expect(incidentBlock).not.toContain(
+      'Production attempt stopped before cutover'
+    );
   });
 
   it('runs fixture SQL only on isolated Supabase and a distinct hosted read-only probe', () => {

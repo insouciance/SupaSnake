@@ -184,8 +184,11 @@ The workflow performs:
 13. A best-effort `always()` read-only state classifier while the job remains
     alive. If the CLI result was ambiguous, it requires a coherent tuple of
     deployment ID/host/readiness/target, exact release, health, cron, and—on the
-    new release—public project/hash. It never changes aliases or crons. GitHub
-    cancellation or job timeout can prevent this step and therefore always
+    new release—public project/hash. It never changes aliases or crons. After a
+    Production command has started, an outgoing/outgoing snapshot is still
+    unresolved: the accepted deployment may be building and cut over later.
+    The workflow therefore freezes rather than calling that state safe. GitHub
+    cancellation or job timeout can prevent this step and likewise always
     requires the manual incident procedure below.
 
 ## Failure and recovery
@@ -196,7 +199,7 @@ The workflow performs:
 | Preview smoke fails before a standard migration | Stop. No hosted mutation occurred. |
 | 062–064 push/lint/read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
 | Post-bridge outgoing or Preview smoke fails | Do not create a Production deployment. Schema is additive; production and cron remain outgoing. Forward-fix. |
-| Production build fails and state classifier proves outgoing alias + outgoing cron | Safe pre-cutover stop. Investigate build and retry; never “restore” what did not move. |
+| Production command fails or returns ambiguously while alias + cron still appear outgoing | Unresolved, not a safe pre-cutover stop. Freeze releases and inspect release-SHA Production candidates until no in-flight deployment can cut over; never retry from one immediate snapshot. |
 | Production command returns ambiguously but live health reports the new SHA and cron exactly follows that canonical deployment | Treat as a post-cutover production incident. Freeze releases and inspect logs; do not promote outgoing. |
 | Alias, cron owner, cron hosts, definitions, or enabled state are mixed/unknown | Freeze deployment automation. Record all IDs and hashes, inspect Vercel dashboard/API, and restore one coherent state under operator control. |
 | Deploy job is cancelled or times out after the Production attempt starts | Assume classification did not run. Freeze releases and manually inspect canonical ID/host/readiness/target, `/api/health` release/project/hash, and complete cron state before any retry. |
