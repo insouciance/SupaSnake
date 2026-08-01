@@ -663,7 +663,22 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     engine.setMutationPool([]);
     engine.prepare();
     engine.activatePrepared(activatedAt);
+    const beforeFood = engine.getState();
+    const step = {
+      UP: { x: 0, z: -1 },
+      DOWN: { x: 0, z: 1 },
+      LEFT: { x: -1, z: 0 },
+      RIGHT: { x: 1, z: 0 },
+    }[beforeFood.direction];
+    engine.placeFood({
+      x: beforeFood.snake[0].x + step.x,
+      y: 0,
+      z: beforeFood.snake[0].z + step.z,
+    });
+    engine.tick();
     const checkpoint = engine.exportCheckpoint(activatedAt + 2_000);
+    expect(checkpoint.state.score).toBeGreaterThan(0);
+    expect(checkpoint.state.dnaCollected).toBeGreaterThan(0);
     const manifest = {
       sessionId: 'resume-session',
       simulation: { seed: simulationSeed, version: 1 as const },
@@ -774,6 +789,12 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     const resumeGate = page.getByTestId('resume-gate');
     await expect(resumeGate).toBeVisible();
     await expect(resumeGate).toContainText(/direction.*resume|tactical hold/i);
+    await expect(
+      page.getByLabel(`Score ${checkpoint.state.score.toLocaleString('en-US')}`)
+    ).toBeVisible();
+    await expect(
+      page.getByLabel(`Run DNA ${checkpoint.state.dnaCollected.toLocaleString('en-US')}`)
+    ).toBeVisible();
     expect(resumeRequests).toBe(1);
     expect(startRequests).toBe(0);
   });
