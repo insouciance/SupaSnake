@@ -30,22 +30,22 @@ export interface DynastyScreenTokens {
 
 export const DYNASTY_SCREEN_TOKENS: Record<DynastyId, DynastyScreenTokens> = {
   PRIMAL: {
-    primary: '#7fbd48',
-    secondary: '#b5e36d',
-    ambientCss: 'rgba(84, 140, 47, 0.34)',
-    snake: '#78b843',
+    primary: '#91d653',
+    secondary: '#c8f57d',
+    ambientCss: 'rgba(101, 171, 54, 0.34)',
+    snake: '#98e15a',
   },
   CYBER: {
-    primary: '#22d3ee',
-    secondary: '#f055d7',
-    ambientCss: 'rgba(0, 198, 224, 0.28)',
-    snake: '#18cde5',
+    primary: '#35e6ff',
+    secondary: '#ff63df',
+    ambientCss: 'rgba(0, 213, 240, 0.3)',
+    snake: '#2de7ff',
   },
   COSMIC: {
-    primary: '#9b6bff',
-    secondary: '#f5c85b',
-    ambientCss: 'rgba(112, 66, 196, 0.34)',
-    snake: '#8e63e9',
+    primary: '#ad83ff',
+    secondary: '#ffd86a',
+    ambientCss: 'rgba(133, 85, 225, 0.34)',
+    snake: '#b58cff',
   },
 };
 
