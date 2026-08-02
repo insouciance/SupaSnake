@@ -148,6 +148,7 @@ function candidateConsequence(
   );
   return {
     category: def.economics === 'pure' ? 'Yield & outcome' : def.economics === 'path' ? 'Execution' : 'Genome',
+    trigger: { label: 'Active immediately after THREAD' },
     salienceChip: formingSplice
       ? `Forms ${formingSplice.name}`
       : unlockedTier
@@ -172,6 +173,7 @@ function declineConsequence(input: LegacyTacticalLoomInput): TacticalLoomConsequ
     : 'Normal weighted offer stream';
   return {
     category: 'Opportunity cost',
+    trigger: { label: 'Resolves when DECLINE is confirmed', cadence: 1, unit: 'offer' },
     salienceChip: input.pityStrain
       ? `Next: ${STRAINS[input.pityStrain].name}`
       : 'Genome unchanged',

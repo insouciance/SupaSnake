@@ -51,10 +51,20 @@ export interface TacticalLoomFact {
   tone?: TacticalLoomTone;
 }
 
+export interface TacticalLoomTrigger {
+  /** Short player-facing condition, never a recommendation. */
+  label: string;
+  /** Optional repeating cadence rendered as a tiny rhythm strip. */
+  cadence?: number;
+  unit?: 'food' | 'target' | 'offer' | 'portal';
+}
+
 export interface TacticalLoomConsequence {
   category: string;
   /** One neutral, highest-salience fact for the default fast comparison. */
   salienceChip?: string;
+  /** Exact activation condition for the live, compact decision surface. */
+  trigger?: TacticalLoomTrigger;
   effect: string;
   cost: string;
   genomeAfter: readonly TacticalLoomGenomeSlot[];
