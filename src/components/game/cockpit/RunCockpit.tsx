@@ -235,19 +235,23 @@ export function RunCockpit({
               data-testid="strain-meter"
             >
               {model.strains.map((strain) => {
-                const activePoints = Math.max(0, Math.min(4, Math.floor(strain.points)));
+                const pointCap = model.strainPointCap ?? 4;
+                const activePoints = Math.max(0, Math.min(pointCap, Math.floor(strain.points)));
                 return (
                   <span
                     key={strain.id}
                     className={`${styles.strainGauge} ${strain.suppressed ? styles.strainSuppressed : ''}`}
-                    style={{ '--strain': strain.color } as TokenStyle}
-                    aria-label={`${strain.name} ${activePoints} of 4, tier ${strain.tier}${strain.suppressed ? ', suppressed' : ''}`}
-                    title={`${strain.name} ${activePoints}/4${strain.suppressed ? ' · suppressed' : ''}`}
+                    style={{
+                      '--strain': strain.color,
+                      '--strain-points': String(pointCap),
+                    } as TokenStyle}
+                    aria-label={`${strain.name} ${activePoints} of ${pointCap}, tier ${strain.tier}${strain.suppressed ? ', suppressed' : ''}`}
+                    title={`${strain.name} ${activePoints}/${pointCap}${strain.suppressed ? ' · suppressed' : ''}`}
                     data-testid={`strain-meter-${strain.id}`}
                   >
                     <span className={styles.strainIcon}><StrainGlyph id={strain.id} /></span>
                     <span className={styles.strainSegments} aria-hidden="true">
-                      {[0, 1, 2, 3].map((point) => (
+                      {Array.from({ length: pointCap }, (_, point) => (
                         <i key={point} data-active={point < activePoints ? 'true' : 'false'} />
                       ))}
                     </span>

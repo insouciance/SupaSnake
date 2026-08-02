@@ -81,6 +81,34 @@ describe('RunCockpit', () => {
     );
   });
 
+  it('renders the complete 3/4/5 Genome v2 ladder without changing legacy width', () => {
+    const { rerender } = render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strainPointCap: 5,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM' ? { ...strain, points: 5 } : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 5 of 5, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(5);
+
+    rerender(
+      <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 3 of 4, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
+  });
+
   it('shows exact Genome v2 Yield labels without pretending they are final DNA', () => {
     render(
       <RunCockpit

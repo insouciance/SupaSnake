@@ -76,6 +76,24 @@ interface ProjectedDeclineOption {
   dynasty: GenomeV2State['dynasty'];
 }
 
+interface ProjectedSlot {
+  index: number;
+  occupant:
+    | null
+    | { kind: 'gene'; geneId: GenomeV2ActiveGeneId }
+    | {
+        kind: 'splice';
+        spliceId: GenomeV2SpliceId;
+        parentGeneIds: readonly [GenomeV2ActiveGeneId, GenomeV2ActiveGeneId];
+      }
+    | { kind: 'ash' };
+}
+
+type EnrichedReplacementDelta = CoreCandidateDelta['replacementOptions'][number] & {
+  resultingSlots?: readonly ProjectedSlot[];
+  resultingActiveSplices?: readonly GenomeV2SpliceId[];
+};
+
 type EnrichedCandidateDelta = CoreCandidateDelta & {
   /** Structural v2 projector seam. These members become required with the
    * authoritative core integration; optionality only keeps this branch
@@ -123,6 +141,9 @@ type EnrichedCandidateDelta = CoreCandidateDelta & {
     relation: 'signature' | 'favored' | 'universal';
     legal: boolean;
   };
+  resultingSlots?: readonly ProjectedSlot[] | null;
+  resultingActiveSplices?: readonly GenomeV2SpliceId[] | null;
+  replacementOptions: EnrichedReplacementDelta[];
 };
 
 type EnrichedLoomModel = CoreLoomModel & {
@@ -297,6 +318,46 @@ function genomePresentation(
   slots: readonly GenomeV2Slot[] = state.slots
 ): TacticalLoomGenomeSlot[] {
   return slots.map((slot) => slotPresentation(state, slot));
+}
+
+function projectedGenomePresentation(
+  slots: readonly ProjectedSlot[]
+): TacticalLoomGenomeSlot[] {
+  return slots.map((slot) => {
+    const occupant = slot.occupant;
+    if (!occupant) {
+      return { index: slot.index, kind: 'empty', label: 'Open locus', strains: [] };
+    }
+    if (occupant.kind === 'ash') {
+      return {
+        index: slot.index,
+        kind: 'ash',
+        label: 'Ash',
+        strains: [],
+        detail: 'Permanent spent Phoenix locus; Recode cannot remove it.',
+      };
+    }
+    if (occupant.kind === 'gene') {
+      const gene = GENOME_V2_GENES[occupant.geneId];
+      return {
+        index: slot.index,
+        kind: 'gene',
+        label: gene.name,
+        strains: gene.strains,
+        detail: gene.effect,
+      };
+    }
+    const splice = GENOME_V2_SPLICES[occupant.spliceId];
+    return {
+      index: slot.index,
+      kind: 'splice',
+      label: splice.name,
+      strains: uniqueStrains(
+        occupant.parentGeneIds.flatMap((geneId) => GENOME_V2_GENES[geneId].strains)
+      ),
+      detail: splice.rule,
+    };
+  });
 }
 
 function fallbackResultingGenome(
@@ -683,7 +744,7 @@ function replacementConsequence(
   state: GenomeV2State,
   projection: EnrichedLoomModel,
   candidate: EnrichedCandidateDelta,
-  replacement: CoreCandidateDelta['replacementOptions'][number],
+  replacement: EnrichedReplacementDelta,
   input: GenomeV2TacticalLoomInput
 ): TacticalLoomConsequence {
   const affected = uniqueStrains([...replacement.removedStrains, ...replacement.addedStrains]);
@@ -722,7 +783,9 @@ function replacementConsequence(
     trigger: GENE_TRIGGER_PRESENTATION[candidate.geneId],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
-    genomeAfter: fallbackResultingGenome(state, candidate.geneId, replacement.slot),
+    genomeAfter: replacement.resultingSlots
+      ? projectedGenomePresentation(replacement.resultingSlots)
+      : fallbackResultingGenome(state, candidate.geneId, replacement.slot),
     strains: strainProjection(
       projection.strainPoints,
       replacement.resultingStrainPoints,
@@ -773,7 +836,9 @@ function candidateConsequence(
     trigger: GENE_TRIGGER_PRESENTATION[candidate.geneId],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
-    genomeAfter: fallbackResultingGenome(state, candidate.geneId),
+    genomeAfter: candidate.resultingSlots
+      ? projectedGenomePresentation(candidate.resultingSlots)
+      : fallbackResultingGenome(state, candidate.geneId),
     strains: strainProjection(
       projection.strainPoints,
       candidate.resultingStrainPoints,
