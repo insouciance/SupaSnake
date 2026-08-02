@@ -192,7 +192,7 @@ record useful follow-up ideas in the handoff instead.
 
 ## Product and architecture boundaries
 
-- `docs/PRODUCT_CONSTITUTION.md` is the single design authority; its 14 Inviolable
+- `docs/PRODUCT_CONSTITUTION.md` is the single design authority; its 15 Inviolable
   Rules and §12.2 caps bind every change. Remaining contracts are indexed in
   `docs/README.md`. Both override historical research and aspirational roadmaps.
 - `docs/game/MONETIZATION_DESIGN.md` is superseded by Constitution §10. Never
