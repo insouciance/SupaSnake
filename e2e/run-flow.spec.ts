@@ -724,6 +724,8 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     let exposeActiveRun = false;
     let startRequests = 0;
     let resumeRequests = 0;
+    let checkpointRequests = 0;
+    const checkpointRequestTimes: number[] = [];
     await page.route('**/api/game/session', async (route) => {
       const request = route.request();
       if (request.method() === 'GET') {
@@ -757,12 +759,14 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
         });
       }
       if (body?.action === 'checkpoint') {
+        checkpointRequests += 1;
+        checkpointRequestTimes.push(Date.now());
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
           json: {
             checkpoint: {
-              revision: 5,
+              revision: 4 + checkpointRequests,
               savedAt: '2026-07-31T08:00:03.000Z',
             },
           },
@@ -797,6 +801,44 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     ).toBeVisible();
     expect(resumeRequests).toBe(1);
     expect(startRequests).toBe(0);
+
+    // The reported force-quit regression was causal, not cosmetic: before the
+    // active-time fix, every resumed checkpoint was rejected after an offline
+    // wall-clock gap and the ten-second safety watchdog repeatedly replaced
+    // play with “Try connection”. Resume movement, deliberately hold the board,
+    // and prove successful checkpoint receipts keep that watchdog disarmed for
+    // longer than its full bound. The server validator separately covers a
+    // three-hour offline gap with repeated accepted saves.
+    const resumeKey: Record<string, string> = {
+      UP: 'ArrowRight',
+      RIGHT: 'ArrowDown',
+      DOWN: 'ArrowLeft',
+      LEFT: 'ArrowUp',
+    };
+    const safeKey = resumeKey[checkpoint.state.direction];
+    if (!safeKey) throw new Error(`No safe resume key for ${checkpoint.state.direction}`);
+    await page.keyboard.press(safeKey);
+    await expect(resumeGate).toHaveCount(0);
+    await expect.poll(() => checkpointRequests, { timeout: 5_000 })
+      .toBeGreaterThan(0);
+
+    const pauseControl = page.getByRole('button', { name: 'Pause game (Space)' });
+    await expect(pauseControl).toBeVisible();
+    await pauseControl.click();
+    await expect(page.getByTestId('tactical-hold')).toBeVisible();
+    await expect.poll(
+      () => checkpointRequestTimes.length < 2
+        ? 0
+        : checkpointRequestTimes.at(-1)! - checkpointRequestTimes[0],
+      { timeout: 16_000, intervals: [500] }
+    ).toBeGreaterThanOrEqual(10_000);
+    await expect(page.getByRole('button', { name: /try connection/i })).toHaveCount(0);
+    await expect(page.getByText(/latest position is still being secured/i)).toHaveCount(0);
+
+    // A successful resumed run still owns the next movement input after the
+    // long checkpoint window; no stale overlay consumed it.
+    await page.keyboard.press(safeKey);
+    await expect(page.getByTestId('tactical-hold')).toHaveCount(0);
   });
 
   test('the ladder adds a readout but no tap (WP-3.12, §5)', async ({ page }) => {
