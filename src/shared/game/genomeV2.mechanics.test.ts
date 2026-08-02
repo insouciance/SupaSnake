@@ -720,6 +720,79 @@ describe('Genome v2 Dynasty signatures', () => {
 });
 
 describe('Genome v2 Recode and persistence', () => {
+  it('projects one deterministic Splice when a THREAD candidate has two held partners', () => {
+    let state = createGenomeV2State('PRIMAL');
+    state = acquire(state, 'compound_interest', 0, 'compound-first');
+    state = acquire(state, 'overgrowth', 1, 'overgrowth-second');
+
+    const candidate = projectGenomeV2(state, ['gold_trail']).candidates[0];
+    expect(candidate.completesSplice).toBe('splice_dragon_hoard');
+    expect(candidate.splicePaths).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        spliceId: 'splice_dragon_hoard',
+        state: 'completes_now',
+      }),
+      expect.objectContaining({
+        spliceId: 'splice_gilded_fork',
+        state: 'closed_by_completion',
+      }),
+    ]));
+    expect(candidate.resultingActiveSplices).toEqual([
+      'splice_dragon_hoard',
+    ]);
+    expect(candidate.resultingSlots?.[0]).toEqual({
+      index: 0,
+      occupant: {
+        kind: 'splice',
+        spliceId: 'splice_dragon_hoard',
+        parentGeneIds: ['compound_interest', 'gold_trail'],
+      },
+    });
+    expect(candidate.resultingSlots?.[1]).toEqual({
+      index: 1,
+      occupant: { kind: 'gene', geneId: 'overgrowth' },
+    });
+
+    state = acquire(state, 'gold_trail', 2, 'gold-threaded');
+    expect(state.activeSplices).toEqual(['splice_dragon_hoard']);
+    expect(state.instances['overgrowth-second'].status).toBe('active');
+  });
+
+  it('defers multi-recipe truth to the chosen Recode locus when the Loom is full', () => {
+    let state = createGenomeV2State('PRIMAL');
+    const genes: GenomeV2ActiveGeneId[] = [
+      'compound_interest',
+      'overgrowth',
+      'loan_shark',
+      'live_wire',
+      'wall_rush',
+      'mirror_wager',
+    ];
+    genes.forEach((geneId, index) => {
+      state = acquire(state, geneId, index as 0 | 1 | 2 | 3 | 4 | 5);
+    });
+
+    const candidate = projectGenomeV2(state, ['gold_trail']).candidates[0];
+    expect(candidate.requiresReplacement).toBe(true);
+    expect(candidate.completesSplice).toBeNull();
+    expect(candidate.splicePaths).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        spliceId: 'splice_dragon_hoard',
+        state: 'depends_on_recode',
+      }),
+      expect.objectContaining({
+        spliceId: 'splice_gilded_fork',
+        state: 'depends_on_recode',
+      }),
+    ]));
+    expect(candidate.replacementOptions.find((option) => option.slot === 0))
+      .toMatchObject({ createsSplice: 'splice_gilded_fork' });
+    expect(candidate.replacementOptions.find((option) => option.slot === 1))
+      .toMatchObject({ createsSplice: 'splice_dragon_hoard' });
+    expect(candidate.replacementOptions.find((option) => option.slot === 2))
+      .toMatchObject({ createsSplice: 'splice_dragon_hoard' });
+  });
+
   it('supports generic full-Loom Recode at +8/+10 without spending portal actions', () => {
     let state = createGenomeV2State('PRIMAL');
     const genes: GenomeV2ActiveGeneId[] = [

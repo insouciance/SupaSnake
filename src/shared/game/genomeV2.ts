@@ -3341,7 +3341,12 @@ export interface TacticalLoomCandidateDelta {
 export interface TacticalLoomSplicePath {
   spliceId: GenomeV2SpliceId;
   partnerGeneId: GenomeV2ActiveGeneId;
-  state: 'completes_now' | 'one_gene_away';
+  state:
+    | 'completes_now'
+    | 'closed_by_completion'
+    | 'one_gene_away'
+    | 'depends_on_recode'
+    | 'unavailable';
   unlocked: boolean;
   blockedReason: 'splices_locked' | null;
 }
@@ -3734,6 +3739,7 @@ function spliceCompletionForCandidate(
   candidate: GenomeV2ActiveGeneId,
   excludedInstanceIds: ReadonlySet<string> = new Set()
 ): GenomeV2SpliceId | null {
+  if (!state.splicesEnabled) return null;
   for (const instance of activeGeneInstances(state)) {
     if (excludedInstanceIds.has(instance.instanceId)) continue;
     const splice = genomeV2SpliceForPair(instance.geneId, candidate);
@@ -3744,22 +3750,34 @@ function spliceCompletionForCandidate(
 
 function splicePathsForCandidate(
   state: GenomeV2State,
-  candidate: GenomeV2ActiveGeneId
+  candidate: GenomeV2ActiveGeneId,
+  requiresReplacement: boolean
 ): TacticalLoomSplicePath[] {
   const activeIds = new Set(
     activeGeneInstances(state).map((instance) => instance.geneId)
   );
+  const threadCompletion = requiresReplacement
+    ? null
+    : spliceCompletionForCandidate(state, candidate);
   return GENOME_V2_SPLICE_IDS.flatMap((spliceId) => {
     const definition = GENOME_V2_SPLICES[spliceId];
     const [first, second] = definition.parents;
     if (candidate !== first && candidate !== second) return [];
     const partnerGeneId = candidate === first ? second : first;
+    const partnerHeld = activeIds.has(partnerGeneId);
+    const pathState: TacticalLoomSplicePath['state'] = !state.splicesEnabled
+      ? 'unavailable'
+      : requiresReplacement && partnerHeld
+        ? 'depends_on_recode'
+        : threadCompletion !== null
+          ? spliceId === threadCompletion
+            ? 'completes_now'
+            : 'closed_by_completion'
+          : 'one_gene_away';
     return [{
       spliceId,
       partnerGeneId,
-      state: activeIds.has(partnerGeneId)
-        ? 'completes_now' as const
-        : 'one_gene_away' as const,
+      state: pathState,
       unlocked: state.splicesEnabled,
       blockedReason: state.splicesEnabled ? null : 'splices_locked' as const,
     }];
@@ -3933,6 +3951,7 @@ function threadProjection(
   state: GenomeV2State,
   candidate: GenomeV2ActiveGeneId
 ): {
+  formedSplice: GenomeV2SpliceId | null;
   resultingSlots: TacticalLoomSlotProjection[];
   resultingActiveSplices: GenomeV2SpliceId[];
 } | null {
@@ -3946,6 +3965,8 @@ function threadProjection(
     source: 'offer',
   });
   return {
+    formedSplice:
+      after.activeSplices.find((id) => !state.activeSplices.includes(id)) ?? null,
     resultingSlots: tacticalSlotProjection(after),
     resultingActiveSplices: [...after.activeSplices],
   };
@@ -4250,15 +4271,16 @@ export function projectGenomeV2(
         };
       }
       const thread = threadProjection(state, geneId);
+      const requiresReplacement = thread === null;
       return {
         geneId,
         category: GENOME_V2_GENES[geneId].category,
         strainDelta: delta,
         resultingStrainPoints: resulting,
         unlockDistance,
-        completesSplice: spliceCompletionForCandidate(state, geneId),
+        completesSplice: thread?.formedSplice ?? null,
         occupiesSlot: true,
-        requiresReplacement: state.slots.every((slot) => slot.occupant !== null),
+        requiresReplacement,
         resultingSlots: thread?.resultingSlots ?? null,
         resultingActiveSplices: thread?.resultingActiveSplices ?? null,
         projectedPortalActionGrowth: {
@@ -4280,7 +4302,11 @@ export function projectGenomeV2(
               ? 'external_second_life'
               : null,
         },
-        splicePaths: splicePathsForCandidate(state, geneId),
+        splicePaths: splicePathsForCandidate(
+          state,
+          geneId,
+          requiresReplacement
+        ),
         targetProjection: targetProjectionForGene(state, geneId),
         bodyProjection: bodyProjectionForGene(geneId),
         terrainProjection: terrainProjectionForGene(state, geneId),
