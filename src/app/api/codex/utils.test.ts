@@ -39,6 +39,20 @@ describe('Codex API mapping', () => {
           splices: [{ id: 'splice_dragon_hoard' }],
         },
       },
+      {
+        extracted: true,
+        genome: {
+          v: 2,
+          instances: {
+            wire: { geneId: 'live_wire', status: 'active' },
+            gate: { geneId: 'phase_gate', status: 'spliced' },
+          },
+          activeSplices: ['splice_riftline'],
+          retired: [
+            { reason: 'splice', spliceId: 'splice_riftline' },
+          ],
+        },
+      },
       { extracted: true, genome: { v: 99, picks: [{ id: 'gold_trail' }] } },
     ];
 
@@ -54,15 +68,25 @@ describe('Codex API mapping', () => {
       banks: 1,
       worldFirstAt: '2026-01-02T00:00:00Z',
     });
+    expect(payload.genes.find((entry) => entry.id === 'live_wire')).toMatchObject({
+      rulesVersion: 2,
+      picks: 1,
+      banks: 1,
+    });
+    expect(payload.splices.find((entry) => entry.id === 'splice_riftline')).toMatchObject({
+      rulesVersion: 2,
+      discoveries: 1,
+      banks: 1,
+    });
     expect(payload.progress.discovered).toBe(2);
-    expect(payload.sampleSize).toBe(3);
+    expect(payload.sampleSize).toBe(4);
   });
 
   it('keeps mechanical recipes visible before durable discovery', () => {
     const payload = buildCodexPayload([], new Map(), [], false);
-    expect(payload.splices.find((entry) => entry.id === 'splice_all_in')).toMatchObject({
+    expect(payload.splices.find((entry) => entry.id === 'splice_worldcoil')).toMatchObject({
       discovered: false,
-      parents: ['compound_interest', 'mirror_wager'],
+      parents: ['coilkeeper', 'overgrowth'],
     });
   });
 
@@ -74,5 +98,14 @@ describe('Codex API mapping', () => {
         { discovery_type: 'apex', entry_id: 'NOT_A_STRAIN' },
       ])
     ).toHaveLength(1);
+  });
+
+  it('accepts v2-only durable discoveries without broadening v1 IDs', () => {
+    expect(
+      sanitizeCodexRows([
+        { discovery_type: 'gene', entry_id: 'live_wire' },
+        { discovery_type: 'splice', entry_id: 'splice_riftline' },
+      ])
+    ).toHaveLength(2);
   });
 });

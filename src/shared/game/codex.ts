@@ -1,7 +1,17 @@
 /** Shared Codex contracts for Genome discoveries and UI. */
 
-import { GENES, isGeneId } from '@/shared/game/genes';
+import {
+  GENES,
+  GENOME_V2_GENES,
+  isGeneId,
+  isGenomeV2ActiveGeneId,
+} from '@/shared/game/genes';
 import { SPLICES, isSpliceId } from '@/shared/game/splices';
+import {
+  GENOME_V2_SPLICES,
+  GENOME_V2_SPLICE_IDS,
+  type GenomeRulesVersion,
+} from '@/shared/game/genomeV2';
 import { STRAINS, isStrainId } from '@/shared/game/strains';
 
 export type CodexDiscoveryType = 'gene' | 'splice' | 'expression' | 'apex';
@@ -16,6 +26,7 @@ export const CODEX_DISCOVERY_REWARDS: Record<CodexDiscoveryType, number> = {
 export interface CodexDiscovery {
   type: CodexDiscoveryType;
   entryId: string;
+  rulesVersion: GenomeRulesVersion;
   rewardDna: number;
   worldFirst: boolean;
 }
@@ -34,20 +45,51 @@ export function isCodexDiscoveryType(value: unknown): value is CodexDiscoveryTyp
   );
 }
 
+export function isValidCodexEntryForRules(
+  type: CodexDiscoveryType,
+  entryId: unknown,
+  rulesVersion: GenomeRulesVersion
+): entryId is string {
+  if (type === 'gene') {
+    return rulesVersion === 2
+      ? isGenomeV2ActiveGeneId(entryId)
+      : isGeneId(entryId);
+  }
+  if (type === 'splice') {
+    return rulesVersion === 2
+      ? typeof entryId === 'string'
+        && (GENOME_V2_SPLICE_IDS as readonly string[]).includes(entryId)
+      : isSpliceId(entryId);
+  }
+  return isStrainId(entryId);
+}
+
+/** Durable discovery rows predate version stamping, so reads accept either
+ * catalog without changing the v1 validators themselves. */
 export function isValidCodexEntry(
   type: CodexDiscoveryType,
   entryId: unknown
 ): entryId is string {
-  if (type === 'gene') return isGeneId(entryId);
-  if (type === 'splice') return isSpliceId(entryId);
-  return isStrainId(entryId);
+  return isValidCodexEntryForRules(type, entryId, 1)
+    || isValidCodexEntryForRules(type, entryId, 2);
 }
 
 /** Player-facing name for a discovery response or Codex row. */
 export function codexEntryName(
   type: CodexDiscoveryType,
-  entryId: string
+  entryId: string,
+  rulesVersion: GenomeRulesVersion = 1
 ): string {
+  if (type === 'gene' && rulesVersion === 2 && isGenomeV2ActiveGeneId(entryId)) {
+    return GENOME_V2_GENES[entryId].name;
+  }
+  if (
+    type === 'splice'
+    && rulesVersion === 2
+    && (GENOME_V2_SPLICE_IDS as readonly string[]).includes(entryId)
+  ) {
+    return GENOME_V2_SPLICES[entryId as keyof typeof GENOME_V2_SPLICES].name;
+  }
   if (type === 'gene' && isGeneId(entryId)) return GENES[entryId].name;
   if (type === 'splice' && isSpliceId(entryId)) return SPLICES[entryId].name;
   if (isStrainId(entryId)) {
@@ -68,12 +110,17 @@ export function sanitizeCodexDiscoveryResult(raw: unknown): CodexDiscoveryResult
     for (const item of object.discoveries) {
       if (typeof item !== 'object' || item === null) continue;
       const row = item as Record<string, unknown>;
-      if (!isCodexDiscoveryType(row.type) || !isValidCodexEntry(row.type, row.entryId)) {
+      const rulesVersion: GenomeRulesVersion = row.rulesVersion === 2 ? 2 : 1;
+      if (
+        !isCodexDiscoveryType(row.type)
+        || !isValidCodexEntryForRules(row.type, row.entryId, rulesVersion)
+      ) {
         continue;
       }
       discoveries.push({
         type: row.type,
         entryId: row.entryId,
+        rulesVersion,
         rewardDna:
           typeof row.rewardDna === 'number' && Number.isFinite(row.rewardDna)
             ? Math.max(0, Math.floor(row.rewardDna))
