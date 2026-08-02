@@ -1,4 +1,4 @@
-import { GENOME_V2_GENES } from '@/shared/game/genes';
+import { GENOME_V2_GENES, type GenomeV2ActiveGeneId } from '@/shared/game/genes';
 import {
   GENOME_V2_SPLICES,
   GENOME_V2_STRAIN_LADDERS,
@@ -20,6 +20,8 @@ export interface GenomeV2CommitPresentation {
   id: string;
   title: string;
   rule: string;
+  geneId?: GenomeV2ActiveGeneId | null;
+  strains?: readonly StrainId[];
   moments: readonly GenomeV2CommitMoment[];
 }
 
@@ -146,6 +148,8 @@ export function buildGenomeV2CommitPresentation(
       ?? acquiredGene?.effect
       ?? moments[0]?.detail
       ?? 'The active Genome was updated.',
+    geneId: acquired?.geneId ?? null,
+    strains: acquiredGene?.strains ?? [],
     moments: moments.slice(0, 4),
   };
 }

@@ -32,11 +32,23 @@ export interface TacticalLoomSplicePath {
   id: string;
   name: string;
   stage: 'immediate' | 'one-step';
+  /** Exact projected fate of this recipe for the selected decision. */
+  projectionState?:
+    | 'forms-now'
+    | 'future'
+    | 'closed'
+    | 'recode'
+    | 'unavailable'
+    | 'breaks';
   rule: string;
   cost: string;
   /** Recipes may stay undiscovered; their rules never do. */
   recipeKnown: boolean;
   recipeLabel: string;
+  /** The other half of the recipe, kept explicit for the live reaction map. */
+  partnerLabel?: string;
+  /** HELD completes now; NEEDED is a visible future branch. */
+  partnerState?: 'held' | 'needed';
   /** Knowledge stays visible before activation unlocks. */
   activation: 'available' | 'locked';
   lockedReason?: string;

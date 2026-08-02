@@ -91,8 +91,16 @@ describe('Genome v2 presentation adapter', () => {
       kind: 'gene',
     });
     expect(model?.candidates[0].consequence.splices).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'Dragon Hoard', stage: 'immediate', activation: 'available' }),
+      expect.objectContaining({
+        name: 'Dragon Hoard',
+        stage: 'immediate',
+        projectionState: 'forms-now',
+        partnerLabel: 'Gold Trail',
+        partnerState: 'held',
+        activation: 'available',
+      }),
     ]));
+    expect(model?.candidates[0].consequence.splices.filter((path) => path.stage === 'immediate')).toHaveLength(1);
     expect(model?.candidates[0].consequence.strains[0].thresholds).toEqual([
       expect.objectContaining({ points: 3 }),
       expect.objectContaining({ points: 4, state: 'locked', lockedReason: 'Bank 2 runs · 1 / 2' }),

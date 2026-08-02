@@ -12,6 +12,7 @@ const KINDS = new Set<CockpitDecisionFixtureKind>([
   'hold',
   'abandon',
   'gene',
+  'gene-recode',
   'mutation',
   'portal',
   'surge',

@@ -5,6 +5,8 @@ const MODEL = {
   id: 'genome-commit:8',
   title: 'Perfect Circuit',
   rule: 'Successful Live routes arm a linked return leg.',
+  geneId: 'circuit_run' as const,
+  strains: ['VOLT', 'FLUX'] as const,
   moments: [{
     id: 'rung:VOLT:3',
     label: 'Volt 3 · Telemetry',
@@ -25,6 +27,8 @@ describe('GenomeCommitCallout', () => {
     );
     expect(screen.getByTestId('genome-commit-callout')).toHaveClass('pointer-events-none');
     expect(screen.getByRole('status')).toHaveTextContent('Perfect Circuit');
+    expect(screen.getByRole('status')).toHaveTextContent('VOLT');
+    expect(screen.getByRole('status')).toHaveTextContent('FLUX');
     expect(screen.getByRole('status')).toHaveTextContent('Volt 3 · Telemetry');
     act(() => jest.advanceTimersByTime(5000));
     expect(onDone).not.toHaveBeenCalled();

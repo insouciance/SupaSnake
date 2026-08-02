@@ -55,7 +55,12 @@ export interface GenomeV2SpatialPresentation {
 interface ProjectedSplicePath {
   spliceId: GenomeV2SpliceId;
   partnerGeneId: GenomeV2ActiveGeneId;
-  state: 'completes_now' | 'one_gene_away';
+  state:
+    | 'completes_now'
+    | 'closed_by_completion'
+    | 'one_gene_away'
+    | 'depends_on_recode'
+    | 'unavailable';
   unlocked: boolean;
   blockedReason: 'splices_locked' | null;
 }
@@ -428,7 +433,8 @@ function strainProjection(
 
 function splicePresentation(
   candidate: EnrichedCandidateDelta,
-  activation: GenomeV2ActivationPresentation
+  activation: GenomeV2ActivationPresentation,
+  currentActiveSplices: readonly GenomeV2SpliceId[]
 ): TacticalLoomSplicePath[] {
   const paths = candidate.splicePaths ?? (candidate.completesSplice
     ? [{
@@ -441,18 +447,47 @@ function splicePresentation(
         blockedReason: activation.splices.unlocked ? null : 'splices_locked' as const,
       }]
     : []);
+  const authoritativeNew = candidate.resultingActiveSplices
+    ? candidate.resultingActiveSplices.filter((id) => !currentActiveSplices.includes(id))
+    : candidate.completesSplice
+      ? [candidate.completesSplice]
+      : [];
+  const winner = authoritativeNew[0] ?? null;
   return paths.map((path) => {
     const splice = GENOME_V2_SPLICES[path.spliceId];
-    const stage = path.state === 'completes_now' ? 'immediate' as const : 'one-step' as const;
+    // A partner can be held for more than one recipe, but the reducer may
+    // consume the candidate into only one deterministic fusion. Never light a
+    // second recipe merely because its partner was present before THREAD.
+    const formsNow = path.spliceId === winner;
+    const stage = formsNow ? 'immediate' as const : 'one-step' as const;
     const available = path.unlocked && activation.splices.unlocked;
+    const projectionState = formsNow
+      ? 'forms-now' as const
+      : path.state === 'closed_by_completion'
+        ? 'closed' as const
+        : path.state === 'depends_on_recode'
+          ? 'recode' as const
+          : path.state === 'unavailable'
+            ? 'unavailable' as const
+            : 'future' as const;
+    const partnerHeld = formsNow || path.state === 'closed_by_completion';
+    const partnerName = GENOME_V2_GENES[path.partnerGeneId].name;
+    const recipeLabel = projectionState === 'closed'
+      ? `${partnerName} is held · ${GENOME_V2_GENES[candidate.geneId].name} is consumed by ${winner ? GENOME_V2_SPLICES[winner].name : 'the selected fusion'} and must return for this branch`
+      : projectionState === 'recode'
+        ? `Possible only through an outgoing-locus choice · ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`
+        : `With ${partnerName} · ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`;
     return {
       id: `${path.spliceId}:${stage}`,
       name: splice.name,
       stage,
+      projectionState,
       rule: splice.rule,
       cost: splice.strategicCost,
       recipeKnown: true,
-      recipeLabel: `With ${GENOME_V2_GENES[path.partnerGeneId].name} · ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`,
+      recipeLabel,
+      partnerLabel: partnerName,
+      partnerState: partnerHeld ? 'held' as const : 'needed' as const,
       activation: available ? 'available' : 'locked',
       lockedReason: available
         ? undefined
@@ -460,6 +495,9 @@ function splicePresentation(
           ? [activation.splices.reason, activation.splices.progress].filter(Boolean).join(' · ') || 'Splices are visible but not yet active'
           : [activation.splices.reason, activation.splices.progress].filter(Boolean).join(' · ') || 'Activation pending',
     };
+  }).sort((left, right) => {
+    if (left.stage !== right.stage) return left.stage === 'immediate' ? -1 : 1;
+    return left.name.localeCompare(right.name);
   });
 }
 
@@ -755,6 +793,7 @@ function replacementConsequence(
           id: `${replacement.breaksSplice}:break`,
           name: GENOME_V2_SPLICES[replacement.breaksSplice].name,
           stage: 'immediate',
+          projectionState: 'breaks',
           rule: 'This Recode breaks the active Splice and stops its future rule.',
           cost: GENOME_V2_SPLICES[replacement.breaksSplice].strategicCost,
           recipeKnown: true,
@@ -767,6 +806,7 @@ function replacementConsequence(
           id: `${replacement.createsSplice}:create`,
           name: GENOME_V2_SPLICES[replacement.createsSplice].name,
           stage: 'immediate',
+          projectionState: 'forms-now',
           rule: GENOME_V2_SPLICES[replacement.createsSplice].rule,
           cost: GENOME_V2_SPLICES[replacement.createsSplice].strategicCost,
           recipeKnown: true,
@@ -846,7 +886,7 @@ function candidateConsequence(
       projection.ladder,
       input.activation
     ),
-    splices: splicePresentation(candidate, input.activation),
+    splices: splicePresentation(candidate, input.activation, projection.activeSplices),
     ledgers: liabilityFacts(projection),
     targets: projectedTargetFacts(state, candidate),
     body: [
