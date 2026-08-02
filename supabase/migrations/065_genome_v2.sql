@@ -8,12 +8,13 @@
 --
 -- `game_sessions.genome` and the continuity checkpoint are already JSONB. They
 -- can carry v2 stable instances, six slots, retired/Ash state, the deterministic
--- event journal, and itemized settlement without speculative nullable columns.
+-- event journal, durable Splice/Strain discovery history, and itemized
+-- settlement without speculative nullable columns.
 
 BEGIN;
 
 COMMENT ON COLUMN game_sessions.genome IS
-  'Validator-accepted, version-stamped Genome record. v1 retains picks/splices/strain milestones; v2 carries stable instances, six slots, retired/Ash state, deterministic event journal, liabilities, and itemized settlement in this existing JSONB envelope.';
+  'Validator-accepted, version-stamped Genome record. v1 retains picks/splices/strain milestones; v2 carries stable instances, six slots, retired/Ash state, durable Splice/Strain discoveries, deterministic event journal, liabilities, and itemized settlement in this existing JSONB envelope.';
 
 -- ---------------------------------------------------------------------------
 -- 1. Versioned display catalogs (TypeScript/replay remains math authority)
@@ -76,6 +77,11 @@ DROP POLICY IF EXISTS genome_splice_versions_public_read
 CREATE POLICY genome_splice_versions_public_read ON genome_splice_versions
   FOR SELECT USING (TRUE);
 
+-- Supabase may install broad default table grants for API roles. RLS blocks
+-- row DML, but TRUNCATE bypasses RLS entirely, so replace inherited privileges
+-- with the one intentional public capability instead of merely adding SELECT.
+REVOKE ALL ON genome_gene_versions FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON genome_splice_versions FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON genome_gene_versions TO anon, authenticated;
 GRANT SELECT ON genome_splice_versions TO anon, authenticated;
 
@@ -467,6 +473,22 @@ RETURNS TABLE (splice_id TEXT) AS $$
     END AS value
   ),
   candidates AS (
+    SELECT COALESCE(
+      item ->> 'id',
+      item ->> 'spliceId',
+      item ->> 'splice_id',
+      item #>> '{}'
+    ) AS id
+    FROM genome_record_items(p_genome -> 'discoveredSplices') AS item
+    UNION ALL
+    SELECT COALESCE(
+      item ->> 'id',
+      item ->> 'spliceId',
+      item ->> 'splice_id',
+      item #>> '{}'
+    ) AS id
+    FROM genome_record_items(p_genome -> 'activeSplices') AS item
+    UNION ALL
     SELECT COALESCE(item ->> 'id', item ->> 'spliceId', item ->> 'splice_id') AS id
     FROM genome_record_items(p_genome -> 'splices') AS item
     UNION ALL

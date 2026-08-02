@@ -553,6 +553,12 @@ export interface GenomeV2State {
   instances: Record<string, GenomeV2GeneInstance>;
   retired: GenomeV2RetiredInstance[];
   activeSplices: GenomeV2SpliceId[];
+  /** Every Splice formed during this run, retained after Recode or consumption. */
+  discoveredSplices: GenomeV2SpliceId[];
+  /** First food count at which each unlocked Strain expression became active. */
+  expressions: Partial<Record<StrainId, number>>;
+  /** First food count at which each unlocked Strain apex became active. */
+  apexes: Partial<Record<StrainId, number>>;
   offer: GenomeV2OfferState | null;
   portal: GenomeV2PortalDecisionState | null;
   loan: GenomeV2LoanState | null;
@@ -1049,7 +1055,7 @@ export function createGenomeV2State(
       !Number.isSafeInteger(delta)
     ) throw new Error('Genome v2 threshold shift is malformed.');
   }
-  return {
+  const state: GenomeV2State = {
     v: GENOME_RULES_V2,
     dynasty,
     runSeed,
@@ -1085,6 +1091,9 @@ export function createGenomeV2State(
     instances: {},
     retired: [],
     activeSplices: [],
+    discoveredSplices: [],
+    expressions: {},
+    apexes: {},
     offer: null,
     portal: null,
     loan: null,
@@ -1131,6 +1140,8 @@ export function createGenomeV2State(
     },
     journal: [],
   };
+  captureGenomeV2DiscoveryHistory(state);
+  return state;
 }
 
 function cloneState(state: GenomeV2State): GenomeV2State {
@@ -1149,6 +1160,11 @@ function cloneState(state: GenomeV2State): GenomeV2State {
     ),
     retired: state.retired.map((entry) => ({ ...entry })),
     activeSplices: [...state.activeSplices],
+    discoveredSplices: [
+      ...(state.discoveredSplices ?? state.activeSplices),
+    ],
+    expressions: { ...(state.expressions ?? {}) },
+    apexes: { ...(state.apexes ?? {}) },
     offer: state.offer
       ? { ...state.offer, candidateGeneIds: [...state.offer.candidateGeneIds] }
       : null,
@@ -1357,6 +1373,33 @@ export function genomeV2HasLadderTier(
   if (!state.ftue.expressionsUnlocked) return false;
   if (minimum === 5 && !state.ftue.apexesUnlocked) return false;
   return genomeV2StrainTier(state, strain) >= minimum;
+}
+
+/**
+ * Discovery is durable run history, not a projection of the terminal build.
+ * Recode, Phoenix and Splice consumption may remove current power, but they
+ * never erase what the player actually assembled or activated earlier.
+ */
+function captureGenomeV2DiscoveryHistory(state: GenomeV2State): void {
+  for (const spliceId of state.activeSplices) {
+    if (!state.discoveredSplices.includes(spliceId)) {
+      state.discoveredSplices.push(spliceId);
+    }
+  }
+  for (const strain of STRAIN_IDS) {
+    if (
+      state.expressions[strain] === undefined &&
+      genomeV2HasLadderTier(state, strain, 3)
+    ) {
+      state.expressions[strain] = state.foodCount;
+    }
+    if (
+      state.apexes[strain] === undefined &&
+      genomeV2HasLadderTier(state, strain, 5)
+    ) {
+      state.apexes[strain] = state.foodCount;
+    }
+  }
 }
 
 /**
@@ -3068,6 +3111,7 @@ export function reduceGenomeV2Event(
       );
   }
 
+  captureGenomeV2DiscoveryHistory(state);
   state.journal.push(event);
   compactJournal(state);
   return state;

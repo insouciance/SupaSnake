@@ -57,6 +57,11 @@ DECLARE
       jsonb_build_object('index', 5, 'occupant', NULL)
     ),
     'activeSplices', jsonb_build_array('splice_dragon_hoard'),
+    'discoveredSplices', jsonb_build_array(
+      'splice_dragon_hoard', 'splice_styx_contract'
+    ),
+    'expressions', jsonb_build_object('AURUM', 0, 'FERAL', 18),
+    'apexes', jsonb_build_object('FERAL', 27),
     'journal', jsonb_build_array(
       jsonb_build_object(
         'index', 1, 'type', 'portal_infuse', 'geneId', 'live_wire',
@@ -100,8 +105,21 @@ BEGIN
 
   SELECT array_agg(splice_id ORDER BY splice_id) INTO v_ids
   FROM genome_record_splice_ids(v_record);
-  IF v_ids IS DISTINCT FROM ARRAY['splice_dragon_hoard']::TEXT[] THEN
-    RAISE EXCEPTION 'Splice projector disagrees with the terminal loci: %', v_ids;
+  IF v_ids IS DISTINCT FROM ARRAY[
+    'splice_dragon_hoard','splice_styx_contract'
+  ]::TEXT[] THEN
+    RAISE EXCEPTION 'Splice projector lost durable formation history: %', v_ids;
+  END IF;
+
+  SELECT array_agg(strain ORDER BY strain) INTO v_ids
+  FROM genome_record_strain_milestones(v_record, 'expression');
+  IF v_ids IS DISTINCT FROM ARRAY['AURUM','FERAL']::TEXT[] THEN
+    RAISE EXCEPTION 'Expression projector lost durable threshold history: %', v_ids;
+  END IF;
+  SELECT array_agg(strain ORDER BY strain) INTO v_ids
+  FROM genome_record_strain_milestones(v_record, 'apex');
+  IF v_ids IS DISTINCT FROM ARRAY['FERAL']::TEXT[] THEN
+    RAISE EXCEPTION 'Apex projector lost durable threshold history: %', v_ids;
   END IF;
 
   IF genome_record_infuse_count(v_record) <> 1 THEN
@@ -199,7 +217,21 @@ BEGIN
   END IF;
   IF NOT has_table_privilege('anon', 'public.genome_gene_versions', 'SELECT')
      OR NOT has_table_privilege('authenticated', 'public.genome_splice_versions', 'SELECT')
-     OR has_table_privilege('authenticated', 'public.genome_gene_versions', 'INSERT') THEN
+     OR EXISTS (
+       SELECT 1
+       FROM (VALUES ('anon'), ('authenticated')) AS roles(role_name)
+       CROSS JOIN (
+         VALUES ('public.genome_gene_versions'), ('public.genome_splice_versions')
+       ) AS tables(table_name)
+       CROSS JOIN (
+         VALUES ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE')
+       ) AS privileges(privilege_name)
+       WHERE has_table_privilege(
+         roles.role_name,
+         tables.table_name,
+         privileges.privilege_name
+       )
+     ) THEN
     RAISE EXCEPTION 'Versioned catalog privilege boundary is wrong';
   END IF;
 

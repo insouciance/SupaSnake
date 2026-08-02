@@ -57,6 +57,15 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     expect(code).not.toMatch(/UPDATE gene_definitions[\s\S]*active\s*=\s*FALSE/i);
   });
 
+  it('replaces inherited API-role table grants with read-only catalog access', () => {
+    expect(code).toMatch(
+      /REVOKE ALL ON genome_gene_versions FROM PUBLIC, anon, authenticated;[\s\S]*GRANT SELECT ON genome_gene_versions TO anon, authenticated;/
+    );
+    expect(code).toMatch(
+      /REVOKE ALL ON genome_splice_versions FROM PUBLIC, anon, authenticated;[\s\S]*GRANT SELECT ON genome_splice_versions TO anon, authenticated;/
+    );
+  });
+
   it('publishes the exact shared roster plus all three dynasty signatures for v2', () => {
     expect(Object.keys(GENOME_V2_GENES).sort()).toEqual([...V2_GENES].sort());
     for (const id of V2_GENES) {
@@ -128,6 +137,9 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     expect(code).toMatch(/CREATE OR REPLACE FUNCTION genome_record_version/);
     expect(code).toMatch(/p_genome -> 'instances'/);
     expect(code).toMatch(/p_genome -> 'slots'/);
+    expect(code).toMatch(/p_genome -> 'discoveredSplices'/);
+    expect(code).toMatch(/p_genome -> 'expressions'/);
+    expect(code).toMatch(/p_genome -> 'apexes'/);
     expect(code).toMatch(/p_genome -> 'eventJournal'/);
     expect(code).toMatch(/status IN \('active', 'held', 'spliced'\)/);
     expect(code).toMatch(/'gene_recoded'/);

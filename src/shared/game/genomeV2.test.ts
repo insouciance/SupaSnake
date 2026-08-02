@@ -417,6 +417,44 @@ describe('Genome v2 Tactical Loom and persistence envelope', () => {
     expect(loom.candidates[0].resultingSlots?.[1].occupant).toBeNull();
   });
 
+  it('retains discovered Splices and Strain milestones after the terminal build changes', () => {
+    let state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 1 },
+    });
+    state = acquire(state, 'gold_trail', 0, 'history-gold');
+    state = acquire(state, 'compound_interest', 1, 'history-compound');
+    expect(state.activeSplices).toContain('splice_dragon_hoard');
+    expect(state.discoveredSplices).toContain('splice_dragon_hoard');
+    expect(state.expressions.AURUM).toBe(0);
+
+    state = acquire(state, 'loan_shark', 1, 'history-loan');
+    state = acquire(state, 'loom_anchor', 2, 'history-anchor');
+    expect(state.apexes.AURUM).toBe(0);
+
+    state = apply(state, {
+      type: 'portal_opened',
+      portalId: 'history-recode-portal',
+      genomeOffer: {
+        offerId: 'history-recode-offer',
+        candidates: ['overgrowth', 'live_wire'],
+      },
+    });
+    state = apply(state, {
+      type: 'offer_recoded',
+      source: 'portal',
+      offerId: 'history-recode-offer',
+      instanceId: 'history-overgrowth',
+      replacementGeneId: 'overgrowth',
+      slot: 0,
+      growthCharged: 8,
+    });
+
+    expect(state.activeSplices).not.toContain('splice_dragon_hoard');
+    expect(state.discoveredSplices).toContain('splice_dragon_hoard');
+    expect(state.expressions.AURUM).toBe(0);
+    expect(state.apexes.AURUM).toBe(0);
+  });
+
   it('serializes the canonical v2 state flat for SQL projectors', () => {
     const state = acquire(createGenomeV2State('COSMIC'), 'gold_trail', 0);
     const record = genomeV2RunRecord(state, settleGenomeV2(state, 'crash'));
@@ -425,6 +463,9 @@ describe('Genome v2 Tactical Loom and persistence envelope', () => {
       dynasty: 'COSMIC',
       instances: { 'gold_trail-0': { geneId: 'gold_trail' } },
       slots: expect.any(Array),
+      discoveredSplices: [],
+      expressions: {},
+      apexes: {},
       journal: expect.any(Array),
       settlement: { terminal: 'crash' },
     });
