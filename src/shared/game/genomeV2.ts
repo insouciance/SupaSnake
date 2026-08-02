@@ -23,6 +23,11 @@ import {
 } from '@/shared/game/genes';
 import type { DynastyName } from '@/shared/game/rulesets';
 import { STRAIN_IDS, type StrainId, type StrainPoints } from '@/shared/game/strains';
+import { offerStream } from '@/shared/game/offerGravity';
+import {
+  GENOME_V2_GENE_OFFER_CADENCE,
+  rollGenomeV2GeneOfferInterval,
+} from '@/shared/game/geneCadence';
 
 export const GENOME_RULES_V1 = 1 as const;
 export const GENOME_RULES_V2 = 2 as const;
@@ -83,6 +88,9 @@ export const GENOME_V2_CONFIG = {
     ],
   },
   wallRush: {
+    initialCharges: 1,
+    maximumCharges: 1,
+    recharge: 'portal_continue' as const,
     rewardMoveBudget: 6,
     multiplierBps: 25_000,
   },
@@ -102,6 +110,55 @@ export const GENOME_V2_CONFIG = {
   loomAnchor: {
     initialCharges: 1,
     maximumCharges: 1,
+  },
+  offers: {
+    cadence: GENOME_V2_GENE_OFFER_CADENCE,
+    baseWeight: 100,
+    strainPointWeight: 35,
+    strainWeightCap: 140,
+    immediateSpliceWeight: 140,
+    dynastyAffinityWeight: 60,
+    dynastySignatureWeight: 100,
+    missingCategoryWeight: 25,
+    activeLiabilityWeight: 35,
+    /** Slot two remains surprising, but never at the cost of illegality. */
+    boundedSurpriseChanceBps: 2_000,
+  },
+  ladders: {
+    aurumMintBonusBps: 2_500,
+    aurumDividendPerChainBps: 500,
+    aurumDividendMaxChains: 4,
+    aurumTreasuryDivertBps: 1_000,
+    aurumTreasuryBankBps: 15_000,
+    voltRelayBonusBps: 5_000,
+    voltOverclockMultiplierBps: 15_000,
+    voltOverclockMoveBudget: 12,
+    feralMassMaxBonusBps: 2_500,
+    feralTerritoryMultiplierBps: 15_000,
+    feralWorldbodyMultiplierBps: 20_000,
+    fluxRiftcraftBonusBps: 2_500,
+    fluxTopologyBonusBps: 5_000,
+    umbraCovenantShieldBps: 2_500,
+    umbraAfterlifeExtraPhaseTicks: 6,
+  },
+  splices: {
+    dragonHoardBankBps: 15_000,
+    gildedForkMultiplierBps: 40_000,
+    gildedForkExtraGrowth: 2,
+    perfectCircuitMultiplierBps: 50_000,
+    worldcoilMaximumMultiplierBps: 80_000,
+    riftlineMultiplierBps: 40_000,
+    loomBondBankBonusBps: 1_200,
+  },
+  signatures: {
+    heartwoodMinimumCells: 4,
+    heartwoodBaseMultiplierBps: 20_000,
+    heartwoodLargeMultiplierBps: 35_000,
+    heartwoodLargeCells: 10,
+    zenithMultiplierBps: 17_500,
+    zenithMoveBudget: 14,
+    crownPerfectClearMultiplierBps: 40_000,
+    crownStarMultiplierBps: 20_000,
   },
   persistence: {
     retainedJournalEvents: 256,
@@ -186,7 +243,7 @@ export const GENOME_V2_SPLICES: Readonly<
     name: 'Dragon Hoard',
     parents: ['gold_trail', 'compound_interest'],
     rule: 'A completed Gilded target forges its bonus into a Crown Bond that compounds only at BANK.',
-    strategicCost: 'Missing the Gilded window breaks that Bond; PASS still gives up the offer.',
+    strategicCost: 'Missing the Gilded window breaks that Bond; DECLINE still gives up the offer.',
   },
   splice_gilded_fork: {
     id: 'splice_gilded_fork',
@@ -227,8 +284,8 @@ export const GENOME_V2_SPLICES: Readonly<
     id: 'splice_loom_bond',
     name: 'Loom Bond',
     parents: ['compound_interest', 'loom_anchor'],
-    rule: 'Pinning a passed gene preserves it and mints the same PASS into a Bond.',
-    strategicCost: 'The Anchor stays empty until a later explicit portal PASS.',
+    rule: 'Pinning a declined gene preserves it and binds that DECLINE into a Bond.',
+    strategicCost: 'The Anchor stays empty until a later explicit portal CONTINUE.',
   },
   splice_ashen_stake: {
     id: 'splice_ashen_stake',
@@ -290,6 +347,7 @@ export interface GenomeV2OfferState {
   openedAtFood: number;
   openedAtTick: number;
   pinnedGeneId: GenomeV2ActiveGeneId | null;
+  offerIndex: number;
 }
 
 export interface GenomeV2PortalDecisionState {
@@ -299,12 +357,7 @@ export interface GenomeV2PortalDecisionState {
   genomeOffer: {
     offerId: string;
     candidates: readonly [GenomeV2ActiveGeneId, GenomeV2ActiveGeneId];
-  } | null;
-  pendingRecode: {
-    offerId: string;
-    slot: GenomeV2SlotIndex;
-    replacementGeneId: GenomeV2ActiveGeneId;
-    growthCost: number;
+    offerIndex: number;
   } | null;
 }
 
@@ -373,12 +426,22 @@ export interface GenomeV2TargetState {
   lifecycle: GenomeV2TargetLifecycle;
   cell: GenomeV2Cell;
   secondaryCell: GenomeV2Cell | null;
+  /** Optional route geometry (for example Phase Gate entry and exit). */
+  optionalRouteCells: readonly [GenomeV2Cell, GenomeV2Cell] | null;
   spawnTick: number;
   speedAtSpawnMs: number;
   shortestSafeMoves: number;
   sealedAreaCells: number;
   moveBudget: number | null;
   expiresAtTick: number | null;
+  circuitLegsRequired: 0 | 2;
+  relayBonusBps: number;
+  territoryMultiplierBps: number;
+  forkChoice: 'ordinary' | 'gilded' | null;
+  crownRole: 'current' | 'future' | 'crown' | null;
+  edible: boolean;
+  collidable: boolean;
+  resolvedBaseYield: number;
 }
 
 export interface GenomeV2TerrainFact {
@@ -387,6 +450,43 @@ export interface GenomeV2TerrainFact {
   cells: readonly GenomeV2Cell[];
   createdAtFood: number;
   permanent: true;
+}
+
+export interface GenomeV2TerritoryFact {
+  territoryId: string;
+  source: 'feral_ladder' | 'heartwood';
+  cells: readonly GenomeV2Cell[];
+  createdAtFood: number;
+  recoveryExitCount: number;
+}
+
+export interface GenomeV2OverclockState {
+  activationId: string;
+  source: 'volt_apex' | 'zenith_protocol';
+  startedAtTick: number;
+  expiresAtTick: number;
+  multiplierBps: number;
+}
+
+export interface GenomeV2CrownWaveState {
+  waveId: string;
+  currentTargetIds: string[];
+  futureCells: GenomeV2Cell[];
+  crownStarTargetId: string | null;
+  completedTargetIds: string[];
+}
+
+export interface GenomeV2LoomBondState {
+  pinnedGeneId: GenomeV2ActiveGeneId;
+  matured: boolean;
+}
+
+export interface GenomeV2PhoenixEffect {
+  rewindSegments: number;
+  phaseTicks: number;
+  growth: number;
+  consumedMirrorStake: number;
+  consumedAshenStake: number;
 }
 
 export interface GenomeV2YieldLedger {
@@ -414,17 +514,24 @@ export interface GenomeV2YieldLedger {
 export interface GenomeV2State {
   v: typeof GENOME_RULES_V2;
   dynasty: DynastyName;
+  /** Run-start-frozen entropy; never accepted from a later client event. */
+  runSeed: string;
+  /** Run-start-frozen offer authority. Catalog changes never mutate a live run. */
+  genePool: GenomeV2ActiveGeneId[];
+  ftue: GenomeV2Ftue;
   eventIndex: number;
   tick: number;
   foodCount: number;
   eligibleTargetCount: number;
   acquisitionCount: number;
+  offerCount: number;
   portalGenomeActions: number;
   infuseCount: number;
   recodeCount: number;
   splicesEnabled: boolean;
   carryPasses: number;
   bonds: number;
+  startingStrainPoints: StrainPoints;
   slots: GenomeV2Slot[];
   instances: Record<string, GenomeV2GeneInstance>;
   retired: GenomeV2RetiredInstance[];
@@ -435,10 +542,25 @@ export interface GenomeV2State {
   mirrorLeg: { portalId: string; frozenCarryBps: number } | null;
   secondLife: GenomeV2SecondLifeState | null;
   anchor: GenomeV2AnchorState;
+  externalSecondLife: 'iron_scales' | 'other' | null;
   targetQueue: GenomeV2PendingTargetContract[];
   targets: Record<string, GenomeV2TargetState>;
   permanentTerrain: GenomeV2TerrainFact[];
+  territories: GenomeV2TerritoryFact[];
+  overclock: GenomeV2OverclockState | null;
+  crownWave: GenomeV2CrownWaveState | null;
   coilCharge: number;
+  wallRushCharges: number;
+  executionChain: number;
+  relayCharges: number;
+  treasuryReserve: number;
+  covenantShield: number;
+  crownBondReserve: number;
+  loomBond: GenomeV2LoomBondState | null;
+  ashenStakeReserve: number;
+  lastPhoenixEffect: GenomeV2PhoenixEffect | null;
+  bodyGrowthAdded: number;
+  lastBodyGrowthDelta: number;
   compactedJournalEvents: number;
   compactedJournalDigest: string;
   compactedTargets: number;
@@ -467,6 +589,8 @@ export type GenomeV2Event =
   | (GenomeV2EventBase & {
       type: 'offer_declined' | 'offer_expired';
       offerId: string;
+      /** Atomic Loom Anchor choice; omitted means an intentional plain decline. */
+      pinGeneId?: GenomeV2ActiveGeneId | null;
     })
   | (GenomeV2EventBase & {
       type: 'gene_acquired';
@@ -491,6 +615,13 @@ export type GenomeV2Event =
       activateMirror: boolean;
     })
   | (GenomeV2EventBase & {
+      /** Reveals and freezes MUTATE choices without consuming the portal. */
+      type: 'portal_genome_inspected';
+      portalId: string;
+      offerId: string;
+      candidates: readonly [GenomeV2ActiveGeneId, GenomeV2ActiveGeneId];
+    })
+  | (GenomeV2EventBase & {
       type: 'portal_expired';
       portalId: string;
     })
@@ -508,33 +639,26 @@ export type GenomeV2Event =
       growthCharged: number;
     })
   | (GenomeV2EventBase & {
-      type: 'portal_recode_selected';
-      portalId: string;
-      offerId: string;
-      replacementGeneId: GenomeV2ActiveGeneId;
-      slot: GenomeV2SlotIndex;
-    })
-  | (GenomeV2EventBase & {
-      type: 'portal_recode';
-      portalId: string;
+      /** Atomic commit after a non-mutating Tactical Loom preview. */
+      type: 'offer_recoded';
+      source: 'loom' | 'portal';
       offerId: string;
       instanceId: string;
+      replacementGeneId: GenomeV2ActiveGeneId;
+      slot: GenomeV2SlotIndex;
       growthCharged: number;
-    })
-  | (GenomeV2EventBase & {
-      type: 'anchor_pinned';
-      offerId: string;
-      geneId: GenomeV2ActiveGeneId;
     })
   | (GenomeV2EventBase & {
       type: 'target_spawned';
       targetId: string;
       cell: GenomeV2Cell;
       secondaryCell?: GenomeV2Cell | null;
+      optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell] | null;
       speedAtSpawnMs: number;
       shortestSafeMoves: number;
       /** False only for a linked secondary spawned as part of one contract. */
       cadenceEligible: boolean;
+      crownRole?: 'current' | 'future' | 'crown' | null;
     })
   | (GenomeV2EventBase & {
       type: 'target_resolved';
@@ -547,6 +671,14 @@ export type GenomeV2Event =
       pressureBps: number;
       /** Canonical fact for an optional route (currently Phase Gate). */
       usedOptionalRoute?: boolean;
+      /** Circuit pays one growth unit even when its linked execution fails. */
+      collectedUnits?: 0 | 1;
+      circuitLegsCompleted?: 0 | 1 | 2;
+    })
+  | (GenomeV2EventBase & {
+      type: 'gilded_fork_chosen';
+      targetId: string;
+      choice: 'ordinary' | 'gilded';
     })
   | (GenomeV2EventBase & {
       /** Gold's premium window ended; the same target remains ordinary. */
@@ -561,11 +693,47 @@ export type GenomeV2Event =
   | (GenomeV2EventBase & {
       type: 'phase_gate_used';
       terrainId: string;
+      targetId: string;
       cells: readonly GenomeV2Cell[];
     })
   | (GenomeV2EventBase & {
       type: 'wall_redirected';
       sourceInstanceId: string;
+    })
+  | (GenomeV2EventBase & {
+      type: 'territory_claimed';
+      territoryId: string;
+      cells: readonly GenomeV2Cell[];
+      recoveryExitCount: number;
+      source: 'feral_ladder' | 'heartwood';
+    })
+  | (GenomeV2EventBase & {
+      type: 'overclock_started';
+      activationId: string;
+      source: 'volt_apex' | 'zenith_protocol';
+    })
+  | (GenomeV2EventBase & {
+      type: 'overclock_ended';
+      activationId: string;
+    })
+  | (GenomeV2EventBase & {
+      type: 'crown_wave_opened';
+      waveId: string;
+      currentTargetIds: readonly string[];
+      futureCells: readonly GenomeV2Cell[];
+      crownStarTargetId?: string | null;
+    })
+  | (GenomeV2EventBase & {
+      type: 'crown_target_activated';
+      waveId: string;
+      targetId: string;
+      role: 'current' | 'crown';
+    })
+  | (GenomeV2EventBase & {
+      /** One canonical terminal event for either a perfect clear or failure. */
+      type: 'crown_wave_closed';
+      waveId: string;
+      outcome: 'perfect' | 'failed';
     })
   | (GenomeV2EventBase & {
       type: 'phoenix_triggered';
@@ -581,6 +749,36 @@ export interface GenomeV2Ftue {
   spawnPointsUnlocked: boolean;
   splicesUnlocked: boolean;
   apexesUnlocked: boolean;
+}
+
+export type GenomeV2FtueCapabilityId =
+  | 'strainTags'
+  | 'minor'
+  | 'continue'
+  | 'expressions'
+  | 'portalGenome'
+  | 'spawnPoints'
+  | 'splices'
+  | 'apex';
+
+export interface GenomeV2FtueCapability {
+  id: GenomeV2FtueCapabilityId;
+  unlocked: boolean;
+  reason:
+    | 'available_from_first_run'
+    | 'banked_runs'
+    | 'banked_runs_or_mastery';
+  progress: {
+    bankedRuns: { current: number; required: number } | null;
+    mastery: { current: number; required: number } | null;
+  };
+}
+
+export interface GenomeV2FtuePresentation {
+  v: typeof GENOME_RULES_V2;
+  bankedRuns: number;
+  masteryLevel: number;
+  capabilities: Record<GenomeV2FtueCapabilityId, GenomeV2FtueCapability>;
 }
 
 export function deriveGenomeV2Ftue(
@@ -601,6 +799,136 @@ export function deriveGenomeV2Ftue(
     apexesUnlocked:
       banks >= ftue.apexAtBankedRuns || mastery >= ftue.apexAtMastery,
   };
+}
+
+export function deriveGenomeV2FtuePresentation(
+  bankedRuns: number,
+  masteryLevel: number
+): GenomeV2FtuePresentation {
+  const banks = Math.max(0, Math.floor(bankedRuns));
+  const mastery = Math.max(0, Math.floor(masteryLevel));
+  const unlocks = deriveGenomeV2Ftue(banks, mastery);
+  const atStart = (
+    id: 'strainTags' | 'minor'
+  ): GenomeV2FtueCapability => ({
+    id,
+    unlocked: true,
+    reason: 'available_from_first_run',
+    progress: { bankedRuns: null, mastery: null },
+  });
+  const byBanks = (
+    id: Exclude<GenomeV2FtueCapabilityId, 'strainTags' | 'minor' | 'apex'>,
+    required: number,
+    unlocked: boolean
+  ): GenomeV2FtueCapability => ({
+    id,
+    unlocked,
+    reason: 'banked_runs',
+    progress: {
+      bankedRuns: { current: banks, required },
+      mastery: null,
+    },
+  });
+  return {
+    v: GENOME_RULES_V2,
+    bankedRuns: banks,
+    masteryLevel: mastery,
+    capabilities: {
+      strainTags: atStart('strainTags'),
+      minor: atStart('minor'),
+      continue: byBanks(
+        'continue',
+        GENOME_V2_CONFIG.ftue.continueAtBankedRuns,
+        unlocks.continueUnlocked
+      ),
+      expressions: byBanks(
+        'expressions',
+        GENOME_V2_CONFIG.ftue.expressionsAtBankedRuns,
+        unlocks.expressionsUnlocked
+      ),
+      portalGenome: byBanks(
+        'portalGenome',
+        GENOME_V2_CONFIG.ftue.portalGenomeAtBankedRuns,
+        unlocks.portalGenomeUnlocked
+      ),
+      spawnPoints: byBanks(
+        'spawnPoints',
+        GENOME_V2_CONFIG.ftue.spawnPointsAtBankedRuns,
+        unlocks.spawnPointsUnlocked
+      ),
+      splices: byBanks(
+        'splices',
+        GENOME_V2_CONFIG.ftue.splicesAtBankedRuns,
+        unlocks.splicesUnlocked
+      ),
+      apex: {
+        id: 'apex',
+        unlocked: unlocks.apexesUnlocked,
+        reason: 'banked_runs_or_mastery',
+        progress: {
+          bankedRuns: {
+            current: banks,
+            required: GENOME_V2_CONFIG.ftue.apexAtBankedRuns,
+          },
+          mastery: {
+            current: mastery,
+            required: GENOME_V2_CONFIG.ftue.apexAtMastery,
+          },
+        },
+      },
+    },
+  };
+}
+
+function genomeV2JsonEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => genomeV2JsonEqual(entry, right[index]));
+  }
+  if (
+    typeof left !== 'object' || left === null ||
+    typeof right !== 'object' || right === null
+  ) return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        genomeV2JsonEqual(leftRecord[key], rightRecord[key])
+    );
+}
+
+/** Validate the server-authored presentation and map it to reducer gates. */
+export function genomeV2FtueFromPresentation(
+  value: unknown
+): GenomeV2Ftue {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Genome v2 FTUE presentation is malformed.');
+  }
+  const input = value as Record<string, unknown>;
+  if (
+    input.v !== GENOME_RULES_V2 ||
+    !Number.isSafeInteger(input.bankedRuns) ||
+    (input.bankedRuns as number) < 0 ||
+    !Number.isSafeInteger(input.masteryLevel) ||
+    (input.masteryLevel as number) < 0
+  ) {
+    throw new Error('Genome v2 FTUE presentation is malformed.');
+  }
+  const expected = deriveGenomeV2FtuePresentation(
+    input.bankedRuns as number,
+    input.masteryLevel as number
+  );
+  if (!genomeV2JsonEqual(value, expected)) {
+    throw new Error('Genome v2 FTUE presentation disagrees with its progress.');
+  }
+  return deriveGenomeV2Ftue(expected.bankedRuns, expected.masteryLevel);
 }
 
 export interface GenomeV2StrainLadderTier {
@@ -649,22 +977,66 @@ function emptySlots(): GenomeV2Slot[] {
 
 export function createGenomeV2State(
   dynasty: DynastyName,
-  options: { splicesEnabled?: boolean } = {}
+  options: {
+    runSeed?: string;
+    genePool?: readonly GenomeV2ActiveGeneId[];
+    splicesEnabled?: boolean;
+    externalSecondLife?: 'iron_scales' | 'other' | null;
+    startingStrainPoints?: StrainPoints;
+    ftue?: GenomeV2Ftue;
+  } = {}
 ): GenomeV2State {
+  const runSeed = options.runSeed ?? 'genome-v2-test-seed';
+  if (runSeed.length < 8 || runSeed.length > 256) {
+    throw new Error('Genome v2 run seed is malformed.');
+  }
+  const catalogPool = genomeV2ActivePool(dynasty);
+  const genePool = [...(options.genePool ?? catalogPool)];
+  if (
+    genePool.length < 2 ||
+    new Set(genePool).size !== genePool.length ||
+    genePool.some((geneId) => !catalogPool.includes(geneId))
+  ) {
+    throw new Error('Genome v2 run-start gene pool is malformed for its Dynasty.');
+  }
+  for (const [strain, points] of Object.entries(options.startingStrainPoints ?? {})) {
+    if (
+      !(STRAIN_IDS as readonly string[]).includes(strain) ||
+      !Number.isSafeInteger(points) ||
+      (points ?? -1) < 0
+    ) {
+      throw new Error('Genome v2 starting Strain points are malformed.');
+    }
+  }
   return {
     v: GENOME_RULES_V2,
     dynasty,
+    runSeed,
+    genePool,
+    ftue: options.ftue ?? {
+      strainTagsUnlocked: true,
+      minorUnlocked: true,
+      continueUnlocked: true,
+      expressionsUnlocked: true,
+      portalGenomeUnlocked: true,
+      spawnPointsUnlocked: true,
+      splicesUnlocked: true,
+      apexesUnlocked: true,
+    },
     eventIndex: 0,
     tick: 0,
     foodCount: 0,
     eligibleTargetCount: 0,
     acquisitionCount: 0,
+    offerCount: 0,
     portalGenomeActions: 0,
     infuseCount: 0,
     recodeCount: 0,
-    splicesEnabled: options.splicesEnabled ?? true,
+    splicesEnabled:
+      options.ftue?.splicesUnlocked ?? options.splicesEnabled ?? true,
     carryPasses: 0,
     bonds: 0,
+    startingStrainPoints: { ...(options.startingStrainPoints ?? {}) },
     slots: emptySlots(),
     instances: {},
     retired: [],
@@ -678,10 +1050,25 @@ export function createGenomeV2State(
       charges: GENOME_V2_CONFIG.loomAnchor.initialCharges,
       pinnedGeneId: null,
     },
+    externalSecondLife: options.externalSecondLife ?? null,
     targetQueue: [],
     targets: {},
     permanentTerrain: [],
+    territories: [],
+    overclock: null,
+    crownWave: null,
     coilCharge: 0,
+    wallRushCharges: 0,
+    executionChain: 0,
+    relayCharges: 0,
+    treasuryReserve: 0,
+    covenantShield: 0,
+    crownBondReserve: 0,
+    loomBond: null,
+    ashenStakeReserve: 0,
+    lastPhoenixEffect: null,
+    bodyGrowthAdded: 0,
+    lastBodyGrowthDelta: 0,
     compactedJournalEvents: 0,
     compactedJournalDigest: '00000000',
     compactedTargets: 0,
@@ -705,6 +1092,8 @@ export function createGenomeV2State(
 function cloneState(state: GenomeV2State): GenomeV2State {
   return {
     ...state,
+    genePool: [...state.genePool],
+    ftue: { ...state.ftue },
     slots: state.slots.map((slot) => ({
       ...slot,
       occupant: slot.occupant ? { ...slot.occupant } : null,
@@ -725,9 +1114,6 @@ function cloneState(state: GenomeV2State): GenomeV2State {
                 ...state.portal.genomeOffer,
                 candidates: [...state.portal.genomeOffer.candidates],
               }
-            : null,
-          pendingRecode: state.portal.pendingRecode
-            ? { ...state.portal.pendingRecode }
             : null,
         }
       : null,
@@ -755,6 +1141,12 @@ function cloneState(state: GenomeV2State): GenomeV2State {
           secondaryCell: target.secondaryCell
             ? { ...target.secondaryCell }
             : null,
+          optionalRouteCells: target.optionalRouteCells
+            ? [
+                { ...target.optionalRouteCells[0] },
+                { ...target.optionalRouteCells[1] },
+              ]
+            : null,
         },
       ])
     ),
@@ -762,7 +1154,25 @@ function cloneState(state: GenomeV2State): GenomeV2State {
       ...fact,
       cells: fact.cells.map((cell) => ({ ...cell })),
     })),
+    territories: state.territories.map((territory) => ({
+      ...territory,
+      cells: territory.cells.map((cell) => ({ ...cell })),
+    })),
+    overclock: state.overclock ? { ...state.overclock } : null,
+    crownWave: state.crownWave
+      ? {
+          ...state.crownWave,
+          currentTargetIds: [...state.crownWave.currentTargetIds],
+          futureCells: state.crownWave.futureCells.map((cell) => ({ ...cell })),
+          completedTargetIds: [...state.crownWave.completedTargetIds],
+        }
+      : null,
+    loomBond: state.loomBond ? { ...state.loomBond } : null,
+    lastPhoenixEffect: state.lastPhoenixEffect
+      ? { ...state.lastPhoenixEffect }
+      : null,
     ledger: { ...state.ledger },
+    startingStrainPoints: { ...state.startingStrainPoints },
     journal: [...state.journal],
   };
 }
@@ -792,6 +1202,48 @@ function safeSignedAdd(a: number, b: number, label: string): number {
     throw new Error(`Genome v2 ${label} overflowed.`);
   }
   return result;
+}
+
+function addGenomeBodyGrowth(state: GenomeV2State, amount: number): void {
+  assertSafeInteger(amount, 'body growth delta');
+  state.bodyGrowthAdded = safeAdd(
+    state.bodyGrowthAdded,
+    amount,
+    'body growth ledger'
+  );
+  state.lastBodyGrowthDelta = safeAdd(
+    state.lastBodyGrowthDelta,
+    amount,
+    'event body growth'
+  );
+}
+
+/**
+ * Sole integration seam for physical tail growth added by Genome v2. The
+ * engine applies its ordinary food growth first, reduces the canonical event,
+ * then appends exactly this many additional segments. No renderer or runtime
+ * should reimplement individual gene/Splice growth arithmetic.
+ */
+export function genomeV2BodyGrowthDelta(
+  previous: GenomeV2State,
+  next: GenomeV2State
+): number {
+  if (
+    previous.v !== GENOME_RULES_V2 ||
+    next.v !== GENOME_RULES_V2 ||
+    next.eventIndex !== previous.eventIndex + 1
+  ) {
+    throw new Error('Genome v2 body growth requires adjacent reducer states.');
+  }
+  const delta = next.bodyGrowthAdded - previous.bodyGrowthAdded;
+  if (
+    !Number.isSafeInteger(delta) ||
+    delta < 0 ||
+    delta !== next.lastBodyGrowthDelta
+  ) {
+    throw new Error('Genome v2 body growth ledger is inconsistent.');
+  }
+  return delta;
 }
 
 export function genomeV2MultiplyBps(value: number, multiplierBps: number): number {
@@ -828,11 +1280,84 @@ export function genomeV2HasGene(
   return activeGeneInstances(state).some((instance) => instance.geneId === geneId);
 }
 
+export function genomeV2HasSplice(
+  state: GenomeV2State,
+  spliceId: GenomeV2SpliceId
+): boolean {
+  return state.activeSplices.includes(spliceId);
+}
+
+export function genomeV2StrainTier(
+  state: GenomeV2State,
+  strain: StrainId
+): 0 | 3 | 4 | 5 {
+  const points = genomeV2StrainPoints(state)[strain] ?? 0;
+  return points >= 5 ? 5 : points >= 4 ? 4 : points >= 3 ? 3 : 0;
+}
+
+export function genomeV2HasLadderTier(
+  state: GenomeV2State,
+  strain: StrainId,
+  minimum: 3 | 4 | 5
+): boolean {
+  if (!state.ftue.expressionsUnlocked) return false;
+  if (minimum === 5 && !state.ftue.apexesUnlocked) return false;
+  return genomeV2StrainTier(state, strain) >= minimum;
+}
+
+function genomeV2MechanicEnabled(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): boolean {
+  if (genomeV2HasGene(state, geneId)) return true;
+  switch (geneId) {
+    case 'gold_trail':
+      return genomeV2HasSplice(state, 'splice_dragon_hoard') ||
+        genomeV2HasSplice(state, 'splice_gilded_fork');
+    case 'compound_interest':
+      return genomeV2HasSplice(state, 'splice_loom_bond');
+    case 'loan_shark':
+      return genomeV2HasSplice(state, 'splice_ashen_stake');
+    case 'live_wire':
+    case 'circuit_run':
+      return genomeV2HasSplice(state, 'splice_perfect_circuit');
+    case 'overgrowth':
+      return genomeV2HasSplice(state, 'splice_gilded_fork') ||
+        genomeV2HasSplice(state, 'splice_worldcoil');
+    case 'coilkeeper':
+      return genomeV2HasSplice(state, 'splice_worldcoil');
+    case 'wall_rush':
+    case 'phase_gate':
+      return genomeV2HasSplice(state, 'splice_riftline');
+    case 'mirror_wager':
+      return genomeV2HasSplice(state, 'splice_styx_contract');
+    case 'phoenix':
+      return genomeV2HasSplice(state, 'splice_styx_contract') ||
+        genomeV2HasSplice(state, 'splice_ashen_stake');
+    case 'loom_anchor':
+      return genomeV2HasSplice(state, 'splice_loom_bond');
+    default:
+      return false;
+  }
+}
+
 function geneInstance(
   state: GenomeV2State,
   geneId: GenomeV2ActiveGeneId
 ): GenomeV2GeneInstance | null {
   return activeGeneInstances(state).find((instance) => instance.geneId === geneId) ?? null;
+}
+
+function mechanicInstance(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): GenomeV2GeneInstance | null {
+  return Object.values(state.instances)
+    .filter((instance) =>
+      (instance.status === 'active' || instance.status === 'spliced') &&
+      instance.geneId === geneId
+    )
+    .sort((a, b) => a.acquisitionOrdinal - b.acquisitionOrdinal)[0] ?? null;
 }
 
 function ensureEventEnvelope(state: GenomeV2State, event: GenomeV2Event): void {
@@ -842,7 +1367,10 @@ function ensureEventEnvelope(state: GenomeV2State, event: GenomeV2Event): void {
   if (!Number.isSafeInteger(event.tick) || event.tick < state.tick) {
     throw new Error('Genome v2 journal tick rewinds.');
   }
-  if (!event.eventId || state.journal.some((entry) => entry.eventId === event.eventId)) {
+  if (
+    event.eventId !== genomeV2EventId(state.runSeed, event.index) ||
+    state.journal.some((entry) => entry.eventId === event.eventId)
+  ) {
     throw new Error('Genome v2 journal event identity is invalid or duplicated.');
   }
 }
@@ -856,6 +1384,16 @@ function foldDigest(previous: string, value: unknown): string {
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return hash.toString(16).padStart(8, '0');
+}
+
+/** Exact bounded journal identity. The index binding makes an ID from a
+ * compacted event impossible to reuse later without retaining an unbounded
+ * set of historical IDs. */
+export function genomeV2EventId(runSeed: string, index: number): string {
+  if (!runSeed || !Number.isSafeInteger(index) || index < 1) {
+    throw new Error('Genome v2 event identity input is malformed.');
+  }
+  return `g2:${index}:${foldDigest('811c9dc5', `${runSeed}:${index}`)}`;
 }
 
 function compactJournal(state: GenomeV2State): void {
@@ -911,9 +1449,15 @@ export function assertGenomeV2PersistenceBound(state: GenomeV2State): void {
 function ensureActivePool(state: GenomeV2State, geneId: unknown): asserts geneId is GenomeV2ActiveGeneId {
   if (
     !isGenomeV2ActiveGeneId(geneId) ||
-    !genomeV2ActivePool(state.dynasty).includes(geneId)
+    !state.genePool.includes(geneId)
   ) {
     throw new Error(`Genome v2 gene ${String(geneId)} is not legal for ${state.dynasty}.`);
+  }
+  if (
+    geneId === genomeV2SignatureForDynasty(state.dynasty) &&
+    !state.ftue.apexesUnlocked
+  ) {
+    throw new Error('Genome v2 Dynasty signature is still locked.');
   }
 }
 
@@ -926,6 +1470,9 @@ function ensureUnseenDistinctCandidates(
   }
   for (const candidate of candidates) {
     ensureActivePool(state, candidate);
+    if (candidate === 'phoenix' && state.externalSecondLife !== null) {
+      throw new Error('Genome v2 Phoenix conflicts with the frozen external second life.');
+    }
     if (
       Object.values(state.instances).some(
         (instance) => instance.geneId === candidate
@@ -1036,7 +1583,7 @@ function acquireGene(
   state.slots[facts.slot].occupant = { kind: 'gene', instanceId: facts.instanceId };
 
   if (facts.geneId === 'phoenix') {
-    if (state.secondLife !== null) {
+    if (state.secondLife !== null || state.externalSecondLife !== null) {
       throw new Error('Genome v2 permits only one second-life economy.');
     }
     state.secondLife = {
@@ -1046,6 +1593,9 @@ function acquireGene(
       consumed: false,
       consumedAtFood: null,
     };
+  }
+  if (facts.geneId === 'wall_rush') {
+    state.wallRushCharges = GENOME_V2_CONFIG.wallRush.initialCharges;
   }
   maybeFuseAtSlot(state, facts.instanceId);
 }
@@ -1077,7 +1627,19 @@ function enqueueCadenceContractsForTarget(
   state: GenomeV2State,
   targetOrdinal: number
 ): void {
-  for (const instance of activeGeneInstances(state)) {
+  const cadenceInstances = Object.values(state.instances)
+    .filter((instance) => {
+      if (instance.status === 'active') return true;
+      if (instance.status !== 'spliced') return false;
+      if (instance.geneId === 'gold_trail') {
+        return genomeV2HasSplice(state, 'splice_dragon_hoard') ||
+          genomeV2HasSplice(state, 'splice_gilded_fork');
+      }
+      return instance.geneId === 'live_wire' &&
+        genomeV2HasSplice(state, 'splice_perfect_circuit');
+    })
+    .sort((a, b) => a.acquisitionOrdinal - b.acquisitionOrdinal);
+  for (const instance of cadenceInstances) {
     const since = targetOrdinal - instance.acquiredAtTargetOrdinal;
     if (since <= 0) continue;
     if (instance.lastCadenceTargetOrdinal === targetOrdinal) continue;
@@ -1087,7 +1649,13 @@ function enqueueCadenceContractsForTarget(
       queued = true;
     }
     if (instance.geneId === 'live_wire' && since % GENOME_V2_CONFIG.liveWire.cadence === 0) {
-      enqueueContract(state, instance, 'live_wire');
+      enqueueContract(
+        state,
+        instance,
+        genomeV2HasSplice(state, 'splice_perfect_circuit')
+          ? 'circuit_run'
+          : 'live_wire'
+      );
       queued = true;
     }
     if (instance.geneId === 'circuit_run' && since % GENOME_V2_CONFIG.circuitRun.cadence === 0) {
@@ -1100,6 +1668,53 @@ function enqueueCadenceContractsForTarget(
     }
     if (queued) instance.lastCadenceTargetOrdinal = targetOrdinal;
   }
+}
+
+export interface GenomeV2NextTargetProjection {
+  cadenceEligible: boolean;
+  eligibleOrdinal: number | null;
+  kind: 'ordinary' | GenomeV2ExclusiveTargetKind;
+  contract: GenomeV2PendingTargetContract | null;
+  requiresSecondaryCell: boolean;
+  requiresOptionalRouteCells: boolean;
+}
+
+/**
+ * Pure spawn contract authority. Runtime asks this before choosing geometry;
+ * the reducer repeats the same projection before accepting the spawn event.
+ */
+export function projectGenomeV2NextTarget(
+  state: GenomeV2State,
+  input: { cadenceEligible: boolean }
+): GenomeV2NextTargetProjection {
+  if (!input.cadenceEligible) {
+    return {
+      cadenceEligible: false,
+      eligibleOrdinal: null,
+      kind: 'ordinary',
+      contract: null,
+      requiresSecondaryCell: false,
+      requiresOptionalRouteCells: false,
+    };
+  }
+  const projected = cloneState(state);
+  const eligibleOrdinal = projected.eligibleTargetCount + 1;
+  projected.eligibleTargetCount = eligibleOrdinal;
+  enqueueCadenceContractsForTarget(projected, eligibleOrdinal);
+  const contract = projected.targetQueue[0]
+    ? { ...projected.targetQueue[0] }
+    : null;
+  const kind = contract?.kind ?? 'ordinary';
+  return {
+    cadenceEligible: true,
+    eligibleOrdinal,
+    kind,
+    contract,
+    requiresSecondaryCell: kind === 'circuit_run',
+    requiresOptionalRouteCells:
+      kind === 'phase_gate' ||
+      (kind === 'wall_rush' && genomeV2HasSplice(state, 'splice_riftline')),
+  };
 }
 
 function contractMoveBudget(
@@ -1134,6 +1749,7 @@ function contractMoveBudget(
 }
 
 function targetMultiplierBps(
+  state: GenomeV2State,
   target: GenomeV2TargetState,
   event: Extract<GenomeV2Event, { type: 'target_resolved' }>
 ): number {
@@ -1144,6 +1760,12 @@ function targetMultiplierBps(
     case 'ordinary':
       return GENOME_V2_YIELD_SCALE;
     case 'gold_trail':
+      if (genomeV2HasSplice(state, 'splice_gilded_fork')) {
+        if (target.forkChoice === null) return 0;
+        return target.forkChoice === 'gilded'
+          ? GENOME_V2_CONFIG.splices.gildedForkMultiplierBps
+          : GENOME_V2_YIELD_SCALE;
+      }
       return withinBudget
         ? GENOME_V2_CONFIG.goldTrail.multiplierBps
         : GENOME_V2_YIELD_SCALE;
@@ -1152,18 +1774,28 @@ function targetMultiplierBps(
         ? GENOME_V2_CONFIG.liveWire.successMultiplierBps
         : GENOME_V2_CONFIG.liveWire.failureMultiplierBps;
     case 'circuit_run':
-      return withinBudget
-        ? GENOME_V2_CONFIG.circuitRun.successMultiplierBps
+      return withinBudget && event.circuitLegsCompleted === 2
+        ? genomeV2HasSplice(state, 'splice_perfect_circuit')
+          ? GENOME_V2_CONFIG.splices.perfectCircuitMultiplierBps
+          : GENOME_V2_CONFIG.circuitRun.successMultiplierBps
         : GENOME_V2_CONFIG.circuitRun.failureMultiplierBps;
     case 'coilkeeper': {
       const tier = [...GENOME_V2_CONFIG.coilkeeper.rewardTiers]
         .reverse()
         .find((entry) => target.sealedAreaCells >= entry.minimumCells);
-      return tier?.multiplierBps ?? 0;
+      const base = tier?.multiplierBps ?? 0;
+      return genomeV2HasSplice(state, 'splice_worldcoil')
+        ? Math.min(
+            GENOME_V2_CONFIG.splices.worldcoilMaximumMultiplierBps,
+            base + target.sealedAreaCells * 1_000
+          )
+        : base;
     }
     case 'wall_rush':
       return withinBudget
-        ? GENOME_V2_CONFIG.wallRush.multiplierBps
+        ? genomeV2HasSplice(state, 'splice_riftline')
+          ? GENOME_V2_CONFIG.splices.riftlineMultiplierBps
+          : GENOME_V2_CONFIG.wallRush.multiplierBps
         : GENOME_V2_YIELD_SCALE;
     case 'phase_gate':
       return event.usedOptionalRoute === true
@@ -1189,14 +1821,31 @@ export function genomeV2OvergrowthMultiplierBps(pressureBps: number): number {
 }
 
 function updateDisplayGross(state: GenomeV2State): void {
+  const mirrorPotential = genomeV2MultiplyBps(
+    state.ledger.mirrorStake,
+    GENOME_V2_CONFIG.mirrorWager.bankStakeMultiplierBps
+  );
+  const treasuryPotential = genomeV2MultiplyBps(
+    state.treasuryReserve,
+    GENOME_V2_CONFIG.ladders.aurumTreasuryBankBps
+  );
+  const crownPotential = genomeV2MultiplyBps(
+    state.crownBondReserve,
+    GENOME_V2_CONFIG.splices.dragonHoardBankBps
+  );
   const potential = safeAdd(
     state.ledger.bankableYield,
     safeAdd(
-      genomeV2MultiplyBps(
-        state.ledger.mirrorStake,
-        GENOME_V2_CONFIG.mirrorWager.bankStakeMultiplierBps
+      safeAdd(mirrorPotential, treasuryPotential, 'display reserves'),
+      safeAdd(
+        crownPotential,
+        safeAdd(
+          state.loan?.escrowYield ?? 0,
+          state.ashenStakeReserve,
+          'display deferred contracts'
+        ),
+        'display contracts'
       ),
-      state.loan?.escrowYield ?? 0,
       'display liabilities'
     ),
     'display gross'
@@ -1224,7 +1873,7 @@ function applyResolvedTarget(
     event.baseYield,
     'base Yield ledger'
   );
-  const exclusiveBps = targetMultiplierBps(target, event);
+  const exclusiveBps = targetMultiplierBps(state, target, event);
   const exclusiveYield = genomeV2MultiplyBps(event.baseYield, exclusiveBps);
   state.ledger.exclusiveTargetDelta = safeSignedAdd(
     state.ledger.exclusiveTargetDelta,
@@ -1232,10 +1881,85 @@ function applyResolvedTarget(
     'exclusive target ledger'
   );
 
-  const continuousBps = genomeV2HasGene(state, 'overgrowth')
+  const overgrowthActive = genomeV2HasGene(state, 'overgrowth') ||
+    genomeV2HasSplice(state, 'splice_worldcoil');
+  const continuousBps = overgrowthActive
     ? genomeV2OvergrowthMultiplierBps(event.pressureBps)
     : GENOME_V2_YIELD_SCALE;
-  const continuousYield = genomeV2MultiplyBps(exclusiveYield, continuousBps);
+  let continuousYield = genomeV2MultiplyBps(exclusiveYield, continuousBps);
+
+  const successfulExecution =
+    event.resolution === 'collected' &&
+    target.kind !== 'ordinary' &&
+    exclusiveBps > GENOME_V2_YIELD_SCALE;
+  if (successfulExecution && genomeV2HasLadderTier(state, 'AURUM', 3)) {
+    const minted = genomeV2MultiplyBps(
+      Math.max(0, exclusiveYield - event.baseYield),
+      GENOME_V2_CONFIG.ladders.aurumMintBonusBps
+    );
+    continuousYield = safeAdd(continuousYield, minted, 'AURUM Mint');
+  }
+  if (target.relayBonusBps > 0 && successfulExecution) {
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      GENOME_V2_YIELD_SCALE + target.relayBonusBps
+    );
+  }
+  if (target.territoryMultiplierBps > GENOME_V2_YIELD_SCALE) {
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      target.territoryMultiplierBps
+    );
+  }
+  if (
+    successfulExecution &&
+    genomeV2HasLadderTier(state, 'FLUX', 4) &&
+    (event.usedOptionalRoute === true ||
+      target.kind === 'wall_rush' ||
+      target.kind === 'coilkeeper')
+  ) {
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      GENOME_V2_YIELD_SCALE + GENOME_V2_CONFIG.ladders.fluxRiftcraftBonusBps
+    );
+  }
+  if (
+    successfulExecution &&
+    genomeV2HasLadderTier(state, 'FLUX', 5) &&
+    (target.secondaryCell !== null || event.usedOptionalRoute === true)
+  ) {
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      GENOME_V2_YIELD_SCALE + GENOME_V2_CONFIG.ladders.fluxTopologyBonusBps
+    );
+  }
+  if (genomeV2HasLadderTier(state, 'FERAL', 3) && event.pressureBps > 0) {
+    const massBonusBps = Math.floor(
+      (Math.min(event.pressureBps, GENOME_V2_CONFIG.overgrowth.maxPressureBps) *
+        GENOME_V2_CONFIG.ladders.feralMassMaxBonusBps) /
+        GENOME_V2_CONFIG.overgrowth.maxPressureBps
+    );
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      GENOME_V2_YIELD_SCALE + massBonusBps
+    );
+  }
+  if (
+    state.overclock &&
+    event.tick <= state.overclock.expiresAtTick &&
+    event.resolution === 'collected'
+  ) {
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      state.overclock.multiplierBps
+    );
+  }
+  if (target.crownRole === 'crown' && event.resolution === 'collected') {
+    continuousYield = genomeV2MultiplyBps(
+      continuousYield,
+      GENOME_V2_CONFIG.signatures.crownStarMultiplierBps
+    );
+  }
   state.ledger.continuousDelta = safeSignedAdd(
     state.ledger.continuousDelta,
     continuousYield - exclusiveYield,
@@ -1243,6 +1967,22 @@ function applyResolvedTarget(
   );
 
   let flowYield = continuousYield;
+  if (
+    genomeV2HasSplice(state, 'splice_dragon_hoard') &&
+    target.kind === 'gold_trail'
+  ) {
+    if (successfulExecution) {
+      const crownBonus = Math.max(0, exclusiveYield - event.baseYield);
+      flowYield = Math.max(0, flowYield - crownBonus);
+      state.crownBondReserve = safeAdd(
+        state.crownBondReserve,
+        crownBonus,
+        'Dragon Hoard Crown Bond'
+      );
+    } else {
+      state.crownBondReserve = 0;
+    }
+  }
   if (state.loan && event.resolution === 'collected') {
     const escrowed = genomeV2MultiplyBps(
       flowYield,
@@ -1267,8 +2007,42 @@ function applyResolvedTarget(
         flowYield,
         'Loan releases'
       );
+      if (genomeV2HasSplice(state, 'splice_ashen_stake')) {
+        state.ashenStakeReserve = safeAdd(
+          state.ashenStakeReserve,
+          flowYield,
+          'Ashen Stake reserve'
+        );
+        flowYield = 0;
+      }
+      if (genomeV2HasLadderTier(state, 'UMBRA', 4)) {
+        state.covenantShield = Math.max(
+          state.covenantShield,
+          genomeV2MultiplyBps(
+            state.ledger.loanEscrowReleased,
+            GENOME_V2_CONFIG.ladders.umbraCovenantShieldBps
+          )
+        );
+      }
       state.loan = null;
     }
+  }
+
+  if (
+    genomeV2HasLadderTier(state, 'AURUM', 5) &&
+    successfulExecution &&
+    flowYield > 0
+  ) {
+    const treasury = genomeV2MultiplyBps(
+      flowYield,
+      GENOME_V2_CONFIG.ladders.aurumTreasuryDivertBps
+    );
+    flowYield -= treasury;
+    state.treasuryReserve = safeAdd(
+      state.treasuryReserve,
+      treasury,
+      'AURUM Treasury'
+    );
   }
 
   if (state.mirrorLeg && flowYield > 0) {
@@ -1304,15 +2078,57 @@ function applyResolvedTarget(
     'current leg Yield'
   );
 
-  if (event.resolution === 'collected') {
-    state.foodCount += 1;
-    if (genomeV2HasGene(state, 'coilkeeper')) state.coilCharge += 1;
+  const collectedUnits = event.collectedUnits ??
+    (event.resolution === 'collected' ? 1 : 0);
+  if (collectedUnits > 0) {
+    state.foodCount += collectedUnits;
+    if (genomeV2MechanicEnabled(state, 'coilkeeper')) {
+      state.coilCharge += collectedUnits;
+    }
+    let growth = 0;
+    if (
+      genomeV2HasGene(state, 'overgrowth') ||
+      genomeV2HasSplice(state, 'splice_worldcoil')
+    ) {
+      growth +=
+        GENOME_V2_CONFIG.overgrowth.extraGrowthPerFood * collectedUnits;
+    }
+    if (
+      genomeV2HasGene(state, 'time_dilation') &&
+      state.foodCount % GENOME_V2_CONFIG.timeDilation.extraGrowthCadence === 0
+    ) {
+      growth += 1;
+    }
+    if (
+      genomeV2HasSplice(state, 'splice_gilded_fork') &&
+      target.kind === 'gold_trail' &&
+      target.forkChoice === 'gilded'
+    ) {
+      growth += GENOME_V2_CONFIG.splices.gildedForkExtraGrowth;
+    }
+    if (growth > 0) addGenomeBodyGrowth(state, growth);
+  }
+  if (successfulExecution) {
+    state.executionChain += 1;
+    if (genomeV2HasLadderTier(state, 'VOLT', 4)) {
+      state.relayCharges = 1;
+    }
+  } else if (target.kind !== 'ordinary') {
+    state.executionChain = 0;
+  }
+  if (state.crownWave && event.resolution === 'collected') {
+    if (
+      state.crownWave.currentTargetIds.includes(target.targetId) &&
+      !state.crownWave.completedTargetIds.includes(target.targetId)
+    ) {
+      state.crownWave.completedTargetIds.push(target.targetId);
+    }
   }
   updateDisplayGross(state);
 }
 
 function startLoanIfEligible(state: GenomeV2State, portalId: string): void {
-  if (!genomeV2HasGene(state, 'loan_shark') || state.loan !== null) return;
+  if (!genomeV2MechanicEnabled(state, 'loan_shark') || state.loan !== null) return;
   state.loan = {
     contractId: `loan:${portalId}:${state.foodCount}`,
     startedAtFood: state.foodCount,
@@ -1326,7 +2142,7 @@ function armMirrorForNextLeg(
   portalId: string,
   frozenCarryBps: number
 ): void {
-  if (!genomeV2HasGene(state, 'mirror_wager')) {
+  if (!genomeV2MechanicEnabled(state, 'mirror_wager')) {
     throw new Error('Genome v2 Mirror activation requires Mirror Wager.');
   }
   state.mirrorLeg = {
@@ -1401,12 +2217,13 @@ export function reduceGenomeV2Event(
   const state = cloneState(current);
   state.eventIndex = event.index;
   state.tick = event.tick;
+  state.lastBodyGrowthDelta = 0;
 
   switch (event.type) {
     case 'offer_opened':
       if (state.offer) throw new Error('Genome v2 already has an active offer.');
-      if (event.candidates.length < 2 || event.candidates.length > 3) {
-        throw new Error('Genome v2 offer must contain two or three candidates.');
+      if (event.candidates.length !== 2) {
+        throw new Error('Genome v2 offer must contain exactly two candidates.');
       }
       ensureUnseenDistinctCandidates(state, event.candidates);
       if (
@@ -1424,18 +2241,52 @@ export function reduceGenomeV2Event(
         openedAtFood: state.foodCount,
         openedAtTick: event.tick,
         pinnedGeneId: event.pinnedGeneId ?? null,
+        offerIndex: state.offerCount,
       };
+      state.offerCount += 1;
       break;
     case 'offer_declined':
     case 'offer_expired': {
       if (state.offer?.offerId !== event.offerId) {
         throw new Error('Genome v2 offer resolution does not match the active offer.');
       }
-      if (event.type === 'offer_declined' && genomeV2HasGene(state, 'compound_interest')) {
+      const resolvedOffer = state.offer;
+      let pinnedThisDecline: GenomeV2ActiveGeneId | null = null;
+      if (event.type === 'offer_declined' && event.pinGeneId) {
+        if (
+          resolvedOffer.pinnedGeneId !== null ||
+          !resolvedOffer.candidateGeneIds.includes(event.pinGeneId) ||
+          !genomeV2MechanicEnabled(state, 'loom_anchor') ||
+          state.anchor.charges < 1
+        ) {
+          throw new Error('Genome v2 atomic Anchor choice is unavailable.');
+        }
+        state.anchor.charges -= 1;
+        state.anchor.pinnedGeneId = event.pinGeneId;
+        pinnedThisDecline = event.pinGeneId;
+      }
+      if (
+        event.type === 'offer_declined' &&
+        resolvedOffer.pinnedGeneId === null &&
+        genomeV2HasGene(state, 'compound_interest')
+      ) {
         state.bonds = Math.min(
           GENOME_V2_CONFIG.compoundInterest.maxBonds,
           state.bonds + 1
         );
+      }
+      if (
+        event.type === 'offer_declined' &&
+        pinnedThisDecline &&
+        genomeV2HasSplice(state, 'splice_loom_bond')
+      ) {
+        state.loomBond = { pinnedGeneId: pinnedThisDecline, matured: false };
+      }
+      if (resolvedOffer.pinnedGeneId !== null) {
+        if (state.loomBond?.pinnedGeneId === resolvedOffer.pinnedGeneId) {
+          state.loomBond = null;
+        }
+        state.anchor.pinnedGeneId = null;
       }
       state.offer = null;
       break;
@@ -1450,12 +2301,18 @@ export function reduceGenomeV2Event(
       acquireGene(state, event);
       if (state.anchor.pinnedGeneId === event.geneId) {
         state.anchor.pinnedGeneId = null;
+        if (state.loomBond?.pinnedGeneId === event.geneId) {
+          state.loomBond.matured = true;
+        }
       }
       state.offer = null;
       break;
     case 'portal_opened':
       if (state.portal) throw new Error('Genome v2 already has an active portal.');
       if (event.genomeOffer) {
+        if (event.genomeOffer.candidates.length !== 2) {
+          throw new Error('Genome v2 portal offer must contain exactly two candidates.');
+        }
         ensureUnseenDistinctCandidates(state, event.genomeOffer.candidates);
       }
       state.portal = {
@@ -1466,15 +2323,40 @@ export function reduceGenomeV2Event(
           ? {
               offerId: event.genomeOffer.offerId,
               candidates: [...event.genomeOffer.candidates],
+              offerIndex: state.offerCount,
             }
           : null,
-        pendingRecode: null,
       };
+      if (event.genomeOffer) state.offerCount += 1;
+      break;
+    case 'portal_genome_inspected':
+      if (!state.ftue.portalGenomeUnlocked) {
+        throw new Error('Genome v2 MUTATE is locked for this run.');
+      }
+      if (state.portal?.portalId !== event.portalId) {
+        throw new Error('Genome v2 MUTATE inspection has no active portal.');
+      }
+      if (state.portal.genomeOffer !== null) {
+        throw new Error('Genome v2 portal already has immutable MUTATE choices.');
+      }
+      if (event.candidates.length !== 2) {
+        throw new Error('Genome v2 MUTATE inspection requires exactly two candidates.');
+      }
+      ensureUnseenDistinctCandidates(state, event.candidates);
+      state.portal.genomeOffer = {
+        offerId: event.offerId,
+        candidates: [...event.candidates],
+        offerIndex: state.offerCount,
+      };
+      state.offerCount += 1;
       break;
     case 'portal_continued':
     case 'portal_expired':
       if (state.portal?.portalId !== event.portalId) {
         throw new Error('Genome v2 portal outcome does not match the active portal.');
+      }
+      if (event.type === 'portal_continued' && !state.ftue.continueUnlocked) {
+        throw new Error('Genome v2 CONTINUE is locked for this run.');
       }
       state.mirrorLeg = null;
       const mirrorCarryAtDecision = genomeV2CarryBankBps(state.carryPasses);
@@ -1488,8 +2370,11 @@ export function reduceGenomeV2Event(
           );
         }
         startLoanIfEligible(state, event.portalId);
-        if (genomeV2HasGene(state, 'loom_anchor')) {
+        if (genomeV2MechanicEnabled(state, 'loom_anchor')) {
           state.anchor.charges = GENOME_V2_CONFIG.loomAnchor.maximumCharges;
+        }
+        if (genomeV2MechanicEnabled(state, 'wall_rush')) {
+          state.wallRushCharges = GENOME_V2_CONFIG.wallRush.maximumCharges;
         }
       }
       state.ledger.currentLegYield = 0;
@@ -1500,9 +2385,13 @@ export function reduceGenomeV2Event(
         throw new Error('Genome v2 BANK does not match the active portal.');
       }
       state.mirrorLeg = null;
+      state.ledger.currentLegYield = 0;
       state.portal = null;
       break;
     case 'portal_infuse': {
+      if (!state.ftue.portalGenomeUnlocked) {
+        throw new Error('Genome v2 INFUSE is locked for this run.');
+      }
       if (
         state.portal?.portalId !== event.portalId ||
         state.portal.genomeOffer?.offerId !== event.offerId ||
@@ -1519,6 +2408,7 @@ export function reduceGenomeV2Event(
       }
       state.portalGenomeActions = ordinal;
       state.infuseCount += 1;
+      addGenomeBodyGrowth(state, event.growthCharged);
       acquireGene(state, {
         instanceId: event.instanceId,
         geneId: event.geneId,
@@ -1526,82 +2416,69 @@ export function reduceGenomeV2Event(
         source: 'infuse',
       });
       state.mirrorLeg = null;
+      state.ledger.currentLegYield = 0;
       state.portal = null;
       break;
     }
-    case 'portal_recode_selected': {
+    case 'offer_recoded': {
+      if (event.source === 'portal' && !state.ftue.portalGenomeUnlocked) {
+        throw new Error('Genome v2 portal Recode is locked for this run.');
+      }
+      const offeredCandidates = event.source === 'loom'
+        ? state.offer?.offerId === event.offerId
+          ? state.offer.candidateGeneIds
+          : null
+        : state.portal?.genomeOffer?.offerId === event.offerId
+          ? state.portal.genomeOffer.candidates
+          : null;
+      if (!offeredCandidates?.includes(event.replacementGeneId)) {
+        throw new Error('Genome v2 Recode differs from its immutable offer.');
+      }
       if (
-        state.portal?.portalId !== event.portalId ||
-        state.portal.genomeOffer?.offerId !== event.offerId ||
-        !state.portal.genomeOffer.candidates.includes(event.replacementGeneId)
+        event.source === 'loom' &&
+        state.slots.some((slot) => slot.occupant === null)
       ) {
-        throw new Error('Genome v2 Recode selection is not an immutable portal candidate.');
-      }
-      const slot = state.slots[event.slot];
-      if (!slot?.occupant || slot.occupant.kind === 'ash') {
-        throw new Error('Genome v2 Recode selection requires a non-Ash locus.');
+        throw new Error('Genome v2 Loom Recode requires all six loci occupied.');
       }
       if (
-        Object.values(state.instances).some(
-          (instance) => instance.geneId === event.replacementGeneId
-        )
+        event.source === 'portal' &&
+        state.portalGenomeActions >= GENOME_V2_CONFIG.portalGenome.maxActions
       ) {
-        throw new Error('Genome v2 Recode cannot restore an active or retired gene.');
-      }
-      state.portal.pendingRecode = {
-        offerId: event.offerId,
-        slot: event.slot,
-        replacementGeneId: event.replacementGeneId,
-        growthCost: expectedRecodeGrowth(state.recodeCount + 1),
-      };
-      break;
-    }
-    case 'portal_recode':
-      if (
-        state.portal?.portalId !== event.portalId ||
-        state.portal.pendingRecode?.offerId !== event.offerId
-      ) {
-        throw new Error('Genome v2 Recode does not match the active portal.');
-      }
-      if (state.portalGenomeActions >= GENOME_V2_CONFIG.portalGenome.maxActions) {
         throw new Error('Genome v2 portal Genome action cap exceeded.');
       }
-      state.portalGenomeActions += 1;
-      recodeSlot(state, {
-        ...event,
-        replacementGeneId: state.portal.pendingRecode.replacementGeneId,
-        slot: state.portal.pendingRecode.slot,
-      });
-      state.mirrorLeg = null;
-      state.portal = null;
-      break;
-    case 'anchor_pinned':
-      if (
-        state.offer?.offerId !== event.offerId ||
-        !state.offer.candidateGeneIds.includes(event.geneId) ||
-        state.anchor.charges < 1 ||
-        !genomeV2HasGene(state, 'loom_anchor')
-      ) {
-        throw new Error('Genome v2 Anchor pin is not available.');
+      recodeSlot(state, event);
+      addGenomeBodyGrowth(state, event.growthCharged);
+      if (event.source === 'portal') {
+        state.portalGenomeActions += 1;
+        state.mirrorLeg = null;
+        state.ledger.currentLegYield = 0;
+        state.portal = null;
+      } else {
+        state.offer = null;
       }
-      state.anchor.charges -= 1;
-      state.anchor.pinnedGeneId = event.geneId;
       break;
+    }
     case 'target_spawned': {
       if (state.targets[event.targetId]) {
         throw new Error('Genome v2 target identity was reused.');
       }
       assertSafeInteger(event.speedAtSpawnMs, 'target speed', 1);
       assertSafeInteger(event.shortestSafeMoves, 'target route length');
-      const eligibleOrdinal = event.cadenceEligible
-        ? state.eligibleTargetCount + 1
-        : null;
+      const spawnProjection = projectGenomeV2NextTarget(state, {
+        cadenceEligible: event.cadenceEligible,
+      });
+      const eligibleOrdinal = spawnProjection.eligibleOrdinal;
       if (eligibleOrdinal !== null) {
         state.eligibleTargetCount = eligibleOrdinal;
         enqueueCadenceContractsForTarget(state, eligibleOrdinal);
       }
-      const contract = state.targetQueue.shift() ?? null;
-      const kind: GenomeV2TargetState['kind'] = contract?.kind ?? 'ordinary';
+      const contract = event.cadenceEligible
+        ? state.targetQueue.shift() ?? null
+        : null;
+      const kind: GenomeV2TargetState['kind'] = spawnProjection.kind;
+      if (contract?.contractId !== spawnProjection.contract?.contractId) {
+        throw new Error('Genome v2 spawn contract projection diverged.');
+      }
       const budget = contract
         ? contractMoveBudget(
             contract.kind,
@@ -1609,6 +2486,72 @@ export function reduceGenomeV2Event(
             event.speedAtSpawnMs
           )
         : { moves: null, ticks: null };
+      if (
+        contract?.kind === 'gold_trail' &&
+        genomeV2HasSplice(state, 'splice_gilded_fork')
+      ) {
+        budget.moves = null;
+        budget.ticks = null;
+      }
+      if (
+        contract?.kind === 'circuit_run' &&
+        (!event.secondaryCell ||
+          (event.secondaryCell.x === event.cell.x &&
+            event.secondaryCell.z === event.cell.z))
+      ) {
+        throw new Error('Genome v2 Circuit requires two distinct visible cells.');
+      }
+      if (
+        contract?.kind !== 'circuit_run' &&
+        event.secondaryCell !== undefined &&
+        event.secondaryCell !== null
+      ) {
+        throw new Error('Genome v2 linked target geometry has no Circuit contract.');
+      }
+      const requiresOptionalRoute = spawnProjection.requiresOptionalRouteCells;
+      if (
+        requiresOptionalRoute &&
+        (!event.optionalRouteCells ||
+          new Set(
+            event.optionalRouteCells.map((cell) => `${cell.x}:${cell.z}`)
+          ).size !== 2)
+      ) {
+        throw new Error('Genome v2 Phase Gate requires distinct entry and exit cells.');
+      }
+      if (
+        !requiresOptionalRoute &&
+        event.optionalRouteCells !== undefined &&
+        event.optionalRouteCells !== null
+      ) {
+        throw new Error('Genome v2 optional route geometry has no active Phase Gate contract.');
+      }
+      const routeKind = contract &&
+        ['live_wire', 'circuit_run', 'wall_rush', 'phase_gate'].includes(
+          contract.kind
+        );
+      const relayBonusBps = routeKind && state.relayCharges > 0
+        ? GENOME_V2_CONFIG.ladders.voltRelayBonusBps
+        : 0;
+      if (relayBonusBps > 0) state.relayCharges -= 1;
+      let territoryMultiplierBps = GENOME_V2_YIELD_SCALE;
+      for (const territory of state.territories) {
+        const contains = territory.cells.some(
+          (cell) => cell.x === event.cell.x && cell.z === event.cell.z
+        );
+        if (!contains) continue;
+        const candidate = territory.source === 'heartwood'
+          ? territory.cells.length >= GENOME_V2_CONFIG.signatures.heartwoodLargeCells
+            ? GENOME_V2_CONFIG.signatures.heartwoodLargeMultiplierBps
+            : GENOME_V2_CONFIG.signatures.heartwoodBaseMultiplierBps
+          : genomeV2HasLadderTier(state, 'FERAL', 5)
+            ? GENOME_V2_CONFIG.ladders.feralWorldbodyMultiplierBps
+            : GENOME_V2_CONFIG.ladders.feralTerritoryMultiplierBps;
+        territoryMultiplierBps = Math.max(territoryMultiplierBps, candidate);
+      }
+      const crownRole = event.crownRole ?? null;
+      if (crownRole !== null && !genomeV2HasGene(state, 'constellation_crown')) {
+        throw new Error('Genome v2 Crown target role requires the COSMIC signature.');
+      }
       state.targets[event.targetId] = {
         targetId: event.targetId,
         eligibleOrdinal,
@@ -1617,12 +2560,26 @@ export function reduceGenomeV2Event(
         lifecycle: contract?.stage === 2 ? 'armed' : 'active',
         cell: { ...event.cell },
         secondaryCell: event.secondaryCell ? { ...event.secondaryCell } : null,
+        optionalRouteCells: event.optionalRouteCells
+          ? [
+              { ...event.optionalRouteCells[0] },
+              { ...event.optionalRouteCells[1] },
+            ]
+          : null,
         spawnTick: event.tick,
         speedAtSpawnMs: event.speedAtSpawnMs,
         shortestSafeMoves: event.shortestSafeMoves,
         sealedAreaCells: contract?.sealedAreaCells ?? 0,
         moveBudget: budget.moves,
         expiresAtTick: budget.ticks === null ? null : event.tick + budget.ticks,
+        circuitLegsRequired: contract?.kind === 'circuit_run' ? 2 : 0,
+        relayBonusBps,
+        territoryMultiplierBps,
+        forkChoice: null,
+        crownRole,
+        edible: crownRole !== 'future',
+        collidable: crownRole !== 'future',
+        resolvedBaseYield: 0,
       };
       break;
     }
@@ -1631,14 +2588,51 @@ export function reduceGenomeV2Event(
       if (!target || !['active', 'armed'].includes(target.lifecycle)) {
         throw new Error('Genome v2 target resolution has no active target.');
       }
+      if (!target.edible || !target.collidable) {
+        throw new Error('Genome v2 future Crown objects cannot be resolved.');
+      }
+      if (
+        target.circuitLegsRequired === 2 &&
+        event.circuitLegsCompleted === undefined
+      ) {
+        throw new Error('Genome v2 Circuit resolution is missing its leg count.');
+      }
+      if (
+        target.circuitLegsRequired === 0 &&
+        event.circuitLegsCompleted !== undefined
+      ) {
+        throw new Error('Genome v2 non-Circuit target cannot claim Circuit legs.');
+      }
+      if (
+        genomeV2HasSplice(state, 'splice_gilded_fork') &&
+        target.kind === 'gold_trail' &&
+        target.forkChoice === null
+      ) {
+        throw new Error('Genome v2 Gilded Fork requires an explicit branch.');
+      }
+      const expectedCollectedUnits = event.resolution === 'collected'
+        ? 1
+        : target.circuitLegsRequired === 2 &&
+            (event.circuitLegsCompleted ?? 0) > 0
+          ? 1
+          : 0;
+      if (
+        event.collectedUnits !== undefined &&
+        event.collectedUnits !== expectedCollectedUnits
+      ) {
+        throw new Error('Genome v2 collected-unit fact disagrees with target geometry.');
+      }
       const withinBudget =
         target.moveBudget === null || event.movesUsed <= target.moveBudget;
       target.lifecycle = event.resolution === 'expired'
         ? 'expired'
-        : event.resolution === 'collected' && withinBudget
+        : event.resolution === 'collected' &&
+            withinBudget &&
+            (target.circuitLegsRequired === 0 || event.circuitLegsCompleted === 2)
           ? 'completed'
           : 'burnt';
       applyResolvedTarget(state, target, event);
+      target.resolvedBaseYield = event.baseYield;
       compactResolvedTargets(state);
       break;
     }
@@ -1647,17 +2641,40 @@ export function reduceGenomeV2Event(
       if (!target || target.lifecycle !== 'active' || target.kind !== 'gold_trail') {
         throw new Error('Genome v2 Gold window expiry has no active Gilded target.');
       }
+      if (genomeV2HasSplice(state, 'splice_gilded_fork')) {
+        throw new Error('Genome v2 Gilded Fork has no timer to expire.');
+      }
+      if (genomeV2HasSplice(state, 'splice_dragon_hoard')) {
+        state.crownBondReserve = 0;
+      }
       target.kind = 'ordinary';
       target.contractId = null;
       target.moveBudget = null;
       target.expiresAtTick = null;
       break;
     }
+    case 'gilded_fork_chosen': {
+      const target = state.targets[event.targetId];
+      if (
+        !genomeV2HasSplice(state, 'splice_gilded_fork') ||
+        !target ||
+        target.kind !== 'gold_trail' ||
+        target.lifecycle !== 'active' ||
+        target.forkChoice !== null
+      ) {
+        throw new Error('Genome v2 Gilded Fork choice is unavailable.');
+      }
+      target.forkChoice = event.choice;
+      break;
+    }
     case 'coil_sealed':
       if (
-        !genomeV2HasGene(state, 'coilkeeper') ||
+        !genomeV2MechanicEnabled(state, 'coilkeeper') ||
         state.coilCharge < GENOME_V2_CONFIG.coilkeeper.chargeFoods ||
-        event.cells.length < GENOME_V2_CONFIG.coilkeeper.minimumSealedCells
+        event.cells.length < GENOME_V2_CONFIG.coilkeeper.minimumSealedCells ||
+        state.permanentTerrain.some((fact) => fact.terrainId === event.terrainId) ||
+        new Set(event.cells.map((cell) => `${cell.x}:${cell.z}`)).size !==
+          event.cells.length
       ) {
         throw new Error('Genome v2 Coilkeeper seal is not charged or large enough.');
       }
@@ -1670,7 +2687,7 @@ export function reduceGenomeV2Event(
         permanent: true,
       });
       {
-        const instance = geneInstance(state, 'coilkeeper');
+        const instance = mechanicInstance(state, 'coilkeeper');
         if (instance) {
           enqueueContract(
             state,
@@ -1683,7 +2700,20 @@ export function reduceGenomeV2Event(
       }
       break;
     case 'phase_gate_used':
-      if (!genomeV2HasGene(state, 'phase_gate') || event.cells.length !== 2) {
+      if (
+        !genomeV2MechanicEnabled(state, 'phase_gate') ||
+        event.cells.length !== 2 ||
+        !state.targets[event.targetId] ||
+        !['phase_gate', 'wall_rush'].includes(state.targets[event.targetId].kind) ||
+        !['active', 'armed'].includes(state.targets[event.targetId].lifecycle) ||
+        state.permanentTerrain.some((fact) => fact.terrainId === event.terrainId) ||
+        new Set(event.cells.map((cell) => `${cell.x}:${cell.z}`)).size !== 2 ||
+        !state.targets[event.targetId].optionalRouteCells ||
+        event.cells.some((cell, index) => {
+          const expected = state.targets[event.targetId].optionalRouteCells?.[index];
+          return !expected || cell.x !== expected.x || cell.z !== expected.z;
+        })
+      ) {
         throw new Error('Genome v2 Phase Gate use is invalid.');
       }
       state.permanentTerrain.push({
@@ -1696,10 +2726,207 @@ export function reduceGenomeV2Event(
       break;
     case 'wall_redirected': {
       const instance = state.instances[event.sourceInstanceId];
-      if (!instance || instance.status !== 'active' || instance.geneId !== 'wall_rush') {
+      if (
+        !instance ||
+        !['active', 'spliced'].includes(instance.status) ||
+        instance.geneId !== 'wall_rush' ||
+        !genomeV2MechanicEnabled(state, 'wall_rush') ||
+        state.wallRushCharges < 1
+      ) {
         throw new Error('Genome v2 wall redirect has no active Wall Rush source.');
       }
+      state.wallRushCharges -= 1;
       enqueueContract(state, instance, 'wall_rush');
+      break;
+    }
+    case 'territory_claimed': {
+      assertSafeInteger(event.recoveryExitCount, 'territory recovery exits', 1);
+      const minimumCells = event.source === 'heartwood'
+        ? GENOME_V2_CONFIG.signatures.heartwoodMinimumCells
+        : GENOME_V2_CONFIG.coilkeeper.minimumSealedCells;
+      const uniqueCells = new Set(event.cells.map((cell) => `${cell.x}:${cell.z}`));
+      if (
+        !event.territoryId ||
+        state.territories.some((entry) => entry.territoryId === event.territoryId) ||
+        uniqueCells.size !== event.cells.length ||
+        event.cells.length < minimumCells ||
+        (event.source === 'heartwood'
+          ? !genomeV2HasGene(state, 'heartwood')
+          : !genomeV2HasLadderTier(state, 'FERAL', 4))
+      ) {
+        throw new Error('Genome v2 territory claim is not a legal recovered coil.');
+      }
+      state.territories.push({
+        territoryId: event.territoryId,
+        source: event.source,
+        cells: event.cells.map((cell) => ({ ...cell })),
+        createdAtFood: state.foodCount,
+        recoveryExitCount: event.recoveryExitCount,
+      });
+      break;
+    }
+    case 'overclock_started': {
+      if (state.overclock) {
+        throw new Error('Genome v2 already has an active Overclock window.');
+      }
+      const zenith = event.source === 'zenith_protocol';
+      if (
+        (zenith && !genomeV2HasGene(state, 'zenith_protocol')) ||
+        (!zenith && !genomeV2HasLadderTier(state, 'VOLT', 5))
+      ) {
+        throw new Error('Genome v2 Overclock source is not unlocked.');
+      }
+      const budget = zenith
+        ? GENOME_V2_CONFIG.signatures.zenithMoveBudget
+        : GENOME_V2_CONFIG.ladders.voltOverclockMoveBudget;
+      state.overclock = {
+        activationId: event.activationId,
+        source: event.source,
+        startedAtTick: event.tick,
+        expiresAtTick: event.tick + budget,
+        multiplierBps: zenith
+          ? GENOME_V2_CONFIG.signatures.zenithMultiplierBps
+          : GENOME_V2_CONFIG.ladders.voltOverclockMultiplierBps,
+      };
+      break;
+    }
+    case 'overclock_ended':
+      if (state.overclock?.activationId !== event.activationId) {
+        throw new Error('Genome v2 Overclock end does not match its active window.');
+      }
+      state.overclock = null;
+      break;
+    case 'crown_wave_opened': {
+      if (!genomeV2HasGene(state, 'constellation_crown') || state.crownWave) {
+        throw new Error('Genome v2 Crown wave is unavailable.');
+      }
+      const uniqueIds = new Set(event.currentTargetIds);
+      if (uniqueIds.size < 2 || uniqueIds.size !== event.currentTargetIds.length) {
+        throw new Error('Genome v2 Crown wave requires distinct current targets.');
+      }
+      for (const targetId of event.currentTargetIds) {
+        const target = state.targets[targetId];
+        if (
+          !target ||
+          !['current', 'crown'].includes(target.crownRole ?? '') ||
+          !target.edible ||
+          !target.collidable
+        ) {
+          throw new Error('Genome v2 Crown current target is ambiguous.');
+        }
+      }
+      const futureKeys = event.futureCells.map((cell) => `${cell.x}:${cell.z}`);
+      if (new Set(futureKeys).size !== futureKeys.length) {
+        throw new Error('Genome v2 Crown future stars must occupy distinct cells.');
+      }
+      for (const cell of event.futureCells) {
+        const matches = Object.values(state.targets).filter(
+          (target) =>
+            target.crownRole === 'future' &&
+            !target.edible &&
+            !target.collidable &&
+            target.cell.x === cell.x &&
+            target.cell.z === cell.z
+        );
+        if (matches.length !== 1) {
+          throw new Error('Genome v2 Crown future star geometry is ambiguous.');
+        }
+      }
+      if (event.crownStarTargetId) {
+        const crown = state.targets[event.crownStarTargetId];
+        if (
+          !crown ||
+          crown.crownRole !== 'crown' ||
+          !event.currentTargetIds.includes(event.crownStarTargetId)
+        ) {
+          throw new Error('Genome v2 Crown Star is not an active wave target.');
+        }
+      }
+      state.crownWave = {
+        waveId: event.waveId,
+        currentTargetIds: [...event.currentTargetIds],
+        futureCells: event.futureCells.map((cell) => ({ ...cell })),
+        crownStarTargetId: event.crownStarTargetId ?? null,
+        completedTargetIds: [],
+      };
+      break;
+    }
+    case 'crown_target_activated': {
+      if (state.crownWave?.waveId !== event.waveId) {
+        throw new Error('Genome v2 Crown activation has no active wave.');
+      }
+      const target = state.targets[event.targetId];
+      if (!target || target.crownRole !== 'future' || target.edible || target.collidable) {
+        throw new Error('Genome v2 Crown future target cannot be activated.');
+      }
+      target.crownRole = event.role;
+      target.edible = true;
+      target.collidable = true;
+      if (!state.crownWave.currentTargetIds.includes(event.targetId)) {
+        state.crownWave.currentTargetIds.push(event.targetId);
+      }
+      if (event.role === 'crown') {
+        state.crownWave.crownStarTargetId = event.targetId;
+      }
+      break;
+    }
+    case 'crown_wave_closed': {
+      const wave = state.crownWave;
+      if (!wave || wave.waveId !== event.waveId) {
+        throw new Error('Genome v2 Crown wave close has no active wave.');
+      }
+      const perfect = wave.currentTargetIds.every(
+        (targetId) => wave.completedTargetIds.includes(targetId)
+      );
+      if (event.outcome === 'perfect' && !perfect) {
+        throw new Error('Genome v2 Crown wave is not a perfect clear.');
+      }
+      if (event.outcome === 'failed' && perfect) {
+        throw new Error('Genome v2 completed Crown wave cannot be failed.');
+      }
+      if (event.outcome === 'perfect') {
+        const base = wave.currentTargetIds.reduce(
+          (sum, targetId) => safeAdd(
+            sum,
+            state.targets[targetId]?.resolvedBaseYield ?? 0,
+            'Crown clear base'
+          ),
+          0
+        );
+        const total = genomeV2MultiplyBps(
+          base,
+          GENOME_V2_CONFIG.signatures.crownPerfectClearMultiplierBps
+        );
+        const bonus = Math.max(0, total - base);
+        state.ledger.bankableYield = safeAdd(
+          state.ledger.bankableYield,
+          bonus,
+          'Crown perfect clear'
+        );
+        state.ledger.currentLegYield = safeAdd(
+          state.ledger.currentLegYield,
+          bonus,
+          'Crown current leg'
+        );
+        state.ledger.continuousDelta = safeSignedAdd(
+          state.ledger.continuousDelta,
+          bonus,
+          'Crown ledger'
+        );
+      }
+      for (const target of Object.values(state.targets)) {
+        if (
+          target.crownRole === 'future' ||
+          (wave.currentTargetIds.includes(target.targetId) &&
+            ['active', 'armed'].includes(target.lifecycle))
+        ) {
+          target.lifecycle = 'expired';
+          target.edible = false;
+          target.collidable = false;
+        }
+      }
+      state.crownWave = null;
+      updateDisplayGross(state);
       break;
     }
     case 'phoenix_triggered': {
@@ -1713,6 +2940,32 @@ export function reduceGenomeV2Event(
       }
       life.consumed = true;
       life.consumedAtFood = state.foodCount;
+      const consumedMirrorStake = genomeV2HasSplice(
+        state,
+        'splice_styx_contract'
+      )
+        ? state.ledger.mirrorStake
+        : 0;
+      const consumedAshenStake = genomeV2HasSplice(
+        state,
+        'splice_ashen_stake'
+      )
+        ? state.ashenStakeReserve
+        : 0;
+      if (consumedMirrorStake > 0) state.ledger.mirrorStake = 0;
+      if (consumedAshenStake > 0) state.ashenStakeReserve = 0;
+      state.lastPhoenixEffect = {
+        rewindSegments: GENOME_V2_CONFIG.phoenix.rewindSegments,
+        phaseTicks:
+          GENOME_V2_CONFIG.phoenix.phaseTicks +
+          (genomeV2HasLadderTier(state, 'UMBRA', 5)
+            ? GENOME_V2_CONFIG.ladders.umbraAfterlifeExtraPhaseTicks
+            : 0),
+        growth: GENOME_V2_CONFIG.phoenix.growthCost,
+        consumedMirrorStake,
+        consumedAshenStake,
+      };
+      addGenomeBodyGrowth(state, GENOME_V2_CONFIG.phoenix.growthCost);
       const phoenix = state.instances[life.phoenixInstanceId];
       phoenix.status = 'ash';
       phoenix.retiredAtFood = state.foodCount;
@@ -1746,6 +2999,10 @@ export function reduceGenomeV2Event(
       };
       break;
     }
+    default:
+      throw new Error(
+        `Genome v2 event type ${String((event as { type?: unknown }).type)} is unknown.`
+      );
   }
 
   state.journal.push(event);
@@ -1810,6 +3067,18 @@ export interface GenomeV2SettlementBreakdown {
   bankableBeforeOutcome: number;
   bondCount: number;
   bondBonus: number;
+  ladderDividendBonus: number;
+  loomBondBonus: number;
+  treasuryReserve: number;
+  treasuryPaid: number;
+  treasuryForfeited: number;
+  crownBondReserve: number;
+  crownBondPaid: number;
+  crownBondForfeited: number;
+  ashenStakeReserve: number;
+  ashenStakePaid: number;
+  ashenStakeForfeited: number;
+  covenantShieldPaid: number;
   mirrorRawDiverted: number;
   mirrorStakeFrozen: number;
   mirrorStakePaid: number;
@@ -1837,6 +3106,23 @@ export function settleGenomeV2(
         state.bonds * GENOME_V2_CONFIG.compoundInterest.bankBonusPerBondBps
       )
     : 0;
+  const ladderDividendBonus = terminal === 'bank' &&
+    genomeV2HasLadderTier(state, 'AURUM', 4)
+    ? genomeV2MultiplyBps(
+        bankable,
+        Math.min(
+          state.executionChain,
+          GENOME_V2_CONFIG.ladders.aurumDividendMaxChains
+        ) * GENOME_V2_CONFIG.ladders.aurumDividendPerChainBps
+      )
+    : 0;
+  const loomBondBonus = terminal === 'bank' && state.loomBond?.matured
+    ? genomeV2MultiplyBps(
+        bankable,
+        GENOME_V2_CONFIG.splices.loomBondBankBonusBps
+      )
+    : 0;
+  const ashenStakePaid = terminal === 'bank' ? state.ashenStakeReserve : 0;
   const mirrorPaid = terminal === 'bank'
     ? genomeV2MultiplyBps(
         mirrorStake,
@@ -1844,7 +3130,15 @@ export function settleGenomeV2(
       )
     : 0;
   const preCarry = terminal === 'bank'
-    ? safeAdd(bankable, bondBonus, 'BANK Bonds')
+    ? safeAdd(
+        safeAdd(
+          safeAdd(bankable, bondBonus, 'BANK Bonds'),
+          ladderDividendBonus,
+          'BANK Dividend'
+        ),
+        safeAdd(loomBondBonus, ashenStakePaid, 'BANK deferred reserves'),
+        'BANK pre-Carry'
+      )
     : bankable;
   const carryMultiplierBps = terminal === 'bank'
     ? genomeV2CarryBankBps(state.carryPasses)
@@ -1853,9 +3147,41 @@ export function settleGenomeV2(
     preCarry,
     carryMultiplierBps
   );
+  const treasuryPaid = terminal === 'bank'
+    ? genomeV2MultiplyBps(
+        state.treasuryReserve,
+        GENOME_V2_CONFIG.ladders.aurumTreasuryBankBps
+      )
+    : 0;
+  const crownBondPaid = terminal === 'bank'
+    ? genomeV2MultiplyBps(
+        state.crownBondReserve,
+        GENOME_V2_CONFIG.splices.dragonHoardBankBps
+      )
+    : 0;
+  const forfeitableRisk = safeAdd(
+    safeAdd(mirrorStake, loanForfeited, 'crash visible risk'),
+    safeAdd(
+      state.treasuryReserve,
+      safeAdd(
+        state.crownBondReserve,
+        state.ashenStakeReserve,
+        'crash deferred risk'
+      ),
+      'crash reserves'
+    ),
+    'crash total risk'
+  );
+  const covenantShieldPaid = terminal === 'crash'
+    ? Math.min(state.covenantShield, forfeitableRisk)
+    : 0;
   const genomeYield = terminal === 'bank'
-    ? safeAdd(carryAppliedYield, mirrorPaid, 'BANK frozen Mirror')
-    : carryAppliedYield;
+    ? safeAdd(
+        safeAdd(carryAppliedYield, mirrorPaid, 'BANK frozen Mirror'),
+        safeAdd(treasuryPaid, crownBondPaid, 'BANK ladder and Splice reserves'),
+        'BANK total Genome Yield'
+      )
+    : safeAdd(carryAppliedYield, covenantShieldPaid, 'crash Covenant shield');
   return {
     v: GENOME_RULES_V2,
     terminal,
@@ -1868,6 +3194,18 @@ export function settleGenomeV2(
     bankableBeforeOutcome: bankable,
     bondCount: state.bonds,
     bondBonus,
+    ladderDividendBonus,
+    loomBondBonus,
+    treasuryReserve: state.treasuryReserve,
+    treasuryPaid,
+    treasuryForfeited: terminal === 'crash' ? state.treasuryReserve : 0,
+    crownBondReserve: state.crownBondReserve,
+    crownBondPaid,
+    crownBondForfeited: terminal === 'crash' ? state.crownBondReserve : 0,
+    ashenStakeReserve: state.ashenStakeReserve,
+    ashenStakePaid,
+    ashenStakeForfeited: terminal === 'crash' ? state.ashenStakeReserve : 0,
+    covenantShieldPaid,
     mirrorRawDiverted: state.ledger.mirrorRawDiverted,
     mirrorStakeFrozen: mirrorStake,
     mirrorStakePaid: mirrorPaid,
@@ -1900,9 +3238,55 @@ export interface TacticalLoomCandidateDelta {
   projectedPortalActionGrowth: { infuse: number | null; recode: number | null };
   projectedYieldRule: string;
   strategicCost: string;
+  availability: {
+    legal: boolean;
+    blockedReason: 'external_second_life' | null;
+  };
+  splicePaths: TacticalLoomSplicePath[];
+  targetProjection: {
+    currentlyQueued: number;
+    addedImmediately: 0;
+    trigger: 'cadence' | 'event' | 'none';
+    cadence: number | null;
+    multiplierBps: number | null;
+    routeSlackMoves: number | null;
+  };
+  bodyProjection: {
+    growthOnAcquire: 0;
+    extraGrowthPerFood: number;
+    extraGrowthCadence: number | null;
+    growthOnTrigger: number;
+  };
+  terrainProjection: {
+    currentPermanentFacts: number;
+    currentPermanentCells: number;
+    createsPermanentTerrain: boolean;
+    cellsPerUse: number | null;
+    minimumCellsPerUse: number | null;
+  };
+  outcomeProjection: {
+    /** Accepting a Loom gene has no retroactive economic effect. */
+    immediateBankDelta: 0;
+    immediateCrashDelta: 0;
+    bankNow: GenomeV2SettlementBreakdown;
+    crashNow: GenomeV2SettlementBreakdown;
+  };
+  dynastyProjection: {
+    dynasty: DynastyName;
+    relation: 'signature' | 'favored' | 'universal';
+    legal: boolean;
+  };
   /** Exact per-locus consequence when all six loci are occupied. Ash is shown
    * as a deliberate non-option rather than silently omitted. */
   replacementOptions: TacticalLoomReplacementDelta[];
+}
+
+export interface TacticalLoomSplicePath {
+  spliceId: GenomeV2SpliceId;
+  partnerGeneId: GenomeV2ActiveGeneId;
+  state: 'completes_now' | 'one_gene_away';
+  unlocked: boolean;
+  blockedReason: 'splices_locked' | null;
 }
 
 export interface TacticalLoomReplacementDelta {
@@ -1932,7 +3316,28 @@ export interface TacticalLoomModel {
   slots: GenomeV2Slot[];
   strainPoints: StrainPoints;
   ladder: typeof GENOME_V2_STRAIN_LADDERS;
+  ladderState: Readonly<Record<StrainId, GenomeV2LadderProjection>>;
   activeSplices: GenomeV2SpliceId[];
+  offer: {
+    offerId: string;
+    source: GenomeV2OfferState['source'];
+    openedAtFood: number;
+    openedAtTick: number;
+    offerIndex: number;
+    candidateGeneIds: GenomeV2ActiveGeneId[];
+  } | null;
+  decline: {
+    available: boolean;
+    forfeitedCandidateGeneIds: GenomeV2ActiveGeneId[];
+    bondBefore: number;
+    bondAfter: number;
+    bondDelta: number;
+    anchorCanPinBeforeDecline: boolean;
+    anchorChargesBefore: number;
+    anchorChargesAfterPin: number;
+    pinnedGeneId: GenomeV2ActiveGeneId | null;
+    options: TacticalLoomDeclineOption[];
+  };
   liabilities: {
     carryPasses: number;
     bankMultiplierBps: number;
@@ -1943,14 +3348,81 @@ export interface TacticalLoomModel {
     mirrorStake: number;
     mirrorLegFrozenCarryBps: number | null;
     phoenixAvailable: boolean;
+    externalSecondLife: GenomeV2State['externalSecondLife'];
+    treasuryReserve: number;
+    covenantShield: number;
+    crownBondReserve: number;
+    ashenStakeReserve: number;
+  };
+  runtime: {
+    bodyGrowthAdded: number;
+    lastBodyGrowthDelta: number;
+    wallRushCharges: number;
+    executionChain: number;
+    relayCharges: number;
+    overclock: GenomeV2OverclockState | null;
+    permanentTerrainFacts: number;
+    permanentTerrainCells: number;
+    territories: number;
+    crownWave: GenomeV2CrownWaveState | null;
   };
   candidates: TacticalLoomCandidateDelta[];
+}
+
+export interface GenomeV2LadderProjection {
+  strain: StrainId;
+  points: number;
+  activeTier: 0 | 3 | 4 | 5;
+  tiers: Array<GenomeV2StrainLadderTier & { active: boolean }>;
+}
+
+export function projectGenomeV2Ladders(
+  state: GenomeV2State
+): Readonly<Record<StrainId, GenomeV2LadderProjection>> {
+  const points = genomeV2StrainPoints(state);
+  return Object.fromEntries(
+    STRAIN_IDS.map((strain) => {
+      const value = points[strain] ?? 0;
+      const activeTier = genomeV2HasLadderTier(state, strain, 5)
+        ? 5
+        : genomeV2HasLadderTier(state, strain, 4)
+          ? 4
+          : genomeV2HasLadderTier(state, strain, 3)
+            ? 3
+            : 0;
+      return [strain, {
+        strain,
+        points: value,
+        activeTier,
+        tiers: GENOME_V2_STRAIN_LADDERS[strain].map((tier) => ({
+          ...tier,
+          active: genomeV2HasLadderTier(state, strain, tier.points),
+        })),
+      }];
+    })
+  ) as unknown as Readonly<Record<StrainId, GenomeV2LadderProjection>>;
+}
+
+export interface TacticalLoomDeclineOption {
+  id: string;
+  label: string;
+  pinGeneId: GenomeV2ActiveGeneId | null;
+  anchorChargesAfter: number;
+  bondAfter: number;
+  loomBondAfter: GenomeV2LoomBondState | null;
+  slotsAfter: GenomeV2Slot[];
+  strainPointsAfter: StrainPoints;
+  targetQueueAfter: number;
+  bodyGrowthAddedAfter: number;
+  bankAfter: GenomeV2SettlementBreakdown;
+  crashAfter: GenomeV2SettlementBreakdown;
+  dynasty: DynastyName;
 }
 
 const GENE_PROJECTED_RULE: Readonly<Record<GenomeV2ActiveGeneId, string>> = {
   gold_trail: 'Every fifth future target can pay ×3 inside its visible six-second budget.',
   compound_interest: 'Each deliberate Loom DECLINE adds +8% BANK, up to three Bonds.',
-  loan_shark: 'A portal PASS can begin six zero-now foods whose completed Escrow pays ×2.',
+  loan_shark: 'A portal CONTINUE can begin six zero-now foods whose completed Escrow pays ×2.',
   live_wire: 'Every third target becomes a topology-scaled ×3 route test; miss pays zero.',
   circuit_run: 'Every fourth target becomes a linked ×4 route with one normal growth unit.',
   time_dilation: 'World speed ×0.88; every fourth food adds one extra segment.',
@@ -1960,7 +3432,7 @@ const GENE_PROJECTED_RULE: Readonly<Record<GenomeV2ActiveGeneId, string>> = {
   phase_gate: 'Every fifth food may open a ×3 shortcut whose cells become Scars.',
   mirror_wager: 'At portal CONTINUE, optionally freeze 40% of that leg at current Carry; BANK doubles Stake.',
   phoenix: 'One rewind and phase; +10 body, then this socket becomes Ash.',
-  loom_anchor: 'Pin one declined option; recharge only through an explicit portal PASS.',
+  loom_anchor: 'Pin one declined option; recharge only through an explicit portal CONTINUE.',
   heartwood: 'PRIMAL signature: clean territorial actions scale with controlled body mass.',
   zenith_protocol: 'CYBER signature: player-triggered precision overclock pays for execution.',
   constellation_crown: 'COSMIC signature: perfect clears build visible Crown Stars.',
@@ -1979,14 +3451,14 @@ const GENE_PROJECTED_COST: Readonly<Record<GenomeV2ActiveGeneId, string>> = {
   phase_gate: 'Using the shortcut leaves two permanent Scars.',
   mirror_wager: 'Crash forfeits Stake; ordinary crash salvage is never reduced.',
   phoenix: 'Adds ten segments, occupies Ash after use, and excludes another second life.',
-  loom_anchor: 'The pin is single-use until a later explicit portal PASS.',
+  loom_anchor: 'The pin is single-use until a later explicit portal CONTINUE.',
   heartwood: 'Value requires dangerous, dynasty-specific territorial execution.',
   zenith_protocol: 'Value requires choosing a readable but genuinely harder speed state.',
   constellation_crown: 'Only fully cleared, unambiguous constellations advance the Crown.',
 };
 
 export function genomeV2StrainPoints(state: GenomeV2State): StrainPoints {
-  const result: StrainPoints = {};
+  const result: StrainPoints = { ...state.startingStrainPoints };
   for (const instance of Object.values(state.instances)) {
     if (instance.status === 'replaced' || instance.status === 'ash') continue;
     for (const strain of GENOME_V2_GENE_STRAINS[instance.geneId]) {
@@ -1994,6 +3466,184 @@ export function genomeV2StrainPoints(state: GenomeV2State): StrainPoints {
     }
   }
   return result;
+}
+
+export interface GenomeV2OfferWeightBreakdown {
+  geneId: GenomeV2ActiveGeneId;
+  base: number;
+  strain: number;
+  splice: number;
+  dynasty: number;
+  missingCategory: number;
+  stateRelevance: number;
+  total: number;
+}
+
+export interface GenomeV2OfferRoll {
+  candidates: readonly [GenomeV2ActiveGeneId, GenomeV2ActiveGeneId];
+  weights: readonly [GenomeV2OfferWeightBreakdown, GenomeV2OfferWeightBreakdown];
+  secondSlotUsedSurprise: boolean;
+}
+
+/** Run-seed-frozen cadence: first two offers at four eligible targets, then
+ * deterministic 4–6 intervals with mean five. */
+export function genomeV2OfferInterval(
+  state: GenomeV2State,
+  offerIndex: number = state.offerCount
+): number {
+  if (!Number.isSafeInteger(offerIndex) || offerIndex < 0) {
+    throw new Error('Genome v2 offer cadence index is malformed.');
+  }
+  return rollGenomeV2GeneOfferInterval(
+    offerIndex,
+    offerStream(`genome-v2-cadence:${state.runSeed}`, offerIndex)
+  );
+}
+
+function genomeV2OfferWeight(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): GenomeV2OfferWeightBreakdown {
+  const tuning = GENOME_V2_CONFIG.offers;
+  const points = genomeV2StrainPoints(state);
+  const definition = GENOME_V2_GENES[geneId];
+  const strain = Math.min(
+    tuning.strainWeightCap,
+    definition.strains.reduce(
+      (sum, strainId) =>
+        sum + (points[strainId] ?? 0) * tuning.strainPointWeight,
+      0
+    )
+  );
+  const splice = spliceCompletionForCandidate(state, geneId)
+    ? tuning.immediateSpliceWeight
+    : 0;
+  const signature = geneId === genomeV2SignatureForDynasty(state.dynasty);
+  const dynasty = signature
+    ? tuning.dynastySignatureWeight
+    : definition.dynasties.includes(state.dynasty)
+      ? tuning.dynastyAffinityWeight
+      : 0;
+  const heldCategories = new Set(
+    Object.values(state.instances)
+      .filter((instance) => !['replaced', 'ash'].includes(instance.status))
+      .map((instance) => GENOME_V2_GENES[instance.geneId].category)
+  );
+  const missingCategory = heldCategories.has(definition.category)
+    ? 0
+    : tuning.missingCategoryWeight;
+  const activeEconomicLiability = Boolean(
+    state.carryPasses > 0 ||
+    state.bonds > 0 ||
+    state.loan ||
+    state.ledger.mirrorStake > 0
+  );
+  const stateRelevance =
+    activeEconomicLiability && definition.category === 'banking'
+      ? tuning.activeLiabilityWeight
+      : 0;
+  return {
+    geneId,
+    base: tuning.baseWeight,
+    strain,
+    splice,
+    dynasty,
+    missingCategory,
+    stateRelevance,
+    total:
+      tuning.baseWeight +
+      strain +
+      splice +
+      dynasty +
+      missingCategory +
+      stateRelevance,
+  };
+}
+
+function drawGenomeV2Candidate(
+  candidates: readonly GenomeV2ActiveGeneId[],
+  state: GenomeV2State,
+  rng: () => number
+): GenomeV2ActiveGeneId {
+  const weighted = candidates.map((geneId) => genomeV2OfferWeight(state, geneId));
+  const total = weighted.reduce((sum, entry) => sum + entry.total, 0);
+  let roll = rng() * total;
+  for (const entry of weighted) {
+    roll -= entry.total;
+    if (roll < 0) return entry.geneId;
+  }
+  return weighted[weighted.length - 1].geneId;
+}
+
+/**
+ * Deterministic build-aware THREAD/FORK offer. Surprise is bounded to the
+ * second slot and never bypasses pool legality, seen/retired exclusion, or
+ * the different-category rule when a different viable category exists.
+ */
+export function rollGenomeV2Offer(
+  state: GenomeV2State,
+  offerIndex: number = state.offerCount
+): GenomeV2OfferRoll | null {
+  if (!Number.isSafeInteger(offerIndex) || offerIndex < 0) {
+    throw new Error('Genome v2 offer stream requires a seed and non-negative index.');
+  }
+  const seen = new Set(
+    Object.values(state.instances).map((instance) => instance.geneId)
+  );
+  const legal = state.genePool.filter(
+    (geneId) =>
+      !seen.has(geneId) &&
+      (state.ftue.apexesUnlocked ||
+        geneId !== genomeV2SignatureForDynasty(state.dynasty)) &&
+      !(geneId === 'phoenix' && state.externalSecondLife !== null)
+  );
+  if (legal.length < 2) return null;
+  const rng = offerStream(`genome-v2:${state.runSeed}`, offerIndex);
+  const rolledFirst = drawGenomeV2Candidate(legal, state, rng);
+  const pinned = state.anchor.pinnedGeneId;
+  const first = pinned && legal.includes(pinned) ? pinned : rolledFirst;
+  const remaining = legal.filter((geneId) => geneId !== first);
+  const differentCategory = remaining.filter(
+    (geneId) =>
+      GENOME_V2_GENES[geneId].category !== GENOME_V2_GENES[first].category
+  );
+  const viableSecond = differentCategory.length > 0
+    ? differentCategory
+    : remaining;
+  const useSurprise =
+    Math.floor(rng() * GENOME_V2_YIELD_SCALE) <
+    GENOME_V2_CONFIG.offers.boundedSurpriseChanceBps;
+  const second = useSurprise
+    ? viableSecond[Math.min(
+        viableSecond.length - 1,
+        Math.floor(rng() * viableSecond.length)
+      )]
+    : drawGenomeV2Candidate(viableSecond, state, rng);
+  return {
+    candidates: [first, second],
+    weights: [
+      genomeV2OfferWeight(state, first),
+      genomeV2OfferWeight(state, second),
+    ],
+    secondSlotUsedSurprise: useSurprise,
+  };
+}
+
+/** Server/runtime parity guard for a client-carried offer event. */
+export function assertGenomeV2OfferMatchesRoll(
+  state: GenomeV2State,
+  offerIndex: number,
+  candidates: readonly GenomeV2ActiveGeneId[]
+): asserts candidates is readonly [GenomeV2ActiveGeneId, GenomeV2ActiveGeneId] {
+  const expected = rollGenomeV2Offer(state, offerIndex);
+  if (
+    !expected ||
+    candidates.length !== 2 ||
+    expected.candidates[0] !== candidates[0] ||
+    expected.candidates[1] !== candidates[1]
+  ) {
+    throw new Error('Genome v2 offer differs from its deterministic run stream.');
+  }
 }
 
 function spliceCompletionForCandidate(
@@ -2007,6 +3657,159 @@ function spliceCompletionForCandidate(
     if (splice && !state.activeSplices.includes(splice)) return splice;
   }
   return null;
+}
+
+function splicePathsForCandidate(
+  state: GenomeV2State,
+  candidate: GenomeV2ActiveGeneId
+): TacticalLoomSplicePath[] {
+  const activeIds = new Set(
+    activeGeneInstances(state).map((instance) => instance.geneId)
+  );
+  return GENOME_V2_SPLICE_IDS.flatMap((spliceId) => {
+    const definition = GENOME_V2_SPLICES[spliceId];
+    const [first, second] = definition.parents;
+    if (candidate !== first && candidate !== second) return [];
+    const partnerGeneId = candidate === first ? second : first;
+    return [{
+      spliceId,
+      partnerGeneId,
+      state: activeIds.has(partnerGeneId)
+        ? 'completes_now' as const
+        : 'one_gene_away' as const,
+      unlocked: state.splicesEnabled,
+      blockedReason: state.splicesEnabled ? null : 'splices_locked' as const,
+    }];
+  });
+}
+
+function targetProjectionForGene(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): TacticalLoomCandidateDelta['targetProjection'] {
+  const base = {
+    currentlyQueued: state.targetQueue.length,
+    addedImmediately: 0 as const,
+    trigger: 'none' as 'none' | 'cadence' | 'event',
+    cadence: null as number | null,
+    multiplierBps: null as number | null,
+    routeSlackMoves: null as number | null,
+  };
+  switch (geneId) {
+    case 'gold_trail':
+      return { ...base, trigger: 'cadence', cadence: 5, multiplierBps: 30_000 };
+    case 'live_wire':
+      return {
+        ...base,
+        trigger: 'cadence',
+        cadence: 3,
+        multiplierBps: 30_000,
+        routeSlackMoves: GENOME_V2_CONFIG.liveWire.routeSlackMoves,
+      };
+    case 'circuit_run':
+      return {
+        ...base,
+        trigger: 'cadence',
+        cadence: 4,
+        multiplierBps: 40_000,
+        routeSlackMoves: GENOME_V2_CONFIG.circuitRun.routeSlackMoves,
+      };
+    case 'phase_gate':
+      return { ...base, trigger: 'cadence', cadence: 5, multiplierBps: 30_000 };
+    case 'coilkeeper':
+      return { ...base, trigger: 'event', multiplierBps: 40_000 };
+    case 'wall_rush':
+      return { ...base, trigger: 'event', multiplierBps: 25_000 };
+    default:
+      return base;
+  }
+}
+
+function bodyProjectionForGene(
+  geneId: GenomeV2ActiveGeneId
+): TacticalLoomCandidateDelta['bodyProjection'] {
+  if (geneId === 'overgrowth') {
+    return {
+      growthOnAcquire: 0,
+      extraGrowthPerFood: GENOME_V2_CONFIG.overgrowth.extraGrowthPerFood,
+      extraGrowthCadence: 1,
+      growthOnTrigger: 0,
+    };
+  }
+  if (geneId === 'time_dilation') {
+    return {
+      growthOnAcquire: 0,
+      extraGrowthPerFood: 1,
+      extraGrowthCadence: GENOME_V2_CONFIG.timeDilation.extraGrowthCadence,
+      growthOnTrigger: 0,
+    };
+  }
+  if (geneId === 'phoenix') {
+    return {
+      growthOnAcquire: 0,
+      extraGrowthPerFood: 0,
+      extraGrowthCadence: null,
+      growthOnTrigger: GENOME_V2_CONFIG.phoenix.growthCost,
+    };
+  }
+  return {
+    growthOnAcquire: 0,
+    extraGrowthPerFood: 0,
+    extraGrowthCadence: null,
+    growthOnTrigger: 0,
+  };
+}
+
+function terrainProjectionForGene(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): TacticalLoomCandidateDelta['terrainProjection'] {
+  const common = {
+    currentPermanentFacts: state.permanentTerrain.length,
+    currentPermanentCells: state.permanentTerrain.reduce(
+      (sum, fact) => sum + fact.cells.length,
+      0
+    ),
+  };
+  if (geneId === 'coilkeeper') {
+    return {
+      ...common,
+      createsPermanentTerrain: true,
+      cellsPerUse: null,
+      minimumCellsPerUse: GENOME_V2_CONFIG.coilkeeper.minimumSealedCells,
+    };
+  }
+  if (geneId === 'phase_gate') {
+    return {
+      ...common,
+      createsPermanentTerrain: true,
+      cellsPerUse: 2,
+      minimumCellsPerUse: 2,
+    };
+  }
+  return {
+    ...common,
+    createsPermanentTerrain: false,
+    cellsPerUse: null,
+    minimumCellsPerUse: null,
+  };
+}
+
+function dynastyProjectionForGene(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): TacticalLoomCandidateDelta['dynastyProjection'] {
+  const definition = GENOME_V2_GENES[geneId];
+  const relation = geneId === genomeV2SignatureForDynasty(state.dynasty)
+    ? 'signature'
+    : definition.dynasties.includes(state.dynasty)
+      ? 'favored'
+      : 'universal';
+  return {
+    dynasty: state.dynasty,
+    relation,
+    legal: !(geneId === 'phoenix' && state.externalSecondLife !== null),
+  };
 }
 
 function replacementProjection(
@@ -2088,6 +3891,113 @@ function replacementProjection(
   };
 }
 
+export interface GenomeV2RecodePreview {
+  source: 'loom' | 'portal';
+  offerId: string;
+  replacementGeneId: GenomeV2ActiveGeneId;
+  slot: GenomeV2SlotIndex;
+  growthCharged: number;
+  consequence: TacticalLoomReplacementDelta;
+}
+
+/** Non-mutating authority for the two-step Recode UI. The returned facts can
+ * be copied into one `offer_recoded` event only after player confirmation. */
+export function previewGenomeV2Recode(
+  state: GenomeV2State,
+  input: {
+    source: 'loom' | 'portal';
+    offerId: string;
+    replacementGeneId: GenomeV2ActiveGeneId;
+    slot: GenomeV2SlotIndex;
+  }
+): GenomeV2RecodePreview {
+  const candidates = input.source === 'loom'
+    ? state.offer?.offerId === input.offerId
+      ? state.offer.candidateGeneIds
+      : null
+    : state.portal?.genomeOffer?.offerId === input.offerId
+      ? state.portal.genomeOffer.candidates
+      : null;
+  if (!candidates?.includes(input.replacementGeneId)) {
+    throw new Error('Genome v2 Recode preview differs from its immutable offer.');
+  }
+  if (
+    input.source === 'loom' &&
+    state.slots.some((slot) => slot.occupant === null)
+  ) {
+    throw new Error('Genome v2 Loom Recode preview requires six occupied loci.');
+  }
+  const growthCharged = expectedRecodeGrowth(state.recodeCount + 1);
+  const consequence = replacementProjection(
+    state,
+    input.replacementGeneId,
+    genomeV2StrainPoints(state),
+    state.slots[input.slot],
+    growthCharged
+  );
+  if (!consequence || !consequence.allowed) {
+    throw new Error('Genome v2 Recode preview requires an occupied non-Ash locus.');
+  }
+  return { ...input, growthCharged, consequence };
+}
+
+function projectDeclineOptions(
+  state: GenomeV2State
+): TacticalLoomDeclineOption[] {
+  if (!state.offer) return [];
+  const pins: (GenomeV2ActiveGeneId | null)[] = [null];
+  if (
+    state.offer.pinnedGeneId === null &&
+    genomeV2MechanicEnabled(state, 'loom_anchor') &&
+    state.anchor.charges > 0
+  ) {
+    pins.push(...state.offer.candidateGeneIds);
+  }
+  return pins.map((pinGeneId) => {
+    const after = cloneState(state);
+    if (pinGeneId) {
+      after.anchor.charges -= 1;
+      after.anchor.pinnedGeneId = pinGeneId;
+      if (genomeV2HasSplice(after, 'splice_loom_bond')) {
+        after.loomBond = { pinnedGeneId: pinGeneId, matured: false };
+      }
+    } else if (
+      after.offer?.pinnedGeneId === null &&
+      genomeV2HasGene(after, 'compound_interest')
+    ) {
+      after.bonds = Math.min(
+        GENOME_V2_CONFIG.compoundInterest.maxBonds,
+        after.bonds + 1
+      );
+    }
+    if (after.offer?.pinnedGeneId !== null) {
+      after.anchor.pinnedGeneId = null;
+      after.loomBond = null;
+    }
+    after.offer = null;
+    return {
+      id: pinGeneId ? `pin:${pinGeneId}` : 'decline',
+      label: pinGeneId
+        ? `PIN ${GENOME_V2_GENES[pinGeneId].name}`
+        : 'DECLINE',
+      pinGeneId,
+      anchorChargesAfter: after.anchor.charges,
+      bondAfter: after.bonds,
+      loomBondAfter: after.loomBond ? { ...after.loomBond } : null,
+      slotsAfter: after.slots.map((slot) => ({
+        ...slot,
+        occupant: slot.occupant ? { ...slot.occupant } : null,
+      })),
+      strainPointsAfter: genomeV2StrainPoints(after),
+      targetQueueAfter: after.targetQueue.length,
+      bodyGrowthAddedAfter: after.bodyGrowthAdded,
+      bankAfter: settleGenomeV2(after, 'bank'),
+      crashAfter: settleGenomeV2(after, 'crash'),
+      dynasty: after.dynasty,
+    };
+  });
+}
+
 export function projectGenomeV2(
   state: GenomeV2State,
   candidates: readonly GenomeV2ActiveGeneId[] = state.offer?.candidateGeneIds ?? []
@@ -2095,6 +4005,15 @@ export function projectGenomeV2(
   const points = genomeV2StrainPoints(state);
   const nextAction = state.portalGenomeActions + 1;
   const nextRecode = state.recodeCount + 1;
+  const bankNow = settleGenomeV2(state, 'bank');
+  const crashNow = settleGenomeV2(state, 'crash');
+  const declineCandidates = state.offer?.candidateGeneIds ?? [];
+  const canCreateBond = Boolean(
+    state.offer &&
+    state.offer.pinnedGeneId === null &&
+    genomeV2HasGene(state, 'compound_interest') &&
+    state.bonds < GENOME_V2_CONFIG.compoundInterest.maxBonds
+  );
   return {
     v: GENOME_RULES_V2,
     dynasty: state.dynasty,
@@ -2104,7 +4023,34 @@ export function projectGenomeV2(
     })),
     strainPoints: points,
     ladder: GENOME_V2_STRAIN_LADDERS,
+    ladderState: projectGenomeV2Ladders(state),
     activeSplices: [...state.activeSplices],
+    offer: state.offer
+      ? {
+          offerId: state.offer.offerId,
+          source: state.offer.source,
+          openedAtFood: state.offer.openedAtFood,
+          openedAtTick: state.offer.openedAtTick,
+          offerIndex: state.offer.offerIndex,
+          candidateGeneIds: [...state.offer.candidateGeneIds],
+        }
+      : null,
+    decline: {
+      available: state.offer !== null,
+      forfeitedCandidateGeneIds: [...declineCandidates],
+      bondBefore: state.bonds,
+      bondAfter: state.bonds + (canCreateBond ? 1 : 0),
+      bondDelta: canCreateBond ? 1 : 0,
+      anchorCanPinBeforeDecline: Boolean(
+        state.offer &&
+        genomeV2HasGene(state, 'loom_anchor') &&
+        state.anchor.charges > 0
+      ),
+      anchorChargesBefore: state.anchor.charges,
+      anchorChargesAfterPin: Math.max(0, state.anchor.charges - 1),
+      pinnedGeneId: state.anchor.pinnedGeneId,
+      options: projectDeclineOptions(state),
+    },
     liabilities: {
       carryPasses: state.carryPasses,
       bankMultiplierBps: genomeV2CarryBankBps(state.carryPasses),
@@ -2115,6 +4061,33 @@ export function projectGenomeV2(
       mirrorStake: state.ledger.mirrorStake,
       mirrorLegFrozenCarryBps: state.mirrorLeg?.frozenCarryBps ?? null,
       phoenixAvailable: state.secondLife !== null && !state.secondLife.consumed,
+      externalSecondLife: state.externalSecondLife,
+      treasuryReserve: state.treasuryReserve,
+      covenantShield: state.covenantShield,
+      crownBondReserve: state.crownBondReserve,
+      ashenStakeReserve: state.ashenStakeReserve,
+    },
+    runtime: {
+      bodyGrowthAdded: state.bodyGrowthAdded,
+      lastBodyGrowthDelta: state.lastBodyGrowthDelta,
+      wallRushCharges: state.wallRushCharges,
+      executionChain: state.executionChain,
+      relayCharges: state.relayCharges,
+      overclock: state.overclock ? { ...state.overclock } : null,
+      permanentTerrainFacts: state.permanentTerrain.length,
+      permanentTerrainCells: state.permanentTerrain.reduce(
+        (sum, fact) => sum + fact.cells.length,
+        0
+      ),
+      territories: state.territories.length,
+      crownWave: state.crownWave
+        ? {
+            ...state.crownWave,
+            currentTargetIds: [...state.crownWave.currentTargetIds],
+            futureCells: state.crownWave.futureCells.map((cell) => ({ ...cell })),
+            completedTargetIds: [...state.crownWave.completedTargetIds],
+          }
+        : null,
     },
     candidates: candidates.map((geneId) => {
       ensureActivePool(state, geneId);
@@ -2154,6 +4127,24 @@ export function projectGenomeV2(
         },
         projectedYieldRule: GENE_PROJECTED_RULE[geneId],
         strategicCost: GENE_PROJECTED_COST[geneId],
+        availability: {
+          legal: !(geneId === 'phoenix' && state.externalSecondLife !== null),
+          blockedReason:
+            geneId === 'phoenix' && state.externalSecondLife !== null
+              ? 'external_second_life'
+              : null,
+        },
+        splicePaths: splicePathsForCandidate(state, geneId),
+        targetProjection: targetProjectionForGene(state, geneId),
+        bodyProjection: bodyProjectionForGene(geneId),
+        terrainProjection: terrainProjectionForGene(state, geneId),
+        outcomeProjection: {
+          immediateBankDelta: 0,
+          immediateCrashDelta: 0,
+          bankNow,
+          crashNow,
+        },
+        dynastyProjection: dynastyProjectionForGene(state, geneId),
         replacementOptions: state.slots
           .map((slot) =>
             replacementProjection(
