@@ -1,11 +1,11 @@
 # SupaSnake — Tactical Genome v2
 
-**Version:** 2.0
+**Version:** 2.1
 
-**Date:** 1 August 2026
+**Date:** 2 August 2026
 
 **Status:** APPROVED for production by the Product Owner; governed by Product
-Constitution v1.9.
+Constitution v1.10.
 
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
@@ -48,28 +48,37 @@ decision context. The three verbs are:
   all six loci are occupied;
 - **DECLINE** — spend the offer and keep the current Genome.
 
-One shared consequence pane follows the focused action. It shows facts and
-projections, never `best`, `recommended`, or an automatic ranking:
+One shared consequence pane follows the focused action. Its job is immediate
+intuition, not catalog research. It shows only what changes now:
 
-- current and resulting six-locus Genome;
-- the gene's primary category, effect, cost, cadence, and live state;
-- every affected Strain's 3/4/5 ladder, before and after;
-- an immediate Splice and one further reachable Splice step;
-- active sockets, Ash, retired instances, and second-life exclusivity;
-- Bonds, Escrow, Stake, Carry, and other persistent liabilities;
-- exclusive target queue and target identity;
-- body growth, occupied-space, and permanent-terrain consequence;
-- current BANK and crash projections;
-- Dynasty-specific facts that the player interprets.
+- the gene's primary identity, concrete gain, meaningful risk, and trigger rhythm;
+- the locus added or replaced;
+- a Strain rung that activates or is lost now;
+- a Splice that forms or breaks now;
+- second-life exclusivity, Ash, and another direct socket conflict when relevant;
+- body growth, permanent terrain, or changed target identity when relevant;
+- the exact delta to Bonds, Escrow, Stake, Carry, Anchor, or another persistent
+  liability when the action changes it.
 
-Mobile uses compact candidate controls and one shared, scroll-safe pane rather
-than three long cards. A short input lock prevents the flick or key that opened
-the decision from selecting an action. During ordinary live play, notifications
-and celebration are pointer-transparent and can never consume steering input.
+It does not carry complete 3/4/5 ladders, unchanged ledgers, one-step recipe
+trees, broad BANK/crash projections, or an expert expander. It never says `best`,
+`recommended`, or supplies an automatic ranking. Mobile uses compact candidate
+controls and the same single focused pane rather than three long cards. The
+ordinary two-gene choice must fit a practical phone viewport without internal
+scrolling; unusually long localization may expand the frozen page rather than
+truncate a material consequence.
+
+A short input lock prevents the flick or key that opened the decision from
+selecting an action. After selection, a brief pointer-transparent callout names
+what activated and what it boosts. Later trigger feedback remains legible without
+consuming steering input. During ordinary live play, notifications and
+celebration are likewise pointer-transparent.
 
 At six occupied loci, FORK becomes a two-step **Recode**: select the incoming
 gene, then select the held locus to replace. The pane previews the exact
-before/after state before confirmation. The first Recode adds eight permanent
+before/after gain, loss, Strain delta, formed/broken Splice, and permanent growth
+cost before confirmation. This is the narrow exception to the live Loom's
+changed-facts-only rule because Recode is irreversible. The first Recode adds eight permanent
 segments; every later Recode adds ten. Recode does not also pay the ordinary
 portal-Genome growth cost. A replaced ID cannot be offered again in that run.
 Recode stops future effects of the replaced gene but cannot erase already
@@ -79,8 +88,8 @@ sealed terrain.
 ## 3. Visible future depth and activation
 
 Locked systems are visible and explained, with unlock state authored by the
-server. The run-one player sees the complete portal choice and every Strain rung
-without receiving every verb immediately.
+server. The run-one player sees the complete portal choice in context and can
+inspect every Strain rung in Research without receiving every verb immediately.
 
 | Progress | Activation |
 |---|---|
@@ -93,6 +102,31 @@ without receiving every verb immediately.
 
 The server returns the unmet condition and progress for every locked action.
 The UI does not reproduce thresholds from literals.
+
+### 3.1 Research: Codex + Workbench
+
+Codex and Workbench are two modes of one free Research destination reached from
+the Home chamber's Codex relic. They reveal depth without turning a live decision
+into coursework:
+
+- **Codex** focuses one gene, Strain, or Splice at a time: rule, cost, trigger,
+  tags, recipe connections, discovery, and clear unlock progress.
+- **Workbench** is a direct-manipulation build toy. The player places genes into
+  the six loci and immediately sees the reaction chain `locus → Strain rung →
+  Splice`. Only the selected object and changed connections demand attention.
+- Three optional plain-language lenses — **Yield**, **Risk**, and **Space** —
+  recolor or annotate the same build. Exact arithmetic is available on demand in
+  one shared readout rather than spread across permanent panels.
+- Locked entries stay visible and can be explored. The system never recommends,
+  ranks, solves, or declares an optimal Genome or Dynasty.
+- Results offers **Study this Genome**, loading the exact terminal build and run
+  context into Workbench so play, feedback, and the next experiment form one loop.
+
+Research remains a game surface: visual, responsive, and inviting to manipulate.
+It must not become a glossary wall, university-course tree, spreadsheet, or SaaS
+analytics dashboard. The authoritative Genome engine remains the single source
+for every displayed reaction and calculation, and Workbench code remains outside
+the live `/game` dependency graph.
 
 The first two cadence offers are approximately four foods apart. Later offers
 use a deterministic four-to-six-food interval, averaging five. DECLINE is a
@@ -257,8 +291,9 @@ Splices replace their parents with one new strategic rule rather than applying
 | `splice_ashen_stake` | Ashen Stake | Loan Shark + Phoenix |
 
 Recipes and effects may be discovered, but rules and consequences are never
-hidden. The Loom shows an immediate reachable Splice and one further path so
-the player can reason about n-order effects without memorizing the Codex.
+hidden. The live Loom shows a Splice that forms or breaks now; Research exposes
+complete recipes and further paths so players can prepare without memorizing the
+Codex.
 
 Dynasty signatures are always part of their run's pool:
 

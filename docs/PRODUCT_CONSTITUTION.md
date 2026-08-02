@@ -1,6 +1,30 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.9 · amended 1 August 2026
+**Version:** 1.10 · amended 2 August 2026
+**v1.10 amendment (explicit owner ruling, 2 August 2026):** Genome information
+is divided by player intent: **intuition during a run; research outside a run**.
+The live Tactical Loom remains the decisive strategy break, but it is not an
+expert dashboard. It shows the two candidates and DECLINE, then only the focused
+action's immediate gain, meaningful risk, trigger/cadence, changed locus, newly
+activated or lost Strain rung/Splice, and any irreversible body, terrain,
+second-life, Ash, Stake, Escrow, Bond, or Anchor consequence. Unchanged ledgers,
+complete 3/4/5 ladders, one-step recipe trees, broad projections, and catalog
+research do not occupy the live decision surface. A full-locus Recode is the
+narrow exception: its exact gain/loss and permanent growth cost must be visible
+before confirmation. There is no in-run expert expander.
+
+Complete future depth remains visible from run one through the Codex and
+Workbench. Together they form one free, game-like Research instrument: browse one
+rule at a time, manipulate the six loci directly, and see the immediate visual
+chain from gene to Strain rung to Splice. Yield, Risk, and Space are optional
+lenses; exact arithmetic appears on demand in one focused readout. Research never
+ranks Dynasties, recommends an optimum, hides tactical truth behind payment, or
+resembles compulsory coursework. Post-choice feedback identifies what activated
+and what it boosts without intercepting steering; Results can load the run's exact
+terminal Genome into Research. This narrows v1.9's live disclosure requirement,
+not its visible-depth, strategic-mastery, authority, or large-Yield-spread goals.
+The owner approved this correction during the active Genome v2 build and waived
+the cooling period; the trade-off is recorded in §15.
 **v1.9 amendment (explicit owner ruling, 1 August 2026):** the Genome becomes
 the run's visible tactical centre rather than a hidden catalog of buffs. A gene
 decision freezes the simulation while retaining the board as context and exposes
@@ -1783,6 +1807,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 28 | **Results recognition must auto-play and may not use claim language or repeated taps** | **v1.8:** up to three meaningful, optional Victory Lap collection taps may stage rewards already secured by settlement. Replay/Setup never wait; one action may complete the ceremony; only Daily Take may perform an economic collect RPC. Explicit owner ruling, 31 July 2026; cooling period waived for the approved cohesive UX implementation | The pure zero-tap recap. Gained: tactile trophy-raising payoff without stranded value, duplicate grants, claim debt, or notification farming |
 | 29 | **Ascendance approaches a ~×1.30 ceiling while each more expensive generation buys a smaller gain** (v1.2) | **v1.9:** Gen4+ compounds Yield by ×1.02 per generation; every fifth generation is a visible evolution beat; the run-start curve and multiplier are immutable. Score remains untouched. Explicit owner ruling, 1 August 2026; cooling period waived for the approved production build | The bounded ~1.3× veteran/newcomer spread and its simple economy guardrail. Gained: earned progression that remains materially valuable and socially prestigious. The faster ×1.25 cost curve, no-DNA-sales rule, Score independence, best-five competition, and live spread telemetry now carry the guardrail |
 | 30 | **Genome depth remains hidden behind the 4/8/10/12/15/20-bank FTUE and live offers disclose only prose plus a partial hint** | **v1.9:** the Tactical Loom makes the offer the run's explicit strategy break; future portal verbs and all ladders are visible from run one, while activation advances at 1/2/4/6/10 banks [H]. Explicit owner ruling, 1 August 2026; cooling period waived | The unusually quiet early game and the lowest possible first-session information load. Gained: legible aspiration, learnable n-order buildcraft, and a genuine skill gap without requiring Codex memorisation or a cheat sheet |
+| 31 | **Every affected ladder, one-step Splice path, liability ledger, and BANK/crash projection belongs in the live Tactical Loom** (v1.9) | **v1.10:** intuition in-run, Research outside. The live Loom shows only the immediate actionable delta and irreversible consequences; Codex/Workbench carries the complete visible future, direct experimentation, and on-demand arithmetic. No in-run expert expander. Explicit owner ruling, 2 August 2026; cooling period waived | The guarantee that every n-order possibility is visible without leaving the run. Gained: a mobile-legible decision beat, lower working-memory load, and preservation of flow. The permanent guardrail is that a player is never blind about what the current choice activates, breaks, costs, or exposes |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
