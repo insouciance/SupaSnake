@@ -17,6 +17,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { seedConsent, signInAsGuest } from './helpers';
 
 const PHONE = { width: 390, height: 844 } as const;
+const GENOME_V2_ENABLED = process.env.NEXT_PUBLIC_GENOME_V2 === 'true';
 
 const CHARGE = {
   remaining: 4,
@@ -179,13 +180,28 @@ test.describe('The Codex reads as a lexicon', () => {
       'lexicon-mechanics',
       'lexicon-dynasties',
       'lexicon-traits',
-      'lexicon-strains',
       'lexicon-anomalies',
     ]) {
       await expect(page.getByTestId(section)).toBeVisible();
     }
-    // All fifteen strain tiers are spelled out.
-    await expect(page.getByTestId('lexicon-tier-FERAL-2')).toContainText('Fortress');
+    if (GENOME_V2_ENABLED) {
+      // Genome v2 replaces the legacy ladder list with the public Strategy
+      // Atlas. Every family and every corrected 2/3/4 rung remains visible
+      // before discovery; the rollback leg separately proves the v1 Lexicon.
+      await expect(page.getByTestId('atlas-all-ladders')).toBeVisible();
+      for (const strain of ['AURUM', 'VOLT', 'FERAL', 'FLUX', 'UMBRA']) {
+        for (const points of [2, 3, 4]) {
+          await expect(
+            page.getByTestId(`atlas-all-tier-${strain}-${points}`)
+          ).toBeVisible();
+        }
+      }
+      await expect(page.getByTestId('lexicon-strains')).toHaveCount(0);
+    } else {
+      await expect(page.getByTestId('lexicon-strains')).toBeVisible();
+      // All fifteen legacy strain tiers are spelled out in rollback mode.
+      await expect(page.getByTestId('lexicon-tier-FERAL-2')).toContainText('Fortress');
+    }
 
     // The discovery layer, and only it, still asks for an account.
     await expect(page.getByTestId('codex-signed-out')).toBeVisible();
