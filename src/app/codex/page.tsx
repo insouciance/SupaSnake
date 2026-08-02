@@ -77,7 +77,7 @@ function LexiconRow({ entry }: { entry: LexiconEntry }) {
         {entry.strains && entry.strains.length > 0 && entry.kind !== 'strain' && (
           <div className="flex gap-1">
             {entry.strains.map((strain) => (
-              <StrainChip key={strain} strain={strain} />
+              <StrainChip key={strain} strain={strain} showGlyph />
             ))}
           </div>
         )}
@@ -145,7 +145,7 @@ function StrainLadder() {
               data-testid={`lexicon-strain-${strain}`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <StrainChip strain={strain} size="md" />
+                <StrainChip strain={strain} size="md" showGlyph />
                 <p className="font-body text-xs text-beige/60">{family.effect}</p>
               </div>
               <div className="mt-3 space-y-3">
@@ -461,7 +461,7 @@ function CodexShell({
                       id={`codex-strain-${entry.strain}`}
                       className="panel p-4"
                     >
-                      <StrainChip strain={entry.strain} size="md" />
+                      <StrainChip strain={entry.strain} size="md" showGlyph />
                       <div className="mt-4 space-y-3 text-sm">
                         {(['expression', 'apex'] as const).map((tier) => {
                           const milestone = entry[tier];
@@ -508,7 +508,7 @@ function CodexShell({
                         </h4>
                         <div className="flex gap-1">
                           {splice.strains.map((strain) => (
-                            <StrainChip key={strain} strain={strain} />
+                            <StrainChip key={strain} strain={strain} showGlyph />
                           ))}
                         </div>
                       </div>
@@ -556,7 +556,7 @@ function CodexShell({
                         <h4 className="font-display text-bone-white">{gene.name}</h4>
                         <div className="flex gap-1">
                           {gene.strains.map((strain) => (
-                            <StrainChip key={strain} strain={strain} />
+                            <StrainChip key={strain} strain={strain} showGlyph />
                           ))}
                         </div>
                       </div>

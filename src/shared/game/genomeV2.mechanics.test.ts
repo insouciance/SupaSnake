@@ -920,7 +920,11 @@ describe('Genome v2 World Condition buildcraft', () => {
       startingStrainPoints: { AURUM: 8 },
       suppressedStrains: ['AURUM'],
     });
-    expect(projectGenomeV2Ladders(suppressed).AURUM.activeTier).toBe(0);
+    expect(projectGenomeV2Ladders(suppressed).AURUM).toMatchObject({
+      suppressed: true,
+      activeTier: 2,
+      tiers: [{ active: true }, { active: false }, { active: false }],
+    });
 
     const conditionWeight = Array.from({ length: 20 }, (_, offerIndex) =>
       rollGenomeV2Offer(reached, offerIndex)
@@ -929,6 +933,32 @@ describe('Genome v2 World Condition buildcraft', () => {
       .find((weight) => weight.condition > 0);
     expect(conditionWeight).toMatchObject({ condition: 100 });
   });
+
+  it.each([
+    { label: 'Shallow', delta: -1, points: 1, effectiveMinor: 1 },
+    { label: 'neutral', delta: 0, points: 2, effectiveMinor: 2 },
+    { label: 'Deep', delta: 1, points: 3, effectiveMinor: 3 },
+  ])(
+    'keeps the $label Minor mechanic active while Dampened caps higher tiers',
+    ({ delta, points, effectiveMinor }) => {
+      const state = createGenomeV2State('PRIMAL', {
+        startingStrainPoints: { FERAL: points },
+        suppressedStrains: ['FERAL'],
+        strainThresholdDelta: { FERAL: delta },
+      });
+      expect(projectGenomeV2Ladders(state).FERAL).toMatchObject({
+        activeTier: 2,
+        tiers: [
+          { effectivePoints: effectiveMinor, active: true },
+          { active: false },
+          { active: false },
+        ],
+      });
+
+      const resolved = ordinary(state, `dampened-feral-${delta}`, 7_500);
+      expect(resolved.ledger.bankableYield).toBeGreaterThan(genomeV2Yield(1));
+    }
+  );
 
   it('rejects threshold shifts outside the authored one-point envelope', () => {
     expect(() => createGenomeV2State('PRIMAL', {

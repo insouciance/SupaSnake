@@ -206,23 +206,23 @@ export function PortalChoiceOverlay({
         <header className="shrink-0 border-b border-scale-blue-light/20 pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-body text-[10px] font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Simulation held · Extraction</p>
+              <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Simulation held · Extraction</p>
               <h2 id="portal-choice-title" className="heading-display text-xl text-[#7df9ff] text-glow sm:text-2xl">Portal Decision</h2>
             </div>
-            <p className="text-right font-body text-[10px] text-beige/50">{doorsPassed} continued · {mutation.actionOrdinal - 1}/{mutation.actionLimit} Genome actions</p>
+            <p className="text-right font-body text-sm text-beige/50">{doorsPassed} continued · {mutation.actionOrdinal - 1}/{mutation.actionLimit} Genome actions</p>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-scale-blue-light/25 bg-void-deep/40 p-2" data-testid="portal-current-stake">
             <div>
-              <p className="font-body text-[10px] uppercase tracking-[0.1em] text-beige/45">Secure now</p>
+              <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Secure now</p>
               <p className="font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`}</p>
             </div>
             <div className="text-right">
-              <p className="font-body text-[10px] uppercase tracking-[0.1em] text-beige/45">Crash now</p>
+              <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Crash now</p>
               <p className="font-mono text-base font-bold text-strike-red">{crashOutcomeLabel ?? `${crashDna.toLocaleString()} DNA`}</p>
             </div>
           </div>
           {outcomeUnitLabel ? (
-            <p className="mt-1 text-center font-body text-[9px] leading-snug text-beige/45" data-testid="portal-outcome-unit">
+            <p className="mt-1 text-center font-body text-sm leading-snug text-beige/45" data-testid="portal-outcome-unit">
               {outcomeUnitLabel}
             </p>
           ) : null}
@@ -239,8 +239,8 @@ export function PortalChoiceOverlay({
               className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-rarity-uncommon">1 · BANK</span>
-              <p className="mt-1 font-body text-xs text-beige">Secure {bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`} and end this run.</p>
-              <p className="mt-2 font-mono text-[10px] text-beige/55" data-testid="portal-bank-carry">Carry {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} continued` : ''}</p>
+              <p className="mt-1 font-body text-sm text-beige">Secure {bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`} and end this run.</p>
+              <p className="mt-2 font-mono text-sm text-beige/55" data-testid="portal-bank-carry">Carry {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} continued` : ''}</p>
             </button>
 
             <button
@@ -252,12 +252,12 @@ export function PortalChoiceOverlay({
               className={`${option} border-scale-blue-light/55 bg-void/55 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-bone-white">2 · {continueLabel}</span>
-              <p className="mt-1 font-body text-xs text-beige">Next portal in {cadence.intervalBase}±{cadence.intervalJitter} foods.</p>
-              <p className="mt-2 font-mono text-[10px] text-beige/55" data-testid="portal-pass-carry">
+              <p className="mt-1 font-body text-sm text-beige">Next portal in {cadence.intervalBase}±{cadence.intervalJitter} foods.</p>
+              <p className="mt-2 font-mono text-sm text-beige/55" data-testid="portal-pass-carry">
                 BANK {carry.bankCurrent} → <b className="text-rarity-uncommon">{carry.bankNext}</b><br />
                 crash {carry.salvageCurrent} → <b className="text-strike-red">{carry.salvageNext}</b>
               </p>
-              {!continueState.unlocked ? <p className="mt-2 font-body text-[10px] leading-snug text-venom-orange" data-testid="portal-continue-lock">Locked · {continueState.reason}{continueState.progress ? ` · ${continueState.progress}` : ''}</p> : null}
+              {!continueState.unlocked ? <p className="mt-2 font-body text-sm leading-snug text-venom-orange" data-testid="portal-continue-lock">Locked · {continueState.reason}{continueState.progress ? ` · ${continueState.progress}` : ''}</p> : null}
             </button>
 
             <button
@@ -269,23 +269,23 @@ export function PortalChoiceOverlay({
               className={`${option} border-cosmic/55 bg-cosmic/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-cosmic">3 · {mutateLabel}</span>
-              <p className="mt-1 font-body text-xs text-beige">
+              <p className="mt-1 font-body text-sm text-beige">
                 +{mutation.growthCost} permanent growth · {mutation.mode === 'recode' ? 'Recode one locus' : mutation.detail}
               </p>
-              <p className="mt-2 font-mono text-[10px] text-beige/55">
+              <p className="mt-2 font-mono text-sm text-beige/55">
                 Action {mutation.actionOrdinal}/{mutation.actionLimit}{mutation.mode === 'recode' ? ` · ${mutation.detail}` : ''}
               </p>
               {rulesVersion === 2 && mutationLoom ? (
                 <div className="mt-2 space-y-1 border-t border-cosmic/20 pt-2" data-testid="portal-mutate-preview">
                   {mutationLoom.model.candidates.map((candidate) => (
-                    <p key={candidate.geneId} className="truncate font-body text-[10px] text-cosmic/80" title={`${candidate.name} · ${candidate.category}`}>
+                    <p key={candidate.geneId} className="truncate font-body text-sm text-cosmic/80" title={`${candidate.name} · ${candidate.category}`}>
                       {candidate.action} · {candidate.name} · {candidate.category}
                     </p>
                   ))}
-                  <p className="font-body text-[9px] text-beige/45">Inspect both paths before committing.</p>
+                  <p className="font-body text-sm text-beige/45">Inspect both paths before committing.</p>
                 </div>
               ) : null}
-              {!mutationUnlock.unlocked ? <p className="mt-2 font-body text-[10px] leading-snug text-venom-orange" data-testid="portal-mutate-lock">Locked · {mutationUnlock.reason}{mutationUnlock.progress ? ` · ${mutationUnlock.progress}` : ''}</p> : null}
+              {!mutationUnlock.unlocked ? <p className="mt-2 font-body text-sm leading-snug text-venom-orange" data-testid="portal-mutate-lock">Locked · {mutationUnlock.reason}{mutationUnlock.progress ? ` · ${mutationUnlock.progress}` : ''}</p> : null}
             </button>
           </div>
 
@@ -293,8 +293,8 @@ export function PortalChoiceOverlay({
             <section className="mt-3 rounded-[10px] border border-cosmic/30 bg-cosmic/5 p-3" data-testid="portal-mirror-wager">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-display text-xs uppercase tracking-[0.1em] text-cosmic">Mirror Wager · next leg</p>
-                  <p className="mt-1 font-body text-[10px] leading-snug text-beige/60">{mirrorChoice.detail}</p>
+                  <p className="font-display text-sm uppercase tracking-[0.1em] text-cosmic">Mirror Wager · next leg</p>
+                  <p className="mt-1 font-body text-sm leading-snug text-beige/60">{mirrorChoice.detail}</p>
                 </div>
                 <button
                   type="button"
@@ -302,7 +302,7 @@ export function PortalChoiceOverlay({
                   aria-checked={activateMirror}
                   disabled={locked || !continueState.unlocked}
                   onClick={() => setActivateMirror((active) => !active)}
-                  className={`min-h-11 min-w-[7.5rem] rounded-[10px] border px-3 font-display text-xs ${
+                  className={`min-h-11 min-w-[7.5rem] rounded-[10px] border px-3 font-display text-sm ${
                     activateMirror
                       ? 'border-cosmic bg-cosmic/15 text-cosmic'
                       : 'border-scale-blue-light/35 bg-void/50 text-beige/65'
@@ -315,7 +315,7 @@ export function PortalChoiceOverlay({
             </section>
           ) : null}
 
-          <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/35 px-3 py-2 font-body text-[11px] leading-snug text-beige/60">
+          <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/35 px-3 py-2 font-body text-sm leading-snug text-beige/60">
             BANK secures this run. {continueLabel} raises future Carry and lowers crash recovery. {mutateLabel} keeps the run alive while converting permanent body growth and spatial pressure into build power.
           </p>
         </div>

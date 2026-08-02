@@ -55,7 +55,9 @@ describe('RunCockpit', () => {
     expect(screen.getByTestId('hold-budget')).toHaveTextContent('2/4');
     expect(screen.getByTestId('hold-budget')).toHaveAttribute('data-spent', 'false');
     expect(screen.getByLabelText('Gold Trail')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Umbra 2 of 4, tier 1, suppressed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(
+      /Umbra 2 of 4, tier 1, Dampened: Minor remains available; Expression and Apex capped/i
+    )).toBeInTheDocument();
     expect(screen.getByTestId('first-movement-prompt')).toHaveTextContent(
       'Swipe or press an arrow to move'
     );
@@ -107,6 +109,64 @@ describe('RunCockpit', () => {
     );
     expect(screen.getByLabelText(/Aurum 3 of 4, tier 2/i)).toBeInTheDocument();
     expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
+  });
+
+  it('renders each run-frozen shifted Apex target without clamping its truth', () => {
+    const { rerender } = render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM'
+              ? { ...strain, points: 3, tier: 3, apexTarget: 3 }
+              : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 3 of 3, tier 3/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(3);
+
+    rerender(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM'
+              ? { ...strain, points: 4, tier: 2, apexTarget: 5 }
+              : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 4 of 5, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(5);
+
+    rerender(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM'
+              ? { ...strain, points: 5, tier: 3, apexTarget: 5 }
+              : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 5 of 5, tier 3/i)).toBeInTheDocument();
   });
 
   it('shows exact Genome v2 Yield labels without pretending they are final DNA', () => {

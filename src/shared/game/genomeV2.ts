@@ -1366,8 +1366,19 @@ export function genomeV2StrainTier(
   state: GenomeV2State,
   strain: StrainId
 ): 0 | GenomeV2StrainThreshold {
-  if (state.suppressedStrains.includes(strain)) return 0;
   const points = genomeV2StrainPoints(state)[strain] ?? 0;
+  const minorActive = points >= genomeV2EffectiveStrainThreshold(
+    state,
+    strain,
+    GENOME_V2_STRAIN_THRESHOLDS.minor
+  );
+  if (!minorActive) return 0;
+  // A Dampened World Condition is a semantic Minor ceiling, not a complete
+  // shutdown. This mirrors the legacy authority and the player-facing rule:
+  // the Strain keeps its Minor identity while Expression and Apex stay off.
+  if (state.suppressedStrains.includes(strain)) {
+    return GENOME_V2_STRAIN_THRESHOLDS.minor;
+  }
   return points >= genomeV2EffectiveStrainThreshold(
     state,
     strain,
@@ -1380,13 +1391,7 @@ export function genomeV2StrainTier(
         GENOME_V2_STRAIN_THRESHOLDS.expression
       )
       ? GENOME_V2_STRAIN_THRESHOLDS.expression
-      : points >= genomeV2EffectiveStrainThreshold(
-          state,
-          strain,
-          GENOME_V2_STRAIN_THRESHOLDS.minor
-        )
-        ? GENOME_V2_STRAIN_THRESHOLDS.minor
-        : 0;
+      : GENOME_V2_STRAIN_THRESHOLDS.minor;
 }
 
 /** Effective target shown by the Loom after the run-frozen World Condition. */
@@ -3584,6 +3589,7 @@ export interface TacticalLoomModel {
 export interface GenomeV2LadderProjection {
   strain: StrainId;
   points: number;
+  suppressed: boolean;
   activeTier: 0 | GenomeV2StrainThreshold;
   tiers: Array<GenomeV2StrainLadderTier & {
     effectivePoints: number;
@@ -3620,6 +3626,7 @@ export function projectGenomeV2Ladders(
       return [strain, {
         strain,
         points: value,
+        suppressed: state.suppressedStrains.includes(strain),
         activeTier,
         tiers: GENOME_V2_STRAIN_LADDERS[strain].map((tier) => ({
           ...tier,

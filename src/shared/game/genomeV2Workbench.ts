@@ -384,10 +384,12 @@ function strainReading(state: GenomeV2State): GenomeV2ResearchStrain[] {
     const suppressed = state.suppressedStrains.includes(id);
     const tiers = ladders[id].tiers.map((tier) => {
       const reached = value >= tier.effectivePoints;
+      const suppressedAboveMinor = suppressed
+        && tier.points !== GENOME_V2_STRAIN_THRESHOLDS.minor;
       const lockedReason = tier.active
         ? null
-        : suppressed
-          ? 'Suppressed for this run'
+        : suppressedAboveMinor
+          ? 'Dampened this run · stops at Minor'
           : tier.points === GENOME_V2_STRAIN_THRESHOLDS.expression
             && !state.ftue.expressionsUnlocked
             ? 'Expression progress not yet unlocked'

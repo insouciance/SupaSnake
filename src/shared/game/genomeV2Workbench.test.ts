@@ -145,4 +145,42 @@ describe('Genome v2 Research model', () => {
       lockedReason: 'Apex progress not yet unlocked',
     });
   });
+
+  it('keeps a Dampened Minor reachable while clearly capping higher reactions', () => {
+    const beforeMinor = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 1 },
+      suppressedStrains: ['AURUM'],
+    });
+    const beforeReading = readGenomeV2RunResearch(
+      genomeV2RunRecord(beforeMinor, settleGenomeV2(beforeMinor, 'bank'))
+    ).strains.find((strain) => strain.id === 'AURUM');
+
+    expect(beforeReading?.tiers[0]).toMatchObject({
+      name: 'Mint',
+      reached: false,
+      active: false,
+      lockedReason: null,
+    });
+    expect(beforeReading?.tiers[1].lockedReason).toContain('stops at Minor');
+
+    const atMinor = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 2 },
+      suppressedStrains: ['AURUM'],
+    });
+    const atMinorReading = readGenomeV2RunResearch(
+      genomeV2RunRecord(atMinor, settleGenomeV2(atMinor, 'bank'))
+    ).strains.find((strain) => strain.id === 'AURUM');
+
+    expect(atMinorReading?.tiers[0]).toMatchObject({ active: true, reached: true });
+    expect(atMinorReading?.tiers.slice(1)).toEqual([
+      expect.objectContaining({
+        active: false,
+        lockedReason: expect.stringContaining('stops at Minor'),
+      }),
+      expect.objectContaining({
+        active: false,
+        lockedReason: expect.stringContaining('stops at Minor'),
+      }),
+    ]);
+  });
 });

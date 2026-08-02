@@ -197,7 +197,12 @@ import {
   formatYieldMultiplier,
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
-import { GENOME_V2_SPLICES, type GenomeV2State } from '@/shared/game/genomeV2';
+import {
+  GENOME_V2_SPLICES,
+  GENOME_V2_STRAIN_THRESHOLDS,
+  projectGenomeV2Ladders,
+  type GenomeV2State,
+} from '@/shared/game/genomeV2';
 import {
   buildGenomeV2PortalPresentation,
   buildGenomeV2OutcomePresentation,
@@ -4521,6 +4526,19 @@ export default function GamePage() {
         strains: GENES[pick.id].strains,
         spent: pick.id === 'phoenix' && phoenixTriggered,
       }));
+  const cockpitGenomeV2Ladders = genomeRulesVersion === 2 && genomeV2State
+    ? projectGenomeV2Ladders(genomeV2State)
+    : null;
+  const cockpitStrainApexTargets = cockpitGenomeV2Ladders
+    ? Object.fromEntries(
+        STRAIN_IDS.map((id) => [
+          id,
+          cockpitGenomeV2Ladders[id].tiers.find(
+            (tier) => tier.points === GENOME_V2_STRAIN_THRESHOLDS.apex
+          )?.effectivePoints ?? GENOME_V2_STRAIN_THRESHOLDS.apex,
+        ])
+      ) as Partial<Record<StrainId, number>>
+    : undefined;
   const cockpitModel: RunCockpitModel = {
     dynasty: selectedDynasty,
     state: cockpitState,
@@ -4574,8 +4592,8 @@ export default function GamePage() {
       points: strainCounts[id] ?? 0,
       tier: normalizeStrainTier(strainTiers[id]),
       suppressed: suppressedStrains.has(id),
+      apexTarget: cockpitStrainApexTargets?.[id],
     })),
-    strainPointCap: 4,
     showGenome: cockpitGenomeVisible,
     portalLive: Boolean(exitTile),
     portalTicksRemaining: Math.max(0, exitTicksRemaining),
@@ -5134,6 +5152,7 @@ export default function GamePage() {
               counts={strainCounts}
               tiers={strainTiers}
               suppressed={gameRef.current?.getGenome()?.suppressedStrains ?? []}
+              apexTargets={cockpitStrainApexTargets}
             />
           </div>
         )}

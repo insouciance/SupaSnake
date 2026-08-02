@@ -410,25 +410,39 @@ function strainProjection(
     after: after[strain] ?? 0,
     thresholds: ladderState[strain].tiers.map((tier) => {
       const permission = lockForTier(tier.points, activation);
+      const suppressedAboveMinor = ladderState[strain].suppressed
+        && tier.points !== GENOME_V2_STRAIN_THRESHOLDS.minor;
       const nextPoints = after[strain] ?? 0;
       const threshold = tier.effectivePoints;
+      const reached = nextPoints >= threshold;
+      const active = reached && permission.unlocked && !suppressedAboveMinor;
+      const lockReasons = [
+        !permission.unlocked
+          ? [permission.reason, permission.progress].filter(Boolean).join(' · ')
+            || 'Activation pending'
+          : null,
+        suppressedAboveMinor
+          ? `${STRAINS[strain].name} is Dampened · stops at Minor this run`
+          : null,
+      ].filter((reason): reason is string => Boolean(reason));
+      const lockedReason = lockReasons.length > 0
+        ? lockReasons.join(' · ')
+        : undefined;
       return {
         points: threshold,
         name: tier.name,
         rule: tier.rule,
-        state: !permission.unlocked
+        state: lockedReason
           ? 'locked' as const
-          : nextPoints >= threshold
+          : active
             ? 'active' as const
             : nextPoints + 1 === threshold
               ? 'next' as const
               : 'future' as const,
-        progressLabel: nextPoints >= threshold
-          ? permission.unlocked ? 'active' : `${nextPoints} / ${threshold}`
+        progressLabel: reached
+          ? active ? 'active' : `${nextPoints} / ${threshold} reached`
           : `${threshold - nextPoints} away`,
-        lockedReason: permission.unlocked
-          ? undefined
-          : [permission.reason, permission.progress].filter(Boolean).join(' · ') || 'Activation pending',
+        lockedReason,
       };
     }),
   }));

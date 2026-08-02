@@ -12,6 +12,8 @@ interface StrainMeterHUDProps {
   counts: StrainPoints;
   tiers: Partial<Record<StrainId, number>>;
   suppressed?: readonly StrainId[];
+  /** Run-frozen effective Apex target for each Strain (normally 3, 4, or 5). */
+  apexTargets?: Readonly<Partial<Record<StrainId, number>>>;
 }
 
 /**
@@ -31,6 +33,7 @@ export function StrainMeterHUD({
   counts,
   tiers,
   suppressed = [],
+  apexTargets = {},
 }: StrainMeterHUDProps) {
   return (
     <div
@@ -40,7 +43,14 @@ export function StrainMeterHUD({
     >
       {STRAIN_IDS.map((strain) => {
         const def = STRAINS[strain];
-        const points = Math.max(0, Math.min(4, Math.floor(counts[strain] ?? 0)));
+        const apexTarget = Math.max(
+          1,
+          Math.min(5, Math.floor(apexTargets[strain] ?? 4))
+        );
+        const points = Math.max(
+          0,
+          Math.min(apexTarget, Math.floor(counts[strain] ?? 0))
+        );
         const tier = Math.max(0, Math.min(3, Math.floor(tiers[strain] ?? 0)));
         const isSuppressed = suppressed.includes(strain);
         return (
@@ -62,8 +72,11 @@ export function StrainMeterHUD({
               </span>
               {isSuppressed && <span className="text-[8px] text-strike-red">CAP</span>}
             </div>
-            <div className="mt-1 flex gap-px sm:gap-0.5" aria-label={`${points} strain points`}>
-              {[1, 2, 3, 4].map((pip) => (
+            <div
+              className="mt-1 flex gap-px sm:gap-0.5"
+              aria-label={`${points} of ${apexTarget} strain points`}
+            >
+              {Array.from({ length: apexTarget }, (_, index) => index + 1).map((pip) => (
                 <span
                   key={pip}
                   className="h-1.5 min-w-0 flex-1 rounded-full border sm:w-2.5 sm:flex-none"

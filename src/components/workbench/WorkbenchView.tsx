@@ -280,7 +280,7 @@ function StrainRail({
               </span>
               <small>
                 {strain.suppressed
-                  ? 'Suppressed this run'
+                  ? 'Dampened · Minor remains available; higher reactions are capped'
                   : strain.tiers.find((tier) => tier.reached && !tier.active)?.lockedReason
                     ?? (strain.nextTier === null
                   ? strain.tiers[2].name

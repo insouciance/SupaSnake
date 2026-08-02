@@ -25,6 +25,13 @@ describe('StrainChip', () => {
     expect(screen.getByTestId('strain-chip-VOLT')).not.toHaveTextContent('•');
   });
 
+  it('can pair the family rune with its visible written identity', () => {
+    render(<StrainChip strain="VOLT" showGlyph />);
+    const chip = screen.getByTestId('strain-chip-VOLT');
+    expect(chip).toHaveTextContent('Volt');
+    expect(chip.querySelector('svg')).toBeInTheDocument();
+  });
+
   it('carries an aria-label in display-only mode', () => {
     render(<StrainChip strain="AURUM" />);
     expect(screen.getByTestId('strain-chip-AURUM')).toHaveAttribute(

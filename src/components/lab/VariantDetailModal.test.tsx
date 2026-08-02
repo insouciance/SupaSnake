@@ -185,7 +185,7 @@ describe('VariantDetailModal reads the selected sibling', () => {
 
     expect(screen.getByTestId('variant-generation')).toHaveTextContent('Gen 7');
     expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
-      'Yield ×1.0723'
+      'Yield ×1.0824'
     );
     expect(screen.getByTestId('variant-ascendance')).toHaveTextContent(
       'Next visible evolution'

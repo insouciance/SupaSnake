@@ -235,7 +235,13 @@ export function RunCockpit({
               data-testid="strain-meter"
             >
               {model.strains.map((strain) => {
-                const pointCap = model.strainPointCap ?? 4;
+                const pointCap = Math.max(
+                  1,
+                  Math.min(
+                    5,
+                    Math.floor(strain.apexTarget ?? model.strainPointCap ?? 4)
+                  )
+                );
                 const activePoints = Math.max(0, Math.min(pointCap, Math.floor(strain.points)));
                 return (
                   <span
@@ -245,8 +251,8 @@ export function RunCockpit({
                       '--strain': strain.color,
                       '--strain-points': String(pointCap),
                     } as TokenStyle}
-                    aria-label={`${strain.name} ${activePoints} of ${pointCap}, tier ${strain.tier}${strain.suppressed ? ', suppressed' : ''}`}
-                    title={`${strain.name} ${activePoints}/${pointCap}${strain.suppressed ? ' · suppressed' : ''}`}
+                    aria-label={`${strain.name} ${activePoints} of ${pointCap}, tier ${strain.tier}${strain.suppressed ? ', Dampened: Minor remains available; Expression and Apex capped' : ''}`}
+                    title={`${strain.name} ${activePoints}/${pointCap}${strain.suppressed ? ' · Dampened · Minor available · higher reactions capped' : ''}`}
                     data-testid={`strain-meter-${strain.id}`}
                   >
                     <span className={styles.strainIcon}><StrainGlyph id={strain.id} /></span>

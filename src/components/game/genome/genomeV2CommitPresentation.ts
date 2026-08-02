@@ -1,9 +1,8 @@
 import { GENOME_V2_GENES, type GenomeV2ActiveGeneId } from '@/shared/game/genes';
 import {
   GENOME_V2_SPLICES,
-  GENOME_V2_STRAIN_LADDERS,
   GENOME_V2_STRAIN_THRESHOLDS,
-  genomeV2StrainPoints,
+  projectGenomeV2Ladders,
   type GenomeV2State,
   type GenomeV2StrainThreshold,
 } from '@/shared/game/genomeV2';
@@ -56,26 +55,31 @@ export function buildGenomeV2CommitPresentation(
     .sort((left, right) => right.acquisitionOrdinal - left.acquisitionOrdinal)[0];
   const formed = after.activeSplices.find((id) => !before.activeSplices.includes(id));
   const broken = before.activeSplices.find((id) => !after.activeSplices.includes(id));
-  const beforePoints = genomeV2StrainPoints(before);
-  const afterPoints = genomeV2StrainPoints(after);
+  const beforeLadders = projectGenomeV2Ladders(before);
+  const afterLadders = projectGenomeV2Ladders(after);
   const moments: GenomeV2CommitMoment[] = [];
 
   for (const strain of STRAIN_IDS) {
-    const from = beforePoints[strain] ?? 0;
-    const to = afterPoints[strain] ?? 0;
-    const rung = GENOME_V2_STRAIN_LADDERS[strain].find(
-      (tier) => from < tier.points && to >= tier.points
+    const from = beforeLadders[strain];
+    const to = afterLadders[strain];
+    const rung = to.tiers.find(
+      (tier) => from.points < tier.effectivePoints && to.points >= tier.effectivePoints
     );
     if (!rung) continue;
-    const unlocked = tierUnlocked(rung.points, activation);
+    const permissionUnlocked = tierUnlocked(rung.points, activation);
+    const active = rung.active && permissionUnlocked;
+    const suppressionReason = to.suppressed
+      && rung.points !== GENOME_V2_STRAIN_THRESHOLDS.minor
+      ? `${STRAINS[strain].name} is Dampened and stops at Minor this run.`
+      : null;
     moments.push({
       id: `rung:${strain}:${rung.points}`,
-      label: `${STRAINS[strain].name} ${rung.points} · ${rung.name}`,
-      detail: unlocked
+      label: `${STRAINS[strain].name} ${rung.effectivePoints} · ${rung.name}`,
+      detail: active
         ? rung.rule
-        : `Rung reached; activation remains locked. ${rung.rule}`,
+        : `Rung reached; activation remains locked. ${suppressionReason ?? rung.rule}`,
       strain,
-      tone: unlocked ? 'positive' : 'warning',
+      tone: active ? 'positive' : 'warning',
     });
   }
 

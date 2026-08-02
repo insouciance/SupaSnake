@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { StrainId } from '@/shared/game/strains';
 import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { StrainChip } from '@/components/traits/StrainChip';
 
 export interface GenomeAtlasGene {
   id: string;
@@ -138,8 +139,10 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
                 data-testid={`atlas-gene-${gene.id}`}
               >
                 <span className="block truncate font-body text-xs font-bold text-bone-white" title={gene.name}>{gene.name}</span>
-                <span className="mt-1 block truncate font-body text-[9px] uppercase tracking-[0.08em] text-beige/45">
-                  {gene.strains.join(' + ')}
+                <span className="mt-1 flex min-w-0 flex-wrap gap-1">
+                  {gene.strains.map((strain) => (
+                    <StrainChip key={strain} strain={strain} showGlyph />
+                  ))}
                 </span>
               </button>
             ))}
@@ -152,11 +155,9 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
               <p className="font-body text-[10px] font-bold uppercase tracking-[0.14em] text-cosmic">{selected.category}</p>
               <h3 className="heading-display text-xl text-bone-white">{selected.name}</h3>
             </div>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] text-beige/55" aria-label={`Strains: ${selected.strains.join(', ')}`}>
+            <span className="flex flex-wrap items-center justify-end gap-1.5" aria-label={`Strains: ${selected.strains.join(', ')}`}>
               {selected.strains.map((strain) => (
-                <span key={strain} className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-scale-blue-light/25 p-1" style={{ color: model.strains.find((entry) => entry.id === strain)?.color }} title={model.strains.find((entry) => entry.id === strain)?.name}>
-                  <StrainGlyph id={strain} />
-                </span>
+                <StrainChip key={strain} strain={strain} showGlyph />
               ))}
             </span>
           </div>

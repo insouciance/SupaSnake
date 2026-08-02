@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { GenomeStrategyAtlas, type GenomeStrategyAtlasModel } from './GenomeStrategyAtlas';
 import { STRAINS, STRAIN_IDS } from '@/shared/game/strains';
 
@@ -23,6 +23,14 @@ function atlasModel(): GenomeStrategyAtlasModel {
         effect: 'DECLINE mints one prospective BANK Bond.',
         cost: 'Passing spends a real build opportunity.',
         strains: ['AURUM'],
+      },
+      {
+        id: 'phoenix',
+        name: 'Phoenix',
+        category: 'Execution & route',
+        effect: 'One deliberate recovery becomes Ash after it fires.',
+        cost: 'Occupies its locus and stops contributing Strain after use.',
+        strains: ['FERAL', 'UMBRA'],
       },
     ],
     strains: STRAIN_IDS.map((id) => ({
@@ -91,5 +99,17 @@ describe('GenomeStrategyAtlas', () => {
     render(<GenomeStrategyAtlas model={atlasModel()} />);
     expect(screen.getByRole('tab', { name: 'Execution & route' })).toHaveClass('min-h-11', 'shrink-0');
     expect(screen.getByTestId('atlas-gene-live_wire').firstElementChild).toHaveClass('truncate');
+  });
+
+  it('shows rune, independent color, and written family for both sides of a dual gene', () => {
+    render(<GenomeStrategyAtlas model={atlasModel()} />);
+    const phoenix = within(screen.getByTestId('atlas-gene-phoenix'));
+    const feral = phoenix.getByTestId('strain-chip-FERAL');
+    const umbra = phoenix.getByTestId('strain-chip-UMBRA');
+    expect(feral).toHaveTextContent('Feral');
+    expect(umbra).toHaveTextContent('Umbra');
+    expect(feral.querySelector('svg')).toBeInTheDocument();
+    expect(umbra.querySelector('svg')).toBeInTheDocument();
+    expect(feral.style.color).not.toBe(umbra.style.color);
   });
 });

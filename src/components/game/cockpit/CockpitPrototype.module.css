@@ -508,12 +508,13 @@
 }
 
 .strainSuppressed {
-  opacity: 0.34;
-  filter: grayscale(0.8);
+  opacity: 0.72;
+  filter: saturate(0.55);
 }
 
 .strainSuppressed .strainIcon {
-  text-decoration: line-through;
+  border: 1px dashed color-mix(in srgb, var(--strain) 62%, transparent);
+  border-radius: 999px;
 }
 
 .systemDormant {

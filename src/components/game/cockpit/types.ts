@@ -20,6 +20,8 @@ export interface RunCockpitStrain {
   points: number;
   tier: StrainTier;
   suppressed: boolean;
+  /** Run-frozen effective Apex target after the active World Condition. */
+  apexTarget?: number;
 }
 
 /**
@@ -77,8 +79,8 @@ export interface RunCockpitModel {
   constellation: { stars: number; fraction: number } | null;
   genes: readonly RunCockpitGene[];
   strains: readonly RunCockpitStrain[];
-  /** Visible ladder width: both versions use four points; Genome v2 activates at 2/3/4. */
-  strainPointCap?: 4;
+  /** Legacy fallback when no per-Strain run-frozen Apex target is available. */
+  strainPointCap?: number;
   showGenome: boolean;
   portalLive: boolean;
   portalTicksRemaining: number;

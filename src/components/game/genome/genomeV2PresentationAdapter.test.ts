@@ -186,6 +186,55 @@ describe('Genome v2 presentation adapter', () => {
     expect(aurum?.thresholds[0]).toMatchObject({ name: 'Mint', state: 'active' });
   });
 
+  it('shows a Dampened family as Minor-active and locks higher reactions', () => {
+    let state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 2 },
+      suppressedStrains: ['AURUM'],
+    });
+    state = apply(state, {
+      type: 'offer_opened',
+      offerId: 'dampened-ladder-offer',
+      source: 'cadence',
+      candidates: ['compound_interest', 'coilkeeper'],
+    });
+    const activation: GenomeV2ActivationPresentation = {
+      ...ACTIVATION,
+      expressions: { unlocked: true },
+      apex: { unlocked: true },
+    };
+
+    const model = buildGenomeV2TacticalLoomModel({ state, activation });
+    const candidate = model?.candidates.find(
+      (entry) => entry.geneId === 'compound_interest'
+    );
+    const aurum = candidate?.consequence.strains.find(
+      (strain) => strain.id === 'AURUM'
+    );
+
+    expect(aurum?.thresholds).toEqual([
+      expect.objectContaining({ points: 2, name: 'Mint', state: 'active' }),
+      expect.objectContaining({
+        points: 3,
+        name: 'Dividend',
+        state: 'locked',
+        lockedReason: expect.stringContaining('Dampened'),
+      }),
+      expect.objectContaining({
+        points: 4,
+        name: 'Treasury',
+        state: 'locked',
+        lockedReason: expect.stringContaining('Dampened'),
+      }),
+    ]);
+    expect(candidate?.consequence.salienceChip ?? '').not.toMatch(/Dividend|Treasury/);
+
+    const ftueLocked = buildGenomeV2TacticalLoomModel({ state, activation: ACTIVATION });
+    const lockedAurum = ftueLocked?.candidates
+      .find((entry) => entry.geneId === 'compound_interest')
+      ?.consequence.strains.find((strain) => strain.id === 'AURUM');
+    expect(lockedAurum?.thresholds[1].lockedReason).toMatch(/Bank 2 runs.*Dampened/);
+  });
+
   it('does not label an absent partner HELD when another fusion closes the branch', () => {
     let state = acquire(createGenomeV2State('COSMIC'), 'mirror_wager', 0);
     state = apply(state, {

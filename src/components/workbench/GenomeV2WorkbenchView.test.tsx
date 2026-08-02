@@ -352,4 +352,31 @@ describe('Genome v2 Research table', () => {
       })
     );
   });
+
+  it('describes an unreached Dampened Minor as available, never already active', async () => {
+    const state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 1 },
+      suppressedStrains: ['AURUM'],
+    });
+    const record = genomeV2RunRecord(state, settleGenomeV2(state, 'bank'));
+    global.fetch = jest.fn(async (input) => ({
+      ok: true,
+      json: async () => String(input).includes('/api/workbench/result/')
+        ? { sessionId: '123e4567-e89b-42d3-a456-426614174001', genome: record }
+        : PANEL,
+    } as Response)) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(
+        <GenomeV2WorkbenchView studyRef="123e4567-e89b-42d3-a456-426614174001" />
+      );
+    });
+
+    const study = await screen.findByTestId('workbench-run-study');
+    const aurum = study.querySelector('[data-testid="workbench-strain-AURUM"]');
+    expect(aurum).toHaveTextContent(
+      'Dampened · Minor remains available; higher reactions are capped'
+    );
+    expect(aurum).not.toHaveTextContent('Minor stays active');
+  });
 });

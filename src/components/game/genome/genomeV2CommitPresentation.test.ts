@@ -1,5 +1,6 @@
 import {
   createGenomeV2State,
+  genomeV2EventId,
   reduceGenomeV2Event,
   type GenomeV2Event,
   type GenomeV2State,
@@ -25,7 +26,7 @@ function apply(
     ...event,
     index,
     tick: state.tick + 1,
-    eventId: `commit-callout:${index}:${event.type}`,
+    eventId: genomeV2EventId(state.runSeed, index),
   } as GenomeV2Event);
 }
 
@@ -119,5 +120,63 @@ describe('Genome v2 post-commit presentation', () => {
         tone: 'warning',
       }),
     ]));
+  });
+
+  it('uses the run-frozen effective threshold in an activation callout', () => {
+    const state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 2 },
+      strainThresholdDelta: { AURUM: 1 },
+    });
+    const offerId = 'offer:shifted-mint';
+    const before = apply(state, {
+      type: 'offer_opened',
+      offerId,
+      source: 'cadence',
+      candidates: ['gold_trail', 'live_wire'],
+    });
+    const after = apply(before, {
+      type: 'gene_acquired',
+      offerId,
+      instanceId: 'instance:shifted-mint',
+      geneId: 'gold_trail',
+      slot: 0,
+      source: 'offer',
+    });
+
+    expect(buildGenomeV2CommitPresentation(before, after, ACTIVATION)?.moments)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ label: 'Aurum 3 · Mint', tone: 'positive' }),
+      ]));
+  });
+
+  it('reports a reached Dampened rung as locked while preserving Minor', () => {
+    const state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 2 },
+      suppressedStrains: ['AURUM'],
+    });
+    const offerId = 'offer:dampened-dividend';
+    const before = apply(state, {
+      type: 'offer_opened',
+      offerId,
+      source: 'cadence',
+      candidates: ['gold_trail', 'live_wire'],
+    });
+    const after = apply(before, {
+      type: 'gene_acquired',
+      offerId,
+      instanceId: 'instance:dampened-dividend',
+      geneId: 'gold_trail',
+      slot: 0,
+      source: 'offer',
+    });
+
+    expect(buildGenomeV2CommitPresentation(before, after, ACTIVATION)?.moments)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Aurum 3 · Dividend',
+          detail: expect.stringContaining('Dampened'),
+          tone: 'warning',
+        }),
+      ]));
   });
 });
