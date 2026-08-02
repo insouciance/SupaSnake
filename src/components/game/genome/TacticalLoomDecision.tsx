@@ -164,7 +164,7 @@ export function TacticalLoomDecision({
         className="panel-elevated flex h-[min(64dvh,620px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 animate-pop-in sm:ml-auto sm:h-full sm:max-h-none sm:w-[min(48rem,56vw)] sm:max-w-none sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5"
         style={{ '--glow': '#a855f7' } as CSSProperties}
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-scale-blue-light/20 pb-3">
+        <header className="flex shrink-0 flex-col items-stretch gap-1.5 border-b border-scale-blue-light/20 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <div className="flex min-w-0 items-start gap-2">
             {onBack ? (
               <button
@@ -185,7 +185,7 @@ export function TacticalLoomDecision({
             </h2>
             </div>
           </div>
-          <p className="max-w-[12rem] text-right font-body text-[10px] leading-snug text-beige/50 sm:text-xs">
+          <p className="font-body text-[10px] leading-snug text-beige/50 sm:max-w-[12rem] sm:text-right sm:text-xs">
             {model.sourceLabel}
           </p>
         </header>

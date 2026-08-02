@@ -12,6 +12,8 @@ const KINDS = new Set<CockpitDecisionFixtureKind>([
   'hold',
   'abandon',
   'gene',
+  'loom',
+  'recode',
   'mutation',
   'portal',
   'surge',
@@ -24,6 +26,6 @@ export default async function DecisionFixturePage({ searchParams }: DecisionFixt
   const raw = Array.isArray(params.kind) ? params.kind[0] : params.kind;
   const kind = KINDS.has(raw as CockpitDecisionFixtureKind)
     ? raw as CockpitDecisionFixtureKind
-    : 'gene';
+    : 'loom';
   return <CockpitDecisionFixture kind={kind} />;
 }

@@ -10,6 +10,7 @@ import {
   StrainSurgeOverlay,
 } from '@/components/game/PortalChoiceOverlay';
 import { ExpressionFlourish } from '@/components/game/ExpressionFlourish';
+import { tacticalLoomFixtureModel } from './tacticalLoomFixtureModel';
 import { RunCockpit } from './RunCockpit';
 import type { RunCockpitModel } from './types';
 import styles from './CockpitPrototype.module.css';
@@ -18,6 +19,8 @@ export type CockpitDecisionFixtureKind =
   | 'hold'
   | 'abandon'
   | 'gene'
+  | 'loom'
+  | 'recode'
   | 'mutation'
   | 'portal'
   | 'surge'
@@ -92,6 +95,21 @@ function Decision({ kind }: { kind: CockpitDecisionFixtureKind }) {
         discoveredSplices={[]}
         onChoose={() => undefined}
         onDecline={() => undefined}
+      />
+    );
+  }
+  if (kind === 'loom' || kind === 'recode') {
+    return (
+      <GeneChoiceOverlay
+        options={(kind === 'loom' ? ['live_wire', 'coilkeeper'] : ['live_wire', 'phase_gate']) as never}
+        held={[]}
+        strainCounts={{}}
+        showStrains
+        splicesUnlocked
+        presentation={tacticalLoomFixtureModel(kind === 'loom' ? 'thread' : 'recode')}
+        onChoose={() => undefined}
+        onDecline={() => undefined}
+        onRecode={() => undefined}
       />
     );
   }
