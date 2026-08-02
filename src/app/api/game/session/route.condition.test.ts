@@ -33,6 +33,7 @@ const mockCaptureException = jest.fn();
 var mockSettleSessionReward: jest.Mock;
 var mockSettleDurableRunProgression: jest.Mock;
 var mockResumeOrRecoverRunImpact: jest.Mock;
+var mockGenomeV2Enabled = true;
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -72,7 +73,11 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
-jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: true }));
+jest.mock('@/lib/features/genomeV2', () => ({
+  get GENOME_V2_ENABLED() {
+    return mockGenomeV2Enabled;
+  },
+}));
 jest.mock('@/lib/server/gameProgressionSettlement', () => ({
   settleDurableRunProgression: (...args: unknown[]) =>
     mockSettleDurableRunProgression(...args),
@@ -681,6 +686,7 @@ const session = () => db.game_sessions[0];
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockGenomeV2Enabled = true;
   db.economy_transactions = [];
   db.serpent_weeks = [];
   db.signal_objective_runs = [];
@@ -1193,6 +1199,39 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
     expect(session().signal_objective_run_id).toBe(SIGNAL_ATTEMPT_ID);
     expect(session().anomaly_id ?? null).toBeNull();
     expect(session().serpent_week_id ?? null).toBeNull();
+  });
+
+  it('issues the complete legacy Genome contract when the v2 rollout is off', async () => {
+    mockGenomeV2Enabled = false;
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({
+        action: 'start',
+        mode: 'signal',
+        snake_id: SNAKE_ID,
+        signalObjectiveId: signalObjectiveId('extract'),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.genome).toMatchObject({
+      runSeed: expect.any(String),
+      ftue: {
+        bankedRuns: expect.any(Number),
+        strainTagsUnlocked: expect.any(Boolean),
+      },
+    });
+    expect(Array.isArray(body.genome.genePool)).toBe(true);
+    expect(body.genome.genePool.length).toBeGreaterThan(1);
+    expect(body.genome).not.toHaveProperty('rulesVersion');
+    expect(body.genome).not.toHaveProperty('v2GenePool');
+    expect(body.runContext.genome).toMatchObject({
+      genePool: body.genome.genePool,
+      tierCap: expect.any(Number),
+    });
+    expect(body.runContext.genome).not.toHaveProperty('rulesVersion');
   });
 
   it('settlement re-derives the SAME condition from the attempt and recomputes with it', async () => {
