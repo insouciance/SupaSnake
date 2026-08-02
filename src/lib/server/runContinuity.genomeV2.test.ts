@@ -490,6 +490,7 @@ describe('Genome v2 continuity replay boundary', () => {
           toTick: trace.ticks,
           actionOffset: 0,
           actions: trace.actions,
+          activeElapsedMs: 1_000,
         },
         now,
       }

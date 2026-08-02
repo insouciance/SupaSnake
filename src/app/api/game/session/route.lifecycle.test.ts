@@ -429,6 +429,7 @@ function seedContinuityTerminalRun(options: {
         toTick: trace.ticks,
         actionOffset: opening.privateState.replay.actions.length,
         actions: trace.actions.slice(opening.privateState.replay.actions.length),
+        activeElapsedMs: 1_000,
       },
     },
   };
@@ -750,7 +751,13 @@ describe('durable earning-end ingress', () => {
         sessionId: 'session-1',
         expectedRevision: 1,
         leaseToken: 'stale-browser-token-is-not-consulted-here',
-        replay: { fromTick: 0, toTick: 0, actionOffset: 0, actions: [] },
+        replay: {
+          fromTick: 0,
+          toTick: 0,
+          actionOffset: 0,
+          actions: [],
+          activeElapsedMs: 0,
+        },
       })
     );
 

@@ -186,6 +186,7 @@ describe('tab-memory settlement retry queue', () => {
       toTick: 10,
       actionOffset: 2,
       actions: [{ tick: 9, kind: 'turn' as const, direction: 'UP' as const }],
+      activeElapsedMs: 2_500,
     };
     enqueueReward(makeEntry({
       leaseToken,
@@ -205,12 +206,28 @@ describe('tab-memory settlement retry queue', () => {
     });
   });
 
+  it('retains a pre-cutover terminal proof without an active clock', () => {
+    enqueueReward(makeEntry({
+      leaseToken: 'l'.repeat(64),
+      replay: {
+        fromTick: 8,
+        toTick: 10,
+        actionOffset: 2,
+        actions: [],
+      },
+      expectedRevision: 3,
+    }));
+
+    expect(readOutbox()).toHaveLength(1);
+  });
+
   it('keeps an unacknowledged checkpoint conflict for recovery', async () => {
     const replay = {
       fromTick: 8,
       toTick: 10,
       actionOffset: 2,
       actions: [{ tick: 9, kind: 'turn' as const, direction: 'UP' as const }],
+      activeElapsedMs: 2_500,
     };
     enqueueReward(makeEntry({
       leaseToken: 'l'.repeat(64),
@@ -242,6 +259,7 @@ describe('tab-memory settlement retry queue', () => {
         toTick: 10,
         actionOffset: 2,
         actions: [],
+        activeElapsedMs: 2_500,
       },
       expectedRevision: 3,
     }));

@@ -185,11 +185,14 @@ export function createRunStartRequestId(): string {
 
 export function buildTerminalReplayProof(
   accepted: SnakeReplayTrace,
-  terminal: SnakeReplayTrace
+  terminal: SnakeReplayTrace,
+  activeElapsedMs: number
 ): SnakeTerminalReplayProof | null {
   if (
     !Number.isSafeInteger(accepted.ticks) ||
     !Number.isSafeInteger(terminal.ticks) ||
+    !Number.isSafeInteger(activeElapsedMs) ||
+    activeElapsedMs < 0 ||
     terminal.ticks < accepted.ticks ||
     !Array.isArray(accepted.actions) ||
     !Array.isArray(terminal.actions) ||
@@ -200,6 +203,7 @@ export function buildTerminalReplayProof(
     toTick: terminal.ticks,
     actionOffset: accepted.actions.length,
     actions: terminal.actions.slice(accepted.actions.length),
+    activeElapsedMs,
   };
 }
 
