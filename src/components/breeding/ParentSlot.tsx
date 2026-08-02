@@ -106,6 +106,7 @@ export function ParentSlot({
           primaryColor={theme.primary}
           secondaryColor={theme.secondary}
           rarity={variant.rarity}
+          generation={snake.generation}
           className="w-full h-full"
         />
       </button>

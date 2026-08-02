@@ -5,6 +5,8 @@ export interface GenomeYieldRecapRow {
   id: string;
   label: string;
   amount: number;
+  /** Exact server/core-formatted fixed-point value when integer fallback loses detail. */
+  amountLabel?: string;
   detail: string;
   tone: 'gain' | 'forfeit' | 'neutral';
 }
@@ -13,6 +15,9 @@ export interface GenomeYieldRecapModel {
   baseYield: number;
   genomeYield: number;
   genomeDelta: number;
+  baseYieldLabel?: string;
+  genomeYieldLabel?: string;
+  genomeDeltaLabel?: string;
   factorLabel: string;
   activeGenes: readonly { id: string; name: string; strains: readonly StrainId[] }[];
   activeSplices: readonly { id: string; name: string }[];
@@ -34,13 +39,13 @@ export function GenomeYieldRecap({ model }: { model: GenomeYieldRecapModel }) {
         <div>
           <p className="font-body text-[9px] font-bold uppercase tracking-[0.16em] text-cosmic">Genome outcome</p>
           <p className="mt-0.5 font-display text-lg text-bone-white">
-            {model.baseYield.toLocaleString()} → {model.genomeYield.toLocaleString()} Yield
+            {model.baseYieldLabel ?? model.baseYield.toLocaleString()} → {model.genomeYieldLabel ?? `${model.genomeYield.toLocaleString()} Yield`}
           </p>
         </div>
         <div className="text-right">
           <p className="font-mono text-lg font-bold text-venom-orange">{model.factorLabel}</p>
           <p className={`font-mono text-xs font-bold ${model.genomeDelta >= 0 ? 'text-rarity-uncommon' : 'text-strike-red'}`}>
-            {model.genomeDelta >= 0 ? '+' : ''}{model.genomeDelta.toLocaleString()}
+            {model.genomeDeltaLabel ?? `${model.genomeDelta >= 0 ? '+' : ''}${model.genomeDelta.toLocaleString()}`}
           </p>
         </div>
       </div>
@@ -74,7 +79,7 @@ export function GenomeYieldRecap({ model }: { model: GenomeYieldRecapModel }) {
             <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3" data-testid={`results-genome-row-${row.id}`}>
               <dt className="font-body text-[11px] text-beige/65">{row.label}</dt>
               <dd className={`font-mono text-[11px] font-bold ${row.tone === 'gain' ? 'text-rarity-uncommon' : row.tone === 'forfeit' ? 'text-strike-red' : 'text-bone-white'}`}>
-                {row.amount > 0 ? '+' : ''}{row.amount.toLocaleString()}
+                {row.amountLabel ?? `${row.amount > 0 ? '+' : ''}${row.amount.toLocaleString()}`}
               </dd>
               <dd className="col-span-2 font-body text-[9px] leading-snug text-beige/45">{row.detail}</dd>
             </div>

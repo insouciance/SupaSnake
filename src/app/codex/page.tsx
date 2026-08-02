@@ -36,7 +36,10 @@ import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconDna, IconFlask } from '@/components/ui/icons';
 import { GenomeStrategyAtlas } from '@/components/game/genome/GenomeStrategyAtlas';
-import { buildLegacyGenomeAtlasModel } from '@/components/game/genome/legacyGenomeAtlasAdapter';
+import {
+  buildGenomeV2AtlasModel,
+  discoveredGenomeV2Recipes,
+} from '@/components/game/genome/genomeV2AtlasAdapter';
 import { GENES } from '@/shared/game/genes';
 import {
   ACTIVE_STRAIN_TIERS,
@@ -252,7 +255,7 @@ function CodexShell({ view }: { view: CodexView }) {
     return refs;
   }, [data]);
   const strategyAtlas = useMemo(
-    () => buildLegacyGenomeAtlasModel(data?.splices ?? []),
+    () => buildGenomeV2AtlasModel(discoveredGenomeV2Recipes(data?.splices ?? [])),
     [data?.splices]
   );
 

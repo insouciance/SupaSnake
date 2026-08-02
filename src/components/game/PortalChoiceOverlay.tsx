@@ -54,6 +54,10 @@ interface PortalChoiceOverlayProps {
   snakeLength: number;
   bankDna: number;
   crashDna: number;
+  /** Exact authoritative/projector labels override legacy client previews. */
+  bankOutcomeLabel?: string;
+  crashOutcomeLabel?: string;
+  outcomeUnitLabel?: string;
   doorsPassed: number;
   cadence: PortalCadence;
   ladderRung?: number;
@@ -78,6 +82,9 @@ export function PortalChoiceOverlay({
   snakeLength,
   bankDna,
   crashDna,
+  bankOutcomeLabel,
+  crashOutcomeLabel,
+  outcomeUnitLabel,
   doorsPassed,
   cadence,
   ladderRung = 0,
@@ -129,8 +136,11 @@ export function PortalChoiceOverlay({
 
   const bank = useCallback(() => {
     onBank();
-    trackFunnelStageOnce(FunnelStages.ACTIVATE, { bank_dna: bankDna });
-  }, [bankDna, onBank]);
+    trackFunnelStageOnce(FunnelStages.ACTIVATE, {
+      ...(rulesVersion === 1 ? { bank_dna: bankDna } : {}),
+      ...(bankOutcomeLabel ? { bank_outcome: bankOutcomeLabel } : {}),
+    });
+  }, [bankDna, bankOutcomeLabel, onBank, rulesVersion]);
   const inspectMutation = useCallback(() => {
     if (rulesVersion === 2 && mutationLoom) {
       setInspectingMutation(true);
@@ -198,13 +208,18 @@ export function PortalChoiceOverlay({
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-scale-blue-light/25 bg-void-deep/40 p-2" data-testid="portal-current-stake">
             <div>
               <p className="font-body text-[10px] uppercase tracking-[0.1em] text-beige/45">Secure now</p>
-              <p className="font-mono text-base font-bold text-rarity-uncommon">{bankDna.toLocaleString()} DNA</p>
+              <p className="font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`}</p>
             </div>
             <div className="text-right">
               <p className="font-body text-[10px] uppercase tracking-[0.1em] text-beige/45">Crash now</p>
-              <p className="font-mono text-base font-bold text-strike-red">{crashDna.toLocaleString()} DNA</p>
+              <p className="font-mono text-base font-bold text-strike-red">{crashOutcomeLabel ?? `${crashDna.toLocaleString()} DNA`}</p>
             </div>
           </div>
+          {outcomeUnitLabel ? (
+            <p className="mt-1 text-center font-body text-[9px] leading-snug text-beige/45" data-testid="portal-outcome-unit">
+              {outcomeUnitLabel}
+            </p>
+          ) : null}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-3 [touch-action:pan-y]" data-testid="portal-scroll-region">
@@ -218,7 +233,7 @@ export function PortalChoiceOverlay({
               className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-rarity-uncommon">1 · BANK</span>
-              <p className="mt-1 font-body text-xs text-beige">Secure {bankDna.toLocaleString()} DNA and end this run.</p>
+              <p className="mt-1 font-body text-xs text-beige">Secure {bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`} and end this run.</p>
               <p className="mt-2 font-mono text-[10px] text-beige/55" data-testid="portal-bank-carry">Carry {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} continued` : ''}</p>
             </button>
 

@@ -129,6 +129,7 @@ function Avatar({
           primaryColor={theme.primary}
           secondaryColor={theme.secondary}
           rarity={identity.avatar.rarity as Rarity}
+          generation={identity.avatar.generation}
           className="w-full h-full object-cover"
         />
       ) : (

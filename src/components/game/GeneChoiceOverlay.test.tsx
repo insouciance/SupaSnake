@@ -41,6 +41,7 @@ function consequence(name: string): TacticalLoomConsequence {
       cost: 'Either failed leg burns the circuit.',
       recipeKnown: true,
       recipeLabel: 'Live Wire + Circuit Run',
+      activation: 'available',
     }],
     ledgers: [
       { id: 'bonds', label: 'Bonds', before: '1', after: '1', detail: 'Bonds remain prospective and BANK-only.' },
@@ -73,7 +74,7 @@ function model(): TacticalLoomDecisionModel {
         consequence: consequence('Live Wire'),
       },
       {
-        action: 'FORK',
+        action: 'THREAD',
         geneId: 'phase_gate',
         name: 'Phase Gate',
         category: 'Terrain',
@@ -172,6 +173,49 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('gene-option-1')).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Enter' });
     expect(onChoose).toHaveBeenCalledWith(1);
+  });
+
+  it('makes a charged Loom Anchor pin a deliberate final DECLINE choice', () => {
+    const onDecline = jest.fn();
+    const baseModel = model();
+    const anchoredModel: TacticalLoomDecisionModel = {
+      ...baseModel,
+      decline: {
+        ...baseModel.decline,
+        options: [
+          {
+            id: 'no-pin',
+            label: 'Do not pin',
+            detail: 'Spend this offer without preserving either candidate.',
+            consequence: baseModel.decline.consequence,
+          },
+          {
+            id: 'pin-a',
+            label: 'Pin Live Wire',
+            detail: 'Spend the charged Anchor; Live Wire enters the next offer.',
+            pinCandidateIndex: 0,
+            consequence: {
+              ...baseModel.decline.consequence,
+              effect: 'Spend the charged Anchor and pin Live Wire. This anchored DECLINE mints no Bond.',
+            },
+          },
+        ],
+      },
+    };
+    render(
+      <GeneChoiceOverlay
+        presentation={anchoredModel}
+        onChoose={jest.fn()}
+        onDecline={onDecline}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-decline'));
+    expect(screen.getByTestId('loom-anchor-decline-step')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('loom-decline-option-pin-a'));
+    expect(screen.getByTestId('loom-consequence-pane')).toHaveTextContent('mints no Bond');
+    fireEvent.click(screen.getByTestId('loom-confirm'));
+    expect(onDecline).toHaveBeenCalledWith(0);
   });
 
   it('uses an explicit incoming-gene then outgoing-locus Recode with the exact growth cost', () => {

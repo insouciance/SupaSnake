@@ -177,16 +177,35 @@ export function TacticalLoomConsequencePane({
           </h4>
           <div className="grid gap-2 sm:grid-cols-2">
             {consequence.splices.map((splice) => (
-              <article key={splice.id} className="rounded-[10px] border border-cosmic/30 bg-cosmic/5 p-3">
+              <article
+                key={splice.id}
+                className={`rounded-[10px] border p-3 ${
+                  splice.activation === 'locked'
+                    ? 'border-scale-blue-light/25 bg-void-deep/40'
+                    : 'border-cosmic/30 bg-cosmic/5'
+                }`}
+                data-activation={splice.activation}
+              >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="font-display text-sm text-cosmic">{splice.name}</p>
+                  <p className={`font-display text-sm ${splice.activation === 'locked' ? 'text-beige/70' : 'text-cosmic'}`}>
+                    {splice.name}
+                  </p>
                   <span className="whitespace-nowrap font-body text-[9px] font-bold uppercase tracking-[0.1em] text-beige/45">
-                    {splice.stage === 'immediate' ? 'Now' : 'One gene away'}
+                    {splice.activation === 'locked'
+                      ? 'Future depth'
+                      : splice.stage === 'immediate'
+                        ? 'Now'
+                        : 'One gene away'}
                   </span>
                 </div>
                 <p className="mt-1 font-body text-[11px] leading-snug text-beige/75">{splice.rule}</p>
                 <p className="mt-1 font-body text-[10px] leading-snug text-strike-red/75">{splice.cost}</p>
                 <p className="mt-2 font-body text-[10px] text-beige/45">{splice.recipeLabel}</p>
+                {splice.lockedReason ? (
+                  <p className="mt-1 font-body text-[10px] leading-snug text-venom-orange">
+                    Activation locked · {splice.lockedReason}
+                  </p>
+                ) : null}
               </article>
             ))}
           </div>
