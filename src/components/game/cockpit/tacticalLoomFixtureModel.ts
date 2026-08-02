@@ -145,7 +145,16 @@ function splice(
   cost: string,
   recipeLabel: string
 ): TacticalLoomSplicePath {
-  return { id, name, stage, rule, cost, recipeKnown: true, recipeLabel };
+  return {
+    id,
+    name,
+    stage,
+    rule,
+    cost,
+    recipeKnown: true,
+    recipeLabel,
+    activation: 'available',
+  };
 }
 
 const PERFECT_CIRCUIT = splice(
