@@ -115,7 +115,7 @@ INSERT INTO gene_definitions (
    'Used gate cells become permanent Scars', 'path', FALSE),
   ('loom_anchor', 'Loom Anchor', 'P', ARRAY['AURUM','UMBRA'],
    'Pin one declined option into the next Thread slot',
-   'One charge, restored only by an explicit portal PASS', 'none', FALSE)
+   'One charge, restored only by an explicit portal CONTINUE', 'none', FALSE)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO genome_gene_versions (
@@ -128,7 +128,7 @@ INSERT INTO genome_gene_versions (
    'Each deliberate Loom DECLINE creates a Bond worth +8% at BANK, up to three',
    'Bonds pay nothing on crash and every DECLINE gives up a build opportunity', 'pure', TRUE),
   ('loan_shark', 2, 'Loan Shark', 'E', ARRAY['AURUM','UMBRA'],
-   'A portal PASS starts a six-food contract whose completed Escrow pays twice its routed value',
+   'A portal CONTINUE starts a six-food contract whose completed Escrow pays twice its routed value',
    'BANK or crash before completion loses the visible Escrow', 'path', TRUE),
   ('live_wire', 2, 'Live Wire', 'EP', ARRAY['VOLT'],
    'Every third eligible target becomes a topology-scaled route test worth ×3',
@@ -159,7 +159,7 @@ INSERT INTO genome_gene_versions (
    'After firing, Ash occupies the socket and contributes no Strain', 'none', TRUE),
   ('loom_anchor', 2, 'Loom Anchor', 'P', ARRAY['AURUM','UMBRA'],
    'Pin one declined option into the next Thread slot',
-   'One charge, restored only by an explicit portal PASS', 'none', TRUE),
+   'One charge, restored only by an explicit portal CONTINUE', 'none', TRUE),
   ('heartwood', 2, 'Heartwood', 'EP', ARRAY['FERAL'],
    'PRIMAL territorial play converts deliberate body geometry into escalating Yield opportunities',
    'Its value requires spatial pressure and safe recovery routes', 'path', TRUE),
