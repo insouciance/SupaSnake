@@ -432,6 +432,7 @@ function strainProjection(
 }
 
 function splicePresentation(
+  state: GenomeV2State,
   candidate: EnrichedCandidateDelta,
   activation: GenomeV2ActivationPresentation,
   currentActiveSplices: readonly GenomeV2SpliceId[]
@@ -470,10 +471,15 @@ function splicePresentation(
           : path.state === 'unavailable'
             ? 'unavailable' as const
             : 'future' as const;
-    const partnerHeld = formsNow || path.state === 'closed_by_completion';
+    // `closed_by_completion` describes the candidate's fate, not ownership of
+    // the other parent. A different deterministic fusion can consume this
+    // candidate while the alternate recipe's partner is still entirely
+    // absent. Derive HELD/NEEDS from the actual pre-choice Genome so the Loom
+    // never invents a gene the player does not own.
+    const partnerHeld = genomeV2HasGene(state, path.partnerGeneId);
     const partnerName = GENOME_V2_GENES[path.partnerGeneId].name;
     const recipeLabel = projectionState === 'closed'
-      ? `${partnerName} is held · ${GENOME_V2_GENES[candidate.geneId].name} is consumed by ${winner ? GENOME_V2_SPLICES[winner].name : 'the selected fusion'} and must return for this branch`
+      ? `${partnerName} is ${partnerHeld ? 'held' : 'still needed'} · ${GENOME_V2_GENES[candidate.geneId].name} is consumed by ${winner ? GENOME_V2_SPLICES[winner].name : 'the selected fusion'} and must return for this branch`
       : projectionState === 'recode'
         ? `Possible only through an outgoing-locus choice · ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`
         : `With ${partnerName} · ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`;
@@ -885,7 +891,12 @@ function candidateConsequence(
       projection.ladder,
       input.activation
     ),
-    splices: splicePresentation(candidate, input.activation, projection.activeSplices),
+    splices: splicePresentation(
+      state,
+      candidate,
+      input.activation,
+      projection.activeSplices
+    ),
     ledgers: liabilityFacts(projection),
     targets: projectedTargetFacts(state, candidate),
     body: [

@@ -139,6 +139,7 @@ describe('RunResults constitutional hierarchy', () => {
             executionSummary: 'Two clean Live Wire routes produced the Genome gain.',
             bankCrashSummary: 'BANK secured the completed route value.',
           },
+          studyGenomeHref: '/codex?view=workbench&result=session-1',
           ascendanceProgression: {
             generation: 11,
             curveVersion: 2,
@@ -157,6 +158,10 @@ describe('RunResults constitutional hierarchy', () => {
     expect(yieldLayer).toContainElement(screen.getByTestId('results-genome-recap'));
     expect(yieldLayer).toContainElement(screen.getByTestId('ascendance-progression'));
     expect(screen.getByTestId('results-genome-recap')).toHaveTextContent('×2.40');
+    expect(screen.getByTestId('results-study-genome')).toHaveAttribute(
+      'href',
+      '/codex?view=workbench&result=session-1'
+    );
     expect(screen.getByTestId('ascendance-v2-next')).toHaveTextContent('+2.00% relative');
   });
 

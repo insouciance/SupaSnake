@@ -12,8 +12,10 @@ jest.mock('@supabase/supabase-js', () => ({
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
-import { GENOME_V2_GENES } from '@/shared/game/genes';
+import { GENES, GENOME_V2_GENES } from '@/shared/game/genes';
 import { GENOME_V2_SPLICE_IDS } from '@/shared/game/genomeV2';
+import { SPLICE_IDS } from '@/shared/game/splices';
+import { GAME_CONFIG } from '@/shared/config/game';
 
 const PLAYER_ID = 'player-1';
 
@@ -31,7 +33,11 @@ function mockDatabase(
     codexError?: object;
     bankedRuns?: number;
     /** Extra `player_codex` rows on top of the gold_trail gene discovery. */
-    extraRows?: { discovery_type: string; entry_id: string }[];
+    extraRows?: {
+      discovery_type: string;
+      entry_id: string;
+      rules_version?: 1 | 2;
+    }[];
   } = {}
 ) {
   mockAuth.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
@@ -55,10 +61,14 @@ function mockDatabase(
                   {
                     discovery_type: 'gene',
                     entry_id: 'gold_trail',
+                    rules_version:
+                      process.env.NEXT_PUBLIC_GENOME_V2 === 'true' ? 2 : 1,
                     first_discovered_at: '2026-07-01T00:00:00Z',
                   },
                   ...(options.extraRows ?? []).map((row) => ({
                     ...row,
+                    rules_version: row.rules_version
+                      ?? (process.env.NEXT_PUBLIC_GENOME_V2 === 'true' ? 2 : 1),
                     first_discovered_at: '2026-07-02T00:00:00Z',
                   })),
                 ],
@@ -119,6 +129,7 @@ function mockDatabase(
 
 describe('GET /api/codex', () => {
   beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_GENOME_V2;
     mockAuth = jest.fn();
     mockFrom = jest.fn();
     sessionQueryEqCalls = [];
@@ -155,6 +166,7 @@ describe('GET /api/codex', () => {
    * here — the catalog arrives and the gate is still reported honestly.
    */
   it('ships the active v2 catalog and reports immediate discovery recording', async () => {
+    process.env.NEXT_PUBLIC_GENOME_V2 = 'true';
     mockDatabase({ bankedRuns: 0 });
     const response = await GET(request());
     const body = await response.json();
@@ -181,6 +193,7 @@ describe('GET /api/codex', () => {
   });
 
   it('ships every tactical recipe while discovery remains honest metadata', async () => {
+    process.env.NEXT_PUBLIC_GENOME_V2 = 'true';
     mockDatabase({
       extraRows: [
         { discovery_type: 'splice', entry_id: 'splice_dragon_hoard' },
@@ -209,6 +222,45 @@ describe('GET /api/codex', () => {
       expect(splice.effect.length).toBeGreaterThan(0);
       expect(splice.cost.length).toBeGreaterThan(0);
     }
+  });
+
+  it('returns durable v1-only discoveries in a collapsed-compatible legacy archive', async () => {
+    process.env.NEXT_PUBLIC_GENOME_V2 = 'true';
+    mockDatabase({
+      extraRows: [
+        { discovery_type: 'gene', entry_id: 'static_charge', rules_version: 1 },
+        { discovery_type: 'splice', entry_id: 'splice_black_magnet', rules_version: 1 },
+      ],
+    });
+    const body = await (await GET(request())).json();
+
+    expect(body.genes.some((gene: { id: string }) => gene.id === 'static_charge')).toBe(false);
+    expect(body.legacyArchive).toMatchObject({ rulesVersion: 1 });
+    expect(body.legacyArchive.genes).toContainEqual(expect.objectContaining({
+      id: 'static_charge',
+      rulesVersion: 1,
+      discovered: true,
+    }));
+    expect(body.legacyArchive.splices).toContainEqual(expect.objectContaining({
+      id: 'splice_black_magnet',
+      rulesVersion: 1,
+      parents: ['magnet_pulse', 'gravity_well'],
+      discovered: true,
+    }));
+  });
+
+  it('preserves the complete legacy catalog contract when v2 is not exact true', async () => {
+    process.env.NEXT_PUBLIC_GENOME_V2 = 'TRUE';
+    mockDatabase({ bankedRuns: 0 });
+    const body = await (await GET(request())).json();
+
+    expect(body.unlocked).toBe(false);
+    expect(body.unlockAt).toBe(GAME_CONFIG.genome.ftue.splicesAt);
+    expect(body.genes).toHaveLength(Object.keys(GENES).length);
+    expect(body.splices).toHaveLength(SPLICE_IDS.length);
+    expect(body.splices.every((splice: { parents: unknown }) => splice.parents === null)).toBe(true);
+    expect(body.genes.every((gene: { rulesVersion?: number }) => gene.rulesVersion === undefined)).toBe(true);
+    expect(body.splices.every((splice: { rulesVersion?: number }) => splice.rulesVersion === undefined)).toBe(true);
   });
 
   it('never counts Free Play runs in the per-gene stats', async () => {

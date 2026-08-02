@@ -23,6 +23,7 @@ import { GENOME_SPAWN } from '@/shared/game/genes';
 const mockUseAuth = jest.fn();
 jest.mock('@/lib/auth/AuthProvider', () => ({ useAuth: () => mockUseAuth() }));
 jest.mock('@/lib/features/workbench', () => ({ WORKBENCH_V1_ENABLED: true }));
+jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: false }));
 
 const PANEL = {
   live: true,

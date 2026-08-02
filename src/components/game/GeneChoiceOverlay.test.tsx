@@ -175,7 +175,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
               id: 'splice_ashen_stake:future',
               name: 'Ashen Stake',
               stage: 'one-step',
-              projectionState: 'future',
+              projectionState: 'closed',
               rule: 'A completed Loan can fund Phoenix.',
               cost: 'The contract pays no ordinary Yield.',
               recipeKnown: true,
@@ -204,6 +204,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Styx Contract');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('HELD Mirror Wager');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Ashen Stake');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('CLOSED');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('NEEDS Loan Shark');
   });
 

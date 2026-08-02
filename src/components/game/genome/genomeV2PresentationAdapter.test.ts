@@ -1,5 +1,17 @@
+var mockGenomeV2Projection: unknown = null;
+
+jest.mock('@/shared/game/genomeV2', () => {
+  const actual = jest.requireActual('@/shared/game/genomeV2') as typeof import('@/shared/game/genomeV2');
+  return {
+    ...actual,
+    projectGenomeV2: (...args: Parameters<typeof actual.projectGenomeV2>) =>
+      mockGenomeV2Projection ?? actual.projectGenomeV2(...args),
+  };
+});
+
 import {
   createGenomeV2State,
+  projectGenomeV2,
   reduceGenomeV2Event,
   type GenomeV2Event,
   type GenomeV2State,
@@ -67,6 +79,10 @@ function acquire(
 }
 
 describe('Genome v2 presentation adapter', () => {
+  afterEach(() => {
+    mockGenomeV2Projection = null;
+  });
+
   it('maps exact projector facts into the shared tactical consequence pane', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'gold_trail', 0);
     state = apply(state, {
@@ -137,6 +153,62 @@ describe('Genome v2 presentation adapter', () => {
         name: 'Dragon Hoard',
         activation: 'locked',
         lockedReason: 'Bank 6 runs · 2 / 6',
+      }),
+    ]));
+  });
+
+  it('does not label an absent partner HELD when another fusion closes the branch', () => {
+    let state = acquire(createGenomeV2State('COSMIC'), 'mirror_wager', 0);
+    state = apply(state, {
+      type: 'offer_opened',
+      offerId: 'phoenix-offer',
+      source: 'cadence',
+      candidates: ['phoenix', 'constellation_crown'],
+    });
+    const actual = projectGenomeV2(state, state.offer?.candidateGeneIds ?? []);
+    const enriched = {
+      ...actual,
+      candidates: actual.candidates.map((candidate) => candidate.geneId === 'phoenix'
+        ? {
+            ...candidate,
+            splicePaths: [
+              {
+                spliceId: 'splice_styx_contract' as const,
+                partnerGeneId: 'mirror_wager' as const,
+                state: 'completes_now' as const,
+                unlocked: true,
+                blockedReason: null,
+              },
+              {
+                spliceId: 'splice_ashen_stake' as const,
+                partnerGeneId: 'loan_shark' as const,
+                state: 'closed_by_completion' as const,
+                unlocked: true,
+                blockedReason: null,
+              },
+            ],
+            resultingActiveSplices: ['splice_styx_contract'] as const,
+          }
+        : candidate),
+    };
+    mockGenomeV2Projection = enriched;
+
+    const model = buildGenomeV2TacticalLoomModel({ state, activation: ACTIVATION });
+    const phoenix = model?.candidates.find((candidate) => candidate.geneId === 'phoenix');
+
+    expect(phoenix?.consequence.splices).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'Styx Contract',
+        projectionState: 'forms-now',
+        partnerLabel: 'Mirror Wager',
+        partnerState: 'held',
+      }),
+      expect.objectContaining({
+        name: 'Ashen Stake',
+        projectionState: 'closed',
+        partnerLabel: 'Loan Shark',
+        partnerState: 'needed',
+        recipeLabel: expect.stringContaining('Loan Shark is still needed'),
       }),
     ]));
   });

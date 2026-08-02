@@ -1,4 +1,6 @@
-describe('GENOME_V2_ENABLED', () => {
+import { genomeV2Enabled } from './genomeV2';
+
+describe('Genome v2 rollout flag', () => {
   const original = process.env.NEXT_PUBLIC_GENOME_V2;
 
   afterEach(() => {
@@ -10,7 +12,7 @@ describe('GENOME_V2_ENABLED', () => {
     jest.resetModules();
   });
 
-  function readFlag(value?: string): boolean {
+  function readBuildFlag(value?: string): boolean {
     if (value === undefined) {
       delete process.env.NEXT_PUBLIC_GENOME_V2;
     } else {
@@ -20,13 +22,18 @@ describe('GENOME_V2_ENABLED', () => {
     return require('./genomeV2').GENOME_V2_ENABLED as boolean;
   }
 
-  it('is opt-in and false when omitted', () => {
-    expect(readFlag()).toBe(false);
+  it('keeps both direct and build-time evaluation opt-in', () => {
+    expect(genomeV2Enabled('true')).toBe(true);
+    expect(genomeV2Enabled(undefined)).toBe(false);
+    expect(readBuildFlag('true')).toBe(true);
+    expect(readBuildFlag()).toBe(false);
   });
 
-  it('enables only for the exact true value', () => {
-    expect(readFlag('true')).toBe(true);
-    expect(readFlag('false')).toBe(false);
-    expect(readFlag('TRUE')).toBe(false);
-  });
+  it.each(['false', 'TRUE', '1', ' true '])(
+    'rejects the non-exact value %s',
+    (value) => {
+      expect(genomeV2Enabled(value)).toBe(false);
+      expect(readBuildFlag(value)).toBe(false);
+    }
+  );
 });

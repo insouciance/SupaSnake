@@ -15,6 +15,7 @@ jest.mock('@/lib/stores/codexStore', () => ({
   useCodexStore: () => mockUseCodexStore(),
 }));
 jest.mock('@/components/ui/NavBar', () => ({ NavBar: () => <nav /> }));
+jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: false }));
 
 const EMPTY_DATA = {
   genes: [],
@@ -151,7 +152,7 @@ describe('Genome Codex page', () => {
           {
             id: 'splice_all_in',
             name: 'All In',
-            parents: ['compound_interest', 'mirror_wager'],
+            parents: null,
             strains: [],
             effect: 'all in effect',
             cost: 'all in cost',
@@ -174,9 +175,10 @@ describe('Genome Codex page', () => {
       'Gold Trail + Compound Interest'
     );
     expect(screen.getByTestId('codex-recipe-splice_all_in')).toHaveTextContent(
-      'Compound Interest + Mirror Wager'
+      'Recipe undiscovered'
     );
-    // Discovery still changes archive history, never mechanical access.
+    expect(screen.queryByText('Compound Interest + Mirror Wager')).not.toBeInTheDocument();
+    // Legacy discovery still changes archive history while v2 is off.
     expect(screen.getAllByText('All In').length).toBeGreaterThan(0);
     expect(screen.getByText('all in effect')).toBeInTheDocument();
     expect(screen.getByText('all in cost')).toBeInTheDocument();
@@ -186,7 +188,7 @@ describe('Genome Codex page', () => {
     mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
     render(<CodexPage />);
     expect(screen.getByTestId('genome-strategy-atlas')).toBeInTheDocument();
-    expect(screen.getByTestId('genome-strategy-atlas')).toHaveAttribute('data-rules-version', '2');
+    expect(screen.getByTestId('genome-strategy-atlas')).toHaveAttribute('data-rules-version', '1');
     expect(screen.getByLabelText('Genome consequence chain')).toHaveTextContent(
       /Offer.*Strain.*Splice.*BANK \/ crash/
     );

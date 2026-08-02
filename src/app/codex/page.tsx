@@ -19,9 +19,11 @@
  * recording at the banked-run unlock. That progression is intact; it simply
  * no longer decides whether the rules exist.
  *
- * Mechanical routes never wait on discovery. Splice recipes, requirements,
- * effects, and costs are visible from the start; discovery records ownership,
- * history, prestige, and rewards around those public rules.
+ * Genome v2 mechanical routes never wait on discovery. Its Splice recipes,
+ * requirements, effects, and costs are visible from the start; discovery
+ * records ownership, history, prestige, and rewards around those public
+ * rules. The preserved v1 archive remains read-only and keeps its original
+ * discovery masking rather than publishing old locked recipes through v2.
  */
 
 import { Suspense, useEffect, useMemo } from 'react';
@@ -29,7 +31,9 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { WorkbenchView } from '@/components/workbench/WorkbenchView';
+import { LegacyGenomeArchive } from '@/components/game/genome/LegacyGenomeArchive';
 import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
+import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import { NavBar } from '@/components/ui/NavBar';
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
@@ -40,7 +44,13 @@ import {
   buildGenomeV2AtlasModel,
   discoveredGenomeV2Recipes,
 } from '@/components/game/genome/genomeV2AtlasAdapter';
-import { GENOME_V2_GENES } from '@/shared/game/genes';
+import { buildLegacyGenomeAtlasModel } from '@/components/game/genome/legacyGenomeAtlasAdapter';
+import {
+  GENES,
+  GENOME_V2_GENES,
+  isGeneId,
+  isGenomeV2ActiveGeneId,
+} from '@/shared/game/genes';
 import {
   ACTIVE_STRAIN_TIERS,
   describe as describeEntry,
@@ -174,6 +184,13 @@ function StrainLadder() {
   );
 }
 
+function catalogGeneName(id: string, rulesVersion?: 1 | 2): string {
+  if (rulesVersion === 2 && isGenomeV2ActiveGeneId(id)) {
+    return GENOME_V2_GENES[id].name;
+  }
+  return isGeneId(id) ? GENES[id].name : id;
+}
+
 /**
  * The two views (WP-2.08).
  *
@@ -221,7 +238,13 @@ function ViewTabs({ view }: { view: CodexView }) {
   );
 }
 
-function CodexShell({ view }: { view: CodexView }) {
+function CodexShell({
+  view,
+  studyRef = null,
+}: {
+  view: CodexView;
+  studyRef?: string | null;
+}) {
   const { session, isAuthenticated } = useAuth();
   const {
     live,
@@ -255,7 +278,9 @@ function CodexShell({ view }: { view: CodexView }) {
     return refs;
   }, [data]);
   const strategyAtlas = useMemo(
-    () => buildGenomeV2AtlasModel(discoveredGenomeV2Recipes(data?.splices ?? [])),
+    () => GENOME_V2_ENABLED
+      ? buildGenomeV2AtlasModel(discoveredGenomeV2Recipes(data?.splices ?? []))
+      : buildLegacyGenomeAtlasModel(data?.splices ?? []),
     [data?.splices]
   );
 
@@ -302,7 +327,7 @@ function CodexShell({ view }: { view: CodexView }) {
         {WORKBENCH_V1_ENABLED && <ViewTabs view={view} />}
 
         {view === 'workbench' ? (
-          <WorkbenchView />
+          <WorkbenchView studyRef={studyRef} />
         ) : (
           <>
         {/* ── The rules. No account, no API, no gate. ─────────────────── */}
@@ -326,7 +351,7 @@ function CodexShell({ view }: { view: CodexView }) {
             blurb="Permanent, snake-bound sidegrades. Bred, never bought."
             entries={lexiconSection('trait')}
           />
-          <StrainLadder />
+          {!GENOME_V2_ENABLED && <StrainLadder />}
           <LexiconGrid
             testId="lexicon-anomalies"
             title="Anomaly weeks"
@@ -465,12 +490,21 @@ function CodexShell({ view }: { view: CodexView }) {
                       </div>
                       <p className="text-sm text-beige/70 mt-3">{splice.effect}</p>
                       <p className="text-xs text-strike-red/75 mt-2">{splice.cost}</p>
-                      <p
-                        className="text-xs font-body text-cosmic/80 mt-2"
-                        data-testid={`codex-recipe-${splice.id}`}
-                      >
-                        Recipe: {GENOME_V2_GENES[splice.parents[0]].name} + {GENOME_V2_GENES[splice.parents[1]].name}
-                      </p>
+                      {splice.parents ? (
+                        <p
+                          className="text-xs font-body text-cosmic/80 mt-2"
+                          data-testid={`codex-recipe-${splice.id}`}
+                        >
+                          Recipe: {catalogGeneName(splice.parents[0], splice.rulesVersion)} + {catalogGeneName(splice.parents[1], splice.rulesVersion)}
+                        </p>
+                      ) : (
+                        <p
+                          className="text-xs font-body text-beige/45 mt-2"
+                          data-testid={`codex-recipe-${splice.id}`}
+                        >
+                          Recipe undiscovered
+                        </p>
+                      )}
                       <p className="text-xs font-mono text-beige/50 mt-3">
                         {splice.discoveries} runs · {splice.banks} banked
                       </p>
@@ -512,6 +546,10 @@ function CodexShell({ view }: { view: CodexView }) {
                   ))}
                 </div>
               </section>
+
+              {data.legacyArchive ? (
+                <LegacyGenomeArchive archive={data.legacyArchive} />
+              ) : null}
             </div>
           )}
         </div>
@@ -529,7 +567,10 @@ function CodexWithParams() {
     WORKBENCH_V1_ENABLED && searchParams?.get('view') === 'workbench'
       ? 'workbench'
       : 'archive';
-  return <CodexShell view={view} />;
+  const studyRef = GENOME_V2_ENABLED && view === 'workbench'
+    ? searchParams?.get('result')
+    : null;
+  return <CodexShell view={view} studyRef={studyRef} />;
 }
 
 /**
