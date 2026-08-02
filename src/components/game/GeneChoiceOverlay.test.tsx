@@ -175,6 +175,32 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(onChoose).toHaveBeenCalledWith(1);
   });
 
+  it('shows an authoritative illegal candidate but cannot commit it', () => {
+    const onChoose = jest.fn();
+    const baseModel = model();
+    const constrained: TacticalLoomDecisionModel = {
+      ...baseModel,
+      candidates: [{
+        ...baseModel.candidates[0],
+        disabledReason: 'Another second life is already active',
+      }, baseModel.candidates[1]],
+    };
+    render(
+      <GeneChoiceOverlay
+        presentation={constrained}
+        onChoose={onChoose}
+        onDecline={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    expect(screen.getByTestId('gene-option-0')).toBeDisabled();
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('Another second life is already active');
+    expect(screen.getByTestId('gene-option-1')).toHaveFocus();
+    fireEvent.keyDown(window, { key: '1' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onChoose).toHaveBeenCalledWith(1);
+  });
+
   it('makes a charged Loom Anchor pin a deliberate final DECLINE choice', () => {
     const onDecline = jest.fn();
     const baseModel = model();

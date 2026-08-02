@@ -27,7 +27,7 @@ import {
   isMutationId,
   type MutationPick,
 } from '@/shared/game/mutations';
-import { GENES } from '@/shared/game/genes';
+import { GENES, GENOME_V2_GENES } from '@/shared/game/genes';
 import { sanitizeTraits, TRAIT_STRAINS, type TraitId } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints, type Lineage } from '@/shared/game/lineage';
 import {
@@ -190,8 +190,31 @@ import type {
 } from '@/shared/types/snake-data-model';
 import {
   ascendanceYieldBreakdown,
+  formatYieldMultiplier,
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
+import { GENOME_V2_SPLICES, type GenomeV2State } from '@/shared/game/genomeV2';
+import {
+  buildGenomeV2PortalPresentation,
+  buildGenomeV2OutcomePresentation,
+  buildGenomeV2TacticalLoomModel,
+  type GenomeV2ActivationPresentation,
+} from '@/components/game/genome/genomeV2PresentationAdapter';
+import {
+  genomeV2RuntimeBridge,
+  parseAscendanceRunPresentationStamp,
+  parseGenomeV2ActivationPresentation,
+  parseGenomeV2State,
+  buildGenomeV2OverclockPresentation,
+  type AscendanceRunPresentationStamp,
+  type GenomeV2OverclockSource,
+} from '@/components/game/genome/genomeV2RuntimeAdapter';
+import {
+  buildGenomeV2YieldRecap,
+  parseGenomeV2RunRecord,
+} from '@/components/game/genome/genomeV2ResultsAdapter';
+import type { GenomeYieldRecapModel } from '@/components/game/genome/GenomeYieldRecap';
+import { buildAscendanceProgressionModel } from '@/components/progression/ascendancePresentationAdapter';
 import { applyEnergyHarvestMultiplier } from '@/shared/game/energyEnvelope';
 import {
   buildGenomeCardModel,
@@ -311,6 +334,7 @@ interface BoardViewportShellProps {
   onPause: () => void;
   onAbandon?: () => void;
   onResetView: () => void;
+  onOverclock?: (source: GenomeV2OverclockSource) => void;
   pauseDisabled: boolean;
   showPause: boolean;
   showAbandon?: boolean;
@@ -328,6 +352,7 @@ function BoardViewportShell({
   onPause,
   onAbandon,
   onResetView,
+  onOverclock,
   pauseDisabled,
   showPause,
   showAbandon,
@@ -344,6 +369,7 @@ function BoardViewportShell({
         onPause={onPause}
         onAbandon={onAbandon}
         onResetView={onResetView}
+        onOverclock={onOverclock}
         pauseDisabled={pauseDisabled}
         showPause={showPause}
         showAbandon={showAbandon}
@@ -407,7 +433,26 @@ function parseAscendanceBreakdown(
   ) {
     return null;
   }
-  return raw as unknown as AscendanceYieldBreakdown;
+  const curveVersion = raw.curveVersion === 2 ? 2 : 1;
+  const multiplierBps = Number.isSafeInteger(raw.multiplierBps)
+    && (raw.multiplierBps as number) >= 10_000
+    ? raw.multiplierBps as number
+    : Math.round((raw.multiplier as number) * 10_000);
+  return {
+    generation: raw.generation as number,
+    curveVersion,
+    baseYield: raw.baseYield as number,
+    multiplierBps,
+    multiplier: raw.multiplier as number,
+    bonusYield: raw.bonusYield as number,
+    totalYield: raw.totalYield as number,
+  };
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function directionCanRelease(result: SetDirectionResult): boolean {
@@ -572,6 +617,12 @@ export default function GamePage() {
   // device until claimed or dismissed twice.
   const [showHandleClaim, setShowHandleClaim] = useState(false);
   const [genomeFtue, setGenomeFtue] = useState<GenomeFtueCapability | null>(null);
+  const [genomeRulesVersion, setGenomeRulesVersion] = useState<1 | 2>(1);
+  const [genomeV2State, setGenomeV2State] = useState<GenomeV2State | null>(null);
+  const [genomeV2Activation, setGenomeV2Activation] =
+    useState<GenomeV2ActivationPresentation | null>(null);
+  const [activeAscendanceStamp, setActiveAscendanceStamp] =
+    useState<AscendanceRunPresentationStamp | null>(null);
   const [portalCanInfuse, setPortalCanInfuse] = useState(false);
   const [expressionFlourish, setExpressionFlourish] = useState<{
     strain: StrainId;
@@ -598,6 +649,8 @@ export default function GamePage() {
   const [settledCredited, setSettledCredited] = useState<number | null>(null);
   const [settledYieldBreakdown, setSettledYieldBreakdown] =
     useState<AscendanceYieldBreakdown | null>(null);
+  const [settledGenomeRecap, setSettledGenomeRecap] =
+    useState<GenomeYieldRecapModel | null>(null);
   const [runImpact, setRunImpact] = useState<RunImpactEnvelope | null>(null);
   const [settlementSecuredPending, setSettlementSecuredPending] = useState(false);
   // Results → SETUP reopens the setup page over a finished run (§5). REPLAY
@@ -1486,10 +1539,18 @@ export default function GamePage() {
     ]));
   }, [equippedSnake]);
   const snakeStrainBands = useMemo<StrainId[]>(
-    () => genomeRun && genomeFtue?.strainTagsUnlocked
-      ? heldMutations.map((pick) => GENES[pick.id].strains[0])
-      : [],
-    [genomeRun, genomeFtue?.strainTagsUnlocked, heldMutations]
+    () => {
+      if (!genomeRun) return [];
+      if (genomeRulesVersion === 2 && genomeV2State) {
+        return Object.values(genomeV2State.instances)
+          .filter((instance) => instance.status === 'active')
+          .map((instance) => GENOME_V2_GENES[instance.geneId].strains[0]);
+      }
+      return genomeFtue?.strainTagsUnlocked
+        ? heldMutations.map((pick) => GENES[pick.id].strains[0])
+        : [];
+    },
+    [genomeFtue?.strainTagsUnlocked, genomeRulesVersion, genomeRun, genomeV2State, heldMutations]
   );
 
   /**
@@ -1517,6 +1578,68 @@ export default function GamePage() {
    * told at the most consequential moment in the game.
    */
   const activeRuleset = getRuleset(normalizeDynastyName(selectedDynasty));
+  const genomeV2Spatial = useMemo(() => ({
+    bodyLength: snake.length,
+    occupiedSpace: `${snake.length + terrain.length} / ${GAME_CONFIG.board.gridSize ** 2} cells`,
+  }), [snake.length, terrain.length]);
+  const genomeV2OfferPresentation = useMemo(() => {
+    if (
+      genomeRulesVersion !== 2
+      || !genomeV2State?.offer
+      || genomeV2State.offer.source === 'portal'
+      || !genomeV2Activation
+    ) {
+      return null;
+    }
+    return buildGenomeV2TacticalLoomModel({
+      state: genomeV2State,
+      activation: genomeV2Activation,
+      spatial: genomeV2Spatial,
+      sourceLabel: `Cadence offer · ${genomeV2State.offer.openedAtFood} foods`,
+    });
+  }, [genomeRulesVersion, genomeV2Activation, genomeV2Spatial, genomeV2State]);
+  const genomeV2PortalPresentation = useMemo(() => {
+    if (
+      genomeRulesVersion !== 2
+      || !genomeV2State?.portal
+      || !genomeV2Activation
+    ) {
+      return null;
+    }
+    const presentation = buildGenomeV2PortalPresentation({
+      state: genomeV2State,
+      activation: genomeV2Activation,
+      spatial: genomeV2Spatial,
+      sourceLabel: `Portal Genome offer · ${genomeV2State.portal.openedAtFood} foods`,
+    });
+    if (!activeAscendanceStamp) return presentation;
+    return {
+      ...presentation,
+      outcomeProjection: {
+        ...presentation.outcomeProjection,
+        label: `${presentation.outcomeProjection.label}; stamped Ascendance ${activeAscendanceStamp.legacy ? 'v1 legacy' : 'v2'} ×${formatYieldMultiplier(activeAscendanceStamp.multiplierBps / 10_000)} and Energy ×${formatYieldMultiplier(activeEnergyMultiplierBps / 10_000)} settle server-side`,
+      },
+    };
+  }, [
+    activeAscendanceStamp,
+    activeEnergyMultiplierBps,
+    genomeRulesVersion,
+    genomeV2Activation,
+    genomeV2Spatial,
+    genomeV2State,
+  ]);
+  const genomeV2LiveOutcome = useMemo(
+    () => genomeRulesVersion === 2 && genomeV2State
+      ? buildGenomeV2OutcomePresentation(genomeV2State)
+      : null,
+    [genomeRulesVersion, genomeV2State]
+  );
+  const genomeV2Overclock = useMemo(
+    () => genomeRulesVersion === 2 && genomeV2State
+      ? buildGenomeV2OverclockPresentation(genomeV2State)
+      : null,
+    [genomeRulesVersion, genomeV2State]
+  );
   /**
    * The portal cadence the run is actually played under (WP-3.12): the
    * dynasty's, shifted by the ladder's "Long Walk" rung.
@@ -1552,7 +1675,11 @@ export default function GamePage() {
   // Engine choice holds are frozen but not paused. All input surfaces and
   // the pause button stay disabled until the active decision resolves.
   const choiceActive =
-    choiceOptions !== null || portalChoicePending || surgeChoicePending;
+    (genomeRulesVersion === 2 && Boolean(genomeV2State?.offer))
+    || genomeV2OfferPresentation !== null
+    || choiceOptions !== null
+    || portalChoicePending
+    || surgeChoicePending;
   const blockingOverlayActive =
     choiceActive || showAbandonConfirm || continuitySafetyHold !== null;
 
@@ -1654,6 +1781,13 @@ export default function GamePage() {
     }
   }, [awaitingResumeInput]);
 
+  const syncGenomeV2Mirror = useCallback(() => {
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    setGenomeV2State(
+      bridge ? parseGenomeV2State(bridge.getState().genomeV2) : null
+    );
+  }, []);
+
   const handleChooseMutation = useCallback((index: 0 | 1) => {
     gameRef.current?.chooseMutation(index);
   }, []);
@@ -1661,6 +1795,44 @@ export default function GamePage() {
   const handleDeclineMutation = useCallback(() => {
     gameRef.current?.declineMutation();
   }, []);
+
+  const handleGenomeV2OfferChoose = useCallback((
+    candidateIndex: 0 | 1,
+    replacementSlot?: number
+  ) => {
+    const offerId = genomeV2State?.offer?.offerId;
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    if (!offerId || !bridge) return;
+    if (bridge.resolveGenomeV2Offer({
+      action: 'choose',
+      offerId,
+      candidateIndex,
+      ...(replacementSlot !== undefined ? { replacementSlot } : {}),
+    })) {
+      setChoiceOptions(null);
+      syncGenomeV2Mirror();
+      audioManager.play('uiClick');
+      armResumeAfterDecision();
+      queueMicrotask(() => void checkpointNowRef.current());
+    }
+  }, [armResumeAfterDecision, genomeV2State?.offer?.offerId, setChoiceOptions, syncGenomeV2Mirror]);
+
+  const handleGenomeV2OfferDecline = useCallback((pinCandidateIndex?: 0 | 1) => {
+    const offerId = genomeV2State?.offer?.offerId;
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    if (!offerId || !bridge) return;
+    if (bridge.resolveGenomeV2Offer({
+      action: 'decline',
+      offerId,
+      ...(pinCandidateIndex !== undefined ? { pinCandidateIndex } : {}),
+    })) {
+      setChoiceOptions(null);
+      syncGenomeV2Mirror();
+      audioManager.play('uiClick');
+      armResumeAfterDecision();
+      queueMicrotask(() => void checkpointNowRef.current());
+    }
+  }, [armResumeAfterDecision, genomeV2State?.offer?.offerId, setChoiceOptions, syncGenomeV2Mirror]);
 
   const handlePortalChoice = useCallback((choice: 'bank' | 'pass' | 'infuse') => {
     if (gameRef.current?.resolvePortalChoice(choice)) {
@@ -1674,6 +1846,64 @@ export default function GamePage() {
       }
     }
   }, [armResumeAfterDecision, setPortalChoicePending]);
+
+  const handleGenomeV2PortalBank = useCallback(() => {
+    const portalId = genomeV2State?.portal?.portalId;
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    if (!portalId || !bridge) return;
+    if (bridge.resolveGenomeV2Portal({ action: 'bank', portalId })) {
+      syncGenomeV2Mirror();
+      audioManager.play('uiClick');
+    }
+  }, [genomeV2State?.portal?.portalId, syncGenomeV2Mirror]);
+
+  const handleGenomeV2PortalContinue = useCallback((activateMirror = false) => {
+    const portalId = genomeV2State?.portal?.portalId;
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    if (!portalId || !bridge) return;
+    if (bridge.resolveGenomeV2Portal({
+      action: 'continue',
+      portalId,
+      activateMirror,
+    })) {
+      setPortalChoicePending(false);
+      syncGenomeV2Mirror();
+      audioManager.play('uiClick');
+      armResumeAfterDecision();
+      queueMicrotask(() => void checkpointNowRef.current());
+    }
+  }, [armResumeAfterDecision, genomeV2State?.portal?.portalId, setPortalChoicePending, syncGenomeV2Mirror]);
+
+  const handleGenomeV2PortalMutate = useCallback((
+    candidateIndex: 0 | 1,
+    replacementSlot?: number
+  ) => {
+    const portalId = genomeV2State?.portal?.portalId;
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    if (!portalId || !bridge) return;
+    if (bridge.resolveGenomeV2Portal({
+      action: 'mutate',
+      portalId,
+      candidateIndex,
+      ...(replacementSlot !== undefined ? { replacementSlot } : {}),
+    })) {
+      setPortalChoicePending(false);
+      syncGenomeV2Mirror();
+      audioManager.play('uiClick');
+      armResumeAfterDecision();
+      queueMicrotask(() => void checkpointNowRef.current());
+    }
+  }, [armResumeAfterDecision, genomeV2State?.portal?.portalId, setPortalChoicePending, syncGenomeV2Mirror]);
+
+  const handleGenomeV2Overclock = useCallback((source: GenomeV2OverclockSource) => {
+    const bridge = genomeV2RuntimeBridge(gameRef.current);
+    if (!bridge) return;
+    if (bridge.activateGenomeV2Overclock({ source })) {
+      syncGenomeV2Mirror();
+      audioManager.play('uiClick');
+      queueMicrotask(() => void checkpointNowRef.current());
+    }
+  }, [syncGenomeV2Mirror]);
 
   const handleSurgeChoice = useCallback((strain: StrainId) => {
     if (gameRef.current?.chooseSurge(strain)) {
@@ -1716,6 +1946,9 @@ export default function GamePage() {
     const mirrorGenomeState = () => {
       const state = gameRef.current?.getState();
       if (!state) return;
+      setGenomeV2State(parseGenomeV2State(
+        (state as typeof state & { genomeV2?: unknown }).genomeV2
+      ));
       setStrains(state.strainCounts, state.strainTiers);
       setFusedSplices(state.fusedSplices);
       setGildedCells(state.gildedCells);
@@ -1779,7 +2012,16 @@ export default function GamePage() {
     // pause menu never renders here.
     gameRef.current.on('mutationChoice', (data: any) => {
       setAwaitingResumeInput(false);
-      setChoiceOptions(data.options, data.source ?? 'gene_food');
+      const liveState = gameRef.current?.getState();
+      const liveGenomeV2 = parseGenomeV2State(
+        (liveState as (typeof liveState & { genomeV2?: unknown }) | undefined)?.genomeV2
+      );
+      setGenomeV2State(liveGenomeV2);
+      if (liveGenomeV2?.offer) {
+        setChoiceOptions(null);
+      } else {
+        setChoiceOptions(data.options, data.source ?? 'gene_food');
+      }
       // Alongside the options, not on the next tick: the overlay must never
       // render its consequence line from a stale forecast.
       setChoicePityStrain(gameRef.current?.getState().pendingChoicePity ?? null);
@@ -1806,6 +2048,10 @@ export default function GamePage() {
 
     gameRef.current.on('portalChoice', (data: any) => {
       setAwaitingResumeInput(false);
+      const liveState = gameRef.current?.getState();
+      setGenomeV2State(parseGenomeV2State(
+        (liveState as (typeof liveState & { genomeV2?: unknown }) | undefined)?.genomeV2
+      ));
       setPortalCanInfuse(data?.canInfuse === true);
       setPortalChoicePending(true);
       audioManager.play('pause');
@@ -2109,6 +2355,7 @@ export default function GamePage() {
               setSettledYield(null);
               setSettledCredited(null);
               setSettledYieldBreakdown(null);
+              setSettledGenomeRecap(null);
               setClanBattleResult(null);
             } else {
             const impactEnvelope = parseImpactFromSettlement(result);
@@ -2135,6 +2382,15 @@ export default function GamePage() {
             );
             setSettledYieldBreakdown(
               parseAscendanceBreakdown(validation.ascendance)
+            );
+            const genomeV2Record = parseGenomeV2RunRecord(
+              validation.genomeV2
+                ?? (recordValue(validation.genome)?.v === 2
+                  ? validation.genome
+                  : null)
+            );
+            setSettledGenomeRecap(
+              genomeV2Record ? buildGenomeV2YieldRecap(genomeV2Record) : null
             );
             setSettledCredited(
               typeof validation.adjustedDna === 'number'
@@ -2397,6 +2653,9 @@ export default function GamePage() {
       // the invisible-block bug for every non-genome run.
       setTerrain(state.terrain);
       setRevivePhaseTicks(state.revivePhaseTicksRemaining);
+      setGenomeV2State(parseGenomeV2State(
+        (state as typeof state & { genomeV2?: unknown }).genomeV2
+      ));
       if (gameRef.current.getGenome()) {
         setStrains(state.strainCounts, state.strainTiers);
         setFusedSplices(state.fusedSplices);
@@ -2525,6 +2784,7 @@ export default function GamePage() {
     setSettledYield(null);
     setSettledCredited(null);
     setSettledYieldBreakdown(null);
+    setSettledGenomeRecap(null);
     setClanBattleResult(null);
     setRunImpact(null);
     setSettlementSecuredPending(false);
@@ -2553,6 +2813,21 @@ export default function GamePage() {
     // it only learns it" has to be visible in the UI, not just true in the
     // request.
     setLadderRung(resolveLadderRung(startedLadder?.rung));
+
+    const rawGenome = recordValue(data.genome);
+    const startedRulesVersion = rawGenome?.rulesVersion === 2 ? 2 : 1;
+    const startedActivation = startedRulesVersion === 2
+      ? parseGenomeV2ActivationPresentation(rawGenome?.ftuePresentation)
+      : null;
+    setGenomeRulesVersion(startedRulesVersion);
+    setGenomeV2Activation(startedActivation);
+    setGenomeV2State(null);
+    const runContext = recordValue(data.runContext);
+    const runContextSnake = recordValue(runContext?.snake);
+    setActiveAscendanceStamp(parseAscendanceRunPresentationStamp(
+      runContextSnake?.ascendance,
+      snakeMeta.generation
+    ));
 
     const genomeCapability = sanitizeGenomeCapability(data.genome);
     game.setGenome(genomeCapability);
@@ -3201,7 +3476,14 @@ export default function GamePage() {
     gameStartTime.current = Date.now() - active.checkpoint.privateState.elapsedMs;
     setCurrentSessionId(active.sessionId);
     setActiveEnergyCommitted(active.energyCommitted);
-    setChoiceOptions(state.pendingChoice, state.choiceSource);
+    const restoredGenomeV2 = parseGenomeV2State(
+      (state as typeof state & { genomeV2?: unknown }).genomeV2
+    );
+    setGenomeV2State(restoredGenomeV2);
+    setChoiceOptions(
+      restoredGenomeV2?.offer ? null : state.pendingChoice,
+      restoredGenomeV2?.offer ? null : state.choiceSource
+    );
     setHeldMutations(state.heldMutations);
     setPortalCanInfuse(state.pendingPortalChoice?.canInfuse === true);
     setPortalChoicePending(state.pendingPortalChoice !== null);
@@ -3689,6 +3971,25 @@ export default function GamePage() {
         return;
       }
 
+      if (
+        (e.key === 'r' || e.key === 'R')
+        && !e.repeat
+        && isPlaying
+        && !isGameOver
+        && !isPaused
+        && !isReady
+        && !genomeV2Overclock?.active
+      ) {
+        const source = e.shiftKey
+          ? genomeV2Overclock?.available[1] ?? genomeV2Overclock?.available[0]
+          : genomeV2Overclock?.available[0];
+        if (source) {
+          e.preventDefault();
+          handleGenomeV2Overclock(source.source);
+          return;
+        }
+      }
+
       // Existing direction logic (only when game is running)
       if (!isPlaying || isGameOver || isPaused || isReady) return;
 
@@ -3706,7 +4007,7 @@ export default function GamePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, handlePause, releaseReadyBoard, releaseResumeGate, requiresDirectionalStart, runContinuityPhase, syncAim, withTickTiming]);
+  }, [isPlaying, isGameOver, isPaused, isDeathSequence, isReady, blockingOverlayActive, awaitingResumeInput, genomeV2Overclock, handleGenomeV2Overclock, handlePause, releaseReadyBoard, releaseResumeGate, requiresDirectionalStart, runContinuityPhase, syncAim, withTickTiming]);
 
   // FlickSurface delegates every direction here. Ready/resume admission is
   // atomic, and active flicks use the two-unresolved-turn mobile buffer while
@@ -3920,6 +4221,16 @@ export default function GamePage() {
       showFirstResultDiscovery,
     ]
   );
+  const settledAscendanceProgression = useMemo(
+    () => settledYieldBreakdown
+      ? buildAscendanceProgressionModel({
+          generation: settledYieldBreakdown.generation,
+          curveVersion: settledYieldBreakdown.curveVersion,
+          frozenMultiplierBps: settledYieldBreakdown.multiplierBps,
+        })
+      : null,
+    [settledYieldBreakdown]
+  );
 
   const handleResultsNextAction = useCallback(() => {
     if (resultsNextAction.id === 'save-progress') setShowSaveProgress(true);
@@ -4059,9 +4370,11 @@ export default function GamePage() {
     );
   }
 
-  const cockpitGenomeVisible = heldMutations.length > 0 || (
-    genomeRun && genomeFtue?.strainTagsUnlocked === true
-  );
+  const cockpitGenomeVisible = genomeRulesVersion === 2
+    ? genomeV2State !== null
+    : heldMutations.length > 0 || (
+        genomeRun && genomeFtue?.strainTagsUnlocked === true
+      );
   const suppressedStrains = new Set(
     gameRef.current?.getGenome()?.suppressedStrains ?? []
   );
@@ -4098,6 +4411,43 @@ export default function GamePage() {
             : exitTile
               ? 'Extraction window open'
               : 'Run stable';
+  const cockpitGenes = genomeRulesVersion === 2 && genomeV2State
+    ? genomeV2State.slots.flatMap((slot): RunCockpitModel['genes'][number][] => {
+        const occupant = slot.occupant;
+        if (!occupant) return [];
+        if (occupant.kind === 'ash') {
+          return [{ id: 'phoenix', name: 'Ash', strains: [], spent: true }];
+        }
+        if (occupant.kind === 'gene') {
+          const instance = genomeV2State.instances[occupant.instanceId];
+          if (!instance) return [];
+          const gene = GENOME_V2_GENES[instance.geneId];
+          return [{
+            id: instance.geneId,
+            name: gene.name,
+            strains: gene.strains,
+            spent: instance.status === 'ash',
+          }];
+        }
+        const splice = GENOME_V2_SPLICES[occupant.spliceId];
+        const strains = Array.from(new Set(
+          occupant.parentInstanceIds.flatMap((instanceId) => {
+            const instance = genomeV2State.instances[instanceId];
+            return instance ? GENOME_V2_GENES[instance.geneId].strains : [];
+          })
+        ));
+        return [{
+          id: occupant.spliceId,
+          name: splice.name,
+          strains,
+        }];
+      })
+    : heldMutations.slice(0, 6).map((pick) => ({
+        id: pick.id,
+        name: GENES[pick.id].name,
+        strains: GENES[pick.id].strains,
+        spent: pick.id === 'phoenix' && phoenixTriggered,
+      }));
   const cockpitModel: RunCockpitModel = {
     dynasty: selectedDynasty,
     state: cockpitState,
@@ -4130,8 +4480,12 @@ export default function GamePage() {
                 : 'exempt',
         },
     holds: isPlaying ? holdBudget : null,
-    bankDna: previewOutcome(true, activeAnomalyId),
-    crashDna: previewOutcome(false, activeAnomalyId),
+    overclock: genomeV2Overclock,
+    bankDna: genomeRulesVersion === 2 ? 0 : previewOutcome(true, activeAnomalyId),
+    crashDna: genomeRulesVersion === 2 ? 0 : previewOutcome(false, activeAnomalyId),
+    bankOutcomeLabel: genomeV2LiveOutcome?.bank.replace(' Yield', 'Y'),
+    crashOutcomeLabel: genomeV2LiveOutcome?.crash.replace(' Yield', 'Y'),
+    outcomeUnitLabel: genomeV2LiveOutcome?.label,
     constellation:
       isPlaying && constellationWindowTicks > 0
         ? {
@@ -4139,12 +4493,7 @@ export default function GamePage() {
             fraction: constellationTicksRemaining / constellationWindowTicks,
           }
         : null,
-    genes: heldMutations.slice(0, 6).map((pick) => ({
-      id: pick.id,
-      name: GENES[pick.id].name,
-      strains: GENES[pick.id].strains,
-      spent: pick.id === 'phoenix' && phoenixTriggered,
-    })),
+    genes: cockpitGenes,
     strains: STRAIN_IDS.map((id) => ({
       id,
       name: STRAINS[id].name,
@@ -4157,6 +4506,50 @@ export default function GamePage() {
     portalLive: Boolean(exitTile),
     portalTicksRemaining: Math.max(0, exitTicksRemaining),
   };
+  const genomeV2OfferNode = genomeV2OfferPresentation && isPlaying && !isGameOver
+    ? (
+        <GeneChoiceOverlay
+          presentation={genomeV2OfferPresentation}
+          onChoose={handleGenomeV2OfferChoose}
+          onRecode={handleGenomeV2OfferChoose}
+          onDecline={handleGenomeV2OfferDecline}
+        />
+      )
+    : null;
+  const genomeV2PortalNode = genomeV2PortalPresentation
+    && portalChoicePending
+    && isPlaying
+    && !isGameOver
+    ? (
+        <PortalChoiceOverlay
+          canInfuse={genomeV2PortalPresentation.mutateState.unlocked}
+          infusesUsed={genomeV2State?.portalGenomeActions ?? 0}
+          snakeLength={snake.length}
+          bankDna={0}
+          crashDna={0}
+          bankOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.bank}
+          crashOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.crash}
+          outcomeUnitLabel={genomeV2PortalPresentation.outcomeProjection.label}
+          doorsPassed={genomeV2State?.carryPasses ?? 0}
+          cadence={activeLadderCadence}
+          ladderRung={ladderRung}
+          rulesVersion={2}
+          continueState={genomeV2PortalPresentation.continueState}
+          mutateState={genomeV2PortalPresentation.mutateState}
+          carryProjection={genomeV2PortalPresentation.carryProjection}
+          mutationTerms={genomeV2PortalPresentation.mutationTerms}
+          mirrorChoice={genomeV2PortalPresentation.mirrorChoice ?? undefined}
+          mutationLoom={genomeV2PortalPresentation.mutationLoom
+            ? {
+                model: genomeV2PortalPresentation.mutationLoom,
+                onCommit: handleGenomeV2PortalMutate,
+              }
+            : undefined}
+          onBank={handleGenomeV2PortalBank}
+          onPass={handleGenomeV2PortalContinue}
+        />
+      )
+    : null;
   const cockpitDecisionDock: ReactNode = !HUD_COCKPIT_V1_ENABLED
     ? undefined
     : continuitySafetyHold !== null && isPlaying && !isGameOver
@@ -4192,6 +4585,8 @@ export default function GamePage() {
             onConfirm={handleQuit}
           />
         )
+      : genomeV2OfferNode
+        ? genomeV2OfferNode
       : choiceOptions && isPlaying && !isGameOver && genomeRun
         ? (
             <GeneChoiceOverlay
@@ -4215,7 +4610,9 @@ export default function GamePage() {
                 onDecline={handleDeclineMutation}
               />
             )
-          : portalChoicePending && isPlaying && !isGameOver
+          : genomeV2PortalNode
+            ? genomeV2PortalNode
+          : genomeRulesVersion === 1 && portalChoicePending && isPlaying && !isGameOver
             ? (
                 <PortalChoiceOverlay
                   canInfuse={portalCanInfuse}
@@ -4578,11 +4975,11 @@ export default function GamePage() {
               }`}
             >
               <span className="text-[#7df9ff] font-bold">
-                <span className="hidden sm:inline">BANK </span>{previewOutcome(true, activeAnomalyId)}
+                <span className="hidden sm:inline">BANK </span>{genomeV2LiveOutcome?.bank.replace(' Yield', 'Y') ?? previewOutcome(true, activeAnomalyId)}
               </span>
               <span className="text-beige/40">·</span>
               <span className="text-beige/60">
-                <span className="hidden sm:inline">crash </span>{previewOutcome(false, activeAnomalyId)}
+                <span className="hidden sm:inline">crash </span>{genomeV2LiveOutcome?.crash.replace(' Yield', 'Y') ?? previewOutcome(false, activeAnomalyId)}
               </span>
             </div>
           )}
@@ -4774,8 +5171,11 @@ export default function GamePage() {
           dnaCollected={dnaCollected}
           heldMutations={heldMutations}
           phoenixTriggered={phoenixTriggered}
-          bankDna={previewOutcome(true, activeAnomalyId)}
-          crashDna={previewOutcome(false, activeAnomalyId)}
+          bankDna={genomeRulesVersion === 2 ? 0 : previewOutcome(true, activeAnomalyId)}
+          crashDna={genomeRulesVersion === 2 ? 0 : previewOutcome(false, activeAnomalyId)}
+          bankOutcomeLabel={genomeV2LiveOutcome?.bank}
+          crashOutcomeLabel={genomeV2LiveOutcome?.crash}
+          outcomeUnitLabel={genomeV2LiveOutcome?.label}
           onResume={handleResume}
           onQuit={handleQuit}
         />
@@ -4783,7 +5183,9 @@ export default function GamePage() {
 
       {/* Mutation choice-of-2 (engine frozen in its choice hold - never
           concurrent with the pause menu: pause is refused during the hold) */}
-      {!HUD_COCKPIT_V1_ENABLED && (choiceOptions && isPlaying && !isGameOver && genomeRun ? (
+      {!HUD_COCKPIT_V1_ENABLED && genomeV2OfferNode}
+
+      {!HUD_COCKPIT_V1_ENABLED && !genomeV2OfferNode && (choiceOptions && isPlaying && !isGameOver && genomeRun ? (
         <GeneChoiceOverlay
           options={choiceOptions}
           held={heldMutations}
@@ -4804,7 +5206,9 @@ export default function GamePage() {
         />
       ) : null)}
 
-      {!HUD_COCKPIT_V1_ENABLED && portalChoicePending && isPlaying && !isGameOver && (
+      {!HUD_COCKPIT_V1_ENABLED && genomeV2PortalNode}
+
+      {!HUD_COCKPIT_V1_ENABLED && !genomeV2PortalNode && genomeRulesVersion === 1 && portalChoicePending && isPlaying && !isGameOver && (
         <PortalChoiceOverlay
           canInfuse={portalCanInfuse}
           infusesUsed={infusesCount}
@@ -5042,6 +5446,8 @@ export default function GamePage() {
                   shareArtifact={
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
                   }
+                  genomeRecap={settledGenomeRecap}
+                  ascendanceProgression={settledAscendanceProgression}
                 />
               ) : (
                 <RunSetupPanel
@@ -5199,15 +5605,23 @@ export default function GamePage() {
                         data-testid="gameover-hypothetical"
                       >
                         would have banked +
-                        {hypotheticalDna ?? previewOutcome(endReason === 'extracted')}
+                        {hypotheticalDna ?? (genomeRulesVersion === 2
+                          ? (endReason === 'extracted'
+                              ? genomeV2LiveOutcome?.bank
+                              : genomeV2LiveOutcome?.crash) ?? 'settling'
+                          : previewOutcome(endReason === 'extracted'))}
                       </span>
                     ) : endReason === 'extracted' ? (
                       <span className="font-bold text-rarity-uncommon">
-                        {dnaCollected} → +{previewOutcome(true)}
+                        {genomeRulesVersion === 2
+                          ? genomeV2LiveOutcome?.bank ?? 'Genome Yield settling'
+                          : `${dnaCollected} → +${previewOutcome(true)}`}
                       </span>
                     ) : (
                       <span className="font-bold text-venom-orange text-glow-orange">
-                        {dnaCollected} → +{previewOutcome(false)}
+                        {genomeRulesVersion === 2
+                          ? genomeV2LiveOutcome?.crash ?? 'Genome Yield settling'
+                          : `${dnaCollected} → +${previewOutcome(false)}`}
                       </span>
                     )}
                   </p>
@@ -5566,6 +5980,7 @@ export default function GamePage() {
         onPause={handlePause}
         onAbandon={() => setShowAbandonConfirm(true)}
         onResetView={() => setViewResetToken((token) => token + 1)}
+        onOverclock={handleGenomeV2Overclock}
         pauseDisabled={pauseRearming && !awaitingResumeInput}
         showPause={!isGameOver && !isReady && !isPaused && !blockingOverlayActive}
         showAbandon={awaitingResumeInput && !showAbandonConfirm}

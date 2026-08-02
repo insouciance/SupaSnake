@@ -81,6 +81,28 @@ describe('RunCockpit', () => {
     );
   });
 
+  it('shows exact Genome v2 Yield labels without pretending they are final DNA', () => {
+    render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          bankOutcomeLabel: '42.75Y',
+          crashOutcomeLabel: '8.5Y',
+          outcomeUnitLabel: 'Genome Yield before stamped outer multipliers',
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText('Bank value 42.75Y')).toHaveAttribute(
+      'title',
+      'Genome Yield before stamped outer multipliers'
+    );
+    expect(screen.getByLabelText('Crash salvage 8.5Y')).toBeInTheDocument();
+  });
+
   it('adapts training progress without exposing economy instruments', () => {
     render(
       <RunCockpit
@@ -147,6 +169,61 @@ describe('RunCockpit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pause run' }));
     expect(onResetView).toHaveBeenCalledTimes(1);
     expect(onPause).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes REDLINE an explicit player action and shows its bounded active window', () => {
+    const onOverclock = jest.fn();
+    const { rerender } = render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'active',
+          overclock: {
+            active: null,
+            available: [{
+              source: 'zenith_protocol',
+              label: 'REDLINE',
+              multiplierBps: 17_500,
+              moveBudget: 14,
+            }],
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+        onOverclock={onOverclock}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Activate REDLINE, speed 1.75 times for 14 moves',
+    }));
+    expect(onOverclock).toHaveBeenCalledWith('zenith_protocol');
+
+    rerender(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'active',
+          overclock: {
+            active: {
+              source: 'zenith_protocol',
+              label: 'REDLINE',
+              multiplierBps: 17_500,
+              remainingMoves: 9,
+            },
+            available: [],
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+        onOverclock={onOverclock}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByRole('status', { name: /redline active at 1.75 times speed for 9 more moves/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /activate redline/i })).toBeNull();
   });
 
   it('keeps tactical-hold guidance off-board and exposes an abandon action', () => {

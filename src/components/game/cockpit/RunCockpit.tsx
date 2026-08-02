@@ -8,6 +8,7 @@ import {
   EnergyGlyph,
   GeneGlyph,
   ModeGlyph,
+  OverclockGlyph,
   PauseGlyph,
   PortalGlyph,
   ResetGlyph,
@@ -19,6 +20,7 @@ import {
   TrainingTickGlyph,
 } from './CockpitGlyphs';
 import type { RunCockpitModel } from './types';
+import type { GenomeV2OverclockSource } from '@/components/game/genome/genomeV2RuntimeAdapter';
 import styles from './CockpitPrototype.module.css';
 
 interface RunCockpitProps {
@@ -27,6 +29,7 @@ interface RunCockpitProps {
   onPause: () => void;
   onAbandon?: () => void;
   onResetView: () => void;
+  onOverclock?: (source: GenomeV2OverclockSource) => void;
   pauseDisabled?: boolean;
   showPause?: boolean;
   showAbandon?: boolean;
@@ -74,6 +77,7 @@ export function RunCockpit({
   onPause,
   onAbandon,
   onResetView,
+  onOverclock,
   pauseDisabled = false,
   showPause = true,
   showAbandon = false,
@@ -215,13 +219,13 @@ export function RunCockpit({
             </div>
 
             <div className={styles.outcomes}>
-              <span className={styles.secureOutcome} aria-label={`Bank value ${formatTelemetry(model.bankDna)} DNA`}>
+              <span className={styles.secureOutcome} aria-label={`Bank value ${model.bankOutcomeLabel ?? `${formatTelemetry(model.bankDna)} DNA`}`} title={model.outcomeUnitLabel}>
                 <ShieldGlyph />
-                <strong>{formatTelemetry(model.bankDna)}</strong>
+                <strong>{model.bankOutcomeLabel ?? formatTelemetry(model.bankDna)}</strong>
               </span>
-              <span className={styles.riskOutcome} aria-label={`Crash salvage ${formatTelemetry(model.crashDna)} DNA`}>
+              <span className={styles.riskOutcome} aria-label={`Crash salvage ${model.crashOutcomeLabel ?? `${formatTelemetry(model.crashDna)} DNA`}`} title={model.outcomeUnitLabel}>
                 <RiskGlyph />
-                <strong>{formatTelemetry(model.crashDna)}</strong>
+                <strong>{model.crashOutcomeLabel ?? formatTelemetry(model.crashDna)}</strong>
               </span>
             </div>
 
@@ -349,6 +353,40 @@ export function RunCockpit({
               </span>
             </div>
           )}
+
+          {model.overclock ? (
+            <div
+              className={styles.overclockRail}
+              data-active={model.overclock.active ? 'true' : 'false'}
+              data-testid="genome-overclock-control"
+            >
+              {model.overclock.active ? (
+                <span
+                  role="status"
+                  aria-label={`${model.overclock.active.label} active at ${model.overclock.active.multiplierBps / 10_000} times speed for ${model.overclock.active.remainingMoves} more moves`}
+                >
+                  <OverclockGlyph />
+                  <strong>{model.overclock.active.label}</strong>
+                  <em>{model.overclock.active.remainingMoves}M</em>
+                </span>
+              ) : model.overclock.available.map((source, index) => (
+                <button
+                  key={source.source}
+                  type="button"
+                  disabled={!onOverclock || !['active', 'apex'].includes(model.state)}
+                  onClick={() => onOverclock?.(source.source)}
+                  aria-label={`Activate ${source.label}, speed ${source.multiplierBps / 10_000} times for ${source.moveBudget} moves`}
+                  aria-keyshortcuts={index === 0 ? 'R' : 'Shift+R'}
+                  title={`${source.label} · ×${source.multiplierBps / 10_000} speed · ${source.moveBudget} moves · ${index === 0 ? 'R' : 'Shift+R'}`}
+                  data-overclock-source={source.source}
+                >
+                  <OverclockGlyph />
+                  <strong>{source.label}</strong>
+                  <kbd>{index === 0 ? 'R' : '⇧R'}</kbd>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div
             className={styles.controls}

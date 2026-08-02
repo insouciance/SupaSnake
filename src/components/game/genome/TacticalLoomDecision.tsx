@@ -38,7 +38,13 @@ export function TacticalLoomDecision({
   onDecline,
   onBack,
 }: TacticalLoomDecisionProps) {
-  const [selected, setSelected] = useState<ChoiceKey>('candidate-0');
+  const [selected, setSelected] = useState<ChoiceKey>(() =>
+    !model.candidates[0].disabledReason
+      ? 'candidate-0'
+      : !model.candidates[1].disabledReason
+        ? 'candidate-1'
+        : 'decline'
+  );
   const [recodePhase, setRecodePhase] = useState(false);
   const [replacementSlot, setReplacementSlot] = useState<number | null>(null);
   const [declineOptionId, setDeclineOptionId] = useState<string | null>(
@@ -71,17 +77,27 @@ export function TacticalLoomDecision({
       : model.decline.action);
 
   useEffect(() => {
-    if (!locked) firstChoiceRef.current?.focus();
+    if (!locked) {
+      dialogRef.current
+        ?.querySelector<HTMLButtonElement>('[role="radio"]:not(:disabled)')
+        ?.focus();
+    }
   }, [locked]);
 
   const select = useCallback((next: ChoiceKey) => {
+    if (
+      (next === 'candidate-0' && model.candidates[0].disabledReason)
+      || (next === 'candidate-1' && model.candidates[1].disabledReason)
+    ) {
+      return;
+    }
     setSelected(next);
     setRecodePhase(false);
     setReplacementSlot(null);
     if (next === 'decline') {
       setDeclineOptionId(model.decline.options?.[0]?.id ?? null);
     }
-  }, [model.decline.options]);
+  }, [model.candidates, model.decline.options]);
 
   const confirm = useCallback(() => {
     if (locked) return;
@@ -89,6 +105,7 @@ export function TacticalLoomDecision({
       onDecline(selectedDeclineOption?.pinCandidateIndex);
       return;
     }
+    if (selectedCandidate?.disabledReason) return;
     if (replacementChoices.length > 0 && !recodePhase) {
       setRecodePhase(true);
       setReplacementSlot(replacementChoices.find((choice) => !choice.disabledReason)?.slotIndex ?? null);
@@ -108,6 +125,7 @@ export function TacticalLoomDecision({
     recodePhase,
     replacementChoices,
     selectedDeclineOption,
+    selectedCandidate,
     selectedIndex,
     selectedReplacement,
   ]);
@@ -150,12 +168,14 @@ export function TacticalLoomDecision({
         action: candidate.action,
         name: candidate.name,
         category: candidate.category,
+        disabledReason: candidate.disabledReason,
       })),
       {
         key: 'decline' as const,
         action: model.decline.action,
         name: model.decline.name,
         category: 'Opportunity cost',
+        disabledReason: undefined,
       },
     ],
     [model]
@@ -220,7 +240,7 @@ export function TacticalLoomDecision({
                 role="radio"
                 aria-checked={active}
                 aria-keyshortcuts={index === 0 ? '1' : index === 1 ? '2' : 'Escape'}
-                disabled={locked}
+                disabled={locked || Boolean(choice.disabledReason)}
                 onClick={() => select(choice.key)}
                 onFocus={() => select(choice.key)}
                 data-testid={testId}
@@ -236,6 +256,11 @@ export function TacticalLoomDecision({
                 <span className="mt-0.5 block truncate font-body text-[10px] font-bold text-bone-white sm:text-xs" title={choice.name}>
                   {choice.name}
                 </span>
+                {choice.disabledReason ? (
+                  <span className="mt-0.5 block truncate font-body text-[9px] text-venom-orange" title={choice.disabledReason}>
+                    {choice.disabledReason}
+                  </span>
+                ) : null}
               </button>
             );
           })}
