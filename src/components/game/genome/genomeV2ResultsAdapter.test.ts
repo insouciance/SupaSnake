@@ -13,6 +13,14 @@ import {
 describe('Genome v2 Results adapter', () => {
   it('keeps the exact fixed-point contribution visible without inventing one aggregate multiplier', () => {
     let state = createGenomeV2State('CYBER');
+    const runtime = jest.requireActual('@/shared/game/genomeV2') as {
+      genomeV2EventId?: (runSeed: string, eventIndex: number) => string;
+    };
+    const runSeed = (state as typeof state & { runSeed?: string }).runSeed;
+    const eventId = (index: number, fallback: string) =>
+      runtime.genomeV2EventId && runSeed
+        ? runtime.genomeV2EventId(runSeed, index)
+        : fallback;
     state = reduceGenomeV2Event(state, {
       type: 'target_spawned',
       targetId: 'ordinary-1',
@@ -22,7 +30,7 @@ describe('Genome v2 Results adapter', () => {
       cadenceEligible: true,
       index: 1,
       tick: 1,
-      eventId: 'spawn-1',
+      eventId: eventId(1, 'spawn-1'),
     });
     state = reduceGenomeV2Event(state, {
       type: 'target_resolved',
@@ -33,7 +41,7 @@ describe('Genome v2 Results adapter', () => {
       pressureBps: 2_000,
       index: 2,
       tick: 2,
-      eventId: 'resolve-1',
+      eventId: eventId(2, 'resolve-1'),
     });
     const accepted = genomeV2RunRecord(state, settleGenomeV2(state, 'bank'));
     const parsed = parseGenomeV2RunRecord(accepted);

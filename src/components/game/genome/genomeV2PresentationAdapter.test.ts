@@ -11,6 +11,16 @@ import {
   type GenomeV2ActivationPresentation,
 } from './genomeV2PresentationAdapter';
 
+function eventId(state: GenomeV2State, index: number, fallback: string): string {
+  const runtime = jest.requireActual('@/shared/game/genomeV2') as {
+    genomeV2EventId?: (runSeed: string, eventIndex: number) => string;
+  };
+  const runSeed = (state as GenomeV2State & { runSeed?: string }).runSeed;
+  return runtime.genomeV2EventId && runSeed
+    ? runtime.genomeV2EventId(runSeed, index)
+    : fallback;
+}
+
 const ACTIVATION: GenomeV2ActivationPresentation = {
   continue: { unlocked: true },
   portalGenome: { unlocked: true },
@@ -23,11 +33,12 @@ function apply(
   state: GenomeV2State,
   event: Omit<GenomeV2Event, 'index' | 'tick' | 'eventId'>
 ): GenomeV2State {
+  const index = state.eventIndex + 1;
   return reduceGenomeV2Event(state, {
     ...event,
-    index: state.eventIndex + 1,
+    index,
     tick: state.tick + 1,
-    eventId: `test:${state.eventIndex + 1}:${event.type}`,
+    eventId: eventId(state, index, `test:${index}:${event.type}`),
   } as GenomeV2Event);
 }
 
