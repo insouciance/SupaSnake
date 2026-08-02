@@ -6,8 +6,10 @@ import {
   deriveGenomeV2Ftue,
   genomeV2CarryBankBps,
   genomeV2CarrySalvageBps,
+  genomeV2EventId,
   genomeV2RunRecord,
   genomeV2Yield,
+  previewGenomeV2Recode,
   projectGenomeV2,
   reduceGenomeV2Event,
   settleGenomeV2,
@@ -20,18 +22,15 @@ import {
   genomeV2ActivePool,
 } from './genes';
 
-let eventOrdinal = 0;
-
 function event<T extends Omit<GenomeV2Event, 'index' | 'tick' | 'eventId'>>(
   state: GenomeV2State,
   facts: T
 ): GenomeV2Event {
-  eventOrdinal += 1;
   return {
     ...facts,
     index: state.eventIndex + 1,
     tick: state.tick + 1,
-    eventId: `event-${eventOrdinal}`,
+    eventId: genomeV2EventId(state.runSeed, state.eventIndex + 1),
   } as GenomeV2Event;
 }
 
@@ -99,10 +98,6 @@ function spawnAndResolve(
   });
   return state;
 }
-
-beforeEach(() => {
-  eventOrdinal = 0;
-});
 
 describe('Genome v2 frozen catalog and FTUE', () => {
   it('keeps v1 meanings separate and exposes only the curated dynasty pool', () => {
@@ -303,30 +298,30 @@ describe('Genome v2 Mirror, Recode and second-life ownership', () => {
         candidates: ['live_wire', 'loan_shark'],
       },
     });
-    expect(() => apply(state, {
-      type: 'portal_recode_selected',
-      portalId: 'recode-door',
+    expect(() => previewGenomeV2Recode(state, {
+      source: 'portal',
       offerId: 'mutate-1',
       replacementGeneId: 'overgrowth',
       slot: 0,
-    })).toThrow('immutable portal candidate');
+    })).toThrow('immutable offer');
 
-    state = apply(state, {
-      type: 'portal_recode_selected',
-      portalId: 'recode-door',
+    const preview = previewGenomeV2Recode(state, {
+      source: 'portal',
       offerId: 'mutate-1',
       replacementGeneId: 'live_wire',
       slot: 0,
     });
-    expect(state.portal?.pendingRecode).toMatchObject({
+    expect(preview).toMatchObject({
       replacementGeneId: 'live_wire',
-      growthCost: 8,
+      growthCharged: 8,
     });
     state = apply(state, {
-      type: 'portal_recode',
-      portalId: 'recode-door',
+      type: 'offer_recoded',
+      source: 'portal',
       offerId: 'mutate-1',
       instanceId: 'live-1',
+      replacementGeneId: 'live_wire',
+      slot: 0,
       growthCharged: 8,
     });
     expect(state.instances['gold-1'].status).toBe('replaced');
@@ -381,13 +376,12 @@ describe('Genome v2 Mirror, Recode and second-life ownership', () => {
           candidates: ['live_wire', 'overgrowth'],
         },
       });
-      expect(() => apply(state, {
-        type: 'portal_recode_selected',
-        portalId: 'post-ash',
+      expect(() => previewGenomeV2Recode(state, {
+        source: 'portal',
         offerId: 'post-ash-offer',
         replacementGeneId: 'live_wire',
         slot: 0,
-      })).toThrow('non-Ash locus');
+      })).toThrow('occupied non-Ash locus');
     }
   );
 });
