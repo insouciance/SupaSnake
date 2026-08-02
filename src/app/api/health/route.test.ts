@@ -133,6 +133,8 @@ describe('GET /api/health', () => {
       catalogVersion: 2,
       ascendanceVersion: 2,
       spliceCount: 8,
+      rulesVersion: 2,
+      strainThresholds: { minor: 2, expression: 3, apex: 4 },
     });
   });
 

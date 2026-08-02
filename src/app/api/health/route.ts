@@ -15,6 +15,10 @@ import * as Sentry from '@sentry/nextjs';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { inspectProductionPublicSurface } from '@/lib/server/productionPublicSurface';
+import {
+  CURRENT_GENOME_RULES_VERSION,
+  GENOME_V2_STRAIN_THRESHOLDS,
+} from '@/shared/game/genomeV2';
 
 interface HealthCheck {
   status: 'healthy' | 'unhealthy';
@@ -68,6 +72,8 @@ interface HealthResponse {
       catalogVersion?: number;
       ascendanceVersion?: number;
       spliceCount?: number;
+      rulesVersion?: number;
+      strainThresholds?: typeof GENOME_V2_STRAIN_THRESHOLDS;
     };
   };
 }
@@ -296,6 +302,11 @@ async function checkGenomeV2(): Promise<HealthResponse['checks']['genomeV2']> {
       catalogVersion,
       ascendanceVersion,
       spliceCount,
+      // Application rules are reported beside database capability so release
+      // automation can distinguish the corrected 2/3/4 artifact from an older
+      // rules-v2 binary backed by the same additive schema.
+      rulesVersion: CURRENT_GENOME_RULES_VERSION,
+      strainThresholds: GENOME_V2_STRAIN_THRESHOLDS,
     };
   } catch (error) {
     Sentry.captureException(error, {

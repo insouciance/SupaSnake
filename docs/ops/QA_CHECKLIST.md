@@ -47,6 +47,11 @@ application as rollback.
 
 ### Genome v2 release checks
 
+- [ ] Until the exact outgoing Production artifact proves the full dual-version
+      Genome v2 capability and corrected 2/3/4 Strain profile, the dedicated
+      production read-only preflight proves
+      that no durable Genome v2 session evidence exists; any nonzero count stops
+      the first cutover and requires rules v3 or a frozen threshold profile.
 - [ ] Every offer explicitly names its Strain(s) and renders their runes.
 - [ ] The focused choice shows its affected 2/3/4 route and every directly
       connected Splice fate without ranking or recommending a build.
@@ -674,7 +679,12 @@ Use a clan owner/officer, a second account, and the official Discord server.
 - [ ] **Feel:** the board matches the quality promised by the Chamber and stays
       comfortable through a long session.
 
-## Stage 13 — The Genome
+## Stage 13 — The Genome v1 compatibility regression
+
+This section preserves the retired Genome v1 contract solely for flag-off,
+resume, replay, and settlement compatibility. It is **not** the acceptance
+contract for a newly issued Genome v2 run and must not override the current
+Genome v2 release checks above or `docs/game/TACTICAL_GENOME_V2.md`.
 
 ### FTUE and capability rollout
 
@@ -760,9 +770,10 @@ Check both benefit and counterweight when encountered.
 - [ ] PASS consumes the current door, schedules the next normal interval, and
       enters the deliberate input gate.
 - [ ] INFUSE is unavailable below length 8 and after three infuses.
-- [ ] INFUSE removes up to four tail segments immediately, adds +0.05 bank,
-      subtracts 0.05 salvage, delays the next portal by two foods, and consumes
-      the current portal.
+- [ ] INFUSE immediately grows the body by the run's `ladderInfuseGrowth`
+      amount (base +8), adds +0.05 bank, subtracts 0.05 salvage, delays the next
+      portal by two foods, and consumes the current portal; it never removes
+      earned length.
 - [ ] Below six held genes, INFUSE opens an immediate gravity-weighted gene
       offer; the board remains frozen through the entire portal→gene chain.
 - [ ] At six held genes, INFUSE opens Strain Surge only for held strains; the

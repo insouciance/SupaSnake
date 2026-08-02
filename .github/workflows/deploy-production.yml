@@ -222,11 +222,28 @@ jobs:
             exit 1
           fi
           outgoing_release=$(printf '%s' "$outgoing_health" | jq -er '.release')
+          genome_v2_234_live=false
+          if printf '%s' "$outgoing_health" | jq -e '
+            .checks.genomeV2.status == "healthy"
+              and .checks.genomeV2.schemaVersion == 2
+              and .checks.genomeV2.catalogVersion == 2
+              and .checks.genomeV2.ascendanceVersion == 2
+              and .checks.genomeV2.spliceCount == 8
+              and .checks.genomeV2.rulesVersion == 2
+              and .checks.genomeV2.strainThresholds
+                == {minor: 2, expression: 3, apex: 4}' >/dev/null; then
+            genome_v2_234_live=true
+          elif printf '%s' "$outgoing_health" | jq -e \
+              '.checks.genomeV2 != null' >/dev/null; then
+            echo "::error::Outgoing Production exposes Genome v2 without the corrected 2/3/4 rules profile. It may still issue incompatible v2 sessions; refusing a non-atomic threshold cutover."
+            exit 1
+          fi
           {
             echo "id=$outgoing_id"
             echo "host=$outgoing_host"
             echo "url=https://$outgoing_host"
             echo "release=$outgoing_release"
+            echo "genome_v2_234_live=$genome_v2_234_live"
           } >> "$GITHUB_OUTPUT"
           {
             echo '### Outgoing production anchor'
@@ -235,6 +252,15 @@ jobs:
             echo ''
             echo 'A rollback is never automatic. Use the supported `vercel rollback <deployment>` command only after checking schema compatibility, then prove alias and cron state independently.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # This compatibility proof is intentionally scoped by the exact outgoing
+      # artifact, not by migration state. A failed first cutover may leave 065
+      # applied while the legacy app remains live; in that state the proof must
+      # still run. Once production itself proves the complete dual-version
+      # capability, legitimate v2 sessions no longer block future releases.
+      - name: Prove no Genome v2 session exists before first cutover
+        if: ${{ steps.outgoing.outputs.genome_v2_234_live != 'true' }}
+        run: bash scripts/probe-linked-genome-v2-precondition.sh
 
       - name: Snapshot exact outgoing cron state
         id: cron_before
@@ -361,9 +387,9 @@ jobs:
           EXPECTED_MIGRATIONS: none
         run: bash scripts/verify-linked-migration-plan.sh
 
-      # This is the only SQL test permitted against hosted production. It has
-      # no fixtures and is one structural SELECT executed through Supabase's
-      # dedicated read-only Management API endpoint.
+      # This is the post-bridge structural SQL proof permitted against hosted
+      # production. Like the separate zero-session preflight it has no fixtures
+      # and runs one SELECT through Supabase's read-only Management API endpoint.
       - name: Probe linked cohesive schema read-only
         run: bash scripts/probe-linked-cohesive-schema.sh
 
@@ -446,6 +472,10 @@ jobs:
           bash scripts/verify-exact-main.sh
           node scripts/verify-github-sha-workflows.mjs
           bash scripts/verify-linked-migration-plan.sh
+
+      - name: Re-prove no Genome v2 session exists before first Production cutover
+        if: ${{ steps.outgoing.outputs.genome_v2_234_live != 'true' }}
+        run: bash scripts/probe-linked-genome-v2-precondition.sh
 
       # There is deliberately no --prod --skip-domain artifact. Once every
       # preflight has passed, this single supported Production deployment is
@@ -553,7 +583,10 @@ jobs:
                   and .checks.genomeV2.schemaVersion == 2
                   and .checks.genomeV2.catalogVersion == 2
                   and .checks.genomeV2.ascendanceVersion == 2
-                  and .checks.genomeV2.spliceCount == 8' >/dev/null; then
+                  and .checks.genomeV2.spliceCount == 8
+                  and .checks.genomeV2.rulesVersion == 2
+                  and .checks.genomeV2.strainThresholds
+                    == {minor: 2, expression: 3, apex: 4}' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi

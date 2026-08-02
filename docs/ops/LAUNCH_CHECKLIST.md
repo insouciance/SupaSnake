@@ -19,6 +19,12 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
       current baseline, or lists exactly the migrations named in a future
       release plan
+- [ ] While the exact outgoing Production artifact does not yet prove the full
+      Genome v2 capability **and** the corrected 2/3/4 Strain profile, the
+      dedicated hosted read-only preflight reports
+      zero durable v2 sessions before schema mutation and again immediately
+      before Production; any nonzero result blocks this first-cutover rules-v2
+      threshold correction
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
 - [ ] CI and production builds use `NEXT_PUBLIC_FTUE_V2=true`,
       `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, `NEXT_PUBLIC_LADDER_V1=true`, and
@@ -109,9 +115,10 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 ## Release execution
 
 - [ ] Backups/PITR and current Vercel production deployment ID are recorded
-- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (including exact outgoing/cron
-      snapshot → Preview contract → reviewed migration 065 → linked probe →
-      exact application SHA cutover)
+- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (including exact outgoing inspection
+      → zero-v2 proof → cron snapshot → Preview contract → reviewed migration
+      065 → linked probe → repeated zero-v2 proof → exact application SHA
+      cutover)
 - [ ] Post-release health and core smoke checks pass on `supasnake.com`
 - [ ] Every configured cron route rejects no/incorrect bearer tokens
 - [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs

@@ -43,8 +43,10 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 - **Tracks:** **Track A (server/data)** and **Track B (surfaces/growth)** — the WP
   table assigns each WP a track. Suggested: Opus 5 max on A, GPT 5.6 max on B;
   the split matters more than the assignment.
-- **Migrations are Track A only, and serialized.** Baseline is migration 038. The
-  next migration number is claimed **at merge time, not branch time**: before
+- **Migrations are Track A only, and serialized.** Migration 038 was this
+  handoff's preparation baseline; always derive the live baseline from the
+  freshly fetched repository. The next migration number is claimed **at merge
+  time, not branch time**: before
   merging, rebase on main and renumber your migration file to the next free slot.
   Two migration-bearing PRs never merge the same day without a rebase in between.
 - **Hot files** (merge-conflict magnets): `src/app/api/game/session/route.ts`,

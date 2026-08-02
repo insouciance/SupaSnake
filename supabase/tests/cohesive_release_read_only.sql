@@ -1,6 +1,6 @@
--- Hosted-safe structural proof for the cohesive release. This is the only SQL
--- contract permitted to run against the linked project. The Management API's
--- dedicated read-only endpoint executes this statement as
+-- Hosted-safe post-bridge structural proof for the cohesive release. The
+-- separate Genome v2 pre-release query proves the zero-session compatibility
+-- premise. Both use the Management API's dedicated read-only endpoint as
 -- supabase_read_only_user. Keep the probe to one SELECT, schema-qualify every
 -- relation, and never invoke an application or SECURITY DEFINER function.
 

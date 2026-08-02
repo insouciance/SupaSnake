@@ -113,6 +113,9 @@ describe('production environment validation', () => {
     const previewBoundaryAt = workflow.indexOf(
       'name: Prove Preview cannot own production cron'
     );
+    const firstGenomePreflightAt = workflow.indexOf(
+      'name: Prove no Genome v2 session exists before first cutover'
+    );
     const bridgeAt = workflow.indexOf('name: Apply reviewed Genome v2 bridge migrations');
     const linkedProbeAt = workflow.indexOf(
       'name: Probe linked cohesive schema read-only'
@@ -126,6 +129,9 @@ describe('production environment validation', () => {
     const productionAt = workflow.indexOf(
       'name: Create deliberate Production deployment and cut over'
     );
+    const secondGenomePreflightAt = workflow.indexOf(
+      'name: Re-prove no Genome v2 session exists before first Production cutover'
+    );
     const productionCronAt = workflow.indexOf(
       'name: Prove exact Production deployment owns reviewed cron schedule'
     );
@@ -135,11 +141,15 @@ describe('production environment validation', () => {
     expect(snapshotAt).toBeGreaterThan(-1);
     expect(previewAt).toBeGreaterThan(snapshotAt);
     expect(previewBoundaryAt).toBeGreaterThan(previewAt);
+    expect(firstGenomePreflightAt).toBeGreaterThan(-1);
     expect(bridgeAt).toBeGreaterThan(previewBoundaryAt);
+    expect(bridgeAt).toBeGreaterThan(firstGenomePreflightAt);
     expect(linkedProbeAt).toBeGreaterThan(bridgeAt);
     expect(bridgeBoundaryAt).toBeGreaterThan(linkedProbeAt);
     expect(previewSmokeAt).toBeGreaterThan(bridgeBoundaryAt);
+    expect(secondGenomePreflightAt).toBeGreaterThan(previewSmokeAt);
     expect(productionAt).toBeGreaterThan(previewSmokeAt);
+    expect(productionAt).toBeGreaterThan(secondGenomePreflightAt);
     expect(productionCronAt).toBeGreaterThan(productionAt);
     expect(incidentAt).toBeGreaterThan(productionCronAt);
 
@@ -162,11 +172,32 @@ describe('production environment validation', () => {
       .toBeGreaterThanOrEqual(3);
     expect(workflow.match(/bash scripts\/verify-linked-migration-plan\.sh/g)?.length)
       .toBeGreaterThanOrEqual(4);
+    expect(
+      workflow.match(/bash scripts\/probe-linked-genome-v2-precondition\.sh/g)?.length
+    ).toBe(2);
+    expect(workflow.match(
+      /if: \$\{\{ steps\.outgoing\.outputs\.genome_v2_234_live != 'true' \}\}/g
+    )).toHaveLength(2);
+    expect(workflow).toContain('echo "genome_v2_234_live=$genome_v2_234_live"');
+    expect(workflow).toContain(
+      'Outgoing Production exposes Genome v2 without the corrected 2/3/4 rules profile'
+    );
+    expect(workflow).toContain("'.checks.genomeV2 != null'");
 
     const productionBlock = workflow.slice(productionAt, productionCronAt);
     expect(productionBlock).toContain('--prod');
     expect(productionBlock).toContain(
       'node scripts/production-public-surface-cli.mjs vercel-args'
+    );
+    const healthAt = workflow.indexOf('name: Production health smoke test');
+    const diagnosticsAt = workflow.indexOf(
+      'name: Classify production state after cutover attempt'
+    );
+    const healthBlock = workflow.slice(healthAt, diagnosticsAt);
+    expect(healthAt).toBeGreaterThan(productionCronAt);
+    expect(healthBlock).toContain('.checks.genomeV2.rulesVersion == 2');
+    expect(healthBlock).toContain(
+      '.checks.genomeV2.strainThresholds\n                    == {minor: 2, expression: 3, apex: 4}'
     );
     expect(workflow).not.toMatch(/^\s+--skip-domain(?:\s|$)/m);
     expect(workflow).not.toContain('vercel@56.3.1 promote');
@@ -183,7 +214,7 @@ describe('production environment validation', () => {
     );
   });
 
-  it('runs fixture SQL only on isolated Supabase and a distinct hosted read-only probe', () => {
+  it('runs fixture SQL only locally and uses two bounded hosted read-only probes', () => {
     const production = readFileSync(
       join(process.cwd(), '.github/workflows/deploy-production.yml'),
       'utf8'
@@ -202,6 +233,14 @@ describe('production environment validation', () => {
     );
     const linkedProbe = readFileSync(
       join(process.cwd(), 'supabase/tests/cohesive_release_read_only.sql'),
+      'utf8'
+    );
+    const genomePreflightHarness = readFileSync(
+      join(process.cwd(), 'scripts/probe-linked-genome-v2-precondition.sh'),
+      'utf8'
+    );
+    const genomePreflightProbe = readFileSync(
+      join(process.cwd(), 'supabase/tests/genome_v2_pre_release_read_only.sql'),
       'utf8'
     );
 
@@ -264,6 +303,49 @@ describe('production environment validation', () => {
     expect(linkedProbe).not.toContain('v_result := found_clan');
     expect(linkedProbe).not.toContain('get_cohesive_release_capability();');
     expect(linkedProbe).not.toMatch(/^\s*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/im);
+
+    expect(production.match(
+      /bash scripts\/probe-linked-genome-v2-precondition\.sh/g
+    )).toHaveLength(2);
+    expect(production.match(
+      /if: \$\{\{ steps\.outgoing\.outputs\.genome_v2_234_live != 'true' \}\}/g
+    )).toHaveLength(2);
+    expect(production).toContain('.checks.genomeV2.status == "healthy"');
+    expect(production).toContain('.checks.genomeV2.schemaVersion == 2');
+    expect(production).toContain('.checks.genomeV2.catalogVersion == 2');
+    expect(production).toContain('.checks.genomeV2.ascendanceVersion == 2');
+    expect(production).toContain('.checks.genomeV2.spliceCount == 8');
+    expect(production).toContain('.checks.genomeV2.rulesVersion == 2');
+    expect(production).toContain(
+      '.checks.genomeV2.strainThresholds\n                == {minor: 2, expression: 3, apex: 4}'
+    );
+    expect(genomePreflightHarness).toContain('database/query/read-only');
+    expect(genomePreflightHarness).toContain('v2SessionCount == 0');
+    expect(genomePreflightHarness).toContain('all(.[]; . == 0)');
+    expect(genomePreflightHarness).toContain(
+      'supabase/tests/genome_v2_pre_release_read_only.sql'
+    );
+    expect(genomePreflightProbe).toContain('FROM public.game_sessions');
+    expect(genomePreflightProbe).toContain('SELECT to_jsonb(session_row) AS value');
+    expect(genomePreflightProbe).toContain(
+      "value #>> '{run_context,genome,rulesVersion}'"
+    );
+    expect(genomePreflightProbe).toContain(
+      "value #>> '{start_manifest,genome,rulesVersion}'"
+    );
+    expect(genomePreflightProbe).toContain(
+      "value #>> '{start_manifest_draft,genome,rulesVersion}'"
+    );
+    expect(genomePreflightProbe).toContain(
+      "value #>> '{continuity_checkpoint,state,genomeV2,v}'"
+    );
+    expect(genomePreflightProbe).toContain(
+      "value #>> '{continuity_terminal_facts,genome,v}'"
+    );
+    expect(genomePreflightProbe).toContain("value #>> '{genome,v}' = '2'");
+    expect(genomePreflightProbe).not.toMatch(
+      /^\s*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/im
+    );
   });
 
   it('fails closed unless cron definitions, owner, host, and enabled state are exact', () => {
