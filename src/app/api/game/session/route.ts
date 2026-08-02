@@ -57,7 +57,10 @@ import {
   type ChargeExemptionFacts,
   type ChargeState,
 } from '@/shared/game/energyEnvelope';
-import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
+import {
+  ascendanceYieldBreakdown,
+  createAscendanceRunStamp,
+} from '@/shared/game/ascendance';
 import { validateRunEvents } from '@/lib/server/runEventValidator';
 import { isRunDeathCause, type RunDeathCause } from '@/shared/game/runEvents';
 import { isMissingLifecycleInfra } from '@/lib/server/sessionLifecycle';
@@ -118,6 +121,16 @@ import {
   type WorldCondition,
 } from '@/shared/game/worldCondition';
 import type { StrainId } from '@/shared/game/strains';
+import { genomeV2ActivePool } from '@/shared/game/genes';
+import {
+  deriveGenomeV2Ftue,
+  deriveGenomeV2FtuePresentation,
+  GENOME_RULES_V2,
+} from '@/shared/game/genomeV2';
+import {
+  lineageOfferBias,
+  startingStrainPoints,
+} from '@/shared/game/lineage';
 import { describeDailyTakeSlot } from '@/lib/server/dailyTake';
 import { progressionJson } from '@/lib/server/noStoreResponse';
 import {
@@ -912,7 +925,6 @@ export async function POST(request: NextRequest) {
       // Seasonal mutations (section 7.2): in every offer pool from their
       // season's start onward (then permanent). Pre-021 this reads empty.
       const seasonalIds = await getSeasonalMutationIds(supabase);
-      const seasonalGeneIds = await getSeasonalGeneIds(supabase);
       const mutationPool = applyGauntletBan(
         [
           ...(isFreePlay
@@ -960,48 +972,44 @@ export async function POST(request: NextRequest) {
             { status: 503 }
           );
         }
-        const { bankedRuns, prevRunDied, ownedVariants } = runFacts;
-        const ftue = deriveFtue(bankedRuns, masteryLevel, ownedVariants);
-        const { heirloom, lineageBias } = deriveHeirloom(
-          runLineage,
-          snakeTraits,
-          ftue
+        const { bankedRuns, prevRunDied } = runFacts;
+        const ftuePresentation = deriveGenomeV2FtuePresentation(
+          bankedRuns,
+          masteryLevel
         );
-        const genePool = composeGenePool(
-          startDynasty,
-          masteryLevel,
-          seasonalGeneIds,
-          isFreePlay ? null : gauntletBan,
-          isFreePlay
-        );
+        const ftue = deriveGenomeV2Ftue(bankedRuns, masteryLevel);
+        const heirloom = ftue.spawnPointsUnlocked
+          ? startingStrainPoints(runLineage, snakeTraits)
+          : {};
+        const lineageBias = ftue.spawnPointsUnlocked
+          ? lineageOfferBias(runLineage)
+          : null;
+        const genePool = genomeV2ActivePool(startDynasty);
+        const externalSecondLife = snakeTraits.includes('iron_scales')
+          ? 'iron_scales' as const
+          : null;
         genomeBlock = {
+          rulesVersion: GENOME_RULES_V2,
           runSeed: genomeSeed,
           heirloom,
-          genePool,
-          lineage: lineageBias,
-          // Set below, once the run's world condition is resolved - which
-          // cannot happen until the Signal claim has answered.
-          anomalyStrain: null,
-          suppressedStrains: gauntletSuppressedStrains(gauntletBan),
-          prevRunDied,
-          ftue: {
-            bankedRuns,
-            strainTagsUnlocked: ftue.strainTagsUnlocked,
-            expressionsUnlocked: ftue.expressionsUnlocked,
-            infuseUnlocked: ftue.infuseUnlocked,
-            spawnPointsUnlocked: ftue.spawnPointsUnlocked,
-            splicesUnlocked: ftue.splicesUnlocked,
-            apexesUnlocked: ftue.apexesUnlocked,
-          },
+          v2GenePool: genePool,
+          ftuePresentation,
         };
         startGenomeContext = {
+          rulesVersion: GENOME_RULES_V2,
           genePool,
           heirloom,
           lineage: lineageBias,
-          tierCap: ftueTierCap(ftue),
+          tierCap: ftue.apexesUnlocked
+            ? 3
+            : ftue.expressionsUnlocked
+              ? 2
+              : 1,
           suppressedStrains: [...gauntletSuppressedStrains(gauntletBan)],
           splicesUnlocked: ftue.splicesUnlocked,
           prevRunDied,
+          ftuePresentation,
+          externalSecondLife,
         };
       }
 
@@ -1060,6 +1068,7 @@ export async function POST(request: NextRequest) {
           id: snake.id,
           generation: snakeGeneration,
           traits: snakeTraits,
+          ascendance: createAscendanceRunStamp(snakeGeneration),
         },
         mutationPool,
         freePlay: isFreePlay,
@@ -1129,8 +1138,11 @@ export async function POST(request: NextRequest) {
       // Losing `run_context` costs a convenience, never a payout. Losing
       // `run_seed` costs the genome capability, which is what it has always
       // cost.
-      const contextInsert = startRunContext
-        ? { run_context: serializeRunStartContext(startRunContext) }
+      let serializedStartRunContext = startRunContext
+        ? serializeRunStartContext(startRunContext)
+        : null;
+      const contextInsert = serializedStartRunContext
+        ? { run_context: serializedStartRunContext }
         : {};
       let session: ContinuityRow | Record<string, unknown> | null = preparingShell;
       let sessionError: { code?: string; message?: string } | null = null;
@@ -1150,6 +1162,15 @@ export async function POST(request: NextRequest) {
           /run_context/i.test(sessionError.message || '')
         ) {
           startRunContext = null;
+          serializedStartRunContext = null;
+          // Genome v2 cannot be reconstructed from live account state at
+          // settlement. If the context column is unavailable, withdraw the
+          // capability with its seed rather than launch a run under v2 and
+          // later reinterpret it as v1.
+          if (genomeBlock?.rulesVersion === GENOME_RULES_V2) {
+            genomeSeed = null;
+            genomeBlock = null;
+          }
           ({ data: session, error: sessionError } = await supabase
             .from('game_sessions')
             .insert({
@@ -1167,6 +1188,7 @@ export async function POST(request: NextRequest) {
           genomeSeed = null;
           genomeBlock = null;
           startRunContext = null;
+          serializedStartRunContext = null;
           ({ data: session, error: sessionError } = await supabase
             .from('game_sessions')
             .insert(sessionInsert)
@@ -1372,7 +1394,15 @@ export async function POST(request: NextRequest) {
       //                   carries.
       //   suppression     the Gauntlet's strain ban UNIONED with a "dampened"
       //                   clause. Two independent suppressions both bind.
-      if (genomeBlock) {
+      if (genomeBlock?.rulesVersion === GENOME_RULES_V2) {
+        genomeBlock.offerTiltStrain = conditionOfferTilt(runCondition);
+        genomeBlock.suppressedStrains = conditionSuppressedStrains(
+          runCondition,
+          startGenomeContext?.suppressedStrains ?? []
+        );
+        genomeBlock.strainThresholdDelta =
+          conditionStrainThresholdDelta(runCondition);
+      } else if (genomeBlock) {
         genomeBlock.anomalyStrain = conditionOfferTilt(runCondition);
         // genomeBlock is a Record<string, unknown>, so the Gauntlet's existing
         // ban arrives untyped. Check it at runtime rather than asserting: a
@@ -1388,15 +1418,6 @@ export async function POST(request: NextRequest) {
         genomeBlock.strainThresholdDelta =
           conditionStrainThresholdDelta(runCondition);
       }
-      if (startGenomeContext) {
-        startGenomeContext.suppressedStrains = conditionSuppressedStrains(
-          runCondition,
-          startGenomeContext.suppressedStrains
-        );
-        startGenomeContext.strainThresholdDelta =
-          conditionStrainThresholdDelta(runCondition);
-      }
-
       // ---------------------------------------------------------------
       // The daily harvest envelope (Constitution §8.6)
       // ---------------------------------------------------------------
@@ -1482,6 +1503,9 @@ export async function POST(request: NextRequest) {
             }
           : {}),
         ...(genomeBlock ? { genome: genomeBlock } : {}),
+        ...(serializedStartRunContext
+          ? { runContext: serializedStartRunContext }
+          : {}),
       };
 
       const energyVisible = isChargeMeterVisible(
@@ -2029,28 +2053,48 @@ export async function POST(request: NextRequest) {
           // heirloom, lineage bias and tier cap the offer stream was
           // actually drawn from rather than a reconstruction of them.
           endLineageBias = runContext.genome.lineage;
-          genomeCtx = {
-            heirloom: runContext.genome.heirloom,
-            genePool: runContext.genome.genePool,
-            prevRunDied: runContext.genome.prevRunDied,
-            tierCap: runContext.genome.tierCap,
-            suppressedStrains: runContext.genome.suppressedStrains,
-            splicesUnlocked: runContext.genome.splicesUnlocked,
-            // WP-3.10: the carry's pass count is REPLAYED from this seed, not
-            // claimed. Without it the run settles on the flat multipliers.
-            runSeed: sessionRunSeed,
-            // WP-3.02: settle under the growth curve the run STARTED under.
-            // The stamp lives on the context root, not the genome block,
-            // because a free-play or pre-genome run has a profile too.
-            ...(runContext.growthProfileId
-              ? { growthProfileId: runContext.growthProfileId }
-              : {}),
-            // WP-3.12: settle under the RUNG the run started at. It moves the
-            // portal schedule, the infuse growth and the salvage floor, so a
-            // run played at rung 5 and recomputed at rung 0 would disagree with
-            // itself about lengths, doors and payout. Absent means Ground.
-            ...(runContext.ladderRung ? { ladderRung: runContext.ladderRung } : {}),
-          };
+          if (runContext.genome.rulesVersion === GENOME_RULES_V2) {
+            genomeCtx = {
+              rulesVersion: GENOME_RULES_V2,
+              runSeed: sessionRunSeed,
+              genePool: runContext.genome.genePool,
+              startingStrainPoints: runContext.genome.heirloom,
+              ftuePresentation: runContext.genome.ftuePresentation,
+              externalSecondLife: runContext.genome.externalSecondLife,
+              offerTiltStrain: conditionOfferTilt(sessionCondition),
+              suppressedStrains: conditionSuppressedStrains(
+                sessionCondition,
+                runContext.genome.suppressedStrains
+              ),
+              strainThresholdDelta:
+                conditionStrainThresholdDelta(sessionCondition),
+              // Only the continuity replay may author a v2 terminal record.
+              authoritativeTerminal: terminalIntentAccepted,
+              ...(runContext.growthProfileId
+                ? { growthProfileId: runContext.growthProfileId }
+                : {}),
+              ...(runContext.ladderRung
+                ? { ladderRung: runContext.ladderRung }
+                : {}),
+            };
+          } else {
+            genomeCtx = {
+              rulesVersion: runContext.genome.rulesVersion,
+              heirloom: runContext.genome.heirloom,
+              genePool: runContext.genome.genePool,
+              prevRunDied: runContext.genome.prevRunDied,
+              tierCap: runContext.genome.tierCap,
+              suppressedStrains: runContext.genome.suppressedStrains,
+              splicesUnlocked: runContext.genome.splicesUnlocked,
+              runSeed: sessionRunSeed,
+              ...(runContext.growthProfileId
+                ? { growthProfileId: runContext.growthProfileId }
+                : {}),
+              ...(runContext.ladderRung
+                ? { ladderRung: runContext.ladderRung }
+                : {}),
+            };
+          }
         } else {
           // WP-2.05: `ok: false` is unignorable by construction, and it is a
           // 503 rather than a shrug. This is the headline DNA-loss path — a
@@ -2143,7 +2187,12 @@ export async function POST(request: NextRequest) {
       // Offer-trace verification (ADVISORY, §5): replay the seeded offer
       // stream against the accepted picks. A mismatch flags the session
       // (validated:false) but never changes the payout at launch.
-      if (genomeCtx && validation.genome && typeof sessionRunSeed === 'string') {
+      if (
+        genomeCtx &&
+        genomeCtx.rulesVersion !== GENOME_RULES_V2 &&
+        validation.genome?.v === 1 &&
+        typeof sessionRunSeed === 'string'
+      ) {
         const claimTrace = (genome as Record<string, unknown> | null)?.offerTrace;
         if (claimTrace !== undefined && claimTrace !== null) {
           const offerCheck = verifyOfferTrace(claimTrace, validation.genome.picks, {
@@ -2216,9 +2265,18 @@ export async function POST(request: NextRequest) {
               claimedDurationSeconds: duration_seconds ?? 0,
               storedDurationSeconds: validation.durationSeconds,
               traits: snakeTraits,
-              tierCap: genomeCtx?.tierCap ?? null,
-              heirloom: genomeCtx?.heirloom ?? null,
-              picks: validation.genome?.picks ?? validation.mutations,
+              tierCap:
+                genomeCtx?.rulesVersion !== GENOME_RULES_V2
+                  ? genomeCtx?.tierCap ?? null
+                  : null,
+              heirloom:
+                genomeCtx?.rulesVersion === GENOME_RULES_V2
+                  ? genomeCtx.startingStrainPoints
+                  : genomeCtx?.heirloom ?? null,
+              picks:
+                validation.genome?.v === 1
+                  ? validation.genome.picks
+                  : validation.mutations,
               claimClamps: validation.claimClamps,
               runContext: runContextParse.ok ? 'stored' : runContextParse.reason,
             },
@@ -2286,7 +2344,18 @@ export async function POST(request: NextRequest) {
           : 1);
       const ascendance = ascendanceYieldBreakdown(
         validation.adjustedDna,
-        ascendanceGeneration
+        ascendanceGeneration,
+        runContext?.snake.ascendance
+          ? {
+              curveVersion: runContext.snake.ascendance.curveVersion,
+              frozenMultiplierBps:
+                runContext.snake.ascendance.multiplierBps,
+            }
+          : {
+              // Missing stamps are historical runs. They must remain on the
+              // exact capped v1 curve after new runs move to v2.
+              curveVersion: 1,
+            }
       );
       const yieldDna = ascendance.totalYield;
       const finalDna = applyEnergyHarvestMultiplier(
@@ -2333,9 +2402,14 @@ export async function POST(request: NextRequest) {
         foodCount: validation.foodCount,
         died: (died ?? true) === true && !validation.extracted,
         extracted: validation.extracted,
-        mutationIds: validation.genome
-          ? validation.genome.picks.map((p) => p.id)
-          : validation.mutations.map((m) => m.id),
+        mutationIds:
+          validation.genome?.v === 1
+            ? validation.genome.picks.map((p) => p.id)
+            : validation.genome?.v === GENOME_RULES_V2
+              ? Object.values(validation.genome.instances)
+                  .filter((instance) => instance.status !== 'replaced')
+                  .map((instance) => instance.geneId)
+              : validation.mutations.map((m) => m.id),
       });
 
       // Mark the session ended BEFORE granting rewards - this is the
