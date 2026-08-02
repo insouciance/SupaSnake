@@ -56,6 +56,33 @@ interface PanelPayload {
   snakes: PanelSnake[];
 }
 
+interface OwnedPanelResource {
+  ownerId: string;
+  panel: PanelPayload | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+interface OwnedExperiment {
+  ownerId: string;
+  snakeId: string | null;
+  plan: GenomeV2ExperimentPlan;
+}
+
+interface OwnedStudyResource {
+  ownerId: string;
+  reading: GenomeV2ResearchReading | null;
+  terminal: 'bank' | 'crash' | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+const EMPTY_V2_EXPERIMENT: GenomeV2ExperimentPlan = {
+  v: 2,
+  dynasty: 'CYBER',
+  actions: [],
+};
+
 const LENSES: Array<{
   id: GenomeV2ResearchLens;
   label: string;
@@ -595,65 +622,127 @@ export interface WorkbenchViewProps {
 
 export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = {}) {
   const { session, isAuthenticated } = useAuth();
-  const [panel, setPanel] = useState<PanelPayload | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [snakeId, setSnakeId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<GenomeV2ExperimentPlan>({
-    v: 2,
-    dynasty: 'CYBER',
-    actions: [],
-  });
-  const [study, setStudy] = useState<{
-    reading: GenomeV2ResearchReading;
-    terminal: 'bank' | 'crash';
-  } | null>(null);
-  const [studyLoading, setStudyLoading] = useState(false);
-  const [studyError, setStudyError] = useState<string | null>(null);
+  const [panelResource, setPanelResource] = useState<OwnedPanelResource | null>(null);
+  const [experiment, setExperiment] = useState<OwnedExperiment | null>(null);
+  const [studyResource, setStudyResource] = useState<OwnedStudyResource | null>(null);
   const token = session?.access_token;
+  const ownerId = typeof session?.user?.id === 'string' && session.user.id.length > 0
+    ? session.user.id
+    : null;
+
+  // Account-derived state is renderable only under the identity that loaded or
+  // created it. This render-time gate closes the gap before effects run during
+  // sign-out/account switching; routine token refreshes retain the same owner.
+  const ownedPanelResource = ownerId && panelResource?.ownerId === ownerId
+    ? panelResource
+    : null;
+  const panel = ownedPanelResource?.panel ?? null;
+  const isLoading = ownedPanelResource?.isLoading ?? Boolean(ownerId && token);
+  const error = ownedPanelResource?.error ?? null;
+  const ownedExperiment = ownerId && experiment?.ownerId === ownerId
+    ? experiment
+    : null;
+  const snakeId = ownedExperiment?.snakeId ?? null;
+  const plan = ownedExperiment?.plan ?? EMPTY_V2_EXPERIMENT;
+  const ownedStudyResource = ownerId && studyResource?.ownerId === ownerId
+    ? studyResource
+    : null;
+  const study = ownedStudyResource?.reading && ownedStudyResource.terminal
+    ? {
+        reading: ownedStudyResource.reading,
+        terminal: ownedStudyResource.terminal,
+      }
+    : null;
+  const studyLoading = ownedStudyResource?.isLoading ?? Boolean(ownerId && token && studyRef);
+  const studyError = ownedStudyResource?.error ?? null;
+
+  const setPlan = useCallback((next: GenomeV2ExperimentPlan) => {
+    if (!ownerId) return;
+    setExperiment((current) => ({
+      ownerId,
+      snakeId: current?.ownerId === ownerId ? current.snakeId : null,
+      plan: next,
+    }));
+  }, [ownerId]);
+
+  const setSnakeId = useCallback((next: string | null) => {
+    if (!ownerId) return;
+    setExperiment((current) => ({
+      ownerId,
+      snakeId: next,
+      plan: current?.ownerId === ownerId ? current.plan : EMPTY_V2_EXPERIMENT,
+    }));
+  }, [ownerId]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!isAuthenticated || !token || !ownerId) {
+      setPanelResource(null);
+      setExperiment(null);
+      return;
+    }
     let cancelled = false;
-    setIsLoading(true);
-    setError(null);
+    setPanelResource((current) => ({
+      ownerId,
+      panel: current?.ownerId === ownerId ? current.panel : null,
+      isLoading: true,
+      error: null,
+    }));
+    setExperiment((current) => current?.ownerId === ownerId
+      ? current
+      : { ownerId, snakeId: null, plan: EMPTY_V2_EXPERIMENT });
     fetch('/api/workbench/panel', {
+      cache: 'no-store',
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (response) => {
         const body = await response.json().catch(() => null);
         if (cancelled) return;
         if (!response.ok) {
-          setError(
-            typeof body?.error === 'string'
+          setPanelResource({
+            ownerId,
+            panel: null,
+            isLoading: false,
+            error: typeof body?.error === 'string'
               ? body.error
-              : 'The Workbench could not read your collection.'
-          );
+              : 'The Workbench could not read your collection.',
+          });
           return;
         }
-        setPanel(readPanel(body));
+        setPanelResource({
+          ownerId,
+          panel: readPanel(body),
+          isLoading: false,
+          error: null,
+        });
       })
       .catch(() => {
-        if (!cancelled) setError('The Workbench could not reach the server.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setPanelResource({
+            ownerId,
+            panel: null,
+            isLoading: false,
+            error: 'The Workbench could not reach the server.',
+          });
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [isAuthenticated, ownerId, token]);
 
   useEffect(() => {
-    if (!token || !studyRef) {
-      setStudy(null);
-      setStudyError(null);
-      setStudyLoading(false);
+    if (!isAuthenticated || !token || !ownerId || !studyRef) {
+      setStudyResource(null);
       return;
     }
     let cancelled = false;
-    setStudyLoading(true);
-    setStudyError(null);
+    setStudyResource((current) => ({
+      ownerId,
+      reading: current?.ownerId === ownerId ? current.reading : null,
+      terminal: current?.ownerId === ownerId ? current.terminal : null,
+      isLoading: true,
+      error: null,
+    }));
     fetch(`/api/workbench/result/${encodeURIComponent(studyRef)}`, {
       cache: 'no-store',
       headers: { Authorization: `Bearer ${token}` },
@@ -662,43 +751,61 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
         const body = await response.json().catch(() => null);
         if (cancelled) return;
         if (!response.ok) {
-          setStudyError(
-            typeof body?.error === 'string'
+          setStudyResource({
+            ownerId,
+            reading: null,
+            terminal: null,
+            isLoading: false,
+            error: typeof body?.error === 'string'
               ? body.error
-              : 'That run could not be opened for Research.'
-          );
-          setStudy(null);
+              : 'That run could not be opened for Research.',
+          });
           return;
         }
         const record = parseGenomeV2RunRecord(body?.genome);
         if (!record?.settlement) {
-          setStudyError('That run has no complete Genome v2 record.');
-          setStudy(null);
+          setStudyResource({
+            ownerId,
+            reading: null,
+            terminal: null,
+            isLoading: false,
+            error: 'That run has no complete Genome v2 record.',
+          });
           return;
         }
         try {
-          setStudy({
+          setStudyResource({
+            ownerId,
             reading: readGenomeV2RunResearch(record),
             terminal: record.settlement.terminal,
+            isLoading: false,
+            error: null,
           });
         } catch {
-          setStudyError('That settled Genome could not be read safely.');
-          setStudy(null);
+          setStudyResource({
+            ownerId,
+            reading: null,
+            terminal: null,
+            isLoading: false,
+            error: 'That settled Genome could not be read safely.',
+          });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setStudyError('Genome Research could not reach the server.');
-          setStudy(null);
+          setStudyResource({
+            ownerId,
+            reading: null,
+            terminal: null,
+            isLoading: false,
+            error: 'Genome Research could not reach the server.',
+          });
         }
-      })
-      .finally(() => {
-        if (!cancelled) setStudyLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [studyRef, token]);
+  }, [isAuthenticated, ownerId, studyRef, token]);
 
   const roster = useMemo(() => compactRoster(panel?.snakes ?? []), [panel?.snakes]);
   const snake = roster.find((entry) => entry.id === snakeId)
@@ -709,11 +816,11 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   useEffect(() => {
     if (!snake || plan.dynasty === snake.dynasty) return;
     setPlan({ v: 2, dynasty: snake.dynasty, actions: [] });
-  }, [plan.dynasty, snake]);
+  }, [plan.dynasty, setPlan, snake]);
 
   if (!WORKBENCH_V1_ENABLED) return null;
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !ownerId || !token) {
     return (
       <section className={styles.signedOut} data-testid="workbench-signed-out">
         <span aria-hidden="true">⌬</span>
