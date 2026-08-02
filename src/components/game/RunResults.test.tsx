@@ -123,6 +123,43 @@ describe('RunResults constitutional hierarchy', () => {
     );
   });
 
+  it('places the exact Genome and Ascendance explanations in the Yield layer', () => {
+    render(
+      <RunResults
+        {...props({
+          genomeRecap: {
+            rulesVersion: 2,
+            baseYield: 100,
+            genomeYield: 240,
+            genomeDelta: 140,
+            factorLabel: '×2.40',
+            activeGenes: [{ id: 'live_wire', name: 'Live Wire', strains: ['VOLT'] }],
+            activeSplices: [],
+            rows: [{ id: 'routes', label: 'Route contracts', amount: 140, detail: '2 of 3 completed', tone: 'gain' }],
+            executionSummary: 'Two clean Live Wire routes produced the Genome gain.',
+            bankCrashSummary: 'BANK secured the completed route value.',
+          },
+          ascendanceProgression: {
+            generation: 11,
+            curveVersion: 2,
+            currentMultiplier: '1.1717',
+            nextGeneration: 12,
+            nextMultiplier: '1.1951',
+            relativeStepPercent: '2.00',
+            nextMilestoneGeneration: 15,
+            milestoneMultiplier: '1.2682',
+            generationsUntilMilestone: 4,
+          },
+        })}
+      />
+    );
+    const yieldLayer = screen.getByTestId('results-layer-2');
+    expect(yieldLayer).toContainElement(screen.getByTestId('results-genome-recap'));
+    expect(yieldLayer).toContainElement(screen.getByTestId('ascendance-progression'));
+    expect(screen.getByTestId('results-genome-recap')).toHaveTextContent('×2.40');
+    expect(screen.getByTestId('ascendance-v2-next')).toHaveTextContent('+2.00% relative');
+  });
+
   it('keeps Replay and Setup outside every layer and immediately operable', () => {
     const onReplay = jest.fn();
     const onSetup = jest.fn();

@@ -25,13 +25,21 @@ import { getTraitSlots } from '@/shared/game/traits';
 import { sanitizeTraits } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints } from '@/shared/game/lineage';
 import { STRAIN_IDS, type StrainId } from '@/shared/game/strains';
-import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
+import {
+  ascendanceYieldMultiplier,
+  formatAscendanceYieldMultiplier,
+  formatYieldMultiplier,
+} from '@/shared/game/ascendance';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconArrowRight, IconBolt, IconCheck, IconDna, IconEgg, IconSnake } from '@/components/ui/icons';
 import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
+import {
+  AscendanceProgressionInstrument,
+  projectAscendanceProgression,
+} from '@/components/progression/AscendanceProgressionInstrument';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -202,6 +210,12 @@ export function VariantDetailModal({
     lineage,
     sanitizeTraits(owned.traits)
   );
+  const ascendanceProgression = projectAscendanceProgression({
+    generation: owned.generation,
+    curveVersion: 2,
+    multiplierForGeneration: ascendanceYieldMultiplier,
+    formatMultiplier: formatYieldMultiplier,
+  });
 
   // Base stats stay flat and Score remains build-independent. Gen4+
   // Ascendance scales Yield separately, so its multiplier is stated beside
@@ -433,6 +447,10 @@ export function VariantDetailModal({
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="px-3 pt-3 sm:px-4" data-testid="variant-ascendance">
+            <AscendanceProgressionInstrument model={ascendanceProgression} compact />
           </div>
 
           {/*

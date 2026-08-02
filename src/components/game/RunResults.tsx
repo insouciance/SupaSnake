@@ -46,6 +46,14 @@ import {
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import {
+  GenomeYieldRecap,
+  type GenomeYieldRecapModel,
+} from '@/components/game/genome/GenomeYieldRecap';
+import {
+  AscendanceProgressionInstrument,
+  type AscendanceProgressionModel,
+} from '@/components/progression/AscendanceProgressionInstrument';
 
 export type RunResultsOutcome = 'extracted' | 'crashed';
 export type TakeCollectState =
@@ -97,6 +105,10 @@ export interface RunResultsProps {
   replayDisabled: boolean;
   replayEnergy: number;
   shareArtifact?: ReactNode;
+  /** Exact v2 settlement projection; omitted for legacy/unavailable receipts. */
+  genomeRecap?: GenomeYieldRecapModel | null;
+  /** Exact run-stamped Ascendance presentation, including honest v1 labels. */
+  ascendanceProgression?: AscendanceProgressionModel | null;
 }
 
 function headline(outcome: RunResultsOutcome, practice: boolean) {
@@ -834,6 +846,8 @@ export function RunResults({
   replayDisabled,
   replayEnergy,
   shareArtifact,
+  genomeRecap = null,
+  ascendanceProgression = null,
 }: RunResultsProps) {
   const head = headline(outcome, practice);
   const receipt = impact?.receipt;
@@ -949,6 +963,13 @@ export function RunResults({
             </div>
           </details>
         )}
+
+        {!settlementPending && genomeRecap ? <GenomeYieldRecap model={genomeRecap} /> : null}
+        {!settlementPending && ascendanceProgression ? (
+          <div className="mx-auto max-w-lg text-left">
+            <AscendanceProgressionInstrument model={ascendanceProgression} compact />
+          </div>
+        ) : null}
 
         {!settlementPending && clanBattle?.eligible && (
           <div className="panel-glow [--glow:#7df9ff] mx-auto max-w-lg space-y-2 px-4 py-3 text-left" data-testid="results-clan-battle">
