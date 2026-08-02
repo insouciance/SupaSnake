@@ -11,9 +11,11 @@ Production: <https://supasnake.com>
 
 - Next.js 15 App Router, React, TypeScript, react-three-fiber, and Zustand
 - Supabase Auth/Postgres with server-authoritative economy and progression
-- Migrations 001–061 deployed and aligned
+- Migrations 001–064 deployed and aligned; additive Genome v2 migration 065 is
+  the reviewed next release migration
 - FTUE v2, the refined Run Cockpit, the Training Lab, Energy Commitment, and
-  Career Spine enabled in production
+  Career Spine enabled in production; Genome v2 remains release-gated until the
+  reviewed production workflow enables its exact-`true` public flag
 - Stripe sandbox/test mode until the commercial-launch checklist is complete
 
 Energy recovers server-side to a six-unit cap. A rewarded run commits 1–6

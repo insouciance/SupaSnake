@@ -14,7 +14,7 @@ documents remain useful context but do not override the files listed here.
 | Amendments awaiting the owner | [Proposed Amendments](CONSTITUTION_AMENDMENTS_PROPOSED.md) |
 | Strategic assessment behind the Constitution | [Product, Gameplay & Metagame Audit](game/SUPASNAKE_PRODUCT_GAMEPLAY_METAGAME_AUDIT.md) |
 
-The Constitution decides *what* may exist: its 14 Inviolable Rules and §12.2 caps
+The Constitution decides *what* may exist: its 15 Inviolable Rules and §12.2 caps
 bind every change, and a change that cannot be reconciled with them needs an
 amendment, not an exception. Work is decomposed into numbered work packages in the
 Implementation Handoff; `AGENTS.md` carries the branch, worktree, and migration

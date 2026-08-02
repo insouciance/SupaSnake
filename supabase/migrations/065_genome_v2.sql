@@ -10,6 +10,14 @@
 -- can carry v2 stable instances, six slots, retired/Ash state, the deterministic
 -- event journal, durable Splice/Strain discovery history, and itemized
 -- settlement without speculative nullable columns.
+--
+-- Down/rollback note: this repository is forward-only. Do not drop the v2
+-- catalogs, version columns, discovery identities, or functions after a v2 run
+-- has been issued; they are required to resume and settle immutable history.
+-- Operational rollback is a reviewed forward deployment of the same
+-- dual-version runtime with NEXT_PUBLIC_GENOME_V2 non-true for new starts,
+-- while retaining this additive schema and all earned discovery/progression
+-- rows. A schema correction must likewise be a new forward migration.
 
 BEGIN;
 

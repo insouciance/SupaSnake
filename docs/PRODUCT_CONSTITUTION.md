@@ -2047,7 +2047,7 @@ deliberately undecided pending data.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.9 on 1 August 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.11 on 2 August 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*
