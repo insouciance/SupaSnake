@@ -270,6 +270,73 @@ $$ LANGUAGE sql IMMUTABLE SET search_path = public;
 COMMENT ON FUNCTION ascendance_yield_bonus_v2(INTEGER) IS
   'Genome v2 additive Yield bonus: ascendance_yield_multiplier_v2(generation) - 1.';
 
+-- Keep the original deterministic draft callable as an internal historical
+-- implementation, then put a version-aware v2 presentation wrapper back at
+-- the stable public signature. `breed_snakes` resolves the function name at
+-- execution time, so preview and committed audit history continue to consume
+-- the exact same draft object without copying its large deterministic body.
+DO $$
+BEGIN
+  IF to_regprocedure(
+    'public.breeding_draft_v1(uuid,uuid,uuid,boolean,uuid,text[],text)'
+  ) IS NULL THEN
+    ALTER FUNCTION public.breeding_draft(
+      UUID, UUID, UUID, BOOLEAN, UUID, TEXT[], TEXT
+    ) RENAME TO breeding_draft_v1;
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.breeding_draft(
+  p_player_id UUID,
+  p_parent1_id UUID,
+  p_parent2_id UUID,
+  p_allow_cross_dynasty BOOLEAN DEFAULT FALSE,
+  p_variant_choice UUID DEFAULT NULL,
+  p_trait_draft TEXT[] DEFAULT NULL,
+  p_lineage_kind TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+  WITH draft AS (
+    SELECT public.breeding_draft_v1(
+      p_player_id,
+      p_parent1_id,
+      p_parent2_id,
+      p_allow_cross_dynasty,
+      p_variant_choice,
+      p_trait_draft,
+      p_lineage_kind
+    ) AS value
+  ), generation AS (
+    SELECT value, GREATEST(COALESCE((value ->> 'generation')::INTEGER, 1), 1) AS n
+    FROM draft
+  )
+  SELECT value || jsonb_build_object(
+    'ascendance', jsonb_build_object(
+      'generation', n,
+      'curve_version', 2,
+      'multiplier_bps', public.ascendance_yield_multiplier_bps_v2(n),
+      'yield_bonus', public.ascendance_yield_bonus_v2(n),
+      'yield_multiplier', public.ascendance_yield_multiplier_v2(n)
+    )
+  )
+  FROM generation;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+COMMENT ON FUNCTION public.breeding_draft(
+  UUID, UUID, UUID, BOOLEAN, UUID, TEXT[], TEXT
+) IS
+  'Deterministic Genome v2 breeding preview. Child choices come verbatim from breeding_draft_v1; only the versioned Ascendance explanation is replaced.';
+
+REVOKE EXECUTE ON FUNCTION public.breeding_draft_v1(
+  UUID, UUID, UUID, BOOLEAN, UUID, TEXT[], TEXT
+) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.breeding_draft(
+  UUID, UUID, UUID, BOOLEAN, UUID, TEXT[], TEXT
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.breeding_draft(
+  UUID, UUID, UUID, BOOLEAN, UUID, TEXT[], TEXT
+) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 3. Version-aware accepted-record projectors
 -- ---------------------------------------------------------------------------

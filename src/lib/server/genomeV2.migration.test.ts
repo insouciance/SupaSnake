@@ -104,6 +104,26 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     );
   });
 
+  it('keeps the deterministic v1 draft internally and exposes a v2 Ascendance preview', () => {
+    expect(code).toMatch(
+      /ALTER FUNCTION public\.breeding_draft\([\s\S]*\) RENAME TO breeding_draft_v1/
+    );
+    const wrapper = code.match(
+      /CREATE OR REPLACE FUNCTION public\.breeding_draft\([\s\S]+?LANGUAGE sql STABLE SECURITY DEFINER/
+    )?.[0] ?? '';
+    expect(wrapper).toMatch(/public\.breeding_draft_v1\(/);
+    expect(wrapper).toMatch(/'curve_version', 2/);
+    expect(wrapper).toMatch(/'multiplier_bps', public\.ascendance_yield_multiplier_bps_v2\(n\)/);
+    expect(wrapper).toMatch(/'yield_bonus', public\.ascendance_yield_bonus_v2\(n\)/);
+    expect(wrapper).toMatch(/'yield_multiplier', public\.ascendance_yield_multiplier_v2\(n\)/);
+    expect(code).toMatch(
+      /REVOKE EXECUTE ON FUNCTION public\.breeding_draft_v1\([\s\S]*FROM PUBLIC, anon, authenticated, service_role/
+    );
+    expect(code).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.breeding_draft\([\s\S]*TO service_role/
+    );
+  });
+
   it('projects stable slots, instances, retired state and journals from JSONB', () => {
     expect(code).toMatch(/CREATE OR REPLACE FUNCTION genome_record_version/);
     expect(code).toMatch(/p_genome -> 'instances'/);

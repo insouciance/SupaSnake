@@ -41,9 +41,8 @@ import {
 } from '@/shared/game/anomalies';
 import {
   ASCENDANCE_COST_STEEPENING,
-  ASCENDANCE_FIRST_INCREMENT,
   ASCENDANCE_START_GENERATION,
-  ASCENDANCE_YIELD_CEILING,
+  ASCENDANCE_V2_GENERATION_FACTOR,
 } from '@/shared/game/ascendance';
 import { GENES, isGeneId, type GeneId } from '@/shared/game/genes';
 import { SPLICES, SPLICE_IDS, isSpliceId, spliceStrains, type SpliceId } from '@/shared/game/splices';
@@ -322,8 +321,8 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
   },
   ascendance: {
     name: 'Ascendance',
-    effect: `From Gen ${ASCENDANCE_START_GENERATION} every generation permanently raises that snake's Yield: ${shift(1 + ASCENDANCE_FIRST_INCREMENT)} at the first step, each step smaller than the last, approaching ${shift(1 + ASCENDANCE_YIELD_CEILING)} and never reaching it.`,
-    cost: `Each generation past Gen ${GEN3_SLOT_UNLOCK} multiplies the breeding price by ×${ASCENDANCE_COST_STEEPENING}, so every step buys visibly less for visibly more. Score reads none of it — a veteran's snake is never a different game.`,
+    effect: `From Gen ${ASCENDANCE_START_GENERATION}, every new generation compounds that snake's permanent Yield by ×${ASCENDANCE_V2_GENERATION_FACTOR}. The proportional gain never shrinks and there is no designed Yield ceiling.`,
+    cost: `Each generation past Gen ${GEN3_SLOT_UNLOCK} multiplies the breeding price by ×${ASCENDANCE_COST_STEEPENING}. Score reads none of Ascendance — it rewards long-term ownership without rewriting the competitive gameplay result.`,
   },
 };
 
