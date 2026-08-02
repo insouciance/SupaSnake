@@ -1425,6 +1425,13 @@ export async function POST(request: NextRequest) {
             )
           : NEUTRAL_CONDITION;
 
+      const finalSuppressedStrains = conditionSuppressedStrains(
+        runCondition,
+        startGenomeContext?.suppressedStrains ?? []
+      );
+      const finalThresholdDelta =
+        conditionStrainThresholdDelta(runCondition);
+
       // The condition's reach into the run, composed HERE and only here.
       //
       // Both of these travel to the engine in the genome block AND into
@@ -1441,12 +1448,8 @@ export async function POST(request: NextRequest) {
       //                   clause. Two independent suppressions both bind.
       if (genomeBlock?.rulesVersion === GENOME_RULES_V2) {
         genomeBlock.offerTiltStrain = conditionOfferTilt(runCondition);
-        genomeBlock.suppressedStrains = conditionSuppressedStrains(
-          runCondition,
-          startGenomeContext?.suppressedStrains ?? []
-        );
-        genomeBlock.strainThresholdDelta =
-          conditionStrainThresholdDelta(runCondition);
+        genomeBlock.suppressedStrains = finalSuppressedStrains;
+        genomeBlock.strainThresholdDelta = finalThresholdDelta;
       } else if (genomeBlock) {
         genomeBlock.anomalyStrain = conditionOfferTilt(runCondition);
         // genomeBlock is a Record<string, unknown>, so the Gauntlet's existing
@@ -1460,8 +1463,17 @@ export async function POST(request: NextRequest) {
           runCondition,
           existingSuppressed
         );
-        genomeBlock.strainThresholdDelta =
-          conditionStrainThresholdDelta(runCondition);
+        genomeBlock.strainThresholdDelta = finalThresholdDelta;
+      }
+      if (startGenomeContext) {
+        startGenomeContext.suppressedStrains = [...finalSuppressedStrains];
+        startGenomeContext.strainThresholdDelta = { ...finalThresholdDelta };
+      }
+      if (startRunContext) {
+        // The initial shell has to exist before Signal can attach its condition.
+        // Re-serialize after that condition is known; staging below atomically
+        // replaces the shell's provisional context before any Energy can move.
+        serializedStartRunContext = serializeRunStartContext(startRunContext);
       }
       // ---------------------------------------------------------------
       // The daily harvest envelope (Constitution §8.6)
@@ -1573,6 +1585,7 @@ export async function POST(request: NextRequest) {
           exempt: energyExempt,
           energyVisible,
           manifestBase,
+          runContext: serializedStartRunContext,
         });
 
         // This RPC calls commit_run_energy and writes the immutable final

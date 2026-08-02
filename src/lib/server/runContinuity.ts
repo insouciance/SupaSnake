@@ -1445,6 +1445,8 @@ export async function stageRunStartFinalization(
     exempt: boolean;
     energyVisible: boolean;
     manifestBase: Record<string, unknown>;
+    /** Exact settlement authority mirrored by `manifestBase.runContext`. */
+    runContext: Record<string, unknown> | null;
   }
 ): Promise<void> {
   const reserved = ['sessionId', 'energy', 'charge', 'clanBattle'];
@@ -1459,11 +1461,15 @@ export async function stageRunStartFinalization(
       continuity_energy_commitment: input.exempt ? 0 : input.requestedCommitment,
       continuity_exempt: input.exempt,
       continuity_energy_visible: input.energyVisible,
+      ...(input.runContext ? { run_context: input.runContext } : {}),
     })
     .eq('id', input.sessionId)
     .eq('player_id', input.playerId)
     .eq('continuity_phase', 'preparing')
     .is('start_manifest', null)
+    // The first successful stage is immutable. A concurrent repair cannot
+    // replace a manifest/context pair derived under a different deployment.
+    .is('start_manifest_draft', null)
     .is('ended_at', null)
     .is('end_reason', null)
     .select('id');

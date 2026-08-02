@@ -921,6 +921,50 @@ describe('server-owned run-start continuity', () => {
     ).toHaveLength(1);
   });
 
+  it.each([
+    { initialV2: false, repairedV2: true },
+    { initialV2: true, repairedV2: false },
+  ])(
+    'keeps the repaired manifest and authoritative run context coherent across a Genome flag change ($initialV2 → $repairedV2)',
+    async ({ initialV2, repairedV2 }) => {
+      mockGenomeV2Enabled = initialV2;
+      await POST(post(startBody));
+      const shell = session();
+      const staleContext = structuredClone(shell.run_context);
+      Object.assign(shell, {
+        start_manifest: null,
+        start_manifest_draft: null,
+        continuity_energy_commitment: null,
+        continuity_exempt: null,
+        continuity_energy_visible: null,
+        continuity_phase: 'preparing',
+        energy_committed: null,
+        end_reason: null,
+        ended_at: null,
+      });
+      rpcCalls.length = 0;
+      mockGenomeV2Enabled = repairedV2;
+
+      const response = await POST(post(startBody));
+      const repaired = await response.json() as Row;
+      const repairedGenome = repaired.genome as Row;
+      const repairedContext = repaired.runContext as Row;
+      const contextGenome = repairedContext.genome as Row;
+
+      expect(response.status).toBe(200);
+      expect(repairedGenome.rulesVersion ?? 1).toBe(repairedV2 ? 2 : 1);
+      expect(contextGenome.rulesVersion ?? 1).toBe(repairedV2 ? 2 : 1);
+      expect(shell.run_context).toEqual(repairedContext);
+      expect((shell.start_manifest_draft as Row).runContext).toEqual(
+        repairedContext
+      );
+      expect(shell.run_context).not.toEqual(staleContext);
+      expect(
+        rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
+      ).toHaveLength(1);
+    }
+  );
+
   it('rejects the same request id when any material setting changes', async () => {
     expect((await POST(post(startBody))).status).toBe(200);
     const conflict = await POST(post({ ...startBody, energyCommitment: 5 }));
@@ -1233,6 +1277,7 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
         ftuePresentation: body.genome.ftuePresentation,
       },
     });
+    expect(session().run_context).toEqual(body.runContext);
     // The stamp the end path re-derives it from — mirrored by the RPC, not by
     // the session insert.
     expect(session().signal_objective_run_id).toBe(SIGNAL_ATTEMPT_ID);
