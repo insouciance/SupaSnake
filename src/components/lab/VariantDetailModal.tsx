@@ -26,9 +26,8 @@ import { sanitizeTraits } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints } from '@/shared/game/lineage';
 import { STRAIN_IDS, type StrainId } from '@/shared/game/strains';
 import {
-  ascendanceYieldMultiplier,
+  CURRENT_ASCENDANCE_CURVE_VERSION,
   formatAscendanceYieldMultiplier,
-  formatYieldMultiplier,
 } from '@/shared/game/ascendance';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
@@ -38,8 +37,8 @@ import { IconArrowRight, IconBolt, IconCheck, IconDna, IconEgg, IconSnake } from
 import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
 import {
   AscendanceProgressionInstrument,
-  projectAscendanceProgression,
 } from '@/components/progression/AscendanceProgressionInstrument';
+import { buildAscendanceProgressionModel } from '@/components/progression/ascendancePresentationAdapter';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -210,11 +209,9 @@ export function VariantDetailModal({
     lineage,
     sanitizeTraits(owned.traits)
   );
-  const ascendanceProgression = projectAscendanceProgression({
+  const ascendanceProgression = buildAscendanceProgressionModel({
     generation: owned.generation,
-    curveVersion: 2,
-    multiplierForGeneration: ascendanceYieldMultiplier,
-    formatMultiplier: formatYieldMultiplier,
+    curveVersion: CURRENT_ASCENDANCE_CURVE_VERSION,
   });
 
   // Base stats stay flat and Score remains build-independent. Gen4+
@@ -410,6 +407,7 @@ export function VariantDetailModal({
                   primaryColor={theme.primary}
                   secondaryColor={theme.secondary}
                   rarity={variant.rarity}
+                  generation={owned.generation}
                   className="absolute inset-0 w-full h-full"
                 />
               )}

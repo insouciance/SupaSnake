@@ -109,6 +109,7 @@ function splicePaths(
       recipeLabel: known
         ? `Recipe: ${GENES[splice.parents[0]].name} + ${GENES[splice.parents[1]].name}`
         : 'Recipe not yet archived',
+      activation: 'available',
     });
   }
   for (const spliceId of SPLICE_IDS) {
@@ -125,6 +126,7 @@ function splicePaths(
       cost: splice.cost,
       recipeKnown: true,
       recipeLabel: `Next connection: ${GENES[partner].name}`,
+      activation: 'available',
     });
   }
   return paths;
@@ -189,8 +191,8 @@ export function buildLegacyTacticalLoomModel(
     sourceLabel: input.source === 'infuse' ? 'Portal infusion' : 'Genome offer',
     dynasty: 'ACTIVE RUN',
     currentGenome: genomeSlots(input.held),
-    candidates: input.options.map((option, index) => ({
-      action: index === 0 ? 'THREAD' as const : 'FORK' as const,
+    candidates: input.options.map((option) => ({
+      action: 'THREAD' as const,
       geneId: option,
       name: GENES[option].name,
       category: GENES[option].economics,

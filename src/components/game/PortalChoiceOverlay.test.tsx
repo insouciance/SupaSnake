@@ -41,7 +41,7 @@ function mutationLoomModel(): TacticalLoomDecisionModel {
         consequence: consequence('Coilkeeper'),
       },
       {
-        action: 'FORK',
+        action: 'THREAD',
         geneId: 'wall_rush',
         name: 'Wall Rush',
         category: 'Movement',
@@ -92,6 +92,31 @@ describe('PortalChoiceOverlay', () => {
     // literal - the "12±4" that used to be hardcoded here is exactly the
     // class of copy that goes stale silently.
     expect(screen.getByTestId('portal-pass')).toHaveTextContent('12±4 foods');
+  });
+
+  it('uses exact v2 outcome labels instead of presenting a client-derived DNA forecast', () => {
+    render(
+      <PortalChoiceOverlay
+        canInfuse
+        infusesUsed={0}
+        snakeLength={12}
+        bankDna={999}
+        crashDna={888}
+        bankOutcomeLabel="42.75 Yield"
+        crashOutcomeLabel="8.5 Yield"
+        outcomeUnitLabel="Genome Yield · before run-stamped Ascendance and Energy"
+        doorsPassed={0}
+        cadence={CADENCE}
+        rulesVersion={2}
+        onBank={jest.fn()}
+        onPass={jest.fn()}
+        onInfuse={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId('portal-current-stake')).toHaveTextContent('42.75 Yield');
+    expect(screen.getByTestId('portal-current-stake')).toHaveTextContent('8.5 Yield');
+    expect(screen.getByTestId('portal-current-stake')).not.toHaveTextContent('999 DNA');
+    expect(screen.getByTestId('portal-outcome-unit')).toHaveTextContent('before run-stamped Ascendance and Energy');
   });
 
   it('names how many doors are already behind the player', () => {

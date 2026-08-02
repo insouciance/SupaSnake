@@ -212,6 +212,7 @@ export function VariantCard({
             primaryColor={primaryColor}
             secondaryColor={secondaryColor}
             rarity={variant.rarity}
+            generation={owned?.generation}
             className="absolute inset-0 w-full h-full"
           />
         )}

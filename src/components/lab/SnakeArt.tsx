@@ -14,6 +14,7 @@
 
 import React, { useMemo } from 'react';
 import type { Rarity } from '@/shared/types/snake-data-model';
+import { buildAscendanceVisualPresentation } from '@/components/progression/ascendanceVisualPresentation';
 
 export interface SnakeArtProps {
   /** Seed source - use variant.id (stable) */
@@ -25,6 +26,8 @@ export interface SnakeArtProps {
   primaryColor: string;
   secondaryColor: string;
   rarity: Rarity;
+  /** Every fifth generation evolves the portrait pattern and aura. */
+  generation?: number;
   className?: string;
 }
 
@@ -172,6 +175,7 @@ export function SnakeArt({
   primaryColor,
   secondaryColor,
   rarity,
+  generation = 1,
   className,
 }: SnakeArtProps): React.ReactElement<any> {
   const W = 300;
@@ -189,16 +193,20 @@ export function SnakeArt({
   }, [seed, name]);
 
   const frame = RARITY_FRAME[rarity] ?? RARITY_FRAME.common;
+  const ascendance = buildAscendanceVisualPresentation(generation);
   const gradId = `grad-${seed.slice(0, 8)}`;
   const glowId = `glow-${seed.slice(0, 8)}`;
+  const ascendanceGlowId = `asc-${seed.slice(0, 8)}-${ascendance.stage}`;
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className={className}
       role="img"
-      aria-label={`${name} artwork`}
+      aria-label={`${name} artwork${ascendance.stage > 0 ? `, Generation ${ascendance.generation}, Ascendance evolution ${ascendance.stage}` : ''}`}
       preserveAspectRatio="xMidYMid slice"
+      data-ascendance-stage={ascendance.stage}
+      data-ascendance-milestone={ascendance.milestoneGeneration ?? undefined}
     >
       <defs>
         <linearGradient
@@ -217,6 +225,15 @@ export function SnakeArt({
             </feMerge>
           </filter>
         )}
+        {ascendance.stage > 0 ? (
+          <filter id={ascendanceGlowId} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation={ascendance.auraBlur} result="ascendance-blur" />
+            <feMerge>
+              <feMergeNode in="ascendance-blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        ) : null}
       </defs>
 
       {/* Background wash - slightly stronger for contrast on the darker
@@ -227,6 +244,18 @@ export function SnakeArt({
       <DynastyMotif dynasty={dynasty} rng={art.motifRng} w={W} h={H} color={secondaryColor} />
 
       {/* Snake body (under-glow + body + belly line) */}
+      {ascendance.stage > 0 ? (
+        <path
+          d={art.bodyPath}
+          fill="none"
+          stroke={secondaryColor}
+          strokeWidth={art.bodyWidth + ascendance.auraWidth}
+          strokeLinecap="round"
+          opacity={ascendance.auraOpacity}
+          filter={`url(#${ascendanceGlowId})`}
+          data-testid="ascendance-aura"
+        />
+      ) : null}
       <path
         d={art.bodyPath}
         fill="none"
@@ -243,6 +272,19 @@ export function SnakeArt({
         strokeLinecap="round"
         filter={frame.glow > 0 ? `url(#${glowId})` : undefined}
       />
+      {ascendance.stage > 0 ? (
+        <path
+          d={art.bodyPath}
+          fill="none"
+          stroke={secondaryColor}
+          strokeWidth={Math.max(2, art.bodyWidth * 0.2)}
+          strokeLinecap="round"
+          strokeDasharray={ascendance.patternDasharray}
+          strokeDashoffset={ascendance.patternDashoffset}
+          opacity={0.82}
+          data-testid="ascendance-pattern"
+        />
+      ) : null}
       <path
         d={art.bodyPath}
         fill="none"

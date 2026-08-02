@@ -37,6 +37,9 @@ export interface TacticalLoomSplicePath {
   /** Recipes may stay undiscovered; their rules never do. */
   recipeKnown: boolean;
   recipeLabel: string;
+  /** Knowledge stays visible before activation unlocks. */
+  activation: 'available' | 'locked';
+  lockedReason?: string;
 }
 
 export interface TacticalLoomFact {
@@ -85,6 +88,17 @@ export interface TacticalLoomCandidate {
 export interface TacticalLoomDecline {
   action: 'DECLINE';
   name: string;
+  consequence: TacticalLoomConsequence;
+  /** Charged Loom Anchor makes DECLINE a deliberate sub-choice. */
+  options?: readonly TacticalLoomDeclineOption[];
+}
+
+export interface TacticalLoomDeclineOption {
+  id: string;
+  label: string;
+  detail: string;
+  /** Undefined means decline without pinning either candidate. */
+  pinCandidateIndex?: 0 | 1;
   consequence: TacticalLoomConsequence;
 }
 

@@ -186,6 +186,7 @@ describe('Genome Codex page', () => {
     mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
     render(<CodexPage />);
     expect(screen.getByTestId('genome-strategy-atlas')).toBeInTheDocument();
+    expect(screen.getByTestId('genome-strategy-atlas')).toHaveAttribute('data-rules-version', '2');
     expect(screen.getByLabelText('Genome consequence chain')).toHaveTextContent(
       /Offer.*Strain.*Splice.*BANK \/ crash/
     );

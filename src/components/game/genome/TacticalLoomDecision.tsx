@@ -22,7 +22,7 @@ export interface TacticalLoomDecisionProps {
   model: TacticalLoomDecisionModel;
   locked: boolean;
   onChoose: (candidateIndex: 0 | 1, replacementSlot?: number) => void;
-  onDecline: () => void;
+  onDecline: (pinCandidateIndex?: 0 | 1) => void;
   /** Portal mutation inspection may return without consuming the portal. */
   onBack?: () => void;
 }
@@ -41,6 +41,9 @@ export function TacticalLoomDecision({
   const [selected, setSelected] = useState<ChoiceKey>('candidate-0');
   const [recodePhase, setRecodePhase] = useState(false);
   const [replacementSlot, setReplacementSlot] = useState<number | null>(null);
+  const [declineOptionId, setDeclineOptionId] = useState<string | null>(
+    model.decline.options?.[0]?.id ?? null
+  );
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstChoiceRef = useRef<HTMLButtonElement>(null);
   useDialogFocusTrap(dialogRef, !locked);
@@ -55,12 +58,17 @@ export function TacticalLoomDecision({
   );
   const selectedReplacement: TacticalLoomReplacementChoice | null =
     replacementChoices.find((choice) => choice.slotIndex === replacementSlot) ?? null;
+  const selectedDeclineOption = model.decline.options?.find(
+    (option) => option.id === declineOptionId
+  ) ?? model.decline.options?.[0] ?? null;
   const consequence = recodePhase && selectedReplacement
     ? selectedReplacement.consequence
-    : selectedCandidate?.consequence ?? model.decline.consequence;
+    : selectedCandidate?.consequence ?? selectedDeclineOption?.consequence ?? model.decline.consequence;
   const action = recodePhase && selectedCandidate
     ? `${selectedCandidate.action} · replace ${selectedReplacement?.label ?? 'one locus'}`
-    : selectedCandidate?.action ?? model.decline.action;
+    : selectedCandidate?.action ?? (selectedDeclineOption
+      ? `${model.decline.action} · ${selectedDeclineOption.label}`
+      : model.decline.action);
 
   useEffect(() => {
     if (!locked) firstChoiceRef.current?.focus();
@@ -70,12 +78,15 @@ export function TacticalLoomDecision({
     setSelected(next);
     setRecodePhase(false);
     setReplacementSlot(null);
-  }, []);
+    if (next === 'decline') {
+      setDeclineOptionId(model.decline.options?.[0]?.id ?? null);
+    }
+  }, [model.decline.options]);
 
   const confirm = useCallback(() => {
     if (locked) return;
     if (selectedIndex === null) {
-      onDecline();
+      onDecline(selectedDeclineOption?.pinCandidateIndex);
       return;
     }
     if (replacementChoices.length > 0 && !recodePhase) {
@@ -96,6 +107,7 @@ export function TacticalLoomDecision({
     onDecline,
     recodePhase,
     replacementChoices,
+    selectedDeclineOption,
     selectedIndex,
     selectedReplacement,
   ]);
@@ -219,7 +231,7 @@ export function TacticalLoomDecision({
                 } disabled:cursor-wait disabled:opacity-55`}
               >
                 <span className="block font-display text-[11px] tracking-[0.1em] text-cosmic sm:text-sm">
-                  {choice.action}
+                  {index < 2 ? `${index === 0 ? 'A' : 'B'} · ` : ''}{choice.action}
                 </span>
                 <span className="mt-0.5 block truncate font-body text-[10px] font-bold text-bone-white sm:text-xs" title={choice.name}>
                   {choice.name}
@@ -267,6 +279,39 @@ export function TacticalLoomDecision({
             </section>
           ) : null}
 
+          {selectedIndex === null && model.decline.options && model.decline.options.length > 0 ? (
+            <section className="mb-4 rounded-[14px] border border-cosmic/35 bg-cosmic/6 p-3" data-testid="loom-anchor-decline-step">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <p className="font-display text-sm text-cosmic">Loom Anchor · choose what DECLINE preserves</p>
+                  <p className="mt-1 font-body text-xs text-beige/65">Pinning spends the charged Anchor. Declining without a pin keeps the charge only when the authoritative rule allows it.</p>
+                </div>
+                <span className="font-body text-[10px] font-bold uppercase tracking-[0.12em] text-beige/45">Before confirmation</span>
+              </div>
+              <div role="radiogroup" aria-label="Loom Anchor decline outcome" className="mt-3 grid gap-2 sm:grid-cols-3">
+                {model.decline.options.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selectedDeclineOption?.id === option.id}
+                    onClick={() => setDeclineOptionId(option.id)}
+                    onFocus={() => setDeclineOptionId(option.id)}
+                    className={`min-h-11 rounded-[10px] border px-2.5 py-2 text-left ${
+                      selectedDeclineOption?.id === option.id
+                        ? 'border-cosmic bg-cosmic/12'
+                        : 'border-scale-blue-light/25 bg-void/35'
+                    }`}
+                    data-testid={`loom-decline-option-${option.id}`}
+                  >
+                    <span className="block truncate font-body text-xs font-bold text-bone-white">{option.label}</span>
+                    <span className="mt-0.5 block font-body text-[9px] leading-snug text-beige/50">{option.detail}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <TacticalLoomConsequencePane
             consequence={consequence}
             action={action}
@@ -301,7 +346,9 @@ export function TacticalLoomDecision({
               {recodePhase && selectedReplacement
                 ? `RECODE +${selectedReplacement.growthCost}`
                 : selectedIndex === null
-                  ? 'DECLINE OFFER'
+                  ? selectedDeclineOption?.pinCandidateIndex !== undefined
+                    ? `DECLINE · PIN ${model.candidates[selectedDeclineOption.pinCandidateIndex].name}`
+                    : 'DECLINE OFFER'
                   : selectedCandidate?.replacementChoices?.length
                     ? `${selectedCandidate.action} · RECODE`
                     : `${selectedCandidate?.action} ${selectedCandidate?.name}`}

@@ -10,12 +10,12 @@ import { buildLegacyTacticalLoomModel } from '@/components/game/genome/legacyTac
 import type { TacticalLoomDecisionModel } from '@/components/game/genome/tacticalLoomPresentation';
 
 export interface GeneChoiceOverlayProps {
-  options: [GeneId, GeneId];
-  held: GenePick[];
-  strainCounts: StrainPoints;
+  options?: [GeneId, GeneId];
+  held?: GenePick[];
+  strainCounts?: StrainPoints;
   source?: 'gene_food' | 'infuse' | null;
-  showStrains: boolean;
-  splicesUnlocked: boolean;
+  showStrains?: boolean;
+  splicesUnlocked?: boolean;
   discoveredSplices?: readonly SpliceId[];
   pityStrain?: StrainId | null;
   /**
@@ -24,7 +24,7 @@ export interface GeneChoiceOverlayProps {
    */
   presentation?: TacticalLoomDecisionModel;
   onChoose: (index: 0 | 1) => void;
-  onDecline: () => void;
+  onDecline: (pinCandidateIndex?: 0 | 1) => void;
   /** Required by v2 when six loci turn a pick into a two-step Recode. */
   onRecode?: (index: 0 | 1, replacementSlot: number) => void;
 }
@@ -36,11 +36,11 @@ export interface GeneChoiceOverlayProps {
  */
 export function GeneChoiceOverlay({
   options,
-  held,
-  strainCounts,
+  held = [],
+  strainCounts = {},
   source = 'gene_food',
-  showStrains,
-  splicesUnlocked,
+  showStrains = false,
+  splicesUnlocked = false,
   discoveredSplices = [],
   pityStrain = null,
   presentation,
@@ -50,7 +50,7 @@ export function GeneChoiceOverlay({
 }: GeneChoiceOverlayProps) {
   const [locked, setLocked] = useState(true);
   const model = useMemo(
-    () => presentation ?? buildLegacyTacticalLoomModel({
+    () => presentation ?? (options ? buildLegacyTacticalLoomModel({
       options,
       held,
       strainCounts,
@@ -59,7 +59,7 @@ export function GeneChoiceOverlay({
       splicesUnlocked,
       discoveredSplices,
       pityStrain,
-    }),
+    }) : null),
     [
       discoveredSplices,
       held,
@@ -77,6 +77,8 @@ export function GeneChoiceOverlay({
     const timer = window.setTimeout(() => setLocked(false), CHOICE_INPUT_LOCK_MS);
     return () => window.clearTimeout(timer);
   }, []);
+
+  if (!model) return null;
 
   return (
     <TacticalLoomDecision

@@ -100,6 +100,7 @@ export function BreedingReveal({
             primaryColor={theme.primary}
             secondaryColor={theme.secondary}
             rarity={offspring.rarity ?? 'common'}
+            generation={offspring.generation}
             className="w-full h-full"
           />
         </div>
