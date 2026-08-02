@@ -529,7 +529,7 @@ function replayEngineFromCheckpoint(checkpoint: SnakeCheckpointV1): SnakeGameLog
 function deriveCanonicalReplay(
   proposed: SnakeCheckpointV1,
   previous: SnakeCheckpointV1,
-  serverElapsedMs: number
+  activeElapsedMs: number
 ): SnakeCheckpointV1 {
   const trace = parseReplayTrace(proposed.privateState.replay);
   const priorTrace = parseReplayTrace(previous.privateState.replay);
@@ -557,7 +557,11 @@ function deriveCanonicalReplay(
   }
   const canonical = engine.exportCheckpoint();
   canonical.state.startTime = null;
-  canonical.privateState.elapsedMs = serverElapsedMs;
+  // Replay reconstructs gameplay state from the accepted checkpoint, while
+  // elapsed time remains the client's already-validated cumulative active
+  // clock. Time spent offline must never become run time. The wall clock since
+  // activation is used only as the upper integrity bound below.
+  canonical.privateState.elapsedMs = activeElapsedMs;
   if (!jsonEquivalent(replayComparable(proposed), replayComparable(canonical))) {
     rejectCheckpoint('Run checkpoint does not equal its deterministic replay.');
   }
@@ -1115,7 +1119,7 @@ export function validateRunCheckpoint(
   const canonical = deriveCanonicalReplay(
     typed,
     context.previous!,
-    serverElapsedMs
+    elapsedMs
   );
   const canonicalFood = canonical.state.foodEaten;
   validateCheckpointBoard(canonical, context.previous!, expectedDynasty);

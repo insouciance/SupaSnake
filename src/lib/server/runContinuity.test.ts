@@ -304,6 +304,78 @@ describe('run continuity server contract', () => {
     ).toThrow('server time bound');
   });
 
+  it('preserves cumulative active time across an offline resume and later saves', () => {
+    const activatedAt = Date.UTC(2026, 7, 2, 8, 0, 0);
+    const offlineGapMs = 3 * 60 * 60 * 1_000;
+    const manifest = {
+      sessionId: 'offline-resume',
+      simulation: {
+        seed: 'offline-resume-seed',
+        version: 1,
+        rulesVersion: SNAKE_RULES_VERSION,
+      },
+      runSnake: { dynasty: 'PRIMAL' },
+    };
+    const startedAt = new Date(activatedAt).toISOString();
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'offline-resume-seed',
+    });
+    game.prepare();
+    const opening = game.exportCheckpoint(activatedAt);
+    game.activatePrepared(activatedAt);
+    game.tick();
+
+    const firstProposal = game.exportCheckpoint(activatedAt + 1_000);
+    const firstAccepted = validateRunCheckpoint(firstProposal, {
+      manifest,
+      startedAt,
+      now: activatedAt + 1_000,
+      previous: opening,
+    });
+    expect(firstAccepted.privateState.elapsedMs).toBe(1_000);
+
+    const resumedAt = activatedAt + offlineGapMs;
+    const resumed = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'offline-resume-seed',
+    });
+    resumed.prepare();
+    resumed.restoreCheckpoint(firstAccepted, resumedAt, {
+      replacePreparedOpening: true,
+    });
+
+    resumed.tick();
+    const resumedProposal = resumed.exportCheckpoint(resumedAt + 1_000);
+    const resumedAccepted = validateRunCheckpoint(resumedProposal, {
+      manifest,
+      startedAt,
+      now: resumedAt + 1_000,
+      previous: firstAccepted,
+    });
+    expect(resumedAccepted.privateState.elapsedMs).toBe(2_000);
+
+    resumed.tick();
+    const thirdProposal = resumed.exportCheckpoint(resumedAt + 2_000);
+    const thirdAccepted = validateRunCheckpoint(thirdProposal, {
+      manifest,
+      startedAt,
+      now: resumedAt + 2_000,
+      previous: resumedAccepted,
+    });
+    expect(thirdAccepted.privateState.elapsedMs).toBe(3_000);
+
+    resumed.tick();
+    const fourthProposal = resumed.exportCheckpoint(resumedAt + 3_000);
+    const fourthAccepted = validateRunCheckpoint(fourthProposal, {
+      manifest,
+      startedAt,
+      now: resumedAt + 3_000,
+      previous: thirdAccepted,
+    });
+    expect(fourthAccepted.privateState.elapsedMs).toBe(4_000);
+  });
+
   it('rejects a forged free decision hold in replay', () => {
     const now = Date.now();
     const game = new SnakeGameLogic({
