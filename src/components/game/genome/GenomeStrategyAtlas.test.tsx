@@ -56,15 +56,15 @@ function atlasModel(): GenomeStrategyAtlasModel {
         cost: 'The seal remains solid.',
         strains: ['FERAL', 'FLUX'],
         recipeKnown: false,
-        parentIds: null,
-        recipeLabel: 'Recipe hidden until discovered',
+        parentIds: ['coilkeeper', 'overgrowth'],
+        recipeLabel: 'Recipe: Coilkeeper + Overgrowth',
       },
     ],
   };
 }
 
 describe('GenomeStrategyAtlas', () => {
-  it('makes every 3/4/5 ladder visible and keeps rules separate from recipe discovery', () => {
+  it('makes every 3/4/5 ladder and tactical recipe visible before discovery', () => {
     render(<GenomeStrategyAtlas model={atlasModel()} />);
     for (const strain of STRAIN_IDS) {
       for (const points of [3, 4, 5]) {
@@ -74,7 +74,7 @@ describe('GenomeStrategyAtlas', () => {
     const archive = screen.getByTestId('atlas-splice-archive');
     expect(archive).toHaveTextContent('Worldcoil');
     expect(archive).toHaveTextContent('Sealed territory converts body pressure');
-    expect(archive).toHaveTextContent('Recipe hidden until discovered');
+    expect(archive).toHaveTextContent('Recipe: Coilkeeper + Overgrowth');
   });
 
   it('uses one selected consequence board for category changes instead of duplicate cards', () => {

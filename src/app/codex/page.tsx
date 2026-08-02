@@ -19,9 +19,9 @@
  * recording at the banked-run unlock. That progression is intact; it simply
  * no longer decides whether the rules exist.
  *
- * One piece of content stays hidden: the splice RECIPE. The server nulls
- * `parents` until you have discovered the splice (`api/codex/utils.ts`), so
- * it is absent from the JSON rather than masked here.
+ * Mechanical routes never wait on discovery. Splice recipes, requirements,
+ * effects, and costs are visible from the start; discovery records ownership,
+ * history, prestige, and rewards around those public rules.
  */
 
 import { Suspense, useEffect, useMemo } from 'react';
@@ -465,15 +465,11 @@ function CodexShell({ view }: { view: CodexView }) {
                       </div>
                       <p className="text-sm text-beige/70 mt-3">{splice.effect}</p>
                       <p className="text-xs text-strike-red/75 mt-2">{splice.cost}</p>
-                      {/* The one thing still withheld — and the server, not
-                          this page, is what withholds it. */}
                       <p
                         className="text-xs font-body text-cosmic/80 mt-2"
                         data-testid={`codex-recipe-${splice.id}`}
                       >
-                        {splice.parents
-                          ? `Recipe: ${GENES[splice.parents[0]].name} + ${GENES[splice.parents[1]].name}`
-                          : 'Recipe hidden — fuse the right pair to reveal it'}
+                        Recipe: {GENES[splice.parents[0]].name} + {GENES[splice.parents[1]].name}
                       </p>
                       <p className="text-xs font-mono text-beige/50 mt-3">
                         {splice.discoveries} runs · {splice.banks} banked
