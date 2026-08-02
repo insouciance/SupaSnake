@@ -5,6 +5,43 @@ import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { IconBolt, IconDna, IconGear, IconShield } from '@/components/ui/icons';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 
+/**
+ * The mobile header is a symmetric three-column grid: an empty rail, the
+ * centered identity stack, and the Settings hit target. Keeping these values
+ * in the same module as the rendered grid lets the narrow-viewport regression
+ * prove the real geometry rather than approximate text widths in jsdom.
+ */
+export const HOME_HEADER_GRID = Object.freeze({
+  outerPaddingPx: 12,
+  sideRailPx: 44,
+  columnGapPx: 8,
+});
+
+export function homeHeaderGridGeometry(viewportWidth: number) {
+  const width = Number.isFinite(viewportWidth)
+    ? Math.max(0, Math.floor(viewportWidth))
+    : 0;
+  const { outerPaddingPx, sideRailPx, columnGapPx } = HOME_HEADER_GRID;
+  const identityLeft = outerPaddingPx + sideRailPx + columnGapPx;
+  const settingsLeft = Math.max(0, width - outerPaddingPx - sideRailPx);
+  const identityRight = Math.max(identityLeft, settingsLeft - columnGapPx);
+  return {
+    identityLeft,
+    identityRight,
+    identityWidth: Math.max(0, identityRight - identityLeft),
+    settingsLeft,
+    settingsRight: Math.max(settingsLeft, width - outerPaddingPx),
+  };
+}
+
+const HOME_HEADER_GRID_STYLE = {
+  paddingLeft: HOME_HEADER_GRID.outerPaddingPx,
+  paddingRight: HOME_HEADER_GRID.outerPaddingPx,
+  columnGap: HOME_HEADER_GRID.columnGapPx,
+  gridTemplateColumns:
+    `${HOME_HEADER_GRID.sideRailPx}px minmax(0, 1fr) ${HOME_HEADER_GRID.sideRailPx}px`,
+};
+
 export interface HomeSpecimenIdentity {
   variantName: string;
   generation: number;
@@ -42,47 +79,67 @@ export function HomeIdentityHud({
   dna,
   energy,
 }: HomeIdentityHudProps) {
+  const specimenLabel = specimen
+    ? `${specimen.variantName} · Gen ${specimen.generation}`
+    : null;
+  const clanLabel = clan
+    ? `Clan ${clan.name}${clan.tag ? `, ${clan.tag}` : ''}`
+    : null;
+
   return (
     <header
-      className="pointer-events-none absolute inset-x-0 top-0 z-10 px-14 pt-[max(1rem,env(safe-area-inset-top,0px))] text-center sm:px-16 sm:pt-5"
+      className="pointer-events-none absolute inset-x-0 top-0 z-10 grid pt-[max(1rem,env(safe-area-inset-top,0px))] text-center sm:pt-5"
+      style={HOME_HEADER_GRID_STYLE}
       data-home-identity-hud
     >
-      <div className="mx-auto flex w-fit max-w-full flex-col items-center">
+      <div className="col-start-2 row-start-1 mx-auto flex w-full min-w-0 flex-col items-center">
         <h1 className="heading-display text-lg text-venom-orange text-glow-accent sm:text-xl">
           SUPASNAKE
         </h1>
 
         {specimen ? (
-        <p
-          className="mt-2 inline-flex items-center gap-1.5 whitespace-nowrap font-display text-sm uppercase text-bone-white text-glow sm:text-base"
-          data-testid="home-specimen-identity"
-        >
-          {specimen.lineageStrain ? (
-            <span
-              className="inline-flex h-4 w-4 shrink-0 [&_svg]:h-full [&_svg]:w-full"
-              style={{ color: STRAINS[specimen.lineageStrain].color }}
-              title={`${STRAINS[specimen.lineageStrain].name} Genome lineage`}
-              data-testid="home-lineage-rune"
-            >
-              <StrainGlyph id={specimen.lineageStrain} />
+          <p
+            className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-bone-white text-glow sm:text-base"
+            aria-label={specimenLabel ?? undefined}
+            title={specimenLabel ?? undefined}
+            data-testid="home-specimen-identity"
+          >
+            {specimen.lineageStrain ? (
+              <span
+                className="inline-flex h-4 w-4 shrink-0 [&_svg]:h-full [&_svg]:w-full"
+                style={{ color: STRAINS[specimen.lineageStrain].color }}
+                title={`${STRAINS[specimen.lineageStrain].name} Genome lineage`}
+                aria-hidden="true"
+                data-testid="home-lineage-rune"
+              >
+                <StrainGlyph id={specimen.lineageStrain} />
+              </span>
+            ) : null}
+            <span className="min-w-0 truncate" data-testid="home-specimen-name">
+              {specimen.variantName}
             </span>
-          ) : null}
-          {specimen.variantName} · Gen {specimen.generation}
-        </p>
+            <span className="shrink-0" data-testid="home-specimen-generation">
+              {' '}· Gen {specimen.generation}
+            </span>
+          </p>
         ) : null}
 
         {clan ? (
-        <Link
-          href="/clan"
-          className="pointer-events-auto mt-1 inline-flex min-h-5 items-center gap-1.5 text-rarity-legendary transition-colors hover:text-rarity-legendary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rarity-legendary"
-          aria-label={`Clan ${clan.name}${clan.tag ? `, ${clan.tag}` : ''}`}
-          data-testid="home-clan-identity"
-        >
-          <IconShield size={13} />
-          <span className="whitespace-nowrap font-body text-[10px] font-bold uppercase tracking-[0.1em]">
-            {clan.name}
-          </span>
-        </Link>
+          <Link
+            href="/clan"
+            className="pointer-events-auto mt-1 inline-flex min-h-5 min-w-0 max-w-full items-center gap-1.5 overflow-hidden text-rarity-legendary transition-colors hover:text-rarity-legendary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rarity-legendary"
+            aria-label={clanLabel ?? undefined}
+            title={clanLabel ?? undefined}
+            data-testid="home-clan-identity"
+          >
+            <IconShield size={13} className="shrink-0" />
+            <span
+              className="min-w-0 truncate whitespace-nowrap font-body text-[10px] font-bold uppercase tracking-[0.1em]"
+              data-testid="home-clan-name"
+            >
+              {clan.name}
+            </span>
+          </Link>
         ) : null}
 
         {authenticated ? (
@@ -116,7 +173,7 @@ export function HomeIdentityHud({
         href="/settings"
         aria-label="Settings"
         title="Settings"
-        className="pointer-events-auto absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-full text-beige/55 transition-[color,background-color] hover:bg-scale-blue/25 hover:text-venom-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange sm:right-4 sm:top-4"
+        className="pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start rounded-full text-beige/55 transition-[color,background-color] hover:bg-scale-blue/25 hover:text-venom-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
         data-testid="home-settings"
       >
         <IconGear size={18} />
