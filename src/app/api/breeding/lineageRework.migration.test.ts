@@ -22,6 +22,10 @@ const sql = fs.readFileSync(
   'utf8'
 );
 
+const historicalDraftDefinition = sql.match(
+  /CREATE OR REPLACE FUNCTION breeding_draft\([\s\S]+?COMMENT ON FUNCTION breeding_draft\([^;]+;/
+)?.[0] ?? '';
+
 /**
  * The live definition of a Postgres function: the body under its LAST
  * `CREATE ... FUNCTION <name>(` across the whole migration history, since
@@ -104,12 +108,21 @@ describe('Migration 047: preview equals outcome', () => {
 
   it('breeding_draft is STABLE and writes nothing, so previewing is free', () => {
     const body = liveDefinition('breeding_draft');
-    expect(body).toMatch(/LANGUAGE plpgsql STABLE SECURITY DEFINER/);
+    expect(body).toMatch(/LANGUAGE sql STABLE SECURITY DEFINER/);
+    expect(body).toMatch(/public\.breeding_draft_v1\(/);
     expect(body).not.toMatch(/\b(INSERT INTO|UPDATE|DELETE FROM)\b/);
+    expect(historicalDraftDefinition).toMatch(
+      /LANGUAGE plpgsql STABLE SECURITY DEFINER/
+    );
+    expect(historicalDraftDefinition).not.toMatch(
+      /\b(INSERT INTO|UPDATE|DELETE FROM)\b/
+    );
   });
 
   it('refuses any choice outside the enumerated options', () => {
-    const body = liveDefinition('breeding_draft');
+    // Genome v2 keeps the audited deterministic chooser verbatim behind its
+    // display-only Ascendance wrapper, so the checks remain in v1's body.
+    const body = historicalDraftDefinition;
     expect(body).toMatch(/is not one of the parents/);
     expect(body).toMatch(/is not in the parents.{0,4} draft pool/);
     expect(body).toMatch(/drafted twice/);
@@ -143,6 +156,7 @@ describe('Migration 047: Ascendance', () => {
 
   it('deletes the generation cap', () => {
     expect(liveDefinition('breeding_draft')).not.toMatch(/Maximum generation/);
+    expect(historicalDraftDefinition).not.toMatch(/Maximum generation/);
     expect(liveDefinition('breed_snakes')).not.toMatch(/Maximum generation/);
   });
 });

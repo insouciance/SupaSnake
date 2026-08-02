@@ -18,7 +18,11 @@ import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { getTraitSlots, sanitizeTraits } from '@/shared/game/traits';
 import { lineageFromAffinity, sanitizeLineage } from '@/shared/game/lineage';
-import { ascendanceYieldBonus } from '@/shared/game/ascendance';
+import {
+  ascendanceYieldBonus,
+  ascendanceYieldMultiplier,
+  createAscendanceRunStamp,
+} from '@/shared/game/ascendance';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { mapBreedingHistoryRow, readBreedingChoices } from './utils';
 
@@ -242,6 +246,13 @@ export async function POST(request: NextRequest) {
         // Ascendance (§8.2): the permanent Yield bonus this generation
         // carries. Display only - the settlement recomputes it server-side.
         ascendance_yield_bonus: ascendanceYieldBonus(childSnake.generation ?? 1),
+        ascendance: {
+          ...createAscendanceRunStamp(childSnake.generation ?? 1),
+          yieldBonus: ascendanceYieldBonus(childSnake.generation ?? 1),
+          yieldMultiplier: ascendanceYieldMultiplier(
+            childSnake.generation ?? 1
+          ),
+        },
       },
       cost: historyEntry?.dna_cost ?? null,
       // The audited draft: the board the player saw and the choices they

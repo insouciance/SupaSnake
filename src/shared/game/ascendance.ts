@@ -219,6 +219,22 @@ export interface AscendanceSettlementTerms {
   frozenMultiplierBps?: number;
 }
 
+/** Immutable run-start stamp stored at `run_context.snake.ascendance`. */
+export interface AscendanceRunStamp {
+  curveVersion: AscendanceCurveVersion;
+  multiplierBps: number;
+}
+
+export function createAscendanceRunStamp(
+  generation: number,
+  curveVersion: AscendanceCurveVersion = CURRENT_ASCENDANCE_CURVE_VERSION
+): AscendanceRunStamp {
+  return {
+    curveVersion,
+    multiplierBps: ascendanceYieldMultiplierBps(generation, curveVersion),
+  };
+}
+
 /**
  * The exact server-authoritative explanation of Ascendance's contribution to
  * one run. `multiplierBps` is the settlement value; `multiplier` is display.

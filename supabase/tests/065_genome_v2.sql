@@ -76,6 +76,7 @@ DECLARE
   v_ids TEXT[];
   v_result JSONB;
   v_count INTEGER;
+  v_definition TEXT;
 BEGIN
   IF genome_record_version(v_record) <> 2
      OR genome_record_version(jsonb_build_object('v', 1)) <> 1
@@ -142,6 +143,29 @@ BEGIN
     10000::NUMERIC * power(1.02::NUMERIC, 17::NUMERIC)
   )::BIGINT THEN
     RAISE EXCEPTION 'Ascendance v2 long curve is not deterministic';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.breeding_draft(uuid,uuid,uuid,boolean,uuid,text[],text)'::REGPROCEDURE
+  ) INTO v_definition;
+  IF POSITION('breeding_draft_v1' IN v_definition) = 0
+     OR POSITION('ascendance_yield_multiplier_bps_v2' IN v_definition) = 0 THEN
+    RAISE EXCEPTION 'Breeding preview is not routed through the v2 Ascendance wrapper';
+  END IF;
+  IF has_function_privilege(
+       'service_role',
+       'public.breeding_draft_v1(uuid,uuid,uuid,boolean,uuid,text[],text)',
+       'EXECUTE'
+     ) OR NOT has_function_privilege(
+       'service_role',
+       'public.breeding_draft(uuid,uuid,uuid,boolean,uuid,text[],text)',
+       'EXECUTE'
+     ) OR has_function_privilege(
+       'authenticated',
+       'public.breeding_draft(uuid,uuid,uuid,boolean,uuid,text[],text)',
+       'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'Breeding v1/v2 wrapper privilege boundary is wrong';
   END IF;
 
   v_result := get_genome_v2_capability();
