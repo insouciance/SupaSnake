@@ -163,6 +163,7 @@ describe('Genome v2 presentation adapter', () => {
       crash: '0 Yield',
       label: 'Genome Yield · before run-stamped Ascendance and Energy',
     });
+    expect(portal.mirrorChoice).toBeNull();
     expect(portal.mutationTerms).toMatchObject({ mode: 'mutate', growthCost: 3, actionOrdinal: 1 });
     expect(portal.mutationLoom?.candidates.map((candidate) => candidate.geneId)).toEqual([
       'constellation_crown',

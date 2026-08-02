@@ -47,6 +47,16 @@ export function EnergyGlyph() {
   );
 }
 
+export function OverclockGlyph() {
+  return (
+    <Svg>
+      <path d="M4 17a8 8 0 1 1 16 0" />
+      <path d="M7 17h10M12 13l5-5" />
+      <path d="M6.5 12H4M20 12h-2.5M12 6V3" opacity=".7" />
+    </Svg>
+  );
+}
+
 export function TrainingObjectiveGlyph() {
   return (
     <Svg>
@@ -179,8 +189,14 @@ const GENE_GLYPHS: Record<GeneId, ReactNode> = {
   constellation_crown: <><path d="m4 17 2-9 5 4 3-7 4 7 3-4-1 9H4ZM5 20h14" /><circle cx="6" cy="8" r="1" /><circle cx="14" cy="5" r="1" /><circle cx="21" cy="8" r="1" /></>,
 };
 
-export function GeneGlyph({ id }: { id: GeneId }) {
-  return <Svg>{GENE_GLYPHS[id]}</Svg>;
+export function GeneGlyph({ id }: { id: string }) {
+  return (
+    <Svg>
+      {GENE_GLYPHS[id as GeneId] ?? (
+        <><path d="m12 3 7 5-2.5 10h-9L5 8l7-5Z" /><path d="m8 10 4 2 4-2M9 16h6" /></>
+      )}
+    </Svg>
+  );
 }
 
 /** Canonical, curve-capable Genome alphabet. Board/chassis WebGL reliefs use

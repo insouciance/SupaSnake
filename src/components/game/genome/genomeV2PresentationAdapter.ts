@@ -9,15 +9,17 @@ import {
   GENOME_V2_SPLICES,
   genomeV2CarryBankBps,
   genomeV2CarrySalvageBps,
+  genomeV2HasGene,
   projectGenomeV2,
   reduceGenomeV2Event,
   settleGenomeV2,
   type GenomeV2Slot,
+  type GenomeV2SettlementBreakdown,
+  type GenomeV2SpliceId,
   type GenomeV2State,
   type GenomeV2StrainLadderTier,
   type TacticalLoomCandidateDelta as CoreCandidateDelta,
   type TacticalLoomModel as CoreLoomModel,
-  type TacticalLoomReplacementDelta as CoreReplacementDelta,
 } from '@/shared/game/genomeV2';
 import { STRAINS, type StrainId, type StrainPoints } from '@/shared/game/strains';
 import type {
@@ -49,42 +51,102 @@ export interface GenomeV2SpatialPresentation {
   occupiedSpace?: string;
 }
 
-interface EnrichedCandidateDelta extends CoreCandidateDelta {
-  /** Core projector may add these exact facts without changing the surface. */
-  resultingSlots?: readonly GenomeV2Slot[];
+interface ProjectedSplicePath {
+  spliceId: GenomeV2SpliceId;
+  partnerGeneId: GenomeV2ActiveGeneId;
+  state: 'completes_now' | 'one_gene_away';
+  unlocked: boolean;
+  blockedReason: 'splices_locked' | null;
+}
+
+interface ProjectedDeclineOption {
+  id: string;
+  label: string;
+  pinGeneId: GenomeV2ActiveGeneId | null;
+  anchorChargesAfter: number;
+  bondAfter: number;
+  loomBondAfter: { pinnedGeneId: GenomeV2ActiveGeneId; matured: boolean } | null;
+  slotsAfter: GenomeV2Slot[];
+  strainPointsAfter: StrainPoints;
+  targetQueueAfter: number;
+  bodyGrowthAddedAfter: number;
+  bankAfter: GenomeV2SettlementBreakdown;
+  crashAfter: GenomeV2SettlementBreakdown;
+  dynasty: GenomeV2State['dynasty'];
+}
+
+type EnrichedCandidateDelta = CoreCandidateDelta & {
+  /** Structural v2 projector seam. These members become required with the
+   * authoritative core integration; optionality only keeps this branch
+   * buildable on the preceding core checkpoint. */
+  availability?: {
+    legal: boolean;
+    blockedReason: 'external_second_life' | null;
+  };
   splicePaths?: readonly {
-    id: keyof typeof GENOME_V2_SPLICES;
-    stage: 'immediate' | 'one-step';
-    recipeKnown?: boolean;
+    spliceId: ProjectedSplicePath['spliceId'];
+    partnerGeneId: ProjectedSplicePath['partnerGeneId'];
+    state: ProjectedSplicePath['state'];
+    unlocked: ProjectedSplicePath['unlocked'];
+    blockedReason: ProjectedSplicePath['blockedReason'];
   }[];
-  targetFacts?: readonly TacticalLoomFact[];
-  bodyFacts?: readonly TacticalLoomFact[];
-  outcomeFacts?: readonly TacticalLoomFact[];
-  dynastyFacts?: readonly string[];
-}
+  targetProjection?: {
+    currentlyQueued: number;
+    addedImmediately: 0;
+    trigger: 'cadence' | 'event' | 'none';
+    cadence: number | null;
+    multiplierBps: number | null;
+    routeSlackMoves: number | null;
+  };
+  bodyProjection?: {
+    growthOnAcquire: 0;
+    extraGrowthPerFood: number;
+    extraGrowthCadence: number | null;
+    growthOnTrigger: number;
+  };
+  terrainProjection?: {
+    currentPermanentFacts: number;
+    currentPermanentCells: number;
+    createsPermanentTerrain: boolean;
+    cellsPerUse: number | null;
+    minimumCellsPerUse: number | null;
+  };
+  outcomeProjection?: {
+    immediateBankDelta: 0;
+    immediateCrashDelta: 0;
+    bankNow: GenomeV2SettlementBreakdown;
+    crashNow: GenomeV2SettlementBreakdown;
+  };
+  dynastyProjection?: {
+    dynasty: GenomeV2State['dynasty'];
+    relation: 'signature' | 'favored' | 'universal';
+    legal: boolean;
+  };
+};
 
-interface EnrichedReplacementDelta extends CoreReplacementDelta {
-  resultingSlots?: readonly GenomeV2Slot[];
-  targetFacts?: readonly TacticalLoomFact[];
-  bodyFacts?: readonly TacticalLoomFact[];
-  outcomeFacts?: readonly TacticalLoomFact[];
-  dynastyFacts?: readonly string[];
-}
-
-interface EnrichedLoomModel extends CoreLoomModel {
-  sourceLabel?: string;
+type EnrichedLoomModel = CoreLoomModel & {
+  offer?: {
+    offerId: string;
+    source: 'cadence' | 'portal';
+    openedAtFood: number;
+    openedAtTick: number;
+    offerIndex: number;
+    candidateGeneIds: GenomeV2ActiveGeneId[];
+  } | null;
   decline?: {
-    effect: string;
-    cost: string;
-    resultingSlots?: readonly GenomeV2Slot[];
-    resultingStrainPoints?: StrainPoints;
-    targetFacts?: readonly TacticalLoomFact[];
-    bodyFacts?: readonly TacticalLoomFact[];
-    outcomeFacts?: readonly TacticalLoomFact[];
-    dynastyFacts?: readonly string[];
+    available: boolean;
+    forfeitedCandidateGeneIds: GenomeV2ActiveGeneId[];
+    bondBefore: number;
+    bondAfter: number;
+    bondDelta: number;
+    anchorCanPinBeforeDecline: boolean;
+    anchorChargesBefore: number;
+    anchorChargesAfterPin: number;
+    pinnedGeneId: GenomeV2ActiveGeneId | null;
+    options: ProjectedDeclineOption[];
   };
   candidates: EnrichedCandidateDelta[];
-}
+};
 
 export interface GenomeV2TacticalLoomInput {
   state: GenomeV2State;
@@ -111,6 +173,10 @@ export interface GenomeV2PortalPresentation {
     crash: string;
     label: string;
   };
+  mirrorChoice: {
+    available: boolean;
+    detail: string;
+  } | null;
   mutationTerms: {
     mode: 'mutate' | 'recode';
     growthCost: number;
@@ -119,6 +185,12 @@ export interface GenomeV2PortalPresentation {
     detail: string;
   };
   mutationLoom: TacticalLoomDecisionModel | null;
+}
+
+export interface GenomeV2OutcomePresentation {
+  bank: string;
+  crash: string;
+  label: string;
 }
 
 const CATEGORY_LABELS: Record<GenomeV2GeneCategory, string> = {
@@ -276,24 +348,34 @@ function splicePresentation(
   activation: GenomeV2ActivationPresentation
 ): TacticalLoomSplicePath[] {
   const paths = candidate.splicePaths ?? (candidate.completesSplice
-    ? [{ id: candidate.completesSplice, stage: 'immediate' as const, recipeKnown: true }]
+    ? [{
+        spliceId: candidate.completesSplice,
+        partnerGeneId: GENOME_V2_SPLICES[candidate.completesSplice].parents.find(
+          (geneId) => geneId !== candidate.geneId
+        ) ?? candidate.geneId,
+        state: 'completes_now' as const,
+        unlocked: activation.splices.unlocked,
+        blockedReason: activation.splices.unlocked ? null : 'splices_locked' as const,
+      }]
     : []);
   return paths.map((path) => {
-    const splice = GENOME_V2_SPLICES[path.id];
+    const splice = GENOME_V2_SPLICES[path.spliceId];
+    const stage = path.state === 'completes_now' ? 'immediate' as const : 'one-step' as const;
+    const available = path.unlocked && activation.splices.unlocked;
     return {
-      id: `${path.id}:${path.stage}`,
+      id: `${path.spliceId}:${stage}`,
       name: splice.name,
-      stage: path.stage,
+      stage,
       rule: splice.rule,
       cost: splice.strategicCost,
-      recipeKnown: path.recipeKnown !== false,
-      recipeLabel: path.recipeKnown === false
-        ? 'Recipe remains undiscovered'
-        : `Recipe: ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`,
-      activation: activation.splices.unlocked ? 'available' : 'locked',
-      lockedReason: activation.splices.unlocked
+      recipeKnown: true,
+      recipeLabel: `With ${GENOME_V2_GENES[path.partnerGeneId].name} · ${splice.parents.map((id) => GENOME_V2_GENES[id].name).join(' + ')}`,
+      activation: available ? 'available' : 'locked',
+      lockedReason: available
         ? undefined
-        : [activation.splices.reason, activation.splices.progress].filter(Boolean).join(' · ') || 'Activation pending',
+        : path.blockedReason === 'splices_locked'
+          ? [activation.splices.reason, activation.splices.progress].filter(Boolean).join(' · ') || 'Splices are visible but not yet active'
+          : [activation.splices.reason, activation.splices.progress].filter(Boolean).join(' · ') || 'Activation pending',
     };
   });
 }
@@ -350,6 +432,41 @@ function targetFacts(state: GenomeV2State): TacticalLoomFact[] {
   ];
 }
 
+function projectedTargetFacts(
+  state: GenomeV2State,
+  candidate: EnrichedCandidateDelta
+): TacticalLoomFact[] {
+  const projected = candidate.targetProjection;
+  if (!projected) return targetFacts(state);
+  const trigger = projected.trigger === 'none'
+    ? 'No target transformation'
+    : projected.trigger === 'cadence'
+      ? `Every ${projected.cadence ?? '?'} eligible targets`
+      : 'Player-created event';
+  const reward = projected.multiplierBps === null
+    ? trigger
+    : `${trigger} · ${formatBps(projected.multiplierBps)} target`;
+  const route = projected.routeSlackMoves === null
+    ? undefined
+    : `${projected.routeSlackMoves} route-slack moves are included in the authoritative budget.`;
+  return [
+    {
+      id: 'target-rule',
+      label: 'Future target rule',
+      before: 'Current Genome only',
+      after: reward,
+      detail: route,
+    },
+    {
+      id: 'target-queue',
+      label: 'Queued transforms now',
+      before: String(projected.currentlyQueued),
+      after: String(projected.currentlyQueued + projected.addedImmediately),
+      detail: 'Taking a gene never changes an already spawned target retroactively.',
+    },
+  ];
+}
+
 function bodyFacts(
   state: GenomeV2State,
   spatial: GenomeV2SpatialPresentation | undefined,
@@ -376,6 +493,58 @@ function bodyFacts(
   return facts;
 }
 
+function projectedBodyFacts(
+  state: GenomeV2State,
+  candidate: EnrichedCandidateDelta,
+  spatial: GenomeV2SpatialPresentation | undefined,
+  commitGrowth: number | null
+): TacticalLoomFact[] {
+  const projected = candidate.bodyProjection;
+  if (!projected) return bodyFacts(state, spatial, commitGrowth);
+  const facts = bodyFacts(state, spatial, commitGrowth);
+  if (projected.extraGrowthPerFood > 0) {
+    facts.push({
+      id: 'future-growth',
+      label: 'Future body pressure',
+      before: 'Current growth profile',
+      after: projected.extraGrowthCadence === 1
+        ? `+${projected.extraGrowthPerFood} extra per food`
+        : `+${projected.extraGrowthPerFood} extra every ${projected.extraGrowthCadence ?? '?'} foods`,
+    });
+  }
+  if (projected.growthOnTrigger > 0) {
+    facts.push({
+      id: 'trigger-growth',
+      label: 'Triggered body cost',
+      before: 'None',
+      after: `+${projected.growthOnTrigger} segments when triggered`,
+    });
+  }
+  return facts;
+}
+
+function projectedTerrainFacts(
+  state: GenomeV2State,
+  candidate: EnrichedCandidateDelta
+): TacticalLoomFact[] {
+  const projected = candidate.terrainProjection;
+  if (!projected) return [];
+  const existing = `${projected.currentPermanentFacts} facts · ${projected.currentPermanentCells} cells`;
+  return [{
+    id: 'terrain-rule',
+    label: 'Permanent terrain',
+    before: existing,
+    after: projected.createsPermanentTerrain
+      ? projected.cellsPerUse !== null
+        ? `Creates ${projected.cellsPerUse} permanent cells per use`
+        : `Creates at least ${projected.minimumCellsPerUse ?? 0} permanent cells per use`
+      : 'No new permanent-terrain rule',
+    detail: projected.createsPermanentTerrain
+      ? 'Scars and sealed cells remain part of this run’s geometry.'
+      : undefined,
+  }];
+}
+
 function outcomeFacts(state: GenomeV2State): TacticalLoomFact[] {
   const bank = settleGenomeV2(state, 'bank');
   const crash = settleGenomeV2(state, 'crash');
@@ -397,17 +566,70 @@ function outcomeFacts(state: GenomeV2State): TacticalLoomFact[] {
   ];
 }
 
+function projectedOutcomeFacts(
+  state: GenomeV2State,
+  candidate: EnrichedCandidateDelta
+): TacticalLoomFact[] {
+  const projected = candidate.outcomeProjection;
+  if (!projected) return outcomeFacts(state);
+  return [
+    {
+      id: 'bank',
+      label: 'BANK Genome Yield now',
+      before: formatScaledYield(projected.bankNow.genomeYield),
+      after: formatScaledYield(projected.bankNow.genomeYield),
+      detail: 'Acquisition has no retroactive Yield effect.',
+      tone: 'positive',
+    },
+    {
+      id: 'crash',
+      label: 'Crash Genome Yield now',
+      before: formatScaledYield(projected.crashNow.genomeYield),
+      after: formatScaledYield(projected.crashNow.genomeYield),
+      detail: 'Future execution changes the outcome; this choice does not rewrite earned Yield.',
+      tone: 'danger',
+    },
+  ];
+}
+
+export function buildGenomeV2OutcomePresentation(
+  state: GenomeV2State
+): GenomeV2OutcomePresentation {
+  const bank = settleGenomeV2(state, 'bank');
+  const crash = settleGenomeV2(state, 'crash');
+  return {
+    bank: formatScaledYield(bank.genomeYield),
+    crash: formatScaledYield(crash.genomeYield),
+    label: 'Genome Yield · before run-stamped Ascendance and Energy',
+  };
+}
+
 function dynastyFacts(state: GenomeV2State, candidate: GenomeV2ActiveGeneId): string[] {
   const definition = GENOME_V2_GENES[candidate];
   if (definition.dynasties.length === 0) return [];
   return [`${definition.name} is a ${state.dynasty} Dynasty signature and appears only in that Dynasty's pool.`];
 }
 
+function projectedDynastyFacts(
+  state: GenomeV2State,
+  candidate: EnrichedCandidateDelta
+): string[] {
+  const projection = candidate.dynastyProjection;
+  if (!projection) return dynastyFacts(state, candidate.geneId);
+  if (projection.relation === 'signature') {
+    return [`${GENOME_V2_GENES[candidate.geneId].name} is this ${projection.dynasty} run’s signature gene.`];
+  }
+  if (projection.relation === 'favored') {
+    return [`This gene is deliberately favored by ${projection.dynasty}; Dynasty fit is part of the build decision.`];
+  }
+  return [`This is a universal gene. Its value still depends on ${projection.dynasty} speed, growth, and board state.`];
+}
+
 function replacementConsequence(
   state: GenomeV2State,
   projection: EnrichedLoomModel,
   candidate: EnrichedCandidateDelta,
-  replacement: EnrichedReplacementDelta,
+  replacement: CoreCandidateDelta['replacementOptions'][number],
   input: GenomeV2TacticalLoomInput
 ): TacticalLoomConsequence {
   const affected = uniqueStrains([...replacement.removedStrains, ...replacement.addedStrains]);
@@ -445,9 +667,7 @@ function replacementConsequence(
     category: CATEGORY_LABELS[candidate.category],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
-    genomeAfter: replacement.resultingSlots
-      ? genomePresentation(state, replacement.resultingSlots)
-      : fallbackResultingGenome(state, candidate.geneId, replacement.slot),
+    genomeAfter: fallbackResultingGenome(state, candidate.geneId, replacement.slot),
     strains: strainProjection(
       projection.strainPoints,
       replacement.resultingStrainPoints,
@@ -461,10 +681,13 @@ function replacementConsequence(
       { id: 'escrow', label: 'Escrow retained', before: formatScaledYield(retained.loanEscrow), after: formatScaledYield(retained.loanEscrow) },
       { id: 'stake', label: 'Stake retained', before: formatScaledYield(retained.mirrorStake), after: formatScaledYield(retained.mirrorStake) },
     ],
-    targets: replacement.targetFacts ?? targetFacts(state),
-    body: replacement.bodyFacts ?? bodyFacts(state, input.spatial, replacement.growthCost),
-    outcomes: replacement.outcomeFacts ?? outcomeFacts(state),
-    dynastyFacts: replacement.dynastyFacts ?? dynastyFacts(state, candidate.geneId),
+    targets: projectedTargetFacts(state, candidate),
+    body: [
+      ...projectedBodyFacts(state, candidate, input.spatial, replacement.growthCost),
+      ...projectedTerrainFacts(state, candidate),
+    ],
+    outcomes: projectedOutcomeFacts(state, candidate),
+    dynastyFacts: projectedDynastyFacts(state, candidate),
     retainedFacts: [
       'earned Yield',
       'Bonds',
@@ -488,9 +711,7 @@ function candidateConsequence(
     category: CATEGORY_LABELS[candidate.category],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
-    genomeAfter: candidate.resultingSlots
-      ? genomePresentation(state, candidate.resultingSlots)
-      : fallbackResultingGenome(state, candidate.geneId),
+    genomeAfter: fallbackResultingGenome(state, candidate.geneId),
     strains: strainProjection(
       projection.strainPoints,
       candidate.resultingStrainPoints,
@@ -500,14 +721,18 @@ function candidateConsequence(
     ),
     splices: splicePresentation(candidate, input.activation),
     ledgers: liabilityFacts(projection),
-    targets: candidate.targetFacts ?? targetFacts(state),
-    body: candidate.bodyFacts ?? bodyFacts(
-      state,
-      input.spatial,
-      state.portal ? candidate.projectedPortalActionGrowth.infuse : null
-    ),
-    outcomes: candidate.outcomeFacts ?? outcomeFacts(state),
-    dynastyFacts: candidate.dynastyFacts ?? dynastyFacts(state, candidate.geneId),
+    targets: projectedTargetFacts(state, candidate),
+    body: [
+      ...projectedBodyFacts(
+        state,
+        candidate,
+        input.spatial,
+        state.portal ? candidate.projectedPortalActionGrowth.infuse : null
+      ),
+      ...projectedTerrainFacts(state, candidate),
+    ],
+    outcomes: projectedOutcomeFacts(state, candidate),
+    dynastyFacts: projectedDynastyFacts(state, candidate),
   };
 }
 
@@ -520,6 +745,84 @@ function projectedDeclineState(state: GenomeV2State): GenomeV2State {
     tick: state.tick,
     eventId: `loom-projection:decline:${state.eventIndex + 1}`,
   });
+}
+
+function declineOptionConsequence(
+  state: GenomeV2State,
+  projection: EnrichedLoomModel,
+  option: ProjectedDeclineOption,
+  input: GenomeV2TacticalLoomInput
+): TacticalLoomConsequence {
+  const decline = projection.decline;
+  const bondDelta = option.bondAfter - projection.liabilities.bonds;
+  return {
+    category: option.pinGeneId ? 'Genome control' : 'Opportunity cost',
+    effect: option.pinGeneId
+      ? `Spend one charged Anchor to preserve ${GENOME_V2_GENES[option.pinGeneId].name} for its next legal offer.`
+      : bondDelta > 0
+        ? `Forfeit both candidates and create ${bondDelta} prospective BANK Bond${bondDelta === 1 ? '' : 's'}.`
+        : 'Forfeit both candidates and keep the active Genome.',
+    cost: option.pinGeneId
+      ? 'The Anchor remains empty until an explicit portal CONTINUE recharges it.'
+      : 'Neither offered build opportunity is taken.',
+    genomeAfter: genomePresentation(state, option.slotsAfter),
+    strains: [],
+    splices: [],
+    ledgers: [
+      {
+        id: 'bonds',
+        label: 'Bonds',
+        before: String(projection.liabilities.bonds),
+        after: String(option.bondAfter),
+      },
+      {
+        id: 'anchor',
+        label: 'Anchor charges',
+        before: String(decline?.anchorChargesBefore ?? option.anchorChargesAfter),
+        after: String(option.anchorChargesAfter),
+      },
+      {
+        id: 'loom-bond',
+        label: 'Loom Bond',
+        before: 'None',
+        after: option.loomBondAfter
+          ? `${GENOME_V2_GENES[option.loomBondAfter.pinnedGeneId].name} · ${option.loomBondAfter.matured ? 'matured' : 'bound'}`
+          : 'None',
+      },
+    ],
+    targets: [{
+      id: 'target-queue',
+      label: 'Queued target transforms',
+      before: String(state.targetQueue.length),
+      after: String(option.targetQueueAfter),
+    }],
+    body: [
+      ...bodyFacts(state, input.spatial, null),
+      {
+        id: 'genome-growth',
+        label: 'Genome-added growth',
+        before: String((state as GenomeV2State & { bodyGrowthAdded?: number }).bodyGrowthAdded ?? 0),
+        after: String(option.bodyGrowthAddedAfter),
+      },
+    ],
+    outcomes: [
+      {
+        id: 'bank',
+        label: 'BANK Genome Yield',
+        before: formatScaledYield(settleGenomeV2(state, 'bank').genomeYield),
+        after: formatScaledYield(option.bankAfter.genomeYield),
+        tone: 'positive',
+      },
+      {
+        id: 'crash',
+        label: 'Crash Genome Yield',
+        before: formatScaledYield(settleGenomeV2(state, 'crash').genomeYield),
+        after: formatScaledYield(option.crashAfter.genomeYield),
+        tone: 'danger',
+      },
+    ],
+    dynastyFacts: [`DECLINE resolves inside the frozen ${option.dynasty} run state.`],
+  };
 }
 
 function declineConsequence(
@@ -542,25 +845,30 @@ function declineConsequence(
       dynastyFacts: [],
     };
   }
-  const enriched = projection.decline;
-  const after = enriched ? state : projectedDeclineState(state);
+  const authoritative = projection.decline?.options.find(
+    (option) => option.pinGeneId === null
+  );
+  if (authoritative) {
+    return declineOptionConsequence(state, projection, authoritative, input);
+  }
+  // Compatibility only for the preceding v2 core checkpoint. Once the
+  // authoritative projector exposes `decline.options`, this path is unused.
+  const after = projectedDeclineState(state);
   const afterProjection = projectGenomeV2(after, []);
   return {
     category: 'Opportunity cost',
-    effect: enriched?.effect ?? (after.bonds > state.bonds
+    effect: after.bonds > state.bonds
       ? 'Spend this offer, keep the current Genome, and mint one prospective BANK Bond.'
-      : 'Spend this offer and keep the current Genome unchanged.'),
-    cost: enriched?.cost ?? 'Neither offered gene can return in this offer.',
-    genomeAfter: enriched?.resultingSlots
-      ? genomePresentation(state, enriched.resultingSlots)
-      : genomePresentation(after),
+      : 'Spend this offer and keep the current Genome unchanged.',
+    cost: 'Neither offered gene can return in this offer.',
+    genomeAfter: genomePresentation(after),
     strains: [],
     splices: [],
     ledgers: liabilityFacts(afterProjection, projection),
-    targets: enriched?.targetFacts ?? targetFacts(after),
-    body: enriched?.bodyFacts ?? bodyFacts(after, input.spatial, null),
-    outcomes: enriched?.outcomeFacts ?? outcomeFacts(after),
-    dynastyFacts: enriched?.dynastyFacts ?? [],
+    targets: targetFacts(after),
+    body: bodyFacts(after, input.spatial, null),
+    outcomes: outcomeFacts(after),
+    dynastyFacts: [],
   };
 }
 
@@ -573,12 +881,17 @@ export function buildGenomeV2TacticalLoomModel(
   const projection = projectGenomeV2(input.state, candidates) as EnrichedLoomModel;
   if (projection.candidates.length !== 2) return null;
   const currentGenome = genomePresentation(input.state);
-  const projectedCandidates = projection.candidates.map((candidate) => ({
+  const projectedCandidates = (projection.candidates as EnrichedCandidateDelta[]).map((candidate) => ({
     action: candidate.requiresReplacement ? 'FORK' as const : 'THREAD' as const,
     geneId: candidate.geneId,
     name: GENOME_V2_GENES[candidate.geneId].name,
     category: CATEGORY_LABELS[candidate.category],
     strains: GENOME_V2_GENES[candidate.geneId].strains,
+    disabledReason: candidate.availability?.legal === false
+      ? candidate.availability.blockedReason === 'external_second_life'
+        ? 'Another second life is already active'
+        : 'Unavailable in this run state'
+      : undefined,
     consequence: candidateConsequence(input.state, projection, candidate, input),
     replacementChoices: candidate.requiresReplacement
       ? candidate.replacementOptions.map((replacement) => ({
@@ -604,10 +917,30 @@ export function buildGenomeV2TacticalLoomModel(
   const firstCandidate = projectedCandidates[0];
   const secondCandidate = projectedCandidates[1];
   if (!firstCandidate || !secondCandidate) return null;
+  const declineOptions = input.declineBehavior === 'return-to-portal'
+    ? undefined
+    : projection.decline?.options.map((option) => {
+        const candidateIndex = option.pinGeneId === null
+          ? undefined
+          : candidates.findIndex((geneId) => geneId === option.pinGeneId);
+        return {
+          id: option.id,
+          label: option.label,
+          detail: option.pinGeneId
+            ? `Anchor ${projection.decline?.anchorChargesBefore ?? 0} → ${option.anchorChargesAfter} · preserve ${GENOME_V2_GENES[option.pinGeneId].name}`
+            : option.bondAfter > projection.liabilities.bonds
+              ? `Bonds ${projection.liabilities.bonds} → ${option.bondAfter}`
+              : 'No pin · no replacement',
+          ...(candidateIndex === 0 || candidateIndex === 1
+            ? { pinCandidateIndex: candidateIndex as 0 | 1 }
+            : {}),
+          consequence: declineOptionConsequence(input.state, projection, option, input),
+        };
+      });
   return {
     rulesVersion: 2,
     title: input.state.portal ? 'Mutation Loom' : 'Tactical Loom',
-    sourceLabel: input.sourceLabel ?? projection.sourceLabel ?? (input.state.portal ? 'Portal Genome offer' : 'Cadence Genome offer'),
+    sourceLabel: input.sourceLabel ?? (input.state.portal ? 'Portal Genome offer' : 'Cadence Genome offer'),
     dynasty: input.state.dynasty,
     currentGenome,
     candidates: [firstCandidate, secondCandidate],
@@ -615,6 +948,7 @@ export function buildGenomeV2TacticalLoomModel(
       action: 'DECLINE',
       name: input.declineBehavior === 'return-to-portal' ? 'Back to Portal' : 'Keep this Genome',
       consequence: declineConsequence(input.state, projection, input),
+      options: declineOptions && declineOptions.length > 1 ? declineOptions : undefined,
     },
   };
 }
@@ -635,8 +969,7 @@ export function buildGenomeV2PortalPresentation(
   const actionLimit = GENOME_V2_CONFIG.portalGenome.maxActions;
   const hasOffer = input.state.portal?.genomeOffer?.candidates.length === 2;
   const withinLimit = actionOrdinal <= actionLimit;
-  const bank = settleGenomeV2(input.state, 'bank');
-  const crash = settleGenomeV2(input.state, 'crash');
+  const outcomeProjection = buildGenomeV2OutcomePresentation(input.state);
   const mutationLoom = hasOffer && withinLimit
     ? buildGenomeV2TacticalLoomModel({
         ...input,
@@ -659,11 +992,13 @@ export function buildGenomeV2PortalPresentation(
       salvageCurrent: formatBps(genomeV2CarrySalvageBps(input.state.carryPasses)),
       salvageNext: formatBps(genomeV2CarrySalvageBps(input.state.carryPasses + 1)),
     },
-    outcomeProjection: {
-      bank: formatScaledYield(bank.genomeYield),
-      crash: formatScaledYield(crash.genomeYield),
-      label: 'Genome Yield · before run-stamped Ascendance and Energy',
-    },
+    outcomeProjection,
+    mirrorChoice: genomeV2HasGene(input.state, 'mirror_wager')
+      ? {
+          available: true,
+          detail: 'Divert 40% of the next leg into visible Stake; BANK doubles it and crash forfeits it. Ordinary salvage stays unchanged.',
+        }
+      : null,
     mutationTerms: {
       mode: full ? 'recode' : 'mutate',
       growthCost,

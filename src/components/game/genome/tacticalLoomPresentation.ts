@@ -82,6 +82,7 @@ export interface TacticalLoomCandidate {
   category: string;
   strains: readonly StrainId[];
   consequence: TacticalLoomConsequence;
+  disabledReason?: string;
   replacementChoices?: readonly TacticalLoomReplacementChoice[];
 }
 

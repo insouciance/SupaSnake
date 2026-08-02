@@ -67,9 +67,13 @@ interface PortalChoiceOverlayProps {
   carryProjection?: PortalCarryProjection;
   mutationTerms?: PortalMutationTerms;
   mutationLoom?: PortalMutationLoom;
+  mirrorChoice?: {
+    available: boolean;
+    detail: string;
+  };
   onBank: () => void;
-  onPass: () => void;
-  onInfuse: () => void;
+  onPass: (activateMirror?: boolean) => void;
+  onInfuse?: () => void;
 }
 
 function multiplierLabel(value: number): string {
@@ -94,6 +98,7 @@ export function PortalChoiceOverlay({
   carryProjection,
   mutationTerms,
   mutationLoom,
+  mirrorChoice,
   onBank,
   onPass,
   onInfuse,
@@ -123,6 +128,7 @@ export function PortalChoiceOverlay({
 
   const [locked, setLocked] = useState(true);
   const [inspectingMutation, setInspectingMutation] = useState(false);
+  const [activateMirror, setActivateMirror] = useState(false);
   const lockedRef = useRef(true);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocusTrap(dialogRef, !locked);
@@ -146,7 +152,7 @@ export function PortalChoiceOverlay({
       setInspectingMutation(true);
       return;
     }
-    onInfuse();
+    onInfuse?.();
   }, [mutationLoom, onInfuse, rulesVersion]);
 
   useEffect(() => {
@@ -157,7 +163,7 @@ export function PortalChoiceOverlay({
       if (lockedRef.current || inspectingMutation) return;
       const key = event.key.toLowerCase();
       if (key === '1' || key === 'b') bank();
-      else if ((key === '2' || key === 'c' || key === 'p') && continueState.unlocked) onPass();
+      else if ((key === '2' || key === 'c' || key === 'p') && continueState.unlocked) onPass(activateMirror);
       else if ((key === '3' || key === 'm' || key === 'i') && mutationUnlock.unlocked) inspectMutation();
       else return;
       event.preventDefault();
@@ -165,7 +171,7 @@ export function PortalChoiceOverlay({
     };
     window.addEventListener('keydown', keydown, true);
     return () => window.removeEventListener('keydown', keydown, true);
-  }, [bank, continueState.unlocked, inspectMutation, inspectingMutation, mutationUnlock.unlocked, onPass]);
+  }, [activateMirror, bank, continueState.unlocked, inspectMutation, inspectingMutation, mutationUnlock.unlocked, onPass]);
 
   const continueLabel = rulesVersion === 2 ? 'CONTINUE' : 'PASS';
   const mutateLabel = rulesVersion === 2 ? 'MUTATE' : 'INFUSE';
@@ -240,7 +246,7 @@ export function PortalChoiceOverlay({
             <button
               type="button"
               disabled={locked || !continueState.unlocked}
-              onClick={onPass}
+              onClick={() => onPass(activateMirror)}
               aria-keyshortcuts="2 C P"
               data-testid="portal-pass"
               className={`${option} border-scale-blue-light/55 bg-void/55 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
@@ -282,6 +288,32 @@ export function PortalChoiceOverlay({
               {!mutationUnlock.unlocked ? <p className="mt-2 font-body text-[10px] leading-snug text-venom-orange" data-testid="portal-mutate-lock">Locked · {mutationUnlock.reason}{mutationUnlock.progress ? ` · ${mutationUnlock.progress}` : ''}</p> : null}
             </button>
           </div>
+
+          {rulesVersion === 2 && mirrorChoice?.available ? (
+            <section className="mt-3 rounded-[10px] border border-cosmic/30 bg-cosmic/5 p-3" data-testid="portal-mirror-wager">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-display text-xs uppercase tracking-[0.1em] text-cosmic">Mirror Wager · next leg</p>
+                  <p className="mt-1 font-body text-[10px] leading-snug text-beige/60">{mirrorChoice.detail}</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={activateMirror}
+                  disabled={locked || !continueState.unlocked}
+                  onClick={() => setActivateMirror((active) => !active)}
+                  className={`min-h-11 min-w-[7.5rem] rounded-[10px] border px-3 font-display text-xs ${
+                    activateMirror
+                      ? 'border-cosmic bg-cosmic/15 text-cosmic'
+                      : 'border-scale-blue-light/35 bg-void/50 text-beige/65'
+                  } disabled:opacity-45`}
+                  data-testid="portal-mirror-toggle"
+                >
+                  {activateMirror ? 'ARMED' : 'LEAVE INACTIVE'}
+                </button>
+              </div>
+            </section>
+          ) : null}
 
           <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/35 px-3 py-2 font-body text-[11px] leading-snug text-beige/60">
             BANK secures this run. {continueLabel} raises future Carry and lowers crash recovery. {mutateLabel} keeps the run alive while converting permanent body growth and spatial pressure into build power.

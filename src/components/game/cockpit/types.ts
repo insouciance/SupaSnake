@@ -1,13 +1,13 @@
 import type { ChargeStatus } from '@/shared/game/energyEnvelope';
-import type { GeneId } from '@/shared/game/genes';
 import type { StrainId, StrainTier } from '@/shared/game/strains';
 import type { DynastyId } from '@/shared/types/game';
+import type { GenomeV2OverclockPresentation } from '@/components/game/genome/genomeV2RuntimeAdapter';
 
 export type RunCockpitState = 'ready' | 'held' | 'active' | 'portal' | 'apex';
 export type RunCockpitMode = 'standard' | 'free' | 'anomaly' | 'training';
 
 export interface RunCockpitGene {
-  id: GeneId;
+  id: string;
   name: string;
   strains: readonly StrainId[];
   spent?: boolean;
@@ -55,8 +55,14 @@ export interface RunCockpitModel {
    * discovers by running out is a trap, not a rule.
    */
   holds: { remaining: number; total: number } | null;
+  /** Explicit, player-pulled Genome v2 speed-risk control. */
+  overclock?: GenomeV2OverclockPresentation | null;
   bankDna: number;
   crashDna: number;
+  /** Exact projector labels used by Genome v2 instead of client DNA math. */
+  bankOutcomeLabel?: string;
+  crashOutcomeLabel?: string;
+  outcomeUnitLabel?: string;
   /**
    * COSMIC's constellation window: stars still on the board, and the
    * fraction of the window left before they calcify. Null on the dynasties

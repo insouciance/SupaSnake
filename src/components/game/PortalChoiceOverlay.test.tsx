@@ -197,6 +197,35 @@ describe('PortalChoiceOverlay', () => {
     expect(mutate).not.toHaveTextContent(/remove|shorten|−\d+\s*(tail|segment)/i);
   });
 
+  it('keeps Mirror Wager player-controlled at CONTINUE', () => {
+    const onPass = jest.fn();
+    render(
+      <PortalChoiceOverlay
+        canInfuse
+        infusesUsed={0}
+        snakeLength={20}
+        bankDna={900}
+        crashDna={210}
+        doorsPassed={1}
+        cadence={CADENCE}
+        rulesVersion={2}
+        mirrorChoice={{
+          available: true,
+          detail: 'Divert 40% of the next leg into visible Stake; BANK doubles it and crash forfeits it.',
+        }}
+        onBank={jest.fn()}
+        onPass={onPass}
+        onInfuse={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    expect(screen.getByTestId('portal-mirror-toggle')).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(screen.getByTestId('portal-mirror-toggle'));
+    expect(screen.getByTestId('portal-mirror-toggle')).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByTestId('portal-pass'));
+    expect(onPass).toHaveBeenCalledWith(true);
+  });
+
   it('preserves frozen-board visibility in portrait and landscape compositions', () => {
     render(<PortalChoiceOverlay canInfuse infusesUsed={0} snakeLength={12} bankDna={400} crashDna={180} doorsPassed={0} cadence={CADENCE} onBank={jest.fn()} onPass={jest.fn()} onInfuse={jest.fn()} />);
     expect(screen.getByTestId('portal-choice-rail')).toHaveAttribute(

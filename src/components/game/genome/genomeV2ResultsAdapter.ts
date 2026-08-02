@@ -86,12 +86,35 @@ function row(
 }
 
 function settlementRows(settlement: GenomeV2SettlementBreakdown): GenomeYieldRecapRow[] {
+  const expanded = settlement as GenomeV2SettlementBreakdown & Partial<{
+    ladderDividendBonus: number;
+    loomBondBonus: number;
+    treasuryReserve: number;
+    treasuryPaid: number;
+    treasuryForfeited: number;
+    crownBondReserve: number;
+    crownBondPaid: number;
+    crownBondForfeited: number;
+    ashenStakeReserve: number;
+    ashenStakePaid: number;
+    ashenStakeForfeited: number;
+    covenantShieldPaid: number;
+  }>;
   return [
     row('exclusive-targets', 'Exclusive target execution', settlement.exclusiveTargetDelta, 'Only one target identity resolves at a time.'),
     row('continuous', 'Continuous Genome rules', settlement.continuousDelta, 'Pressure-scaled and other continuous effects.'),
     row('loan-release', 'Loan Escrow released', settlement.loanEscrowReleased, 'Completed contract value returned to the run.'),
     row('loan-forfeit', 'Loan Escrow forfeited', -settlement.loanEscrowForfeited, 'Incomplete contract value did not enter settlement.'),
     row('bonds', `BANK Bonds (${settlement.bondCount})`, settlement.bondBonus, 'Prospective Bonds pay only on BANK.'),
+    row('ladder-dividend', 'AURUM execution dividend', expanded.ladderDividendBonus ?? 0, 'A visible ladder dividend paid only on BANK.'),
+    row('loom-bond', 'Loom Bond matured', expanded.loomBondBonus ?? 0, 'A pinned gene matured into a BANK-only Genome bonus.'),
+    row('treasury-paid', 'Treasury reserve paid', expanded.treasuryPaid ?? 0, `${genomeV2PresentationFormat.scaledYield(expanded.treasuryReserve ?? 0)} was exposed in Treasury.`),
+    row('treasury-forfeit', 'Treasury reserve forfeited', -(expanded.treasuryForfeited ?? 0), 'Crash forfeited this visible deferred reserve.'),
+    row('crown-bond-paid', 'Crown Bond paid', expanded.crownBondPaid ?? 0, `${genomeV2PresentationFormat.scaledYield(expanded.crownBondReserve ?? 0)} was exposed in the Crown Bond.`),
+    row('crown-bond-forfeit', 'Crown Bond forfeited', -(expanded.crownBondForfeited ?? 0), 'Crash forfeited this visible Splice reserve.'),
+    row('ashen-stake-paid', 'Ashen Stake paid', expanded.ashenStakePaid ?? 0, `${genomeV2PresentationFormat.scaledYield(expanded.ashenStakeReserve ?? 0)} was exposed in the Ashen Stake.`),
+    row('ashen-stake-forfeit', 'Ashen Stake forfeited', -(expanded.ashenStakeForfeited ?? 0), 'Crash forfeited this visible survival reserve.'),
+    row('covenant-shield', 'Covenant crash shield', expanded.covenantShieldPaid ?? 0, 'A bounded shield recovered part of visible forfeitable risk.'),
     row('mirror-paid', 'Mirror Stake paid', settlement.mirrorStakePaid, 'Frozen Stake doubled at BANK.'),
     row('mirror-forfeit', 'Mirror Stake forfeited', -settlement.mirrorStakeForfeited, 'Crash removes the Stake, not ordinary salvage.'),
     row('carry', `Carry ${genomeV2PresentationFormat.bps(settlement.carryMultiplierBps)}`, settlement.carryYield, `${settlement.carryPasses} portal CONTINUE action${settlement.carryPasses === 1 ? '' : 's'}.`),

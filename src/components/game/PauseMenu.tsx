@@ -25,6 +25,9 @@ interface PauseMenuProps {
   /** Server-capability-aware values supplied by the game page in Genome runs. */
   bankDna?: number;
   crashDna?: number;
+  bankOutcomeLabel?: string;
+  crashOutcomeLabel?: string;
+  outcomeUnitLabel?: string;
   onResume: () => void;
   onQuit: () => void;
 }
@@ -37,6 +40,9 @@ export function PauseMenu({
   phoenixTriggered = false,
   bankDna,
   crashDna,
+  bankOutcomeLabel,
+  crashOutcomeLabel,
+  outcomeUnitLabel,
   onResume,
   onQuit,
 }: PauseMenuProps) {
@@ -98,13 +104,13 @@ export function PauseMenu({
           </div>
           {dnaCollected > 0 && (
             <div className="flex justify-between items-center text-sm font-body">
-              <span className="text-beige/60">Bank / crash value</span>
+              <span className="text-beige/60" title={outcomeUnitLabel}>Bank / crash value</span>
               <span className="text-beige/80">
                 <span className="text-[#7df9ff]">
-                  {bankValue}
+                  {bankOutcomeLabel ?? bankValue}
                 </span>
                 {' / '}
-                {crashValue}
+                {crashOutcomeLabel ?? crashValue}
               </span>
             </div>
           )}
