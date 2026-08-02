@@ -16,17 +16,19 @@ export function isMissingCodexInfra(
   error: SupabaseErrorLike | null | undefined
 ): boolean {
   if (!error) return false;
-  if (
-    error.code === '42P01' ||
-    error.code === '42703' ||
-    error.code === '42883' ||
-    error.code === 'PGRST202'
-  ) {
-    return true;
-  }
-  return /player_codex|codex_first_discoveries|record_codex_discoveries|codex_discovery/i.test(
-    error.message || ''
-  );
+  // Rolling deploys deliberately tolerate only the exact database/schema-cache
+  // signals for a table, column, or RPC that has not landed yet. Never infer
+  // "missing infrastructure" from a message containing a Codex identifier:
+  // permission, timeout, and connection errors include those names too and
+  // must remain reportable under Rule 11.
+  return new Set([
+    '42P01', // undefined_table
+    '42703', // undefined_column
+    '42883', // undefined_function
+    'PGRST202', // function absent from the PostgREST schema cache
+    'PGRST204', // column absent from the PostgREST schema cache
+    'PGRST205', // table absent from the PostgREST schema cache
+  ]).has(error.code ?? '');
 }
 
 /**
