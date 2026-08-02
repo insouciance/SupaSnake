@@ -36,7 +36,24 @@
  */
 
 import { isMutationId, type MutationId } from '@/shared/game/mutations';
-import { isGeneId, type GeneId } from '@/shared/game/genes';
+import {
+  isGeneId,
+  isGenomeV2ActiveGeneId,
+  type GeneId,
+  type GenomeV2ActiveGeneId,
+} from '@/shared/game/genes';
+import {
+  GENOME_RULES_V1,
+  GENOME_RULES_V2,
+  genomeV2FtueFromPresentation,
+  type GenomeRulesVersion,
+  type GenomeV2FtuePresentation,
+} from '@/shared/game/genomeV2';
+import {
+  ASCENDANCE_MULTIPLIER_BPS,
+  ascendanceYieldMultiplierBps,
+  type AscendanceRunStamp,
+} from '@/shared/game/ascendance';
 import { sanitizeTraits, type TraitId } from '@/shared/game/traits';
 import { STRAIN_IDS, type StrainId, type StrainPoints } from '@/shared/game/strains';
 import type { LineageBias } from '@/shared/game/offerGravity';
@@ -46,10 +63,7 @@ import { DEFAULT_LADDER_RUNG, isLadderRung } from '@/shared/game/ladder';
 /** The current context version. A future shape change bumps this. */
 export const RUN_CONTEXT_VERSION = 1;
 
-/** The genome half — present only on a run the server issued a seed for. */
-export interface RunStartGenomeContext {
-  /** Server-composed gene offer pool; null means ungated. */
-  genePool: GeneId[] | null;
+interface RunStartGenomeContextCommon {
   /** Starting strain points from lineage + traits. */
   heirloom: StrainPoints;
   /** The lineage offer bias the engine drew under. */
@@ -84,6 +98,27 @@ export interface RunStartGenomeContext {
   prevRunDied: boolean;
 }
 
+export interface RunStartGenomeV1Context extends RunStartGenomeContextCommon {
+  /** Missing is the durable pre-v2 spelling. */
+  rulesVersion?: typeof GENOME_RULES_V1;
+  genePool: GeneId[] | null;
+}
+
+export interface RunStartGenomeV2Context extends RunStartGenomeContextCommon {
+  rulesVersion: typeof GENOME_RULES_V2;
+  /** Exact run-start-frozen authority consumed by the offer stream. */
+  genePool: GenomeV2ActiveGeneId[];
+  /** Full locked-but-visible capability contract handed to the client. */
+  ftuePresentation: GenomeV2FtuePresentation;
+  /** Phoenix is mutually exclusive with a run-start-frozen outside revive. */
+  externalSecondLife: 'iron_scales' | 'other' | null;
+}
+
+/** The genome half — present only on a run the server issued a seed for. */
+export type RunStartGenomeContext =
+  | RunStartGenomeV1Context
+  | RunStartGenomeV2Context;
+
 export interface RunStartContext {
   v: typeof RUN_CONTEXT_VERSION;
   /** The equipped snake, as it was at the moment the run started. */
@@ -91,6 +126,8 @@ export interface RunStartContext {
     id: string;
     generation: number;
     traits: TraitId[];
+    /** Missing means the historical v1 curve; new runs always stamp v2. */
+    ascendance?: AscendanceRunStamp;
   };
   /** The mutation offer pool the engine was handed (post-ban, post-seasonal). */
   mutationPool: MutationId[];
@@ -162,6 +199,22 @@ function parseStrainList(raw: unknown): StrainId[] | null {
   return list;
 }
 
+function parseStrainThresholdDelta(
+  raw: unknown
+): Partial<Record<StrainId, number>> | null | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) return null;
+  const result: Partial<Record<StrainId, number>> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (
+      !(STRAIN_IDS as readonly string[]).includes(key) ||
+      !Number.isSafeInteger(value)
+    ) return null;
+    result[key as StrainId] = value as number;
+  }
+  return result;
+}
+
 function parseLineageBias(raw: unknown): LineageBias | null | 'invalid' {
   if (raw === null || raw === undefined) return null;
   if (!isPlainObject(raw)) return 'invalid';
@@ -185,15 +238,32 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
   if (raw === null || raw === undefined) return null;
   if (!isPlainObject(raw)) return 'invalid';
 
-  let genePool: GeneId[] | null = null;
+  const rulesVersion: GenomeRulesVersion | null = raw.rulesVersion === GENOME_RULES_V2
+    ? GENOME_RULES_V2
+    : raw.rulesVersion === undefined || raw.rulesVersion === GENOME_RULES_V1
+      ? GENOME_RULES_V1
+      : null;
+  if (rulesVersion === null) return 'invalid';
+
+  let genePool: (GeneId | GenomeV2ActiveGeneId)[] | null = null;
   if (raw.genePool !== null && raw.genePool !== undefined) {
     if (!Array.isArray(raw.genePool)) return 'invalid';
-    const pool: GeneId[] = [];
+    const pool: (GeneId | GenomeV2ActiveGeneId)[] = [];
     for (const entry of raw.genePool) {
-      if (!isGeneId(entry)) return 'invalid';
+      if (
+        rulesVersion === GENOME_RULES_V2
+          ? !isGenomeV2ActiveGeneId(entry)
+          : !isGeneId(entry)
+      ) return 'invalid';
       pool.push(entry);
     }
     genePool = pool;
+  }
+  if (
+    rulesVersion === GENOME_RULES_V2 &&
+    (!genePool || genePool.length < 2 || new Set(genePool).size !== genePool.length)
+  ) {
+    return 'invalid';
   }
 
   const heirloom = parseStrainPoints(raw.heirloom);
@@ -206,18 +276,55 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
 
   const suppressedStrains = parseStrainList(raw.suppressedStrains);
   if (suppressedStrains === null) return 'invalid';
+  if (
+    rulesVersion === GENOME_RULES_V2 &&
+    new Set(suppressedStrains).size !== suppressedStrains.length
+  ) return 'invalid';
+  const strainThresholdDelta = parseStrainThresholdDelta(
+    raw.strainThresholdDelta
+  );
+  if (strainThresholdDelta === null) return 'invalid';
 
   if (typeof raw.splicesUnlocked !== 'boolean') return 'invalid';
   if (typeof raw.prevRunDied !== 'boolean') return 'invalid';
 
-  return {
-    genePool,
+  const common: RunStartGenomeContextCommon = {
     heirloom,
     lineage,
     tierCap: raw.tierCap,
     suppressedStrains,
+    ...(strainThresholdDelta ? { strainThresholdDelta } : {}),
     splicesUnlocked: raw.splicesUnlocked,
     prevRunDied: raw.prevRunDied,
+  };
+  if (rulesVersion === GENOME_RULES_V1) {
+    return {
+      ...common,
+      ...(raw.rulesVersion === GENOME_RULES_V1
+        ? { rulesVersion: GENOME_RULES_V1 }
+        : {}),
+      genePool: genePool as GeneId[] | null,
+    };
+  }
+  let ftuePresentation: GenomeV2FtuePresentation;
+  try {
+    const ftue = genomeV2FtueFromPresentation(raw.ftuePresentation);
+    if (ftue.splicesUnlocked !== raw.splicesUnlocked) return 'invalid';
+    ftuePresentation = raw.ftuePresentation as GenomeV2FtuePresentation;
+  } catch {
+    return 'invalid';
+  }
+  if (
+    raw.externalSecondLife !== null &&
+    raw.externalSecondLife !== 'iron_scales' &&
+    raw.externalSecondLife !== 'other'
+  ) return 'invalid';
+  return {
+    ...common,
+    rulesVersion: GENOME_RULES_V2,
+    genePool: genePool as GenomeV2ActiveGeneId[],
+    ftuePresentation,
+    externalSecondLife: raw.externalSecondLife,
   };
 }
 
@@ -262,6 +369,25 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
   // id is dropped exactly as it would have been at start rather than
   // condemning the whole blob.
   const traits = sanitizeTraits((raw.snake as Record<string, unknown>).traits);
+  const ascendanceRaw = (raw.snake as Record<string, unknown>).ascendance;
+  let ascendance: AscendanceRunStamp | undefined;
+  if (ascendanceRaw !== undefined && ascendanceRaw !== null) {
+    if (!isPlainObject(ascendanceRaw)) {
+      return { ok: false, reason: 'snake ascendance malformed', malformed: true };
+    }
+    const curveVersion = ascendanceRaw.curveVersion;
+    const multiplierBps = ascendanceRaw.multiplierBps;
+    if (
+      (curveVersion !== 1 && curveVersion !== 2) ||
+      typeof multiplierBps !== 'number' ||
+      !Number.isSafeInteger(multiplierBps) ||
+      multiplierBps < ASCENDANCE_MULTIPLIER_BPS ||
+      multiplierBps !== ascendanceYieldMultiplierBps(generation, curveVersion)
+    ) {
+      return { ok: false, reason: 'snake ascendance malformed', malformed: true };
+    }
+    ascendance = { curveVersion, multiplierBps };
+  }
 
   if (!Array.isArray(raw.mutationPool)) {
     return { ok: false, reason: 'mutationPool missing', malformed: true };
@@ -304,7 +430,12 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
     ok: true,
     context: {
       v: RUN_CONTEXT_VERSION,
-      snake: { id, generation, traits },
+      snake: {
+        id,
+        generation,
+        traits,
+        ...(ascendance ? { ascendance } : {}),
+      },
       mutationPool,
       freePlay: raw.freePlay,
       ...(growthProfileId ? { growthProfileId } : {}),
@@ -331,6 +462,9 @@ export function serializeRunStartContext(
       id: context.snake.id,
       generation: context.snake.generation,
       traits: context.snake.traits,
+      ...(context.snake.ascendance
+        ? { ascendance: context.snake.ascendance }
+        : {}),
     },
     mutationPool: context.mutationPool,
     freePlay: context.freePlay,
@@ -345,11 +479,23 @@ export function serializeRunStartContext(
       : {}),
     genome: context.genome
       ? {
+          ...(context.genome.rulesVersion === GENOME_RULES_V2
+            ? {
+                rulesVersion: GENOME_RULES_V2,
+                ftuePresentation: context.genome.ftuePresentation,
+                externalSecondLife: context.genome.externalSecondLife,
+              }
+            : context.genome.rulesVersion === GENOME_RULES_V1
+              ? { rulesVersion: GENOME_RULES_V1 }
+              : {}),
           genePool: context.genome.genePool,
           heirloom: context.genome.heirloom,
           lineage: context.genome.lineage,
           tierCap: context.genome.tierCap,
           suppressedStrains: context.genome.suppressedStrains,
+          ...(context.genome.strainThresholdDelta
+            ? { strainThresholdDelta: context.genome.strainThresholdDelta }
+            : {}),
           splicesUnlocked: context.genome.splicesUnlocked,
           prevRunDied: context.genome.prevRunDied,
         }

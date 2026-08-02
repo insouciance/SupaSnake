@@ -10,9 +10,9 @@
  * Serpent and Signal runs disjoint, so a Serpent run stamped `serpent_week_id`
  * and never `anomaly_id`; the end path read `session.anomaly_id`, found null,
  * and recomputed the run under NO condition. The Signal surface meanwhile told
- * the player "the gene pool tilts today" while `genomeBlock.anomalyStrain` was
- * set only on `mode: 'anomaly'`. The condition-sets were inert and one of them
- * was a false claim.
+ * the player "the gene pool tilts today" while the Genome offer-tilt channel
+ * was set only on `mode: 'anomaly'`. The condition-sets were inert and one of
+ * them was a false claim.
  *
  * v1.5 retires explicit Serpent starts in favour of automatic Clan Energy
  * Battles over ordinary runs. This suite now pins both sides of the cutover:
@@ -506,6 +506,7 @@ import {
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
 import { isMutationId } from '@/shared/game/mutations';
 import { sanitizeTraits } from '@/shared/game/traits';
+import { GENOME_RULES_V2 } from '@/shared/game/genomeV2';
 
 const PLAYER_ID = 'player-1';
 const SNAKE_ID = 'snake-1';
@@ -1162,9 +1163,30 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
     // can outweigh the anomaly and move the tilt, and the whole point is that
     // the sentence on screen and the stream in the engine move together. A
     // regression that let them diverge would fail here.
-    expect(body.genome.anomalyStrain).toBe(
+    expect(body.genome.offerTiltStrain).toBe(
       describeSignalDay(body.signal.day).condition.strainTilt
     );
+    expect(body.genome).toMatchObject({
+      rulesVersion: GENOME_RULES_V2,
+      runSeed: expect.any(String),
+      ftuePresentation: { v: GENOME_RULES_V2 },
+    });
+    expect(Array.isArray(body.genome.v2GenePool)).toBe(true);
+    expect(body.genome.v2GenePool.length).toBeGreaterThan(1);
+    expect(body.genome).not.toHaveProperty('genePool');
+    expect(body.runContext).toMatchObject({
+      snake: {
+        ascendance: {
+          curveVersion: 2,
+          multiplierBps: expect.any(Number),
+        },
+      },
+      genome: {
+        rulesVersion: GENOME_RULES_V2,
+        genePool: body.genome.v2GenePool,
+        ftuePresentation: body.genome.ftuePresentation,
+      },
+    });
     // The stamp the end path re-derives it from — mirrored by the RPC, not by
     // the session insert.
     expect(session().signal_objective_run_id).toBe(SIGNAL_ATTEMPT_ID);
@@ -1255,7 +1277,7 @@ describe('the legacy anomaly path is untouched', () => {
     expect(body.condition).toBe(expected);
     expect(body.anomaly.id).toBe(expected);
     expect(session().anomaly_id).toBe(expected);
-    expect(body.genome.anomalyStrain).toBe(ANOMALY_STRAINS[expected]);
+    expect(body.genome.offerTiltStrain).toBe(ANOMALY_STRAINS[expected]);
   });
 
   it('settlement still reads it straight off `anomaly_id`, with no week or day lookup', async () => {
@@ -1282,7 +1304,7 @@ describe('an ordinary run has no condition at either end', () => {
     const body = await response.json();
 
     expect(body.condition).toBeUndefined();
-    expect(body.genome.anomalyStrain).toBeNull();
+    expect(body.genome.offerTiltStrain).toBeNull();
   });
 
   it('settlement recomputes it under no condition', async () => {
