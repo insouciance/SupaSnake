@@ -570,8 +570,8 @@ export function readGenomeV2RunResearch(
   const state: GenomeV2State = record;
   const projection = projectGenomeV2(state);
   const seen = seenGeneIds(state);
-  const portalGrowthEvents = state.journal.filter(
-    (entry) => entry.type === 'portal_infuse' || entry.type === 'portal_recode'
+  const bodyGrowthEvents = state.journal.filter(
+    (entry) => entry.type === 'portal_infuse' || entry.type === 'offer_recoded'
   );
   const phoenixEvents = state.journal.filter(
     (entry) => entry.type === 'phoenix_triggered'
@@ -580,10 +580,10 @@ export function readGenomeV2RunResearch(
     (entry) => entry.reason === 'phoenix'
   ) ? 1 : 0;
   const exactGrowthEventsRetained =
-    portalGrowthEvents.length === state.portalGenomeActions
+    bodyGrowthEvents.length === state.infuseCount + state.recodeCount
     && phoenixEvents.length === expectedPhoenixEvents;
   const retainedGrowth = state.journal.reduce((total, entry) => {
-    if (entry.type === 'portal_infuse' || entry.type === 'portal_recode') {
+    if (entry.type === 'portal_infuse' || entry.type === 'offer_recoded') {
       return total + entry.growthCharged;
     }
     if (entry.type === 'phoenix_triggered') {
