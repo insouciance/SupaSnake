@@ -25,12 +25,18 @@ var mockFrom: jest.Mock;
 
 var mockRpc: jest.Mock;
 
+var mockCaptureException: jest.Mock;
+
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     auth: { getUser: (...args: unknown[]) => mockAuth(...args) },
     from: (...args: unknown[]) => mockFrom(...args),
     rpc: (...args: unknown[]) => mockRpc(...args),
   }),
+}));
+
+jest.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
 import { describe, it, expect } from '@jest/globals';
@@ -333,6 +339,7 @@ describe('GET /api/breeding', () => {
     mockAuth = jest.fn();
     mockFrom = jest.fn();
     mockRpc = jest.fn();
+    mockCaptureException = jest.fn();
   });
 
   it('should return 401 without authorization header', async () => {
@@ -374,6 +381,62 @@ describe('GET /api/breeding', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(404);
+  });
+
+  it('keeps Supabase zero-row lookup semantics as a real 404', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: 'PGRST116',
+          details: 'The result contains 0 rows',
+          message: 'JSON object requested, multiple (or no) rows returned',
+        },
+      }),
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/breeding', {
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(404);
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('reports a retryable player lookup outage instead of a false 404', async () => {
+    mockAuth.mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } },
+      error: null,
+    });
+
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: null,
+        error: { code: '08006', message: 'connection unavailable' },
+      }),
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/breeding', {
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('3');
+    expect(await response.json()).toEqual({
+      error: 'Player account temporarily unavailable',
+    });
+    expect(mockCaptureException).toHaveBeenCalledTimes(1);
   });
 
   it('should return mapped history, newest first, limited to 10', async () => {
@@ -508,6 +571,7 @@ describe('POST /api/breeding', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCaptureException = jest.fn();
     mockAuth = jest.fn().mockResolvedValue({
       data: { user: { id: 'user-123' } },
       error: null,
@@ -521,6 +585,24 @@ describe('POST /api/breeding', () => {
       }),
     });
     mockRpc = jest.fn();
+  });
+
+  it('does not attempt a paid RPC when the player lookup is unavailable', async () => {
+    mockFrom.mockReturnValueOnce({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValueOnce({
+        data: null,
+        error: { code: '08006', message: 'connection unavailable' },
+      }),
+    });
+
+    const response = await POST(post(CHOICES));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('3');
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockCaptureException).toHaveBeenCalledTimes(1);
   });
 
   it('sends the RPC exactly the choices the request named', async () => {

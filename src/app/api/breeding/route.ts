@@ -31,6 +31,39 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type PlayerLookupError = {
+  code?: string;
+  details?: string;
+  message: string;
+};
+
+function isMissingPlayerRow(error: PlayerLookupError): boolean {
+  return (
+    error.code === 'PGRST116' &&
+    /(?:^|\b)(?:0|zero) rows?(?:\b|$)/i.test(error.details ?? '')
+  );
+}
+
+function playerLookupFailure(
+  error: PlayerLookupError,
+  userId: string,
+  method: 'GET' | 'POST'
+) {
+  if (isMissingPlayerRow(error)) {
+    return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+  }
+
+  console.error('Breeding player lookup error:', error);
+  Sentry.captureException(
+    new Error(`breeding player lookup failed: ${error.message}`),
+    { extra: { userId, method } }
+  );
+  return NextResponse.json(
+    { error: 'Player account temporarily unavailable' },
+    { status: 503, headers: { 'Retry-After': '3' } }
+  );
+}
+
 /**
  * GET /api/breeding - Recent breeding history for the authed player.
  * Joins parent/child collected_snakes -> snake_variants for display names,
@@ -50,12 +83,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const { data: player } = await supabase
+    const { data: player, error: playerError } = await supabase
       .from('players')
       .select('id')
       .eq('user_id', user.id)
       .single();
 
+    if (playerError) {
+      return playerLookupFailure(playerError, user.id, 'GET');
+    }
     if (!player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
@@ -115,12 +151,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot breed snake with itself' }, { status: 400 });
     }
 
-    const { data: player } = await supabase
+    const { data: player, error: playerError } = await supabase
       .from('players')
       .select('id, dna')
       .eq('user_id', user.id)
       .single();
 
+    if (playerError) {
+      return playerLookupFailure(playerError, user.id, 'POST');
+    }
     if (!player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
