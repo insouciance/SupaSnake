@@ -35,6 +35,8 @@ import { NavBar } from '@/components/ui/NavBar';
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconDna, IconFlask } from '@/components/ui/icons';
+import { GenomeStrategyAtlas } from '@/components/game/genome/GenomeStrategyAtlas';
+import { buildLegacyGenomeAtlasModel } from '@/components/game/genome/legacyGenomeAtlasAdapter';
 import { GENES } from '@/shared/game/genes';
 import {
   ACTIVE_STRAIN_TIERS,
@@ -249,6 +251,10 @@ function CodexShell({ view }: { view: CodexView }) {
     if (data.progress.genomeWeaverUnlocked) refs.push('genome_weaver');
     return refs;
   }, [data]);
+  const strategyAtlas = useMemo(
+    () => buildLegacyGenomeAtlasModel(data?.splices ?? []),
+    [data?.splices]
+  );
 
   // The Codex dot clears only when this player's discovery layer has actually
   // loaded. Merely navigating to the public rules reference is not enough.
@@ -298,6 +304,7 @@ function CodexShell({ view }: { view: CodexView }) {
           <>
         {/* ── The rules. No account, no API, no gate. ─────────────────── */}
         <div className="space-y-10 animate-fade-up" data-testid="codex-rules">
+          <GenomeStrategyAtlas model={strategyAtlas} />
           <LexiconGrid
             testId="lexicon-mechanics"
             title="How a run works"

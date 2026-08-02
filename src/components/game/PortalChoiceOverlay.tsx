@@ -16,6 +16,37 @@ import {
 import { ladderSalvageFloor } from '@/shared/game/ladder';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { FunnelStages, trackFunnelStageOnce } from '@/lib/analytics/funnel';
+import { TacticalLoomDecision } from '@/components/game/genome/TacticalLoomDecision';
+import type { TacticalLoomDecisionModel } from '@/components/game/genome/tacticalLoomPresentation';
+
+export interface PortalUnlockState {
+  unlocked: boolean;
+  /** Server-authored player-facing reason; never reconstructed from counters. */
+  reason?: string;
+  progress?: string;
+}
+
+export interface PortalCarryProjection {
+  bankCurrent: string;
+  bankNext: string;
+  salvageCurrent: string;
+  salvageNext: string;
+}
+
+export interface PortalMutationTerms {
+  mode: 'mutate' | 'recode';
+  growthCost: number;
+  actionOrdinal: number;
+  actionLimit: number;
+  detail: string;
+}
+
+export interface PortalMutationLoom {
+  /** Immutable candidate projection stamped when this portal opened. */
+  model: TacticalLoomDecisionModel;
+  /** The only callback that consumes the v2 portal mutation. */
+  onCommit: (candidateIndex: 0 | 1, replacementSlot?: number) => void;
+}
 
 interface PortalChoiceOverlayProps {
   canInfuse: boolean;
@@ -23,37 +54,22 @@ interface PortalChoiceOverlayProps {
   snakeLength: number;
   bankDna: number;
   crashDna: number;
-  /**
-   * Doors already passed BEFORE this one (WP-3.10).
-   *
-   * The carry is the whole decision now, so the card has to price both
-   * branches before the choice rather than after it. Passed as a COUNT and not
-   * as multipliers, so this component derives them from the same functions the
-   * engine and the settlement use — copy that restates a dial in a literal is
-   * copy that goes stale silently, and this one sits in front of the game's
-   * most consequential decision. (The `-4 tail` line that survived Rule 15
-   * deleting the field it described is the standing example.)
-   */
   doorsPassed: number;
-  /** The dynasty's portal cadence, for the PASS line's honest interval. */
   cadence: PortalCadence;
-  /**
-   * The run's D2 ladder rung (WP-3.12), as the server stamped it.
-   *
-   * Here for one reason: rung 6 lowers the carry's salvage floor, and this card
-   * quotes what a crash pays. A card that priced salvage at the shipped floor
-   * while the settlement paid the rung's would be a readout that lies about the
-   * single most consequential decision in the game - the exact failure this
-   * component's `doorsPassed` comment already warns about, one dial along.
-   *
-   * `ladderSalvageFloor` is the same function the settlement calls, so the two
-   * cannot disagree. Rung 0 returns the shipped floor and this card is
-   * unchanged.
-   */
   ladderRung?: number;
+  rulesVersion?: 1 | 2;
+  continueState?: PortalUnlockState;
+  mutateState?: PortalUnlockState;
+  carryProjection?: PortalCarryProjection;
+  mutationTerms?: PortalMutationTerms;
+  mutationLoom?: PortalMutationLoom;
   onBank: () => void;
   onPass: () => void;
   onInfuse: () => void;
+}
+
+function multiplierLabel(value: number): string {
+  return `×${value}`;
 }
 
 export function PortalChoiceOverlay({
@@ -65,19 +81,41 @@ export function PortalChoiceOverlay({
   doorsPassed,
   cadence,
   ladderRung = 0,
+  rulesVersion = 1,
+  continueState = { unlocked: true },
+  mutateState,
+  carryProjection,
+  mutationTerms,
+  mutationLoom,
   onBank,
   onPass,
   onInfuse,
 }: PortalChoiceOverlayProps) {
-  // What each branch is worth, quoted before the choice. Banking spends this
-  // door; passing adds it to the count, so the two lines move in opposite
-  // directions and the player can see exactly what they are staking.
   const salvageFloor = ladderSalvageFloor(ladderRung);
-  const bankNow = carryBankMultiplier(doorsPassed);
-  const salvageNow = carrySalvageMultiplier(doorsPassed, salvageFloor);
-  const bankNext = carryBankMultiplier(doorsPassed + 1);
-  const salvageNext = carrySalvageMultiplier(doorsPassed + 1, salvageFloor);
+  const carry = carryProjection ?? {
+    bankCurrent: multiplierLabel(carryBankMultiplier(doorsPassed)),
+    bankNext: multiplierLabel(carryBankMultiplier(doorsPassed + 1)),
+    salvageCurrent: multiplierLabel(carrySalvageMultiplier(doorsPassed, salvageFloor)),
+    salvageNext: multiplierLabel(carrySalvageMultiplier(doorsPassed + 1, salvageFloor)),
+  };
+  const legacyMutationTerms: PortalMutationTerms = {
+    mode: 'mutate',
+    growthCost: STRAIN_PHYSICS.infuseGrowth,
+    actionOrdinal: infusesUsed + 1,
+    actionLimit: STRAIN_PHYSICS.infuseMaxPerRun,
+    detail: `Gene offer · BANK +${STRAIN_ECONOMICS.infuseBankDelta}`,
+  };
+  const mutation = mutationTerms ?? legacyMutationTerms;
+  const physicalReason = snakeLength < STRAIN_PHYSICS.infuseMinLength
+    ? `Needs length ${STRAIN_PHYSICS.infuseMinLength}`
+    : `${rulesVersion === 2 ? 'Mutation' : 'Infuse'} limit reached`;
+  const mutationUnlock = mutateState ?? {
+    unlocked: canInfuse,
+    reason: canInfuse ? undefined : physicalReason,
+  };
+
   const [locked, setLocked] = useState(true);
+  const [inspectingMutation, setInspectingMutation] = useState(false);
   const lockedRef = useRef(true);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocusTrap(dialogRef, !locked);
@@ -89,64 +127,150 @@ export function PortalChoiceOverlay({
     return () => window.clearTimeout(timer);
   }, []);
 
-  // Activate (§11.5): the aha is the first BANKED extraction — the moment
-  // the game's thesis lands. Recorded once per browser and strictly as a
-  // side effect: the run's own decision runs first and is never gated on it.
   const bank = useCallback(() => {
     onBank();
     trackFunnelStageOnce(FunnelStages.ACTIVATE, { bank_dna: bankDna });
   }, [bankDna, onBank]);
+  const inspectMutation = useCallback(() => {
+    if (rulesVersion === 2 && mutationLoom) {
+      setInspectingMutation(true);
+      return;
+    }
+    onInfuse();
+  }, [mutationLoom, onInfuse, rulesVersion]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (lockedRef.current) return;
+      // Once MUTATE opens the Loom, the parent portal shortcuts must become
+      // inert. Otherwise the Loom's "1" preview key could BANK the run under
+      // the nested decision surface.
+      if (lockedRef.current || inspectingMutation) return;
       const key = event.key.toLowerCase();
       if (key === '1' || key === 'b') bank();
-      else if (key === '2' || key === 'p') onPass();
-      else if ((key === '3' || key === 'i') && canInfuse) onInfuse();
+      else if ((key === '2' || key === 'c' || key === 'p') && continueState.unlocked) onPass();
+      else if ((key === '3' || key === 'm' || key === 'i') && mutationUnlock.unlocked) inspectMutation();
       else return;
       event.preventDefault();
       event.stopPropagation();
     };
     window.addEventListener('keydown', keydown, true);
     return () => window.removeEventListener('keydown', keydown, true);
-  }, [bank, canInfuse, onInfuse, onPass]);
+  }, [bank, continueState.unlocked, inspectMutation, inspectingMutation, mutationUnlock.unlocked, onPass]);
 
-  const option = 'rounded-arcade border p-4 text-left transition-all min-h-[44px]';
+  const continueLabel = rulesVersion === 2 ? 'CONTINUE' : 'PASS';
+  const mutateLabel = rulesVersion === 2 ? 'MUTATE' : 'INFUSE';
+  const option = 'min-h-11 rounded-[12px] border p-3 text-left transition-colors sm:p-4';
+
+  if (inspectingMutation && mutationLoom) {
+    return (
+      <TacticalLoomDecision
+        model={mutationLoom.model}
+        locked={locked}
+        onBack={() => setInspectingMutation(false)}
+        onDecline={() => setInspectingMutation(false)}
+        onChoose={(candidateIndex, replacementSlot) => {
+          mutationLoom.onCommit(candidateIndex, replacementSlot);
+        }}
+      />
+    );
+  }
+
   return (
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="portal-choice-title" tabIndex={-1} className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 p-4 backdrop-blur-sm" data-testid="portal-choice-overlay">
-      <div className="panel-elevated w-full max-w-xl p-6 [--glow:#22d3ee] animate-pop-in">
-        <h2 id="portal-choice-title" className="heading-display text-center text-2xl text-[#7df9ff] text-glow">Exit Portal</h2>
-        <p className="mb-5 text-center text-sm font-body text-beige/70">Cash out, keep growing, or turn body into build power.</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <button type="button" disabled={locked} onClick={bank} aria-keyshortcuts="1 B" data-testid="portal-bank" className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
-            <span className="heading-display text-rarity-uncommon">1 · BANK</span>
-            <p className="mt-1 text-sm font-body text-beige">End the run for <b>{bankDna} DNA</b></p>
-            <p className="mt-1 text-xs font-body text-beige/50" data-testid="portal-bank-carry">×{bankNow} banked{doorsPassed > 0 ? ` · ${doorsPassed} passed` : ''}</p>
-          </button>
-          <button type="button" disabled={locked} onClick={onPass} aria-keyshortcuts="2 P" data-testid="portal-pass" className={`${option} border-scale-blue-light/60 bg-void/60 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
-            <span className="heading-display text-bone-white">2 · PASS</span>
-            <p className="mt-1 text-sm font-body text-beige">Next door in {cadence.intervalBase}±{cadence.intervalJitter} foods</p>
-            <p className="mt-1 text-xs font-body text-beige/50" data-testid="portal-pass-carry">Bank ×{bankNow} → <b className="text-rarity-uncommon">×{bankNext}</b> · crash ×{salvageNow} → <b className="text-danger">×{salvageNext}</b></p>
-          </button>
-          <button type="button" disabled={locked || !canInfuse} onClick={onInfuse} aria-keyshortcuts="3 I" data-testid="portal-infuse" className={`${option} border-cosmic/60 bg-cosmic/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}>
-            <span className="heading-display text-cosmic">3 · INFUSE</span>
-            {/*
-              WP-3.05: this line read "−4 tail" while the engine grew the body
-              by +8 - a twelve-segment error pointing the wrong way, advertising
-              a reward where the code charges a cost. It described
-              `infuseSegmentCost: 4`, which Rule 15 DELETED (`rule15.test.ts`
-              asserts the field is gone); the overlay was never updated and no
-              test read this string.
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="portal-choice-title"
+      tabIndex={-1}
+      className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 via-void-deep/10 to-transparent sm:items-stretch sm:justify-end sm:bg-gradient-to-l"
+      data-testid="portal-choice-overlay"
+      data-rules-version={rulesVersion}
+    >
+      <div className="panel-elevated flex h-[min(58dvh,560px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 [--glow:#22d3ee] animate-pop-in sm:ml-auto sm:h-full sm:max-h-none sm:w-[min(42rem,52vw)] sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5">
+        <header className="shrink-0 border-b border-scale-blue-light/20 pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-body text-[10px] font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Simulation held · Extraction</p>
+              <h2 id="portal-choice-title" className="heading-display text-xl text-[#7df9ff] text-glow sm:text-2xl">Portal Decision</h2>
+            </div>
+            <p className="text-right font-body text-[10px] text-beige/50">{doorsPassed} continued · {mutation.actionOrdinal - 1}/{mutation.actionLimit} Genome actions</p>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-scale-blue-light/25 bg-void-deep/40 p-2" data-testid="portal-current-stake">
+            <div>
+              <p className="font-body text-[10px] uppercase tracking-[0.1em] text-beige/45">Secure now</p>
+              <p className="font-mono text-base font-bold text-rarity-uncommon">{bankDna.toLocaleString()} DNA</p>
+            </div>
+            <div className="text-right">
+              <p className="font-body text-[10px] uppercase tracking-[0.1em] text-beige/45">Crash now</p>
+              <p className="font-mono text-base font-bold text-strike-red">{crashDna.toLocaleString()} DNA</p>
+            </div>
+          </div>
+        </header>
 
-              So every number here is now INTERPOLATED from the constant that
-              governs it. Copy that restates a dial in a literal is copy that
-              goes stale silently, and this one sat in front of the game's most
-              consequential decision.
-            */}
-            <p className="mt-1 text-sm font-body text-beige">+{STRAIN_PHYSICS.infuseGrowth} length · gene offer · bank +{STRAIN_ECONOMICS.infuseBankDelta}</p>
-            <p className="mt-1 text-xs font-body text-beige/50">{canInfuse ? `${infusesUsed}/${STRAIN_PHYSICS.infuseMaxPerRun} used · crash ${crashDna}` : snakeLength < STRAIN_PHYSICS.infuseMinLength ? `Needs length ${STRAIN_PHYSICS.infuseMinLength}` : 'Infuse cap reached'}</p>
-          </button>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-3 [touch-action:pan-y]" data-testid="portal-scroll-region">
+          <div className="grid gap-2 sm:grid-cols-3" data-testid="portal-choice-rail" data-responsive-composition="portrait-bottom landscape-side">
+            <button
+              type="button"
+              disabled={locked}
+              onClick={bank}
+              aria-keyshortcuts="1 B"
+              data-testid="portal-bank"
+              className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
+            >
+              <span className="font-display text-sm text-rarity-uncommon">1 · BANK</span>
+              <p className="mt-1 font-body text-xs text-beige">Secure {bankDna.toLocaleString()} DNA and end this run.</p>
+              <p className="mt-2 font-mono text-[10px] text-beige/55" data-testid="portal-bank-carry">Carry {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} continued` : ''}</p>
+            </button>
+
+            <button
+              type="button"
+              disabled={locked || !continueState.unlocked}
+              onClick={onPass}
+              aria-keyshortcuts="2 C P"
+              data-testid="portal-pass"
+              className={`${option} border-scale-blue-light/55 bg-void/55 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
+            >
+              <span className="font-display text-sm text-bone-white">2 · {continueLabel}</span>
+              <p className="mt-1 font-body text-xs text-beige">Next portal in {cadence.intervalBase}±{cadence.intervalJitter} foods.</p>
+              <p className="mt-2 font-mono text-[10px] text-beige/55" data-testid="portal-pass-carry">
+                BANK {carry.bankCurrent} → <b className="text-rarity-uncommon">{carry.bankNext}</b><br />
+                crash {carry.salvageCurrent} → <b className="text-strike-red">{carry.salvageNext}</b>
+              </p>
+              {!continueState.unlocked ? <p className="mt-2 font-body text-[10px] leading-snug text-venom-orange" data-testid="portal-continue-lock">Locked · {continueState.reason}{continueState.progress ? ` · ${continueState.progress}` : ''}</p> : null}
+            </button>
+
+            <button
+              type="button"
+              disabled={locked || !mutationUnlock.unlocked}
+              onClick={inspectMutation}
+              aria-keyshortcuts="3 M I"
+              data-testid="portal-infuse"
+              className={`${option} border-cosmic/55 bg-cosmic/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
+            >
+              <span className="font-display text-sm text-cosmic">3 · {mutateLabel}</span>
+              <p className="mt-1 font-body text-xs text-beige">
+                +{mutation.growthCost} permanent growth · {mutation.mode === 'recode' ? 'Recode one locus' : mutation.detail}
+              </p>
+              <p className="mt-2 font-mono text-[10px] text-beige/55">
+                Action {mutation.actionOrdinal}/{mutation.actionLimit}{mutation.mode === 'recode' ? ` · ${mutation.detail}` : ''}
+              </p>
+              {rulesVersion === 2 && mutationLoom ? (
+                <div className="mt-2 space-y-1 border-t border-cosmic/20 pt-2" data-testid="portal-mutate-preview">
+                  {mutationLoom.model.candidates.map((candidate) => (
+                    <p key={candidate.geneId} className="truncate font-body text-[10px] text-cosmic/80" title={`${candidate.name} · ${candidate.category}`}>
+                      {candidate.action} · {candidate.name} · {candidate.category}
+                    </p>
+                  ))}
+                  <p className="font-body text-[9px] text-beige/45">Inspect both paths before committing.</p>
+                </div>
+              ) : null}
+              {!mutationUnlock.unlocked ? <p className="mt-2 font-body text-[10px] leading-snug text-venom-orange" data-testid="portal-mutate-lock">Locked · {mutationUnlock.reason}{mutationUnlock.progress ? ` · ${mutationUnlock.progress}` : ''}</p> : null}
+            </button>
+          </div>
+
+          <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/35 px-3 py-2 font-body text-[11px] leading-snug text-beige/60">
+            BANK secures this run. {continueLabel} raises future Carry and lowers crash recovery. {mutateLabel} keeps the run alive while converting permanent body growth and spatial pressure into build power.
+          </p>
         </div>
       </div>
     </div>
@@ -162,8 +286,8 @@ export function StrainSurgeOverlay({ strains, onChoose }: StrainSurgeOverlayProp
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocusTrap(dialogRef);
   return (
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="surge-choice-title" tabIndex={-1} className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 p-4 backdrop-blur-sm" data-testid="surge-choice-overlay">
-      <div className="panel-elevated w-full max-w-md p-6 [--glow:#a855f7] animate-pop-in">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="surge-choice-title" tabIndex={-1} className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 to-transparent sm:items-center" data-testid="surge-choice-overlay">
+      <div className="panel-elevated w-full max-w-md rounded-b-none p-5 [--glow:#a855f7] animate-pop-in sm:rounded-[18px]">
         <h2 id="surge-choice-title" className="heading-display text-center text-2xl text-cosmic">Strain Surge</h2>
         <p className="mb-4 text-center text-sm font-body text-beige/70">Gene cap reached — add one point to a held strain.</p>
         <div className="flex flex-wrap justify-center gap-3">

@@ -177,8 +177,17 @@ describe('Genome Codex page', () => {
       'Recipe hidden'
     );
     // The rules of an undiscovered splice are not hidden — only its recipe.
-    expect(screen.getByText('All In')).toBeInTheDocument();
+    expect(screen.getAllByText('All In').length).toBeGreaterThan(0);
     expect(screen.getByText('all in effect')).toBeInTheDocument();
     expect(screen.getByText('all in cost')).toBeInTheDocument();
+  });
+
+  it('puts the interactive strategy atlas before the reference grids', () => {
+    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
+    render(<CodexPage />);
+    expect(screen.getByTestId('genome-strategy-atlas')).toBeInTheDocument();
+    expect(screen.getByLabelText('Genome consequence chain')).toHaveTextContent(
+      /Offer.*Strain.*Splice.*BANK \/ crash/
+    );
   });
 });
