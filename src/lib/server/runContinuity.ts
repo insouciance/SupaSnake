@@ -17,6 +17,7 @@ import { resolveGrowthProfile } from '@/shared/game/growth';
 import { ladderHoldBase, resolveLadderRung } from '@/shared/game/ladder';
 import { isAnomalyId } from '@/shared/game/anomalies';
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
+import { GenomeV2Runtime } from '@/lib/game/genomeV2Runtime';
 import { isStrainId, STRAIN_PHYSICS } from '@/shared/game/strains';
 import {
   SNAKE_RULES_VERSION,
@@ -35,6 +36,13 @@ import {
   strainActivations,
   strainTierAtFood,
 } from '@/shared/game/genome';
+import {
+  GENOME_RULES_V2,
+  assertGenomeV2PersistenceBound,
+  genomeV2FtueFromPresentation,
+  genomeV2YieldFloor,
+  type GenomeV2RunRecord,
+} from '@/shared/game/genomeV2';
 import {
   isChargeExempt,
   type ChargeExemptionFacts,
@@ -403,7 +411,34 @@ function isDirection(value: unknown): value is Direction {
   return ['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(String(value));
 }
 
-function parseReplayTrace(value: unknown): SnakeReplayTrace {
+function boundedReplayIdentity(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 160 &&
+    value.trim() === value &&
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
+function hasOnlyReplayKeys(
+  action: Record<string, unknown>,
+  keys: readonly string[]
+): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(action).every((key) => allowed.has(key));
+}
+
+function replaySlot(value: unknown): value is 0 | 1 | 2 | 3 | 4 | 5 {
+  return safeInteger(value) !== null && (value as number) <= 5;
+}
+
+/**
+ * Strictly normalize the replay boundary before any action reaches physics.
+ * V2 decisions are discriminated unions on the wire as well as in TypeScript:
+ * branch-incompatible fields are rejected instead of being silently ignored.
+ */
+export function parseReplayTrace(value: unknown): SnakeReplayTrace {
   const record = objectRecord(value);
   const ticks = safeInteger(record?.ticks);
   if (
@@ -460,6 +495,164 @@ function parseReplayTrace(value: unknown): SnakeReplayTrace {
           rejectCheckpoint('Run checkpoint contains an invalid replay surge.');
         }
         actions.push({ tick, kind: 'surge', strain: action.strain });
+        break;
+      case 'genome_v2_offer': {
+        if (!boundedReplayIdentity(action.offerId)) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 offer identity.');
+        }
+        if (action.choice === 'decline') {
+          if (
+            !hasOnlyReplayKeys(action, [
+              'tick',
+              'kind',
+              'offerId',
+              'choice',
+              'pinCandidate',
+            ]) ||
+            (action.pinCandidate !== undefined &&
+              action.pinCandidate !== 0 &&
+              action.pinCandidate !== 1)
+          ) {
+            rejectCheckpoint('Run checkpoint contains an invalid Genome v2 decline.');
+          }
+          actions.push({
+            tick,
+            kind: 'genome_v2_offer',
+            offerId: action.offerId,
+            choice: 'decline',
+            ...(action.pinCandidate !== undefined
+              ? { pinCandidate: action.pinCandidate }
+              : {}),
+          });
+          break;
+        }
+        if (
+          (action.choice !== 0 && action.choice !== 1) ||
+          !replaySlot(action.slot) ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'offerId',
+            'choice',
+            'slot',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 gene choice.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_offer',
+          offerId: action.offerId,
+          choice: action.choice,
+          slot: action.slot,
+        });
+        break;
+      }
+      case 'genome_v2_portal': {
+        if (!boundedReplayIdentity(action.portalId)) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 portal identity.');
+        }
+        if (action.choice === 'bank') {
+          if (
+            !hasOnlyReplayKeys(action, ['tick', 'kind', 'portalId', 'choice'])
+          ) {
+            rejectCheckpoint('Run checkpoint contains an invalid Genome v2 BANK action.');
+          }
+          actions.push({
+            tick,
+            kind: 'genome_v2_portal',
+            portalId: action.portalId,
+            choice: 'bank',
+          });
+          break;
+        }
+        if (action.choice === 'continue') {
+          if (
+            typeof action.activateMirror !== 'boolean' ||
+            !hasOnlyReplayKeys(action, [
+              'tick',
+              'kind',
+              'portalId',
+              'choice',
+              'activateMirror',
+            ])
+          ) {
+            rejectCheckpoint('Run checkpoint contains an invalid Genome v2 CONTINUE action.');
+          }
+          actions.push({
+            tick,
+            kind: 'genome_v2_portal',
+            portalId: action.portalId,
+            choice: 'continue',
+            activateMirror: action.activateMirror,
+          });
+          break;
+        }
+        if (
+          (action.choice !== 'infuse' && action.choice !== 'recode') ||
+          (action.candidate !== 0 && action.candidate !== 1) ||
+          !replaySlot(action.slot) ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'portalId',
+            'choice',
+            'candidate',
+            'slot',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 MUTATE action.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_portal',
+          portalId: action.portalId,
+          choice: action.choice,
+          candidate: action.candidate,
+          slot: action.slot,
+        });
+        break;
+      }
+      case 'genome_v2_target':
+        if (
+          !boundedReplayIdentity(action.targetId) ||
+          (action.choice !== 'ordinary' && action.choice !== 'gilded') ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'targetId',
+            'choice',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 target choice.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_target',
+          targetId: action.targetId,
+          choice: action.choice,
+        });
+        break;
+      case 'genome_v2_overclock':
+        if (
+          !boundedReplayIdentity(action.activationId) ||
+          (action.source !== 'volt_apex' &&
+            action.source !== 'zenith_protocol') ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'source',
+            'activationId',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 Overclock action.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_overclock',
+          source: action.source,
+          activationId: action.activationId,
+        });
         break;
       default:
         rejectCheckpoint('Run checkpoint contains an unknown replay action.');
@@ -690,6 +883,62 @@ function validateCheckpointGenome(
   const { state, privateState, config } = checkpoint;
   if (privateState.drivenRun !== false || !Array.isArray(state.lossEvents) || state.lossEvents.length > 0) {
     rejectCheckpoint('Run checkpoint contains an unsupported authored or length-loss state.');
+  }
+  if (config.genome?.rulesVersion === GENOME_RULES_V2) {
+    const reducer = state.genomeV2;
+    const snapshot = privateState.genomeV2Runtime;
+    if (
+      !reducer ||
+      reducer.v !== GENOME_RULES_V2 ||
+      !snapshot ||
+      state.foodEaten !== reducer.foodCount ||
+      state.dnaCollected !== genomeV2YieldFloor(reducer.ledger.bankableYield)
+    ) {
+      rejectCheckpoint('Run checkpoint contains inconsistent Genome v2 progress.');
+    }
+    if (
+      previous &&
+      (previous.config.genome?.rulesVersion !== GENOME_RULES_V2 ||
+        previous.state.genomeV2?.v !== GENOME_RULES_V2 ||
+        !previous.privateState.genomeV2Runtime)
+    ) {
+      rejectCheckpoint('Run checkpoint changes its Genome rules version.');
+    }
+    try {
+      assertGenomeV2PersistenceBound(reducer);
+      const restored = new GenomeV2Runtime({
+        runSeed: config.genome.runSeed,
+        dynasty: config.ruleset,
+        pool: config.genome.v2GenePool,
+        ftue: config.genome.ftuePresentation
+          ? genomeV2FtueFromPresentation(config.genome.ftuePresentation)
+          : reducer.ftue,
+        startingStrainPoints: config.genome.heirloom,
+        offerTiltStrain: config.genome.offerTiltStrain,
+        suppressedStrains: config.genome.suppressedStrains,
+        strainThresholdDelta: config.genome.strainThresholdDelta,
+        externalSecondLife: config.traits.includes('iron_scales')
+          ? 'iron_scales'
+          : null,
+        reducerState: reducer,
+        snapshot,
+      });
+      if (!jsonEquivalent(restored.getState(), reducer)) {
+        rejectCheckpoint('Run checkpoint rewrites its Genome v2 reducer.');
+      }
+    } catch (error) {
+      if (error instanceof RunContinuityError) throw error;
+      rejectCheckpoint('Run checkpoint contains an invalid Genome v2 runtime.');
+    }
+
+    // Body, speed, terrain, event identities, and runtime cursors are proved
+    // by the deterministic opening/suffix comparator before this branch. Do
+    // not re-derive them with Genome-v1 formulas, and do not reject a Phase
+    // Scar merely because its creation tick still contains the head cell.
+    return;
+  }
+  if (state.genomeV2 !== null || privateState.genomeV2Runtime != null) {
+    rejectCheckpoint('Legacy run checkpoint carries Genome v2 state.');
   }
   if (
     !Array.isArray(state.heldMutations) ||
@@ -1559,7 +1808,7 @@ export interface TerminalRunIntent {
     victory: false;
     mutations: GameOverData['mutations'];
     phoenix_triggered_at_food: number | null;
-    genome: GameOverData['genome'];
+    genome: GameOverData['genome'] | GenomeV2RunRecord;
     death_cause: GameOverData['deathCause'];
     run_events: ReturnType<SnakeGameLogic['getRunEvents']>;
   };
@@ -1627,7 +1876,7 @@ function deriveTerminalIntent(
     victory: false,
     mutations: result.mutations,
     phoenix_triggered_at_food: result.phoenixTriggeredAtFood,
-    genome: result.genome,
+    genome: result.genomeV2 ?? result.genome,
     death_cause: result.deathCause,
     run_events: engine.getRunEvents(),
   };

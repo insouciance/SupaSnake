@@ -194,13 +194,13 @@ describe('SnakeGameLogic Genome v2 authority boundary', () => {
     });
     game.tick();
     const checkpoint = game.exportCheckpoint(Date.now());
-    const foodTamper = structuredClone(checkpoint);
+    const foodTamper = JSON.parse(JSON.stringify(checkpoint)) as typeof checkpoint;
     foodTamper.state.foodEaten += 1;
     expect(() => new SnakeGameLogic().restoreCheckpoint(foodTamper)).toThrow(
       'food count differs'
     );
 
-    const yieldTamper = structuredClone(checkpoint);
+    const yieldTamper = JSON.parse(JSON.stringify(checkpoint)) as typeof checkpoint;
     yieldTamper.state.dnaCollected += 1;
     expect(() => new SnakeGameLogic().restoreCheckpoint(yieldTamper)).toThrow(
       'Yield differs'

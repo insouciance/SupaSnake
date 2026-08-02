@@ -1366,7 +1366,7 @@ export class GenomeV2Runtime {
         { type: 'crown_wave_closed', waveId: wave.waveId, outcome: 'failed' },
         tick
       );
-      for (const targetId of trackedIds) this.targetProgress.delete(targetId);
+      trackedIds.forEach((targetId) => this.targetProgress.delete(targetId));
       return { outcome: 'failed', crownTargetId: null, crownCell: null };
     }
     if (!current.every((target) => target.lifecycle === 'completed'))
@@ -1415,7 +1415,7 @@ export class GenomeV2Runtime {
       { type: 'crown_wave_closed', waveId: wave.waveId, outcome: 'failed' },
       tick
     );
-    for (const targetId of trackedIds) this.targetProgress.delete(targetId);
+    trackedIds.forEach((targetId) => this.targetProgress.delete(targetId));
     return true;
   }
 

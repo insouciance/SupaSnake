@@ -2117,6 +2117,18 @@ export class SnakeGameLogic {
         }
         return;
       case 'genome_v2_portal': {
+        if (action.choice === 'infuse' || action.choice === 'recode') {
+          const occupant =
+            action.slot === undefined
+              ? undefined
+              : this.genomeV2Runtime?.getState().slots[action.slot]?.occupant;
+          const expectedChoice = occupant === null ? 'infuse' : 'recode';
+          if (occupant === undefined || action.choice !== expectedChoice) {
+            throw new Error(
+              'Replay Genome v2 portal verb disagrees with its locus.'
+            );
+          }
+        }
         const resolution: GenomeV2PortalResolution =
           action.choice === 'bank'
             ? { action: 'bank', portalId: action.portalId }
@@ -5384,7 +5396,7 @@ export class SnakeGameLogic {
    * body or terrain.
    */
   private rebirthBody(
-    rewindSegments = MUTATION_PHYSICS.phoenixRewindCells
+    rewindSegments: number = MUTATION_PHYSICS.phoenixRewindCells
   ): void {
     const rewind = Math.min(
       Math.max(0, Math.floor(rewindSegments)),
