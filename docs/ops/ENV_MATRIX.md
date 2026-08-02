@@ -1,6 +1,6 @@
 # Environment & Credentials Matrix
 
-Status: 2026-07-31. Values are never recorded in this file.
+Status: 2026-08-02. Values are never recorded in this file.
 
 ## Production
 
@@ -16,7 +16,7 @@ inside its cloud build/runtime.
 | Stripe catalog | Legacy one-time `NEXT_PUBLIC_STRIPE_*` names plus `NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY` and `NEXT_PUBLIC_STRIPE_PREMIUM_YEARLY` | Configured for sandbox compatibility; the one-time source catalog is empty and the old Premium name/prices are not approved for live sale. Founding Keeper requires its own reviewed price mapping |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Configured |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Configured; EU host |
-| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, manifest flags, `SUPASNAKE_PUBLIC_SURFACE_HASH` | `https://supasnake.com`, age 14; exact production-on flag set, Supabase project ref, and deterministic hash are defined once in `config/production-public-surface.json` and explicitly injected into build/runtime by the release workflow |
+| Application | `NEXT_PUBLIC_APP_URL`, `MIN_AGE_REQUIREMENT`, manifest flags including `NEXT_PUBLIC_GENOME_V2`, `SUPASNAKE_PUBLIC_SURFACE_HASH` | `https://supasnake.com`, age 14; exact production-on flag set, Supabase project ref, and deterministic hash are defined once in `config/production-public-surface.json` and explicitly injected into build/runtime by the release workflow. Genome v2 requires exact `true`; omission/non-`true` keeps new starts on v1 while dual-version code still completes existing v2 sessions |
 | Optional clan tuning | `CLAN_FOUNDING_DNA_COST`, `CLAN_INVITATION_LIFETIME_SECONDS`, `CLAN_BATTLE_*`, `CLAN_GLORY_*` | Optional; absence uses reviewed launch defaults. Founding defaults to 500 DNA and rejects a stale quote; battle/Glory rewards and timing are bounded in config and SQL. Exact names and defaults live in `.env.example` |
 | Discord | Client, client secret, bot token, guild, redirect URI, 32-byte token key | Configured |
 | Scheduled jobs | `CRON_SECRET` | Configured; exact bearer authentication required |
@@ -40,10 +40,11 @@ inside the Vercel production build, where Sensitive values are available.
 
 - Linked production project: `gmpwyzqafoyowndbvlma` (`supasnake`,
   `eu-central-1`).
-- Production has migrations 001–061. Production workflow 30608676126 applied
-  Career bridge migration 060, promoted the exact Career-aware runtime, waited
-  through the retired invocation bound, then applied cutover migration 061;
-  final application/database/Career health passed.
+- Production has migrations 001–064. Canonical health at release `23ba6e6`
+  proves the cohesive clan, run-continuity, and one-favorite-per-Dynasty
+  capability versions. Migration 065 is the reviewed Genome v2 addition and
+  remains pending until the exact linked dry-run and production workflow apply
+  it.
 - Future pending migrations must be named in the release evidence and applied
   through the reviewed production workflow only.
 - Local and CI E2E use `supabase/config.toml` and a disposable Supabase stack;

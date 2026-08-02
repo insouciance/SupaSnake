@@ -5,7 +5,7 @@
 **Date:** 2 August 2026
 
 **Status:** APPROVED for production by the Product Owner; governed by Product
-Constitution v1.10.
+Constitution v1.11.
 
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
@@ -49,24 +49,28 @@ decision context. The three verbs are:
 - **DECLINE** — spend the offer and keep the current Genome.
 
 One shared consequence pane follows the focused action. Its job is immediate
-intuition, not catalog research. It shows only what changes now:
+intuition, not catalog research. It shows the focused reaction, including the
+small amount of future context required to understand that reaction:
 
 - the gene's primary identity, concrete gain, meaningful risk, and trigger rhythm;
 - the locus added or replaced;
-- a Strain rung that activates or is lost now;
-- a Splice that forms or breaks now;
+- every explicit Strain name/rune on the candidate and the complete affected
+  3/4/5 route, with the current transition visually dominant;
+- every directly connected Splice branch, visibly marked as forming, future,
+  closed, broken, locked, or requiring Recode;
 - second-life exclusivity, Ash, and another direct socket conflict when relevant;
 - body growth, permanent terrain, or changed target identity when relevant;
 - the exact delta to Bonds, Escrow, Stake, Carry, Anchor, or another persistent
   liability when the action changes it.
 
-It does not carry complete 3/4/5 ladders, unchanged ledgers, one-step recipe
-trees, broad BANK/crash projections, or an expert expander. It never says `best`,
-`recommended`, or supplies an automatic ranking. Mobile uses compact candidate
-controls and the same single focused pane rather than three long cards. The
-ordinary two-gene choice must fit a practical phone viewport without internal
-scrolling; unusually long localization may expand the frozen page rather than
-truncate a material consequence.
+It does not carry unrelated ladders, the full Splice catalog, unchanged ledgers,
+broad BANK/crash projections, or an expert expander. It never says `best`,
+`recommended`, or supplies an automatic ranking. Mobile uses compact rune
+choices and the same single focused reaction map rather than three long cards.
+The first read must expose candidate identity, gain/risk, affected routes,
+immediate Splice fate, and confirmation in a practical phone viewport. A tapped
+rule may use the frozen surface's contained scroll rather than truncating a
+material consequence; catalog exploration still belongs outside the run.
 
 A short input lock prevents the flick or key that opened the decision from
 selecting an action. After selection, a brief pointer-transparent callout names
@@ -291,9 +295,10 @@ Splices replace their parents with one new strategic rule rather than applying
 | `splice_ashen_stake` | Ashen Stake | Loan Shark + Phoenix |
 
 Recipes and effects may be discovered, but rules and consequences are never
-hidden. The live Loom shows a Splice that forms or breaks now; Research exposes
-complete recipes and further paths so players can prepare without memorizing the
-Codex.
+hidden. The live Loom shows every directly connected branch for the focused
+choice and its exact current fate; Research exposes the complete catalog,
+unrelated recipes, experiments, and arithmetic so players can prepare without
+memorizing the Codex.
 
 Dynasty signatures are always part of their run's pool:
 

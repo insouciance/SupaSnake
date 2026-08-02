@@ -7,7 +7,7 @@ documents remain useful context but do not override the files listed here.
 
 | Need | Document |
 |---|---|
-| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.10) |
+| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.11) |
 | What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
 | The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
 | The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |

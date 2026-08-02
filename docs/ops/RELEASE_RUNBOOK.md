@@ -1,17 +1,17 @@
 # Production Release Runbook
 
-Current player-feature baseline: Career Spine runtime
-`564dbb71a83198eba796503de3334d8d4d82f48d`, deployed 2026-07-31 by workflow
-run 30608676126 as `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR`, with hosted migrations
-001–061. Canonical health reports the exact release SHA, healthy database,
-Career phase `ready`, bridge version 1, Career version 1, and the presentation
-surface enabled. Stripe remains in sandbox/test mode.
+Current pre-Genome baseline: cohesive UX runtime
+`23ba6e6fd95029cd9da4cea5b78a998b55aac782`, independently verified on
+2 August 2026 as production deployment `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`,
+with hosted migrations 001–064. Canonical health reports the exact release SHA,
+healthy database, Career phase `ready`, cohesive capability version 1, and
+21/21 public surfaces enabled. Stripe remains in sandbox/test mode.
 
-The independently recorded outgoing deployment is
-`dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`. It is not an application rollback target
-after migration 061 because that cutover rejects its retired settlement writer.
-Keep this volatile paragraph current in the release-record change; do not copy
-its IDs into workflow code.
+The deployment above is the outgoing application for the Genome v2 cutover.
+Migration 065 is additive, but once any v2 session starts the outgoing
+application is not a safe rollback target because it cannot resume or settle
+that immutable v2 contract. Keep this volatile paragraph current in the
+release-record change; do not copy its IDs into workflow code.
 
 ## Release law
 
@@ -81,7 +81,8 @@ only production mutation path; never run a separate hosted `supabase db push`.
 The release has two deliberately different database gates:
 
 - `scripts/run-local-sql-contracts.sh` runs the 059 Energy, 060 durable end,
-  061 Career, 062 clan, 063 continuity, and 064 favorite contracts plus both
+  061 Career, 062 clan, 063 continuity, 064 favorite, and 065 Genome v2
+  contracts plus both
   real two-connection races against the **final** local schema. It rejects any
   database URL that is not loopback port 54322. Later invariants require fixture
   maintenance; they never justify deleting an affected economy/session
@@ -93,20 +94,20 @@ The release has two deliberately different database gates:
   signatures and service-role grants without invoking those functions, absence
   of duplicate favorites, exact trigger/function binding, validated continuity
   constraints, and required indexes. The immediately preceding empty linked
-  migration-plan proof remains the authority for the 062/063/064 ledger.
+  migration-plan proof remains the authority for the 062/063/064/065 ledger.
 
 Never run `062_competitive_clans.sql`, `063_run_continuity.sql`,
-`064_atomic_dynasty_favorites.sql`, or the 064 concurrency test from
-`supabase/tests/` against hosted production. They intentionally create and
-exercise fixture state.
+`064_atomic_dynasty_favorites.sql`, `065_genome_v2.sql`, or the 064 concurrency
+test from `supabase/tests/` against hosted production. They intentionally create
+and exercise fixture state.
 
 ## Cohesive release states
 
-The 062–064 release is allowed only through these observable states.
+The Genome v2 release is allowed only through these observable states.
 
 ### A. Pre-bridge
 
-- Hosted schema: 001–061.
+- Hosted schema: 001–064.
 - Canonical alias: exact outgoing production deployment.
 - Cron owner and every cron host: exact outgoing deployment.
 - Cron definitions: byte-equivalent normalized `{path, schedule}` set from
@@ -119,7 +120,7 @@ If any check fails here, stop. No hosted migration has been attempted.
 
 ### B. Post-migration, pre-production
 
-- Hosted schema: 001–064, or the recognized forward-only partial state while a
+- Hosted schema: 001–065, or the recognized forward-only partial state while a
   failed push is being investigated.
 - Canonical alias and cron state: still exactly outgoing.
 - Outgoing application: healthy on the bridge schema.
@@ -130,21 +131,26 @@ If any check fails here, stop. No hosted migration has been attempted.
 Migration 062's seven-argument compatibility function cannot create a clan or
 spend DNA. Migration 063 preserves legacy sessions while adding continuity.
 Migration 064 enforces one favorite per dynasty even for the outgoing direct
+writer. Migration 065 adds versioned Genome catalogs, discoveries, and
+Ascendance functions without rewriting legacy rows or changing the outgoing
 writer. These reviewed bridges are why the outgoing application remains valid
 while the new release is still only Preview.
 
 If the workflow stops here, production traffic and cron remain outgoing. Do not
 reverse migrations; forward-fix and retry with the exact ordered pending suffix
-(`063,064`, `064`, or `none` after all three committed).
+(`065` from the current baseline, or `none` after it commits). The workflow also
+recognizes the longer ordered suffixes only for a host that genuinely missed an
+earlier bridge; the linked dry-run, never operator memory, decides.
 
 ### C. Post-cutover
 
-- Hosted schema: 001–064.
+- Hosted schema: 001–065.
 - Canonical alias: exact deployment ID and host returned by the deliberate
   Production deployment.
 - Canonical health: exact Git SHA, exact project ref/public-surface hash,
-  database healthy, Career ready, Run Flow on, and cohesive capability versions
-  at 1.
+  database healthy, Career ready, Run Flow on, cohesive capability versions at
+  1, and Genome capability `status=healthy`, schema/catalog/Ascendance version
+  2, and eight active Splices.
 - Cron owner and every cron host: exact new deployment.
 - Cron definitions: unchanged normalized hash from the outgoing snapshot;
   enabled.
@@ -171,7 +177,7 @@ The workflow performs:
    verification (`preview`, never `production`). Its anonymous release contract
    must prove the exact manifest/project/SHA. Canonical and cron are re-proved.
 7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; exact
-   062–064 initial/resume push and linked lint.
+   reviewed 062–065 initial/resume suffix push and linked lint.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.
@@ -198,19 +204,27 @@ The workflow performs:
 |---|---|
 | Verification, local SQL, environment, migration dry-run, outgoing snapshot, or Preview build fails | Stop. Hosted schema and production are unchanged. |
 | Preview smoke fails before a standard migration | Stop. No hosted mutation occurred. |
-| 062–064 push/lint/read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
+| 062–065 push/lint/read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
 | Post-bridge outgoing or Preview smoke fails | Do not create a Production deployment. Schema is additive; production and cron remain outgoing. Forward-fix. |
 | Production command fails or returns ambiguously while alias + cron still appear outgoing | Unresolved, not a safe pre-cutover stop. Freeze releases and inspect release-SHA Production candidates until no in-flight deployment can cut over; never retry from one immediate snapshot. |
 | Production command returns ambiguously but live health reports the new SHA and cron exactly follows that canonical deployment | Treat as a post-cutover production incident. Freeze releases and inspect logs; do not promote outgoing. |
 | Alias, cron owner, cron hosts, definitions, or enabled state are mixed/unknown | Freeze deployment automation. Record all IDs and hashes, inspect Vercel dashboard/API, and restore one coherent state under operator control. |
 | Deploy job is cancelled or times out after the Production attempt starts | Assume classification did not run. Freeze releases and manually inspect canonical ID/host/readiness/target, `/api/health` release/project/hash, and complete cron state before any retry. |
-| Final new-release health fails | Because 062–064 are reviewed as outgoing-compatible, the operator may use `vercel rollback <outgoing-url>` only after confirming the current failure is application-only. Then independently prove canonical ID/host, health, cron owner/hosts/definitions/enabled. If any proof fails, forward-fix rather than improvising aliases. |
+| Final new-release health fails | Freeze new starts and inspect whether any v2 session was issued. Once a v2 session exists, do **not** roll back to the outgoing application; forward-deploy the current dual-version code with Genome v2 intake disabled, preserving resume/settlement. Even before the first v2 session, prefer a forward fix and independently prove canonical ID/host, health, cron owner/hosts/definitions/enabled. |
 
 Do not use `vercel promote <outgoing>` as rollback. A deployment that was
 already Current cannot be promoted again under Vercel's documented production
-state model; `vercel rollback` is the supported operation for a previously
-served production deployment. A rollback never reverts Supabase migrations or
-environment changes.
+state model. Although `vercel rollback` can restore a previously served
+deployment, it never reverts Supabase migrations or environment changes and is
+not compatible with already-issued Genome v2 sessions.
+
+`NEXT_PUBLIC_GENOME_V2` is a build-time rollout boundary, not an instantaneous
+kill switch. An emergency flag-off therefore requires one reviewed forward
+release of the same dual-version code: remove the flag from the production-on
+manifest, remove or set the Vercel Production value to a non-`true` value, build
+and deploy, then prove that new starts receive v1 while an existing v2 session
+still resumes and settles. Never deploy the outgoing pre-v2 application as a
+substitute for this procedure.
 
 After any rollback, record that Vercel disables automatic production-domain
 assignment until rollback is undone. The next release must explicitly inspect

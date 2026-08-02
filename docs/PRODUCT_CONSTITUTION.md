@@ -1,6 +1,21 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.10 · amended 2 August 2026
+**Version:** 1.11 · amended 2 August 2026
+**v1.11 amendment (explicit owner ruling, 2 August 2026):** the live Loom's
+intuition must include legible second- and third-order consequences, not merely
+the immediate arithmetic. Every candidate names and depicts its Strain tags.
+The focused candidate may show the complete **affected** 3/4/5 Strain route and
+every directly connected Splice branch in a compact rune/reaction map, including
+whether each rung or branch activates now, remains future, closes, breaks, or
+requires Recode. This is not the prohibited expert dashboard: unrelated ladders,
+the full catalog, broad scenario arithmetic, build rankings, and exhaustive prose
+remain in Research. On mobile the reaction map prioritises recognition and a
+single focused rule; it may reveal a tapped explanation within the frozen
+decision, but cannot hide the candidate's Strain identity or immediate Splice
+fate. This refines v1.10's information boundary without restoring its discarded
+coursework-like expert expander. The owner approved this correction in the
+production Goal and waived the cooling period; the trade-off is recorded in
+§15.
 **v1.10 amendment (explicit owner ruling, 2 August 2026):** Genome information
 is divided by player intent: **intuition during a run; research outside a run**.
 The live Tactical Loom remains the decisive strategy break, but it is not an
@@ -1808,6 +1823,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 29 | **Ascendance approaches a ~×1.30 ceiling while each more expensive generation buys a smaller gain** (v1.2) | **v1.9:** Gen4+ compounds Yield by ×1.02 per generation; every fifth generation is a visible evolution beat; the run-start curve and multiplier are immutable. Score remains untouched. Explicit owner ruling, 1 August 2026; cooling period waived for the approved production build | The bounded ~1.3× veteran/newcomer spread and its simple economy guardrail. Gained: earned progression that remains materially valuable and socially prestigious. The faster ×1.25 cost curve, no-DNA-sales rule, Score independence, best-five competition, and live spread telemetry now carry the guardrail |
 | 30 | **Genome depth remains hidden behind the 4/8/10/12/15/20-bank FTUE and live offers disclose only prose plus a partial hint** | **v1.9:** the Tactical Loom makes the offer the run's explicit strategy break; future portal verbs and all ladders are visible from run one, while activation advances at 1/2/4/6/10 banks [H]. Explicit owner ruling, 1 August 2026; cooling period waived | The unusually quiet early game and the lowest possible first-session information load. Gained: legible aspiration, learnable n-order buildcraft, and a genuine skill gap without requiring Codex memorisation or a cheat sheet |
 | 31 | **Every affected ladder, one-step Splice path, liability ledger, and BANK/crash projection belongs in the live Tactical Loom** (v1.9) | **v1.10:** intuition in-run, Research outside. The live Loom shows only the immediate actionable delta and irreversible consequences; Codex/Workbench carries the complete visible future, direct experimentation, and on-demand arithmetic. No in-run expert expander. Explicit owner ruling, 2 August 2026; cooling period waived | The guarantee that every n-order possibility is visible without leaving the run. Gained: a mobile-legible decision beat, lower working-memory load, and preservation of flow. The permanent guardrail is that a player is never blind about what the current choice activates, breaks, costs, or exposes |
+| 32 | **v1.10's live surface shows only a newly activated or lost rung/Splice** | **v1.11:** the focused choice shows its complete affected 3/4/5 route and all directly connected Splice branches as a compact rune reaction map; unrelated systems and exhaustive research remain outside the run. Explicit owner ruling, 2 August 2026; cooling period waived | The smallest possible live consequence pane. Gained: visible second-/third-order strategy, explicit Strain identity, and learnable buildcraft without recreating a table, solver, or expert dashboard |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
