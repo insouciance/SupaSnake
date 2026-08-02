@@ -4,7 +4,7 @@
  * A gene is a mutation with a strain tag. The 22 existing mutation ids
  * keep their exact wire format and economics (mutations.ts is untouched
  * and remains the authority for their [E] math); this module layers the
- * strain tags, the 12 new genome-era genes, and the genome-aware per-food
+ * strain tags, the legacy genome-era additions, and the genome-aware per-food
  * math on top. Old sessions and mid-deploy clients therefore validate
  * byte-identically: a GeneId is a superset of MutationId, and
  * geneFoodValueModifier delegates to foodValueModifier for legacy ids.
@@ -24,9 +24,12 @@ import {
   type MutationPick,
 } from '@/shared/game/mutations';
 import { isStrainId, type StrainId } from '@/shared/game/strains';
-import { GENE_OFFER_CADENCE } from '@/shared/game/geneCadence';
+import {
+  GENE_OFFER_CADENCE,
+  GENOME_V2_GENE_OFFER_CADENCE,
+} from '@/shared/game/geneCadence';
 
-/** The 12 genome-era gene ids (9 base + 3 M10 dynasty signatures). */
+/** Genome-era gene ids. V1 and V2 draw from separate curated pools below. */
 export type NewGeneId =
   | 'loan_shark'
   | 'tithe'
@@ -41,6 +44,16 @@ export type NewGeneId =
   | 'heartwood'
   | 'zenith_protocol'
   | 'constellation_crown';
+
+/** IDs introduced only by Genome rules v2. They deliberately stay out of the
+ * version-neutral/v1 `GENES` catalog so legacy exhaustive consumers do not
+ * silently acquire v2 semantics. */
+export type GenomeV2OnlyGeneId =
+  | 'live_wire'
+  | 'circuit_run'
+  | 'coilkeeper'
+  | 'phase_gate'
+  | 'loom_anchor';
 
 /** A gene id: every existing mutation id plus the genome-era additions. */
 export type GeneId = MutationId | NewGeneId;
@@ -234,7 +247,7 @@ function legacyGeneDef(id: MutationId): GeneDef {
   };
 }
 
-/** The full gene catalog: 22 legacy + 12 genome-era = 34 offerable genes. */
+/** The full version-neutral catalog. Offerability is decided by the ruleset. */
 export const GENES: Record<GeneId, GeneDef> = {
   ...(Object.fromEntries(
     (Object.keys(MUTATIONS) as MutationId[]).map((id) => [id, legacyGeneDef(id)])
@@ -286,11 +299,321 @@ export const SIGNATURE_GENES: Record<'PRIMAL' | 'CYBER' | 'COSMIC', NewGeneId> =
   COSMIC: 'constellation_crown',
 };
 
+// =============================================================================
+// GENOME RULES V2 — curated active roster
+// =============================================================================
+
+/**
+ * V2 is deliberately a separate catalog rather than a rewrite of
+ * `MUTATION_STRAINS`/`GENE_POOL`. Historical v1 sessions still parse and fold
+ * through those declarations byte-for-byte; new sessions are stamped with
+ * Genome rules v2 and use this curated roster.
+ */
+export const GENOME_V2_SHARED_GENE_IDS = [
+  'gold_trail',
+  'compound_interest',
+  'loan_shark',
+  'live_wire',
+  'circuit_run',
+  'time_dilation',
+  'overgrowth',
+  'coilkeeper',
+  'wall_rush',
+  'phase_gate',
+  'mirror_wager',
+  'phoenix',
+  'loom_anchor',
+] as const satisfies readonly (GeneId | GenomeV2OnlyGeneId)[];
+
+export type GenomeV2SharedGeneId =
+  (typeof GENOME_V2_SHARED_GENE_IDS)[number];
+export type GenomeV2SignatureGeneId =
+  | 'heartwood'
+  | 'zenith_protocol'
+  | 'constellation_crown';
+export type GenomeV2ActiveGeneId =
+  | GenomeV2SharedGeneId
+  | GenomeV2SignatureGeneId;
+
+export const GENOME_V2_GENE_STRAINS: Readonly<
+  Record<GenomeV2ActiveGeneId, readonly StrainId[]>
+> = {
+  gold_trail: ['AURUM'],
+  compound_interest: ['AURUM'],
+  loan_shark: ['AURUM', 'UMBRA'],
+  live_wire: ['VOLT'],
+  circuit_run: ['VOLT', 'FLUX'],
+  time_dilation: ['VOLT', 'FERAL'],
+  overgrowth: ['FERAL'],
+  coilkeeper: ['FERAL', 'FLUX'],
+  wall_rush: ['FLUX', 'VOLT'],
+  phase_gate: ['FLUX'],
+  mirror_wager: ['UMBRA'],
+  phoenix: ['UMBRA', 'FERAL'],
+  loom_anchor: ['AURUM', 'UMBRA'],
+  heartwood: ['FERAL'],
+  zenith_protocol: ['VOLT'],
+  constellation_crown: ['FLUX'],
+};
+
+export type GenomeV2GeneCategory =
+  | 'yield'
+  | 'banking'
+  | 'execution'
+  | 'body'
+  | 'terrain'
+  | 'survival'
+  | 'genome';
+
+export interface GenomeV2GeneDef extends Omit<GeneDef, 'id'> {
+  id: GenomeV2ActiveGeneId;
+  category: GenomeV2GeneCategory;
+  /** Empty means every dynasty; otherwise this is a deliberate affinity. */
+  dynasties: readonly (keyof typeof SIGNATURE_GENES)[];
+}
+
+/**
+ * The authoritative player-facing v2 catalog. Reused IDs intentionally do
+ * not read their prose from `GENES`: that table is the durable v1 meaning.
+ */
+export const GENOME_V2_GENES: Readonly<
+  Record<GenomeV2ActiveGeneId, GenomeV2GeneDef>
+> = {
+  gold_trail: {
+    id: 'gold_trail',
+    name: 'Gold Trail',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.gold_trail,
+    effect: 'Every fifth target after acquisition is Gilded and pays ×3 inside its visible six-second window.',
+    cost: 'Missing the window forfeits the Gilded bonus.',
+    economics: 'path',
+    category: 'yield',
+    dynasties: [],
+  },
+  compound_interest: {
+    id: 'compound_interest',
+    name: 'Compound Interest',
+    kind: 'E',
+    strains: GENOME_V2_GENE_STRAINS.compound_interest,
+    effect: 'Each deliberate Loom DECLINE creates a Bond worth +8% at BANK, up to three.',
+    cost: 'Bonds pay nothing on crash, and every DECLINE gives up a build opportunity.',
+    economics: 'pure',
+    category: 'banking',
+    dynasties: [],
+  },
+  loan_shark: {
+    id: 'loan_shark',
+    name: 'Loan Shark',
+    kind: 'E',
+    strains: GENOME_V2_GENE_STRAINS.loan_shark,
+    effect: 'A portal PASS starts a six-food contract whose completed Escrow pays twice its routed value.',
+    cost: 'BANK or crash before completion loses the visible Escrow.',
+    economics: 'path',
+    category: 'banking',
+    dynasties: [],
+  },
+  live_wire: {
+    id: 'live_wire',
+    name: 'Live Wire',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.live_wire,
+    effect: 'Every third eligible target becomes a topology-scaled route test worth ×3.',
+    cost: 'Missing the route budget burns that target to zero Yield.',
+    economics: 'path',
+    category: 'execution',
+    dynasties: [],
+  },
+  circuit_run: {
+    id: 'circuit_run',
+    name: 'Circuit Run',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.circuit_run,
+    effect: 'Every fourth eligible target begins an ordered linked route worth ×4 total.',
+    cost: 'Breaking the route pays zero while normal body growth remains.',
+    economics: 'path',
+    category: 'execution',
+    dynasties: [],
+  },
+  time_dilation: {
+    id: 'time_dilation',
+    name: 'Time Dilation',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.time_dilation,
+    effect: 'World speed is reduced by 12%.',
+    cost: 'Every fourth food adds one extra segment; unavailable in CYBER.',
+    economics: 'path',
+    category: 'body',
+    dynasties: ['PRIMAL', 'COSMIC'],
+  },
+  overgrowth: {
+    id: 'overgrowth',
+    name: 'Overgrowth',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.overgrowth,
+    effect: 'Food Yield scales from ×1.4 toward ×2.5 with deterministic board pressure.',
+    cost: 'Every food adds one extra body segment.',
+    economics: 'path',
+    category: 'body',
+    dynasties: [],
+  },
+  coilkeeper: {
+    id: 'coilkeeper',
+    name: 'Coilkeeper',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.coilkeeper,
+    effect: 'After eight foods, sealing territory empowers the next target from ×4 to ×6 by enclosed area.',
+    cost: 'The enclosed cells become permanent terrain for the run.',
+    economics: 'path',
+    category: 'terrain',
+    dynasties: [],
+  },
+  wall_rush: {
+    id: 'wall_rush',
+    name: 'Wall Rush',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.wall_rush,
+    effect: 'A charged deliberate wall impact redirects along a previewed legal tangent and arms a ×2.5 route.',
+    cost: 'The charge is spent even when the armed route is missed.',
+    economics: 'path',
+    category: 'terrain',
+    dynasties: [],
+  },
+  phase_gate: {
+    id: 'phase_gate',
+    name: 'Phase Gate',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.phase_gate,
+    effect: 'Every fifth food can charge an optional gate shortcut that makes its target worth ×3.',
+    cost: 'Used gate cells become permanent Scars.',
+    economics: 'path',
+    category: 'terrain',
+    dynasties: [],
+  },
+  mirror_wager: {
+    id: 'mirror_wager',
+    name: 'Mirror Wager',
+    kind: 'E',
+    strains: GENOME_V2_GENE_STRAINS.mirror_wager,
+    effect: 'On an explicit portal CONTINUE, optionally freeze 40% of that leg at its current Carry as visible Stake; BANK doubles it.',
+    cost: 'A crash loses only the Stake while ordinary salvage remains intact.',
+    economics: 'pure',
+    category: 'banking',
+    dynasties: [],
+  },
+  phoenix: {
+    id: 'phoenix',
+    name: 'Phoenix',
+    kind: 'P',
+    strains: GENOME_V2_GENE_STRAINS.phoenix,
+    effect: 'Survive one death with a three-cell rewind, twelve phase ticks, and ten added segments.',
+    cost: 'After firing, Ash occupies the socket and contributes no Strain.',
+    economics: 'none',
+    category: 'survival',
+    dynasties: [],
+  },
+  loom_anchor: {
+    id: 'loom_anchor',
+    name: 'Loom Anchor',
+    kind: 'P',
+    strains: GENOME_V2_GENE_STRAINS.loom_anchor,
+    effect: 'Pin one declined option into the next Thread slot.',
+    cost: 'One charge, restored only by an explicit portal PASS.',
+    economics: 'none',
+    category: 'genome',
+    dynasties: [],
+  },
+  heartwood: {
+    id: 'heartwood',
+    name: 'Heartwood',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.heartwood,
+    effect: 'PRIMAL territorial play converts deliberate body geometry into escalating Yield opportunities.',
+    cost: 'Its value requires spatial pressure and a safe recovery route.',
+    economics: 'path',
+    category: 'body',
+    dynasties: ['PRIMAL'],
+  },
+  zenith_protocol: {
+    id: 'zenith_protocol',
+    name: 'Zenith Protocol',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.zenith_protocol,
+    effect: 'CYBER precision builds player-controlled overclock windows with proportional Yield upside.',
+    cost: 'Mistimed overclock creates execution pressure; speed is never imposed automatically.',
+    economics: 'path',
+    category: 'execution',
+    dynasties: ['CYBER'],
+  },
+  constellation_crown: {
+    id: 'constellation_crown',
+    name: 'Constellation Crown',
+    kind: 'EP',
+    strains: GENOME_V2_GENE_STRAINS.constellation_crown,
+    effect: 'COSMIC reveals current, future, and Crown Stars for high-value perfect clears.',
+    cost: 'Only clearly marked current stars are edible or colliding.',
+    economics: 'path',
+    category: 'execution',
+    dynasties: ['COSMIC'],
+  },
+};
+
+/** Version-aware resolver; callers must never infer v2 semantics from GENES. */
+export function geneDefinitionForRules(
+  id: GeneId | GenomeV2OnlyGeneId,
+  rulesVersion: 1 | 2
+): GeneDef | GenomeV2GeneDef | null {
+  if (rulesVersion === 2) {
+    return isGenomeV2ActiveGeneId(id) ? GENOME_V2_GENES[id] : null;
+  }
+  return isGeneId(id) ? GENES[id] : null;
+}
+
+/** A v2 run receives 13 shared genes plus its own signature. CYBER excludes
+ * Time Dilation, so its pool intentionally contains 13 and remains above the
+ * constitutional floor of 12. */
+export function genomeV2ActivePool(
+  dynasty: keyof typeof SIGNATURE_GENES
+): GenomeV2ActiveGeneId[] {
+  const shared = GENOME_V2_SHARED_GENE_IDS.filter(
+    (id) => dynasty !== 'CYBER' || id !== 'time_dilation'
+  );
+  const signature: GenomeV2SignatureGeneId =
+    dynasty === 'PRIMAL'
+      ? 'heartwood'
+      : dynasty === 'CYBER'
+        ? 'zenith_protocol'
+        : 'constellation_crown';
+  return [...shared, signature];
+}
+
+export function isGenomeV2ActiveGeneId(
+  value: unknown
+): value is GenomeV2ActiveGeneId {
+  return (
+    typeof value === 'string' &&
+    ((GENOME_V2_SHARED_GENE_IDS as readonly string[]).includes(value) ||
+      (Object.values(SIGNATURE_GENES) as string[]).includes(value))
+  );
+}
+
+/** Version-aware tags without changing any v1 call site. */
+export function genomeV2GeneStrains(
+  id: GenomeV2ActiveGeneId
+): readonly StrainId[] {
+  return GENOME_V2_GENE_STRAINS[id];
+}
+
 /** Universal build cadence, with the Genome-era cap raised to six. */
 export const GENOME_SPAWN = {
   ...GENE_OFFER_CADENCE,
   despawnTicks: 40,
   /** Max genes held per run (section 1) - up from the mutation-era 4. */
+  maxHeld: 6,
+} as const;
+
+/** V2 cadence/cap without mutating the durable v1 wrapper above. */
+export const GENOME_V2_SPAWN = {
+  ...GENOME_V2_GENE_OFFER_CADENCE,
   maxHeld: 6,
 } as const;
 
