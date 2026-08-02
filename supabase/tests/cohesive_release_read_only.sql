@@ -12,6 +12,15 @@ required_functions(signature) AS (
     ('public.set_dynasty_favorite(uuid,uuid,boolean)'::TEXT),
     ('public.get_cohesive_release_capability()'::TEXT),
     ('public.get_genome_v2_capability()'::TEXT),
+    ('public.breeding_draft(uuid,uuid,uuid,boolean,uuid,text[],text)'::TEXT),
+    ('public.genome_record_version(jsonb)'::TEXT),
+    ('public.genome_record_items(jsonb)'::TEXT),
+    ('public.genome_record_gene_ids(jsonb,text)'::TEXT),
+    ('public.genome_record_splice_ids(jsonb)'::TEXT),
+    ('public.genome_record_strain_milestones(jsonb,text)'::TEXT),
+    ('public.genome_record_infuse_count(jsonb)'::TEXT),
+    ('public.record_codex_discoveries(uuid,uuid,jsonb)'::TEXT),
+    ('public.record_session_codex_discoveries(uuid,uuid,jsonb)'::TEXT),
     ('public.finalize_run_continuity_start(uuid,uuid,uuid,text,jsonb,boolean,integer,boolean,integer,integer,integer[],timestamp with time zone,integer,integer,integer)'::TEXT),
     ('public.activate_run_continuity(uuid,uuid,jsonb,text,text,text,integer)'::TEXT),
     ('public.resume_run_continuity(uuid,uuid,text,text)'::TEXT),
@@ -227,6 +236,152 @@ genome_contract AS (
         AND versioned.active
     ), FALSE) AS genome_catalog_valid
 ),
+genome_table_privilege_contract AS (
+  SELECT
+    COALESCE(pg_catalog.bool_and(
+      pg_catalog.has_table_privilege(
+        expected_read.role_name,
+        expected_read.table_name,
+        'SELECT'
+      ) = expected_read.expected
+    ), FALSE)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM (VALUES ('anon'::TEXT), ('authenticated'::TEXT)) AS roles(name)
+      CROSS JOIN (
+        VALUES
+          ('public.genome_gene_versions'::TEXT),
+          ('public.genome_splice_versions'::TEXT),
+          ('public.player_codex'::TEXT),
+          ('public.codex_first_discoveries'::TEXT)
+      ) AS tables(name)
+      CROSS JOIN (
+        VALUES
+          ('INSERT'::TEXT), ('UPDATE'::TEXT), ('DELETE'::TEXT),
+          ('TRUNCATE'::TEXT), ('TRIGGER'::TEXT), ('REFERENCES'::TEXT)
+      ) AS privileges(name)
+      WHERE pg_catalog.has_table_privilege(
+        roles.name, tables.name, privileges.name
+      )
+    ) AS genome_table_privileges_valid
+  FROM (
+    VALUES
+      ('anon'::TEXT, 'public.genome_gene_versions'::TEXT, TRUE),
+      ('authenticated', 'public.genome_gene_versions', TRUE),
+      ('anon', 'public.genome_splice_versions', TRUE),
+      ('authenticated', 'public.genome_splice_versions', TRUE),
+      ('anon', 'public.player_codex', FALSE),
+      ('authenticated', 'public.player_codex', TRUE),
+      ('anon', 'public.codex_first_discoveries', TRUE),
+      ('authenticated', 'public.codex_first_discoveries', TRUE)
+  ) AS expected_read(role_name, table_name, expected)
+),
+genome_codex_version_contract AS (
+  SELECT
+    EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_constraint AS constraint_row
+      WHERE constraint_row.conrelid =
+            pg_catalog.to_regclass('public.player_codex')
+        AND constraint_row.contype = 'p'
+        AND ARRAY(
+          SELECT attribute_row.attname::TEXT
+          FROM pg_catalog.unnest(constraint_row.conkey) WITH ORDINALITY
+            AS key_row(attnum, ordinal)
+          JOIN pg_catalog.pg_attribute AS attribute_row
+            ON attribute_row.attrelid = constraint_row.conrelid
+           AND attribute_row.attnum = key_row.attnum
+          ORDER BY key_row.ordinal
+        ) = ARRAY[
+          'player_id', 'rules_version', 'discovery_type', 'entry_id'
+        ]::TEXT[]
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_constraint AS constraint_row
+      WHERE constraint_row.conrelid =
+            pg_catalog.to_regclass('public.codex_first_discoveries')
+        AND constraint_row.contype = 'p'
+        AND ARRAY(
+          SELECT attribute_row.attname::TEXT
+          FROM pg_catalog.unnest(constraint_row.conkey) WITH ORDINALITY
+            AS key_row(attnum, ordinal)
+          JOIN pg_catalog.pg_attribute AS attribute_row
+            ON attribute_row.attrelid = constraint_row.conrelid
+           AND attribute_row.attnum = key_row.attnum
+          ORDER BY key_row.ordinal
+        ) = ARRAY[
+          'rules_version', 'discovery_type', 'entry_id'
+        ]::TEXT[]
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_attribute AS attribute_row
+      WHERE attribute_row.attrelid =
+            pg_catalog.to_regclass('public.player_codex')
+        AND attribute_row.attname = 'rules_version'
+        AND attribute_row.attnotnull
+        AND attribute_row.atthasdef
+        AND NOT attribute_row.attisdropped
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_attribute AS attribute_row
+      WHERE attribute_row.attrelid =
+            pg_catalog.to_regclass('public.codex_first_discoveries')
+        AND attribute_row.attname = 'rules_version'
+        AND attribute_row.attnotnull
+        AND attribute_row.atthasdef
+        AND NOT attribute_row.attisdropped
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_constraint AS constraint_row
+      WHERE constraint_row.conrelid =
+            pg_catalog.to_regclass('public.player_codex')
+        AND constraint_row.conname = 'player_codex_rules_version_valid'
+        AND constraint_row.convalidated
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_constraint AS constraint_row
+      WHERE constraint_row.conrelid =
+            pg_catalog.to_regclass('public.codex_first_discoveries')
+        AND constraint_row.conname =
+            'codex_first_discoveries_rules_version_valid'
+        AND constraint_row.convalidated
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_class AS relation_row
+      WHERE relation_row.oid = pg_catalog.to_regclass('public.player_codex')
+        AND relation_row.relrowsecurity
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_class AS relation_row
+      WHERE relation_row.oid =
+            pg_catalog.to_regclass('public.codex_first_discoveries')
+        AND relation_row.relrowsecurity
+    ) AS genome_codex_versions_valid
+),
+genome_definer_contract AS (
+  SELECT COALESCE(pg_catalog.bool_and(
+    procedure_row.oid IS NOT NULL
+    AND procedure_row.prosecdef
+    AND procedure_row.proconfig =
+        ARRAY['search_path=public, pg_temp']::TEXT[]
+  ), FALSE) AS genome_definers_hardened
+  FROM (
+    VALUES
+      ('public.breeding_draft(uuid,uuid,uuid,boolean,uuid,text[],text)'::TEXT),
+      ('public.record_codex_discoveries(uuid,uuid,jsonb)'::TEXT),
+      ('public.record_session_codex_discoveries(uuid,uuid,jsonb)'::TEXT),
+      ('public.get_genome_v2_capability()'::TEXT)
+  ) AS required(signature)
+  LEFT JOIN pg_catalog.pg_proc AS procedure_row
+    ON procedure_row.oid = pg_catalog.to_regprocedure(required.signature)
+),
 cohesive_contract AS (
   SELECT
     execution_contract.read_only_execution,
@@ -239,7 +394,10 @@ cohesive_contract AS (
     trigger_contract.continuity_trigger_valid,
     favorite_contract.favorite_rows_valid,
     genome_contract.genome_ascendance_functions_valid,
-    genome_contract.genome_catalog_valid
+    genome_contract.genome_catalog_valid,
+    genome_table_privilege_contract.genome_table_privileges_valid,
+    genome_codex_version_contract.genome_codex_versions_valid,
+    genome_definer_contract.genome_definers_hardened
   FROM execution_contract
   CROSS JOIN founding_bridge_contract
   CROSS JOIN function_contract
@@ -248,6 +406,9 @@ cohesive_contract AS (
   CROSS JOIN trigger_contract
   CROSS JOIN favorite_contract
   CROSS JOIN genome_contract
+  CROSS JOIN genome_table_privilege_contract
+  CROSS JOIN genome_codex_version_contract
+  CROSS JOIN genome_definer_contract
 )
 SELECT pg_catalog.jsonb_build_object(
   'status', CASE
@@ -263,10 +424,13 @@ SELECT pg_catalog.jsonb_build_object(
       AND cohesive_contract.favorite_rows_valid
       AND cohesive_contract.genome_ascendance_functions_valid
       AND cohesive_contract.genome_catalog_valid
+      AND cohesive_contract.genome_table_privileges_valid
+      AND cohesive_contract.genome_codex_versions_valid
+      AND cohesive_contract.genome_definers_hardened
     THEN 'ready'
     ELSE 'invalid'
   END,
-  'probe', 'cohesive_release_read_only_v2',
+  'probe', 'cohesive_release_read_only_v3',
   'checks', pg_catalog.jsonb_build_object(
     'readOnlyExecution',
       cohesive_contract.read_only_execution,
@@ -289,7 +453,13 @@ SELECT pg_catalog.jsonb_build_object(
     'genomeAscendanceFunctionsValid',
       cohesive_contract.genome_ascendance_functions_valid,
     'genomeCatalogValid',
-      cohesive_contract.genome_catalog_valid
+      cohesive_contract.genome_catalog_valid,
+    'genomeTablePrivilegesValid',
+      cohesive_contract.genome_table_privileges_valid,
+    'genomeCodexVersionsValid',
+      cohesive_contract.genome_codex_versions_valid,
+    'genomeDefinersHardened',
+      cohesive_contract.genome_definers_hardened
   )
 ) AS cohesive_release_probe
 FROM cohesive_contract;

@@ -93,8 +93,13 @@ The release has two deliberately different database gates:
   Management API's dedicated read-only endpoint. It proves exact function
   signatures and service-role grants without invoking those functions, absence
   of duplicate favorites, exact trigger/function binding, validated continuity
-  constraints, and required indexes. The immediately preceding empty linked
-  migration-plan proof remains the authority for the 062/063/064/065 ledger.
+  constraints, required indexes, exact Genome catalog ids, versioned Codex
+  identities, hardened Genome definers, and the complete API-role table
+  privilege boundary (including TRUNCATE/TRIGGER/REFERENCES denial). The
+  immediately preceding empty linked migration-plan proof remains the authority
+  for the 062/063/064/065 ledger. Pure Genome projector behavior is exercised by
+  the service-only capability and local stateful contract; the hosted probe
+  remains structural and never invokes an application function.
 
 Never run `062_competitive_clans.sql`, `063_run_continuity.sql`,
 `064_atomic_dynasty_favorites.sql`, `065_genome_v2.sql`, or the 064 concurrency

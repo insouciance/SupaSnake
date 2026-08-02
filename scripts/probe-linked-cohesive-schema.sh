@@ -85,7 +85,7 @@ if ! jq -e '
   and (.[0].cohesive_release_probe.status == "ready")
   and (
     .[0].cohesive_release_probe.probe
-      == "cohesive_release_read_only_v2"
+      == "cohesive_release_read_only_v3"
   )
   and (.[0].cohesive_release_probe.checks | type == "object")
   and (
@@ -98,6 +98,9 @@ if ! jq -e '
         "foundingBridgeSafe",
         "genomeAscendanceFunctionsValid",
         "genomeCatalogValid",
+        "genomeCodexVersionsValid",
+        "genomeDefinersHardened",
+        "genomeTablePrivilegesValid",
         "readOnlyExecution",
         "requiredFunctionsPresent",
         "requiredFunctionsServiceOnly",
