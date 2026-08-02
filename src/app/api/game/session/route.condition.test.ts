@@ -1000,6 +1000,45 @@ describe('server-owned run-start continuity', () => {
     expect(rewind.status).toBe(409);
   });
 
+  it('continues and settles an existing Genome v2 run after new v2 starts are switched off', async () => {
+    const manifest = await (await POST(post(startBody))).json();
+    expect(manifest.genome).toMatchObject({ rulesVersion: GENOME_RULES_V2 });
+
+    const activation = await POST(post({
+      action: 'activate',
+      sessionId: manifest.sessionId,
+      checkpoint: openingCheckpoint(manifest),
+    }));
+    expect(activation.status).toBe(200);
+    const activeRun = (await activation.json()).activeRun;
+
+    // The rollout flag controls intake only. A forward flag-off deployment
+    // must retain the immutable v2 contract already stamped onto this run.
+    mockGenomeV2Enabled = false;
+    const resumed = await (await GET(get())).json();
+    expect(resumed.activeRun).toMatchObject({
+      phase: 'active',
+      manifest: {
+        sessionId: manifest.sessionId,
+        genome: { rulesVersion: GENOME_RULES_V2 },
+      },
+      checkpointRevision: activeRun.checkpointRevision,
+      canContinue: true,
+    });
+
+    const terminal = await POST(post({
+      action: 'terminal',
+      sessionId: manifest.sessionId,
+      expectedRevision: activeRun.checkpointRevision,
+      leaseToken: activeRun.leaseToken,
+      replay: terminalReplayProof(activeRun.checkpoint),
+    }));
+
+    expect(terminal.status).toBe(200);
+    expect(await terminal.json()).toMatchObject({ success: true });
+    expect(session()).toMatchObject({ validated: true });
+  });
+
   it('cannot activate a session outside the authenticated player scope', async () => {
     const response = await POST(post({
       action: 'activate',
