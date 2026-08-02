@@ -72,6 +72,7 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: true }));
 jest.mock('@/lib/server/gameProgressionSettlement', () => ({
   settleDurableRunProgression: (...args: unknown[]) =>
     mockSettleDurableRunProgression(...args),

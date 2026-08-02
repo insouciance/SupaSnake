@@ -75,6 +75,20 @@ describe('Game Session Logic', () => {
       expect(source).toMatch(/growthProfileId \? \{ growthProfile: growthProfileId \}/);
     });
 
+    it('keeps Genome v2 opt-in and retains the complete v1 start contract', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      expect(source).toMatch(/if \(GENOME_V2_ENABLED\)/);
+      expect(source).toMatch(/rulesVersion: GENOME_RULES_V2/);
+      expect(source).toMatch(/v2GenePool: genePool/);
+      expect(source).toMatch(/const ftue = deriveFtue\(bankedRuns, masteryLevel, ownedVariants\)/);
+      expect(source).toMatch(/const genePool = composeGenePool\(/);
+      expect(source).toMatch(/lineage: lineageBias/);
+      expect(source).toMatch(/tierCap: ftueTierCap\(ftue\)/);
+    });
+
     it('should create session from the equipped snake', () => {
       // Session start receives a collected_snakes UUID and derives
       // variant + dynasty from the DB join (no text variant ids)

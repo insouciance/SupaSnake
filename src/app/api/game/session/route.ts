@@ -84,6 +84,7 @@ import {
 } from '@/lib/server/runContext';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
+import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
 import {
   ACTIVE_GROWTH_PROFILE,
   type GrowthProfileId,
@@ -972,45 +973,89 @@ export async function POST(request: NextRequest) {
             { status: 503 }
           );
         }
-        const { bankedRuns, prevRunDied } = runFacts;
-        const ftuePresentation = deriveGenomeV2FtuePresentation(
-          bankedRuns,
-          masteryLevel
-        );
-        const ftue = deriveGenomeV2Ftue(bankedRuns, masteryLevel);
-        const heirloom = ftue.spawnPointsUnlocked
-          ? startingStrainPoints(runLineage, snakeTraits)
-          : {};
-        const lineageBias = ftue.spawnPointsUnlocked
-          ? lineageOfferBias(runLineage)
-          : null;
-        const genePool = genomeV2ActivePool(startDynasty);
-        const externalSecondLife = snakeTraits.includes('iron_scales')
-          ? 'iron_scales' as const
-          : null;
-        genomeBlock = {
-          rulesVersion: GENOME_RULES_V2,
-          runSeed: genomeSeed,
-          heirloom,
-          v2GenePool: genePool,
-          ftuePresentation,
-        };
-        startGenomeContext = {
-          rulesVersion: GENOME_RULES_V2,
-          genePool,
-          heirloom,
-          lineage: lineageBias,
-          tierCap: ftue.apexesUnlocked
-            ? 3
-            : ftue.expressionsUnlocked
-              ? 2
-              : 1,
-          suppressedStrains: [...gauntletSuppressedStrains(gauntletBan)],
-          splicesUnlocked: ftue.splicesUnlocked,
-          prevRunDied,
-          ftuePresentation,
-          externalSecondLife,
-        };
+        const { bankedRuns, prevRunDied, ownedVariants } = runFacts;
+        if (GENOME_V2_ENABLED) {
+          const ftuePresentation = deriveGenomeV2FtuePresentation(
+            bankedRuns,
+            masteryLevel
+          );
+          const ftue = deriveGenomeV2Ftue(bankedRuns, masteryLevel);
+          const heirloom = ftue.spawnPointsUnlocked
+            ? startingStrainPoints(runLineage, snakeTraits)
+            : {};
+          const lineageBias = ftue.spawnPointsUnlocked
+            ? lineageOfferBias(runLineage)
+            : null;
+          const genePool = genomeV2ActivePool(startDynasty);
+          const externalSecondLife = snakeTraits.includes('iron_scales')
+            ? 'iron_scales' as const
+            : null;
+          genomeBlock = {
+            rulesVersion: GENOME_RULES_V2,
+            runSeed: genomeSeed,
+            heirloom,
+            v2GenePool: genePool,
+            ftuePresentation,
+          };
+          startGenomeContext = {
+            rulesVersion: GENOME_RULES_V2,
+            genePool,
+            heirloom,
+            lineage: lineageBias,
+            tierCap: ftue.apexesUnlocked
+              ? 3
+              : ftue.expressionsUnlocked
+                ? 2
+                : 1,
+            suppressedStrains: [...gauntletSuppressedStrains(gauntletBan)],
+            splicesUnlocked: ftue.splicesUnlocked,
+            prevRunDied,
+            ftuePresentation,
+            externalSecondLife,
+          };
+        } else {
+          const ftue = deriveFtue(bankedRuns, masteryLevel, ownedVariants);
+          const { heirloom, lineageBias } = deriveHeirloom(
+            runLineage,
+            snakeTraits,
+            ftue
+          );
+          const seasonalGeneIds = await getSeasonalGeneIds(supabase);
+          const genePool = composeGenePool(
+            startDynasty,
+            masteryLevel,
+            seasonalGeneIds,
+            isFreePlay ? null : gauntletBan,
+            isFreePlay
+          );
+          genomeBlock = {
+            runSeed: genomeSeed,
+            heirloom,
+            genePool,
+            lineage: lineageBias,
+            anomalyStrain: null,
+            suppressedStrains: gauntletSuppressedStrains(gauntletBan),
+            prevRunDied,
+            ftue: {
+              bankedRuns,
+              strainTagsUnlocked: ftue.strainTagsUnlocked,
+              expressionsUnlocked: ftue.expressionsUnlocked,
+              infuseUnlocked: ftue.infuseUnlocked,
+              spawnPointsUnlocked: ftue.spawnPointsUnlocked,
+              splicesUnlocked: ftue.splicesUnlocked,
+              apexesUnlocked: ftue.apexesUnlocked,
+            },
+          };
+          startGenomeContext = {
+            genePool,
+            heirloom,
+            lineage: lineageBias,
+            tierCap: ftueTierCap(ftue),
+            suppressedStrains: [...gauntletSuppressedStrains(gauntletBan)],
+            splicesUnlocked: ftue.splicesUnlocked,
+            prevRunDied,
+          };
+        }
       }
 
       // WP-2.05: the run-start context. Everything above that shapes the
