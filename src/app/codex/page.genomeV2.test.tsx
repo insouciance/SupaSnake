@@ -8,6 +8,7 @@ jest.mock('@/lib/auth/AuthProvider', () => ({
 }));
 jest.mock('@/lib/stores/codexStore', () => ({
   useCodexStore: () => ({
+    ownerId: null,
     live: false,
     unlocked: false,
     bankedRuns: 0,
@@ -16,6 +17,7 @@ jest.mock('@/lib/stores/codexStore', () => ({
     isLoading: false,
     error: null,
     fetchCodex: jest.fn(),
+    reset: jest.fn(),
   }),
 }));
 jest.mock('@/components/ui/NavBar', () => ({ NavBar: () => <nav /> }));

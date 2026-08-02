@@ -640,7 +640,18 @@ export default function GamePage() {
     useState<GenomeV2CommitPresentation | null>(null);
   const [lastGenomeCard, setLastGenomeCard] = useState<GenomeCardModel | null>(null);
   const [codexDiscoveries, setCodexDiscoveries] = useState<CodexDiscovery[]>([]);
-  const { data: codexData, fetchCodex } = useCodexStore();
+  const {
+    ownerId: codexOwnerId,
+    data: storedCodexData,
+    fetchCodex,
+    reset: resetCodex,
+  } = useCodexStore();
+  const authOwnerId = typeof session?.user?.id === 'string' && session.user.id.length > 0
+    ? session.user.id
+    : null;
+  const codexData = authOwnerId && codexOwnerId === authOwnerId
+    ? storedCodexData
+    : null;
 
   // ---------------------------------------------------------------------
   // WP-1.06 / Constitution §5: Results state. All of it is inert with
@@ -1518,11 +1529,28 @@ export default function GamePage() {
   useEffect(() => {
     if (
       !session?.access_token ||
+      !authOwnerId ||
+      (codexOwnerId !== null && codexOwnerId !== authOwnerId)
+    ) {
+      resetCodex();
+    }
+  }, [authOwnerId, codexOwnerId, resetCodex, session?.access_token]);
+
+  useEffect(() => {
+    if (
+      !session?.access_token ||
+      !authOwnerId ||
       isPlaying ||
       !genomeFtue?.splicesUnlocked
     ) return;
-    void fetchCodex(session.access_token);
-  }, [session?.access_token, isPlaying, genomeFtue?.splicesUnlocked, fetchCodex]);
+    void fetchCodex(authOwnerId, session.access_token);
+  }, [
+    authOwnerId,
+    session?.access_token,
+    isPlaying,
+    genomeFtue?.splicesUnlocked,
+    fetchCodex,
+  ]);
 
   const holdBudget = useMemo(
     () => ({ remaining: Math.max(0, holdsTotal - holdsUsed), total: holdsTotal }),
@@ -2479,7 +2507,7 @@ export default function GamePage() {
               ) {
                 // Refresh after the recorder commits so the next run's
                 // offer cards reveal newly known splice names immediately.
-                void fetchCodex(currentSession.access_token);
+                void fetchCodex(currentSession.user.id, currentSession.access_token);
               }
             }
 

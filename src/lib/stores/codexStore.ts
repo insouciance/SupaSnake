@@ -13,6 +13,8 @@ import type { CodexPayload } from '@/app/api/codex/utils';
 import { GAME_CONFIG } from '@/shared/config/game';
 
 interface CodexState {
+  /** Stable auth owner for every account-derived field below. */
+  ownerId: string | null;
   live: boolean;
   unlocked: boolean;
   bankedRuns: number;
@@ -20,11 +22,12 @@ interface CodexState {
   data: CodexPayload | null;
   isLoading: boolean;
   error: string | null;
-  fetchCodex: (accessToken: string) => Promise<void>;
+  fetchCodex: (ownerId: string, accessToken: string) => Promise<void>;
   reset: () => void;
 }
 
 const initialState = {
+  ownerId: null as string | null,
   live: false,
   unlocked: false,
   bankedRuns: 0,
@@ -34,10 +37,17 @@ const initialState = {
   error: null as string | null,
 };
 
-export const useCodexStore = create<CodexState>((set) => ({
+// A response may arrive after logout, account replacement, or a newer token
+// refresh. Only the latest request under the still-current owner may commit.
+let requestEpoch = 0;
+
+export const useCodexStore = create<CodexState>((set, get) => ({
   ...initialState,
-  fetchCodex: async (accessToken) => {
-    set({ isLoading: true, error: null });
+  fetchCodex: async (ownerId, accessToken) => {
+    const requestId = ++requestEpoch;
+    set((state) => state.ownerId === ownerId
+      ? { isLoading: true, error: null }
+      : { ...initialState, ownerId, isLoading: true });
     try {
       const response = await fetch('/api/codex', {
         cache: 'no-store',
@@ -47,7 +57,9 @@ export const useCodexStore = create<CodexState>((set) => ({
       if (!response.ok) {
         throw new Error(payload.error || 'Failed to load the Codex');
       }
+      if (requestId !== requestEpoch || get().ownerId !== ownerId) return;
       set({
+        ownerId,
         live: payload.live === true,
         unlocked: payload.live === true && payload.unlocked === true,
         bankedRuns:
@@ -68,11 +80,15 @@ export const useCodexStore = create<CodexState>((set) => ({
         isLoading: false,
       });
     } catch (error) {
+      if (requestId !== requestEpoch || get().ownerId !== ownerId) return;
       set({
         isLoading: false,
         error: error instanceof Error ? error.message : 'Failed to load the Codex',
       });
     }
   },
-  reset: () => set({ ...initialState }),
+  reset: () => {
+    requestEpoch += 1;
+    set({ ...initialState });
+  },
 }));
