@@ -374,6 +374,11 @@ describe('Genome v2 ladder mechanics', () => {
       activationId: 'volt-overclock',
       source: 'volt_apex',
     });
+    expect(state.overclock).toMatchObject({
+      expiresAtTick: state.tick + 12,
+      multiplierBps: 15_000,
+      speedMultiplierBps: 11_500,
+    });
     const beforeOverclock = state.ledger.bankableYield;
     state = ordinary(state, 'volt-overclock-food');
     expect(state.ledger.bankableYield - beforeOverclock).toBe(15_000);
@@ -649,6 +654,11 @@ describe('Genome v2 Dynasty signatures', () => {
       activationId: 'zenith-window',
       source: 'zenith_protocol',
     });
+    expect(state.overclock).toMatchObject({
+      expiresAtTick: state.tick + 14,
+      multiplierBps: 17_500,
+      speedMultiplierBps: 12_000,
+    });
     state = ordinary(state, 'zenith-food');
     expect(state.ledger.bankableYield).toBe(17_500);
     state = apply(state, {
@@ -731,6 +741,11 @@ describe('Genome v2 Recode and persistence', () => {
       slot: 0,
     });
     expect(first.growthCharged).toBe(8);
+    expect(first.consequence.resultingSlots[0]).toEqual({
+      index: 0,
+      occupant: { kind: 'gene', geneId: 'coilkeeper' },
+    });
+    expect(first.consequence.resultingActiveSplices).toEqual([]);
     state = apply(state, {
       type: 'offer_recoded',
       source: 'loom',
@@ -774,5 +789,36 @@ describe('Genome v2 Recode and persistence', () => {
     );
     expect(genomeV2RunRecord(state, settleGenomeV2(state, 'bank')).runSeed)
       .toBe(`persistence-seed-${count}`);
+  });
+});
+
+describe('Genome v2 World Condition buildcraft', () => {
+  it('freezes offer tilt, suppression, and shifted ladder thresholds', () => {
+    const shifted = createGenomeV2State('PRIMAL', {
+      offerTiltStrain: 'AURUM',
+      startingStrainPoints: { AURUM: 3 },
+      strainThresholdDelta: { AURUM: 1 },
+    });
+    expect(projectGenomeV2Ladders(shifted).AURUM.activeTier).toBe(0);
+
+    const reached = createGenomeV2State('PRIMAL', {
+      offerTiltStrain: 'AURUM',
+      startingStrainPoints: { AURUM: 4 },
+      strainThresholdDelta: { AURUM: 1 },
+    });
+    expect(projectGenomeV2Ladders(reached).AURUM.activeTier).toBe(3);
+
+    const suppressed = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 8 },
+      suppressedStrains: ['AURUM'],
+    });
+    expect(projectGenomeV2Ladders(suppressed).AURUM.activeTier).toBe(0);
+
+    const conditionWeight = Array.from({ length: 20 }, (_, offerIndex) =>
+      rollGenomeV2Offer(reached, offerIndex)
+    )
+      .flatMap((offer) => offer?.weights ?? [])
+      .find((weight) => weight.condition > 0);
+    expect(conditionWeight).toMatchObject({ condition: 100 });
   });
 });

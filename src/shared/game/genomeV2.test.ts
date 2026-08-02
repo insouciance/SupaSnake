@@ -403,6 +403,18 @@ describe('Genome v2 Tactical Loom and persistence envelope', () => {
       to4: 2,
       to5: 3,
     });
+    expect(loom.candidates[0].resultingActiveSplices).toEqual([
+      'splice_dragon_hoard',
+    ]);
+    expect(loom.candidates[0].resultingSlots?.[0]).toMatchObject({
+      index: 0,
+      occupant: {
+        kind: 'splice',
+        spliceId: 'splice_dragon_hoard',
+        parentGeneIds: ['gold_trail', 'compound_interest'],
+      },
+    });
+    expect(loom.candidates[0].resultingSlots?.[1].occupant).toBeNull();
   });
 
   it('serializes the canonical v2 state flat for SQL projectors', () => {

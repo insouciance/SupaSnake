@@ -23,7 +23,10 @@ import {
 } from '@/shared/game/genes';
 import type { DynastyName } from '@/shared/game/rulesets';
 import { STRAIN_IDS, type StrainId, type StrainPoints } from '@/shared/game/strains';
-import { offerStream } from '@/shared/game/offerGravity';
+import {
+  ANOMALY_STRAIN_WEIGHT,
+  offerStream,
+} from '@/shared/game/offerGravity';
 import {
   GENOME_V2_GENE_OFFER_CADENCE,
   rollGenomeV2GeneOfferInterval,
@@ -132,6 +135,7 @@ export const GENOME_V2_CONFIG = {
     aurumTreasuryBankBps: 15_000,
     voltRelayBonusBps: 5_000,
     voltOverclockMultiplierBps: 15_000,
+    voltOverclockSpeedMultiplierBps: 11_500,
     voltOverclockMoveBudget: 12,
     feralMassMaxBonusBps: 2_500,
     feralTerritoryMultiplierBps: 15_000,
@@ -156,6 +160,7 @@ export const GENOME_V2_CONFIG = {
     heartwoodLargeMultiplierBps: 35_000,
     heartwoodLargeCells: 10,
     zenithMultiplierBps: 17_500,
+    zenithSpeedMultiplierBps: 12_000,
     zenithMoveBudget: 14,
     crownPerfectClearMultiplierBps: 40_000,
     crownStarMultiplierBps: 20_000,
@@ -466,6 +471,8 @@ export interface GenomeV2OverclockState {
   startedAtTick: number;
   expiresAtTick: number;
   multiplierBps: number;
+  /** Player-chosen world-speed pressure; 11,500 means ×1.15 speed. */
+  speedMultiplierBps: number;
 }
 
 export interface GenomeV2CrownWaveState {
@@ -519,6 +526,12 @@ export interface GenomeV2State {
   /** Run-start-frozen offer authority. Catalog changes never mutate a live run. */
   genePool: GenomeV2ActiveGeneId[];
   ftue: GenomeV2Ftue;
+  /** Server-resolved World Condition tilt; offer gravity only, not points. */
+  offerTiltStrain: StrainId | null;
+  /** World Condition/Gauntlet ladder suppression frozen for the run. */
+  suppressedStrains: StrainId[];
+  /** Per-strain shift of the visible 3/4/5 ladder thresholds. */
+  strainThresholdDelta: Partial<Record<StrainId, number>>;
   eventIndex: number;
   tick: number;
   foodCount: number;
@@ -984,6 +997,9 @@ export function createGenomeV2State(
     externalSecondLife?: 'iron_scales' | 'other' | null;
     startingStrainPoints?: StrainPoints;
     ftue?: GenomeV2Ftue;
+    offerTiltStrain?: StrainId | null;
+    suppressedStrains?: readonly StrainId[];
+    strainThresholdDelta?: Readonly<Partial<Record<StrainId, number>>>;
   } = {}
 ): GenomeV2State {
   const runSeed = options.runSeed ?? 'genome-v2-test-seed';
@@ -1008,6 +1024,27 @@ export function createGenomeV2State(
       throw new Error('Genome v2 starting Strain points are malformed.');
     }
   }
+  const offerTiltStrain = options.offerTiltStrain ?? null;
+  if (
+    offerTiltStrain !== null &&
+    !(STRAIN_IDS as readonly string[]).includes(offerTiltStrain)
+  ) throw new Error('Genome v2 offer tilt is malformed.');
+  const suppressedStrains = [...(options.suppressedStrains ?? [])];
+  if (
+    new Set(suppressedStrains).size !== suppressedStrains.length ||
+    suppressedStrains.some(
+      (strain) => !(STRAIN_IDS as readonly string[]).includes(strain)
+    )
+  ) throw new Error('Genome v2 suppressed Strains are malformed.');
+  const strainThresholdDelta = {
+    ...(options.strainThresholdDelta ?? {}),
+  };
+  for (const [strain, delta] of Object.entries(strainThresholdDelta)) {
+    if (
+      !(STRAIN_IDS as readonly string[]).includes(strain) ||
+      !Number.isSafeInteger(delta)
+    ) throw new Error('Genome v2 threshold shift is malformed.');
+  }
   return {
     v: GENOME_RULES_V2,
     dynasty,
@@ -1023,6 +1060,9 @@ export function createGenomeV2State(
       splicesUnlocked: true,
       apexesUnlocked: true,
     },
+    offerTiltStrain,
+    suppressedStrains,
+    strainThresholdDelta,
     eventIndex: 0,
     tick: 0,
     foodCount: 0,
@@ -1094,6 +1134,8 @@ function cloneState(state: GenomeV2State): GenomeV2State {
     ...state,
     genePool: [...state.genePool],
     ftue: { ...state.ftue },
+    suppressedStrains: [...state.suppressedStrains],
+    strainThresholdDelta: { ...state.strainThresholdDelta },
     slots: state.slots.map((slot) => ({
       ...slot,
       occupant: slot.occupant ? { ...slot.occupant } : null,
@@ -1291,8 +1333,16 @@ export function genomeV2StrainTier(
   state: GenomeV2State,
   strain: StrainId
 ): 0 | 3 | 4 | 5 {
+  if (state.suppressedStrains.includes(strain)) return 0;
   const points = genomeV2StrainPoints(state)[strain] ?? 0;
-  return points >= 5 ? 5 : points >= 4 ? 4 : points >= 3 ? 3 : 0;
+  const delta = state.strainThresholdDelta[strain] ?? 0;
+  return points >= Math.max(1, 5 + delta)
+    ? 5
+    : points >= Math.max(1, 4 + delta)
+      ? 4
+      : points >= Math.max(1, 3 + delta)
+        ? 3
+        : 0;
 }
 
 export function genomeV2HasLadderTier(
@@ -2787,6 +2837,9 @@ export function reduceGenomeV2Event(
         multiplierBps: zenith
           ? GENOME_V2_CONFIG.signatures.zenithMultiplierBps
           : GENOME_V2_CONFIG.ladders.voltOverclockMultiplierBps,
+        speedMultiplierBps: zenith
+          ? GENOME_V2_CONFIG.signatures.zenithSpeedMultiplierBps
+          : GENOME_V2_CONFIG.ladders.voltOverclockSpeedMultiplierBps,
       };
       break;
     }
@@ -3235,6 +3288,10 @@ export interface TacticalLoomCandidateDelta {
   completesSplice: GenomeV2SpliceId | null;
   occupiesSlot: boolean;
   requiresReplacement: boolean;
+  /** Exact THREAD result when an empty locus exists. Null means the player
+   * must choose one of the per-locus Recode outcomes below. */
+  resultingSlots: TacticalLoomSlotProjection[] | null;
+  resultingActiveSplices: GenomeV2SpliceId[] | null;
   projectedPortalActionGrowth: { infuse: number | null; recode: number | null };
   projectedYieldRule: string;
   strategicCost: string;
@@ -3289,6 +3346,22 @@ export interface TacticalLoomSplicePath {
   blockedReason: 'splices_locked' | null;
 }
 
+export interface TacticalLoomSlotProjection {
+  index: GenomeV2SlotIndex;
+  occupant:
+    | null
+    | { kind: 'gene'; geneId: GenomeV2ActiveGeneId }
+    | {
+        kind: 'splice';
+        spliceId: GenomeV2SpliceId;
+        parentGeneIds: readonly [
+          GenomeV2ActiveGeneId,
+          GenomeV2ActiveGeneId,
+        ];
+      }
+    | { kind: 'ash' };
+}
+
 export interface TacticalLoomReplacementDelta {
   slot: GenomeV2SlotIndex;
   allowed: boolean;
@@ -3300,6 +3373,8 @@ export interface TacticalLoomReplacementDelta {
   resultingStrainPoints: StrainPoints;
   breaksSplice: GenomeV2SpliceId | null;
   createsSplice: GenomeV2SpliceId | null;
+  resultingSlots: TacticalLoomSlotProjection[];
+  resultingActiveSplices: GenomeV2SpliceId[];
   losesSecondLife: boolean;
   /** Recode changes the locus, never already-earned economic obligations. */
   retainedLiabilities: {
@@ -3474,6 +3549,7 @@ export interface GenomeV2OfferWeightBreakdown {
   strain: number;
   splice: number;
   dynasty: number;
+  condition: number;
   missingCategory: number;
   stateRelevance: number;
   total: number;
@@ -3524,6 +3600,11 @@ function genomeV2OfferWeight(
     : definition.dynasties.includes(state.dynasty)
       ? tuning.dynastyAffinityWeight
       : 0;
+  const condition =
+    state.offerTiltStrain !== null &&
+    GENOME_V2_GENE_STRAINS[geneId].includes(state.offerTiltStrain)
+      ? ANOMALY_STRAIN_WEIGHT
+      : 0;
   const heldCategories = new Set(
     Object.values(state.instances)
       .filter((instance) => !['replaced', 'ash'].includes(instance.status))
@@ -3548,6 +3629,7 @@ function genomeV2OfferWeight(
     strain,
     splice,
     dynasty,
+    condition,
     missingCategory,
     stateRelevance,
     total:
@@ -3555,6 +3637,7 @@ function genomeV2OfferWeight(
       strain +
       splice +
       dynasty +
+      condition +
       missingCategory +
       stateRelevance,
   };
@@ -3812,6 +3895,62 @@ function dynastyProjectionForGene(
   };
 }
 
+function tacticalSlotProjection(
+  state: GenomeV2State
+): TacticalLoomSlotProjection[] {
+  return state.slots.map((slot) => {
+    const occupant = slot.occupant;
+    if (!occupant) return { index: slot.index, occupant: null };
+    if (occupant.kind === 'ash') {
+      return { index: slot.index, occupant: { kind: 'ash' as const } };
+    }
+    if (occupant.kind === 'gene') {
+      const instance = state.instances[occupant.instanceId];
+      if (!instance) throw new Error('Genome v2 slot references a missing gene.');
+      return {
+        index: slot.index,
+        occupant: { kind: 'gene' as const, geneId: instance.geneId },
+      };
+    }
+    const parents = occupant.parentInstanceIds.map(
+      (instanceId) => state.instances[instanceId]?.geneId
+    );
+    if (!parents[0] || !parents[1]) {
+      throw new Error('Genome v2 Splice references a missing parent.');
+    }
+    return {
+      index: slot.index,
+      occupant: {
+        kind: 'splice' as const,
+        spliceId: occupant.spliceId,
+        parentGeneIds: [parents[0], parents[1]],
+      },
+    };
+  });
+}
+
+function threadProjection(
+  state: GenomeV2State,
+  candidate: GenomeV2ActiveGeneId
+): {
+  resultingSlots: TacticalLoomSlotProjection[];
+  resultingActiveSplices: GenomeV2SpliceId[];
+} | null {
+  const empty = state.slots.find((slot) => slot.occupant === null);
+  if (!empty) return null;
+  const after = cloneState(state);
+  acquireGene(after, {
+    instanceId: `projection:thread:${state.eventIndex + 1}:${candidate}`,
+    geneId: candidate,
+    slot: empty.index,
+    source: 'offer',
+  });
+  return {
+    resultingSlots: tacticalSlotProjection(after),
+    resultingActiveSplices: [...after.activeSplices],
+  };
+}
+
 function replacementProjection(
   state: GenomeV2State,
   candidate: GenomeV2ActiveGeneId,
@@ -3838,6 +3977,8 @@ function replacementProjection(
       resultingStrainPoints: { ...points },
       breaksSplice: null,
       createsSplice: null,
+      resultingSlots: tacticalSlotProjection(state),
+      resultingActiveSplices: [...state.activeSplices],
       losesSecondLife: false,
       retainedLiabilities,
     };
@@ -3855,13 +3996,6 @@ function replacementProjection(
   const removedStrains = retiring.flatMap(
     (instance) => [...GENOME_V2_GENE_STRAINS[instance.geneId]]
   );
-  const resulting: StrainPoints = { ...points };
-  for (const strain of removedStrains) {
-    resulting[strain] = Math.max(0, (resulting[strain] ?? 0) - 1);
-  }
-  for (const strain of GENOME_V2_GENE_STRAINS[candidate]) {
-    resulting[strain] = (resulting[strain] ?? 0) + 1;
-  }
   const life = state.secondLife;
   const losesSecondLife = Boolean(
     life && (
@@ -3870,6 +4004,13 @@ function replacementProjection(
         life.owner.parentInstanceIds.some((id) => removedInstanceIds.has(id)))
     )
   );
+  const after = cloneState(state);
+  recodeSlot(after, {
+    instanceId: `projection:recode:${state.eventIndex + 1}:${candidate}:${slot.index}`,
+    replacementGeneId: candidate,
+    slot: slot.index,
+    growthCharged: growthCost,
+  });
   return {
     slot: slot.index,
     allowed: true,
@@ -3878,7 +4019,7 @@ function replacementProjection(
     removedGeneIds,
     removedStrains,
     addedStrains: [...GENOME_V2_GENE_STRAINS[candidate]],
-    resultingStrainPoints: resulting,
+    resultingStrainPoints: genomeV2StrainPoints(after),
     breaksSplice:
       slot.occupant.kind === 'splice' ? slot.occupant.spliceId : null,
     createsSplice: spliceCompletionForCandidate(
@@ -3886,6 +4027,8 @@ function replacementProjection(
       candidate,
       removedInstanceIds
     ),
+    resultingSlots: tacticalSlotProjection(after),
+    resultingActiveSplices: [...after.activeSplices],
     losesSecondLife,
     retainedLiabilities,
   };
@@ -4106,6 +4249,7 @@ export function projectGenomeV2(
           to5: Math.max(0, 5 - value),
         };
       }
+      const thread = threadProjection(state, geneId);
       return {
         geneId,
         category: GENOME_V2_GENES[geneId].category,
@@ -4115,6 +4259,8 @@ export function projectGenomeV2(
         completesSplice: spliceCompletionForCandidate(state, geneId),
         occupiesSlot: true,
         requiresReplacement: state.slots.every((slot) => slot.occupant !== null),
+        resultingSlots: thread?.resultingSlots ?? null,
+        resultingActiveSplices: thread?.resultingActiveSplices ?? null,
         projectedPortalActionGrowth: {
           infuse:
             nextAction <= GENOME_V2_CONFIG.portalGenome.maxActions
