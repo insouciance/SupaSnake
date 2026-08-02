@@ -57,6 +57,7 @@ ordinary_contracts=(
   supabase/tests/062_competitive_clans.sql
   supabase/tests/063_run_continuity.sql
   supabase/tests/064_atomic_dynasty_favorites.sql
+  supabase/tests/065_genome_v2.sql
 )
 
 concurrency_contracts=(
