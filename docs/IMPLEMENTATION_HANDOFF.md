@@ -184,10 +184,14 @@ multiplies only itself.*
 **WP-1.05 · A · Lineage rework** (§8.2; kill #19–20). Deterministic draft RPC
 (variant line, trait draft, lineage strain — full preview, no `random()`); reroll
 tokens → 150 DNA conversion migration; lineage-reroll RPC retired; **Ascendance**:
-uncapped gens, asymptotic Yield bonus (+2% decaying toward ~+30%), cost curve
-steepening past Gen3. Migration: yes. *Acceptance: breeding path grep-clean of
-`random()`; preview equals outcome in tests; curve unit-tested at asymptote;
-existing Gen>3 snakes enter the curve at their generation.*
+uncapped gens; Gen1–3 remain ×1 and Gen4+ compounds Yield by ×1.02 per
+generation, with no ordinary design ceiling; the cost curve still steepens past
+Gen3. New runs freeze the exact curve version and multiplier at start, while
+unstamped/in-flight legacy runs retain v1 settlement. Migration: yes.
+*Acceptance: breeding path grep-clean of `random()`; preview equals outcome in
+tests; v2 waypoints and v1 cross-deploy settlement are unit-tested; existing
+Gen>3 snakes enter the current curve at their generation without rewriting old
+run outcomes.*
 
 **WP-1.06 · B · Run Setup + Results three layers** (§5). LAUNCH → setup (preset,
 one-tap START; first-run fully preset) → board; REPLAY skips setup; Results L1
