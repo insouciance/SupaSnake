@@ -15,15 +15,24 @@ jest.mock('@supabase/supabase-js', () => ({
       })),
     })),
     rpc: jest.fn((name: string) => Promise.resolve({
-      data: name === 'get_cohesive_release_capability'
-        ? {
-            status: 'ready',
-            version: 1,
-            foundingBridgeVersion: 1,
-            continuityVersion: 1,
-            favoriteInvariantVersion: 1,
-          }
-        : { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+      data:
+        name === 'get_cohesive_release_capability'
+          ? {
+              status: 'ready',
+              version: 1,
+              foundingBridgeVersion: 1,
+              continuityVersion: 1,
+              favoriteInvariantVersion: 1,
+            }
+          : name === 'get_genome_v2_capability'
+            ? {
+                status: 'ready',
+                schemaVersion: 2,
+                catalogVersion: 2,
+                ascendanceVersion: 2,
+                spliceCount: 8,
+              }
+            : { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
       error: null,
     })),
   })),
@@ -111,6 +120,13 @@ describe('GET /api/health', () => {
       continuityVersion: 1,
       favoriteInvariantVersion: 1,
     });
+    expect(data.checks.genomeV2).toMatchObject({
+      status: 'healthy',
+      schemaVersion: 2,
+      catalogVersion: 2,
+      ascendanceVersion: 2,
+      spliceCount: 8,
+    });
   });
 
   it('accepts additive schema 060 only as an explicit bridge phase', async () => {
@@ -193,6 +209,53 @@ describe('GET /api/health', () => {
     expect(response.status).toBe(503);
     expect(data.checks.careerSpine.status).toBe('unhealthy');
     expect(data.checks.cohesiveRelease.status).toBe('unhealthy');
+    expect(data.checks.genomeV2.status).toBe('unhealthy');
+  });
+
+  it('fails health when the Genome v2 capability is incomplete', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'ready',
+            version: 1,
+            foundingBridgeVersion: 1,
+            continuityVersion: 1,
+            favoriteInvariantVersion: 1,
+          },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'ready',
+            schemaVersion: 2,
+            catalogVersion: 2,
+            ascendanceVersion: 1,
+            spliceCount: 8,
+          },
+          error: null,
+        })),
+      }));
+
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(503);
+    expect(data.checks.genomeV2.status).toBe('unhealthy');
   });
 
   it('fails health when a cohesive release bridge is absent', async () => {

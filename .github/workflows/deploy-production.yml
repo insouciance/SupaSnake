@@ -548,7 +548,12 @@ jobs:
                   and .checks.cohesiveRelease.version == 1
                   and .checks.cohesiveRelease.foundingBridgeVersion == 1
                   and .checks.cohesiveRelease.continuityVersion == 1
-                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1' >/dev/null; then
+                  and .checks.cohesiveRelease.favoriteInvariantVersion == 1
+                  and .checks.genomeV2.status == "healthy"
+                  and .checks.genomeV2.schemaVersion == 2
+                  and .checks.genomeV2.catalogVersion == 2
+                  and .checks.genomeV2.ascendanceVersion == 2
+                  and .checks.genomeV2.spliceCount == 8' >/dev/null; then
               exit 0
             fi
             if [ "$attempt" -lt 12 ]; then sleep 5; fi

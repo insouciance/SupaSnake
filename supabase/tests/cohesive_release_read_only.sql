@@ -11,6 +11,7 @@ required_functions(signature) AS (
     ('public.found_clan(uuid,text,text,text,text,text,text,integer)'::TEXT),
     ('public.set_dynasty_favorite(uuid,uuid,boolean)'::TEXT),
     ('public.get_cohesive_release_capability()'::TEXT),
+    ('public.get_genome_v2_capability()'::TEXT),
     ('public.finalize_run_continuity_start(uuid,uuid,uuid,text,jsonb,boolean,integer,boolean,integer,integer,integer[],timestamp with time zone,integer,integer,integer)'::TEXT),
     ('public.activate_run_continuity(uuid,uuid,jsonb,text,text,text,integer)'::TEXT),
     ('public.resume_run_continuity(uuid,uuid,text,text)'::TEXT),
@@ -172,6 +173,60 @@ favorite_contract AS (
     HAVING pg_catalog.count(*) > 1
   ) AS favorite_rows_valid
 ),
+genome_contract AS (
+  SELECT
+    pg_catalog.to_regprocedure(
+      'public.ascendance_yield_multiplier_bps_v2(integer)'
+    ) IS NOT NULL
+    AND pg_catalog.to_regprocedure(
+      'public.ascendance_yield_multiplier_v2(integer)'
+    ) IS NOT NULL
+    AND pg_catalog.to_regprocedure(
+      'public.ascendance_yield_bonus_v2(integer)'
+    ) IS NOT NULL AS genome_ascendance_functions_valid,
+    COALESCE((
+      SELECT pg_catalog.array_agg(
+        versioned.gene_id ORDER BY versioned.gene_id
+      ) = ARRAY[
+        'circuit_run',
+        'coilkeeper',
+        'compound_interest',
+        'constellation_crown',
+        'gold_trail',
+        'heartwood',
+        'live_wire',
+        'loan_shark',
+        'loom_anchor',
+        'mirror_wager',
+        'overgrowth',
+        'phase_gate',
+        'phoenix',
+        'time_dilation',
+        'wall_rush',
+        'zenith_protocol'
+      ]::TEXT[]
+      FROM public.genome_gene_versions AS versioned
+      WHERE versioned.rules_version = 2
+        AND versioned.active
+    ), FALSE)
+    AND COALESCE((
+      SELECT pg_catalog.array_agg(
+        versioned.splice_id ORDER BY versioned.splice_id
+      ) = ARRAY[
+        'splice_ashen_stake',
+        'splice_dragon_hoard',
+        'splice_gilded_fork',
+        'splice_loom_bond',
+        'splice_perfect_circuit',
+        'splice_riftline',
+        'splice_styx_contract',
+        'splice_worldcoil'
+      ]::TEXT[]
+      FROM public.genome_splice_versions AS versioned
+      WHERE versioned.rules_version = 2
+        AND versioned.active
+    ), FALSE) AS genome_catalog_valid
+),
 cohesive_contract AS (
   SELECT
     execution_contract.read_only_execution,
@@ -182,7 +237,9 @@ cohesive_contract AS (
     index_contract.required_indexes_present,
     trigger_contract.favorite_trigger_valid,
     trigger_contract.continuity_trigger_valid,
-    favorite_contract.favorite_rows_valid
+    favorite_contract.favorite_rows_valid,
+    genome_contract.genome_ascendance_functions_valid,
+    genome_contract.genome_catalog_valid
   FROM execution_contract
   CROSS JOIN founding_bridge_contract
   CROSS JOIN function_contract
@@ -190,6 +247,7 @@ cohesive_contract AS (
   CROSS JOIN index_contract
   CROSS JOIN trigger_contract
   CROSS JOIN favorite_contract
+  CROSS JOIN genome_contract
 )
 SELECT pg_catalog.jsonb_build_object(
   'status', CASE
@@ -203,10 +261,12 @@ SELECT pg_catalog.jsonb_build_object(
       AND cohesive_contract.favorite_trigger_valid
       AND cohesive_contract.continuity_trigger_valid
       AND cohesive_contract.favorite_rows_valid
+      AND cohesive_contract.genome_ascendance_functions_valid
+      AND cohesive_contract.genome_catalog_valid
     THEN 'ready'
     ELSE 'invalid'
   END,
-  'probe', 'cohesive_release_read_only_v1',
+  'probe', 'cohesive_release_read_only_v2',
   'checks', pg_catalog.jsonb_build_object(
     'readOnlyExecution',
       cohesive_contract.read_only_execution,
@@ -225,7 +285,11 @@ SELECT pg_catalog.jsonb_build_object(
     'continuityTriggerValid',
       cohesive_contract.continuity_trigger_valid,
     'favoriteRowsValid',
-      cohesive_contract.favorite_rows_valid
+      cohesive_contract.favorite_rows_valid,
+    'genomeAscendanceFunctionsValid',
+      cohesive_contract.genome_ascendance_functions_valid,
+    'genomeCatalogValid',
+      cohesive_contract.genome_catalog_valid
   )
 ) AS cohesive_release_probe
 FROM cohesive_contract;

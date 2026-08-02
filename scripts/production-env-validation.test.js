@@ -234,7 +234,7 @@ describe('production environment validation', () => {
     expect(linkedHarness).not.toContain('read_only: true');
     expect(linkedHarness).toContain("--write-out '%{http_code}'");
     expect(linkedHarness).toContain('returned HTTP $http_status');
-    expect(linkedHarness).toContain('cohesive_release_read_only_v1');
+    expect(linkedHarness).toContain('cohesive_release_read_only_v2');
     expect(linkedHarness).toContain('and length == 1');
     expect(linkedHarness).toContain(
       'supabase/tests/cohesive_release_read_only.sql'
