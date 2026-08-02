@@ -247,19 +247,43 @@ function CodexShell({
 }) {
   const { session, isAuthenticated } = useAuth();
   const {
-    live,
-    unlocked,
-    bankedRuns,
-    unlockAt,
-    data,
-    isLoading,
-    error,
+    ownerId: codexOwnerId,
+    live: storedLive,
+    unlocked: storedUnlocked,
+    bankedRuns: storedBankedRuns,
+    unlockAt: storedUnlockAt,
+    data: storedData,
+    isLoading: storedIsLoading,
+    error: storedError,
     fetchCodex,
+    reset: resetCodex,
   } = useCodexStore();
+  const accessToken = session?.access_token;
+  const authOwnerId = typeof session?.user?.id === 'string' && session.user.id.length > 0
+    ? session.user.id
+    : null;
+  const hasAuthenticatedOwner = isAuthenticated && Boolean(authOwnerId && accessToken);
+  const ownsCodexState = Boolean(authOwnerId && codexOwnerId === authOwnerId);
+  // The render gate is synchronous: an effect has no opportunity to expose A's
+  // discoveries during the first render under B. The store epoch separately
+  // prevents an out-of-order A response from becoming B's state later.
+  const live = ownsCodexState ? storedLive : false;
+  const unlocked = ownsCodexState ? storedUnlocked : false;
+  const bankedRuns = ownsCodexState ? storedBankedRuns : 0;
+  const unlockAt = ownsCodexState ? storedUnlockAt : 0;
+  const data = ownsCodexState ? storedData : null;
+  const isLoading = hasAuthenticatedOwner
+    ? (!ownsCodexState || storedIsLoading)
+    : false;
+  const error = ownsCodexState ? storedError : null;
 
   useEffect(() => {
-    if (session?.access_token) void fetchCodex(session.access_token);
-  }, [session?.access_token, fetchCodex]);
+    if (!isAuthenticated || !accessToken || !authOwnerId) {
+      resetCodex();
+      return;
+    }
+    void fetchCodex(authOwnerId, accessToken);
+  }, [accessToken, authOwnerId, fetchCodex, isAuthenticated, resetCodex]);
 
   const renderedDiscoveryArtifacts = useMemo(() => {
     if (!data) return [];
@@ -288,8 +312,8 @@ function CodexShell({
   // loaded. Merely navigating to the public rules reference is not enough.
   useRecognitionSeen(
     'codex',
-    view === 'archive' && Boolean(session?.access_token) && !isLoading && data !== null,
-    session?.access_token,
+    view === 'archive' && hasAuthenticatedOwner && !isLoading && data !== null,
+    accessToken,
     { artifactRefs: renderedDiscoveryArtifacts }
   );
 
@@ -366,7 +390,7 @@ function CodexShell({
             Your discoveries
           </h2>
 
-          {!isAuthenticated ? (
+          {!hasAuthenticatedOwner ? (
             <section className="panel p-6 text-center" data-testid="codex-signed-out">
               <p className="text-beige mb-4 font-body">
                 The rules above are the same for everyone. Sign in to see which

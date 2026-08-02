@@ -50,10 +50,11 @@ beforeEach(() => {
   flagEnabled = true;
   mockSearchParams.mockReturnValue(params(null));
   mockUseAuth.mockReturnValue({
-    session: { access_token: 'token' },
+    session: { access_token: 'token', user: { id: 'user-a' } },
     isAuthenticated: true,
   });
   mockUseCodexStore.mockReturnValue({
+    ownerId: 'user-a',
     live: true,
     unlocked: true,
     bankedRuns: 20,
@@ -62,6 +63,7 @@ beforeEach(() => {
     isLoading: false,
     error: null,
     fetchCodex: jest.fn(),
+    reset: jest.fn(),
   });
   useNotificationStore.setState({ notifications: {}, hasHydrated: true });
   global.fetch = jest.fn() as jest.Mock;
@@ -115,6 +117,7 @@ describe('?view=workbench opens the Workbench, in place', () => {
       createdAt: '2026-07-30T12:00:00.000Z',
     }]);
     mockUseCodexStore.mockReturnValue({
+      ownerId: 'user-a',
       live: true,
       unlocked: true,
       bankedRuns: 20,
@@ -128,6 +131,7 @@ describe('?view=workbench opens the Workbench, in place', () => {
       isLoading: false,
       error: null,
       fetchCodex: jest.fn(),
+      reset: jest.fn(),
     });
     mockSearchParams.mockReturnValue(params('workbench'));
 
@@ -159,6 +163,7 @@ describe('?view=workbench opens the Workbench, in place', () => {
     // recording, still reaches the Workbench. §10.4 forbids SELLING planning
     // information; it does not ask for it to be walled.
     mockUseCodexStore.mockReturnValue({
+      ownerId: 'user-a',
       live: true,
       unlocked: false,
       bankedRuns: 0,
@@ -167,6 +172,7 @@ describe('?view=workbench opens the Workbench, in place', () => {
       isLoading: false,
       error: null,
       fetchCodex: jest.fn(),
+      reset: jest.fn(),
     });
     mockSearchParams.mockReturnValue(params('workbench'));
     render(<CodexPage />);
