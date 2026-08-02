@@ -11,6 +11,11 @@ const code = sql
   .split('\n')
   .filter((line) => !line.trimStart().startsWith('--'))
   .join('\n');
+const normalizedCode = code.replace(/\s+/g, ' ');
+
+function sqlString(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
 
 const V2_GENES = [
   'gold_trail',
@@ -69,8 +74,19 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
   it('publishes the exact shared roster plus all three dynasty signatures for v2', () => {
     expect(Object.keys(GENOME_V2_GENES).sort()).toEqual([...V2_GENES].sort());
     for (const id of V2_GENES) {
-      expect(code).toContain(`('${id}', 2,`);
-      expect(code).toContain(`'${GENOME_V2_GENES[id].name}'`);
+      const gene = GENOME_V2_GENES[id];
+      const expectedTuple = [
+        `(${sqlString(id)}`,
+        '2',
+        sqlString(gene.name),
+        sqlString(gene.kind),
+        `ARRAY[${gene.strains.map(sqlString).join(',')}]`,
+        sqlString(gene.effect),
+        sqlString(gene.cost),
+        sqlString(gene.economics),
+        'TRUE)',
+      ].join(', ');
+      expect(normalizedCode).toContain(expectedTuple);
     }
     expect(code.match(/, 2, /g)?.length).toBeGreaterThanOrEqual(V2_GENES.length);
     expect(code).toContain("('time_dilation', 2, 'Time Dilation'");
@@ -80,11 +96,19 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
   it('keeps v1 Splices intact and adds eight versioned fusion rules', () => {
     expect([...GENOME_V2_SPLICE_IDS].sort()).toEqual([...V2_SPLICES].sort());
     for (const id of V2_SPLICES) {
-      expect(code).toContain(`('${id}', 2,`);
-      const [a, b] = GENOME_V2_SPLICES[id].parents;
-      expect(code).toMatch(
-        new RegExp(`'${id}', 2,[\\s\\S]*'${a}', '${b}'`)
-      );
+      const splice = GENOME_V2_SPLICES[id];
+      const [a, b] = splice.parents;
+      const expectedTuple = [
+        `(${sqlString(id)}`,
+        '2',
+        sqlString(splice.name),
+        sqlString(a),
+        sqlString(b),
+        sqlString(splice.rule),
+        sqlString(splice.strategicCost),
+        'TRUE)',
+      ].join(', ');
+      expect(normalizedCode).toContain(expectedTuple);
     }
     expect(code).toMatch(
       /'splice_gilded_fork',[\s\S]*'gold_trail', 'overgrowth'/
