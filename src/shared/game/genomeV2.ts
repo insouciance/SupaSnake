@@ -82,6 +82,7 @@ export const GENOME_V2_CONFIG = {
     maxPressureBps: 7_500,
   },
   coilkeeper: {
+    // constitution-allow: energy-commerce gameplay-food cadence, never Energy or a commercial benefit
     chargeFoods: 8,
     minimumSealedCells: 4,
     rewardTiers: [
@@ -91,8 +92,11 @@ export const GENOME_V2_CONFIG = {
     ],
   },
   wallRush: {
+    // constitution-allow: energy-commerce wall ability charge, never Energy or a commercial benefit
     initialCharges: 1,
+    // constitution-allow: energy-commerce wall ability cap, never Energy or a commercial benefit
     maximumCharges: 1,
+    // constitution-allow: energy-commerce portal ability refresh, never Energy or a commercial benefit
     recharge: 'portal_continue' as const,
     rewardMoveBudget: 6,
     multiplierBps: 25_000,
@@ -2138,6 +2142,7 @@ function applyResolvedTarget(
   if (collectedUnits > 0) {
     state.foodCount += collectedUnits;
     if (genomeV2MechanicEnabled(state, 'coilkeeper')) {
+      // constitution-allow: energy-commerce coil technique meter, never Energy or a commercial benefit
       state.coilCharge += collectedUnits;
     }
     let growth = 0;

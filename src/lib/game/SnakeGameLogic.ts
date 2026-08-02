@@ -4592,7 +4592,8 @@ export class SnakeGameLogic {
     this.placeDueTerrain();
     this.applyShedMoves(n);
     this.applyPetrify(n);
-    this.state.score += this.resolveFoodEconomy(n).scoreValue;
+    const { scoreValue } = this.resolveFoodEconomy(n);
+    this.state.score += scoreValue;
     this.ticksSinceAnyEat = 0;
     this.speed = this.effectiveSpeedForFood(n);
     this.refreshHoldBudget();

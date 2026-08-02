@@ -817,14 +817,15 @@ function validateGenomeV2Branch(
   // forfeitable Escrow/Stake. It is explicitly never an authority channel.
   const rawDna = genomeV2YieldFloor(record.ledger.bankableYield);
   const expectedPayout = genomeV2YieldFloor(settlement.harvestEligibleYield);
-  const expectedScore = computeRunTotals(
+  const totals = computeRunTotals(
     dynasty,
     foodCount,
     [],
     null,
     traits,
     null
-  ).score;
+  );
+  const expectedScore = totals.score;
 
   if (claimDriftIsAlertable(input.dna_earned, rawDna)) {
     errors.push(
