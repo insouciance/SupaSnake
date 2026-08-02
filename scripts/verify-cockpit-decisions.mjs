@@ -98,7 +98,12 @@ async function openCase({ kind, viewport, consent }) {
     const abandonControl = document.querySelector('button[aria-label="Abandon run"]');
     const viewControl = document.querySelector('button[aria-label="Reset arena view"]');
     const consentBanner = document.querySelector('.consent-banner');
-    const footer = document.querySelector('footer');
+    // Dialogs may use a semantic footer for their own confirmation actions.
+    // The legal-surface invariant applies to the site footer behind the
+    // cockpit, not to those in-dialog controls.
+    const footer = [...document.querySelectorAll('footer')].find(
+      (element) => !element.closest('[role="dialog"], [role="alertdialog"]')
+    ) ?? null;
     if (!root || !board) throw new Error('Decision fixture did not render');
 
     const targetRoot = kind === 'hold' ? root : dock ?? callout;

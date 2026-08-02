@@ -224,6 +224,7 @@ function StrainRail({
                     <button
                       key={tier.points}
                       type="button"
+                      className="min-h-11 min-w-11"
                       data-active={strain.points >= tier.points || undefined}
                       aria-pressed={selected}
                       aria-label={`${STRAINS[strain.id].name} ${tier.points}, ${tier.name}: ${tier.rule}`}
@@ -462,7 +463,9 @@ export function ResearchTable({
           <i aria-hidden="true">
             <GeneGlyph id={focusedGeneId ?? 'genome-research'} />
           </i>
-          <strong>{focusedGene?.name ?? 'Genome complete'}</strong>
+          <strong data-testid="workbench-focused-gene-name">
+            {focusedGene?.name ?? 'Genome complete'}
+          </strong>
           <small>{focusedGene?.category ?? 'No unseen genes remain'}</small>
         </div>
       </section>

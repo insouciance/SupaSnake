@@ -363,10 +363,15 @@ describe('GeneChoiceOverlay tactical Loom', () => {
   });
 
   it('preserves board visibility with a portrait-bottom / landscape-side, internally scrolling instrument', () => {
+    const longNameModel = model();
+    longNameModel.candidates[0] = {
+      ...longNameModel.candidates[0],
+      name: 'Compound Interest',
+    };
     render(
       <GeneChoiceOverlay
         {...baseProps}
-        presentation={model()}
+        presentation={longNameModel}
         onChoose={jest.fn()}
         onDecline={jest.fn()}
       />
@@ -375,8 +380,9 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(rail).toHaveAttribute('data-responsive-composition', 'portrait-bottom landscape-side');
     expect(screen.getByTestId('loom-scroll-region')).toHaveClass('[touch-action:pan-y]');
     const thread = screen.getByTestId('gene-option-0');
-    expect(within(thread).getByText('Live Wire')).toHaveAttribute('title', 'Live Wire');
-    expect(within(thread).getByText('Live Wire')).toHaveClass('truncate');
+    expect(thread).toHaveAccessibleName(/Compound Interest/i);
+    expect(within(thread).getByText('Compound Interest')).not.toHaveClass('truncate');
+    expect(screen.getByTestId('loom-focused-gene-name')).toHaveTextContent('Compound Interest');
   });
 
   it('keeps already-started v1 sessions honest through the legacy adapter', () => {

@@ -29,13 +29,13 @@
 
 .loomHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   min-width: 0;
   gap: 8px;
   margin-bottom: 8px;
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -43,19 +43,30 @@
 
 .loomHeader > span {
   min-width: 0;
-  overflow: hidden;
   color: rgb(196 181 253 / 72%);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .loomHeader > strong {
   flex: none;
   max-width: 55%;
-  overflow: hidden;
   color: #f5c542;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.focusedGeneName {
+  margin: 0 0 4px;
+  color: #f7f0ff;
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: .035em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-shadow: 0 0 12px rgb(168 85 247 / 38%);
 }
 
 .coreStage {
@@ -71,14 +82,14 @@
   margin: 0;
   color: rgb(237 233 223 / 74%);
   font-family: var(--font-body);
-  font-size: 11px;
-  line-height: 1.25;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .integratedCopy b {
   display: block;
   margin-bottom: 4px;
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: .13em;
 }
 
@@ -140,14 +151,13 @@
   z-index: 1;
   max-width: 84px;
   margin-top: 3px;
-  overflow: hidden;
   color: #f7f0ff;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: .06em;
-  text-overflow: ellipsis;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .coreStrains {
@@ -171,7 +181,7 @@
 .coreStrains span { width: 9px; height: 9px; }
 .coreStrains b {
   font-family: var(--font-body);
-  font-size: 8px;
+  font-size: 12px;
   letter-spacing: .04em;
 }
 
@@ -184,7 +194,7 @@
   margin: 1px 0 9px;
   color: rgb(237 233 223 / 58%);
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 14px;
   text-align: center;
 }
 
@@ -259,20 +269,19 @@
 .strainIdentity > span:last-child { min-width: 0; }
 .strainIdentity strong {
   display: block;
-  overflow: hidden;
   color: var(--strain);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 14px;
   letter-spacing: .07em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .strainIdentity small {
   display: block;
   color: rgb(237 233 223 / 45%);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .strainThread {
@@ -306,8 +315,8 @@
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: 48px;
-  grid-template-rows: 34px auto;
+  min-height: 56px;
+  grid-template-rows: 36px auto;
   justify-items: center;
   gap: 2px;
   border: 0;
@@ -315,6 +324,7 @@
   background: transparent;
   color: rgb(237 233 223 / 48%);
   cursor: pointer;
+  font-size: 14px;
   padding: 0 2px;
   text-align: center;
 }
@@ -329,19 +339,17 @@
   border-radius: 41% 59% 52% 48% / 47% 42% 58% 53%;
   background: rgb(5 8 22 / 92%);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   transform: rotate(5deg);
 }
 
 .thresholdNode strong {
   z-index: 1;
-  overflow: hidden;
   font-family: var(--font-body);
-  font-size: 7px;
-  line-height: 1.05;
-  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .thresholdNode[data-state='active'],
@@ -383,8 +391,8 @@
   margin: -1px 0 0;
   color: rgb(237 233 223 / 64%);
   font-family: var(--font-body);
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .thresholdRule b {
@@ -394,11 +402,8 @@
 }
 
 .thresholdRule span {
-  display: -webkit-box;
   min-width: 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .thresholdRule em {
@@ -406,7 +411,7 @@
   flex-basis: 100%;
   margin-left: 34px;
   color: #ffbd64;
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -423,14 +428,14 @@
   gap: 6px;
   color: #c4b5fd;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 14px;
   letter-spacing: .08em;
 }
 
 .spliceHeading small {
   color: rgb(237 233 223 / 38%);
   font-family: var(--font-body);
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0;
 }
 
@@ -481,7 +486,7 @@
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: 66px;
+  min-height: 72px;
   grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
@@ -490,6 +495,7 @@
   background: transparent;
   color: rgb(237 233 223 / 48%);
   cursor: pointer;
+  font-size: 14px;
   padding: 4px 5px;
   text-align: left;
 }
@@ -540,15 +546,14 @@
 .spliceCopy strong,
 .spliceCopy small {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .spliceCopy strong {
   color: currentColor;
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 14px;
+  line-height: 1.15;
   letter-spacing: .04em;
 }
 
@@ -556,7 +561,8 @@
   margin-top: 2px;
   color: rgb(237 233 223 / 47%);
   font-family: var(--font-body);
-  font-size: 9px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .spliceRule {
@@ -566,28 +572,23 @@
   margin: 5px 7px 0 49px;
   color: rgb(237 233 223 / 62%);
   font-family: var(--font-body);
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .spliceRule b { color: #c4b5fd; }
 .spliceRule span {
-  display: -webkit-box;
   min-width: 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .spliceRule em {
-  display: -webkit-box;
+  display: block;
   grid-column: 2;
-  overflow: hidden;
   color: rgb(245 197 66 / 68%);
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .locusCharms,
@@ -611,18 +612,21 @@
   background: rgb(5 8 22 / 58%);
   padding: 4px 7px;
   font-family: var(--font-body);
-  font-size: 7px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .locusCharms li { outline: 1px solid rgb(34 211 238 / 20%); }
 .locusCharms span { color: rgb(34 211 238 / 58%); font-family: var(--font-mono); }
-.locusCharms b { max-width: 70px; overflow: hidden; color: rgb(237 233 223 / 46%); text-overflow: ellipsis; white-space: nowrap; }
+.locusCharms b { color: rgb(237 233 223 / 46%); overflow-wrap: anywhere; }
 .locusCharms i { color: #a855f7; font-style: normal; }
-.locusCharms strong { max-width: 78px; overflow: hidden; color: #f7f0ff; text-overflow: ellipsis; white-space: nowrap; }
+.locusCharms strong { color: #f7f0ff; overflow-wrap: anywhere; }
 
 .deltaCharm { outline: 1px solid rgb(196 181 253 / 16%); }
 .deltaCharm > span { color: rgb(237 233 223 / 42%); }
-.deltaCharm strong { color: rgb(237 233 223 / 73%); font-family: var(--font-mono); font-size: 7px; }
+.deltaCharm strong { color: rgb(237 233 223 / 73%); font-family: var(--font-mono); font-size: 12px; }
 .deltaCharm i { color: #a855f7; font-style: normal; }
 .deltaCharm[data-tone='positive'] { outline-color: rgb(120 246 176 / 28%); }
 .deltaCharm[data-tone='danger'],
@@ -645,20 +649,20 @@
   .loom { padding: 10px; }
   .coreStage { grid-template-columns: minmax(0, 1fr) 84px minmax(0, 1fr); gap: 5px; min-height: 92px; }
   .geneCore { width: 84px; height: 84px; }
-  .integratedCopy { font-size: 10px; }
-  .strainRoute { grid-template-columns: 72px minmax(0, 1fr); gap: 5px; }
+  .integratedCopy { font-size: 14px; }
+  .strainRoute { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .strainRune { width: 20px; height: 20px; }
   .strainIdentity { gap: 4px; }
-  .strainIdentity strong { font-size: 10px; }
-  .thresholdPath { gap: 3px; }
-  .thresholdNode { min-height: 46px; padding: 0; }
+  .strainIdentity strong { font-size: 14px; }
+  .thresholdPath { gap: 5px; margin-left: 30px; }
+  .thresholdNode { min-height: 56px; padding: 0; }
   .thresholdNode > span { width: 29px; height: 29px; }
-  .thresholdNode strong { font-size: 6px; }
-  .thresholdRule { grid-column: 1 / 3; margin-left: 30px; }
-  .spliceBranch { min-height: 62px; grid-template-columns: 34px minmax(0, 1fr); gap: 5px; }
+  .thresholdNode strong { font-size: 12px; }
+  .thresholdRule { grid-column: 1; margin-left: 30px; }
+  .spliceBranch { min-height: 72px; grid-template-columns: 34px minmax(0, 1fr); gap: 5px; }
   .spliceNode { width: 31px; height: 31px; }
-  .spliceCopy strong { font-size: 9px; }
-  .spliceCopy small { font-size: 8px; }
+  .spliceCopy strong { font-size: 14px; }
+  .spliceCopy small { font-size: 12px; }
   .spliceRule { margin-left: 0; }
 }
 
