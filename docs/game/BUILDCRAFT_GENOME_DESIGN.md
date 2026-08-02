@@ -1,6 +1,13 @@
 # SupaSnake — Buildcraft: The Genome
 ## Strains, Expressions, Splices, Infusion & Lineage
 
+> **Superseded active rules (1 August 2026):** Constitution v1.9 and
+> [`TACTICAL_GENOME_V2.md`](TACTICAL_GENOME_V2.md) replace this document's
+> active catalog, tuning, FTUE, portal-Genome, Strain, Splice, outcome-cap, and
+> Ascendance assumptions. This file remains the historical foundation for the
+> vocabulary and architecture; do not implement its v1.1 numbers or retired
+> mechanics in a new run.
+
 **Version:** 1.1
 **Date:** 2026-07-29
 **Status:** APPROVED — updated for Product Constitution v1.4 Rule 15 and the
