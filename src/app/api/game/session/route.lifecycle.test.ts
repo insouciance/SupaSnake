@@ -66,10 +66,16 @@ jest.mock('@/lib/server/gameProgressionSettlement', () => ({
 type Row = Record<string, unknown>;
 type Call = [string, ...unknown[]];
 
-const db: { players: Row[]; game_sessions: Row[]; economy_transactions: Row[] } = {
+const db: {
+  players: Row[];
+  game_sessions: Row[];
+  economy_transactions: Row[];
+  collected_snakes: Row[];
+} = {
   players: [],
   game_sessions: [],
   economy_transactions: [],
+  collected_snakes: [],
 };
 
 const rpcCalls: Array<{ fn: string; params: unknown }> = [];
@@ -82,6 +88,7 @@ let careerCapability: Row = {
 };
 let pendingAdoptionError: Row | null = null;
 let pendingLookupError: Row | null = null;
+let snakeOwnershipCountError: Row | null = null;
 
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
@@ -212,25 +219,39 @@ jest.mock('@supabase/supabase-js', () => ({
       const rows = () => (db[table as keyof typeof db] ?? []) as Row[];
 
       const settle = () => {
+        const isSnakeOwnershipCount =
+          table === 'collected_snakes' &&
+          calls.some(
+            ([op, , options]) =>
+              op === 'select' &&
+              (options as { count?: unknown } | undefined)?.count === 'exact'
+          );
+        if (isSnakeOwnershipCount && snakeOwnershipCountError) {
+          return { data: [], count: null, error: snakeOwnershipCountError };
+        }
         if (
           table === 'game_sessions' &&
           careerCapabilityError &&
           calls.some(([op, selected]) => op === 'select' && selected === 'reward_protocol')
         ) {
-          return { data: [], error: careerCapabilityError };
+          return { data: [], count: null, error: careerCapabilityError };
         }
         if (pendingInsert) {
           const inserted = { id: `${table}-${rows().length + 1}`, ...pendingInsert };
           rows().push(inserted);
           pendingInsert = null;
-          return { data: [inserted], error: null };
+          return { data: [inserted], count: null, error: null };
         }
         const hit = rows().filter((row) => matches(row, calls));
         if (pendingUpdate) {
           for (const row of hit) Object.assign(row, pendingUpdate);
           pendingUpdate = null;
         }
-        return { data: hit, error: null };
+        return {
+          data: hit,
+          count: isSnakeOwnershipCount ? hit.length : null,
+          error: null,
+        };
       };
 
       const builder: Record<string, unknown> = {};
@@ -438,6 +459,7 @@ function seedContinuityTerminalRun(options: {
 beforeEach(() => {
   jest.clearAllMocks();
   db.economy_transactions = [];
+  db.collected_snakes = [];
   rpcCalls.length = 0;
   impactPersistError = null;
   careerCapabilityError = null;
@@ -448,6 +470,7 @@ beforeEach(() => {
   };
   pendingAdoptionError = null;
   pendingLookupError = null;
+  snakeOwnershipCountError = null;
   seedPlayer();
   seedSession();
   mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
@@ -578,6 +601,56 @@ describe('the migration-060 earning-start gate', () => {
     expect(db.game_sessions).toHaveLength(0);
     expect(rpcCalls.map((call) => call.fn)).not.toContain('commit_run_energy');
     expect(mockCaptureException).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('session-start missing-snake ownership fallback', () => {
+  async function startWithMissingSnake() {
+    db.game_sessions = [];
+    return POST(
+      post({ action: 'start', mode: 'free', snake_id: 'missing-snake' })
+    );
+  }
+
+  it('keeps genuine non-ownership distinct when another playable snake exists', async () => {
+    db.collected_snakes = [{ id: 'owned-snake', player_id: PLAYER_ID }];
+
+    const response = await startWithMissingSnake();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Snake not found or not owned' });
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('directs a player with no owned snakes back through player setup', async () => {
+    const response = await startWithMissingSnake();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'No playable snake is available. Retry player setup from Home.',
+    });
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
+  it('reports an ownership-count read failure as retryable without claiming zero snakes', async () => {
+    snakeOwnershipCountError = { code: '08006', message: 'connection failure' };
+
+    const response = await startWithMissingSnake();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('3');
+    expect(await response.json()).toEqual({
+      error: 'Could not prepare the run — retry when you are ready',
+      retryable: true,
+    });
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Session-start snake ownership check failed: connection failure',
+      }),
+      { extra: { playerId: PLAYER_ID, snakeId: 'missing-snake' } }
+    );
   });
 });
 

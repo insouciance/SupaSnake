@@ -828,10 +828,31 @@ export async function POST(request: NextRequest) {
       }
 
       if (!snake) {
-        const { count } = await supabase
+        const { count, error: snakeOwnershipCountError } = await supabase
           .from('collected_snakes')
           .select('*', { count: 'exact', head: true })
           .eq('player_id', player.id);
+
+        if (snakeOwnershipCountError) {
+          console.error('Session-start snake ownership check failed:', {
+            playerId: player.id,
+            snakeId: snake_id,
+            error: snakeOwnershipCountError,
+          });
+          Sentry.captureException(
+            new Error(
+              `Session-start snake ownership check failed: ${snakeOwnershipCountError.message}`
+            ),
+            { extra: { playerId: player.id, snakeId: snake_id } }
+          );
+          return progressionJson(
+            {
+              error: 'Could not prepare the run — retry when you are ready',
+              retryable: true,
+            },
+            { status: 503, headers: { 'Retry-After': '3' } }
+          );
+        }
 
         if (!count) {
           return NextResponse.json(
