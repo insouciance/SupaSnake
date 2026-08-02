@@ -98,6 +98,7 @@ import type { TerrainBlock } from '@/shared/game/terrain';
 import { GeneChoiceOverlay } from '@/components/game/GeneChoiceOverlay';
 import { StrainMeterHUD } from '@/components/game/StrainMeterHUD';
 import { ExpressionFlourish } from '@/components/game/ExpressionFlourish';
+import { GenomeCommitCallout } from '@/components/game/genome/GenomeCommitCallout';
 import {
   PortalChoiceOverlay,
   StrainSurgeOverlay,
@@ -214,6 +215,10 @@ import {
   parseGenomeV2RunRecord,
 } from '@/components/game/genome/genomeV2ResultsAdapter';
 import type { GenomeYieldRecapModel } from '@/components/game/genome/GenomeYieldRecap';
+import {
+  buildGenomeV2CommitPresentation,
+  type GenomeV2CommitPresentation,
+} from '@/components/game/genome/genomeV2CommitPresentation';
 import { buildAscendanceProgressionModel } from '@/components/progression/ascendancePresentationAdapter';
 import { applyEnergyHarvestMultiplier } from '@/shared/game/energyEnvelope';
 import {
@@ -396,7 +401,7 @@ function BoardViewportShell({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col gap-1">
       <div className="flex h-10 shrink-0 items-center justify-center overflow-hidden px-3">
-        {rateCallout}
+        {eventCallout ?? rateCallout}
       </div>
       <div className="relative min-h-0 flex-1" data-testid="game-board-viewport">
         {children}
@@ -628,6 +633,8 @@ export default function GamePage() {
     strain: StrainId;
     tier: 2 | 3;
   } | null>(null);
+  const [genomeV2CommitCallout, setGenomeV2CommitCallout] =
+    useState<GenomeV2CommitPresentation | null>(null);
   const [lastGenomeCard, setLastGenomeCard] = useState<GenomeCardModel | null>(null);
   const [codexDiscoveries, setCodexDiscoveries] = useState<CodexDiscovery[]>([]);
   const { data: codexData, fetchCodex } = useCodexStore();
@@ -1783,10 +1790,20 @@ export default function GamePage() {
 
   const syncGenomeV2Mirror = useCallback(() => {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
-    setGenomeV2State(
-      bridge ? parseGenomeV2State(bridge.getState().genomeV2) : null
-    );
+    const next = bridge ? parseGenomeV2State(bridge.getState().genomeV2) : null;
+    setGenomeV2State(next);
+    return next;
   }, []);
+
+  const revealGenomeV2Commit = useCallback((
+    before: GenomeV2State | null,
+    after: GenomeV2State | null
+  ) => {
+    if (!before || !after || !genomeV2Activation) return;
+    setGenomeV2CommitCallout(
+      buildGenomeV2CommitPresentation(before, after, genomeV2Activation)
+    );
+  }, [genomeV2Activation]);
 
   const handleChooseMutation = useCallback((index: 0 | 1) => {
     gameRef.current?.chooseMutation(index);
@@ -1803,6 +1820,7 @@ export default function GamePage() {
     const offerId = genomeV2State?.offer?.offerId;
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     if (!offerId || !bridge) return;
+    const before = parseGenomeV2State(bridge.getState().genomeV2);
     if (bridge.resolveGenomeV2Offer({
       action: 'choose',
       offerId,
@@ -1810,29 +1828,30 @@ export default function GamePage() {
       ...(replacementSlot !== undefined ? { replacementSlot } : {}),
     })) {
       setChoiceOptions(null);
-      syncGenomeV2Mirror();
+      revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
       queueMicrotask(() => void checkpointNowRef.current());
     }
-  }, [armResumeAfterDecision, genomeV2State?.offer?.offerId, setChoiceOptions, syncGenomeV2Mirror]);
+  }, [armResumeAfterDecision, genomeV2State?.offer?.offerId, revealGenomeV2Commit, setChoiceOptions, syncGenomeV2Mirror]);
 
   const handleGenomeV2OfferDecline = useCallback((pinCandidateIndex?: 0 | 1) => {
     const offerId = genomeV2State?.offer?.offerId;
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     if (!offerId || !bridge) return;
+    const before = parseGenomeV2State(bridge.getState().genomeV2);
     if (bridge.resolveGenomeV2Offer({
       action: 'decline',
       offerId,
       ...(pinCandidateIndex !== undefined ? { pinCandidateIndex } : {}),
     })) {
       setChoiceOptions(null);
-      syncGenomeV2Mirror();
+      revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
       queueMicrotask(() => void checkpointNowRef.current());
     }
-  }, [armResumeAfterDecision, genomeV2State?.offer?.offerId, setChoiceOptions, syncGenomeV2Mirror]);
+  }, [armResumeAfterDecision, genomeV2State?.offer?.offerId, revealGenomeV2Commit, setChoiceOptions, syncGenomeV2Mirror]);
 
   const handlePortalChoice = useCallback((choice: 'bank' | 'pass' | 'infuse') => {
     if (gameRef.current?.resolvePortalChoice(choice)) {
@@ -1861,18 +1880,19 @@ export default function GamePage() {
     const portalId = genomeV2State?.portal?.portalId;
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     if (!portalId || !bridge) return;
+    const before = parseGenomeV2State(bridge.getState().genomeV2);
     if (bridge.resolveGenomeV2Portal({
       action: 'continue',
       portalId,
       activateMirror,
     })) {
       setPortalChoicePending(false);
-      syncGenomeV2Mirror();
+      revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
       queueMicrotask(() => void checkpointNowRef.current());
     }
-  }, [armResumeAfterDecision, genomeV2State?.portal?.portalId, setPortalChoicePending, syncGenomeV2Mirror]);
+  }, [armResumeAfterDecision, genomeV2State?.portal?.portalId, revealGenomeV2Commit, setPortalChoicePending, syncGenomeV2Mirror]);
 
   const handleGenomeV2PortalMutate = useCallback((
     candidateIndex: 0 | 1,
@@ -1881,6 +1901,7 @@ export default function GamePage() {
     const portalId = genomeV2State?.portal?.portalId;
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     if (!portalId || !bridge) return;
+    const before = parseGenomeV2State(bridge.getState().genomeV2);
     if (bridge.resolveGenomeV2Portal({
       action: 'mutate',
       portalId,
@@ -1888,12 +1909,12 @@ export default function GamePage() {
       ...(replacementSlot !== undefined ? { replacementSlot } : {}),
     })) {
       setPortalChoicePending(false);
-      syncGenomeV2Mirror();
+      revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
       queueMicrotask(() => void checkpointNowRef.current());
     }
-  }, [armResumeAfterDecision, genomeV2State?.portal?.portalId, setPortalChoicePending, syncGenomeV2Mirror]);
+  }, [armResumeAfterDecision, genomeV2State?.portal?.portalId, revealGenomeV2Commit, setPortalChoicePending, syncGenomeV2Mirror]);
 
   const handleGenomeV2Overclock = useCallback((source: GenomeV2OverclockSource) => {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
@@ -1917,6 +1938,10 @@ export default function GamePage() {
 
   const handleFlourishDone = useCallback(() => {
     setExpressionFlourish(null);
+  }, []);
+
+  const handleGenomeV2CommitCalloutDone = useCallback(() => {
+    setGenomeV2CommitCallout(null);
   }, []);
 
   // Calculate board center for camera
@@ -2384,10 +2409,9 @@ export default function GamePage() {
               parseAscendanceBreakdown(validation.ascendance)
             );
             const genomeV2Record = parseGenomeV2RunRecord(
-              validation.genomeV2
-                ?? (recordValue(validation.genome)?.v === 2
-                  ? validation.genome
-                  : null)
+              recordValue(result.genome)?.v === 2
+                ? result.genome
+                : null
             );
             setSettledGenomeRecap(
               genomeV2Record ? buildGenomeV2YieldRecap(genomeV2Record) : null
@@ -2771,6 +2795,7 @@ export default function GamePage() {
     setLastGenomeCard(null);
     setCodexDiscoveries([]);
     setExpressionFlourish(null);
+    setGenomeV2CommitCallout(null);
     setShowAbandonConfirm(false);
     setShowInterruptedAbandonConfirm(false);
     setPortalChoicePending(false);
@@ -4502,6 +4527,7 @@ export default function GamePage() {
       tier: normalizeStrainTier(strainTiers[id]),
       suppressed: suppressedStrains.has(id),
     })),
+    strainPointCap: genomeRulesVersion === 2 ? 5 : 4,
     showGenome: cockpitGenomeVisible,
     portalLive: Boolean(exitTile),
     portalTicksRemaining: Math.max(0, exitTicksRemaining),
@@ -4638,16 +4664,24 @@ export default function GamePage() {
                   />
                 )
               : undefined;
-  const cockpitEventCallout = HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying
+  const cockpitEventCallout = genomeV2CommitCallout && isPlaying
     ? (
+        <GenomeCommitCallout
+          model={genomeV2CommitCallout}
+          held={awaitingResumeInput}
+          onDone={handleGenomeV2CommitCalloutDone}
+        />
+      )
+    : HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying
+      ? (
         <ExpressionFlourish
           strain={expressionFlourish.strain}
           tier={expressionFlourish.tier}
           onDone={handleFlourishDone}
           presentation="cockpit"
         />
-      )
-    : undefined;
+        )
+      : undefined;
 
   const runRateCalloutNode: ReactNode =
     isPlaying && !blockingOverlayActive && runRateCallout ? (
