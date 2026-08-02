@@ -9,7 +9,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
-import { TacticalLoomConsequencePane } from './TacticalLoomConsequencePane';
+import { TacticalLoomLite } from './TacticalLoomLite';
 import type {
   TacticalLoomCandidate,
   TacticalLoomDecisionModel,
@@ -46,7 +46,6 @@ export function TacticalLoomDecision({
         : 'decline'
   );
   const [recodePhase, setRecodePhase] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [replacementSlot, setReplacementSlot] = useState<number | null>(null);
   const [declineOptionId, setDeclineOptionId] = useState<string | null>(
     model.decline.options?.[0]?.id ?? null
@@ -72,11 +71,10 @@ export function TacticalLoomDecision({
     ? selectedReplacement.consequence
     : selectedCandidate?.consequence ?? selectedDeclineOption?.consequence ?? model.decline.consequence;
   const action = recodePhase && selectedCandidate
-    ? `${selectedCandidate.action} · replace ${selectedReplacement?.label ?? 'one locus'}`
+    ? `${selectedCandidate.action} ${selectedCandidate.name} · replace ${selectedReplacement?.label ?? 'one locus'}`
     : selectedCandidate?.action ?? (selectedDeclineOption
       ? `${model.decline.action} · ${selectedDeclineOption.label}`
       : model.decline.action);
-  const fullDetailsVisible = detailsOpen || recodePhase;
 
   useEffect(() => {
     if (!locked) {
@@ -190,16 +188,12 @@ export function TacticalLoomDecision({
       aria-modal="true"
       aria-labelledby="tactical-loom-title"
       tabIndex={-1}
-      className={`absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 via-void-deep/10 to-transparent sm:justify-end sm:bg-gradient-to-l ${fullDetailsVisible ? 'sm:items-stretch' : 'sm:items-center'}`}
+      className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 via-void-deep/10 to-transparent sm:items-center sm:justify-end sm:bg-gradient-to-l"
       data-testid="gene-choice-overlay"
       data-rules-version={model.rulesVersion}
     >
       <div
-        className={`panel-elevated flex w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 animate-pop-in sm:ml-auto sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5 ${
-          fullDetailsVisible
-            ? 'h-[min(64dvh,620px)] sm:h-full sm:max-h-none sm:w-[min(48rem,56vw)] sm:max-w-none'
-            : 'h-auto max-h-[min(48dvh,430px)] sm:h-auto sm:max-h-[min(78dvh,520px)] sm:w-[min(34rem,44vw)] sm:max-w-none'
-        }`}
+        className="panel-elevated flex h-auto max-h-[min(66dvh,680px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 animate-pop-in sm:ml-auto sm:max-h-[min(88dvh,720px)] sm:w-[min(36rem,48vw)] sm:max-w-none sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5"
         style={{ '--glow': '#a855f7' } as CSSProperties}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-scale-blue-light/20 pb-3">
@@ -271,22 +265,6 @@ export function TacticalLoomDecision({
             );
           })}
         </div>
-
-        {!recodePhase ? (
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((open) => !open)}
-            aria-expanded={detailsOpen}
-            aria-controls="tactical-loom-consequences"
-            className="mb-3 flex min-h-11 shrink-0 items-center justify-between gap-3 rounded-[10px] border border-scale-blue-light/25 bg-void/35 px-3 text-left hover:border-cosmic/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cosmic"
-            data-testid="loom-details-toggle"
-          >
-            <span className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-beige/55">Tactical Loom</span>
-            <strong className="font-display text-xs tracking-[0.08em] text-cosmic">
-              / {detailsOpen ? 'Hide details' : 'Details'}
-            </strong>
-          </button>
-        ) : null}
 
         <div
           id="tactical-loom-consequences"
@@ -363,33 +341,11 @@ export function TacticalLoomDecision({
             </section>
           ) : null}
 
-          {fullDetailsVisible ? (
-            <TacticalLoomConsequencePane
-              consequence={consequence}
-              action={action}
-              currentGenome={model.currentGenome}
-            />
-          ) : (
-            <section
-              className="rounded-[14px] border border-cosmic/30 bg-gradient-to-br from-cosmic/9 via-void-deep/70 to-void/55 p-3"
-              data-testid="loom-quick-read"
-            >
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate font-body text-[9px] font-bold uppercase tracking-[0.14em] text-beige/50">
-                  {consequence.category}
-                </span>
-                <strong className="shrink-0 rounded-full border border-cosmic/35 bg-cosmic/10 px-2 py-1 font-body text-[9px] font-bold uppercase tracking-[0.08em] text-cosmic">
-                  {consequence.salienceChip ?? consequence.category}
-                </strong>
-              </div>
-              <p className="mt-2 truncate font-body text-sm font-bold text-bone-white" title={consequence.effect}>
-                {consequence.effect}
-              </p>
-              <p className="mt-1 truncate font-body text-xs text-venom-orange/85" title={consequence.cost}>
-                <span className="font-bold uppercase tracking-[0.08em]">Cost</span> · {consequence.cost}
-              </p>
-            </section>
-          )}
+          <TacticalLoomLite
+            consequence={consequence}
+            action={action}
+            currentGenome={model.currentGenome}
+          />
         </div>
 
         <footer className="mt-3 flex shrink-0 items-center justify-between gap-3 border-t border-scale-blue-light/20 pt-3">

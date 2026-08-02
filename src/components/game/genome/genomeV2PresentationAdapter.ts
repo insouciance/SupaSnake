@@ -29,6 +29,7 @@ import type {
   TacticalLoomGenomeSlot,
   TacticalLoomSplicePath,
   TacticalLoomStrainProjection,
+  TacticalLoomTrigger,
 } from './tacticalLoomPresentation';
 
 export interface GenomeV2UnlockPresentation {
@@ -201,6 +202,27 @@ const CATEGORY_LABELS: Record<GenomeV2GeneCategory, string> = {
   terrain: 'Movement & terrain',
   survival: 'Survival & insurance',
   genome: 'Genome control',
+};
+
+const GENE_TRIGGER_PRESENTATION: Readonly<
+  Record<GenomeV2ActiveGeneId, TacticalLoomTrigger>
+> = {
+  gold_trail: { label: 'Every fifth eligible target', cadence: 5, unit: 'target' },
+  compound_interest: { label: 'Each deliberate Loom DECLINE', cadence: 1, unit: 'offer' },
+  loan_shark: { label: 'Portal PASS starts a six-food contract', cadence: 6, unit: 'food' },
+  live_wire: { label: 'Every third eligible target', cadence: 3, unit: 'target' },
+  circuit_run: { label: 'Every fourth eligible target', cadence: 4, unit: 'target' },
+  time_dilation: { label: 'Always active · body cost every fourth food', cadence: 4, unit: 'food' },
+  overgrowth: { label: 'Every food', cadence: 1, unit: 'food' },
+  coilkeeper: { label: 'Charge eight foods, then seal territory', cadence: 8, unit: 'food' },
+  wall_rush: { label: 'Charged deliberate wall impact' },
+  phase_gate: { label: 'Every fifth food can charge a Gate', cadence: 5, unit: 'food' },
+  mirror_wager: { label: 'Opt in on an explicit portal CONTINUE', cadence: 1, unit: 'portal' },
+  phoenix: { label: 'First fatal collision while ready' },
+  loom_anchor: { label: 'Pin on DECLINE · recharge on portal PASS' },
+  heartwood: { label: 'Deliberate PRIMAL territory geometry' },
+  zenith_protocol: { label: 'Player-triggered CYBER overclock' },
+  constellation_crown: { label: 'Perfect COSMIC constellation clear' },
 };
 
 export function genomeV2CategoryLabel(category: GenomeV2GeneCategory): string {
@@ -697,6 +719,7 @@ function replacementConsequence(
   ].filter((path): path is TacticalLoomSplicePath => path !== null);
   const consequence: TacticalLoomConsequence = {
     category: CATEGORY_LABELS[candidate.category],
+    trigger: GENE_TRIGGER_PRESENTATION[candidate.geneId],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
     genomeAfter: fallbackResultingGenome(state, candidate.geneId, replacement.slot),
@@ -747,6 +770,7 @@ function candidateConsequence(
 ): TacticalLoomConsequence {
   const consequence: TacticalLoomConsequence = {
     category: CATEGORY_LABELS[candidate.category],
+    trigger: GENE_TRIGGER_PRESENTATION[candidate.geneId],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
     genomeAfter: fallbackResultingGenome(state, candidate.geneId),
@@ -802,6 +826,7 @@ function declineOptionConsequence(
   const bondDelta = option.bondAfter - projection.liabilities.bonds;
   const consequence: TacticalLoomConsequence = {
     category: option.pinGeneId ? 'Genome control' : 'Opportunity cost',
+    trigger: { label: 'Resolves when DECLINE is confirmed', cadence: 1, unit: 'offer' },
     effect: option.pinGeneId
       ? `Spend one charged Anchor to preserve ${GENOME_V2_GENES[option.pinGeneId].name} for its next legal offer.`
       : bondDelta > 0
@@ -887,6 +912,7 @@ function declineConsequence(
     return {
       category: 'Portal return',
       salienceChip: 'No commitment',
+      trigger: { label: 'Return before committing a mutation' },
       effect: 'Return to BANK / CONTINUE / MUTATE without consuming this portal or its Genome offer.',
       cost: 'No build choice is committed.',
       genomeAfter: genomePresentation(state),
@@ -912,6 +938,7 @@ function declineConsequence(
   return {
     category: 'Opportunity cost',
     salienceChip: after.bonds > state.bonds ? `BANK Bond ${state.bonds} → ${after.bonds}` : 'Genome unchanged',
+    trigger: { label: 'Resolves when DECLINE is confirmed', cadence: 1, unit: 'offer' },
     effect: after.bonds > state.bonds
       ? 'Spend this offer, keep the current Genome, and mint one prospective BANK Bond.'
       : 'Spend this offer and keep the current Genome unchanged.',

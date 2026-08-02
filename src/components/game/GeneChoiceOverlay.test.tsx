@@ -18,6 +18,7 @@ function slots(label = 'Gold Trail') {
 function consequence(name: string): TacticalLoomConsequence {
   return {
     category: 'Execution & route mastery',
+    trigger: { label: 'Every third eligible target', cadence: 3, unit: 'target' },
     effect: `${name} creates a topology-scaled ×3 route test.`,
     cost: 'A miss burns the transformed target to zero Yield.',
     genomeAfter: slots(name),
@@ -109,7 +110,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('keeps one shared consequence pane and exposes every affected 3/4/5 threshold', () => {
+  it('keeps the live decision intuitive and exposes only consequences that light up now', () => {
     render(
       <GeneChoiceOverlay
         {...baseProps}
@@ -120,17 +121,16 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     );
     expect(screen.getByRole('dialog', { name: 'Tactical Loom' })).toHaveAttribute('aria-modal', 'true');
     expect(screen.queryByTestId('loom-consequence-pane')).toBeNull();
-    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Live Wire creates');
-    fireEvent.click(screen.getByTestId('loom-details-toggle'));
-    expect(screen.getAllByTestId('loom-consequence-pane')).toHaveLength(1);
-    expect(screen.getByTestId('loom-genome-before')).toHaveAccessibleName('Current Genome');
-    expect(screen.getByTestId('loom-genome-after')).toHaveAccessibleName('Resulting Genome');
-    expect(screen.getByTestId('loom-tier-VOLT-3')).toHaveTextContent('Telemetry');
-    expect(screen.getByTestId('loom-tier-VOLT-4')).toHaveTextContent('Bank 2 runs');
-    expect(screen.getByTestId('loom-tier-VOLT-5')).toHaveTextContent('Bank 10 runs or reach M3');
-    expect(screen.getByTestId('loom-splice-paths')).toHaveTextContent('Perfect Circuit');
-    expect(screen.getByTestId('loom-fact-stake')).toHaveTextContent('40 DNA');
-    expect(screen.getByTestId('loom-dynasty-facts')).not.toHaveTextContent(/best|recommended/i);
+    expect(screen.queryByTestId('loom-details-toggle')).toBeNull();
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Live Wire creates');
+    expect(screen.getByTestId('loom-lite-trigger')).toHaveTextContent('Every third eligible target');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Telemetry lights up now');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Forms · Perfect Circuit');
+    expect(screen.queryByText('Bank 2 runs to activate Expressions')).toBeNull();
+    expect(screen.queryByText('Bank 10 runs or reach M3')).toBeNull();
+    expect(screen.queryByText(/best|recommended/i)).toBeNull();
   });
 
   it('previews THREAD, FORK, and DECLINE before an explicit confirmation', () => {
@@ -147,13 +147,13 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
 
     fireEvent.click(screen.getByTestId('gene-option-1'));
-    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Phase Gate creates');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Phase Gate creates');
     expect(onChoose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onChoose).toHaveBeenCalledWith(1);
 
     fireEvent.click(screen.getByTestId('gene-decline'));
-    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('mint Bond 2 of 3');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('mint Bond 2 of 3');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onDecline).toHaveBeenCalledTimes(1);
   });
@@ -242,7 +242,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('gene-decline'));
     expect(screen.getByTestId('loom-anchor-decline-step')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('loom-decline-option-pin-a'));
-    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('mints no Bond');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('mints no Bond');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onDecline).toHaveBeenCalledWith(0);
   });
@@ -280,7 +280,9 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(screen.getByTestId('loom-recode-step')).toHaveTextContent('Step 2 of 2');
     expect(screen.getByTestId('loom-replace-0')).toHaveTextContent('+8 growth');
-    expect(screen.getByTestId('loom-retained-facts')).toHaveTextContent('Bonds · Escrow · Stake · Scars · Ash · prior growth');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Selected · THREAD Live Wire · replace Gold Trail');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onRecode).toHaveBeenCalledWith(0, 0);
   });
@@ -317,9 +319,8 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     expect(screen.getByTestId('gene-choice-overlay')).toHaveAttribute('data-rules-version', '1');
-    fireEvent.click(screen.getByTestId('loom-details-toggle'));
-    expect(screen.getByTestId('loom-splice-paths')).toHaveTextContent('Uncatalogued Splice');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Uncatalogued Splice');
     fireEvent.focus(screen.getByTestId('gene-decline'));
-    expect(screen.getByTestId('loom-consequence-pane')).toHaveTextContent('forced to FERAL');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('forced to FERAL');
   });
 });
