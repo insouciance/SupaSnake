@@ -99,16 +99,20 @@ function splicePaths(
   if (immediate) {
     const known = discovered.has(immediate);
     const splice = SPLICES[immediate];
+    const partner = splice.parents.find((geneId) => geneId !== option);
     paths.push({
       id: immediate,
       name: known ? splice.name : 'Uncatalogued Splice',
       stage: 'immediate',
+      projectionState: 'forms-now',
       rule: known ? splice.effect : 'This choice creates a valid fusion in one active locus.',
       cost: known ? splice.cost : 'Its complete rule is revealed when the fusion is discovered.',
       recipeKnown: known,
       recipeLabel: known
         ? `Recipe: ${GENES[splice.parents[0]].name} + ${GENES[splice.parents[1]].name}`
         : 'Recipe not yet archived',
+      partnerLabel: partner ? GENES[partner].name : undefined,
+      partnerState: 'held',
       activation: 'available',
     });
   }
@@ -122,10 +126,13 @@ function splicePaths(
       id: `${spliceId}:next`,
       name: splice.name,
       stage: 'one-step',
+      projectionState: 'future',
       rule: splice.effect,
       cost: splice.cost,
       recipeKnown: true,
       recipeLabel: `Next connection: ${GENES[partner].name}`,
+      partnerLabel: GENES[partner].name,
+      partnerState: 'needed',
       activation: 'available',
     });
   }

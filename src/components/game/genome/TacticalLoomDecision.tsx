@@ -9,6 +9,8 @@ import {
   type CSSProperties,
 } from 'react';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
+import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { TacticalLoomLite } from './TacticalLoomLite';
 import type {
   TacticalLoomCandidate,
@@ -168,6 +170,7 @@ export function TacticalLoomDecision({
         action: candidate.action,
         name: candidate.name,
         category: candidate.category,
+        strains: candidate.strains,
         disabledReason: candidate.disabledReason,
       })),
       {
@@ -175,6 +178,7 @@ export function TacticalLoomDecision({
         action: model.decline.action,
         name: model.decline.name,
         category: 'Opportunity cost',
+        strains: [] as readonly StrainId[],
         disabledReason: undefined,
       },
     ],
@@ -256,6 +260,20 @@ export function TacticalLoomDecision({
                 <span className="mt-0.5 block truncate font-body text-[10px] font-bold text-bone-white sm:text-xs" title={choice.name}>
                   {choice.name}
                 </span>
+                {choice.strains.length > 0 ? (
+                  <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5" aria-label={`Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
+                    {choice.strains.map((id) => (
+                      <span
+                        key={id}
+                        className="inline-flex min-w-0 items-center gap-1 font-body text-[9px] font-bold tracking-[0.05em] sm:text-[10px]"
+                        style={{ color: STRAINS[id].color }}
+                      >
+                        <i className="h-2.5 w-2.5 shrink-0" aria-hidden="true"><StrainGlyph id={id} /></i>
+                        {STRAINS[id].name.toUpperCase()}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
                 {choice.disabledReason ? (
                   <span className="mt-0.5 block truncate font-body text-[9px] text-venom-orange" title={choice.disabledReason}>
                     {choice.disabledReason}
@@ -345,6 +363,9 @@ export function TacticalLoomDecision({
             consequence={consequence}
             action={action}
             currentGenome={model.currentGenome}
+            geneId={selectedCandidate?.geneId ?? null}
+            geneName={selectedCandidate?.name ?? null}
+            strains={selectedCandidate?.strains ?? []}
           />
         </div>
 

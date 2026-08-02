@@ -11,7 +11,14 @@ const VIEWPORTS = [
   { name: 'landscape', width: 844, height: 390 },
   { name: 'desktop', width: 1440, height: 900 },
 ];
-const KINDS = ['hold', 'abandon', 'gene', 'mutation', 'portal', 'surge', 'expression'];
+const ALL_KINDS = ['hold', 'abandon', 'gene', 'gene-recode', 'mutation', 'portal', 'surge', 'expression'];
+const requestedKinds = process.env.COCKPIT_KINDS
+  ?.split(',')
+  .map((kind) => kind.trim())
+  .filter(Boolean);
+const KINDS = requestedKinds?.length
+  ? ALL_KINDS.filter((kind) => requestedKinds.includes(kind))
+  : ALL_KINDS;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -49,6 +56,7 @@ async function openCase({ kind, viewport, consent }) {
 
   await page.goto(`${BASE_URL}/dev/cockpit/decision?kind=${kind}`, {
     waitUntil: 'domcontentloaded',
+    timeout: 120_000,
   });
   await page.locator('[data-testid="game-board-viewport"] canvas').waitFor({
     state: 'visible',

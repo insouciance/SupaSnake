@@ -110,7 +110,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('keeps the live decision intuitive and exposes only consequences that light up now', () => {
+  it('keeps the live decision intuitive while exposing the whole tappable 3/4/5 path', () => {
     render(
       <GeneChoiceOverlay
         {...baseProps}
@@ -122,15 +122,89 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByRole('dialog', { name: 'Tactical Loom' })).toHaveAttribute('aria-modal', 'true');
     expect(screen.queryByTestId('loom-consequence-pane')).toBeNull();
     expect(screen.queryByTestId('loom-details-toggle')).toBeNull();
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('VOLT');
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('Live Wire creates');
     expect(screen.getByTestId('loom-lite-trigger')).toHaveTextContent('Every third eligible target');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
-    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Telemetry lights up now');
-    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Forms · Perfect Circuit');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Telemetry');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Relay');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Overclock');
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('NOW');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Perfect Circuit');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('FORMS');
     expect(screen.queryByText('Bank 2 runs to activate Expressions')).toBeNull();
     expect(screen.queryByText('Bank 10 runs or reach M3')).toBeNull();
+    fireEvent.click(screen.getByTestId('loom-strain-VOLT-tier-4'));
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('A clean route arms a compatible challenge.');
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('Bank 2 runs to activate Expressions');
     expect(screen.queryByText(/best|recommended/i)).toBeNull();
+  });
+
+  it('spells out dual Strains and preserves every immediate and future Splice branch', () => {
+    const baseModel = model();
+    const voltage = baseModel.candidates[0].consequence.strains[0];
+    const dualModel: TacticalLoomDecisionModel = {
+      ...baseModel,
+      candidates: [{
+        ...baseModel.candidates[0],
+        geneId: 'phoenix',
+        name: 'Phoenix',
+        strains: ['UMBRA', 'FERAL'],
+        consequence: {
+          ...baseModel.candidates[0].consequence,
+          strains: [
+            { ...voltage, id: 'UMBRA', name: 'Umbra', color: '#f54263' },
+            { ...voltage, id: 'FERAL', name: 'Feral', color: '#6fe65d' },
+          ],
+          splices: [
+            {
+              id: 'splice_styx_contract:immediate',
+              name: 'Styx Contract',
+              stage: 'immediate',
+              projectionState: 'forms-now',
+              rule: 'The visible Stake can fund Phoenix.',
+              cost: 'Using Phoenix consumes the Stake.',
+              recipeKnown: true,
+              recipeLabel: 'Mirror Wager + Phoenix',
+              partnerLabel: 'Mirror Wager',
+              partnerState: 'held',
+              activation: 'available',
+            },
+            {
+              id: 'splice_ashen_stake:future',
+              name: 'Ashen Stake',
+              stage: 'one-step',
+              projectionState: 'future',
+              rule: 'A completed Loan can fund Phoenix.',
+              cost: 'The contract pays no ordinary Yield.',
+              recipeKnown: true,
+              recipeLabel: 'Loan Shark + Phoenix',
+              partnerLabel: 'Loan Shark',
+              partnerState: 'needed',
+              activation: 'available',
+            },
+          ],
+        },
+      }, baseModel.candidates[1]],
+    };
+
+    render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={dualModel}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('UMBRA');
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('FERAL');
+    expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('UMBRA');
+    expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('FERAL');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Styx Contract');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('HELD Mirror Wager');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Ashen Stake');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('NEEDS Loan Shark');
   });
 
   it('previews THREAD, FORK, and DECLINE before an explicit confirmation', () => {
@@ -280,7 +354,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(screen.getByTestId('loom-recode-step')).toHaveTextContent('Step 2 of 2');
     expect(screen.getByTestId('loom-replace-0')).toHaveTextContent('+8 growth');
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Selected · THREAD Live Wire · replace Gold Trail');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('THREAD Live Wire · replace Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
     fireEvent.click(screen.getByTestId('loom-confirm'));
@@ -319,7 +393,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     expect(screen.getByTestId('gene-choice-overlay')).toHaveAttribute('data-rules-version', '1');
-    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Uncatalogued Splice');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Uncatalogued Splice');
     fireEvent.focus(screen.getByTestId('gene-decline'));
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('forced to FERAL');
   });
