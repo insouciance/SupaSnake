@@ -9,9 +9,10 @@ import {
   type CSSProperties,
 } from 'react';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
-import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { GeneGlyph, StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { TacticalLoomLite } from './TacticalLoomLite';
+import decisionStyles from './TacticalLoomDecision.module.css';
 import type {
   TacticalLoomCandidate,
   TacticalLoomDecisionModel,
@@ -170,6 +171,7 @@ export function TacticalLoomDecision({
         action: candidate.action,
         name: candidate.name,
         category: candidate.category,
+        geneId: candidate.geneId,
         strains: candidate.strains,
         disabledReason: candidate.disabledReason,
       })),
@@ -178,6 +180,7 @@ export function TacticalLoomDecision({
         action: model.decline.action,
         name: model.decline.name,
         category: 'Opportunity cost',
+        geneId: null,
         strains: [] as readonly StrainId[],
         disabledReason: undefined,
       },
@@ -197,7 +200,7 @@ export function TacticalLoomDecision({
       data-rules-version={model.rulesVersion}
     >
       <div
-        className="panel-elevated flex h-auto max-h-[min(66dvh,680px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 animate-pop-in sm:ml-auto sm:max-h-[min(88dvh,720px)] sm:w-[min(36rem,48vw)] sm:max-w-none sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5"
+        className={`${decisionStyles.decisionPanel} panel-elevated flex h-auto max-h-[min(66dvh,680px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 animate-pop-in sm:ml-auto sm:max-h-[min(88dvh,720px)] sm:w-[min(36rem,48vw)] sm:max-w-none sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5`}
         style={{ '--glow': '#a855f7' } as CSSProperties}
       >
         <header className="flex shrink-0 flex-col items-stretch gap-1.5 border-b border-scale-blue-light/20 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
@@ -229,13 +232,16 @@ export function TacticalLoomDecision({
         <div
           role="radiogroup"
           aria-label="Genome decision"
-          className="grid shrink-0 grid-cols-3 gap-1.5 py-3 sm:gap-3"
+          className={`${decisionStyles.choiceWeave} shrink-0`}
           data-testid="loom-choice-rail"
           data-responsive-composition="portrait-bottom landscape-side"
         >
           {choices.map((choice, index) => {
             const active = selected === choice.key;
             const testId = index < 2 ? `gene-option-${index}` : 'gene-decline';
+            const accent = choice.strains[0]
+              ? STRAINS[choice.strains[0]].color
+              : '#a855f7';
             return (
               <button
                 key={choice.key}
@@ -248,34 +254,37 @@ export function TacticalLoomDecision({
                 onClick={() => select(choice.key)}
                 onFocus={() => select(choice.key)}
                 data-testid={testId}
-                className={`min-h-11 min-w-0 rounded-[12px] border px-2 py-2 text-left transition-colors sm:px-4 ${
-                  active
-                    ? 'border-cosmic bg-cosmic/12 shadow-[0_0_18px_rgba(168,85,247,0.18)]'
-                    : 'border-scale-blue-light/30 bg-void/45 hover:border-scale-blue-light/60'
-                } disabled:cursor-wait disabled:opacity-55`}
+                data-active={active ? 'true' : 'false'}
+                className={decisionStyles.choiceToken}
+                style={{ '--choice-accent': accent } as CSSProperties}
               >
-                <span className="block font-display text-[11px] tracking-[0.1em] text-cosmic sm:text-sm">
+                <span className={decisionStyles.choiceCore} aria-hidden="true">
+                  <i className={decisionStyles.choiceGlyph}>
+                    <GeneGlyph id={choice.geneId ?? 'loom-decline'} />
+                  </i>
+                </span>
+                <span className={decisionStyles.choiceAction}>
                   {index < 2 ? `${index === 0 ? 'A' : 'B'} · ` : ''}{choice.action}
                 </span>
-                <span className="mt-0.5 block truncate font-body text-[10px] font-bold text-bone-white sm:text-xs" title={choice.name}>
+                <span className={`${decisionStyles.choiceName} truncate`} title={choice.name}>
                   {choice.name}
                 </span>
                 {choice.strains.length > 0 ? (
-                  <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5" aria-label={`Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
+                  <span className={decisionStyles.choiceStrains} aria-label={`Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
                     {choice.strains.map((id) => (
                       <span
                         key={id}
-                        className="inline-flex min-w-0 items-center gap-1 font-body text-[9px] font-bold tracking-[0.05em] sm:text-[10px]"
+                        className={decisionStyles.choiceStrain}
                         style={{ color: STRAINS[id].color }}
                       >
-                        <i className="h-2.5 w-2.5 shrink-0" aria-hidden="true"><StrainGlyph id={id} /></i>
+                        <i aria-hidden="true"><StrainGlyph id={id} /></i>
                         {STRAINS[id].name.toUpperCase()}
                       </span>
                     ))}
                   </span>
                 ) : null}
                 {choice.disabledReason ? (
-                  <span className="mt-0.5 block truncate font-body text-[9px] text-venom-orange" title={choice.disabledReason}>
+                  <span className={decisionStyles.choiceDisabled} title={choice.disabledReason}>
                     {choice.disabledReason}
                   </span>
                 ) : null}
