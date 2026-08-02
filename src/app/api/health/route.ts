@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { inspectProductionPublicSurface } from '@/lib/server/productionPublicSurface';
@@ -267,6 +268,20 @@ async function checkGenomeV2(): Promise<HealthResponse['checks']['genomeV2']> {
       ascendanceVersion !== 2 ||
       spliceCount !== 8
     ) {
+      const failure = error ?? new Error('Genome v2 capability invalid');
+      Sentry.captureException(failure, {
+        tags: {
+          subsystem: 'health',
+          dependency: 'genome-v2-capability',
+        },
+        extra: {
+          status: capability?.status ?? null,
+          schemaVersion,
+          catalogVersion,
+          ascendanceVersion,
+          spliceCount,
+        },
+      });
       return {
         status: 'unhealthy',
         responseTime: Date.now() - start,
@@ -283,6 +298,12 @@ async function checkGenomeV2(): Promise<HealthResponse['checks']['genomeV2']> {
       spliceCount,
     };
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: {
+        subsystem: 'health',
+        dependency: 'genome-v2-capability',
+      },
+    });
     return {
       status: 'unhealthy',
       responseTime: Date.now() - start,
