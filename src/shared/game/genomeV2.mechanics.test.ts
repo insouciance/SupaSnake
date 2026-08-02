@@ -10,6 +10,7 @@ import {
   genomeV2BodyGrowthDelta,
   genomeV2EventId,
   genomeV2FtueFromPresentation,
+  genomeV2MechanicEnabled,
   genomeV2OfferInterval,
   genomeV2RunRecord,
   genomeV2SerializedBytes,
@@ -488,6 +489,16 @@ describe('Genome v2 Splices', () => {
     expect(state.crownBondReserve).toBe(genomeV2Yield(2));
     expect(settleGenomeV2(state, 'bank').crownBondPaid).toBe(genomeV2Yield(3));
     expect(settleGenomeV2(state, 'crash').crownBondForfeited).toBe(genomeV2Yield(2));
+  });
+
+  it('exports the canonical distinction between retained and consumed parent mechanics', () => {
+    let state = acquire(createGenomeV2State('PRIMAL'), 'gold_trail', 0);
+    state = acquire(state, 'compound_interest', 1);
+
+    expect(state.activeSplices).toEqual(['splice_dragon_hoard']);
+    expect(genomeV2MechanicEnabled(state, 'gold_trail')).toBe(true);
+    expect(genomeV2MechanicEnabled(state, 'compound_interest')).toBe(false);
+    expect(genomeV2MechanicEnabled(state, 'overgrowth')).toBe(false);
   });
 
   it('Gilded Fork makes a no-timer exclusive greed/body choice', () => {
