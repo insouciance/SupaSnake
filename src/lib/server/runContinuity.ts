@@ -666,12 +666,17 @@ function parseTerminalReplayProof(value: unknown): SnakeTerminalReplayProof {
   const fromTick = safeInteger(record?.fromTick);
   const toTick = safeInteger(record?.toTick);
   const actionOffset = safeInteger(record?.actionOffset);
+  const activeElapsedValue = record?.activeElapsedMs;
+  const activeElapsedMs = activeElapsedValue === undefined
+    ? undefined
+    : safeInteger(activeElapsedValue);
   if (
     fromTick === null ||
     toTick === null ||
     toTick < fromTick ||
     toTick - fromTick > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
     actionOffset === null ||
+    activeElapsedMs === null ||
     !Array.isArray(record?.actions) ||
     record.actions.length > RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
   ) {
@@ -683,7 +688,13 @@ function parseTerminalReplayProof(value: unknown): SnakeTerminalReplayProof {
   if (parsed.actions.some((action) => action.tick < fromTick)) {
     rejectCheckpoint('Terminal replay proof predates its checkpoint base.');
   }
-  return { fromTick, toTick, actionOffset, actions: parsed.actions };
+  return {
+    fromTick,
+    toTick,
+    actionOffset,
+    actions: parsed.actions,
+    activeElapsedMs,
+  };
 }
 
 function replayComparable(checkpoint: SnakeCheckpointV1): Record<string, unknown> {
@@ -1851,11 +1862,47 @@ function deriveTerminalIntent(
     ticks: proof.toTick,
     actions: [...priorTrace.actions, ...proof.actions.slice(overlapCount)],
   };
-  const elapsedMs = Math.max(0, now - activatedAt);
-  const maxTicks = Math.ceil(elapsedMs / 20) + 16;
+  const priorActiveElapsedMs = safeInteger(checkpoint.privateState.elapsedMs);
+  if (priorActiveElapsedMs === null) {
+    throw new RunContinuityError(
+      'Terminal checkpoint has invalid active time.',
+      'invalid_checkpoint'
+    );
+  }
+  const suffixTicks = trace.ticks - priorTrace.ticks;
+  // Compatibility for already-open pre-cutover tabs: old terminal proofs do
+  // not carry an elapsed clock. Settle those conservatively from the accepted
+  // checkpoint plus only the fastest physically possible replay suffix. Never
+  // derive progress from activation wall time, which includes offline gaps.
+  const activeElapsedMs = proof.activeElapsedMs ??
+    priorActiveElapsedMs + suffixTicks * STRAIN_PHYSICS.tickFloorMs;
+  const checkpointSavedAt = Date.parse(row.continuity_checkpoint_saved_at ?? '');
+  const leaseIssuedAt = Date.parse(row.continuity_lease_issued_at ?? '');
+  const activeWindowAnchor = Math.max(
+    activatedAt,
+    Number.isFinite(checkpointSavedAt) ? checkpointSavedAt : activatedAt,
+    Number.isFinite(leaseIssuedAt) ? leaseIssuedAt : activatedAt
+  );
+  const serverElapsedMs = Math.max(0, now - activatedAt);
+  const activeWindowMs = Math.max(0, now - activeWindowAnchor);
+  if (
+    !Number.isSafeInteger(activeElapsedMs) ||
+    activeElapsedMs < priorActiveElapsedMs ||
+    activeElapsedMs > serverElapsedMs + 10_000 ||
+    activeElapsedMs - priorActiveElapsedMs > activeWindowMs + 10_000
+  ) {
+    throw new RunContinuityError(
+      'Terminal active time exceeds its server time bound.',
+      'invalid_checkpoint'
+    );
+  }
+  const maxSuffixTicks =
+    Math.ceil(
+      (activeElapsedMs - priorActiveElapsedMs) / STRAIN_PHYSICS.tickFloorMs
+    ) + 16;
   if (
     trace.ticks < priorTrace.ticks ||
-    trace.ticks > maxTicks ||
+    suffixTicks > maxSuffixTicks ||
     trace.ticks - priorTrace.ticks > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
     trace.actions.length - priorTrace.actions.length >
       RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
@@ -1875,7 +1922,7 @@ function deriveTerminalIntent(
   const facts: TerminalRunIntent['facts'] = {
     score: result.score,
     dna_earned: result.dnaCollected,
-    duration_seconds: Math.floor(elapsedMs / 1_000),
+    duration_seconds: Math.floor(activeElapsedMs / 1_000),
     food_count: result.foodEaten,
     extracted: result.extracted,
     died: !result.extracted,
@@ -1890,7 +1937,7 @@ function deriveTerminalIntent(
     throw new RunContinuityError('Terminal settlement facts exceed their safe bound.', 'invalid_checkpoint');
   }
   const replayDigest = createHash('sha256')
-    .update(JSON.stringify(trace))
+    .update(JSON.stringify({ trace, activeElapsedMs }))
     .digest('hex');
   return {
     facts,

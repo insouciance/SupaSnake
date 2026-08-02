@@ -737,6 +737,13 @@ export interface SnakeTerminalReplayProof {
   toTick: number;
   actionOffset: number;
   actions: SnakeReplayAction[];
+  /**
+   * Cumulative play-clock elapsed at the terminal boundary. A restored engine
+   * carries the accepted checkpoint value forward, so time spent offline is
+   * absent. The server treats this as a bounded proposal, never raw authority.
+   * Optional only so already-open pre-cutover tabs can finish conservatively.
+   */
+  activeElapsedMs?: number;
 }
 
 /**

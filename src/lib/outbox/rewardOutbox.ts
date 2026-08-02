@@ -87,6 +87,10 @@ function isValidEntry(value: unknown): value is RewardOutboxEntry {
     entry.replay.toTick >= entry.replay.fromTick &&
     Number.isSafeInteger(entry.replay.actionOffset) &&
     entry.replay.actionOffset >= 0 &&
+    (entry.replay.activeElapsedMs === undefined || (
+      Number.isSafeInteger(entry.replay.activeElapsedMs) &&
+      entry.replay.activeElapsedMs >= 0
+    )) &&
     Array.isArray(entry.replay.actions) &&
     entry.replay.actions.every(
       (action, index, actions) =>

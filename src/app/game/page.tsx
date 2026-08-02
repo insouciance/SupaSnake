@@ -2165,6 +2165,14 @@ export default function GamePage() {
 
     gameRef.current.on('gameOver', async (rawData: unknown) => {
       const data = rawData as GameOverData;
+      // Freeze the cumulative play clock at the terminal simulation boundary.
+      // Awaiting an in-flight checkpoint or settlement request must not turn
+      // network time into run time. Resumes backdate this ref only by the last
+      // accepted active elapsed value, so offline time is absent as well.
+      const terminalActiveElapsedMs = Math.max(
+        0,
+        Math.floor(Date.now() - gameStartTime.current)
+      );
       // The terminal tick is final locally. Cancel the interval immediately;
       // any checkpoint already queued is allowed to finish below, but no new
       // simulation boundary can be scheduled behind terminalization.
@@ -2201,7 +2209,11 @@ export default function GamePage() {
         const acceptedReplay = acceptedReplayRef.current;
         const terminalTrace = gameRef.current?.getReplayTrace() ?? null;
         const terminalReplay = acceptedReplay && terminalTrace
-          ? buildTerminalReplayProof(acceptedReplay, terminalTrace)
+          ? buildTerminalReplayProof(
+              acceptedReplay,
+              terminalTrace,
+              terminalActiveElapsedMs
+            )
           : null;
         const requiresReplayTerminal = continuityPhaseRef.current === 'active';
         const replayTerminal =
@@ -2215,7 +2227,7 @@ export default function GamePage() {
           setStartError('The terminal run proof could not be secured. Reload to recover the last server checkpoint.');
           return;
         }
-        const gameDuration = Math.floor((Date.now() - gameStartTime.current) / 1000);
+        const gameDuration = Math.floor(terminalActiveElapsedMs / 1000);
         // Identity v1 section 9.5: the run's compact event stream + how
         // it ended. Display/Analyst input only - the server stores it
         // separately from the payout path and validates every bound.

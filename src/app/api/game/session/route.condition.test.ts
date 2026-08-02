@@ -594,6 +594,7 @@ function terminalReplayProof(checkpointValue: unknown) {
     toTick: terminal.ticks,
     actionOffset: accepted.actions.length,
     actions: terminal.actions.slice(accepted.actions.length),
+    activeElapsedMs: checkpoint.privateState.elapsedMs,
   };
 }
 
