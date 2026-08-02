@@ -22,6 +22,7 @@ import {
   GENOME_V2_SPLICES,
   GENOME_V2_STRAIN_LADDERS,
   createGenomeV2State,
+  genomeV2EventId,
   genomeV2StrainPoints,
   projectGenomeV2,
   reduceGenomeV2Event,
@@ -130,7 +131,7 @@ function event<Facts extends GenomeV2EventFacts>(
     ...facts,
     index: state.eventIndex + 1,
     tick: state.tick + 1,
-    eventId: `research:${actionOrdinal}:${eventOrdinal}`,
+    eventId: genomeV2EventId(state.runSeed, state.eventIndex + 1),
   } as GenomeV2Event;
 }
 
@@ -248,18 +249,13 @@ function replayAction(
         portalId,
         genomeOffer: { offerId, candidates },
       });
-      state = apply(state, actionOrdinal, 2, {
-        type: 'portal_recode_selected',
-        portalId,
-        offerId,
-        replacementGeneId: action.geneId,
-        slot: action.slot,
-      });
-      return apply(state, actionOrdinal, 3, {
-        type: 'portal_recode',
-        portalId,
+      return apply(state, actionOrdinal, 2, {
+        type: 'offer_recoded',
+        source: 'portal',
         offerId,
         instanceId: `${id}-gene`,
+        replacementGeneId: action.geneId,
+        slot: action.slot,
         growthCharged: expectedRecodeGrowth(state.recodeCount + 1),
       });
     }
