@@ -132,6 +132,15 @@ analytics dashboard. The authoritative Genome engine remains the single source
 for every displayed reaction and calculation, and Workbench code remains outside
 the live `/game` dependency graph.
 
+Codex discovery identity includes the Genome rules version. Existing discovery
+history is retained as v1; it is never rewritten or bulk-promoted into v2. A v2
+run can therefore discover a semantically revised entry whose stable text ID was
+also used by v1, while both histories remain independently readable. The v1
+one-time reward is never paid again as a v1 reward, but the distinct v2 discovery
+may earn its configured one-time v2 reward. World-first records and Weaver
+completion are likewise version-scoped; the Weaver cosmetic grant itself remains
+account-idempotent.
+
 The first two cadence offers are approximately four foods apart. Later offers
 use a deterministic four-to-six-food interval, averaging five. DECLINE is a
 real lost build opportunity; the offer algorithm must therefore normally

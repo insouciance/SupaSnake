@@ -234,7 +234,7 @@ describe('production environment validation', () => {
     expect(linkedHarness).not.toContain('read_only: true');
     expect(linkedHarness).toContain("--write-out '%{http_code}'");
     expect(linkedHarness).toContain('returned HTTP $http_status');
-    expect(linkedHarness).toContain('cohesive_release_read_only_v2');
+    expect(linkedHarness).toContain('cohesive_release_read_only_v3');
     expect(linkedHarness).toContain('and length == 1');
     expect(linkedHarness).toContain(
       'supabase/tests/cohesive_release_read_only.sql'
@@ -248,6 +248,10 @@ describe('production environment validation', () => {
     expect(linkedProbe).toContain('pg_catalog.pg_trigger');
     expect(linkedProbe).toContain('pg_catalog.pg_indexes');
     expect(linkedProbe).toContain('pg_catalog.has_function_privilege');
+    expect(linkedProbe).toContain('public.record_codex_discoveries(uuid,uuid,jsonb)');
+    expect(linkedProbe).toContain('genome_table_privileges_valid');
+    expect(linkedProbe).toContain('genome_codex_versions_valid');
+    expect(linkedProbe).toContain('genome_definers_hardened');
     expect(linkedProbe).toContain("CURRENT_USER = 'supabase_read_only_user'");
     expect(linkedProbe).toContain("current_setting('transaction_read_only')");
     expect(linkedProbe).toContain('founding_bridge_safe');

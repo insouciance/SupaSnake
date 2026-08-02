@@ -71,6 +71,28 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     );
   });
 
+  it('versions Codex identity without rewriting paid v1 history', () => {
+    expect(code).toMatch(
+      /ALTER TABLE player_codex[\s\S]*ADD COLUMN rules_version SMALLINT NOT NULL DEFAULT 1/
+    );
+    expect(code).toMatch(
+      /ADD PRIMARY KEY \(player_id, rules_version, discovery_type, entry_id\)/
+    );
+    expect(code).toMatch(
+      /ALTER TABLE codex_first_discoveries[\s\S]*ADD COLUMN rules_version SMALLINT NOT NULL DEFAULT 1/
+    );
+    expect(code).toMatch(
+      /ADD PRIMARY KEY \(rules_version, discovery_type, entry_id\)/
+    );
+    expect(code).toMatch(
+      /REVOKE ALL ON player_codex FROM PUBLIC, anon, authenticated;[\s\S]*GRANT SELECT ON player_codex TO authenticated;/
+    );
+    expect(code).toMatch(
+      /REVOKE ALL ON codex_first_discoveries FROM PUBLIC, anon, authenticated;[\s\S]*GRANT SELECT ON codex_first_discoveries TO anon, authenticated;/
+    );
+    expect(code).not.toMatch(/UPDATE player_codex SET rules_version = 2/);
+  });
+
   it('publishes the exact shared roster plus all three dynasty signatures for v2', () => {
     expect(Object.keys(GENOME_V2_GENES).sort()).toEqual([...V2_GENES].sort());
     for (const id of V2_GENES) {
@@ -162,6 +184,7 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     expect(code).toMatch(/p_genome -> 'instances'/);
     expect(code).toMatch(/p_genome -> 'slots'/);
     expect(code).toMatch(/p_genome -> 'discoveredSplices'/);
+    expect(code).toMatch(/p_genome -> 'retired'[\s\S]*'splice_styx_contract'/);
     expect(code).toMatch(/p_genome -> 'expressions'/);
     expect(code).toMatch(/p_genome -> 'apexes'/);
     expect(code).toMatch(/p_genome -> 'eventJournal'/);
@@ -181,8 +204,13 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     expect(body).toMatch(/genome_record_splice_ids\(p_genome\)/);
     expect(body).toMatch(/versioned\.rules_version = v_rules_version/);
     expect(body).toMatch(
-      /ON CONFLICT \(player_id, discovery_type, entry_id\) DO NOTHING/
+      /ON CONFLICT \([\s\S]*player_id, rules_version, discovery_type, entry_id[\s\S]*\) DO NOTHING/
     );
+    expect(body).toMatch(
+      /ON CONFLICT \(rules_version, discovery_type, entry_id\) DO NOTHING/
+    );
+    expect(body).toMatch(/pc\.rules_version = v_rules_version/);
+    expect(body).toMatch(/SECURITY DEFINER SET search_path = public, pg_temp/);
   });
 
   it('keeps retired contracts retired and opens only the v2 Codex wrapper at bank zero', () => {
@@ -196,6 +224,7 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     );
     expect(wrapper).toMatch(/IF v_count < 15 THEN/);
     expect(wrapper).toMatch(/CODEX_SESSION_CUTOFF_NOT_ATOMIC/);
+    expect(wrapper).toMatch(/SECURITY DEFINER SET search_path = public, pg_temp/);
   });
 
   it('exposes the exact service-only release capability contract', () => {
@@ -203,8 +232,14 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
       /CREATE OR REPLACE FUNCTION get_genome_v2_capability\(\)[\s\S]+?GRANT EXECUTE ON FUNCTION get_genome_v2_capability\(\)[\s\S]+?TO service_role;/
     )?.[0] ?? '';
     expect(capability).toMatch(/'status', CASE[\s\S]*THEN 'ready'[\s\S]*ELSE 'incomplete'/);
-    expect(capability).toMatch(/genome_gene_versions[\s\S]*rules_version = 2 AND active[\s\S]*\) = 16/);
-    expect(capability).toMatch(/genome_splice_versions[\s\S]*rules_version = 2 AND active[\s\S]*\) = 8/);
+    expect(capability).toMatch(/'circuit_run'[\s\S]*'zenith_protocol'[\s\S]*AS genes_exact/);
+    expect(capability).toMatch(/'splice_ashen_stake'[\s\S]*'splice_worldcoil'[\s\S]*AS splices_exact/);
+    expect(capability).toMatch(/genome_record_splice_ids[\s\S]*splice_styx_contract/);
+    expect(capability).toMatch(/player_codex_rules_version_valid/);
+    expect(capability).toMatch(/codex_first_discoveries_rules_version_valid/);
+    expect(capability).toMatch(/TRUNCATE[\s\S]*TRIGGER[\s\S]*REFERENCES/);
+    expect(capability).toMatch(/record_codex_discoveries\(uuid,uuid,jsonb\)/);
+    expect(capability).toMatch(/record_session_codex_discoveries\(uuid,uuid,jsonb\)/);
     expect(capability).toMatch(/ascendance_yield_multiplier_bps_v2\(integer\)/);
     expect(capability).toMatch(/ascendance_yield_multiplier_v2\(integer\)/);
     expect(capability).toMatch(/ascendance_yield_bonus_v2\(integer\)/);
@@ -218,5 +253,6 @@ describe('migration 065 — Genome v1/v2 compatibility bridge', () => {
     expect(capability).toMatch(
       /GRANT EXECUTE ON FUNCTION get_genome_v2_capability\(\)[\s\S]*TO service_role/
     );
+    expect(capability).toMatch(/SECURITY DEFINER SET search_path = public, pg_temp/);
   });
 });

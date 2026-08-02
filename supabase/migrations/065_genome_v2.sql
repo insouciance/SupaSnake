@@ -85,6 +85,43 @@ REVOKE ALL ON genome_splice_versions FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON genome_gene_versions TO anon, authenticated;
 GRANT SELECT ON genome_splice_versions TO anon, authenticated;
 
+-- A reused catalog id is not the same discovery when its rules change. The
+-- existing unversioned rows are authentic v1 history, so the additive bridge
+-- stamps them v1 and makes rules_version part of both durable identities.
+-- There is deliberately no retroactive v2 backfill: only a validator-accepted
+-- v2 run may create and reward a v2 discovery.
+ALTER TABLE player_codex
+  ADD COLUMN rules_version SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE player_codex
+  ADD CONSTRAINT player_codex_rules_version_valid
+    CHECK (rules_version IN (1, 2));
+ALTER TABLE player_codex DROP CONSTRAINT player_codex_pkey;
+ALTER TABLE player_codex
+  ADD PRIMARY KEY (player_id, rules_version, discovery_type, entry_id);
+
+ALTER TABLE codex_first_discoveries
+  ADD COLUMN rules_version SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE codex_first_discoveries
+  ADD CONSTRAINT codex_first_discoveries_rules_version_valid
+    CHECK (rules_version IN (1, 2));
+ALTER TABLE codex_first_discoveries
+  DROP CONSTRAINT codex_first_discoveries_pkey;
+ALTER TABLE codex_first_discoveries
+  ADD PRIMARY KEY (rules_version, discovery_type, entry_id);
+
+COMMENT ON COLUMN player_codex.rules_version IS
+  'Rules identity of the accepted discovery. Rows predating migration 065 are v1; v2 is earned only from accepted v2 runs.';
+COMMENT ON COLUMN codex_first_discoveries.rules_version IS
+  'Rules-scoped world-first identity. Reused ids with redesigned semantics have independent v1 and v2 history.';
+
+-- Retain the established read surfaces while replacing any inherited API-role
+-- DML privileges. RLS remains the row-ownership boundary for player history;
+-- the privacy-safe first-discovery ledger remains publicly readable.
+REVOKE ALL ON player_codex FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON codex_first_discoveries FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON player_codex TO authenticated;
+GRANT SELECT ON codex_first_discoveries TO anon, authenticated;
+
 -- Snapshot the outgoing catalogs as rules v1 before adding v2-only parent
 -- rows. ON CONFLICT keeps the bridge safe if a partial deploy is retried.
 INSERT INTO genome_gene_versions (
@@ -326,7 +363,7 @@ CREATE OR REPLACE FUNCTION public.breeding_draft(
     )
   )
   FROM generation;
-$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp;
 
 COMMENT ON FUNCTION public.breeding_draft(
   UUID, UUID, UUID, BOOLEAN, UUID, TEXT[], TEXT
@@ -491,6 +528,14 @@ RETURNS TABLE (splice_id TEXT) AS $$
     UNION ALL
     SELECT COALESCE(item ->> 'id', item ->> 'spliceId', item ->> 'splice_id') AS id
     FROM genome_record_items(p_genome -> 'splices') AS item
+    UNION ALL
+    SELECT COALESCE(
+      item ->> 'spliceId',
+      item ->> 'splice_id',
+      item #>> '{splice,id}'
+    ) AS id
+    FROM genome_record_items(p_genome -> 'retired') AS item
+    WHERE COALESCE(item ->> 'reason', item ->> 'state') = 'splice'
     UNION ALL
     SELECT COALESCE(
       item ->> 'spliceId',
@@ -719,14 +764,17 @@ BEGIN
     ORDER BY c.discovery_type, c.entry_id
   LOOP
     INSERT INTO player_codex (
-      player_id, discovery_type, entry_id, first_session_id
+      player_id, rules_version, discovery_type, entry_id, first_session_id
     ) VALUES (
       p_player_id,
+      v_rules_version,
       v_candidate.discovery_type,
       v_candidate.entry_id,
       p_session_id
     )
-    ON CONFLICT (player_id, discovery_type, entry_id) DO NOTHING;
+    ON CONFLICT (
+      player_id, rules_version, discovery_type, entry_id
+    ) DO NOTHING;
     GET DIAGNOSTICS v_inserted = ROW_COUNT;
 
     IF v_inserted = 1 THEN
@@ -738,9 +786,12 @@ BEGIN
       END;
       v_reward_total := v_reward_total + v_reward;
 
-      INSERT INTO codex_first_discoveries (discovery_type, entry_id)
-      VALUES (v_candidate.discovery_type, v_candidate.entry_id)
-      ON CONFLICT (discovery_type, entry_id) DO NOTHING;
+      INSERT INTO codex_first_discoveries (
+        rules_version, discovery_type, entry_id
+      ) VALUES (
+        v_rules_version, v_candidate.discovery_type, v_candidate.entry_id
+      )
+      ON CONFLICT (rules_version, discovery_type, entry_id) DO NOTHING;
       GET DIAGNOSTICS v_inserted = ROW_COUNT;
       v_world_first := v_inserted = 1;
 
@@ -789,6 +840,7 @@ BEGIN
          AND NOT EXISTS (
            SELECT 1 FROM player_codex pc
            WHERE pc.player_id = p_player_id
+             AND pc.rules_version = v_rules_version
              AND pc.discovery_type = 'gene'
              AND pc.entry_id = versioned.gene_id
          )
@@ -801,6 +853,7 @@ BEGIN
          AND NOT EXISTS (
            SELECT 1 FROM player_codex pc
            WHERE pc.player_id = p_player_id
+             AND pc.rules_version = v_rules_version
              AND pc.discovery_type = 'splice'
              AND pc.entry_id = versioned.splice_id
          )
@@ -808,12 +861,14 @@ BEGIN
      AND 5 = (
        SELECT COUNT(*) FROM player_codex pc
        WHERE pc.player_id = p_player_id
+         AND pc.rules_version = v_rules_version
          AND pc.discovery_type = 'expression'
          AND pc.entry_id IN ('AURUM','VOLT','FERAL','FLUX','UMBRA')
      )
      AND 5 = (
        SELECT COUNT(*) FROM player_codex pc
        WHERE pc.player_id = p_player_id
+         AND pc.rules_version = v_rules_version
          AND pc.discovery_type = 'apex'
          AND pc.entry_id IN ('AURUM','VOLT','FERAL','FLUX','UMBRA')
      ) THEN
@@ -830,7 +885,7 @@ BEGIN
     'genomeWeaverUnlocked', v_weaver_unlocked
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 REVOKE ALL ON FUNCTION record_codex_discoveries(UUID, UUID, JSONB)
   FROM PUBLIC, anon, authenticated;
@@ -894,7 +949,7 @@ BEGIN
   END IF;
   RETURN record_codex_discoveries(p_player_id, p_session_id, p_genome);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 REVOKE ALL ON FUNCTION record_session_codex_discoveries(UUID, UUID, JSONB)
   FROM PUBLIC, anon, authenticated;
@@ -914,36 +969,253 @@ GRANT EXECUTE ON FUNCTION record_session_codex_discoveries(UUID, UUID, JSONB)
 
 CREATE OR REPLACE FUNCTION get_genome_v2_capability()
 RETURNS JSONB AS $$
-  SELECT jsonb_build_object(
-    'status', CASE
-      WHEN (
-        SELECT COUNT(*)
-        FROM genome_gene_versions
-        WHERE rules_version = 2 AND active
-      ) = 16
-      AND (
-        SELECT COUNT(*)
-        FROM genome_splice_versions
-        WHERE rules_version = 2 AND active
-      ) = 8
-      AND to_regprocedure(
+  WITH catalog AS (
+    SELECT
+      COALESCE((
+        SELECT array_agg(versioned.gene_id ORDER BY versioned.gene_id)
+        FROM public.genome_gene_versions AS versioned
+        WHERE versioned.rules_version = 2 AND versioned.active
+      ), ARRAY[]::TEXT[]) = ARRAY[
+        'circuit_run', 'coilkeeper', 'compound_interest',
+        'constellation_crown', 'gold_trail', 'heartwood', 'live_wire',
+        'loan_shark', 'loom_anchor', 'mirror_wager', 'overgrowth',
+        'phase_gate', 'phoenix', 'time_dilation', 'wall_rush',
+        'zenith_protocol'
+      ]::TEXT[] AS genes_exact,
+      COALESCE((
+        SELECT array_agg(versioned.splice_id ORDER BY versioned.splice_id)
+        FROM public.genome_splice_versions AS versioned
+        WHERE versioned.rules_version = 2 AND versioned.active
+      ), ARRAY[]::TEXT[]) = ARRAY[
+        'splice_ashen_stake', 'splice_dragon_hoard',
+        'splice_gilded_fork', 'splice_loom_bond',
+        'splice_perfect_circuit', 'splice_riftline',
+        'splice_styx_contract', 'splice_worldcoil'
+      ]::TEXT[] AS splices_exact
+  ), projector_fixture AS (
+    SELECT jsonb_build_object(
+      'v', 2,
+      'instances', jsonb_build_object(
+        'retired-live-wire', jsonb_build_object(
+          'instanceId', 'retired-live-wire',
+          'geneId', 'live_wire',
+          'status', 'replaced'
+        )
+      ),
+      'retired', jsonb_build_array(
+        jsonb_build_object(
+          'instanceId', 'retired-live-wire',
+          'reason', 'splice',
+          'spliceId', 'splice_styx_contract',
+          'atFood', 12
+        )
+      ),
+      'activeSplices', jsonb_build_array(),
+      'discoveredSplices', jsonb_build_array(),
+      'expressions', jsonb_build_object('AURUM', 7),
+      'apexes', jsonb_build_object('UMBRA', 19)
+    ) AS value
+  ), projectors AS (
+    SELECT
+      public.genome_record_version(projector_fixture.value) = 2
+      AND ARRAY(
+        SELECT projected.gene_id
+        FROM public.genome_record_gene_ids(
+          projector_fixture.value, 'discovered'
+        ) AS projected
+        ORDER BY projected.gene_id
+      ) = ARRAY['live_wire']::TEXT[]
+      AND ARRAY(
+        SELECT projected.splice_id
+        FROM public.genome_record_splice_ids(
+          projector_fixture.value
+        ) AS projected
+        ORDER BY projected.splice_id
+      ) = ARRAY['splice_styx_contract']::TEXT[]
+      AND ARRAY(
+        SELECT projected.strain
+        FROM public.genome_record_strain_milestones(
+          projector_fixture.value, 'expression'
+        ) AS projected
+        ORDER BY projected.strain
+      ) = ARRAY['AURUM']::TEXT[]
+      AND ARRAY(
+        SELECT projected.strain
+        FROM public.genome_record_strain_milestones(
+          projector_fixture.value, 'apex'
+        ) AS projected
+        ORDER BY projected.strain
+      ) = ARRAY['UMBRA']::TEXT[] AS exact
+    FROM projector_fixture
+  ), required_service_functions(signature) AS (
+    VALUES
+      ('public.breeding_draft(uuid,uuid,uuid,boolean,uuid,text[],text)'::TEXT),
+      ('public.genome_record_version(jsonb)'::TEXT),
+      ('public.genome_record_items(jsonb)'::TEXT),
+      ('public.genome_record_gene_ids(jsonb,text)'::TEXT),
+      ('public.genome_record_splice_ids(jsonb)'::TEXT),
+      ('public.genome_record_strain_milestones(jsonb,text)'::TEXT),
+      ('public.genome_record_infuse_count(jsonb)'::TEXT),
+      ('public.record_codex_discoveries(uuid,uuid,jsonb)'::TEXT),
+      ('public.record_session_codex_discoveries(uuid,uuid,jsonb)'::TEXT),
+      ('public.get_genome_v2_capability()'::TEXT)
+  ), service_functions AS (
+    SELECT COALESCE(bool_and(
+      resolved.function_oid IS NOT NULL
+      AND pg_catalog.has_function_privilege(
+        'service_role', resolved.function_oid, 'EXECUTE'
+      )
+      AND NOT pg_catalog.has_function_privilege(
+        'anon', resolved.function_oid, 'EXECUTE'
+      )
+      AND NOT pg_catalog.has_function_privilege(
+        'authenticated', resolved.function_oid, 'EXECUTE'
+      )
+    ), FALSE) AS exact
+    FROM (
+      SELECT pg_catalog.to_regprocedure(required.signature) AS function_oid
+      FROM required_service_functions AS required
+    ) AS resolved
+  ), table_reads(role_name, table_name, expected) AS (
+    VALUES
+      ('anon'::TEXT, 'public.genome_gene_versions'::TEXT, TRUE),
+      ('authenticated', 'public.genome_gene_versions', TRUE),
+      ('anon', 'public.genome_splice_versions', TRUE),
+      ('authenticated', 'public.genome_splice_versions', TRUE),
+      ('anon', 'public.player_codex', FALSE),
+      ('authenticated', 'public.player_codex', TRUE),
+      ('anon', 'public.codex_first_discoveries', TRUE),
+      ('authenticated', 'public.codex_first_discoveries', TRUE)
+  ), table_privileges AS (
+    SELECT
+      COALESCE(bool_and(
+        pg_catalog.has_table_privilege(
+          table_reads.role_name, table_reads.table_name, 'SELECT'
+        ) = table_reads.expected
+      ), FALSE)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM (VALUES ('anon'::TEXT), ('authenticated'::TEXT)) AS roles(name)
+        CROSS JOIN (
+          VALUES
+            ('public.genome_gene_versions'::TEXT),
+            ('public.genome_splice_versions'::TEXT),
+            ('public.player_codex'::TEXT),
+            ('public.codex_first_discoveries'::TEXT)
+        ) AS tables(name)
+        CROSS JOIN (
+          VALUES
+            ('INSERT'::TEXT), ('UPDATE'::TEXT), ('DELETE'::TEXT),
+            ('TRUNCATE'::TEXT), ('TRIGGER'::TEXT), ('REFERENCES'::TEXT)
+        ) AS privileges(name)
+        WHERE pg_catalog.has_table_privilege(
+          roles.name, tables.name, privileges.name
+        )
+      ) AS exact
+    FROM table_reads
+  ), versioned_codex AS (
+    SELECT
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_row
+        WHERE constraint_row.conrelid =
+              pg_catalog.to_regclass('public.player_codex')
+          AND constraint_row.contype = 'p'
+          AND ARRAY(
+            SELECT attribute_row.attname::TEXT
+            FROM unnest(constraint_row.conkey) WITH ORDINALITY
+              AS key_row(attnum, ordinal)
+            JOIN pg_catalog.pg_attribute AS attribute_row
+              ON attribute_row.attrelid = constraint_row.conrelid
+             AND attribute_row.attnum = key_row.attnum
+            ORDER BY key_row.ordinal
+          ) = ARRAY[
+            'player_id', 'rules_version', 'discovery_type', 'entry_id'
+          ]::TEXT[]
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_row
+        WHERE constraint_row.conrelid =
+              pg_catalog.to_regclass('public.codex_first_discoveries')
+          AND constraint_row.contype = 'p'
+          AND ARRAY(
+            SELECT attribute_row.attname::TEXT
+            FROM unnest(constraint_row.conkey) WITH ORDINALITY
+              AS key_row(attnum, ordinal)
+            JOIN pg_catalog.pg_attribute AS attribute_row
+              ON attribute_row.attrelid = constraint_row.conrelid
+             AND attribute_row.attnum = key_row.attnum
+            ORDER BY key_row.ordinal
+          ) = ARRAY[
+            'rules_version', 'discovery_type', 'entry_id'
+          ]::TEXT[]
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_row
+        WHERE constraint_row.conrelid =
+              pg_catalog.to_regclass('public.player_codex')
+          AND constraint_row.conname = 'player_codex_rules_version_valid'
+          AND constraint_row.convalidated
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_row
+        WHERE constraint_row.conrelid =
+              pg_catalog.to_regclass('public.codex_first_discoveries')
+          AND constraint_row.conname =
+              'codex_first_discoveries_rules_version_valid'
+          AND constraint_row.convalidated
+      ) AS exact
+  ), ascendance AS (
+    SELECT
+      pg_catalog.to_regprocedure(
         'public.ascendance_yield_multiplier_bps_v2(integer)'
       ) IS NOT NULL
-      AND to_regprocedure(
+      AND pg_catalog.to_regprocedure(
         'public.ascendance_yield_multiplier_v2(integer)'
       ) IS NOT NULL
-      AND to_regprocedure(
+      AND pg_catalog.to_regprocedure(
         'public.ascendance_yield_bonus_v2(integer)'
       ) IS NOT NULL
-      THEN 'ready'
-      ELSE 'incomplete'
-    END,
+      AND public.ascendance_yield_multiplier_bps_v2(1) = 10000
+      AND public.ascendance_yield_multiplier_bps_v2(4) = 10200
+      AND public.ascendance_yield_multiplier_v2(4) = 1.02
+      AND public.ascendance_yield_bonus_v2(4) = 0.02 AS exact
+  ), contract AS (
+    SELECT
+      catalog.genes_exact
+      AND catalog.splices_exact
+      AND projectors.exact
+      AND service_functions.exact
+      AND table_privileges.exact
+      AND versioned_codex.exact
+      AND ascendance.exact
+      AND pg_catalog.to_regprocedure(
+        'public.breeding_draft_v1(uuid,uuid,uuid,boolean,uuid,text[],text)'
+      ) IS NOT NULL
+      AND NOT pg_catalog.has_function_privilege(
+        'service_role',
+        'public.breeding_draft_v1(uuid,uuid,uuid,boolean,uuid,text[],text)',
+        'EXECUTE'
+      ) AS ready
+    FROM catalog
+    CROSS JOIN projectors
+    CROSS JOIN service_functions
+    CROSS JOIN table_privileges
+    CROSS JOIN versioned_codex
+    CROSS JOIN ascendance
+  )
+  SELECT jsonb_build_object(
+    'status', CASE WHEN contract.ready THEN 'ready' ELSE 'incomplete' END,
     'schemaVersion', 2,
     'catalogVersion', 2,
     'ascendanceVersion', 2,
     'spliceCount', 8
-  );
-$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+  )
+  FROM contract;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp;
 
 COMMENT ON FUNCTION get_genome_v2_capability() IS
   'Service-only release probe for the complete Genome v2 database contract.';
