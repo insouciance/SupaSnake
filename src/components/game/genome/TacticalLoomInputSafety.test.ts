@@ -35,4 +35,22 @@ describe('Tactical Loom mobile input boundary', () => {
     expect(loom).not.toMatch(/position:\s*['"]fixed['"]/);
     expect(loom).not.toMatch(/addEventListener\(['"]pointer(move|down|up)/);
   });
+
+  it('hides only the global legal footer, never the Loom action footer', () => {
+    const css = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/globals.css'),
+      'utf8'
+    );
+    const footer = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/ui/Footer.tsx'),
+      'utf8'
+    );
+    expect(footer).toContain('data-site-footer');
+    expect(css).toContain(
+      'body:has(.cockpit-game-viewport) [data-site-footer]'
+    );
+    expect(css).not.toMatch(
+      /body:has\(\.cockpit-game-viewport\)\s+footer\s*\{/
+    );
+  });
 });
