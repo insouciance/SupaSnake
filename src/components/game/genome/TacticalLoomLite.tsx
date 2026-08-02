@@ -293,6 +293,10 @@ export function TacticalLoomLite({
         <strong>{consequence.salienceChip ?? consequence.category}</strong>
       </header>
 
+      <h3 className={styles.focusedGeneName} data-testid="loom-focused-gene-name">
+        {geneName ?? 'Keep current Genome'}
+      </h3>
+
       <div className={styles.coreStage}>
         <p className={styles.integratedCopy} data-tone="gain">
           <b>GAIN</b><span>{consequence.effect}</span>
@@ -300,7 +304,7 @@ export function TacticalLoomLite({
         <div className={styles.geneCore} data-testid="loom-gene-core">
           <i className={styles.coreOrbit} aria-hidden="true" />
           <span className={styles.geneRune} aria-hidden="true"><GeneGlyph id={geneId ?? 'loom-decline'} /></span>
-          <strong>{geneName ?? 'DECLINE'}</strong>
+          <strong aria-hidden="true">{geneName ?? 'DECLINE'}</strong>
           {coreStrains.length > 0 ? (
             <span className={styles.coreStrains} aria-label={`Strains ${coreStrains.map((id) => STRAINS[id].name).join(', ')}`}>
               {coreStrains.map((id) => (

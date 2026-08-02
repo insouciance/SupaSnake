@@ -209,22 +209,22 @@ export function TacticalLoomDecision({
               <button
                 type="button"
                 onClick={onBack}
-                className="-ml-1 inline-flex min-h-11 shrink-0 items-center rounded-full px-2 font-body text-xs font-bold text-beige/65 hover:bg-bone-white/8 hover:text-bone-white"
+                className="-ml-1 inline-flex min-h-11 shrink-0 items-center rounded-full px-2 font-body text-sm font-bold text-beige/65 hover:bg-bone-white/8 hover:text-bone-white"
                 data-testid="loom-back-to-portal"
               >
                 ‹ Portal
               </button>
             ) : null}
             <div className="min-w-0">
-            <p className="font-body text-[10px] font-bold uppercase tracking-[0.18em] text-cosmic">
+            <p className="font-body text-sm font-bold uppercase tracking-[0.14em] text-cosmic">
               Simulation held · {model.dynasty}
             </p>
-            <h2 id="tactical-loom-title" className="heading-display truncate text-xl text-[#c4b5fd] text-glow sm:text-2xl">
+            <h2 id="tactical-loom-title" className="heading-display text-xl leading-tight text-[#c4b5fd] text-glow sm:text-2xl">
               {model.title}
             </h2>
             </div>
           </div>
-          <p className="font-body text-[10px] leading-snug text-beige/50 sm:max-w-[12rem] sm:text-right sm:text-xs">
+          <p className="font-body text-sm leading-snug text-beige/50 sm:max-w-[12rem] sm:text-right">
             {model.sourceLabel}
           </p>
         </header>
@@ -249,6 +249,7 @@ export function TacticalLoomDecision({
                 type="button"
                 role="radio"
                 aria-checked={active}
+                aria-label={`${index < 2 ? `${index === 0 ? 'A' : 'B'}, ` : ''}${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
                 aria-keyshortcuts={index === 0 ? '1' : index === 1 ? '2' : 'Escape'}
                 disabled={locked || Boolean(choice.disabledReason)}
                 onClick={() => select(choice.key)}
@@ -266,7 +267,7 @@ export function TacticalLoomDecision({
                 <span className={decisionStyles.choiceAction}>
                   {index < 2 ? `${index === 0 ? 'A' : 'B'} · ` : ''}{choice.action}
                 </span>
-                <span className={`${decisionStyles.choiceName} truncate`} title={choice.name}>
+                <span className={decisionStyles.choiceName} data-testid={`${testId}-name`}>
                   {choice.name}
                 </span>
                 {choice.strains.length > 0 ? (
@@ -303,11 +304,11 @@ export function TacticalLoomDecision({
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <p className="font-display text-sm text-venom-orange">Recode · choose one locus</p>
-                  <p className="mt-1 font-body text-xs text-beige/65">
+                  <p className="mt-1 font-body text-sm text-beige/65">
                     {selectedCandidate.name} enters only after you choose what leaves the active Genome.
                   </p>
                 </div>
-                <span className="font-body text-[10px] font-bold uppercase tracking-[0.12em] text-beige/45">Step 2 of 2</span>
+                <span className="font-body text-xs font-bold uppercase tracking-[0.12em] text-beige/45">Step 2 of 2</span>
               </div>
               <div role="radiogroup" aria-label="Locus to replace" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 {replacementChoices.map((choice) => (
@@ -319,16 +320,16 @@ export function TacticalLoomDecision({
                     disabled={Boolean(choice.disabledReason)}
                     onClick={() => setReplacementSlot(choice.slotIndex)}
                     onFocus={() => setReplacementSlot(choice.slotIndex)}
-                    className={`min-h-11 rounded-[10px] border px-2 py-2 text-left ${
+                    className={`min-h-11 rounded-[10px] border px-2 py-2 text-left text-sm ${
                       replacementSlot === choice.slotIndex
                         ? 'border-venom-orange bg-venom-orange/12'
                         : 'border-scale-blue-light/25 bg-void/35'
                     } disabled:cursor-not-allowed disabled:opacity-40`}
                     data-testid={`loom-replace-${choice.slotIndex}`}
                   >
-                    <span className="block truncate font-body text-xs font-bold text-bone-white">{choice.label}</span>
-                    <span className="mt-0.5 block font-mono text-[10px] text-venom-orange">+{choice.growthCost} growth</span>
-                    {choice.disabledReason ? <span className="block text-[9px] text-beige/45">{choice.disabledReason}</span> : null}
+                    <span className="block font-body text-sm font-bold leading-tight text-bone-white">{choice.label}</span>
+                    <span className="mt-0.5 block font-mono text-sm text-venom-orange">+{choice.growthCost} growth</span>
+                    {choice.disabledReason ? <span className="block text-sm text-beige/45">{choice.disabledReason}</span> : null}
                   </button>
                 ))}
               </div>
@@ -340,9 +341,9 @@ export function TacticalLoomDecision({
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <p className="font-display text-sm text-cosmic">Loom Anchor · choose what DECLINE preserves</p>
-                  <p className="mt-1 font-body text-xs text-beige/65">Pinning spends the charged Anchor. Declining without a pin keeps the charge only when the authoritative rule allows it.</p>
+                  <p className="mt-1 font-body text-sm text-beige/65">Pinning spends the charged Anchor. Declining without a pin keeps the charge only when the authoritative rule allows it.</p>
                 </div>
-                <span className="font-body text-[10px] font-bold uppercase tracking-[0.12em] text-beige/45">Before confirmation</span>
+                <span className="font-body text-xs font-bold uppercase tracking-[0.12em] text-beige/45">Before confirmation</span>
               </div>
               <div role="radiogroup" aria-label="Loom Anchor decline outcome" className="mt-3 grid gap-2 sm:grid-cols-3">
                 {model.decline.options.map((option) => (
@@ -353,15 +354,15 @@ export function TacticalLoomDecision({
                     aria-checked={selectedDeclineOption?.id === option.id}
                     onClick={() => setDeclineOptionId(option.id)}
                     onFocus={() => setDeclineOptionId(option.id)}
-                    className={`min-h-11 rounded-[10px] border px-2.5 py-2 text-left ${
+                    className={`min-h-11 rounded-[10px] border px-2.5 py-2 text-left text-sm ${
                       selectedDeclineOption?.id === option.id
                         ? 'border-cosmic bg-cosmic/12'
                         : 'border-scale-blue-light/25 bg-void/35'
                     }`}
                     data-testid={`loom-decline-option-${option.id}`}
                   >
-                    <span className="block truncate font-body text-xs font-bold text-bone-white">{option.label}</span>
-                    <span className="mt-0.5 block font-body text-[9px] leading-snug text-beige/50">{option.detail}</span>
+                    <span className="block font-body text-sm font-bold leading-tight text-bone-white">{option.label}</span>
+                    <span className="mt-0.5 block font-body text-sm leading-snug text-beige/50">{option.detail}</span>
                   </button>
                 ))}
               </div>
@@ -379,14 +380,14 @@ export function TacticalLoomDecision({
         </div>
 
         <footer className="mt-3 flex shrink-0 items-center justify-between gap-3 border-t border-scale-blue-light/20 pt-3">
-          <p className="hidden font-body text-[10px] text-beige/45 sm:block">
+          <p className="hidden font-body text-sm text-beige/45 sm:block">
             1 / 2 previews · Esc {onBack ? 'returns to Portal' : 'selects DECLINE'} · Enter confirms
           </p>
           <div className="ml-auto flex gap-2">
             {recodePhase ? (
               <button
                 type="button"
-                className="btn-neutral min-h-11 px-4 py-2"
+                className="btn-neutral min-h-11 px-4 py-2 text-sm"
                 onClick={() => {
                   setRecodePhase(false);
                   setReplacementSlot(null);
@@ -397,7 +398,7 @@ export function TacticalLoomDecision({
             ) : null}
             <button
               type="button"
-              className="btn-go min-h-11 min-w-[9rem] px-4 py-2"
+              className="btn-go min-h-11 min-w-[9rem] px-4 py-2 text-sm"
               onClick={confirm}
               disabled={locked || (recodePhase && (!selectedReplacement || Boolean(selectedReplacement.disabledReason)))}
               data-testid="loom-confirm"

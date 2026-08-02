@@ -85,6 +85,21 @@ describe('Genome v2 Research table', () => {
     expect(screen.getByTestId('workbench-lens-space')).toBeInTheDocument();
   });
 
+  it('keeps the full focused gene name visible and every Strain rung at the 44px target contract', async () => {
+    await renderResearch();
+    fireEvent.click(screen.getByTestId('workbench-gene-compound_interest'));
+    expect(screen.getByTestId('workbench-focused-gene-name')).toHaveTextContent(
+      'Compound Interest'
+    );
+
+    for (const tier of [3, 4, 5]) {
+      expect(screen.getByTestId(`workbench-tier-AURUM-${tier}`)).toHaveClass(
+        'min-h-11',
+        'min-w-11'
+      );
+    }
+  });
+
   it('keeps dynasty legality visible instead of flattening every pool', async () => {
     await renderResearch();
     expect(screen.queryByTestId('workbench-gene-time_dilation')).not.toBeInTheDocument();

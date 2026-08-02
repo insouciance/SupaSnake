@@ -236,7 +236,7 @@
 }
 .reactionCore::after { inset: 16px; border-color: rgb(34 211 238 / 28%); background: transparent; transform: rotate(-18deg); }
 .reactionCore > i { z-index: 1; width: 31px; height: 31px; filter: drop-shadow(0 0 9px rgb(168 85 247 / 68%)); }
-.reactionCore > strong { z-index: 1; max-width: 92px; margin-top: 4px; overflow: hidden; color: #f7f0ff; font-family: var(--font-display); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.reactionCore > strong { z-index: 1; max-width: 100px; margin-top: 4px; color: #f7f0ff; font-family: var(--font-display); font-size: 12px; line-height: 1.08; overflow-wrap: anywhere; }
 .reactionCore > small { z-index: 1; max-width: 96px; margin-top: 2px; overflow: hidden; color: rgb(125 249 255 / 72%); font-family: var(--font-body); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
 .coreOrbit { position: absolute; inset: 0; border: 1px dashed rgb(196 181 253 / 26%); border-radius: 50%; animation: orbit 22s linear infinite; }
 
@@ -266,8 +266,8 @@
 .strainName i { width: 17px; height: 17px; flex: none; }
 .strainName b { min-width: 0; overflow: hidden; font-family: var(--font-display); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .strainName em { margin-left: auto; color: #f7f0ff; font-family: var(--font-mono); font-size: 10px; font-style: normal; }
-.rungs { display: flex; gap: 4px; margin-top: 6px; }
-.rungs button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid color-mix(in srgb, var(--strain), transparent 68%); border-radius: 50%; background: rgb(4 8 20 / 45%); color: rgb(237 233 223 / 58%); font-family: var(--font-mono); font-size: 9px; }
+.rungs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.rungs button { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 1px solid color-mix(in srgb, var(--strain), transparent 68%); border-radius: 50%; background: rgb(4 8 20 / 45%); color: rgb(237 233 223 / 58%); font-family: var(--font-mono); font-size: 12px; }
 .rungs button[data-active='true'] { border-color: var(--strain); background: color-mix(in srgb, var(--strain), transparent 82%); color: #fff; box-shadow: 0 0 9px color-mix(in srgb, var(--strain), transparent 52%); }
 .rungs button[aria-pressed='true'] { outline: 1px solid #fff; outline-offset: 2px; color: #fff; }
 .strain > small { display: block; margin-top: 4px; overflow: hidden; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
