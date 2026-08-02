@@ -453,7 +453,7 @@ function splicePresentation(
       ? [candidate.completesSplice]
       : [];
   const winner = authoritativeNew[0] ?? null;
-  return paths.map((path) => {
+  return paths.map<TacticalLoomSplicePath>((path) => {
     const splice = GENOME_V2_SPLICES[path.spliceId];
     // A partner can be held for more than one recipe, but the reducer may
     // consume the candidate into only one deterministic fusion. Never light a
@@ -787,37 +787,36 @@ function replacementConsequence(
 ): TacticalLoomConsequence {
   const affected = uniqueStrains([...replacement.removedStrains, ...replacement.addedStrains]);
   const retained = replacement.retainedLiabilities;
-  const immediateSplices: TacticalLoomSplicePath[] = [
-    replacement.breaksSplice
-      ? {
-          id: `${replacement.breaksSplice}:break`,
-          name: GENOME_V2_SPLICES[replacement.breaksSplice].name,
-          stage: 'immediate',
-          projectionState: 'breaks',
-          rule: 'This Recode breaks the active Splice and stops its future rule.',
-          cost: GENOME_V2_SPLICES[replacement.breaksSplice].strategicCost,
-          recipeKnown: true,
-          recipeLabel: 'Broken by the outgoing locus',
-          activation: 'available',
-        }
-      : null,
-    replacement.createsSplice
-      ? {
-          id: `${replacement.createsSplice}:create`,
-          name: GENOME_V2_SPLICES[replacement.createsSplice].name,
-          stage: 'immediate',
-          projectionState: 'forms-now',
-          rule: GENOME_V2_SPLICES[replacement.createsSplice].rule,
-          cost: GENOME_V2_SPLICES[replacement.createsSplice].strategicCost,
-          recipeKnown: true,
-          recipeLabel: 'Created by this Recode',
-          activation: input.activation.splices.unlocked ? 'available' : 'locked',
-          lockedReason: input.activation.splices.unlocked
-            ? undefined
-            : [input.activation.splices.reason, input.activation.splices.progress].filter(Boolean).join(' · ') || 'Activation pending',
-        }
-      : null,
-  ].filter((path): path is TacticalLoomSplicePath => path !== null);
+  const immediateSplices: TacticalLoomSplicePath[] = [];
+  if (replacement.breaksSplice) {
+    immediateSplices.push({
+      id: `${replacement.breaksSplice}:break`,
+      name: GENOME_V2_SPLICES[replacement.breaksSplice].name,
+      stage: 'immediate',
+      projectionState: 'breaks',
+      rule: 'This Recode breaks the active Splice and stops its future rule.',
+      cost: GENOME_V2_SPLICES[replacement.breaksSplice].strategicCost,
+      recipeKnown: true,
+      recipeLabel: 'Broken by the outgoing locus',
+      activation: 'available',
+    });
+  }
+  if (replacement.createsSplice) {
+    immediateSplices.push({
+      id: `${replacement.createsSplice}:create`,
+      name: GENOME_V2_SPLICES[replacement.createsSplice].name,
+      stage: 'immediate',
+      projectionState: 'forms-now',
+      rule: GENOME_V2_SPLICES[replacement.createsSplice].rule,
+      cost: GENOME_V2_SPLICES[replacement.createsSplice].strategicCost,
+      recipeKnown: true,
+      recipeLabel: 'Created by this Recode',
+      activation: input.activation.splices.unlocked ? 'available' : 'locked',
+      lockedReason: input.activation.splices.unlocked
+        ? undefined
+        : [input.activation.splices.reason, input.activation.splices.progress].filter(Boolean).join(' · ') || 'Activation pending',
+    });
+  }
   const consequence: TacticalLoomConsequence = {
     category: CATEGORY_LABELS[candidate.category],
     trigger: GENE_TRIGGER_PRESENTATION[candidate.geneId],

@@ -1510,9 +1510,8 @@ export default function GamePage() {
     session?.access_token,
   ]);
 
-  // Splice hints reveal names only after the player has discovered them.
-  // The Codex remains free, but its in-run integration follows the FTUE
-  // splice gate and refreshes between runs after new discoveries land.
+  // Discovery decorates authentic history/prestige; tactical rules remain
+  // visible. Refresh between runs so newly archived Splices are recognized.
   useEffect(() => {
     if (
       !session?.access_token ||
@@ -1528,7 +1527,13 @@ export default function GamePage() {
   );
 
   const discoveredSplices = useMemo<SpliceId[]>(
-    () => codexData?.splices.filter((splice) => splice.discovered).map((splice) => splice.id) ?? [],
+    () => {
+      const ids: SpliceId[] = [];
+      for (const splice of codexData?.splices ?? []) {
+        if (splice.discovered && isSpliceId(splice.id)) ids.push(splice.id);
+      }
+      return ids;
+    },
     [codexData]
   );
 
@@ -2456,7 +2461,7 @@ export default function GamePage() {
                     ? ` · +${discovery.rewardDna} DNA`
                     : '';
                   showToast(
-                    `Codex: ${codexEntryName(discovery.type, discovery.entryId)}${reward}${worldFirst}`,
+                    `Codex: ${codexEntryName(discovery.type, discovery.entryId, discovery.rulesVersion)}${reward}${worldFirst}`,
                     'triumph',
                     5000
                   );
@@ -5766,7 +5771,7 @@ export default function GamePage() {
                           key={`${discovery.type}:${discovery.entryId}`}
                           className="rounded-arcade border border-cosmic/50 bg-cosmic/10 px-2 py-1 text-xs font-body text-bone-white"
                         >
-                          {codexEntryName(discovery.type, discovery.entryId)}
+                          {codexEntryName(discovery.type, discovery.entryId, discovery.rulesVersion)}
                           {discovery.worldFirst ? ' · WORLD FIRST' : ''}
                           {discovery.rewardDna > 0 ? ` · +${discovery.rewardDna} DNA` : ''}
                         </span>

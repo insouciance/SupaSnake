@@ -12,8 +12,8 @@ jest.mock('@supabase/supabase-js', () => ({
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
-import { GENES } from '@/shared/game/genes';
-import { SPLICE_IDS } from '@/shared/game/splices';
+import { GENOME_V2_GENES } from '@/shared/game/genes';
+import { GENOME_V2_SPLICE_IDS } from '@/shared/game/genomeV2';
 
 const PLAYER_ID = 'player-1';
 
@@ -152,24 +152,23 @@ describe('GET /api/codex', () => {
    * at all (`toEqual({live, unlocked, bankedRuns, unlockAt})` exactly). The
    * Codex is a lexicon now: the rules always ship, and `unlocked` is only a
    * label for the discovery layer. So the narrower promise is asserted
-   * here — the catalog arrives, the gate is still reported honestly, and
-   * the one genuinely secret thing stays behind the server.
+   * here — the catalog arrives and the gate is still reported honestly.
    */
-  it('ships the catalog before the discovery gate, and still reports the gate', async () => {
-    mockDatabase({ bankedRuns: 14 });
+  it('ships the active v2 catalog and reports immediate discovery recording', async () => {
+    mockDatabase({ bankedRuns: 0 });
     const response = await GET(request());
     const body = await response.json();
 
     // The gate is reported, not applied to the catalog.
     expect(response.status).toBe(200);
     expect(body.live).toBe(true);
-    expect(body.unlocked).toBe(false);
-    expect(body.bankedRuns).toBe(14);
-    expect(body.unlockAt).toBe(15);
+    expect(body.unlocked).toBe(true);
+    expect(body.bankedRuns).toBe(0);
+    expect(body.unlockAt).toBe(0);
 
-    // Every rule is present and readable at 14 banked runs.
-    expect(body.genes).toHaveLength(Object.keys(GENES).length);
-    expect(body.splices).toHaveLength(SPLICE_IDS.length);
+    // Every rule is present and readable before the first BANK.
+    expect(body.genes).toHaveLength(Object.keys(GENOME_V2_GENES).length);
+    expect(body.splices).toHaveLength(GENOME_V2_SPLICE_IDS.length);
     for (const gene of body.genes as { effect: string; cost: string }[]) {
       expect(gene.effect.length).toBeGreaterThan(0);
       expect(gene.cost.length).toBeGreaterThan(0);
@@ -181,7 +180,7 @@ describe('GET /api/codex', () => {
     ).toMatchObject({ discovered: true });
   });
 
-  it('withholds only the splice recipe, and does so on the server', async () => {
+  it('ships every tactical recipe while discovery remains honest metadata', async () => {
     mockDatabase({
       extraRows: [
         { discovery_type: 'splice', entry_id: 'splice_dragon_hoard' },
@@ -201,12 +200,11 @@ describe('GET /api/codex', () => {
     expect(found.discovered).toBe(true);
     expect(found.parents).toEqual(['gold_trail', 'compound_interest']);
 
-    // Undiscovered: name, effect and cost are rules and always ship; the
-    // recipe is the single exception and never reaches the wire.
-    const hidden = splices.filter((s) => !s.discovered);
-    expect(hidden.length).toBeGreaterThan(0);
-    for (const splice of hidden) {
-      expect(splice.parents).toBeNull();
+    // Undiscovered: recipe, name, effect and cost are all rules and ship.
+    const undiscovered = splices.filter((s) => !s.discovered);
+    expect(undiscovered.length).toBeGreaterThan(0);
+    for (const splice of undiscovered) {
+      expect(splice.parents).toHaveLength(2);
       expect(splice.name).not.toBe('???');
       expect(splice.effect.length).toBeGreaterThan(0);
       expect(splice.cost.length).toBeGreaterThan(0);

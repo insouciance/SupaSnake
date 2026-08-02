@@ -40,7 +40,7 @@ import {
   buildGenomeV2AtlasModel,
   discoveredGenomeV2Recipes,
 } from '@/components/game/genome/genomeV2AtlasAdapter';
-import { GENES } from '@/shared/game/genes';
+import { GENOME_V2_GENES } from '@/shared/game/genes';
 import {
   ACTIVE_STRAIN_TIERS,
   describe as describeEntry,
@@ -469,7 +469,7 @@ function CodexShell({ view }: { view: CodexView }) {
                         className="text-xs font-body text-cosmic/80 mt-2"
                         data-testid={`codex-recipe-${splice.id}`}
                       >
-                        Recipe: {GENES[splice.parents[0]].name} + {GENES[splice.parents[1]].name}
+                        Recipe: {GENOME_V2_GENES[splice.parents[0]].name} + {GENOME_V2_GENES[splice.parents[1]].name}
                       </p>
                       <p className="text-xs font-mono text-beige/50 mt-3">
                         {splice.discoveries} runs · {splice.banks} banked

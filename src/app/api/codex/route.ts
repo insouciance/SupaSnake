@@ -7,11 +7,9 @@
  * stays progressive is DISCOVERY: which of them *you* have found, when, and
  * whether you were first in the world.
  *
- * Exactly one piece of content is still withheld: the **splice recipe**.
- * `utils.ts` nulls `parents` for an undiscovered splice, so the pair of
- * genes that fuses into it is absent from the JSON rather than shipped and
- * masked in the browser. A secret that travels over the wire is not a
- * secret, and this route's own comment used to warn about precisely that.
+ * Mechanical routes are never withheld. Every v2 Splice recipe ships with
+ * its rule and cost; discovery records authentic history, prestige, and
+ * rewards around that public strategy information.
  *
  * `unlocked` / `bankedRuns` / `unlockAt` survive as LABEL inputs for the
  * discovery layer. They are no longer a catalog gate: a player at 0 banked
@@ -23,7 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { isMissingCodexInfra } from '@/lib/server/codex';
-import { GAME_CONFIG } from '@/shared/config/game';
+import { GENOME_V2_CONFIG } from '@/shared/game/genomeV2';
 import {
   buildCodexPayload,
   sanitizeCodexRows,
@@ -101,7 +99,10 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    const unlockAt = GAME_CONFIG.genome.ftue.splicesAt;
+    // V2 records discovery immediately. The legacy v1 fifteen-BANK gate is
+    // preserved inside its version-aware settlement RPC, not projected onto
+    // the active catalog.
+    const unlockAt = GENOME_V2_CONFIG.ftue.strainTagsAtBankedRuns;
 
     const { data: firstRows, error: firstError } = await supabase
       .from('codex_first_discoveries')
