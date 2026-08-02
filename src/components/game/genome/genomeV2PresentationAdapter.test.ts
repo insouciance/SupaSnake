@@ -102,9 +102,17 @@ describe('Genome v2 presentation adapter', () => {
     expect(model?.currentGenome[0]).toMatchObject({ label: 'Gold Trail', kind: 'gene' });
     expect(model?.candidates[0].name).toBe('Compound Interest');
     expect(model?.candidates.map((candidate) => candidate.action)).toEqual(['THREAD', 'THREAD']);
+    // THREAD immediately fuses the held Gold Trail with Compound Interest:
+    // the retained parent locus becomes Dragon Hoard and the incoming locus
+    // reopens. The consequence view must show the actual post-choice Genome,
+    // not a transient gene that never survives the atomic choice.
+    expect(model?.candidates[0].consequence.genomeAfter[0]).toMatchObject({
+      label: 'Dragon Hoard',
+      kind: 'splice',
+    });
     expect(model?.candidates[0].consequence.genomeAfter[1]).toMatchObject({
-      label: 'Compound Interest',
-      kind: 'gene',
+      label: 'Open locus',
+      kind: 'empty',
     });
     expect(model?.candidates[0].consequence.splices).toEqual(expect.arrayContaining([
       expect.objectContaining({
