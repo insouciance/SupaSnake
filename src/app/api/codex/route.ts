@@ -7,9 +7,13 @@
  * stays progressive is DISCOVERY: which of them *you* have found, when, and
  * whether you were first in the world.
  *
- * Mechanical routes are never withheld. Every v2 Splice recipe ships with
- * its rule and cost; discovery records authentic history, prestige, and
- * rewards around that public strategy information.
+ * Mechanical routes are never withheld. The exact rollout flag selects one
+ * complete catalog contract: legacy v1 while off, or v2 while on. Genome v2
+ * ships every recipe, rule, and cost as public strategy information; the
+ * preserved v1 contract continues masking undiscovered parent recipes while
+ * discovery records history, prestige, and rewards in both versions. When v2
+ * is live, recorded v1 entries move into a separate read-only archive rather
+ * than disappearing or entering the active Research pool.
  *
  * `unlocked` / `bankedRuns` / `unlockAt` survive as LABEL inputs for the
  * discovery layer. They are no longer a catalog gate: a player at 0 banked
@@ -21,6 +25,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { isMissingCodexInfra } from '@/lib/server/codex';
+import { genomeV2Enabled } from '@/lib/features/genomeV2';
+import { GAME_CONFIG } from '@/shared/config/game';
 import { GENOME_V2_CONFIG } from '@/shared/game/genomeV2';
 import {
   buildCodexPayload,
@@ -48,6 +54,7 @@ function reportError(
 
 export async function GET(request: NextRequest) {
   try {
+    const rulesVersion = genomeV2Enabled() ? 2 : 1;
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -73,7 +80,7 @@ export async function GET(request: NextRequest) {
 
     const { data: codexRows, error: codexError } = await supabase
       .from('player_codex')
-      .select('discovery_type, entry_id, first_discovered_at')
+      .select('discovery_type, entry_id, rules_version, first_discovered_at')
       .eq('player_id', player.id);
     if (codexError) {
       if (!isMissingCodexInfra(codexError)) {
@@ -99,14 +106,15 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    // V2 records discovery immediately. The legacy v1 fifteen-BANK gate is
-    // preserved inside its version-aware settlement RPC, not projected onto
-    // the active catalog.
-    const unlockAt = GENOME_V2_CONFIG.ftue.strainTagsAtBankedRuns;
+    // The rollout flag selects a complete catalog contract. It never mixes
+    // v2 records into the shipped v1 archive when the mechanic is off.
+    const unlockAt = rulesVersion === 2
+      ? GENOME_V2_CONFIG.ftue.strainTagsAtBankedRuns
+      : GAME_CONFIG.genome.ftue.splicesAt;
 
     const { data: firstRows, error: firstError } = await supabase
       .from('codex_first_discoveries')
-      .select('discovery_type, entry_id, discovered_at');
+      .select('discovery_type, entry_id, rules_version, discovered_at');
     if (firstError && !isMissingCodexInfra(firstError)) {
       reportError('world-first read', firstError, { playerId: player.id });
     }
@@ -149,7 +157,8 @@ export async function GET(request: NextRequest) {
         sanitizeCodexRows(codexRows),
         sanitizeWorldFirstRows(firstRows),
         sessionError ? [] : sessionRows ?? [],
-        Boolean(weaverRow)
+        Boolean(weaverRow),
+        rulesVersion
       ),
     });
   } catch (error) {

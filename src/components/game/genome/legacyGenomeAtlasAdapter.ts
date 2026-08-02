@@ -74,8 +74,10 @@ export function buildLegacyGenomeAtlasModel(
         cost: splice.cost,
         strains: spliceStrains(id),
         recipeKnown: discoveredParents !== null,
-        parentIds: parents,
-        recipeLabel: `Recipe: ${GENES[parents[0]].name} + ${GENES[parents[1]].name}`,
+        parentIds: discoveredParents ?? [],
+        recipeLabel: discoveredParents
+          ? `Recipe: ${GENES[parents[0]].name} + ${GENES[parents[1]].name}`
+          : 'Recipe undiscovered',
       };
     }),
   };

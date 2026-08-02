@@ -140,6 +140,9 @@ import { HUD_COCKPIT_V1_ENABLED } from '@/lib/features/cockpit';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
+import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
+import { genomeResearchHref } from '@/lib/game/genomeResearchLink';
 import {
   DEFAULT_LADDER_RUNG,
   LADDER_RUNGS,
@@ -5486,6 +5489,14 @@ export default function GamePage() {
                     lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
                   }
                   genomeRecap={settledGenomeRecap}
+                  studyGenomeHref={genomeResearchHref({
+                    genomeV2Enabled: GENOME_V2_ENABLED,
+                    workbenchEnabled: WORKBENCH_V1_ENABLED,
+                    sessionId: currentSessionId,
+                    hasGenomeRecap: settledGenomeRecap !== null,
+                    practice: lastRunFree,
+                    settlementPending: settlementSecuredPending,
+                  })}
                   ascendanceProgression={settledAscendanceProgression}
                 />
               ) : (

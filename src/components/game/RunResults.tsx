@@ -107,6 +107,8 @@ export interface RunResultsProps {
   shareArtifact?: ReactNode;
   /** Exact v2 settlement projection; omitted for legacy/unavailable receipts. */
   genomeRecap?: GenomeYieldRecapModel | null;
+  /** Opaque, authenticated handoff to the settled run's Research reading. */
+  studyGenomeHref?: string | null;
   /** Exact run-stamped Ascendance presentation, including honest v1 labels. */
   ascendanceProgression?: AscendanceProgressionModel | null;
 }
@@ -847,6 +849,7 @@ export function RunResults({
   replayEnergy,
   shareArtifact,
   genomeRecap = null,
+  studyGenomeHref = null,
   ascendanceProgression = null,
 }: RunResultsProps) {
   const head = headline(outcome, practice);
@@ -965,6 +968,15 @@ export function RunResults({
         )}
 
         {!settlementPending && genomeRecap ? <GenomeYieldRecap model={genomeRecap} /> : null}
+        {!settlementPending && genomeRecap && studyGenomeHref ? (
+          <Link
+            href={studyGenomeHref}
+            className="mx-auto flex min-h-[44px] max-w-sm items-center justify-center gap-2 rounded-full border border-cosmic/50 bg-cosmic/10 px-5 py-2 font-display text-sm text-cosmic transition-colors hover:border-cosmic hover:bg-cosmic/20"
+            data-testid="results-study-genome"
+          >
+            <IconFlask size={16} /> Study this Genome <IconArrowRight size={15} />
+          </Link>
+        ) : null}
         {!settlementPending && ascendanceProgression ? (
           <div className="mx-auto max-w-lg text-left">
             <AscendanceProgressionInstrument model={ascendanceProgression} compact />
