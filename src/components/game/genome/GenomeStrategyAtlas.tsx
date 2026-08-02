@@ -37,7 +37,7 @@ export interface GenomeAtlasSplice {
   cost: string;
   strains: readonly StrainId[];
   recipeKnown: boolean;
-  parentIds: readonly string[] | null;
+  parentIds: readonly string[];
   recipeLabel: string;
 }
 
@@ -65,7 +65,7 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
     ? model.strains.filter((strain) => selected.strains.includes(strain.id))
     : [];
   const splicePaths = selected
-    ? model.splices.filter((splice) => splice.parentIds?.includes(selected.id))
+    ? model.splices.filter((splice) => splice.parentIds.includes(selected.id))
     : [];
 
   if (!selected) return null;
@@ -212,7 +212,7 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
                 ))}
               </div>
             ) : (
-              <p className="mt-2 font-body text-[10px] text-beige/45">No archived direct recipe from this gene. Undiscovered recipes remain yours to discover.</p>
+              <p className="mt-2 font-body text-[10px] text-beige/45">This gene has no direct Splice recipe in the current ruleset.</p>
             )}
           </section>
 

@@ -125,7 +125,7 @@ describe('Genome Codex page', () => {
     }
   });
 
-  it('shows a discovered splice its recipe and an undiscovered one none', () => {
+  it('shows every tactical recipe while discovery remains separate history', () => {
     mockUseCodexStore.mockReturnValue({
       live: true,
       unlocked: true,
@@ -151,7 +151,7 @@ describe('Genome Codex page', () => {
           {
             id: 'splice_all_in',
             name: 'All In',
-            parents: null,
+            parents: ['compound_interest', 'mirror_wager'],
             strains: [],
             effect: 'all in effect',
             cost: 'all in cost',
@@ -174,9 +174,9 @@ describe('Genome Codex page', () => {
       'Gold Trail + Compound Interest'
     );
     expect(screen.getByTestId('codex-recipe-splice_all_in')).toHaveTextContent(
-      'Recipe hidden'
+      'Compound Interest + Mirror Wager'
     );
-    // The rules of an undiscovered splice are not hidden — only its recipe.
+    // Discovery still changes archive history, never mechanical access.
     expect(screen.getAllByText('All In').length).toBeGreaterThan(0);
     expect(screen.getByText('all in effect')).toBeInTheDocument();
     expect(screen.getByText('all in cost')).toBeInTheDocument();

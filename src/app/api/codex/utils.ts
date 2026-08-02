@@ -39,17 +39,8 @@ export interface CodexGeneView extends CodexEntryStats {
 export interface CodexSpliceView {
   id: SpliceId;
   name: string;
-  /**
-   * The two genes that fuse into this splice — the ONLY content the Codex
-   * still withholds, and `null` until this player has discovered it.
-   *
-   * It is nulled HERE, on the server, rather than masked in the page:
-   * shipping the recipe in the JSON and hiding it with a ternary is not
-   * hiding it at all. Everything else about a splice — its name, its
-   * effect, its cost, its strains — is a rule of the game and is always
-   * returned (WP-2.07a).
-   */
-  parents: readonly [GeneId, GeneId] | null;
+  /** Tactical mechanics are public rules; discovery records history, not access. */
+  parents: readonly [GeneId, GeneId];
   strains: StrainId[];
   effect: string;
   cost: string;
@@ -232,7 +223,7 @@ export function buildCodexPayload(
     return {
       id,
       name: def.name,
-      parents: discovered ? def.parents : null,
+      parents: def.parents,
       strains,
       effect: def.effect,
       cost: def.cost,

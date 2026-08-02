@@ -22,8 +22,8 @@ function allCurrentGenes(): GenomeV2ActiveGeneId[] {
 }
 
 /**
- * Current public strategy atlas. Rules are always visible; only the exact
- * parent recipe obeys the player's durable discovery state.
+ * Current public strategy atlas. Every mechanical route is visible; durable
+ * discovery changes history and prestige metadata, never tactical access.
  */
 export function buildGenomeV2AtlasModel(
   discoveredRecipes: ReadonlySet<GenomeV2SpliceId> = new Set()
@@ -67,10 +67,8 @@ export function buildGenomeV2AtlasModel(
         cost: splice.strategicCost,
         strains: Array.from(new Set(splice.parents.flatMap((parent) => GENOME_V2_GENES[parent].strains))),
         recipeKnown,
-        parentIds: recipeKnown ? splice.parents : null,
-        recipeLabel: recipeKnown
-          ? `Recipe: ${splice.parents.map((parent) => GENOME_V2_GENES[parent].name).join(' + ')}`
-          : 'Recipe hidden until discovered',
+        parentIds: splice.parents,
+        recipeLabel: `Recipe: ${splice.parents.map((parent) => GENOME_V2_GENES[parent].name).join(' + ')}`,
       };
     }),
   };

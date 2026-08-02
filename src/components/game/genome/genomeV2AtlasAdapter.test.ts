@@ -5,7 +5,7 @@ import {
 } from './genomeV2AtlasAdapter';
 
 describe('Genome v2 Atlas adapter', () => {
-  it('shows the complete current roster and every 3/4/5 ladder without exposing undiscovered recipes', () => {
+  it('shows the complete roster, every 3/4/5 ladder, and every tactical recipe', () => {
     const model = buildGenomeV2AtlasModel();
     expect(model.rulesVersion).toBe(2);
     expect(model.genes).toHaveLength(16);
@@ -19,7 +19,7 @@ describe('Genome v2 Atlas adapter', () => {
       expect(strain.tiers.map((tier) => tier.points)).toEqual([3, 4, 5]);
     }
     expect(model.splices).toHaveLength(GENOME_V2_SPLICE_IDS.length);
-    expect(model.splices.every((splice) => splice.parentIds === null)).toBe(true);
+    expect(model.splices.every((splice) => splice.parentIds.length === 2)).toBe(true);
     expect(model.splices[0].rule.length).toBeGreaterThan(10);
   });
 
@@ -36,7 +36,7 @@ describe('Genome v2 Atlas adapter', () => {
     });
     expect(model.splices.find((splice) => splice.id === 'splice_worldcoil')).toMatchObject({
       recipeKnown: false,
-      parentIds: null,
+      parentIds: ['coilkeeper', 'overgrowth'],
     });
   });
 });

@@ -62,21 +62,20 @@ export function buildLegacyGenomeAtlasModel(
     splices: SPLICE_IDS.map((id: SpliceId) => {
       const splice = SPLICES[id];
       const rawParents = known.get(id) ?? null;
-      const parents: readonly [GeneId, GeneId] | null =
+      const discoveredParents: readonly [GeneId, GeneId] | null =
         rawParents?.length === 2 && isGeneId(rawParents[0]) && isGeneId(rawParents[1])
           ? [rawParents[0], rawParents[1]]
           : null;
+      const parents = splice.parents;
       return {
         id,
         name: splice.name,
         rule: splice.effect,
         cost: splice.cost,
         strains: spliceStrains(id),
-        recipeKnown: parents !== null,
+        recipeKnown: discoveredParents !== null,
         parentIds: parents,
-        recipeLabel: parents
-          ? `Recipe: ${GENES[parents[0]].name} + ${GENES[parents[1]].name}`
-          : 'Recipe hidden until discovered',
+        recipeLabel: `Recipe: ${GENES[parents[0]].name} + ${GENES[parents[1]].name}`,
       };
     }),
   };

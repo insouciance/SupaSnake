@@ -58,6 +58,14 @@ describe('Codex API mapping', () => {
     expect(payload.sampleSize).toBe(3);
   });
 
+  it('keeps mechanical recipes visible before durable discovery', () => {
+    const payload = buildCodexPayload([], new Map(), [], false);
+    expect(payload.splices.find((entry) => entry.id === 'splice_all_in')).toMatchObject({
+      discovered: false,
+      parents: ['compound_interest', 'mirror_wager'],
+    });
+  });
+
   it('deduplicates discovery rows and rejects invalid milestone strains', () => {
     expect(
       sanitizeCodexRows([
